@@ -97,6 +97,7 @@ class Params:
     water_simplification = 0.0
     clean_bad_geometries = True
     apt_smoothing_pix = 8
+    flatten_helipads = True  # idea 8: read by the airports' encoding
 
 
 def _empty_layer_cache(root: Path, layers=("coastline", "water", "big_roads", "airports")) -> Path:

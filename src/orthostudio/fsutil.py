@@ -23,6 +23,7 @@ from collections.abc import Callable
 from pathlib import Path, PurePath
 
 from orthostudio import winfront
+from orthostudio.meter import written
 
 __all__ = [
     "NO_CONSOLE_WINDOW",
@@ -196,6 +197,8 @@ def atomic_write_text(
 def atomic_link_or_copy(src: Path, dest: Path, *, link: bool = True) -> Path:
     """Put ``src`` at ``dest`` atomically: a hard link when allowed and possible, else a copy."""
 
+    copied = [0]
+
     def produce(tmp: Path) -> None:
         if link:
             try:
@@ -204,8 +207,11 @@ def atomic_link_or_copy(src: Path, dest: Path, *, link: bool = True) -> Path:
             except OSError:
                 pass
         shutil.copyfile(src, tmp)
+        copied[0] = tmp.stat().st_size
 
-    return _atomic(dest, produce, fsync=False)
+    placed = _atomic(dest, produce, fsync=False)
+    written(copied[0])  # a copy takes room, a link none: the build step's count (meter.py)
+    return placed
 
 
 def platform_name() -> str:
@@ -279,12 +285,80 @@ def choose_folder_command(
     return None
 
 
+def choose_file_command(
+    prompt: str,
+    start: PurePath | None,
+    suffixes: tuple[str, ...],
+    platform: str | None = None,
+) -> list[str] | None:
+    """The command that asks for one file in the platform's own dialog and prints its path, as
+    :func:`choose_folder_command` does for a folder; ``suffixes`` (``(".lnmpln", ".fms")``) are the
+    files it offers. ``None`` on a Linux with neither zenity nor kdialog."""
+    name = platform or platform_name()
+    bare = [s.lstrip(".") for s in suffixes]
+    if name == "mac":
+        where = f", defaultLocation: Path({json.dumps(str(start))})" if start else ""
+        script = (
+            "var app = Application.currentApplication(); app.includeStandardAdditions = true; "
+            "app.activate(); "
+            f"app.chooseFile({{withPrompt: {json.dumps(prompt)}, ofType: {json.dumps(bare)}"
+            f"{where}}}).toString()"
+        )
+        return ["osascript", "-l", "JavaScript", "-e", script]
+    patterns = ";".join(f"*.{s}" for s in bare)
+    if name == "win":
+        lines = [
+            "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8",
+            "Add-Type -AssemblyName System.Windows.Forms",
+            "$owner = New-Object System.Windows.Forms.Form -Property @{TopMost = $true}",
+            "$dialog = New-Object System.Windows.Forms.OpenFileDialog",
+            f"$dialog.Title = {_powershell_string(prompt)}",
+            f"$dialog.Filter = {_powershell_string(f'{prompt} ({patterns})|{patterns}')}",
+        ]
+        if start:
+            lines.append(f"$dialog.InitialDirectory = {_powershell_string(str(start))}")
+        lines.append(
+            "if ($dialog.ShowDialog($owner) -eq [System.Windows.Forms.DialogResult]::OK)"
+            " { [Console]::Out.Write($dialog.FileName) }"
+        )
+        return ["powershell", "-NoProfile", "-STA", "-Command", "; ".join(lines)]
+    spaced = " ".join(f"*.{s}" for s in bare)
+    if shutil.which("zenity"):
+        cmd = [
+            "zenity",
+            "--file-selection",
+            f"--title={prompt}",
+            f"--file-filter={prompt} | {spaced}",
+        ]
+        return cmd + ([f"--filename={start}{os.sep}"] if start else [])
+    if shutil.which("kdialog"):
+        where = str(start or Path.home())
+        return ["kdialog", "--getopenfilename", where, f"{spaced}|{prompt}", "--title", prompt]
+    return None
+
+
+def choose_file(prompt: str, start: Path | None, suffixes: tuple[str, ...]) -> Path | None:
+    """Ask the user for one file in the platform's own dialog and wait for the answer: the file, or
+    ``None`` when they cancel. ``FileNotFoundError`` when the system has no such dialog."""
+    cmd = choose_file_command(prompt, start, suffixes)
+    if cmd is None:
+        raise FileNotFoundError("no file dialog on this system: install zenity or kdialog")
+    text = _run_dialog(cmd)
+    return Path(text) if text else None
+
+
 def choose_folder(prompt: str, start: Path | None = None) -> Path | None:
     """Ask the user for a folder in the platform's own dialog and wait for the answer: the folder,
     or ``None`` when they cancel. ``FileNotFoundError`` when the system has no such dialog."""
     cmd = choose_folder_command(prompt, start)
     if cmd is None:
         raise FileNotFoundError("no folder dialog on this system: install zenity or kdialog")
+    text = _run_dialog(cmd)
+    return Path(text.rstrip("/\\") or text) if text else None
+
+
+def _run_dialog(cmd: list[str]) -> str:
+    """Run a dialog command and wait for it: the path it printed, ``""`` when it was cancelled."""
     with subprocess.Popen(  # a fixed program; the prompt and folder are quoted for it
         cmd,
         stdin=subprocess.DEVNULL,
@@ -306,8 +380,8 @@ def choose_folder(prompt: str, start: Path | None = None) -> Path | None:
             answered.set()
     text = (out or "").strip()
     if dialog.returncode != 0 or not text:  # cancelled: osascript 1, zenity 1, nothing printed
-        return None
-    return Path(text.rstrip("/\\") or text)
+        return ""
+    return text
 
 
 def reveal_in_file_manager(path: Path) -> None:

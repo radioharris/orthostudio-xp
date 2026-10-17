@@ -178,6 +178,16 @@
        "type": "string",
        "unit": ""
       },
+      "own_first": {
+       "default": false,
+       "description": "Use the files of the folder above even where they are coarser than the relief chosen here: they then come first on every square they cover, smoothed between their points. Off, the finest relief wins. A pilot whose files were coarser than his choice found them left aside (idea 9, 2026-10-11).",
+       "hint": "Use the files of the folder above even where they are coarser than the relief chosen here: they then come first on every square they cover, smoothed between their points. Off, the finest relief wins. A pilot whose files were coarser than his choice found them left aside (idea 9, 2026-10-11).",
+       "level": "essential",
+       "ortho4xp": null,
+       "title": "Own First",
+       "type": "boolean",
+       "unit": ""
+      },
       "fill_nodata": {
        "default": "nearest",
        "description": "When set, the no_data values in the raster will be filled by a nearest neighbour algorithm. If unset, they are turned into zero (can be useful for rasters with no_data over the whole oceanic part or partial LIDAR data).",
@@ -199,12 +209,13 @@
     },
     "overlays": {
      "default": "xplane",
-     "description": "Roads, railways, power lines, forests and buildings over the photo tiles, taken from X-Plane's own scenery into the shared yOrthoStudio_Overlays pack. 'none' builds none and takes a tile's own out of X-Plane when it is built again, for simHeaven X-World or another pack that brings them.",
+     "description": "Roads, railways, power lines, forests and buildings over the photo tiles, taken from X-Plane's own scenery into the shared yOrthoStudio_Overlays pack. 'roads' keeps X-Plane's roads, railways and power lines alone, for a pack that brings its own forests and buildings. 'none' builds none and takes a tile's own out of X-Plane when it is built again, for simHeaven X-World or another pack that brings them.",
      "enum": [
       "xplane",
+      "roads",
       "none"
      ],
-     "hint": "Roads, railways, power lines, forests and buildings over the photo tiles, taken from X-Plane's own scenery into the shared yOrthoStudio_Overlays pack. 'none' builds none and takes a tile's own out of X-Plane when it is built again, for simHeaven X-World or another pack that brings them.",
+     "hint": "Roads, railways, power lines, forests and buildings over the photo tiles, taken from X-Plane's own scenery into the shared yOrthoStudio_Overlays pack. 'roads' keeps X-Plane's roads, railways and power lines alone, for a pack that brings its own forests and buildings. 'none' builds none and takes a tile's own out of X-Plane when it is built again, for simHeaven X-World or another pack that brings them.",
      "level": "essential",
      "ortho4xp": null,
      "title": "Overlays",
@@ -301,9 +312,9 @@
     "limit_tris": {
      "default": 3.0,
      "description": "If non zero, approx upper bound _in millions_ on the number of final triangles in the mesh. Note: When 0 we impose a hard limit of 5M, to keep X-Plane comfortable. For high resolution DEMS you _should_ use it.",
+     "exclusiveMaximum": 50,
      "hint": "If non zero, approx upper bound _in millions_ on the number of final triangles in the mesh. Note: When 0 we impose a hard limit of 5M, to keep X-Plane comfortable. For high resolution DEMS you _should_ use it.",
      "level": "advanced",
-     "maximum": 5,
      "minimum": 0,
      "ortho4xp": "limit_tris",
      "title": "Limit Tris",
@@ -683,6 +694,16 @@
      "level": "expert",
      "ortho4xp": "use_decal_on_terrain",
      "title": "Use Decal On Terrain",
+     "type": "boolean",
+     "unit": ""
+    },
+    "flatten_helipads": {
+     "default": true,
+     "description": "The helipads of OpenStreetMap are made flat, as Ortho4XP makes them. Turned off, the ground keeps its slope there; runways, taxiways and aprons are flattened either way.",
+     "hint": "The helipads of OpenStreetMap are made flat, as Ortho4XP makes them. Turned off, the ground keeps its slope there; runways, taxiways and aprons are flattened either way.",
+     "level": "expert",
+     "ortho4xp": null,
+     "title": "Flatten Helipads",
      "type": "boolean",
      "unit": ""
     },

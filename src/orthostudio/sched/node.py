@@ -12,6 +12,8 @@ helpers that apply the P0 write protocol (``begin`` / ``commit``).
 from __future__ import annotations
 
 import contextlib
+import os
+import threading
 from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -30,6 +32,7 @@ __all__ = [
     "NodeContext",
     "NodeRun",
     "artifact_ref",
+    "own_bytes",
     "run_p0_rule",
 ]
 
@@ -49,6 +52,29 @@ def artifact_ref(info: ArtifactInfo) -> ArtifactRef:
     return ArtifactRef(info.key, info.digest, info.path, info.rule, info.kind, info.size)
 
 
+def own_bytes(path: Path) -> int:
+    """The bytes of the files under ``path`` that take room of their own: a hard link to a file
+    already in the store (an image in a tile's folder, a DSF in its pack) takes none, a symbolic
+    link the length of its target. What a step really put on the disk, its index size counting a
+    linked image as many times as it is linked."""
+    try:
+        st = os.lstat(path)
+    except OSError:
+        return 0
+    if not os.path.isdir(path) or os.path.islink(path):
+        return st.st_size if st.st_nlink <= 1 else 0
+    total = 0
+    for root, _dirs, files in os.walk(path):
+        for name in files:
+            try:
+                st = os.lstat(os.path.join(root, name))
+            except OSError:
+                continue
+            if st.st_nlink <= 1:
+                total += st.st_size
+    return total
+
+
 @dataclass(slots=True)
 class NodeContext:
     """Everything a node run receives (spec 2.1)."""
@@ -64,6 +90,13 @@ class NodeContext:
     """An empty directory owned by this run; removed after success, kept after a failure."""
     progress: Callable[[float, str], None]
     cancel_event: CancelToken
+    written: int = 0
+    """Bytes this run put on the disk: what it committed to the store (:meth:`commit`, links to
+    what the store holds left out) and what it says it wrote elsewhere (:meth:`wrote`: a cache of
+    image pieces, relief files, images committed by its own workers)."""
+    downloaded: int = 0
+    """Bytes this run received from the network (:meth:`fetched`)."""
+    _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
     set_idle: Callable[[bool], None] = lambda _idle: None
     """Say the run is holding its slot without using it (a spaced retry waiting), so another node
     of the same kind may start meanwhile: a build has one network slot, and a tile waiting for a
@@ -103,6 +136,18 @@ class NodeContext:
                 refs.append(InputRef(name, ref.digest, key))
         return refs
 
+    # -- what the run put on the disk and took from the network --------------------------
+
+    def wrote(self, nbytes: int) -> None:
+        """Count ``nbytes`` written outside :meth:`commit` (thread-safe)."""
+        with self._lock:
+            self.written += max(0, int(nbytes))
+
+    def fetched(self, nbytes: int) -> None:
+        """Count ``nbytes`` received from the network (thread-safe)."""
+        with self._lock:
+            self.downloaded += max(0, int(nbytes))
+
     # -- cancellation ----------------------------------------------------------------------
 
     @property
@@ -131,9 +176,11 @@ class NodeContext:
 
     def commit(self, build: Build) -> ArtifactRef:
         """Commit a build started with :meth:`begin`; the returned ref is what ``run`` returns."""
-        info, _adopted = build.commit(
+        info, adopted = build.commit(
             version=self.rule.version, recipe=self.recipe, inputs=self.input_refs()
         )
+        if not adopted:  # adopted: another process had put it there, ours went away
+            self.wrote(own_bytes(info.path))
         return artifact_ref(info)
 
     def produce(self, writer: Callable[[Path], object]) -> ArtifactRef:

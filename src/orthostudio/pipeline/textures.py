@@ -57,6 +57,7 @@ from orthostudio.imagery.chunks import (
 from orthostudio.imagery.grid import TextureId, texture_name, texture_tiles
 from orthostudio.imagery.providers import Provider, cache_name, is_placeholder, tile_url
 from orthostudio.net import Fetcher, FetchRequest, FetchResult, FetchStats
+from orthostudio.parentwatch import leave_with_parent
 from orthostudio.pipeline.home import default_chunks_root, default_store_root
 from orthostudio.pipeline.parents import (
     ParentCache,
@@ -309,6 +310,9 @@ class TexturesSpec:
     quiet: bool = False
     cancel: threading.Event | None = None
     fsync: bool = True
+    wrote: Callable[[int], None] | None = None
+    """Told what the image pieces kept in the cache add to the disk (``ChunkStore.on_write``):
+    the build step's count of what it wrote, Works' report."""
 
 
 @dataclass(slots=True)
@@ -619,9 +623,11 @@ _WORKER_STORE: Store | None = None
 
 
 def _worker_init() -> None:
-    """Workers ignore Ctrl-C: the parent cancels them through the pool (spec section 8)."""
+    """Workers ignore Ctrl-C: the parent cancels them through the pool (spec section 8). They
+    leave when the engine is gone (:func:`orthostudio.parentwatch.leave_with_parent`)."""
     with contextlib.suppress(Exception):
         signal.signal(signal.SIGINT, signal.SIG_IGN)
+    leave_with_parent()
 
 
 def _worker_store(root: Path, fsync: bool) -> Store:
@@ -875,9 +881,9 @@ class _Pipeline:
         # what a power cut damaged is fetched again. Forcing one per texture, which Windows does
         # for real, made a hard disk wait at every texture and the images crawl (2026-09-28).
         self.chunk_store = ChunkStore(
-            spec.chunks_root, fsync=False, folders={spec.provider.code: folder}
+            spec.chunks_root, fsync=False, folders={spec.provider.code: folder}, on_write=spec.wrote
         )
-        self.parent_cache = ParentCache(spec.chunks_root, folder, fsync=False)
+        self.parent_cache = ParentCache(spec.chunks_root, folder, fsync=False, on_write=spec.wrote)
         self.store = Store(spec.store_root, fsync=spec.fsync)
         self.workers = default_workers() if spec.workers is None else max(0, spec.workers)
         self.jobs = merge_jobs(spec.jobs)

@@ -15,6 +15,7 @@ import json
 import logging
 import os
 import shutil
+import sqlite3
 import stat
 import subprocess
 import threading
@@ -157,7 +158,7 @@ __all__ = [
     "sse_message",
 ]
 
-API_LEVEL = 29
+API_LEVEL = 31
 """What this engine's API offers, for the page: 1 = P2b, 2 = zones (``/api/zones``) and the base map
 (``/api/map``), 3 = deleting a tile (``POST /api/library/{name}/delete``) and the sizes of the
 library, 4 = the disk space of the Library (``GET /api/disk``, ``POST /api/clean``), 5 = clearing
@@ -189,7 +190,10 @@ refuses a settings document that holds it), 26 = the stages ``osm`` and ``relief
 /api/library/file-plan``, ``POST /api/library/{name}/file``, ``GET /api/library/filing``, ``POST
 /api/library/filing/stop``), 29 = the cache of the tiles filed outside the atelier in ``GET
 /api/disk`` (``filed_tiles``, ``filed_bytes``, ``filed_images_bytes``) and ``POST /api/clean``
-(``filed``, ``filed_freed_bytes``). A page
+(``filed``, ``filed_freed_bytes``), 30 = the setting ``expert.flatten_helipads`` and the answer
+``roads`` of ``essential.overlays`` (an older engine refuses a settings document that holds them),
+and ``POST /api/flightplan/file`` (a Little Navmap or X-Plane plan file), 31 = ``POST
+/api/zones/cells`` (the squares each zone takes, drawn on the map). A page
 served by an engine older than itself (a ``osxp serve`` started before an update: the page's files
 are read from disk at each load, the routes were imported at start) asks the user to restart
 OrthoStudio XP instead of showing "Not Found"."""
@@ -735,7 +739,7 @@ def create_app(
     app.add_middleware(_SlowAnswers)
     # P5 (docs/specs/map-zones.md): the zones document and the base map. The map router carries
     # its own lifespan, which closes its upstream fetchers when the server stops.
-    app.include_router(zones_router())
+    app.include_router(zones_router(mesh_zl_of=lambda: int(settings().expert.mesh_zl)))
     app.include_router(map_router(fetch=map_fetch))
     app.include_router(basemap_router())
     manager = jobs if jobs is not None else JobManager(env_factory=env_factory)
@@ -1495,7 +1499,19 @@ def create_app(
 
                 env = _call_env_factory(factory, specs)
             try:
-                est = estimate(specs, online=req.online, env=env)
+                # the airports a build makes sharper, placed for a tile whose map data is not
+                # read yet; X-Plane's list is asked only then, and a list that cannot be had
+                # (no apt.dat, a disk error while it is made) leaves them uncounted, never the
+                # Plan unanswered
+                airports = None
+                if any(
+                    s.config.get("cover_airports_with_highres") in ("True", "ICAO") for s in specs
+                ):
+                    try:
+                        airports = airport_index()
+                    except (OsxpError, OSError, sqlite3.Error) as exc:
+                        log.info("the Plan counts no airport of X-Plane's list: %s", exc)
+                est = estimate(specs, online=req.online, env=env, airports=airports)
             finally:
                 if isinstance(env, BuildEnv):
                     env.close()  # each plan opened the store's index and left it open

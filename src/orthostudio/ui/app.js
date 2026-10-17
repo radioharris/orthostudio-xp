@@ -30,7 +30,7 @@ import { TEXTURE_MB, ZONES_FORMAT, normalizeZone, parseTile, tileName, validateZ
 import { OLD_STORAGE_KEY, STORAGE_KEY, defaultLevels, excluding, groupsOf, levelOf, newFlightPlan, readSaved, restoredPlan, squaresOf, toSaved, withPlan, withoutPlan } from "./flightplan.js";
 import { createPlanMap, detailLabel, detailName } from "./map.js";
 import { colourPreview } from "./preview.js";
-import { defaultsKeepingFolders, renderSettingsView, sameValue, settingsSummary } from "./settings.js";
+import { defaultsKeepingFolders, refusedValueText, renderSettingsView, sameValue, settingsSummary } from "./settings.js";
 import { bindFind, bindFindKeys, findForget } from "./find.js";
 import { bindZoom } from "./zoom.js";
 import { applyTextSize, bindTextSize, savedTextSize } from "./textsize.js";
@@ -212,10 +212,16 @@ const state = {
   libraryKnown: false,
   /** The folder the Library shows the tiles of (`tileFolder`'s key), or "" for every folder. */
   libraryFolder: "",
+  libraryShow: "",
   /** The tiles picked to be filed elsewhere, by their row's key (the atelier, step 3). */
   libraryPicked: new Set(),
   /** The filing under way: `{n, i, tile, folder, stop, progress}`, or null. */
   filing: null,
+  /** Tiles picked being built again: estimated, asked, then sent (the Library's Build again…). */
+  rebuilding: false,
+  /** Build again is working out the cost of the tiles picked: the bar shows a spinner. */
+  rebuildEstimating: false,
+  bulk: null,
   /** GET /api/patches: the tiles the saved folder of patches has something for (the Plan). */
   patches: null,
   /** The same for the folder Settings shows, saved or not. */
@@ -876,7 +882,12 @@ function mockOutcome(run) {
     const target = tile.nodes.filter((n) => n.role === (tile.install ? "install" : "pack"));
     const ok = target.length > 0 && target.every((n) => n.status === "done" || n.status === "hit");
     const packDir = ok ? `/Users/pilot/.orthostudio/tiles/zOrthoStudio_${tile.tile}` : null;
-    const nodes = tile.nodes.filter((n) => n.status !== "pending").map((n) => ({ id: n.node, role: n.role, rule: n.role, key: n.key, status: reportStatus[n.status] || n.status, wall_s: n.wall_s, error: n.error, cause: n.cause }));
+    // what a step wrote and received, as the engine measures them (a plausible size per role)
+    const mockBytes = { osm: [9e6, 7e6], dem: [1.2e8, 9e7], vectors: [3e6, 0], mesh: [2.4e8, 0], masks: [6e7, 0], dsf: [6e7, 0], textures: [2.1e9, 3.4e8] };
+    const nodes = tile.nodes.filter((n) => n.status !== "pending").map((n) => {
+      const [written, downloaded] = n.status === "done" ? mockBytes[n.role] || [0, 0] : [0, 0];
+      return { id: n.node, role: n.role, rule: n.role, key: n.key, status: reportStatus[n.status] || n.status, wall_s: n.wall_s, error: n.error, cause: n.cause, written, downloaded };
+    });
     const counts = { hit: 0, built: 0, failed: 0, skipped: 0 };
     const seconds = Object.fromEntries(STEPS.map((s) => [s, 0]));
     for (const n of tile.nodes) {
@@ -1092,6 +1103,29 @@ export async function mockApi(method, path, body, options = {}) {
     // a SimBrief account; fail=simbrief answers as for a name SimBrief does not know.
     if (MOCK_FAIL === "simbrief") throw mockError(404, "CFG_SIMBRIEF_USER_UNKNOWN", "SimBrief does not know pilot.", "Check the name in Settings: it is your SimBrief name, or your pilot ID.");
     return mockFile("flightplan");
+  }
+  if (p === "/api/zones/cells" && method === "POST") {
+    // The squares the zones take, as the engine answers: here each zone's own outline stands in
+    // for its squares, and a zone wholly inside one above it takes none.
+    const zones = Array.isArray(body?.zones) ? body.zones : [];
+    const box = (poly) => {
+      const lons = poly.map((p) => p[0]);
+      const lats = poly.map((p) => p[1]);
+      return [Math.min(...lons), Math.min(...lats), Math.max(...lons), Math.max(...lats)];
+    };
+    const within = (a, b) => a[0] >= b[0] && a[1] >= b[1] && a[2] <= b[2] && a[3] <= b[3];
+    return {
+      mesh_zl: 19,
+      zones: zones.map((z, i) => {
+        const b = box(z.polygon);
+        const hidden = zones.slice(0, i).some((above) => within(b, box(above.polygon)));
+        return { id: z.id, count: hidden ? 0 : Math.max(1, Math.round((b[2] - b[0]) * (b[3] - b[1]) * 12000)), area: hidden ? [] : [[z.polygon]] };
+      }),
+    };
+  }
+  if (p === "/api/flightplan/file" && method === "POST") {
+    // A plan file as the engine answers it once the dialog is answered: the demo's one plan.
+    return { ...(await mockFile("flightplan")), chosen: true, file: "LFMN-LSGG.lnmpln", folder: "/demo" };
   }
   if (p === "/api/flightplan" && method === "POST") {
     // A kept route computed again: the demo has one plan, the one it kept.
@@ -2242,10 +2276,6 @@ const screenScroll = new Map();
 
 function showScreen(name, arg) {
   if (!SCREENS.includes(name)) name = "plan";
-  if (state.screen === "settings" && name !== "settings" && state.settingsDraft && !sameValue(state.settingsDraft, state.settings)) {
-    // an answer changed without Save changes nothing yet: say it rather than let the Plan look stale
-    toast(t("settings.left_unsaved"));
-  }
   // read while the screen left still shows: hidden, a shorter page would have scrolled it up
   const left = state.screen;
   if (left !== name) screenScroll.set(left, window.scrollY);
@@ -2290,7 +2320,7 @@ function routeFromHash() {
 // ------------------------------------------------------------------ status bar
 
 /** The engine API this page needs (orthostudio.api.app.API_LEVEL); a test keeps the two equal. */
-const PAGE_API_LEVEL = 29;
+const PAGE_API_LEVEL = 31;
 
 async function loadStatus() {
   try {
@@ -3232,7 +3262,9 @@ function airportTrouble(err, code) {
   return t("plan.icao_unknown", { icao: code });
 }
 
-let flightPlanLoading = false;
+/** What reads a plan now: "simbrief", "file" (the dialog and the file) or "kept" (the plan kept
+ * between two visits), `null` when nothing does. One at a time; each button names its own wait. */
+let flightPlanLoading = null;
 
 /** The plan kept between two visits, or taken away; a browser that refuses to keep it keeps it
  * as long as the page is open. */
@@ -3280,7 +3312,7 @@ function showFlightPlanError(message) {
  */
 async function loadFlightPlan() {
   if (flightPlanLoading) return;
-  flightPlanLoading = true;
+  flightPlanLoading = "simbrief";
   showFlightPlanError(null);
   renderFlightPlan();
   try {
@@ -3291,7 +3323,45 @@ async function loadFlightPlan() {
     const d = errorDetail(err);
     showFlightPlanError(d?.code ? codeWords(d).filter(Boolean).join(" ") : errorMessage(err));
   } finally {
-    flightPlanLoading = false;
+    flightPlanLoading = null;
+    renderFlightPlan();
+  }
+}
+
+/** The folder the plan file dialog opened last, so the next one opens there. */
+const PLAN_FOLDER_KEY = "osxp.planFolder";
+
+/**
+ * Step 1's other button: a flight plan file the pilot chooses in the system's own dialog, saved by
+ * Little Navmap (.lnmpln) or exported for X-Plane (.fms) (idea 11, 2026-10-11). The engine opens
+ * the dialog and reads the file; its route then goes the way of a SimBrief plan.
+ */
+async function openFlightPlanFile() {
+  if (flightPlanLoading) return;
+  flightPlanLoading = "file";
+  showFlightPlanError(null);
+  renderFlightPlan();
+  try {
+    const r = Math.max(1, Math.min(300, Number($("radius-input").value) || 15));
+    let start = null;
+    try {
+      start = localStorage.getItem(PLAN_FOLDER_KEY);
+    } catch {
+      /* the storage is refused: the engine chooses the folder */
+    }
+    const plan = await api("POST", "/api/flightplan/file", { radius_km: r, prompt: t("flightplan.open_prompt"), start });
+    if (!plan?.chosen) return;
+    try {
+      localStorage.setItem(PLAN_FOLDER_KEY, plan.folder);
+    } catch {
+      /* not kept: the next dialog opens in the engine's choice */
+    }
+    replaceFlightPlan(plan);
+  } catch (err) {
+    const d = errorDetail(err);
+    showFlightPlanError(d?.code ? codeWords(d).filter(Boolean).join(" ") : errorMessage(err));
+  } finally {
+    flightPlanLoading = null;
     renderFlightPlan();
   }
 }
@@ -3375,7 +3445,7 @@ async function restoreFlightPlan() {
     return;
   }
   if (flightPlanLoading) return;
-  flightPlanLoading = true;
+  flightPlanLoading = "kept";
   renderFlightPlan();
   try {
     const plan = await api("POST", "/api/flightplan", saved.route);
@@ -3389,7 +3459,7 @@ async function restoreFlightPlan() {
   } catch {
     /* kept as it is: the next visit asks again */
   } finally {
-    flightPlanLoading = false;
+    flightPlanLoading = null;
     renderFlightPlan();
   }
 }
@@ -3399,8 +3469,13 @@ async function restoreFlightPlan() {
 function renderFlightPlan() {
   const load = $("flightplan-load");
   if (!load) return;
-  load.disabled = flightPlanLoading;
-  load.textContent = flightPlanLoading ? t("flightplan.loading") : t("flightplan.load");
+  // Both buttons wait while either reads a plan, and only the one pressed says it is reading: the
+  // SimBrief button said "Reading the plan…" while a file was being chosen (2026-10-11).
+  load.disabled = Boolean(flightPlanLoading);
+  load.textContent = flightPlanLoading === "simbrief" ? t("flightplan.loading") : t("flightplan.load");
+  const open = $("flightplan-open");
+  open.disabled = Boolean(flightPlanLoading);
+  open.textContent = flightPlanLoading === "file" ? t("flightplan.opening") : t("flightplan.open");
   const fp = state.flightPlan;
   $("flightplan-found").hidden = !fp;
   if (!fp) return;
@@ -3779,10 +3854,11 @@ async function build(install) {
   state.buildStarting = true;
   renderBuildActions();
   try {
-    // The cost of the last change first: a build refused by the estimate, or one the disk cannot
-    // hold, does not start (step 4 says why).
+    // The cost of the last change first: a build refused by the estimate does not start (step 4
+    // says why). A disk that may run short is said, not a reason to refuse: the figure is an
+    // estimate, and a disk that fills up stops a build cleanly (a user, 2026-10-16).
     if (state.planStale || estimateTimer) await (estimateTimer || !estimateRun ? estimate() : estimateRun);
-    if (!state.plan || diskVerdict(state.plan.disk).ok === false) return;
+    if (!state.plan) return;
     const req = await planRequest();
     if (!req) return;
     if (!(await askedBeforeBuild())) return;
@@ -3836,7 +3912,7 @@ function renderBuildActions() {
   const disk = plan ? diskVerdict(plan.disk) : null;
   const refused = tiles && !state.planStale && !state.plan;
   const short = disk?.ok === false;
-  const blocked = !tiles || refused || short || Boolean(state.buildStarting);
+  const blocked = !tiles || refused || Boolean(state.buildStarting);
   $("build-install-btn").disabled = blocked;
   $("build-only-btn").disabled = blocked;
   let note = t("plan.estimating");
@@ -3845,7 +3921,8 @@ function renderBuildActions() {
   else if (short) note = t("step4.disk_short", { need: fmtGB(disk.needed), free: fmtGB(disk.free) });
   else if (plan) note = t("step4.summary", { download: fmtMB(plan.network?.mb), time: fmtRange(plan.network?.seconds_low, plan.network?.seconds_high), disk: fmtGB(disk.needed) });
   setText($("build-note"), note);
-  $("build-note").classList.toggle("is-fail", short || refused);
+  $("build-note").classList.toggle("is-fail", refused);
+  $("build-note").classList.toggle("is-warn", short && !refused);
   // With a build under way or waiting, this one waits for its turn.
   const queue = $("build-queue");
   queue.hidden = !tiles || !activeJobs().length;
@@ -3941,7 +4018,7 @@ function renderPlanPanel() {
   const diskCls = disk.ok === null ? null : disk.ok ? "ok" : "fail";
   const diskFree = disk.ok === null ? fmtGB(disk.free) : `${fmtGB(disk.free)} · ${disk.ok ? t("plan.disk_ok") : t("plan.disk_full")}`;
   if (disk.ok === false) {
-    panel.append(h("p", { class: "disk-alert", role: "alert" }, t("plan.disk_short", { need: fmtGB(disk.needed), free: fmtGB(disk.free) })));
+    panel.append(h("p", { class: "disk-alert", role: "status" }, t("plan.disk_short", { need: fmtGB(disk.needed), free: fmtGB(disk.free) })));
   }
 
   panel.append(
@@ -4447,9 +4524,14 @@ function updateJobView(v, job) {
   v.barFill.style.width = `${pct}%`;
 
   const dataPhase = active && st.phase === "data";
-  v.phase.hidden = !dataPhase && !waiting;
+  // a build cut short left files the next one reads again before reusing them: minutes on a hard
+  // disk, which stood at 0 % without a word (review of 0.1.19)
+  const check = active && st.phase === "check" && st.check && st.check.done < st.check.total ? st.check : null;
+  v.phase.hidden = !dataPhase && !check && !waiting;
   if (waiting) {
     setText(v.phase, t("works.queued_note"));
+  } else if (check) {
+    setText(v.phase, t("works.phase_check", { done: fmtInt(check.done), total: fmtInt(check.total) }));
   } else if (dataPhase) {
     const n = dataPhaseTiles(job);
     setText(v.phase, n ? t("works.phase_data", { n: fmtInt(n) }) : t("works.phase_data_any"));
@@ -4936,7 +5018,10 @@ function updateLog(v, job, active) {
 
 function renderReport(job) {
   const rep = job.report;
-  const per = Object.fromEntries(STEPS.map((s) => [s, { hits: 0, built: 0, failed: 0, seconds: 0 }]));
+  const per = Object.fromEntries(STEPS.map((s) => [s, { hits: 0, built: 0, failed: 0, seconds: 0, written: 0, downloaded: 0 }]));
+  // What each step really wrote on the disk and received from the network, measured as the build
+  // ran, not worked out before (a user, 2026-10-16); a report of an earlier version has neither.
+  const measured = (rep.tiles || []).some((tile) => (tile.nodes || []).some((node) => node.written !== undefined));
   for (const tile of rep.tiles || []) {
     for (const node of tile.nodes || []) {
       const s = stepOfNode(node.id, node.role);
@@ -4945,11 +5030,15 @@ function renderReport(job) {
       else if (node.status === "built") per[s].built += 1;
       else if (node.status === "failed") per[s].failed += 1;
       per[s].seconds += node.wall_s || 0;
+      per[s].written += node.written || 0;
+      per[s].downloaded += node.downloaded || 0;
     }
   }
+  const bytes = (n) => (!measured ? "—" : n ? fmtBytes(n) : "0");
   const table = h("table", null,
-    h("thead", null, h("tr", null, h("th", null, t("works.report_step")), h("th", null, t("works.report_hits")), h("th", null, t("works.report_built")), h("th", null, t("works.report_failed")), h("th", null, t("works.report_time")))),
-    h("tbody", null, STEPS.map((s) => h("tr", null, h("td", null, STEP_KEYS[s]()), h("td", null, fmtInt(per[s].hits)), h("td", null, fmtInt(per[s].built)), h("td", null, fmtInt(per[s].failed)), h("td", null, fmtDuration(per[s].seconds))))));
+    h("thead", null, h("tr", null, h("th", null, t("works.report_step")), h("th", null, t("works.report_hits")), h("th", null, t("works.report_built")), h("th", null, t("works.report_failed")), h("th", null, t("works.report_time")), h("th", null, t("works.report_written")), h("th", null, t("works.report_downloaded")))),
+    h("tbody", null, STEPS.map((s) => h("tr", null, h("td", null, STEP_KEYS[s]()), h("td", null, fmtInt(per[s].hits)), h("td", null, fmtInt(per[s].built)), h("td", null, fmtInt(per[s].failed)), h("td", null, fmtDuration(per[s].seconds)), h("td", null, bytes(per[s].written)), h("td", null, bytes(per[s].downloaded))))));
+  const sum = (field) => STEPS.reduce((total, s) => total + per[s][field], 0);
 
   const counts = decisionCounts(job);
   const decisions = h("ul", { class: "decisions" });
@@ -4976,11 +5065,19 @@ function renderReport(job) {
     [t("works.report_failed"), fmtInt(rep.failed), rep.failed ? "fail" : null],
     [t("works.elapsed"), fmtDuration(rep.elapsed_s)],
     [t("works.size"), totals.bytes != null ? fmtBytes(totals.bytes) : "—"],
+    [t("works.written_total"), bytes(sum("written"))],
+    [t("works.downloaded_total"), bytes(sum("downloaded"))],
     [t("step.install"), job.install ? `${fmtInt(totals.installed)} / ${fmtInt(totals.tiles)}` : t("works.no_install")],
   ]);
   // Built only: the tiles are on the disk, not in X-Plane. A user looked for a way to "import"
-  // them, and found the Ortho4XP import instead (2026-09-17).
-  const notInstalled = !job.install && rep.failed === 0
+  // them, and found the Ortho4XP import instead (2026-09-17). A tile X-Plane shows stays in it when
+  // it is built again (its folder is the one X-Plane reads), and the line said "not in X-Plane yet"
+  // of tiles it showed (a user, 2026-10-16): it speaks only of the folders the Library does not show
+  // in X-Plane.
+  const platform = state.status?.platform || "";
+  const shown = new Set(libraryTiles(state.library).filter((e) => e.installed).map((e) => folderKey(e.path || "", platform)));
+  const outside = (rep.tiles || []).filter((tile) => tile.pack_dir && !shown.has(folderKey(tile.pack_dir, platform)));
+  const notInstalled = !job.install && rep.failed === 0 && outside.length
     ? h("p", { class: "report-note" },
         t("works.not_installed_yet"),
         " ",
@@ -5323,14 +5420,16 @@ export function libraryFolders(rows, atelier, platform) {
  * folders of its filter, the folder kept (none once it is gone), the rows both keep, and the
  * note under the search (``{text, warn}``, or null). A search that finds tiles in other folders
  * only says so, where it said no tile matched (a review, 2026-10-05). */
-export function libraryView(tiles, { query = "", folder = "" } = {}, atelier = null, platform = "") {
+export function libraryView(tiles, { query = "", folder = "", show = "" } = {}, atelier = null, platform = "") {
   const folders = libraryFolders(tiles, atelier, platform);
   const kept = folders.some((f) => f.key === folder) ? folder : "";
   const inFolder = (e) => !kept || tileFolder(e, atelier, platform).key === kept;
   const q = String(query || "").trim();
-  const rows = tiles.filter((e) => inFolder(e) && tileMatches(e.tile, q));
+  const shows = libraryShows(tiles);
+  const shown = shows.find((c) => c.key === show) || null;
+  const rows = tiles.filter((e) => inFolder(e) && tileMatches(e.tile, q) && (!shown || shown.test(e)));
   let note = null;
-  if ((q || kept) && tiles.length) {
+  if ((q || kept || shown) && tiles.length) {
     if (rows.length) {
       note = { text: t("library.search_found", { n: fmtInt(rows.length), total: fmtInt(tiles.length) }), warn: false };
     } else {
@@ -5338,7 +5437,22 @@ export function libraryView(tiles, { query = "", folder = "" } = {}, atelier = n
       note = { text: elsewhere ? t("library.search_none_folder", { n: fmtInt(elsewhere) }) : t("library.search_none"), warn: true };
     }
   }
-  return { folders, folder: kept, rows, note };
+  return { folders, folder: kept, shows: shows.map(({ key, n }) => ({ key, n })), show: shown ? shown.key : "", rows, note };
+}
+
+/** The Library's "Show" choices beside "All tiles" (a user, 2026-10-16, keeping track of the
+ * Ortho4XP tiles replaced by OrthoStudio XP ones): ``missing``, the tiles whose folder is no longer
+ * found (a disk not plugged in comes back by itself: not one of them), and ``twice``, every tile of
+ * a square the list holds more than once, an Ortho4XP tile and an OrthoStudio XP one, or one built
+ * into two folders. ``[{key, n, test}]``, ``n`` over all the tiles. */
+export function libraryShows(tiles) {
+  const per = new Map();
+  for (const e of tiles) per.set(e.tile, (per.get(e.tile) || 0) + 1);
+  const choices = [
+    { key: "missing", test: (e) => e.present === false && !e.disk_absent },
+    { key: "twice", test: (e) => (per.get(e.tile) || 0) > 1 },
+  ];
+  return choices.map((c) => ({ ...c, n: tiles.filter(c.test).length }));
 }
 
 /** Which way round each Library column sorts at its first click: its most useful order. The
@@ -5558,7 +5672,7 @@ function folderIcon() {
 export function libraryRow(e, showFolder = false) {
   const key = libraryKey(e);
   // a filing under way: one at a time, and nothing else changes the tiles meanwhile
-  const busy = libraryBusy.has(key) || Boolean(state.filing);
+  const busy = libraryBusy.has(key) || Boolean(state.filing) || Boolean(state.bulk);
   const present = e.present !== false;
   const byOsxp = e.built_by === "osxp";
   const jobs = activeJobs();
@@ -5636,9 +5750,15 @@ export function libraryRow(e, showFolder = false) {
   const where = showFolder ? tileFolder(e, atelierFolders(state.status), state.status?.platform || "") : null;
   // the box in a narrow column of its own, so that the names line up with or without one (a user,
   // 2026-10-07); on the name's line when the folder under the name makes the row two lines high
+  // a click on the name ticks the box too (a user, 2026-10-16). Not a label, which the page leaves
+  // to its text (isTitleClick): a double-click ticks and unticks, so the box stays as it was and
+  // the name is selected to copy; a drag that selects part of the name ticks nothing. A tile a
+  // build holds has no box, and its name stays plain text.
+  const box = pickBox(e, key, inBuild);
+  const tileName = h("span", { class: box ? "tile-name is-pick" : "tile-name", onclick: box ? (ev) => pickByName(ev, box) : null }, e.tile);
   const row = h("tr", { dataset: { key }, "aria-busy": busy ? "true" : null },
-    h("td", { class: where?.label ? "library-pick-cell is-top" : "library-pick-cell" }, pickBox(e, key, inBuild)),
-    h("td", { class: "library-tile", title: e.path || null }, h("span", { class: "tile-name" }, e.tile), missing ? [" ", missing] : null, inBuildPill ? [" ", inBuildPill] : null, colourMark ? [" ", colourMark] : null, overlayMark ? [" ", overlayMark] : null, where?.label ? h("span", { class: "tile-where" }, where.label) : null),
+    h("td", { class: where?.label ? "library-pick-cell is-top" : "library-pick-cell" }, box),
+    h("td", { class: "library-tile", title: e.path || null }, tileName, missing ? [" ", missing] : null, inBuildPill ? [" ", inBuildPill] : null, colourMark ? [" ", colourMark] : null, overlayMark ? [" ", overlayMark] : null, where?.label ? h("span", { class: "tile-where" }, where.label) : null),
     imageryCell(e),
     h("td", null, e.installed ? pill(t("app.yes"), "ok") : pill(t("app.no"), "cancelled")),
     h("td", { class: "num" }, fmtBytes(e.size_bytes)),
@@ -5717,6 +5837,7 @@ async function setOverlays(tiles, use) {
     errors.append(libraryErrorCard(err, { tile: tiles.join(" ") }));
   }
   await loadLibrary();
+  showLibraryErrors();
 }
 
 function renderLibrary() {
@@ -5740,12 +5861,14 @@ function renderLibrary() {
     const way = LIBRARY_SORT_FIRST[th.dataset.sort] * (sort.dir === -1 ? -1 : 1);
     setAttr(th, "aria-sort", th.dataset.sort !== sort.key ? "none" : way === 1 ? "ascending" : "descending");
   }
-  // the tiles of one folder, or all: the folders come from the list itself
+  // the tiles of one folder, or all, and of one "Show" choice: they come from the list itself
   const atelier = atelierFolders(state.status);
   const platform = state.status?.platform || "";
-  const view = libraryView(rows, { query: state.librarySearch, folder: state.libraryFolder }, atelier, platform);
+  const view = libraryView(rows, { query: state.librarySearch, folder: state.libraryFolder, show: state.libraryShow }, atelier, platform);
   state.libraryFolder = view.folder;
+  state.libraryShow = view.show;
   renderLibraryFolders(view.folders, view.folder);
+  renderLibraryShows(view.shows, view.show, rows.length > 0);
   renderLibraryPick(rows, view.rows);
   const shown = sortLibrary(view.rows, sort);
   const note = $("library-search-note");
@@ -5778,6 +5901,22 @@ export function renderLibraryFolders(folders, chosen) {
   if (select.dataset.choices !== signature) {
     clear(select);
     select.append(h("option", { value: "" }, all));
+    for (const [key, label] of choices) select.append(h("option", { value: key }, label));
+    select.dataset.choices = signature;
+  }
+  if (select.value !== chosen) select.value = chosen;
+}
+
+/** The "Show" menu above the Library: all its tiles, or those of one of `libraryShows`, each with
+ * how many; shown once there is a tile. */
+export function renderLibraryShows(shows, chosen, any) {
+  $("library-show-wrap").hidden = !any;
+  const select = $("library-show");
+  const names = { missing: t("library.show_missing"), twice: t("library.show_twice") };
+  const choices = [["", t("library.show_all")], ...shows.map((c) => [c.key, `${names[c.key]} (${fmtInt(c.n)})`])];
+  const signature = JSON.stringify(choices);
+  if (select.dataset.choices !== signature) {
+    clear(select);
     for (const [key, label] of choices) select.append(h("option", { value: key }, label));
     select.dataset.choices = signature;
   }
@@ -5917,6 +6056,15 @@ function libraryErrorCard(err, e) {
   return card;
 }
 
+/** The Library's error cards stand under its buttons, above the table, and one just added is brought
+ * into view wherever the page was scrolled (a row's button far down a long list). A refusal of File
+ * elsewhere showed under the last row of 16, out of sight, and the pilot could believe nothing had
+ * happened (2026-10-06). */
+function showLibraryErrors() {
+  const list = $("library-errors");
+  if (list.childElementCount) list.scrollIntoView?.({ block: "nearest" });
+}
+
 /**
  * One change of a library row: its buttons are disabled until the engine answers; a success runs
  * `onSuccess`. Either way the library (and with it the map) and the status bar are read again,
@@ -5951,7 +6099,7 @@ async function runLibraryChange(e, request, onSuccess) {
   const card = failure ? libraryErrorCard(failure, e) : null;
   if (card) errors.append(card);
   focusLibraryRow(key, index, used);
-  card?.scrollIntoView?.({ block: "nearest" });
+  showLibraryErrors();
 }
 
 /** "Add to X-Plane" / "Remove from X-Plane": `POST /api/library/{name}/install|uninstall`. */
@@ -5996,6 +6144,99 @@ function forgetLibraryTile(e) {
   return runLibraryChange(e, () => api("POST", req.path, req.body), () => toast(t("library.forgotten", { tile: e.tile })));
 }
 
+/** What "Remove from the list…" asks of the tiles it takes off the list (`forgettable`, among
+ * those picked): ``{title, body}``, how many, and how many X-Plane shows, taken out of it first.
+ * ``left`` the tiles picked it leaves aside. */
+export function forgetQuestion(go, left = 0) {
+  const shown = go.filter((e) => e.installed).length;
+  const body = [t("library.forget_body")];
+  if (shown) body.push(t("library.forget_body_xplane", { n: fmtInt(shown) }));
+  if (left) body.push(t("library.bulk_left", { n: fmtInt(left) }));
+  return { title: t("library.forget_title", { n: fmtInt(go.length) }), body, go: "forget" };
+}
+
+/** What "Delete…" asks of the tiles OrthoStudio XP built among those picked: ``{title, body}``,
+ * how many, the space their files take when the engine knows it, how many have no files left here
+ * (they only leave the list), how many X-Plane shows, and that the cache keeps their imagery. ``left`` the tiles picked it leaves aside. */
+export function deleteManyQuestion(go, left = 0) {
+  const here = go.filter((e) => e.present !== false);
+  const bytes = here.reduce((sum, e) => sum + (Number(e.size_bytes) || 0), 0);
+  const shown = go.filter((e) => e.installed).length;
+  const body = [];
+  if (here.length) body.push(bytes ? t("library.delete_n_size", { size: fmtBytes(bytes) }) : t("library.delete_n"));
+  // a tile whose files are gone only leaves the list, as a row's Delete… says (`deleteQuestion`)
+  if (here.length < go.length) body.push(t("library.delete_n_missing", { n: fmtInt(go.length - here.length) }));
+  if (shown) body.push(t("library.delete_n_xplane", { n: fmtInt(shown) }));
+  body.push(t("library.delete_cache"));
+  if (left) body.push(t("library.bulk_left", { n: fmtInt(left) }));
+  return { title: t("library.delete_n_title", { n: fmtInt(go.length) }), body, go: "delete" };
+}
+
+/** A question of the bar in the page's modal <dialog>; resolves true for its action. Focus starts
+ * on the way back (autofocus), and Escape keeps the tiles. */
+function confirmBulk(question) {
+  const dialog = $("library-bulk-dialog");
+  if (dialog.open) return Promise.resolve(false);
+  $("library-bulk-title").textContent = question.title;
+  clear($("library-bulk-text")).append(...question.body.map((line) => h("p", null, line)));
+  const go = $("library-bulk-go");
+  go.textContent = question.go === "delete" ? t("library.delete_confirm") : t("library.forget_go");
+  go.classList.toggle("btn-danger", question.go === "delete");
+  go.classList.toggle("btn-primary", question.go !== "delete");
+  dialog.returnValue = "";
+  return new Promise((resolve) => {
+    dialog.addEventListener("close", () => resolve(dialog.returnValue === "go"), { once: true });
+    dialog.showModal();
+  });
+}
+
+/** One of the bar's actions on the tiles picked and shown it takes (`bulkTargets`), one tile after the other
+ * with the row's own requests (`POST /api/library/{name}/install|uninstall|delete|forget`); "Remove
+ * from the list…" takes a tile X-Plane shows out of it first, and "Delete…" and "Remove from the
+ * list…" ask first. A tile that fails is said, the others go on; the toast says what was done. */
+async function bulkLibraryAction(action) {
+  if (state.filing || state.bulk) return;
+  const picked = pickedShown(shownLibraryRows(libraryTiles(state.library)));
+  const go = bulkTargets(picked, tilesInBuilds(activeJobs()), activeJobs().length)[action];
+  if (!go.length) return;
+  const left = picked.length - go.length;
+  if (action === "delete" && !(await confirmBulk(deleteManyQuestion(go, left)))) return;
+  if (action === "forget" && !(await confirmBulk(forgetQuestion(go, left)))) return;
+  const errors = clear($("library-errors"));
+  state.bulk = action;
+  renderLibrary();
+  let done = 0;
+  let freed = 0;
+  try {
+    for (const e of go) {
+      try {
+        if (action === "forget" && e.installed) {
+          const out = libraryRequest(e, "uninstall");
+          await api("POST", out.path, out.body);
+        }
+        const req = libraryRequest(e, action);
+        const res = await api("POST", req.path, req.body);
+        freed += Number(res?.freed_bytes) || 0;
+        if (action === "delete" || action === "forget") state.libraryPicked.delete(libraryKey(e));
+        done += 1;
+      } catch (err) {
+        errors.append(libraryErrorCard(err, e));
+      }
+    }
+  } finally {
+    state.bulk = null;
+    await loadLibrary();
+    loadStatus();
+    showLibraryErrors();
+  }
+  if (!done) return;
+  const n = fmtInt(done);
+  if (action === "install") toast(t("library.bulk_added", { n }));
+  else if (action === "uninstall") toast(t("library.bulk_removed", { n }));
+  else if (action === "delete") toast(freed ? t("library.bulk_deleted_size", { n, size: fmtBytes(freed) }) : t("library.bulk_deleted", { n }));
+  else toast(t("library.forgotten_n", { n }));
+}
+
 /** "Find again…" (a tile OrthoStudio XP built whose folder was moved by hand, its disk here): the
  * user shows the tile's folder or the one holding it, and the Library and every X-Plane that showed
  * the tile follow (`POST /api/library/{name}/find`, the atelier's step 2, 2026-10-05). The dialog
@@ -6019,21 +6260,58 @@ export function foundMessage(res, tile) {
 
 // -- tiles filed elsewhere (the atelier, step 3, 2026-10-05) ------------------------------------
 
-/** Whether a row may be picked to be filed elsewhere: a tile OrthoStudio XP built, where the
- * Library says, and not in a build (whose end decides where it is). */
-function pickable(e, building) {
+/** Whether a picked row may be filed elsewhere or built again: a tile OrthoStudio XP built, where
+ * the Library says, and not in a build (whose end decides where it is). */
+function fileable(e, building) {
   return e.built_by === "osxp" && e.present !== false && !building.has(e.tile);
 }
 
-/** The box that picks a row to be filed elsewhere, in the row's first column. */
-function pickBox(e, key, inBuild) {
-  if (e.built_by !== "osxp" || e.present === false || inBuild) return null;
-  return h("input", { type: "checkbox", class: "tile-pick", checked: state.libraryPicked.has(key), disabled: Boolean(state.filing), "aria-label": t("library.pick", { tile: e.tile }), onchange: (ev) => pickLibraryTile(key, ev.target.checked) });
+/** Whether a picked row may be taken off the list ("Remove from the list…"): a tile OrthoStudio XP
+ * did not build, its files here or gone. A user replacing their Ortho4XP tiles with OrthoStudio XP
+ * ones took them off one by one (2026-10-16). */
+export function forgettable(e) {
+  return e.built_by !== "osxp";
 }
 
-/** The rows the search and the folder leave, as the table shows them. */
+/** Whether a row has a box: one of the bar's buttons can take it. A tile OrthoStudio XP built that
+ * a build under way or waiting holds has none: the end of the build decides what it is. */
+function pickable(e, building) {
+  return !(e.built_by === "osxp" && building.has(e.tile));
+}
+
+/** What each of the bar's buttons takes among the rows ``picked`` (a user asked for every action
+ * of a row on the tiles picked, 2026-10-16), by the rules of the row's own buttons: ``install``
+ * the tiles here that X-Plane does not show, ``uninstall`` those it shows (an imported tile whose
+ * files are gone keeps that way out), ``delete`` the tiles OrthoStudio XP built, only between
+ * builds (``jobs``, how many run or wait), ``forget`` the others, and ``file`` those that may be
+ * filed elsewhere or built again. ``building`` the tiles a build holds (`tilesInBuilds`). */
+export function bulkTargets(picked, building, jobs = 0) {
+  const held = (e) => e.built_by === "osxp" && building.has(e.tile);
+  return {
+    install: picked.filter((e) => e.present !== false && !e.installed && !held(e)),
+    uninstall: picked.filter((e) => e.installed && (e.present !== false || e.built_by !== "osxp") && !held(e)),
+    delete: jobs ? [] : picked.filter((e) => e.built_by === "osxp" && !held(e)),
+    forget: picked.filter(forgettable),
+    file: picked.filter((e) => fileable(e, building)),
+  };
+}
+
+/** The box that picks a row, in the row's first column. */
+function pickBox(e, key, inBuild) {
+  if (inBuild) return null;
+  return h("input", { type: "checkbox", class: "tile-pick", checked: state.libraryPicked.has(key), disabled: Boolean(state.filing) || Boolean(state.bulk), "aria-label": t("library.pick", { tile: e.tile }), onchange: (ev) => pickLibraryTile(key, ev.target.checked) });
+}
+
+/** A click on a tile's name: its box's click, but for a third click or a drag selecting text. */
+function pickByName(ev, box) {
+  if (box.disabled || ev.detail > 2) return;
+  if (ev.detail === 1 && String(window.getSelection?.() || "")) return;
+  box.click();
+}
+
+/** The rows the search, the folder and the "Show" choice leave, as the table shows them. */
 function shownLibraryRows(rows) {
-  return libraryView(rows, { query: state.librarySearch, folder: state.libraryFolder }, atelierFolders(state.status), state.status?.platform || "").rows;
+  return libraryView(rows, { query: state.librarySearch, folder: state.libraryFolder, show: state.libraryShow }, atelierFolders(state.status), state.status?.platform || "").rows;
 }
 
 function pickLibraryTile(key, on) {
@@ -6044,30 +6322,70 @@ function pickLibraryTile(key, on) {
   renderLibraryPick(rows, shownLibraryRows(rows));
 }
 
-/** The bar over the table: "Pick all shown", how many are picked and their size, and "File
- * elsewhere…"; the picks a row can no longer take (deleted, in a build) are let go. */
+/** The bar over the table: "Pick all shown", how many are picked and their size, "File
+ * elsewhere…" and "Build again…" for the tiles OrthoStudio XP built, "Remove from the list…" for
+ * the others; the picks a row can no longer take (deleted, in a build) are let go. */
 function renderLibraryPick(rows, shown) {
   const building = tilesInBuilds(activeJobs());
   const can = new Set(rows.filter((e) => pickable(e, building)).map(libraryKey));
   for (const key of [...state.libraryPicked]) if (!can.has(key)) state.libraryPicked.delete(key);
   const shownKeys = shown.map(libraryKey).filter((key) => can.has(key));
   const picked = rows.filter((e) => state.libraryPicked.has(libraryKey(e)));
+  // the bar acts on the tiles picked that are shown: one picked, then hidden by the search, the
+  // folder or Show, stays picked and is not touched (Delete… on "Files missing" counted the
+  // tiles picked before, out of sight; a review, 2026-10-16)
+  const acted = pickedShown(shown);
   $("library-pick").hidden = !can.size;
   const all = $("library-pick-all");
   const on = shownKeys.filter((key) => state.libraryPicked.has(key)).length;
   all.checked = shownKeys.length > 0 && on === shownKeys.length;
   all.indeterminate = on > 0 && on < shownKeys.length;
-  all.disabled = !shownKeys.length || Boolean(state.filing);
-  const bytes = picked.reduce((sum, e) => sum + (Number(e.size_bytes) || 0), 0);
-  setText($("library-pick-count"), picked.length ? t("library.pick_count", { n: fmtInt(picked.length), size: fmtBytes(bytes) }) : "");
+  all.disabled = !shownKeys.length || Boolean(state.filing) || Boolean(state.bulk);
+  const bytes = acted.reduce((sum, e) => sum + (Number(e.size_bytes) || 0), 0);
+  let count = "";
+  if (picked.length === acted.length && picked.length) count = t("library.pick_count", { n: fmtInt(picked.length), size: fmtBytes(bytes) });
+  else if (picked.length) count = t("library.pick_count_shown", { n: fmtInt(picked.length), shown: fmtInt(acted.length), size: fmtBytes(bytes) });
+  setText($("library-pick-count"), count);
   // tiles are filed between builds: the button says why it waits (a review, 2026-10-05)
   const file = $("library-file");
   const waits = activeJobs().length > 0;
-  file.disabled = !picked.length || Boolean(state.filing) || waits;
+  const take = bulkTargets(acted, building, activeJobs().length);
+  const ours = rows.some((e) => e.built_by === "osxp");
+  const busy = Boolean(state.filing) || Boolean(state.bulk);
+  file.hidden = !ours;
+  file.disabled = !take.file.length || busy || waits;
   setAttr(file, "title", waits ? t("library.file_wait_build") : t("library.file_help"));
+  // a build asked for while another runs waits for its turn: Build again does not wait
+  const rebuild = $("library-rebuild");
+  rebuild.hidden = !ours;
+  rebuild.disabled = !take.file.length || busy || state.rebuilding;
+  $("library-busy").hidden = !state.rebuildEstimating;
+  $("library-add").disabled = !take.install.length || busy;
+  $("library-remove").disabled = !take.uninstall.length || busy;
+  const del = $("library-delete-picked");
+  del.hidden = !ours;
+  del.disabled = !take.delete.length || busy;
+  setAttr(del, "title", waits ? t("library.delete_wait") : t("library.delete_picked_help"));
+  const forget = $("library-forget");
+  forget.hidden = !rows.some(forgettable);
+  forget.disabled = !take.forget.length || busy;
+  // each button says how many tiles it takes, nothing when it takes none; a group whose buttons
+  // are all hidden goes with them
+  const takes = { "library-add": take.install, "library-remove": take.uninstall, "library-rebuild": take.file,
+    "library-file": take.file, "library-forget": take.forget, "library-delete-picked": take.delete };
+  for (const [id, tiles] of Object.entries(takes)) {
+    setText($(`${id}-n`), $(id).disabled ? "" : `(${fmtInt(tiles.length)})`);
+  }
+  $("library-act-tiles").hidden = !ours;
+  $("library-act-end").hidden = forget.hidden && del.hidden;
 }
 
-/** "Pick all shown": every row the search and the folder leave, or none of them. */
+/** The tiles picked among ``shown``, the rows the table shows: what the bar's actions take. */
+function pickedShown(shown) {
+  return shown.filter((e) => state.libraryPicked.has(libraryKey(e)));
+}
+
+/** "Pick all shown": every row the search, the folder and the "Show" choice leave, or none of them. */
 function pickAllShown(on) {
   const building = tilesInBuilds(activeJobs());
   for (const e of shownLibraryRows(libraryTiles(state.library))) {
@@ -6126,7 +6444,7 @@ function confirmFiling(question) {
 async function fileLibraryTiles() {
   if (state.filing) return;
   const building = tilesInBuilds(activeJobs());
-  const picked = libraryTiles(state.library).filter((e) => state.libraryPicked.has(libraryKey(e)) && pickable(e, building));
+  const picked = pickedShown(shownLibraryRows(libraryTiles(state.library))).filter((e) => fileable(e, building));
   if (!picked.length) return;
   const folder = await chooseFolder(t("library.file_prompt", { n: fmtInt(picked.length) }));
   if (!folder) return;
@@ -6136,6 +6454,7 @@ async function fileLibraryTiles() {
     plan = await api("POST", "/api/library/file-plan", { tiles: picked.map((e) => ({ name: entryName(e), path: e.path })), folder });
   } catch (err) {
     errors.append(libraryErrorCard(err, picked[0]));
+    showLibraryErrors();
     return;
   }
   const question = filingQuestion(plan);
@@ -6187,6 +6506,7 @@ async function runFiling(go, folder) {
     // an old folder a file held there stays until the user deletes it: said where, not a toast
     for (const text of lefts) errors.append(h("div", { class: "overlay-notice overlay-notice-fail" }, h("p", null, text)));
     if (failure) errors.append(libraryErrorCard(failure, failed));
+    showLibraryErrors();
   }
 }
 
@@ -6241,6 +6561,121 @@ async function stopFiling() {
     await api("POST", "/api/library/filing/stop", {});
   } catch (_err) {
     // the next tile is not sent: the stop holds at the end of this one
+  }
+}
+
+// -- tiles built again from the Library (2026-10-15) ---------------------------------------------
+
+/** The builds that make the tiles picked again, as the Plan's *Build* would ask for them: one per
+ * imagery source (a build has one), each tile at its own level (the most common one is the build's,
+ * the others go in `tiles_zl`), none installed: a tile X-Plane shows is built again in its own
+ * folder, which X-Plane keeps showing, and one it does not show stays out (one build per "put back
+ * in X-Plane" made two builds of two tiles, 2026-10-15). Zones, colours and settings are left to
+ * the engine, which takes today's as for a Plan: rebuilding tiles spread far apart from the Plan was
+ * not practical (a user, 2026-10-14). A tile picked twice (two folders) is built once. */
+export function rebuildRequests(rows) {
+  const groups = new Map();
+  const seen = new Set();
+  for (const e of rows) {
+    if (seen.has(e.tile)) continue;
+    seen.add(e.tile);
+    if (!groups.has(e.provider)) groups.set(e.provider, { provider: e.provider, install: false, tiles: [] });
+    groups.get(e.provider).tiles.push({ tile: e.tile, zl: Number(e.zl) });
+  }
+  return [...groups.values()].map(({ provider, install, tiles }) => {
+    tiles.sort((a, b) => a.tile.localeCompare(b.tile));
+    const counts = new Map();
+    for (const { zl } of tiles) counts.set(zl, (counts.get(zl) || 0) + 1);
+    const zoom = [...counts].sort((a, b) => b[1] - a[1] || b[0] - a[0])[0][0];
+    const own = Object.fromEntries(tiles.filter((x) => x.zl !== zoom).map((x) => [x.tile, x.zl]));
+    return { tiles: tiles.map((x) => x.tile), provider, zoom_level: zoom, ...(Object.keys(own).length ? { tiles_zl: own } : {}), install };
+  });
+}
+
+/** What the question says before tiles are built again: how many, what each keeps and what is
+ * today's, the download and the disk from the engine's estimates of the builds (`POST /api/plan`),
+ * what the data folder holds counted as reused, and how many X-Plane shows, which stay in it,
+ * updated (`inXplane`). A disk that may run short by the Plan's rule (twice the room the builds
+ * need) is said, never a reason to refuse: the figures are estimates, and a disk that fills up
+ * stops a build cleanly (a user, 2026-10-16: "we block a user on an uncertainty?"). */
+export function rebuildQuestion(requests, plans, inXplane = 0, unsaved = false) {
+  const n = requests.reduce((sum, r) => sum + r.tiles.length, 0);
+  const mb = plans.reduce((sum, p) => sum + (Number(p?.network?.mb) || 0), 0);
+  const verdicts = plans.map((p) => diskVerdict(p?.disk));
+  const need = verdicts.reduce((sum, v) => sum + (v.needed || 0), 0);
+  const free = verdicts.find((v) => v.free !== null)?.free ?? null;
+  const short = verdicts.some((v) => v.ok === false) || (free !== null && free <= 2 * need);
+  const figures = { mb: fmtMB(mb), need: fmtGB(need), free: fmtGB(free) };
+  const body = [t("library.rebuild_kept"), t("library.rebuild_costs", figures)];
+  if (inXplane) body.push(t("library.rebuild_back", { n: fmtInt(inXplane) }));
+  if (short) body.push(t("plan.disk_short", { need: fmtGB(need), free: fmtGB(free) }));
+  if (unsaved) body.push(t("settings.unsaved_build"));
+  return { title: t("library.rebuild_title", { n: fmtInt(n) }), body, go: true };
+}
+
+/** The question in the page's modal <dialog>, like the filing one; resolves true for "Build
+ * again". */
+function confirmRebuild(question) {
+  const dialog = $("library-rebuild-dialog");
+  if (dialog.open) return Promise.resolve(false);
+  $("library-rebuild-title").textContent = question.title;
+  clear($("library-rebuild-text")).append(...question.body.map((line) => h("p", null, line)));
+  $("library-rebuild-go").hidden = !question.go;
+  dialog.returnValue = "";
+  dialog.onkeydown = (ev) => {
+    if (ev.key !== "Escape") return;
+    ev.preventDefault();
+    dialog.close();
+  };
+  return new Promise((resolve) => {
+    dialog.addEventListener("close", () => resolve(dialog.returnValue === "rebuild"), { once: true });
+    dialog.showModal();
+  });
+}
+
+/** "Build again…": the builds worked out, estimated, asked, then sent like the Plan's (each one
+ * waits for its turn behind a build under way); the Works screen opens on the first that starts. */
+async function rebuildLibraryTiles() {
+  if (state.filing || state.rebuilding) return;
+  const building = tilesInBuilds(activeJobs());
+  const picked = pickedShown(shownLibraryRows(libraryTiles(state.library))).filter((e) => fileable(e, building));
+  if (!picked.length) return;
+  const errors = clear($("library-errors"));
+  state.rebuilding = true;
+  state.rebuildEstimating = true;
+  renderLibrary();
+  try {
+    const requests = rebuildRequests(picked);
+    const plans = [];
+    for (const { install: _install, ...req } of requests) plans.push(await api("POST", "/api/plan", req));
+    state.rebuildEstimating = false;
+    renderLibrary();
+    const shown = new Set(picked.filter((e) => e.installed).map((e) => e.tile));
+    const question = rebuildQuestion(requests, plans, shown.size, settingsUnsaved());
+    if (!(await confirmRebuild(question)) || !question.go) return;
+    let started = null;
+    let waits = 0;
+    for (const req of requests) {
+      const res = await api("POST", "/api/jobs", { ...req, queue: true });
+      if (res.queue_position > 0) waits = waits || res.queue_position;
+      else started = started || res.job_id;
+    }
+    state.libraryPicked.clear();
+    if (started) {
+      toast(t("plan.started"));
+      showScreen("works", started);
+    } else {
+      toast(t("plan.queued", { n: waits }));
+      await refreshJobList();
+    }
+  } catch (err) {
+    errors.append(libraryErrorCard(err, picked[0]));
+    showLibraryErrors();
+    refreshJobList();
+  } finally {
+    state.rebuilding = false;
+    state.rebuildEstimating = false;
+    renderLibrary();
   }
 }
 
@@ -6401,11 +6836,31 @@ function renderSettings(message, kind) {
 
 /** "Changes not saved yet", or the message of the last change: the line beside Save. */
 function renderSettingsStatus(message, kind) {
-  const dirty = !sameValue(state.settingsDraft, state.settings);
+  const dirty = settingsUnsaved();
   const line = $("settings-status");
   const text = message || (dirty ? t("settings.unsaved") : "");
   if (line.textContent !== text) line.textContent = text;
   if (line.classList.contains("is-fail") !== (kind === "fail")) line.classList.toggle("is-fail");
+  renderUnsaved();
+}
+
+/** Answers changed in Settings and not yet saved: a build would not use them. */
+function settingsUnsaved() {
+  return Boolean(state.settingsDraft && state.settings) && !sameValue(state.settingsDraft, state.settings);
+}
+
+/** For as long as Settings hold answers not saved, the Settings tab carries a dot and the Plan says a
+ * build uses the settings saved before. A message on leaving Settings went by in three seconds, and
+ * a user built his tile with Copernicus alone, the folder of his lidar never saved (2026-10-15). */
+function renderUnsaved() {
+  const dirty = settingsUnsaved();
+  const tab = document.querySelector('.nav-btn[data-screen="settings"]');
+  if (tab) {
+    tab.classList.toggle("is-unsaved", dirty);
+    if (dirty) tab.title = t("settings.unsaved");
+    else tab.removeAttribute("title");
+  }
+  $("plan-unsaved").hidden = !dirty;
 }
 
 /** The Plan says in a few words what the build will use, and where to change it. */
@@ -6413,6 +6868,7 @@ function renderPlanSettings() {
   const parts = settingsSummary(state.settings);
   $("plan-settings-summary").textContent = parts.length ? t("plan.settings_summary", { list: parts.join(" · ") }) : "";
   renderPlanXplane();
+  renderUnsaved();
 }
 
 /** Step 1: the colours of the squares chosen, with the three sliders and the preview.
@@ -6566,7 +7022,9 @@ async function saveSettings(ev) {
     // the page's words for the code and its remedy: which folder, and what to do (a user on a
     // computer without X-Plane read only "XP_DIR_NOT_FOUND: The X-Plane 12 folder was not found")
     const d = errorDetail(e);
-    const detail = d?.code ? codeWords(d).filter(Boolean).join(" ") : errorMessage(e);
+    // a number out of its range: the field's name and the values it takes, not the setting's key
+    const refused = d?.code === "CFG_VALUE_INVALID" ? refusedValueText(d.context, state.schema) : null;
+    const detail = refused || (d?.code ? codeWords(d).filter(Boolean).join(" ") : errorMessage(e));
     err.textContent = t("settings.invalid", { detail });
   }
 }
@@ -6791,6 +7249,7 @@ async function boot() {
     planMap?.planChanged();
   });
   $("flightplan-load").addEventListener("click", loadFlightPlan);
+  $("flightplan-open").addEventListener("click", openFlightPlanFile);
   $("flightplan-delete").addEventListener("click", deleteFlightPlan);
   $("flightplan-recenter").addEventListener("click", () => planMap?.fitRoute());
   for (const group of ["ends", "along"]) {
@@ -6823,8 +7282,17 @@ async function boot() {
     state.libraryFolder = e.target.value;
     renderLibrary();
   });
+  $("library-show").addEventListener("change", (e) => {
+    state.libraryShow = e.target.value;
+    renderLibrary();
+  });
   $("library-pick-all").addEventListener("change", (e) => pickAllShown(e.target.checked));
   $("library-file").addEventListener("click", fileLibraryTiles);
+  $("library-rebuild").addEventListener("click", rebuildLibraryTiles);
+  $("library-add").addEventListener("click", () => bulkLibraryAction("install"));
+  $("library-remove").addEventListener("click", () => bulkLibraryAction("uninstall"));
+  $("library-delete-picked").addEventListener("click", () => bulkLibraryAction("delete"));
+  $("library-forget").addEventListener("click", () => bulkLibraryAction("forget"));
   $("library-filing-stop").addEventListener("click", stopFiling);
   // The Library's sort stays from one visit to the next, a convenience of this browser only.
   try {

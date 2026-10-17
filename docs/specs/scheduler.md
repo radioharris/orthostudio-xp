@@ -48,11 +48,22 @@ Scheduler(store, *, cpu_workers: int | None = None, subprocess_slots: int = 1,
   costs: CostModel
 
 Events: Started(node_id, kind, key) · Progress(node_id, fraction, message) ·
-        Done(node_id, key, hit, wall_s, ref) · Failed(node_id, error, cause) ·
+        Done(node_id, key, hit, wall_s, ref, written, downloaded) ·
+        Failed(node_id, error, cause, written, downloaded) ·
         Stats(running, pending, done, failed, hits, elapsed_s, eta_s)
 ```
 
 `ArtifactRef(key, digest, path, rule, kind, size)` lives in `orthostudio.model` with `TileRef`.
+
+`written` and `downloaded` are the bytes the run really put on the disk and received from the
+network (0 for a hit), carried from the run in `Outcome`, whether it succeeded or failed (a cache
+it filled stays). The run counts them on its `NodeContext`: `commit` adds what it committed to
+the store, links to what the store already holds left out (`own_bytes`: a hard link takes no room);
+`wrote(n)` and `fetched(n)` add the rest. Code deep down that receives or writes bytes for a step
+(the OSM library, Overpass, a relief file, a copy into a tile's folder) says so with
+`orthostudio.meter.received` / `written`, which count only where a step bound its counters with
+`meter.counting` (a context variable: the step's thread and the coroutines `asyncio.run` starts
+there). Works' final report shows both per step (a user, 2026-10-16).
 
 ### 2.1 Node identity and validation
 
@@ -159,6 +170,14 @@ terminal. The page's time left is the API's own estimate from the nodes' rows
   then terminates the worker processes (`ProcessPoolExecutor.terminate_workers`, 3.14; the
   private process table before). Pending nodes are `Failed` with `SYS_CANCELLED`. A cancel
   with cooperative nodes returns in well under one second (`test_cancel_under_one_second`).
+* When the engine itself is gone without shutting its pools down (killed, crashed), every worker
+  leaves on its own: its initializer starts a thread waiting on its parent's sentinel
+  (`multiprocessing.parent_process().sentinel`: a pipe only the parent holds on macOS and Linux,
+  the parent's process handle on Windows) that ends the process
+  (`orthostudio.parentwatch.leave_with_parent`). The same holds for the textures' encoders and
+  the masks' cells. Killed during a build, the engine had left 11 workers behind, idle, holding
+  about 7.3 GB and files on the data disk until the computer restarted (2026-10-15); with the
+  watch, killed with 7 encoders running, none was left four seconds later.
 * `run()` returns the refs of the **targets that succeeded**; `scheduler.failed` holds the
   error of every node that did not; a caller that wants an exception checks it. Nothing
   partial is ever indexed (P0 write protocol).

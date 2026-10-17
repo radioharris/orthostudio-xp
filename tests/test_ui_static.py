@@ -1684,6 +1684,21 @@ def test_the_data_phase_names_the_layers_it_downloads() -> None:
             assert "bâtiment" not in text, (lang, key)
 
 
+def test_works_says_the_check_of_an_interrupted_build() -> None:
+    """While a build reads again what an interrupted one left (``stats.phase`` ``check``), the
+    line under the bar says so with the count, and goes once all are read: it stood at 0 % for
+    minutes on a hard disk without a word (review of 0.1.19)."""
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    assert 'st.phase === "check"' in app_js
+    assert 't("works.phase_check", { done: fmtInt(check.done), total: fmtInt(check.total) })' in (
+        app_js
+    )
+    tables = _i18n_tables()
+    for lang in tables:
+        text = tables[lang]["works.phase_check"]
+        assert "{done}" in text and "{total}" in text, lang
+
+
 def test_the_log_is_appended_to_and_never_rebuilt() -> None:
     """Opening the log survived one event only: the panel was rebuilt on each. The log's element is
     built once per job and language, new lines are appended (the oldest leave past 500), and it
@@ -2632,7 +2647,10 @@ def test_the_library_finds_and_sorts_its_tiles() -> None:
     body = _function_body(app_js, "renderLibrary")
     assert "const shown = sortLibrary(view.rows, sort);" in body
     view = _function_body(app_js, "libraryView")
-    assert "tiles.filter((e) => inFolder(e) && tileMatches(e.tile, q));" in view
+    assert (
+        "tiles.filter((e) => inFolder(e) && tileMatches(e.tile, q) && (!shown || shown.test(e)));"
+        in view
+    )
     assert 't("library.search_found"' in view and 't("library.search_none")' in view
     assert "localStorage.setItem(LIBRARY_SORT_KEY, JSON.stringify(state.librarySort));" in app_js
     assert (
@@ -2951,14 +2969,16 @@ def test_the_cost_follows_the_plan_and_build_needs_no_estimate_first() -> None:
         _function_body(app_js, n) for n in ("addTiles", "removeTile", "clearTiles", "build")
     )
     actions = _function_body(app_js, "renderBuildActions")
-    assert "const blocked = !tiles || refused || short || Boolean(state.buildStarting);" in actions
+    # a disk that may run short is said, never a reason to refuse (a user, 2026-10-16)
+    assert "const blocked = !tiles || refused || Boolean(state.buildStarting);" in actions
+    assert '$("build-note").classList.toggle("is-warn", short && !refused);' in actions
     assert "state.buildStarting = true;" in _function_body(app_js, "build")  # never asked twice
     for key in ("step4.need_tiles", "step4.refused", "step4.disk_short", "step4.summary"):
         assert f't("{key}"' in actions, key
     build = _function_body(app_js, "build")
     waits = "await (estimateTimer || !estimateRun ? estimate() : estimateRun);"
-    assert build.index(waits) < build.index("diskVerdict(state.plan.disk).ok === false) return;")
-    assert build.index("diskVerdict(state.plan.disk)") < build.index('api("POST", "/api/jobs"')
+    assert build.index(waits) < build.index("if (!state.plan) return;")
+    assert "diskVerdict" not in build
     panel = _function_body(app_js, "renderPlanPanel")
     assert 'panel.classList.toggle("is-stale", Boolean(plan) && working);' in panel
 
@@ -3202,16 +3222,22 @@ def test_a_pack_that_brings_its_own_scenery_answers_the_overlay_question() -> No
     other one, and both answers say why."""
     doc = _mock_json("settings")
     plain = _node_json("settings.js", f"m.questionChoices('overlays', {json.dumps(doc)}, {{}})")
-    assert [c["value"] for c in plain] == ["xplane", "none"]
+    assert [c["value"] for c in plain] == ["xplane", "roads", "none"]
     assert plain[0]["recommended"] and not plain[1].get("recommended")
+    assert not plain[2].get("recommended")
     assert not plain[0].get("note")
 
     found = _node_json(
         "settings.js",
         f"m.questionChoices('overlays', {json.dumps(doc)}, {{ownScenery: ['simHeaven X-World']}})",
     )
-    assert not found[0].get("recommended") and found[1]["recommended"]
-    assert "simHeaven X-World" in found[0]["note"] and "simHeaven X-World" in found[1]["note"]
+    assert not found[0].get("recommended") and found[2]["recommended"]
+    assert not found[1].get("recommended"), "roads only is a choice, never the recommendation"
+    for choice in found:
+        assert "simHeaven X-World" in choice["note"]
+    # idea 6: with such a pack, roads only means turning its own roads off
+    assert "roads pack of simHeaven X-World off" in found[1]["note"]
+    assert found[1]["note"].startswith("For whoever prefers X-Plane's roads")
 
 
 def test_questions_offer_valid_answers_and_one_recommended_each() -> None:
@@ -3376,7 +3402,7 @@ def test_quit_and_the_file_manager_from_the_page() -> None:
 
 def test_a_save_drops_an_estimate_that_no_longer_holds() -> None:
     """Saving changes what a build would cost, so the estimate on the Plan is worked out again,
-    and leaving Settings with answers not saved says so.
+    and the Plan says when Settings hold answers not saved.
 
     This test used to check that the Plan *took* the saved detail level, which a user had asked
     for on 2026-09-14. That was undone on 2026-09-21, for the reason
@@ -3384,7 +3410,7 @@ def test_a_save_drops_an_estimate_that_no_longer_holds() -> None:
     writing over each other in both directions. The estimate is what survives of it."""
     app_js = (UI / "app.js").read_text(encoding="utf-8")
     assert "planChanged();" in _function_body(app_js, "saveSettings")
-    assert 't("settings.left_unsaved")' in _function_body(app_js, "showScreen")
+    assert "renderUnsaved();" in _function_body(app_js, "renderPlanSettings")
 
 
 def test_step_3_says_when_x_plane_is_not_found() -> None:
@@ -3657,12 +3683,15 @@ def test_each_screen_keeps_its_own_scroll_place() -> None:
     back = "if (left !== name) window.scrollTo(0, arg ? 0 : screenScroll.get(name) || 0);"
     assert body.rstrip().endswith(back + "\n}")
     assert body.index("markWideTables();") < body.index(back)
-    # a screen is opened on something only by its address and by the build just started
+    # a screen is opened on something only by its address and by the build just started, from
+    # the Plan or from the Library's Build again (2026-10-15)
     assert 'showScreen("works", res.job_id);' in _function_body(app_js, "build")
+    assert 'showScreen("works", started);' in _function_body(app_js, "rebuildLibraryTiles")
     calls = re.findall(r"(?<!function )showScreen\(([^)]*)\)", app_js)
     assert [c for c in calls if "," in c] == [
         'm ? m[1] : "plan", m ? m[2] : undefined',
         '"works", res.job_id',
+        '"works", started',
     ]
     # the Settings field a refusal points to is scrolled to after, so the field wins
     focus = _function_body(app_js, "focusSettingsField")
@@ -4736,7 +4765,7 @@ def test_settings_are_where_the_next_plan_starts_and_nothing_more() -> None:
     # nothing of the three attempts at making the two screens talk is left
     for gone in ("sourceChanged", "planSourceChosen", "persistSettings"):
         assert gone not in app_js, gone
-    assert 't("settings.left_unsaved")' in _function_body(app_js, "showScreen")
+    assert "renderUnsaved();" in _function_body(app_js, "renderPlanSettings")
 
     # the Plan starts from the settings, and only there
     assert "state.settings?.essential?.provider" in _function_body(app_js, "renderSourceOptions")
@@ -5325,7 +5354,13 @@ def test_importing_ortho4xp_tiles_is_one_button_that_says_where_it_looked() -> N
         assert "{where}" in tables[lang]["library.imported"]
         assert tables[lang]["library.import_none"] and tables[lang]["library.import_type_first"]
     # the help says which folder before anything else
-    assert tables["en"]["library.import_help"].startswith("The folder holding Ortho4XP.py")
+    assert tables["en"]["library.import_help"].startswith(
+        "Ortho4XP's folder (the one holding Ortho4XP.py), or any folder of photo tiles"
+    )
+    # the button says what it takes: tiles from anywhere, known by their images since 0.1.14;
+    # "Import my Ortho4XP tiles…" said less than it does (a user's remark, 2026-10-15)
+    assert tables["en"]["library.import"] == "Import tiles built elsewhere…"
+    assert tables["fr"]["library.import"] == "Importer des tuiles faites ailleurs…"
 
 
 def _css_rules(css: str) -> list[tuple[str, str]]:
@@ -6294,6 +6329,7 @@ def test_a_number_in_settings_says_its_range_and_its_default_first() -> None:
             [{ exclusiveMinimum: 0, default: 2 }, ""],
             [{ default: 19 }, "ZL"],
             [{ minimum: 14, maximum: 20, default: 18 }, "ZL"],
+            [{ minimum: 0, exclusiveMaximum: 50, default: 3 }, "million"],
             [{}, ""],
           ];
           return cases.map(([prop, unit]) => m.rangeText(prop, unit));
@@ -6305,6 +6341,7 @@ def test_a_number_in_settings_says_its_range_and_its_default_first() -> None:
         "More than 0, 2 by default.",
         "ZL19 by default.",
         "From ZL14 to ZL20, ZL18 by default.",
+        "From 0 to less than 50 million, 3 million by default.",
         "",
     ]
     code = (UI / "settings.js").read_text(encoding="utf-8")
@@ -6784,7 +6821,7 @@ def test_a_kept_plan_comes_back_with_the_squares_of_this_version() -> None:
     assert got["levels"] == {"ends": 17, "along": 13} and got["off"] is False
     app_js = (UI / "app.js").read_text(encoding="utf-8")
     restore = _function_body(app_js, "restoreFlightPlan")
-    assert restore.index("flightPlanLoading = true;") < restore.index(
+    assert restore.index('flightPlanLoading = "kept";') < restore.index(
         'api("POST", "/api/flightplan", saved.route)'
     )
     assert "restoredPlan(plan, saved)" in restore and "withPlan(state.tiles, saved" not in restore
@@ -6840,7 +6877,9 @@ def test_a_flight_plan_is_read_one_at_a_time_and_its_levels_are_its_own() -> Non
     load = _function_body(app_js, "loadFlightPlan")
     assert load.index("if (flightPlanLoading) return;") < load.index('api("GET"')
     assert "/api/flightplan/simbrief?radius_km=" in load
-    assert "load.disabled = flightPlanLoading;" in _function_body(app_js, "renderFlightPlan")
+    assert "load.disabled = Boolean(flightPlanLoading);" in _function_body(
+        app_js, "renderFlightPlan"
+    )
     step = app_js[app_js.index('$("zl-select").addEventListener("change"') :]
     step = step[: step.index("});")]
     assert "flightPlan" not in step and "tileZl" not in step
@@ -7151,7 +7190,8 @@ def test_the_folder_filter_is_wired() -> None:
     body = _function_body(app_js, "renderLibrary")
     for needle in (
         "const atelier = atelierFolders(state.status);",
-        "libraryView(rows, { query: state.librarySearch, folder: state.libraryFolder }, atelier",
+        "libraryView(rows, { query: state.librarySearch, folder: state.libraryFolder, show: "
+        "state.libraryShow }, atelier",
         "state.libraryFolder = view.folder;",
         "renderLibraryFolders(view.folders, view.folder);",
         "note.hidden = !view.note;",
@@ -7347,6 +7387,132 @@ def test_the_tiles_picked_are_filed_elsewhere_after_a_question_that_says_what_ha
     )
 
 
+def test_the_tiles_picked_are_built_again_as_the_plan_would_build_them() -> None:
+    """Rebuilding tiles spread far apart from the Plan was not practical (a user, 2026-10-14):
+    the Library's Build again… asks for the builds the Plan's Build would, one per imagery source,
+    each tile at its own level, none installed (a tile X-Plane shows is built again in its folder,
+    which X-Plane keeps showing; one build per "put back in X-Plane" made two builds of two tiles,
+    2026-10-15), zones, colours and settings left to the engine (today's). The question says what
+    each tile keeps, the download and the disk from the engine's estimates, how many X-Plane shows,
+    and that the disk may run short, without refusing: "we block a user on an uncertainty?" (a
+    user, 2026-10-16)."""
+    if NODE is None:
+        pytest.skip("node is not installed")
+    got = _run_node(
+        """const m = await import("./app.js");
+        const rows = [
+          { tile: "+46+007", provider: "BI", zl: 16, installed: true, path: "/a/z1" },
+          { tile: "+46+006", provider: "BI", zl: 17, installed: true, path: "/a/z2" },
+          { tile: "+45+006", provider: "BI", zl: 16, installed: true, path: "/a/z3" },
+          { tile: "+45+006", provider: "BI", zl: 16, installed: false, path: "/b/z3" },
+          { tile: "+44+006", provider: "GO2", zl: 18, installed: false, path: "/a/z4" },
+        ];
+        const reqs = m.rebuildRequests(rows);
+        const plan = (mb, need, free) => ({ network: { mb },
+                                            disk: { needed_gb: need, free_gb: free } });
+        const q = m.rebuildQuestion(reqs, [plan(800, 3, 200), plan(420, 1.5, 200)], 3);
+        const short = m.rebuildQuestion(reqs, [plan(800, 3, 8), plan(420, 1.5, 8)]);
+        const nodes = [{ role: "vectors", status: "build" },
+                       { role: "textures", status: "unknown" }];
+        const after = { ...plan(800, 3, 200), tiles: [{ nodes }] };
+        const most = m.rebuildQuestion(reqs, [after, plan(420, 1.5, 200)]);
+        process.stdout.write(JSON.stringify({ reqs, q, short, most }));"""
+    )
+    assert got["reqs"] == [
+        {
+            "tiles": ["+45+006", "+46+006", "+46+007"],
+            "provider": "BI",
+            "zoom_level": 16,
+            "tiles_zl": {"+46+006": 17},
+            "install": False,
+        },
+        {"tiles": ["+44+006"], "provider": "GO2", "zoom_level": 18, "install": False},
+    ]
+    assert got["q"]["title"] == "Build 4 tile(s) again?"
+    assert got["q"]["body"] == [
+        "Each tile keeps its imagery source and zoom level; zones, colours and settings are "
+        "today's, as in the Plan. What the data folder already holds is reused.",
+        "To download: 1.22 GB. On disk: about 4.5 GB to write, 200 GB free.",
+        "3 tile(s) in X-Plane stay in it, updated; the others do not go in.",
+    ]
+    assert got["q"]["go"] is True
+    assert got["short"]["go"] is True
+    assert got["short"]["body"][-1].startswith("The disk may run short: about 4.5 GB to write")
+    # after an update that changes a stage, the same words: the figures are what the store says
+    # ("up to" did not go, 2026-10-16)
+    assert got["most"]["body"][1] == got["q"]["body"][1]
+
+
+def test_a_refusal_in_the_library_shows_where_it_is_seen() -> None:
+    """A refusal of File elsewhere showed under the last row of a list of 16 tiles, out of sight,
+    and the pilot could believe nothing had happened (2026-10-06): the error cards stand under the
+    Library's buttons, above the table, and every place that adds one brings it into view."""
+    html = (UI / "index.html").read_text(encoding="utf-8")
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    errors = html.index('id="library-errors"')
+    assert html.index('id="library-pick"') < errors < html.index('class="table-wrap"')
+    assert "list.scrollIntoView" in _function_body(app_js, "showLibraryErrors")
+    for name in ("fileLibraryTiles", "runFiling", "rebuildLibraryTiles", "runLibraryChange"):
+        assert "showLibraryErrors();" in _function_body(app_js, name), name
+
+
+def test_answers_not_saved_are_said_until_they_are_saved() -> None:
+    """A user set the folder of his lidar in Settings, left without Save and built: the tile came
+    out with Copernicus alone, and the message given on leaving Settings had gone by in three
+    seconds (2026-10-15). For as long as the draft differs from the saved settings, the Settings
+    tab carries a dot, step 3 of the Plan says a build uses the settings saved before, and so
+    does the Library's Build again question; saving or undoing clears all three."""
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    html = (UI / "index.html").read_text(encoding="utf-8")
+    css = (UI / "styles.css").read_text(encoding="utf-8")
+    assert "left_unsaved" not in app_js  # the passing message is gone, the lasting ones replace it
+    assert re.search(r'<div class="plan-unsaved" id="plan-unsaved" role="status" hidden>', html)
+    assert ".nav-btn.is-unsaved::after" in css
+    unsaved = _function_body(app_js, "renderUnsaved")
+    assert 'tab.classList.toggle("is-unsaved", dirty)' in unsaved
+    assert '$("plan-unsaved").hidden = !dirty' in unsaved
+    # drawn wherever the draft or the saved settings change, and on the Plan
+    assert "renderUnsaved();" in _function_body(app_js, "renderSettingsStatus")
+    assert "renderUnsaved();" in _function_body(app_js, "renderPlanSettings")
+    assert "settingsUnsaved()" in _function_body(app_js, "rebuildLibraryTiles")
+    tables = _i18n_tables()
+    assert all(tables[lang].get("settings.unsaved_build") for lang in tables)
+    if NODE is None:
+        pytest.skip("node is not installed")
+    got = _run_node(
+        """const m = await import("./app.js");
+        const reqs = [{ tiles: ["+45+006"], provider: "BI", zoom_level: 16, install: false }];
+        const plan = { network: { mb: 0 }, disk: { needed_gb: 0.1, free_gb: 200 } };
+        const saved = m.rebuildQuestion(reqs, [plan], 0);
+        const draft = m.rebuildQuestion(reqs, [plan], 0, true);
+        process.stdout.write(JSON.stringify({ saved, draft }));"""
+    )
+    said = (
+        "Your changes in Settings are not saved: a build uses the settings saved before. Save "
+        "them in Settings first if they are meant for it."
+    )
+    assert said not in got["saved"]["body"]
+    assert got["draft"]["body"][-1] == said
+    assert got["draft"]["go"] is True  # said, not refused: the pilot may mean the saved ones
+
+
+def test_build_again_is_wired_in_the_library_bar() -> None:
+    """The button sits before File elsewhere…, waits for a pick and for no filing, and asks its
+    question in a modal dialog of its own; the request to the engine is the Plan's."""
+    html = (UI / INDEX_FILE).read_text(encoding="utf-8")
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    bar = html[html.index('id="library-pick"') : html.index('id="library-filing"')]
+    assert bar.index('id="library-rebuild"') < bar.index('id="library-file"')
+    assert '<dialog id="library-rebuild-dialog"' in html and 'id="library-rebuild-go"' in html
+    assert '$("library-rebuild").addEventListener("click", rebuildLibraryTiles);' in app_js
+    pick = _function_body(app_js, "renderLibraryPick")
+    assert "rebuild.disabled = !take.file.length || busy || state.rebuilding;" in pick
+    flow = _function_body(app_js, "rebuildLibraryTiles")
+    assert flow.index('api("POST", "/api/plan", req)') < flow.index("confirmRebuild(question)")
+    send = flow.index('api("POST", "/api/jobs", { ...req, queue: true })')
+    assert flow.index("confirmRebuild(question)") < send
+
+
 def test_a_tile_put_back_says_how_far_it_is_in_the_installation_cell() -> None:
     """A tile filed elsewhere, built again, is put back in its folder (the atelier, step 4): the
     Installation cell's tooltip and the tile's line say how far the copy is, from the engine's
@@ -7405,9 +7571,10 @@ def test_a_tile_x_plane_shows_rebuilt_while_it_runs_says_build_again() -> None:
 
 
 def test_the_pick_boxes_and_the_filing_are_wired() -> None:
-    """A box on each tile OrthoStudio XP built that is in its place and not in a build; "Pick all
-    shown" acts on the rows the search and the folder leave; nothing else changes a tile while
-    tiles are filed, one at a time."""
+    """A box on each tile but those of OrthoStudio XP a build holds (every action of a row on the
+    tiles picked, a user's ask, 2026-10-16); "Pick all shown" acts on the rows the search, the
+    folder and the "Show" choice leave; nothing else changes a tile while tiles are filed, one at a
+    time, or while one of the bar's actions runs."""
     html = (UI / INDEX_FILE).read_text(encoding="utf-8")
     for needle in (
         'id="library-pick" hidden',
@@ -7421,13 +7588,14 @@ def test_the_pick_boxes_and_the_filing_are_wired() -> None:
         assert needle in html, needle
     app_js = (UI / "app.js").read_text(encoding="utf-8")
     row = _function_body(app_js, "libraryRow")
-    assert "const busy = libraryBusy.has(key) || Boolean(state.filing);" in row
-    assert 'if (e.built_by !== "osxp" || e.present === false || inBuild) return null;' in (
-        _function_body(app_js, "pickBox")
+    assert (
+        "const busy = libraryBusy.has(key) || Boolean(state.filing) || Boolean(state.bulk);" in row
     )
+    assert "if (inBuild) return null;" in _function_body(app_js, "pickBox")
     assert "renderLibraryPick(rows, view.rows);" in _function_body(app_js, "renderLibrary")
-    assert "libraryView(rows, { query: state.librarySearch, folder: state.libraryFolder }" in (
-        _function_body(app_js, "shownLibraryRows")
+    assert (
+        "libraryView(rows, { query: state.librarySearch, folder: state.libraryFolder, show: "
+        "state.libraryShow }" in _function_body(app_js, "shownLibraryRows")
     )
     assert "shownLibraryRows(libraryTiles(state.library))" in _function_body(app_js, "pickAllShown")
     # a box ticked draws the bar again, not the table: the focus stays on it, and 800 rows are
@@ -7452,7 +7620,7 @@ def test_the_pick_boxes_and_the_filing_are_wired() -> None:
     ):
         assert listener in app_js, listener
     pick = _function_body(app_js, "renderLibraryPick")
-    assert "file.disabled = !picked.length || Boolean(state.filing) || waits;" in pick
+    assert "file.disabled = !take.file.length || busy || waits;" in pick
     assert (
         'setAttr(file, "title", waits ? t("library.file_wait_build") : t("library.file_help"));'
         in (pick)
@@ -7559,7 +7727,7 @@ process.stdout.write(JSON.stringify({
 """
     )
     box = ["input", "checkbox", "tile-pick", "Pick +46+006"]
-    name = ["library-tile", "/T/zOrthoStudio_+46+006", "tile-name", "+46+006"]
+    name = ["library-tile", "/T/zOrthoStudio_+46+006", "tile-name is-pick", "+46+006"]
     assert got["built"] == {
         "cells": columns,
         "pick": ["library-pick-cell", box],
@@ -7570,11 +7738,12 @@ process.stdout.write(JSON.stringify({
     # the folder under the name: the box on the name's line, not between the two lines
     top = ["library-pick-cell is-top", box]
     assert got["folder"] == {**got["built"], "pick": top, "where": ["/T"]}
-    # a tile Ortho4XP built has no box: its column stays, empty, and its name lines up
+    # a tile Ortho4XP built has its box too: the bar takes it off the list, or out of X-Plane
+    # (2026-10-16)
     assert got["imported"] == {
         "cells": columns,
-        "pick": ["library-pick-cell is-top", None],
-        "tile": ["library-tile", "/O/zOrtho4XP_+44+005", "tile-name", "+44+005"],
+        "pick": ["library-pick-cell is-top", ["input", "checkbox", "tile-pick", "Pick +44+005"]],
+        "tile": ["library-tile", "/O/zOrtho4XP_+44+005", "tile-name is-pick", "+44+005"],
         "where": ["/O"],
         "span": None,
     }
@@ -7610,3 +7779,449 @@ def test_the_mock_files_tiles_like_the_engine() -> None:
     got = _node_mock(script)
     assert got["hows"] == ["copy", "imported"] and got["room"] is True
     assert got["to"] == got["path"] == "/Volumes/Big/Alps/zOrthoStudio_+43+005"
+
+
+def test_three_plans_in_a_row_keep_only_the_last() -> None:
+    """A user opened three plan files one after the other and asked whether the first two stayed
+    (2026-10-11): each plan replaces the one before as ``replaceFlightPlan`` does, its squares
+    going but for those chosen by hand, so only the last plan's squares and the hand-chosen ones
+    remain."""
+    script = """
+      const plan = (from, to, ends, along) => ({ from, to, squares: { ends, along } });
+      const plans = [
+        plan("LSGG", "LGAV", ["+46+006", "+37+023"], ["+45+007", "+44+008"]),
+        plan("ENAT", "ENTC", ["+69+023", "+69+018"], ["+69+020"]),
+        plan("EDDM", "LSGG", ["+48+011", "+46+006"], ["+47+009"]),
+      ];
+      const byHand = new Set(["+44+008", "+43+005"]);
+      let tiles = ["+43+005", "+44+008"];
+      let fp = null;
+      for (const p of plans) {
+        if (fp) tiles = m.withoutPlan(tiles, fp, byHand);
+        fp = m.newFlightPlan(p, { ends: 16, along: 14 });
+        tiles = m.withPlan(tiles, fp, { cap: 500 }).tiles;
+      }
+      ({ tiles: [...tiles].sort(), kept: fp.plan.from + "-" + fp.plan.to })
+    """
+    got = _node_json(
+        "flightplan.js", "(() => {" + script.replace("({ tiles", "return ({ tiles") + "})()"
+    )
+    assert got["kept"] == "EDDM-LSGG"
+    assert got["tiles"] == sorted(["+43+005", "+44+008", "+48+011", "+46+006", "+47+009"])
+    code = (UI / "app.js").read_text(encoding="utf-8")
+    replace = code[code.index("function replaceFlightPlan(") :]
+    replace = replace[: replace.index("\n}\n")]
+    assert "withoutPlan(state.tiles, state.flightPlan, state.byHand)" in replace
+    assert "setFlightPlanState(" in replace, "the plan kept is the new one, not one more"
+
+
+def test_only_the_pressed_flight_plan_button_says_it_reads() -> None:
+    """Opening a file greyed the SimBrief button and wrote « Reading the plan… » on it
+    (2026-10-11): both wait, and only the one pressed says what it does."""
+    code = (UI / "app.js").read_text(encoding="utf-8")
+    render = code[code.index("function renderFlightPlan(") :]
+    render = render[: render.index("\n}\n")]
+    assert 'flightPlanLoading === "simbrief" ? t("flightplan.loading")' in render
+    assert 'flightPlanLoading === "file" ? t("flightplan.opening")' in render
+    assert 'flightPlanLoading = "file";' in code and 'flightPlanLoading = "simbrief";' in code
+
+
+def test_the_map_shows_the_squares_each_zone_takes() -> None:
+    """Every square a zone touches takes its level, so the sharp area runs past the outline, and a
+    zone under the zones above it may take none: seen only in X-Plane until the map drew them
+    (idea 7, 2026-10-11). The page asks the engine (POST /api/zones/cells) once the zones stop
+    changing, draws each area under its zone's outline, and the list says how many it takes."""
+    code = (UI / "map.js").read_text(encoding="utf-8")
+
+    def body(name: str) -> str:  # a function nested in createPlanMap, two spaces in
+        match = re.search(rf"\n  (?:async )?function {name}\(.*?\n  \}}\n", code, re.S)
+        assert match is not None, name
+        return match.group(0)
+
+    fetch = body("fetchAreas")
+    assert 'ctx.api("POST", "/api/zones/cells", { zones, provider: ctx.planProvider() })' in fetch
+    assert "if (mine !== zs.areasSeq) return;" in fetch, "only the last answer is drawn"
+    assert "scheduleAreas();" in body("renderZones")
+    areas = body("renderZoneAreas")
+    assert 'pane: "osxpZoneAreas"' in areas and "osxp-zone-area zl-${z.zl}" in areas
+    # a zone that only recolours draws no area: its colours follow the outline (2026-10-11)
+    assert "if (!a || !sharpens(z, selectedTiles)) continue;" in areas
+    assert "return !Number.isInteger(level) || z.zl > level;" in body("sharpens")
+    item = body("zoneItem")
+    assert "const area = sharpens(z, selectedTiles) ? zs.areas.get(z.id) : null;" in item
+    assert 't("zones.takes_none")' in item and 't("zones.cells", { n: fmtInt(area.count) })' in item
+    css = (UI / "styles.css").read_text(encoding="utf-8")
+    assert ".plan-map .osxp-zone-area {" in css
+    # the demo answers, and a zone inside the one above it takes none there too
+    doc = _mock_json("zones")
+    got = _node_mock(
+        "const r = await m.mockApi('POST', '/api/zones/cells', {zones: "
+        + json.dumps(doc["zones"])
+        + ", provider: 'BI'});\nprocess.stdout.write(JSON.stringify(r));"
+    )
+    assert [z["id"] for z in got["zones"]] == [z["id"] for z in doc["zones"]]
+
+
+def test_a_refused_number_says_its_field_and_the_values_it_takes() -> None:
+    """Typed 50 million triangles, Settings said "Not saved: advanced.limit_tris = 50: Input should
+    be less than 50. Set advanced.limit_tris to a value of type less_than in range lt 50.0."
+    (2026-10-15). The page now names the field as it shows it, and the values it takes as its
+    hint says them. The engine's own refusal and schema, read by the page."""
+    from orthostudio.config.models import Settings
+    from orthostudio.config.schema import settings_schema
+    from orthostudio.config.store import settings_from_dict
+    from orthostudio.errors import OsxpError
+
+    doc = Settings().model_dump(mode="json")
+    doc["advanced"]["limit_tris"] = 50
+    with pytest.raises(OsxpError) as refused:
+        settings_from_dict(doc)
+    assert refused.value.code == "CFG_VALUE_INVALID"
+    context = json.dumps(refused.value.context)
+    schema = json.dumps(settings_schema())
+    said = _run_node(f"""
+    globalThis.document = {{ documentElement: {{}}, getElementById: () => null }};
+    const i = await import("./i18n.js");
+    const s = await import("./settings.js");
+    const schema = {schema};
+    const out = {{}};
+    for (const lang of ["fr", "en"]) {{
+      i.setLanguage(lang);
+      out[lang] = [
+        s.refusedValueText({context}, schema),
+        s.refusedValueText({{ name: "settings", value: "-" }}, schema),
+        s.refusedValueText({{ name: "essential.provider", value: "XX" }}, schema),
+        s.refusedValueText(null, schema),
+      ];
+    }}
+    process.stdout.write(JSON.stringify(out));
+    """)
+    assert said["en"] == [
+        "Maximum triangles per tile: 50 is not accepted. "
+        "From 0 to less than 50 million, 3 million by default.",
+        None,
+        None,
+        None,
+    ]
+    assert said["fr"][0].startswith("Nombre maximal de triangles par tuile : 50 n'est pas accepté.")
+    assert said["fr"][1:] == [None, None, None]
+    code = (UI / "app.js").read_text(encoding="utf-8")
+    assert "refusedValueText(d.context, state.schema)" in code, "Settings' save says it so"
+
+
+def test_the_show_choice_finds_missing_files_and_squares_twice() -> None:
+    """A user keeping track of the Ortho4XP tiles he replaced with OrthoStudio XP ones asked for
+    two filters (2026-10-16): the tiles whose folder is no longer found (a disk not plugged in is
+    not one: it comes back by itself), and every tile of a square the list holds more than once.
+    Each choice counts over all the tiles, and narrows the rows with the search and the folder."""
+    got = _step1(
+        """(() => {
+          const o4 = "/Users/pilot/Ortho4XP/Tiles/zOrtho4XP_";
+          const row = (tile, extra) => ({ tile, path: `${o4}${tile}`,
+                                          built_by: "ortho4xp", present: true, ...extra });
+          const tiles = m.libraryTiles([
+            row("+43+004"),
+            { tile: "+43+004", path: "/Users/pilot/.orthostudio/tiles/zOrthoStudio_+43+004",
+              built_by: "osxp", present: true },
+            row("+44+005", { present: false }),
+            row("+45+006", { present: false, disk_absent: true }),
+            { tile: "+46+006", path: "/Users/pilot/.orthostudio/tiles/zOrthoStudio_+46+006",
+              built_by: "osxp", present: false },
+            row("+47+007"),
+            { tile: "+47+007", kind: "overlay",
+              path: "/Users/pilot/.orthostudio/tiles/yOrthoStudio_Overlays" },
+          ]);
+          const view = (asked) => {
+            const v = m.libraryView(tiles, asked, mac, "mac");
+            return { show: v.show, shows: v.shows, note: v.note,
+                     rows: v.rows.map((e) => `${e.tile} ${e.built_by}`) };
+          };
+          return {
+            all: view({}),
+            missing: view({ show: "missing" }),
+            twice: view({ show: "twice" }),
+            twiceSearch: view({ show: "twice", query: "+47" }),
+            unknown: view({ show: "nonsense" }),
+          };
+        })()"""
+    )
+    assert got["all"]["shows"] == [{"key": "missing", "n": 2}, {"key": "twice", "n": 2}]
+    assert got["all"]["show"] == "" and len(got["all"]["rows"]) == 6 and got["all"]["note"] is None
+    # the files gone, whoever built the tile; the disk not plugged in is left out
+    assert got["missing"]["rows"] == ["+44+005 ortho4xp", "+46+006 osxp"]
+    assert got["missing"]["note"] == {"text": "2 of 6 tiles.", "warn": False}
+    # both rows of the square listed twice; an overlay row is no tile, so +47+007 is once
+    assert got["twice"]["rows"] == ["+43+004 ortho4xp", "+43+004 osxp"]
+    assert got["twiceSearch"]["rows"] == [] and got["twiceSearch"]["note"]["warn"] is True
+    assert got["unknown"]["show"] == "" and len(got["unknown"]["rows"]) == 6
+
+
+def test_each_button_of_the_bar_takes_the_tiles_picked_it_applies_to() -> None:
+    """Every action of a row on the tiles picked (a user's ask, 2026-10-16), by the rules of the
+    row's own buttons: Add and Remove from X-Plane leave a tile a build holds; Delete takes only
+    the tiles OrthoStudio XP built, and none while a build runs or waits; Remove from the list
+    takes the others, their files here or gone; File elsewhere and Build again take only the tiles
+    OrthoStudio XP built that are in their place."""
+    got = _step1(
+        """(() => {
+          const t = (tile, by, extra) =>
+            ({ tile, built_by: by, present: true, installed: false, ...extra });
+          const picked = [
+            t("+40+000", "osxp", { installed: true }),
+            t("+41+000", "osxp"),
+            t("+42+000", "osxp", { present: false }),
+            t("+43+000", "osxp", { installed: true }),  // a build holds it
+            t("+44+000", "ortho4xp", { installed: true }),
+            t("+45+000", "ortho4xp", { installed: true, present: false }),
+            t("+46+000", "ortho4xp"),
+          ];
+          const names = (o) =>
+            Object.fromEntries(Object.entries(o).map(([k, v]) => [k, v.map((e) => e.tile)]));
+          return {
+            free: names(m.bulkTargets(picked, new Set(["+43+000"]), 0)),
+            building: names(m.bulkTargets(picked, new Set(["+43+000"]), 1)),
+            forgettable: picked.map(m.forgettable),
+          };
+        })()"""
+    )
+    free = got["free"]
+    assert free["install"] == ["+41+000", "+46+000"]
+    # an imported tile whose files are gone keeps its way out of X-Plane
+    assert free["uninstall"] == ["+40+000", "+44+000", "+45+000"]
+    assert free["delete"] == ["+40+000", "+41+000", "+42+000"]
+    assert free["forget"] == ["+44+000", "+45+000", "+46+000"]
+    assert free["file"] == ["+40+000", "+41+000"]
+    assert got["building"]["delete"] == []  # deleting waits for the builds, as a row's Delete…
+    assert got["building"]["install"] == free["install"]
+    assert got["forgettable"] == [False, False, False, False, True, True, True]
+
+
+def test_the_bar_asks_before_it_deletes_or_takes_tiles_off_the_list() -> None:
+    """Delete… and Remove from the list… on the tiles picked ask first, in one question: how many,
+    the space the files take, how many X-Plane shows, and how many picked the action leaves
+    aside."""
+    got = _step1(
+        """(() => {
+          const t = (tile, extra) => ({ tile, installed: false, ...extra });
+          return {
+            del: m.deleteManyQuestion([t("+40+000", { size_bytes: 2e9, installed: true }),
+                                       t("+41+000", { size_bytes: 1e9 })], 1),
+            delUnknown: m.deleteManyQuestion([t("+40+000")]),
+            delGone: m.deleteManyQuestion([t("+42+000", { present: false })]),
+            delMixed: m.deleteManyQuestion([t("+41+000", { size_bytes: 1e9 }),
+                                            t("+42+000", { present: false })]),
+            forget: m.forgetQuestion([t("+44+000", { installed: true }), t("+45+000"),
+                                      t("+46+000", { installed: true })], 2),
+            forgetPlain: m.forgetQuestion([t("+44+000")]),
+          };
+        })()"""
+    )
+    assert got["del"]["title"] == "Delete 2 tile(s)?" and got["del"]["go"] == "delete"
+    assert got["del"]["body"] == [
+        "Their files are deleted from this computer (about 3 GB).",
+        "1 of them are in X-Plane: they are removed from it.",
+        "The imagery already downloaded stays in the cache, so a later build is faster.",
+        "1 other tile(s) picked are left as they are: this action does not apply to them.",
+    ]
+    assert got["delUnknown"]["body"][0] == "Their files are deleted from this computer."
+    # a tile whose files are gone only leaves the list, as a row's Delete… says
+    assert (
+        got["delGone"]["body"][0] == "1 of them have no files left here: they only leave the list."
+    )
+    assert got["delMixed"]["body"][:2] == [
+        "Their files are deleted from this computer (about 1 GB).",
+        "1 of them have no files left here: they only leave the list.",
+    ]
+    assert got["forget"]["title"] == "Remove 3 tile(s) from the list?"
+    assert got["forget"]["body"][1:] == [
+        "2 of them are in X-Plane: they are taken out of it first.",
+        "2 other tile(s) picked are left as they are: this action does not apply to them.",
+    ]
+    assert got["forgetPlain"]["body"] == [
+        "OrthoStudio XP stops listing them; their files stay where Ortho4XP put them. Importing "
+        "your Ortho4XP folder again lists them again."
+    ]
+
+
+def test_a_tile_s_name_ticks_its_box_and_pick_all_s_words_line_up_with_the_names() -> None:
+    """A click on a tile's name ticks or unticks its box (a user, 2026-10-16). The name is not a
+    label, which the page leaves to its text (isTitleClick): a double-click ticks and unticks, so
+    the box stays and the name is selected to copy; a drag selecting text ticks nothing; a tile a
+    build holds has no box and a plain name. « Pick all shown »'s words start where the names
+    do: its gap is the name cell's left padding."""
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    row = _function_body(app_js, "libraryRow")
+    assert (
+        'const tileName = h("span", { class: box ? "tile-name is-pick" : "tile-name", onclick: box'
+        " ? (ev) => pickByName(ev, box) : null }, e.tile);" in row
+    )
+    by_name = _function_body(app_js, "pickByName")
+    assert "if (box.disabled || ev.detail > 2) return;" in by_name
+    assert 'if (ev.detail === 1 && String(window.getSelection?.() || "")) return;' in by_name
+    assert "box.click();" in by_name
+    css = (UI / "styles.css").read_text(encoding="utf-8")
+    pick_all = ".library-pick-all { display: inline-flex; align-items: center; gap: 8px;"
+    assert pick_all + " padding-left: 9px;" in css
+    assert ".table th, .table td { padding: 5px 8px;" in css  # the gap is this left padding
+    assert ".library-table .tile-name.is-pick { cursor: pointer; }" in css
+
+
+def test_a_zone_that_takes_no_square_adds_nothing_to_the_sizes() -> None:
+    """A zone the zones above it cover whole shows no size in the list and leaves "Extra detail
+    for the selected tiles": it was shown "about 45 MB" beside "This zone takes no square" and
+    counted in the total (a user's campaign, 2026-10-16). The total is drawn again once the
+    engine's squares arrive."""
+    map_js = (UI / "map.js").read_text(encoding="utf-8")
+
+    def body(name: str) -> str:  # a function nested in createPlanMap, two spaces in
+        match = re.search(rf"\n  (?:async )?function {name}\(.*?\n  \}}\n", map_js, re.S)
+        assert match is not None, name
+        return match.group(0)
+
+    none = body("takesNone")
+    assert "const area = sharpens(z, selectedTiles) ? zs.areas.get(z.id) : null;" in none
+    assert "return Boolean(area) && area.count === 0;" in none
+    assert "if (takesNone(z, selectedTiles)) continue;" in body("selectionMB")
+    assert "if (usableZl(z.zl) && !takesNone(z, selectedTiles)) {" in body("zoneItem")
+    fetch = body("fetchAreas")
+    assert fetch.index("renderList();") < fetch.index("renderSizes();")
+
+
+def test_the_bar_s_actions_stand_in_three_groups_with_their_counts() -> None:
+    """The box and the count on a line, the actions on the next in three groups: X-Plane's two,
+    the tiles' own two, and off the list and Delete… apart at the right end; no blue button in
+    the bar. Each button says how many tiles it takes and nothing when it takes none, and a
+    group whose buttons are all hidden goes with them (eight buttons on one line were too many
+    to read, a user, 2026-10-16)."""
+    html = (UI / INDEX_FILE).read_text(encoding="utf-8")
+    bar = html[html.index('id="library-pick"') : html.index('id="library-filing"')]
+    assert bar.index('class="library-pick-line"') < bar.index('class="library-acts"')
+    assert bar.index('id="library-pick-all"') < bar.index('class="library-acts"')
+    groups = bar.split('<div class="library-act')[2:]
+    assert ['id="library-add"' in groups[0], 'id="library-remove"' in groups[0]] == [True, True]
+    assert 'data-i18n="library.act_xplane"' in groups[0]
+    assert 'id="library-act-tiles"' in groups[1] and 'data-i18n="library.act_tiles"' in groups[1]
+    assert 'id="library-rebuild"' in groups[1] and 'id="library-file"' in groups[1]
+    assert 'library-act-end" id="library-act-end"' in groups[2]
+    assert 'id="library-forget"' in groups[2] and 'id="library-delete-picked"' in groups[2]
+    assert "btn-primary" not in bar
+    for b in ("add", "remove", "rebuild", "file", "forget", "delete-picked"):
+        assert f'<span class="library-act-n" id="library-{b}-n"></span></button>' in bar, b
+    css = (UI / "styles.css").read_text(encoding="utf-8")
+    assert ".library-act-end { margin-left: auto; }" in css
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    pick = _function_body(app_js, "renderLibraryPick")
+    assert 'setText($(`${id}-n`), $(id).disabled ? "" : `(${fmtInt(tiles.length)})`);' in pick
+    assert '$("library-act-tiles").hidden = !ours;' in pick
+    assert '$("library-act-end").hidden = forget.hidden && del.hidden;' in pick
+    tables = _i18n_tables()
+    assert [tables["fr"][f"library.act_{k}"] for k in ("add", "remove", "tiles")] == [
+        "Ajouter",
+        "Retirer",
+        "Tuiles",
+    ]
+
+
+def test_the_show_menu_and_the_bar_s_actions_are_wired() -> None:
+    """The "Show" menu beside the folder's, the bar's buttons in three groups (into X-Plane and
+    out of it, then building again and filing, then off the list and Delete… last), the question
+    in a modal dialog of its own, and each button's request the row's own."""
+    html = (UI / INDEX_FILE).read_text(encoding="utf-8")
+    filters = html[html.index('class="library-filters"') : html.index('id="library-search-note"')]
+    assert 'id="library-show-wrap" hidden' in filters and 'data-i18n="library.show"' in filters
+    assert filters.index('id="library-folder"') < filters.index('id="library-show"')
+    bar = html[html.index('id="library-pick"') : html.index('id="library-filing"')]
+    order = [
+        "library-add",
+        "library-remove",
+        "library-rebuild",
+        "library-file",
+        "library-forget",
+        "library-delete-picked",
+    ]
+    assert [bar.index(f'id="{b}"') for b in order] == sorted(bar.index(f'id="{b}"') for b in order)
+    assert 'class="btn btn-small btn-danger" id="library-delete-picked"' in bar
+    assert '<dialog id="library-bulk-dialog"' in html and 'value="go" id="library-bulk-go"' in html
+    assert 'value="cancel" autofocus data-i18n="library.bulk_keep"' in html
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    for listener in (
+        '$("library-show").addEventListener("change"',
+        '$("library-add").addEventListener("click", () => bulkLibraryAction("install"));',
+        '$("library-remove").addEventListener("click", () => bulkLibraryAction("uninstall"));',
+        '$("library-delete-picked").addEventListener("click", () => bulkLibraryAction("delete"));',
+        '$("library-forget").addEventListener("click", () => bulkLibraryAction("forget"));',
+    ):
+        assert listener in app_js, listener
+    # the bar acts on the tiles picked that are shown; one hidden by a filter is left alone
+    assert "const acted = pickedShown(shown);" in _function_body(app_js, "renderLibraryPick")
+    assert "bulkTargets(acted, building, activeJobs().length)" in (
+        _function_body(app_js, "renderLibraryPick")
+    )
+    for flow_name in ("bulkLibraryAction", "fileLibraryTiles", "rebuildLibraryTiles"):
+        assert "pickedShown(shownLibraryRows(libraryTiles(state.library)))" in (
+            _function_body(app_js, flow_name)
+        ), flow_name
+    flow = _function_body(app_js, "bulkLibraryAction")
+    # off the list: out of X-Plane first, then the row's own request
+    assert flow.index('libraryRequest(e, "uninstall")') < flow.index("libraryRequest(e, action)")
+    assert "confirmBulk(deleteManyQuestion(go, left))" in flow
+    assert "confirmBulk(forgetQuestion(go, left))" in flow
+    assert "errors.append(libraryErrorCard(err, e));" in flow  # one tile fails, the others go on
+    assert "renderLibraryShows(view.shows, view.show, rows.length > 0);" in (
+        _function_body(app_js, "renderLibrary")
+    )
+    tables = _i18n_tables()
+    for lang in ("fr", "en"):
+        for key in (
+            "library.show",
+            "library.show_all",
+            "library.show_missing",
+            "library.show_twice",
+            "library.forget_picked",
+            "library.bulk_left",
+            "library.delete_n_title",
+            "library.forgotten_n",
+            "library.pick_count_shown",
+        ):
+            assert tables[lang].get(key), (lang, key)
+
+
+def test_the_report_shows_what_each_step_wrote_and_downloaded() -> None:
+    """A user asked for the gigabytes written and the megabytes downloaded of each step, the real
+    ones and not figures worked out before (2026-10-16): the engine counts them as each step runs
+    (``written``, ``downloaded`` on the report's nodes), and the final report shows them in two
+    columns, their totals beside the size. A report of an earlier version has neither: a dash,
+    not a zero it never measured."""
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    body = _function_body(app_js, "renderReport")
+    assert (
+        'h("th", null, t("works.report_written")), h("th", null, t("works.report_downloaded"))'
+        in body
+    )
+    assert 'h("td", null, bytes(per[s].written)), h("td", null, bytes(per[s].downloaded))' in body
+    assert "node.written !== undefined" in body
+    assert 'const bytes = (n) => (!measured ? "—" : n ? fmtBytes(n) : "0");' in body
+    assert '[t("works.written_total"), bytes(sum("written"))],' in body
+    assert '[t("works.downloaded_total"), bytes(sum("downloaded"))],' in body
+    i18n = (UI / "i18n.js").read_text(encoding="utf-8")
+    for key, fr, en in (
+        ("works.report_written", "Écrit", "Written"),
+        ("works.report_downloaded", "Téléchargé", "Downloaded"),
+        ("works.written_total", "Écrit sur le disque", "Written to disk"),
+    ):
+        assert f'"{key}": "{fr}",' in i18n and f'"{key}": "{en}",' in i18n, key
+    # the mock report carries them too, as the engine's does
+    mock = _function_body(app_js, "mockOutcome")
+    assert "written, downloaded };" in mock
+
+
+def test_the_line_under_the_report_speaks_only_of_tiles_x_plane_does_not_show() -> None:
+    """Built again, a tile X-Plane shows stays in it (its folder is the one X-Plane reads), and the
+    line under the report said "These tiles are not in X-Plane yet" of fifteen tiles it showed (a
+    user, 2026-10-16): it speaks only of the report's folders the Library does not show in X-Plane,
+    compared as the Library compares folders."""
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    body = _function_body(app_js, "renderReport")
+    assert "libraryTiles(state.library).filter((e) => e.installed)" in body
+    assert "!shown.has(folderKey(tile.pack_dir, platform))" in body
+    assert "const notInstalled = !job.install && rep.failed === 0 && outside.length" in body

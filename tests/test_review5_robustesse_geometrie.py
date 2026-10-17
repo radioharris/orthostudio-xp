@@ -141,7 +141,7 @@ def test_a_polygon_with_a_hole_keeps_its_hole_and_gets_one_seed_inside_the_ring(
         [(0.1, 0.1), (0.9, 0.1), (0.9, 0.9), (0.1, 0.9)],
         [[(0.3, 0.3), (0.7, 0.3), (0.7, 0.7), (0.3, 0.7)]],
     )
-    encoded = encode_multipolygon([outer], pol_to_alt=lambda w: np.zeros(len(w)))
+    encoded = encode_multipolygon([outer], pol_to_alt=lambda w: np.zeros(len(w)), margin=0.0)
     assert len(encoded.geometry.geoms) == 1
     kept = encoded.geometry.geoms[0]
     assert len(kept.interiors) == 1
@@ -153,15 +153,18 @@ def test_a_polygon_with_a_hole_keeps_its_hole_and_gets_one_seed_inside_the_ring(
 
 def test_a_polygon_entirely_outside_the_tile_is_dropped_not_encoded_empty() -> None:
     far = geometry.Polygon([(3.0, 3.0), (3.1, 3.0), (3.1, 3.1), (3.0, 3.1)])
-    encoded = encode_multipolygon([far], pol_to_alt=lambda w: np.zeros(len(w)))
+    encoded = encode_multipolygon([far], pol_to_alt=lambda w: np.zeros(len(w)), margin=0.0)
     assert encoded.is_empty
     assert encoded.dropped == 0  # the cut emptied it before the area test
     assert encoded.seeds.shape == (0, 2)
 
 
 def test_seeds_of_an_empty_or_non_polygonal_geometry_are_empty_not_an_exception() -> None:
-    assert polygon_seeds(geometry.MultiPolygon()) == (pytest.approx(np.zeros((0, 2))), 0)
-    points, skipped = polygon_seeds(geometry.LineString([(0, 0), (1, 1)]))
+    assert polygon_seeds(geometry.MultiPolygon(), margin=0.0) == (
+        pytest.approx(np.zeros((0, 2))),
+        0,
+    )
+    points, skipped = polygon_seeds(geometry.LineString([(0, 0), (1, 1)]), margin=0.0)
     assert points.shape == (0, 2) and skipped == 0
 
 

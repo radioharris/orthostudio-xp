@@ -35,6 +35,8 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 from numpy.typing import NDArray
 
+from orthostudio.meter import written
+
 if TYPE_CHECKING:  # pragma: no cover - import cycle, types only
     from orthostudio.dem.sources import Download
 
@@ -288,5 +290,7 @@ def write_hgt(path: Path, cell: NDArray[np.float32]) -> None:
     np.clip(heights, HgtVoid, 32767, out=heights)
     tmp = path.with_name(path.name + ".part")
     tmp.parent.mkdir(parents=True, exist_ok=True)
-    tmp.write_bytes(heights.astype(">i2").tobytes())
+    data = heights.astype(">i2").tobytes()
+    tmp.write_bytes(data)
     tmp.replace(path)
+    written(len(data))  # the relief step's count of what it wrote (meter.py)

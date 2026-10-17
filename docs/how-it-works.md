@@ -31,7 +31,9 @@ the measurements, `docs/benchmarks/`.
   (airports, places you fly low). A zone sharpens whole squares of about 1 km, every one it
   covers a part of: everything you draw is at least at its level, and the sharp area ends on
   those squares' edges, up to a square beyond your outline (a small helipad where four squares
-  meet sharpens the four).
+  meet sharpens the four). The Plan's map shows those squares, pale and dashed under each zone,
+  and the list of zones says how many each takes, or that one takes none because the zones above
+  it in the list already take every square it covers.
 - **Overlay**: roads, buildings, forests, power lines and night lighting. They live in the same
   default DSF as the ground, so a photo tile that replaces the ground would lose them.
   OrthoStudio XP extracts them from X-Plane's own scenery into a shared pack,
@@ -39,7 +41,10 @@ the measurements, `docs/benchmarks/`.
   its own, answer *None* to the Settings question on roads, forests and buildings; when OrthoStudio
   XP finds such a pack in your Custom Scenery it says so beside the question, and on a first run it
   answers *None* for you: OrthoStudio XP
-  then builds no overlay, and a tile built again takes its old one out of X-Plane. A
+  then builds no overlay, and a tile built again takes its old one out of X-Plane. A third answer,
+  *X-Plane's roads, railways and power lines only*, leaves X-Plane's forests and buildings out:
+  for a pack that brings its own but whose roads you would rather replace by X-Plane's (turn that
+  pack's roads off then, or you have two road networks). Bridges belong to the roads and stay. A
   `yOrthoStudio_Overlays` line you disable in X-Plane stays disabled. One thing is left behind on
   purpose: the line X-Plane 12 draws around airport grass to blend it into the terrain. Over a
   photograph it has nothing to blend and shows as an outline around every airfield, so it is
@@ -78,7 +83,13 @@ builds at road level 0 and 1 only, since its small roads do not say which road l
 A prepared library is behind the live map by design, and it is baked again regularly. A tile
 whose coastline in the library would not close, which OpenStreetMap sometimes has for a few
 hours, is taken from the servers instead, and one whose kept map data has such a coastline is
-asked for again at its next build. There is
+asked for again at its next build. A coastline can also be wrong the other way: a building, a
+river island or a lake island tagged as a coastline in OpenStreetMap is read, as Ortho4XP reads
+it, as an island in the open sea, and the whole tile around it becomes sea at 0 m. Tehran, Manaus,
+Chengdu and Asuncion were drowned that way in October 2026. When a coastline would make a whole tile
+sea, its sea is checked against X-Plane's own scenery: if X-Plane draws more than half of it as
+land, the coastline is ignored, the tile is land, and Works says where that coastline is, so it
+can be corrected in OpenStreetMap. There is
 no button to skip it, on purpose: a build from the library is the fast one. The command line keeps
 `--osm-refresh <anything>`, which skips both and goes to the servers. One tile downloads at a
 time, since the servers refuse more, but the other tiles do not wait: each goes on with its relief
@@ -105,12 +116,50 @@ requests to the provider at the same time (a limit measured not to get throttled
 its own beside it, one tile at a time, so the images never wait for it. On a cold build the
 imagery is most of the time, and the processor mostly waits for the provider.
 
+**Which water.** The lakes, ponds, rivers and docks of OpenStreetMap become X-Plane's water, as in
+Ortho4XP, with one exception: the rainwater basins OpenStreetMap marks as dry most of the year
+(`water=basin` with `intermittent=yes`, often beside runways and motorways) keep the photo's ground,
+where Ortho4XP draws water over the grass. A treatment basin, or a lake that dries in summer, stays
+water. Water smaller than `min_area` (Settings, for experts) is left to the photo.
+
+**Depth at the shore.** X-Plane 12 draws the depth of the water from a map of the seabed each tile
+carries, and the mesh says, point by point, where the water is deep. A point of the water closer
+than a metre to the shore is shallow, as the shore itself is. Without that rule, which Ortho4XP
+does not have, a point a few centimetres off a straight shore took the full seabed at the shore:
+on Groom Lake (Homey Airport, KXTA), where X-Plane has no lake and its seabed lies 200 m down, that
+drew blue triangles and needles along the shore. The open water keeps its depth.
+
+**Flat ground.** Runways, taxiways, aprons and the helipads of OpenStreetMap are made flat, as in
+Ortho4XP. *Flatten OpenStreetMap's helipads* (Settings, for experts, Airports) leaves the helipads
+on the relief's slope, for a scenery that places its own helipad there; the rest stays flat.
+
 **An image piece that does not arrive.** Out of tens of thousands of requests, a few can stall while
 the others flow. Once the rest of the tile's imagery is done, OrthoStudio XP asks for them again
 after a pause of 5 s, then 15 s, then 45 s, each time through another Bing server, and for at most
 3 minutes per tile. Only a piece still missing after that leaves its texture incomplete: the tile is
 then not installed, and *Retry the missing ones* fetches just those pieces. The final report counts
 the pieces asked for again and those recovered.
+
+**What a build really wrote and downloaded.** The final report in Works says, for each step and
+in total, how much the build wrote on your disk and how much it downloaded: measured as it ran,
+not estimated. A step taken from the data folder counts nothing, and neither does a link to what
+the folder already holds (the tile's folder links to the images instead of copying them). What
+is written includes the image pieces and relief files kept for later builds, and OpenStreetMap's
+library index the first time it is read.
+
+**What the Plan counts after an update.** When a new version only writes the X-Plane terrain of
+your tiles differently, the images already prepared are kept as they are, and the Plan counts
+only those that are not, and each step to run counts what it wrote the last time: *Build again…*
+of tiles built before an update asks for the space it will really use, not for every image a
+second time. When the new version also changes the map, the terrain and the water masks that
+follow it are made again, and the Plan goes by your tile's last build with the same settings:
+what your data folder holds is counted as reused. While it works this out, the Library shows a
+spinner and *Working out the cost…* beside the tiles picked.
+
+**When the disk may run short.** The Plan and *Build again…* say so, in amber, but never refuse
+to build: the figure is an estimate. If the disk does fill up during a build, the build stops
+cleanly with *Not enough disk space*, nothing it has done is lost, and started again once you
+have made room it carries on from where it stopped.
 
 **Progress and time left.** The percentage and the time left on the Works screen cover the whole
 build, the OpenStreetMap downloads included. Each step weighs what it usually costs, the imagery
@@ -163,15 +212,36 @@ tile again to have them, drawn even if you had turned that folder's roads off in
 before starting X-Plane: started without it, X-Plane takes the tile off its list, then puts it back
 at the bottom, where another pack's mesh may hide it.
 
+**Many tiles at once.** Every tile of the Library has its box, but a tile a build is working on;
+a click on a tile's name ticks it too. The
+bar above the table does what a row's buttons do, to the ticked tiles on screen that it applies to
+(a tile ticked, then hidden by the search, the folder or *Show*, stays ticked and is left alone).
+Its buttons stand in three groups, each saying how many ticked tiles it takes: *X-Plane*, *Add* and
+*Remove*; *Tiles*, *Build again…* and *File elsewhere…*; then apart at the right end *Remove from
+the list…* for the tiles Ortho4XP built (taken out of X-Plane first; their files stay where they
+are) and *Delete…* for those OrthoStudio XP built. *Delete…* and *Remove from the list…* ask first, saying
+how many and which ticked tiles they leave aside. *Show* beside the search keeps to the tiles whose
+files are missing, or to the squares listed twice, an Ortho4XP tile and an OrthoStudio XP one for
+instance: tick them all, and one click takes the old ones off the list.
+
 The workshop has a short page of its own, the steps and the limits: [workshop.md](workshop.md).
-To file tiles yourself, tick them in the Library (*Pick all shown* takes every tile the search and
-the folder leave), then *File elsewhere…* and choose the folder, on any disk. A question says
+To file tiles yourself, tick them in the Library (*Pick all shown* takes every tile the search,
+the folder and *Show* leave), then *File elsewhere…* and choose the folder, on any disk. A question says
 first what will happen: on the same disk the tiles are moved, at once; on another they are
 copied, read back file by file, and only then taken out of the workshop, the cache staying there.
 X-Plane must stay closed, and tiles are filed between builds. A line shows how far the copy is,
 with *Stop*: the tile under way stays where it was. Then the Library and X-Plane follow the tiles
 to their new folder, roads and forests included, and X-Plane keeps each line as you left it,
 enabled or not.
+
+To build tiles again after an update, without choosing them again in the Plan, tick them in the
+Library and press *Build again…*. Each tile keeps its imagery source and its zoom level; the
+zones, colours and settings are today's, as if you chose those tiles in the Plan. A question says
+first how many tiles, what has to be downloaded and written on the disk, and how many X-Plane
+shows; what the data folder already holds is reused (a data folder just changed in Settings holds
+nothing yet, so everything is made again there). They are built together, in one build per imagery source,
+like the Plan's *Build*: a tile X-Plane shows is built again in its own folder and stays in
+X-Plane, updated, and one it does not show stays out.
 
 A tile filed elsewhere that you build again is built in the workshop, beside the cache, then put
 back in its folder in place of the old version: moved there at once on the workshop's disk, copied
@@ -230,6 +300,12 @@ roads, forests and buildings. Three presets answer several questions at once; ev
 under *For experts*, with its name in Ortho4XP. The Plan recalls the answers in one sentence before
 you build, and works out the cost by itself as you choose: disk space, download and time, with
 nothing to press first. *Build* waits only when the disk cannot hold the build, and says so.
+The photos of the airports made sharper count too: for a tile built before, from their outline in
+its OpenStreetMap data; for a tile never built, from X-Plane's own list of airports, their runways
+and 250 m around, which comes close (1 037 photos against 1 150 on 18 tiles). Until 1.1.0 the Plan
+of a tile never built left them out: 54 photos announced, 114 built (2026-10-15).
+Answers count once saved: until then the Settings tab carries a dot, and the Plan and the Library's
+*Build again…* say that a build uses the settings saved before.
 
 **Where X-Plane is.** OrthoStudio XP works with the X-Plane 12 installed on the same computer: it
 takes the relief, roads, forests and buildings from X-Plane's own scenery, and adds the tiles to its
@@ -302,7 +378,8 @@ one when the app starts.
   config.toml      settings;  zones.json  the zones drawn on the map;  sources.toml  your sources
   library.sqlite   the tiles OrthoStudio XP knows (the Library screen)
   jobs/            build journals
-  airports.sqlite  X-Plane's airports, for the search of the Plan
+  airports.sqlite  X-Plane's airports and the box of their runways, for the Plan's search, its map
+                   and its count of the airports made sharper
   update.json      the latest version GitHub named, and when it was asked (once a day at most)
 
 the data folder (~/.orthostudio unless Settings name another one)/
@@ -352,7 +429,11 @@ slower (measured 2026-09-28). The textures and their small `.ter` files are not 
 either: a tile's are forced as a group before the tile is handed to X-Plane, so X-Plane gets no
 file a power cut could still spoil, and a build that follows one cut short by a power cut, a
 crash of the system or a disk unplugged first checks what that build wrote since its last tile,
-and makes again what did not reach the disk whole. A file another program holds at that moment
+and makes again what did not reach the disk whole; Works counts the files as they are checked, a
+matter of seconds on an SSD and of a minute or more on a hard disk. If the program itself is
+stopped by force or crashes, its helper processes end with it rather than staying in memory, and
+the build it was making is listed again in Works when it starts again, marked as stopped, with
+*Build again* to go on from what it had built. A file another program holds at that moment
 (an antivirus, a sync tool) cannot be forced under Windows: the tile goes on all the same, the
 log names the file, and the next build checks it. At the start of the app, the Library reads nothing
 of the tiles but their folders: a tile's size, its colours and what it was built with are
@@ -474,7 +555,10 @@ build would stop on them, and a route longer than one build takes stops at a squ
 *Delete the flight plan* takes it away with its squares; those you chose by hand stay. The plan is
 kept in the browser until then, with your levels and the squares you took out, and its squares are
 computed again at each visit, so a new version's rules apply to it. Only your name goes to
-simbrief.com, only when you press the button.
+simbrief.com, only when you press the button. *Open a flight plan…*, beside it, takes a plan file
+instead, saved by Little Navmap (`.lnmpln`) or exported for X-Plane (`.fms`), which Little Navmap
+and most planners write: the same squares, the same line, nothing sent anywhere. The dialog opens
+where Little Navmap last saved a plan the first time, then where you took the last plan from.
 
 **Choosing many squares at once.** Hold Shift, press the mouse on the map and draw a rectangle:
 every square inside it is chosen as you go, and drawing back the other way lets them go again. If
@@ -502,7 +586,10 @@ same place, 3", 1" and 0.5" for instance, the finest file is used for each squar
 than the relief under it raises the whole tile rather than being read at the coarser step: what you
 downloaded is what is built. The finest wins the other way round too: where the relief you chose is
 sharper than your file, as the United States relief at a third of an arc-second is against a file
-of one second, the relief answers and the report names the file it left aside. In the Library,
+of one second, the relief answers and the report names the file it left aside. Tick *Use my files
+even where they are coarser than the relief above* to have your files first on every square they
+cover, whatever their resolution: they are then smoothed between their points over the finer grid,
+not repeated in steps. In the Library,
 *Built by* unfolds what a tile was built with: its *Relief* line names the file of yours the tile
 stands on, "with your file N50E011.hgt over it", or says why it was not used, "93 m between
 points, where Copernicus has 31 m". Where your folder has nothing, the relief you chose stays in charge, so
@@ -516,6 +603,31 @@ numbers, and Works says when a file of your folder could not be used, or had to 
 coarser grid for want of memory, and which relief answered instead. A relief that fine also makes
 the mesh finer: if it reaches the budget of triangles (*Maximum triangles per tile*, in the
 advanced settings, 3 million by default, up to 5), Works says so.
+
+**Lines that almost touch.** OpenStreetMap sometimes draws two shores, or a runway outline twice,
+a few millimetres apart without joining them. Left that way, the mesh fills the sliver between them
+with hundreds of thousands of needle-thin triangles, and X-Plane can stall while it lays an
+airport's painted lines over them (Tokyo, `+35+139`, did with OrthoStudio XP 1.0.1 and with
+Ortho4XP). A point closer than 5 cm to a line it does not end is therefore put on that line,
+unless that would make two separate shores of the same water touch: the mesh looks the same,
+without the needles, and a tile with no such point is built exactly as before.
+
+The same slivers fooled the marks that say what each part of the mesh is. Each runway, lake or
+flattened road gets one point inside it that tells the mesh "runway here", and the mark spreads
+from that point until the outline stops it. At Haneda, where OpenStreetMap draws two runways twice,
+one such point fell a millimetre outside its sliver: the whole of `+35+139` was taken for runway,
+so its mountains were never cut finer and kept triangles over a kilometre long, up to a thousand
+metres under the summits (Ortho4XP's tile too). OrthoStudio XP puts that point at least 10 cm
+inside what it marks, and a sliver thinner than 20 cm gets none: elsewhere the tiles do not change.
+
+**Airports and water.** X-Plane lays the pavement of its airports on the ground the tile gives
+it. Where OpenStreetMap has water inside an airport, the bridges and piers of an airport built over
+the sea, a canal under a runway, an aerodrome in a tidal bay, that pavement sank under the water's
+surface (Tokyo Haneda's taxiway bridges, in Ortho4XP's tiles too). Much as XPME does, OrthoStudio
+XP turns into land the water inside the aerodrome OpenStreetMap draws that its runways, taxiways
+or aprons touch: the bridges are dry, and the photo of the place stays on the ground. A lake inside
+an air base's fence that no runway touches stays a lake, a seaplane base keeps its water, and
+elsewhere a tile comes out as it was.
 
 **Hand-made mesh patches.** Under *For experts*, *Folder of hand-made mesh patches* takes a folder
 of yours, with one directory per tile: `+46+006/my-relief.patch.osm`, the files JOSM writes. A patch
@@ -542,8 +654,8 @@ back or built again.
 
 OrthoStudio XP does not need Ortho4XP: it never runs it and a build never reads an Ortho4XP folder.
 It downloads its own OpenStreetMap data and elevation files. The only time it looks into an Ortho4XP
-folder is when you import the tiles Ortho4XP built there, from the Library (*Import my Ortho4XP
-tiles…*, which asks for the folder) or with `osxp import-ortho4xp <folder>`. The folder is
+folder is when you import the tiles Ortho4XP built there, from the Library (*Import tiles built
+elsewhere…*, which asks for the folder) or with `osxp import-ortho4xp <folder>`. The folder is
 Ortho4XP's own, the one holding `Ortho4XP.py`, where its `Tiles` and the build folder it remembers
 are read, or any folder holding ortho tiles, whatever it is called, such as a disk they were built on: a
 user's `M:\XPTilesZL14` was refused until 0.1.14. They are listed beside
@@ -607,7 +719,7 @@ downloads its image pieces again.
 
 ## 6. Flying without tiles: OrthoStudio XP Live
 
-From 1.1, in beta, OrthoStudio XP has a second way to get ortho in X-Plane: OrthoStudio XP Live
+From 1.2, in beta, OrthoStudio XP has a second way to get ortho in X-Plane: OrthoStudio XP Live
 downloads the imagery while you fly, as AutoOrtho and XPME do, with no tile to build first, but
 with no virtual disk between X-Plane and its textures: it builds them beside X-Plane as ordinary
 files, so X-Plane waits only on its loading screen at a flight's start, never in flight. At its

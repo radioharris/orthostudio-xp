@@ -164,7 +164,9 @@ textures, DSF and `.ter` files are committed without being forced to disk one by
 forced as a group here, before X-Plane is handed any of them (2026-09-28, a user's builds on a
 hard disk); one another program holds is left to the next build's check, and the tile goes on
 (`graph-keys.md` 6). `build_tiles` checks, when it starts, what a build cut short left since its last
-durable point (`Store.recover`), and makes the store durable once its passes are over. Then it
+durable point (`Store.recover`), saying how far it is as `Phase("check", checked, total)` at most
+every half second (`CHECK_SAID_EVERY_S`, the first and last counts always), and makes the store
+durable once its passes are over. Then it
 writes, atomically per file (`fsutil`):
 
 ```
@@ -346,6 +348,19 @@ its relief does not wait for them at all. Artefacts shared between tiles are ded
 neighbours' meshes, the overlays of a tile built at two levels, the `texture.dds` of overlapping
 zones.
 
+Each row of the report (`NodeOutcome`, `BuildReport.to_dict` `tiles[].nodes[]`) carries what its
+node really did on the disk and the network during the build, every pass and retry summed by the
+collector (`_Collector.bytes`): `written`, the bytes it committed to the store with links to what
+the store holds left out (`sched.node.own_bytes`), plus what it wrote beside it (the image pieces
+a container grew by, `ChunkStore.on_write`; the images its workers committed; relief files, a
+Copernicus cell's included (it is written by its own code, and was missed until the Shadow showed
+46 MB of a tile's 795, 2026-10-16); the
+copy of the OSM library's manifest; a copy into a tile's folder on another disk), and
+`downloaded`, the bytes received (the library's and Overpass' answers, relief files and ranges,
+`TexturesReport.network["bytes"]`). A hit counts 0 for both (`scheduler.md` 2.5). Measured on a
+fresh +43+007 BI14 build: 540.7 MB written for 540.9 MB of data on the disk, 60 MB downloaded
+(2026-10-16).
+
 Failures do not stop the batch (`fail_fast=False`): the tiles that fail are reported with their
 coded error and the first upstream cause; the others are packed and installed. A tile whose OSM
 download fails is reported like any failed stage: its `osm` row carries the download's error, the
@@ -391,13 +406,42 @@ For each spec, without building anything:
 | Field | How |
 |---|---|
 | `nodes` | `Scheduler.plan(targets)`: `hit` / `build` / `unknown` and the EWMA seconds of each node (spec `scheduler.md` 2.8) |
-| `textures.total`, `textures.exact` | when the DSF node is a hit, the `textures.json` of that artefact (exact: 100 % sea cells produce no texture); else every texture covering the tile (`textures_covering`), `exact = false` |
+| `textures.total`, `textures.exact` | when the DSF node is a hit, the `textures.json` of that artefact (exact: 100 % sea cells produce no texture), or of the DSF an earlier version of its rule made of the same params and inputs when the store holds it (`_earlier_build`: an update that changes only how the DSF is written names the same textures); when the steps before the DSF are still to make, so that no earlier DSF can match their inputs, the DSF of the tile's last build with the same params (`_last_made`, `Store.last_made`: the newest artefact of the rule made of the same params, whatever its inputs), `exact = false` and a note; else every texture covering the tile (`textures_covering`), plus those of its zones (`textures.zones`, `map-zones.md` 5) and of the airports the build makes sharper (`textures.airports`, below), `exact = false` |
 | `textures.masked` | from the same list: textures with a sea kind (DXT5, 22.4 MB) versus DXT1 (11.2 MB); unknown without the DSF: all DXT1 plus a note |
-| `requests`, `download_mb` | per texture, the container of the chunk store: absent = 256 requests, present = its `ERROR` entries; MB = requests x mean body size (the probe's, else 13 kB, the Bing ZL14 mean) |
+| `requests`, `download_mb` | per texture to prepare (none when the textures step is a hit, and not those `_textures_kept` takes as they are: Build again of eighteen tiles read every container of every image, all kept, 16 s from a hard disk to download nothing, 2026-10-16), the container of the chunk store: absent = 256 requests, present = its `ERROR` entries; MB = requests x mean body size (the probe's, else 13 kB, the Bing ZL14 mean) |
 | `probe` | `--online` only: 20 chunks of the first incomplete texture through `Fetcher` (20 in flight, one round, polite, not stored); gives the line's latency (`seconds` of the round), `kb_per_request`, and `throughput = min(2000, max(20 / seconds, max_in_flight / seconds))` req/s, and no more than the provider's `server_req_per_s` when it has one (`ProbeResult.throughput`): the fetcher keeps `max_in_flight` (128 for Bing) transfers open, so a 0.1 s latency sustains ~1 300 req/s (measured 1 300-1 500 on this line, section 6 runs) |
 | `network_s` | `requests / throughput` (probe) or `requests / 400` (no probe: a conservative sustained rate, `net-download.md` measured 1 000+) |
-| `compute_s` | the sum of the `build` and `unknown` node estimates plus `textures.total x` the per-texture cost (`sched.cost.tile.textures/texture`, learnt by `build_tiles` as `wall / textures`, default 0.5 s) divided by `workers` |
-| `dds_gb`, `disk_free_gb`, `disk_ok` | DDS bytes of the plan; `shutil.disk_usage` of the store root; `disk_ok = free > 2 x needed` |
+| `compute_s` | the sum of the `build` and `unknown` node estimates plus the textures to prepare (`textures.total` but those kept) x the per-texture cost (`sched.cost.tile.textures/texture`, learnt by `build_tiles` as `wall / textures`, default 0.5 s) divided by `workers` |
+| `dds_gb`, `disk_free_gb`, `disk_ok` | DDS bytes of the plan, but those of the textures a build takes from the store as they are (`_textures_kept`: the textures step an earlier build ran from that earlier DSF, the same params and masks, its manifest naming each texture's DDS key, those the store still holds); when the steps before the DSF are still to make, the textures step of the tile's last build (`_last_made`, its `dsf` input that build's DSF): what the store says, the most likely, a water mask made again possibly changing a few images. `shutil.disk_usage` of the store root; `disk_ok = free > 2 x needed`, a warning for the page, never a refusal (`ui.md` 7.0.4): a disk that fills up stops a build cleanly (`SYS_DISK_FULL`). Rules 1.1.0 changed write every DSF again, and Build again of fifteen tiles counted 53.5 GB of images all in the cache and was refused for want of twice that free (2026-10-16); the map's rule 1.1.0 changed (version 12) then made every step after it unknown, and the same Build again counted 50 GB, 3.33 GB to download, and was refused: it now counts what its last builds wrote, nothing to download, and goes |
+| `other_gb` | what the tile's steps to run write besides the images: for each, the size of what it made the last time from the same params and inputs (`_other_gb`, `_earlier_build`), or from the same params when its inputs are still to make (`_last_made`), the steps whose artefacts are links (`textures`, `pack`, `install`) left out; 0.25 GB once (`OTHER_ARTEFACTS_GB`) when one has no such earlier artefact. Needed is `dds_gb + download_mb + other_gb` over the tiles. The flat 0.25 GB per tile counted 3.75 GB for the fifteen tiles above, 0.9 GB written, the new DSFs alone; it now counts 0.8 GB |
+
+The graph is declared as a build would declare it, the OSM snapshot of a tile included: the one
+the store holds is found as phase 0 finds it, its key a pure function of its params, but read only
+(`stored_osm_refs`: nothing touched, no kept snapshot set aside), and only a tile with none plans
+its layers as still to fetch, a placeholder. With the placeholder for every tile, two tiles built
+a minute before planned every node after their layers "to build" and 343 MB of photos to
+download, where the build that followed took everything from the store (2026-10-15). A node whose
+inputs are not all known before an earlier node runs stays `unknown` (a stage whose version
+changed, and what follows it): its textures and their download are then an upper bound.
+
+**The airports made sharper** (`cover_airports_with_highres` `True` or `ICAO`). The DSF raises to
+`cover_zl` every mesh cell an airport's outline covers, widened by `cover_extent` and snapped to the
+textures of that level (`dsf/zones.py` `_airport_array`). Without the DSF, the plan counts the
+textures of `cover_zl` each widened outline overlaps, as it counts a zone's, those not counted yet
+(`_airport_zones`). The outline is the airport's boundary in the tile's map data when the vectors
+node is a hit (`airport_covers`, what the DSF reads); else, from X-Plane's airport list
+(`airports-index.md`: the ICAO airports in `ICAO` mode, every land airport in `True` mode), the box
+of its land runways widened by `RUNWAY_MARGIN_M`, 250 m, for the aprons and terminals the map data
+usually adds, or its reference point without a runway. On the 18 tiles of a data folder whose map
+data held their airports, the runways gave 1 037 ZL18 textures of ICAO airports against the 1 150
+the builds made, within a fifth on 15 tiles (Key West's naval air station, a base around short
+runways, at a quarter); 500 m gave 1 199 but a third too many on a tile, the reference point with
+1 km around 1 036 with Schiphol at half. The list is asked for only when the settings make airports
+sharper; without the map data and without the list (no X-Plane folder, no `apt.dat`, an error while
+the list is made), the airports are not counted and the plan answers all the same: a disk error
+while the list was made took the whole plan down before 1.1.0 was out (2026-10-15). Until 1.1.0 the plan of a tile never built left the airports out: 54
+textures announced for +43+006, 114 built (49 at ZL15, 65 at ZL18, 2026-10-15). The notes say
+where the airports were read.
 
 Output: JSON (`--json`) or a two-line summary ("network: your line ..." / "compute: your
 Mac ...") per tile. Nothing is written except the probe's 20 chunks, which are **not** stored.
@@ -605,7 +649,8 @@ reads Ortho4XP's cache).
 The mesh and the vector stage therefore never read two different extracts of the coast. There
 always is one: the vector stage demands the `coastline` layer at every road level, so a tile
 without any fails at its vector stage. An estimate declares the graph without downloading: the
-coastline then reads the placeholder of the layers still to fetch, like the vector stage.
+coastline reads the snapshot the store holds, as a build does, else the placeholder of the layers
+still to fetch, like the vector stage (section 5).
 
 Ortho4XP preferred a coastline the user curated by hand in its `OSM_data/` folder
 (`O4_Mesh_Utils.py:166-186`). OrthoStudio XP read that file too until decision 0010; a curated

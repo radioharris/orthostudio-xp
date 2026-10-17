@@ -130,6 +130,18 @@ class Relief(BaseModel):
             "of Europe by the hundred and asked to name the folder once (2026-09-19)."
         ),
     )
+    own_first: bool = _field(
+        False,
+        "essential",
+        None,
+        "",
+        hint=(
+            "Use the files of the folder above even where they are coarser than the relief chosen "
+            "here: they then come first on every square they cover, smoothed between their points. "
+            "Off, the finest relief wins. A pilot whose files were coarser than his choice found "
+            "them left aside (idea 9, 2026-10-11)."
+        ),
+    )
     fill_nodata: Literal["nearest", "zero"] = _field("nearest", "essential", "fill_nodata", "")
 
     @model_validator(mode="after")
@@ -164,16 +176,17 @@ class Essential(BaseModel):
         description="Elevation source: the global DEM, or a local raster file.",
         json_schema_extra={"level": "essential"},
     )
-    overlays: Literal["xplane", "none"] = _field(
+    overlays: Literal["xplane", "roads", "none"] = _field(
         "xplane",
         "essential",
         None,
         "",
         hint=(
             "Roads, railways, power lines, forests and buildings over the photo tiles, taken "
-            "from X-Plane's own scenery into the shared yOrthoStudio_Overlays pack. 'none' builds "
-            "none and takes a tile's own out of X-Plane when it is built again, for simHeaven "
-            "X-World or another pack that brings them."
+            "from X-Plane's own scenery into the shared yOrthoStudio_Overlays pack. 'roads' keeps "
+            "X-Plane's roads, railways and power lines alone, for a pack that brings its own "
+            "forests and buildings. 'none' builds none and takes a tile's own out of X-Plane when "
+            "it is built again, for simHeaven X-World or another pack that brings them."
         ),
     )
     photo_look: Literal["as_delivered", "softer", "much_softer", "custom"] = _field(
@@ -224,7 +237,7 @@ class Advanced(BaseModel):
     model_config = _FROZEN
 
     curvature_tol: float = _field(2.0, "advanced", "curvature_tol", "", gt=0)
-    limit_tris: float = _field(3.0, "advanced", "limit_tris", "M", ge=0, le=5)
+    limit_tris: float = _field(3.0, "advanced", "limit_tris", "M", ge=0, lt=50)
     road_level: Literal[0, 1, 2, 3, 4, 5] = _field(1, "advanced", "road_level", "")
     min_area: float = _field(0.001, "advanced", "min_area", "km²", ge=0)
     max_area: float = _field(200.0, "advanced", "max_area", "km²", ge=0)
@@ -291,6 +304,14 @@ class Expert(BaseModel):
     sea_texture_blur: float = _field(0.0, "expert", "sea_texture_blur", "m", ge=0)
     normal_map_strength: float = _field(1.0, "expert", "normal_map_strength", "", ge=0, le=1)
     use_decal_on_terrain: bool = _field(False, "expert", "use_decal_on_terrain", "")
+    flatten_helipads: bool = _field(
+        True,
+        "expert",
+        None,
+        "",
+        hint="The helipads of OpenStreetMap are made flat, as Ortho4XP makes them. Turned off, "
+        "the ground keeps its slope there; runways, taxiways and aprons are flattened either way.",
+    )
     decal_on_sea: bool = _field(
         False,
         "expert",

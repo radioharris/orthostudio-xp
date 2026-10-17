@@ -435,14 +435,17 @@ adds nothing. These are approximations; step 3 gives the engine's numbers.
   the two cost centres, in plain words:
   - *Network: your line* — downloads (requests), MB, time range `seconds_low`–`seconds_high`,
     measured throughput `mbps_measured` (or "not measured");
-  - *Compute: your Mac* — images to prepare (textures), already prepared, seconds;
+  - *Compute: your computer* (it said *your Mac* on Windows and Linux too until 1.1.0) — images to prepare (textures), already prepared, seconds;
   - *Disk* — the engine's verdict (`app.js` `diskVerdict`): space needed is `disk.needed_gb` (images
-    and downloads), then `free_gb` labelled "OK" in green when `disk.ok`, else "insufficient" in red
-    after a red line "Not enough free disk space: this build needs about X, and OrthoStudio XP asks
-    for twice that to be free (Y free now)" (7.0.4); `disk.ok` is the engine's rule, free > 2 ×
-    needed (`orthostudio.estimate.Estimate.disk_ok`), applied by the page itself only to an answer
-    without it (`dds_gb` standing for a missing `needed_gb`). The engine's `SYS_DISK_FULL` warning
-    gets no second card under the red line;
+    and downloads), then `free_gb` labelled "OK" in green when `disk.ok`, else "may run short" in
+    amber after an amber line "The disk may run short: about X to write, Y free. If it fills up,
+    the build stops cleanly, and started again it carries on from where it stopped." (7.0.4);
+    `disk.ok` is the engine's rule, free > 2 × needed (`orthostudio.estimate.Estimate.disk_ok`),
+    applied by the page itself only to an answer without it (`dds_gb` standing for a missing
+    `needed_gb`). It is a warning, never a refusal: the figure is an estimate, and a disk that fills
+    up stops a build cleanly (`SYS_DISK_FULL`, nothing done is lost); it refused builds of tiles
+    whose images were all in the cache, and a user asked "we block a user on an uncertainty?"
+    (2026-10-16). The engine's `SYS_DISK_FULL` warning gets no second card under the line;
   - *Warnings* — one card per code with message and remedy (the page carries the message
     and remedy of every warning code it knows in `i18n.js`, `ZONE_INVALID`, `ZONE_TOO_MANY`
     and `ZONE_CONFLICT` included, but a `ZONE_*` card uses the engine's own message and remedy
@@ -464,12 +467,13 @@ adds nothing. These are approximations; step 3 gives the engine's numbers.
 **Build and install** (primary) and **Build only** → `POST /api/jobs` with the same body plus
 `install: true|false` and `queue: true`. Both are active as soon as tiles are chosen, with no
 estimate to ask for first. They are disabled, the reason under them, only when no tile is chosen
-("Choose tiles first (step 1)."), when the estimate was refused ("The estimate was refused: see
-step 3.") or when the disk cannot hold the build ("Not enough disk space: about 8.3 GB needed, and
-OrthoStudio XP asks for twice that to be free (6.1 GB free)."). Otherwise the line under them,
+("Choose tiles first (step 1).") or when the estimate was refused ("The estimate was refused: see
+step 3."). A disk that may run short leaves them active, the line under them in amber: "The disk
+may run short: about 8.3 GB to write, 6.1 GB free. You can build: if it fills up, the build stops
+cleanly." Otherwise the line under them,
 10 px below, sums the estimate up: "About 1.88 GB to download (5 – 9 min) and 8.31 GB on disk."
 A click while the estimate of a change is under way waits for it, and starts nothing the estimate
-refused or the disk cannot hold; both buttons stay disabled until the engine answered, so that a
+refused; both buttons stay disabled until the engine answered, so that a
 second click never asks twice. A success empties the selection (a later build would build these
 tiles again with its own): the map shows the tiles of the build in their own style meanwhile.
 
@@ -552,6 +556,10 @@ The selected job (default: the running one, else the newest) shows, from top to 
     water) for N tile(s) before building" (`orthostudio.sources.osm.LAYERS`), N counting the tiles
     whose `osm` row is not a hit. The current engine downloads a tile's map data in its OSM step,
     and says `build`.
+  - While `stats.phase` is `"check"` and `check.done` is below `check.total`, the same line says
+    "A build was interrupted: what it wrote is checked before it is reused, N of M": a build cut
+    short leaves up to a tile's textures that the next one reads again, 1 to 3 minutes on a hard
+    disk, where the bar stood at 0 % without a word (review of 0.1.19).
 - **One row per tile**, seven step cells *OSM · Relief · Terrain · Coast · Imagery · Assembly ·
   Install*.
   Each cell has a dot, its name, a thin progress bar (`role="progressbar"`, `aria-valuenow`, the
@@ -626,8 +634,12 @@ The selected job (default: the running one, else the newest) shows, from top to 
   500, it stays open or closed as the user left it, and it follows new lines only while scrolled
   to its end (scrolled up, the lines under the eyes stay still). The summary counts its lines.
 - When the job is finished, the **report**: already done / to build / failed (`report.hits`,
-  `built`, `failed`), elapsed, size and *Install n / m*; per step, hits, built, failed and time
-  (from `report.tiles[].nodes[]`, by `role`); the decisions (textures, built, cached, parent
+  `built`, `failed`), elapsed, size, *Written to disk* and *Downloaded* (the sums of the step
+  columns), and *Install n / m*; per step, hits, built, failed, time, *Written* and *Downloaded*
+  (from `report.tiles[].nodes[]`, by `role`). The bytes are what the steps really did, counted as
+  they ran (`pipeline-build.md`, `written` and `downloaded`), not worked out before (a user,
+  2026-10-16): "0" for a step that wrote or received nothing, a dash for a report of an earlier
+  version, which has neither; the decisions (textures, built, cached, parent
   fallback, placeholders, missing; "Steps not done (an earlier step failed)" for
   `SYS_UPSTREAM_FAILED` when there are some; "Image pieces asked for again after a pause" and
   "Image pieces recovered after a pause" whenever a textures decision's `second_pass` is above 0,
@@ -638,7 +650,12 @@ The selected job (default: the running one, else the newest) shows, from top to 
   for the same tiles: adding them read "Install 6 / 6" for 3 tiles installed out of 6.) Three
   columns under two titles on one line, *Final report* over the figures and the steps and
   *Decisions* over its list (a user saw *Decisions* stand lower than *Final report*, 2026-09-21);
-  one column under 1080px, each title above its own part.
+  one column under 1280px, each title above its own part (the steps take 480px with their bytes,
+  472 in French, and the figures 220).
+  Under it, a build without install says "These tiles are not in X-Plane yet: add them from the
+  Library." with *Open the Library*, a block gap below the report, only when one of the report's
+  folders is not one the Library shows in X-Plane (`folderKey`): a tile X-Plane shows stays in it
+  when it is built again, and the line said it was not of fifteen such tiles (2026-10-16).
 
 **Rendering.** The panel is built once per job and language (`buildJobView`), then updated in
 place (`updateJobView`): texts and attributes change only when they differ, so tooltips, the focus
@@ -775,17 +792,58 @@ of this folder matches; {n} in other folders." A folder gone from the list (its 
 puts the choice back to all. The choice is kept for the session only. Nothing is read on the
 disk: the rows say where each pack is.
 
-**Tiles filed elsewhere** (the atelier, step 3, 2026-10-05; TinkerNZ files his tiles by area, on
-several disks): a box before the name of each tile OrthoStudio XP built that is where the Library
-says and not in a build (`pickBox`), in a narrow column of its own, the table's first
+*Show* beside it (`#library-show-wrap`, `#library-show`, `libraryShows`, `renderLibraryShows`;
+a user keeping track of the Ortho4XP tiles they replaced with OrthoStudio XP ones, 2026-10-16),
+shown once there is a tile, lists *All tiles* (« Toutes les tuiles »), *Files missing* (« Fichiers
+manquants »), the tiles whose folder is no longer found, whoever built them (a disk not plugged in
+is not one: it comes back by itself), and *Same square twice* (« Même carré en double »), every
+tile of a square the list holds more than once (an Ortho4XP tile and an OrthoStudio XP one, or one
+built into two folders; an overlay row is not a tile), each with how many over all the tiles. A
+choice narrows the rows with the search and the folder (`libraryView`), "{n} of {total} tiles."
+saying so; an unknown one is all. It is kept for the session only.
+
+**The tiles picked** (the atelier, step 3, 2026-10-05; TinkerNZ files his tiles by area, on
+several disks; every action of a row on the tiles picked, a user's ask, 2026-10-16): a box before
+the name of each tile but those of OrthoStudio XP a build holds (`pickBox`, `pickable`), in a
+narrow column of its own, the table's first
 (`.library-pick-cell`, its header named for screen readers only), so that the names line up with
 or without a box (a user, 2026-10-07); when the folder under the name makes the row two lines
-high, the box stays on the name's line (`is-top`) rather than between the two. The bar under the
+high, the box stays on the name's line (`is-top`) rather than between the two. A click on the
+name ticks or unticks the box too (`pickByName`, a user, 2026-10-16); the name is not a label,
+which the page leaves to its text (`isTitleClick`), so a double-click ticks and unticks (the box
+stays, the name is selected to copy) and a drag selecting text ticks nothing; a tile a build holds
+has no box and a plain name. The bar under the
 search (`#library-pick`, `renderLibraryPick`) has *Pick all shown* (« Cocher les tuiles
-affichées »), acting on the rows
-the search and the folder leave, how many tiles are picked and their size, and *File elsewhere…*,
-its box over the rows' boxes; while a build runs or waits the button is disabled, its tooltip
-saying that tiles are filed between builds (`library.file_wait_build`). The folder dialog asks
+affichées », its box over the rows' boxes and its words over the names: the gap is the name
+cell's left padding), acting on the rows the search, the folder and *Show* leave, how many tiles are
+picked and their size on a line, then on the next the row's actions in three groups (eight
+buttons on one line were too many to read, a user, 2026-10-16): *X-Plane* with *Add* and *Remove*,
+*Tiles* with *Build again…* and *File elsewhere…*, and *Remove from the list…* and *Delete…* apart
+at the right end (`.library-act-end`), no blue button among them; each button says how many tiles
+it takes, « Supprimer… (3) », and nothing when it is disabled (`library-…-n`), and a group whose
+buttons are all hidden goes with them. The actions take the tiles picked that are shown (`pickedShown`:
+one picked, then hidden by the search, the folder or *Show*, stays picked and is not touched;
+*Delete…* on *Files missing* counted the tiles picked before, out of sight, a review of
+2026-10-16; the count then says "{n} tile(s) picked, {shown} of them shown", the size being the
+shown ones'), each taking those it applies to by the rules of the row's own buttons
+(`bulkTargets`) and disabled when it takes none: *Add*
+(the tiles here X-Plane does not show), *Remove* (those it shows; an imported
+tile whose files are gone keeps that way out), *Build again…* and *File elsewhere…* (the tiles
+OrthoStudio XP built, in their place), *Remove from the list…* (« Retirer de la liste… », the
+tiles OrthoStudio XP did not build, `forgettable`) and *Delete…* (the tiles OrthoStudio XP built,
+only between builds, its tooltip then `library.delete_wait`). The buttons for one kind of tile are
+hidden when the list holds none. *Delete…* and *Remove from the list…* ask first, in one modal
+question (`#library-bulk-dialog`, `deleteManyQuestion`, `forgetQuestion`): how many, the space the
+files take when it is known, how many have no files left here (they only leave the list, as a
+row's *Delete…* says), how many X-Plane shows (removed from it; taken out of it first before
+leaving the list), that the cache keeps the imagery, and how many picked the action leaves aside
+(`library.bulk_left`); *Keep them* has the focus. Each action sends the row's own requests, one
+tile after the other (`bulkLibraryAction`, `POST /api/library/{name}/install|uninstall|delete|forget`,
+*Remove from the list…* sending `uninstall` first for a tile X-Plane shows); a tile that fails gets
+its card under the bar and the others go on; the toast says how many were done (and the space
+freed). While one runs, the rows' buttons and boxes and the bar wait (`state.bulk`). While a build
+runs or waits *File elsewhere…* is disabled, its tooltip saying that tiles are filed between builds
+(`library.file_wait_build`). The folder dialog asks
 where; `POST
 /api/library/file-plan` says what each tile does; a modal question (`#library-file-dialog`,
 `filingQuestion`) says how many move (one disk, at once), how many are copied and read back (the
@@ -803,6 +861,33 @@ user to delete it (`filedLeftText`); the picks are let go, and those a row can n
 let go at each drawing. A build asked for during a filing, or a Library change refused while a
 build, a delete or a filing runs, says so in words that cover each (`plan.busy_deleting`,
 `library.err_busy`), never "delete the tile again" (a review, 2026-10-05).
+
+**Tiles built again** (2026-10-15; rebuilding tiles spread far apart from the Plan was not
+practical, a user, 2026-10-14): *Build again…* (« Reconstruire… », `#library-rebuild`) beside
+*File elsewhere…* takes the tiles picked, disabled with no pick or during a filing, not during a
+build: what it asks for waits for its turn. It asks for the builds the Plan's *Build* would
+(`rebuildRequests`): one per imagery source (a build has one), each tile at its own level (the most
+common one is the build's `zoom_level`, the others go in `tiles_zl`), none installed, a tile picked
+in two folders built once: a tile X-Plane shows is built again in its own folder, which X-Plane
+keeps showing, and one it does not show stays out (one build per "put back in X-Plane" made two
+builds of two tiles, 2026-10-15). Zones, colours and settings are left to the engine, which takes
+today's, as for a Plan. Each build is estimated first (`POST /api/plan`), seconds for many tiles,
+while the pick line shows the Plan's spinner and « Calcul du coût… » (`#library-busy`,
+`state.rebuildEstimating`): nothing moved and the app looked frozen (a user, 2026-10-16); a
+modal question (`#library-rebuild-dialog`, `rebuildQuestion`) says how many tiles, what each keeps
+(its source and level) and what is today's, the download and the disk summed over the builds
+("about", what the data folder holds counted as reused: after an update that changes a stage,
+the tile's last build with the same settings stands for what follows it; "up to" a figure no one
+could know did not go, 2026-10-16), and how many
+X-Plane shows, which stay in it, updated; when the disk may run short (the Plan's rule, twice the
+room needed) it says so in the Plan's words, and *Build again* stays: never a refusal on an
+estimate (it refused fifteen tiles whose images were all in the cache, 2026-10-16). *Build again* sends them like the Plan
+(`POST /api/jobs` with `queue: true`), lets the picks go, and opens Works on the first that starts
+(a toast says when all wait); a refusal is an error card under the Library's buttons. Its tooltip,
+like that of Works' *Build again*, says what is reused: what the data folder already holds. Both
+promised reuse, and a data folder just changed in Settings holds nothing yet, so everything was
+downloaded and made again without a word (found in the 0.1.19 review). The question's first line
+says it in the same words; it kept "What has not changed is reused" until 2026-10-15.
 
 **A tile filed elsewhere, built again** (the atelier, step 4, 2026-10-05; `install.md` 4.7):
 Works shows its put back in the Installation cell (role `put_back`, `ROLE_STEP`), not a bar of
@@ -924,8 +1009,8 @@ screen's title; it is never taken from where the user moved it.
 `<dialog role="alertdialog">` placed outside the screens, on the page's tokens. Title "Delete tile
 +45+005?"; then "It is removed from X-Plane and its files are deleted from this computer (about
 1.2 GB)." (X-Plane is named only when the tile is installed, the size only when `size_bytes` is
-known) and "The imagery already downloaded stays in the cache, so building it again later is
-faster."; for a tile whose files are missing, one sentence: its files are already gone, and it is
+known) and "The imagery already downloaded stays in the cache, so a later build is faster." (one
+sentence for one tile or many: « la reconstruire » said one tile in the bar's question, 2026-10-16); for a tile whose files are missing, one sentence: its files are already gone, and it is
 removed from this list (and from X-Plane when installed). Buttons *Keep it*, which has the focus
 first, and *Delete* (solid danger style). Escape keeps the tile (the browser's own handling, and
 the page's in case the browser skips it); the rest of the page is inert while the dialog is open,
@@ -937,7 +1022,11 @@ space could not be freed), the toast gives no size: "Tile +45+005 deleted. The s
 the cache will be freed later."
 
 **Errors** become error cards in `#library-errors` (a polite live region), shown once the library is
-loaded again, naming the tile and cleared by the next action, like on Works. For the refusals the
+loaded again, naming the tile and cleared by the next action, like on Works. The list stands under
+the Library's buttons (*File elsewhere…*, *Build again…*), above the table, and a card just added is
+brought into view wherever the page was scrolled (`app.js` `showLibraryErrors`): it stood under the
+last row, and a refusal of *File elsewhere…* on a list of 16 tiles showed out of sight, the pilot
+believing nothing had happened (2026-10-06). For the refusals the
 Library knows, the card is blocking (the change did not happen), has no action button (the remedy is
 never in Settings) and says what happened in the Library's own words, since the engine's speak of
 installing, paths, `orthostudio.toml` or `osxp clean`; the engine's message and remedy stay in the
@@ -957,7 +1046,9 @@ tooltip of the card's message (`app.js` `libraryCardContent`):
 Any other error (a network failure included) shows the engine's words, or the page's for the
 codes `i18n.js` knows.
 
-*Import my Ortho4XP tiles…* is one button (user report, 2026-09-21: a field, *Choose…* beside it
+*Import tiles built elsewhere…* (« Importer des tuiles faites ailleurs… », *Import my Ortho4XP
+tiles…* until 1.1.0, which said less than it does: a pack of photo tiles is known by its images
+since 0.1.14, whatever made it, a user's remark, 2026-10-15) is one button (user report, 2026-09-21: a field, *Choose…* beside it
 and *Import* were two buttons for one thing, and the field left empty imported nothing without a
 word). It asks for the folder in the platform's own dialog, opened by the engine (`POST
 /api/choose-folder`, "Choose the Ortho4XP folder (the one holding Ortho4XP.py), or a folder holding
@@ -968,7 +1059,8 @@ the Ortho4XP folder of the newest imported tile (`app.js` `ortho4xpStart`), then
 overlays pack beside them, and names the folder ("2 tile(s) imported from ~/Ortho4XP."); finding
 none, it says where it looked (`searched`). A cancel changes nothing. Where no dialog opens (a
 Linux without zenity or kdialog: `501 SYS_NO_FOLDER_DIALOG`, a toast; an engine older than the
-page), the field *Ortho4XP folder* appears and the button imports what is typed in it. The status
+page), the field *Tiles folder* appears and the button imports what is typed in it; finding
+nothing, the line says « No photo tile found in … ». The status
 bar's count is `library_count`, which counts tiles, not rows.
 
 ### 2.4 Settings
@@ -982,7 +1074,11 @@ in bold, with what it may take and what it is unless changed: *From 0 to 30°, 1
 *0 km² or more, 200 km² by default.* (`rangeText`), so a user sees where the recommended value
 lies before moving it, above all among the expert ones (a user asked, 2026-09-25). Only the bounds
 the schema holds, which are what the engine checks; a number it does not bound says its default
-alone (*ZL19 by default.*). Measured in the page: 23 fields, in both languages.
+alone (*ZL19 by default.*). Measured in the page: 23 fields, in both languages. A number the
+engine refuses on Save is said the same way, by the field's own name: "Not saved: Maximum
+triangles per tile: 50 is not accepted. From 0 to less than 50 million, 3 million by default."
+(`settings.js` `refusedValueText`), where the engine's words named the setting by its key and asked
+for "a value of type less_than in range lt 50.0" (2026-10-15).
 `settings.js` holds the descriptions and pure functions (tested under node) and draws the screen;
 `app.js` owns the saved settings, the draft and the buttons. The screen is drawn again on each
 answer, apart, and only what differs is put in (`app.js` `morphChildren`): a text, an attribute, a
@@ -1000,7 +1096,12 @@ name and the places the map data comes from (a folder of one's own, a library's 
 kept, since they are this computer's and its pilot's and no look of the tiles (the defaults emptied
 a library's key, and a build from source, which carries none, went to the public servers,
 2026-10-02); a draft that differs from the saved settings says
-"Changes not saved yet". The action bar sticks to the bottom, and a save the engine refuses says
+"Changes not saved yet". For as long as it differs, the Settings tab carries a dot (its tooltip says
+the same), step 3 of the Plan says "Your changes in Settings are not saved: a build uses the
+settings saved before. Save them in Settings first if they are meant for it.", and so does the
+Library's *Build again…* question (`app.js` `renderUnsaved`); Save or *Undo my changes* clears the
+three. A message given on leaving Settings went by in three seconds, and a user built a tile with
+Copernicus alone, the folder of his lidar never saved (2026-10-15). The action bar sticks to the bottom, and a save the engine refuses says
 why in it, in the page's words for the code: "Not saved: /Volumes/… will not do: files cannot be
 linked there, as in a folder shared over a network or with a virtual machine, and on a disk
 formatted exFAT or FAT32…". Its remedy sends a shared folder to the computer's own disk and tells
@@ -1042,12 +1143,13 @@ map data and of the imagery. A reuse of the page keeps showing it; `NOTICE` says
    refused), and that the folder must be outside X-Plane's
    Custom Scenery, where OrthoStudio XP puts its own links (a user typed his Custom Scenery there
    and was only refused once he had saved, 2026-09-17), then roads,
-   forests and buildings (X-Plane's / none,
+   forests and buildings (X-Plane's / X-Plane's roads, railways and power lines only / none,
    `essential.overlays`, whose sentence starts "Using simHeaven X-World? Choose “None from
    OrthoStudio XP”", since a user looked for the simHeaven option and did not find it at the end of
    the list; **when the engine finds such a pack in Custom Scenery** the question answers itself:
    `xplane.packs_of_their_own` of `/api/status` names it, *None* becomes the recommended answer and
-   both answers say why, because a user of the X-Plane.Org page had X-World installed, kept ours,
+   every answer says why (roads only, never recommended, tells to turn that pack's own roads off,
+   idea 6, 2026-10-11), because a user of the X-Plane.Org page had X-World installed, kept ours,
    and had everything drawn twice, 2026-09-20. On a **first run**, with no settings file yet, such
    a pack also makes *None* the answer *chosen*, written to the file so that the page, a build and
    the command line agree: a user who never opens Settings is the one this happened to. Nothing is
@@ -1493,7 +1595,7 @@ toast.
 **Choosing a folder** (user request, 2026-09-15: the X-Plane folder had to be typed): *Choose the
 X-Plane folder…* beside the field of *Where is X-Plane 12 installed?* and *Choose the folder for the
 tiles…* beside the one of *Where should the tiles and the downloaded imagery go?* in Settings (one
-label for both read as the same button), *Import my Ortho4XP tiles…* in the Library (above) and
+label for both read as the same button), *Import tiles built elsewhere…* in the Library (above) and
 *Choose…* beside *Folder of hand-made mesh patches* under *For experts*,
 ask the engine to open the platform's own dialog
 (`POST /api/choose-folder`: the Finder's, the File Explorer's, zenity's or kdialog's), starting in
@@ -1507,8 +1609,9 @@ are this build's, and works out its estimate again with the saved settings. From
 screen without saying so (`saveSettings`). It also reads `GET /api/status` again before saying
 *Saved* (the X-Plane folder may have changed: the *Detected* line of Settings, step 3's notice and
 the status bar follow) and drops a refusal step 3 still showed. The folder field's hint "empty =
-the detected folder" shows only when a folder was detected. Leaving Settings with answers not
-saved says so in a toast; nothing is saved by leaving.
+the detected folder" shows only when a folder was detected. Nothing is saved by leaving Settings:
+answers not saved are said on the tab and in step 3 until they are saved or undone (see the
+Settings screen above; until 2026-10-15 a toast said it once, on leaving).
 
 ## 3. Mock mode
 

@@ -21,7 +21,7 @@ import sqlite3
 import sys
 import threading
 import time
-from collections.abc import Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -29,6 +29,7 @@ from typing import Any
 
 from orthostudio.fsutil import fsync_dir as _fsync_dir
 from orthostudio.fsutil import replace as fs_replace
+from orthostudio.graph.canon import canonical_json
 from orthostudio.graph.digest import check_digest, digest_path
 from orthostudio.graph.errors import (
     ArtifactHeldError,
@@ -559,22 +560,33 @@ class Store:
             self._write_durable(until, {k: c for k, c in forced.items() if c > until})
             return sent
 
-    def recover(self) -> RecoverReport:
+    def recover(self, on_progress: Callable[[int, int], None] | None = None) -> RecoverReport:
         """When a build starts: check the artefacts of :data:`DEFERRED_RULES` indexed since the
         durable point against their digest, drop the torn ones (a power cut, a crash of the
         system or a disk unplugged before a durable point), and make the rest durable.
 
         After a build that ended normally there is nothing to check: what its last point forced
         within its margin is listed with it. A build still running in another process has its
-        fresh artefacts checked too, which reads them and finds them whole."""
+        fresh artefacts checked too, which reads them and finds them whole.
+
+        After a build cut short, up to a tile's textures are read again: 1 to 3 minutes on a hard
+        disk, which Works showed as a build stuck at 0 % (review of 0.1.19). ``on_progress(checked,
+        total)`` is called before each artefact and once all are read, so the build can say it;
+        what it raises stops the check, and what was not read yet is checked at the next start."""
         since, forced = self._durable()
         rows = [
             row
             for row in self._deferred_since(since)
             if forced.get(str(row["key"])) != float(row["created_at"])
         ]
+        if rows:
+            log.info(
+                "%d artefacts an interrupted build left are read again before any reuse", len(rows)
+            )
         dropped: list[str] = []
-        for row in rows:
+        for i, row in enumerate(rows):
+            if on_progress is not None:
+                on_progress(i, len(rows))
             key = str(row["key"])
             path = self.artifact_path(str(row["rule"]), key)
             if not path.exists():
@@ -587,6 +599,8 @@ class Store:
                 log.warning("artefact %s was not whole on disk; dropped", key[:16])
                 self.delete(key, force=True)
                 dropped.append(key)
+        if rows and on_progress is not None:
+            on_progress(len(rows), len(rows))
         self.make_durable()
         return RecoverReport(checked=len(rows), dropped=tuple(dropped))
 
@@ -639,6 +653,34 @@ class Store:
                 (rule, digest),
             ).fetchall()
         return [str(r["key"]) for r in rows]
+
+    def last_made(
+        self,
+        rule: str,
+        params: dict[str, Any],
+        max_version: int,
+        inputs: dict[str, str] | None = None,
+    ) -> str | None:
+        """The newest present artefact ``rule`` made of exactly ``params``, at ``max_version`` or an
+        earlier version, whatever its inputs but those given in ``inputs``: what a step made the
+        last time for the same tile and settings, for the Plan to expect it again."""
+        want = canonical_json(params)
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT key, recipe FROM artifacts WHERE rule = ? AND version <= ?"
+                " ORDER BY created_at DESC",
+                (rule, int(max_version)),
+            ).fetchall()
+        for row in rows:
+            doc = json.loads(row["recipe"])
+            if canonical_json(doc.get("params", {})) != want:
+                continue
+            made_of = doc.get("inputs", {})
+            if inputs and any(made_of.get(name) != digest for name, digest in inputs.items()):
+                continue
+            if self.has(str(row["key"])):
+                return str(row["key"])
+        return None
 
     def iter_artifacts(self, rule: str | None = None) -> Iterator[ArtifactInfo]:
         with self._lock:

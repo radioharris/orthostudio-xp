@@ -1486,3 +1486,45 @@ async def test_the_page_is_told_when_a_newer_version_is_out(
         off = (await c.get("/api/update")).json()
         assert off["available"] is False and off["url"] is None
         assert asked == [] and not (home / update.CACHE_NAME).exists()
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("how", ["no apt.dat", "a disk error"])
+async def test_the_plan_answers_without_x_planes_airport_list(
+    home: Path, xplane: Path, monkeypatch: pytest.MonkeyPatch, how: str
+) -> None:
+    """The Plan asks X-Plane's airport list for the airports a build makes sharper, and only when
+    the settings make them sharper. A list that cannot be had leaves them uncounted: an X-Plane
+    without its apt.dat (the fake one here has none), or an error while the list is made, which
+    no word caught and which took the whole Plan down (found before 1.1.0, 2026-10-15)."""
+    import orthostudio.api.app as app_module
+
+    monkeypatch.delenv("OSXP_API_NO_AIRPORTS", raising=False)
+    real = app_module.default_airport_index
+    asked: list[Path | None] = []
+
+    def index(xplane_dir: Path | None) -> object:
+        asked.append(xplane_dir)
+        if how == "a disk error":
+            raise OSError(28, "No space left on device")
+        return real(xplane_dir)  # raises XP_GLOBAL_SCENERY_NOT_FOUND: no apt.dat
+
+    monkeypatch.setattr(app_module, "default_airport_index", index)
+    mgr = JobManager(jobs_dir=home / "jobs", build=FakeBuild(), env_factory=lambda specs: None)
+    app = create_app(env_factory=BuildEnv.create, jobs=mgr, airports=None,
+                     settings_path=home / "config.toml")  # fmt: skip
+    body = {"tiles": ["+43+005"], "provider": "BI", "zoom_level": 14}
+    try:
+        async with client_for(app) as c:
+            r = await c.post("/api/plan", json=body)
+            assert r.status_code == 200, r.text
+            assert asked == [], "airports not made sharper: the list is not asked"
+            s = (await c.get("/api/settings")).json()
+            s["essential"]["airports"]["mode"] = "icao"
+            assert (await c.put("/api/settings", json=s)).status_code == 200
+            r = await c.post("/api/plan", json=body)
+            assert r.status_code == 200, r.text
+            assert len(asked) == 1 and r.json()["tiles"][0]["textures"]["airports"] == 0
+            assert (await c.post("/api/plan", json=body)).status_code == 200
+    finally:
+        mgr.close()

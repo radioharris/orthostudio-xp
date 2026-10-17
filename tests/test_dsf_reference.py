@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import array
 import hashlib
+import math
 import struct
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -506,6 +507,36 @@ def reference_zone_dico(
     return dico_customzl
 
 
+def _shallow_shore(nbr_nodes, node_coords, tri_idx, tri_types, node_is_coast, tile):
+    """Not in Ortho4XP (``dsf-terrain-assignment.md`` 3.3): a water node closer than 1 m to the
+    shore is shallow, written as a coast node for the depth ratio. Every pair of node and shore
+    edge, in metres at the tile's middle latitude."""
+    kx, ky = 111320.0 * math.cos(math.radians(tile.lat + 0.5)), 111320.0
+    x = [node_coords[5 * i] * kx for i in range(nbr_nodes)]
+    y = [node_coords[5 * i + 1] * ky for i in range(nbr_nodes)]
+    water, shore = set(), set()
+    for i in range(len(tri_types)):
+        a, b, c = tri_idx[3 * i : 3 * i + 3]
+        if tri_types[i]:
+            water.update((a, b, c))
+            continue
+        for p, q in ((a, b), (b, c), (c, a)):
+            if node_is_coast[p] and node_is_coast[q]:
+                shore.add((min(p, q), max(p, q)))
+    out = list(node_is_coast)
+    for n in water:
+        if node_is_coast[n]:
+            continue
+        for p, q in shore:
+            dx, dy = x[q] - x[p], y[q] - y[p]
+            t = ((x[n] - x[p]) * dx + (y[n] - y[p]) * dy) / (dx * dx + dy * dy)
+            t = min(max(t, 0.0), 1.0)
+            if math.hypot(x[p] + t * dx - x[n], y[p] + t * dy - y[n]) <= 1.0:
+                out[n] = True
+                break
+    return out
+
+
 def _set_depth_ratio(n, node_is_coast, node_bathy, tile):  # O4_Bathymetry.py:8-13
     if node_is_coast[n]:
         return 0
@@ -536,6 +567,7 @@ def reference_build_dsf(  # O4_DSF_Utils.py:464-1365 without the file I/O and th
         reference_recut(node_coords, tri_idx, tri_types)
     )
     node_bathy = node_bathy_fn(nbr_nodes, node_coords, node_types)
+    node_is_coast = _shallow_shore(nbr_nodes, node_coords, tri_idx, tri_types, node_is_coast, tile)
     quad_capacity = quad_capacity_low if tile.use_masks_for_inland else quad_capacity_high
     if getattr(tile, "quad_capacity", None):
         quad_capacity = tile.quad_capacity

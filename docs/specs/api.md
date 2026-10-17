@@ -11,7 +11,7 @@ is a static client of this API; the CLI keeps working without it.
 
 `osxp serve` starts a small HTTP server bound to `127.0.0.1` only and opens the page. The page
 asks the engine what this machine looks like (`/api/status`), what it would cost to build a
-set of tiles (`/api/plan`: two lines, *network: your line* and *compute: your Mac*), starts
+set of tiles (`/api/plan`: two lines, *network: your line* and *compute: your computer*), starts
 **one** build at a time (`/api/jobs`), follows it live (`/api/jobs/{id}/events`, Server-Sent
 Events, resumable), stops it, retries the same build after a failure (the artefacts already
 in the store are hits: "Retry the missing ones"), and manages the library of built packs
@@ -77,6 +77,7 @@ once nothing uses it. `build(specs, *, on_event, env) -> BuildReport` is
 | `GET /api/airports/{icao}` | – | one airport or 404 |
 | `GET /api/flightplan/simbrief` | `?radius_km=15` | the last flight plan of the SimBrief name saved in Settings (`essential.simbrief_user`: a name goes as `username`, encoded, a pilot ID as `userid`), as squares to build (`flight-plan.md` 4): `{from, to, points, path, squares: {ends, along}, left_out, length_km, bounds, radius_km, scenery_checked}`. The line is the plan's points joined by great circles, cut at the antimeridian; `ends` are the squares within `radius_km` of the departure and the arrival, `along` every other square within it of the route, in the order flown; the squares X-Plane has no scenery for are left out and counted. The engine asks, not the page, and only when the button is pressed: the name is the one thing that leaves the machine, nothing is kept on disk. Errors in the engine's one shape: 400 `CFG_SIMBRIEF_USER_MISSING` with no name (nothing is asked of the service), 404 `CFG_SIMBRIEF_USER_UNKNOWN` for a name they refuse (their HTTP 400), 404 `CFG_SIMBRIEF_PLAN_EMPTY` for a plan that says nowhere, 502 `NET_SIMBRIEF_FAILED` when the service does not answer or answers what cannot be read; 422 for a radius outside 0 to 300 km |
 | `POST /api/flightplan` | `{from, to, points: [{ident, name, lat, lon}], radius_km}` | a route the page kept, answered as `GET /api/flightplan/simbrief` answers: its squares and its line computed again by the rules of this version (`flight-plan.md` 5), SimBrief not asked and no name needed. The page keeps the route, never the squares: kept whole, a plan read before the corridor came still chose the line's squares alone after the update (2026-09-25). Nothing else is taken: 422 for another field (squares included), fewer than 2 points or more than 402, a point off the globe, a radius outside 0 to 300 km |
+| `POST /api/flightplan/file` | `{radius_km, prompt, start}` | a flight plan file the user chooses in the system's own dialog, Little Navmap's `.lnmpln` or X-Plane's `.fms` (idea 11, 2026-10-11): answered as `GET /api/flightplan/simbrief` answers, plus `chosen: true`, `file`, `folder` (where the page opens the next dialog); `{chosen: false}` when the dialog was cancelled; `CFG_PLAN_FILE_INVALID` (422) for a file that is not such a plan, `SYS_BUSY` (409) while a dialog is open, `SYS_NO_FOLDER_DIALOG` (501) without one (`flight-plan.md` 4.1). API level 30 |
 | `POST /api/plan` | `PlanRequest` (2.2) | `PlanAnswer` (section 4); 422 `CFG_DATA_DIR_MISSING` while the data folder's disk is unplugged |
 | `POST /api/jobs` | `JobRequest` = `PlanRequest` + `install: bool` + `queue: bool` | `{job_id, status, queue_position}` (201): `queue_position` 0 when it runs now, 1 for the next to start, 2 after it...; 409 `SYS_BUSY` when a job is active and `queue` is false, or a tile is being deleted; 409 `SYS_TILE_IN_BUILD` when a tile asked for is in the running job or a queued one (`context: {tiles, jobs}`); 422 `CFG_DATA_DIR_MISSING` as for a plan. The saved `request` leaves `queue` out |
 | `GET /api/jobs` | – | `[JobSummary...]`, newest first (past jobs of this home included) |
@@ -103,6 +104,7 @@ once nothing uses it. `build(specs, *, on_event, env) -> BuildReport` is
 | `POST /api/clean` | `{images?, relief?, filed?}` | frees it: `{format: "osxp-clean-1", freed_bytes, images_freed_bytes, relief_freed_bytes, filed_freed_bytes, removed}`; with `images`, the downloaded image pieces and the map background go too (those of the tiles filed outside the atelier excepted), with `relief` the elevation cells (its own choice: the relief of a square costs far less to fetch again than its imagery), and with `filed` the cache of the tiles filed outside the atelier, the tiles themselves untouched. The figures are what went: a file another program holds stays and is not counted. No grace period, so 409 `SYS_BUSY` while a job runs here or another process builds into the store (`Store.building_pids`), and while a tile is filed elsewhere; no build starts meanwhile |
 | `GET /api/zones` | – | `{format, revision, zones, problems}` and `ETag: "<revision>"` (`map-zones.md` 3): the saved zones read one by one, a problem listed per bad zone, never a refusal of the whole file (200 unless the file cannot be read at all); `revision` `""` and no zone when none was saved |
 | `PUT /api/zones` | `osxp-zones-1` document; header `If-Match: "<revision>"` (optional) | the normalised document with the new `revision`, `problems: []` and `ETag`; 422 `ZONE_INVALID` refuses the whole document; 409 `ZONE_CONFLICT` when `If-Match` is not the file's current revision (nothing written) |
+| `POST /api/zones/cells` | `{zones, provider}` | the squares of about 1 km each zone the page holds (saved or not) will take, found by the build's own code at the `mesh_zl` of Settings: `{mesh_zl, zones: [{id, count, area}]}`, `area` the squares merged into polygons of `[lon, lat]` rings, outer first; `count` 0 for a zone under the zones above it; `ZONE_*` (422) as a save answers them; writes nothing (`map-zones.md` 3, idea 7). API level 31 |
 | `GET /api/map/{provider}/{z}/{x}/{y}` | – | a base map tile from the engine's cache or the provider (`map-zones.md` 6); 204 no imagery, 404 unknown provider, 422 out of range, 502 upstream failure |
 | `GET /` , `GET /static/*` | – | the page from `ui_dir` (503 `SYS_RESOURCE_MISSING` when there is none), with the type of its extension for the page's own kinds of file (`app.PAGE_MEDIA_TYPES`: `.js` as `text/javascript`, `.css`, `.html`, `.json`...) rather than the system's: Python asks Windows' registry, where a program may have written `text/plain` for `.js`, and every browser then refuses the page's modules; users saw the menu alone, greyed, and nothing answered a click (2026-09-22) |
 
@@ -561,7 +563,7 @@ did on its own, per tile, for the page's end-of-build panel:
 |---|---|---|
 | `nodes` | the events | `hit`, `built`, `failed`, `skipped` counts |
 | `stage_time` | the events | `seconds` per stage (`{osm: 1.9, relief: 21.5, ...}`) |
-| `textures` | `<workdir>/logs/textures-<tile>-<level>-<key12>.json` when found | `total`, `built`, `hits`, `missing`, `parent_fallback`, `placeholders`, `second_pass` (chunks fetched again after a transient failure), `recovered` (of those, obtained) |
+| `textures` | `<workdir>/logs/textures-<tile>-<level>-<key12>.json` when found, the newest of the tile's own level, with every report of the same `key12`: one per level the node prepared, those of the zones and of the airports made sharper too (only the tile's own was read, and +45+005 said 63 textures where its build made 174, 2026-10-15) | `total`, `built`, `hits`, `missing`, `parent_fallback` (textures that took at least one chunk from a parent level: the chunks were summed until 1.1.0, 599 "textures" for a tile of 136), `placeholders` (chunks replaced, the provider having no image), `second_pass` (chunks fetched again after a transient failure), `recovered` (of those, obtained), summed over those reports |
 | `degraded` | `failed` events with severity `degraded` / `info` | `code`, `count`, `message` |
 | `pack` | `TileOutcome.pack_dir` | `bytes`, `path`, `installed` |
 
@@ -575,7 +577,7 @@ did on its own, per tile, for the page's end-of-build panel:
 | `progress` | 0-1, weighted by expected cost over every expected node, never decreasing during a run; 1 in the last line of a job that is `done` |
 | `eta_low_s`, `eta_high_s` | seconds left for the whole job; `null` only when the job has no row to estimate; 0 in the last line |
 | `running`, `pending`, `done`, `failed`, `hits` | counts over every row of the job (`done` includes the hits, `failed` the skipped and cancelled rows) |
-| `phase` | `build`; `data` only while a build that downloads its OSM data before its graph (an older engine's phase 0) says so, for a plain-words hint |
+| `phase` | `build`; `check` while the build reads again what an interrupted one left (`Phase("check")`, before anything else), with `check: {done, total}` beside it; `data` only while a build that downloads its OSM data before its graph (an older engine's phase 0) says so, for a plain-words hint |
 
 A line is journaled at every `Phase`, after a scheduler `Stats` when the last line is at least
 0.5 s old (a burst of sixty hits was sixty lines), at least once a second while the job runs --
@@ -822,6 +824,15 @@ in the Task Manager (2026-09-17). Then, when the port is taken:
   dependency on the server's loop (the CLI could drive a `JobManager` too).
 * `/api/status` runs `run_doctor(offline=True)` (no Bing probe) and caches it for 60 s;
   `active_job` is the id of the queued or running job, else `null`.
+* A job's `<id>.json` is written when it is created, queued or started, and again at its end.
+  The start of the engine lists the `<id>.json` files; one still `queued` or `running` was
+  stopped by the program's end (closed by force, a crash, a power cut): its rows are replayed
+  from its journal (`started`, `done`, `failed`), a step started and not ended becomes
+  `cancelled`, and the job ends `failed` with `SYS_BUILD_INTERRUPTED` (`SYS_BUILD_NOT_STARTED`
+  for one that was still waiting behind another: its journal holds no line) and a `finished` line,
+  written so (`Job.mark_interrupted`). Works lists it with *Build again*. Only a finished
+  build wrote its file before, and a build killed during its images was missing from Works
+  after the restart, its journal left on the disk (2026-10-15).
 * A job's end is one step under the manager's lock: its `finished` event, its `<id>.json`
   written, the job out of the active slot and the next queued job started. A page that hears
   `finished` asks the status at once, and the status named the job still while its state was

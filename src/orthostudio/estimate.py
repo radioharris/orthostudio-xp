@@ -5,22 +5,29 @@
 Nothing is built. The node statuses come from ``Scheduler.plan`` (keys computed as far as
 the built inputs allow), the texture list from the DSF artefact when it is in the store
 (exact) or from the imagery grid (every texture of the tile, plus the textures of its
-``zone_list`` at their zoom levels: ``map-zones.md`` 5), the requests from the chunk store,
+``zone_list`` at their zoom levels: ``map-zones.md`` 5, and of the airports the build makes
+sharper), the requests from the chunk store,
 the time from the learnt costs and, online, from a 20-request probe of the provider.
 """
 
 from __future__ import annotations
 
+import json
 import shutil
+import sqlite3
 import time
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
+from orthostudio.dsf.params import DsfParams
+from orthostudio.dsf.zones import M_TO_LAT, airport_covers, m_to_lon
 from orthostudio.errors import OsxpError
+from orthostudio.graph.keys import artifact_key
 from orthostudio.imagery.chunks import ChunkStatus, ChunkStore
-from orthostudio.imagery.grid import TextureId, texture_tiles, textures_covering
+from orthostudio.imagery.grid import TextureId, texture_name, texture_tiles, textures_covering
 from orthostudio.imagery.providers import Provider, cache_name, tile_url
+from orthostudio.model import ArtifactRef
 from orthostudio.net import FetchRequest, fetch_all
 from orthostudio.pipeline.build import (
     DEFAULT_PER_TEXTURE_S,
@@ -31,10 +38,14 @@ from orthostudio.pipeline.build import (
     TileNodes,
     declare,
     make_scheduler,
+    stored_osm_refs,
     texture_jobs_from_json,
 )
 from orthostudio.sched import PlanEntry
 from orthostudio.zones import zone_list_textures
+
+if TYPE_CHECKING:
+    from orthostudio.airports import AirportIndex
 
 __all__ = [
     "BC1_BYTES",
@@ -58,8 +69,20 @@ DEFAULT_KB_PER_REQUEST = 13.0
 DEFAULT_REQ_PER_S = 400.0
 """Conservative sustained throughput without a probe (``net-download.md`` measured 1 000+)."""
 OTHER_ARTEFACTS_GB = 0.25
-"""DSF, mesh, vectors and their npz twins per tile, roughly."""
+"""DSF, mesh, vectors and their npz twins per tile, roughly: what a tile whose steps never ran
+here is counted for (`_other_gb`)."""
+LINKED_ROLES = frozenset({"textures", "pack", "install"})
+"""Steps whose artefacts are links to others' files: the images (counted by ``dds_gb``) and the
+DSF, nothing written twice."""
 PROBE_REQUESTS = 20
+RUNWAY_MARGIN_M = 250.0
+"""Around the runways of an airport in X-Plane's list, the ground its map data adds (aprons,
+terminals), for a tile whose map data is not read yet. On the 18 tiles of a data folder whose map
+data holds their airports, the ICAO airports' ZL18 textures came to 1 037 against the 1 150 the
+builds made, within a fifth on 15 tiles (2026-10-15); 500 m gave 1 199 but a third too many on a
+tile, and the reference point with 1 km around 1 036 with Schiphol at half."""
+AIRPORT_SEARCH_PAD_DEG = 0.1
+"""How far outside the tile an airport's reference point may lie and its runways still reach it."""
 
 
 @dataclass(slots=True)
@@ -154,6 +177,11 @@ class TileEstimate:
     textures_zones: int = 0
     """Textures the tile's zones add on top of its own, included in ``textures_total`` (upper
     bound only: an exact count, read from the DSF, already holds them)."""
+    textures_airports: int = 0
+    """Textures the airports made sharper add on top of the tile's and the zones', included in
+    ``textures_total`` (upper bound only, as :attr:`textures_zones`)."""
+    other_gb: float = 0.0
+    """What the steps to run write besides the images (`_other_gb`)."""
 
     @property
     def hits(self) -> int:
@@ -185,10 +213,12 @@ class TileEstimate:
                 "exact": self.textures_exact,
                 "masked": self.textures_masked,
                 "zones": self.textures_zones,
+                "airports": self.textures_airports,
             },
             "requests": self.requests,
             "download_mb": round(self.download_mb, 1),
             "dds_gb": round(self.dds_gb, 3),
+            "other_gb": round(self.other_gb, 3),
             "compute_s": round(self.compute_s, 1),
             "network_s": round(self.network_s, 1),
             "notes": list(self.notes),
@@ -287,29 +317,223 @@ def _requests_for(store: ChunkStore, textures: Sequence[TextureId]) -> int:
     return total
 
 
-def _tile_textures(
-    env: BuildEnv, nodes: TileNodes, entries: dict[str, PlanEntry]
-) -> tuple[list[TextureId], bool, int | None, int]:
-    """``(textures, exact, masked, zone textures)`` of one tile.
+def _airport_zones(
+    env: BuildEnv,
+    nodes: TileNodes,
+    entries: dict[str, PlanEntry],
+    airports: AirportIndex | None,
+) -> tuple[list[list[Any]], str]:
+    """The airports the build makes sharper, as ``zone_list`` entries at ``cover_zl``, and where
+    they were read: ``"map"``, ``"list"``, or ``""`` when there is none to read.
 
-    Exact when the DSF is in the store (its texture list, zones included). Otherwise an upper bound:
-    every texture of the tile at its level, then, for each ``zone_list`` entry, the textures at the
-    entry's level whose square overlaps it (``orthostudio.zones.zone_list_textures``) that are not
-    already counted.
+    The build raises every mesh cell an airport covers, its boundary widened by ``cover_extent``
+    and snapped to the textures of ``cover_zl`` (``dsf.zones._airport_array``): the textures of
+    that level the widened boundary overlaps. The boundary comes from the tile's map data, when
+    the store holds it; else from X-Plane's airport list, the box of its runways widened by
+    :data:`RUNWAY_MARGIN_M`. Without either, nothing is counted: the Plan of a tile never built
+    left the airports out altogether, 54 textures announced against 114 built (2026-10-15).
+    """
+    params = nodes.dsf.params
+    if not isinstance(params, DsfParams):
+        return [], ""
+    mode = params.cover_airports_with_highres
+    if mode not in ("True", "ICAO"):
+        return [], ""
+    tile = nodes.spec.tile
+    boxes: list[tuple[float, float, float, float]] = []  # west, south, east, north
+    source = ""
+    vectors = entries.get(nodes.vectors.id)
+    if vectors is not None and vectors.status == "hit" and vectors.key is not None:
+        try:
+            covers = airport_covers(env.store.path(vectors.key))
+        except OsxpError:
+            covers = None
+        if covers is not None:
+            source = "map"
+            for c in covers:
+                if mode == "True" or c.is_icao:
+                    boxes.append(
+                        (tile.lon + c.xmin, tile.lat + c.ymin, tile.lon + c.xmax, tile.lat + c.ymax)
+                    )
+    if not source and airports is not None:
+        pad = AIRPORT_SEARCH_PAD_DEG
+        try:
+            found = airports.in_bounds(
+                tile.lon - pad,
+                tile.lat - pad,
+                tile.lon + 1 + pad,
+                tile.lat + 1 + pad,
+                limit=10_000,
+                kinds=["land"],
+                icao_only=mode == "ICAO",
+            )
+        except (OSError, sqlite3.Error):
+            found = None
+        if found is not None:
+            source = "list"
+            dx, dy = RUNWAY_MARGIN_M * m_to_lon(tile.lat), RUNWAY_MARGIN_M * M_TO_LAT
+            for a in found:
+                south, west, north, east = a.runways or (a.lat, a.lon, a.lat, a.lon)
+                boxes.append((west - dx, south - dy, east + dx, north + dy))
+    extent = 1000 * params.cover_extent
+    dx, dy = extent * m_to_lon(tile.lat), extent * M_TO_LAT
+    zones = []
+    for west, south, east, north in boxes:
+        w, s, e, n = west - dx, south - dy, east + dx, north + dy
+        zones.append([[s, w, s, e, n, e, n, w], params.cover_zl, nodes.spec.provider])
+    return zones, source
+
+
+def _tile_textures(
+    env: BuildEnv,
+    nodes: TileNodes,
+    entries: dict[str, PlanEntry],
+    airports: AirportIndex | None = None,
+) -> tuple[list[TextureId], bool, int | None, int, int, str, bool]:
+    """``(textures, exact, masked, zone textures, airport textures, airports read from, from the
+    last build)`` of one tile.
+
+    Exact when the DSF is in the store (its texture list, zones and airports included). When the
+    steps before it are still to make, the list of the tile's last build with the same settings
+    (:func:`_last_made`): an update that changes the map or the terrain leaves the images where
+    they were. Otherwise an upper bound: every texture of the tile at its level, then, for each
+    ``zone_list`` entry,
+    the textures at the entry's level whose square overlaps what the entries before it leave of it
+    (``orthostudio.zones.zone_list_textures``), then those of the airports the build makes sharper
+    (:func:`_airport_zones`), each not already counted.
     """
     spec = nodes.spec
     dsf_entry = entries.get(nodes.dsf.id)
-    if dsf_entry is not None and dsf_entry.status == "hit" and dsf_entry.key is not None:
-        path = env.store.path(dsf_entry.key) / TEXTURES_JSON
+    dsf_key = dsf_entry.key if dsf_entry is not None and dsf_entry.status == "hit" else None
+    if dsf_key is None:
+        # an update that changed only how the DSF is written: the textures it names are the same
+        dsf_key = _earlier_build(env, nodes.dsf, entries)
+    last = False
+    if dsf_key is None:
+        # an update that changed a step before it: the tile's last build names them
+        dsf_key = _last_made(env, nodes.dsf)
+        last = dsf_key is not None
+    if dsf_key is not None:
+        path = env.store.path(dsf_key) / TEXTURES_JSON
         if path.is_file():
             jobs = texture_jobs_from_json(path)
             masked = sum(1 for j in jobs if j.has_sea)
-            return [j.texture for j in jobs], True, masked, 0
+            return [j.texture for j in jobs], not last, masked, 0, 0, "", last
     lat, lon = spec.tile.lat, spec.tile.lon
     textures = textures_covering(lat + 1, lon, lat, lon + 1, spec.zl, spec.provider)
     zone_list = spec.config.get("zone_list") or ()
     extra = sorted(zone_list_textures(zone_list, spec.tile) - set(textures)) if zone_list else []
-    return textures + extra, False, None, len(extra)
+    apt_zones, source = _airport_zones(env, nodes, entries, airports)
+    counted = set(textures) | set(extra)
+    apt = sorted(zone_list_textures(apt_zones, spec.tile) - counted) if apt_zones else []
+    return textures + extra + apt, False, None, len(extra), len(apt), source, False
+
+
+def _input_digests(
+    env: BuildEnv, node: Any, entries: dict[str, PlanEntry], given: dict[str, str] | None = None
+) -> dict[str, str | None] | None:
+    """The digests of ``node``'s inputs as its key takes them, ``given`` replacing some; None when
+    one of them is not in the store yet."""
+    inputs: dict[str, str | None] = {}
+    for name, dep in node.inputs.items():
+        if given and name in given:
+            inputs[name] = given[name]
+        elif dep is None:
+            inputs[name] = None
+        elif isinstance(dep, ArtifactRef):
+            inputs[name] = dep.digest
+        else:
+            e = entries.get(dep.id)
+            digest = env.store.digest_of(e.key) if e is not None and e.key is not None else None
+            if digest is None:
+                return None
+            inputs[name] = digest
+    return inputs
+
+
+def _earlier_build(
+    env: BuildEnv, node: Any, entries: dict[str, PlanEntry], given: dict[str, str] | None = None
+) -> str | None:
+    """The key of what ``node``'s rule made of the same params and inputs, at this version or an
+    earlier one, when the store still holds it: a step that runs again only because its rule
+    changed, as after an update. Rules 1.1.0 changed write every tile's DSF again, and the Plan
+    then counted every image as to prepare again, 53.5 GB for fifteen tiles whose images were all
+    in the cache, and refused the build for want of twice that free (2026-10-16)."""
+    inputs = _input_digests(env, node, entries, given)
+    if inputs is None:
+        return None
+    params = node.params.canonical()
+    for version in range(node.rule.version, 0, -1):
+        key, _ = artifact_key(node.rule.name, version, params, inputs)
+        if env.store.has(key):
+            return key
+    return None
+
+
+def _last_made(env: BuildEnv, node: Any, given: dict[str, str] | None = None) -> str | None:
+    """What ``node``'s rule made the last time for the same params, whatever its inputs but those
+    ``given``: the tile's last build with the same settings, when the steps before it are still
+    to make and :func:`_earlier_build` cannot match their inputs. The map's rule 1.1.0 changed
+    made the Plan count every image of fifteen tiles as to prepare again, 50 GB, and refuse the
+    build for want of twice that free, their images all in the cache (2026-10-16)."""
+    return env.store.last_made(node.rule.name, node.params.canonical(), node.rule.version, given)
+
+
+def _textures_kept(env: BuildEnv, nodes: TileNodes, entries: dict[str, PlanEntry]) -> set[str]:
+    """The textures of the tile a build takes from the store as they are: those an earlier build
+    prepared from the same params and masks, its DSF made of the same inputs (`_earlier_build`),
+    whose DDS the store still holds (the build's ``texture.dds`` hits). Empty when there is no
+    such build.
+
+    When the steps before the DSF are still to make, the tile's last build with the same settings
+    (`_last_made`) stands in: what the store says, the most likely. A water mask made again may
+    still change a few images, which the build then prepares: a figure, not a promise."""
+    dsf = _earlier_build(env, nodes.dsf, entries)
+    last = dsf is None
+    if last:
+        dsf = _last_made(env, nodes.dsf)
+    digest = env.store.digest_of(dsf) if dsf is not None else None
+    if dsf is None or digest is None:
+        return set()
+    if last:
+        textures = _last_made(env, nodes.textures, {"dsf": digest})
+    else:
+        textures = _earlier_build(env, nodes.textures, entries, {"dsf": digest})
+    if textures is None:
+        return set()
+    path = env.store.path(textures) / "manifest.json"
+    try:
+        manifest = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return set()
+    return {
+        str(t.get("name"))
+        for t in manifest.get("textures", [])
+        if t.get("status") in ("built", "hit") and t.get("key") and env.store.has(str(t["key"]))
+    }
+
+
+def _other_gb(env: BuildEnv, nodes: TileNodes, entries: dict[str, PlanEntry]) -> float:
+    """What the steps of the tile to run write besides the images, in GB: for each, the size of
+    what it made the last time from the same params and inputs (`_earlier_build`), or from the
+    same params when its inputs are still to make (`_last_made`), the store knowing it;
+    :data:`OTHER_ARTEFACTS_GB` once when one of them has no such artefact (a tile never built
+    here, or built with other settings). Build again of fifteen
+    tiles after an update counted 3.75 GB this way, a flat 0.25 GB each, for 0.9 GB written, the
+    new DSFs alone (2026-10-16)."""
+    total = 0
+    unknown = False
+    for role, node in nodes.by_role.items():
+        e = entries.get(node.id)
+        if e is None or e.status == "hit" or role in LINKED_ROLES:
+            continue
+        earlier = _earlier_build(env, node, entries) or _last_made(env, node)
+        info = env.store.info(earlier) if earlier is not None else None
+        if info is None:
+            unknown = True
+            continue
+        total += info.size
+    return total / 1e9 + (OTHER_ARTEFACTS_GB if unknown else 0.0)
 
 
 def estimate(
@@ -318,11 +542,18 @@ def estimate(
     online: bool = False,
     env: BuildEnv | None = None,
     probe: ProbeResult | None = None,
+    airports: AirportIndex | None = None,
 ) -> Estimate:
-    """Plan the build of ``specs`` (spec section 5); ``online`` runs the 20-request probe."""
+    """Plan the build of ``specs`` (spec section 5); ``online`` runs the 20-request probe.
+    ``airports`` (X-Plane's list) places the airports of a tile whose map data is not read yet."""
     env = env if env is not None else BuildEnv.create(specs)
     scheduler = make_scheduler(env.store, env, cpu_in_threads=True)
-    graphs = declare(specs, scheduler, env, planning=True)
+    # The OSM snapshots the store already holds, found as the build finds them (no network): a
+    # tile built before plans as built, where a placeholder for its layers made every node after
+    # them "to build" and its photos a download (343 MB for two tiles built a minute before,
+    # 2026-10-15). A tile with none plans its layers as still to fetch.
+    stored = stored_osm_refs(specs, env)
+    graphs = declare(specs, scheduler, env, planning=True, osm_artefacts=stored)
     entries = {e.node_id: e for e in scheduler.plan([g.target.id for g in graphs])}
     per_texture_entry = scheduler.costs.entry(PER_TEXTURE_COST)
     per_texture = per_texture_entry.ewma if per_texture_entry else DEFAULT_PER_TEXTURE_S
@@ -339,9 +570,16 @@ def estimate(
             for role, node in g.by_role.items()
             if (e := entries.get(node.id)) is not None
         ]
-        textures, exact, masked, zone_textures = _tile_textures(env, g, entries)
+        textures, exact, masked, zone_textures, apt_textures, apt_source, last = _tile_textures(
+            env, g, entries, airports
+        )
         notes: list[str] = []
-        if not exact:
+        if last:
+            notes.append(
+                "texture list and images of the tile's last build with the same settings: the "
+                "steps before the DSF are to make again"
+            )
+        elif not exact:
             notes.append(
                 "texture count is the whole tile (no DSF in the store yet): sea-only cells "
                 "produce no texture and every texture is counted as DXT1"
@@ -352,20 +590,39 @@ def estimate(
                 "texture a zone overlaps, while the tile's own textures under the zones stay "
                 "counted (an upper bound)"
             )
-        requests = _requests_for(chunks, textures)
+        if apt_textures:
+            where = (
+                "their outline in the tile's map data"
+                if apt_source == "map"
+                else f"X-Plane's airport list: their runways and {RUNWAY_MARGIN_M:.0f} m around, "
+                "until the tile's map data is read"
+            )
+            notes.append(
+                f"{apt_textures} texture(s) added for the airports made sharper, from {where}"
+            )
+        tex_entry = entries.get(g.textures.id)
+        textures_build = tex_entry is None or tex_entry.status != "hit"
+        # the images already prepared the same way are taken as they are, not prepared again
+        kept = _textures_kept(env, g, entries) if textures_build else set()
+        fresh = [t for t in textures if texture_name(t) not in kept] if textures_build else []
+        to_prepare = len(fresh) if textures_build else 0
+        # the pieces to download are those of the images to prepare: one taken as it is reads none.
+        # Every container of every image was read, all of them kept: Build again of eighteen tiles
+        # took 16 s to ask its question, from a hard disk, to download nothing (2026-10-16)
+        requests = _requests_for(chunks, fresh)
         if requests and first_probe_texture is None:
-            for t in textures:
+            for t in fresh:
                 c = chunks.read(t) if chunks.has(t) else None
                 if c is None or c.indices(ChunkStatus.ERROR):
                     first_probe_texture = (env.provider(t.provider), t)
                     break
-        tex_entry = entries.get(g.textures.id)
-        textures_build = tex_entry is None or tex_entry.status != "hit"
         compute = sum(p.seconds for p in plans if p.status != "hit" and p.role != "textures")
         if textures_build:
-            compute += len(textures) * per_texture
+            compute += to_prepare * per_texture
         n_masked = masked or 0
         dds_bytes = n_masked * BC3_BYTES + (len(textures) - n_masked) * BC1_BYTES
+        if textures and to_prepare < len(textures):
+            dds_bytes = dds_bytes * to_prepare / len(textures)
         tiles.append(
             TileEstimate(
                 tile=spec.tile.name,
@@ -375,13 +632,15 @@ def estimate(
                 textures_total=len(textures),
                 textures_exact=exact,
                 textures_masked=masked,
-                requests=requests if textures_build else 0,
+                requests=requests,
                 download_mb=0.0,
                 dds_gb=dds_bytes / 1e9 if textures_build else 0.0,
                 compute_s=compute,
                 network_s=0.0,
                 notes=notes,
                 textures_zones=zone_textures,
+                textures_airports=apt_textures,
+                other_gb=_other_gb(env, g, entries),
             )
         )
     if probe is None and online and first_probe_texture is not None:
@@ -397,8 +656,7 @@ def estimate(
         free = shutil.disk_usage(env.store_root).free / 1e9
     except OSError:
         free = 0.0
-    needed = sum(t.dds_gb + t.download_mb / 1000.0 for t in tiles)
-    needed += OTHER_ARTEFACTS_GB * sum(1 for t in tiles if t.builds)
+    needed = sum(t.dds_gb + t.download_mb / 1000.0 + t.other_gb for t in tiles)
     return Estimate(
         tiles=tiles,
         probe=probe,
@@ -427,6 +685,8 @@ def render_text(est: Estimate) -> str:
         masked = "" if t.textures_masked is None else f", {t.textures_masked} masked"
         if t.textures_zones:
             masked += f", {t.textures_zones} for the zones"
+        if t.textures_airports:
+            masked += f", {t.textures_airports} for the airports"
         lines.append(
             f"{t.tile} {t.provider}{t.zl}: {t.textures_total} textures ({exact}{masked}), "
             f"{t.requests} requests ({t.download_mb:.0f} MB), {t.dds_gb:.2f} GB of DDS; "
@@ -449,7 +709,7 @@ def render_text(est: Estimate) -> str:
             parts.append(f"textures {t.textures_total} x {est.per_texture_s:.2f} s")
         detail = ", ".join(parts) if parts else "everything is in the store"
         lines.append(
-            f"  compute: your Mac    ~{_fmt_s(t.compute_s)} ({est.workers} workers; {detail})"
+            f"  compute: your computer ~{_fmt_s(t.compute_s)} ({est.workers} workers; {detail})"
         )
         for note in t.notes:
             lines.append(f"  note: {note}")

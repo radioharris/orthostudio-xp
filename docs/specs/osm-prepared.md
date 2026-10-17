@@ -184,6 +184,12 @@ loop of its own, where a session per tile opened new connections for every tile:
 handshake, then a transfer that starts slowly and speeds up one round trip at a time. From
 California a round trip to the server takes some 150 ms, and that was most of a tile's few
 seconds (2026-09-25). HTTP/1.1 stays pinned, for the stall HTTP/2 showed on the larger files.
+They do not survive a change of network: after a VPN was switched on, the first tile waited
+18.5 s for them, the next ones 0.9 and 1.8 s (2026-10-15). Before each request the engine asks
+where this computer would send from to reach the server (`library._route_mark`: a UDP socket
+connected, no packet sent, the same on macOS, Windows and Linux); when that changed since the
+connections were made, they are dropped for new ones, and `serve.log` says "the network
+changed". The same switch then cost the first tile 0.5 s, and switching the VPN off 0.4 s.
 
 Not answering is not the same as refusing the key. A 401 or a 403 closes the library for the run,
 because the same key will be refused at the next tile; anything else, a 502, a cut connection, a

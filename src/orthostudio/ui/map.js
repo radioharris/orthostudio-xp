@@ -14,7 +14,7 @@
 // shape being drawn live here.
 
 import { adjustImageData, photoValues } from "./colour.js";
-import { fmtGround, fmtMB, fmtNum, t } from "./i18n.js";
+import { fmtGround, fmtInt, fmtMB, fmtNum, t } from "./i18n.js";
 import { mockPhoto } from "./preview.js";
 import { sourceCovers, sourceGroups, sourceGroupTitle, sourceLabel } from "./sources.js";
 import {
@@ -62,6 +62,8 @@ export const LABEL_MIN_ZOOM = 7;
 export const ZONE_MIN_ZOOM = 9;
 export const DEFAULT_ZONE_ZL = 18;
 const SAVE_DELAY_MS = 500;
+/** How long the zones must stay as they are before the squares they take are asked again. */
+const AREAS_DELAY_MS = 400;
 const MAX_LABELS = 400;
 const EUROPE = [[36, -10], [60, 25]];
 const WORLD = [[-85.06, -180], [85.06, 180]];
@@ -324,6 +326,12 @@ export function createPlanMap(ctx) {
     // zone id → {reason, source}: "document" for the file's problems and the refusals of a save
     // (a successful save clears them), "build" for the refusals of a plan or a job.
     marks: new Map(),
+    // zone id → {count, area}: the squares of about 1 km each zone will take, as the engine's build
+    // takes them (POST /api/zones/cells), asked again once the zones change (idea 7, 2026-10-11)
+    areas: new Map(),
+    areasKey: "", // the zones and source the areas were asked for
+    areasTimer: 0,
+    areasSeq: 0, // only the answer to the last question is drawn
     hintDone: storageGet(HINT_KEY) === "1",
     installedWanted: storageGet(INSTALLED_KEY) !== "0",
     installedOrtho4xpWanted: storageGet(INSTALLED_ORTHO4XP_KEY) !== "0",
@@ -453,6 +461,14 @@ export function createPlanMap(ctx) {
     return z.zl === ctx.tileZl(tile) && (z.provider || source) === source;
   }
 
+  /** A zone the zones above it in the list cover whole, by the engine's answer (``zone_cells``):
+   * it takes no square, so it adds nothing to download (a user saw "about 45 MB" beside "This zone
+   * takes no square", and counted in the total, 2026-10-16). */
+  function takesNone(z, selectedTiles = new Set(ctx.tiles())) {
+    const area = sharpens(z, selectedTiles) ? zs.areas.get(z.id) : null;
+    return Boolean(area) && area.count === 0;
+  }
+
   /** Approximate extra megabytes of one zone, over every tile it covers (section 7.0.4). */
   function zoneMB(z) {
     let n = 0;
@@ -468,11 +484,13 @@ export function createPlanMap(ctx) {
     const source = ctx.planProvider();
     let own = 0;
     let extra = 0;
+    const selectedTiles = new Set(ctx.tiles());
     for (const tile of ctx.tiles()) {
       own += tileTextureCount(tile, ctx.tileZl(tile));
       const keys = new Set();
       for (const z of zs.zones) {
         if (!usableZl(z.zl) || addsNothingOn(z, tile) || !zoneTiles(z).includes(tile)) continue;
+        if (takesNone(z, selectedTiles)) continue;
         for (const k of zoneKeys(z, tile)) keys.add(`${z.provider || source}|${z.zl}|${k}`);
       }
       extra += keys.size;
@@ -1309,6 +1327,9 @@ export function createPlanMap(ctx) {
     const labels = m.createPane("osxpLabels");
     labels.style.zIndex = "360";
     labels.style.pointerEvents = "none";
+    const areasPane = m.createPane("osxpZoneAreas");
+    areasPane.style.zIndex = "390"; // under the zones' outlines (overlayPane, 400)
+    areasPane.style.pointerEvents = "none";
     m.createPane("osxpTextureGrid").style.zIndex = "440"; // under the shape being drawn
     m.createPane("osxpDraft").style.zIndex = "450";
     const airportsPane = m.createPane("osxpAirports");
@@ -1323,6 +1344,7 @@ export function createPlanMap(ctx) {
     layers.grid = L.layerGroup().addTo(m);
     layers.tiles = L.layerGroup().addTo(m);
     layers.labels = L.layerGroup().addTo(m);
+    layers.zoneAreas = L.layerGroup().addTo(m);
     layers.zones = L.layerGroup().addTo(m);
     layers.textureGrid = L.layerGroup().addTo(m);
     layers.draft = L.layerGroup().addTo(m);
@@ -2137,8 +2159,84 @@ export function createPlanMap(ctx) {
     }
   }
 
+  /** What the areas depend on: the zones in their order, their levels, sources and shapes, and
+   * the tiles' source (a zone without its own takes it). */
+  function areasKeyOf() {
+    return JSON.stringify([ctx.planProvider(), zs.zones.map((z) => [z.id, z.zl, z.provider || "", z.polygon])]);
+  }
+
+  /** Ask the engine again for the squares the zones take, once they have stopped changing. */
+  function scheduleAreas() {
+    if (!zs.loaded) return;
+    const key = areasKeyOf();
+    if (key === zs.areasKey) return;
+    clearTimeout(zs.areasTimer);
+    zs.areasTimer = setTimeout(() => fetchAreas(key), AREAS_DELAY_MS);
+  }
+
+  async function fetchAreas(key) {
+    zs.areasSeq += 1;
+    const mine = zs.areasSeq;
+    const zones = zs.zones.filter((z) => z.polygon.length >= 3).map(zoneForApi);
+    if (!zones.length) {
+      zs.areas = new Map();
+      zs.areasKey = key;
+      renderZoneAreas();
+      return;
+    }
+    try {
+      const answer = await ctx.api("POST", "/api/zones/cells", { zones, provider: ctx.planProvider() });
+      if (mine !== zs.areasSeq) return;
+      zs.areas = new Map((answer?.zones || []).map((z) => [z.id, z]));
+    } catch {
+      // a zone the engine refuses (its level, its shape) is already marked in the list: the
+      // areas are left out rather than shown for a document the build would not take
+      if (mine !== zs.areasSeq) return;
+      zs.areas = new Map();
+    }
+    zs.areasKey = key;
+    renderZoneAreas();
+    renderList();
+    renderSizes();  // a zone that takes no square leaves the total
+  }
+
+  /** The level of the chosen squares a zone falls in (a flight plan may vary it), else step 1's:
+   * what the zone is compared with, by the list's warning and by its area alike. */
+  function tilesZlOf(z, selectedTiles = new Set(ctx.tiles())) {
+    const inside = zoneTiles(z).filter((n) => selectedTiles.has(n));
+    return inside.length ? Math.max(...inside.map(ctx.tileZl)) : Number(ctx.planZl());
+  }
+
+  /** A zone sharper than the tiles it falls in: its squares change what X-Plane shows. A zone at
+   * their level or below only recolours, and its colours follow the outline itself, not the
+   * squares: an area drawn around it said the colours would spread (2026-10-11). */
+  function sharpens(z, selectedTiles) {
+    const level = tilesZlOf(z, selectedTiles);
+    return !Number.isInteger(level) || z.zl > level;
+  }
+
+  /** The squares each zone takes, under its outline: the sharp area as it will be built, which
+   * runs in straight lines up to a square beyond what was drawn. Painted from the end of the
+   * list like the zones, so the first zone's area is on top. */
+  function renderZoneAreas() {
+    if (!map) return;
+    layers.zoneAreas.clearLayers();
+    const selectedTiles = new Set(ctx.tiles());
+    for (let i = zs.zones.length - 1; i >= 0; i -= 1) {
+      const z = zs.zones[i];
+      const a = zs.areas.get(z.id);
+      if (!a || !sharpens(z, selectedTiles)) continue;
+      for (const rings of a.area || []) {
+        const shape = rings.map((ring) => ring.map(([lon, lat]) => [lat, lon]));
+        layers.zoneAreas.addLayer(L.polygon(shape, { pane: "osxpZoneAreas", className: `osxp-zone-area zl-${z.zl}`, interactive: false, weight: 1.5 }));
+      }
+    }
+  }
+
   function renderZones() {
     if (!map) return;
+    scheduleAreas();
+    renderZoneAreas(); // the tiles' level may have moved: which zones sharpen moves with it
     layers.zones.clearLayers();
     // Painted from the end of the list, so the first zone (the one that wins) is on top.
     for (let i = zs.zones.length - 1; i >= 0; i -= 1) {
@@ -2720,7 +2818,7 @@ export function createPlanMap(ctx) {
     const del = button("delete", "×", t("zones.delete", { name: label }), () => removeZone(z.id), false);
 
     const notes = h("div", { class: "zone-notes" });
-    if (usableZl(z.zl)) {
+    if (usableZl(z.zl) && !takesNone(z, selectedTiles)) {
       const mb = zoneMB(z);
       notes.append(h("span", { class: "zone-size num" }, mb > 0 ? t("zones.size", { size: fmtMB(mb) }) : t("zones.size_none")));
     }
@@ -2738,14 +2836,20 @@ export function createPlanMap(ctx) {
       }, t("zones.outside_add", { n: touched.length })));
     }
     // the level of the chosen squares this zone falls in, which a flight plan may vary
-    const inside = touched.filter((n) => selectedTiles.has(n));
-    const tilesZl = inside.length ? Math.max(...inside.map(ctx.tileZl)) : Number(ctx.planZl());
+    const tilesZl = tilesZlOf(z, selectedTiles);
     if (usableZl(z.zl) && Number.isInteger(tilesZl) && z.zl < tilesZl) {
       // Less sharp than the tiles: the area comes out blurrier than the rest of the tile.
       notes.append(h("span", { class: "zone-hint zone-hint-warn" }, t("zones.below_tiles", { level: detailName(tilesZl) })));
     }
     if (!z.provider && source && Number.isInteger(source.max_zl) && z.zl > source.max_zl) {
       notes.append(h("span", { class: "zone-hint zone-hint-warn" }, t("zones.above_source", { provider: source.name || source.code, level: detailName(source.max_zl) })));
+    }
+    const area = sharpens(z, selectedTiles) ? zs.areas.get(z.id) : null;
+    if (area && area.count === 0) {
+      // under the zones above it in the list, which take every square it covers (idea 7)
+      notes.append(h("span", { class: "zone-hint zone-hint-warn" }, t("zones.takes_none")));
+    } else if (area) {
+      notes.append(h("span", { class: "zone-hint num", title: t("zones.cells_title") }, t("zones.cells", { n: fmtInt(area.count) })));
     }
     const mark = zs.marks.get(z.id);
     if (mark) notes.append(h("span", { class: "zone-hint zone-hint-fail" }, t("zones.invalid", { reason: mark.reason })));
@@ -2925,6 +3029,7 @@ export function createPlanMap(ctx) {
     tilesChanged() {
       if (ctx.tiles().length && !zs.hintDone) dismissHint();
       renderGrid();
+      renderZoneAreas(); // a zone sharpens or not against the tiles it falls in
       renderList();
       renderSizes();
       renderHint();
@@ -2933,6 +3038,7 @@ export function createPlanMap(ctx) {
     planChanged() {
       setBaseLayer();
       renderToolOptions();
+      renderZoneAreas();
       renderList();
       renderSizes();
     },

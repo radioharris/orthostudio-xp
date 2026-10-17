@@ -342,7 +342,7 @@ def test_empty_input_gives_an_empty_result() -> None:
 def test_runway_seeds_of_disjoint_polygons_are_one_each() -> None:
     a = geometry.box(0.1, 0.1, 0.2, 0.2)
     b = geometry.box(0.5, 0.5, 0.6, 0.6)
-    assert len(_runway_seeds([a, b])) == 2
+    assert len(_runway_seeds([a, b], 0.0)) == 2
 
 
 def test_the_defaults_are_the_ones_of_ortho4xp() -> None:

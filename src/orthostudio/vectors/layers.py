@@ -26,13 +26,16 @@ Spec: ``docs/specs/vectors-assembly.md`` section 7.
 from __future__ import annotations
 
 import logging
+import re
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 
 import numpy as np
+import shapely
 from numpy.typing import NDArray
+from shapely import geometry
 from shapely.geometry.base import BaseGeometry
 
 from orthostudio.airports_vec.stage import (
@@ -44,17 +47,25 @@ from orthostudio.airports_vec.stage import (
     smooth_elevation,
 )
 from orthostudio.dem.dem import Dem
+from orthostudio.dem.xplane import NODATA_I16, read_elevation_posts
 from orthostudio.errors import OsxpError, Severity
 from orthostudio.model import TileRef
 from orthostudio.sources.osm import SnapshotStore, layers_for
 from orthostudio.vectors import osmdata
 from orthostudio.vectors.assemble import VectorLayer, VectorLayers, to_vector_layers
-from orthostudio.vectors.coast import CoastParams, build_sea_layers
+from orthostudio.vectors.coast import CoastParams, LandShare, build_sea_layers
+from orthostudio.vectors.geom import polygons_of
 from orthostudio.vectors.osmdata import OsmData
 from orthostudio.vectors.patches import build_patch_layers
 from orthostudio.vectors.roads import RoadParams, build_road_layers
 from orthostudio.vectors.rule import LayerBuild
-from orthostudio.vectors.water import WaterParams, build_water_layers
+from orthostudio.vectors.water import (
+    LAT_TO_M,
+    DryAerodromes,
+    WaterParams,
+    build_water_layers,
+    lon_to_m,
+)
 
 __all__ = [
     "LayerCounts",
@@ -226,7 +237,10 @@ def build_layers(request: object) -> LayerBuild:
 
     _no_airport_artefact(request)
     road_level = int(params.road_level)
-    airport_params = _airport_params(int(params.apt_smoothing_pix))
+    airport_params = _airport_params(
+        int(params.apt_smoothing_pix),
+        flatten_helipads=bool(params.flatten_helipads),
+    )
 
     # -- airports, steps 1 to 9 of include_airports (:196-213) -----------------------------
     say(0.05, "airports")
@@ -237,6 +251,7 @@ def build_layers(request: object) -> LayerBuild:
     started = time.perf_counter()
     airport_store = _required(layer_store(source, "airports", on_skip=on_skip), source, "airports")
     timing.read_s += time.perf_counter() - started
+    dry = dry_aerodromes(airport_store, tile)
     started = time.perf_counter()
     airports, airport_counts = build_airports(
         airport_store, tile, airport_params, on_event=on_event
@@ -349,6 +364,7 @@ def build_layers(request: object) -> LayerBuild:
         ),
         dem,
         on_event=on_event,
+        dry=dry,
     )
     water = to_vector_layers("water", water_result.layers, _seeds(water_result.seeds))
     counts["water"] = dict(water_result.counts)
@@ -366,6 +382,8 @@ def build_layers(request: object) -> LayerBuild:
         tile,
         CoastParams(),
         sea_equiv=water_result.sea_equiv,
+        land=xp_land_share(getattr(request, "global_scenery", None), tile),
+        dry=dry,
     )
     coastline = to_vector_layers(
         "coastline",
@@ -379,6 +397,21 @@ def build_layers(request: object) -> LayerBuild:
         "polygons": coast_result.stats.sea_polygons,
         "seeds": coast_result.stats.seeds,
     }
+    if not coast_result.dry.is_empty:
+        counts["coastline"]["dry"] = len(polygons_of(coast_result.dry))
+    if coast_result.on_land is not None:
+        counts["coastline"]["on_land_percent"] = round(100 * coast_result.on_land)
+        on_event(
+            OsxpError(
+                "OSM_COAST_ON_LAND",
+                context={
+                    "tile": tile.name,
+                    "share": f"{coast_result.on_land:.0%}",
+                    "where": " ".join(f"{lat},{lon}" for lat, lon in coast_result.on_land_at)
+                    or "the tile's border",
+                },
+            )
+        )
     timing.coastline_s = time.perf_counter() - started
 
     log.info(
@@ -402,15 +435,17 @@ def build_layers(request: object) -> LayerBuild:
     )
 
 
-def _airport_params(smoothing_pix: int) -> AirportParams:
-    """The airport constants of this run; only the smoothing width comes from the tile.
+def _airport_params(smoothing_pix: int, *, flatten_helipads: bool = True) -> AirportParams:
+    """The airport constants of this run: the smoothing width and whether helipads are flat.
 
     A sweep of ``O4_Airport_Utils.py`` for ``tile.<attribute>`` finds ``dem``, ``lat``,
     ``lon`` and ``apt_smoothing_pix``, and only the last is configuration
     (``docs/specs/airports-integration.md`` 5). Every other number of the chain is hard-coded
-    in Ortho4XP and lives in the dataclasses of :mod:`orthostudio.airports_vec.stage`.
+    in Ortho4XP and lives in the dataclasses of :mod:`orthostudio.airports_vec.stage`;
+    ``flatten_helipads`` is OrthoStudio XP's own (idea #8).
     """
-    return replace(DEFAULT_AIRPORT_PARAMS, smoothing_pix=smoothing_pix)
+    encode = replace(DEFAULT_AIRPORT_PARAMS.encode, flatten_helipads=flatten_helipads)
+    return replace(DEFAULT_AIRPORT_PARAMS, smoothing_pix=smoothing_pix, encode=encode)
 
 
 def _required(store: OsmData | None, source: OsmSource, layer: str) -> OsmData:
@@ -446,6 +481,88 @@ def _no_airport_artefact(request: object) -> None:
         "itself, from the aeroway layer of its osm input.",
         remedy="Leave the airports input unset.",
     )
+
+
+def dry_aerodromes(store: OsmData, tile: TileRef) -> DryAerodromes | None:
+    """The aerodromes OpenStreetMap draws with a runway out of the water and none on it,
+    tile-local, and their runways, taxiways and aprons: the water inside their outline that these
+    enter is taken out of it (``aerodrome-dry.md``). ``None`` when there is none.
+
+    A seaplane base keeps its water, and so does an aerodrome with a water runway beside its land
+    ones: Fairbanks' and Kenai's taxiways run into their float ponds (census, 2026-10-14). An
+    aerodrome drawn as a point has no outline and changes nothing."""
+    outlines = [item.polygon for item in store.multipolygons_with([("aeroway", "aerodrome")])]
+    if not outlines:
+        return None
+    kinds = [("aeroway", kind) for kind in ("runway", "taxiway", "taxilane", "apron")]
+    found: list[tuple[str, bool, BaseGeometry]] = [
+        (way.tags.get("aeroway", ""), _water_runway(way.tags), geometry.LineString(way.coords))
+        for way in store.ways_with(kinds)
+    ]
+    found += [
+        (item.tags.get("aeroway", ""), _water_runway(item.tags), item.polygon)
+        for item in store.multipolygons_with(kinds)
+    ]
+    land = [g for kind, wet, g in found if kind == "runway" and not wet]
+    water = [g for kind, wet, g in found if kind == "runway" and wet]
+    kept = [
+        outline
+        for outline in outlines
+        if any(outline.intersects(r) for r in land)
+        and not any(outline.intersects(r) for r in water)
+    ]
+    if not kept:
+        return None
+    surfaces = shapely.union_all([g for _, wet, g in found if not wet])
+    return DryAerodromes(shapely.union_all(kept), surfaces, (lon_to_m(tile.lat + 0.5), LAT_TO_M))
+
+
+def _water_runway(tags: Mapping[str, str]) -> bool:
+    """A runway for seaplanes: ``surface=water``, or ends named the way water runways are, a ``W``
+    after the number (``02W/20W``): Kenai's is tagged ``surface=unpaved``."""
+    if tags.get("aeroway") != "runway":
+        return False
+    if tags.get("surface") == "water":
+        return True
+    ends = [end.strip() for end in tags.get("ref", "").split("/")]
+    return any(re.fullmatch(r"\d{1,2}[LRC]?W", end) for end in ends if end)
+
+
+#: X-Plane's elevation posts are read one in this many each way: 301 x 301 points, a share to
+#: well under a percent (the guard's margin is from 0.5 % to 100 %).
+LAND_STRIDE = 4
+
+
+def xp_land_share(dsf: Path | None, tile: TileRef) -> LandShare | None:
+    """The share of an area X-Plane's own scenery draws as land, from the elevation of the tile's
+    Global Scenery DSF: land is above 0.5 m, X-Plane's sea being at 0 m (a sea below it, the
+    Caspian at -28 m, is no land). The DSF is read only when asked, which only a tile whose
+    coastline would make it all sea does. ``None`` without the DSF, or when it cannot be read:
+    the coastline is then taken as it is, as always."""
+    if dsf is None:
+        return None
+    posts: list[NDArray[np.float32]] = []
+
+    def share(area: BaseGeometry) -> float | None:
+        if not posts:
+            try:
+                posts.append(read_elevation_posts(dsf, tile.lat, tile.lon))
+            except OsxpError as exc:
+                log.info("%s: X-Plane's land could not be read (%s)", tile.name, exc.code)
+                return None
+        full = posts[0]  # rows north to south, columns west to east, edges included
+        rows = np.arange(0, full.shape[0], LAND_STRIDE)
+        cols = np.arange(0, full.shape[1], LAND_STRIDE)
+        z = full[np.ix_(rows, cols)]
+        y, x = np.meshgrid(
+            1.0 - rows / (full.shape[0] - 1), cols / (full.shape[1] - 1), indexing="ij"
+        )
+        inside = shapely.contains_xy(area, x, y) & (z > NODATA_I16)
+        if not inside.any():
+            return None
+        return float((z[inside] > 0.5).mean())
+
+    return share
 
 
 def stores_of(source: OsmSource, names: Sequence[str]) -> list[OsmData]:

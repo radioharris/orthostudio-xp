@@ -174,8 +174,12 @@ class Dem:
         custom_dem: str = "",
         fill_nodata: FillNodata = "nearest",
         on_event: Callable[[OsxpError], None] | None = None,
+        own_first: bool = False,
     ) -> Dem:
-        """Load, assemble and fill the raster of ``tile`` (``DEM.__init__``, ``:38-70``)."""
+        """Load, assemble and fill the raster of ``tile`` (``DEM.__init__``, ``:38-70``).
+
+        ``own_first``: a file of one's own is laid even where it is coarser than the relief under
+        it (Settings, idea 9, 2026-10-11); see :func:`_lay_into`."""
         events: list[OsxpError] = []
 
         def record(err: OsxpError) -> None:
@@ -238,7 +242,7 @@ class Dem:
             # overlay. Kept beside it, a user's own file was found, keyed and then quietly
             # dropped: the scenery came out of the base alone (found 2026-09-19 on a build of
             # +46+006 whose lidar file changed nothing).
-            _lay_into(dem, overlays, record)
+            _lay_into(dem, overlays, record, own_first=own_first)
             # their rasters are in the base now: a lidar square is 3 GB, not to be held on to
             # while the raster is saved
             overlays.clear()
@@ -561,7 +565,11 @@ def _file_step(dem: Dem) -> float:
 
 
 def _lay_into(
-    base: Dem, overlays: Sequence[tuple[str, Dem]], record: Callable[[OsxpError], None]
+    base: Dem,
+    overlays: Sequence[tuple[str, Dem]],
+    record: Callable[[OsxpError], None],
+    *,
+    own_first: bool = False,
 ) -> None:
     """Write the overlays into the base raster, the last one first in line, in place.
 
@@ -572,9 +580,19 @@ def _lay_into(
     points out of three, and the American sets of one's own are made from that very source
     (a user asked what happens when he has both, 2026-09-20). The base has been filled by then,
     so nothing interpolates a void.
+
+    With ``own_first``, a file of one's own is laid even where it is coarser: a pilot whose files
+    were coarser than the relief chosen in Settings wanted them all the same (idea 9, 2026-10-11).
+    It is then interpolated between its own points (:func:`_lay_one_smooth`), since the nearest
+    point would repeat each of them over several points of the finer grid, in steps.
     """
     under = _file_step(base)
-    coarse = [(name, over) for name, over in overlays if _file_step(over) > under * 1.000001]
+    coarse_own: list[tuple[str, Dem]] = []
+    coarse = []
+    for name, over in overlays:
+        if _file_step(over) <= under * 1.000001:
+            continue
+        (coarse_own if own_first and _is_own(over) else coarse).append((name, over))
     for name, over in coarse:
         own_m, base_m = _file_step(over) * 111_320, under * 111_320
         _tell_own(base, over, used=False, why="coarser", own_m=round(own_m), base_m=round(base_m))
@@ -590,9 +608,21 @@ def _lay_into(
                 },
             )
         )
-    overlays = [pair for pair in overlays if pair not in coarse]
-    if not overlays:
+    overlays = [pair for pair in overlays if pair not in coarse and pair not in coarse_own]
+    if not overlays and not coarse_own:
         base.laid_over = ()
+        return
+    laid: list[str] = []
+    for name, over in coarse_own:
+        # first, so that a finer overlay after it still wins where both have data
+        if _lay_one_smooth(base, over):
+            _tell_own(base, over, used=True, coarser=True)
+            laid.append(name)
+            base.cells = (*base.cells, *over.cells)
+        else:
+            _tell_own(base, over, used=False, why="empty")
+    if not overlays:
+        base.laid_over = tuple(laid)
         return
     finest = min(_file_step(dem) for _name, dem in overlays)
     if finest < _step_of(base):
@@ -621,7 +651,6 @@ def _lay_into(
                     },
                 )
             )
-    laid: list[str] = []
     for name, over in overlays:
         points = _lay_one(base, over)
         if not points:
@@ -639,11 +668,16 @@ def _lay_into(
     base.laid_over = tuple(laid)
 
 
+def _is_own(over: Dem) -> bool:
+    """A file of one's own, not a source laid as an overlay (Canada's lidar)."""
+    return over.source not in GEOMETRY and over.source not in SOURCES
+
+
 def _tell_own(base: Dem, over: Dem, **fate: object) -> None:
     """Note in ``base.own`` what became of ``over`` when it is a file of one's own. A source laid
     as an overlay (Canada's lidar) is not: what it holds for a square is the service's business,
     and the Library names it as it is."""
-    if over.source in GEOMETRY or over.source in SOURCES:
+    if not _is_own(over):
         return
     cell = over.cells[0] if over.cells else None
     file = str(cell.path) if cell is not None and cell.path is not None else over.source
@@ -700,6 +734,45 @@ def _lay_one(base: Dem, over: Dem) -> int:
         here = rows[start:stop]
         region = base.alt_dem[np.ix_(here, cols)]
         region[has] = patch[has]
+        base.alt_dem[np.ix_(here, cols)] = region
+        written += int(has.sum())
+    return written
+
+
+def _lay_one_smooth(base: Dem, over: Dem) -> int:
+    """One overlay coarser than the base into it, interpolated between its four nearest points
+    (bilinear) where all four have data, and its nearest point where only that one has."""
+    ys = np.linspace(base.y1, base.y0, base.nydem)
+    xs = np.linspace(base.x0, base.x1, base.nxdem)
+    rows = np.nonzero((ys >= over.y0) & (ys <= over.y1))[0]
+    cols = np.nonzero((xs >= over.x0) & (xs <= over.x1))[0]
+    if rows.size == 0 or cols.size == 0 or over.nxdem < 2 or over.nydem < 2:
+        return _lay_one(base, over)
+    fy = (over.y1 - ys[rows]) / (over.y1 - over.y0) * (over.nydem - 1)
+    fx = (xs[cols] - over.x0) / (over.x1 - over.x0) * (over.nxdem - 1)
+    r0 = np.clip(np.floor(fy).astype(np.int64), 0, over.nydem - 2)
+    c0 = np.clip(np.floor(fx).astype(np.int64), 0, over.nxdem - 2)
+    dy = np.clip(fy - r0, 0.0, 1.0).astype(np.float32)[:, None]
+    dx = np.clip(fx - c0, 0.0, 1.0).astype(np.float32)[None, :]
+    near_r = np.clip(np.rint(fy).astype(np.int64), 0, over.nydem - 1)
+    near_c = np.clip(np.rint(fx).astype(np.int64), 0, over.nxdem - 1)
+    src, void = over.alt_dem, np.float32(over.nodata)
+    written = 0
+    for start in range(0, rows.size, ROWS_AT_A_TIME):
+        stop = min(start + ROWS_AT_A_TIME, rows.size)
+        r, d = r0[start:stop], dy[start:stop]
+        a, b = src[np.ix_(r, c0)], src[np.ix_(r, c0 + 1)]
+        c, e = src[np.ix_(r + 1, c0)], src[np.ix_(r + 1, c0 + 1)]
+        smooth = (a * (1 - dx) + b * dx) * (1 - d) + (c * (1 - dx) + e * dx) * d
+        all_four = (a != void) & (b != void) & (c != void) & (e != void)
+        nearest = src[np.ix_(near_r[start:stop], near_c)]
+        value = np.where(all_four, smooth, nearest)
+        has = all_four | (nearest != void)
+        if not has.any():
+            continue
+        here = rows[start:stop]
+        region = base.alt_dem[np.ix_(here, cols)]
+        region[has] = value[has]
         base.alt_dem[np.ix_(here, cols)] = region
         written += int(has.sum())
     return written

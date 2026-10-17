@@ -211,6 +211,15 @@ _SPECS: tuple[ErrorSpec, ...] = (
         "Free disk space or fix permissions on the cache directory; the build continues.",
     ),
     _spec(
+        "OSM_COAST_ON_LAND",
+        _D,
+        _C,
+        "The OSM coastline of tile {tile} would make it all sea where X-Plane draws land "
+        "({share} of it): it is ignored, the tile is land.",
+        "Nothing to do. To help others, check the natural=coastline way near {where} in "
+        "OpenStreetMap: it is usually a building, an island in a river or a lake.",
+    ),
+    _spec(
         "OSM_COAST_OPEN_END",
         _B,
         _S,
@@ -878,6 +887,13 @@ _SPECS: tuple[ErrorSpec, ...] = (
         "Generate a flight plan on simbrief.com, then try again.",
     ),
     _spec(
+        "CFG_PLAN_FILE_INVALID",
+        _B,
+        _S,
+        "The flight plan {file} could not be read: {reason}.",
+        "Choose a plan saved by Little Navmap (.lnmpln) or exported for X-Plane (.fms).",
+    ),
+    _spec(
         "CFG_LATLON_INVALID",
         _B,
         _S,
@@ -1014,6 +1030,21 @@ _SPECS: tuple[ErrorSpec, ...] = (
         _S,
         "Build cancelled by the user.",
         "Nothing to do; the build resumes from the last completed node.",
+    ),
+    _spec(
+        "SYS_BUILD_INTERRUPTED",
+        _B,
+        _S,
+        "OrthoStudio XP stopped during this build: closed by force, a crash or a power cut.",
+        "What was built is kept: Build again goes on from there.",
+    ),
+    _spec(
+        "SYS_BUILD_NOT_STARTED",
+        _B,
+        _S,
+        "OrthoStudio XP stopped before this build could start: closed by force, a crash or a "
+        "power cut.",
+        "Nothing was built: Build again starts it.",
     ),
     _spec(
         "SYS_UPSTREAM_FAILED",

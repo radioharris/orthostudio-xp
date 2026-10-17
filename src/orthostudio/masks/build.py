@@ -46,6 +46,7 @@ from orthostudio.masks.water import (
 )
 from orthostudio.mesh.mesh_file import MeshData
 from orthostudio.model import TileRef
+from orthostudio.parentwatch import leave_with_parent
 
 __all__ = [
     "DEFAULT_START_METHOD",
@@ -372,7 +373,9 @@ def build_masks(
             index.cell_seconds.append(seconds)
     else:
         context = get_context(start_method())
-        with ProcessPoolExecutor(max_workers=n_workers, mp_context=context) as pool:
+        with ProcessPoolExecutor(
+            max_workers=n_workers, mp_context=context, initializer=leave_with_parent
+        ) as pool:
             futures = [pool.submit(_run_and_write, payload) for payload in payloads]
             try:
                 for future in futures:

@@ -20,6 +20,7 @@ import dataclasses
 import datetime as dt
 import json
 import logging
+import math
 import os
 import shutil
 import signal
@@ -78,6 +79,7 @@ from orthostudio.mesh.build import mesh_file_name
 from orthostudio.mesh.mesh_file import read_mesh, read_mesh_npz
 from orthostudio.mesh.rule import OSXP_MESH, MeshJob, mesh_job
 from orthostudio.mesh.rule import MeshParams as OsxpMeshParams
+from orthostudio.meter import counting
 from orthostudio.model import OVERLAY_PACK, ArtifactRef, TileRef
 from orthostudio.overlays import OverlayExclusions, build_overlay_detailed, find_dsftool
 from orthostudio.overlays.source import resolve_global_scenery_dir
@@ -1155,8 +1157,16 @@ def _tile_textures(ctx: RunContext) -> None:
             quiet=True,
             cancel=stop,
             fsync=env.store.fsync,
+            wrote=node.wrote,
         )
         report: TexturesReport = build_textures(spec)
+        # what this group really received and prepared, for Works' report: the pieces the cache
+        # kept are counted as written (spec.wrote), the images the workers committed here
+        node.fetched(int(report.network.get("bytes", 0) or 0))
+        for o in report.outcomes:
+            info = env.store.info(o.key) if o.status == "built" and o.key else None
+            if info is not None:
+                node.wrote(info.size)
         env.logs.mkdir(parents=True, exist_ok=True)
         write_report(report, env.logs / f"textures-{tile.name}-{code}{zl}-{ctx.key[:12]}.json")
         if report.cancelled:
@@ -1253,7 +1263,9 @@ TILE_DSF: Rule = rule(
     # 3: the triangles the rounding of the DSF leaves with no area or turned over are no longer
     # written (``dsf.encode._flat_or_reversed``): a tile built before keeps its vertical faces in
     # the store, and only a new key gets them out when it is built again (2026-10-09).
-    version=3,
+    # 4: a water node closer than 1 m to the shore is shallow (``dsf/bathy.near_shore``): the
+    # deep ones there drew blue triangles and needles along Groom Lake's cut (KXTA, 2026-10-15).
+    version=4,
     params=TileDsfParams,
     inputs=("mesh", "masks", "rasters", "vectors"),
     ram_mb=3000,
@@ -1491,6 +1503,7 @@ def _dem_run(env: BuildEnv, spec: BuildSpec) -> Callable[[NodeContext], Any]:
             if answer.body:
                 got[0] += 1
                 got[1] += len(answer.body)
+                ctx.fetched(len(answer.body))
             reading()
             return answer
 
@@ -1505,6 +1518,7 @@ def _dem_run(env: BuildEnv, spec: BuildSpec) -> Callable[[NodeContext], Any]:
             if body:
                 got[0] += 1
                 got[1] += body
+                ctx.fetched(body)
             reading()
             return answers
 
@@ -1526,7 +1540,8 @@ def _dem_run(env: BuildEnv, spec: BuildSpec) -> Callable[[NodeContext], Any]:
         ticker = threading.Thread(target=tick, name=f"relief-{spec.tile.name}", daemon=True)
         ticker.start()
         try:
-            with dem_job(job):
+            # the relief files it writes beside the store count as this step's (meter.py)
+            with dem_job(job), counting(wrote=ctx.wrote):
                 ref = run_p0_rule(ctx)
         finally:
             stop.set()
@@ -1568,7 +1583,9 @@ def _osm_run(env: BuildEnv) -> Callable[[NodeContext], Any]:
             # is weeks behind, which is the whole reason for pressing it (``osm-prepared.md`` 1)
             refresh=bool(getattr(params, "refresh", "")),
         )
-        with osm_job(job):
+        # what the library or Overpass sends counts as this step's download, and the copy of the
+        # library's manifest it keeps as written (meter.py)
+        with osm_job(job), counting(ctx.fetched, ctx.wrote):
             return run_p0_rule(ctx)
 
     return run
@@ -1679,7 +1696,8 @@ def _pack_run(env: BuildEnv, spec: BuildSpec) -> Callable[[NodeContext], Any]:
     )
 
     def run(ctx: NodeContext) -> ArtifactRef:
-        with pack_env(penv):
+        # a file copied into the tile's folder (another disk than the store) counts as written
+        with pack_env(penv), counting(wrote=ctx.wrote):
             return run_p0_rule(ctx)
 
     return run
@@ -1968,6 +1986,17 @@ folder's file is laid into the relief under it (the composite of 28 011 points a
 file), the vectors 6.2 GB (the mapped raster and its copy smoothed over the airports), Triangle4XP
 6.0 to 6.3 GB (the heights and their curvature, and the mesh)."""
 
+RELIEF_SOURCE_RAM = {"NED1/3": 1200, "ANADEM": 800}
+"""What the relief node declares for a source whose step takes more than the rule's 600 MB.
+Measured on 2026-10-15, the relief step alone in a process of its own, the same code on a Mac and
+on a Windows PC of 16 GB: the USGS 1/3" (``+39-106``) 1 350 MB on Windows, 1 970 on the Mac (2 900
+while its file downloads); ANADEM (``-23-047``) 310 and 697 MB; every other source within 600
+(X-Plane 12's relief 313 and 493, Copernicus 300 and 392 to 553, the USGS 1" 160 and 348, Canada's
+lidar 310 and 582). The Mac counts some 150 MB more for the same work, outside Python (whose own
+count is the same on both). Set near the Windows peak rather than at the Mac's highest, the
+owner's choice: a reservation only makes other steps wait, and a machine of 16 GB or more has
+the room."""
+
 MESH_STRUCTURES_MB = 600
 """What Triangle4XP holds besides the raster: the mesh, about 0.3 to 0.4 GB at 3 million
 triangles (``docs/specs/mesh-build.md``)."""
@@ -2002,6 +2031,16 @@ def relief_ram(rule_: Rule, relief_mb: float, factor: float, extra_mb: float = 0
         return {}
     need = int(factor * relief_mb + extra_mb)
     return {"ram_mb": need} if need > rule_.ram_mb else {}
+
+
+def dem_ram(custom_dem: str, relief_mb: float, laid_over: bool) -> dict[str, int]:
+    """``ram_mb=`` for a tile's relief node: the larger of what its source asks
+    (:data:`RELIEF_SOURCE_RAM`) and what a raster of one's own asks (:func:`relief_ram`), or
+    nothing when the rule's own 600 MB stands."""
+    by_source = max((RELIEF_SOURCE_RAM.get(p, 0) for p in custom_dem.split(";")), default=0)
+    by_file = relief_ram(DEM_RULE, relief_mb, RELIEF_RAM["dem_overlay" if laid_over else "dem"])
+    need = max(by_source, by_file.get("ram_mb", 0))
+    return {"ram_mb": need} if need > DEM_RULE.ram_mb else {}
 
 
 def _stamp_own_file(params: dict[str, Any], spec: BuildSpec) -> dict[str, Any]:
@@ -2108,7 +2147,7 @@ def declare(
             kind="subprocess" if dem_cfg.get("custom_dem") == XP12_SOURCE else "net",
             lane=None if dem_cfg.get("custom_dem") == XP12_SOURCE else RELIEF_LANE,
             run=_dem_run(env, spec),
-            **relief_ram(DEM_RULE, relief_mb, RELIEF_RAM["dem_overlay" if laid_over else "dem"]),
+            **dem_ram(str(dem_cfg.get("custom_dem") or ""), relief_mb, laid_over),
         )
         osm_ref = osm_refs.get(spec.tile)
         osm_input: Node | ArtifactRef
@@ -2143,6 +2182,9 @@ def declare(
                 # ``osm`` (``airports-integration.md`` 1); the input keeps its place in the key
                 # and stays absent.
                 "airports": None,
+                # X-Plane's own land, which a coastline that would make the whole tile sea must
+                # agree with (``vectors-coastline.md`` section 9; Tehran and Manaus, 2026-10).
+                "global_scenery": global_source(spec.tile),
             },
             # Not "cpu": a cpu node is shipped to a spawned worker process, and neither this
             # node's run closure (it binds the build env) nor the decorated rule function
@@ -2359,6 +2401,12 @@ class NodeOutcome:
     wall_s: float = 0.0
     error: dict[str, Any] | None = None
     cause: str | None = None
+    written: int = 0
+    """Bytes the node put on the disk during the build, every pass and attempt summed: what it
+    committed to the store, links to it left out, and what it wrote beside it (image pieces,
+    relief files); 0 when it came from the store."""
+    downloaded: int = 0
+    """Bytes the node received from the network during the build."""
 
 
 @dataclass(slots=True)
@@ -2438,6 +2486,8 @@ class BuildReport:
                             "wall_s": round(n.wall_s, 3),
                             "error": n.error,
                             "cause": n.cause,
+                            "written": n.written,
+                            "downloaded": n.downloaded,
                         }
                         for n in t.nodes
                     ],
@@ -2500,9 +2550,11 @@ class Phase:
     """The batch enters a phase (spec section 4.1). ``build_tiles`` emits it through
     ``on_event``, next to the scheduler's events; the scheduler never does.
 
-    ``data`` is phase 0, the OSM downloads on a scheduler of their own; ``build`` is the main
-    graph. Each scheduler's ``Stats`` only knows its own nodes, so a consumer that shows the
-    whole job needs to know where one phase ends and which nodes the next one declared.
+    ``check`` comes first, and only after a build cut short: the store reads again what that
+    build left (``Store.recover``), ``checked`` of ``total`` artefacts so far. ``data`` is phase
+    0, the OSM downloads on a scheduler of their own; ``build`` is the main graph. Each
+    scheduler's ``Stats`` only knows its own nodes, so a consumer that shows the whole job needs
+    to know where one phase ends and which nodes the next one declared.
 
     ``nodes`` holds ``(node id, kind, rule name)`` of every node the phase declared, or is
     ``None`` when the phase has begun but not declared yet (``build`` is announced as soon as
@@ -2511,7 +2563,7 @@ class Phase:
     key of that snapshot; they are known before any download starts.
     """
 
-    name: Literal["data", "build"]
+    name: Literal["check", "data", "build"]
     nodes: tuple[tuple[str, NodeKind, str], ...] | None = None
     reused: tuple[tuple[str, str | None], ...] = ()
     learned: tuple[tuple[str, float], ...] = ()
@@ -2520,6 +2572,9 @@ class Phase:
     :data:`LEARNED_MIN` times at least; the textures are weighed by their images instead. What a
     step that reports nothing shows while it runs is its time against this one
     (``sched.costs.timed_fraction``)."""
+    checked: int = 0
+    total: int = 0
+    """``check`` only: the artefacts read so far, of how many."""
 
 
 BuildEvent = Event | Phase
@@ -2529,6 +2584,31 @@ BuildEvent = Event | Phase
 def _emit_phase(on_event: Callable[[BuildEvent], None] | None, phase: Phase) -> None:
     if on_event is not None:
         on_event(phase)
+
+
+CHECK_SAID_EVERY_S = 0.5
+"""How often ``Phase("check")`` tells how far the check of an interrupted build is, the first and
+the last count always said."""
+
+
+def _check_progress(
+    on_event: Callable[[BuildEvent], None] | None,
+) -> Callable[[int, int], None] | None:
+    """``Store.recover``'s ``on_progress``: ``Phase("check")`` at most every
+    :data:`CHECK_SAID_EVERY_S`, so that Works says the build reads again what an interrupted one
+    left rather than standing at 0 % for minutes on a hard disk."""
+    if on_event is None:
+        return None
+    said = [-math.inf]
+
+    def say(checked: int, total: int) -> None:
+        now = time.monotonic()
+        if checked not in (0, total) and now - said[0] < CHECK_SAID_EVERY_S:
+            return
+        said[0] = now
+        on_event(Phase("check", checked=checked, total=total))
+
+    return say
 
 
 def _declared(scheduler: Scheduler) -> tuple[tuple[str, NodeKind, str], ...]:
@@ -2715,6 +2795,30 @@ def _osm_outcome(tile: TileRef, node: Node, collector: _Collector) -> OsmOutcome
     return OsmOutcome(tile, error=failed.error if failed is not None else None)
 
 
+def stored_osm_refs(specs: Sequence[BuildSpec], env: BuildEnv) -> dict[TileRef, ArtifactRef]:
+    """The OSM snapshots the store holds for the tiles of ``specs``, found as :func:`osm_plan`
+    finds them (the key is a pure function of the params) but read only: an estimate does not
+    touch the store or set a kept snapshot aside, as a build may. The first spec of a tile decides;
+    a tile built with ``--no-osm-fetch`` has none here, as in a build."""
+    refs: dict[TileRef, ArtifactRef] = {}
+    seen: set[TileRef] = set()
+    for spec in specs:
+        if spec.tile in seen:
+            continue
+        seen.add(spec.tile)
+        if not spec.osm_fetch:
+            continue
+        road_level = int(spec.tile_config().get("road_level", 1) or 0)
+        params = OsmParams(tile=spec.tile.name, road_level=road_level, refresh=spec.osm_refresh)
+        key, _recipe = key_for(OSM_RULE, params, {})
+        info = env.store.info(key) if env.store.has(key) else None
+        if info is not None:
+            refs[spec.tile] = ArtifactRef(
+                info.key, info.digest, info.path, info.rule, info.kind, info.size
+            )
+    return refs
+
+
 def _stored_osm(env: BuildEnv, tile: TileRef, road_level: int, refresh: str) -> OsmOutcome | None:
     """The ``orthostudio.osm`` artefact this store already holds for the tile, if any.
 
@@ -2806,6 +2910,9 @@ class _Collector:
         self.on_event = on_event
         self.done: dict[str, Done] = {}
         self.failed: dict[str, Failed] = {}
+        self.bytes: dict[str, list[int]] = {}
+        """Per node, ``[written, downloaded]`` summed over its events: a second pass or a retry
+        adds what it did to what the first did."""
         self.laid: set[str] = set()
         """The pack nodes whose folder was laid again so."""
         self._installs: dict[str, TileNodes] = {}
@@ -2822,6 +2929,10 @@ class _Collector:
         self._env = env
 
     def __call__(self, event: Event) -> None:
+        if isinstance(event, Done | Failed):
+            counted = self.bytes.setdefault(event.node_id, [0, 0])
+            counted[0] += event.written
+            counted[1] += event.downloaded
         if isinstance(event, Done):
             self.done[event.node_id] = event
             nodes = self._installs.get(event.node_id)
@@ -2847,16 +2958,33 @@ class _Collector:
 
     def outcome(self, role: str, node: Node) -> NodeOutcome:
         rule_name = f"{node.rule.name}@{node.rule.version}"
+        written, downloaded = self.bytes.get(node.id, (0, 0))
         if node.id in self.done:
             d = self.done[node.id]
             return NodeOutcome(
-                node.id, role, rule_name, d.key, "hit" if d.hit else "built", d.wall_s
+                node.id,
+                role,
+                rule_name,
+                d.key,
+                "hit" if d.hit else "built",
+                d.wall_s,
+                written=written,
+                downloaded=downloaded,
             )
         if node.id in self.failed:
             f = self.failed[node.id]
             status = "skipped" if f.cause is not None else "failed"
             return NodeOutcome(
-                node.id, role, rule_name, None, status, 0.0, f.error.to_dict(), f.cause
+                node.id,
+                role,
+                rule_name,
+                None,
+                status,
+                0.0,
+                f.error.to_dict(),
+                f.cause,
+                written=written,
+                downloaded=downloaded,
             )
         return NodeOutcome(node.id, role, rule_name, None, "pending")
 
@@ -3323,7 +3451,7 @@ def build_tiles(
     store = env.store
     # What a build interrupted by a power cut left torn is dropped before anything reuses it
     # (graph/store.py DEFERRED_RULES): after a build that ended normally, next to nothing to check.
-    recovered = store.recover()
+    recovered = store.recover(on_progress=_check_progress(on_event))
     if recovered.dropped:
         log.warning(
             "%d artefacts of an interrupted build were not whole on disk and are built again",

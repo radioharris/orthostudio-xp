@@ -123,6 +123,22 @@ Without distance masks (the default, `distance_masks_too = False`) every non-coa
 gets `65535` and every coast node `0`. **Keep** (`distance_masks` optional input; `None`
 means no file exists, as in Ortho4XP when the files are absent).
 
+**Then, not in Ortho4XP: a water node closer than 1 m to the shore is shallow**
+(`bathy.near_shore`, `SHORE_SHALLOW_M`, `tile.dsf` version 4, 2026-10-15). X-Plane reads the
+seabed under a deep node from the rasters the DSF carries (`dsf-xp12-rasters.md`), and a deep node
+a hair's breadth off the shore put that seabed at the shore itself: 200 m under Groom Lake at
+Homey Airport (KXTA), where X-Plane drew a blue triangle by the straight shore the aerodrome rule
+cuts (`aerodrome-dry.md`), then blue needles along it when the cut followed the runway's band.
+Two sources of such nodes: the mesh, whose thin slivers along a straight shore leave nodes 7 to
+34 cm off it (KXTA), and the recut of 3.2, whose midpoint of an edge between two coast nodes falls
+on the shore when the triangle is flat (2 586 of the 2 763 found on Lake Geneva's shores,
+`+46+006`). The shore is the edges of the land triangles whose two ends are coast nodes; only the
+nodes of a water triangle with a coast corner are measured, in metres at the tile's middle
+latitude. Measured on three tiles: 47 of 1 471 deep nodes at KXTA, 527 of 42 431 at Chennai
+(`+13+080`), 5 905 of 91 280 on `+46+006` (2 544 of them in Lake Geneva and Lake Neuchâtel, 3 056
+in streams and ponds under 0.1 km2); 29 ms, 82 ms and 0.4 s. Seen in X-Plane at KXTA: the blue
+triangle and the needles are gone.
+
 ### 3.4 Texture of a mesh cell (`O4_DSF_Utils.py:110-257`)
 
 The tile is covered by the grid of textures at `mesh_zl` (default 19), from
@@ -209,6 +225,7 @@ order of the texture. Acceptance: the reference ZL14 build gives 17 textures and
 | type remap, `use_masks_for_inland` | keep |
 | recut (all four cases, node and triangle numbering) | keep, vectorised; a `dsf-encoding` byte-identity depends on it |
 | depth ratio from distance masks, `int()` truncation, coast = 0 | keep |
+| a deep node closer than 1 m to the shore | fix: shallow (3.3, `near_shore`) |
 | zone image with Pillow, reversed `zone_list`, Python `round` | keep (Pillow is a dependency; the rasteriser is the rule) |
 | airport upgrade from the step-1 pickle | keep the arithmetic; the bounds come from the vector stage's record, `build_dsf` takes bounds |
 | `"Existing"` mode | keep; the caller passes the `TextureId` list |
@@ -225,3 +242,5 @@ zones gets the textures it got before. The mask decision, the `.ter` text and th
 with P1/P3 modules instead of being re-implemented. The encoder has a difference of its own in the
 bytes since 2026-10-09: it leaves out the triangles its rounding leaves flat or turned over
 (`dsf-encoding.md` 6).
+A third since 2026-10-15: a water node closer than 1 m to the shore is shallow (3.3), where
+Ortho4XP gives it the full seabed X-Plane's rasters hold.

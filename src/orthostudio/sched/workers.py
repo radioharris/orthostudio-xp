@@ -23,6 +23,7 @@ from orthostudio.errors import OsxpError, wrap
 from orthostudio.graph.rule import Rule, RuleParams
 from orthostudio.graph.store import Store
 from orthostudio.model import ArtifactRef
+from orthostudio.parentwatch import leave_with_parent
 from orthostudio.sched.node import CancelToken, NodeContext, NodeRun, run_p0_rule
 
 __all__ = ["CpuJob", "Outcome", "cpu_entry", "cpu_init", "error_from_dict", "execute"]
@@ -38,6 +39,10 @@ class Outcome:
     error: dict[str, Any] | None
     wall_s: float
     traceback: str = ""
+    written: int = 0
+    """``NodeContext.written`` at the end of the run, failed or not."""
+    downloaded: int = 0
+    """``NodeContext.downloaded`` at the end of the run, failed or not."""
 
 
 @dataclass(slots=True)
@@ -88,6 +93,7 @@ def execute(
 ) -> Outcome:
     """Run one node to completion; never raises."""
     t0 = time.perf_counter()
+    ctx: NodeContext | None = None
     try:
         workdir.mkdir(parents=True, exist_ok=True)
         ctx = NodeContext(
@@ -113,9 +119,18 @@ def execute(
                     "detail": f"node {node_id!r} returned {type(ref).__name__}, not ArtifactRef",
                 },
             )
-        return Outcome(ref, None, time.perf_counter() - t0)
+        return Outcome(
+            ref, None, time.perf_counter() - t0, written=ctx.written, downloaded=ctx.downloaded
+        )
     except Exception as exc:
-        return Outcome(None, wrap(exc).to_dict(), time.perf_counter() - t0, traceback.format_exc())
+        return Outcome(
+            None,
+            wrap(exc).to_dict(),
+            time.perf_counter() - t0,
+            traceback.format_exc(),
+            written=ctx.written if ctx is not None else 0,
+            downloaded=ctx.downloaded if ctx is not None else 0,
+        )
 
 
 # -- worker process side ---------------------------------------------------------------------
@@ -126,11 +141,13 @@ _STORE: Store | None = None
 
 
 def cpu_init(cancel_event: CancelToken, progress_queue: Any) -> None:
-    """``ProcessPoolExecutor`` initializer: keep the shared primitives, ignore Ctrl-C."""
+    """``ProcessPoolExecutor`` initializer: keep the shared primitives, ignore Ctrl-C, and leave
+    when the engine is gone (:func:`orthostudio.parentwatch.leave_with_parent`)."""
     global _CANCEL, _PROGRESS
     _CANCEL, _PROGRESS = cancel_event, progress_queue
     with contextlib.suppress(Exception):
         signal.signal(signal.SIGINT, signal.SIG_IGN)
+    leave_with_parent()
 
 
 def _worker_store(root: Path, fsync: bool) -> Store:

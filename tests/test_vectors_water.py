@@ -23,6 +23,7 @@ from orthostudio.vectors.water import (
     build_water_layers,
     cut_to_tile,
     encode_multipolygon,
+    is_dry_basin,
     lon_to_m,
     merge_overlapping_polygons,
     refine_way,
@@ -126,7 +127,7 @@ def test_merge_drops_empty_and_invalid_polygons() -> None:
 
 
 def test_encode_cuts_to_the_tile() -> None:
-    out = encode_multipolygon([square(0.5, 0.5, 1)], pol_to_alt=FlatDem().alt_vec)
+    out = encode_multipolygon([square(0.5, 0.5, 1)], pol_to_alt=FlatDem().alt_vec, margin=0.0)
     assert len(out.geometry.geoms) == 1
     assert out.geometry.geoms[0].bounds == (0.5, 0.5, 1.0, 1.0)
 
@@ -136,6 +137,7 @@ def test_encode_drops_polygons_at_or_below_the_area_limit() -> None:
         [square(0.1, 0.1, 0.001), square(0.2, 0.2, 0.1)],
         pol_to_alt=FlatDem().alt_vec,
         area_limit=1e-5,
+        margin=0.0,
     )
     assert len(out.geometry.geoms) == 1
     assert out.dropped == 1
@@ -149,7 +151,9 @@ def test_encode_aligns_z_with_get_coordinates() -> None:
         [(0.1, 0.1), (0.9, 0.1), (0.9, 0.9), (0.1, 0.9)],
         [[(0.4, 0.4), (0.6, 0.4), (0.6, 0.6), (0.4, 0.6)]],
     )
-    out = encode_multipolygon([holed, square(0.2, 0.2, 0.05)], pol_to_alt=FlatDem().alt_vec)
+    out = encode_multipolygon(
+        [holed, square(0.2, 0.2, 0.05)], pol_to_alt=FlatDem().alt_vec, margin=0.0
+    )
     coords = shapely.get_coordinates(out.geometry)
     assert len(out.z) == len(coords)
     np.testing.assert_allclose(out.z, FlatDem().alt_vec(coords))
@@ -157,13 +161,13 @@ def test_encode_aligns_z_with_get_coordinates() -> None:
 
 def test_encode_orients_the_exterior_counter_clockwise() -> None:
     clockwise = geometry.Polygon([(0.1, 0.1), (0.1, 0.5), (0.5, 0.5), (0.5, 0.1)])
-    out = encode_multipolygon([clockwise], pol_to_alt=FlatDem().alt_vec)
+    out = encode_multipolygon([clockwise], pol_to_alt=FlatDem().alt_vec, margin=0.0)
     assert out.geometry.geoms[0].exterior.is_ccw
 
 
 def test_encode_plants_one_seed_per_polygon_inside_it() -> None:
     out = encode_multipolygon(
-        [square(0.1, 0.1, 0.2), square(0.5, 0.5, 0.2)], pol_to_alt=FlatDem().alt_vec
+        [square(0.1, 0.1, 0.2), square(0.5, 0.5, 0.2)], pol_to_alt=FlatDem().alt_vec, margin=0.0
     )
     assert out.seeds.shape == (2, 2)
     for seed, pol in zip(out.seeds, out.geometry.geoms, strict=True):
@@ -222,6 +226,31 @@ def test_build_water_layers_gives_one_water_layer(tmp_path: Path) -> None:
     assert result.counts["water"] == 1
     assert result.seeds["WATER"].shape == (1, 2)
     assert not result.lakes
+
+
+def test_a_dry_rainwater_basin_is_left_out_of_the_water(tmp_path: Path) -> None:
+    """OpenStreetMap maps rainwater basins as water, most of them dry most of the year: around
+    EDDP (``+51+012``) a user saw X-Plane's water over the grass of the photo (idea #13,
+    2026-10-11). ``water=basin`` with ``intermittent=yes`` is left out; a basin that is not
+    intermittent and a pond that is stay water. Through ``OsmData``, as a build reads them: the
+    layer's tag filter must keep ``water`` and ``intermittent``, which Ortho4XP's drops."""
+    dry = {"natural": "water", "water": "basin", "intermittent": "yes", "basin": "infiltration"}
+    wet_basin = {**dry, "intermittent": "no"}
+    pond = {"natural": "water", "water": "pond", "intermittent": "yes"}
+    body = water_ways(
+        [
+            ([(5.20, 43.20), (5.21, 43.20), (5.21, 43.21), (5.20, 43.21)], dry),
+            ([(5.30, 43.20), (5.31, 43.20), (5.31, 43.21), (5.30, 43.21)], wet_basin),
+            ([(5.40, 43.20), (5.41, 43.20), (5.41, 43.21), (5.40, 43.21)], pond),
+        ]
+    )
+    result = build_water_layers(load(tmp_path, body), TILE, WaterParams(), FlatDem())
+    assert result.counts["dry_basins"] == 1
+    assert result.counts["water"] == 2
+    kept = [g.representative_point().x for g in result.water.geoms]  # tile-local: lon - 5
+    assert not any(0.20 < x < 0.21 for x in kept), "the dry basin is not water"
+    assert any(0.30 < x < 0.31 for x in kept) and any(0.40 < x < 0.41 for x in kept)
+    assert is_dry_basin(dry) and not is_dry_basin(wet_basin) and not is_dry_basin(pond)
 
 
 def test_a_lake_larger_than_max_area_becomes_sea_equiv(tmp_path: Path) -> None:

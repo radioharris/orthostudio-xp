@@ -24,6 +24,7 @@ import numpy as np
 from orthostudio.dsf._mesh_reader import MeshLike, mesh_version
 from orthostudio.dsf.bathy import (
     depth_ratio_u16,
+    near_shore,
     node_bathy_from_distance_masks,
     orthogrid,
     st_coord_arrays,
@@ -621,6 +622,7 @@ def build_dsf(
 
     bathy = node_bathy_from_distance_masks(rm.coords, rm.node_types, params.mask_zl, distance_masks)
     ratio = depth_ratio_u16(rm.node_is_coast, bathy, params.ratio_bathy)
+    ratio[near_shore(rm.coords, rm.tris, rm.tri_types, rm.node_is_coast, tile.lat + 0.5)] = 0
 
     t1 = time.perf_counter()
     qx = quantize24(rm.coords[:, 0] - tile.lon)

@@ -28,6 +28,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
+import shapely
 from numpy.typing import NDArray
 from shapely import geometry, ops
 from shapely.geometry.base import BaseGeometry
@@ -36,7 +37,8 @@ from orthostudio.errors import OsxpError
 from orthostudio.model import TileRef
 from orthostudio.vectors.noding import MARKERS, Layer
 from orthostudio.vectors.osmdata import OsmData
-from orthostudio.vectors.water import M_TO_LAT, Altitudes, EventHandler, zero_alt
+from orthostudio.vectors.seeds import inner_points
+from orthostudio.vectors.water import M_TO_LAT, Altitudes, EventHandler, seed_margin, zero_alt
 
 __all__ = [
     "DEFAULT_CELL_SIZE_M",
@@ -255,6 +257,7 @@ def read_patch_file(
     """Read one ``*.patch.osm`` into layers, seeds, area and counts (``:655-822``)."""
     runs = Runs() if runs is None else runs
     alt = zero_alt if dem is None else dem.alt_vec
+    margin = seed_margin(tile)
     seeds: list[NDArray[np.float64]] = []
     area: BaseGeometry = geometry.Polygon()
     counts = {"ways": 0, "polygons": 0, "lines": 0, "skipped": 0}
@@ -306,7 +309,9 @@ def read_patch_file(
                 continue
             area = area.union(polygon)
             runs.add(polygon, MARKERS["INTERP_ALT"], altitudes)
-            seeds.append(np.array(polygon.representative_point().coords[0], dtype=np.float64))
+            point = inner_points(np.array([polygon], dtype=object), margin)[0]
+            if not point.is_empty:
+                seeds.append(np.array(point.coords[0], dtype=np.float64))
             counts["polygons"] += 1
             if cuts_long > 1:
                 bars = [geometry.LineString([way[i], way[-2 - i]]) for i in range(1, cuts_long)]
@@ -386,10 +391,15 @@ def read_obj8(path: Path | str, tile: TileRef, dem: Altitudes | None = None) -> 
             altitudes.append(np.array([a[2], b[2], c[2], a[2]], dtype=np.float64))
             seeds.append((np.array(a[:2]) + np.array(b[:2]) + np.array(c[:2])) / 3)
             polygons.append(geometry.Polygon(ring))
+    points = inner_points(
+        np.array(polygons, dtype=object),
+        seed_margin(tile),
+        chosen=shapely.points(np.array(seeds, dtype=np.float64).reshape(-1, 2)),
+    )
     return Obj8(
         tuple(rings),
         tuple(altitudes),
-        np.array(seeds, dtype=np.float64).reshape(-1, 2),
+        shapely.get_coordinates(points[~shapely.is_empty(points)]).reshape(-1, 2),
         ops.unary_union(polygons) if polygons else geometry.Polygon(),
     )
 

@@ -23,14 +23,19 @@ the disk is in [how-it-works.md](how-it-works.md). To fly without building tiles
   every Ortho4XP setting under "For experts" with a plain label.
 - **A Library.** Every tile on the computer, its size, whether X-Plane shows it and what it was
   built with, searched, sorted and opened in its folder. Take a tile out of X-Plane and back,
-  delete it, file it on any disk ([workshop.md](workshop.md)), and free the space the
-  cache takes. Tiles built with Ortho4XP are listed too, and never deleted.
+  delete it, file it on any disk ([docs/workshop.md](workshop.md)), build the tiles you tick
+  again after an update, and free the space the cache takes. Every action works on all the tiles
+  you tick at once, and *Show* keeps to the tiles whose files are missing or the squares listed
+  twice. Tiles built with Ortho4XP are listed
+  too, and never deleted.
 - **Installation handled.** Each tile goes into Custom Scenery in the order X-Plane needs, with its
-  roads, forests and buildings (left out when simHeaven X-World brings its own) and a backup of
-  `scenery_packs.ini`.
+  roads, forests and buildings (left out when simHeaven X-World brings its own, or X-Plane's roads
+  alone) and a backup of `scenery_packs.ini`.
 - **Map data in seconds.** The airports, roads, coastline and water of every tile of the planet
   come from OrthoStudio XP's own library (OpenStreetMap as of 7 October 2026, updated regularly),
-  and from the public Overpass servers when the library cannot answer.
+  and from the public Overpass servers when the library cannot answer. A tile OpenStreetMap would
+  put under the sea, a building or a river island tagged as a coastline, stays land where X-Plane
+  has land.
 - **Relief from X-Plane 12 itself**, nothing to download, or a finer one: Copernicus, the USGS
   over North America, Canada's lidar, ANADEM over South America, or your own elevation files at
   their own resolution. Works says which relief a build actually read, and a tile outside a
@@ -40,9 +45,15 @@ the disk is in [how-it-works.md](how-it-works.md). To fly without building tiles
   anything.
 - **The grain of the ground.** One of X-Plane 12's decals over the photos, the one you choose;
   turning it on, off or to another writes a tile's terrain files again, and nothing else.
-- **The squares of a flight plan.** Your last SimBrief plan chooses the squares along its route,
-  within the radius you set.
+- **The squares of a flight plan.** Your last SimBrief plan, or a plan file from Little Navmap
+  (`.lnmpln`) or exported for X-Plane (`.fms`), chooses the squares along its route, within the
+  radius you set.
 - **Hand-made mesh patches**, those published for Ortho4XP included, read as they come.
+- **Airports out of the water.** Water OpenStreetMap draws inside an aerodrome, under or against
+  its runways, taxiways and aprons, becomes land, so taxiway bridges, piers and aerodromes in a
+  tidal bay no longer sink under the sea; seaplane bases keep their water.
+- **Shores without blue needles.** Water closer than a metre to the shore is shallow, as the shore
+  is, so X-Plane no longer draws its deep seabed at the edge of a lake.
 - **A cache.** An unchanged tile builds again in a fraction of a second, a new zone builds again
   only what it touches, and imagery is never downloaded twice.
 - **Your disk of choice.** Tiles are built in the workshop, the data folder chosen in Settings, then

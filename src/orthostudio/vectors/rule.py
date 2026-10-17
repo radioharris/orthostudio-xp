@@ -104,6 +104,10 @@ class VectorsParams(RuleParams):
     mesh_zl: int = 19
     """Zoom level of the orthophoto grid inserted as DUMMY edges (``:96-117``)."""
 
+    flatten_helipads: bool = True
+    """Ortho4XP flattens every OSM helipad (``flatten_helipads``, ``O4_Airport_Utils.py:1370``);
+    off, the ground keeps its slope there (OrthoStudio XP's, idea #8, 2026-10-11)."""
+
     apt_smoothing_pix: int = 8
     """Airport elevation smoothing width, in DEM pixels (``O4_Config_Utils.py:117``).
 
@@ -182,6 +186,10 @@ class LayerRequest:
     airports: Path | None = None
     """Wave 2: the airport artefact. Always ``None`` while ``orthostudio.airports`` does
     not exist."""
+    global_scenery: Path | None = None
+    """The tile's DSF of X-Plane's Global Scenery: its elevation says where X-Plane draws land,
+    which guards a tile against a coastline that would make it all sea (``vectors-coastline.md``
+    section 9). ``None`` without X-Plane's scenery: the coastline is taken as it is."""
     cancel: threading.Event | None = None
     progress: Callable[[float, str], None] | None = None
     """Where each family says it has started. This step said nothing at all, from beginning to
@@ -332,6 +340,7 @@ def run_vectors(ctx: RunContext) -> AssembledVectors:
         dem=dem,
         patches=_optional(dict(ctx.inputs), "patches"),
         airports=_optional(dict(ctx.inputs), "airports"),
+        global_scenery=_optional(dict(ctx.inputs), "global_scenery"),
         cancel=job.cancel,
         progress=job.progress,
     )
@@ -407,14 +416,39 @@ def write_elevation_and_airports(out_dir: Path, tile: TileRef, build: LayerBuild
         os.replace(tmp, final)
 
 
+# Version 2: the dry rainwater basins OpenStreetMap marks as water are left out of the water
+# layer (``vectors.water.is_dry_basin``), so a tile's water built by version 1 is not this one.
+# Version 3: a runway drawn in parts that close on themselves is an outline or two copies of one
+# line, never a centre line of zero length (``airports-geometry.md`` 3.3, EGJA and LFRT,
+# 2026-10-12; version 2 in 1.0.1, which has no dry basins): a tile built again recomputes its
+# airports.
+# Version 5: a node closer than 5 cm to an edge it does not end, and tied by an edge to one of
+# its ends, is put on that edge (``vectors-pslg.md`` 2.14, +35+139, 2026-10-13; version 4 in
+# 1.0.2, which has no dry basins); a tile with no such node gets the same files again, so its mesh
+# and DSF come from the cache.
 @rule(
     name="orthostudio.vectors",
     # 2: a runway drawn in parts that close on themselves is an outline or two copies of one
     # line, never a centre line of zero length (``airports-geometry.md`` 3.3, EGJA and LFRT,
     # 2026-10-12): a tile built again recomputes its airports.
-    version=2,
+    # 4: a node closer than 5 cm to an edge it does not end, and tied by an edge to one of its
+    # ends, is put on that edge (``vectors-pslg.md`` 2.14, +35+139, 2026-10-13); a tile with no
+    # such node gets the same files again, so its mesh and DSF come from the cache. Version 3
+    # was a first form of the rule, never released.
+    # 8: the water inside an aerodrome OpenStreetMap draws that its runways, taxiways or aprons
+    # enter is taken out of it, but for an aerodrome with a water runway (``aerodrome-dry.md``,
+    # 2026-10-14). Version 5 is taken by the dry basins of the ideas branch, 6 and 7 by first
+    # forms of this rule; artefacts of all three may be in a store already.
+    # 9: what such a cut leaves is put on the noder's grid, so a lake it leaves in two lobes that
+    # touch at a point gets a seed in each (KXTA, Groom Lake, 2026-10-14); 8 made one of them land.
+    # 10: 9 and the dry basins of the ideas branch (5) together, for 1.1.0 (2026-10-15), with the
+    # coastline guard's new input, the tile's Global Scenery DSF (``vectors-coastline.md``).
+    # 12: every region seed lies 10 cm inside its polygon, or the polygon gets none
+    # (``vectors-assembly.md`` 4.1): a Haneda RUNWAY seed 1 mm from its edge made all +35+139
+    # runway (2026-10-16). 11 is taken by a first fix of the same tile, never released.
+    version=12,
     params=VectorsParams,
-    inputs=("osm", "dem", "patches", "airports"),
+    inputs=("osm", "dem", "patches", "airports", "global_scenery"),
     ram_mb=1200,
     kind="dir",
 )
@@ -424,4 +458,4 @@ def osxp_vectors(ctx: RunContext) -> None:
 
 
 VECTORS: Rule = osxp_vectors
-"""``orthostudio.vectors@2``. Not wired by default in wave 1 (arbitration A7)."""
+"""``orthostudio.vectors@10``."""

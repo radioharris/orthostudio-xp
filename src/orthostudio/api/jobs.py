@@ -43,7 +43,7 @@ from orthostudio.api.progress import (
     weighted_progress,
 )
 from orthostudio.api.stages import STAGES, Stage, error_json, parse_node_id, stage_of
-from orthostudio.errors import wrap
+from orthostudio.errors import OsxpError, wrap
 from orthostudio.fsutil import atomic_write_text
 from orthostudio.imagery.chunks import ChunkStore
 from orthostudio.imagery.grid import TextureId
@@ -373,8 +373,11 @@ class Job:
         self._loaded = False
         # -- job-level progress (api/progress.py) --
         self._phase = "build"
-        """``build``, or ``data`` while a build that downloads its OSM data before its graph (an
-        older engine's phase 0, the tests) says so."""
+        """``build``; ``check`` while the build reads again what an interrupted one left
+        (``Phase("check")``); ``data`` while a build that downloads its OSM data before its graph
+        (an older engine's phase 0, the tests) says so."""
+        self._check: tuple[int, int] = (0, 0)
+        """``Phase("check")``: the artefacts read again so far, of how many."""
         self._phase_at: float | None = None
         """When the ``build`` phase began (the declaration of the main graph follows)."""
         self._declared = False
@@ -624,6 +627,11 @@ class Job:
 
     def _on_phase(self, event: Phase) -> None:
         now = self._clock()
+        if event.name == "check":
+            # before anything else of the build, and only after one cut short: no clock starts
+            self._phase, self._check = "check", (event.checked, event.total)
+            self._emit_stats()
+            return
         if event.name == "data":
             self._phase = "data"
         elif self._phase_at is None:
@@ -812,6 +820,11 @@ class Job:
             "eta_low_s": None if low is None else round(low, 1),
             "eta_high_s": None if high is None else round(high, 1),
             "phase": self._phase,
+            **(
+                {"check": {"done": self._check[0], "total": self._check[1]}}
+                if self._phase == "check"
+                else {}
+            ),
         }
 
     def _emit_stats(self, *, min_period: float = 0.0) -> None:
@@ -980,8 +993,66 @@ class Job:
         return self.journal_path.with_suffix(".json")
 
     def save_state(self) -> None:
-        doc = {**self.state(), "specs": [_spec_to_json(s) for s in self.specs]}
+        # the job's own error goes in by its name: ``load`` reads it so, and a build failed as a
+        # whole came back from a restart failed without a word (2026-10-15)
+        doc = {
+            **self.state(),
+            "job_error": self.job_error,
+            "specs": [_spec_to_json(s) for s in self.specs],
+        }
         atomic_write_text(self.state_path(), json.dumps(doc, ensure_ascii=False, indent=1))
+
+    def mark_interrupted(self) -> None:
+        """A job read back queued or running: the program stopped while it waited or ran (closed
+        by force, a crash, a power cut). Its file is written when it starts, and its rows follow
+        its journal; a step it had started and not ended is cancelled, and the job ends failed
+        with ``SYS_BUILD_INTERRUPTED``, written so. A build killed during its images was missing
+        from Works after the restart, its journal left on the disk (2026-10-15): it is listed
+        again, and Build again goes on from what it had built."""
+        events = self.events()
+        with self._lock:
+            for e in events:
+                kind = e.get("event")
+                if kind == "stats" and isinstance(e.get("stats"), dict):
+                    self._stats = e["stats"]
+                node = e.get("node")
+                if not node or kind not in ("started", "done", "failed"):
+                    continue
+                st = self._node(str(node))
+                if kind == "started":
+                    if st.status not in ("done", "hit"):
+                        st.status = "running"
+                elif kind == "done":
+                    st.status = "hit" if e.get("hit") else "done"
+                    st.hit, st.key, st.fraction = e.get("hit"), e.get("key"), 1.0
+                    st.wall_s = float(e.get("wall_s") or 0.0)
+                else:
+                    st.status = "skipped" if e.get("skipped") else "failed"
+                    if isinstance(e.get("error"), dict):
+                        st.error = e["error"]
+            for ts in self._tiles.values():
+                for st in ts.nodes.values():
+                    if st.status == "running":
+                        st.status = "cancelled"
+            self.status = "failed"
+            try:
+                self.finished_at = self.journal_path.stat().st_mtime
+            except OSError:
+                self.finished_at = self.started_at or self.created_at
+            # a build waiting behind another never wrote a line: it did not start
+            code = "SYS_BUILD_INTERRUPTED" if events else "SYS_BUILD_NOT_STARTED"
+            self.job_error = error_json(OsxpError(code))
+        try:
+            self._open_file()
+            self._append(
+                "finished", status="failed", report=None, decisions=[], error=self.job_error
+            )
+        finally:
+            if self._file is not None:
+                with contextlib.suppress(OSError):
+                    self._file.close()
+                self._file = None
+        self.save_state()
 
     @classmethod
     def load(cls, state_path: Path) -> Job:
@@ -1071,7 +1142,13 @@ def _dir_bytes(path: Path) -> int:
 
 
 def _textures_decision(env: BuildEnv | None, ts: _TileState) -> dict[str, Any] | None:
-    """Read the textures report ``build_tiles`` wrote next to the logs (spec 5.5)."""
+    """Read the textures reports ``build_tiles`` wrote next to the logs (spec 5.5).
+
+    The textures node writes one report per level it prepares, named
+    ``textures-<tile>-<source><level>-<key>.json`` with the node's key: the tile's own level, and
+    those of its zones and of the airports made sharper. All of them count. Only the tile's own
+    was read, and the report of +45+005 said 63 textures where its build had made 174, 111 of
+    them at ZL18 around its airports (2026-10-15)."""
     if env is None:
         return None
     level = f"{ts.provider}{ts.zl}"
@@ -1084,22 +1161,35 @@ def _textures_decision(env: BuildEnv | None, ts: _TileState) -> dict[str, Any] |
         return None
     if not candidates:
         return None
+    key = candidates[-1].stem.rsplit("-", 1)[-1]
     try:
-        doc = json.loads(candidates[-1].read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return None
-    outcomes = doc.get("outcomes", [])
-    counts = doc.get("counts", {})
+        reports = sorted(env.logs.glob(f"textures-{ts.tile}-*-{key}.json"))
+    except OSError:
+        reports = [candidates[-1]]
+    outcomes: list[dict[str, Any]] = []
+    counts: dict[str, int] = {}
+    for path in reports:
+        try:
+            doc = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            if path == candidates[-1]:
+                return None
+            continue
+        outcomes += doc.get("outcomes", [])
+        for name in ("built", "hits", "chunks_second_pass", "chunks_recovered"):
+            counts[name] = counts.get(name, 0) + int(doc.get("counts", {}).get(name, 0))
     return {
         "total": len(outcomes),
-        "built": int(counts.get("built", 0)),
-        "hits": int(counts.get("hits", 0)),
+        "built": counts["built"],
+        "hits": counts["hits"],
         "missing": sum(1 for o in outcomes if o.get("status") in ("incomplete", "failed")),
-        "parent_fallback": sum(int(o.get("from_fallback", 0)) for o in outcomes),
+        # textures that took pieces from a level above, as the report's line says: it summed the
+        # pieces, 599 "textures" for a tile of 136 once the airports' ZL18 counted (2026-10-15)
+        "parent_fallback": sum(1 for o in outcomes if int(o.get("from_fallback", 0)) > 0),
         "placeholders": sum(int(o.get("placeholders", 0)) for o in outcomes),
         # chunks a transient failure sent to the second pass, and those it brought back
-        "second_pass": int(counts.get("chunks_second_pass", 0)),
-        "recovered": int(counts.get("chunks_recovered", 0)),
+        "second_pass": counts["chunks_second_pass"],
+        "recovered": counts["chunks_recovered"],
         "report": str(candidates[-1]),
     }
 
@@ -1221,6 +1311,11 @@ class JobManager:
             except (OSError, ValueError, KeyError, TypeError):
                 log.warning("unreadable past job %s", path)
                 continue
+            if job.status in ("queued", "running"):
+                try:
+                    job.mark_interrupted()
+                except (OSError, ValueError, KeyError, TypeError):
+                    log.warning("past job %s could not be marked interrupted", path)
             self._jobs[job.id] = job
 
     # -- queries -----------------------------------------------------------------------------
@@ -1290,6 +1385,11 @@ class JobManager:
                 specs, install=install, request=request, journal_path=self.jobs_dir / "pending"
             )
             job.journal_path = self.jobs_dir / f"{job.id}.jsonl"
+            # written at once and again at the end: a build the program stopped during (closed by
+            # force, a crash, a power cut) is found again at the next start (:meth:`_load_past`)
+            with contextlib.suppress(OSError):
+                self.jobs_dir.mkdir(parents=True, exist_ok=True)
+                job.save_state()
             self._jobs[job.id] = job
             if busy:
                 self._queue.append(job)

@@ -7,7 +7,7 @@ OrthoStudio XP is a new program built on the rules of
 refined for ten years: it makes the same kind of tiles, with a different architecture that builds
 them faster. It would not exist without Ortho4XP.
 
-**Status: building tiles is stable since 1.0; flying with Live is in beta from 1.1.** OrthoStudio XP
+**Status: building tiles is stable since 1.0; flying with Live is in beta from 1.2.** OrthoStudio XP
 builds and installs tiles end to end on macOS and Windows, with their installers. The installers for
 Intel Macs and for Linux are built and checked automatically at every release, and downloaded far
 less often than the others; Linux is experimental.
@@ -63,7 +63,7 @@ to `serve.log`, in
 tiles in the data folder chosen in Settings, if you chose one) when the app is removed.
 
 At its first start the app asks what you want to do: build your tiles, or fly now with
-OrthoStudio XP Live (from 1.1, in beta). Both are in its one window, Build | Live at the top. To
+OrthoStudio XP Live (from 1.2, in beta). Both are in its one window, Build | Live at the top. To
 fly with Live: install the mesh of where you fly (Live's Settings, first question), then Start Live
 and Start X-Plane; the steps are in [docs/live.md](docs/live.md#a-flight-step-by-step).
 
@@ -129,7 +129,7 @@ Its guide, with what you get, the measured build times and the comparison with O
 
 ## Flying with Live
 
-OrthoStudio XP Live, in beta from 1.1, works as AutoOrtho and XPME do from the pilot's seat, with
+OrthoStudio XP Live, in beta from 1.2, works as AutoOrtho and XPME do from the pilot's seat, with
 no virtual disk between X-Plane and its textures: it builds them beside X-Plane as ordinary files.
 
 - **X-Plane never waits in flight.** It waits only on its loading screen at a flight's start; with

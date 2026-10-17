@@ -27,6 +27,7 @@ from orthostudio.fsutil import (
 )
 from orthostudio.install.scenery_packs import SceneryPacks, pack_kind
 from orthostudio.install.xplane import xplane_running
+from orthostudio.meter import written
 
 __all__ = ["SCENERY_PACKS_INI", "install_pack", "is_link", "uninstall_pack"]
 
@@ -207,6 +208,8 @@ def _copy_tree(pack_dir: Path, target: Path) -> None:
     try:
         shutil.copytree(pack_dir, tmp, symlinks=False)
         os.replace(tmp, target)
+        # the install step's count of what it wrote (meter.py)
+        written(sum(f.stat().st_size for f in target.rglob("*") if f.is_file()))
     except OSError as exc:
         shutil.rmtree(tmp, ignore_errors=True)
         raise OsxpError(

@@ -102,7 +102,7 @@ The "for the types that appear in the selectors only" is not a simplification: t
 | `big_roads` | w: `("highway","motorway")`, `("highway","trunk")`, `("highway","primary")`, `("highway","secondary")`, `("railway","rail")`, `("railway","narrow_gauge")` | w: idem + `("bridge","")`, `("tunnel","")` | `:261-275` |
 | `small_roads` | w: `("highway","tertiary")` (+ `unclassified`, `residential` at `road_level>=3`, `service` at `>=4`, `track` at `>=5`) | w: idem + `("bridge","")`, `("tunnel","")` | `:288-306` |
 | `coastline` | w: `("natural","coastline")` | w: idem (`tags_of_interest` empty) | `:391-399` |
-| `water` | r: `("natural","water")`, `("waterway","riverbank")`; w: `("natural","water")`, `("waterway","riverbank")`, `("waterway","dock")` | r and w: idem + `("name","")`; **n: empty** | `:525-539` |
+| `water` | r: `("natural","water")`, `("waterway","riverbank")`; w: `("natural","water")`, `("waterway","riverbank")`, `("waterway","dock")` | r and w: idem + `("name","")`, and OrthoStudio XP's `("water","")`, `("intermittent","")` (`vectors-water-roads.md` 2.1); **n: empty** | `:525-539` |
 
 So a node tagged `name=…` in the water layer keeps no tag at all, and `("all","")` in the
 airports layer keeps every tag of every node, way and relation. **Keep**, both.

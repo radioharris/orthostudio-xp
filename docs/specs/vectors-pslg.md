@@ -382,6 +382,88 @@ passes), and the oracles of that time (`test_vectors_noding_oracle.py`, `test_p4
 **Cancellation.** `node_layers(..., cancel=)` reads the token before every pass and raises
 `SYS_CANCELLED`; `orthostudio.vectors.assemble` passes `AssemblyParams.cancel`.
 
+### 2.14 Nodes near an edge (2026-10-13)
+
+**Rule.** After the noding, a node closer than `NEAR_NODE_M` (5 cm) to an edge it does not end,
+its projection strictly inside the edge, is put on that edge: the edge becomes the chain of its
+end, its near nodes in order along it, its other end. The node does not move; the edge bends by
+less than 5 cm. Edges that become the same carry the OR of their markers (2.5). Two limits:
+
+* a node on a shore of some water (an edge of it carries WATER, SEA or SEA_EQUIV) is not put on
+  an edge carrying the same bit unless it already shares an edge with one of that edge's ends;
+* a join whose new edges would meet another edge anywhere but at a common end is not made, and
+  that edge stays as it was.
+
+The pass runs again on its own result, at most `NEAR_NODE_PASSES` times, since a sub-edge may
+pass near one more node. `join_near_nodes(graph, lat)`; `stats.json` says how many contacts it
+resolved (`near_nodes_joined`, written only when there were some).
+
+**Origin.** `+35+139` (Tokyo, forum report of 2026-10-13): X-Plane never finished loading
+RJTT, on the Mac as on Windows, with the tile built by OrthoStudio XP and with the one built by
+Ortho4XP from the same OpenStreetMap data, whose mesh was the same to the triangle (1 578 947
+vertices, 3 148 328 triangles). X-Plane spent its time draping the airport's painted lines over
+the mesh (`REN_build_line_paint`, `drape_quads`, `REN_ytest_buckets::tri_split`, sampled on
+the Mac). The mesh held fans of slivers: one vertex at Odaiba carried 303 220 triangles, and
+1 038 854 triangles were under 1 cm2. Their cause is in Triangle4XP's input: a node a few
+micrometres to a few centimetres off an edge whose three sides are all constraints, which
+leaves a triangle or a strip with nearly zero angles that the quality refinement fills with
+hundreds of thousands of points until the Steiner budget runs out:
+
+* Odaiba: a canal's node (OSM node 2599141155, relation 8544702) 7 micrometres off the edge of
+  a river (way 87725085), the two not joined in OpenStreetMap;
+* Haneda: runway outlines laid twice, 1 to 4 cm apart, the ends of the airport's construction
+  lines next to them.
+
+The 2.3 contact test does not see them: its window is relative (`eps = 1e-8` of the lengths),
+and the 9-decimal rounding of 2.8 merges nodes, not a node and an edge.
+
+**Why the two limits.** A first form without them was measured on 23 tiles against 1.0.1 and
+found two faults. On `+46+006` two nodes of an islet's shore (relation 10209920, the Dranse de la
+Manche) lie 10 cm from the river bank; put on it, the two shores touched twice, a pocket of the
+river of 2 667 m2 was shut away from its seed, and Triangle4XP made it land: the WATER bit spreads
+only through edges that do not carry it (`Triangle4XP.c`, the plague of regional attributes).
+Only the water bits decide land and water (`remap_tri_types`), so the limit is theirs alone:
+Haneda's doubled runway outlines must still be joined. On `+22+113` five nodes 2 to 14 mm apart
+where a river crosses a grid line gave two 5 mm edges that crossed each other.
+
+**Measured on `+35+139`** (same input, Triangle4XP as built, contacts per threshold, the rule
+with its two limits):
+
+| threshold | contacts | mesh vertices | triangles under 1 cm2 | largest fan |
+|---|---|---|---|---|
+| none (Ortho4XP, 1.0.1) | 0 | 1 578 947 | 1 038 854 | 303 220 |
+| 0.1 mm | 17 | 911 800 | 371 541 | 9 710 |
+| 1 mm | 143 | 745 440 | 206 374 | 4 321 |
+| 1 cm | 835 | 504 838 | 130 | 1 395 |
+| **5 cm** | **1 454** | **490 574** | **128** | **298** |
+| 10 cm | 2 413 | 485 205 | 128 | 298 |
+
+**Decision.** 5 cm: beyond it nothing improves, and nothing visible depends on it (a ZL19
+photo pixel is 30 cm, OpenStreetMap stores coordinates to about 1 cm). A wanted difference
+with Ortho4XP, which keeps such nodes apart.
+
+**Isolation.** A graph with no such node comes back as the very same object: the `.node`, the
+`.poly` and the `stats.json` are the bytes 1.0.1 wrote, so the artefact keeps its digest and the
+mesh, masks and DSF built on it come from the store (keys are digests of the inputs). In practice
+every tile has some: 23 tiles built to their DSF with 1.0.1 and with the rule (coastal cities,
+airports on the water, deltas, fjords, the Alps) had 26 to 1 454 contacts each.
+
+**Measured against 1.0.1 on those 23 tiles** (2026-10-13): the vector graph is 1.0.1's plus the
+rule and nothing else; no new contact between edges, and the 1 or 2 that 1.0.1 left on 6 tiles
+are gone; land, inland water and sea areas within a few m2 per tile (the slivers); plain land
+vertices on the relief to the centimetre in both; every DSF read back by DSFTool, its altitude
+range unchanged; triangles under 1 cm2 and the largest fan fewer or the same on every tile
+(`+40-074` 131 896 -> 74, `+55+012` 140 143 -> 1). What moves is the height of water vertices, which the post-processing smooths
+over a whole lake or sea: a changed triangulation anywhere in it settles a little differently
+(median 0 to 4 cm, 99th percentile up to 1.75 m, up to 19 m in steep mountain torrents, either
+way of the relief). 1.0.1 built twice gives the same bytes, so this is the change of input alone,
+as an OpenStreetMap edit of a shore would make it.
+
+**Acceptance.** `tests/test_vectors_near_nodes.py`: the Odaiba configuration; nodes in order on
+one edge with markers OR-ed; an islet's shore node stays apart; a join that would cross an edge
+is not made; 6 cm stays apart; a shared node is not a contact; no contact returns the same graph
+object. `tests/test_vectors_assemble.py`: `stats.json` without the key when nothing was joined.
+
 ## 3. OrthoStudio XP contract
 
 ```python
@@ -394,6 +476,9 @@ NodedGraph(nodes: (N, 3) float64, edges: (M, 2) int32, markers: (M,) uint8)
   None for the Z of 3-D coordinates (0 when absent).
 * Nodes are rounded to 9 decimals and unique; each unordered edge appears once; markers are
   the OR of all covering segments; the graph is planar (`check_planar(nodes, edges) == 0`).
+* `join_near_nodes(graph, lat, tolerance_m=NEAR_NODE_M) -> (NodedGraph, contacts)` then puts on
+  each edge the nodes closer than 5 cm to it, within the two limits of 2.14; `assemble_vectors`
+  runs it after `node_layers`.
 * Node order: existing nodes first, then creation order; edge order: first appearance. Both
   deterministic for a given input.
 * Cost: O((segments + contacts) log) per layer, no Python loop per edge; a layer pass costs a

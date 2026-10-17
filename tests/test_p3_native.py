@@ -30,6 +30,7 @@ from orthostudio.pipeline.build import (
     make_scheduler,
     run_osm_phase,
     stored_neighbour_mesh,
+    stored_osm_refs,
 )
 from orthostudio.sources.osm import (
     LAYERS,
@@ -238,6 +239,38 @@ def test_a_stored_snapshot_is_reused(tmp_path: Path, monkeypatch: pytest.MonkeyP
     assert second[TILE].ref.key == key
 
 
+def test_an_estimate_reads_the_stored_snapshot_as_a_build_does(tmp_path: Path) -> None:
+    """Two tiles built a minute before planned 343 MB of photos to download (2026-10-15): the
+    estimate declared its graph with a placeholder for the map data the store held, so every node
+    after it was "to build". It finds the stored snapshot as the build does, its coastline then
+    planned on it like the build's, and leaves the store as it was."""
+    from orthostudio.estimate import estimate
+
+    spec = _spec(tmp_path, osm_fetch=True)
+    env = BuildEnv.create([spec])
+    before = {n.role: n.key for n in estimate([spec], env=env).tiles[0].nodes}
+
+    def inland(tile: TileRef, specs: Any) -> dict[str, OsmSnapshot]:
+        got = {s.name: _snapshot(s.name) for s in specs}
+        return {**got, "coastline": replace(got["coastline"], nodes=(), ways=())}
+
+    with native.osm_job(native.OsmJob(fetch=inland)):
+        first = run_osm_phase([spec], env)
+    stored = first[TILE].ref
+    assert stored is not None
+    assert stored_osm_refs([spec], env) == {TILE: stored}
+    assert stored_osm_refs([replace(spec, osm_fetch=False)], env) == {}
+    kept = sorted(a.key for a in env.store.iter_artifacts())
+    after = {n.role: n.key for n in estimate([spec], env=env).tiles[0].nodes}
+    assert sorted(a.key for a in env.store.iter_artifacts()) == kept
+    # the coastline the estimate plans is the one the build would: on the stored snapshot
+    sched = make_scheduler(env.store, env)
+    (g,) = declare([spec], sched, env, osm_artefacts={TILE: stored}, fetch_osm=True)
+    planned = {e.node_id: e.key for e in sched.plan([g.target.id])}
+    assert g.coastline is not None
+    assert after["coastline"] == planned[g.coastline.id] != before["coastline"]
+
+
 def test_no_osm_fetch_declares_nothing(tmp_path: Path) -> None:
     spec = _spec(tmp_path, osm_fetch=False)
     env = BuildEnv.create([spec])
@@ -325,5 +358,13 @@ def test_a_build_gives_the_osm_node_the_jobs_own_fifteen_minutes(monkeypatch: An
 
     monkeypatch.setattr(build, "run_p0_rule", fake_rule)
     run = build._osm_run(SimpleNamespace(prepared=None))
-    run(SimpleNamespace(params=SimpleNamespace(refresh=""), cancel_event=None, progress=None))
+    run(
+        SimpleNamespace(
+            params=SimpleNamespace(refresh=""),
+            cancel_event=None,
+            progress=None,
+            fetched=lambda nbytes: None,
+            wrote=lambda nbytes: None,
+        )
+    )
     assert seen["timeout_s"] == native.OSM_TIMEOUT_S == 900.0

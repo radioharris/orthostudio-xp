@@ -300,6 +300,42 @@ def test_manager_reloads_past_jobs(home: Path) -> None:
     assert past.state()["tiles"][0]["stages"]["osm"]["status"] == "done"
 
 
+def test_a_build_the_program_stopped_during_is_listed_again(home: Path) -> None:
+    """Killed during a build, the program came back without it: only a finished build wrote its
+    file, and the start lists the files (2026-10-15). The file is written when the build starts;
+    found again still running, the build is failed with ``SYS_BUILD_INTERRUPTED``, its rows as
+    its journal left them (a step under way cancelled), written so, and can be built again. One
+    still waiting behind it never started, and says so (``SYS_BUILD_NOT_STARTED``)."""
+    build = FakeBuild(delay_s=0.3)
+    mgr = _manager(home, build)
+    job = mgr.start([make_spec(home=home)])
+    waiting = mgr.start([make_spec("+44+005", home=home)], queue=True)
+    assert job.state_path().is_file() and waiting.state_path().is_file(), "written at once"
+    deadline = time.monotonic() + 10
+    while sum(1 for e in job.events() if e["event"] == "done") < 2:
+        assert time.monotonic() < deadline, "the build did not get going"
+        time.sleep(0.05)
+    try:
+        # the program stops here: the next start reads the files as they are
+        past = _manager(home, FakeBuild()).get(job.id)
+        assert past is not None and past.status == "failed" and past.finished
+        state = past.state()
+        assert [e["code"] for e in state["errors"]][-1] == "SYS_BUILD_INTERRUPTED"
+        nodes = [n for st in state["tiles"][0]["stages"].values() for n in st["nodes"]]
+        statuses = [n["status"] for n in nodes]
+        assert statuses.count("done") >= 2 and "running" not in statuses
+        assert "cancelled" in statuses  # the step under way when it stopped
+        assert past.events()[-1]["event"] == "finished" and len(past.specs) == 1
+        again = _manager(home, FakeBuild()).get(job.id)  # written so: read as a finished build
+        assert again is not None and again.status == "failed"
+        assert [e["code"] for e in again.state()["errors"]][-1] == "SYS_BUILD_INTERRUPTED"
+        never = _manager(home, FakeBuild()).get(waiting.id)
+        assert never is not None and never.status == "failed"
+        assert [e["code"] for e in never.state()["errors"]] == ["SYS_BUILD_NOT_STARTED"]
+    finally:
+        assert mgr.cancel(waiting.id) and mgr.cancel(job.id) and job.wait(10.0)
+
+
 def test_manager_clears_finished_jobs_and_their_files(home: Path) -> None:
     """The Works list can be emptied: the finished jobs go with their state and journal files, a
     running one stays, and a restart does not bring the cleared ones back."""
@@ -629,3 +665,58 @@ async def test_http_removes_one_finished_job_and_refuses_a_live_one(
         assert (await c.get(f"/api/jobs/{done_id}")).status_code == 404
         assert (await c.delete(f"/api/jobs/{done_id}")).status_code == 404, "gone is gone"
     mgr.close()
+
+
+def test_the_final_report_counts_the_textures_of_every_level(tmp_path: Path) -> None:
+    """The textures node writes one report per level it prepares, all under its key: the tile's
+    own, and those of its zones and of the airports made sharper. The final report read the tile's
+    own alone, and +45+005 said 63 textures where its build had made 174, 111 of them at ZL18
+    around its airports (2026-10-15). The reports of another build of the tile stay out. The
+    textures that took pieces from a level above are counted as textures, as the report's line
+    says, not by their pieces (599 for a tile of 136 on the Shadow, the same day)."""
+    import os
+    from types import SimpleNamespace
+
+    from orthostudio.api.jobs import _textures_decision
+    from orthostudio.imagery.grid import TextureId
+    from orthostudio.pipeline.textures import TextureOutcome, TexturesReport, write_report
+
+    logs = tmp_path / "logs"
+    logs.mkdir()
+
+    def report(zl: int, key: str, statuses: list[str], **counts: int) -> Path:
+        outcomes = [
+            TextureOutcome(
+                f"t{i}",
+                TextureId(16 * i, 0, zl, "Arc"),
+                ("land",),
+                status,
+                from_fallback=37 if zl == 18 and i == 0 else 0,  # pieces of one texture
+                placeholders=5 if zl == 18 and i == 0 else 0,
+            )
+            for i, status in enumerate(statuses)
+        ]
+        r = TexturesReport("+45+005", "Arc", zl, "out", "chunks", "store", "ispc", "1", 4,
+                           outcomes=outcomes, counts=counts)  # fmt: skip
+        path = logs / f"textures-+45+005-Arc{zl}-{key}.json"
+        write_report(r, path)
+        return path
+
+    for old in (report(15, "aaaaaaaaaaaa", ["built"] * 7), report(18, "aaaaaaaaaaaa", ["hit"] * 9)):
+        os.utime(old, (1, 1))  # another build of the tile, before
+    own = report(15, "bbbbbbbbbbbb", ["built", "built", "hit"], built=2, hits=1)
+    report(18, "bbbbbbbbbbbb", ["built", "incomplete"], built=1, chunks_second_pass=2,
+           chunks_recovered=1)  # fmt: skip
+    env = SimpleNamespace(logs=logs)
+    got = _textures_decision(env, SimpleNamespace(tile="+45+005", provider="Arc", zl=15))  # type: ignore[arg-type]
+    assert got == {
+        "total": 5,
+        "built": 3,
+        "hits": 1,
+        "missing": 1,
+        "parent_fallback": 1,
+        "placeholders": 5,
+        "second_pass": 2,
+        "recovered": 1,
+        "report": str(own),
+    }

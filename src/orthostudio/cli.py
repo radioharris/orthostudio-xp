@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import sqlite3
 import sys
 import time
 from pathlib import Path
@@ -492,7 +493,7 @@ def build(
             osm_refresh=osm_refresh, relief=relief, zones=zones,
         )  # fmt: skip
         if dry_run:
-            _plan(specs, online=online, json_output=json_output)
+            _plan(specs, online=online, json_output=json_output, xplane=xplane)
             return
         reporter = _BuildReporter(quiet=quiet)
         report = build_tiles(specs, on_event=reporter)
@@ -530,10 +531,17 @@ def build(
         raise typer.Exit(EXIT_MISSING if codes <= {"TEX_MISSING"} else EXIT_ERROR)
 
 
-def _plan(specs: list, *, online: bool, json_output: bool) -> None:
+def _plan(specs: list, *, online: bool, json_output: bool, xplane: Path | None = None) -> None:
+    from orthostudio.airports import default_index
     from orthostudio.estimate import estimate, render_text
 
-    est = estimate(specs, online=online)
+    airports = None
+    if any(s.config.get("cover_airports_with_highres") in ("True", "ICAO") for s in specs):
+        try:  # X-Plane's list places the airports of a tile whose map data is not read yet
+            airports = default_index(xplane)
+        except (OsxpError, OSError, sqlite3.Error):
+            airports = None
+    est = estimate(specs, online=online, airports=airports)
     if json_output:
         typer.echo(json.dumps(est.to_dict(), indent=1))
     else:
@@ -571,7 +579,7 @@ def plan(
             xp12_rasters=xp12_rasters, creation_agent=creation_agent, link=True,
             encoder=encoder, zones=zones,
         )  # fmt: skip
-        _plan(specs, online=online, json_output=json_output)
+        _plan(specs, online=online, json_output=json_output, xplane=xplane)
     except OsxpError as exc:
         _err(exc)
         raise typer.Exit(EXIT_ERROR) from None
@@ -902,7 +910,7 @@ def import_ortho4xp(
     folder: Annotated[
         Path,
         typer.Argument(
-            help="the Ortho4XP folder (the one holding Ortho4XP.py), or a folder of its tiles"
+            help="the Ortho4XP folder (the one holding Ortho4XP.py), or any folder of photo tiles"
         ),
     ],
     library: Annotated[Path | None, typer.Option("--library", help="library sqlite file")] = None,

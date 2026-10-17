@@ -20,7 +20,7 @@ Nothing here touches the network.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from math import cos, pi
 from typing import NamedTuple, Protocol
@@ -36,8 +36,9 @@ from shapely.geometry.base import BaseGeometry
 from orthostudio.errors import OsxpError
 from orthostudio.model import TileRef
 from orthostudio.vectors.geom import cut_to_tile, polygons_of
-from orthostudio.vectors.noding import MARKERS, Layer
+from orthostudio.vectors.noding import MARKERS, SNAP_DIGITS, Layer
 from orthostudio.vectors.osmdata import OsmData, PolygonGeometry
+from orthostudio.vectors.seeds import SEED_MARGIN_M, inner_points
 
 __all__ = [
     "M_TO_LAT",
@@ -48,9 +49,11 @@ __all__ = [
     "build_water_layers",
     "cut_to_tile",
     "encode_multipolygon",
+    "is_dry_basin",
     "lon_to_m",
     "merge_overlapping_polygons",
     "scale_x",
+    "seed_margin",
 ]
 
 EARTH_RADIUS = 6378137.0
@@ -76,6 +79,16 @@ def scale_x(tile: TileRef) -> float:
     OrthoStudio XP passes it around instead, so two tiles may be built at the same time.
     """
     return cos((tile.lat + 0.5) * pi / 180)
+
+
+def seed_margin(tile: TileRef) -> float:
+    """:data:`orthostudio.vectors.seeds.SEED_MARGIN_M` in the tile-local degrees of ``tile``.
+
+    Counted on a degree of longitude at the tile's edge furthest from the equator, the shortest
+    a degree gets in the tile, so a seed is at least that far from its edges in every direction.
+    """
+    far = min(max(abs(tile.lat), abs(tile.lat + 1)), 89)
+    return SEED_MARGIN_M / lon_to_m(far)
 
 
 class Altitudes(Protocol):
@@ -167,7 +180,64 @@ class WaterResult:
     lakes: tuple[LakeDecision, ...] = ()
     """Every body compared against ``max_area``, masked or not."""
     counts: dict[str, int] = field(default_factory=dict)
-    """``elements``, ``polygons``, ``merged``, ``water``, ``sea_equiv``, ``dropped``."""
+    """``elements``, ``polygons``, ``merged``, ``water``, ``sea_equiv``, ``dropped``,
+    ``dry_basins``; and ``dry``, the pieces the aerodromes took out, only when there are some."""
+    dry: BaseGeometry = field(default_factory=geometry.Polygon)
+    """What the aerodromes took out of the lakes and rivers (tile-local)."""
+
+
+class DryAerodromes(NamedTuple):
+    """The aerodromes whose water is taken out of it (``docs/specs/aerodrome-dry.md``)."""
+
+    outlines: BaseGeometry
+    """Their outlines as OpenStreetMap draws them, tile-local."""
+    surfaces: BaseGeometry
+    """Their runways, taxiways and aprons: a piece of water inside an outline is taken out only
+    where they enter it. Drying all the water inside the outline dried 419 ha of the lake of
+    Cazaux and Lake Hood's seaplane water (census and X-Plane, 2026-10-14)."""
+    scale: tuple[float, float]
+    """Metres per tile-local degree, east and north, at the tile's middle."""
+
+
+TOUCH_MIN_M = 20.0
+"""A runway, taxiway or apron that enters a piece of water by less than this, a line, or less
+than its square, an area, does not count: two maps that hardly meet. Lake Hood's lake, the
+seaplane base of Anchorage, is entered by 9 m of a line; the bridges and runways the rule is for
+cross 600 m (Haneda) to 1.6 km (Macau) of water (census, 2026-10-14)."""
+
+
+def touched_pieces(water: BaseGeometry, dry: DryAerodromes) -> list[geometry.Polygon]:
+    """The pieces of ``water`` inside the aerodromes that their runways, taxiways or aprons enter
+    by :data:`TOUCH_MIN_M` at least.
+
+    Surfaces only: a cut can come back with a line beside its surfaces, and the outline of what was
+    taken is then no outline (13 tiles of the X-Plane pavement rule failed so, 2026-10-14)."""
+    kx, ky = dry.scale
+    out: list[geometry.Polygon] = []
+    for piece in polygons_of(water.intersection(dry.outlines)):
+        if not piece.intersects(dry.surfaces):
+            continue
+        inside = shapely.get_parts(dry.surfaces.intersection(piece))
+        length = sum(
+            float(shapely.length(shapely.transform(part, lambda c: c * (kx, ky))))
+            for part in inside
+            if part.geom_type in ("LineString", "LinearRing")
+        )
+        area = sum(part.area for part in inside if part.geom_type == "Polygon") * kx * ky
+        if length >= TOUCH_MIN_M or area >= TOUCH_MIN_M**2:
+            out.append(piece)
+    return out
+
+
+def left_after(water: BaseGeometry, taken: BaseGeometry) -> list[geometry.Polygon]:
+    """``water`` without ``taken``, in its parts, on the noder's grid (``SNAP_DIGITS``).
+
+    The noder puts every node on that grid, so a shore the cut passes a hair's breadth from
+    touches it there, and the mesh holds two lakes where the polygon held one: the outline of
+    Homey Airport (KXTA) passes so near a point of Groom Lake's shore (2026-10-14). On the grid
+    they come apart here already, each with its own seed; with one seed for both, Triangle4XP
+    made the other land (12.8 ha)."""
+    return polygons_of(shapely.set_precision(water.difference(taken), 10.0**-SNAP_DIGITS))
 
 
 # -- geometry helpers (shared with roads.py) ---------------------------------------------------
@@ -217,6 +287,7 @@ def encode_multipolygon(
     refine: float = 0.0,
     scalx: float = 1.0,
     cut: bool = True,
+    margin: float,
 ) -> EncodedLayer:
     """``encode_MultiPolygon`` (``O4_Vector_Utils.py:365-436``) as one layer.
 
@@ -228,7 +299,7 @@ def encode_multipolygon(
     """
     kept: list[geometry.Polygon] = []
     altitudes: list[NDArray[np.float64]] = []
-    seeds: list[NDArray[np.float64]] = []
+    seeded: list[geometry.Polygon] = []
     dropped = 0
     for pol in polygons:
         cutted: BaseGeometry = cut_to_tile(pol) if cut else pol
@@ -253,11 +324,12 @@ def encode_multipolygon(
                 rings.append(way)
                 altitudes.append(np.asarray(pol_to_alt(way), dtype=np.float64).reshape(-1))
             kept.append(geometry.Polygon(rings[0], rings[1:]))
-            seeds.append(np.array(oriented.representative_point().coords[0], dtype=np.float64))
+            seeded.append(oriented)
+    points = inner_points(np.array(seeded, dtype=object), margin)
     return EncodedLayer(
         geometry.MultiPolygon(kept),
         np.concatenate(altitudes) if altitudes else np.zeros(0, dtype=np.float64),
-        np.array(seeds, dtype=np.float64).reshape(-1, 2),
+        shapely.get_coordinates(points[~shapely.is_empty(points)]).reshape(-1, 2),
         dropped,
     )
 
@@ -346,6 +418,18 @@ def _element_areas(polygons: Sequence[PolygonGeometry]) -> dict[tuple[str, int],
     return areas
 
 
+def is_dry_basin(tags: Mapping[str, str]) -> bool:
+    """A rainwater basin OpenStreetMap marks dry most of the year: ``water=basin`` with
+    ``intermittent=yes`` (retention, detention, infiltration).
+
+    Ortho4XP draws it as water, so the grass of the photo lay under X-Plane's water: 37 of them
+    around Leipzig/Halle airport (EDDP, ``+51+012``), up to 29,000 m², a user's screenshot and
+    idea #13 (2026-10-11). Left out, its ground is the photo's. A lake or a pond marked
+    intermittent, and a basin that is not, stay water.
+    """
+    return tags.get("water") == "basin" and tags.get("intermittent") == "yes"
+
+
 def build_water_layers(
     osm_data: OsmData,
     tile: TileRef,
@@ -353,13 +437,19 @@ def build_water_layers(
     dem: Altitudes | None = None,
     *,
     on_event: EventHandler | None = None,
+    dry: DryAerodromes | None = None,
 ) -> WaterResult:
     """The ``WATER`` and ``SEA_EQUIV`` layers of one tile (``include_water``, ``:453-589``).
 
     ``osm_data`` is the ``water`` layer store (or a user file loaded with ``layer=None``);
     ``dem`` gives the vertex altitudes and may be ``None`` in tests, which zeroes them.
+    ``dry`` gives the aerodromes whose water is taken out of the lakes and rivers before they are
+    encoded and seeded (``docs/specs/aerodrome-dry.md``). A polygon they do not reach is kept as
+    it is, so a tile without such an aerodrome gets the very layers it got before.
     """
     polygons = osm_data.multipolygons_with(on_skip=lambda code, ctx: _report(on_event, code, ctx))
+    dry_basins = {(item.kind, item.id) for item in polygons if is_dry_basin(item.tags)}
+    polygons = [item for item in polygons if (item.kind, item.id) not in dry_basins]
     threshold = params.max_area * 1e6 / (LAT_TO_M * lon_to_m(tile.lat + 0.5))
     element_area = _element_areas(polygons)
     lakes: list[LakeDecision] = []
@@ -395,14 +485,19 @@ def build_water_layers(
     merged_sea = merge_overlapping_polygons(
         sea_pols, merge=params.clean_bad_geometries, on_event=on_event
     )
+    taken: list[BaseGeometry] = []
+    if dry is not None:
+        merged_water = without(merged_water, dry, taken)
+        merged_sea = without(merged_sea, dry, taken)
     alt = _alt_of(dem)
     area_limit = params.min_area / 10000
     simplify = params.water_simplification * M_TO_LAT
+    margin = seed_margin(tile)
     encoded_water = encode_multipolygon(
-        merged_water, pol_to_alt=alt, area_limit=area_limit, simplify=simplify
+        merged_water, pol_to_alt=alt, area_limit=area_limit, simplify=simplify, margin=margin
     )
     encoded_sea = encode_multipolygon(
-        merged_sea, pol_to_alt=alt, area_limit=area_limit, simplify=simplify
+        merged_sea, pol_to_alt=alt, area_limit=area_limit, simplify=simplify, margin=margin
     )
     layers: list[Layer] = []
     seeds: dict[str, NDArray[np.float64]] = {}
@@ -411,21 +506,45 @@ def build_water_layers(
             continue
         layers.append(encoded.layer(name))
         seeds[name] = encoded.seeds
+    counts = {
+        "elements": len(element_area),
+        "polygons": len(polygons),
+        "merged": len(merged_water) + len(merged_sea),
+        "water": len(encoded_water.geometry.geoms),
+        "sea_equiv": len(encoded_sea.geometry.geoms),
+        "dropped": encoded_water.dropped + encoded_sea.dropped,
+        "dry_basins": len(dry_basins),
+    }
+    if taken:
+        counts["dry"] = len(taken)
     return WaterResult(
         layers=tuple(layers),
         seeds=seeds,
         water=encoded_water.geometry,
         sea_equiv=encoded_sea.geometry,
         lakes=tuple(lakes),
-        counts={
-            "elements": len(element_area),
-            "polygons": len(polygons),
-            "merged": len(merged_water) + len(merged_sea),
-            "water": len(encoded_water.geometry.geoms),
-            "sea_equiv": len(encoded_sea.geometry.geoms),
-            "dropped": encoded_water.dropped + encoded_sea.dropped,
-        },
+        counts=counts,
+        dry=shapely.union_all(taken) if taken else geometry.Polygon(),
     )
+
+
+def without(
+    polygons: Sequence[geometry.Polygon], dry: DryAerodromes, taken: list[BaseGeometry]
+) -> list[geometry.Polygon]:
+    """``polygons`` with the pieces :func:`touched_pieces` finds taken out, in their order; what
+    was taken goes into ``taken``. A polygon with no such piece is the same object."""
+    out: list[geometry.Polygon] = []
+    for polygon in polygons:
+        if not polygon.intersects(dry.outlines):
+            out.append(polygon)
+            continue
+        cut = touched_pieces(polygon, dry)
+        if not cut:
+            out.append(polygon)
+            continue
+        taken.extend(cut)
+        out.extend(left_after(polygon, shapely.union_all(cut)))
+    return out
 
 
 def _report(on_event: EventHandler | None, code: str, context: dict[str, object]) -> None:

@@ -124,7 +124,7 @@ def test_build_stats(index: AirportIndex, apt_dat: Path) -> None:
     assert stats.shared_icao == 1  # PAMB carried by XPA000C and by the closed PAMB
     assert stats.source_size == apt_dat.stat().st_size
     meta = index.stats()
-    assert meta["schema_version"] == "1"
+    assert meta["schema_version"] == "2"
     assert meta["airports"] == "6"
     assert meta["source_path"] == str(apt_dat)
 
@@ -157,6 +157,21 @@ def test_helipad_and_water_runway_fallbacks(index: AirportIndex) -> None:
     assert sea is not None and sea.kind == "sea"
     assert (sea.lat, sea.lon) == pytest.approx((64.84, 11.14))
     assert sea.name == "Rørvik Ryum"
+
+
+def test_the_box_of_the_land_runways_is_kept(index: AirportIndex) -> None:
+    """The Plan places the airports a build makes sharper by their runways, for a tile whose map
+    data is not read yet (``orthostudio.estimate``): both ends of every land runway, no more."""
+    lfml = index.get("LFML")
+    assert lfml is not None and lfml.runways == pytest.approx((43.43, 5.21, 43.45, 5.23))
+    tetlin = index.get("5TE")
+    assert tetlin is not None
+    assert tetlin.runways == pytest.approx((63.1315349, -142.5229183, 63.1361123, -142.5209494))
+    for name in ("ENQA", "ENRM", "XPA000C"):  # a helipad, a water runway, no runway at all
+        airport = index.get(name)
+        assert airport is not None and airport.runways is None, name
+    (found,) = index.in_bounds(5.0, 43.0, 6.0, 44.0)
+    assert found.runways == lfml.runways
 
 
 def test_record_without_geometry_is_dropped(index: AirportIndex) -> None:

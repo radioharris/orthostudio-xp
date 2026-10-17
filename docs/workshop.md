@@ -18,9 +18,10 @@ themselves can go anywhere.
 ## Filing tiles
 
 1. Open the Library.
-2. Tick the tiles you want to file. *Pick all shown* ticks every tile left on screen by the search
-   and the folder list.
-3. Click *File elsewhere…* and choose a folder.
+2. Tick the tiles you want to file. *Pick all shown* ticks every tile left on screen by the search,
+   the folder list and *Show*.
+3. Click *File elsewhere…* and choose a folder. It takes the ticked tiles on screen: a tile ticked,
+   then hidden by the search or a list, stays ticked and is left where it is.
 
 Before anything moves, OrthoStudio XP tells you what it is going to do with each tile. On the
 workshop's own disk a tile is moved, which is instant. On another disk it is copied, the
