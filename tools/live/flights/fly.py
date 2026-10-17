@@ -272,9 +272,13 @@ def live_runs() -> bool:
     return False
 
 
+KEEP_SIMBRIEF = False  # --keep-simbrief: the cold home keeps the user's SimBrief name
+
+
 def cold_home(home: Path) -> Path:
     """A folder for Live of its own: the user's Live settings, less its folder and SimBrief name
-    (Live's defaults where it has none)."""
+    (Live's defaults where it has none); the SimBrief name kept with ``--keep-simbrief``, for a
+    flight along the user's last plan (Live follows it as the user's own Live does)."""
     from orthostudio.live import settings_file
 
     home.mkdir(parents=True, exist_ok=True)
@@ -283,7 +287,8 @@ def cold_home(home: Path) -> Path:
     except FileNotFoundError:
         text = "enabled = true\n"
     text = re.sub(r"(?m)^folder\s*=.*$", 'folder = ""', text)
-    text = re.sub(r"(?m)^(simbrief(?:_user)?)\s*=.*$", r'\1 = ""', text)
+    if not KEEP_SIMBRIEF:
+        text = re.sub(r"(?m)^(simbrief(?:_user)?)\s*=.*$", r'\1 = ""', text)
     (home / "live.toml").write_text(text, encoding="utf-8")
     cold_lists(home)
     return home
@@ -781,10 +786,12 @@ def xpme_settings() -> dict:
 
 def xpme_mounted() -> bool:
     """XPME's service started: the folder it serves X-Plane's textures from mounted (a Mac's
-    ``mount``)."""
+    ``mount``), wherever its settings put it: ``~/XPME-fuse`` by default, on another disk at the
+    user's (2026-10-17: ``/Volumes/Logic Projects/XPME-fuse``)."""
     if WINDOWS:
         return False
-    return f" on {XPME_MOUNT} " in subprocess.run(["mount"], capture_output=True, text=True).stdout
+    mounts = subprocess.run(["mount"], capture_output=True, text=True).stdout
+    return f" on {XPME_MOUNT} " in mounts or "fuse-t:/XPME-fuse on " in mounts
 
 
 def xpme_runs() -> bool:
@@ -1046,7 +1053,9 @@ def clear_box(xp: Path) -> None:
     aside."""
     b = box(xp)
     b.mkdir(parents=True, exist_ok=True)
-    old = [b / n for n in ("scenario.txt", "scenario.done", "events.txt", "frames.csv", "quit")]
+    old = [
+        b / n for n in ("scenario.txt", "scenario.done", "events.txt", "frames.csv", "quit", "stop")
+    ]
     old = [p for p in old if p.exists()]
     if old:
         aside = b / "earlier"
@@ -1104,17 +1113,47 @@ def last_path_s(frames: Path) -> float | None:
     return None
 
 
+STOP_AFTER_LOADS = 0  # --stop-after-loads: the path ended once X-Plane has loaded this many times
+AFTER_LOAD_S = 60.0  # ... and this long after the last: the photos late after a load show then
+
+
+def loads_done(lines: list[str]) -> int:
+    """How many scenery loads X-Plane finished during the path, as the test pilot marks them: a
+    "scenery load at ..., path T s" with T not negative, then its "scenery loaded in S s"."""
+    done, in_path = 0, False
+    for line in lines:
+        if "scenery load at " in line:
+            try:
+                in_path = float(line.rsplit("path ", 1)[1].split()[0]) >= 0.0
+            except (IndexError, ValueError):
+                in_path = False
+        elif "scenery loaded in " in line and in_path:
+            done += 1
+            in_path = False
+    return done
+
+
 def wait_flight(xp: Path, sc: scenarios.Scenario, sent_at: float) -> tuple[str, dict]:
-    """Until the test pilot says "done"; what happened (``done``, or why not) and when."""
+    """Until the test pilot says "done"; what happened (``done``, or why not) and when. With
+    ``--stop-after-loads N``, the path is ended AFTER_LOAD_S after X-Plane's Nth load in it (the
+    user, 2026-10-17: « quitter chaque vol après le 3ème changement complet de scène »)."""
     b = box(xp)
     shown, flying_at, told, seen = 0, None, 0.0, False
     times: dict = {}
+    loaded_at: float | None = None
     while True:
         time.sleep(POLL_S)
         try:
             lines = (b / "events.txt").read_text(errors="replace").splitlines()
         except OSError:
             lines = []
+        if STOP_AFTER_LOADS and loaded_at is None and loads_done(lines) >= STOP_AFTER_LOADS:
+            loaded_at = time.time()
+            say(f"  X-Plane's load {STOP_AFTER_LOADS} done: the path ends in {AFTER_LOAD_S:.0f} s")
+        if loaded_at is not None and time.time() - loaded_at >= AFTER_LOAD_S:
+            with contextlib.suppress(OSError):
+                (b / "stop").write_text("stop\n")
+            loaded_at = float("inf")  # asked once
         for line in lines[shown:]:
             say("  pilot: " + (line.split(" ", 1)[1] if " " in line else line))
         shown = max(shown, len(lines))
@@ -1278,6 +1317,9 @@ def run(a: argparse.Namespace) -> int:
     up = xplane_up()
     if up and READY not in log_text(xp):
         raise RefusedError("X-Plane runs without the test pilot: quit it, the series starts it")
+    global KEEP_SIMBRIEF, STOP_AFTER_LOADS
+    KEEP_SIMBRIEF = bool(getattr(a, "keep_simbrief", False))
+    STOP_AFTER_LOADS = int(getattr(a, "stop_after_loads", 0) or 0)
     running = {"live": live_runs(), "autoortho": autoortho_runs(), "xpme": xpme_runs()}
     running["app"] = running["live"] or _port_open(LIVE_PORT) or _port_open(APP_PORT)
     proc: subprocess.Popen | App | Xpme | None = None
@@ -1708,6 +1750,17 @@ def parser() -> argparse.ArgumentParser:
         help="with --streamer app: OrthoStudio XP's side open too, its engine and its page, idle",
     )
     p.add_argument("--cold", action="store_true", help="the streamer from a home of its own, empty")
+    p.add_argument(
+        "--stop-after-loads",
+        type=int,
+        default=0,
+        help="the path ended 60 s after X-Plane's Nth scenery load in it (0: flown to its end)",
+    )
+    p.add_argument(
+        "--keep-simbrief",
+        action="store_true",
+        help="with --cold: Live keeps your SimBrief name, and follows your last plan",
+    )
     p.add_argument(
         "--ao-settings",
         choices=("mine", "default"),

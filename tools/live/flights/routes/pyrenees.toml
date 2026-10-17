@@ -1,0 +1,19 @@
+title = "Pyrénées : de Pau à Perpignan par les vallées, 12 000 ft puis en bas"
+note = """Along the Pyrenees from Pau to Perpignan: up over the range at 12,000 ft, round Andorra, then
+down the Têt valley to the plain, 250 to 280 kt; 0, 1 and 2 E crossed (three columns)."""
+zulu = [11, 271]
+waypoints = [[42.95, -0.1],
+             [42.9, 0.2],
+             [42.79, 0.59],
+             [42.7, 1.0],
+             [42.56, 1.25],
+             [42.5, 1.52],
+             [42.43, 1.93],
+             [42.52, 2.08],
+             [42.62, 2.42],
+             [42.7, 2.75],
+             [42.78, 3.0]]
+profile = [[0, 11000, 270],
+           [30, 12000, 270],
+           [-50, 12000, 270],
+           [-1, 7000, 250]]

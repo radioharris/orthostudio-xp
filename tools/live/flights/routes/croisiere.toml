@@ -1,0 +1,10 @@
+title = "Croisière FL350 à 490 kt, directs et changements de cap"
+note = """Cruise across France at FL350, 490 kt over the ground (900 km/h), a direct every 60 to 100
+km turning 25 to 50 degrees; 0 to 5.6 E crossed (six columns)."""
+zulu = [11, 271]
+waypoints = [[47.5, 0.8],
+             [47.2, 1.6],
+             [47.7, 2.5],
+             [47.25, 3.4],
+             [47.8, 4.1]]
+profile = [[0, 35000, 490], [-1, 35000, 490]]

@@ -95,6 +95,32 @@ def test_the_path_is_the_test_pilots() -> None:
     assert path[-1][2] == pytest.approx(30000 * scenario.FT)
 
 
+def test_the_loads_x_plane_finished_during_the_path() -> None:
+    """Counted as the test pilot marks them: a load before the path (its start's) is not one, a
+    load begun but not finished is not one yet."""
+    lines = [
+        "12:00:01 scenery load at 43.6 1.3, path -1.0 s",
+        "12:00:20 scenery loaded in 19.0 s",
+        "12:05:01 scenery load at 43.6 2.3, path 300.0 s",
+        "12:05:09 scenery loaded in 8.0 s",
+        "12:09:01 scenery load at 43.6 3.3, path 540.0 s",
+    ]
+    assert fly.loads_done(lines) == 1
+    assert fly.loads_done([*lines, "12:09:07 scenery loaded in 6.0 s"]) == 2
+
+
+def test_a_leg_changes_the_ground_speed_evenly() -> None:
+    """A leg's fourth number is the ground speed at its end, reached evenly: 500 kt down to 250 kt
+    over 600 s flies their mean; a leg without one keeps it."""
+    sc = scenario.parse("start 45 6 30000 0 500\nleg 600 0 0 250\nleg 100 0 0\n")
+    path = sc.path()
+    mid = path[round(600 / scenario.STEP)]
+    km = (mid[0] - 45) * scenario.M_DEG / 1000
+    assert km == pytest.approx(375 * scenario.KT * 600 / 1000, rel=2e-3)
+    last = (path[-1][0] - mid[0]) * scenario.M_DEG / 1000
+    assert last == pytest.approx(250 * scenario.KT * 100 / 1000, rel=1e-6)
+
+
 def test_the_scenarios_of_the_repository_read_and_follow_each_other() -> None:
     names = sorted(p.stem for p in scenario.SCENARIOS.glob("*.txt"))
     assert {"scandinavia-columns", "scandinavia-rows"} <= set(names)

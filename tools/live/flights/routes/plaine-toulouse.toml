@@ -1,0 +1,20 @@
+title = "Plaine : bas de Toulouse à Nîmes, virages, 250 kt"
+note = """Low over the plain from Toulouse to Nîmes, as a light aircraft or an arrival flies it: 3,000 to
+4,500 ft, 220 to 250 kt, turning at every town; three columns of X-Plane's squares loaded (2, 3 and
+4 E crossed). The 2026-10 campaign (the user: three loads a flight, more turns)."""
+zulu = [11, 271]
+waypoints = [[43.62, 1.55],
+             [43.58, 1.75],
+             [43.55, 1.92],
+             [43.4, 2.2],
+             [43.3, 2.75],
+             [43.38, 3.22],
+             [43.55, 3.5],
+             [43.62, 3.88],
+             [43.72, 4.12],
+             [43.78, 4.4],
+             [43.7, 4.78]]
+profile = [[0, 3000, 250],
+           [40, 4500, 250],
+           [-40, 4500, 250],
+           [-1, 3000, 250]]

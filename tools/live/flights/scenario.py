@@ -36,6 +36,7 @@ class Leg:
     seconds: float
     turn: float  # degrees a second, to the right
     climb: float  # feet a minute
+    knots: float | None = None  # the ground speed at the leg's end, evenly from the one before
 
 
 @dataclass
@@ -77,7 +78,10 @@ class Scenario:
         lat, lon, alt, hdg, v = s.lat, s.lon, s.feet * FT, s.heading, s.knots * KT
         points = [(lat, lon, alt, hdg)]
         for leg in self.legs:
-            for _ in range(round(leg.seconds / STEP)):
+            n = round(leg.seconds / STEP)
+            v0, v1 = v, (v if leg.knots is None else leg.knots * KT)
+            for k in range(n):
+                v = v0 + (v1 - v0) * (k + 1) / n
                 hdg = math.fmod(hdg + leg.turn * STEP + 360.0, 360.0)
                 h = math.radians(hdg)
                 lat += v * STEP * math.cos(h) / M_DEG
@@ -108,7 +112,7 @@ def parse(text: str, name: str = "scenario") -> Scenario:
             if words[0] == "start":
                 start = Start(*(float(w) for w in words[1:6]))
             elif words[0] == "leg":
-                legs.append(Leg(*(float(w) for w in words[1:4])))
+                legs.append(Leg(*(float(w) for w in words[1:5])))
             elif words[0] == "aircraft":
                 aircraft = line.split("#", 1)[0].strip()[len("aircraft") :].strip()
             elif words[0] == "screenshot":

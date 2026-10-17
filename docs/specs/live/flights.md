@@ -36,7 +36,8 @@ measurement of the scenery wants. A comparison of AutoOrtho and Live under an ai
 
 - `native/xplane_test_pilot/test_pilot.c`: the plugin. It does nothing without a scenario. Every
   second of the wall's clock it looks in `Output/osxp_test_pilot/` of X-Plane's folder for
-  `scenario.txt` (a new one: flown, then renamed `scenario.done`) and `quit` (X-Plane quits). It
+  `scenario.txt` (a new one: flown, then renamed `scenario.done`), `stop` (the path ends there, as
+  at its end: `--stop-after-loads`) and `quit` (X-Plane quits). It
   writes what it does to `events.txt` and every frame of the path to `frames.csv` (time, frame
   duration, position, camera, X-Plane loading scenery). It marks each of X-Plane's scenery loads in
   `Log.txt` ("scenery load at LAT LON, path T s", and "scenery loaded in S s" at its end): its lines
@@ -49,8 +50,21 @@ measurement of the scenery wants. A comparison of AutoOrtho and Live under an ai
   X-Plane's XPLM framework), ahead for Windows and Linux (`native/xplane_test_pilot/prebuilt`,
   `tools/live/plugin_builds.py`, as Live's plugin).
 - `tools/live/flights/scenarios/*.txt`: the scenarios, in the plugin's statements (listed in
-  `test_pilot.c`'s header): a start, legs of a duration, a turn rate and a climb rate at one ground
-  speed, the weather, the time, cameras, screenshots.
+  `test_pilot.c`'s header): a start, legs of a duration, a turn rate, a climb rate and, as a fourth
+  number, the ground speed reached evenly by the leg's end (2026-10-17: 490 kt in cruise, 470 kt
+  down to 13,000 ft, 250 kt below 10,000 ft), the weather, the time, cameras, screenshots. A chase
+  camera may move, from its distance, height and bearing at its start to three more at its end: a
+  quick zoom out, a turn round the aircraft (`camera 84 104 chase 150 30 180 150 30 540`).
+- `tools/live/flights/route.py` and `routes/*.toml` (2026-10-17): a scenario made from a route as a
+  pilot flies it, waypoints and the height and speed along the way (a profile by kilometres flown,
+  or counted from the end for a descent): the aircraft turns towards each waypoint (2 degrees a
+  second above 300 kt, 3 below), a leg is written every 15 s. Their default views: half in the
+  cockpit, half outside, every 2 minutes a quick zoom out to 8 km and back, a turn round the
+  aircraft, or the view 20 km to the right (the user: « 50/50 »). The campaign of 2026-10-17 flew
+  the plain (Toulouse to Nîmes), tight turns (Burgundy), the Pyrenees, the Alps (the Rhône valley,
+  the Simplon, Lugano) and the descent into Lyon with a direct-to at speed, each crossing three of
+  the lines where X-Plane loads a new column (lon x.65 eastbound, at least half a degree past the
+  start: X-Plane's window already holds the one nearer).
 - `tools/live/flights/fly.py`: the runner (below).
 - `tools/live/flights/report.py`: the report of one flight, from its folder.
 - `tests/test_live_flights_series.py`: a series flown by the runner from its start to its end, on
@@ -240,13 +254,22 @@ processes of its web view, which the system starts and which are not under it, a
 own (`sampler.responsible`); on Windows they are under it. `system.csv` keeps, of the app, its
 engine's and its web view's memory and processor apart (`engine_*`, `web_*`).
 
+### Ending a flight at X-Plane's loads
+
+`--stop-after-loads N` (2026-10-17, the user: « quitter chaque vol après le 3ème changement complet
+de scène ») ends the path 60 s after X-Plane's Nth scenery load in it (`loads_done`: a load the test
+pilot marks with a path time not negative, then its end), with the plugin's `stop`. A descent whose
+loads all come in cruise must be flown whole: its end is what it is for. `--keep-simbrief`: a cold
+home keeps the user's SimBrief name, for a flight along their last plan.
+
 ## XPME
 
 `--streamer xpme` (2026-10-08) flies XPME (XPlane Map Enhancement) as the user runs it, for the
 comparison the published guide gives. It is started by hand before the series, as the user does:
 its app opened, its service started in its window, with its own settings (its imagery, Bing Maps;
 its resolution, Normal: ZL16/18; High is ZL17/19, so `--zooms` is refused). The runner refuses to
-fly without its service (`~/XPME-fuse` mounted, its app's process there) or beside Live or
+fly without its service (its folder mounted, `~/XPME-fuse` or wherever its settings put it, as
+`/Volumes/Logic Projects/XPME-fuse` at the user's: `fuse-t:/XPME-fuse`; its app's process there) or beside Live or
 AutoOrtho, and, `--cold`, while its cache index (`.xpme-cache-index.sqlite3` in its settings'
 `CacheFolder`) lists pieces: its window's Clear empties it. The sampler counts as the streamer's
 its app's main process and everything under it (its service, `XplaneMapEnhancement`, and its

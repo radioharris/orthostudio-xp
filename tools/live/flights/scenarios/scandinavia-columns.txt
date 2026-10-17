@@ -8,7 +8,63 @@ title Rectangle de X-Plane en Norvège : ses colonnes, vers l'est puis l'ouest
 start 60.50 10.40 30000 90 480
 weather clear
 zulu 11 271          # 13:00 in Norway on 29 September
-camera 0 99999 cockpit
+# half in the cockpit, half outside (route.views), as every flight of the 2026-10 campaign
+camera 0 60 cockpit
+camera 60 66 chase 150 30 180 8000 2000 180
+camera 66 78 chase 8000 2000 180
+camera 78 84 chase 8000 2000 180 150 30 180
+camera 84 104 chase 150 30 180 150 30 540
+camera 104 120 chase 150 30 180
+camera 120 180 cockpit
+camera 180 200 chase 120 25 0 120 25 360
+camera 200 225 chase 600 150 0 600 150 360
+camera 225 240 chase 150 30 180
+camera 240 300 cockpit
+camera 300 306 chase 150 30 180 20000 3000 90
+camera 306 336 chase 20000 3000 90
+camera 336 342 chase 20000 3000 90 150 30 180
+camera 342 360 chase 150 30 180
+camera 360 420 cockpit
+camera 420 426 chase 150 30 180 8000 2000 180
+camera 426 438 chase 8000 2000 180
+camera 438 444 chase 8000 2000 180 150 30 180
+camera 444 464 chase 150 30 180 150 30 540
+camera 464 480 chase 150 30 180
+camera 480 540 cockpit
+camera 540 560 chase 120 25 0 120 25 360
+camera 560 585 chase 600 150 0 600 150 360
+camera 585 600 chase 150 30 180
+camera 600 660 cockpit
+camera 660 666 chase 150 30 180 20000 3000 90
+camera 666 696 chase 20000 3000 90
+camera 696 702 chase 20000 3000 90 150 30 180
+camera 702 720 chase 150 30 180
+camera 720 780 cockpit
+camera 780 786 chase 150 30 180 8000 2000 180
+camera 786 798 chase 8000 2000 180
+camera 798 804 chase 8000 2000 180 150 30 180
+camera 804 824 chase 150 30 180 150 30 540
+camera 824 840 chase 150 30 180
+camera 840 900 cockpit
+camera 900 920 chase 120 25 0 120 25 360
+camera 920 945 chase 600 150 0 600 150 360
+camera 945 960 chase 150 30 180
+camera 960 1020 cockpit
+camera 1020 1026 chase 150 30 180 20000 3000 90
+camera 1026 1056 chase 20000 3000 90
+camera 1056 1062 chase 20000 3000 90 150 30 180
+camera 1062 1080 chase 150 30 180
+camera 1080 1140 cockpit
+camera 1140 1146 chase 150 30 180 8000 2000 180
+camera 1146 1158 chase 8000 2000 180
+camera 1158 1164 chase 8000 2000 180 150 30 180
+camera 1164 1184 chase 150 30 180 150 30 540
+camera 1184 1200 chase 150 30 180
+camera 1200 1260 cockpit
+camera 1260 1280 chase 120 25 0 120 25 360
+camera 1280 1305 chase 600 150 0 600 150 360
+camera 1305 1320 chase 150 30 180
+camera 1320 99999 cockpit
 leg 565 0 0          # east
 leg 60 3 0           # the U-turn, 3 degrees a second
 leg 663 0 0          # west, to 60.415 N 9.964 E: where scandinavia-rows starts

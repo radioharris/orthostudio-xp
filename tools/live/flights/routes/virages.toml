@@ -1,0 +1,27 @@
+title = "Virages serrés : zigzags et attentes en Bourgogne, 5 000 ft, 250 kt"
+note = """Turn after turn north-east across Burgundy: 90-degree zigzags every 15 to 25 km, two holding
+patterns, at 5,000 ft and 250 kt; 4.3 E to 6.6 E and 46.4 N to 47.6 N crossed (three columns,
+one row). Where the photos must follow a heading that keeps changing."""
+zulu = [11, 271]
+waypoints = [[46.7, 4.55],
+             [46.82, 4.7],
+             [46.9, 4.9],
+             [47.02, 5.05],
+             [46.92, 5.2],
+             [47.05, 5.32],
+             [46.95, 5.45],
+             [47.08, 5.55],
+             [47.15, 5.45],
+             [47.05, 5.4],
+             [47.0, 5.55],
+             [47.12, 5.68],
+             [47.02, 5.82],
+             [47.15, 5.92],
+             [47.1, 6.06],
+             [47.22, 6.25],
+             [47.12, 6.45],
+             [47.25, 6.75],
+             [47.35, 6.95],
+             [47.28, 7.15],
+             [47.4, 7.8]]
+profile = [[0, 5000, 250], [-1, 5000, 250]]

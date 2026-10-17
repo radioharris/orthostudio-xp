@@ -10,6 +10,8 @@
  * plugin looks in Output/osxp_test_pilot/ of X-Plane's folder for what the runner asks:
  * - scenario.txt, a new one (its time changed): a flight, flown as below; then it is renamed
  *   scenario.done, and events.txt says "done";
+ * - stop: the path ends there, as at its end (done): the runner asks it once X-Plane has loaded
+ *   the scenery it waited for (fly.py --stop-after-loads);
  * - quit: X-Plane quits. X-Plane asks "Quit the simulator?" at this quit command, and waits for a
  *   click (11 minutes, 2026-09-29); plugins' flight loops do not run while it asks, but a second
  *   quit command over UDP is its answer: X-Plane then shuts down at once, cleanly. The runner sends
@@ -20,7 +22,7 @@
  *   the weather and the time it says;
  * - once X-Plane flies there (its clock running, the aircraft at the start: Live's plugin may hold
  *   X-Plane first while the ortho is built), it flies the scenario's path itself, frame by frame
- *   from X-Plane's own clock: legs of a duration, a turn rate and a climb rate at one ground speed.
+ *   from X-Plane's own clock: legs of a duration, a turn rate, a climb rate and a ground speed.
  *   The position is converted by X-Plane in its own thread and frame (XPLMWorldToLocal), so X-Plane
  *   moving its local origin as it loads scenery moves nothing, and its clock runs on: the drones
  *   over UDP of 2026-09-29 threw the aircraft a degree away (local coordinates written in an old
@@ -33,13 +35,17 @@
  *
  * The scenario, one statement a line ('#' starts a comment):
  *   start LAT LON FEET HEADING KNOTS     where and how the flight starts
- *   leg SECONDS DEG_PER_S FEET_PER_MIN   the path, from the start, one leg after the other
+ *   leg SECONDS DEG_PER_S FEET_PER_MIN [KNOTS]
+ *                                        the path, from the start, one leg after the other; KNOTS:
+ *                                        the ground speed reached at the leg's end, evenly from the
+ *                                        one before (500 kt in cruise, 250 kt below 10,000 ft)
  *   weather clear                        no cloud, no wind, no turbulence, the weather static
  *   zulu HOURS [DAY]                     the time of day, UTC, and the day of the year (0: 1 January)
  *   camera T0 T1 cockpit [PITCH]         the 3D cockpit between T0 and T1 seconds of path, looking
  *                                        straight ahead, PITCH degrees up: negative looks down
  *                                        (COCKPIT_PITCH, -10)
- *   camera T0 T1 chase METRES UP BEARING a camera METRES from the aircraft, UP above it, at
+ *   camera T0 T1 chase METRES UP BEARING [METRES2 UP2 BEARING2]
+ *                                        a camera METRES from the aircraft, UP above it, at
  *                                        BEARING degrees from its heading, looking at it
  *   camera-record                        the user's camera recorded, 20 times a second of path, into
  *                                        camera.csv: the plugin leaves the view to the user
@@ -124,8 +130,8 @@ extern void XPLMEnableFeature(const char *inFeature, int inEnable);
 #define KT 0.514444
 #define M_DEG 111195.0
 #define STEP 0.5                /* the path's samples, seconds */
-#define MAX_LEGS 64
-#define MAX_CAMERAS 64
+#define MAX_LEGS 1024 /* a route generated every 15 s of path: an hour and more */
+#define MAX_CAMERAS 1024 /* a view cycle every 2 minutes: five cameras each */
 #define MAX_SHOTS 256
 #define READY_S 3.0             /* X-Plane flying at the start this long: the path begins */
 #define START_KM 20.0
@@ -134,13 +140,16 @@ extern void XPLMEnableFeature(const char *inFeature, int inEnable);
 
 enum { WAITING, PLACED, FLYING, DONE };
 
-struct leg { double seconds, turn, climb; };
+struct leg { double seconds, turn, climb, knots; }; /* knots < 0: the speed kept */
 /* The user's camera at a time of the path. Outside (ext): a ahead, b right, c up of the aircraft,
    metres; h its heading from the aircraft's, p its pitch, r its roll, degrees. Inside: the pilot's
    head, a b c its x y z (metres, the aircraft's axes), h p r its psi the phi. fov: X-Plane's
    field of view, degrees. */
 struct pose { double t, a, b, c, h, p, r, fov; int ext; };
-struct camera { double t0, t1, dist, up, bearing, pitch; int chase; };
+struct camera {
+    double t0, t1, dist, up, bearing, pitch, dist2, up2, bearing2;
+    int chase, moving; /* moving: from dist, up, bearing at t0 to dist2, up2, bearing2 at t1 */
+};
 /* The head's pitch in a scenario's cockpit, unless it gives one, held every frame with the eye
    point X-Plane gives and straight ahead: X-Plane left the view of one run on the panel and of
    three others on the horizon, and their frames and memory differed with it (the review of the
@@ -245,7 +254,9 @@ static int read_scenario(const char *file) {
             start_lat = a, start_lon = b, start_ft = c, start_hdg = d, start_kt = e;
             active = 1;
         } else if (strcmp(word, "leg") == 0 && n_legs < MAX_LEGS && sscanf(line, "leg %lf %lf %lf", &a, &b, &c) == 3) {
-            legs[n_legs++] = (struct leg){a, b, c};
+            double kt = -1.0;
+            if (sscanf(line, "leg %lf %lf %lf %lf", &a, &b, &c, &kt) != 4) kt = -1.0;
+            legs[n_legs++] = (struct leg){a, b, c, kt};
         } else if (strcmp(word, "weather") == 0 && strstr(line, "clear")) {
             weather_clear = 1;
         } else if (strcmp(word, "zulu") == 0 && sscanf(line, "zulu %lf", &a) == 1) {
@@ -254,9 +265,11 @@ static int read_scenario(const char *file) {
         } else if (strcmp(word, "camera") == 0 && n_cameras < MAX_CAMERAS) {
             struct camera cam = {0};
             char mode[32];
-            int n = sscanf(line, "camera %lf %lf %31s %lf %lf %lf", &cam.t0, &cam.t1, mode, &cam.dist, &cam.up, &cam.bearing);
+            int n = sscanf(line, "camera %lf %lf %31s %lf %lf %lf %lf %lf %lf", &cam.t0, &cam.t1, mode, &cam.dist,
+                           &cam.up, &cam.bearing, &cam.dist2, &cam.up2, &cam.bearing2);
             if (n >= 3) {
                 cam.chase = strcmp(mode, "chase") == 0;
+                cam.moving = cam.chase && n == 9; /* a quick zoom out, a turn round the aircraft */
                 cam.pitch = !cam.chase && n >= 4 ? cam.dist : COCKPIT_PITCH;
                 cameras[n_cameras++] = cam;
             }
@@ -288,9 +301,11 @@ static void make_path(void) {
     path[0] = lat, path[1] = lon, path[2] = alt, path[3] = hdg;
     n_path = 1;
     for (i = 0; i < n_legs; i++) {
+        double v0 = v, v1 = legs[i].knots >= 0.0 ? legs[i].knots * KT : v;
         n = (int)lround(legs[i].seconds / STEP);
         for (k = 0; k < n; k++) {
             double h;
+            v = v0 + (v1 - v0) * (k + 1) / n;
             hdg = fmod(hdg + legs[i].turn * STEP + 360.0, 360.0);
             h = hdg * M_PI / 180.0;
             lat += v * STEP * cos(h) / M_DEG;
@@ -538,13 +553,19 @@ static int chase_camera(XPLMCameraPosition_t *out, int losing, void *refcon) {
     }
     target(path_t, &lat, &lon, &alt, &hdg);
     XPLMWorldToLocal(lat, lon, alt, &x, &y, &z);
-    b = (hdg + cam->bearing) * M_PI / 180.0;
-    cx = x + cam->dist * sin(b); /* east: +x; north: -z */
-    cz = z - cam->dist * cos(b);
-    out->x = (float)cx;
-    out->y = (float)(y + cam->up);
-    out->z = (float)cz;
-    dx = x - cx, dy = -cam->up, dz = z - cz;
+    {
+        double f = cam->moving && cam->t1 > cam->t0 ? (path_t - cam->t0) / (cam->t1 - cam->t0) : 0.0;
+        double dist = cam->dist + (cam->dist2 - cam->dist) * f;
+        double up = cam->up + (cam->up2 - cam->up) * f;
+        double bearing = cam->bearing + (cam->bearing2 - cam->bearing) * f;
+        b = (hdg + bearing) * M_PI / 180.0;
+        cx = x + dist * sin(b); /* east: +x; north: -z */
+        cz = z - dist * cos(b);
+        out->x = (float)cx;
+        out->y = (float)(y + up);
+        out->z = (float)cz;
+        dx = x - cx, dy = -up, dz = z - cz;
+    }
     out->heading = (float)(atan2(dx, -dz) * 180.0 / M_PI);
     out->pitch = (float)(atan2(dy, hypot(dx, dz)) * 180.0 / M_PI);
     out->roll = 0.0f;
@@ -651,6 +672,8 @@ static double wall_now(void) {
 /* X-Plane asked to quit: it asks "Quit the simulator?" (the header). */
 static void quit_xplane(void) { XPLMCommandOnce(XPLMFindCommand("sim/operation/quit")); }
 
+static void finish(void); /* below: the path's end, which a stop asks too */
+
 /* Every second of the wall clock (X-Plane's stands still while it is paused): what the runner asks
    (the header's list). No reload of the plugins: FlyWithLua crashed X-Plane on one (2026-09-29). */
 static void poll_box(void) {
@@ -659,6 +682,13 @@ static void poll_box(void) {
     double wall = wall_now();
     if (wall - polled < 1.0) return;
     polled = wall;
+    if (active && state == FLYING && file_time("stop")) { /* the runner clears it before a flight */
+        path_of(file, sizeof file, "stop");
+        remove_file(file);
+        say("stopping the path, as asked");
+        finish();
+        return;
+    }
     if (file_time("quit")) {
         path_of(file, sizeof file, "quit");
         remove_file(file);

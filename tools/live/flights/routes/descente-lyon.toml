@@ -1,0 +1,25 @@
+title = "Descente sur Lyon : FL350, 470 kt jusqu'à 13 000 ft, 250 kt sous 10 000 ft, approche"
+note = """A descent as an airliner flies it into Lyon Saint-Exupéry: FL350 at 490 kt, down at about
+2,800 ft a minute keeping 470 kt, slowing from 13,000 ft to pass 10,000 ft at 250 kt, a direct-to at
+speed in the middle of the descent (about 60 degrees, off the arrival), then down to 3,000 ft and
+a tight approach (downwind, base, final) at 180 to 200 kt; 3, 4 and 5 E and 46 N
+crossed."""
+zulu = [11, 271]
+waypoints = [[47.1, 2.0],
+             [47.02, 2.3],
+             [46.95, 2.6],
+             [46.85, 3.0],
+             [46.7, 3.4],
+             [46.45, 3.72],
+             [46.0, 3.82],
+             [45.62, 5.24],
+             [45.86, 5.22],
+             [45.8, 5.1],
+             [45.73, 5.09]]
+profile = [[0, 35000, 490],
+           [-215, 35000, 490],
+           [-95, 13000, 470],
+           [-70, 10000, 250],
+           [-30, 4000, 220],
+           [-12, 3000, 190],
+           [-1, 1500, 170]]

@@ -1,0 +1,21 @@
+title = "Plan SimBrief Bergen-Oslo : départ, montée, croisière, un direct-to hors route, descente"
+note = """The pilot's last SimBrief plan, ENBR-ENGM, flown from just after take-off: its departure's turns,
+250 kt up to 10,000 ft, FL250 at 460 kt, then a direct-to off the route (from 9.86 E straight to
+the approach, cutting the plan's dogleg south over 59.75 N, up to 35 km off it), the descent
+keeping 460 kt, 250 kt under 10,000 ft, the approach. Flown twice: with the SimBrief name (Live
+follows the route) and without (Live looks straight ahead only); 5 to 11 E crossed."""
+zulu = [11, 271]
+waypoints = [[60.4334, 6.4402],
+             [60.4141, 7.1125],
+             [60.4131, 7.1462],
+             [60.331, 9.2285],
+             [60.3236, 9.3833],
+             [60.2722, 9.8639],
+             [59.9736, 10.8024],
+             [60.2028, 11.0839]]
+profile = [[0, 25000, 460],
+           [-150, 25000, 460],
+           [-75, 13000, 460],
+           [-55, 10000, 250],
+           [-20, 3000, 210],
+           [-1, 1500, 170]]

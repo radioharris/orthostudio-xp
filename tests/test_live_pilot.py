@@ -138,6 +138,18 @@ class PilotFlightTest(unittest.TestCase):
         self.assertEqual(rows[0].split(",")[:3], ["run_s", "path_s", "frame_ms"])
         self.assertGreater(len(rows), 50)
 
+    def test_asked_to_stop(self):
+        """A path ended where it is, as at its end: the runner asks once X-Plane has loaded what it
+        waited for (fly.py --stop-after-loads)."""
+        box = self.box_of("X-Plane stopping")
+        (box / "scenario.txt").write_text(SCENARIO.replace("leg 2 ", "leg 600 "))
+        (box / "stop").write_text("stop\n")
+        self.xplane(box.parents[1], "frames:9000")
+        events = (box / "events.txt").read_text()
+        self.assertIn("stopping the path, as asked", events)
+        self.assertIn("done", events)
+        self.assertFalse((box / "stop").exists())
+
     def test_asked_to_quit(self):
         box = self.box_of("X-Plane quitting")
         (box / "quit").write_text("")
