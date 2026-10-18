@@ -21,6 +21,7 @@ The states:
 
 from __future__ import annotations
 
+import json
 import os
 import threading
 import time
@@ -50,6 +51,7 @@ from orthostudio.live.scenery import (
     is_installed,
     launch_xplane,
     ortho_streamers,
+    osxp_regions,
     xplane_running,
 )
 from orthostudio.live.settings import LiveSettings, load_settings
@@ -213,6 +215,27 @@ def gather_checks() -> dict[str, Any]:
         # the squares X-Plane takes from the user's own tiles: Live downloads nothing there
         own_tiles=[[lat, lon, pack] for (lat, lon), pack in sorted(own_tiles(xp).items())],
     )
+    return out
+
+
+def our_regions(root: Path) -> list[dict[str, Any]]:
+    """Live's own mesh as the page lists it: each region installed (``regions/z_osxp_<id>``, a
+    folder or a link to one on another disk) with its size on the disk, written in its marker once
+    at the install: counting millions of small files at every status would take minutes."""
+    out = []
+    for folder in osxp_regions(root):
+        try:
+            marker = json.loads((folder / aoregions.MARKER).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            marker = {}
+        size = marker.get("size") if isinstance(marker, dict) else None
+        out.append(
+            {
+                "id": folder.name.removeprefix("z_osxp_"),
+                "size": size if isinstance(size, int) else None,
+                "elsewhere": folder.is_symlink(),
+            }
+        )
     return out
 
 
@@ -626,9 +649,10 @@ class LiveControl:
                 self._catalog_at = time.monotonic()
 
     def regions(self, *, fetch: bool = False) -> dict[str, Any]:
-        """AutoOrtho's regions as the page lists them: each with its size and whether AutoOrtho or
-        Live installed it; the install under way. With ``fetch`` (the page's own request, not its
-        status), GitHub's list is read again in the background when it is old."""
+        """Live's own mesh, region by region (:func:`our_regions`), then AutoOrtho's regions as
+        the page lists them: each with its size and whether AutoOrtho or Live installed it; the
+        install under way. With ``fetch`` (the page's own request, not its status), GitHub's list
+        is read again in the background when it is old."""
         with self._lock:
             reading = self._catalog_thread is not None and self._catalog_thread.is_alive()
             stale = time.monotonic() - self._catalog_at > CATALOG_S
@@ -662,7 +686,12 @@ class LiveControl:
                 }
             )
         progress = installer.snapshot() if installer is not None else None
-        return {"list": listed, "error": error if catalog is None else None, "install": progress}
+        return {
+            "ours": our_regions(live_root()),
+            "list": listed,
+            "error": error if catalog is None else None,
+            "install": progress,
+        }
 
     def install_region(self, region_id: str) -> None:
         """Download and install one of AutoOrtho's regions into Live's folder, in the background.

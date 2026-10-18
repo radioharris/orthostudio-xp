@@ -173,8 +173,12 @@ export const STRINGS = {
     "map.legend_route": "Route",
     "regions.title": "The mesh, by region",
     "regions.go": "Go to the regions",
-    "regions.help":
-      "The sceneries Live lays its photos on. Install the regions you fly over, delete them whenever you like.",
+    "regions.help": "The sceneries Live lays its photos on.",
+    "regions.ours_source":
+      "OrthoStudio XP's mesh, made with the relief of viewfinderpanoramas.org (Jonathan de Ferranti). Where it has no square, Live uses AutoOrtho's, if its region is installed.",
+    "regions.ours_none": "None of OrthoStudio XP's regions is installed.",
+    "regions.ao_title": "AutoOrtho's regions, as a fallback",
+    "regions.ao_help": "Install the regions you fly over, delete them whenever you like.",
     "regions.source":
       "Downloaded from github.com/kubilus1/autoortho-scenery. Once unpacked, a region takes about 1.7 times its size on the disk.",
     "regions.loading": "Asking GitHub for the list…",
@@ -197,6 +201,7 @@ export const STRINGS = {
     "region.afr": "Africa",
     "region.asi": "Asia",
     "region.aus_pac": "Australia and the Pacific",
+    "region.more": "Greenland, the Arctic and islands",
     "overlays.title": "Roads, forests and buildings",
     "overlays.help":
       "Where Live shows its photos, X-Plane no longer draws its own roads, trees and buildings. Each region brings them back with it (its \"overlays\").",
@@ -563,8 +568,12 @@ export const STRINGS = {
     "map.legend_route": "Route",
     "regions.title": "Le mesh, par région",
     "regions.go": "Aller aux régions",
-    "regions.help":
-      "Les scènes sur lesquelles Live pose ses photos. Installez les régions que vous survolez, supprimez-les quand vous voulez.",
+    "regions.help": "Les scènes sur lesquelles Live pose ses photos.",
+    "regions.ours_source":
+      "Le mesh d'OrthoStudio XP, fait avec le relief de viewfinderpanoramas.org (Jonathan de Ferranti). Là où il n'a pas de carré, Live prend celui d'AutoOrtho, si sa région est installée.",
+    "regions.ours_none": "Aucune région d'OrthoStudio XP n'est installée.",
+    "regions.ao_title": "Régions d'AutoOrtho, en secours",
+    "regions.ao_help": "Installez les régions que vous survolez, supprimez-les quand vous voulez.",
     "regions.source":
       "Téléchargées depuis github.com/kubilus1/autoortho-scenery. Une fois décompressée, une région prend environ 1,7 fois sa taille sur le disque.",
     "regions.loading": "Liste demandée à GitHub…",
@@ -587,6 +596,7 @@ export const STRINGS = {
     "region.afr": "Afrique",
     "region.asi": "Asie",
     "region.aus_pac": "Australie et Pacifique",
+    "region.more": "Groenland, Arctique et îles",
     "overlays.title": "Routes, forêts et bâtiments",
     "overlays.help":
       "Là où Live affiche ses photos, X-Plane ne dessine plus ses propres routes, arbres et bâtiments. Chaque région les ramène avec elle (ses « overlays »).",

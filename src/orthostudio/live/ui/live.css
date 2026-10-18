@@ -97,12 +97,17 @@
 .topbar-tools .live-osxp { width: auto; padding: 0 8px; white-space: nowrap; }
 
 /* AutoOrtho's regions, the mesh Live installs */
-.regions { list-style: none; margin: var(--gap) 0 0; padding: 0; display: grid; gap: 6px; }
-.region-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-height: 30px; }
-.region-name { font-weight: 600; min-width: 11em; }
-.region-size { color: var(--fg-2); font-size: var(--fs-2); min-width: 5em; font-variant-numeric: tabular-nums; }
-.region-state { color: var(--fg-2); font-size: var(--fs-2); flex: 1; }
-.region-actions { display: flex; gap: 6px; margin-left: auto; }
+/* one grid for the list, its rows on it (subgrid): every size starts where the longest name ends */
+.regions { list-style: none; margin: var(--gap) 0 0; padding: 0; display: grid;
+  grid-template-columns: max-content max-content 1fr auto; column-gap: 10px; row-gap: 6px; }
+.region { display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; align-items: center;
+  min-height: 30px; }
+.region-head { display: contents; }
+.region > :not(.region-head) { grid-column: 1 / -1; }
+.region-name { font-weight: 600; }
+.region-size { color: var(--fg-2); font-size: var(--fs-2); font-variant-numeric: tabular-nums; text-align: right; }
+.region-state { color: var(--fg-2); font-size: var(--fs-2); }
+.region-actions { display: flex; gap: 6px; justify-self: end; }
 .region-progress { font-variant-numeric: tabular-nums; }
 
 /* The map: the shared base map (basemap.js), Live's layers over it (livemap.js) */

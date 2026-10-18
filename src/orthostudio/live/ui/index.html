@@ -245,10 +245,17 @@
       <fieldset class="question" id="q-regions">
         <legend class="question-title" data-i18n="regions.title">The mesh, by region</legend>
         <p class="question-help" data-i18n="regions.help"></p>
-        <ul class="regions" id="regions-list"></ul>
-        <p class="question-help" id="regions-loading" data-i18n="regions.loading" hidden>Asking GitHub…</p>
-        <p class="question-help is-warn" id="regions-error" hidden></p>
-        <p class="question-help" data-i18n="regions.source"></p>
+        <ul class="regions" id="regions-ours"></ul>
+        <p class="question-help" id="regions-ours-none" data-i18n="regions.ours_none" hidden></p>
+        <p class="question-help" data-i18n="regions.ours_source"></p>
+        <details class="more" id="regions-ao">
+          <summary data-i18n="regions.ao_title">AutoOrtho's regions, as a fallback</summary>
+          <p class="question-help" data-i18n="regions.ao_help"></p>
+          <ul class="regions" id="regions-list"></ul>
+          <p class="question-help" id="regions-loading" data-i18n="regions.loading" hidden>Asking GitHub…</p>
+          <p class="question-help is-warn" id="regions-error" hidden></p>
+          <p class="question-help" data-i18n="regions.source"></p>
+        </details>
       </fieldset>
 
       <fieldset class="question" id="q-overlays">

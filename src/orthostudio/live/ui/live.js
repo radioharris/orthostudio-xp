@@ -571,8 +571,44 @@ async function regionAct(path, method = "POST") {
   }
 }
 
+const REGION_ORDER = ["eur", "na", "sa", "afr", "asi", "aus_pac", "more"];
+let oursDrawn = "";
+
+/** OrthoStudio XP's own mesh, region by region: installed here only, nothing to install yet. */
+function drawOurRegions(ours) {
+  const shape = JSON.stringify([language(), ours]);
+  if (shape === oursDrawn) return;
+  oursDrawn = shape;
+  const sorted = [...ours].sort((a, b) => REGION_ORDER.indexOf(a.id) - REGION_ORDER.indexOf(b.id));
+  const ul = $("regions-ours");
+  ul.replaceChildren();
+  for (const r of sorted) {
+    const li = document.createElement("li");
+    li.className = "region";
+    li.dataset.region = r.id;
+    const head = document.createElement("div");
+    head.className = "region-head";
+    const name = document.createElement("span");
+    name.className = "region-name";
+    name.textContent = t(`region.${r.id}`);
+    const size = document.createElement("span");
+    size.className = "region-size";
+    size.textContent = r.size ? t("regions.size", { gb: gb(r.size) }) : "";
+    const state = document.createElement("span");
+    state.className = "region-state";
+    state.textContent = t("regions.installed");
+    const actions = document.createElement("span");
+    actions.className = "region-actions";
+    head.append(name, size, state, actions);
+    li.append(head);
+    ul.append(li);
+  }
+  $("regions-ours-none").hidden = sorted.length > 0;
+}
+
 function drawRegions(status) {
   const regions = status.regions || { list: [], install: null };
+  drawOurRegions(regions.ours || []);
   const install = regions.install;
   const running = install && !["done", "failed", "cancelled"].includes(install.phase);
   const idle = status.state === "idle";
