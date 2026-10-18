@@ -92,18 +92,22 @@ def test_view_urls_follow_the_sites_own_list_finest_first() -> None:
 def test_view_urls_take_the_archives_the_site_moved_or_named_after_a_place() -> None:
     """``dem3/P35.zip`` answers 404, ``dem3/P35v2.zip`` 200; Shetland is ``dem3/SHL.zip``, the block
     P43 round Surgut ``dem3/P-143.zip``, Antarctica ``dem1/ANT-E`` (measured 2026-10-17/18)."""
-    assert view_urls(60, 24) == ([f"{V}/dem1/P35.zip", f"{V}/dem3/P35v2.zip"], 1)
-    assert view_urls(60, -2) == ([f"{V}/dem1/P30.zip", f"{V}/dem3/SHL.zip"], 1)
-    assert view_urls(61, 74) == ([f"{V}/dem3/P-143.zip"], 3)
-    assert view_urls(-80, 100) == ([f"{V}/dem1/ANT-E.zip"], 1)
+    assert view_urls(60, 24) == (
+        [f"{V}/dem1/P35.zip", f"{V}/dem3/P35v2.zip", f"{V}/dem3/P35.zip"],
+        1,
+    )
+    assert view_urls(60, -2) == ([f"{V}/dem1/P30.zip", f"{V}/dem3/SHL.zip", f"{V}/dem3/P30.zip"], 1)
+    assert view_urls(61, 74) == ([f"{V}/dem3/P-143.zip", f"{V}/dem3/P43.zip"], 3)
+    assert view_urls(-80, 100)[0][0] == f"{V}/dem1/ANT-E.zip"
 
 
-def test_view_urls_of_a_3sec_block_and_of_a_cell_the_site_does_not_serve() -> None:
+def test_view_urls_end_with_the_3sec_block_the_maps_may_not_link() -> None:
+    """``dem3/A21.zip`` (26 cells of the Guiana Shield) answers 200 on 2026-10-18 though neither
+    coverage map links it: the 3" block under its grid name is always the last try."""
+    assert view_urls(2, -56) == ([f"{V}/dem3/A21.zip"], 3)
     # Southern hemisphere: the letter is prefixed with S and counted from -1.
     assert view_urls(-34, -59) == ([f"{V}/dem3/SI21.zip"], 3)
-    # open Pacific: no archive on the site, and none is asked
-    assert view_urls(0, -150) == ([], 3)
-    assert view_url(0, -150) == ("", 3)
+    assert view_url(-34, -59) == (f"{V}/dem3/SI21.zip", 3)
 
 
 def test_ned_url_carries_the_latitude_for_eastern_tiles() -> None:
@@ -349,13 +353,17 @@ def test_a_network_failure_does_not_try_the_next_archive(tmp_path: Path) -> None
     assert not memo.is_missing(calls[0])
 
 
-def test_a_cell_the_site_does_not_serve_asks_nothing(tmp_path: Path) -> None:
-    def download(url: str) -> Download:
-        raise AssertionError("must not download")
+def test_a_cell_with_no_archive_at_all_asks_once_and_remembers(tmp_path: Path) -> None:
+    calls: list[str] = []
 
-    got = ensure_elevation("View", 0, -150, _opts(tmp_path, download, memo=NegativeMemo()))
-    assert got.state is CellState.MISSING
-    assert got.url is None and "no archive" in (got.detail or "")
+    def download(url: str) -> Download:
+        calls.append(url)
+        return Download(url, status=404)
+
+    opts = _opts(tmp_path, download, memo=NegativeMemo())
+    assert ensure_elevation("View", 0, -150, opts).state is CellState.MISSING
+    assert ensure_elevation("View", 0, -150, opts).state is CellState.MISSING
+    assert calls == [f"{V}/dem3/A06.zip"]
 
 
 def test_a_full_1sec_file_is_recycled(tmp_path: Path) -> None:

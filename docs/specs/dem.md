@@ -209,9 +209,11 @@ cells of the archives named after a place, read from their zips' directories: 8,
 number `31 + lon // 6` on two digits, letter `alphabet[lat // 4]` for the north
 (`"S" + alphabet[(-1 - lat) // 4]` for the south). The archives the list holds for the cell are
 asked finest first: the 1" block, the 1" place archive, then the 3" block, the moved 3" block,
-the 3" place archive. The resolution (1 or 3) is that of the first; it drives the recycling test
-below. A cell the list does not hold has no archive on the site and asks nothing (open sea far
-from any coast). Why not Ortho4XP's addresses: its Alpine per-cell archives are of 2017 and
+the 3" place archive, and last the 3" block under its grid name, listed or not: the maps do not
+link every archive the site serves (`dem3/A21.zip`, 26 cells of the Guiana Shield, answers 200
+on 2026-10-18 and is on neither map), and a cell with no archive at all costs one 404, remembered.
+The resolution (1 or 3) is that of the first; it drives the recycling test below. Why not
+Ortho4XP's other addresses: its Alpine per-cell archives are of 2017 and
 answer 404 under the lower-case names it asks since October 2026 (`dem1/N46E006.zip` 200,
 `dem1/n46e006.zip` 404, measured 2026-10-17), they differ from the blocks of 2026 (both the same
 size, the one unpacked last won), and every block it points to is in the list under its real name.
@@ -690,7 +692,7 @@ per tile, downloaded on demand).
 | A6 | `test_alt_strict_and_composite_match_ortho4xp` | A |
 | A7 | `test_dem_rule.py::test_the_rule_writes_the_three_files` (the three files, the fields of `meta.json`, `Dem.load` of the artefact) | - |
 | A8 | `test_negative_memo_*`, `test_a_1sec_cell_with_only_a_3sec_file_is_downloaded_again`, `test_the_memo_does_not_change_the_raster` | A (bytes) |
-| A9 | `test_dem_sources.py`: `test_view_urls_follow_the_sites_own_list_finest_first`, `test_view_urls_take_the_archives_the_site_moved_or_named_after_a_place`, `test_view_urls_of_a_3sec_block_and_of_a_cell_the_site_does_not_serve`, `test_a_cell_comes_from_its_1sec_block`, `test_a_404_on_the_1sec_block_goes_on_to_the_3sec_one_and_is_remembered`, `test_an_archive_remembered_as_missing_does_not_stop_the_next`, `test_a_network_failure_does_not_try_the_next_archive`, `test_a_cell_the_site_does_not_serve_asks_nothing`, `test_a_northern_cell_its_1sec_block_lacks_comes_from_the_3sec_one`, `test_extract_view_zip_*` (zip extraction rules) | - |
+| A9 | `test_dem_sources.py`: `test_view_urls_follow_the_sites_own_list_finest_first`, `test_view_urls_take_the_archives_the_site_moved_or_named_after_a_place`, `test_view_urls_end_with_the_3sec_block_the_maps_may_not_link`, `test_a_cell_comes_from_its_1sec_block`, `test_a_404_on_the_1sec_block_goes_on_to_the_3sec_one_and_is_remembered`, `test_an_archive_remembered_as_missing_does_not_stop_the_next`, `test_a_network_failure_does_not_try_the_next_archive`, `test_a_cell_with_no_archive_at_all_asks_once_and_remembers`, `test_a_northern_cell_its_1sec_block_lacks_comes_from_the_3sec_one`, `test_extract_view_zip_*` (zip extraction rules) | - |
 
 The tests marked A ran against Ortho4XP in a subprocess until decision 0010 removed them
 (2026-09-14, with `tests/test_dem_oracle.py`): A1, A2, A6 and
