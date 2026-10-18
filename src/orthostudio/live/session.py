@@ -38,6 +38,7 @@ from orthostudio.live.scenery import (
     install_link,
     is_installed,
     ortho_streamers,
+    osxp_regions,
     uninstall_link,
     xplane_pref,
     xplane_running,
@@ -473,7 +474,7 @@ def follow(
                     flight_encodes=computer.flight_encodes,
                     sharp_builds=computer.sharp_builds,
                     installed_regions=lambda: {
-                        s.name.removeprefix("z_ao_") for s in default_sources(prepared.xplane)
+                        p.name.removeprefix("z_osxp_") for p in osxp_regions(live_root())
                     },
                     region_lists=aoregions.lists_dir(live_root()),
                 )

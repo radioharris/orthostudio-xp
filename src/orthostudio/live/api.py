@@ -284,10 +284,10 @@ def live_router(
 
     @router.get("/map/regions")
     def map_regions() -> dict[str, Any]:
-        """The one-degree squares of the regions installed."""
+        """The one-degree squares of OrthoStudio XP's regions installed."""
         from orthostudio.live.mapdata import regions_installed
 
-        installed = {r["id"] for r in control.regions()["list"] if r["installed_by"]}
+        installed = {r["id"] for r in control.regions()["ours"]}
         return regions_installed(installed)
 
     @router.post("/map/route")

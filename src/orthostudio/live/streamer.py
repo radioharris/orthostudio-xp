@@ -56,7 +56,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import dds, machine, pools
-from .aoregions import REGION_NAMES, REGION_NAMES_FR, region_of
 from .cache import IMAGE, NO_IMAGERY, ChunkCache, Key
 from .cameralog import AWAY_M
 from .evict import EVICT_SAFE_KM, TARGET, XPlaneWindow, pick, tiles_of, usage, xplane_tiles
@@ -64,6 +63,7 @@ from .flightplan import MOVING_MS, FlightPlan, last_plan
 from .geo import bearing_deg, haversine_m, parse_texture_name
 from .look import DEFAULT_LOOKS, Look
 from .mapdata import route_points, shown
+from .meshmap import REGION_NAMES, REGION_NAMES_FR, region_of
 from .names import KEEP, RING, Entry, Names, RegionTextures, squares_round
 from .pack import MARKER, load_built
 from .region import (

@@ -257,9 +257,12 @@ nothing there: at a start from your home airport, X-Plane waits for none of it. 
 them, and the checks list them.
 
 **Roads, forests and buildings.** Where Live shows its photos, X-Plane no longer draws its own:
-each region brings them back as "overlays", which Live puts on its squares, except where simHeaven
-X-World brings its own, on your own tiles, and where another overlay pack is on (AutoOrtho's,
-Ortho4XP's). Global Forests needs nothing. "Never" leaves the overlays out.
+X-Plane keeps them in the same file as its ground. Live brings them back as "overlays", X-Plane's
+own roads, forests and buildings cut out of X-Plane 12's scenery for every square of its mesh
+(18,232 squares; the 1,042 others, the far north, the Caspian Sea and a few islands, have no
+X-Plane scenery at all), except where simHeaven X-World brings its own, on your own tiles, and
+where another overlay pack is on (AutoOrtho's, Ortho4XP's). Global Forests needs nothing. "Never"
+leaves the overlays out.
 
 ## The mesh, by region
 
@@ -278,7 +281,7 @@ offers to install AutoOrtho's. In a terminal, `python -m orthostudio.live region
 
 Where no region installed has a mesh, X-Plane shows its own scenery, without photos: Live says so,
 in its window and in a small panel in X-Plane ("Live: no mesh here: install North America in the
-Live window"). Over the
+Live window"), from the map of OrthoStudio XP's regions (`meshmap.json`). Over the
 open sea, where no region has any mesh, it says nothing: that is why the shade of the regions on
 the map leaves out squares of open sea.
 

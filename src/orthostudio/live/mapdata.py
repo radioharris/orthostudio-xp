@@ -19,7 +19,7 @@ from collections.abc import Callable, Collection
 from pathlib import Path
 from typing import Any
 
-from . import aoregions, dds
+from . import dds
 from .geo import parse_texture_name
 from .pack import load_built
 
@@ -223,17 +223,11 @@ def textures_at(
 
 
 def regions_installed(installed: set[str]) -> dict[str, Any]:
-    """The one-degree squares of each region installed, for the map to shade:
-    ``{"eur": [[lat, lon], ...], ...}`` (the map of every region's squares, orthostudio/live/
-    aoregions_map.json)."""
-    names, cells = aoregions._map()
-    wanted = {i + 1: name for i, name in enumerate(names) if name in installed}
-    out: dict[str, list[list[int]]] = {name: [] for name in wanted.values()}
-    for cell, index in enumerate(cells):
-        name = wanted.get(index)
-        if name is not None:
-            out[name].append([cell // 360 - 90, cell % 360 - 180])
-    return out
+    """The one-degree squares of each of OrthoStudio XP's regions installed, for the map to shade:
+    ``{"eur": [[lat, lon], ...], ...}`` (:func:`orthostudio.live.meshmap.squares_of`)."""
+    from orthostudio.live.meshmap import squares_of
+
+    return squares_of(installed)
 
 
 def route_points(points: list[tuple[float, float]]) -> list[list[float]]:
