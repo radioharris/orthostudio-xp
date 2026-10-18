@@ -492,6 +492,12 @@ def _place_dir(src: Path, dst: Path, log: Callable[[str], None]) -> None:
     from there."""
     t0 = time.monotonic()
     old = dst.with_name(dst.name + ".old")
+    # what a set-up stopped while taking it away left (a Ctrl-C): renamed onto, it refused the
+    # start with "Directory not empty" (2026-10-18)
+    if is_folder_link(old):
+        remove_folder_link(old)
+    elif old.exists():
+        _remove_tree(old, log, "files")
     if dst.exists() or is_folder_link(dst):
         dst.rename(old)
     if same_disk(src, dst.parent):
