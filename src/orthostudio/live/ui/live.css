@@ -98,14 +98,11 @@
 
 /* AutoOrtho's regions, the mesh Live installs */
 /* one grid for the list, its rows on it (subgrid): every size starts where the longest name ends */
-.regions { list-style: none; margin: var(--gap) 0 0; padding: 0; display: grid;
-  grid-template-columns: max-content max-content 1fr auto; column-gap: 10px; row-gap: 6px; }
-.region { display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; align-items: center;
-  min-height: 30px; }
+.regions { list-style: none; margin: var(--gap) 0 var(--gap); padding: 0; display: grid;
+  grid-template-columns: max-content max-content 1fr auto; column-gap: 10px; row-gap: 2px; }
+.region { display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; align-items: center; }
 .region-head { display: contents; }
-/* The mesh's card across both columns, above them: unfolding AutoOrtho's regions in a card of the
-   balanced columns sent the other cards from one column to the other (2026-10-18). */
-.settings-questions > .question-wide { display: block; column-span: all; }
+
 .region > :not(.region-head) { grid-column: 1 / -1; }
 .region-name { font-weight: 600; }
 .region-size { color: var(--fg-2); font-size: var(--fs-2); font-variant-numeric: tabular-nums; text-align: right; }

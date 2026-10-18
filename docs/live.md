@@ -261,13 +261,14 @@ squares the site has that AutoOrtho's regions lack). The panel lists those insta
 room each takes on the disk; a region may sit on another disk, linked from Live's folder. They
 cannot be installed from the window yet: where they will be downloaded from is not decided.
 
-Under it, folded, AutoOrtho's regions, as a fallback: where OrthoStudio XP's mesh has no square,
-Live uses AutoOrtho's, if its region is installed. Six regions you install once, the ones you fly
-over, and delete whenever you like: Europe (17 GB), North America (26 GB), South America (9 GB),
-Africa (12 GB), Asia (33 GB), Australia and the Pacific (6 GB). Unpacked, a region takes about 1.7
-times its size. An install goes on where it stopped: after a dropped connection, Stop or the Mac
-asleep, Install again and it carries on. A region is used from the next start once it is whole. In
-a terminal: `python -m orthostudio.live regions list`, `regions install eur`, `regions remove eur`.
+AutoOrtho's regions have a card of their own, the settings' last, as a fallback: where OrthoStudio
+XP's mesh has no square, Live uses AutoOrtho's, if its region is installed. Six regions you install
+once, the ones you fly over, and delete whenever you like: Europe (17 GB), North America (26 GB),
+South America (9 GB), Africa (12 GB), Asia (33 GB), Australia and the Pacific (6 GB). Unpacked, a
+region takes about 1.7 times its size. An install goes on where it stopped: after a dropped
+connection, Stop or the Mac asleep, Install again and it carries on. A region is used from the next
+start once it is whole. In a terminal: `python -m orthostudio.live regions list`, `regions install
+eur`, `regions remove eur`.
 
 They come from github.com/kubilus1/autoortho-scenery, where AutoOrtho's author publishes them. Live
 downloads them from there and never publishes them anywhere else: that repository names no licence.
