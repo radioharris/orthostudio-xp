@@ -546,6 +546,10 @@ function drawSimbrief() {
 
 // --- the mesh: OrthoStudio XP's regions -------------------------------------------------------
 
+const REGION_ORDER = ["eur", "na", "sa", "afr", "asi", "aus_pac", "more"];
+let oursDrawn = ""; // what the list shows: drawn again only when it changes
+
+/** OrthoStudio XP's own mesh, region by region: installed here only, nothing to install yet. */
 function drawOurRegions(ours) {
   const shape = JSON.stringify([language(), ours]);
   if (shape === oursDrawn) return;
