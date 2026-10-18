@@ -252,3 +252,51 @@ def test_live_everywhere_lists_its_pack_above_the_users_tiles(
     assert start("first").covered == {(46, 2): f"{ORTHO_PREFIX}+46+002"}
     order = ini.read_text().splitlines()
     assert order.index(tile) < order.index(live)
+
+
+def test_a_tile_taken_out_between_two_flights(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Haneda (2026-10-18): a tile taken out in OrthoStudio XP while Live ran stayed left alone
+    until Live's next start. Between two flights, X-Plane not running, Live finds it gone."""
+    monkeypatch.setenv("OSXP_HOME", str(tmp_path / "home"))
+    (tmp_path / "home").mkdir()
+    running = [False]
+    monkeypatch.setattr(session, "xplane_running", lambda: running[0])
+    xp = make_xplane(tmp_path)
+    scenery = xp / "Custom Scenery"
+    ini = scenery / "scenery_packs.ini"
+    tile = f"SCENERY_PACK Custom Scenery/{ORTHO_PREFIX}+46+002/\n"
+    ini.write_text(
+        ini.read_text().replace(
+            "SCENERY_PACK Custom Scenery/z_ao_eur/", tile + "SCENERY_PACK Custom Scenery/z_ao_eur/"
+        )
+    )
+    put_dsf(scenery / f"{ORTHO_PREFIX}+46+002", (46, 2), b"a tile")
+    source = make_source(tmp_path, tile=(46, 2), textures=NAMES)
+    options = session.Options(xplane=xp, pack=tmp_path / "pack", source=source, no_plugin=True)
+    prepared = session.prepare(options, log=lambda _: None)
+    assert prepared.covered == {(46, 2): f"{ORTHO_PREFIX}+46+002"}
+
+    class Told:
+        covered = None
+
+        def set_covered(self, covered) -> None:
+            self.covered = dict(covered)
+
+    told = Told()
+    lines: list[str] = []
+    rescan = session.own_ground_watch(prepared, options, told, lines.append)
+    rescan()
+    assert told.covered is None  # nothing changed
+    ini.write_text(ini.read_text().replace(tile, ""))  # taken out in OrthoStudio XP
+    running[0] = True
+    rescan()
+    assert told.covered is None  # X-Plane runs on the list it read as it started
+    running[0] = False
+    rescan()
+    assert told.covered == {} and prepared.covered == {}
+    assert any("looked for again" in line for line in lines)
+    told.covered = None
+    rescan()
+    assert told.covered is None  # its own lines written then are not a change

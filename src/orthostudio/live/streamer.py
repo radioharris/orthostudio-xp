@@ -145,6 +145,7 @@ CRUISE_OFF_M = 17_500 * 0.3048
 CRUISE_SEEN_M = 13_000 * 0.3048
 CRUISE_AHEAD_S = 180.0
 STUTTER_MS = 100  # a frame of X-Plane this long, as its plugin measures it, is logged as a stutter
+BETWEEN_S = 5.0  # how often the stream looks at what may change between two flights (own tiles)
 # textures made coarser per round, a round every EVICT_EVERY_S: small rounds, never while X-Plane
 # loads scenery (yielding), since a round of 500 files rewritten met a hitch of 387 ms (2026-09-28)
 EVICT_BATCH = 50
@@ -688,6 +689,12 @@ class Streamer:
                 f"  X-Plane's image: {round(width)} px, field of view {fov:.0f} deg: X-Plane reads "
                 f"4096 px up to {ring_km(0, 16) * scale:.0f} km (distances x{scale:.2f})"
             )
+
+    def set_covered(self, covered: Collection[tuple[int, int]]) -> None:
+        """The pilot's own squares changed between two flights (``session.own_ground_watch``)."""
+        theirs = self._theirs(set(covered))
+        with self.lock:
+            self.theirs = theirs
 
     def _theirs(self, covered: set[tuple[int, int]]) -> set[str]:
         """The textures whose every square is in ``covered``: X-Plane draws another pack there. A
@@ -1892,6 +1899,7 @@ def run(
     language: Callable[[], str] = lambda: "en",
     departure: Callable[[], tuple[float, float, str] | None] = lambda: None,
     season_for: Callable[..., tuple[str, str]] | None = None,
+    between: Callable[[], None] = lambda: None,
 ) -> None:
     """Follow X-Plane over UDP until Ctrl-C (or ``should_stop``), planning every two seconds.
 
@@ -1902,14 +1910,15 @@ def run(
     window asks to prepare before X-Plane loads it (lat, lon, its name), as ``--from``.
     ``season_for(lat, day=None)``: the season of a start at that latitude and why, when it follows
     X-Plane's date (``day``: the flight's, as the plugin gives it while X-Plane loads it; else the
-    one X-Plane saved); None: the season chosen stays."""
+    one X-Plane saved); None: the season chosen stays. ``between``: asked every BETWEEN_S whether
+    anything changed between two flights (``session.own_ground_watch``)."""
     from .scenery import xplane_pid, xplane_started_at
 
     fields = [name for name, _ in DATAREFS]
     values: dict[str, float] = {}
     arrival: Arrival | None = None
     last_plan = last_status = last_save = last_packet = last_subscribe = last_wait = 0.0
-    last_pool = 0.0
+    last_pool = last_between = 0.0
     before: tuple[Fix, float] | None = None  # the last position planned, and when
     last_report = 0.0
 
@@ -1979,6 +1988,9 @@ def run(
             if streamer.names is not None and streamer.names.crashed is not None:
                 raise SystemExit(f"the squares' files stopped: {streamer.names.crashed!r}")
             now = time.time()
+            if now - last_between >= BETWEEN_S:
+                last_between = now
+                between()
             mbs = rate.mbs(now, getattr(streamer.downloader, "bytes", 0))
             # X-Plane flying, no start pending: the encoders leave it its cores (submit_ready)
             streamer.flying = "lat" in values and now - last_packet < FRESH_S and arrival is None

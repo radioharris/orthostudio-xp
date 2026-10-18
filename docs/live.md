@@ -265,6 +265,10 @@ tiles", chooses what X-Plane shows:
   starts. The map shows Live's textures on your tiles then, Live stopped too: what its next
   flight shows.
 
+A tile you build, take out or put back in OrthoStudio XP while Live runs counts from the next
+flight: once X-Plane is closed, Live sees X-Plane's list of sceneries change and looks for your
+tiles again, with their roads and forests, within five seconds.
+
 **Roads, forests and buildings.** Where Live shows its photos, X-Plane no longer draws its own:
 X-Plane keeps them in the same file as its ground. Live brings them back as "overlays", X-Plane's
 own roads, forests and buildings cut out of X-Plane 12's scenery for every square of its mesh

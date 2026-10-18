@@ -104,6 +104,7 @@ class Prepared:
     finest: int  # the sharpest level X-Plane reads (0: 4096 px)
     # {(lat, lon): pack}: squares whose ground X-Plane takes from the user's own tiles
     covered: dict = field(default_factory=dict)
+    sources: list = field(default_factory=list)  # the regions the pack is made of
 
 
 def xplane_dir(explicit: Path | None) -> Path:
@@ -228,9 +229,7 @@ def prepare(options: Options, log: Log) -> Prepared:
 
     Raises :class:`RefusedError`, with nothing installed, when streaming cannot start."""
     from orthostudio.live import plugin
-    from orthostudio.live.covered import covered_squares
     from orthostudio.live.gate import GATE_PORT, Gate
-    from orthostudio.live.geo import dsf_tile_of
     from orthostudio.live.region import (
         LAYOUT_FIXED,
         Zooms,
@@ -325,10 +324,47 @@ def prepare(options: Options, log: Log) -> Prepared:
             threading.Thread(target=remove_aside, args=(pack_dir,), daemon=True).start()
         if options.fresh:
             reset(pack_dir, log)
+    covered = own_ground(xp_dir, pack_dir, options, xplane_running(), log)
+    _overlays(xp_dir, pack_dir, sources, covered, options.overlays, xplane_running(), log)
+    gate = None
+    # X-Plane loads plugins at start-up: if it is running, only one already there counts
+    if not options.no_plugin and (
+        plugin.installed(xp_dir) if xplane_running() else plugin.install(xp_dir, log=log)
+    ):
+        try:
+            gate = Gate(xp_dir, AirportIndex(apt_dat(xp_dir)))
+        except OSError as e:
+            # never streaming without it: the plugin, finding nobody there as X-Plane starts,
+            # would take Live's scenery out of X-Plane (the review of 2026-10-01)
+            raise RefusedError(
+                f"Live's port for its X-Plane plugin (UDP {GATE_PORT}) is taken: another Live "
+                "runs on this computer, or the system keeps the port for itself (on Windows, "
+                f"Hyper-V or WSL may): {e}"
+            ) from e
+        log(
+            "X-Plane plugin installed: while a flight loads, X-Plane waits until the ortho "
+            "around the start is built"
+        )
+    finest = finest_quality(xp_dir, options.quality)
+    log(
+        f"X-Plane texture quality: a 4096 px texture read up to {4096 >> finest} px; "
+        f"sharp up to {options.camera_reach_km:.0f} km farther for external views"
+    )
+    return Prepared(xp_dir, pack_dir, gate, fix, finest, covered, list(sources))
+
+
+def own_ground(
+    xp_dir: Path, pack_dir: Path, options: Options, running: bool, log: Log
+) -> dict[tuple[int, int], str]:
+    """Live's line in X-Plane's list of sceneries, and the squares whose ground X-Plane takes from
+    the pilot's own sceneries then (``{(lat, lon): pack}``), as the setting ``own_tiles`` wants
+    them: at a start, and again between two flights when that list changed (:func:`follow`)."""
+    from orthostudio.live.covered import covered_squares
+    from orthostudio.live.geo import dsf_tile_of
+
     # Live's line where the rule lists it, below the pilot's own tiles, at every start: one a
     # stop left above them ("Live everywhere", below) does not hide them when they come first;
     # left as it is under a running X-Plane, which read the list as it started
-    running = xplane_running()
     install_link(xp_dir, pack_dir, LINK_NAME, log=log, again=not running)
     # only the squares Live's pack has: another pack's elsewhere does not matter to it
     region = {
@@ -355,32 +391,45 @@ def prepare(options: Options, log: Log) -> Prepared:
             + (f" and {len(packs) - 3} more" if len(packs) > 3 else "")
             + "): X-Plane shows it there, and Live downloads nothing there"
         )
-    _overlays(xp_dir, pack_dir, sources, covered, options.overlays, xplane_running(), log)
-    gate = None
-    # X-Plane loads plugins at start-up: if it is running, only one already there counts
-    if not options.no_plugin and (
-        plugin.installed(xp_dir) if xplane_running() else plugin.install(xp_dir, log=log)
-    ):
+    return covered
+
+
+def own_ground_watch(
+    prepared: Prepared, options: Options, streamer: Any, log: Log
+) -> Callable[[], None]:
+    """What the stream does between two flights: once X-Plane's list of sceneries changed (a tile
+    built, taken out or put back in OrthoStudio XP) and X-Plane is not running, which reads that
+    list as it starts, the pilot's own squares are found again (:func:`own_ground`), Live's
+    overlays made for them, and the streamer told: a tile taken out was left alone until Live's
+    next start (Haneda, 2026-10-18)."""
+    from orthostudio.live.scenery import _ini
+
+    ini = _ini(prepared.xplane)
+
+    def stamp() -> int:
         try:
-            gate = Gate(xp_dir, AirportIndex(apt_dat(xp_dir)))
-        except OSError as e:
-            # never streaming without it: the plugin, finding nobody there as X-Plane starts,
-            # would take Live's scenery out of X-Plane (the review of 2026-10-01)
-            raise RefusedError(
-                f"Live's port for its X-Plane plugin (UDP {GATE_PORT}) is taken: another Live "
-                "runs on this computer, or the system keeps the port for itself (on Windows, "
-                f"Hyper-V or WSL may): {e}"
-            ) from e
-        log(
-            "X-Plane plugin installed: while a flight loads, X-Plane waits until the ortho "
-            "around the start is built"
+            return ini.stat().st_mtime_ns
+        except OSError:
+            return 0
+
+    seen = [stamp()]
+
+    def rescan() -> None:
+        if stamp() == seen[0] or xplane_running():
+            return
+        log("X-Plane's list of sceneries changed: your own sceneries looked for again")
+        covered = own_ground(prepared.xplane, prepared.pack, options, False, log)
+        _overlays(
+            prepared.xplane, prepared.pack, prepared.sources, covered, options.overlays, False, log
         )
-    finest = finest_quality(xp_dir, options.quality)
-    log(
-        f"X-Plane texture quality: a 4096 px texture read up to {4096 >> finest} px; "
-        f"sharp up to {options.camera_reach_km:.0f} km farther for external views"
-    )
-    return Prepared(xp_dir, pack_dir, gate, fix, finest, covered)
+        seen[0] = stamp()  # its own lines just written in it
+        if covered != prepared.covered:
+            streamer.set_covered(covered)
+            prepared.covered = covered
+            if not covered:
+                log("your own sceneries cover none of Live's squares now: Live draws them all")
+
+    return rescan
 
 
 def overlay_dir() -> Path:
@@ -505,6 +554,7 @@ def follow(
                     log("test: the 8192 px textures are built pink, where X-Plane shows them")
                 if attach is not None:
                     attach(streamer)
+                rescan = own_ground_watch(prepared, options, streamer, log)
                 run(
                     streamer,
                     xp,
@@ -517,6 +567,7 @@ def follow(
                     language=language or (lambda: options.language),
                     departure=departure or (lambda: None),
                     season_for=season_for,
+                    between=rescan,
                 )
             finally:
                 if attach is not None:
