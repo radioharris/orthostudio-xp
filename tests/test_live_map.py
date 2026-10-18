@@ -55,7 +55,7 @@ def write_pack(pack: Path) -> None:
     (pack / "_live" / "ortho.json").write_text(json.dumps({"textures": BUILT}))
 
 
-def test_the_textures_built_in_a_view(tmp_path: Path) -> None:
+def test_the_textures_built_in_a_view(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     pack = tmp_path / "pack"
     write_pack(pack)
     near = mapdata.built_in(pack, 4.5, 45.3, 6.5, 46.5)  # a small view: each texture
@@ -65,11 +65,17 @@ def test_the_textures_built_in_a_view(tmp_path: Path) -> None:
     assert near["squares"] == [] and near["more"] is False
     south, west, north, east, _ = near["textures"][0]
     assert south < north and west < east
-    # a wide view: every texture of ZL15 photos or sharper on its own still (a square of one
-    # colour hid the sharp ones), the blurrier grouped by square
+    # a wide view: every texture where it is too, the blurry ones included: grouped by square,
+    # they greyed whole squares of sea round an island (Malta, 2026-10-19)
     wide = mapdata.built_in(pack, -10.0, 35.0, 20.0, 55.0)
-    assert [row[4] for row in wide["textures"]] == [18, 17, 16]
-    assert sorted(wide["squares"]) == [[43, 1, 1, 12], [45, 4, 1, 14]]  # squares of their middles
+    assert [row[4] for row in wide["textures"]] == [18, 17, 16, 14, 12]
+    assert wide["squares"] == [] and wide["more"] is False
+    # beyond the most one answer holds, the blurriest go to the squares of their middles
+    monkeypatch.setattr(mapdata, "MAX_TEXTURES", 3)
+    capped = mapdata.built_in(pack, -10.0, 35.0, 20.0, 55.0)
+    assert [row[4] for row in capped["textures"]] == [18, 17, 16] and capped["more"] is True
+    assert sorted(capped["squares"]) == [[43, 1, 1, 12], [45, 4, 1, 14]]
+    monkeypatch.undo()
     assert mapdata.built_in(pack, 100.0, 10.0, 101.0, 11.0)["textures"] == []
     # where the user's own tile is, X-Plane shows it: Live's textures there are left out
     theirs = mapdata.built_in(pack, 4.5, 45.3, 6.5, 46.5, covered={(46, 6)})
@@ -78,8 +84,8 @@ def test_the_textures_built_in_a_view(tmp_path: Path) -> None:
 
 
 def test_a_texture_over_the_edge_of_the_users_tile() -> None:
-    """Cut at the tile's edge: only its part beside the tile is drawn, and grouped when zoomed
-    out; the tile's square never gets the grey of the blurry ones (a user, 2026-09-27)."""
+    """Cut at the tile's edge: only its part beside the tile is drawn, zoomed out too; the tile's
+    square never gets the grey of the blurry ones (a user, 2026-09-27)."""
     theirs = {(46, 6)}
     west_edge = (46.2, 5.95, 46.26, 6.04, 16, "w")  # over the tile's western edge
     corner = (46.95, 5.95, 47.05, 6.05, 16, "c")  # over its north-western corner
@@ -93,7 +99,7 @@ def test_a_texture_over_the_edge_of_the_users_tile() -> None:
     assert mapdata.outside(inside, theirs) == []
     coarse = [(46.5, 6.98, 46.52, 7.01, 12, "e"), (46.4, 6.98, 46.42, 7.01, 12, "f")]
     wide = mapdata.built_in(Path("unused"), 3.0, 44.0, 9.0, 48.0, rows=coarse, covered=theirs)
-    assert wide["squares"] == [[46, 7, 2, 12]]  # their parts east of the tile only
+    assert [row[1] for row in wide["textures"]] == [7.0, 7.0]  # their parts east of the tile only
 
 
 def test_the_regions_installed_and_a_route() -> None:

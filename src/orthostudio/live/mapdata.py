@@ -4,10 +4,9 @@
 regions installed; a route's points.
 
 The textures built are the pack's record (``_live/ortho.json``: each texture's level), read again
-only when the streamer has saved it since. Over a small view the map
-gets each texture's rectangle. Over a wide one, more than :data:`DETAIL_DEG` a side, it gets one
-entry per one-degree square instead: how many textures are built there and the sharpest. Tens of
-thousands of rectangles would be too many for the page.
+only when the streamer has saved it since. The map gets each texture's rectangle, where it is,
+up to :data:`MAX_TEXTURES`; beyond, the blurriest come as one entry per one-degree square: how
+many textures are built there and the sharpest. More rectangles would be too many for the page.
 """
 
 from __future__ import annotations
@@ -23,10 +22,6 @@ from . import dds
 from .geo import parse_texture_name
 from .pack import load_built
 
-DETAIL_DEG = 3.0  # a view wider than this, in latitude or longitude, groups the blurry textures
-WIDE_BLURRIEST = (
-    15  # ...those whose photos are coarser than ZL15: the many at 256 px around a flight
-)
 MAX_TEXTURES = 15_000  # the most rectangles one answer holds, the sharpest first
 ROUTE_POINTS = 400  # a route's points, at most, as the map draws it
 
@@ -133,11 +128,11 @@ def built_in(
 ) -> dict[str, Any]:
     """The textures built in a view, each by the zoom of its photos, how sharp it is on the
     ground: ``{"textures": [[s, w, n, e, photos zoom], ...], "squares": [[lat, lon, count,
-    sharpest photos zoom], ...], "more": bool}``. Each texture is drawn on its own, the sharpest
-    first; in a view wider than :data:`DETAIL_DEG`, those whose photos are coarser than ZL15 are
-    grouped by one-degree square: the 256 px ones are thousands around a flight, and one colour
-    for a whole square hid the sharp textures near the aircraft (a user, 2026-09-27). Beyond
-    :data:`MAX_TEXTURES`, the blurriest go to the squares too (``more``). ``rows``: the running
+    sharpest photos zoom], ...], "more": bool}``. Each texture is drawn on its own, where it is,
+    the sharpest first, zoomed out too: grouped by one-degree square in a view wider than 3
+    degrees, the blurry ones greyed whole squares of sea where only an island or a coast had
+    textures, not where they were zoomed in (Malta, 2026-10-19). Beyond :data:`MAX_TEXTURES`,
+    the blurriest go to the squares (``more``). ``rows``: the running
     streamer's, from its memory; else the pack's record. ``covered``: the squares of the user's
     own tiles, where the textures are left out, cut at their edges (:func:`outside`)."""
     rows = [
@@ -147,14 +142,11 @@ def built_in(
     ]
     if covered:
         rows = [part for r in rows for part in outside(r, covered)]
-    wide = north - south > DETAIL_DEG or east - west > DETAIL_DEG
-    one_by_one = sorted(
-        (r for r in rows if not wide or r[4] >= WIDE_BLURRIEST), key=lambda r: -r[4]
-    )
-    grouped = [r for r in rows if wide and r[4] < WIDE_BLURRIEST]
+    one_by_one = sorted(rows, key=lambda r: -r[4])
+    grouped: list[Row] = []
     more = len(one_by_one) > MAX_TEXTURES
     if more:
-        grouped += one_by_one[MAX_TEXTURES:]
+        grouped = one_by_one[MAX_TEXTURES:]
         one_by_one = one_by_one[:MAX_TEXTURES]
     squares: dict[tuple[int, int], list[int]] = {}
     for s, w, n, e, photos, _ in grouped:
