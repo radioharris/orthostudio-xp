@@ -544,37 +544,8 @@ function drawSimbrief() {
   if (name) button.textContent = t("plan.take", { name });
 }
 
-// --- AutoOrtho's regions: the mesh -----------------------------------------------------------
+// --- the mesh: OrthoStudio XP's regions -------------------------------------------------------
 
-let regionsDrawn = ""; // what the list shows: drawn again only when it changes, keeping the focus
-let removeArmed = null; // the region whose Delete was clicked once: a second click deletes it
-
-function regionButton(label, onClick, { danger = false, disabled = false } = {}) {
-  const button = document.createElement("button");
-  button.type = "button";
-  button.className = danger ? "btn btn-small btn-danger" : "btn btn-small";
-  button.textContent = label;
-  button.disabled = disabled;
-  button.addEventListener("click", onClick);
-  return button;
-}
-
-async function regionAct(path, method = "POST") {
-  $("regions-error").hidden = true;
-  try {
-    const regions = await api(path, { method });
-    if (last) draw({ ...last, regions });
-    liveMap?.regionsChanged();
-  } catch (error) {
-    $("regions-error").hidden = false;
-    $("regions-error").textContent = error.message;
-  }
-}
-
-const REGION_ORDER = ["eur", "na", "sa", "afr", "asi", "aus_pac", "more"];
-let oursDrawn = "";
-
-/** OrthoStudio XP's own mesh, region by region: installed here only, nothing to install yet. */
 function drawOurRegions(ours) {
   const shape = JSON.stringify([language(), ours]);
   if (shape === oursDrawn) return;
@@ -607,101 +578,7 @@ function drawOurRegions(ours) {
 }
 
 function drawRegions(status) {
-  const regions = status.regions || { list: [], install: null };
-  drawOurRegions(regions.ours || []);
-  const install = regions.install;
-  const running = install && !["done", "failed", "cancelled"].includes(install.phase);
-  const idle = status.state === "idle";
-  $("regions-loading").hidden = regions.list.length > 0 || Boolean(regions.error);
-  if (regions.error) {
-    $("regions-error").hidden = false;
-    $("regions-error").textContent = t("regions.error", { error: regions.error });
-  }
-  const shape = JSON.stringify([language(), regions.list, install && [install.region, install.phase,
-    install.error], running, idle, removeArmed]);
-  if (shape !== regionsDrawn) {
-    regionsDrawn = shape;
-    const ul = $("regions-list");
-    ul.replaceChildren();
-    for (const r of regions.list) {
-      const li = document.createElement("li");
-      li.className = "region";
-      li.dataset.region = r.id;
-      const head = document.createElement("div");
-      head.className = "region-head";
-      const name = document.createElement("span");
-      name.className = "region-name";
-      name.textContent = t(`region.${r.id}`);
-      const size = document.createElement("span");
-      size.className = "region-size";
-      size.textContent = r.size ? t("regions.size", { gb: gb(r.size) }) : "";
-      const state = document.createElement("span");
-      state.className = "region-state";
-      const actions = document.createElement("span");
-      actions.className = "region-actions";
-      const mine = install && install.region === r.id;
-      if (mine && running) {
-        actions.append(regionButton(t("regions.cancel"), () => regionAct("regions/cancel")));
-      } else if (r.installed_by) {
-        const newer = r.installed_by === "live" && r.release && r.installed_release
-          && r.release !== r.installed_release;
-        state.textContent = newer ? t("regions.newer", { release: r.release }) : t("regions.installed");
-        if (newer) {
-          actions.append(regionButton(t("regions.update"), () => regionAct(`regions/${r.id}/install`),
-            { disabled: running }));
-        }
-        const armed = removeArmed === r.id;
-        const name = t(`region.${r.id}`);
-        const remove = regionButton(
-          armed ? t("regions.confirm_remove", { name }) : t("regions.remove"),
-          () => {
-            if (armed) {
-              removeArmed = null;
-              regionAct(`regions/${r.id}`, "DELETE");
-            } else {
-              removeArmed = r.id;
-              if (last) draw(last);
-            }
-          },
-          { danger: true, disabled: !idle || running });
-        actions.append(remove);
-      } else if (r.size) {
-        actions.append(regionButton(t("regions.install"), () => regionAct(`regions/${r.id}/install`),
-          { disabled: running }));
-      }
-      head.append(name, size, state, actions);
-      li.append(head);
-      if (mine) {
-        const line = document.createElement("p");
-        line.className = "question-help region-progress";
-        line.id = "region-progress";
-        li.append(line);
-        if (running) {
-          const bar = document.createElement("div");
-          bar.className = "progress";
-          const fill = document.createElement("span");
-          fill.id = "region-bar";
-          bar.append(fill);
-          li.append(bar);
-        }
-      }
-      ul.append(li);
-    }
-  }
-  if (install && $("region-progress")) {
-    const done = { done: gb(install.done_bytes), total: gb(install.total_bytes),
-      unpacked: install.unpacked, zips: install.zips };
-    const line = $("region-progress");
-    line.classList.toggle("is-warn", install.phase === "failed");
-    if (running) line.textContent = t("regions.progress", done);
-    else if (install.phase === "failed") line.textContent = t("regions.failed", { error: install.error });
-    else if (install.phase === "cancelled") line.textContent = t("regions.cancelled");
-    else line.textContent = t("regions.done");
-    if ($("region-bar")) {
-      const share = install.total_bytes ? install.done_bytes / install.total_bytes : 0;
-      $("region-bar").style.width = `${Math.round(share * 1000) / 10}%`;
-    }
-  }
+  drawOurRegions((status.regions || {}).ours || []);
 }
 
 function draw(status) {

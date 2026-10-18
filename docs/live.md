@@ -263,25 +263,17 @@ Ortho4XP's). Global Forests needs nothing. "Never" leaves the overlays out.
 
 ## The mesh, by region
 
-Live lays its photos on a mesh: the ground's shape and the textures' outlines. Its own comes
-first: OrthoStudio XP's mesh, made by OrthoStudio XP's engine with the relief of
-viewfinderpanoramas.org (Jonathan de Ferranti), in seven regions: Europe, North America, South
-America, Africa, Asia, Australia and the Pacific, and Greenland, the Arctic and islands (the
-squares the site has that AutoOrtho's regions lack). The panel lists those installed, with the
+Live lays its photos on OrthoStudio XP's mesh: the ground's shape and the textures' outlines, made
+by OrthoStudio XP's engine with the relief of viewfinderpanoramas.org (Jonathan de Ferranti), in
+seven regions: Europe, North America, South America, Africa, Asia, Australia and the Pacific, and
+Greenland, the Arctic and islands. Together they cover all the land of the world but Antarctica,
+every square AutoOrtho's regions have and 1,048 more. The panel lists those installed, with the
 room each takes on the disk; a region may sit on another disk, linked from Live's folder. They
 cannot be installed from the window yet: where they will be downloaded from is not decided.
 
-AutoOrtho's regions have a card of their own, the settings' last, as a fallback: where OrthoStudio
-XP's mesh has no square, Live uses AutoOrtho's, if its region is installed. Six regions you install
-once, the ones you fly over, and delete whenever you like: Europe (17 GB), North America (26 GB),
-South America (9 GB), Africa (12 GB), Asia (33 GB), Australia and the Pacific (6 GB). Unpacked, a
-region takes about 1.7 times its size. An install goes on where it stopped: after a dropped
-connection, Stop or the Mac asleep, Install again and it carries on. A region is used from the next
-start once it is whole. In a terminal: `python -m orthostudio.live regions list`, `regions install
-eur`, `regions remove eur`.
-
-They come from github.com/kubilus1/autoortho-scenery, where AutoOrtho's author publishes them. Live
-downloads them from there and never publishes them anywhere else: that repository names no licence.
+A region AutoOrtho installed on its own is still recognised, and left as it is; Live no longer
+offers to install AutoOrtho's. In a terminal, `python -m orthostudio.live regions list`,
+`regions install eur` and `regions remove eur` still handle AutoOrtho's regions.
 
 Where no region installed has a mesh, X-Plane shows its own scenery, without photos: Live says so,
 in its window and in a small panel in X-Plane ("Live: no mesh here: install North America in the
