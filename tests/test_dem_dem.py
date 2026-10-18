@@ -268,10 +268,11 @@ def test_the_usgs_relief_outside_the_united_states_refuses_the_tile(tmp_path: Pa
     ]
 
 
-def test_an_unreadable_tile_cell_is_refused_too(tmp_path: Path) -> None:
+def test_an_unreadable_tile_cell_is_refused_too(tmp_path: Path, view_site_at_3sec: None) -> None:
     """A truncated ``.hgt`` used to count as available and give the same flat tile.
 
-    ``N50E010`` is a 3" cell (block ``M32``), so the local file is used as it is.
+    ``N50E010`` is a 3" cell here (block ``M32`` of a 3"-only site), so the local file is used as
+    it is.
     """
     path = elevation_path("View", tmp_path, 50, 10)
     path.parent.mkdir(parents=True)

@@ -16,8 +16,6 @@ import numpy as np
 import pytest
 
 from orthostudio.dem.sources import (
-    DEM1_BLOCKS,
-    DEM1_CELLS,
     FULL_HGT_SIZE,
     CellState,
     Download,
@@ -79,71 +77,33 @@ def test_base_file_name_and_suffixes(tmp_path: Path) -> None:
 # -- URLs (spec 3.1, 3.3) -----------------------------------------------------------------
 
 
-def test_view_url_dem1_cells() -> None:
-    assert len(DEM1_CELLS) == 34
-    assert view_url(44, 5) == ("http://viewfinderpanoramas.org/dem1/N44E005.zip", 1)
-    assert view_url(47, 15) == ("http://viewfinderpanoramas.org/dem1/N47E015.zip", 1)
+V = "http://viewfinderpanoramas.org"
 
 
-def test_view_urls_ask_the_upper_case_name_first_then_the_lower_case_one() -> None:
-    """Since October 2026 the site serves ``dem1/N46E006.zip`` and answers 404 for
-    ``n46e006.zip`` (measured 2026-10-17); its names are case-sensitive, so both are tried."""
-    assert view_urls(46, 6) == (
-        [
-            "http://viewfinderpanoramas.org/dem1/N46E006.zip",
-            "http://viewfinderpanoramas.org/dem1/n46e006.zip",
-        ],
-        1,
-    )
-    assert view_urls(43, 5) == (
-        [
-            "http://viewfinderpanoramas.org/dem3/K31.zip",
-            "http://viewfinderpanoramas.org/dem3/k31.zip",
-        ],
-        3,
-    )
+def test_view_urls_follow_the_sites_own_list_finest_first() -> None:
+    """Only what the site's coverage maps list (``data/viewfinder.json``), 1" archives first:
+    Geneva and Paris from the 1" blocks of March 2026, not Ortho4XP's per-cell archives of 2017
+    (``dem1/n46e006.zip``, 404 since October 2026) nor its 3" names."""
+    assert view_urls(46, 6) == ([f"{V}/dem1/L32.zip", f"{V}/dem3/L32.zip"], 1)
+    assert view_urls(48, 2) == ([f"{V}/dem1/M31.zip", f"{V}/dem3/M31.zip"], 1)
+    assert view_url(46, 6) == (f"{V}/dem1/L32.zip", 1)
 
 
-def test_a_northern_block_is_asked_where_the_site_moved_it() -> None:
-    """``dem3/P35.zip`` answers 404 since the site moved its northern blocks (measured
-    2026-10-17): their 3" archive is ``dem3/P35v2.zip``, and Shetland's ``dem3/SHL.zip``, tried
-    after Ortho4XP's names, as the site's coverage map lists them (``data/viewfinder.json``)."""
-    assert view_urls(60, 24) == (
-        [
-            "http://viewfinderpanoramas.org/dem3/P35.zip",
-            "http://viewfinderpanoramas.org/dem3/p35.zip",
-            "http://viewfinderpanoramas.org/dem3/P35v2.zip",
-        ],
-        1,
-    )
-    assert view_urls(60, -2)[0][-1] == "http://viewfinderpanoramas.org/dem3/SHL.zip"
+def test_view_urls_take_the_archives_the_site_moved_or_named_after_a_place() -> None:
+    """``dem3/P35.zip`` answers 404, ``dem3/P35v2.zip`` 200; Shetland is ``dem3/SHL.zip``, the block
+    P43 round Surgut ``dem3/P-143.zip``, Antarctica ``dem1/ANT-E`` (measured 2026-10-17/18)."""
+    assert view_urls(60, 24) == ([f"{V}/dem1/P35.zip", f"{V}/dem3/P35v2.zip"], 1)
+    assert view_urls(60, -2) == ([f"{V}/dem1/P30.zip", f"{V}/dem3/SHL.zip"], 1)
+    assert view_urls(61, 74) == ([f"{V}/dem3/P-143.zip"], 3)
+    assert view_urls(-80, 100) == ([f"{V}/dem1/ANT-E.zip"], 1)
 
 
-def test_the_sites_1sec_blocks_come_first_for_lives_mesh(monkeypatch) -> None:
-    """The site serves 1" by blocks over much of Europe (``dem1/M31.zip``: Paris, 1" cells,
-    2026-10-17) that Ortho4XP's list reads at 3": Live's mesh asks them first, and a build's
-    relief does not move otherwise."""
-    assert view_urls(48, 2)[0][0] == "http://viewfinderpanoramas.org/dem3/M31.zip"
-    monkeypatch.setenv("OSXP_VIEW_SITE_FIRST", "1")
-    urls, resol = view_urls(48, 2)
-    assert (urls[0], resol) == ("http://viewfinderpanoramas.org/dem1/M31.zip", 1)
-    # the Alps' cells too: their own archives are of 2017, the blocks of 2026
-    assert view_urls(46, 6)[0][:2] == [
-        "http://viewfinderpanoramas.org/dem1/L32.zip",
-        "http://viewfinderpanoramas.org/dem1/N46E006.zip",
-    ]
-
-
-def test_view_url_dem3_blocks_and_resolution() -> None:
-    assert len(DEM1_BLOCKS) == 22
-    # +43+005 is not a dem1 cell: block K31, 3 arc seconds.
-    assert view_url(43, 5) == ("http://viewfinderpanoramas.org/dem3/K31.zip", 3)
-    # A block listed in DEM1_BLOCKS keeps the dem3 URL but claims 1" resolution.
-    assert view_url(60, 3) == ("http://viewfinderpanoramas.org/dem3/P31.zip", 1)
+def test_view_urls_of_a_3sec_block_and_of_a_cell_the_site_does_not_serve() -> None:
     # Southern hemisphere: the letter is prefixed with S and counted from -1.
-    url, resol = view_url(-34, -59)
-    assert url.endswith("/dem3/SI21.zip")
-    assert resol == 3
+    assert view_urls(-34, -59) == ([f"{V}/dem3/SI21.zip"], 3)
+    # open Pacific: no archive on the site, and none is asked
+    assert view_urls(0, -150) == ([], 3)
+    assert view_url(0, -150) == ("", 3)
 
 
 def test_ned_url_carries_the_latitude_for_eastern_tiles() -> None:
@@ -296,7 +256,8 @@ def test_a_copernicus_cell_all_at_sea_is_remembered_as_missing(tmp_path: Path) -
 
 
 def test_recycles_a_3sec_file_without_asking_the_network(tmp_path: Path) -> None:
-    path = elevation_path("View", tmp_path, 43, 5)
+    # -34-059: block SI21, which the site serves at 3" only
+    path = elevation_path("View", tmp_path, -34, -59)
     path.parent.mkdir(parents=True)
     path.write_bytes(b"\x00" * 2884802)
     calls: list[str] = []
@@ -305,7 +266,7 @@ def test_recycles_a_3sec_file_without_asking_the_network(tmp_path: Path) -> None
         calls.append(url)
         raise AssertionError("must not download")
 
-    result = ensure_elevation("View", 43, 5, _opts(tmp_path, download))
+    result = ensure_elevation("View", -34, -59, _opts(tmp_path, download))
     assert result.state is CellState.LOCAL
     assert calls == []
 
@@ -324,10 +285,7 @@ def test_a_1sec_cell_with_only_a_3sec_file_is_downloaded_again(tmp_path: Path) -
     opts = _opts(tmp_path, download, memo=NegativeMemo())
     first = ensure_elevation("View", 44, 5, opts)
     assert first.state is CellState.MISSING
-    assert calls == [
-        "http://viewfinderpanoramas.org/dem1/N44E005.zip",
-        "http://viewfinderpanoramas.org/dem1/n44e005.zip",
-    ]
+    assert calls == [f"{V}/dem1/L31.zip", f"{V}/dem3/L31.zip"]
     # the 404s are remembered: the second run does not ask again (the OrthoStudio XP fix)
     second = ensure_elevation("View", 44, 5, opts)
     assert second.state is CellState.MISSING
@@ -335,58 +293,49 @@ def test_a_1sec_cell_with_only_a_3sec_file_is_downloaded_again(tmp_path: Path) -
 
 
 def _view_site(served: str, calls: list[str]):  # type: ignore[no-untyped-def]
-    """A viewfinderpanoramas that serves +46+006's archive under the name ``served`` only."""
+    """A viewfinderpanoramas that serves +46+006's cell in the archive ``served`` only."""
 
     def download(url: str) -> Download:
         calls.append(url)
-        if url.rpartition("/")[2] == served:
+        if url == served:
             return Download(url, body=_zip({"N46E006.hgt": b"\x00" * FULL_HGT_SIZE}), status=200)
         return Download(url, status=404)
 
     return download
 
 
-def test_a_dem1_cell_comes_under_the_upper_case_name(tmp_path: Path) -> None:
+def test_a_cell_comes_from_its_1sec_block(tmp_path: Path) -> None:
     calls: list[str] = []
-    opts = _opts(tmp_path, _view_site("N46E006.zip", calls), memo=NegativeMemo())
+    opts = _opts(tmp_path, _view_site(f"{V}/dem1/L32.zip", calls), memo=NegativeMemo())
     got = ensure_elevation("View", 46, 6, opts)
     assert got.state is CellState.DOWNLOADED
-    assert got.url == "http://viewfinderpanoramas.org/dem1/N46E006.zip"
-    assert calls == ["http://viewfinderpanoramas.org/dem1/N46E006.zip"]
+    assert got.url == f"{V}/dem1/L32.zip"
+    assert calls == [f"{V}/dem1/L32.zip"]
 
 
-def test_a_dem1_cell_still_comes_if_the_site_goes_back_to_lower_case(tmp_path: Path) -> None:
+def test_a_404_on_the_1sec_block_goes_on_to_the_3sec_one_and_is_remembered(tmp_path: Path) -> None:
     calls: list[str] = []
     memo = NegativeMemo()
-    opts = _opts(tmp_path, _view_site("n46e006.zip", calls), memo=memo)
+    opts = _opts(tmp_path, _view_site(f"{V}/dem3/L32.zip", calls), memo=memo)
     got = ensure_elevation("View", 46, 6, opts)
     assert got.state is CellState.DOWNLOADED
-    assert got.url == "http://viewfinderpanoramas.org/dem1/n46e006.zip"
-    assert memo.is_missing("http://viewfinderpanoramas.org/dem1/N46E006.zip")
+    assert got.url == f"{V}/dem3/L32.zip"
+    assert memo.is_missing(f"{V}/dem1/L32.zip")
 
 
-def test_the_lower_case_404_users_already_remember_does_not_stop_the_upper_case_name(
-    tmp_path: Path,
-) -> None:
-    """Data folders of 1.1.0 and earlier hold the lower-case URL as a 404 for 30 days."""
+def test_an_archive_remembered_as_missing_does_not_stop_the_next(tmp_path: Path) -> None:
+    """Each archive has its own memo entry; the lower-case 404s data folders of 1.1.0 and earlier
+    remember are URLs this version never asks."""
     calls: list[str] = []
     memo = NegativeMemo()
     memo.record("http://viewfinderpanoramas.org/dem1/n46e006.zip")
-    opts = _opts(tmp_path, _view_site("N46E006.zip", calls), memo=memo)
+    memo.record(f"{V}/dem1/L32.zip")
+    opts = _opts(tmp_path, _view_site(f"{V}/dem3/L32.zip", calls), memo=memo)
     assert ensure_elevation("View", 46, 6, opts).state is CellState.DOWNLOADED
-    assert calls == ["http://viewfinderpanoramas.org/dem1/N46E006.zip"]
+    assert calls == [f"{V}/dem3/L32.zip"]
 
 
-def test_an_upper_case_404_remembered_does_not_stop_the_lower_case_name(tmp_path: Path) -> None:
-    calls: list[str] = []
-    memo = NegativeMemo()
-    memo.record("http://viewfinderpanoramas.org/dem1/N46E006.zip")
-    opts = _opts(tmp_path, _view_site("n46e006.zip", calls), memo=memo)
-    assert ensure_elevation("View", 46, 6, opts).state is CellState.DOWNLOADED
-    assert calls == ["http://viewfinderpanoramas.org/dem1/n46e006.zip"]
-
-
-def test_a_network_failure_does_not_try_the_other_case(tmp_path: Path) -> None:
+def test_a_network_failure_does_not_try_the_next_archive(tmp_path: Path) -> None:
     calls: list[str] = []
 
     def download(url: str) -> Download:
@@ -396,8 +345,17 @@ def test_a_network_failure_does_not_try_the_other_case(tmp_path: Path) -> None:
     memo = NegativeMemo()
     got = ensure_elevation("View", 46, 6, _opts(tmp_path, download, memo=memo))
     assert got.state is CellState.MISSING
-    assert calls == ["http://viewfinderpanoramas.org/dem1/N46E006.zip"]
+    assert calls == [f"{V}/dem1/L32.zip"]
     assert not memo.is_missing(calls[0])
+
+
+def test_a_cell_the_site_does_not_serve_asks_nothing(tmp_path: Path) -> None:
+    def download(url: str) -> Download:
+        raise AssertionError("must not download")
+
+    got = ensure_elevation("View", 0, -150, _opts(tmp_path, download, memo=NegativeMemo()))
+    assert got.state is CellState.MISSING
+    assert got.url is None and "no archive" in (got.detail or "")
 
 
 def test_a_full_1sec_file_is_recycled(tmp_path: Path) -> None:
@@ -569,9 +527,7 @@ def test_a_square_outside_anadem_asks_nothing(tmp_path: Path) -> None:
     assert got.state is CellState.MISSING and got.path is None
 
 
-def test_a_northern_cell_its_1sec_block_lacks_comes_from_the_3sec_one(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_a_northern_cell_its_1sec_block_lacks_comes_from_the_3sec_one(tmp_path: Path) -> None:
     """The site's 1" archive of R36 lacks the Kola peninsula's cells, its 3" one (R36v2) has
     them (2026-10-17): an archive without the cell sends the search to the next name."""
     calls: list[str] = []
@@ -587,13 +543,7 @@ def test_a_northern_cell_its_1sec_block_lacks_comes_from_the_3sec_one(
             return Download(url, body=_zip({"R36/N68E030.hgt": b"\x00" * 2884802}), status=200)
         return Download(url, status=404)
 
-    monkeypatch.setenv("OSXP_VIEW_SITE_FIRST", "1")
     got = ensure_elevation("View", 68, 30, _opts(tmp_path, download, memo=NegativeMemo()))
     assert got.state is CellState.DOWNLOADED
-    assert got.url == "http://viewfinderpanoramas.org/dem3/R36v2.zip"
-    assert calls == [
-        "http://viewfinderpanoramas.org/dem1/R36.zip",
-        "http://viewfinderpanoramas.org/dem3/R36.zip",
-        "http://viewfinderpanoramas.org/dem3/r36.zip",
-        "http://viewfinderpanoramas.org/dem3/R36v2.zip",
-    ]
+    assert got.url == f"{V}/dem3/R36v2.zip"
+    assert calls == [f"{V}/dem1/R36.zip", f"{V}/dem3/R36v2.zip"]

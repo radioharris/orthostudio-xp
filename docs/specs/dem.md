@@ -189,43 +189,38 @@ there at 1".
 
 ### 3.1 `View` (viewfinderpanoramas, J. de Ferranti) — Ortho4XP's default
 
-`O4_DEM_Utils.py:595-735`. Two resolutions:
+Ortho4XP reads it from addresses it computes (`O4_DEM_Utils.py:595-735`): 1" for 34 hard-coded
+Alpine cells, one zip per cell (`dem1/n46e006.zip`), else a 3" block of de Ferranti's grid
+(`dem3/L32.zip`), 22 of which it counts as 1". OrthoStudio XP no longer asks any of those
+addresses: it asks only what the site's two coverage maps list (2026-10-18, after the site moved
+its files twice in a year).
 
-* **1"** (`dem1/<N43E005>.zip`) for the 34 hard-coded `(lat, lon)` pairs of lines 599-635
-  (the Alps), one zip per cell;
-* otherwise **3"** (`dem3/<L><NN>.zip`), a 4-degree x 6-degree block named by de Ferranti's
-  grid: number `31 + lon // 6` zero-padded to 2, letter `alphabet[lat // 4]` for the north
-  (`"S" + alphabet[(-1 - lat) // 4]` for the south). 22 of those blocks are 1" despite
-  living under `dem3/` (the list at lines 645-667 only selects `resol = 1`, which changes the
-  recycling test below, not the URL).
-
-**Upper and lower case.** The site's file names are case-sensitive. Since October 2026 it
-serves the `dem1/` archives under upper-case names only: `dem1/N46E006.zip` answers 200 and
-`dem1/n46e006.zip`, the name Ortho4XP asks, answers 404 (measured 2026-10-17; the `dem3/`
-blocks were already upper case). `view_urls` gives the upper-case URL first and the lower-case
-one second, for `dem1/` and `dem3/` alike, so a cell does not depend on which case the site
-serves. Each URL has its own negative-memo entry (3.4): the lower-case 404 that data folders of
-1.1.0 and earlier remember never skips the upper-case name, nor the reverse. A 404 tries the next
-name; a network failure does not, since the other name would fail the same way.
-
-**The site's own archives** (2026-10-17). The site's two coverage maps list what it serves
-(`Coverage map viewfinderpanoramas_org1.htm` for 1", `..._org3.htm` for 3");
-`tools/dem/viewfinder_archives.py` reads them into `data/viewfinder.json`: 316 1" blocks
-(`dem1/M31.zip`, dated March 2026: the site's update of 27 March 2026, "more and improved 1" DEM
-for Europe and Japan"), 1,110 3" blocks, and the cells of the archives named after a place
+**The site's list.** `tools/dem/viewfinder_archives.py` reads the coverage maps
+(`Coverage map viewfinderpanoramas_org1.htm` for 1", `..._org3.htm` for 3") into
+`data/viewfinder.json`: 316 1" blocks (`dem1/M31.zip`, dated March 2026: the site's update of
+27 March 2026, "more and improved 1" DEM for Europe and Japan"), 1,110 3" blocks (among them the
+northern blocks the site moved, `dem3/P35v2.zip`, whose old `dem3/P35.zip` answers 404), and the
+cells of the archives named after a place, read from their zips' directories: 8,046 cells
 (`SHL` Shetland, `FAR`, `ISL`, `BEAR`, `SVALBARD`, `JANMAYEN`, `FJ`, Greenland's `GL-East`,
 `GL-North`, `GL-South`, `GL-West`, Antarctica's 1" `ANT-N`, `ANT-E`, `ANT-S`, `ANT-W`, and
-`P-143`, the map's link for the block `P43`, whose `P43.zip` answers 404), read from their zips'
-directories: 8,046 cells. Names with a dash were left out until 2026-10-18, and with them the 24
-cells of `P43` round Surgut. After Ortho4XP's names, `view_urls` tries the 3" archive the site moved a northern
-block to (`dem3/P35.zip` answers 404, `dem3/P35v2.zip` 200) and the place archive a cell is in.
-An archive that downloads without the cell sends the search to the next name: the 1" `dem1/R36.zip`
-lacks the Kola peninsula, which `dem3/R36v2.zip` has. With `OSXP_VIEW_SITE_FIRST=1` (Live's mesh,
-`tools/live/mesh/bake.py`) the 1" block comes first, resolution 1: Ortho4XP's list reads at 3"
-626 of the 1,981 squares of AutoOrtho's Europe the site serves at 1", and the Alps' cells from
-their own archives of 2017 (`N44E006.zip`, 2017-01-30), which differ from the blocks' (both the
-same size, the one unpacked last won: a square's relief hung on the order of the build). Without
-it, a build's relief does not move.
+`P-143`, the map's link for the block `P43` round Surgut, whose `P43.zip` answers 404).
+
+**The order** (`view_urls`). A cell's block is named by de Ferranti's grid, as the site names it:
+number `31 + lon // 6` on two digits, letter `alphabet[lat // 4]` for the north
+(`"S" + alphabet[(-1 - lat) // 4]` for the south). The archives the list holds for the cell are
+asked finest first: the 1" block, the 1" place archive, then the 3" block, the moved 3" block,
+the 3" place archive. The resolution (1 or 3) is that of the first; it drives the recycling test
+below. A cell the list does not hold has no archive on the site and asks nothing (open sea far
+from any coast). Why not Ortho4XP's addresses: its Alpine per-cell archives are of 2017 and
+answer 404 under the lower-case names it asks since October 2026 (`dem1/N46E006.zip` 200,
+`dem1/n46e006.zip` 404, measured 2026-10-17), they differ from the blocks of 2026 (both the same
+size, the one unpacked last won), and every block it points to is in the list under its real name.
+
+**Each archive has its own negative-memo entry** (3.4): a 404 is remembered for that URL and the
+search goes on to the next archive; an archive that downloads without the cell sends it on too
+(the 1" `dem1/R36.zip` lacks the Kola peninsula, which `dem3/R36v2.zip` has); a network failure
+stops it, since the next archive would fail the same way. The lower-case 404s that data folders of
+1.1.0 and earlier remember are URLs this version never asks.
 
 **Recycling test** (lines 669-676): the local file is reused when it exists **and**
 (`resol == 3` **or** its size is at least `25934402` bytes). 25934402 is the size of an
@@ -695,7 +690,7 @@ per tile, downloaded on demand).
 | A6 | `test_alt_strict_and_composite_match_ortho4xp` | A |
 | A7 | `test_dem_rule.py::test_the_rule_writes_the_three_files` (the three files, the fields of `meta.json`, `Dem.load` of the artefact) | - |
 | A8 | `test_negative_memo_*`, `test_a_1sec_cell_with_only_a_3sec_file_is_downloaded_again`, `test_the_memo_does_not_change_the_raster` | A (bytes) |
-| A9 | `test_dem_sources.py`: `test_view_url_dem1_cells` (the 34 dem1 cells), `test_view_url_dem3_blocks_and_resolution` (the 22 1"-blocks), `test_view_urls_ask_the_upper_case_name_first_then_the_lower_case_one`, `test_a_dem1_cell_comes_under_the_upper_case_name`, `test_a_dem1_cell_still_comes_if_the_site_goes_back_to_lower_case`, `test_the_lower_case_404_users_already_remember_does_not_stop_the_upper_case_name`, `test_an_upper_case_404_remembered_does_not_stop_the_lower_case_name`, `test_a_network_failure_does_not_try_the_other_case` (the case of the names), `test_extract_view_zip_*` (zip extraction rules) | - |
+| A9 | `test_dem_sources.py`: `test_view_urls_follow_the_sites_own_list_finest_first`, `test_view_urls_take_the_archives_the_site_moved_or_named_after_a_place`, `test_view_urls_of_a_3sec_block_and_of_a_cell_the_site_does_not_serve`, `test_a_cell_comes_from_its_1sec_block`, `test_a_404_on_the_1sec_block_goes_on_to_the_3sec_one_and_is_remembered`, `test_an_archive_remembered_as_missing_does_not_stop_the_next`, `test_a_network_failure_does_not_try_the_next_archive`, `test_a_cell_the_site_does_not_serve_asks_nothing`, `test_a_northern_cell_its_1sec_block_lacks_comes_from_the_3sec_one`, `test_extract_view_zip_*` (zip extraction rules) | - |
 
 The tests marked A ran against Ortho4XP in a subprocess until decision 0010 removed them
 (2026-09-14, with `tests/test_dem_oracle.py`): A1, A2, A6 and

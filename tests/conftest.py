@@ -56,6 +56,19 @@ def number_parsing(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPat
 
 
 @pytest.fixture
+def view_site_at_3sec(monkeypatch: pytest.MonkeyPatch) -> None:
+    """viewfinderpanoramas as a site of 3" blocks only: for tests whose ``.hgt`` files are 3" and
+    must be reused as they are. The real list (``data/viewfinder.json``) serves 1" over much of
+    Europe and North America since March 2026, where a 3" file is no longer enough and the 1"
+    block is asked."""
+    from orthostudio.dem import sources
+
+    dem1, dem3, _ = sources.site_archives()
+    every = frozenset(dem1) | frozenset(dem3)
+    monkeypatch.setattr(sources, "site_archives", lambda: (frozenset(), every, {}))
+
+
+@pytest.fixture
 def no_symlink_privilege(monkeypatch: pytest.MonkeyPatch) -> None:
     """Installs get what an account without Developer Mode gets on Windows: the symbolic link
     refused (WinError 1314), so a junction. Most Windows users; never the administrator account of

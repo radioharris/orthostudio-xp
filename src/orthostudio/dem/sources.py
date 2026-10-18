@@ -37,8 +37,6 @@ from orthostudio.meter import written
 __all__ = [
     "ALPHABET",
     "COP30_BASE_URL",
-    "DEM1_BLOCKS",
-    "DEM1_CELLS",
     "FULL_HGT_SIZE",
     "MANUAL_SOURCES",
     "SOURCES",
@@ -130,35 +128,6 @@ def anadem_url(zone: str) -> str:
     """Where the zone's GeoTIFF lives."""
     return f"{ANADEM_BASE_URL}/anadem_v1_{zone}.tif"
 
-
-DEM1_CELLS: frozenset[tuple[int, int]] = frozenset(
-    {
-        (44, 5), (45, 5), (46, 5),
-        (43, 6), (44, 6), (45, 6), (46, 6), (47, 6),
-        (43, 7), (44, 7), (45, 7), (46, 7), (47, 7),
-        (45, 8), (46, 8), (47, 8),
-        (45, 9), (46, 9), (47, 9),
-        (45, 10), (46, 10), (47, 10),
-        (45, 11), (46, 11), (47, 11),
-        (45, 12), (46, 12), (47, 12),
-        (46, 13), (47, 13),
-        (46, 14), (47, 14),
-        (46, 15), (47, 15),
-    }
-)  # fmt: skip
-"""The 34 cells served one-per-zip under ``dem1/`` (``O4_DEM_Utils.py:599-635``)."""
-
-DEM1_BLOCKS: frozenset[str] = frozenset(
-    {
-        "O31", "P31",
-        "N32", "O32", "P32", "Q32",
-        "N33", "O33", "P33", "Q33", "R33",
-        "O34", "P34", "Q34", "R34",
-        "O35", "P35", "Q35", "R35",
-        "P36", "Q36", "R36",
-    }
-)  # fmt: skip
-"""De Ferranti blocks that are 1" although served under ``dem3/`` (``:645-667``)."""
 
 _MEMBER_RE = re.compile(r"^([NSns])(\d{2})([EWew])(\d{3})")
 
@@ -313,21 +282,13 @@ def default_memo_path() -> Path:
 # -- URLs -----------------------------------------------------------------------------------
 
 
-def view_url(lat: int, lon: int) -> tuple[str, int]:
-    """``(url, resolution)`` of the viewfinderpanoramas archive holding this cell.
-
-    ``O4_DEM_Utils.py:595-668``. The resolution is 1 or 3 and only drives the recycling test
-    of :func:`ensure_elevation`, never the URL. The archive name is upper case: since
-    October 2026 the site serves ``dem1/N46E006.zip`` and answers 404 for ``n46e006.zip``,
-    the name Ortho4XP asks. :func:`view_urls` adds the other case as a second try.
-    """
-    if (lat, lon) in DEM1_CELLS:
-        return f"{VIEW_BASE_URL}/dem1/{hem_latlon(lat, lon).upper()}.zip", 1
+def _view_block(lat: int, lon: int) -> str:
+    """The 4-degree x 6-degree block of de Ferranti's grid holding a cell, as the site names it:
+    letter ``alphabet[lat // 4]`` (``"S" + alphabet[(-1 - lat) // 4]`` south of the equator),
+    number ``31 + lon // 6`` on two digits."""
     number = 31 + lon // 6
     letter = ALPHABET[lat // 4] if lat >= 0 else "S" + ALPHABET[(-1 - lat) // 4]
-    block = f"{letter}{number:02d}"
-    resol = 1 if block in DEM1_BLOCKS else 3
-    return f"{VIEW_BASE_URL}/dem3/{block}.zip", resol
+    return f"{letter}{number:02d}"
 
 
 @functools.lru_cache(maxsize=1)
@@ -340,48 +301,42 @@ def site_archives() -> tuple[frozenset[str], frozenset[str], Mapping[str, str]]:
 
 
 def view_urls(lat: int, lon: int) -> tuple[list[str], int]:
-    """Every URL to try for this cell's archive, in order, and the resolution.
+    """Every archive of viewfinderpanoramas that may hold this cell, finest first, and the
+    resolution of the first: what the site's coverage maps list (:func:`site_archives`), and
+    nothing else.
 
-    The site's own archives first, as its coverage maps list them (:func:`site_archives`): the
-    1" block holding the cell where there is one (``dem1/M31.zip`` for Paris: the site serves 1"
-    over much of Europe that Ortho4XP's list, ported in :func:`view_url`, reads at 3"), then
-    Ortho4XP's names, the upper-case one first and the lower-case one second (the site's names are
-    case-sensitive and changed case once), then the 3" archive the site moved a northern block to
-    (``dem3/P35v2.zip``) or the archive of its own an island is in (``dem3/SHL.zip``). The
-    block comes first for the Alps' cells too, which Ortho4XP read from 1" archives of their own:
-    those date from 2017 (``N44E006.zip``, 2017-01-30), the blocks from 2026 (``L32.zip``,
-    2026-03-21), and the two differ; both the same size, the one unpacked last won, so a
-    square's relief hung on the order its neighbours were made in. The resolution is 1 when a
-    1" archive is asked first.
-
-    The site's 1" blocks come first only with ``OSXP_VIEW_SITE_FIRST=1`` (Live's mesh,
-    ``tools/live/mesh/bake.py``): elsewhere they would change the relief of tiles already built,
-    which is the user's choice to make. The other names are tried only where Ortho4XP's fail.
+    The 1" archives come first: the cell's 1" block (``dem1/L32.zip`` for Geneva, of March 2026,
+    ``dem1/M31.zip`` for Paris) or the 1" place archive it is in (Antarctica's ``dem1/ANT-E``);
+    then the 3" ones: the block, the block the site moved (``dem3/P35v2.zip``), or the place
+    archive (``dem3/SHL.zip``, ``dem3/P-143.zip``). Ortho4XP's own names are not asked: the
+    per-cell archives of the Alps it reads (``dem1/n46e006.zip``) are of 2017, answer 404 under
+    its lower-case names since October 2026, and every block it points to is in the site's
+    list under its real name. A cell the list does not hold has no archive on the site: an empty
+    list. Resolution 1 when the first archive is a 1" one, else 3.
     """
-    url, resol = view_url(lat, lon)
-    head, _, name = url.rpartition("/")
-    lower = f"{head}/{name.lower()}"
-    ortho4xp = [url] if lower == url else [url, lower]
     dem1, dem3, special = site_archives()
-    number = 31 + lon // 6
-    letter = ALPHABET[lat // 4] if lat >= 0 else "S" + ALPHABET[(-1 - lat) // 4]
-    block = f"{letter}{number:02d}"
-    first: list[str] = []
-    site_first = os.environ.get("OSXP_VIEW_SITE_FIRST") == "1"
-    if site_first and block in dem1:
-        first.append(f"{VIEW_BASE_URL}/dem1/{block}.zip")
-        resol = 1
-    after: list[str] = []
-    if f"{block}v2" in dem3:
-        after.append(f"{VIEW_BASE_URL}/dem3/{block}v2.zip")
+    block = _view_block(lat, lon)
     own = special.get(hem_latlon(lat, lon).upper())
-    if own is not None:
-        after.append(f"{VIEW_BASE_URL}/{own}.zip")
     urls: list[str] = []
-    for u in first + ortho4xp + after:
-        if u not in urls:
-            urls.append(u)
+    if block in dem1:
+        urls.append(f"{VIEW_BASE_URL}/dem1/{block}.zip")
+    if own is not None and own.startswith("dem1/"):
+        urls.append(f"{VIEW_BASE_URL}/{own}.zip")
+    if block in dem3:
+        urls.append(f"{VIEW_BASE_URL}/dem3/{block}.zip")
+    if f"{block}v2" in dem3:
+        urls.append(f"{VIEW_BASE_URL}/dem3/{block}v2.zip")
+    if own is not None and own.startswith("dem3/"):
+        urls.append(f"{VIEW_BASE_URL}/{own}.zip")
+    resol = 1 if urls and "/dem1/" in urls[0] else 3
     return urls, resol
+
+
+def view_url(lat: int, lon: int) -> tuple[str, int]:
+    """The first archive :func:`view_urls` asks for this cell (``""`` when the site has none)
+    and its resolution."""
+    urls, resol = view_urls(lat, lon)
+    return (urls[0] if urls else ""), resol
 
 
 def ned_url(source: str, lat: int, lon: int) -> str:
@@ -909,8 +864,13 @@ def _local(source: str, lat: int, lon: int, opts: EnsureOptions) -> Path:
 def _ensure_view(lat: int, lon: int, opts: EnsureOptions) -> EnsureResult:
     path = _local("View", lat, lon, opts)
     urls, resol = view_urls(lat, lon)
+    first = urls[0] if urls else None
     if path.is_file() and (resol == 3 or path.stat().st_size >= FULL_HGT_SIZE):
-        return EnsureResult(lat, lon, CellState.LOCAL, path, urls[0])
+        return EnsureResult(lat, lon, CellState.LOCAL, path, first)
+    if not urls:
+        return _view_fallback(
+            lat, lon, path, None, opts, "viewfinderpanoramas lists no archive holding this cell"
+        )
     # each name has its own memo entry: a 404 remembered for one case never skips the other
     detail = "the archive is in the negative memo"
     for url in urls:
@@ -931,7 +891,7 @@ def _ensure_view(lat: int, lon: int, opts: EnsureOptions) -> EnsureResult:
             return _view_fallback(lat, lon, path, url, opts, got.error or f"HTTP {got.status}")
         opts.memo.record(url)
         detail = got.error or f"HTTP {got.status}"
-    return _view_fallback(lat, lon, path, urls[0], opts, detail)
+    return _view_fallback(lat, lon, path, first, opts, detail)
 
 
 def cop30_name(lat: int, lon: int) -> str:
@@ -976,7 +936,7 @@ def _ensure_cop30(lat: int, lon: int, opts: EnsureOptions) -> EnsureResult:
 
 
 def _view_fallback(
-    lat: int, lon: int, path: Path, url: str, opts: EnsureOptions, detail: str
+    lat: int, lon: int, path: Path, url: str | None, opts: EnsureOptions, detail: str
 ) -> EnsureResult:
     if path.is_file() and opts.dem1_local_fallback:
         return EnsureResult(lat, lon, CellState.LOCAL, path, url, detail)
@@ -1147,7 +1107,7 @@ def iter_urls(source: str, cells: Iterable[tuple[int, int]]) -> list[str]:
     urls: list[str] = []
     for lat, lon in cells:
         if source == "View":
-            urls.append(view_url(lat, lon)[0])
+            urls.extend(view_urls(lat, lon)[0])
         elif source in ("NED1", "NED1/3"):
             urls.append(ned_url(source, lat, lon))
     return urls
