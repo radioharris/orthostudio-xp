@@ -694,7 +694,7 @@ class DownloaderTest(unittest.TestCase):
 
         from orthostudio.live.downloader import Downloader
 
-        self.assertIn("verify=ca_bundle()", inspect.getsource(Downloader._main))
+        self.assertIn("verify=ca_bundle()", inspect.getsource(Downloader._new_session))
 
     def test_a_source_refusing_this_computer_is_said(self):
         """A server that answers every request 403, as Esri's edge (Akamai) answered a user's

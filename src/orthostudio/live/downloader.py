@@ -19,6 +19,12 @@ A piece not there after HEDGE_S is asked of another of the provider's servers as
 good answer wins. Otherwise the last pieces of a start can hold X-Plane for half a minute: once, two
 pieces kept LFMN waiting 30 s, and one of them never came.
 
+Connections that went dead are dropped: requests on their way and no answer at all for DEAD_S,
+the session's connections are closed and new ones opened, the requests asked again. On a line
+choked for half an hour, Bing's connections stopped answering while staying open; curl kept
+asking on them, each request failing after its timeout, and nothing came again for the rest of the
+flight, when a new connection was answered at once (Calabria, 2026-10-19).
+
 A source that covers one country is completed by Bing Maps (:func:`.providers.fallback_for`): a
 piece outside its bounds is asked of Bing only, and a piece it has no imagery for is asked of Bing
 next. A source whose server has a ceiling of its own (``server_req_per_s``, a country's service
@@ -44,6 +50,8 @@ HEDGE_S = 2.0
 # answered « Access Denied » to a user's address, 2026-10-07); a 403 now and then among its images
 # is a piece it lacks
 REFUSED_IN_A_ROW = 32
+DEAD_S = 20.0  # requests on their way and no answer for this long: the connections are dead
+WATCH_S = 2.0  # how often that is looked at
 
 
 class Downloader:
@@ -85,6 +93,11 @@ class Downloader:
         # by source, the 403s in a row since its server last answered otherwise (refusing)
         self._refusals: dict[str, int] = {}
         self._paused_until = 0.0
+        # the last answer of the source's servers, and since when requests are on their way: no
+        # answer for DEAD_S while some are, the connections are renewed (_watch)
+        self._last_answer = self._busy_since = time.monotonic()
+        self.renewed = 0
+        self._renewed_said = 0.0
         # a piece of this priority waits while it says so: every one while X-Plane loads scenery,
         # those ahead of what it shows while its workers are all busy (Streamer.holds)
         self.hold: Callable[[float], bool] = lambda priority: False
@@ -129,27 +142,53 @@ class Downloader:
             self._ready.set()
 
     async def _main(self) -> None:
+        self._queue: asyncio.PriorityQueue = asyncio.PriorityQueue()
+        self._stop = asyncio.Event()
+        self._session = self._new_session()
+        workers = [asyncio.create_task(self._worker()) for _ in range(self.max_in_flight)]
+        watch = asyncio.create_task(self._watch())
+        self._ready.set()
+        await self._stop.wait()
+        for w in (*workers, watch):
+            w.cancel()
+        await asyncio.gather(*workers, watch, return_exceptions=True)
+        await self._session.close()
+
+    def _new_session(self):
         from curl_cffi.requests import AsyncSession
 
         # the bundle OrthoStudio XP ships, by a name curl opens whatever Python's encoding
         from orthostudio.net.certs import ca_bundle
 
-        self._queue: asyncio.PriorityQueue = asyncio.PriorityQueue()
-        self._stop = asyncio.Event()
-        self._session = AsyncSession(
+        return AsyncSession(
             max_clients=max(256, 2 * self.max_in_flight + 16),
             http_version="v2tls",
             allow_redirects=True,
             timeout=self.timeout_s,
             verify=ca_bundle(),
         )
-        workers = [asyncio.create_task(self._worker()) for _ in range(self.max_in_flight)]
-        self._ready.set()
-        await self._stop.wait()
-        for w in workers:
-            w.cancel()
-        await asyncio.gather(*workers, return_exceptions=True)
-        await self._session.close()
+
+    async def _watch(self) -> None:
+        """Requests on their way and no answer for DEAD_S: the session's connections are dead
+        (open, asked on, never answering), and a new session opens new ones. The requests on the
+        old one fail as it closes and are asked again on the new one."""
+        while True:
+            await asyncio.sleep(WATCH_S)
+            now = time.monotonic()
+            if self.in_flight == 0 or now - max(self._last_answer, self._busy_since) < DEAD_S:
+                continue
+            old, self._session = self._session, self._new_session()
+            self._last_answer = now
+            self.renewed += 1
+            if self.log is not None and now - self._renewed_said > 60.0:
+                self._renewed_said = now
+                self.log(
+                    f"  no answer from the photos' servers for {DEAD_S:.0f} s while "
+                    f"{self.in_flight} requests waited ({self.last_error or 'no error'}): their "
+                    f"connections dropped, new ones opened ({self.renewed} times since the start)"
+                )
+            with contextlib.suppress(Exception):
+                await old.close()
 
     async def _worker(self) -> None:
         while True:
@@ -186,9 +225,13 @@ class Downloader:
 
     async def _get(self, p: Provider, url: str):
         await self._paced(p)
+        if self.in_flight == 0:
+            self._busy_since = time.monotonic()
         self.in_flight += 1
         try:
-            return await self._session.get(url, headers=dict(p.headers))
+            r = await self._session.get(url, headers=dict(p.headers))
+            self._last_answer = time.monotonic()
+            return r
         except asyncio.CancelledError:
             raise
         except Exception as e:  # timeout, refused connection, reset...
