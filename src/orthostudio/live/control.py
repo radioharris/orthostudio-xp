@@ -114,6 +114,7 @@ def options_for(settings: LiveSettings, *, fresh: bool) -> session.Options:
         season=settings.season,
         looks=settings.seasons.looks(),
         decal=settings.decal,
+        own_tiles=settings.own_tiles,
         fresh=fresh,
     )
 

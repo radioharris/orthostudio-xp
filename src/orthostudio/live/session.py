@@ -37,6 +37,7 @@ from orthostudio.live.scenery import (
     find_xplane,
     install_link,
     is_installed,
+    live_above,
     ortho_streamers,
     osxp_regions,
     uninstall_link,
@@ -89,6 +90,7 @@ class Options:
     season: str = "auto"  # the photos' season: "auto" (X-Plane's date), or spring... winter
     looks: dict | None = None  # each season's colours (orthostudio.live.look.Look); None: Live's
     decal: str | None = None  # the land's decal on Live's squares; "" none; None: as the region has
+    own_tiles: str = "first"  # the pilot's own tiles first, or "under" Live's pack while it runs
 
 
 @dataclass
@@ -323,7 +325,11 @@ def prepare(options: Options, log: Log) -> Prepared:
             threading.Thread(target=remove_aside, args=(pack_dir,), daemon=True).start()
         if options.fresh:
             reset(pack_dir, log)
-    install_link(xp_dir, pack_dir, LINK_NAME, log=log)
+    # Live's line where the rule lists it, below the pilot's own tiles, at every start: one a
+    # stop left above them ("Live everywhere", below) does not hide them when they come first;
+    # left as it is under a running X-Plane, which read the list as it started
+    running = xplane_running()
+    install_link(xp_dir, pack_dir, LINK_NAME, log=log, again=not running)
     # only the squares Live's pack has: another pack's elsewhere does not matter to it
     region = {
         square
@@ -331,6 +337,17 @@ def prepare(options: Options, log: Log) -> Prepared:
         if (square := dsf_tile_of(str(dsf))) is not None
     }
     covered = covered_squares(xp_dir, LINK_NAME, region)
+    if covered and options.own_tiles == "under" and not running:
+        # Live everywhere: Live's pack above the pilot's own tiles while it runs, taken out of
+        # X-Plane at its stop (they are back then); nothing above it covers a square any more
+        first = live_above(xp_dir, LINK_NAME, set(covered.values()))
+        if first is not None:
+            install_link(xp_dir, pack_dir, LINK_NAME, log=lambda _: None, above=first, again=True)
+            log(
+                f"Live everywhere: its pack listed above {first}, your own scenery's "
+                f"{len(covered)} squares under it while Live runs"
+            )
+            covered = covered_squares(xp_dir, LINK_NAME, region)
     if covered:
         packs = sorted(set(covered.values()))
         log(

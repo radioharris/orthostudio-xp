@@ -251,10 +251,18 @@ applications. A country's source has nothing past its border: there, and whereve
 imagery, Live takes Bing Maps. The source's credit and licence are at the foot of the map.
 Textures already built keep their photos: "From scratch" builds them all again with a new source.
 
-**Your own tiles come first.** Where you built a tile with OrthoStudio XP (or imported one from
-Ortho4XP, or installed another ortho scenery above Live's), X-Plane shows it, and Live downloads
-nothing there: at a start from your home airport, X-Plane waits for none of it. The map frames
-them, and the checks list them.
+**Your own tiles first, or Live everywhere.** Where you built a tile with OrthoStudio XP (or
+imported one from Ortho4XP, or installed another ortho scenery above Live's), Settings, "Your own
+tiles", chooses what X-Plane shows:
+
+- "Yours first" (the default): your tile, and Live downloads nothing there: at a start from your
+  home airport, X-Plane waits for none of it. The map frames them, and the checks list them. At
+  their edges the ground can show a small step: OrthoStudio XP's tiles stand on X-Plane's relief,
+  Live's mesh on viewfinderpanoramas'.
+- "Live everywhere": Live's photos and mesh there too, with no step. Live lists its pack above
+  your tiles in X-Plane's scenery list while it runs; they come back when it stops, and at the
+  next start with "Yours first". Taken at the next start, since X-Plane reads its list as it
+  starts.
 
 **Roads, forests and buildings.** Where Live shows its photos, X-Plane no longer draws its own:
 X-Plane keeps them in the same file as its ground. Live brings them back as "overlays", X-Plane's

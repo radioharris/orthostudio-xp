@@ -193,6 +193,16 @@ export const STRINGS = {
     "region.asi": "Asia",
     "region.aus_pac": "Australia and the Pacific",
     "region.more": "Greenland, the Arctic and islands",
+    "own_tiles.title": "Your own tiles",
+    "own_tiles.help":
+      "Where you built tiles with OrthoStudio XP, or have another ortho scenery, X-Plane can show yours or Live's.",
+    "own_tiles.first": "Yours first (recommended)",
+    "own_tiles.first_note":
+      "X-Plane shows your tiles and Live fills the rest. At their edges the ground can show a small step: your tiles stand on X-Plane's relief, Live's on its own mesh.",
+    "own_tiles.under": "Live everywhere",
+    "own_tiles.under_note":
+      "Live's photos and mesh over your tiles too, with no step. Your tiles are hidden while Live runs and come back when it stops.",
+    "own_tiles.restart": "From the next start.",
     "overlays.title": "Roads, forests and buildings",
     "overlays.help":
       "Where Live shows its photos, X-Plane no longer draws its own roads, trees and buildings. Each region brings them back with it (its \"overlays\").",
@@ -579,6 +589,16 @@ export const STRINGS = {
     "region.asi": "Asie",
     "region.aus_pac": "Australie et Pacifique",
     "region.more": "Groenland, Arctique et îles",
+    "own_tiles.title": "Vos propres tuiles",
+    "own_tiles.help":
+      "Là où vous avez construit des tuiles avec OrthoStudio XP, ou avez une autre scène ortho, X-Plane peut montrer les vôtres ou celles de Live.",
+    "own_tiles.first": "Les vôtres d'abord (recommandé)",
+    "own_tiles.first_note":
+      "X-Plane montre vos tuiles et Live complète le reste. À leurs bords, le sol peut faire une petite marche : vos tuiles reposent sur le relief de X-Plane, celles de Live sur son propre maillage.",
+    "own_tiles.under": "Live partout",
+    "own_tiles.under_note":
+      "Les photos et le maillage de Live aussi sur vos tuiles, sans marche. Vos tuiles sont cachées tant que Live tourne et reviennent quand il s'arrête.",
+    "own_tiles.restart": "Au prochain démarrage.",
     "overlays.title": "Routes, forêts et bâtiments",
     "overlays.help":
       "Là où Live affiche ses photos, X-Plane ne dessine plus ses propres routes, arbres et bâtiments. Chaque région les ramène avec elle (ses « overlays »).",

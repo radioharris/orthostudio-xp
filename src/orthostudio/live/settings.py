@@ -128,6 +128,11 @@ class LiveSettings(BaseModel):
     start, never changed in flight (the user, 2026-10-13)."""
     seasons: SeasonLooks = Field(default_factory=SeasonLooks)
     """Each season's colours, as the window's sliders set them."""
+    own_tiles: Literal["first", "under"] = "first"
+    """Where the pilot built tiles with OrthoStudio XP (or has another ortho scenery): "first",
+    X-Plane shows them and Live fills the rest, a step in the relief possible at their edges (the
+    app's tiles stand on X-Plane's relief, Live's mesh on viewfinderpanoramas'); "under", Live
+    everywhere: its pack listed above them while it runs, they are back once it stops."""
     decal: str = LIVE_DECAL
     """X-Plane 12's decal on the land of Live's squares, one of OrthoStudio XP's
     (:data:`orthostudio.decals.DECALS`): the fine ground detail drawn over the photo near the

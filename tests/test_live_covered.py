@@ -209,3 +209,38 @@ def test_a_start_says_which_squares_it_leaves(
     assert order.index(f"SCENERY_PACK Custom Scenery/{ORTHO_PREFIX}+46+002/") < order.index(
         f"SCENERY_PACK Custom Scenery/{LINK_NAME}/"
     )  # OrthoStudio XP's tile above Live's pack: X-Plane draws it
+
+
+def test_live_everywhere_lists_its_pack_above_the_users_tiles(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("OSXP_HOME", str(tmp_path / "home"))
+    (tmp_path / "home").mkdir()
+    monkeypatch.setattr(session, "xplane_running", lambda: False)
+    xp = make_xplane(tmp_path)
+    scenery = xp / "Custom Scenery"
+    ini = scenery / "scenery_packs.ini"
+    tile = f"SCENERY_PACK Custom Scenery/{ORTHO_PREFIX}+46+002/"
+    ini.write_text(
+        ini.read_text().replace(
+            "SCENERY_PACK Custom Scenery/z_ao_eur/",
+            tile + "\nSCENERY_PACK Custom Scenery/z_ao_eur/",
+        )
+    )
+    put_dsf(scenery / f"{ORTHO_PREFIX}+46+002", (46, 2), b"a tile")
+    source = make_source(tmp_path, tile=(46, 2), textures=NAMES)
+    live = f"SCENERY_PACK Custom Scenery/{LINK_NAME}/"
+
+    def start(own_tiles: str) -> session.Prepared:
+        options = session.Options(
+            xplane=xp, pack=tmp_path / "pack", source=source, no_plugin=True, own_tiles=own_tiles
+        )
+        return session.prepare(options, log=lambda _: None)
+
+    assert start("under").covered == {}  # Live draws the square
+    order = ini.read_text().splitlines()
+    assert order.index(live) < order.index(tile)
+    # a stop that left it there: the pilot's tiles first again at the next start
+    assert start("first").covered == {(46, 2): f"{ORTHO_PREFIX}+46+002"}
+    order = ini.read_text().splitlines()
+    assert order.index(tile) < order.index(live)

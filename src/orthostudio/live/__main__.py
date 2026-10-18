@@ -257,6 +257,7 @@ def stream(
         season=saved.season if season is None else season,
         looks=saved.seasons.looks(),
         decal=saved.decal,
+        own_tiles=saved.own_tiles,
     )
     try:
         prepared = session.prepare(options, typer.echo)
