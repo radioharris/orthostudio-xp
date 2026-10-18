@@ -579,6 +579,16 @@ function drawOurRegions(ours) {
     ul.append(li);
   }
   $("regions-ours-none").hidden = sorted.length > 0;
+  // where they are, folder by folder: one may sit on another disk, linked from Live's folder
+  const byFolder = new Map();
+  for (const r of sorted) {
+    if (!r.folder) continue;
+    if (!byFolder.has(r.folder)) byFolder.set(r.folder, []);
+    byFolder.get(r.folder).push(t(`region.${r.id}`));
+  }
+  const places = [...byFolder].map(([folder, names]) => `${folder} (${names.join(", ")})`);
+  $("regions-where").hidden = places.length === 0;
+  $("regions-where").textContent = places.length ? t("regions.where", { places: places.join(" · ") }) : "";
 }
 
 function drawRegions(status) {

@@ -177,6 +177,7 @@ export const STRINGS = {
     "regions.ours_source":
       "OrthoStudio XP's mesh, made with the relief of viewfinderpanoramas.org (Jonathan de Ferranti). It covers all the land of the world but Antarctica.",
     "regions.ours_none": "None of OrthoStudio XP's regions is installed.",
+    "regions.where": "Installed in: {places}",
     "decal.title": "Ground grain up close (decals)",
     "decal.help":
       "X-Plane 12's decals: a fine grain drawn over the photo seen from very low, which softens its blur. On the land only. grass_and_stony_dirt_1 puts long grass on the green and stony dirt elsewhere; maquify_2_green_key is Ortho4XP's.",
@@ -562,6 +563,7 @@ export const STRINGS = {
     "regions.ours_source":
       "Le mesh d'OrthoStudio XP, fait avec le relief de viewfinderpanoramas.org (Jonathan de Ferranti). Il couvre toutes les terres du monde, sauf l'Antarctique.",
     "regions.ours_none": "Aucune région d'OrthoStudio XP n'est installée.",
+    "regions.where": "Installées dans : {places}",
     "decal.title": "Grain du sol à très basse hauteur (decals)",
     "decal.help":
       "Les decals d'X-Plane 12 : un grain fin posé sur la photo vue de très bas, qui atténue son flou. Sur la terre seulement. grass_and_stony_dirt_1 met de l'herbe folle sur le vert et de la terre caillouteuse ailleurs ; maquify_2_green_key est celui d'Ortho4XP.",

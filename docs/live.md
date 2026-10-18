@@ -268,7 +268,8 @@ by OrthoStudio XP's engine with the relief of viewfinderpanoramas.org (Jonathan 
 seven regions: Europe, North America, South America, Africa, Asia, Australia and the Pacific, and
 Greenland, the Arctic and islands. Together they cover all the land of the world but Antarctica,
 every square AutoOrtho's regions have and 1,048 more. The panel lists those installed, with the
-room each takes on the disk; a region may sit on another disk, linked from Live's folder. They
+room each takes on the disk and the folders they are in; a region may sit on another disk, linked
+from Live's folder. They
 cannot be installed from the window yet: where they will be downloaded from is not decided.
 
 A region AutoOrtho installed on its own is still recognised, and left as it is; Live no longer

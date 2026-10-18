@@ -236,6 +236,8 @@ def our_regions(root: Path) -> list[dict[str, Any]]:
                 "id": folder.name.removeprefix("z_osxp_"),
                 "size": size if isinstance(size, int) else None,
                 "elsewhere": folder.is_symlink(),
+                # where it really is: the folder holding it, the link's target's for one elsewhere
+                "folder": str(folder.resolve().parent),
             }
         )
     return out
