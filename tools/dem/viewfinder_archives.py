@@ -38,8 +38,15 @@ def get(url: str, headers: dict | None = None) -> bytes:
 
 
 def names_in(page: str, folder: str) -> list[str]:
+    """The archives a map links, in its folder or at the site's root: the 3" map links ``A21``
+    (the Guiana Shield) as ``https://viewfinderpanoramas.org/A21.zip``, and the site serves the
+    same file as ``dem3/A21.zip`` (34,923,491 bytes both, 2026-10-18)."""
     html = get(f"{SITE}/{page}").decode("latin-1")
-    return sorted(set(re.findall(rf"/{folder}/([A-Za-z0-9_-]+)\.zip", html)))
+    named = set(re.findall(rf"/{folder}/([A-Za-z0-9_-]+)\.zip", html))
+    root = re.findall(
+        r'href="(?:https?://(?:www\.)?viewfinderpanoramas\.org)?/?([A-Za-z0-9_-]+)\.zip"', html
+    )
+    return sorted(named | set(root))
 
 
 def cells_of_zip(url: str) -> list[str]:

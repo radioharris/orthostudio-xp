@@ -101,10 +101,12 @@ def test_view_urls_take_the_archives_the_site_moved_or_named_after_a_place() -> 
     assert view_urls(-80, 100)[0][0] == f"{V}/dem1/ANT-E.zip"
 
 
-def test_view_urls_end_with_the_3sec_block_the_maps_may_not_link() -> None:
-    """``dem3/A21.zip`` (26 cells of the Guiana Shield) answers 200 on 2026-10-18 though neither
-    coverage map links it: the 3" block under its grid name is always the last try."""
+def test_view_urls_end_with_the_cells_3sec_block_under_its_grid_name() -> None:
+    """``A21`` (26 cells of the Guiana Shield) is linked at the site's root on the 3" map, which
+    the reading of the maps missed until 2026-10-18: listed now, and the grid name, always the
+    last try, is the same archive."""
     assert view_urls(2, -56) == ([f"{V}/dem3/A21.zip"], 3)
+    assert view_urls(60, 24)[0][-1] == f"{V}/dem3/P35.zip"
     # Southern hemisphere: the letter is prefixed with S and counted from -1.
     assert view_urls(-34, -59) == ([f"{V}/dem3/SI21.zip"], 3)
     assert view_url(-34, -59) == (f"{V}/dem3/SI21.zip", 3)

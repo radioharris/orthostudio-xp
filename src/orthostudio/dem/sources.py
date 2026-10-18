@@ -311,8 +311,9 @@ def view_urls(lat: int, lon: int) -> tuple[list[str], int]:
     archive (``dem3/SHL.zip``, ``dem3/P-143.zip``). Ortho4XP's own names are not asked: the
     per-cell archives of the Alps it reads (``dem1/n46e006.zip``) are of 2017, answer 404 under
     its lower-case names since October 2026, and every block it points to is in the site's
-    list under its real name. Last comes the cell's 3" block under its grid name, which the maps
-    do not always link (``dem3/A21.zip``). Resolution 1 when the first archive is a 1" one, else 3.
+    list under its real name. Last comes the cell's 3" block under its grid name, a net for an
+    archive the reading of the maps would miss. Resolution 1 when the first archive is a 1" one,
+    else 3.
     """
     dem1, dem3, special = site_archives()
     block = _view_block(lat, lon)
@@ -328,9 +329,9 @@ def view_urls(lat: int, lon: int) -> tuple[list[str], int]:
         urls.append(f"{VIEW_BASE_URL}/dem3/{block}v2.zip")
     if own is not None and own.startswith("dem3/"):
         urls.append(f"{VIEW_BASE_URL}/{own}.zip")
-    # Last, the 3" block under its grid name even when the maps do not link it: the site serves
-    # archives they leave out (``dem3/A21.zip``, 26 cells of the Guiana Shield, 200 on 2026-10-18).
-    # A cell with no archive at all costs one 404, remembered (3.4).
+    # Last, the 3" block under its grid name, listed or not: the reading of the maps missed
+    # archives twice (names with a dash; ``A21``, which the 3" map links at the site's root). A
+    # cell with no archive at all costs one 404, remembered (3.4).
     computed = f"{VIEW_BASE_URL}/dem3/{block}.zip"
     if computed not in urls:
         urls.append(computed)
