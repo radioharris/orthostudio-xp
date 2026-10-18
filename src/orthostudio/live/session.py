@@ -87,6 +87,7 @@ class Options:
     tint_8192: bool = False  # the test: the 8192 px levels built pink, where X-Plane shows them
     season: str = "auto"  # the photos' season: "auto" (X-Plane's date), or spring... winter
     looks: dict | None = None  # each season's colours (orthostudio.live.look.Look); None: Live's
+    decal: str | None = None  # the land's decal on Live's squares; "" none; None: as the region has
 
 
 @dataclass
@@ -235,6 +236,7 @@ def prepare(options: Options, log: Log) -> Prepared:
         relayout,
         remove_aside,
         remove_temps,
+        set_decal,
         set_zooms,
         setup_region,
     )
@@ -299,6 +301,7 @@ def prepare(options: Options, log: Log) -> Prepared:
     # the disk: every other program keeps it (machine.background_io)
     with machine.background_io():
         setup_region(sources, pack_dir, log=log, zooms=zooms, xplane_running=xplane_running)
+        set_decal(pack_dir, options.decal, log=log, xplane_running=xplane_running)
         left = remove_temps(pack_dir)  # before anything writes there
         if left:
             log(f"{left} unfinished files a stopped Live left among the textures removed")
@@ -466,6 +469,7 @@ def follow(
                     tint_8192=options.tint_8192,
                     looks=options.looks,
                     season=season,
+                    decal=options.decal,
                     flight_encodes=computer.flight_encodes,
                     sharp_builds=computer.sharp_builds,
                     installed_regions=lambda: {

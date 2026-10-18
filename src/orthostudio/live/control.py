@@ -31,6 +31,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from orthostudio.decals import DECALS
 from orthostudio.live import aoregions, session, supported
 from orthostudio.live.evict import usage
 from orthostudio.live.pack import (
@@ -112,6 +113,7 @@ def options_for(settings: LiveSettings, *, fresh: bool) -> session.Options:
         tint_8192=settings.tint_8192,
         season=settings.season,
         looks=settings.seasons.looks(),
+        decal=settings.decal,
         fresh=fresh,
     )
 
@@ -371,6 +373,7 @@ class LiveControl:
             "platform": platform_name(),  # mac, win or lin: what the file manager is called
             "checks": self.checks(),
             "settings": self._settings().model_dump(),
+            "decals": list(DECALS),
             "regions": self.regions(),
         }
 

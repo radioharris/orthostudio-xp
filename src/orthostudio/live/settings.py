@@ -17,6 +17,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from orthostudio.config.store import toml_dumps
+from orthostudio.decals import DECALS
 from orthostudio.fsutil import atomic_write_text
 from orthostudio.live import settings_file
 
@@ -78,6 +79,11 @@ def disk_floor(max_zoom: int, max_zoom_airports: int) -> float:
     return DISK_MIN_SHARP_GB if max_zoom > 16 or max_zoom_airports > 18 else DISK_MIN_GB
 
 
+LIVE_DECAL = "grass_and_stony_dirt_1.dcl"
+"""The decal of Live's squares until the pilot chooses another: grass and stony dirt (the user,
+2026-10-18), where OrthoStudio XP's tiles keep Ortho4XP's ``maquify_2_green_key.dcl``."""
+
+
 class LiveSettings(BaseModel):
     """What a stream is built with, beyond where X-Plane is."""
 
@@ -122,6 +128,11 @@ class LiveSettings(BaseModel):
     start, never changed in flight (the user, 2026-10-13)."""
     seasons: SeasonLooks = Field(default_factory=SeasonLooks)
     """Each season's colours, as the window's sliders set them."""
+    decal: str = LIVE_DECAL
+    """X-Plane 12's decal on the land of Live's squares, one of OrthoStudio XP's
+    (:data:`orthostudio.decals.DECALS`): the fine ground detail drawn over the photo near the
+    ground, written on the ``DECAL_LIB`` line of every land ``.ter`` file Live places
+    (:mod:`orthostudio.live.names`); empty: none. The sea keeps none."""
 
     @model_validator(mode="before")
     @classmethod
@@ -166,6 +177,13 @@ class LiveSettings(BaseModel):
     @classmethod
     def _stripped(cls, value: str) -> str:
         return value.strip()
+
+    @field_validator("decal")
+    @classmethod
+    def _known_decal(cls, name: str) -> str:
+        if name and name not in DECALS:
+            raise ValueError(f"unknown decal {name!r}")
+        return name
 
     @field_validator("provider")
     @classmethod

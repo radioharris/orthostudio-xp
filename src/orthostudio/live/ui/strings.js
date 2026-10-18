@@ -179,6 +179,12 @@ export const STRINGS = {
     "regions.ours_none": "None of OrthoStudio XP's regions is installed.",
     "regions.ao_title": "AutoOrtho's regions, as a fallback",
     "regions.ao_help": "Install the regions you fly over, delete them whenever you like.",
+    "decal.title": "Ground grain up close (decals)",
+    "decal.help":
+      "X-Plane 12's decals: a fine grain drawn over the photo seen from very low, which softens its blur. On the land only. grass_and_stony_dirt_1 puts long grass on the green and stony dirt elsewhere; maquify_2_green_key is Ortho4XP's.",
+    "decal.none": "None",
+    "decal.default": "{name} (Live's choice)",
+    "decal.restart": "From the next start: the squares flown already take it then.",
     "regions.source":
       "Downloaded from github.com/kubilus1/autoortho-scenery. Once unpacked, a region takes about 1.7 times its size on the disk.",
     "regions.loading": "Asking GitHub for the list…",
@@ -574,6 +580,12 @@ export const STRINGS = {
     "regions.ours_none": "Aucune région d'OrthoStudio XP n'est installée.",
     "regions.ao_title": "Régions d'AutoOrtho, en secours",
     "regions.ao_help": "Installez les régions que vous survolez, supprimez-les quand vous voulez.",
+    "decal.title": "Grain du sol à très basse hauteur (decals)",
+    "decal.help":
+      "Les decals d'X-Plane 12 : un grain fin posé sur la photo vue de très bas, qui atténue son flou. Sur la terre seulement. grass_and_stony_dirt_1 met de l'herbe folle sur le vert et de la terre caillouteuse ailleurs ; maquify_2_green_key est celui d'Ortho4XP.",
+    "decal.none": "Aucun",
+    "decal.default": "{name} (le choix de Live)",
+    "decal.restart": "Au prochain démarrage : les carrés déjà survolés le prennent alors.",
     "regions.source":
       "Téléchargées depuis github.com/kubilus1/autoortho-scenery. Une fois décompressée, une région prend environ 1,7 fois sa taille sur le disque.",
     "regions.loading": "Liste demandée à GitHub…",

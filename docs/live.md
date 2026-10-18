@@ -18,6 +18,7 @@ design and the measurements behind it are in [specs/live.md](specs/live.md) and
 - [The window](#the-window)
 - [The zoom](#the-zoom)
 - [The season](#the-season)
+- [Ground grain up close (decals)](#ground-grain-up-close-decals)
 - [Imagery sources, your own tiles, roads and forests](#imagery-sources-your-own-tiles-roads-and-forests)
 - [The mesh, by region](#the-mesh-by-region)
 - [What happens while you fly](#what-happens-while-you-fly)
@@ -230,6 +231,15 @@ once. When the season changes, Live builds the textures again as you fly: the fa
 photos it keeps, the sharpest ones (4096 and 8192 px) downloaded again, as on a first flight there,
 since Live does not keep their photos. That start takes as long as a first one. Your own scenery
 keeps its colours.
+
+## Ground grain up close (decals)
+
+X-Plane 12's decals: a fine grain X-Plane draws over the photo seen from very low, which softens
+its blur. Live writes the one chosen in its settings on the land of its squares (the `DECAL_LIB`
+line of each land terrain file it places), from OrthoStudio XP's list: `grass_and_stony_dirt_1`
+by default, long grass on the green and stony dirt elsewhere; `maquify_2_green_key` is Ortho4XP's;
+or none. The sea keeps none. A new choice takes effect at the next start: the terrain files of the
+squares flown already are made again as X-Plane comes, not while X-Plane runs.
 
 ## Imagery sources, your own tiles, roads and forests
 

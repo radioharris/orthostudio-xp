@@ -449,3 +449,61 @@ def test_a_texture_made_neutral_by_the_budget_far_away_leaves_no_file(tmp_path: 
     assert os.path.samefile(s.pack_dir / "textures" / near, s.pack_dir / neutral_file(0))
     assert not (s.pack_dir / "textures" / far).exists()  # on no square made: no file at all
     assert near not in s.built and far not in s.built
+
+
+TER_LAND = (
+    b"A\n800\nTERRAIN\n\nLOAD_CENTER 36.99378 -93.15308 1953 4096\n"
+    b"BASE_TEX_NOWRAP ../textures/102032_63232_BI18.dds\n"
+    b"DECAL_LIB lib/g10/decals/maquify_2_green_key.dcl\nNO_ALPHA\n"
+)
+TER_SEA = (
+    b"A\n800\nTERRAIN\n\nLOAD_CENTER 36.99378 -91.96655 1953 4096\n"
+    b"BASE_TEX_NOWRAP ../textures/102032_64096_BI18.dds\n"
+    b"BORDER_TEX ../textures/water_transition.png\nWET\nNO_SHADOW\n"
+)
+
+
+def test_a_land_terrain_file_takes_the_decal_live_chooses() -> None:
+    """The DECAL_LIB line names the decal of Live's settings, or goes with none; the sea's file,
+    which has no such line, is left as it is (decals on the land only)."""
+    from orthostudio.live.names import with_decal
+
+    out = with_decal(TER_LAND, "grass_and_stony_dirt_1.dcl")
+    assert b"DECAL_LIB lib/g10/decals/grass_and_stony_dirt_1.dcl\n" in out
+    assert b"maquify" not in out
+    assert out.replace(b"grass_and_stony_dirt_1", b"maquify_2_green_key") == TER_LAND
+    assert b"DECAL_LIB" not in with_decal(TER_LAND, "")
+    assert with_decal(TER_LAND, "").count(b"\n") == TER_LAND.count(b"\n") - 1
+    assert with_decal(TER_SEA, "grass_and_stony_dirt_1.dcl") == TER_SEA
+
+
+def test_a_square_s_terrain_files_are_written_with_the_decal(tmp_path: Path) -> None:
+    """A ("ter", ...) operation writes the region's .ter with Live's decal, never over a file
+    there; a ("file", ...) one copies it as it is."""
+    from orthostudio.live.names import run_ops
+
+    src = tmp_path / "region" / "terrain"
+    src.mkdir(parents=True)
+    (src / "a.ter").write_bytes(TER_LAND)
+    (src / "b.ter").write_bytes(TER_LAND)
+    pack = tmp_path / "pack"
+    (pack / "terrain").mkdir(parents=True)
+    (pack / "_live").mkdir()
+    result = run_ops(
+        str(pack),
+        [
+            ("ter", str(src / "a.ter"), str(pack / "terrain" / "a.ter"), "flinty_dirt_1.dcl"),
+            ("file", str(src / "b.ter"), str(pack / "terrain" / "b.ter")),
+            ("ter", str(src / "gone.ter"), str(pack / "terrain" / "gone.ter"), ""),
+        ],
+    )
+    assert result["placed"] == 2
+    assert result["missing"] == [str(src / "gone.ter")]
+    assert b"decals/flinty_dirt_1.dcl" in (pack / "terrain" / "a.ter").read_bytes()
+    assert (pack / "terrain" / "b.ter").read_bytes() == TER_LAND
+    again = run_ops(
+        str(pack),
+        [("ter", str(src / "a.ter"), str(pack / "terrain" / "a.ter"), "")],
+    )
+    assert again["placed"] == 0  # there already: kept
+    assert b"flinty_dirt_1" in (pack / "terrain" / "a.ter").read_bytes()

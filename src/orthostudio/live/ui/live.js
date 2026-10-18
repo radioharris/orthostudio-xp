@@ -718,6 +718,7 @@ function draw(status) {
   drawLogFile(status);
   drawRegions(status);
   liveMap?.update({ ...status, providers });
+  if (status.decals) decalList = status.decals;
   if (saved === null) {
     saved = status.settings;
     fillSettings(saved);
@@ -1054,8 +1055,35 @@ function bindSeason() {
   });
 }
 
+const LIVE_DECAL = "grass_and_stony_dirt_1.dcl"; // orthostudio.live.settings.LIVE_DECAL
+let decalList = []; // OrthoStudio XP's decals, from the status (orthostudio.decals.DECALS)
+let decalsDrawn = "";
+
+/** The decals the select offers (the status's list, OrthoStudio XP's), none first, then chosen. */
+function fillDecal(decals, chosen) {
+  const select = $("set-decal");
+  const shape = JSON.stringify([language(), decals]);
+  if (shape !== decalsDrawn) {
+    decalsDrawn = shape;
+    select.replaceChildren();
+    const none = document.createElement("option");
+    none.value = "";
+    none.textContent = t("decal.none");
+    select.append(none);
+    for (const file of decals) {
+      const option = document.createElement("option");
+      option.value = file;
+      const name = file.replace(/\.dcl$/, "");
+      option.textContent = file === LIVE_DECAL ? t("decal.default", { name }) : name;
+      select.append(option);
+    }
+  }
+  select.value = chosen ?? LIVE_DECAL;
+}
+
 function fillSettings(settings) {
   renderZooms(`${settings.max_zoom}/${settings.max_zoom_airports}`);
+  fillDecal(decalList, settings.decal);
   $("set-disk").value = String(settings.disk_gb);
   $("set-tint").checked = Boolean(settings.tint_8192);
   $("set-folder").value = settings.folder || "";
@@ -1083,6 +1111,7 @@ function formSettings() {
     simbrief_user: $("set-simbrief").value.trim(),
     app_home: document.querySelector('input[name="app_home"]:checked')?.value || saved?.app_home || "ask",
     overlays: document.querySelector('input[name="overlays"]:checked')?.value || saved?.overlays || "auto",
+    decal: $("set-decal").options.length ? $("set-decal").value : (saved?.decal ?? LIVE_DECAL),
     season: seasonChosen(),
     seasons: seasonLooks || saved?.seasons,
   };

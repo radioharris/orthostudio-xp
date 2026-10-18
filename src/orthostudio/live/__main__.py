@@ -256,6 +256,7 @@ def stream(
         tint_8192=saved.tint_8192 if tint_8192 is None else tint_8192,
         season=saved.season if season is None else season,
         looks=saved.seasons.looks(),
+        decal=saved.decal,
     )
     try:
         prepared = session.prepare(options, typer.echo)

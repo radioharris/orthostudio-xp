@@ -546,6 +546,47 @@ def _fingerprints(sources: Sequence[Path]) -> dict[str, list[int]]:
     return out
 
 
+DECAL_RECORD = "_live/decal.json"
+"""The land's decal the ``.ter`` files of the pack name (:func:`set_decal`)."""
+
+
+def set_decal(
+    pack_dir: Path,
+    decal: str | None,
+    log: Callable[[str], None] = print,
+    xplane_running: Callable[[], bool] = lambda: False,
+) -> None:
+    """The ``.ter`` files of the pack made again when the land's decal Live's settings choose is
+    not the one they name (:func:`orthostudio.live.names.with_decal`): taken away, made again per
+    square as X-Plane comes. Not while X-Plane runs, which may be reading them: at the next start.
+    ``None``: the regions' own decals, nothing to do."""
+    if decal is None:
+        return
+    record = pack_dir / DECAL_RECORD
+    try:
+        was = json.loads(record.read_text(encoding="utf-8")).get("decal")
+    except (OSError, ValueError, AttributeError):
+        was = None  # a pack of before: its .ter files name the regions' decals
+    if was == decal:
+        return
+    terrain = pack_dir / "terrain"
+    if terrain.is_dir() and next(terrain.glob("*.ter"), None) is not None:
+        if xplane_running():
+            log(
+                f"the land's decal {decal or 'none'}: the terrain files made already keep theirs "
+                "until Live's next start with X-Plane not running"
+            )
+            return
+        removed = _remove_tree(terrain, log, "terrain files")
+        terrain.mkdir(exist_ok=True)
+        log(
+            f"the land's decal is {decal or 'none'}: {removed} terrain files made again as "
+            "X-Plane comes"
+        )
+    record.parent.mkdir(parents=True, exist_ok=True)
+    record.write_text(json.dumps({"decal": decal}), encoding="utf-8")
+
+
 def setup_region(
     source: Path | Sequence[Path],
     pack_dir: Path,

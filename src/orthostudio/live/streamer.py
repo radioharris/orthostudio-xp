@@ -334,6 +334,7 @@ class Streamer:
         tint_8192: bool = False,
         looks: dict[str, Look] | None = None,
         season: str = "summer",
+        decal: str | None = None,
         flight_encodes: int = FLIGHT_ENCODES,
         sharp_builds: int = SHARP_WORKERS,
         memory_pressure: Callable[[], int] = machine.memory_pressure,
@@ -502,6 +503,7 @@ class Streamer:
                 building=lambda name: name in self.in_flight,  # taken: being written soon
                 level_of=self.built.get,
                 refit=self._refit,
+                decal=decal,
             )
             self.names.yielding = self.yielding
         self._points: dict[str, tuple[float, float]] = {}  # "aircraft", "camera", "start"
