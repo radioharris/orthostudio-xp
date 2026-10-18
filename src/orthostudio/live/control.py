@@ -796,6 +796,10 @@ class LiveControl:
             self._error = f"{type(e).__name__}: {e}"
             self.log("the streamer stopped:\n" + "".join(traceback.format_exception(e)))
         finally:
+            if prepared is not None and prepared.gate is not None:
+                # the plugin's port, which follow closes too: a Stop while the start was being
+                # prepared skipped it, and the next Start found the port taken (2026-10-18)
+                prepared.gate.close()
             try:
                 if prepared is not None:
                     self._set(LEAVING if xplane_running() else STOPPING)

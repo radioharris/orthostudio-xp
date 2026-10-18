@@ -330,6 +330,28 @@ def test_start_stream_stop(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     assert c.wait_idle(5)
 
 
+def test_a_stop_while_preparing_gives_the_plugins_port_back(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from orthostudio.live.gate import Gate
+
+    monkeypatch.setattr(control_module, "xplane_running", lambda: False)
+    stream = FakeStream()
+    c = control_for(stream)
+    gates: list[Gate] = []
+
+    def prepare(options: session.Options, log) -> session.Prepared:
+        gate = Gate(home, None, port=0)  # Live's real gate, on a free port
+        gates.append(gate)
+        c.stop()  # Stop pressed while the start is being prepared
+        return session.Prepared(Path("/X-Plane 12"), Path("/pack"), gate, None, 0)
+
+    c._prepare = prepare
+    assert c.start()
+    assert c.wait_idle(5)
+    assert gates[0].sock.fileno() == -1  # closed: the next Start can take the port
+
+
 def test_refused_before_anything_is_installed(home: Path) -> None:
     stream = FakeStream(refuse="AutoOrtho is mounted: quit it first")
     c = control_for(stream)
