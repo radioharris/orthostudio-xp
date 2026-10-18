@@ -262,7 +262,8 @@ tiles", chooses what X-Plane shows:
 - "Live everywhere": Live's photos and mesh there too, with no step. Live lists its pack above
   your tiles in X-Plane's scenery list while it runs; they come back when it stops, and at the
   next start with "Yours first". Taken at the next start, since X-Plane reads its list as it
-  starts.
+  starts. The map shows Live's textures on your tiles then, Live stopped too: what its next
+  flight shows.
 
 **Roads, forests and buildings.** Where Live shows its photos, X-Plane no longer draws its own:
 X-Plane keeps them in the same file as its ground. Live brings them back as "overlays", X-Plane's

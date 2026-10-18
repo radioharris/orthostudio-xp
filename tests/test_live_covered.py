@@ -124,7 +124,15 @@ def test_the_users_tiles_while_live_is_stopped(tmp_path: Path) -> None:
     put_dsf(scenery / "Photo Lyon", (44, 5), dsf({"sim/west": "5"}))  # below Live's place
     put_dsf(scenery / "z_ao_eur", (46, 6), dsf({"sim/west": "6"}))
     assert own_squares(xp, LINK_NAME) == {(46, 6): f"{ORTHO_PREFIX}+46+006"}
+    # Live everywhere: its next flight shows Live's textures on the tile, the map too
+    assert own_squares(xp, LINK_NAME, "under") == {}
     assert ini.read_text() == before
+    # while Live's pack is listed (a flight on), the list X-Plane read, whatever the setting
+    ini.write_text(before + f"SCENERY_PACK Custom Scenery/{LINK_NAME}/\n")
+    assert own_squares(xp, LINK_NAME, "under") == {
+        (46, 6): f"{ORTHO_PREFIX}+46+006",
+        (44, 5): "Photo Lyon",  # above Live's line too
+    }
 
 
 def test_one_dsf_read_a_pack_and_only_its_start(

@@ -128,27 +128,28 @@ def _osxp_simbrief() -> str | None:
         return None
 
 
-_own: tuple[float, tuple[str, float], dict[tuple[int, int], str]] = (0.0, ("", -1.0), {})
+_own: tuple[float, tuple[str, float, str], dict[tuple[int, int], str]] = (0.0, ("", -1.0, ""), {})
 
 
-def own_tiles(xp: Path) -> dict[tuple[int, int], str]:
+def own_tiles(xp: Path, choice: str = "first") -> dict[tuple[int, int], str]:
     """``{(lat, lon): pack}``: the squares X-Plane takes from the user's own scenery (a tile
     OrthoStudio XP built, one imported from Ortho4XP, another ortho), Live stopped or not
-    (:func:`orthostudio.live.covered.own_squares`). Looked for again when X-Plane's list of packs
-    changes, else every OWN_S: about 0.1 s each time, where the checks are every 3 s."""
+    (:func:`orthostudio.live.covered.own_squares`, ``choice`` the setting own_tiles). Looked for
+    again when X-Plane's list of packs or the choice changes, else every OWN_S: about 0.1 s each
+    time, where the checks are every 3 s."""
     global _own
     from orthostudio.live.covered import own_squares
     from orthostudio.live.scenery import _ini
 
     try:
-        seen = (str(xp), _ini(xp).stat().st_mtime)
+        seen = (str(xp), _ini(xp).stat().st_mtime, choice)
     except OSError:
         return {}
     at, was, got = _own
     if was == seen and time.monotonic() - at < OWN_S:
         return got
     try:
-        got = own_squares(xp, LINK_NAME)
+        got = own_squares(xp, LINK_NAME, choice)
     except OSError:
         got = {}
     _own = (time.monotonic(), seen, got)
@@ -216,7 +217,10 @@ def gather_checks() -> dict[str, Any]:
         ortho_streamers=ortho_streamers(xp),
         installed=is_installed(xp, LINK_NAME),
         # the squares X-Plane takes from the user's own tiles: Live downloads nothing there
-        own_tiles=[[lat, lon, pack] for (lat, lon), pack in sorted(own_tiles(xp).items())],
+        own_tiles=[
+            [lat, lon, pack]
+            for (lat, lon), pack in sorted(own_tiles(xp, load_settings().own_tiles).items())
+        ],
     )
     return out
 
@@ -598,7 +602,7 @@ class LiveControl:
             return []
         return [
             {"lat": lat, "lon": lon, "pack": pack, "kind": made_by(pack)}
-            for (lat, lon), pack in sorted(own_tiles(Path(xp)).items())
+            for (lat, lon), pack in sorted(own_tiles(Path(xp), self._settings().own_tiles).items())
         ]
 
     def textures_at(self, lat: float, lon: float) -> list[dict]:
