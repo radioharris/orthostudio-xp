@@ -18,3 +18,5 @@ fixtures/
 # The address and key of the prepared library: written when the installers are built, from the
 # secrets of the repository, never committed (docs/specs/osm-prepared.md).
 src/orthostudio/library.json
+# The address and token of Live's downloads, written the same way (orthostudio.live.osxpregions).
+src/orthostudio/live/host.json

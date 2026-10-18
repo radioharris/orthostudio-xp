@@ -99,13 +99,14 @@
 /* AutoOrtho's regions, the mesh Live installs */
 /* one grid for the list, its rows on it (subgrid): every size starts where the longest name ends */
 .regions { list-style: none; margin: var(--gap) 0 var(--gap); padding: 0; display: grid;
-  grid-template-columns: max-content max-content 1fr auto; column-gap: 10px; row-gap: 2px; }
+  grid-template-columns: minmax(0, 1fr) auto auto; column-gap: 12px; row-gap: 8px; }
 .region { display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; align-items: center; }
 .region-head { display: contents; }
 
 .region > :not(.region-head) { grid-column: 1 / -1; }
 .region-name { font-weight: 600; }
-.region-size { color: var(--fg-2); font-size: var(--fs-2); font-variant-numeric: tabular-nums; text-align: right; }
+.region-label { display: flex; flex-direction: column; min-width: 0; }
+.region-size { color: var(--fg-2); font-size: var(--fs-2); font-variant-numeric: tabular-nums; }
 .region-state { color: var(--fg-2); font-size: var(--fs-2); }
 .region-actions { display: flex; gap: 6px; justify-self: end; }
 .region-progress { font-variant-numeric: tabular-nums; }

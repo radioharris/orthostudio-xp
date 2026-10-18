@@ -1302,14 +1302,15 @@ def test_threads_are_not_left_behind(home: Path, monkeypatch: pytest.MonkeyPatch
     assert "live-stream" not in {t.name for t in threading.enumerate()} - before
 
 
-# --- AutoOrtho's regions ------------------------------------------------------------------------
+# --- OrthoStudio XP's regions -------------------------------------------------------------------
 
 
 class FakeInstaller:
     """An install that downloads until it is stopped."""
 
-    def __init__(self, root: Path, region, log=print) -> None:
+    def __init__(self, root: Path, region, overlays: bool = True, log=print) -> None:
         self.region = region
+        self.overlays = overlays
         self.stopped = threading.Event()
         self.phase = "downloading"
 
@@ -1325,16 +1326,23 @@ class FakeInstaller:
         return {"region": self.region.id, "phase": self.phase, "done_bytes": 5, "total_bytes": 10}
 
 
-def regions_control(xp: Path) -> LiveControl:
-    from orthostudio.live.aoregions import AoRegion, Asset
+def regions_control(xp: Path, **settings: Any) -> LiveControl:
+    from orthostudio.live.osxpregions import OsxpRegion, Zip
 
     catalog = {
-        "eur": AoRegion("eur", "0.0.51", (Asset("z_eur_00.zip", "https://x/e", 10),)),
-        "na": AoRegion("na", "0.0.54", (Asset("z_na_00.zip", "https://x/n", 20),)),
+        "eur": OsxpRegion(
+            "eur",
+            "2026-10-18",
+            (Zip("eur/zips/z_osxp_eur_+45+005.zip", 10, "a" * 64, 17),),
+            (Zip("eur/overlay-zips/y_osxp_eur_+45+005.zip", 3, "b" * 64, 3),),
+        ),
+        "na": OsxpRegion(
+            "na", "2026-10-18", (Zip("na/zips/z_osxp_na_+40-100.zip", 20, "c" * 64, 34),)
+        ),
     }
     return LiveControl(
         checks=checks(xplane=str(xp)),
-        settings=LiveSettings,
+        settings=lambda: LiveSettings(**settings),
         echo=lambda _: None,
         catalog=lambda root: catalog,
         installer=FakeInstaller,
@@ -1342,26 +1350,25 @@ def regions_control(xp: Path) -> LiveControl:
 
 
 def test_the_regions_the_page_lists(home: Path, tmp_path: Path) -> None:
-    from orthostudio.live import aoregions
+    from orthostudio.live import aoregions, osxpregions
     from orthostudio.live.pack import live_root
 
-    xp = tmp_path / "X-Plane 12"
-    (xp / "Custom Scenery" / "z_autoortho" / "scenery" / "z_ao_na" / "terrain").mkdir(parents=True)
-    c = regions_control(xp)
-    # the status never asks GitHub itself: the regions installed only, sizes unknown
-    assert [(r["id"], r["size"]) for r in c.status()["regions"]["list"]] == [("na", None)]
+    c = regions_control(tmp_path / "X-Plane 12")
+    # the status never asks the host itself: the regions installed only
+    assert c.status()["regions"]["list"] == []
     c.regions(fetch=True)
     wait_for(lambda: len(c.regions()["list"]) == 2)
     listed = {r["id"]: r for r in c.regions()["list"]}
     assert listed["eur"] == {
         "id": "eur",
-        "release": "0.0.51",
-        "size": 10,
-        "installed_by": None,
-        "installed_release": None,
+        "installed": False,
+        "download": 13,  # its mesh and its overlays
+        "unpacked": 20,
+        "changed": 0,
+        "changed_bytes": 13,
     }
-    assert listed["na"]["installed_by"] == "autoortho"  # AutoOrtho's own: used as it is
     c.install_region("eur")
+    assert c._installer.overlays  # the pilot takes X-Plane's roads: they come with it
     with pytest.raises(session.RefusedError):
         c.install_region("na")  # one at a time
     assert c.regions()["install"]["phase"] == "downloading"
@@ -1369,12 +1376,14 @@ def test_the_regions_the_page_lists(home: Path, tmp_path: Path) -> None:
         c.remove_region("eur")  # not while it is installed
     c.cancel_install()
     wait_for(lambda: c.regions()["install"]["phase"] == "cancelled")
-    mine = aoregions.mesh_dir(live_root(), "eur")
-    mine.mkdir(parents=True)
-    (mine / aoregions.MARKER).write_text('{"release": "0.0.50"}')
+    # installed, then one of its zips mended in the bucket: the page offers the update
+    mine = osxpregions.mesh_dir(live_root(), "eur")
+    (mine / "terrain").mkdir(parents=True)
+    zips = {"eur/zips/z_osxp_eur_+45+005.zip": "0" * 64}
+    (mine / aoregions.MARKER).write_text(json.dumps({"size": 17, "zips": zips}))
     listed = {r["id"]: r for r in c.regions()["list"]}
-    assert listed["eur"]["installed_by"] == "live"
-    assert listed["eur"]["installed_release"] == "0.0.50"  # the page offers the update
+    assert listed["eur"]["installed"] and listed["eur"]["changed"] == 2  # and its overlays
+    assert [r["id"] for r in c.regions()["ours"]] == ["eur"]
     c.remove_region("eur")
     assert not mine.exists()
     with pytest.raises(session.RefusedError):
@@ -1383,24 +1392,14 @@ def test_the_regions_the_page_lists(home: Path, tmp_path: Path) -> None:
         c.install_region("atlantis")
 
 
-def test_a_region_autoortho_installed_can_go_too(home: Path, tmp_path: Path) -> None:
-    """Deleted as AutoOrtho's own uninstall deletes it: its folder and its record, its overlays
-    left, so that AutoOrtho does not take it for installed any more."""
-    xp = tmp_path / "X-Plane 12"
-    base = xp / "Custom Scenery" / "z_autoortho"
-    (base / "scenery" / "z_ao_na" / "terrain").mkdir(parents=True)
-    (base / "na_info.json").write_text("{}")
-    overlays = xp / "Custom Scenery" / "yAutoOrtho_Overlays" / "Earth nav data"
-    overlays.mkdir(parents=True)
-    for running in ({"xplane_running": True}, {"autoortho_mounted": True}):
-        c = LiveControl(checks=checks(xplane=str(xp), **running), echo=lambda _: None)
-        with pytest.raises(session.RefusedError):
-            c.remove_region("na")
-    c = LiveControl(checks=checks(xplane=str(xp)), echo=lambda _: None)
-    c.remove_region("na")
-    assert not (base / "scenery" / "z_ao_na").exists()
-    assert not (base / "na_info.json").exists()
-    assert overlays.exists()  # AutoOrtho's uninstall leaves them too
+def test_without_overlays_a_region_downloads_its_mesh_alone(home: Path, tmp_path: Path) -> None:
+    c = regions_control(tmp_path / "X-Plane 12", overlays="off")
+    c.regions(fetch=True)
+    wait_for(lambda: len(c.regions()["list"]) == 2)
+    assert {r["id"]: r["download"] for r in c.regions()["list"]}["eur"] == 10
+    c.install_region("eur")
+    assert not c._installer.overlays
+    c.cancel_install()
 
 
 @pytest.mark.anyio

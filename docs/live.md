@@ -279,10 +279,18 @@ Live lays its photos on OrthoStudio XP's mesh: the ground's shape and the textur
 by OrthoStudio XP's engine with the relief of viewfinderpanoramas.org (Jonathan de Ferranti), in
 seven regions: Europe, North America, South America, Africa, Asia, Australia and the Pacific, and
 Greenland, the Arctic and islands. Together they cover all the land of the world but Antarctica,
-every square AutoOrtho's regions have and 1,048 more. The panel lists those installed, with the
-room each takes on the disk and the folders they are in; a region may sit on another disk, linked
-from Live's folder. They
-cannot be installed from the window yet: where they will be downloaded from is not decided.
+every square AutoOrtho's regions have and 1,048 more.
+
+The panel lists the seven, each with what it downloads and the room it takes once installed
+(Europe: 22.6 GB to download, 38.7 GB on the disk), and **Install**. Live downloads it from
+OrthoStudio XP's server, a few files at a time, checks each one and unpacks it as soon as it is
+whole; the bar shows the download. **Stop** stops it, and **Install** again goes on where it
+stopped, a file cut off included. A region is used from the next start, never half installed. Its
+roads, forests and buildings come with it, unless "Roads, forests and buildings" says "Never".
+Once installed, a region shows its size on the disk and **Delete** (click twice). When a region
+is mended on the server, the panel says how many of its files changed and offers **Update**: only
+those are downloaded again. Updating and deleting wait until Live is stopped. A region may sit on
+another disk, linked from Live's folder: the panel says where each one is.
 
 A region AutoOrtho installed on its own is still recognised, and left as it is; Live no longer
 offers to install AutoOrtho's. In a terminal, `python -m orthostudio.live regions list`,

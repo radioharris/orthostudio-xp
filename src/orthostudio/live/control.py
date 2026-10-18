@@ -32,8 +32,9 @@ from pathlib import Path
 from typing import Any
 
 from orthostudio.decals import DECALS
-from orthostudio.live import aoregions, session, supported
+from orthostudio.live import aoregions, osxpregions, session, supported
 from orthostudio.live.evict import usage
+from orthostudio.live.meshmap import REGION_NAMES, squares_of
 from orthostudio.live.pack import (
     LINK_NAME,
     FolderError,
@@ -46,7 +47,6 @@ from orthostudio.live.pack import (
 from orthostudio.live.region import file_tops
 from orthostudio.live.scenery import (
     autoortho_mounted,
-    autoortho_regions,
     autoortho_scenery,
     default_sources,
     is_installed,
@@ -59,7 +59,9 @@ from orthostudio.live.settings import LiveSettings, load_settings
 
 API = 1  # the page's /api/live answers, as the page reads them
 CHECKS_S = 3.0  # the checks are looked at again this often: pgrep and disks, not every second
-CATALOG_S = 600.0  # AutoOrtho's list of regions asked for again this often (GitHub: hourly)
+CATALOG_S = (
+    600.0  # the list of OrthoStudio XP's regions asked for again this often (the host: hourly)
+)
 OWN_S = 30.0  # the user's own tiles looked for again this often, or when X-Plane's list changes
 LOG_LINES = 2000
 IDLE, STARTING, STREAMING = "idle", "starting", "streaming"
@@ -301,9 +303,9 @@ class LiveControl:
         self.in_frame = False
         self._thread: threading.Thread | None = None
         self._checked: tuple[float, dict[str, Any] | None] = (0.0, None)
-        # AutoOrtho's regions: GitHub's list, read in the background, and one install at a time
-        self._catalog_of = catalog or aoregions.catalog
-        self._installer_of = installer or aoregions.Installer
+        # OrthoStudio XP's regions: the host's list, read in the background, one install at a time
+        self._catalog_of = catalog or osxpregions.catalog
+        self._installer_of = installer or osxpregions.Installer
         self._catalog: dict | None = None
         self._catalog_error: str | None = None
         self._catalog_at = 0.0
@@ -644,7 +646,7 @@ class LiveControl:
         if home == "build" and not self.in_frame:
             self.leaving_for = "build"
 
-    # --- AutoOrtho's regions -----------------------------------------------------------------
+    # --- OrthoStudio XP's regions ------------------------------------------------------------
 
     def _read_catalog(self) -> None:
         try:
@@ -659,10 +661,11 @@ class LiveControl:
                 self._catalog_at = time.monotonic()
 
     def regions(self, *, fetch: bool = False) -> dict[str, Any]:
-        """Live's own mesh, region by region (:func:`our_regions`), then AutoOrtho's regions as
-        the page lists them: each with its size and whether AutoOrtho or Live installed it; the
-        install under way. With ``fetch`` (the page's own request, not its status), GitHub's list
-        is read again in the background when it is old."""
+        """OrthoStudio XP's regions as the page lists them: those installed (:func:`our_regions`,
+        their size on the disk and where), then every region of the host's list with what it
+        downloads (the overlays only when the pilot takes them), whether it is installed and how
+        many of its zips changed since; the install under way. With ``fetch`` (the page's own
+        request, not its status), the host's list is read again in the background when old."""
         with self._lock:
             reading = self._catalog_thread is not None and self._catalog_thread.is_alive()
             stale = time.monotonic() - self._catalog_at > CATALOG_S
@@ -673,50 +676,53 @@ class LiveControl:
                 self._catalog_thread.start()
             catalog, error = self._catalog, self._catalog_error
             installer = self._installer
-        mine = aoregions.installed(live_root())
-        xp = self.checks().get("xplane")
-        theirs = (
-            {p.name.removeprefix("z_ao_") for p in autoortho_regions(Path(xp))} if xp else set()
-        )
+        root = live_root()
+        mine = osxpregions.installed(root)
+        overlays = self._settings().overlays != "off"
         listed = []
-        for region_id in aoregions.REGION_IDS:
+        for region_id in REGION_NAMES:
             region = (catalog or {}).get(region_id)
-            if region is None and region_id not in mine and region_id not in theirs:
+            if region is None and region_id not in mine:
                 continue
-            installed_by = (
-                "autoortho" if region_id in theirs else "live" if region_id in mine else None
-            )
-            listed.append(
-                {
-                    "id": region_id,
-                    "release": region.release if region else None,
-                    "size": region.size if region else None,
-                    "installed_by": installed_by,
-                    "installed_release": mine.get(region_id, {}).get("release"),
-                }
-            )
+            item: dict[str, Any] = {"id": region_id, "installed": region_id in mine}
+            if region is not None:
+                mesh, ovl = osxpregions.to_fetch(root, region, overlays)
+                item["download"] = region.mesh_size + (
+                    sum(z.size for z in region.overlays) if overlays else 0
+                )
+                item["unpacked"] = region.unpacked + (
+                    sum(z.unpacked for z in region.overlays) if overlays else 0
+                )
+                item["changed"] = len(mesh) + len(ovl) if region_id in mine else 0
+                item["changed_bytes"] = sum(z.size for z in (*mesh, *ovl))
+            listed.append(item)
         progress = installer.snapshot() if installer is not None else None
         return {
-            "ours": our_regions(live_root()),
+            "ours": our_regions(root),
             "list": listed,
             "error": error if catalog is None else None,
             "install": progress,
         }
 
     def install_region(self, region_id: str) -> None:
-        """Download and install one of AutoOrtho's regions into Live's folder, in the background.
-        One at a time; used from the next start on."""
+        """Download and install one of OrthoStudio XP's regions into Live's folder, or update one
+        (only its zips that changed), in the background. One at a time; a region new while Live
+        streams is used from the next start, and one installed is not updated then: the pack
+        reads its files."""
         with self._lock:
             catalog = self._catalog
             busy = self._install_thread is not None and self._install_thread.is_alive()
+            streaming = self._state != IDLE
         if busy:
             raise session.RefusedError("a region is being installed: one at a time")
         region = (catalog or {}).get(region_id)
         if region is None:
-            raise session.RefusedError(
-                f"AutoOrtho has no region {region_id!r} (or GitHub did not say)"
-            )
-        installer = self._installer_of(live_root(), region, log=self.log)
+            raise session.RefusedError(f"no region {region_id!r} in the list of Live's regions")
+        if streaming and region_id in osxpregions.installed(live_root()):
+            raise session.RefusedError("Live is streaming over this region: stop it first")
+        installer = self._installer_of(
+            live_root(), region, overlays=self._settings().overlays != "off", log=self.log
+        )
         thread = threading.Thread(target=installer.run, name="live-region-install", daemon=True)
         with self._lock:
             self._installer, self._install_thread = installer, thread
@@ -729,10 +735,8 @@ class LiveControl:
             installer.cancel()
 
     def remove_region(self, region_id: str) -> None:
-        """Delete a region from the disk: the one the page shows, AutoOrtho's when AutoOrtho
-        installed it (as AutoOrtho's own uninstall does: AutoOrtho no longer has it either), else
-        Live's. Not while Live streams, nor while the region is installed, nor for AutoOrtho's while
-        AutoOrtho or X-Plane runs."""
+        """Delete one of OrthoStudio XP's regions from the disk, with its overlays. Not while Live
+        streams, nor while the region is being installed."""
         with self._lock:
             installing = (
                 self._install_thread is not None
@@ -744,19 +748,12 @@ class LiveControl:
             raise session.RefusedError("Live is streaming: stop it first")
         if installing:
             raise session.RefusedError("this region is being installed: stop that first")
-        checks = self.checks(fresh=True)
-        xp = Path(checks["xplane"]) if checks.get("xplane") else None
-        theirs = {p.name.removeprefix("z_ao_") for p in autoortho_regions(xp)} if xp else set()
-        if xp is not None and region_id in theirs:
-            if checks.get("autoortho_mounted"):
-                raise session.RefusedError("AutoOrtho is running and uses it: quit AutoOrtho first")
-            if checks.get("xplane_running"):
-                raise session.RefusedError("X-Plane is running: quit it first")
-            aoregions.remove_autoortho(xp, region_id, log=self.log)
-        elif region_id in aoregions.installed(live_root()):
-            aoregions.remove(live_root(), region_id, log=self.log)
-        else:
+        if not osxpregions.mesh_dir(live_root(), region_id).exists():
             raise session.RefusedError(f"the region {region_id!r} is not installed")
+        squares = squares_of({region_id}).get(region_id, [])
+        osxpregions.remove(
+            live_root(), region_id, [(lat, lon) for lat, lon in squares], log=self.log
+        )
         self._checked = (0.0, None)
 
     def wait_idle(self, timeout: float | None = None) -> bool:
