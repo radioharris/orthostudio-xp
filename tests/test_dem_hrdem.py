@@ -249,7 +249,9 @@ def test_the_canadian_relief_is_laid_over_copernicus() -> None:
     assert _relief_of(_Spec()) == "canada"
 
 
-def test_a_missing_overlay_lays_the_base_alone_instead_of_refusing(tmp_path: Path) -> None:
+def test_a_missing_overlay_lays_the_base_alone_instead_of_refusing(
+    tmp_path: Path, view_site_at_3sec: None
+) -> None:
     """Over a cell the lidar never flew, the build must go on with the relief underneath (the
     tile is not refused, and it is not flat either)."""
     from orthostudio.dem.dem import Dem

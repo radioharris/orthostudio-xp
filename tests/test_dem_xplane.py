@@ -145,7 +145,9 @@ def test_other_post_counts_are_bilinear_on_the_same_square() -> None:
 # -- assembly -----------------------------------------------------------------------------
 
 
-def test_the_xplane_block_is_bit_identical_to_the_same_posts_read_as_hgt(tmp_path: Path) -> None:
+def test_the_xplane_block_is_bit_identical_to_the_same_posts_read_as_hgt(
+    tmp_path: Path, view_site_at_3sec: None
+) -> None:
     """Same 1201 posts, once as nine ``.hgt`` files and once as nine DSFs: the same raster.
 
     Every border line is shared exactly here, so the shared border changes nothing.
