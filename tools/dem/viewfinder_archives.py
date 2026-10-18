@@ -39,7 +39,7 @@ def get(url: str, headers: dict | None = None) -> bytes:
 
 def names_in(page: str, folder: str) -> list[str]:
     html = get(f"{SITE}/{page}").decode("latin-1")
-    return sorted(set(re.findall(rf"/{folder}/([A-Za-z0-9_]+)\.zip", html)))
+    return sorted(set(re.findall(rf"/{folder}/([A-Za-z0-9_-]+)\.zip", html)))
 
 
 def cells_of_zip(url: str) -> list[str]:
