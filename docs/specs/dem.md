@@ -208,6 +208,22 @@ serves. Each URL has its own negative-memo entry (3.4): the lower-case 404 that 
 1.1.0 and earlier remember never skips the upper-case name, nor the reverse. A 404 tries the next
 name; a network failure does not, since the other name would fail the same way.
 
+**The site's own archives** (2026-10-17). The site's two coverage maps list what it serves
+(`Coverage map viewfinderpanoramas_org1.htm` for 1", `..._org3.htm` for 3");
+`tools/dem/viewfinder_archives.py` reads them into `data/viewfinder.json`: 316 1" blocks
+(`dem1/M31.zip`, dated March 2026: the site's update of 27 March 2026, "more and improved 1" DEM
+for Europe and Japan"), 1,110 3" blocks, and the cells of the archives named after a place
+(`SHL` Shetland, `FAR`, `ISL`, `BEAR`, `SVALBARD`, `JANMAYEN`, `FJ`), read from their zips'
+directories. After Ortho4XP's names, `view_urls` tries the 3" archive the site moved a northern
+block to (`dem3/P35.zip` answers 404, `dem3/P35v2.zip` 200) and the place archive a cell is in.
+An archive that downloads without the cell sends the search to the next name: the 1" `dem1/R36.zip`
+lacks the Kola peninsula, which `dem3/R36v2.zip` has. With `OSXP_VIEW_SITE_FIRST=1` (Live's mesh,
+`tools/live/mesh/bake.py`) the 1" block comes first, resolution 1: Ortho4XP's list reads at 3"
+626 of the 1,981 squares of AutoOrtho's Europe the site serves at 1", and the Alps' cells from
+their own archives of 2017 (`N44E006.zip`, 2017-01-30), which differ from the blocks' (both the
+same size, the one unpacked last won: a square's relief hung on the order of the build). Without
+it, a build's relief does not move.
+
 **Recycling test** (lines 669-676): the local file is reused when it exists **and**
 (`resol == 3` **or** its size is at least `25934402` bytes). 25934402 is the size of an
 uncompressed 3601x3601 `.hgt` plus 2: a 1201x1201 file (2884802 bytes) therefore never

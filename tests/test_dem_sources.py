@@ -104,6 +104,36 @@ def test_view_urls_ask_the_upper_case_name_first_then_the_lower_case_one() -> No
     )
 
 
+def test_a_northern_block_is_asked_where_the_site_moved_it() -> None:
+    """``dem3/P35.zip`` answers 404 since the site moved its northern blocks (measured
+    2026-10-17): their 3" archive is ``dem3/P35v2.zip``, and Shetland's ``dem3/SHL.zip``, tried
+    after Ortho4XP's names, as the site's coverage map lists them (``data/viewfinder.json``)."""
+    assert view_urls(60, 24) == (
+        [
+            "http://viewfinderpanoramas.org/dem3/P35.zip",
+            "http://viewfinderpanoramas.org/dem3/p35.zip",
+            "http://viewfinderpanoramas.org/dem3/P35v2.zip",
+        ],
+        1,
+    )
+    assert view_urls(60, -2)[0][-1] == "http://viewfinderpanoramas.org/dem3/SHL.zip"
+
+
+def test_the_sites_1sec_blocks_come_first_for_lives_mesh(monkeypatch) -> None:
+    """The site serves 1" by blocks over much of Europe (``dem1/M31.zip``: Paris, 1" cells,
+    2026-10-17) that Ortho4XP's list reads at 3": Live's mesh asks them first, and a build's
+    relief does not move otherwise."""
+    assert view_urls(48, 2)[0][0] == "http://viewfinderpanoramas.org/dem3/M31.zip"
+    monkeypatch.setenv("OSXP_VIEW_SITE_FIRST", "1")
+    urls, resol = view_urls(48, 2)
+    assert (urls[0], resol) == ("http://viewfinderpanoramas.org/dem1/M31.zip", 1)
+    # the Alps' cells too: their own archives are of 2017, the blocks of 2026
+    assert view_urls(46, 6)[0][:2] == [
+        "http://viewfinderpanoramas.org/dem1/L32.zip",
+        "http://viewfinderpanoramas.org/dem1/N46E006.zip",
+    ]
+
+
 def test_view_url_dem3_blocks_and_resolution() -> None:
     assert len(DEM1_BLOCKS) == 22
     # +43+005 is not a dem1 cell: block K31, 3 arc seconds.
@@ -537,3 +567,33 @@ def test_a_square_outside_anadem_asks_nothing(tmp_path: Path) -> None:
 
     got = ensure_elevation("ANADEM", 46, 6, EnsureOptions(elevation_dir=tmp_path, ranges=ranges))
     assert got.state is CellState.MISSING and got.path is None
+
+
+def test_a_northern_cell_its_1sec_block_lacks_comes_from_the_3sec_one(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """The site's 1" archive of R36 lacks the Kola peninsula's cells, its 3" one (R36v2) has
+    them (2026-10-17): an archive without the cell sends the search to the next name."""
+    calls: list[str] = []
+
+    def download(url: str) -> Download:
+        calls.append(url)
+        name = url.rpartition("/")[2]
+        if name == "R36.zip" and "/dem1/" in url:
+            return Download(
+                url, body=_zip({"R36/N70E030.hgt": b"\x00" * FULL_HGT_SIZE}), status=200
+            )
+        if name == "R36v2.zip":
+            return Download(url, body=_zip({"R36/N68E030.hgt": b"\x00" * 2884802}), status=200)
+        return Download(url, status=404)
+
+    monkeypatch.setenv("OSXP_VIEW_SITE_FIRST", "1")
+    got = ensure_elevation("View", 68, 30, _opts(tmp_path, download, memo=NegativeMemo()))
+    assert got.state is CellState.DOWNLOADED
+    assert got.url == "http://viewfinderpanoramas.org/dem3/R36v2.zip"
+    assert calls == [
+        "http://viewfinderpanoramas.org/dem1/R36.zip",
+        "http://viewfinderpanoramas.org/dem3/R36.zip",
+        "http://viewfinderpanoramas.org/dem3/r36.zip",
+        "http://viewfinderpanoramas.org/dem3/R36v2.zip",
+    ]

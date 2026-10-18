@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import atexit
 import contextlib
+import functools
 import io
 import json
 import math
@@ -329,17 +330,58 @@ def view_url(lat: int, lon: int) -> tuple[str, int]:
     return f"{VIEW_BASE_URL}/dem3/{block}.zip", resol
 
 
+@functools.lru_cache(maxsize=1)
+def site_archives() -> tuple[frozenset[str], frozenset[str], Mapping[str, str]]:
+    """The 1" blocks, the 3" ones and the cells in archives of their own that viewfinderpanoramas
+    serves (``data/viewfinder.json``, made by ``tools/dem/viewfinder_archives.py`` from the site's
+    two coverage maps)."""
+    doc = json.loads((Path(__file__).with_name("data") / "viewfinder.json").read_text())
+    return frozenset(doc["dem1"]), frozenset(doc["dem3"]), doc["special"]
+
+
 def view_urls(lat: int, lon: int) -> tuple[list[str], int]:
     """Every URL to try for this cell's archive, in order, and the resolution.
 
-    The site's file names are case-sensitive and changed case once: the upper-case name of
-    :func:`view_url` comes first, the lower-case one second, so a cell does not depend on
-    which case the site serves.
+    The site's own archives first, as its coverage maps list them (:func:`site_archives`): the
+    1" block holding the cell where there is one (``dem1/M31.zip`` for Paris: the site serves 1"
+    over much of Europe that Ortho4XP's list, ported in :func:`view_url`, reads at 3"), then
+    Ortho4XP's names, the upper-case one first and the lower-case one second (the site's names are
+    case-sensitive and changed case once), then the 3" archive the site moved a northern block to
+    (``dem3/P35v2.zip``) or the archive of its own an island is in (``dem3/SHL.zip``). The
+    block comes first for the Alps' cells too, which Ortho4XP read from 1" archives of their own:
+    those date from 2017 (``N44E006.zip``, 2017-01-30), the blocks from 2026 (``L32.zip``,
+    2026-03-21), and the two differ; both the same size, the one unpacked last won, so a
+    square's relief hung on the order its neighbours were made in. The resolution is 1 when a
+    1" archive is asked first.
+
+    The site's 1" blocks come first only with ``OSXP_VIEW_SITE_FIRST=1`` (Live's mesh,
+    ``tools/live/mesh/bake.py``): elsewhere they would change the relief of tiles already built,
+    which is the user's choice to make. The other names are tried only where Ortho4XP's fail.
     """
     url, resol = view_url(lat, lon)
     head, _, name = url.rpartition("/")
     lower = f"{head}/{name.lower()}"
-    return ([url] if lower == url else [url, lower]), resol
+    ortho4xp = [url] if lower == url else [url, lower]
+    dem1, dem3, special = site_archives()
+    number = 31 + lon // 6
+    letter = ALPHABET[lat // 4] if lat >= 0 else "S" + ALPHABET[(-1 - lat) // 4]
+    block = f"{letter}{number:02d}"
+    first: list[str] = []
+    site_first = os.environ.get("OSXP_VIEW_SITE_FIRST") == "1"
+    if site_first and block in dem1:
+        first.append(f"{VIEW_BASE_URL}/dem1/{block}.zip")
+        resol = 1
+    after: list[str] = []
+    if f"{block}v2" in dem3:
+        after.append(f"{VIEW_BASE_URL}/dem3/{block}v2.zip")
+    own = special.get(hem_latlon(lat, lon).upper())
+    if own is not None:
+        after.append(f"{VIEW_BASE_URL}/{own}.zip")
+    urls: list[str] = []
+    for u in first + ortho4xp + after:
+        if u not in urls:
+            urls.append(u)
+    return urls, resol
 
 
 def ned_url(source: str, lat: int, lon: int) -> str:
@@ -880,7 +922,10 @@ def _ensure_view(lat: int, lon: int, opts: EnsureOptions) -> EnsureResult:
             extract_view_zip(got.body, opts.elevation_dir)
             if path.is_file():
                 return EnsureResult(lat, lon, CellState.DOWNLOADED, path, url)
-            return _view_fallback(lat, lon, path, url, opts, "the archive did not hold this cell")
+            # the next name may hold it: a northern block's 1" archive lacks cells its 3" one
+            # has (dem1/R36.zip and the Kola peninsula, 2026-10-17)
+            detail = "the archive did not hold this cell"
+            continue
         if not got.final:
             # the network, not the name: the other case would fail the same way
             return _view_fallback(lat, lon, path, url, opts, got.error or f"HTTP {got.status}")
