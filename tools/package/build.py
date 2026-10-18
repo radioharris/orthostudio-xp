@@ -591,18 +591,19 @@ def check_same_sources(package: Path) -> None:
     # packed package must hold the file the build wrote, so it is expected rather than extra, and
     # a release that was given the secrets and shipped without it is a release with no library
     # (2026-09-23).
-    carried = Path("library.json")
-    if carried in packed:
-        packed.discard(carried)
-        text = (package / carried).read_text(encoding="utf-8")
-        if '"url"' not in text or '"token"' not in text:
-            raise SystemExit(f"{carried} is packed but holds neither an address nor a key")
-    elif (source / carried).is_file():
-        # the secrets were given and the file written, and the packaging dropped it on the way:
-        # the installers would work exactly as before and reach no library at all
-        raise SystemExit(
-            f"{source / carried} was written for this build and is not in the packed package"
-        )
+    # Live's downloads the same way: the address and token of its regions (live/host.json)
+    for carried in (Path("library.json"), Path("live") / "host.json"):
+        if carried in packed:
+            packed.discard(carried)
+            text = (package / carried).read_text(encoding="utf-8")
+            if '"url"' not in text or '"token"' not in text:
+                raise SystemExit(f"{carried} is packed but holds neither an address nor a key")
+        elif (source / carried).is_file():
+            # the secrets were given and the file written, and the packaging dropped it on the way:
+            # the installers would work exactly as before and reach nothing at all
+            raise SystemExit(
+                f"{source / carried} was written for this build and is not in the packed package"
+            )
     stale = sorted(
         str(p)
         for p in wanted
