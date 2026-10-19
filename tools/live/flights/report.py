@@ -290,6 +290,7 @@ LATER_FIELDS = {
     "w_cpu": "web_cpu_s",
     # 2026-10-19
     "xp_written": "xplane_written_mb",
+    "s_written": "streamer_written_mb",
 }
 
 
@@ -388,6 +389,9 @@ def costs(rows: list[dict], run: dict) -> dict[str, dict]:
         read = None
         if b.get("xp_read") is not None:  # X-Plane started meanwhile: what it read since
             read = (b["xp_read"] - (a.get("xp_read") or 0)) / 1024
+        s_wrote = None
+        if b.get("s_written") is not None:
+            s_wrote = (b["s_written"] - (a.get("s_written") or 0)) / 1024
         wrote = None
         if b.get("xp_written") is not None:
             wrote = (b["xp_written"] - (a.get("xp_written") or 0)) / 1024
@@ -396,6 +400,7 @@ def costs(rows: list[dict], run: dict) -> dict[str, dict]:
             "xplane_whole_gb_most": whole[-1] / 1024 if whole else None,
             "xplane_read_gb": read if read is None or read >= 0 else None,
             "xplane_written_gb": wrote if wrote is None or wrote >= 0 else None,
+            "streamer_written_gb": s_wrote if s_wrote is None or s_wrote >= 0 else None,
             "mac": mac_words(within),
             "minutes": (t1 - t0) / 60,
             "downloaded_gb": (b["net"] - a["net"]) / 1e9,
@@ -455,6 +460,8 @@ def computer_lines(rows: list[dict], run: dict) -> list[str]:
                 f"streamer {c['streamer_cores']:.2f} core, "
                 f"{c['streamer_gb']:.1f} GB (most {c['streamer_gb_most']:.1f})"
             )
+            if c.get("streamer_written_gb") is not None:
+                parts[-1] += f", wrote {c['streamer_written_gb']:.2f} GB"
             for key, what in (("engine", "OrthoStudio XP's engine"), ("web", "its web view")):
                 if c.get(key):
                     parts[-1] += (

@@ -64,6 +64,9 @@ FIELDS = [
     "web_cpu_s",
     # 2026-10-19: what X-Plane wrote to the disks, set against the whole disk's and Live's own
     "xplane_written_mb",
+    # the streamer's processes alive at each sample (XPME's app, service and disk server; Live's
+    # encoders that end after one texture are missed: Live counts its own, writes.py)
+    "streamer_written_mb",
 ]
 THREAD_FIELDS = ["wall", "thread", "name", "cpu_s", "state", "priority"]
 PROCESS_FIELDS = ["wall", "pid", "name", "cores"]
@@ -510,6 +513,15 @@ class Sampler(threading.Thread):
         self._stop_event.set()
         self.join(timeout=15)
 
+    def _streamer_written(self, rows) -> int | None:
+        """MB the streamer's live processes wrote, each since it started."""
+        if not self.streamer_pid:
+            return None
+        total = 0
+        for pid in _members(rows, self.streamer_pid):
+            total += usage(pid).get("written", 0)
+        return total // 2**20
+
     def sample(self) -> tuple[list, list[list], list[list]]:
         """The line of ``system.csv``, and those of ``threads.csv`` and ``processes.csv``."""
         wall = time.time()  # when it began: the counters are read after it
@@ -552,6 +564,7 @@ class Sampler(threading.Thread):
             f"{sum(r[2] for r in web):.0f}" if self.web_of else "",
             f"{sum(r[3] for r in web):.1f}" if self.web_of else "",
             _blank(use.get("written", 0) // 2**20 if use else None),
+            _blank(self._streamer_written(rows)),
         ]
         thread_lines = [
             [f"{wall:.1f}", f"{handle:x}", name, f"{cpu:.3f}", state, priority]
