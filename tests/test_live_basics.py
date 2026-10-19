@@ -160,6 +160,15 @@ class SparseTest(unittest.TestCase):
         self.assertEqual(chunk_grid(tex, -1), (17, 67872, 47040, 32))  # 8192 px: ZL17 pieces
         self.assertEqual(len(piece_keys(tex, -1)), pieces_of(-1))
         self.assertEqual((pieces_of(-1), pieces_of(0), pieces_of(4)), (1024, 256, 4))
+        # a source whose ZL13 is other imagery too: Spain's, Japan's, Esri Clarity's from ZL14
+        spain = parse_texture_name("24608_32496_SP16.dds")
+        self.assertEqual(chunk_grid(spain, 4), (14, 8124, 6152, 4))
+        self.assertEqual(pieces_of(4, 16, 14), 16)
+        from orthostudio.live.texture import photo_floor
+
+        self.assertEqual(
+            [photo_floor(c) for c in ("BI", "Arc", "SP", "JP", "Arc@")], [13] * 2 + [14] * 3
+        )
         airport = parse_texture_name("94080_135744_BI18.dds")  # ZL18: its 256 px from ZL14
         self.assertEqual(chunk_grid(airport, 4)[0], 14)
         self.assertEqual(pieces_of(4, 18), 1)

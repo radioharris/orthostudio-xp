@@ -77,7 +77,14 @@ from .region import (
 )
 from .rings import LOAD_LEVEL, MIN_LEVEL, finest_readable, ring_km, screen_scale, top_level_for
 from .route import KM_PER_DEG, Route
-from .texture import MIN_PHOTO_ZL, parent_keys, piece_keys, pieces_of, worker_ignores_ctrl_c
+from .texture import (
+    MIN_PHOTO_ZL,
+    parent_keys,
+    photo_floor,
+    piece_keys,
+    pieces_of,
+    worker_ignores_ctrl_c,
+)
 
 PLACEHOLDER_KM = 300.0  # every texture within this has at least its 256 px level
 LOAD_KM = (
@@ -95,6 +102,9 @@ PLAN_ASK_EVERY_S = 60.0  # SimBrief is asked for the pilot's last plan at most t
 JUMP_KM = 20.0  # a position this far from the last one is a new start: a teleport, a new flight
 PLAN_EVERY_S = 2.0
 REPORT_EVERY_S = 1.0  # what the Live window is told, this often
+# what the pack's record says its textures follow (texture.photo_floor): ZL13, ZL14 for the sources
+# whose ZL13 is other imagery; a record of before has their far textures built again
+PHOTO_FLOOR_RULE = "13-or-source"
 STALL_S = 60.0  # pieces awaited this long and none arriving: no internet, X-Plane is let go
 # A piece of a texture X-Plane waits for (urgency <= 0), awaited this long: the texture is built
 # without it, from the zoom below, as a piece that failed, and built again later with it. At a
@@ -419,18 +429,19 @@ class Streamer:
                 "again as X-Plane comes (their 4096 and 8192 px photos downloaded again)"
             )
             self._make_stale()
-        if self.meta.get("photo_floor") != MIN_PHOTO_ZL and self.built:
+        if self.meta.get("photo_floor") != PHOTO_FLOOR_RULE and self.built:
             # built before the floor (texture.MIN_PHOTO_ZL): the far ones from Bing's ZL12, of
             # other colours, built again as X-Plane comes; the sharper ones are right as they are
             coarse = {
                 n: lv
                 for n, lv in self.built.items()
-                if lv >= 0 and parse_texture_name(n).zoom - lv < MIN_PHOTO_ZL
+                if lv >= 0 and (t := parse_texture_name(n)).zoom - lv < photo_floor(t.provider)
             }
             if coarse:
                 log(
-                    f"{len(coarse)} textures built from photos coarser than ZL{MIN_PHOTO_ZL}, of "
-                    "other colours: built again as X-Plane comes"
+                    f"{len(coarse)} textures built from photos coarser than their source's floor "
+                    f"(ZL{MIN_PHOTO_ZL}, ZL14 for some), of other colours: built again as X-Plane "
+                    "comes"
                 )
                 self._make_stale(coarse)
         self.disk_budget = disk_budget
@@ -1101,7 +1112,8 @@ class Streamer:
                     break  # sorted: none after it is urgent either
                 if name in self.in_flight:  # one build at a time: its file is the last one's
                     continue
-                n = pieces_of(level, parse_texture_name(name).zoom)
+                tex = parse_texture_name(name)
+                n = pieces_of(level, tex.zoom, photo_floor(tex.provider))
                 if batch and pieces + n > max_pieces:
                     break
                 batch.append((name, level, urgency))
@@ -1163,7 +1175,8 @@ class Streamer:
         what a progress bar follows, since a sharp texture is so much more work than a small one."""
         urgent = self._urgent()
         return len(urgent), sum(
-            pieces_of(lv, parse_texture_name(name).zoom) for name, lv in urgent.items()
+            pieces_of(lv, (t := parse_texture_name(name)).zoom, photo_floor(t.provider))
+            for name, lv in urgent.items()
         )
 
     def stalled_s(self) -> float:
@@ -1276,7 +1289,10 @@ class Streamer:
         def advance(job: _Job, pool) -> None:
             if job.stage == "pieces" and not job.missing:
                 lacking = [k for k in job.keys if job.pieces.get(k) is None]
-                pkeys = list(dict.fromkeys(pk for k in lacking for pk in parent_keys(k)))
+                floor = photo_floor(parse_texture_name(job.name).provider)
+                pkeys = list(
+                    dict.fromkeys(pk for k in lacking for pk in parent_keys(k, floor=floor))
+                )
                 job.parents = known(pkeys) if pkeys else {}
                 job.parents_missing = set(pkeys) - set(job.parents)
                 job.stage = "parents"
@@ -1648,7 +1664,7 @@ class Streamer:
         meta["look"] = list(look.values())  # what the textures recorded are built in
         meta["season"] = season
         meta["stale"] = stale
-        meta["photo_floor"] = MIN_PHOTO_ZL  # the textures recorded take no coarser photos
+        meta["photo_floor"] = PHOTO_FLOOR_RULE  # the textures recorded follow the floors
         if self.screen is not None:
             meta["screen"] = self.screen
         meta["textures"] = textures

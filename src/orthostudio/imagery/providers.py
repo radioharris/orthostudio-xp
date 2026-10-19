@@ -82,6 +82,10 @@ class Provider(BaseModel):
     grid_type: Literal["webmercator"] = "webmercator"
     url_template: str = Field(min_length=1)
     max_zl: int = Field(ge=1, le=24)
+    min_photo_zl: int | None = Field(default=None, ge=1, le=24)
+    """The coarsest zoom whose photos have the colours of its finer ones, where the source changes
+    imagery below (Live's far textures take none coarser, ``orthostudio.live.texture``); ``None``
+    for Live's own floor, ZL13, which Bing needs (2026-10-19)."""
     tile_size: int = 256
     headers: dict[str, str] = Field(default_factory=dict)
     max_in_flight: int = Field(default=64, ge=1, le=256)

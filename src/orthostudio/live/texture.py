@@ -31,6 +31,7 @@ from __future__ import annotations
 import contextlib
 import ctypes
 import errno
+import functools
 import os
 import signal
 import sys
@@ -53,6 +54,18 @@ MAX_PARENT_DEPTH = 4
 # aircraft passed stood out as a darker rectangle among the far ones, seen from cruise. A level
 # coarser than it is made of this zoom's photos, shrunk.
 MIN_PHOTO_ZL = 13
+
+
+@functools.cache
+def photo_floor(code: str) -> int:
+    """The coarsest zoom of a source's photos a texture takes: its own (``min_photo_zl``: Esri
+    Clarity, Spain's and Japan's change imagery below ZL14), else :data:`MIN_PHOTO_ZL`."""
+    from .providers import registry
+
+    p = registry().get(code)
+    return max(MIN_PHOTO_ZL, p.min_photo_zl or 0) if p is not None else MIN_PHOTO_ZL
+
+
 MISSING_RGB = (72, 80, 64)  # a dull green-grey where nobody has imagery
 # The test of the 8192 px (settings tint_8192): that level only, washed with pink, so that a pilot
 # sees where X-Plane shows it; the 4096 px and smaller levels are the photos as they are.
@@ -79,26 +92,26 @@ def worker_ignores_ctrl_c() -> None:
         signal.signal(signal.SIGBREAK, signal.SIG_IGN)
 
 
-def _halvings(zoom: int, level: int) -> int:
+def _halvings(zoom: int, level: int, floor: int = MIN_PHOTO_ZL) -> int:
     """How many zooms below the texture's its level ``level`` (0 and coarser) takes its photos
-    from: the level itself, but never below :data:`MIN_PHOTO_ZL`."""
-    return max(0, min(level, zoom - MIN_PHOTO_ZL))
+    from: the level itself, but never below ``floor`` (:func:`photo_floor`)."""
+    return max(0, min(level, zoom - floor))
 
 
 def chunk_grid(tex: Texture, level: int) -> tuple[int, int, int, int]:
     """(zoom, x0, y0, n): the n x n imagery pieces at ``zoom`` whose pixels make level ``level``:
     as many as the level has, or, for a level coarser than :data:`MIN_PHOTO_ZL`, more, shrunk."""
     if level >= 0:
-        d = _halvings(tex.zoom, level)
+        d = _halvings(tex.zoom, level, photo_floor(tex.provider))
         return tex.zoom - d, tex.x >> d, tex.y >> d, 16 >> d
     up = -level  # above the mesh's zoom: 8192 px
     return tex.zoom + up, tex.x << up, tex.y << up, 16 << up
 
 
-def pieces_of(level: int, zoom: int = 16) -> int:
+def pieces_of(level: int, zoom: int = 16, floor: int = MIN_PHOTO_ZL) -> int:
     """The imagery pieces level ``level`` of a texture of ``zoom`` takes: 256 at 4096 px, 1,024 at
-    8192, 4 at 256 px (its photos at ZL13, :data:`MIN_PHOTO_ZL`)."""
-    n = 16 >> _halvings(zoom, level) if level >= 0 else 16 << -level
+    8192, 4 at 256 px (its photos at ZL13, :data:`MIN_PHOTO_ZL`; 16 at ZL14)."""
+    n = 16 >> _halvings(zoom, level, floor) if level >= 0 else 16 << -level
     return n * n
 
 
@@ -107,10 +120,10 @@ def piece_keys(tex: Texture, level: int) -> list[Key]:
     return [(z, x0 + i, y0 + j) for j in range(n) for i in range(n)]
 
 
-def parent_keys(key: Key, depth: int = MAX_PARENT_DEPTH) -> list[Key]:
-    """The coarser pieces a missing one is made from, never coarser than :data:`MIN_PHOTO_ZL`."""
+def parent_keys(key: Key, depth: int = MAX_PARENT_DEPTH, floor: int = MIN_PHOTO_ZL) -> list[Key]:
+    """The coarser pieces a missing one is made from, never coarser than ``floor``."""
     z, x, y = key
-    return [(z - d, x >> d, y >> d) for d in range(1, depth + 1) if z - d >= MIN_PHOTO_ZL]
+    return [(z - d, x >> d, y >> d) for d in range(1, depth + 1) if z - d >= floor]
 
 
 def double_bc1(blob: bytes, side: int) -> bytes:
@@ -348,7 +361,9 @@ def assemble(
                 except Exception:  # a corrupt piece: as if missing
                     rgb = None
             if rgb is None:
-                for depth, pk in enumerate(parent_keys(key), start=1):
+                for depth, pk in enumerate(
+                    parent_keys(key, floor=photo_floor(tex.provider)), start=1
+                ):
                     pb = parents.get(pk)
                     if pb is None:
                         continue
