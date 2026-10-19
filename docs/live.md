@@ -286,7 +286,7 @@ Greenland, the Arctic and islands. Together they cover all the land of the world
 every square AutoOrtho's regions have and 1,048 more.
 
 The panel lists the seven, each with what it downloads and the room it takes once installed
-(Europe: 22.6 GB to download, 38.7 GB on the disk), and **Install**. Live downloads it from
+(Europe: 17.7 GB to download, as much on the disk), and **Install**. Live downloads it from
 OrthoStudio XP's server, a few files at a time, checks each one and unpacks it as soon as it is
 whole; the bar shows the download. **Stop** stops it, and **Install** again goes on where it
 stopped, a file cut off included. A region is used from the next start, never half installed. Its
