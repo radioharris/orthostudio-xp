@@ -72,7 +72,7 @@ MOCK_FILES = {
 STEPS = ("osm", "relief", "terrain", "coast", "imagery", "assembly", "install")
 JOURNAL_EVENTS = {"started", "progress", "done", "failed", "stats", "log", "finished"}
 STATS_KEYS = {"running", "pending", "done", "failed", "hits", "elapsed_s", "progress", "eta_low_s"}
-STATS_KEYS |= {"eta_high_s", "phase"}
+STATS_KEYS |= {"eta_high_s", "overdue", "phase"}
 NODE_KEYS = {"node", "role", "status", "key", "hit", "wall_s", "fraction", "weight_s"}
 
 
@@ -1649,6 +1649,28 @@ def test_progress_elapsed_and_remaining() -> None:
     assert got["fallback"] == pytest.approx(3.5 / 11)
     assert got["elapsed"] == [103, 60, 538.5, 12, None]
     assert got["eta"] == [[None, None], [60, 90], [80, 150], [None, None]]
+
+
+def test_the_header_says_longer_than_expected_while_a_step_is_overdue() -> None:
+    """``stats.overdue`` (api/progress.py ``overdue``) names the steps past their time: the header
+    then says "longer than expected" rather than a range already gone by, and such a step says
+    "longer than usual" whatever fraction it reported (a terrain step at 3 % for twelve minutes,
+    2026-10-18)."""
+    got = _node_mock(
+        """
+        const late = {overdue: ["+48+011/vectors"], eta_low_s: 90, eta_high_s: 194};
+        process.stdout.write(JSON.stringify({
+          set: [...m.overdueNodes(late)], none: [...m.overdueNodes(null)],
+          longer: m.etaWords(late), range: m.etaWords({eta_low_s: 90, eta_high_s: 194}),
+        }));
+        """
+    )
+    assert got["set"] == ["+48+011/vectors"] and got["none"] == []
+    assert got["longer"] != got["range"] and not any(c.isdigit() for c in got["longer"])
+    i18n = (UI / "i18n.js").read_text(encoding="utf-8")
+    assert i18n.count('"works.eta_longer":') == 2  # French and English
+    app = (UI / "app.js").read_text(encoding="utf-8")
+    assert 'if (late.has(id)) words += `, ${t("works.act_longer")}`;' in app
 
 
 def test_the_data_phase_names_the_layers_it_downloads() -> None:

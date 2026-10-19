@@ -773,6 +773,7 @@ function mockStats(run) {
     progress: round(p, 4),
     eta_low_s: low,
     eta_high_s: low == null ? null : round(low * 1.5, 1),
+    overdue: [], // the mock's steps never run late
     // The engine downloads the map data inside the build (a tile goes on once its own is in):
     // its `data` phase belonged to the engines that downloaded every tile's first.
     phase: "build",
@@ -1988,6 +1989,21 @@ export function jobElapsed(job, nowMs = Date.now()) {
 }
 
 /** [low, high] seconds left for the whole job, or [null, null] while the engine does not know. */
+/** The running nodes the engine says are past their time (`stats.overdue`, api/progress.py
+ * `overdue`): well beyond their expected seconds and not advancing. */
+export function overdueNodes(stats) {
+  return new Set(stats && Array.isArray(stats.overdue) ? stats.overdue.filter((x) => typeof x === "string") : []);
+}
+
+/** What the header says is left: "longer than expected" while a step is past its time, rather
+ * than a range already gone by (a tile's terrain step sat at 3 % for twelve minutes under
+ * "1 min 30 s left", a user, 2026-10-18); else the range, or that it is not known yet. */
+export function etaWords(stats) {
+  if (overdueNodes(stats).size) return t("works.eta_longer");
+  const [lo, hi] = etaRange(stats);
+  return lo == null ? t("works.eta_unknown") : fmtRange(lo, hi);
+}
+
 export function etaRange(stats) {
   if (!stats || typeof stats !== "object") return [null, null];
   const lo = finite(stats.eta_low_s);
@@ -4468,8 +4484,7 @@ function updateJobView(v, job) {
   updateClock(v, job);
   v.etaItem.hidden = !active || waiting;
   if (active && !waiting) {
-    const [lo, hi] = etaRange(job.stats);
-    setText(v.eta, lo == null ? t("works.eta_unknown") : fmtRange(lo, hi));
+    setText(v.eta, etaWords(job.stats));
   }
   const st = job.stats || {};
   const rate = [];
@@ -4826,7 +4841,7 @@ export function tileActivity(job, tile, nowMs = Date.now()) {
 /** What a running step is doing, in words: the words of its running rows, with the rate of a
  * download when `rate` is asked and the time left of a row that reports nothing; "" when no row
  * runs. The tile's line (tileActivity) and the step's tooltip (stepTipLines) say it. */
-function stepActivity(step, nowMs, rate = true) {
+function stepActivity(step, nowMs, rate = true, late = overdueNodes(state.job?.stats)) {
   const parts = [];
   for (const [id, n] of Object.entries(step?.nodes || {})) {
     if (n.status !== "running") continue;
@@ -4836,7 +4851,10 @@ function stepActivity(step, nowMs, rate = true) {
     if (mbps) words += `, ${fmtMbps(mbps)}`;
     const started = finite(n.startedMs);
     const weight = finite(n.weight) ?? 0;
-    if (clamp01(n.fraction) === 0 && started != null && weight > 0) {
+    // past its time whatever it reported: the "longer than usual" of a step that never moved
+    // also for one that said 3 % and then nothing (2026-10-18)
+    if (late.has(id)) words += `, ${t("works.act_longer")}`;
+    else if (clamp01(n.fraction) === 0 && started != null && weight > 0) {
       const elapsed = (nowMs - started) / 1000;
       if (weight - elapsed >= 3) words += `, ${t("works.act_left", { time: fmtDuration(weight - elapsed) })}`;
       else if (elapsed > 1.5 * weight && elapsed >= 5) words += `, ${t("works.act_longer")}`;

@@ -48,7 +48,7 @@
   "ok": false,
   "request": {"tiles": ["+43+005"], "airport": null, "provider": "BI", "zoom_level": 16, "overrides": {}, "xplane_dir": null, "overlay": true, "xp12_rasters": true, "online": false, "zones": [], "install": true},
   "errors": [],
-  "stats": {"running": 0, "pending": 12, "done": 0, "failed": 0, "hits": 0, "elapsed_s": 0.0, "progress": 0.0, "eta_low_s": null, "eta_high_s": null, "phase": "data"},
+  "stats": {"running": 0, "pending": 12, "done": 0, "failed": 0, "hits": 0, "elapsed_s": 0.0, "progress": 0.0, "eta_low_s": null, "eta_high_s": null, "overdue": [], "phase": "data"},
   "eta": null,
   "last_seq": 1,
   "report": null,

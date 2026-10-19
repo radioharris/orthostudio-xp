@@ -72,6 +72,8 @@ __all__ = [
     "BAND_MAX",
     "BAND_MIN",
     "OSM_LANE",
+    "OVERDUE_FACTOR",
+    "OVERDUE_MIN_S",
     "ROLE_KIND",
     "ROLE_SECONDS",
     "TEXTURE_CACHED_S",
@@ -84,6 +86,7 @@ __all__ = [
     "line_factor",
     "node_seconds",
     "observe_progress",
+    "overdue",
     "read_line_history",
     "texture_cost",
     "texture_seconds",
@@ -210,6 +213,13 @@ the weights say. The rate decays with the silence, and the time left is what is 
 by it: a step that stopped reporting made that division approach zero and the page announced
 1 308 980 335 hours remaining (a user, 2026-09-23)."""
 ETA_MAX_S = 24 * 3600.0
+OVERDUE_FACTOR = 1.5
+OVERDUE_MIN_S = 20.0
+"""A running node is past its time (:func:`overdue`) once it has run ``OVERDUE_FACTOR`` times its
+weight and at least ``OVERDUE_MIN_S`` more than it, with no rise of its fraction for
+``OVERDUE_MIN_S``. A tile's terrain step said 3 % for twelve minutes while the page counted down
+"1 min 30 s" (a user's large airport and patch, 2026-10-18): the page says "longer than
+expected" instead."""
 """Beyond a day, an estimate is not information: the page is told nothing rather than a number
 nobody can act on."""
 EXTRAPOLATE_FROM = 0.02
@@ -479,6 +489,22 @@ def weight_of(n: NodeLike) -> float:
     if n.status == "hit":
         return 0.0
     return max(0.0, n.weight_s)
+
+
+def overdue(n: NodeLike, now: float) -> bool:
+    """Whether a running node is past its time: well beyond its expected seconds, and not
+    advancing (:data:`OVERDUE_FACTOR`). A node still rising is not, however late: its rate
+    speaks for it."""
+    if n.status != "running" or n.started_at is None:
+        return False
+    weight = weight_of(n)
+    if weight <= 0.0:
+        return False
+    elapsed = now - n.started_at
+    if elapsed < max(OVERDUE_FACTOR * weight, weight + OVERDUE_MIN_S):
+        return False
+    last = n.moved_at if n.moved_at is not None else n.started_at
+    return now - last >= OVERDUE_MIN_S
 
 
 def weighted_progress(nodes: Sequence[NodeLike], now: float | None = None) -> float:

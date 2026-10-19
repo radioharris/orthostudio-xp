@@ -548,7 +548,9 @@ The selected job (default: the running one, else the newest) shows, from top to 
     since those stats arrived; once the job ended, `finished_at - started_at`; a figure arriving
     a little late never sets the clock back;
   - *Remaining*, while the job runs only: `eta_low_s`–`eta_high_s` formatted `1 min 40 – 3 min`,
-    or *estimating…* while they are `null`;
+    *estimating…* while they are `null`, and *longer than expected* while `stats.overdue` names
+    a step (a step far past its usual time that has not moved for 20 s): a range that has
+    stopped meaning anything is not shown;
   - *Throughput* when the stats carry `req_per_s` / `mb_per_s`.
   - While `stats.phase` is `"data"` (an older engine, which downloaded every tile's map data
     before building), a line under the bar: "Downloading map data (airports, roads, coastline,
@@ -596,10 +598,11 @@ The selected job (default: the running one, else the newest) shows, from top to 
   the airports*, *meshing the terrain*, *coast masks*, *X-Plane 12 layers*, *writing the X-Plane
   terrain*, *X-Plane's objects*, *putting the tile together*, *installing in X-Plane*) and *about
   10 s to go* while three seconds or more are left of their usual time, *longer than usual* once
-  they ran half as long again. Nothing runs: why its Imagery waits, when it does (*waits for the
-  DSF (Assembly)*, *waits for the images of +46+006*: one tile downloads at a time). A finished
-  tile, a tile still to start and a job that ended have no words, so a batch shows three or four
-  lines with words at most.
+  they ran half as long again. Any running step the engine names in `stats.overdue` reads
+  *longer than usual* too, whatever its fraction: a step stuck at 10 % for minutes says so.
+  Nothing runs: why its Imagery waits, when it does (*waits for the DSF (Assembly)*, *waits for
+  the images of +46+006*: one tile downloads at a time). A finished tile, a tile still to start
+  and a job that ended have no words, so a batch shows three or four lines with words at most.
 
   The line keeps its place in every row from the start, one line high, empty (a no-break space)
   while nothing of the tile runs: shown only while a step ran, it made every row grow and shrink,

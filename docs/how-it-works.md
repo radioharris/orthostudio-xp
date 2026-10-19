@@ -166,7 +166,10 @@ build, the OpenStreetMap downloads included. Each step weighs what it usually co
 most of all. The download time starts from the speed your connection showed on your last builds
 (read from their reports, the latest ones counting most), and the estimate corrects itself with the
 speed the build actually shows, moving smoothly rather than jumping. A step reads *running* only
-while it works, and *waiting* when part of it is done and the rest waits for its turn.
+while it works, and *waiting* when part of it is done and the rest waits for its turn. A step far
+past its usual time that has stopped moving says *longer than usual*, and the time left then reads
+*longer than expected* rather than a range it can no longer keep. A tile's Vectors step once sat at
+10 % for twelve minutes on a large airport while the time left still promised a few (2026-10-19).
 
 **Every bar means something.** A step that counts what it does fills its bar with that: the map
 layers received, the megabytes of a relief file, the images done. The steps that count nothing,

@@ -1260,6 +1260,7 @@
     "progress": 1.0,
     "eta_low_s": 0.0,
     "eta_high_s": 0.0,
+    "overdue": [],
     "phase": "build"
   },
   "eta": null,

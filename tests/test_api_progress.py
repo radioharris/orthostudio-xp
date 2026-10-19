@@ -60,6 +60,7 @@ STATS_KEYS = {
     "progress",
     "eta_low_s",
     "eta_high_s",
+    "overdue",
     "phase",
 }
 RULES = {
@@ -1771,6 +1772,34 @@ def test_the_same_line_is_not_written_to_the_log_again_and_again(tmp_path: Path)
     at[0] = 10.0
     job.on_event(Progress(node, 0.25, "+46+006: 1 of 4 back: airports"))
     assert len(lines()) == 2, "and a line that says something new is written"
+
+
+def test_a_step_past_its_time_and_not_advancing_is_overdue(tmp_path: Path) -> None:
+    """A tile's terrain step said 3 % then nothing for twelve minutes while the header counted
+    "1 min 30 s" (a user, 2026-10-18): a running node well beyond its expected seconds and not
+    advancing is named in ``stats.overdue``; one still rising, or not yet late, is not."""
+    from orthostudio.api.progress import OVERDUE_MIN_S, overdue
+    from orthostudio.sched.events import Progress, Started
+
+    at = [0.0]
+    job = _job([_spec("+48+011")], lambda: at[0], tmp_path)
+    node = "+48+011/vectors"
+    job.on_event(Started(node, "cpu", KEY))
+    at[0] = 0.1
+    job.on_event(Progress(node, 0.02, "+48+011: reading the relief"))
+    at[0] = 0.2
+    job.on_event(Progress(node, 0.05, "+48+011: airports"))
+    st = job._node(node)
+    weight = st.weight_s
+    assert weight > 0
+    late = max(1.5 * weight, weight + OVERDUE_MIN_S) + 1.0
+    assert not overdue(st, min(late, 0.2 + OVERDUE_MIN_S) - 1.0)
+    at[0] = late
+    assert overdue(st, at[0])
+    assert job._stats_now()["overdue"] == [node]
+    # it moves again: no longer overdue until it is silent once more
+    job.on_event(Progress(node, 0.25, "+48+011: roads and railways at level 1"))
+    assert job._stats_now()["overdue"] == []
 
 
 def test_a_held_back_line_is_written_once_its_second_has_passed(tmp_path: Path) -> None:

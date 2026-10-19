@@ -37,6 +37,7 @@ from orthostudio.api.progress import (
     line_factor,
     node_seconds,
     observe_progress,
+    overdue,
     read_line_history,
     texture_cost,
     weight_of,
@@ -831,6 +832,9 @@ class Job:
             "progress": math.floor(self._progress * 10_000) / 10_000,
             "eta_low_s": None if low is None else round(low, 1),
             "eta_high_s": None if high is None else round(high, 1),
+            # the running nodes past their time: the page says "longer than expected" there
+            # and in the header rather than a time left already gone by (2026-10-18)
+            "overdue": [] if self.finished else sorted(n.node for n in rows if overdue(n, now)),
             "phase": self._phase,
             **(
                 {"check": {"done": self._check[0], "total": self._check[1]}}
