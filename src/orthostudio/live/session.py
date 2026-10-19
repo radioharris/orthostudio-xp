@@ -77,9 +77,11 @@ class Options:
     overlays: str = "auto"  # AutoOrtho's roads, forests and buildings where none are: "off"
     language: str = "en"  # the Live window's: the plugin's words in X-Plane
     margin: float = 1.25
-    # the user's choice, 2026-10-19: 2 km, to write fewer 4096 px levels (half of what Live wrote
-    # over the Pyrenees); 10 from a test flight of 2026-09-29, 20 before, 25 until 2026-09-28
-    camera_reach_km: float = 2.0
+    # the user's choice, 2026-10-19: none. The rings' margin covers a camera near the aircraft, and
+    # one taken far is built round where it is (external views zoomed out at 17 to 84 km over
+    # LGAV and LFLL: a few levels late, caught up within seconds, no neutral colour seen). 2 km
+    # earlier that day, 10 from a test flight of 2026-09-29, 20 before, 25 until 2026-09-28
+    camera_reach_km: float = 0.0
     workers: int = field(default_factory=default_workers)
     port: int = 49000  # X-Plane's UDP port
     source: Path | None = None  # None: every AutoOrtho region installed, AutoOrtho's or Live's
