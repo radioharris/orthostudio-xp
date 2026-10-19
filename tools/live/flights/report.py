@@ -288,6 +288,8 @@ LATER_FIELDS = {
     "e_cpu": "engine_cpu_s",
     "w_mb": "web_rss_mb",
     "w_cpu": "web_cpu_s",
+    # 2026-10-19
+    "xp_written": "xplane_written_mb",
 }
 
 
@@ -386,10 +388,14 @@ def costs(rows: list[dict], run: dict) -> dict[str, dict]:
         read = None
         if b.get("xp_read") is not None:  # X-Plane started meanwhile: what it read since
             read = (b["xp_read"] - (a.get("xp_read") or 0)) / 1024
+        wrote = None
+        if b.get("xp_written") is not None:
+            wrote = (b["xp_written"] - (a.get("xp_written") or 0)) / 1024
         out[name] = {
             "xplane_whole_gb": whole[len(whole) // 2] / 1024 if whole else None,
             "xplane_whole_gb_most": whole[-1] / 1024 if whole else None,
             "xplane_read_gb": read if read is None or read >= 0 else None,
+            "xplane_written_gb": wrote if wrote is None or wrote >= 0 else None,
             "mac": mac_words(within),
             "minutes": (t1 - t0) / 60,
             "downloaded_gb": (b["net"] - a["net"]) / 1e9,
@@ -442,6 +448,8 @@ def computer_lines(rows: list[dict], run: dict) -> list[str]:
             )
         if c.get("xplane_read_gb") is not None:
             parts[-1] += f", read {c['xplane_read_gb']:.2f} GB"
+        if c.get("xplane_written_gb") is not None:
+            parts[-1] += f", wrote {c['xplane_written_gb']:.2f} GB"
         if c["streamer"]:
             parts.append(
                 f"streamer {c['streamer_cores']:.2f} core, "

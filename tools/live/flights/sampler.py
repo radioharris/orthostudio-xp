@@ -62,6 +62,8 @@ FIELDS = [
     "engine_cpu_s",
     "web_rss_mb",
     "web_cpu_s",
+    # 2026-10-19: what X-Plane wrote to the disks, set against the whole disk's and Live's own
+    "xplane_written_mb",
 ]
 THREAD_FIELDS = ["wall", "thread", "name", "cpu_s", "state", "priority"]
 PROCESS_FIELDS = ["wall", "pid", "name", "cores"]
@@ -549,6 +551,7 @@ class Sampler(threading.Thread):
             f"{engine[1]:.1f}" if engine else "",
             f"{sum(r[2] for r in web):.0f}" if self.web_of else "",
             f"{sum(r[3] for r in web):.1f}" if self.web_of else "",
+            _blank(use.get("written", 0) // 2**20 if use else None),
         ]
         thread_lines = [
             [f"{wall:.1f}", f"{handle:x}", name, f"{cpu:.3f}", state, priority]

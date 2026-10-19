@@ -55,7 +55,7 @@ from concurrent.futures import Future, ProcessPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import dds, machine, pools
+from . import dds, machine, pools, writes
 from .cache import IMAGE, NO_IMAGERY, ChunkCache, Key
 from .cameralog import AWAY_M
 from .evict import EVICT_SAFE_KM, TARGET, XPlaneWindow, pick, tiles_of, usage, xplane_tiles
@@ -102,6 +102,7 @@ PLAN_ASK_EVERY_S = 60.0  # SimBrief is asked for the pilot's last plan at most t
 JUMP_KM = 20.0  # a position this far from the last one is a new start: a teleport, a new flight
 PLAN_EVERY_S = 2.0
 REPORT_EVERY_S = 1.0  # what the Live window is told, this often
+WRITES_EVERY_S = 300.0  # what Live wrote, by kind, in the log this often (writes.py)
 # what the pack's record says its textures follow (texture.photo_floor): ZL13, ZL14 for the sources
 # whose ZL13 is other imagery; a record of before has their far textures built again
 PHOTO_FLOOR_RULE = "13-or-source"
@@ -277,6 +278,11 @@ def ahead(fix: Fix, minutes: float) -> tuple[float, float]:
     return lat, lon
 
 
+def cached(rows) -> int:
+    """The photos' bytes in rows put in the imagery cache."""
+    return sum(len(body) for _, _, body in rows if body)
+
+
 @dataclass
 class _Job:
     """One texture on its way: pieces, then parents for the pieces without imagery, then
@@ -293,6 +299,8 @@ class _Job:
     stage: str = "pieces"
     patched: set[Key] = field(default_factory=set)  # pieces that did not come: the zoom below's
     gen: int = 0  # the season it was encoded in (Streamer.look_gen)
+    top: int = 0  # its file's sharpest level, and the level it held when sent (writes.py)
+    built: int | None = None
 
 
 class TextureIndex:
@@ -1330,6 +1338,7 @@ class Streamer:
                 with self.lock:
                     look, job.gen = self.look, self.look_gen
                     built = self.built.get(job.name)  # its levels kept below a sharper build
+                job.top, job.built = top, built
                 fut = (sharp_pool if job.level < 0 else pool).submit(
                     build_job,
                     (
@@ -1369,6 +1378,19 @@ class Streamer:
                     top,
                 )
 
+        def count_written(job: _Job) -> None:
+            """A texture's levels written, by its sharpest level (writes.py)."""
+            from .texture import needs_copy
+
+            again = job.built is not None and job.built <= job.level
+            body, copy = writes.texture_bytes(
+                job.level, job.top, needs_copy(job.level, job.top), job.built
+            )
+            px = dds.size_of(job.level)
+            writes.add(f"textures {px} px" + (" again" if again else ""), body)
+            if copy:
+                writes.add("copies above a far level", copy)
+
         def copies_done() -> None:
             for name in [n for n, f in copying.items() if f.done()]:
                 fut = copying.pop(name)
@@ -1379,6 +1401,7 @@ class Streamer:
                 except Exception as e:
                     self.log(f"  could not copy up the 4096 px level of {name}: {e}")
                     continue
+                writes.add("8192 px copies of the 4096 px level", dds.level_layout(-1)[0][1])
                 with self.lock:
                     self.copied_up.add(name)
                 self.log(
@@ -1496,6 +1519,8 @@ class Streamer:
                     for fut in [f for f in encoding if f.done()]:
                         job = encoding.pop(fut)
                         jobs.pop(job.name, None)
+                        if not fut.cancelled() and fut.exception() is None:
+                            count_written(job)
                         self._finished(fut, job.name, job.level, bool(job.patched), job.gen)
                     submit_ready(pool)
                     self.encoding_now = len(encoding)
@@ -1508,6 +1533,11 @@ class Streamer:
                         self.last_progress = time.monotonic()
                     if to_cache and (len(to_cache) >= 256 or time.monotonic() - last_flush > 1.0):
                         self.cache.put_many(self.provider, to_cache)
+                        writes.add(
+                            "photo cache (the file about 1.4 times)",
+                            cached(to_cache),
+                            len(to_cache),
+                        )
                         to_cache.clear()
                         last_flush = time.monotonic()
                     self.maybe_say_built()
@@ -1526,6 +1556,9 @@ class Streamer:
             finally:
                 if to_cache:
                     self.cache.put_many(self.provider, to_cache)
+                    writes.add(
+                        "photo cache (the file about 1.4 times)", cached(to_cache), len(to_cache)
+                    )
                 self.downloader.close()
                 with (
                     self.lock
@@ -1614,6 +1647,13 @@ class Streamer:
                 else:
                     top = dds.read_top(path)  # the file's size from its header: it keeps it
                     downgrade(path, level, self.pack_dir / neutral_file(top), file_top=top)
+                    if level <= 4:
+                        from .texture import needs_copy
+
+                        body, copy = writes.texture_bytes(
+                            max(level, top), top, needs_copy(max(level, top), top), None
+                        )
+                        writes.add("textures made coarser (disk budget)", body + copy)
             except OSError as e:
                 self.log(f"  could not make {name} coarser: {e}")
                 continue
@@ -1673,8 +1713,10 @@ class Streamer:
         meta["patchy"] = patchy
         meta["updated"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
         tmp = self.pack_dir / MARKER.with_suffix(".tmp")
-        tmp.write_text(json.dumps(meta))
+        text = json.dumps(meta)
+        tmp.write_text(text)
         os.replace(tmp, self.pack_dir / MARKER)
+        writes.add("Live's record of its textures", len(text))
 
     def snapshot(self) -> dict:
         """What the streamer is doing, counted by level (0 the sharpest, 4 the 256 px one): the
@@ -1952,6 +1994,7 @@ def run(
     values: dict[str, float] = {}
     arrival: Arrival | None = None
     last_plan = last_status = last_save = last_packet = last_subscribe = last_wait = 0.0
+    last_writes = time.monotonic()
     last_pool = last_between = 0.0
     before: tuple[Fix, float] | None = None  # the last position planned, and when
     last_report = 0.0
@@ -2252,11 +2295,15 @@ def run(
                 streamer.save()
                 camera.save()
                 last_save = now
+            if now - last_writes >= WRITES_EVERY_S:
+                log(f"  {writes.summary()}")
+                last_writes = now
     except KeyboardInterrupt:
         pass
     finally:
         streamer.close()
         camera.save()
+        log(f"  {writes.summary()}")
         for line in camera.summary():
             log(f"  {line}")
         if streamer.outran:

@@ -313,7 +313,8 @@ def cold_lists(home: Path) -> None:
 
 def cold_source(xp: Path, series: list[scenarios.Scenario]) -> Path | None:
     """The region a cold Live streams onto when X-Plane holds no AutoOrtho region of its own for
-    the scenarios: the one Live installed in the user's own folder, which the cold folder does not
+    the scenarios: the one Live installed in the user's own folder (OrthoStudio XP's, else
+    AutoOrtho's), which the cold folder does not
     hold (a Shadow PC without AutoOrtho, 2026-10-01). None where X-Plane holds AutoOrtho's, found
     there as always (the developer's Mac), or where the scenarios start over no region's mesh."""
     from orthostudio.live import aoregions
@@ -329,8 +330,14 @@ def cold_source(xp: Path, series: list[scenarios.Scenario]) -> Path | None:
         raise RefusedError(
             f"a cold series over several regions ({', '.join(missing)}): one region a series"
         )
-    mine = aoregions.mesh_dir(live_root(), missing[0])
-    if not (mine / "terrain").is_dir():
+    from orthostudio.live import osxpregions
+    from orthostudio.live.names import terrain_folder
+
+    # OrthoStudio XP's region where Live installed it, else AutoOrtho's
+    mine = osxpregions.mesh_dir(live_root(), missing[0])
+    if not (mine / aoregions.MARKER).is_file():
+        mine = aoregions.mesh_dir(live_root(), missing[0])
+    if not terrain_folder(mine).is_dir():
         raise RefusedError(
             f"the region {missing[0]} is not installed: install it in the Live window first"
         )

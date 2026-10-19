@@ -1211,7 +1211,8 @@ def test_the_sampler_counts_the_app_s_web_view(monkeypatch: pytest.MonkeyPatch) 
     monkeypatch.setattr(sampler.sys, "platform", "win32")
     assert [r[0] for r in sampler.web_view(rows, 10)] == [30]
     assert sampler.tree(rows, 11) == (140.0, 2.0)  # the engine alone
-    assert sampler.FIELDS[-4:] == ["engine_rss_mb", "engine_cpu_s", "web_rss_mb", "web_cpu_s"]
+    assert sampler.FIELDS[-5:-1] == ["engine_rss_mb", "engine_cpu_s", "web_rss_mb", "web_cpu_s"]
+    assert sampler.FIELDS[-1] == "xplane_written_mb"
 
 
 def test_what_the_app_s_engine_and_web_view_cost() -> None:

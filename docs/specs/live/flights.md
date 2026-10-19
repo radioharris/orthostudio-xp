@@ -303,7 +303,11 @@ and its page-ins (`proc_pid_rusage`); the Mac's free memory, memory pressure, me
 swapped (`sysctl`) and heat (`com.apple.system.thermalpressurelevel`, "heavy" through every flight
 of 2026-09-29 and 30, X-Plane alone's too); the bytes read from each disk; and `threads.csv`,
 each of X-Plane's threads at each sample: its name, processor time, state and priority
-(`proc_pidinfo`). All read from outside, as Activity Monitor does: `sample` cannot attach to
+(`proc_pidinfo`). Since 2026-10-19, the bytes X-Plane itself wrote (`proc_pid_rusage`), set
+against the disk's whole count and the line Live logs every 5 minutes and at its end, what it
+wrote by kind (`orthostudio.live.writes`: textures by their sharpest level, written again or made
+coarser, copies, the photo cache, terrain files, its record), to see where Live's writes go
+(Pyrenees, 2026-10-09: 8.3 GB against XPME's 4.7). All read from outside, as Activity Monitor does: `sample` cannot attach to
 X-Plane, signed with the hardened runtime. Since 2026-10-01, as the analysis of the late tiles
 asked: the cores the system lets work (`kern.sched_recommended_cores`, fewer when it is hot), in
 `system.csv`; every other process using more than 0.05 core between two samples, in
