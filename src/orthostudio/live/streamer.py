@@ -77,7 +77,7 @@ from .region import (
 )
 from .rings import LOAD_LEVEL, MIN_LEVEL, finest_readable, ring_km, screen_scale, top_level_for
 from .route import KM_PER_DEG, Route
-from .texture import parent_keys, piece_keys, pieces_of, worker_ignores_ctrl_c
+from .texture import MIN_PHOTO_ZL, parent_keys, piece_keys, pieces_of, worker_ignores_ctrl_c
 
 PLACEHOLDER_KM = 300.0  # every texture within this has at least its 256 px level
 LOAD_KM = (
@@ -419,6 +419,20 @@ class Streamer:
                 "again as X-Plane comes (their 4096 and 8192 px photos downloaded again)"
             )
             self._make_stale()
+        if self.meta.get("photo_floor") != MIN_PHOTO_ZL and self.built:
+            # built before the floor (texture.MIN_PHOTO_ZL): the far ones from Bing's ZL12, of
+            # other colours, built again as X-Plane comes; the sharper ones are right as they are
+            coarse = {
+                n: lv
+                for n, lv in self.built.items()
+                if lv >= 0 and parse_texture_name(n).zoom - lv < MIN_PHOTO_ZL
+            }
+            if coarse:
+                log(
+                    f"{len(coarse)} textures built from photos coarser than ZL{MIN_PHOTO_ZL}, of "
+                    "other colours: built again as X-Plane comes"
+                )
+                self._make_stale(coarse)
         self.disk_budget = disk_budget
         self.cache_budget = cache_budget
         self._cache_size = 0  # the imagery cache's disk, as the last eviction round measured it
@@ -511,19 +525,20 @@ class Streamer:
 
     # --- the season ---------------------------------------------------------------------------
 
-    def _make_stale(self) -> int:
-        """Every texture built forgotten as built, its file kept until built again or made
-        neutral (:meth:`drop_stale`): built in another season. Under ``self.lock`` once the
-        streamer runs. Returns how many."""
-        n = len(self.built)
-        self.stale.update(self.built)
-        self.built.clear()
-        self.seen.clear()
-        self.patchy.clear()
-        self.copied_up.clear()
-        self.to_copy.clear()
+    def _make_stale(self, only: dict[str, int] | None = None) -> int:
+        """Every texture built (or those of ``only``) forgotten as built, its file kept until
+        built again or made neutral (:meth:`drop_stale`): built in another season, or from photos
+        below the floor. Under ``self.lock`` once the streamer runs. Returns how many."""
+        names = dict(self.built) if only is None else only
+        self.stale.update(names)
+        for name in names:
+            self.built.pop(name, None)
+            self.seen.pop(name, None)
+            self.patchy.pop(name, None)
+            self.copied_up.discard(name)
+            self.to_copy.discard(name)
         self.built_version += 1
-        return n
+        return len(names)
 
     def choose_season(self, season: str, why: str) -> bool:
         """Build in ``season`` from now on: what was built in another look is built again as
@@ -1086,7 +1101,7 @@ class Streamer:
                     break  # sorted: none after it is urgent either
                 if name in self.in_flight:  # one build at a time: its file is the last one's
                     continue
-                n = pieces_of(level)
+                n = pieces_of(level, parse_texture_name(name).zoom)
                 if batch and pieces + n > max_pieces:
                     break
                 batch.append((name, level, urgency))
@@ -1143,11 +1158,13 @@ class Streamer:
         return self.notice
 
     def urgent_work(self) -> tuple[int, int]:
-        """The urgent textures, and the image pieces they take (256 for a 4096 px level, 1 for 256
+        """The urgent textures, and the image pieces they take (256 for a 4096 px level, 4 for 256
         px):
         what a progress bar follows, since a sharp texture is so much more work than a small one."""
-        levels = self._urgent().values()
-        return len(levels), sum(pieces_of(lv) for lv in levels)
+        urgent = self._urgent()
+        return len(urgent), sum(
+            pieces_of(lv, parse_texture_name(name).zoom) for name, lv in urgent.items()
+        )
 
     def stalled_s(self) -> float:
         """How long pieces have been awaited with none arriving (0 while they arrive)."""
@@ -1631,6 +1648,7 @@ class Streamer:
         meta["look"] = list(look.values())  # what the textures recorded are built in
         meta["season"] = season
         meta["stale"] = stale
+        meta["photo_floor"] = MIN_PHOTO_ZL  # the textures recorded take no coarser photos
         if self.screen is not None:
             meta["screen"] = self.screen
         meta["textures"] = textures

@@ -1226,7 +1226,13 @@ class EncodersTest(unittest.TestCase):
             setup_region(make_source(root, tile=(45, 6), textures=NAMES), pack, log=lambda _: None)
             cache = ChunkCache(root / "c.sqlite")
             s = Streamer(
-                pack, cache, lambda on_piece: None, finest_quality=0, workers=12, log=lambda _: None
+                pack,
+                cache,
+                lambda on_piece: None,
+                finest_quality=0,
+                workers=12,
+                log=lambda _: None,
+                memory_pressure=lambda: 0,  # not this computer's: it failed with X-Plane flying
             )
             self.assertEqual(s.encode_cap(), 12)  # waiting: all of them
             s.flying = True
@@ -1250,6 +1256,7 @@ class EncodersTest(unittest.TestCase):
                 log=lambda _: None,
                 flight_encodes=2,
                 sharp_builds=1,
+                memory_pressure=lambda: 0,  # failed with X-Plane flying beside it (2026-10-19)
             )
             self.assertEqual(s.encode_cap(), 6)
             s.flying = True

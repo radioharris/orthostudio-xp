@@ -153,12 +153,44 @@ class SparseTest(unittest.TestCase):
         tex = parse_texture_name("23520_33936_BI16.dds")
         self.assertEqual(chunk_grid(tex, 0), (16, 33936, 23520, 16))
         self.assertEqual(chunk_grid(tex, 1), (15, 16968, 11760, 8))
-        self.assertEqual(chunk_grid(tex, 4), (12, 2121, 1470, 1))
+        # 256 px: from ZL13's four pieces, shrunk, never Bing's ZL12 of other colours
+        self.assertEqual(chunk_grid(tex, 3), (13, 4242, 2940, 2))
+        self.assertEqual(chunk_grid(tex, 4), (13, 4242, 2940, 2))
         self.assertEqual(len(piece_keys(tex, 1)), 64)
         self.assertEqual(chunk_grid(tex, -1), (17, 67872, 47040, 32))  # 8192 px: ZL17 pieces
         self.assertEqual(len(piece_keys(tex, -1)), pieces_of(-1))
-        self.assertEqual((pieces_of(-1), pieces_of(0), pieces_of(4)), (1024, 256, 1))
-        self.assertEqual(parent_keys((12, 2121, 1470), depth=2), [(11, 1060, 735), (10, 530, 367)])
+        self.assertEqual((pieces_of(-1), pieces_of(0), pieces_of(4)), (1024, 256, 4))
+        airport = parse_texture_name("94080_135744_BI18.dds")  # ZL18: its 256 px from ZL14
+        self.assertEqual(chunk_grid(airport, 4)[0], 14)
+        self.assertEqual(pieces_of(4, 18), 1)
+
+    def test_no_photo_coarser_than_zl13(self):
+        """A 256 px level made of ZL13's pieces is 256 px, and a missing piece is never made from
+        a parent coarser than ZL13 (2026-10-19)."""
+        import io
+
+        from PIL import Image
+
+        from orthostudio.live.texture import MIN_PHOTO_ZL, assemble
+
+        tex = parse_texture_name("23520_33936_BI16.dds")
+        z, x0, y0, n = chunk_grid(tex, 4)
+        pieces = {}
+        for j in range(n):
+            for i in range(n):
+                buf = io.BytesIO()
+                Image.new("RGB", (256, 256), (40 * (i + 2 * j), 90, 30)).save(buf, "JPEG")
+                pieces[(z, x0 + i, y0 + j)] = buf.getvalue()
+        img, from_parent, blank = assemble(tex, 4, pieces, {})
+        self.assertEqual(img.shape, (256, 256, 3))
+        self.assertEqual((from_parent, blank), (0, 0))
+        self.assertTrue(abs(int(img[64, 64, 0]) - 0) < 8 and abs(int(img[192, 192, 0]) - 120) < 8)
+        self.assertEqual(MIN_PHOTO_ZL, 13)
+        self.assertEqual([k[0] for k in parent_keys((15, 100, 100))], [14, 13])
+        self.assertEqual(parent_keys((13, 100, 100)), [])
+        self.assertEqual(
+            parent_keys((16, 33936, 23520), depth=2), [(15, 16968, 11760), (14, 8484, 5880)]
+        )
 
     def test_write_sparse(self):
         layout = dds.mip_layout()

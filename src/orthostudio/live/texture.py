@@ -47,6 +47,12 @@ __all__ = ["punch_hole", "write_sparse"]
 
 CHUNK = 256
 MAX_PARENT_DEPTH = 4
+# No photo coarser than this, whatever the source: Bing's ZL12 and coarser come from another,
+# lighter and yellower, imagery than its ZL13 and finer (mean colour 27 apart from its ZL14, its
+# ZL13 2 apart, at seven places of the world, 2026-10-19), and a texture made sharper as the
+# aircraft passed stood out as a darker rectangle among the far ones, seen from cruise. A level
+# coarser than it is made of this zoom's photos, shrunk.
+MIN_PHOTO_ZL = 13
 MISSING_RGB = (72, 80, 64)  # a dull green-grey where nobody has imagery
 # The test of the 8192 px (settings tint_8192): that level only, washed with pink, so that a pilot
 # sees where X-Plane shows it; the 4096 px and smaller levels are the photos as they are.
@@ -73,17 +79,26 @@ def worker_ignores_ctrl_c() -> None:
         signal.signal(signal.SIGBREAK, signal.SIG_IGN)
 
 
+def _halvings(zoom: int, level: int) -> int:
+    """How many zooms below the texture's its level ``level`` (0 and coarser) takes its photos
+    from: the level itself, but never below :data:`MIN_PHOTO_ZL`."""
+    return max(0, min(level, zoom - MIN_PHOTO_ZL))
+
+
 def chunk_grid(tex: Texture, level: int) -> tuple[int, int, int, int]:
-    """(zoom, x0, y0, n): the n x n imagery pieces at ``zoom`` whose pixels are level ``level``."""
+    """(zoom, x0, y0, n): the n x n imagery pieces at ``zoom`` whose pixels make level ``level``:
+    as many as the level has, or, for a level coarser than :data:`MIN_PHOTO_ZL`, more, shrunk."""
     if level >= 0:
-        return tex.zoom - level, tex.x >> level, tex.y >> level, 16 >> level
+        d = _halvings(tex.zoom, level)
+        return tex.zoom - d, tex.x >> d, tex.y >> d, 16 >> d
     up = -level  # above the mesh's zoom: 8192 px
     return tex.zoom + up, tex.x << up, tex.y << up, 16 << up
 
 
-def pieces_of(level: int) -> int:
-    """The imagery pieces level ``level`` of a texture takes: 256 at 4096 px, 1,024 at 8192."""
-    n = 16 >> level if level >= 0 else 16 << -level
+def pieces_of(level: int, zoom: int = 16) -> int:
+    """The imagery pieces level ``level`` of a texture of ``zoom`` takes: 256 at 4096 px, 1,024 at
+    8192, 4 at 256 px (its photos at ZL13, :data:`MIN_PHOTO_ZL`)."""
+    n = 16 >> _halvings(zoom, level) if level >= 0 else 16 << -level
     return n * n
 
 
@@ -93,8 +108,9 @@ def piece_keys(tex: Texture, level: int) -> list[Key]:
 
 
 def parent_keys(key: Key, depth: int = MAX_PARENT_DEPTH) -> list[Key]:
+    """The coarser pieces a missing one is made from, never coarser than :data:`MIN_PHOTO_ZL`."""
     z, x, y = key
-    return [(z - d, x >> d, y >> d) for d in range(1, depth + 1) if z - d >= 0]
+    return [(z - d, x >> d, y >> d) for d in range(1, depth + 1) if z - d >= MIN_PHOTO_ZL]
 
 
 def double_bc1(blob: bytes, side: int) -> bytes:
@@ -346,6 +362,11 @@ def assemble(
                 rgb = MISSING_RGB
                 blank += 1
             img[j * CHUNK : (j + 1) * CHUNK, i * CHUNK : (i + 1) * CHUNK] = rgb
+    side = (16 >> level if level >= 0 else 16 << -level) * CHUNK
+    if img.shape[0] > side:  # photos finer than the level (MIN_PHOTO_ZL): shrunk to it
+        from PIL import Image
+
+        img = np.asarray(Image.fromarray(img).resize((side, side), Image.Resampling.BOX))
     return img, from_parent, blank
 
 
