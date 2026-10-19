@@ -102,6 +102,7 @@ PLAN_ASK_EVERY_S = 60.0  # SimBrief is asked for the pilot's last plan at most t
 JUMP_KM = 20.0  # a position this far from the last one is a new start: a teleport, a new flight
 PLAN_EVERY_S = 2.0
 REPORT_EVERY_S = 1.0  # what the Live window is told, this often
+STILL_MS = 1.0  # the aircraft slower than this: standing, its rings without their margin (plan)
 WRITES_EVERY_S = 300.0  # what Live wrote, by kind, in the log this often (writes.py)
 # what the pack's record says its textures follow (texture.photo_floor): ZL13, ZL14 for the sources
 # whose ZL13 is other imagery; a record of before has their far textures built again
@@ -897,20 +898,24 @@ class Streamer:
         path = self.pack_dir / neutral_file(top)
         return str(path) if path.exists() else None
 
-    def _level(self, distance_km: float, zoom: int, top: int, finest: int) -> tuple[int, float]:
+    def _level(
+        self, distance_km: float, zoom: int, top: int, finest: int, margin: float | None = None
+    ) -> tuple[int, float]:
         """The level a texture needs built at ``distance_km`` from the camera (in X-Plane's
         image), and how far out X-Plane reads that level of it (km, with the margin, before the
         image's scale). X-Plane counts a file's levels from its top, so it reads each level of an
         8192 px file (``top`` -1) where it reads the next smaller one of a 4096 px file, a ring
         farther out: its 4096 px and 2048 px levels are built that ring earlier (its 8192 px
         level is :meth:`_sharpest`'s; its farther levels have the copy above them,
-        ``texture.needs_copy``). The camera's reach alone did it only within its own distance."""
-        level = top_level_for(distance_km, zoom, finest, self.margin)
+        ``texture.needs_copy``). The camera's reach alone did it only within its own distance.
+        ``margin``: the rings' margin, :attr:`margin` when None."""
+        margin = self.margin if margin is None else margin
+        level = top_level_for(distance_km, zoom, finest, margin)
         ahead = top < 0 and 0 < level <= 2 and level - 1 >= max(finest, 0)
         if ahead:
             level -= 1
         read = ring_km(level + (1 if ahead else 0), zoom) if level < LOAD_LEVEL else LOAD_KM
-        return level, read * self.margin
+        return level, read * margin
 
     def _read_now(self, distance_km: float, zoom: int, top: int, finest: int) -> int | None:
         """The level X-Plane reads now of a texture ``distance_km`` from the camera (three
@@ -935,7 +940,7 @@ class Streamer:
         measures: none from high up. No camera reach (the module's docstring). At a start, X-Plane
         waits for all of them."""
         read = ring_km(0, zoom) * self.scale  # X-Plane's image: the rings grow with it
-        built = read * self.margin
+        built = read * (1.0 if starting else self.margin)  # a start: no margin (plan)
         if s > built:
             return None
         return s_now - (built if starting else read)
@@ -1006,6 +1011,10 @@ class Streamer:
             and math.hypot(cam_along, cam_up) * 1000.0 >= AWAY_M
         )
         outran: dict[str, int] = {}
+        # the margin anticipates the aircraft's moves: none while X-Plane loads a start or the
+        # aircraft stands, where X-Plane reads no farther than its rings (a third fewer 4096 px
+        # levels written at a start, 2026-10-20); back once it moves
+        margin = 1.0 if starting or fix.gs_ms < STILL_MS else None
         # heights above the ground: X-Plane measures from the camera in three dimensions, and
         # at cruise a texture right under the aircraft is 10 km away, too far for its 8192 px
         h = max(0.0, fix.agl_m) / 1000.0
@@ -1028,7 +1037,9 @@ class Streamer:
             # the aircraft and its path: the camera may be anywhere within the reach of them, near
             # the ground, a moment after the cockpit, so the rings are widened by it, along the
             # ground
-            level, read_km = self._level(max(0.0, d - reach) / self.scale, zoom, top, finest)
+            level, read_km = self._level(
+                max(0.0, d - reach) / self.scale, zoom, top, finest, margin
+            )
             ring = LOAD_KM if level == LOAD_LEVEL else read_km * self.scale + reach
             urgency = d_now - ring
             if camera is not None:
@@ -1044,7 +1055,7 @@ class Streamer:
                     unbuilt = reads is not None and self.level_of(name) > reads
                     if unbuilt and name not in self.outran:
                         outran[name] = reads
-                level_cam, read_cam = self._level(s_cam / self.scale, zoom, top, finest)
+                level_cam, read_cam = self._level(s_cam / self.scale, zoom, top, finest, margin)
                 if level_cam <= level and level_cam != LOAD_LEVEL:
                     urgency_cam = s_cam - read_cam * self.scale
                     urgency = urgency_cam if level_cam < level else min(urgency, urgency_cam)

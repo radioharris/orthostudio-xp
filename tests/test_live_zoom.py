@@ -577,14 +577,14 @@ def sharp(jobs: dict) -> list[int]:
 
 
 def test_what_a_start_waits_for(tmp_path: Path) -> None:
-    """At a start: the 8192 px within 15 km (12 km, where X-Plane reads them, and a quarter), which
-    X-Plane waits for (urgency <= 0); farther, each level of these 8192 px files where X-Plane
-    reads it, a ring before a 4096 px file's, widened by the camera's reach even in the cockpit:
-    their 4096 px level within 46 km (21 km and a quarter, and 20)."""
+    """At a start: the 8192 px within 12 km, where X-Plane reads them, no margin while it loads
+    (2026-10-20), which X-Plane waits for (urgency <= 0); farther, each level of these 8192 px
+    files where X-Plane reads it, a ring before a 4096 px file's, widened by the camera's reach
+    even in the cockpit."""
     s = row_streamer(tmp_path)
     jobs = s.plan(at(0), x_plane_there=False, starting=True)
-    assert sharp(jobs) == [0, 1, 2]  # 0, 6.8 and 13.6 km
-    for k in (0, 1, 2):
+    assert sharp(jobs) == [0, 1]  # 0 and 6.8 km; 13.6 km is beyond 12
+    for k in (0, 1):
         assert jobs[f"{ROW[k]}.dds"][0] <= 0
     # 4096 px out to 40.8 km, 2048 px from 47.6 km
     assert [jobs[f"{name}.dds"][1] for name in ROW[3:8]] == [0, 0, 0, 0, 1]
@@ -849,7 +849,9 @@ def test_the_photos_of_the_sharp_levels_are_not_kept(
     )
     name = f"{NAMES[0]}.dds"
     lat, lon = parse_texture_name(name).center
-    s.plan(Fix(lat, lon), x_plane_there=False, starting=True)
+    # in flight, with the rings' margin: at a start, without it, a ZL18 texture near the airport
+    # gets its 2048 px level from the same ZL17 photos, which that level keeps
+    s.plan(Fix(lat, lon, gs_ms=150.0, trk_deg=90.0), x_plane_there=False)
     s.start()
     deadline = time.time() + 120
     while s.built.get(name) != level and time.time() < deadline:
