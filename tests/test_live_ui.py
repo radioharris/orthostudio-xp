@@ -315,7 +315,7 @@ def test_start_stream_stop(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     assert stream.options is not None
     assert stream.options.fresh and stream.options.disk_budget_gb == 33  # the window's, halved
     assert stream.options.cache_budget_gb == 33
-    assert stream.options.camera_reach_km == 10.0  # sharp that much farther for external views
+    assert stream.options.camera_reach_km == 2.0  # sharp that much farther for external views
     assert status["log_file"] is None  # no LogLive.txt for this window
     assert status["platform"] in ("mac", "win", "lin")
     c.log_file = Path("/X-Plane 12/LogLive.txt")

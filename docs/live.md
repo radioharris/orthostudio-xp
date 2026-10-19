@@ -356,7 +356,7 @@ set it. Live has no wait to manage, and X-Plane itself says how sharp it wants e
 | Minimum zoom | Not needed: the far view is the 256 px level X-Plane reads when it loads an area. |
 | Maximum zoom, zoom near airports | One list on Live's tab beside the photo source: 16/18, 16/19 or 17/19. Below 16 is not offered, nor 18 away from airports (16,384 px textures). |
 | Zoom by flight level | Not needed: X-Plane already reads less sharp when the ground is farther away, and Live follows it. Only the 8192 px photos stop above about 18,500 ft over the ground. |
-| Prefetch radius, look-ahead, interval | Built in and measured: 300 km around, two minutes ahead along the track (along a SimBrief route while you fly it), the rings with a 25 % margin, and 10 km more for external views. |
+| Prefetch radius, look-ahead, interval | Built in and measured: 300 km around, two minutes ahead along the track (along a SimBrief route while you fly it), the rings with a 25 % margin, and 2 km more for external views. |
 | Maximum wait, time budget, fallbacks | Not needed: X-Plane waits only while a flight loads, until everything it reads there is built. In flight it never waits. |
 | Cache sizes, workers, pipelines | Internal. |
 
@@ -415,7 +415,7 @@ To switch Live off, put `enabled = false` in `live.toml`, in OrthoStudio XP's ow
 - Only where AutoOrtho has a mesh: the six regions cover the land of the planet, a few islands
   excepted.
 - Flown with X-Plane 12 on a Mac and on Windows; not yet on Linux.
-- The camera's reach (10 km around the aircraft) is kept in the cockpit too: an external view comes
+- The camera's reach (2 km around the aircraft) is kept in the cockpit too: an external view comes
   without warning, and X-Plane reads a texture once. Live notes how far external views take the
   camera, flight after flight, to set it on how pilots really fly.
 - From a checkout of the repository, `uv run python -m orthostudio.live ui` opens the window and
