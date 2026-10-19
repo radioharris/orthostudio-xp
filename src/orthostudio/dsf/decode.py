@@ -75,32 +75,12 @@ def _strings(payload: bytes) -> list[str]:
 
 
 def _read_pool(payload: bytes) -> np.ndarray:
-    n, planes = struct.unpack_from("<IB", payload, 0)
-    pos = 5
-    table = np.empty((n, planes), dtype=np.uint16)
-    for j in range(planes):
-        encoding = payload[pos]
-        pos += 1
-        if encoding == 0:  # raw
-            table[:, j] = np.frombuffer(payload, dtype="<u2", count=n, offset=pos)
-            pos += 2 * n
-        else:  # run-length encoded plane (never written by Ortho4XP/OrthoStudio XP)
-            out: list[int] = []
-            while len(out) < n:
-                run = payload[pos]
-                pos += 1
-                if run & 0x80:
-                    (v,) = struct.unpack_from("<H", payload, pos)
-                    pos += 2
-                    out.extend([v] * (run & 0x7F))
-                else:
-                    vals = np.frombuffer(payload, dtype="<u2", count=run, offset=pos)
-                    pos += 2 * run
-                    out.extend(int(x) for x in vals)
-            table[:, j] = out
-            if encoding & 2:  # differenced
-                table[:, j] = np.cumsum(table[:, j], dtype=np.uint16)
-    return table
+    """A pool's table, its planes raw, differenced, run-length encoded or both
+    (:func:`orthostudio.dsf.strips.read_pool`: OrthoStudio XP's own are raw, Live's mesh's are
+    differenced and run-length encoded)."""
+    from .strips import read_pool
+
+    return read_pool(payload)[0]
 
 
 def _walk_commands(data: bytes, cmds: bytes, decoded: DecodedDsf) -> None:
@@ -145,8 +125,31 @@ def _walk_commands(data: bytes, cmds: bytes, decoded: DecodedDsf) -> None:
             first, last = struct.unpack_from("<HH", cmds, pos)
             pos += 4
             tri([(pool, i) for i in range(first, last)])
-        elif cmd in (26, 27, 28, 29, 30, 31):
-            raise NotImplementedError(f"DSF command {cmd} (strip/fan) is not decoded")
+        elif cmd in (26, 27, 28, 29, 30, 31):  # strips and fans (Live's mesh: strips)
+            from .strips import FAN, STRIP, _triangles
+
+            kind = STRIP if cmd in (26, 27, 28) else FAN
+            if cmd in (28, 31):
+                first, last = struct.unpack_from("<HH", cmds, pos)
+                pos += 4
+                keys = pool * 65536 + np.arange(first, last)
+            elif cmd in (26, 29):
+                n = cmds[pos]
+                idx = np.frombuffer(cmds, dtype="<u2", count=n, offset=pos + 1).astype(np.int64)
+                pos += 1 + 2 * n
+                keys = pool * 65536 + idx
+            else:
+                n = cmds[pos]
+                v = np.frombuffer(cmds, dtype="<u2", count=2 * n, offset=pos + 1).astype(np.int64)
+                pos += 1 + 4 * n
+                keys = v[0::2] * 65536 + v[1::2]
+            tris = _triangles(kind, [keys])
+            tri([(int(k >> 16), int(k & 0xFFFF)) for k in tris.reshape(-1)])
+        elif cmd == 16:
+            pass
+        elif cmd == 17:
+            flag = cmds[pos]
+            pos += 1
         elif cmd in (32, 33, 34):
             fmt, size = {32: ("<B", 1), 33: ("<H", 2), 34: ("<I", 4)}[cmd]
             (n,) = struct.unpack_from(fmt, cmds, pos)
