@@ -275,11 +275,13 @@ def prepare(options: Options, log: Log) -> Prepared:
 
     winsearch.keep_out(live_root(), log)  # Windows: its files too many for the indexer
     sources = [options.source] if options.source else default_sources(xp_dir)
-    if not sources or not all((s / "terrain").is_dir() for s in sources):
+    from orthostudio.live.names import terrain_folder
+
+    if not sources or not all(terrain_folder(s).is_dir() for s in sources):
         # the files the DSFs name come from the regions while Live streams, round the aircraft
         # (orthostudio.live.names): a region taken away leaves nothing to make them from, where the
         # pack once held every one of them (2026-09-30)
-        gone = [str(s) for s in sources if not (s / "terrain").is_dir()]
+        gone = [str(s) for s in sources if not terrain_folder(s).is_dir()]
         raise RefusedError(
             (
                 f"the AutoOrtho region {gone[0]} is gone or incomplete: install it again, "

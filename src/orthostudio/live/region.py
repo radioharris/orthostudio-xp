@@ -540,10 +540,12 @@ def _fingerprints(sources: Sequence[Path]) -> dict[str, list[int]]:
     """What changes when a region is installed again or updated: its folders' times. The pack
     takes the files its DSFs name from the regions while Live streams (orthostudio.live.names),
     so DSFs of before beside ``.ter`` files of now must not meet."""
+    from .names import terrain_folder
+
     out = {}
     for source in sources:
         times = []
-        for sub in ("Earth nav data", "terrain"):
+        for sub in ("Earth nav data", terrain_folder(source).name):
             try:
                 times.append(os.stat(source / sub).st_mtime_ns)
             except OSError:

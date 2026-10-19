@@ -507,3 +507,44 @@ def test_a_square_s_terrain_files_are_written_with_the_decal(tmp_path: Path) -> 
     )
     assert again["placed"] == 0  # there already: kept
     assert b"flinty_dirt_1" in (pack / "terrain" / "a.ter").read_bytes()
+
+
+def test_a_region_that_names_its_terrain_files(tmp_path: Path) -> None:
+    """Live's mesh no longer holds its 698,351 terrain files a region: it names them in a list a
+    zip, and each is made from its name as its bake wrote it, with Live's decal (2026-10-19)."""
+    from orthostudio.live.names import TERRAIN_LISTS, folder_now, made_ter, one_region, run_ops
+
+    source = tmp_path / "z_osxp_eur"
+    (source / TERRAIN_LISTS).mkdir(parents=True)
+    (source / TERRAIN_LISTS / "z_osxp_eur_+59+005.txt").write_text(
+        "19024_33744_BI16.ter\n19024_33744_BI16_sea_overlay.ter\n", encoding="ascii"
+    )
+    one = one_region(source, None)
+    assert one.kinds == {"19024_33744_BI16.dds": 1 | 4}  # land, and a sea overlay: its mask
+    assert folder_now(source) is not None
+    # as the bake wrote them (the files of Europe's region, 2026-10-19)
+    assert made_ter("19024_33744_BI16.ter") == (
+        b"A\n800\nTERRAIN\n\nLOAD_CENTER 59.99899 5.40527 4892 4096\n"
+        b"BASE_TEX_NOWRAP ../textures/19024_33744_BI16.dds\n"
+        b"DECAL_LIB lib/g10/decals/maquify_2_green_key.dcl\nNO_ALPHA\n"
+    )
+    assert made_ter("19024_33744_BI16_sea_overlay.ter") == (
+        b"A\n800\nTERRAIN\n\nLOAD_CENTER 59.99899 5.40527 4892 4096\n"
+        b"BASE_TEX_NOWRAP ../textures/19024_33744_BI16.dds\n"
+        b"LOAD_CENTER_BORDER 59.99899 5.40527 4892 1024\n"
+        b"BORDER_TEX ../textures/19024_33744_ZL16.png\nWET\nNO_SHADOW\n"
+    )
+    pack = tmp_path / "pack"
+    (pack / "terrain").mkdir(parents=True)
+    land = pack / "terrain" / "19024_33744_BI16.ter"
+    sea = pack / "terrain" / "19024_33744_BI16_sea_overlay.ter"
+    done = run_ops(
+        str(pack),
+        [
+            ("make", "", str(land), "grass_and_stony_dirt_1.dcl"),
+            ("make", "", str(sea), "grass_and_stony_dirt_1.dcl"),
+        ],
+    )
+    assert done["placed"] == 2 and not done["errors"]
+    assert b"DECAL_LIB lib/g10/decals/grass_and_stony_dirt_1.dcl\n" in land.read_bytes()
+    assert sea.read_bytes() == made_ter(sea.name)  # the sea takes no decal
