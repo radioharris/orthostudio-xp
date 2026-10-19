@@ -1773,6 +1773,37 @@ def test_the_same_line_is_not_written_to_the_log_again_and_again(tmp_path: Path)
     assert len(lines()) == 2, "and a line that says something new is written"
 
 
+def test_a_held_back_line_is_written_once_its_second_has_passed(tmp_path: Path) -> None:
+    """A tile's terrain step said "reading the relief" then "airports" within the second, then
+    nothing for twelve minutes while it flattened a large airport and applied two patches: the
+    log showed "reading the relief" all along (a user, 2026-10-18). The ticker writes the held
+    line as soon as its second has passed, once."""
+    from orthostudio.sched.events import Progress, Started
+
+    at = [0.0]
+    job = _job([_spec("+48+011")], lambda: at[0], tmp_path)
+    node = "+48+011/vectors"
+    relief, airports = "+48+011: reading the relief", "+48+011: airports"
+
+    def lines() -> list[str]:
+        return [e["message"] for e in job.events() if e["event"] == "log" and e.get("node") == node]
+
+    job.on_event(Started(node, "cpu", KEY))
+    job.on_event(Progress(node, 0.02, relief))
+    at[0] = 0.05
+    job.on_event(Progress(node, 0.05, airports))
+    assert lines() == [relief]
+    at[0] = 0.6
+    job._say_held_lines()
+    assert lines() == [relief]  # still within the second
+    at[0] = 1.1
+    job._say_held_lines()
+    assert lines() == [relief, airports]
+    at[0] = 30.0
+    job._say_held_lines()
+    assert lines() == [relief, airports]  # and only once
+
+
 def test_a_steps_last_line_reaches_the_log_even_within_the_second(tmp_path: Path) -> None:
     """Two tiles read from the library, and the log said "4 OSM layers received" for one: the
     other's came 0.8 s after its "waiting for the map data server", and the rule of one line a

@@ -868,6 +868,30 @@ class Job:
                 if self.finished:
                     return
                 self._emit_stats(min_period=STATS_PERIOD_S)
+                self._say_held_lines()
+
+    def _say_held_lines(self) -> None:
+        """Write the line a running node said within the second of its last one, once that second
+        has passed, instead of waiting for the node's next message.
+
+        A tile's terrain step said "reading the relief" then "airports" in the same second, then
+        nothing for twelve minutes while it flattened a large airport and applied two patches: the
+        once-a-second rule held "airports" back until the next message, and the log showed twelve
+        minutes of "reading the relief" (a user, 2026-10-18).
+        """
+        now = self._clock()
+        for ts in self._tiles.values():
+            for st in ts.nodes.values():
+                heard = self._last_heard.get(st.node)
+                if st.status != "running" or not heard or heard == self._last_said.get(st.node):
+                    continue
+                if now - self._last_log.get(st.node, now - LOG_PERIOD_S) < LOG_PERIOD_S:
+                    continue
+                self._last_log[st.node] = now
+                self._last_said[st.node] = heard
+                tile = parse_node_id(st.node)[0]
+                base = {"tile": tile, "stage": st.stage, "node": st.node, "role": st.role}
+                self._append("log", **base, message=heard)
 
     # -- end of the run (job thread) ----------------------------------------------------------
 

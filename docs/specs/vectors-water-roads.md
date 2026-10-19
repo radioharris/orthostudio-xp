@@ -209,6 +209,12 @@ rejected ways are counted and reported, not inserted).
 
 ## 4. Rules of the patch builder (`:639-968`)
 
+The terrain step says each phase as it starts, so a long one is never silent: "flattening the
+airports into the relief", "the patch <name>" for every patch file or folder as its reading
+starts (`build_patch_layers(..., on_file=)`), then "the runways, taxiways and aprons". A large
+patch with a large airport on a 1 m relief of one's own took twelve silent minutes on a user's
+tile (EDDM, 2026-10-18).
+
 Patches are `<tile>/*.patch.osm` files (JOSM XML, read with every tag kept; Ortho4XP holds them
 under `Patches/<10° cell>/<tile>`, and `pipeline.build.patches_folder` reads either tree, or the
 tile's own directory named as the folder) and

@@ -413,8 +413,12 @@ def build_patch_layers(
     dem: Altitudes | None = None,
     *,
     on_event: EventHandler | None = None,
+    on_file: Callable[[str], None] | None = None,
 ) -> PatchResult:
     """Every patch of ``directory`` as layers, seeds, area and names (``:649-873``).
+
+    ``on_file`` hears each patch's name as its reading starts: a large one can take minutes on a
+    fine relief, and the step was silent all along (a user's EDDM patch, 2026-10-18).
 
     ``directory`` is ``Patches/<tile>``; a missing directory gives an empty result, as it does
     in Ortho4XP (``:652-653``), but it is *reported* through ``on_event`` so that a folder that is
@@ -446,6 +450,8 @@ def build_patch_layers(
     }
     for path in sorted(p for p in root.iterdir() if p.name.endswith(PATCH_SUFFIX)):
         names.append(path.name[: -len(PATCH_SUFFIX)])
+        if on_file is not None:
+            on_file(names[-1])
         counts["files"] += 1
         said = 0
 
@@ -476,6 +482,8 @@ def build_patch_layers(
             )
     for folder in sorted(p for p in root.iterdir() if p.is_dir()):
         names.append(folder.name)
+        if on_file is not None:
+            on_file(folder.name)
         for path in sorted(folder.iterdir()):
             obj = read_obj8(path, tile, dem)
             if obj is None:
