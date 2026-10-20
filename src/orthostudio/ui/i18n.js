@@ -2332,7 +2332,7 @@ const CODES = {
           : LOOKS_LIKE_A_PATH.test(String(c.source || ""))
             ? ["Pas de relief pour cette tuile dans vos propres fichiers : {reason}. OrthoStudio XP ne construit pas une tuile plate.", "Ajoutez le fichier de ce carré, ou choisissez un autre relief dans Réglages ; un dossier posé par-dessus un relief laisse celui-ci répondre là où il n'a rien."]
             : ["Pas de relief pour cette tuile : OrthoStudio XP ne construit pas une tuile plate.", "Installez cette région des décors X-Plane 12 (installeur X-Plane), ou fournissez un fichier d'altitudes dans Réglages."]),
-    DEM_VOIDS_FILLED_WITH_ZERO: ["Des vides du relief ont été mis à 0 m.", "Passez « Vides du raster » à « nearest » dans Réglages si ce n'est pas la mer."],
+    DEM_VOIDS_FILLED_WITH_ZERO: ["Des vides du relief ont été mis à 0 m.", "Si ce n'est pas la mer : à partir de 10 000 trous sur une tuile, aucun réglage ne les bouche, prenez un fichier sans trous ou un autre relief ; en dessous, choisissez « Boucher les petits trous avec les altitudes voisines »."],
     MESH_TRIANGLE_BUDGET_REACHED: ["Le maillage a atteint la limite de triangles.", "Augmentez limit_tris ou curvature_tol dans Avancé."],
     ZONE_INVALID: ["Une zone est inutilisable : rien n'est enregistré ni construit tant qu'elle n'est pas corrigée.", "Corrigez ou supprimez cette zone à l'étape 2 (ou dans le fichier des zones), puis recommencez."],
     ZONE_CONFLICT: ["Les zones ont été modifiées ailleurs (autre fenêtre ou fichier) : rien n'a été enregistré.", "La liste a été rechargée ; refaites votre dernière modification."],
@@ -2476,7 +2476,7 @@ const CODES = {
           : LOOKS_LIKE_A_PATH.test(String(c.source || ""))
             ? ["No relief for this tile in your own files: {reason}. OrthoStudio XP does not build a flat tile.", "Add the file of that square, or choose another relief in Settings; a folder laid over a relief lets that relief answer where it has nothing."]
             : ["No relief for this tile: OrthoStudio XP does not build a flat tile.", "Install this region of the X-Plane 12 scenery (X-Plane installer), or provide an elevation file in Settings."]),
-    DEM_VOIDS_FILLED_WITH_ZERO: ["Voids of the elevation raster were set to 0 m.", "Set “Raster voids” to “nearest” in Settings if this is not sea."],
+    DEM_VOIDS_FILLED_WITH_ZERO: ["Voids of the elevation raster were set to 0 m.", "If this is not sea: from 10,000 holes in a tile no setting fills them, so use a file without holes or another relief; below that, choose “Fill the small holes with the heights around them”."],
     MESH_TRIANGLE_BUDGET_REACHED: ["The mesh reached its triangle budget.", "Raise limit_tris or curvature_tol in Advanced."],
     ZONE_INVALID: ["A zone cannot be used: nothing is saved or built until it is fixed.", "Fix or delete that zone in step 2 (or in the zones file), then try again."],
     ZONE_CONFLICT: ["The zones were changed elsewhere (another window or the file): nothing was saved.", "The list was loaded again; make your last change again."],

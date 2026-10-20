@@ -1399,7 +1399,8 @@ uncached tile adds its OSM download (24.6 s measured on `+43+004`). On top of th
   `good_imagery_list`". No setting reaches that list.
 - `errors.py:346-351`, remedy of `DEM_VOIDS_FILLED_WITH_ZERO`: "set fill_nodata to nearest". The
   event is also raised when `nearest` was set and the raster had 10 000 voids or more
-  (`dem/dem.py:158-165`).
+  (`dem/dem.py:158-165`). Fixed 2026-10-20: the remedy now says that from 10 000 voids no setting
+  fills them (a file without holes or another relief), and names the plain choice for fewer.
 
 ## 7. Open questions a quick test in X-Plane would settle
 

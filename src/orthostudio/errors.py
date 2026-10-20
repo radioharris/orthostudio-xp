@@ -443,7 +443,8 @@ _SPECS: tuple[ErrorSpec, ...] = (
         _D,
         _C,
         "{count} nodata pixels of cell {cell} were set to 0 m.",
-        "Use a DEM without voids for this cell or set fill_nodata to nearest.",
+        "If this is not sea: from 10,000 voids in a cell no setting fills them, so use a DEM "
+        "without voids for this cell; with fewer, set fill_nodata to nearest.",
     ),
     _spec(
         "DEM_CELL_ASSUMED_OCEAN",
