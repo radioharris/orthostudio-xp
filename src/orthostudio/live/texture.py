@@ -16,12 +16,10 @@ aircraft and its path. The far levels of an 8192 px file, though, are read at 72
 before their photos come: so a file built from the 512 px or the 256 px level has the level above
 it written too, as its copy, twice as wide (:func:`double_bc1`, :func:`needs_copy`), the same
 image, never the neutral colour.
-And a level X-Plane reads before its photos are built first gets the copy of the level below it
-(:func:`copy_up`, the streamer's ``copied_up``): the 8192 px level of a texture about to get its
-photos, or a camera taken farther than Live built: the ortho a little blurry, never the neutral
-colour. A copy takes four times the disk of the level it copies, which is why there are no others
-(every level copied took 27.7 GB for a five-minute flight near Lyon, 2026-09-28; one above every
-2048 px level would have added 1.6 GB to the 2.7 GB of a Pyrenees flight, 2026-10-20).
+And the 8192 px level of a texture about to get its photos first gets the copy of its 4096 px
+level (:func:`copy_up`): photos coming late show the ortho as at ZL16, never the neutral colour.
+A copy takes four times the disk of the level it copies, which is why there are no others (every
+level copied took 27.7 GB for a five-minute flight near Lyon, 2026-09-28).
 
 The pieces are assembled, mip-mapped in linear light and encoded to BC1 by
 ``orthostudio.live.imaging``, imported where it is used so that the layout functions here need
@@ -302,13 +300,11 @@ def downgrade(path: Path, level: int, neutral: Path, file_top: int = 0) -> None:
     )
 
 
-def copy_up(path: Path, neutral: Path, file_top: int = -1, level: int = 0) -> None:
-    """The level above ``level``, the sharpest a texture is built to, made the copy of that one,
-    the levels kept, nothing downloaded: until its photos come (the module's docstring)."""
-    levels = _levels_from(path, level, _file_top(path, file_top))  # a file not yet set to the zoom
-    write_sparse(
-        path, level, levels, base=neutral, file_top=file_top, copy_above=True, keep_from=level
-    )
+def copy_up(path: Path, neutral: Path, file_top: int = -1) -> None:
+    """The 8192 px level of a texture built from its 4096 px one made the copy of that one, the
+    levels kept, nothing downloaded: until its photos come (the module's docstring)."""
+    levels = _levels_from(path, 0, _file_top(path, file_top))  # a file not yet set to the zoom too
+    write_sparse(path, 0, levels, base=neutral, file_top=file_top, copy_above=True, keep_from=0)
 
 
 def resize(path: Path, built: int, old_top: int, new_top: int, neutral: Path) -> int:

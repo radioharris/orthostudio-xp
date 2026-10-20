@@ -332,9 +332,8 @@ Maximum: X-Plane then never reads it.
 
 External views count: X-Plane measures from the camera. With Shift+4 the camera can go kilometres
 away in a second, faster than anything downloads. Live builds nothing farther around the aircraft
-for it, to write less on the disk: where the camera makes X-Plane read a level before its photos,
-Live first copies the level below into it, so the ground shows a little blurry there rather than
-green-grey, and stays so until X-Plane loads that area again. At a flight's start, the whole
+for it, to write less on the disk: a camera taken far from the aircraft, near the ground, may find
+the neutral colour, green-grey, until X-Plane loads that area again. At a flight's start, the whole
 airport and its surroundings (its ZL18 textures, about 7 km across) are built at 4096 px before
 X-Plane goes on, whatever the runway or the stand: a camera taken anywhere over the airport finds
 them sharp.
@@ -420,8 +419,8 @@ To switch Live off, put `enabled = false` in `live.toml`, in OrthoStudio XP's ow
   excepted.
 - Flown with X-Plane 12 on a Mac and on Windows; not yet on Linux.
 - External views add nothing around the aircraft: the rings' margin covers a camera near it, and
-  a camera taken far is built round where it is, a few seconds of a coarser level there; one
-  taken there faster than Live copies the level below may still find the neutral colour. Live
+  a camera taken far is built round where it is, a few seconds of a coarser level there, or the
+  neutral colour where X-Plane read it first. Live
   notes how far external views take the camera, flight after flight, to set it on how pilots
   really fly.
 - From a checkout of the repository, `uv run python -m orthostudio.live ui` opens the window and
