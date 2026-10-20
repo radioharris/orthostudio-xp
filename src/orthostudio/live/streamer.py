@@ -25,7 +25,11 @@ camera may go, even in the cockpit: an external view comes without warning, a zo
 camera out faster than any build, and X-Plane never reads a level again (the reach only in
 external views, 2026-09-29, would have let a quick zoom out find the neutral colour). The camera
 itself, where it is, counts in three dimensions from its own height, as X-Plane measures, with no
-reach round it.
+reach round it. The reach is 0 since 2026-10-20 (``session.camera_reach_km``), for fewer writes: a
+camera taken farther than Live built makes X-Plane read levels before their photos, which get the
+level below copied up first (:attr:`Streamer.copied_up`), the ortho a little blurry. At a start,
+the airport's whole block of ZL18 textures is built at 4096 px before X-Plane goes on
+(:meth:`Streamer._airport_block`).
 
 One zoom above the mesh's (AutoOrtho's max_zoom 17, or 19 near airports), a texture's file is
 8192 px from the pack's layout on (``orthostudio.live.region``), and X-Plane reads it as such from
@@ -75,7 +79,15 @@ from .region import (
     region_version,
     sources_of_pack,
 )
-from .rings import LOAD_LEVEL, MIN_LEVEL, finest_readable, ring_km, screen_scale, top_level_for
+from .rings import (
+    AIRPORT_ZOOM,
+    LOAD_LEVEL,
+    MIN_LEVEL,
+    finest_readable,
+    ring_km,
+    screen_scale,
+    top_level_for,
+)
 from .route import KM_PER_DEG, Route
 from .texture import (
     MIN_PHOTO_ZL,
@@ -136,6 +148,9 @@ SHARP_WORKERS = 4
 # Built again after being made coarser, a texture downloads them again, as the first time.
 UNCACHED_FROM = 0
 COPY_UP_AT = 1.1  # an 8192 px level not built yet this near where X-Plane reads it: late
+# At a start, the airport's block is followed this far from the start at most: airports near each
+# other make one block of ZL18 textures (London's), which would grow on and on
+BLOCK_KM = 10.0
 # Above CRUISE_ON_M from the ground (the aircraft's height, or a camera's lower down), no 8192 px
 # level gets its photos (ZL17, ZL19 near airports), only the copy of its 4096 px one, as X-Plane is
 # about to read it; again below CRUISE_OFF_M. The screen cannot show that level from there: from
@@ -404,7 +419,7 @@ class Streamer:
         self.encoding_now = 0  # textures being encoded, for the log of a stutter
         self.ready_now = 0  # textures with all their photos, waiting for an encoder
         self.photos_in_names: frozenset[str] = frozenset()  # all their photos: waiting or encoded
-        # 8192 px levels whose photos are late: the 4096 px level copied up into them meanwhile
+        # levels X-Plane reads before their photos: the level below copied up into them meanwhile
         # (orthostudio.live.texture.copy_up), so that X-Plane never reads the neutral colour there
         self.to_copy: set[str] = set()
         self.copied_up: set[str] = set()
@@ -945,6 +960,36 @@ class Streamer:
             return None
         return s_now - (built if starting else read)
 
+    def _airport_block(self, lat: float, lon: float) -> set[str]:
+        """At a start, the airport's whole block of ZL18 textures (the mesh's, round its outline):
+        those X-Plane reads at 4096 px from there, and every one touching them, on to BLOCK_KM. All
+        get their 4096 px level before X-Plane goes on: a camera taken anywhere over the airport
+        finds them built, whatever the runway or the stand. Live's start is the airport's own point
+        (its apt.dat datum), 2 km from the threshold of LSGG's runway 04: a texture of the block
+        3.5 km from it was built at 2048 px, 1.5 km from the aircraft, and X-Plane read its 4096 px
+        level a second before Live wrote it, the neutral colour (2026-10-20)."""
+        near: dict[tuple[int, int, str], str] = {}
+        seeds = []
+        read = ring_km(0, AIRPORT_ZOOM) * self.scale
+        for name, tlat, tlon, zoom, *_ in self.index.around(lat, lon, BLOCK_KM):
+            if zoom != AIRPORT_ZOOM or (tex := parse_texture_name(name)) is None:
+                continue
+            d = haversine_m(lat, lon, tlat, tlon) / 1000.0
+            if d <= BLOCK_KM:
+                near[(tex.y, tex.x, tex.provider)] = name
+                if d <= read:
+                    seeds.append((tex.y, tex.x, tex.provider))
+        block, todo = set(seeds), list(seeds)
+        while todo:
+            y, x, provider = todo.pop()
+            for dy in (-16, 0, 16):
+                for dx in (-16, 0, 16):
+                    key = (y + dy, x + dx, provider)
+                    if key in near and key not in block:
+                        block.add(key)
+                        todo.append(key)
+        return {near[key] for key in block}
+
     def _cruise_height(self, fix: Fix, starting: bool) -> None:
         """Whether the eye is so high above the ground that the screen cannot show an 8192 px level
         (:attr:`cruising`, CRUISE_ON_M): the aircraft's height, or a camera's lower down; until
@@ -1021,7 +1066,8 @@ class Streamer:
         h_cam = h if fix.cam_agl_m is None else max(0.0, fix.cam_agl_m) / 1000.0
         self._cruise_height(fix, starting)
         jobs: dict[str, tuple[float, int]] = {}
-        late: list[str] = []  # 8192 px levels to copy the 4096 px one into now (copied_up)
+        late: list[str] = []  # levels X-Plane reads before their photos: the one below copied up
+        block = self._airport_block(fix.lat, fix.lon) if starting else set()
         for name, lat, lon, zoom, *_ in self.index.around(fix.lat, fix.lon, PLACEHOLDER_KM):
             if name in self.theirs:  # X-Plane shows the user's own tile there
                 continue
@@ -1060,6 +1106,14 @@ class Streamer:
                     urgency_cam = s_cam - read_cam * self.scale
                     urgency = urgency_cam if level_cam < level else min(urgency, urgency_cam)
                     level = level_cam
+            if name in block and level > max(finest, 0):  # the airport's, all at 4096 px
+                level, urgency = max(finest, 0), min(urgency, 0.0)
+            if (  # X-Plane reads a level sharper than built, its photos late: the copy meanwhile
+                not starting and name in self.built and name not in self.copied_up
+            ):
+                reads = self._read_now(s_now / self.scale, zoom, top, finest)
+                if reads is not None and reads < self.level_of(name):
+                    late.append(name)
             if level == 0 and zoom in self.reads_8192:
                 sharp = self._sharpest(zoom, s, s_now, starting)
                 if sharp is not None:
@@ -1287,7 +1341,8 @@ class Streamer:
         asked_at: dict[Key, float] = {}  # when each piece awaited was asked for
         encoding: dict[Future, _Job] = {}
         ready: list[_Job] = []  # pieces all in, waiting for an encoder (submit_ready)
-        copying: dict[str, Future] = {}  # late 8192 px levels getting their copy (copy_late)
+        # late levels getting their copy (copy_late): the future, the level copied, the file's top
+        copying: dict[str, tuple[Future, int, int]] = {}
         to_cache: list[tuple[Key, int, bytes | None]] = []
 
         def known(keys: list[Key]) -> dict[Key, bytes | None]:
@@ -1368,26 +1423,30 @@ class Streamer:
                 encoding[fut] = job
 
         def copy_late(pool) -> None:
-            """The late 8192 px levels the planner found (``to_copy``): the 4096 px level copied
-            up into each, in a worker, before its photos are encoded; not once they are being."""
+            """The late levels the planner found (``to_copy``): the sharpest level built copied up
+            into the one above, in a worker, before its photos are encoded; not once they are
+            being."""
             with self.lock:
                 late = [n for n in self.to_copy if n not in copying]
             busy = {job.name for job in encoding.values()}
             for name in late:
                 if self._fitting(name):
                     continue  # set to the zoom's size first, copied up after
-                if name in busy or self.built.get(name) != 0:
+                top = self.top_of(name)
+                built = self.built.get(name)
+                if name in busy or built is None or built - 1 < top:
                     with self.lock:
                         self.to_copy.discard(name)
                     continue
-                top = self.top_of(name)
                 neutral = self.neutral_for(top)
-                copying[name] = pool.submit(
+                fut = pool.submit(
                     copy_up,
                     self.pack_dir / "textures" / name,
                     None if neutral is None else Path(neutral),
                     top,
+                    built,
                 )
+                copying[name] = (fut, built, top)
 
         def count_written(job: _Job) -> None:
             """A texture's levels written, by its sharpest level (writes.py)."""
@@ -1403,20 +1462,25 @@ class Streamer:
                 writes.add("copies above a far level", copy)
 
         def copies_done() -> None:
-            for name in [n for n, f in copying.items() if f.done()]:
-                fut = copying.pop(name)
+            for name in [n for n, (f, _, _) in copying.items() if f.done()]:
+                fut, built, top = copying.pop(name)
                 with self.lock:
                     self.to_copy.discard(name)
                 try:
                     fut.result()
                 except Exception as e:
-                    self.log(f"  could not copy up the 4096 px level of {name}: {e}")
+                    px = dds.size_of(built)
+                    self.log(f"  could not copy up the {px} px level of {name}: {e}")
                     continue
-                writes.add("8192 px copies of the 4096 px level", dds.level_layout(-1)[0][1])
+                px, below = dds.size_of(built - 1), dds.size_of(built)
+                writes.add(
+                    f"{px} px copies of the {below} px level",
+                    dds.level_layout(top)[built - 1 - top][1],
+                )
                 with self.lock:
                     self.copied_up.add(name)
                 self.log(
-                    f"  {name}: its 8192 px photos late, its 4096 px level copied up meanwhile"
+                    f"  {name}: its {px} px photos late, its {below} px level copied up meanwhile"
                 )
 
         def answer(key: Key, status: int, body: bytes | None, pool) -> None:

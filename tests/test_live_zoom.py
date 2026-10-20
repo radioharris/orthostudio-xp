@@ -746,6 +746,55 @@ def test_late_8192_px_photos_get_the_copy_first(tmp_path: Path) -> None:
     s.cache.close()
 
 
+def block_names() -> tuple[list[str], str]:
+    """An airport's block of ZL18 textures, 4 x 4 near 46.1° N 5.5° E (each 1.7 km across), and
+    one more ZL18 texture 8.5 km east of its first, two columns away: another airfield's."""
+    y0, x0 = 93136, 135040  # the first one's centre: 46.11° N, 5.46° E
+    block = [f"{y0 + 16 * r}_{x0 + 16 * c}_BI18" for r in range(4) for c in range(4)]
+    return block, f"{y0 + 16}_{x0 + 16 * 6}_BI18"
+
+
+def test_a_start_waits_for_the_airport_s_whole_block(tmp_path: Path) -> None:
+    """At a start, every ZL18 texture of the airport's block gets its 4096 px level before X-Plane
+    goes on (urgency <= 0), those farther than X-Plane reads it from the start too: a camera
+    taken over the airport finds them built. Another airfield's, not touching the block, does not;
+    nor the block's far corner once X-Plane flies (2026-10-20, LSGG)."""
+    block, other = block_names()
+    pack = region(tmp_path, textures=(*block, other))
+    cache = ChunkCache(tmp_path / "c.sqlite")
+    s = Streamer(pack, cache, FakeDownloader, finest_quality=0, log=quiet)
+    start = Fix(*parse_texture_name(f"{block[5]}.dds").center)  # the block's second row and column
+    corner = f"{block[15]}.dds"  # 4.8 km from the start: X-Plane reads its 2048 px level there
+    jobs = s.plan(start, x_plane_there=False, starting=True)
+    for name in block:
+        assert jobs[f"{name}.dds"][1] == 0 and jobs[f"{name}.dds"][0] <= 0, name
+    assert jobs[f"{other}.dds"][1] > 0
+    standing = s.plan(Fix(start.lat, start.lon), x_plane_there=False)
+    assert standing[corner][1] == 1
+    cache.close()
+
+
+def test_a_level_read_before_its_photos_gets_the_copy_first(tmp_path: Path) -> None:
+    """In flight, a texture built to 2048 px whose 4096 px level X-Plane reads now (a camera taken
+    farther than Live built, Live behind) is marked for the copy of its 2048 px level, the ortho a
+    little blurry, never the neutral colour; not one X-Plane does not read sharper yet, nor at a
+    start (X-Plane waits for the photos), nor where the copy is already."""
+    pack = region(tmp_path, Zooms(16, 18), textures=ROW)
+    cache = ChunkCache(tmp_path / "c.sqlite")
+    s = Streamer(pack, cache, FakeDownloader, finest_quality=0, max_zoom=16, log=quiet)
+    for k in (1, 2):
+        s.built[f"{ROW[k]}.dds"] = 1
+    s.plan(at(0), x_plane_there=False, starting=True)
+    assert s.to_copy == set()
+    s.plan(at(0, gs_ms=150.0, trk_deg=270.0), x_plane_there=False)
+    assert s.to_copy == {f"{ROW[1]}.dds"}  # 6.8 km; X-Plane reads 13.6 km at 2048 px
+    s.to_copy.clear()
+    s.copied_up.add(f"{ROW[1]}.dds")
+    s.plan(at(0, gs_ms=150.0, trk_deg=270.0), x_plane_there=False)
+    assert s.to_copy == set()
+    cache.close()
+
+
 class NoInternet:
     """A downloader that never answers."""
 
@@ -782,6 +831,33 @@ def test_the_builder_copies_up_while_the_photos_do_not_come(tmp_path: Path) -> N
     assert name in s.copied_up and s.built[name] == 0
     assert level_bytes(path, -1, -1) == double_bc1(levels_from(0, -1)[0], 4096)
     assert level_bytes(path, 0, -1) == levels_from(0, -1)[0]
+
+
+@pytest.mark.skipif(Image is None, reason="needs numpy, Pillow and ispc_texcomp")
+def test_the_builder_copies_a_2048_px_level_up_while_the_photos_do_not_come(
+    tmp_path: Path,
+) -> None:
+    """No internet: a 4096 px file built to 2048 px whose 4096 px level X-Plane reads gets the
+    copy of its 2048 px level there, nothing else written; its photos stay awaited."""
+    pack = region(tmp_path, Zooms(16, 18), textures=ROW)
+    name = f"{ROW[1]}.dds"
+    path = pack / "textures" / name
+    write_sparse(path, 1, levels_from(1, 0), base=ensure_neutral(pack, 0), file_top=0)
+    before = path.read_bytes()
+    cache = ChunkCache(tmp_path / "c.sqlite")
+    s = Streamer(pack, cache, NoInternet, finest_quality=0, max_zoom=16, workers=2, log=quiet)
+    s.built[name] = 1
+    s.plan(at(0, gs_ms=150.0, trk_deg=270.0), x_plane_there=False)
+    s.start()
+    deadline = time.time() + 60
+    while name not in s.copied_up and time.time() < deadline:
+        time.sleep(0.1)
+    s.close()
+    cache.close()
+    assert name in s.copied_up and s.built[name] == 1
+    assert level_bytes(path, 0, 0) == double_bc1(levels_from(1, 0)[0], 2048)
+    offset = dds.level_layout(0)[1][0]
+    assert path.read_bytes()[offset:] == before[offset:]
 
 
 def test_a_sharper_build_writes_only_its_new_levels(tmp_path: Path) -> None:

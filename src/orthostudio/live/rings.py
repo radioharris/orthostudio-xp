@@ -27,6 +27,7 @@ import math
 
 LOAD_LEVEL = 4  # the level X-Plane reads when it loads a tile
 MIN_LEVEL = -1  # 8192 px: one zoom above the mesh's, the most AutoOrtho builds
+AIRPORT_ZOOM = 18  # the mesh's textures round its airports (AutoOrtho's ZL18 within 0.5 km)
 RINGS_ZL16_KM = {3: 72.0, 2: 38.0, 1: 21.0, 0: 12.0}
 DEFAULT_MARGIN = 1.25  # build for a ring a quarter wider than measured
 REFERENCE_WIDTH_PX = 2704  # X-Plane's image when the rings were measured
@@ -79,7 +80,7 @@ def zoom_for(zoom: int, max_zoom: int, max_zoom_airports: int) -> int:
     """The zoom set for a texture of ``zoom``: AutoOrtho's rule (getortho.py
     ``_get_target_zoom_level``), the one near airports for the mesh's ZL18 textures, which are its
     airports' surroundings, the maximum zoom for the others."""
-    return max_zoom_airports if zoom == 18 else max_zoom
+    return max_zoom_airports if zoom == AIRPORT_ZOOM else max_zoom
 
 
 def file_top(zoom: int, max_zoom: int) -> int:
