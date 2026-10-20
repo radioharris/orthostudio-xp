@@ -106,6 +106,7 @@ export function createLiveMap(el, { api, info = null, ownKinds = null }) {
   const route = L.layerGroup().addTo(map);
   let plane = null;
   let camera = null;
+  let cameraLine = null; // from the aircraft to the camera, with the distance X-Plane counts
   let routeKey = "";
   let askedRoute = null; // the route the "Show my SimBrief route" button drew
   let follow = true;
@@ -368,6 +369,21 @@ export function createLiveMap(el, { api, info = null, ownKinds = null }) {
       } else if (camera) {
         map.removeLayer(camera);
         camera = null;
+      }
+      // the ground under the camera from the aircraft, in three dimensions as X-Plane counts it to
+      // choose the levels it takes there (the aircraft's height in it): the camera's own counts
+      // for nothing (the user, 2026-10-20)
+      if (cam && a && cam.from_aircraft_km != null) {
+        const ends = [[a.lat, a.lon], [cam.lat, cam.lon]];
+        const km = new Intl.NumberFormat(language(), { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(cam.from_aircraft_km);
+        if (!cameraLine) {
+          cameraLine = L.polyline(ends, { color: "#ffffff", weight: 2, dashArray: "6 6", opacity: 0.9, interactive: false }).addTo(map);
+          cameraLine.bindTooltip("", { permanent: true, direction: "center", className: "camera-km" });
+        } else cameraLine.setLatLngs(ends);
+        cameraLine.setTooltipContent(`${km} km`);
+      } else if (cameraLine) {
+        map.removeLayer(cameraLine);
+        cameraLine = null;
       }
       // the SimBrief route while the aircraft flies it; else the one the button asked for, if any
       const plan = stream?.streamer?.flight_plan;

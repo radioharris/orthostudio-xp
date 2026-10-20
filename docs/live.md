@@ -155,7 +155,9 @@ and on the right:
   **log**.
 
 **The map** shows the photos of your source, the borders and airports, the aircraft along its
-heading (and the camera in external views), your SimBrief route while you fly it (or with "Show my
+heading (and the camera in external views, a dashed line to it with the distance from the aircraft
+to the ground under it, its height in it, as X-Plane counts it to choose the textures' levels), your
+SimBrief route while you fly it (or with "Show my
 SimBrief route"), and the textures already built, coloured by how sharp they are on the ground:
 ZL19 violet (about 20 cm a pixel), ZL18 blue (40 cm), ZL17 green (85 cm), ZL16 amber (1.7 m), ZL15
 orange, grey blurrier. Zoomed out, the regions installed are shaded. Point at a texture and a bar

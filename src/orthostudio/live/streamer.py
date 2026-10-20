@@ -1923,7 +1923,13 @@ def progress_report(
     camera = None
     if fix is not None and fix.cam_lat is not None and fix.cam_lon is not None:
         camera_km = haversine_m(fix.lat, fix.lon, fix.cam_lat, fix.cam_lon) / 1000.0
-        camera = {"lat": fix.cam_lat, "lon": fix.cam_lon}
+        # the ground under the camera from the aircraft, as X-Plane counts it to choose the
+        # levels it takes there: in three dimensions, with the aircraft's height (the map's line)
+        camera = {
+            "lat": fix.cam_lat,
+            "lon": fix.cam_lon,
+            "from_aircraft_km": math.hypot(camera_km, max(0.0, fix.agl_m) / 1000.0),
+        }
     start = None
     if arrival is not None:
         left, work = streamer.urgent_work()
