@@ -3,7 +3,8 @@
 """A flight's route: airports and waypoints, and how close it passes to a point.
 
 Airports come from X-Plane's own airport data (``Global Airports/Earth nav data/apt.dat``): the
-``1302 datum_lat/datum_lon`` of the airport, else the middle of its first runway.
+``1302 datum_lat/datum_lon`` of the airport, else the middle of its first runway. A start on one of
+its runways or stands is that runway's threshold or that stand (:func:`start_spot`).
 """
 
 from __future__ import annotations
@@ -73,6 +74,61 @@ def airport_positions(apt: Path, icaos: Iterable[str] | None) -> dict:
     return found
 
 
+def airport_offsets(apt: Path) -> dict[str, int]:
+    """{ICAO: where its row starts in ``apt``}, for :func:`start_spot`."""
+    found: dict[str, int] = {}
+    with open(apt, "rb") as f:
+        while True:
+            at = f.tell()
+            line = f.readline()
+            if not line:
+                return found
+            if line.startswith(_AIRPORT_ROW):
+                parts = line.split()
+                if len(parts) > 4:
+                    found.setdefault(parts[4].decode("ascii", "replace").upper(), at)
+
+
+def _same_runway(a: str, b: str) -> bool:
+    """``04`` and ``4`` are one runway; ``04L`` is not ``04``."""
+    return a.strip().upper().lstrip("0") == b.strip().upper().lstrip("0")
+
+
+def start_spot(
+    apt: Path, offset: int, runway: str | None, ramp: str | None
+) -> tuple[float, float] | None:
+    """Where X-Plane places the aircraft for a start on ``runway`` (its threshold: a land runway's
+    end, a water runway's, a helipad) or at ``ramp`` (the stand of that name) of the airport whose
+    row starts at ``offset``; None when the airport has none of that name. The airport's own point
+    is 2 km from LSGG's threshold of runway 04: X-Plane took at 2048 px a texture 20.2 km from the
+    threshold, 22 km from that point, which Live had built at 1024 px (2026-10-20)."""
+    runway = runway.strip() if isinstance(runway, str) and runway.strip() else None
+    ramp = " ".join(ramp.split()) if isinstance(ramp, str) and ramp.strip() else None
+    if runway is None and ramp is None:
+        return None
+    with open(apt, "rb") as f:
+        f.seek(offset)
+        f.readline()  # the airport's own row
+        for line in f:
+            if line.startswith(_AIRPORT_ROW) or line.startswith(b"99"):
+                return None
+            parts = line.decode("utf-8", "replace").split()
+            with contextlib.suppress(IndexError, ValueError):
+                if runway is not None and parts[0] == "100":  # land: two ends of nine fields
+                    for name, lat, lon in ((parts[8], parts[9], parts[10]), parts[17:20]):
+                        if _same_runway(name, runway):
+                            return float(lat), float(lon)
+                elif runway is not None and parts[0] == "101":  # water
+                    for name, lat, lon in (parts[3:6], parts[6:9]):
+                        if _same_runway(name, runway):
+                            return float(lat), float(lon)
+                elif runway is not None and parts[0] == "102" and _same_runway(parts[1], runway):
+                    return float(parts[2]), float(parts[3])  # a helipad
+                elif ramp is not None and parts[0] == "1300" and " ".join(parts[6:]) == ramp:
+                    return float(parts[1]), float(parts[2])
+    return None
+
+
 class AirportIndex:
     """Every airport's position in X-Plane's apt.dat, read once in a thread of its own when Live
     starts: a click on Start Flight is then placed at once. One pass over the file for one airport
@@ -82,11 +138,24 @@ class AirportIndex:
     def __init__(self, apt: Path) -> None:
         self.apt = apt
         self._all: dict | None = None
+        self._offsets: dict[str, int] | None = None
         threading.Thread(target=self._read, name="live-airports", daemon=True).start()
 
     def _read(self) -> None:
         with contextlib.suppress(OSError):
             self._all = airport_positions(self.apt, None)
+            self._offsets = airport_offsets(self.apt)
+
+    def spot(self, icao: str, runway: str | None, ramp: str | None) -> tuple[float, float] | None:
+        """A start's runway threshold or stand (:func:`start_spot`); None until the index is read
+        (the airport's point serves then), or for an airport without it."""
+        offset = None if self._offsets is None else self._offsets.get(icao.upper())
+        if offset is None:
+            return None
+        try:
+            return start_spot(self.apt, offset, runway, ramp)
+        except OSError:
+            return None
 
     def __call__(self, icao: str) -> tuple[float, float] | None:
         icao = icao.upper()

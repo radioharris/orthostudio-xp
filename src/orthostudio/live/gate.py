@@ -129,8 +129,9 @@ def _spot(where: dict) -> str:
 
 
 def start_position(start: dict, airports: Airports) -> Start | None:
-    """Where a saved start is: its latitude and longitude, else its airport's (named with its
-    runway or its parking)."""
+    """Where a saved start is: its latitude and longitude, else its runway's threshold or its
+    stand when ``airports`` knows them (``route.AirportIndex.spot``), else its airport's point
+    (named with its runway or its parking)."""
     for where in start.values():
         if not isinstance(where, dict):
             continue
@@ -140,7 +141,10 @@ def start_position(start: dict, airports: Airports) -> Start | None:
         icao = where.get("airport_id")
         if isinstance(icao, str) and icao:
             icao = icao.upper()
-            pos = airports(icao)
+            spot = getattr(airports, "spot", None)  # the runway's threshold or the stand
+            pos = (
+                spot(icao, where.get("runway"), where.get("ramp")) if spot else None
+            ) or airports(icao)
             if pos is not None:
                 return pos[0], pos[1], icao + _spot(where)
     return None
