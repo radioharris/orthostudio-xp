@@ -4,7 +4,9 @@
 
 Airports come from X-Plane's own airport data (``Global Airports/Earth nav data/apt.dat``): the
 ``1302 datum_lat/datum_lon`` of the airport, else the middle of its first runway. A start on one of
-its runways or stands is that runway's threshold or that stand (:func:`start_spot`).
+its runways or stands is that runway's threshold or that stand (:func:`start_spot`), from the
+airport X-Plane loads: a custom scenery's, listed above Global Airports in ``scenery_packs.ini``,
+before X-Plane's own (:func:`airport_files`).
 """
 
 from __future__ import annotations
@@ -74,6 +76,33 @@ def airport_positions(apt: Path, icaos: Iterable[str] | None) -> dict:
     return found
 
 
+def airport_files(xplane: Path) -> list[Path]:
+    """The ``apt.dat`` files X-Plane takes its airports from, the first one winning: the enabled
+    packs of ``Custom Scenery/scenery_packs.ini`` in its order, Global Airports at its
+    ``*GLOBAL_AIRPORTS*`` line (or last)."""
+    own = apt_dat(xplane)
+    files: list[Path] = []
+    with contextlib.suppress(OSError):
+        for raw in (
+            (xplane / "Custom Scenery" / "scenery_packs.ini")
+            .read_text(encoding="utf-8", errors="replace")
+            .splitlines()
+        ):
+            if not raw.startswith("SCENERY_PACK "):
+                continue  # SCENERY_PACK_DISABLED too
+            pack = raw[len("SCENERY_PACK ") :].strip()
+            if pack == "*GLOBAL_AIRPORTS*":
+                files.append(own)
+                continue
+            folder = Path(pack) if Path(pack).is_absolute() else xplane / pack
+            apt = folder / "Earth nav data" / "apt.dat"
+            if apt.is_file():
+                files.append(apt)
+    if own not in files:
+        files.append(own)
+    return files
+
+
 def airport_offsets(apt: Path) -> dict[str, int]:
     """{ICAO: where its row starts in ``apt``}, for :func:`start_spot`."""
     found: dict[str, int] = {}
@@ -135,25 +164,34 @@ class AirportIndex:
     took 3 s in the streamer's loop under a start's load, and the plugin, unanswered for a second,
     let X-Plane go (LGAV and LCLK, 2026-09-29). Until the index is read, one pass as before."""
 
-    def __init__(self, apt: Path) -> None:
+    def __init__(self, apt: Path, files: Sequence[Path] | None = None) -> None:
+        """``files``: the ``apt.dat`` files X-Plane loads, the first one winning
+        (:func:`airport_files`); ``apt`` alone by default."""
         self.apt = apt
+        self.files = list(files) if files is not None else [apt]
         self._all: dict | None = None
-        self._offsets: dict[str, int] | None = None
+        self._offsets: dict[str, tuple[Path, int]] | None = None
         threading.Thread(target=self._read, name="live-airports", daemon=True).start()
 
     def _read(self) -> None:
         with contextlib.suppress(OSError):
             self._all = airport_positions(self.apt, None)
-            self._offsets = airport_offsets(self.apt)
+        offsets: dict[str, tuple[Path, int]] = {}
+        for apt in self.files:
+            with contextlib.suppress(OSError):
+                for icao, at in airport_offsets(apt).items():
+                    offsets.setdefault(icao, (apt, at))
+        self._offsets = offsets
 
     def spot(self, icao: str, runway: str | None, ramp: str | None) -> tuple[float, float] | None:
-        """A start's runway threshold or stand (:func:`start_spot`); None until the index is read
-        (the airport's point serves then), or for an airport without it."""
-        offset = None if self._offsets is None else self._offsets.get(icao.upper())
-        if offset is None:
+        """A start's runway threshold or stand (:func:`start_spot`) in the airport X-Plane loads;
+        None until the index is read (the airport's point serves then), or for an airport
+        without it."""
+        found = None if self._offsets is None else self._offsets.get(icao.upper())
+        if found is None:
             return None
         try:
-            return start_spot(self.apt, offset, runway, ramp)
+            return start_spot(found[0], found[1], runway, ramp)
         except OSError:
             return None
 

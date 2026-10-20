@@ -245,7 +245,7 @@ def prepare(options: Options, log: Log) -> Prepared:
         set_zooms,
         setup_region,
     )
-    from orthostudio.live.route import AirportIndex, Route, apt_dat
+    from orthostudio.live.route import AirportIndex, Route, airport_files, apt_dat
     from orthostudio.live.streamer import Fix
 
     # where a start's wait begins, in the log: the window's Start or Prepare
@@ -337,7 +337,7 @@ def prepare(options: Options, log: Log) -> Prepared:
         plugin.installed(xp_dir) if xplane_running() else plugin.install(xp_dir, log=log)
     ):
         try:
-            gate = Gate(xp_dir, AirportIndex(apt_dat(xp_dir)))
+            gate = Gate(xp_dir, AirportIndex(apt_dat(xp_dir), airport_files(xp_dir)))
         except OSError as e:
             # never streaming without it: the plugin, finding nobody there as X-Plane starts,
             # would take Live's scenery out of X-Plane (the review of 2026-10-01)

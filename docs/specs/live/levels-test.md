@@ -53,7 +53,8 @@ ring between the two points is taken one level sharper by X-Plane than Live buil
 Its 2048 px level was neutral, grey-green with the camera over it, every time. Eleven ZL16 textures
 are so for that start. At 14:05 the same took a ZL18 texture 1.5 km from the aircraft and 3.5 km
 from the datum at 4096 px before Live built it. Since, a start on a runway or a stand is planned
-from its threshold or the stand in `apt.dat` (`orthostudio.live.route.start_spot`), where X-Plane
+from its threshold or the stand in the `apt.dat` X-Plane loads it from, a custom scenery's listed
+above Global Airports first (`orthostudio.live.route.start_spot`, `airport_files`), where X-Plane
 places the aircraft (45 m from LSGG's threshold of runway 04); the airport's point serves only
 for an airport without them, or before Live's index of `apt.dat` is read (4 s at its start). The
 plugin's position, read as X-Plane holds, is not used: a flight chosen while another flies still
