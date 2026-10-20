@@ -71,6 +71,13 @@ MISSING_RGB = (72, 80, 64)  # a dull green-grey where nobody has imagery
 # sees where X-Plane shows it; the 4096 px and smaller levels are the photos as they are.
 TINT_RGB = (255, 64, 200)
 TINT_ALPHA = 0.35
+# The test of the levels X-Plane takes at a flight's load (OSXP_LIVE_TINT_LEVELS=1 in Live's
+# environment): the 4096, 2048 and 1024 px levels washed red, blue and yellow, the smaller ones as
+# they are. A camera taken over a texture shows the sharpest level X-Plane holds of it, read at the
+# load (it reads nothing again for the camera, 2026-10-20): the neutral colour there is a level it
+# took before Live built it.
+TINT_LEVELS = os.environ.get("OSXP_LIVE_TINT_LEVELS") == "1"
+LEVEL_TINTS = {0: (255, 40, 40), 1: (40, 90, 255), 2: (255, 220, 0)}
 COPY_FROM = 3  # the levels whose copy goes above them in an 8192 px file: 512 px and smaller
 
 
@@ -385,24 +392,30 @@ def assemble(
     return img, from_parent, blank
 
 
-def tinted(img):
+def tinted(img, rgb=TINT_RGB):
     """``img`` washed with the test's pink (:data:`TINT_RGB`), its photo still seen under it."""
     import numpy as np
 
-    pink = np.array(TINT_RGB, dtype=np.float32)
+    pink = np.array(rgb, dtype=np.float32)
     return (img.astype(np.float32) * (1.0 - TINT_ALPHA) + pink * TINT_ALPHA).astype(np.uint8)
 
 
-def encode_levels(img, tint_top: bool = False, look=None) -> list[bytes]:
+def encode_levels(img, tint_top: bool = False, look=None, top: int | None = None) -> list[bytes]:
     """BC1 blocks of ``img`` and of every smaller level down to 1 x 1; ``tint_top``: ``img``'s own
     level pink, the smaller ones made from it untinted before; ``look``: the season's colours
-    (``orthostudio.live.look``, five values), given to the blocks of every level."""
+    (``orthostudio.live.look``, five values), given to the blocks of every level; ``top``:
+    ``img``'s level, for the test of :data:`TINT_LEVELS`."""
     from .imaging import encode_bc1, mip_chain
     from .look import look_blocks
 
     levels = mip_chain(img)
     if tint_top:
         levels[0] = tinted(levels[0])
+    if TINT_LEVELS and top is not None:
+        levels = [
+            tinted(lv, LEVEL_TINTS[top + k]) if top + k in LEVEL_TINTS else lv
+            for k, lv in enumerate(levels)
+        ]
     return [look_blocks(encode_bc1(level), look) for level in levels]
 
 
@@ -421,7 +434,7 @@ def build_job(job) -> tuple[str, int, int, int]:
     look = job[9] if len(job) > 9 else None
     tex = parse_texture_name(name)
     img, from_parent, blank = assemble(tex, level, pieces, parents)
-    levels = encode_levels(img, tint_top=tint and level < 0, look=look)
+    levels = encode_levels(img, tint_top=tint and level < 0, look=look, top=level)
     write_sparse(
         Path(path),
         level,
