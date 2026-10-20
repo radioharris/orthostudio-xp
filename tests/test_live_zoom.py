@@ -606,9 +606,9 @@ def test_in_flight_all_around_and_ahead(tmp_path: Path) -> None:
 
 
 def test_the_8192_px_in_three_dimensions(tmp_path: Path) -> None:
-    """X-Plane measures from the camera in three dimensions: high up, fewer textures are within
-    12 km, none above 15 km; a camera down low counts at its own height. From 18,500 ft none gets
-    its photos any more (test_no_8192_px_photos_at_cruise_height)."""
+    """X-Plane measures from the aircraft in three dimensions: high up, fewer textures are within
+    12 km, none above 15 km; a camera down low changes nothing. From 18,500 ft none gets its photos
+    any more (test_no_8192_px_photos_at_cruise_height)."""
     s = row_streamer(tmp_path)
     north = {"gs_ms": 200.0, "trk_deg": 0.0}  # the row is east: only its distance counts
     assert sharp(s.plan(at(0, **north), x_plane_there=False)) == [0, 1, 2]
@@ -619,18 +619,19 @@ def test_the_8192_px_in_three_dimensions(tmp_path: Path) -> None:
     ]  # 16,400 ft
     assert sharp(s.plan(at(0, agl_m=10_700.0, **north), x_plane_there=False)) == []  # FL350
     assert sharp(s.plan(at(0, agl_m=16_000.0, **north), x_plane_there=False)) == []
-    low_camera = at(0, agl_m=10_700.0, **north)
+    low_camera = at(0, agl_m=10_700.0, **north)  # X-Plane takes nothing more for a camera
     low_camera.cam_lat, low_camera.cam_lon = at(5).lat, at(5).lon
     low_camera.cam_agl_m = 300.0
-    assert sharp(s.plan(low_camera, x_plane_there=False)) == [0, 1, 3, 4, 5, 6, 7]
+    assert sharp(s.plan(low_camera, x_plane_there=False)) == []
     s.cache.close()
 
 
 def test_no_8192_px_photos_at_cruise_height(tmp_path: Path) -> None:
     """Above 18,500 ft from the ground no 8192 px level gets its photos: the screen cannot show
     them from there (the user's rule of 2026-10-01). Those X-Plane is about to read get the copy of
-    their 4096 px level, never the neutral colour; their photos again below 17,500 ft, for a camera
-    down low, and at a start, where X-Plane gives no height."""
+    their 4096 px level, never the neutral colour; their photos again below 17,500 ft, and at a
+    start, where X-Plane gives no height; not for a camera down low, X-Plane taking the levels for
+    the aircraft (docs/specs/live/levels-test.md)."""
     s = row_streamer(tmp_path)
     lines: list[str] = []
     s.log = lines.append
@@ -651,9 +652,8 @@ def test_no_8192_px_photos_at_cruise_height(tmp_path: Path) -> None:
     low_camera = at(0, agl_m=9_144.0, **west)
     low_camera.cam_lat, low_camera.cam_lon = at(4).lat, at(4).lon
     low_camera.cam_agl_m = 300.0
-    assert 4 in sharp(s.plan(low_camera, x_plane_there=False))  # the camera sees them
-    assert not s.cruising
-    s.plan(at(0, agl_m=9_144.0, **west), x_plane_there=False)
+    assert sharp(s.plan(low_camera, x_plane_there=False)) == []  # the aircraft's height counts
+    assert s.cruising
     s.plan(at(0, agl_m=9_144.0), x_plane_there=False, starting=True)
     assert not s.cruising  # a start: planned as on the ground
     s.cache.close()

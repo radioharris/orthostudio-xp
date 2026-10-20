@@ -255,8 +255,10 @@ class StreamerTest(unittest.TestCase):
         s.plan(Fix(lat, lon), x_plane_there=False)  # back: urgent again
         self.assertEqual(s.urgent_left(), 2)
 
-    def test_the_camera_counts(self):
-        """In an external view the camera, not the aircraft, is what X-Plane measures from."""
+    def test_the_camera_counts_for_nothing(self):
+        """X-Plane takes each texture's levels for the aircraft, never for the camera: a camera
+        taken over a texture leaves it at the level the aircraft's distance gives
+        (docs/specs/live/levels-test.md, 2026-10-20)."""
         tex = parse_texture_name(f"{NAMES[1]}.dds")
         lat, lon = tex.center
         away = (lat - 0.5, lon)  # the aircraft 55 km south, flying south: the texture behind it
@@ -266,7 +268,7 @@ class StreamerTest(unittest.TestCase):
         with_cam = s.plan(
             Fix(*away, gs_ms=200.0, trk_deg=180.0, cam_lat=lat, cam_lon=lon), x_plane_there=False
         )
-        self.assertEqual(with_cam[f"{NAMES[1]}.dds"][1], 0)
+        self.assertEqual(with_cam[f"{NAMES[1]}.dds"][1], 3)
 
     def test_the_status_line_while_textures_are_finished(self):
         """The status line and the save read every texture built while the builder adds more: a

@@ -19,30 +19,23 @@ when the user clicks Start Flight. Without the plugin, or after a jump it did no
 X-Plane loaded the area before its textures were there: once everything it may already show is
 built, the streamer asks it to reload the scenery.
 
-External views take the camera away from the aircraft, and X-Plane reads what is in the files at
-once. So every ring round the aircraft and its path is widened by ``reach_km``, the distance the
-camera may go, even in the cockpit: an external view comes without warning, a zoom takes the
-camera out faster than any build, and X-Plane never reads a level again (the reach only in
-external views, 2026-09-29, would have let a quick zoom out find the neutral colour). The camera
-itself, where it is, counts in three dimensions from its own height, as X-Plane measures, with no
-reach round it. The reach is 0 since 2026-10-20 (``session.camera_reach_km``), for fewer writes: a
-camera taken farther than Live built, near the ground, may find the neutral colour (a copy of the
-level below into every level read before its photos wrote 0.59 GB of 2.56 in five minutes of a
-camera taken 20 to 37 km out, and X-Plane read some before it: removed, 2026-10-20). At a start,
-the airport's whole block of ZL18 textures is built at 4096 px before X-Plane goes on
-(:meth:`Streamer._airport_block`).
+External views take the camera away from the aircraft, but X-Plane takes each texture's levels
+for the aircraft alone, when it loads a flight and as the aircraft moves: a camera taken
+kilometres out, near the ground, shows what it took there (docs/specs/live/levels-test.md,
+2026-10-20). So nothing is built for the camera: the rings are round the aircraft and its path,
+widened by ``reach_km`` (0 by default). At a start, the airport's whole block of ZL18 textures is
+built at 4096 px before X-Plane goes on (:meth:`Streamer._airport_block`).
 
 One zoom above the mesh's (AutoOrtho's max_zoom 17, or 19 near airports), a texture's file is
 8192 px from the pack's layout on (``orthostudio.live.region``), and X-Plane reads it as such from
 the start. Its photos are built as those of a 4096 px file, at the same distances: X-Plane, which
 counts a file's levels from its top, reads each level a ring earlier, and finds there its photos
-already (the camera's reach) or, for the far levels, their copy (``orthostudio.live.texture``). The
-8192 px level itself gets its photos, one zoom above the mesh's, a quarter farther than X-Plane
-reads it (12 km at ZL16), all around the aircraft, its path ahead and the camera, in three
-dimensions as X-Plane measures, so not from high up. At a start, X-Plane waits for all of them. In
-flight, photos late as X-Plane is about to read them get the 4096 px level copied up in their
-place first (:attr:`Streamer.copied_up`): the ortho as at ZL16, never the neutral colour. No camera
-reach for that level: a camera taken farther, near the ground, may find the neutral colour there.
+already or, for the far levels, their copy (``orthostudio.live.texture``). The 8192 px level
+itself gets its photos, one zoom above the mesh's, a quarter farther than X-Plane reads it (12 km
+at ZL16), all around the aircraft and its path ahead, in three dimensions as X-Plane measures, so
+not from high up. At a start, X-Plane waits for all of them. In flight, photos late as X-Plane is
+about to read them get the 4096 px level copied up in their place first
+(:attr:`Streamer.copied_up`): the ortho as at ZL16, never the neutral colour.
 """
 
 from __future__ import annotations
@@ -62,7 +55,6 @@ from pathlib import Path
 
 from . import dds, machine, pools, writes
 from .cache import IMAGE, NO_IMAGERY, ChunkCache, Key
-from .cameralog import AWAY_M
 from .evict import EVICT_SAFE_KM, TARGET, XPlaneWindow, pick, tiles_of, usage, xplane_tiles
 from .flightplan import MOVING_MS, FlightPlan, last_plan
 from .geo import bearing_deg, haversine_m, parse_texture_name
@@ -394,9 +386,6 @@ class Streamer:
         self.max_zoom_airports = max_zoom_airports
         self.margin = margin
         self.reach_km = reach_km  # how far from the aircraft an external view may take the camera
-        # textures an external view's camera reached before Live built the level X-Plane reads
-        # there: the neutral colour on the screen, or a far level's copy (_read_now)
-        self.outran: dict[str, int] = {}
         self.workers = workers
         # this computer's share while X-Plane flies, and of 8192 px builds (live.machine)
         self.flight_encodes = flight_encodes
@@ -557,7 +546,7 @@ class Streamer:
                 decal=decal,
             )
             self.names.yielding = self.yielding
-        self._points: dict[str, tuple[float, float]] = {}  # "aircraft", "camera", "start"
+        self._points: dict[str, tuple[float, float]] = {}  # "aircraft", "start", "hold"
 
     # --- the season ---------------------------------------------------------------------------
 
@@ -660,19 +649,15 @@ class Streamer:
         self.log(f"  {name} was built but its file is gone: built again")
 
     def _want_squares(self, fix: Fix, starting: bool) -> None:
-        """The squares whose files the pack holds: X-Plane's window and a ring round the aircraft,
-        the camera and a start X-Plane is loading, all kept until the flight is there
-        (:meth:`arrived`); the rest a ring farther taken away (orthostudio.live.names)."""
+        """The squares whose files the pack holds: X-Plane's window and a ring round the aircraft
+        and a start X-Plane is loading, all kept until the flight is there (:meth:`arrived`); the
+        rest a ring farther taken away (orthostudio.live.names)."""
         if self.names is None:
             return
         if starting:
             self._points["start"] = (fix.lat, fix.lon)
         else:
             self._points["aircraft"] = (fix.lat, fix.lon)
-            if fix.cam_lat is not None and fix.cam_lon is not None:
-                self._points["camera"] = (fix.cam_lat, fix.cam_lon)
-            else:
-                self._points.pop("camera", None)
         self._want((fix.lat, fix.lon))
 
     def _want(self, center: tuple[float, float]) -> None:
@@ -917,14 +902,13 @@ class Streamer:
     def _level(
         self, distance_km: float, zoom: int, top: int, finest: int, margin: float | None = None
     ) -> tuple[int, float]:
-        """The level a texture needs built at ``distance_km`` from the camera (in X-Plane's
+        """The level a texture needs built at ``distance_km`` from the aircraft (in X-Plane's
         image), and how far out X-Plane reads that level of it (km, with the margin, before the
         image's scale). X-Plane counts a file's levels from its top, so it reads each level of an
         8192 px file (``top`` -1) where it reads the next smaller one of a 4096 px file, a ring
         farther out: its 4096 px and 2048 px levels are built that ring earlier (its 8192 px
         level is :meth:`_sharpest`'s; its farther levels have the copy above them,
-        ``texture.needs_copy``). The camera's reach alone did it only within its own distance.
-        ``margin``: the rings' margin, :attr:`margin` when None."""
+        ``texture.needs_copy``). ``margin``: the rings' margin, :attr:`margin` when None."""
         margin = self.margin if margin is None else margin
         level = top_level_for(distance_km, zoom, finest, margin)
         ahead = top < 0 and 0 < level <= 2 and level - 1 >= max(finest, 0)
@@ -933,28 +917,15 @@ class Streamer:
         read = ring_km(level + (1 if ahead else 0), zoom) if level < LOAD_LEVEL else LOAD_KM
         return level, read * margin
 
-    def _read_now(self, distance_km: float, zoom: int, top: int, finest: int) -> int | None:
-        """The level X-Plane reads now of a texture ``distance_km`` from the camera (three
-        dimensions, in X-Plane's image), counted from the file's top as X-Plane does, no sharper
-        than ``finest``. None past the far ring (72 km at ZL16), where the level read at load
-        serves, and for an 8192 px level, whose late photos get the copy of the 4096 px one
-        (:attr:`copied_up`)."""
-        for index in range(LOAD_LEVEL):
-            if distance_km <= ring_km(index, zoom):
-                level = max(top + index, finest)
-                return level if level >= 0 else None
-        return None
-
     def _sharpest(self, zoom: int, s: float, s_now: float, starting: bool) -> float | None:
         """Whether an 8192 px file gets the photos of its 8192 px level now, and how urgent they
         are (as :meth:`plan` counts it); None: the copy of its 4096 px level stays there for now.
 
         X-Plane reads that level where it reads a 4096 px file's 4096 px one (12 km at ZL16, 3 km
-        at ZL18). The photos come within a quarter more of the path ahead, the aircraft or the
-        camera (``s``), urgent once X-Plane reads them (``s_now``: from the aircraft and the
-        camera). Both are in three dimensions, from the heights above the ground, as X-Plane
-        measures: none from high up. No camera reach (the module's docstring). At a start, X-Plane
-        waits for all of them."""
+        at ZL18). The photos come within a quarter more of the path ahead of the aircraft (``s``),
+        urgent once X-Plane reads them (``s_now``: from the aircraft). Both are in three
+        dimensions, from the heights above the ground, as X-Plane measures: none from high up.
+        At a start, X-Plane waits for all of them."""
         read = ring_km(0, zoom) * self.scale  # X-Plane's image: the rings grow with it
         built = read * (1.0 if starting else self.margin)  # a start: no margin (plan)
         if s > built:
@@ -993,10 +964,11 @@ class Streamer:
 
     def _cruise_height(self, fix: Fix, starting: bool) -> None:
         """Whether the eye is so high above the ground that the screen cannot show an 8192 px level
-        (:attr:`cruising`, CRUISE_ON_M): the aircraft's height, or a camera's lower down; until
-        it is below CRUISE_OFF_M, or descending CRUISE_AHEAD_S from CRUISE_SEEN_M. Never at a
-        start: X-Plane gives no height while it loads one."""
-        eye = fix.agl_m if fix.cam_agl_m is None else min(fix.agl_m, fix.cam_agl_m)
+        (:attr:`cruising`, CRUISE_ON_M): the aircraft's height, X-Plane taking the levels for the
+        aircraft, never for a camera lower down (docs/specs/live/levels-test.md); until it is
+        below CRUISE_OFF_M, or descending CRUISE_AHEAD_S from CRUISE_SEEN_M. Never at a start:
+        X-Plane gives no height while it loads one."""
+        eye = fix.agl_m
         # seconds before the eye is where those levels begin to show, at the rate it descends
         ahead = (eye - CRUISE_SEEN_M) / -fix.vs_ms if fix.vs_ms < -1.0 else math.inf
         if starting:
@@ -1041,30 +1013,17 @@ class Streamer:
             if along is not None:
                 route = Route(["route"] * (len(along) + 1), [(fix.lat, fix.lon), *along])
         self.on_route = route is not None
-        camera = (fix.cam_lat, fix.cam_lon) if fix.cam_lat is not None else None
         reach = self.reach_km
         now = time.time()
-        # an external view: textures its camera reaches before Live, noted as the reach's test
-        cam_along = cam_up = 0.0
-        if camera is not None:
-            cam_along = haversine_m(fix.lat, fix.lon, camera[0], camera[1]) / 1000.0
-            cam_up = 0.0 if fix.cam_agl_m is None else (fix.cam_agl_m - fix.agl_m) / 1000.0
-        away = (  # not while X-Plane waits on a start, nor after it read early (a jump)
-            camera is not None
-            and x_plane_there
-            and not starting
-            and not (jumped or self.read_early)
-            and math.hypot(cam_along, cam_up) * 1000.0 >= AWAY_M
-        )
-        outran: dict[str, int] = {}
         # the margin anticipates the aircraft's moves: none while X-Plane loads a start or the
         # aircraft stands, where X-Plane reads no farther than its rings (a third fewer 4096 px
         # levels written at a start, 2026-10-20); back once it moves
         margin = 1.0 if starting or fix.gs_ms < STILL_MS else None
-        # heights above the ground: X-Plane measures from the camera in three dimensions, and
-        # at cruise a texture right under the aircraft is 10 km away, too far for its 8192 px
+        # heights above the ground: X-Plane measures from the aircraft in three dimensions, and
+        # at cruise a texture right under the aircraft is 10 km away, too far for its 8192 px.
+        # Never from the camera: X-Plane reads nothing again for it, in the drone view or the
+        # circle view, 25 km out near the ground (docs/specs/live/levels-test.md, 2026-10-20)
         h = max(0.0, fix.agl_m) / 1000.0
-        h_cam = h if fix.cam_agl_m is None else max(0.0, fix.cam_agl_m) / 1000.0
         self._cruise_height(fix, starting)
         jobs: dict[str, tuple[float, int]] = {}
         late: list[str] = []  # 8192 px levels to copy the 4096 px one into now (copied_up)
@@ -1089,24 +1048,6 @@ class Streamer:
             )
             ring = LOAD_KM if level == LOAD_LEVEL else read_km * self.scale + reach
             urgency = d_now - ring
-            if camera is not None:
-                # the camera where it is: X-Plane reads from it in three dimensions, so one high
-                # up or far out needs only the small levels, and no reach around it (it is there).
-                # On the ground's distance and widened by the reach, a camera taken 57 km out at
-                # cruise had Live build 4096 px levels around the point below it (2026-09-28).
-                d_cam = haversine_m(camera[0], camera[1], lat, lon) / 1000.0
-                s_cam = math.hypot(d_cam, h_cam)
-                s, s_now = min(s, s_cam), min(s_now, s_cam)
-                if away:
-                    reads = self._read_now(s_cam / self.scale, zoom, top, finest)
-                    unbuilt = reads is not None and self.level_of(name) > reads
-                    if unbuilt and name not in self.outran:
-                        outran[name] = reads
-                level_cam, read_cam = self._level(s_cam / self.scale, zoom, top, finest, margin)
-                if level_cam <= level and level_cam != LOAD_LEVEL:
-                    urgency_cam = s_cam - read_cam * self.scale
-                    urgency = urgency_cam if level_cam < level else min(urgency, urgency_cam)
-                    level = level_cam
             if name in block and level > max(finest, 0):  # the airport's, all at 4096 px
                 level, urgency = max(finest, 0), min(urgency, 0.0)
             if level == 0 and zoom in self.reads_8192:
@@ -1130,15 +1071,6 @@ class Streamer:
                 # built without pieces that did not come: again, as sharp, never waited for
                 level, urgency = self.level_of(name), max(urgency, 1.0)
             jobs[name] = (urgency, level)
-        if outran:
-            self.outran.update(outran)
-            counts = Counter(outran.values())
-            self.log(
-                f"  camera ahead of Live: {len(outran)} textures read sharper than built ("
-                + ", ".join(f"{dds.size_of(lv)} px: {n}" for lv, n in sorted(counts.items()))
-                + f"), the camera {cam_along:.1f} km from the aircraft, "
-                f"{max(0.0, fix.cam_agl_m or 0.0) / 1000.0:.1f} km up, the reach {reach:.0f} km"
-            )
         with (
             self.lock
         ):  # the queue and the reload flag together: the builder must not see one without the other
@@ -2366,8 +2298,3 @@ def run(
         log(f"  {writes.summary()}")
         for line in camera.summary():
             log(f"  {line}")
-        if streamer.outran:
-            log(
-                f"  camera ahead of Live: {len(streamer.outran)} textures in this run, "
-                f"with a reach of {streamer.reach_km:.0f} km"
-            )

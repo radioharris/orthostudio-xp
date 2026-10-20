@@ -1367,84 +1367,24 @@ class ReachTest(unittest.TestCase):
             self.assertEqual(s.plan(zoomed, x_plane_there=False)[name][1], 0)  # what it reads
             cache.close()
 
-    def test_a_camera_ahead_of_live_is_logged(self):
-        """An external view's camera that reaches textures before Live built the level X-Plane
-        reads there: the neutral colour on the screen, so the log says it (the reach's test,
-        2026-09-29). In the cockpit, or while X-Plane waits on a start, nothing is said."""
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            pack = root / "stream_pack"
-            setup_region(make_source(root, tile=(45, 6), textures=NAMES), pack, log=lambda _: None)
-            cache = ChunkCache(root / "c.sqlite")
-            said: list[str] = []
-            s = Streamer(
-                pack,
-                cache,
-                lambda on_piece: None,
-                finest_quality=0,
-                reach_km=10.0,
-                log=said.append,
-            )
-            lat, lon = parse_texture_name(f"{NAMES[0]}.dds").center
-            name = f"{NAMES[0]}.dds"
-            cockpit = Fix(lat - 0.25, lon, cam_lat=lat - 0.2499, cam_lon=lon)
-            s.plan(cockpit)  # the first fix: a jump, X-Plane there before anything was built
-            self.assertTrue(s.read_early)
-            s.plan(Fix(lat - 0.25, lon, cam_lat=lat - 0.02, cam_lon=lon))
-            s.read_early = False  # everything built since
-            s.plan(Fix(lat - 0.25, lon, cam_lat=lat - 0.02, cam_lon=lon), starting=True)
-            s.plan(cockpit)
-            self.assertEqual((s.outran, said), ({}, []))
-            zoomed = Fix(lat - 0.25, lon, cam_lat=lat - 0.02, cam_lon=lon)  # 26 km out, low
-            s.plan(zoomed)
-            self.assertEqual(s.outran[name], 0)  # X-Plane reads its 4096 px, not built
-            self.assertTrue(said[-1].startswith("  camera ahead of Live: "))
-            self.assertIn("the camera 25.6 km from the aircraft", said[-1])
-            s.plan(zoomed)
-            self.assertEqual(len([line for line in said if "ahead of Live" in line]), 1)  # once
-            cache.close()
-
-    def test_a_camera_far_up_needs_only_the_small_levels(self):
-        """X-Plane reads from the camera in three dimensions: a camera high above a texture needs
-        only its small levels, however near the point below it; one low down, its sharpest. No
-        reach around the camera itself, which is where it is: a camera taken 57 km out at cruise
-        had Live build 4096 px levels around the point below it (2026-09-28)."""
+    def test_a_camera_anywhere_changes_nothing(self):
+        """X-Plane takes each texture's levels for the aircraft alone: a camera over a texture,
+        low or high, near or 111 km from the aircraft, leaves the plan as the aircraft alone makes
+        it (the drone and circle views of 2026-10-20, docs/specs/live/levels-test.md)."""
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             pack = root / "stream_pack"
             setup_region(make_source(root, tile=(45, 6), textures=NAMES), pack, log=lambda _: None)
             cache = ChunkCache(root / "c.sqlite")
             lat, lon = parse_texture_name(f"{NAMES[0]}.dds").center
-            name = f"{NAMES[0]}.dds"
-            views = Streamer(
-                pack,
-                cache,
-                lambda on_piece: None,
-                finest_quality=0,
-                reach_km=20.0,
-                log=lambda _: None,
-            )
-
-            def level(cam_up_km: float, cam_south_deg: float = 0.0) -> int:
-                """The level the texture gets with the aircraft 111 km south of it (beyond its
-                reach) and the camera over it, or cam_south_deg south of it."""
-                fix = Fix(
-                    lat - 1.0,
-                    lon,
-                    agl_m=3000.0,
-                    cam_lat=lat - cam_south_deg,
-                    cam_lon=lon,
-                    cam_agl_m=cam_up_km * 1000.0,
-                )
-                return views.plan(fix, x_plane_there=False)[name][1]
-
-            self.assertEqual(level(0.5), 0)  # low, right above it: its sharpest
-            self.assertEqual(level(30.0), 2)  # 30 km up: the 1024 px level, as X-Plane reads it
-            self.assertEqual(level(0.5, 0.27), 2)  # 30 km out, low: no reach around the camera
-            # the aircraft on the ground by the texture, the camera 10 km up above it: the ground
-            # round the aircraft stays at its sharpest, whatever the camera's height (the reach)
-            on_ground = Fix(lat, lon, agl_m=0.0, cam_lat=lat, cam_lon=lon, cam_agl_m=10_000.0)
-            self.assertEqual(views.plan(on_ground, x_plane_there=False)[name][1], 0)
+            s = Streamer(pack, cache, lambda on_piece: None, finest_quality=0, log=lambda _: None)
+            for aircraft in ((lat - 1.0, lon, 3000.0), (lat, lon, 0.0)):
+                alone = s.plan(Fix(*aircraft[:2], agl_m=aircraft[2]), x_plane_there=False)
+                for cam_up in (300.0, 30_000.0):
+                    fix = Fix(
+                        *aircraft[:2], agl_m=aircraft[2], cam_lat=lat, cam_lon=lon, cam_agl_m=cam_up
+                    )
+                    self.assertEqual(s.plan(fix, x_plane_there=False), alone)
             cache.close()
 
 

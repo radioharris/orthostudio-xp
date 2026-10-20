@@ -182,7 +182,7 @@ shows; the zoom sets the sharpest version there is, the one seen up close.
   in 16/18.
 - **17/19, sharpest**: 8192 px textures everywhere.
 - **One above** (ZL17, ZL19), a texture is 8192 px: sharper near the ground only, within about
-  15 km of the aircraft, of its path and of the camera at ZL17 (about 4 km at ZL19 around
+  15 km of the aircraft and of its path at ZL17 (about 4 km at ZL19 around
   airports). It takes more memory: with less than 32 GB, the
   window says X-Plane may stutter and recommends the default. Above about 18,500 ft over the ground,
   Live stops fetching those 8192 px photos, which the screen cannot show from so high, and takes
@@ -308,10 +308,10 @@ the map leaves out squares of open sea.
 
 ## What happens while you fly
 
-Every two seconds Live reads where the aircraft is, where it is heading and how fast, and where the
-camera is. It looks two minutes ahead along the track (along your SimBrief route while you
-follow it), and for every texture within 300 km it works out how sharp X-Plane will want it when the
-aircraft, or the camera, passes closest. What is missing is downloaded and built, the most urgent
+Every two seconds Live reads where the aircraft is, where it is heading and how fast. It looks two
+minutes ahead along the track (along your SimBrief route while you follow it), and for every
+texture within 300 km it works out how sharp X-Plane will want it when the aircraft passes
+closest. The camera does not count: X-Plane takes the textures for the aircraft alone. What is missing is downloaded and built, the most urgent
 first. X-Plane picks the new file up by itself the next time it wants that texture sharper.
 
 X-Plane decides how sharp a texture must be from the distance between the aircraft and the
@@ -362,7 +362,7 @@ set it. Live has no wait to manage, and X-Plane itself says how sharp it wants e
 | Minimum zoom | Not needed: the far view is the 256 px level X-Plane reads when it loads an area. |
 | Maximum zoom, zoom near airports | One list on Live's tab beside the photo source: 16/18, 16/19 or 17/19. Below 16 is not offered, nor 18 away from airports (16,384 px textures). |
 | Zoom by flight level | Not needed: X-Plane already reads less sharp when the ground is farther away, and Live follows it. Only the 8192 px photos stop above about 18,500 ft over the ground. |
-| Prefetch radius, look-ahead, interval | Built in and measured: 300 km around, two minutes ahead along the track (along a SimBrief route while you fly it), the rings with a 25 % margin once the aircraft moves (none while a start loads or it stands), and none more for external views (a camera taken far is built round where it is). |
+| Prefetch radius, look-ahead, interval | Built in and measured: 300 km around, two minutes ahead along the track (along a SimBrief route while you fly it), the rings with a 25 % margin once the aircraft moves (none while a start loads or it stands), and nothing for external views (X-Plane takes the textures for the aircraft alone). |
 | Maximum wait, time budget, fallbacks | Not needed: X-Plane waits only while a flight loads, until everything it reads there is built. In flight it never waits. |
 | Cache sizes, workers, pipelines | Internal. |
 
@@ -421,11 +421,9 @@ To switch Live off, put `enabled = false` in `live.toml`, in OrthoStudio XP's ow
 - Only where AutoOrtho has a mesh: the six regions cover the land of the planet, a few islands
   excepted.
 - Flown with X-Plane 12 on a Mac and on Windows; not yet on Linux.
-- External views add nothing around the aircraft: the rings' margin covers a camera near it, and
-  a camera taken far is built round where it is, a few seconds of a coarser level there, or the
-  neutral colour where X-Plane read it first. Live
-  notes how far external views take the camera, flight after flight, to set it on how pilots
-  really fly.
+- External views add nothing: X-Plane takes the textures for the aircraft alone, so a camera taken
+  far shows the ground there as sharp as the aircraft's distance allows, a little blurry. Live
+  notes how far external views take the camera, flight after flight, for information.
 - From a checkout of the repository, `uv run python -m orthostudio.live ui` opens the window and
   `stream` runs Live in a terminal; on a Mac the plugin is compiled the first time, which needs
   Xcode's command-line tools (`xcode-select --install`).
