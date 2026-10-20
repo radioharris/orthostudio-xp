@@ -314,10 +314,11 @@ follow it), and for every texture within 300 km it works out how sharp X-Plane w
 aircraft, or the camera, passes closest. What is missing is downloaded and built, the most urgent
 first. X-Plane picks the new file up by itself the next time it wants that texture sharper.
 
-X-Plane decides how sharp a texture must be from its distance, in rings. For a normal texture
-(about 7 km across), as measured on a 2,704 px wide image with a 65° field of view:
+X-Plane decides how sharp a texture must be from the distance between the aircraft and the
+texture's centre, in rings. For a normal texture (about 7 km across), as measured on a 2,704 px
+wide image with a 65° field of view:
 
-| distance to the texture | what X-Plane reads | imagery |
+| distance from the aircraft to the texture's centre | what X-Plane reads | imagery |
 |---|---|---|
 | 130 to 230 km, when X-Plane loads the area | 256 px | ZL12 |
 | 72 km | 512 px | ZL13 |
@@ -330,13 +331,15 @@ too; the Flight card says how far for yours. Airport textures (about 1.8 km acro
 law four times closer. The 4096 px level is never fetched when X-Plane's texture quality is below
 Maximum: X-Plane then never reads it.
 
-External views count: X-Plane measures from the camera. With Shift+4 the camera can go kilometres
-away in a second, faster than anything downloads. Live builds nothing farther around the aircraft
-for it, to write less on the disk: a camera taken far from the aircraft, near the ground, may find
-the neutral colour, green-grey, until X-Plane loads that area again. At a flight's start, the whole
-airport and its surroundings (its ZL18 textures, about 7 km across) are built at 4096 px before
-X-Plane goes on, whatever the runway or the stand: a camera taken anywhere over the airport finds
-them sharp.
+External views read nothing more: X-Plane takes each texture's levels for the aircraft, when it
+loads a flight and then as the aircraft moves, and a camera taken away, even kilometres out near the
+ground, shows what it took for the aircraft (measured with X-Plane 12.4.4-b4 on 20 October 2026,
+[specs/live/levels-test.md](specs/live/levels-test.md)). Far from the aircraft the ground looks a
+little blurry there. A level X-Plane took before Live built it shows the neutral colour, green-grey,
+once a camera comes close enough to show it, until X-Plane loads that area again. At a flight's
+start, the whole airport and its surroundings (its ZL18 textures, about 7 km across) are built at
+4096 px before X-Plane goes on, whatever the runway or the stand: a camera taken anywhere over the
+airport finds them sharp.
 
 **The plugin.** To make X-Plane wait at a start, Live puts a small plugin in X-Plane while it runs,
 and takes it out when it stops. It holds X-Plane on its loading screen as long as the ortho keeps
