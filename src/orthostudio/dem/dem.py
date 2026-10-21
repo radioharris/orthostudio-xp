@@ -14,6 +14,7 @@ about sixteen times faster (``docs/specs/dem.md`` section 11).
 from __future__ import annotations
 
 import json
+import os
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -128,6 +129,10 @@ def _relief_remedy(source: str, cell: str) -> str | None:
         f"Check the file is readable and is one of {kinds}, and that it covers {cell}. "
         "Otherwise choose another relief above."
     )
+
+
+NO_ALT_ENV = "OSXP_DEM_NO_ALT"
+"""Set to ``1``: :meth:`Dem.save` writes no ``Data<tile>.alt`` (Live's world bake)."""
 
 
 @dataclass(slots=True)
@@ -464,9 +469,16 @@ class Dem:
         }
 
     def save(self, directory: Path) -> None:
-        """Write ``Data<tile>.alt``, ``dem.npy`` and ``meta.json`` into ``directory``."""
+        """Write ``Data<tile>.alt``, ``dem.npy`` and ``meta.json`` into ``directory``.
+
+        With :data:`NO_ALT_ENV` set, no ``Data<tile>.alt``: only ``--dem native`` reads it, the
+        tracing loads ``dem.npy`` and the mesh reads the tracing's own, flattened over the
+        airports. Live's world bake sets it: the same 54 MB grid written twice a square
+        (2026-10-21). Neither the rule's version nor its params change, so a store keeps its
+        artefacts either way."""
         directory.mkdir(parents=True, exist_ok=True)
-        self.write_alt(directory / alt_file_name(self.tile))
+        if os.environ.get(NO_ALT_ENV) != "1":
+            self.write_alt(directory / alt_file_name(self.tile))
         np.save(directory / "dem.npy", self.alt_dem, allow_pickle=False)
         (directory / "meta.json").write_text(
             json.dumps(self.meta(), indent=1, sort_keys=True), "utf-8"

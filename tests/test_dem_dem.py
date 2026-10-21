@@ -471,6 +471,24 @@ def test_save_and_load_round_trip(tmp_path: Path) -> None:
     assert again.alt_vec(way).tobytes() == dem.alt_vec(way).tobytes()
 
 
+def test_save_skips_the_alt_only_when_live_s_bake_asks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Live's world bake turns the switch on: no ``Data<tile>.alt`` (the mesh reads the
+    tracing's), the grid still in ``dem.npy`` for the tracing; off, as before (2026-10-21)."""
+    from orthostudio.dem.dem import NO_ALT_ENV
+
+    dem = _dem(_synthetic_raster(21, seed=4))
+    dem.source = "View"
+    monkeypatch.setenv(NO_ALT_ENV, "1")
+    dem.save(tmp_path / "on")
+    assert not (tmp_path / "on" / alt_file_name(TILE)).exists()
+    assert np.array_equal(np.asarray(Dem.load(tmp_path / "on").alt_dem), dem.alt_dem)
+    monkeypatch.delenv(NO_ALT_ENV)
+    dem.save(tmp_path / "off")
+    assert (tmp_path / "off" / alt_file_name(TILE)).stat().st_size == 4 * 21 * 21
+
+
 def test_write_alt_is_raw_float32_row_major(tmp_path: Path) -> None:
     alt = _synthetic_raster(17, seed=3)
     path = tmp_path / "Data+43+005.alt"
