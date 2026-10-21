@@ -24,6 +24,7 @@ EXPECTED_CODES = {
     "Arc@",
     "BI",
     "EOX",
+    "GO2",
     "Lux",
     "NL",
     "PDOK",
@@ -67,6 +68,7 @@ MEASURED_IN_FLIGHT = {
     "Arc": 128,
     "Arc@": 192,
     "EOX": 32,
+    "GO2": 32,
     "Lux": 16,
     "NL": 32,
     "PDOK": 32,
@@ -82,6 +84,7 @@ MEASURED_IN_FLIGHT = {
 MEASURED_SERVER_RATES = {
     "Arc@": 522,
     "EOX": 90,
+    "GO2": 320,
     "Lux": 130,
     "NL": 181,
     "PDOK": 181,
@@ -100,6 +103,10 @@ stops answering around 90 (2026-09-24). A throughput one machine obtained is not
 server tolerates from everyone, so EOX carries his 90 and not our 224, and the fetcher approaches
 whatever is declared instead of holding it, at a cost of 1.1 % on a full tile. The others have not
 been checked against a second address.
+
+Google's 320 is not its server's limit either: 32 HTTP/1.1 connections gave 332 with no refusal,
+and the rate is held at about twice Ortho4XP's 171 because Google blocks an address it finds too
+eager and nobody knows where (2026-10-21).
 """
 
 
@@ -185,6 +192,24 @@ def test_eox_sentinel_2_covers_the_world_at_zl14(registry: dict[str, Provider]) 
     )
     assert "EOX IT Services GmbH" in eox.attribution and "Copernicus Sentinel" in eox.attribution
     assert list(registry)[:4] == ["BI", "Arc", "Arc@", "EOX"]
+
+
+def test_google_is_asked_over_http_1_1_and_held_back(registry: dict[str, Provider]) -> None:
+    """Users who build with Google in Ortho4XP asked for it (2026-10-21). Its tile hosts serve
+    the streams of one HTTP/2 connection one after the other, about 100 req/s whatever the window,
+    so it is asked over 32 HTTP/1.1 connections; its rate is held at 320, about twice Ortho4XP's,
+    and the Plan says so; its credit says what its terms forbid. The other sources keep HTTP/2."""
+    go = registry["GO2"]
+    assert tile_url(go, 33952, 23130, 16) == (
+        "https://mt2.google.com/vt/lyrs=s&x=33952&y=23130&z=16"  # the switch picks by the tile
+    )
+    assert go.switch_servers == ("0", "1", "2", "3")
+    assert not go.http2 and go.held_back and go.extent is None and go.max_zl == 20
+    assert (go.max_in_flight, go.server_req_per_s) == (32, 320)
+    assert "terms" in go.licence and go.terms_url.startswith("https://www.google.com/")
+    assert list(registry)[:5] == ["BI", "Arc", "Arc@", "EOX", "GO2"]
+    others = [p for code, p in registry.items() if code != "GO2"]
+    assert all(p.http2 and not p.held_back for p in others)
 
 
 def test_every_shipped_source_is_fetched_over_https() -> None:

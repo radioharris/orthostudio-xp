@@ -84,11 +84,18 @@ class Provider(BaseModel):
     tile_size: int = 256
     headers: dict[str, str] = Field(default_factory=dict)
     max_in_flight: int = Field(default=64, ge=1, le=256)
+    http2: bool = True
+    """``False``: plain HTTP/1.1 connections, one request each at a time. Google's tile hosts serve
+    the streams of one HTTP/2 connection one after the other, about 100 req/s whatever the window,
+    and 32 HTTP/1.1 connections three times that (2026-10-21)."""
     server_req_per_s: float | None = Field(default=None, gt=0)
     """The requests per second the server itself gave at ``max_in_flight``, where it and not the
     line was the limit (``docs/benchmarks/network.md`` 7); ``None`` for a server that kept up with
     the line (Bing, Esri). The estimates never count downloads faster than this."""
     placeholder: PlaceholderRule | None = None
+    held_back: bool = False
+    """Its rate is held well under what its server gives, so that the server does not block the
+    user's address (Google, 2026-10-21): the Plan says the source is slower on purpose."""
     extent: str | None = None
     """The country or region the imagery covers (English name), ``None`` for the whole world."""
     extent_bounds: tuple[float, float, float, float] | None = None

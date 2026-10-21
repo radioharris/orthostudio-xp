@@ -1673,6 +1673,24 @@ def test_the_header_says_longer_than_expected_while_a_step_is_overdue() -> None:
     assert 'if (late.has(id)) words += `, ${t("works.act_longer")}`;' in app
 
 
+def test_a_source_held_back_says_it_is_slower_on_purpose() -> None:
+    """Google's rate is held at about twice Ortho4XP's so that it does not block the user's address
+    (2026-10-21): the Plan says so under the list, in both languages, from the provider's own
+    ``held_back`` that the API passes on."""
+    from orthostudio.api.app import provider_json
+    from orthostudio.imagery import load_registry
+
+    registry = load_registry()
+    assert provider_json(registry["GO2"])["held_back"] is True
+    assert provider_json(registry["BI"])["held_back"] is False
+    index = (UI / "index.html").read_text(encoding="utf-8")
+    assert 'id="provider-held"' in index
+    i18n = (UI / "i18n.js").read_text(encoding="utf-8")
+    assert i18n.count('"plan.source_held":') == 2  # French and English
+    app = (UI / "app.js").read_text(encoding="utf-8")
+    assert 't("plan.source_held", { source: sourceLabel(p) })' in app
+
+
 def test_the_data_phase_names_the_layers_it_downloads() -> None:
     """Phase 0 downloads the OSM layers airports, big and small roads, coastline and water
     (``orthostudio.sources.osm.LAYERS``): the hint said "roads, water, buildings"."""

@@ -220,9 +220,9 @@ when one explains better than words.
 
 ### 2.1 `essential.provider`
 
-`default_website` · `BI` · a code of `imagery/registry.toml`: 13 providers (12 when this was
+`default_website` · `BI` · a code of `imagery/registry.toml`: 14 providers (12 when this was
 written), `BI` Bing, `Arc` and `Arc@` Esri, `EOX` (the Sentinel-2 mosaic of the whole world, ZL14 at
-most, added 2026-09-22), national ones for Luxembourg, the Netherlands (4), Spain, Japan, the USA.
+most, added 2026-09-22), `GO2` Google (added 2026-10-21), national ones for Luxembourg, the Netherlands (4), Spain, Japan, the USA.
 
 - **Does.** The provider of the base zone, the one that covers the whole tile; a zone drawn on the
   map can override it locally (Ortho4XP `O4_DSF_Utils.py:183-206`; OrthoStudio XP

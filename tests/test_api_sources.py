@@ -27,8 +27,8 @@ xplane = fakes.xplane
 
 JPEG = b"\xff\xd8\xff\xe0" + b"\0" * 2000
 ADDRESS = "https://tiles.example.com/vt?lyrs=s&x={x}&y={y}&z={zoom}"
-PROVIDER_KEYS = {"code", "name", "max_zl", "attribution", "terms_url", "licence", "alive",
-                 "extent", "extent_bounds", "same_as", "custom"}  # fmt: skip
+PROVIDER_KEYS = {"code", "name", "max_zl", "attribution", "terms_url", "licence", "held_back",
+                 "alive", "extent", "extent_bounds", "same_as", "custom"}  # fmt: skip
 
 
 def _app(

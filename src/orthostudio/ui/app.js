@@ -3539,6 +3539,11 @@ function renderProviderAttribution() {
   const credit = p ? p.attribution || "" : "";
   const licence = p ? p.licence || "" : "";
   $("provider-attribution").textContent = credit && licence ? `${credit} ${licence}.` : credit;
+  // a source held well under its server's speed, so that it does not block the user's address,
+  // says so: Google builds take minutes where Bing takes one (2026-10-21)
+  const held = $("provider-held");
+  held.hidden = !p?.held_back;
+  setText(held, p?.held_back ? t("plan.source_held", { source: sourceLabel(p) }) : "");
 }
 
 // ------------------------------------------------------------------ Plan: the user's own sources

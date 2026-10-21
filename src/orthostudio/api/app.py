@@ -790,6 +790,7 @@ def provider_json(p: Provider) -> dict[str, Any]:
         "attribution": p.attribution,
         "terms_url": p.terms_url,
         "licence": p.licence,
+        "held_back": p.held_back,
         "alive": None,
         "extent": p.extent,
         "extent_bounds": list(p.extent_bounds) if p.extent_bounds is not None else None,
