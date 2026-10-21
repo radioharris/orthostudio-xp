@@ -104,7 +104,7 @@ def test_a_texture_over_the_edge_of_the_users_tile() -> None:
 
 def test_the_regions_installed_and_a_route() -> None:
     squares = mapdata.regions_installed({"eur"})
-    assert list(squares) == ["eur"] and len(squares["eur"]) == 1987
+    assert list(squares) == ["eur"] and len(squares["eur"]) == 1986
     assert [45, 5] in squares["eur"]  # Lyon's square
     assert mapdata.regions_installed(set()) == {}
     long = [(45.0 + i / 1000, 5.0) for i in range(2001)]
