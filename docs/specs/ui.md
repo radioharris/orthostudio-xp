@@ -242,9 +242,8 @@ change is found among the chosen ones at a glance (a user, 2026-09-22). Then:
   stays. Under the field, in red, the tiles the source does not cover ("Netherlands · PDOK 2020
   does not cover +46+006: it is one country's source (Netherlands). Choose a Whole world source
   for these tiles."), before the estimate refuses them; for a source held back (`held_back`,
-  Google), in amber: "Google is slower on purpose: OrthoStudio XP limits its requests so that
-  Google does not block your address. The estimated time counts it."; then the attribution, with
-  the licence after it.
+  Google), in amber and on two lines at most: "Google is slower on purpose, so that it does not
+  block your address. The estimate counts it."; then the attribution, with the licence after it.
 - **My sources…** (a small button under the field; user request, 2026-09-14: Apple Maps and
   Google Maps, much used in the USA; Apple is still not shipped, Google is since 2026-10-21, `imagery-providers.md`
   4.1): a dialog that says in a yellow box that the user adds the source themselves, that its
