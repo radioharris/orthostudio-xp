@@ -294,7 +294,7 @@ whole; the bar shows the download. **Stop** stops it, and **Install** again goes
 stopped, a file cut off included. A region is used from the next start, never half installed. Its
 roads, forests and buildings come with it, unless "Roads, forests and buildings" says "Never".
 Once installed, a region shows its size on the disk and **Delete** (click twice). When a region
-is made again on the server, the panel says how many of its files changed since you installed it
+is made again on the server, the panel says an update is available and how much it downloads,
 and offers **Update**: only
 those are downloaded again. Updating and deleting wait until Live is stopped. A region may sit on
 another disk, linked from Live's folder: the panel says where each one is.

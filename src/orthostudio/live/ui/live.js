@@ -611,7 +611,7 @@ function drawRegions(status) {
       const busy = install && install.region === id;
       if (mine) {
         size.textContent = mine.size ? t("regions.size", { gb: gb(mine.size) }) : "";
-        state.textContent = r.changed ? t("regions.changed", { n: r.changed, gb: gb(r.changed_bytes) })
+        state.textContent = r.changed ? t("regions.changed", { gb: gb(r.changed_bytes) })
           : t("regions.installed");
       } else if (r.download) {
         size.textContent = t("regions.sizes", { download: gb(r.download), disk: gb(r.unpacked) });
