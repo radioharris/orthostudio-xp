@@ -164,7 +164,7 @@ def stream(
     ] = None,
     margin: Annotated[
         float, typer.Option(help="build for rings this much wider than measured")
-    ] = 1.25,
+    ] = session.Options.margin,
     camera_reach_km: Annotated[
         float,
         typer.Option(

@@ -597,7 +597,7 @@ def test_in_flight_all_around_and_ahead(tmp_path: Path) -> None:
     two minutes long: in a turn, five minutes swept 38 km of it all around the aircraft."""
     s = row_streamer(tmp_path)
     east = s.plan(at(0, gs_ms=150.0, trk_deg=90.0), x_plane_there=False)
-    assert sharp(east) == list(range(6))  # the path: 18 km ahead, 17 km around its end
+    assert sharp(east) == list(range(5))  # the path: 13.5 km ahead, 15.1 km around its end
     assert east[f"{ROW[1]}.dds"][0] <= 0  # 6.8 km: X-Plane reads it now
     assert east[f"{ROW[2]}.dds"][0] <= 0  # 13.57 km: within 13.6, read now too
     assert east[f"{ROW[3]}.dds"][0] > 0  # 20.4 km: not yet

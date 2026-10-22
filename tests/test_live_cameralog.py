@@ -54,13 +54,13 @@ def test_the_last_flights_are_kept(tmp_path: Path) -> None:
 
 def test_the_reach_a_camera_needs() -> None:
     """Far and low at once is what the reach is for: near the ground, the 4096 px ring (13.6 km at
-    ZL16) reaches 13.6 km past the camera, 3.4 km past the aircraft's 17; high up, nothing."""
-    assert reach_needed(15.0, 0.0) == pytest.approx(11.6)  # 15 + 13.6 - 17
-    # 8192 px files: X-Plane reads their 4096 px at the 2048 px ring, 15 + 23.7 - 29.625
-    assert reach_needed(15.0, 0.0, first_ring=1) == pytest.approx(9.075)
-    assert reach_needed(15.0, 30.0) == 0.0  # far up: only the small levels, built already
-    assert reach_needed(2.0, 0.1) == 0.0  # near the aircraft: its own rings
-    assert reach_needed(15.0, 0.0, scale=2.0) == pytest.approx(8.2)  # 15 + 27.2 - 34
+    ZL16) reaches 13.6 km past the camera, 1.5 km past the aircraft's 15.1; high up, nothing."""
+    assert reach_needed(15.0, 0.0) == pytest.approx(13.504)  # 15 + 13.6 - 15.096
+    # 8192 px files: X-Plane reads their 4096 px at the 2048 px ring, 15 + 23.7 - 26.307
+    assert reach_needed(15.0, 0.0, first_ring=1) == pytest.approx(12.393)
+    assert reach_needed(15.0, 45.0) == 0.0  # far up: only the small levels, built already
+    assert reach_needed(1.0, 0.1) == 0.0  # within the margin of its rings (1.5 km): its own rings
+    assert reach_needed(15.0, 0.0, scale=2.0) == pytest.approx(12.008)  # 15 + 27.2 - 30.192
 
 
 def test_each_run_keeps_the_reach_it_needed(tmp_path: Path) -> None:
@@ -69,7 +69,7 @@ def test_each_run_keeps_the_reach_it_needed(tmp_path: Path) -> None:
     for south in range(0, 13_001, 500):  # a minute zooming out 13 km south, 100 m up
         log.note(reading(300.0, south=float(south), up=-200.0), t)
         t += 2.0
-    assert "a reach of 7.1 km needed" in log.summary()[0]  # 13 + 23.7 - 29.625, from 100 m up
+    assert "a reach of 10.4 km needed" in log.summary()[0]  # 13 + 23.7 - 26.307, from 100 m up
     log.save()
     flights = json.loads((tmp_path / "camera.json").read_text())["flights"]
-    assert flights[0]["low"]["reach_km"] == pytest.approx(7.075, abs=0.01)
+    assert flights[0]["low"]["reach_km"] == pytest.approx(10.393, abs=0.01)

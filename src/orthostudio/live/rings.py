@@ -36,7 +36,9 @@ LOAD_LEVEL = 4  # the level X-Plane reads when it loads a tile
 MIN_LEVEL = -1  # 8192 px: one zoom above the mesh's, the most AutoOrtho builds
 AIRPORT_ZOOM = 18  # the mesh's textures round its airports (AutoOrtho's ZL18 within 0.5 km)
 RINGS_ZL16_KM = {3: 81.4, 2: 42.9, 1: 23.7, 0: 13.6}  # probe flight 1 x 1.13 (2026-10-22)
-DEFAULT_MARGIN = 1.25  # build for a ring a quarter wider than measured
+# in flight, rings built this much wider than X-Plane reads them, to keep ahead of the aircraft:
+# 1.25 on the probe flight's rings until they were found 12 % short, the same distances since
+DEFAULT_MARGIN = 1.11
 REFERENCE_WIDTH_PX = 2704  # X-Plane's image when the rings were measured
 REFERENCE_FOV_DEG = 65.0
 MAX_SCALE = 4.0  # a field of view under about 17° (binoculars): its far rings are left to chance

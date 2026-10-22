@@ -32,6 +32,7 @@ from orthostudio.live.pack import (
     default_pack_dir,
     live_root,
 )
+from orthostudio.live.rings import DEFAULT_MARGIN
 from orthostudio.live.scenery import (
     default_sources,
     find_xplane,
@@ -76,7 +77,7 @@ class Options:
     simbrief_user: str = ""  # whose last SimBrief plan the path ahead follows; empty: none
     overlays: str = "auto"  # AutoOrtho's roads, forests and buildings where none are: "off"
     language: str = "en"  # the Live window's: the plugin's words in X-Plane
-    margin: float = 1.25
+    margin: float = DEFAULT_MARGIN
     # the user's choice, 2026-10-19: none. The rings' margin covers a camera near the aircraft, and
     # one taken far is built round where it is (external views zoomed out at 17 to 84 km over
     # LGAV and LFLL: a few levels late, caught up within seconds, no neutral colour seen). 2 km

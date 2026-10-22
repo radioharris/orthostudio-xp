@@ -89,6 +89,12 @@ So every ring is the first probe flight's times 1.13 (`rings.RINGS_ZL16_KM`, 80.
 rounded up): the 2048 and 1024 px points seen with the camera fall within it. Why the probe flight
 read them nearer is not known: it measured in flight, a Cessna, the same image.
 
+In flight Live builds each ring wider, to keep ahead of the aircraft: 1.25 times the probe flight's
+until then, 11 % past the true rings, which every flight had flown with (0 texture late near the
+aircraft in the campaign of 2026-10-17). The margin is now 1.11 (`rings.DEFAULT_MARGIN`): in flight
+the same distances as before to 0.3 %, 1.13 x 1.11 against 1.25; only the starts, built without
+it, changed.
+
 Not explained by it: a ZL16 texture at 29.1 km, built at 1024 px, showed neutral at the first
 start of that morning, its neighbours not; that start followed a pack set up again from scratch.
 

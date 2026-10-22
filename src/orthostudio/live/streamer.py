@@ -74,6 +74,7 @@ from .region import (
 )
 from .rings import (
     AIRPORT_ZOOM,
+    DEFAULT_MARGIN,
     LOAD_LEVEL,
     MIN_LEVEL,
     finest_readable,
@@ -348,7 +349,7 @@ class Streamer:
         finest_quality: int,
         max_zoom: int = 16,
         max_zoom_airports: int = 18,
-        margin: float = 1.25,
+        margin: float = DEFAULT_MARGIN,
         workers: int = 4,
         xplane=None,
         provider: str = "BI",

@@ -366,7 +366,7 @@ set it. Live has no wait to manage, and X-Plane itself says how sharp it wants e
 | Minimum zoom | Not needed: the far view is the 256 px level X-Plane reads when it loads an area. |
 | Maximum zoom, zoom near airports | One list on Live's tab beside the photo source: 16/18, 16/19 or 17/19. Below 16 is not offered, nor 18 away from airports (16,384 px textures). |
 | Zoom by flight level | Not needed: X-Plane already reads less sharp when the ground is farther away, and Live follows it. Only the 8192 px photos stop above about 18,500 ft over the ground. |
-| Prefetch radius, look-ahead, interval | Built in and measured: 300 km around, two minutes ahead along the track (along a SimBrief route while you fly it), the rings with a 25 % margin once the aircraft moves (none while a start loads or it stands), and nothing for external views (X-Plane takes the textures for the aircraft alone). |
+| Prefetch radius, look-ahead, interval | Built in and measured: 300 km around, two minutes ahead along the track (along a SimBrief route while you fly it), the rings with an 11 % margin once the aircraft moves (none while a start loads or it stands), and nothing for external views (X-Plane takes the textures for the aircraft alone). |
 | Maximum wait, time budget, fallbacks | Not needed: X-Plane waits only while a flight loads, until everything it reads there is built. In flight it never waits. |
 | Cache sizes, workers, pipelines | Internal. |
 

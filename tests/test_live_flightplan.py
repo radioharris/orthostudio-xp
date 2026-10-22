@@ -123,7 +123,7 @@ def test_the_route_after_a_turn_is_prepared(
     assert s.on_route
     # along the route east, 5 km from it, as far as the track looks (two minutes at 200 m/s: 24 km,
     # 5 north then 19 east): past the turn, where the straight line reached none
-    assert sharp(jobs) == [0, 1, 2, 3, 4, 5]
+    assert sharp(jobs) == [0, 1, 2, 3, 4]
     plan = s.snapshot()["flight_plan"]
     assert (plan["name"], plan["following"]) == ("LFXX-LFYY", True)
     first = north_then_east().points[0]
