@@ -546,7 +546,7 @@ function drawSimbrief() {
 
 // --- the mesh: OrthoStudio XP's regions -------------------------------------------------------
 
-const REGION_ORDER = ["eur", "na", "sa", "afr", "asi", "aus_pac", "more"];
+const REGION_ORDER = ["eur", "na", "sa", "afr", "asi", "aus_pac"];
 let regionsDrawn = ""; // what the list shows: drawn again only when it changes, keeping the focus
 let removeArmed = null; // the region whose Delete was clicked once: a second click deletes it
 

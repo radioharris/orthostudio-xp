@@ -205,7 +205,6 @@ export const STRINGS = {
     "region.afr": "Africa",
     "region.asi": "Asia",
     "region.aus_pac": "Australia and the Pacific",
-    "region.more": "Greenland, the Arctic and islands",
     "own_tiles.title": "Your own tiles",
     "own_tiles.help":
       "Where you built tiles with OrthoStudio XP, or have another ortho scenery, X-Plane can show yours or Live's.",
@@ -614,7 +613,6 @@ export const STRINGS = {
     "region.afr": "Afrique",
     "region.asi": "Asie",
     "region.aus_pac": "Australie et Pacifique",
-    "region.more": "Groenland, Arctique et îles",
     "own_tiles.title": "Vos propres tuiles",
     "own_tiles.help":
       "Là où vous avez construit des tuiles avec OrthoStudio XP, ou avez une autre scène ortho, X-Plane peut montrer les vôtres ou celles de Live.",

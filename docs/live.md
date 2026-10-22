@@ -283,11 +283,11 @@ leaves the overlays out.
 
 Live lays its photos on OrthoStudio XP's mesh: the ground's shape and the textures' outlines, made
 by OrthoStudio XP's engine with the relief of viewfinderpanoramas.org (Jonathan de Ferranti), in
-seven regions: Europe, North America, South America, Africa, Asia, Australia and the Pacific, and
-Greenland, the Arctic and islands. Together they cover all the land of the world but Antarctica,
-every square AutoOrtho's regions have and 1,048 more.
+six regions: Europe, North America (Greenland and the Canadian Arctic in), South America, Africa,
+Asia, and Australia and the Pacific (Hawaii and Easter Island in). Together they cover all the land
+of the world but Antarctica: 19,295 squares.
 
-The panel lists the seven, each with what it downloads and the room it takes once installed
+The panel lists the six, each with what it downloads and the room it takes once installed
 (Europe: 17.7 GB to download, as much on the disk), and **Install**. Live downloads it from
 OrthoStudio XP's server, a few files at a time, checks each one and unpacks it as soon as it is
 whole; the bar shows the download. **Stop** stops it, and **Install** again goes on where it
