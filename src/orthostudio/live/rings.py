@@ -4,9 +4,16 @@
 
 First probe flight, 2026-09-26 (``docs/specs/live/probe-flight-1.md``): X-Plane aims at a ground
 resolution proportional to distance, about 0.18 m per pixel per km. A ZL16 texture, about 7 km
-across, is read at level 3 (512 px) from 72 km, level 2 from 38 km, level 1 from 21 km and level 0
+across, was read at level 3 (512 px) from 72 km, level 2 from 38 km, level 1 from 21 km and level 0
 (4096 px) under 12 km, the last only with texture quality at Maximum; a ZL18 texture follows the
 same law four times closer. At DSF load, 130-230 km away, X-Plane reads level 4 (256 px) only.
+
+Those rings were 12 % short (a start at KOWB, 2026-10-22, ``docs/specs/live/levels-test.md``):
+X-Plane, loading the flight, opened for more than 256 px every ZL16 texture whose centre was within
+80.8 km of the aircraft and none beyond, every ZL18 one within 20.2 km, against 72 and 18; and the
+textures it showed neutral, Live having built them a level coarser, lay at 21.4 to 21.6 km (2048 px)
+and 40.6 to 42.0 km (1024 px), past 21 and 38. Each ring is the measured one times 1.13, the
+farthest texture opened sharper being at 80.9 km (72 x 1.124).
 
 X-Plane counts a file's levels from its top, whatever the file's size (an fs_usage trace in flight,
 2026-09-28): an 8192 px file read whole at 12 km, its 4096 px level from 21 km. So the rings are
@@ -28,7 +35,7 @@ import math
 LOAD_LEVEL = 4  # the level X-Plane reads when it loads a tile
 MIN_LEVEL = -1  # 8192 px: one zoom above the mesh's, the most AutoOrtho builds
 AIRPORT_ZOOM = 18  # the mesh's textures round its airports (AutoOrtho's ZL18 within 0.5 km)
-RINGS_ZL16_KM = {3: 72.0, 2: 38.0, 1: 21.0, 0: 12.0}
+RINGS_ZL16_KM = {3: 81.4, 2: 42.9, 1: 23.7, 0: 13.6}  # probe flight 1 x 1.13 (2026-10-22)
 DEFAULT_MARGIN = 1.25  # build for a ring a quarter wider than measured
 REFERENCE_WIDTH_PX = 2704  # X-Plane's image when the rings were measured
 REFERENCE_FOV_DEG = 65.0

@@ -577,14 +577,14 @@ def sharp(jobs: dict) -> list[int]:
 
 
 def test_what_a_start_waits_for(tmp_path: Path) -> None:
-    """At a start: the 8192 px within 12 km, where X-Plane reads them, no margin while it loads
+    """At a start: the 8192 px within 13.6 km, where X-Plane reads them, no margin while it loads
     (2026-10-20), which X-Plane waits for (urgency <= 0); farther, each level of these 8192 px
     files where X-Plane reads it, a ring before a 4096 px file's, widened by the camera's reach
     even in the cockpit."""
     s = row_streamer(tmp_path)
     jobs = s.plan(at(0), x_plane_there=False, starting=True)
-    assert sharp(jobs) == [0, 1]  # 0 and 6.8 km; 13.6 km is beyond 12
-    for k in (0, 1):
+    assert sharp(jobs) == [0, 1, 2]  # 0, 6.8 and 13.57 km, within 13.6; 20.4 km beyond
+    for k in (0, 1, 2):
         assert jobs[f"{ROW[k]}.dds"][0] <= 0
     # 4096 px out to 40.8 km, 2048 px from 47.6 km
     assert [jobs[f"{name}.dds"][1] for name in ROW[3:8]] == [0, 0, 0, 0, 1]
@@ -593,13 +593,14 @@ def test_what_a_start_waits_for(tmp_path: Path) -> None:
 
 def test_in_flight_all_around_and_ahead(tmp_path: Path) -> None:
     """In flight: within 15 km of the path ahead, the aircraft and the camera, whatever the way it
-    flies, nothing guessed of where it turns; urgent once X-Plane reads them (12 km). The path is
+    flies, nothing guessed of where it turns; urgent once X-Plane reads them (13.6 km). The path is
     two minutes long: in a turn, five minutes swept 38 km of it all around the aircraft."""
     s = row_streamer(tmp_path)
     east = s.plan(at(0, gs_ms=150.0, trk_deg=90.0), x_plane_there=False)
-    assert sharp(east) == list(range(5))  # the path: 13.5 km ahead, 15 km around its end
+    assert sharp(east) == list(range(6))  # the path: 18 km ahead, 17 km around its end
     assert east[f"{ROW[1]}.dds"][0] <= 0  # 6.8 km: X-Plane reads it now
-    assert east[f"{ROW[2]}.dds"][0] > 0  # 13.6 km: not yet
+    assert east[f"{ROW[2]}.dds"][0] <= 0  # 13.57 km: within 13.6, read now too
+    assert east[f"{ROW[3]}.dds"][0] > 0  # 20.4 km: not yet
     west = s.plan(at(0, gs_ms=150.0, trk_deg=270.0), x_plane_there=False)
     assert sharp(west) == [0, 1, 2]  # behind: those around the aircraft still
     s.cache.close()
@@ -712,7 +713,7 @@ def test_a_wider_image_reads_sharper_farther(tmp_path: Path) -> None:
         "width": 2704,
         "fov": 33.5,
         "scale": pytest.approx(2.117, abs=0.01),
-        "km_4096": pytest.approx(25.4, abs=0.2),
+        "km_4096": pytest.approx(28.8, abs=0.2),
     }
     s.save()  # remembered for the next start, before X-Plane says it again
     again = Streamer(s.pack_dir, s.cache, FakeDownloader, finest_quality=0, max_zoom=17, log=quiet)
@@ -729,7 +730,7 @@ def test_no_8192_px_below_maximum_texture_quality(tmp_path: Path) -> None:
 
 
 def test_late_8192_px_photos_get_the_copy_first(tmp_path: Path) -> None:
-    """In flight, an 8192 px level still without its photos as X-Plane is about to read it (13 km)
+    """In flight, an 8192 px level still without its photos as X-Plane is about to read it (14 km)
     is marked for the copy of its 4096 px level; not at a start (X-Plane waits for the photos),
     nor where the copy is already, nor farther."""
     s = row_streamer(tmp_path)
@@ -738,9 +739,9 @@ def test_late_8192_px_photos_get_the_copy_first(tmp_path: Path) -> None:
     s.plan(at(0), x_plane_there=False, starting=True)
     assert s.to_copy == set()
     s.plan(at(0, gs_ms=150.0, trk_deg=270.0), x_plane_there=False)
-    assert s.to_copy == {f"{ROW[1]}.dds"}  # 6.8 km; 13.6 km is not yet late
+    assert s.to_copy == {f"{ROW[1]}.dds", f"{ROW[2]}.dds"}  # 6.8 and 13.57 km; 20.4 is not late
     s.to_copy.clear()
-    s.copied_up.add(f"{ROW[1]}.dds")
+    s.copied_up |= {f"{ROW[1]}.dds", f"{ROW[2]}.dds"}
     s.plan(at(0, gs_ms=150.0, trk_deg=270.0), x_plane_there=False)
     assert s.to_copy == set()
     s.cache.close()

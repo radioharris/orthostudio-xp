@@ -8,9 +8,9 @@ runway 04 (from X-Plane's menu).
 ## The rule
 
 - **X-Plane takes each texture's level from the distance between the aircraft and the texture's
-  centre**, in the rings of [probe-flight-1.md](probe-flight-1.md): for a ZL16 texture 4096 px
-  under 12 km, 2048 px from 12 to 21 km, 1024 px from 21 to 38 km, 512 px from 38 to 72 km, 256 px
-  beyond; for a ZL18 texture the same four times closer (4096 px under 3 km, 2048 px to 5.25 km).
+  centre**, in the rings of [probe-flight-1.md](probe-flight-1.md) times 1.13 (below, 2026-10-22):
+  for a ZL16 texture 4096 px under 13.6 km, 2048 px to 23.7 km, 1024 px to 42.9 km, 512 px to
+  81.4 km, 256 px beyond; for a ZL18 texture the same four times closer.
 - **It takes them when it loads a flight, and again as the aircraft moves.** It reads nothing
   again when only the camera moves, in the drone view or the circle view, kilometres out and near
   the ground.
@@ -65,3 +65,30 @@ gives the old one there.
 X-Plane relaunched with its saved start (LSGG runway 04, `Freeflight.prf`) while a flight was placed
 at LSZH through the web API: Live built round Geneva and X-Plane loaded Zurich before its textures,
 every one neutral there until the aircraft moved.
+
+## The rings 12 % farther (2026-10-22, KOWB)
+
+A start at KOWB runway 06 (an A320, X-Plane's image 2,704 px and 65° as above) showed neutral
+textures 20 to 45 km from the aircraft that Live had built a level coarser than X-Plane took:
+
+- **With the camera** over them: ZL16 textures at 21.4 and 21.6 km (centres) showed their 2048 px
+  level, neutral, one at 24.7 km its 1024 px; at 40.6 and 42.0 km their 1024 px, neutral, one at
+  46.4 km its 512 px; four ZL18 ones at 18.7 to 21.4 km more than their 256 px. In a run with every
+  level built and tinted to 57 km, the same ZL16 at 21.6 km showed blue (2048 px), at 26.9 km
+  yellow (1024 px); and no texture was read again while the camera went 5, 26 and 45 km out
+  (access times reset first): the camera makes X-Plane read nothing.
+- **Counting X-Plane's opens** of every built texture of the pack while it loaded the flight, each
+  marked unread again after each read (`opens.py` in the session's scratchpad): at a start X-Plane
+  opens a texture for 256 px at its DSF's load and once more, straight to its level, if it wants it
+  sharper. The second open came for every ZL16 texture whose centre was within 80.9 km and for none
+  from 80.8 km on (three in between), for every ZL18 one within 20.0 km and none from 20.3 km on:
+  four times closer, as the law says, but 12 % past 72 and 18 km. Counted to the nearest edge
+  instead of the centre, the ZL16 split is twice as wide (six textures in 0.4 km).
+
+So every ring is the first probe flight's times 1.13 (`rings.RINGS_ZL16_KM`, 80.9 / 72 = 1.124
+rounded up): the 2048 and 1024 px points seen with the camera fall within it. Why the probe flight
+read them nearer is not known: it measured in flight, a Cessna, the same image.
+
+Not explained by it: a ZL16 texture at 29.1 km, built at 1024 px, showed neutral at the first
+start of that morning, its neighbours not; that start followed a pack set up again from scratch.
+

@@ -319,15 +319,16 @@ first. X-Plane picks the new file up by itself the next time it wants that textu
 
 X-Plane decides how sharp a texture must be from the distance between the aircraft and the
 texture's centre, in rings. For a normal texture (about 7 km across), as measured on a 2,704 px
-wide image with a 65° field of view:
+wide image with a 65° field of view (the first measures in flight, 12 % farther since a start
+measured on the ground in October):
 
 | distance from the aircraft to the texture's centre | what X-Plane reads | imagery |
 |---|---|---|
 | 130 to 230 km, when X-Plane loads the area | 256 px | ZL12 |
-| 72 km | 512 px | ZL13 |
-| 38 km | 1024 px | ZL14 |
-| 21 km | 2048 px | ZL15 |
-| under 12 km, texture quality at Maximum | 4096 px | ZL16 |
+| 81 km | 512 px | ZL13 |
+| 43 km | 1024 px | ZL14 |
+| 24 km | 2048 px | ZL15 |
+| under 14 km, texture quality at Maximum | 4096 px | ZL16 |
 
 On a wider screen, or zoomed in, X-Plane reads sharp textures farther, and Live builds them farther
 too; the Flight card says how far for yours. Airport textures (about 1.8 km across) follow the same
