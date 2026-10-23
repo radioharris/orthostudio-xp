@@ -400,6 +400,30 @@ async def test_plan_offline_two_lines(app, home: Path, xplane: Path) -> None:  #
         assert r.status_code == 422 and r.json()["error"]["code"] == "CFG_LATLON_INVALID"
 
 
+@pytest.mark.anyio
+async def test_a_square_of_open_sea_is_left_out_and_said(app, home: Path, xplane: Path) -> None:  # type: ignore[no-untyped-def]
+    """A user picked +33+012 off Libya's coast: open sea, which X-Plane has no scenery for, and
+    the Plan told him to install a region X-Plane does not have (2026-10-23). A square with no
+    land on the map of the world and no X-Plane file is left out of the plan and of the build,
+    said as an info line; open sea alone is refused with the same words. A square of land
+    without its file still stops the build, as before: its region is to install."""
+    sea, land = "+42+005", "+43+005"  # the Gulf of Lion, Marseille (the fake X-Plane has it)
+    async with client_for(app) as c:
+        r = await c.post("/api/plan", json={"tiles": [land, sea], "zoom_level": 14})
+        assert r.status_code == 200, r.text
+        doc = r.json()
+        assert doc["specs"] == [{"tile": land, "provider": "BI", "zl": 14}]
+        (said,) = [w for w in doc["warnings"] if isinstance(w, dict)]
+        assert said == {"code": "CFG_TILES_OPEN_SEA", "severity": "info", "context": {"tiles": sea}}
+        for route in ("/api/plan", "/api/jobs"):
+            r = await c.post(route, json={"tiles": [sea], "zoom_level": 14})
+            assert r.status_code == 422, (route, r.text)
+            err = r.json()["error"]
+            assert err["code"] == "CFG_TILES_OPEN_SEA" and err["context"]["tiles"] == sea
+        r = await c.post("/api/plan", json={"tiles": ["+44+005"], "zoom_level": 14})
+        assert r.json()["error"]["code"] != "CFG_TILES_OPEN_SEA"  # land: its region is missing
+
+
 def _ortho4xp_folder(root: Path) -> Path:
     ortho4xp_dir = root / "Ortho4XP"
     (ortho4xp_dir / "Ortho4XP.py").parent.mkdir(parents=True)

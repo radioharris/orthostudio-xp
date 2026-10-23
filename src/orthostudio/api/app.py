@@ -1667,13 +1667,14 @@ def create_app(
 
     # -- plan, jobs --------------------------------------------------------------------------
 
-    def _specs(req: PlanRequest, *, install: bool) -> list[Any]:
+    def _specs(req: PlanRequest, *, install: bool, left_out: list[str] | None = None) -> list[Any]:
         return make_specs(
             req,
             settings=settings(),
             install=install,
             airports=airport_index() if req.airport is not None else None,
             config_module=config,
+            left_out=left_out,
         )
 
     @app.post("/api/plan")
@@ -1681,7 +1682,8 @@ def create_app(
         from orthostudio.estimate import estimate
 
         def run() -> dict[str, Any]:
-            specs = _specs(req, install=False)
+            sea: list[str] = []
+            specs = _specs(req, install=False, left_out=sea)
             factory = state["env_factory"]
             env = None
             if factory is not None:
@@ -1705,7 +1707,16 @@ def create_app(
             finally:
                 if isinstance(env, BuildEnv):
                     env.close()  # each plan opened the store's index and left it open
-            return plan_answer(est, specs)
+            answer = plan_answer(est, specs)
+            if sea:  # left out, said as a line of its own (CFG_TILES_OPEN_SEA)
+                answer["warnings"].append(
+                    {
+                        "code": "CFG_TILES_OPEN_SEA",
+                        "severity": "info",
+                        "context": {"tiles": " ".join(sea)},
+                    }
+                )
+            return answer
 
         return await asyncio.to_thread(run)
 

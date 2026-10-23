@@ -580,6 +580,10 @@ level of step 1 and the route at ZL14, the ground you fly over rather than land 
 own list, and a tick before the route leaves its squares out if you want the two airports alone.
 Squares X-Plane has no scenery for, open sea or a region not installed, are left out, since a
 build would stop on them, and a route longer than one build takes stops at a square the box names.
+A square of open sea you choose by hand is left out too: X-Plane has no scenery there and draws its
+own water, with its depth, which a tile of photos would only make worse. The Plan says which, in a
+line of its own, and builds the others; open sea alone has nothing to build, and the Plan says so.
+A square with land whose region of X-Plane is not installed still stops the build, as before.
 *Delete the flight plan* takes it away with its squares; those you chose by hand stay. The plan is
 kept in the browser until then, with your levels and the squares you took out, and its squares are
 computed again at each visit, so a new version's rules apply to it. Only your name goes to
