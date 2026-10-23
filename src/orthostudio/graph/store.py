@@ -38,7 +38,13 @@ from orthostudio.fsutil import atomic_link_or_copy
 from orthostudio.fsutil import fsync_dir as _fsync_dir
 from orthostudio.fsutil import replace as fs_replace
 from orthostudio.graph.canon import canonical_json
-from orthostudio.graph.digest import check_digest, digest_file, digest_path
+from orthostudio.graph.digest import (
+    check_digest,
+    digest_file,
+    digest_of_files,
+    digest_path,
+    dir_files,
+)
 from orthostudio.graph.errors import (
     ArtifactHeldError,
     ArtifactInUseError,
@@ -142,9 +148,10 @@ CREATE TABLE IF NOT EXISTS sources (
     digest   TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS trimmed (
-    key  TEXT NOT NULL REFERENCES artifacts (key) ON DELETE CASCADE,
-    path TEXT NOT NULL,
-    size INTEGER NOT NULL,
+    key    TEXT NOT NULL REFERENCES artifacts (key) ON DELETE CASCADE,
+    path   TEXT NOT NULL,
+    size   INTEGER NOT NULL,
+    digest TEXT,
     PRIMARY KEY (key, path)
 );
 CREATE TABLE IF NOT EXISTS away (
@@ -159,6 +166,10 @@ CREATE TABLE IF NOT EXISTS away (
     since     REAL NOT NULL
 );
 """
+
+_TRIMMED_ADDED = (("digest", "TEXT"),)
+"""The column ``trimmed`` gained after its first form (the file's digest, which keeps the artefact's
+own provable: :meth:`Store.fsck`); added at the opening of an index that has that form."""
 
 _AWAY_ADDED = (
     ("version", "INTEGER NOT NULL DEFAULT 0"),
@@ -466,10 +477,11 @@ class Store:
             for statement in _SCHEMA.split(";"):
                 if statement.strip():
                     db.execute(statement)
-            have = {str(r["name"]) for r in db.execute("PRAGMA table_info(away)")}
-            for name, declared in _AWAY_ADDED:
-                if name not in have:
-                    db.execute(f"ALTER TABLE away ADD COLUMN {name} {declared}")
+            for table, added in (("away", _AWAY_ADDED), ("trimmed", _TRIMMED_ADDED)):
+                have = {str(r["name"]) for r in db.execute(f"PRAGMA table_info({table})")}
+                for name, declared in added:
+                    if name not in have:
+                        db.execute(f"ALTER TABLE {table} ADD COLUMN {name} {declared}")
             db.execute("CREATE INDEX IF NOT EXISTS away_listed_in ON away (listed_in)")
             row = db.execute("SELECT v FROM meta WHERE k = 'schema_version'").fetchone()
             if row is None:
@@ -1160,55 +1172,93 @@ class Store:
         """Remove from the folder artefact ``key`` the files ``paths`` (relative to it), which hold
         what another of its files holds, and say how many bytes went. The artefact keeps its key
         and its digest, which the artefacts made from it were keyed with: nothing downstream is
-        made again. ``trimmed`` lists what went, :meth:`fsck` knows, and the index's size is what
-        is left. A path not there, or not a file, is left out; one that cannot be removed (another
-        program holds it, on Windows) stays, and its row with it is taken back."""
+        made again. ``trimmed`` lists what went with each file's size and digest, so that the
+        artefact's digest stays provable (:meth:`fsck`); the index's size is what is left.
+
+        Nothing goes unless every file of the artefact is first read whole and found as it was
+        built: its files, and those trimmed before, give its digest again. A file damaged since,
+        on a disk that failed, would otherwise have taken the good form with it; the artefact is
+        then left as it is. A path outside the artefact, or not one of its files, is left out; a
+        file another program holds (on Windows) stays, and its row with it is taken back."""
         info = self.info(key)
         if info is None or info.kind != "dir":
             return 0
+        try:
+            files = dir_files(info.path)
+        except OSError as exc:
+            log.warning("%s not trimmed: its files cannot be read (%s)", key[:16], exc)
+            return 0
+        before = self._trimmed_files(key)
+        if None in before.values() or digest_of_files({**before, **files}) != info.digest:  # type: ignore[arg-type]
+            log.warning("%s not trimmed: its files are not those it was built with", key[:16])
+            return 0
         freed = 0
         for rel in paths:
-            if Path(rel).is_absolute() or ".." in Path(rel).parts:
-                continue  # inside the artefact only
-            path = info.path / rel
+            name = Path(rel).as_posix()
+            if Path(rel).is_absolute() or ".." in Path(rel).parts or name not in files:
+                continue  # its own files only
+            size, digest = files[name]
+            path = info.path / name
             try:
-                st = path.lstat()
+                links = path.lstat().st_nlink
             except OSError:
-                continue
-            if not path.is_file() or path.is_symlink():
                 continue
             with self._tx():
                 self._db.execute(
-                    "INSERT OR REPLACE INTO trimmed (key, path, size) VALUES (?, ?, ?)",
-                    (key, Path(rel).as_posix(), int(st.st_size)),
+                    "INSERT OR REPLACE INTO trimmed (key, path, size, digest) VALUES (?, ?, ?, ?)",
+                    (key, name, size, digest),
                 )
                 self._db.execute(
-                    "UPDATE artifacts SET size = MAX(0, size - ?) WHERE key = ?",
-                    (int(st.st_size), key),
+                    "UPDATE artifacts SET size = MAX(0, size - ?) WHERE key = ?", (size, key)
                 )
             try:
                 path.unlink()
             except OSError as exc:
-                log.warning("%s of %s not trimmed: %s", rel, key[:16], exc)
+                log.warning("%s of %s not trimmed: %s", name, key[:16], exc)
                 with self._tx():
+                    self._db.execute("DELETE FROM trimmed WHERE key = ? AND path = ?", (key, name))
                     self._db.execute(
-                        "DELETE FROM trimmed WHERE key = ? AND path = ?",
-                        (key, Path(rel).as_posix()),
-                    )
-                    self._db.execute(
-                        "UPDATE artifacts SET size = size + ? WHERE key = ?", (int(st.st_size), key)
+                        "UPDATE artifacts SET size = size + ? WHERE key = ?", (size, key)
                     )
                 continue
-            freed += int(st.st_size) if st.st_nlink <= 1 else 0
+            freed += size if links <= 1 else 0
         return freed
 
     def trimmed(self, key: str) -> dict[str, int]:
         """The files trimmed from the artefact ``key`` (:meth:`trim`), with their sizes."""
+        return {path: size for path, (size, _digest) in self._trimmed_rows(key).items()}
+
+    def _trimmed_rows(self, key: str) -> dict[str, tuple[int, str | None]]:
         with self._lock:
             rows = self._db.execute(
-                "SELECT path, size FROM trimmed WHERE key = ? ORDER BY path", (key,)
+                "SELECT path, size, digest FROM trimmed WHERE key = ? ORDER BY path", (key,)
             ).fetchall()
-        return {str(r["path"]): int(r["size"]) for r in rows}
+        return {str(r["path"]): (int(r["size"]), _opt_str(r["digest"])) for r in rows}
+
+    def _trimmed_files(self, key: str) -> dict[str, tuple[int, str] | None]:
+        """The trimmed files of ``key`` as :func:`digest_of_files` takes them; ``None`` for one
+        recorded without its digest (the table's first form)."""
+        return {
+            path: (size, digest) if digest is not None else None
+            for path, (size, digest) in self._trimmed_rows(key).items()
+        }
+
+    def content_digest(self, key: str) -> str | None:
+        """The digest of the artefact ``key`` as its files on disk and those trimmed from it give
+        it, which is its own when it is as it was built; ``None`` when a trimmed file has no
+        recorded digest, or the artefact cannot be read."""
+        info = self.info(key)
+        if info is None:
+            return None
+        trimmed = self._trimmed_files(key)
+        if None in trimmed.values():
+            return None
+        try:
+            if not trimmed:
+                return digest_path(info.path)[0]
+            return digest_of_files({**trimmed, **dir_files(info.path)})  # type: ignore[arg-type]
+        except OSError:
+            return None
 
     def gc(self, *, quota_bytes: int | None = None, min_age_s: float = 0.0) -> GcReport:
         """Collect unreferenced artefacts, least recently used first.
@@ -1297,10 +1347,14 @@ class Store:
                 rows_without.append(key)
             else:
                 indexed[p] = (key, digest)
-                # a trimmed artefact holds less than its digest: what is left is all there is to
-                # read, and its identity is the digest it was made with (:meth:`trim`)
-                if verify and not self.trimmed(key) and digest_path(p)[0] != digest:
-                    mismatches.append(key)
+                # a trimmed artefact is checked from its files left and those trimmed
+                # (:meth:`trim`); one trimmed before their digests were kept is not checked
+                if verify:
+                    found = self.content_digest(key)
+                    if found is None and self.trimmed(key):
+                        continue
+                    if found != digest:
+                        mismatches.append(key)
         for p in self._iter_finals():
             if p not in indexed:
                 files_without.append(p)

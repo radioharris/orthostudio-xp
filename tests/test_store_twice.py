@@ -400,3 +400,56 @@ def test_a_file_s_digest_is_kept_while_it_stays_the_same(
         other.write_bytes(b"A" * 1000)
         other.replace(dsf)  # another file under the name
         assert s.file_digest(dsf) == first and len(read) == 3
+
+
+# -- read whole before anything goes ------------------------------------------------------------
+
+
+def test_nothing_is_trimmed_from_an_artefact_that_is_not_as_built(tmp_path: Path) -> None:
+    """Every file is read whole first: if the kept form, or the one that would go, is no longer
+    what was built (a disk that failed), the artefact is left as it is, and the good form with
+    it."""
+    with Store(tmp_path / "store", fsync=False) as s:
+        for damaged in ("dem.npy", f"Data{T.name}.alt"):
+            key = _relief(s, 1 if damaged == "dem.npy" else 2)
+            path = s.path(key) / damaged
+            data = bytearray(path.read_bytes())
+            data[-1] ^= 0x01
+            path.write_bytes(bytes(data))
+            assert s.trim(key, [f"Data{T.name}.alt"]) == 0
+            assert (s.path(key) / f"Data{T.name}.alt").is_file() and s.trimmed(key) == {}
+
+
+def test_a_trimmed_artefact_is_still_checked_whole(tmp_path: Path) -> None:
+    """The digest of each file that went is kept: a check of the store gives the artefact's own
+    digest again from the files left and those, and finds a file left that changed since."""
+    with Store(tmp_path / "store", fsync=False) as s:
+        key = _mesh_artefact(s)
+        assert s.trim(key, [f"Data{T.name}.mesh"]) > 0
+        assert s.content_digest(key) == s.digest_of(key)
+        assert s.fsck(verify=True).clean
+        npz = s.path(key) / "mesh.npz"
+        data = bytearray(npz.read_bytes())
+        data[-1] ^= 0x01
+        npz.write_bytes(bytes(data))
+        assert s.content_digest(key) != s.digest_of(key)
+        assert s.fsck(verify=True).digest_mismatches == (key,)
+
+
+def test_files_trimmed_in_two_goes_or_before_their_digests_were_kept(tmp_path: Path) -> None:
+    """Trimmed a file at a time, the artefact stays provable; a row of the table's first form,
+    without its digest, leaves the artefact as it is from then on, and unchecked."""
+    with Store(tmp_path / "store", fsync=False) as s:
+        key = _put(
+            s, "orthostudio.mesh", 5,
+            {"mesh.npz": b"n" * 100, "a.mesh": b"a" * 50, "b.mesh": b"b" * 60},
+        )  # fmt: skip
+        assert s.trim(key, ["a.mesh"]) == 50 and s.trim(key, ["b.mesh"]) == 60
+        assert s.content_digest(key) == s.digest_of(key)
+        other = _put(s, "orthostudio.mesh", 6, {"mesh.npz": b"n" * 10, "c.mesh": b"c" * 5})
+        s._db.execute(
+            "INSERT INTO trimmed (key, path, size, digest) VALUES (?, 'gone.mesh', 7, NULL)",
+            (other,),
+        )
+        assert s.trim(other, ["c.mesh"]) == 0 and s.content_digest(other) is None
+        assert s.fsck(verify=True).clean

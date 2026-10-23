@@ -596,7 +596,12 @@ def clean(
                     report.filed_bytes = (
                         names.freed([*gone, *sent, *taken]) - report.freed_bytes - report.held_bytes
                     )
-                report.twice_bytes = sum(store.trim(info.key, files) for info, files in twice)
+                # each artefact read whole first, and trimmed only as it was built (``Store.trim``)
+                report.twice_files = report.twice_bytes = 0
+                for info, files in twice:
+                    before = len(store.trimmed(info.key))
+                    report.twice_bytes += store.trim(info.key, files)
+                    report.twice_files += len(store.trimmed(info.key)) - before
                 _tidy_away(store, packs)
                 report.kept = len(store)
                 report.tmp_removed = len(store.sweep_tmp(max_age_s=grace_s))
@@ -717,10 +722,12 @@ def _twice(
 ) -> list[tuple[ArtifactInfo, dict[str, int]]]:
     """The relief and mesh artefacts that hold Ortho4XP's form beside the one OrthoStudio XP reads,
     with those files and their sizes (``_TWICE``); not those going anyway (``going``), nor what
-    was used in the last ``grace_s`` or is pinned, which a build may be reading. A file goes only
-    when the kept form says the same size of the same thing: as many altitudes in ``dem.npy`` as
-    the raw ``.alt`` holds, as many points in ``mesh.npz`` as the ``.mesh`` names in its header;
-    the rest stays as it is. Its bytes count when it has no other name (never linked)."""
+    was used in the last ``grace_s`` or is pinned, which a build may be reading. A file is offered
+    only when the kept form says the same size of the same thing: as many altitudes in ``dem.npy``
+    as the raw ``.alt`` holds, as many points in ``mesh.npz`` as the ``.mesh`` names in its header,
+    read from the headers alone, which is what Disk space measures; the trim itself reads every
+    file of the artefact whole first and goes only if they are those it was built with
+    (``Store.trim``). Its bytes count when it has no other name (never linked)."""
     cutoff = time.time() - grace_s
     found: list[tuple[ArtifactInfo, dict[str, int]]] = []
     for rule, (kept, pattern) in _TWICE.items():

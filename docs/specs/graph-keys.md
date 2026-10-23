@@ -227,9 +227,10 @@ CREATE TABLE sources (               -- digests of files outside the store, whil
     digest   TEXT NOT NULL
 );
 CREATE TABLE trimmed (               -- files trimmed from an artefact, which keeps its identity
-    key  TEXT NOT NULL REFERENCES artifacts (key) ON DELETE CASCADE,
-    path TEXT NOT NULL,              -- relative to the artefact
-    size INTEGER NOT NULL,
+    key    TEXT NOT NULL REFERENCES artifacts (key) ON DELETE CASCADE,
+    path   TEXT NOT NULL,            -- relative to the artefact
+    size   INTEGER NOT NULL,
+    digest TEXT,                     -- the file's own; NULL in a row of the table's first form
     PRIMARY KEY (key, path)
 );
 CREATE TABLE away (                  -- an artefact let go of, its bytes held outside
@@ -275,9 +276,15 @@ asked some 480 times, 11.3 s on the reference Mac, 0.21 s since.
 `trimmed` (2026-10-23): `Store.trim(key, paths)` removes files of a folder artefact that hold
 what another of its files holds (the relief's `.alt` beside `dem.npy`, the mesh's text beside
 `mesh.npz`), and the artefact keeps its key and its digest, which what was made from it was keyed
-with: nothing downstream is made again. The index's `size` becomes what is left (the store's
-`disk_bytes` follows, by its triggers), the table lists what went, and `fsck(verify=True)` does not
-read a trimmed artefact against its digest, which no longer describes its files. A path outside
+with: nothing downstream is made again. Nothing goes before every file of the artefact is read
+whole and found as it was built: its files left and those trimmed before give its digest again
+(`digest.digest_of_files`), else the artefact is left as it is, the good form with it (a file
+damaged since, on a disk that failed). The index's `size` becomes what is left (the store's
+`disk_bytes` follows, by its triggers), the table lists what went with each file's size and digest,
+and `fsck(verify=True)` checks a trimmed artefact from those and the files left
+(`Store.content_digest`); a row of the table's first form, without its digest (2026-10-23 only),
+leaves its artefact untrimmed from then on and unchecked. The first form gains the column at the
+opening (`_TRIMMED_ADDED`). A path outside
 the artefact is refused; a file another program holds stays, and its row with it is taken back.
 Its digest is no longer what its files hash to: a version that reads the files alone (an older
 OrthoStudio XP opening the store) sees the artefact as it is, and builds what it makes from it from

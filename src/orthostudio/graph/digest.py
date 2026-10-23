@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import os
 import re
+from collections.abc import Mapping
 from pathlib import Path
 
 import blake3
@@ -18,7 +19,9 @@ __all__ = [
     "digest_bytes",
     "digest_dir",
     "digest_file",
+    "digest_of_files",
     "digest_path",
+    "dir_files",
     "dir_manifest",
 ]
 
@@ -69,6 +72,21 @@ def digest_dir(root: Path | str) -> tuple[str, int]:
         total += size
         lines.append(f"{rel}\0{size}\0{digest_file(full)}\n")
     return digest_bytes("".join(lines).encode("utf-8")), total
+
+
+def dir_files(root: Path | str) -> dict[str, tuple[int, str]]:
+    """The regular files of a directory tree by POSIX relative path, with their size and digest:
+    what :func:`digest_dir` hashes."""
+    root = Path(root)
+    return {rel: (full.stat().st_size, digest_file(full)) for rel, full in _walk_files(root)}
+
+
+def digest_of_files(files: Mapping[str, tuple[int, str]]) -> str:
+    """The digest :func:`digest_dir` gives a directory holding ``files`` (:func:`dir_files`):
+    that of a folder artefact some files of which are gone, from those left and those recorded."""
+    lines = [f"{DIR_MANIFEST_FORMAT}\n"]
+    lines += [f"{rel}\0{size}\0{digest}\n" for rel, (size, digest) in sorted(files.items())]
+    return digest_bytes("".join(lines).encode("utf-8"))
 
 
 def digest_path(path: Path | str) -> tuple[str, int]:
