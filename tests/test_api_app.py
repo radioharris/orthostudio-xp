@@ -56,7 +56,7 @@ async def test_status_providers_and_language(app, home: Path, xplane: Path) -> N
         # the sizes are measured apart (GET /api/sizes): on Windows they held the status up
         assert "store_bytes" not in doc and "chunks_bytes" not in doc
         sizes = (await c.get("/api/sizes")).json()
-        assert sizes == {"store_bytes": 0, "chunks_bytes": 0}
+        assert sizes == {"store_bytes": 0, "shared_bytes": 0, "chunks_bytes": 0}
         names = {c["name"] for c in doc["doctor"]}
         assert {"python", "encoder", "xplane", "disk"} <= names
         assert doc["active_job"] is None
@@ -845,7 +845,7 @@ def test_the_library_remembers_its_tiles_facts_and_waits_for_none(
         read.append((threading.current_thread().name, list(packs)))
         return built_of(packs)
 
-    monkeypatch.setattr(appmod, "_pack_bytes", lambda p: measured.append(p) or measure(p))
+    monkeypatch.setattr(appmod, "_pack_bytes", lambda p, r: measured.append(p) or measure(p, r))
     monkeypatch.setattr(
         appmod, "_pack_stamp", lambda p: stamped.append(threading.current_thread().name) or stamp(p)
     )

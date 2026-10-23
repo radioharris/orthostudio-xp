@@ -70,6 +70,7 @@ __all__ = [
     "keep_keys",
     "needed_keys",
     "pack_dirs",
+    "pack_disk_bytes",
 ]
 
 log = logging.getLogger("orthostudio.clean")
@@ -320,6 +321,59 @@ def disk_bytes(paths: Iterable[Path], *, links: bool = True) -> int:
                 seen.add(inode)
             total += st.st_size
     return total
+
+
+def pack_disk_bytes(pack: Path, store_root: Path | None) -> tuple[int, int]:
+    """``(bytes, shared)`` of a tile's folder: its files on the disk, each inode once (as
+    :func:`disk_bytes`), and those of them that are the store's own files too, one file under the
+    tile's name and the store's (a hard link). Raises ``OSError`` when the folder cannot be listed.
+
+    The store's size counted them again: a user's file manager showed the store folder about twice
+    the size of the tiles, and the page's own figures added up the same files twice, 91 GB for a
+    store that adds 40 GB to 62 GB of tiles (the owner's, 2026-10-23). A tile shares when one of its
+    images is the very file the store keeps for it (``tile.textures``, named in its manifest): a
+    tile copied to another disk, or one whose cache went, shares nothing, and the tiles of a
+    former data folder on the same disk share with that folder's store, not this one. Then each of
+    its files on the store's disk under more than one name is the store's too. Its DSF may be a
+    copy where its images are not, as a few of the owner's were: each file is asked."""
+    seen: set[tuple[int, int]] = set()
+    linked: list[tuple[str, os.stat_result]] = []
+    total = 0
+    for path, st in _files(Path(pack)):
+        if st.st_nlink > 1:
+            inode = (st.st_dev, st.st_ino)
+            if inode in seen:
+                continue
+            seen.add(inode)
+            linked.append((path, st))
+        total += st.st_size
+    if store_root is None or not linked or not _shares_with(Path(pack), linked, Path(store_root)):
+        return total, 0
+    device = os.stat(store_root).st_dev
+    return total, sum(st.st_size for _path, st in linked if st.st_dev == device)
+
+
+def _shares_with(pack: Path, linked: list[tuple[str, os.stat_result]], store_root: Path) -> bool:
+    """Whether one image of ``pack`` linked elsewhere is the store's own file for it (its
+    ``tile.textures`` artefact, laid out as ``Store.artifact_path`` lays it)."""
+    try:
+        entry = read_manifest(pack).artefacts.get("textures")
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
+    if entry is None:
+        return False
+    rule = entry.rule.partition("@")[0] or "tile.textures"
+    kept = store_root / rule / entry.key[:2] / entry.key / "textures"
+    textures = os.path.join(os.fspath(pack), "textures")
+    for path, st in linked:
+        if os.path.dirname(path) != textures:
+            continue
+        try:
+            there = os.stat(kept / os.path.basename(path))
+        except OSError:
+            return False
+        return (there.st_dev, there.st_ino) == (st.st_dev, st.st_ino)
+    return False
 
 
 def freed_bytes(paths: Iterable[Path]) -> int:

@@ -69,7 +69,7 @@ from orthostudio.api.specs import (
     where_now,
 )
 from orthostudio.api.zones_api import zones_router
-from orthostudio.clean import clean, disk_bytes
+from orthostudio.clean import clean, disk_bytes, pack_disk_bytes
 from orthostudio.codemark import code_mark
 from orthostudio.dem.sources import default_elevation_dir
 from orthostudio.doctor import run_doctor
@@ -152,7 +152,7 @@ __all__ = [
     "sse_message",
 ]
 
-API_LEVEL = 32
+API_LEVEL = 33
 """What this engine's API offers, for the page: 1 = P2b, 2 = zones (``/api/zones``) and the base map
 (``/api/map``), 3 = deleting a tile (``POST /api/library/{name}/delete``) and the sizes of the
 library, 4 = the disk space of the Library (``GET /api/disk``, ``POST /api/clean``), 5 = clearing
@@ -189,7 +189,8 @@ refuses a settings document that holds it), 26 = the stages ``osm`` and ``relief
 and ``POST /api/flightplan/file`` (a Little Navmap or X-Plane plan file), 31 = ``POST
 /api/zones/cells`` (the squares each zone takes, drawn on the map), 32 = ``POST
 /api/library/find-in-workshop`` and ``own`` in the import's answer (the tiles OrthoStudio XP built
-in a folder, taken back). A page
+in a folder, taken back), 33 = ``shared_bytes`` in ``GET /api/sizes`` and ``GET /api/disk`` (the
+store's files that are the tiles' own too, counted once). A page
 served by an engine older than itself (a ``osxp serve`` started before an update: the page's files
 are read from disk at each load, the routes were imported at start) asks the user to restart
 OrthoStudio XP instead of showing "Not Found"."""
@@ -443,13 +444,37 @@ def _dir_bytes(path: Path, *, links: bool = True) -> int:
 
 
 def _sizes() -> dict[str, int]:
-    """``GET /api/sizes``: the store's bytes on the disk and the downloaded images'. The images are
-    never hard-linked, so their sizes come from the folder listings alone (``links=False``): on
-    Windows that saves opening each file."""
+    """``GET /api/sizes``: the store's bytes on the disk, those of them that are the tiles' own
+    files too (:func:`_shared_bytes`), and the downloaded images'. The images are never
+    hard-linked, so their sizes come from the folder listings alone (``links=False``): on Windows
+    that saves opening each file."""
     return {
         "store_bytes": _store_bytes(default_store_root()),
+        "shared_bytes": _shared_bytes(default_store_root()),
         "chunks_bytes": _dir_bytes(default_chunks_root(), links=False),
     }
+
+
+def _shared_bytes(root: Path) -> int:
+    """The bytes of the store at ``root`` that are the files of the tiles in the Library too, one
+    file under two names: the page counts them once, in the tiles' sizes, where the store's size
+    counted them again (91 GB for a store adding 40 GB to the owner's 62 GB of tiles,
+    2026-10-23). Read from what the Library remembers of each tile (``PackFacts.shared``), measured
+    against this store, of the tiles whose folder is there: a tile moved off the disk by hand
+    left the store's files alone, the store's own again. 0 when nothing can say."""
+    try:
+        with Library(default_library_path()) as lib:
+            facts = lib.remembered_facts()
+            packs = {row.path for row in lib.list(kind="ortho")}
+    except Exception:  # a figure of the page never stops the engine
+        return 0
+    store = str(root)
+    total = 0
+    for pack in packs:
+        f = facts.get(str(pack))
+        if f is not None and f.shared and f.shared_with == store and pack.is_dir():
+            total += f.shared
+    return total
 
 
 def _store_bytes(root: Path) -> int:
@@ -539,11 +564,14 @@ def _pack_facts(
     known: dict[Path, PackFacts] = {}
     todo: list[Path] = []
     check: list[tuple[Path, str | None]] = []
+    measured_with = str(default_store_root())
     for pack, updated_at in registered.items():
         facts = remembered.get(str(pack))
         if facts is not None and facts.measured_at > updated_at:
             known[pack] = facts
-            check.append((pack, facts.stamp))
+            # measured before the files it shares with this store were (an older version, or
+            # another data folder): measured again in the background, its size shown meanwhile
+            check.append((pack, facts.stamp if facts.shared_with == measured_with else ""))
         else:
             todo.append(pack)
     deadline = time.monotonic() + PACK_SIZES_BUDGET_S
@@ -569,11 +597,13 @@ def _measure_pack(
     stamp = _pack_stamp(pack)
     if stamp is None or stamp == known_stamp:
         return None
-    size = _pack_bytes(pack)
-    if size is None:
+    root = default_store_root()
+    sizes = _pack_bytes(pack, root)
+    if sizes is None:
         return None
     photo = _pack_photos([pack], store)[pack]
-    facts = PackFacts(stamp, size, photo, _pack_built([pack])[pack], at)
+    size, shared = sizes
+    facts = PackFacts(stamp, size, photo, _pack_built([pack])[pack], at, shared, str(root))
     lib.remember_facts(pack, facts)
     return facts
 
@@ -604,12 +634,13 @@ def _measure_packs(library: Path, packs: list[tuple[Path, str | None]]) -> None:
             _PACK_SIZES_MEASURING.difference_update(p for p, _ in packs)
 
 
-def _pack_bytes(path: Path) -> int | None:
-    """``size_bytes`` of an ortho row whose folder exists: its files on the disk, each inode
-    once. A DDS hard-linked from the store counts in full although deleting the pack alone does
-    not free it (the store clean after a delete does). ``None`` when the folder cannot be read."""
+def _pack_bytes(path: Path, store_root: Path) -> tuple[int, int] | None:
+    """``size_bytes`` of an ortho row whose folder exists, its files on the disk, each inode
+    once, and the bytes of them that are the store's files too (``clean.pack_disk_bytes``). A
+    DDS hard-linked from the store counts in full although deleting the pack alone does not free
+    it (the store clean after a delete does). ``None`` when the folder cannot be read."""
     try:
-        return disk_bytes([path])
+        return pack_disk_bytes(path, store_root)
     except OSError:
         return None
 
@@ -2361,6 +2392,7 @@ def create_app(
         report = collect(images=True, relief=True, filed=True, dry_run=True)
         return {
             "store_bytes": _store_bytes(default_store_root()),
+            "shared_bytes": _shared_bytes(default_store_root()),
             "unused_bytes": report.freed_bytes,
             "images_bytes": report.images_bytes - report.mapcache_bytes,
             "mapcache_bytes": report.mapcache_bytes,
