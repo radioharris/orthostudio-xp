@@ -918,7 +918,7 @@ class Store:
 
     # -- artefacts held outside the store --------------------------------------------------
 
-    def send_away(
+    def note_away(
         self,
         key: str,
         *,
@@ -927,15 +927,13 @@ class Store:
         size: int,
         path: Path,
         listed_in: str | None = None,
-    ) -> bool:
-        """Let go of the artefact ``key``, whose very bytes ``path`` holds outside the store (a
-        tile's own copy of its image, on another disk; for a folder, the tile that holds its
-        files): its row in ``away`` says where, with the version and the recipe the store had
-        (what :meth:`last_away` reads), and the folder artefact that listed it (``listed_in``,
-        what :meth:`away_listed` reads). :meth:`take_back` puts a file back from there. The row
-        is written first, so that an artefact deleted is never one the store forgot; True when
-        the store held it and let go of it. Raises as :meth:`delete` does when it cannot (the
-        row then stays, and is of no use while the artefact is there)."""
+    ) -> None:
+        """Remember that ``path``, outside the store, holds the very bytes of the artefact ``key``
+        (a tile's own copy of its image, on another disk; for a folder, the tile that holds its
+        files): its row in ``away`` says where, with the version and the recipe the store has (what
+        :meth:`last_away` reads), and the folder artefact that listed it (``listed_in``, what
+        :meth:`away_listed` reads). The artefact itself stays: an image of a folder let go of that a
+        neighbour's folder lists too, which the folder's list names all the same."""
         check_digest(key, "key")
         check_digest(digest, "digest")
         with self._lock:
@@ -962,6 +960,24 @@ class Store:
                         listed_in, time.time(),
                     ),
                 )  # fmt: skip
+
+    def send_away(
+        self,
+        key: str,
+        *,
+        rule: str,
+        digest: str,
+        size: int,
+        path: Path,
+        listed_in: str | None = None,
+    ) -> bool:
+        """Let go of the artefact ``key``, whose very bytes ``path`` holds outside the store, its
+        row written first (:meth:`note_away`), so that an artefact deleted is never one the store
+        forgot; :meth:`take_back` puts a file back from there. True when the store held it and let
+        go of it. Raises as :meth:`delete` does when it cannot (the row then stays, and is of no
+        use while the artefact is there)."""
+        with self._lock:
+            self.note_away(key, rule=rule, digest=digest, size=size, path=path, listed_in=listed_in)
             return self.delete(key, force=True)
 
     def away(self, key: str) -> AwayInfo | None:

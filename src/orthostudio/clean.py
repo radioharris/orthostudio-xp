@@ -53,7 +53,7 @@ import stat
 import time
 from collections import Counter
 from collections.abc import Collection, Iterable, Iterator
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from math import ceil, floor
 from pathlib import Path
 
@@ -557,7 +557,7 @@ def clean(
             cache = [i for i in cache if i.key not in set(letting)]
             report.removed = len(unused)
             report.freed_bytes = names.freed(first)
-            report.held_images = sum(len(h.images) for h in held)
+            report.held_images = sum(len(h.images) - len(h.stays) for h in held)
             report.held_bytes = names.freed([*first, *letting]) - report.freed_bytes
             report.filed_bytes = (
                 names.freed([*first, *letting, *(i.key for i in cache)])
@@ -693,6 +693,8 @@ class _Copy:
     digest: str
     size: int
     info: ArtifactInfo | None
+    inode: tuple[int, int]
+    """The store's file of it (in the textures folder)."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -703,10 +705,14 @@ class _Held:
     info: ArtifactInfo
     pack: Path
     images: dict[str, _Copy]
+    stays: frozenset[str] = frozenset()
+    """The images that stay in the store, another artefact that stays linking them too
+    (:func:`_let_go`): the folder goes without them."""
 
     @property
     def keys(self) -> list[str]:
-        return [self.info.key, *self.images]
+        """The artefacts that go: the folder and its images but those that stay."""
+        return [self.info.key, *(k for k in self.images if k not in self.stays)]
 
 
 def _held(store: Store, packs: Iterable[Path], grace_s: float) -> list[_Held]:
@@ -769,7 +775,9 @@ def _own_copies(store: Store, pack: Path, folder: Path) -> dict[str, _Copy] | No
         info = store.info(str(key))
         if info is not None and info.rule != "texture.dds":
             return None
-        images[str(key)] = _Copy(pack / "textures" / file, str(digest), kept.st_size, info)
+        images[str(key)] = _Copy(
+            pack / "textures" / file, str(digest), kept.st_size, info, (kept.st_dev, kept.st_ino)
+        )
     return images
 
 
@@ -778,22 +786,21 @@ def _stored(images: dict[str, _Copy]) -> list[ArtifactInfo]:
 
 
 def _let_go(names: _Names, first: list[str], held: list[_Held]) -> list[_Held]:
-    """The ``held`` folders whose files all come back once they go with their images, after the
-    artefacts ``first``: one whose image another folder that stays links (a neighbour's, a tile
-    on the store's disk) stays, with its images, which would leave the store and their bytes
-    with it."""
-    kept = list(held)
-    while kept:
-        links = names.links([*first, *(k for h in kept for k in h.keys)])
-        stay = {
-            h.info.key
-            for h in kept
-            if any(links.get(i, 0) < names.nlink[i] for i in names.of.get(h.info.key, ()))
-        }
-        if not stay:
-            break
-        kept = [h for h in kept if h.info.key not in stay]
-    return kept
+    """The ``held`` folders, each with the images whose bytes do not come back once it goes, after
+    the artefacts ``first``, as those that stay in the store: a texture astride the border with a
+    neighbour, which the neighbour's folder lists too, or one a tile on the store's disk shares.
+    The folder goes all the same, its tile holding every image, and the rest comes back: one image
+    a neighbour shared kept a whole tile in the store, 18 of a user's 309 (2026-10-23). A folder
+    none of whose images would come back stays, with them."""
+    links = names.links([*first, *(k for h in held for k in h.keys)])
+    out: list[_Held] = []
+    for h in held:
+        stays = frozenset(
+            k for k, c in h.images.items() if links.get(c.inode, 0) < names.nlink.get(c.inode, 0)
+        )
+        if len(stays) < len(h.images):
+            out.append(replace(h, stays=stays))
+    return out
 
 
 def _send_away(store: Store, held: list[_Held]) -> list[str]:
@@ -805,6 +812,16 @@ def _send_away(store: Store, held: list[_Held]) -> list[str]:
     for h in held:
         whole = True
         for key, copy in h.images.items():
+            if key in h.stays:  # its folder's list names it, the artefact staying
+                store.note_away(
+                    key,
+                    rule="texture.dds",
+                    digest=copy.digest,
+                    size=copy.size,
+                    path=copy.path,
+                    listed_in=h.info.key,
+                )
+                continue
             try:
                 if store.send_away(
                     key,
@@ -843,7 +860,10 @@ def _tidy_away(store: Store, packs: Iterable[Path]) -> None:
     forget: list[str] = []
     for row in store.away_rows():
         if store.has(row.key):
-            forget.append(row.key)
+            # back in the store; one its folder still away lists stays on that folder's list
+            folder_away = row.listed_in is not None and not store.has(row.listed_in)
+            if not folder_away or store.away(row.listed_in or "") is None:
+                forget.append(row.key)
             continue
         if row.path.exists() or disk_absent(row.path):
             continue

@@ -551,7 +551,8 @@ def _taken_back(env: BuildEnv, nodes: TileNodes, folder: str) -> _Kept:
     """The images of the textures folder ``folder`` the store let go of that a build takes back
     from the tile: each where the store remembers it, or in the tile's folders as the Library
     knows them now, of the size it had (``Store.take_back`` checks its digest too, which a Plan
-    does not read). Copied when the tile is on another disk than the store, linked otherwise."""
+    does not read). Copied when the tile is on another disk than the store, linked otherwise. One
+    the store kept, a neighbour's folder listing it too, is a hit."""
     try:
         device = os.stat(env.store_root).st_dev
     except OSError:
@@ -560,6 +561,9 @@ def _taken_back(env: BuildEnv, nodes: TileNodes, folder: str) -> _Kept:
     names: set[str] = set()
     copy = 0
     for row in env.store.away_listed(folder):
+        if env.store.has(row.key):  # one a neighbour shares, kept in the store: a hit
+            names.add(row.path.name.removesuffix(".dds"))
+            continue
         for place in (row.path, *(f / row.path.name for f in folders)):
             try:
                 st = os.stat(place)

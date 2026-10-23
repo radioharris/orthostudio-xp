@@ -344,12 +344,15 @@ collects by reachability from the packs on disk instead:
   image it lists as a file of its own, of the same size (a tile copied to another disk, or apart),
   goes with the `texture.dds` it lists, each recorded `away` at the pack's file first, listed in
   that folder, which is recorded `away` at the pack's folder last (`clean._held`, `_send_away`;
-  `held_images`, `held_bytes`). A pack whose images are the store's
-  very files (hard links), or missing one, holds none twice; a folder one of whose files another
-  artefact that stays still links (a neighbour's, an older build kept) stays with its images, its
-  bytes not coming back otherwise (`_let_go`); what was used within the grace period or is pinned
-  stays, as for the rest. Then the rows are kept true (`_tidy_away`, also after a delete): a row
-  whose artefact is back in the store goes; one whose file is gone from a disk that is here points
+  `held_images`, `held_bytes`). A pack whose images are the store's very files (hard links), or
+  missing one, holds none twice. An image another artefact that stays links too (a texture astride
+  the border with a neighbour, listed by the neighbour's folder) stays in the store, its row written
+  all the same so that the folder's list names it (`Store.note_away`), and the folder goes without
+  it (`_let_go`): one such image kept a whole tile in the store, 18 of a user's 309 (2026-10-23); a
+  folder none of whose images would come back stays. What was used within the grace period or is
+  pinned stays, as for the rest. Then the rows are kept true (`_tidy_away`, also after a delete): a
+  row whose artefact is back in the store goes, but for one its folder, still away, lists; one
+  whose file is gone from a disk that is here points
   to the file of the same name in a pack of the same name the library knows now (moved with *Find
   again* or *File elsewhere*), a folder's row to that pack, or is forgotten; one on a disk away
   stays. A user had moved the `tiles` folder to another partition with a link:

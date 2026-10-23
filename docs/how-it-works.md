@@ -749,7 +749,8 @@ a tile holds as files of its own, every time, with no box to tick (the line *Ima
 already hold* says how much). The cache remembers which file of the tile holds each. When a build
 needs one again, it takes it back from the tile, linked when it is on the cache's disk, copied
 otherwise, and only when its digest is the one the cache had: an image retouched in the tile, or on
-a disk that is not plugged in, is prepared again as any other. To know which image it needs, a build
+a disk that is not plugged in, is prepared again as any other. An image at the border with a
+neighbouring tile that the neighbour uses too stays in the cache, for the neighbour. To know which image it needs, a build
 reads the downloaded pieces; if you deleted them, it downloads them first, then takes the image
 back instead of preparing it. A user had moved their `tiles` folder to another partition with a
 link, for room: every image was then on both disks, and the cache filled the one it stayed on

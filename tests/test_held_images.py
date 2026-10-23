@@ -145,6 +145,35 @@ def test_a_store_opened_by_the_first_form_of_the_list_opens(tmp_path: Path) -> N
         assert s.away("a" * 64) is not None
 
 
+def test_an_image_a_neighbour_shares_stays_and_the_rest_goes(world: World) -> None:
+    """A texture astride the border with a neighbour is listed by the neighbour's folder too: it
+    stays in the store, for the neighbour, and F's other images go with F's folder. One such image
+    kept a whole tile in the store: 18 of a user's 309, +46+006 filed on another disk
+    (2026-10-23). F's list still names it, so the Plan counts it as a hit."""
+    w = world
+    images = _images(w, F)
+    shared, alone = sorted(images)
+    with Store(w.store, fsync=False) as s:
+        (folder,) = [k for k in w.keys[F] if (i := s.info(k)) and i.rule == "tile.textures"]
+        key, recipe = artifact_key("tile.textures", 1, {"n": "neighbour"}, {})
+        with s.begin("tile.textures", key, "dir") as b:
+            (b.out / "textures").mkdir()
+            os.link(s.path(shared), b.out / "textures" / "astride.dds")
+            b.commit(version=1, recipe=recipe, inputs=[])
+        s.pin("neighbour", key)  # a folder that stays, as a neighbour's tile keeps its own
+    seen = w.run(dry_run=True)
+    assert seen.held_images == 1 and seen.held_bytes > 0
+    done = w.run()
+    assert done.held_images == 1 and done.held_bytes == seen.held_bytes
+    stored = w.stored()
+    assert shared in stored and alone not in stored and folder not in stored
+    with Store(w.store, fsync=False) as s:
+        assert {r.key for r in s.away_listed(folder)} == {shared, alone}
+    w.run()  # its folder still away: the row of the image kept stays on its list
+    with Store(w.store, fsync=False) as s:
+        assert {r.key for r in s.away_listed(folder)} == {shared, alone}
+
+
 def test_an_image_changed_in_its_tile_is_not_taken_back(world: World) -> None:
     """Retouched in the tile since, the image is no longer the one the store let go of: nothing
     is taken back, and the build prepares it as any other."""
