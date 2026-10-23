@@ -233,6 +233,10 @@ CREATE TABLE trimmed (               -- files trimmed from an artefact, which ke
     digest TEXT,                     -- the file's own; NULL in a row of the table's first form
     PRIMARY KEY (key, path)
 );
+CREATE TABLE kept_pieces (           -- tiles whose images Free space's choice deleted (9.1)
+    tile  TEXT PRIMARY KEY,          -- "+46+006": the downloaded pieces of its square stay
+    since REAL NOT NULL
+);
 ```
 
 An index may also hold an `away` table, which this version neither creates, reads nor writes: the
@@ -274,8 +278,11 @@ The rows of one call are written in one transaction with `synchronous = FULL` (a
 macOS) before any file goes: a power cut cannot leave a file gone that the index does not list.
 Asked again (after an interruption, or by another process at the same time), a row already there
 is kept and its size not taken off twice, and a file another trim removed first keeps its row; an
-artefact deleted meanwhile is left alone (the rows' foreign key refuses them). `fsck(repair=True)`
-never deletes an artefact it cannot read now: only one whose files hash to another digest.
+artefact deleted meanwhile is left alone (the rows' foreign key refuses them); a row an interrupted
+trim wrote stays when its file cannot be removed now (another program holds it), its size taken
+off once. `fsck(repair=True)` never deletes an artefact it cannot read now: only one whose files
+hash to another digest. A folder that cannot be listed raises in the walk (`digest._walk_files`),
+where it counted as empty and made an unreadable artefact look damaged (a review, 2026-10-23).
 Its digest is no longer what its files hash to: a version that reads the files alone (an older
 OrthoStudio XP opening the store) sees the artefact as it is, and builds what it makes from it from
 the form left.
@@ -391,18 +398,29 @@ collects by reachability from the packs on disk instead:
   used within the grace period or is pinned. Nothing is recorded of where the tile's copies are,
   and nothing is taken back from them: a build of such a tile prepares its images again from the
   downloaded image pieces, the same bytes (a ZL16 tile of 213 images, 9.8 s on the reference Mac,
-  every DDS identical, 2026-10-23), its tracing, mesh, relief and DSF hits. Their pieces, and the
-  parent pieces of their squares, stay whatever the choices once the store no longer has their
-  images (`apart_images_bytes` counts those that stay only because of this run's choice). A pack
+  every DDS identical, 2026-10-23), its tracing, mesh, relief and DSF hits. The tiles whose images
+  went are written in `kept_pieces` before any image goes (`Store.keep_pieces`, synchronous FULL):
+  the pieces of their squares, and the parent pieces, stay whatever the choices, the disk of the
+  tile plugged in or not, a run cut in the middle or not, until every pack and library row of the
+  tile has its textures folder and all its images in the store again (built since), or none names
+  the tile any more (deleted): `Store.release_pieces`. Read from the tiles at each run, as a first
+  form did, a disk unplugged or a run cut in the middle left them unprotected, and a tile whose
+  images were never in this store kept its pieces from the images choice (a review, 2026-10-23).
+  `apart_images_bytes` counts the pieces that stay only because of this run's choice;
+  `apart_unpieced` the tiles of `apart_tiles` whose pieces are gone already (the images choice
+  ticked before), whose build downloads their images again, which the page says. A pack
   whose folder cannot be read now (a disk away, a letter another disk took, a mount point left
-  empty) is none of them, and its cache stays through the keys the library recorded. A user had
+  empty) is none of them, and its cache stays through the keys the library recorded. On a file
+  system that clones copies (btrfs between subvolumes, ZFS with block cloning, an NFS 4.2 server
+  that clones), a tile's copy may share its blocks with the store's: the figure then counts bytes
+  the disk does not give back. A user had
   moved the `tiles` folder to another partition with a link: every image was then on both, 358 GB
   twice, and the store filled the disk the move was to free (2026-10-23). A first form let them go
   whatever the choices, recording each tile's file, and took them back from it; a review found a
   build emptying a tile whose textures folder it had found before Free space deleted it in another
   process, photos replaced after a rebuild that downloaded changed pieces, and rows forgotten when
   another disk took a drive letter. `write_pack` now stops before writing when a source is gone
-  (`pipeline-build.md`), and the choice keeps no record. With both `apart` and `filed`, a tile
+  (`pipeline-build.md`), and the choice keeps no record of the tile's files. With both `apart` and `filed`, a tile
   filed on another disk has its images counted once: `filed_apart_bytes` is the filed tiles' data
   once those went;
 * **sizes shown**: `disk_bytes` measures a folder the same way, each inode once: the size of each

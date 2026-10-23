@@ -117,7 +117,13 @@ the node's cancel token. `build_textures` commits one `texture.dds` artefact per
 the same store (its own connection) and hard-links it into `textures/`; the node's own artefact
 is that directory. Its full report (timings, network counters) is written next to the logs, one
 per group (`<workdir>/logs/textures-<tile>-<provider><zl>-<key12>.json`), never inside the
-artefact (timestamps would defeat early cutoff for the pack).
+artefact (timestamps would defeat early cutoff for the pack). The artefact's `manifest.json` lists
+each image with what the folder holds, not how it came (`build.listed_texture`): prepared here or
+taken from the store as it was, both `built`. It said `hit` for the second, and the same folder made
+again after *Free space* deleted it (the images of a tile on another disk, `graph-keys.md` 9.1)
+differed from the first by that alone: the pack's key changed, and a tile filed on another disk was
+copied whole to its disk again, or refused while X-Plane ran (a review, 2026-10-23). A list an
+earlier version wrote, with `hit`, is read as before; that folder made again differs once.
 
 The node **fails** (nothing committed) when the report is not `ok`: a texture is `incomplete`
 (`IMG_TILE_MISSING`), `failed` (`MASK_STALE`, encoder) or cancelled. A committed textures

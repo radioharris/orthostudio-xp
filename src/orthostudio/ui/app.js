@@ -5258,6 +5258,17 @@ export function apartOffered(disk) {
   return (Number(disk?.apart_bytes) || 0) > 0;
 }
 
+/** The words under the choice, and in the question before freeing: a build of those tiles
+ * prepares their images again from the downloaded pieces, which stay; those whose pieces went
+ * already download them again, which the page says rather than promise nothing downloaded (a
+ * review, 2026-10-23). Exported for the tests. */
+export function apartHelp(disk) {
+  const none = Math.max(0, Number(disk?.apart_unpieced) || 0);
+  if (none <= 0) return t("disk.apart_check_help");
+  const all = Math.max(none, Number(disk?.apart_tiles) || 0);
+  return none >= all ? t("disk.apart_check_help_none") : t("disk.apart_check_help_some", { n: none });
+}
+
 /** The cache of the tiles filed outside the atelier (the atelier, step 5): the tile data only they
  * need and the image pieces only they use. */
 function filedCacheBytes(disk) {
@@ -5314,6 +5325,9 @@ function renderDisk() {
   if (!offered) $("disk-filed").checked = false;
   $("disk-apart-choice").hidden = copies <= 0;
   if (copies <= 0) $("disk-apart").checked = false;
+  // what a build of one of them costs then: nothing downloaded while their pieces are kept, all
+  // of their images again for those whose pieces went (the images choice ticked before)
+  setText($("disk-apart-help"), apartHelp(d));
   const plan = freeSpacePlan(d, $("disk-images").checked, $("disk-relief").checked, offered && $("disk-filed").checked, copies > 0 && $("disk-apart").checked);
   // a filing moves a tile out of the atelier: the engine refuses meanwhile, the button waits
   button.disabled = Boolean(d.building) || Boolean(state.filing) || plan.total <= 0 || state.diskBusy;
@@ -5329,7 +5343,7 @@ function confirmFreeSpace(plan) {
   $("disk-confirm-title").textContent = t("disk.confirm_title", { size: fmtBytes(plan.total) });
   const lines = [];
   if (plan.unused > 0) lines.push(t("disk.confirm_unused", { size: fmtBytes(plan.unused) }));
-  if (plan.apart > 0) lines.push(t("disk.confirm_apart", { size: fmtBytes(plan.apart) }));
+  if (plan.apart > 0) lines.push(t("disk.confirm_apart_size", { size: fmtBytes(plan.apart) }) + " " + apartHelp(state.disk));
   if (plan.twice > 0) lines.push(t("disk.confirm_twice", { size: fmtBytes(plan.twice) }));
   if (plan.filed > 0) lines.push(t("disk.confirm_filed", { size: fmtBytes(plan.filed) }));
   if (plan.pictures > 0) lines.push(t("disk.confirm_images", { size: fmtBytes(plan.pictures) }));

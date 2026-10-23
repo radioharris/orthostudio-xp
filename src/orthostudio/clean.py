@@ -162,6 +162,10 @@ class CleanReport:
     ``images`` choice keeps them, so that a build of one prepares its images again without
     downloading anything (the pieces of a tile whose images went before are kept and counted
     nowhere)."""
+    apart_unpieced: int = 0
+    """Among ``apart_tiles``, those whose downloaded image pieces are gone already (the images
+    choice ticked before, or the pieces deleted by hand): a build of one downloads its images
+    again, which the page then says."""
     apart_removed: bool = False
     filed_apart_bytes: int = 0
     """``filed_bytes`` once the store's copy of the images of the tiles on another disk went
@@ -505,24 +509,28 @@ def _image_pieces(
     atelier: set[tuple[int, int]],
     away: set[tuple[int, int]],
     apart: set[tuple[int, int]] = frozenset(),  # type: ignore[assignment]
-) -> tuple[list[tuple[str, int]], list[tuple[str, int, set[tuple[int, int]]]], int]:
+) -> tuple[
+    list[tuple[str, int]], list[tuple[str, int, set[tuple[int, int]]]], int, set[tuple[int, int]]
+]:
     """The downloaded image pieces only the tiles filed outside the atelier with some of their data
     here use, with their sizes: the texture containers whose texture touches the square of such a
     tile (``away``) and of no tile of the atelier, a texture of a neighbour in the atelier staying
     (at any level of detail: one only a filed neighbour uses, astride the border, counts with the
     images). Then the other pieces that touch a square of ``apart`` (the tiles on another disk
     whose images the store does not keep), with their sizes and the squares they touch. Then the
-    bytes of all the others. One walk of the cache, its sizes read from the listings: its files
-    are never linked."""
+    bytes of all the others. Then the squares of ``apart`` some piece touches, whatever its line.
+    One walk of the cache, its sizes read from the listings: its files are never linked."""
     root = os.fspath(chunks)
     pieces: list[tuple[str, int]] = []
     kept: list[tuple[str, int, set[tuple[int, int]]]] = []
+    touched: set[tuple[int, int]] = set()
     rest = 0
     look = bool(away or apart)
     try:
         for path, st in _files(chunks, links=False):
             parts = os.path.relpath(path, root).split(os.sep)
             squares = _texture_squares(parts) if look else set()
+            touched |= squares & apart
             if squares & away and not squares & atelier:
                 pieces.append((path, st.st_size))
             elif squares & apart:
@@ -530,8 +538,8 @@ def _image_pieces(
             else:
                 rest += st.st_size
     except OSError:
-        return [], [], 0
-    return pieces, kept, rest
+        return [], [], 0, set()
+    return pieces, kept, rest, touched
 
 
 def clean(
@@ -575,10 +583,12 @@ def clean(
     report.packs = [str(p) for p in packs]
     atelier, away = _built(packs, library_path, tiles_root)
     theirs: set[str] = set()
-    # the squares of the tiles on another disk whose images the store no longer keeps (``gone``)
-    # or is about to stop keeping with ``apart`` (``going``): the images choice keeps their pieces
+    # the squares of the tiles whose images the apart choice deleted from the store (``gone``, the
+    # store's list: :meth:`Store.keep_pieces`) or deletes now (``going``): the images choice keeps
+    # their pieces, so that a build of one prepares its images again without downloading anything
     gone: set[tuple[int, int]] = set()
     going: set[tuple[int, int]] = set()
+    going_tiles: set[str] = set()
     if Path(store_root).is_dir():
         with Store(store_root) as store:
             mine = needed_keys(store, _roots(atelier))
@@ -597,13 +607,22 @@ def clean(
             candidates = (store.info(k) for k in sorted({k for ks in tiles.values() for k in ks}))
             images_apart = _doomed(store, (i for i in candidates if i is not None), others, grace_s)
             leaving = {i.key for i in images_apart}
-            for path, keys in tiles.items():
-                square = _squares([built[path]]) if path in built else set()
-                if not keys:
-                    gone |= square
-                elif set(keys) & leaving:
-                    going |= square
+            going_tiles = {
+                b.tile.name
+                for path, keys in tiles.items()
+                if set(keys) & leaving and (b := built.get(path)) is not None and b.tile is not None
+            }
+            going = {(t.lat, t.lon) for t in map(TileRef.parse, going_tiles)}
             report.apart_tiles = sum(1 for keys in tiles.values() if set(keys) & leaving)
+            # the store's list, but the tiles whose images are all in the store again (built since)
+            # or that no pack nor library row names any more (deleted): theirs are as any pieces
+            kept_for = store.pieces_kept()
+            listed: dict[str, list[bool]] = {}
+            for b in (*atelier, *away):
+                if b.ortho and b.tile is not None and b.tile.name in kept_for:
+                    listed.setdefault(b.tile.name, []).append(_images_here(store, b))
+            released = {t for t in kept_for if all(listed.get(t, [True]))}
+            gone = {(t.lat, t.lon) for t in map(TileRef.parse, kept_for - released)}
             names = _Names([*unused, *images_apart, *cache])
             first = [i.key for i in unused]
             sent = [i.key for i in images_apart]
@@ -624,7 +643,9 @@ def clean(
                 went = _delete(store, unused)
                 report.removed = len(went)
                 report.freed_bytes = names.freed(went)
+                store.release_pieces(released)
                 if apart:
+                    store.keep_pieces(going_tiles)  # on the disk before any image goes
                     let = _delete(store, images_apart)
                     report.apart_bytes = names.freed([*went, *let]) - report.freed_bytes
                     report.apart_removed = True
@@ -651,8 +672,9 @@ def clean(
     chunks = Path(chunks_root)
     pieces: list[tuple[str, int]] = []
     kept: list[tuple[str, int, set[tuple[int, int]]]] = []
+    touched: set[tuple[int, int]] = set()
     if chunks.is_dir():
-        pieces, kept, report.images_bytes = _image_pieces(
+        pieces, kept, report.images_bytes, touched = _image_pieces(
             chunks, _squares(atelier), _squares(cached), gone | going
         )
         report.filed_images_bytes = sum(size for _path, size in pieces)
@@ -660,6 +682,10 @@ def clean(
         report.apart_images_bytes = sum(size for _p, size, sq in kept if not sq & gone)
         if not apart:
             report.images_bytes += report.apart_images_bytes
+    # those whose pieces are gone already: a build of one downloads its images again
+    report.apart_unpieced = sum(
+        1 for t in map(TileRef.parse, going_tiles) if (t.lat, t.lon) not in touched
+    )
     mapcache = Path(mapcache_root) if mapcache_root is not None else None
     if mapcache is not None and (not mapcache.is_dir() or _overlap(mapcache, chunks)):
         mapcache = None
@@ -731,10 +757,10 @@ def _apart(store: Store, packs: Iterable[Path], store_root: Path) -> dict[str, l
     """The packs on another disk or partition than the store, by their folder with the links
     followed: what their textures folder's file system says (``st_dev``, the volume on Windows),
     as filing tells a disk from another. Each with the keys of the store's copy of its images:
-    its textures folder (``tile.textures``) and the ``texture.dds`` that folder lists; none when
-    the store no longer has that folder. Such a tile holds its images as files of its own: no
-    file can have a name on two file systems. A pack whose folder cannot be read now (a disk
-    away, a letter another disk took) is none of them, and its cache stays."""
+    its textures folder (``tile.textures``) and the ``texture.dds`` that folder lists; a pack
+    whose folder the store no longer has is not among them. Such a tile holds its images as files
+    of its own: no file can have a name on two file systems. A pack whose folder cannot be read
+    now (a disk away, a letter another disk took) is none of them, and its cache stays."""
     if not Path(store_root).is_dir():
         return {}
     found: dict[str, list[str]] = {}
@@ -748,8 +774,7 @@ def _apart(store: Store, packs: Iterable[Path], store_root: Path) -> dict[str, l
         except (OSError, ValueError, KeyError, TypeError):
             continue
         info = store.info(entry.key) if entry is not None else None
-        if info is None or info.rule != "tile.textures":
-            found[real] = []
+        if info is None or info.rule != "tile.textures" or not store.has(info.key):
             continue
         try:
             doc = json.loads((info.path / "manifest.json").read_text(encoding="utf-8"))
@@ -757,6 +782,22 @@ def _apart(store: Store, packs: Iterable[Path], store_root: Path) -> dict[str, l
             doc = {}
         found[real] = [info.key, *(str(t["key"]) for t in doc.get("textures", []) if t.get("key"))]
     return found
+
+
+def _images_here(store: Store, built: _Built) -> bool:
+    """Whether the store holds the images of that pack or library row: one of its keys a
+    ``tile.textures`` whose folder is there, and every image that folder lists. A Free space cut
+    while it deleted them leaves some: they are not all here."""
+    for key in built.keys:
+        info = store.info(key)
+        if info is None or info.rule != "tile.textures" or not store.has(key):
+            continue
+        try:
+            doc = json.loads((info.path / "manifest.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return False
+        return all(store.has(str(t["key"])) for t in doc.get("textures", []) if t.get("key"))
+    return False
 
 
 def _doomed(

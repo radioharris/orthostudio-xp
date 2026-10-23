@@ -802,7 +802,8 @@ def clean(
             "--apart",
             help="also delete the cache's copy of the images of the tiles on another disk or "
             "partition, which hold their own (the tiles stay whole; building one again prepares "
-            "its images again from the downloaded pieces, which --images then keeps)",
+            "its images again from the downloaded pieces, which --images then keeps, or downloads "
+            "them again if they were deleted before)",
         ),
     ] = False,
     everything: Annotated[
@@ -910,6 +911,11 @@ def clean(
             f"cache's copy of the images of the {report.apart_tiles} tile(s) on another disk: "
             f"{_size(report.apart_bytes)}, kept (--apart deletes it; the tiles stay whole, and "
             "building one again prepares its images again from the downloaded pieces)"
+        )
+    if report.apart_unpieced:
+        typer.echo(
+            f"  {report.apart_unpieced} of those tile(s) have no downloaded images left: building "
+            "them again downloads their images again"
         )
     if report.twice_files:
         typer.echo(

@@ -610,3 +610,56 @@ def test_a_check_of_the_store_never_deletes_what_it_cannot_read(
         monkeypatch.setattr(store_module, "digest_path", unreadable)
         report = s.fsck(verify=True, repair=True)
         assert key not in report.digest_mismatches and s.has(key)
+
+
+def test_a_row_an_interrupted_trim_wrote_stays_when_its_file_is_held(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Interrupted after its row, then asked again while another program holds the file: the row
+    stays with its size taken off, and the next trim takes nothing off a second time (a review:
+    the row went, its size stayed off, and the next trim took it off again)."""
+    alt = f"Data{T.name}.alt"
+    with Store(tmp_path / "store", fsync=False) as s:
+        key = _relief(s)
+        before = s.info(key)
+        assert before is not None
+        size = (before.path / alt).stat().st_size
+        with s._tx():
+            s._db.execute(
+                "INSERT INTO trimmed (key, path, size, digest) VALUES (?, ?, ?, ?)",
+                (key, alt, size, digest_file(before.path / alt)),
+            )
+            s._db.execute("UPDATE artifacts SET size = size - ? WHERE key = ?", (size, key))
+        real = Path.unlink
+
+        def held(self: Path, *a: Any, **kw: Any) -> None:
+            if self.name == alt:
+                raise PermissionError(13, "held by another program", str(self))
+            real(self, *a, **kw)
+
+        with pytest.MonkeyPatch.context() as m:
+            m.setattr(Path, "unlink", held)
+            s.trim(key, [alt])
+        assert s.trimmed(key) == {alt: size}
+        s.trim(key, [alt])
+        assert not (before.path / alt).exists()
+        assert s.info(key).size == before.size - size  # type: ignore[union-attr]
+
+
+@pytest.mark.skipif(os.name == "nt" or os.geteuid() == 0, reason="rights a folder cannot lose")
+def test_a_folder_that_cannot_be_listed_is_not_taken_for_an_empty_one(tmp_path: Path) -> None:
+    """Walked past, it counted as empty: a check of the store took the artefact for a damaged one,
+    which a repair deleted. It cannot be read: it is left."""
+    with Store(tmp_path / "store", fsync=False) as s:
+        key = _mesh_artefact(s)
+        assert s.trim(key, [f"Data{T.name}.mesh"]) > 0
+        folder = s.path(key)
+        inner = folder / "inner"
+        inner.mkdir(exist_ok=True)
+        os.chmod(inner, 0)
+        try:
+            assert s.content_digest(key) is None
+            report = s.fsck(verify=True, repair=True)
+            assert key not in report.digest_mismatches and s.has(key)
+        finally:
+            os.chmod(inner, 0o755)

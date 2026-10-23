@@ -195,7 +195,8 @@ and ``held_freed_bytes`` in ``POST /api/clean`` (a development build's, never re
 36), 35 = ``twice_bytes`` in ``GET /api/disk`` and ``twice_freed_bytes`` in ``POST /api/clean``
 (the relief and mesh kept in a second form, which Free space trims whatever the choices), 36 = the
 choice ``apart`` of ``POST /api/clean`` and its ``apart_freed_bytes``, with ``apart_tiles``,
-``apart_bytes``, ``apart_images_bytes`` and ``filed_apart_bytes`` in ``GET /api/disk`` (the store's
+``apart_bytes``, ``apart_images_bytes``, ``apart_unpieced`` and ``filed_apart_bytes`` in ``GET
+/api/disk`` (the store's
 copy of the images of the tiles on another disk or partition, deleted only on request). A page
 served by an engine older than itself (a ``osxp serve`` started before an update: the page's files
 are read from disk at each load, the routes were imported at start) asks the user to restart
@@ -2430,6 +2431,7 @@ def create_app(
             "apart_tiles": report.apart_tiles,
             "apart_bytes": report.apart_bytes,
             "apart_images_bytes": report.apart_images_bytes,
+            "apart_unpieced": report.apart_unpieced,
             "filed_apart_bytes": report.filed_apart_bytes,
             "twice_bytes": report.twice_bytes,
             "tiles": len(report.packs),

@@ -102,8 +102,15 @@ def digest_path(path: Path | str) -> tuple[str, int]:
 
 
 def _walk_files(root: Path) -> list[tuple[str, Path]]:
+    """The regular files under ``root``. A folder that cannot be listed (no right to, a disk that
+    answers badly) raises: walked past, it counted as empty, and a check of the store took an
+    artefact it could not read for a damaged one, which a repair deleted (a review, 2026-10-23)."""
     found: list[tuple[str, Path]] = []
-    for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
+
+    def unreadable(exc: OSError) -> None:
+        raise exc
+
+    for dirpath, dirnames, filenames in os.walk(root, followlinks=False, onerror=unreadable):
         dirnames.sort()
         base = Path(dirpath)
         for name in filenames:

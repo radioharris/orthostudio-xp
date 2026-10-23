@@ -750,12 +750,15 @@ X-Plane reads: no file can have a name on two disks. The cache keeps a second co
 building the tile again takes them as they are. *Free space…* offers that copy on a line and a box
 of their own, *Copy of the images of N tile(s) on another disk*: ticked, the cache's copy goes, and
 the tiles keep theirs. Building one of them again then prepares its images again from the
-downloaded images, which stay for it even with *Also delete the downloaded images* ticked: nothing
-is downloaded, and the images come out the very same (measured on a tile at ZL16 with 213 images:
-9.8 s, every image identical to the byte, 2026-10-23). Its tracing, mesh, relief and DSF stay in
-the cache. A user had moved their `tiles` folder to another partition with a link, for room: every
-image was then on both, 358 GB twice, and the cache filled the disk the move was to free
-(2026-10-23).
+downloaded images, which stay for it even with *Also delete the downloaded images* ticked, its disk
+plugged in or not: nothing is downloaded, and the images come out the very same (measured on a
+tile at ZL16 with 213 images: 9.8 s with the cache on the Mac's own disk, 42 s in a workshop
+whose cache is on an external USB disk, every image identical to the byte, 2026-10-23). Its tracing, mesh, relief and
+DSF stay in the cache. If you deleted the downloaded images before ticking the box, there is
+nothing left to prepare the images from: the line under the box says so, and building such a tile
+downloads its images again, which the provider may have changed since. A user had moved their
+`tiles` folder to another partition with a link, for room: every image was then on both, 358 GB
+twice, and the cache filled the disk the move was to free (2026-10-23).
 
 The cache counts on its own files only. It keeps nothing of where a tile's copies are, and takes
 nothing back from them: a tile is yours, and you may move it, retouch it, unplug its disk or delete

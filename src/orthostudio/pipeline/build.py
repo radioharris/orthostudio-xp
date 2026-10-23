@@ -141,6 +141,7 @@ from orthostudio.pipeline.pack import (
 from orthostudio.pipeline.rule import TEXTURE_RAM_MB
 from orthostudio.pipeline.textures import (
     ProgressSnapshot,
+    TextureOutcome,
     TexturesReport,
     TexturesSpec,
     build_textures,
@@ -193,6 +194,7 @@ __all__ = [
     "build_tile",
     "build_tiles",
     "declare",
+    "listed_texture",
     "parse_overlay_setting",
     "photo_zone_shapes",
     "resolve_global_scenery",
@@ -1073,6 +1075,23 @@ def photo_zone_shapes(
     return tuple(reversed(out))
 
 
+def listed_texture(o: TextureOutcome) -> dict[str, Any]:
+    """One image as the textures folder's ``manifest.json`` lists it: what the folder holds, not
+    how the image came, prepared here or taken from the store as it was (a ``hit``), both
+    ``built``. The list said which, and the same folder made again after Free space deleted it
+    (the images of a tile on another disk) differed from the first by that alone: the pack took
+    the tile for another build, and copied it all to its disk again, or was refused while X-Plane
+    ran (a review, 2026-10-23)."""
+    return {
+        "name": o.name,
+        "kinds": list(o.kinds),
+        "status": "built" if o.status == "hit" else o.status,
+        "fmt": o.fmt,
+        "key": o.key,
+        "digest": o.digest,
+    }
+
+
 def _tile_textures(ctx: RunContext) -> None:
     """Every texture the DSF references: ``build_textures`` (P1) per (provider, zl) group."""
     act = _active()
@@ -1192,17 +1211,7 @@ def _tile_textures(ctx: RunContext) -> None:
                 + "; nothing is committed.",
                 remedy=_missing_textures_remedy(codes, env.logs),
             )
-        outcomes.extend(
-            {
-                "name": o.name,
-                "kinds": list(o.kinds),
-                "status": o.status,
-                "fmt": o.fmt,
-                "key": o.key,
-                "digest": o.digest,
-            }
-            for o in report.outcomes
-        )
+        outcomes.extend(listed_texture(o) for o in report.outcomes)
         done_before += n
     manifest = {
         "format": MANIFEST_FORMAT,

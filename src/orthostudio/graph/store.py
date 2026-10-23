@@ -150,6 +150,10 @@ CREATE TABLE IF NOT EXISTS trimmed (
     digest TEXT,
     PRIMARY KEY (key, path)
 );
+CREATE TABLE IF NOT EXISTS kept_pieces (
+    tile  TEXT PRIMARY KEY,
+    since REAL NOT NULL
+);
 """
 
 # An index may also hold an ``away`` table, which this version neither reads nor writes: the images
@@ -1033,10 +1037,8 @@ class Store:
             return 0
         added: set[str] = set()
         with self._lock:
-            self._db.execute("PRAGMA synchronous = FULL")
-            self._db.execute("PRAGMA fullfsync = ON")  # macOS: to the disk, not its cache
             try:
-                with self._tx():
+                with self._durable_tx():
                     for name, size, digest, _links in going:
                         new = self._db.execute(
                             "INSERT OR IGNORE INTO trimmed (key, path, size, digest)"
@@ -1051,9 +1053,6 @@ class Store:
                             )
             except sqlite3.IntegrityError:
                 return 0  # the artefact was deleted meanwhile
-            finally:
-                self._db.execute("PRAGMA fullfsync = OFF")
-                self._db.execute("PRAGMA synchronous = NORMAL")
         freed = 0
         for name, size, _digest, links in going:
             try:
@@ -1062,15 +1061,58 @@ class Store:
                 continue  # another trim removed it first: its row stays
             except OSError as exc:
                 log.warning("%s of %s not trimmed: %s", name, key[:16], exc)
-                with self._tx():
-                    self._db.execute("DELETE FROM trimmed WHERE key = ? AND path = ?", (key, name))
-                    if name in added:
+                if name in added:  # a row an interrupted trim wrote stays: its size went with it
+                    with self._tx():
+                        self._db.execute(
+                            "DELETE FROM trimmed WHERE key = ? AND path = ?", (key, name)
+                        )
                         self._db.execute(
                             "UPDATE artifacts SET size = size + ? WHERE key = ?", (size, key)
                         )
                 continue
             freed += size if links <= 1 else 0
         return freed
+
+    @contextmanager
+    def _durable_tx(self) -> Iterator[sqlite3.Connection]:
+        """:meth:`_tx` committed to the disk itself (``synchronous = FULL``, and ``fullfsync`` on
+        macOS, where FULL stops at the disk's cache): for rows that must be there before files go.
+        The index goes back to its usual setting after, whatever happens."""
+        with self._lock:
+            self._db.execute("PRAGMA synchronous = FULL")
+            self._db.execute("PRAGMA fullfsync = ON")
+            try:
+                with self._tx() as db:
+                    yield db
+            finally:
+                self._db.execute("PRAGMA fullfsync = OFF")
+                self._db.execute("PRAGMA synchronous = NORMAL")
+
+    # -- downloaded pieces kept for tiles whose images left the store ---------------------------
+
+    def keep_pieces(self, tiles: Iterable[str]) -> None:
+        """Remember that the images of the tiles ``tiles`` left the store (Free space's choice of
+        the tiles on another disk): the downloaded pieces of their squares stay, whatever the
+        choices, until :meth:`release_pieces`. On the disk before the images go, so that a crash
+        in between cannot leave the images gone and the pieces unprotected. Kept here, not read
+        from the tiles: a disk unplugged, or a drive letter another disk took, does not change it
+        (a review, 2026-10-23)."""
+        now = time.time()
+        with self._durable_tx():
+            self._db.executemany(
+                "INSERT OR IGNORE INTO kept_pieces (tile, since) VALUES (?, ?)",
+                [(t, now) for t in tiles],
+            )
+
+    def pieces_kept(self) -> set[str]:
+        """The tiles :meth:`keep_pieces` named, not released since."""
+        with self._lock:
+            return {str(r["tile"]) for r in self._db.execute("SELECT tile FROM kept_pieces")}
+
+    def release_pieces(self, tiles: Iterable[str]) -> None:
+        """Their images are in the store again, or the tiles are gone: their pieces are as any."""
+        with self._tx():
+            self._db.executemany("DELETE FROM kept_pieces WHERE tile = ?", [(t,) for t in tiles])
 
     def trimmed(self, key: str) -> dict[str, int]:
         """The files trimmed from the artefact ``key`` (:meth:`trim`), with their sizes."""

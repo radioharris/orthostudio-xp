@@ -2407,8 +2407,19 @@ def test_the_copy_of_the_images_of_the_tiles_on_another_disk_is_its_own_choice()
     assert 'if (copies <= 0) $("disk-apart").checked = false;' in body
     i18n = (UI / "i18n.js").read_text(encoding="utf-8")
     for key in ("disk.apart", "disk.apart_help", "disk.also_apart", "disk.apart_check_help",
-                "disk.confirm_apart"):  # fmt: skip
+                "disk.apart_check_help_none", "disk.apart_check_help_some",
+                "disk.confirm_apart_size"):  # fmt: skip
         assert i18n.count(f'"{key}":') == 2, key  # French and English
+    # a build of those tiles downloads again when their pieces went: said, not a promise of none
+    helps = _node_json(
+        "app.js",
+        "[m.apartHelp({apart_tiles: 3, apart_unpieced: 0}), m.apartHelp({apart_tiles: 3,"
+        " apart_unpieced: 1}), m.apartHelp({apart_tiles: 3, apart_unpieced: 3})]",
+    )
+    assert "without downloading anything" in helps[0]
+    assert "1 of them were deleted already" in helps[1]
+    assert "downloads all its images again" in helps[2]
+    assert 'setText($("disk-apart-help"), apartHelp(d));' in body
     assert '"disk.held' not in i18n and "held_bytes" not in app
     script = """
     const before = (await call("GET", "/api/disk")).ok;
