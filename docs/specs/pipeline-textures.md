@@ -382,7 +382,7 @@ as files of its own, the store keeping them a second time (`graph-keys.md` 9.1):
 `away` table says which file of the tile holds each. A key the store does not have but that table
 names is taken back before any worker sees it (`_Pipeline._take_back`, `Store.take_back`): from
 the file the row names, else from the file of the same name in the tile's textures folders as the
-Library knows them now (`TexturesSpec.held_in`, `build._tile_folders`: a tile moved or filed since),
+Library knows them now (`TexturesSpec.held_in`, `build.tile_folders`: a tile moved or filed since),
 linked on the store's disk, copied otherwise, committed with the texture's own recipe
 (`rule.dds_recipe`) only when its digest is the one let go of; then published as a hit
 (`counts["taken_back"]` says how many). A file gone, on a disk away or changed in the tile (an

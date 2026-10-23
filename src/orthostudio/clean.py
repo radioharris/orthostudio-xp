@@ -548,16 +548,16 @@ def clean(
             found = _held(store, packs, grace_s)
             infos = (store.info(key) for key in sorted(theirs))
             cache = _doomed(store, (i for i in infos if i is not None), set(), grace_s)
-            held_infos = [i for info, images in found for i in (info, *_stored(images))]
+            held_infos = [i for h in found for i in (h.info, *_stored(h.images))]
             names = _Names([*unused, *held_infos, *cache])
             first = [i.key for i in unused]
             held = _let_go(names, first, found)
-            letting = [k for info, images in held for k in (info.key, *images)]
+            letting = [k for h in held for k in h.keys]
             # the filed tiles' images held twice go with the others, whatever the choice
             cache = [i for i in cache if i.key not in set(letting)]
             report.removed = len(unused)
             report.freed_bytes = names.freed(first)
-            report.held_images = sum(len(images) for _info, images in held)
+            report.held_images = sum(len(h.images) for h in held)
             report.held_bytes = names.freed([*first, *letting]) - report.freed_bytes
             report.filed_bytes = (
                 names.freed([*first, *letting, *(i.key for i in cache)])
@@ -695,16 +695,28 @@ class _Copy:
     info: ArtifactInfo | None
 
 
-def _held(
-    store: Store, packs: Iterable[Path], grace_s: float
-) -> list[tuple[ArtifactInfo, dict[str, _Copy]]]:
+@dataclass(frozen=True, slots=True)
+class _Held:
+    """A tile that holds every image of its textures folder (``info``, a ``tile.textures``
+    artefact) as a file of its own: its folder, and its images by their ``texture.dds`` key."""
+
+    info: ArtifactInfo
+    pack: Path
+    images: dict[str, _Copy]
+
+    @property
+    def keys(self) -> list[str]:
+        return [self.info.key, *self.images]
+
+
+def _held(store: Store, packs: Iterable[Path], grace_s: float) -> list[_Held]:
     """The textures folders (``tile.textures``) of the tiles that hold every image of theirs as a
     file of their own, with those images by their ``texture.dds`` key: a tile moved to another
     disk, or copied apart. A tile whose images are the store's very files (hard links on the
     store's disk) holds none twice, nor does one missing an image or with one of another size:
     its folder stays, with its images. What was used in the last ``grace_s`` stays too, pinned or
     not, as the rest of the clean keeps it. One folder per tile, reached by any of its names."""
-    found: list[tuple[ArtifactInfo, dict[str, _Copy]]] = []
+    found: list[_Held] = []
     seen: set[str] = set()
     cutoff = time.time() - grace_s
 
@@ -725,7 +737,7 @@ def _held(
             continue
         images = _own_copies(store, Path(real), info.path)
         if images and all(c.info is None or free(c.info) for c in images.values()):
-            found.append((info, images))
+            found.append(_Held(info, Path(real), images))
     return found
 
 
@@ -765,54 +777,66 @@ def _stored(images: dict[str, _Copy]) -> list[ArtifactInfo]:
     return [c.info for c in images.values() if c.info is not None]
 
 
-def _let_go(
-    names: _Names, first: list[str], held: list[tuple[ArtifactInfo, dict[str, _Copy]]]
-) -> list[tuple[ArtifactInfo, dict[str, _Copy]]]:
+def _let_go(names: _Names, first: list[str], held: list[_Held]) -> list[_Held]:
     """The ``held`` folders whose files all come back once they go with their images, after the
     artefacts ``first``: one whose image another folder that stays links (a neighbour's, a tile
     on the store's disk) stays, with its images, which would leave the store and their bytes
     with it."""
     kept = list(held)
     while kept:
-        keys = [*first, *(k for info, images in kept for k in (info.key, *images))]
-        links = names.links(keys)
+        links = names.links([*first, *(k for h in kept for k in h.keys)])
         stay = {
-            info.key
-            for info, _images in kept
-            if any(links.get(i, 0) < names.nlink[i] for i in names.of.get(info.key, ()))
+            h.info.key
+            for h in kept
+            if any(links.get(i, 0) < names.nlink[i] for i in names.of.get(h.info.key, ()))
         }
         if not stay:
             break
-        kept = [(info, images) for info, images in kept if info.key not in stay]
+        kept = [h for h in kept if h.info.key not in stay]
     return kept
 
 
-def _send_away(store: Store, held: list[tuple[ArtifactInfo, dict[str, _Copy]]]) -> list[str]:
-    """Let go of each held image, the store remembering the tile's file that holds it, then of
-    its folder; say which artefacts went. An image that cannot go (another program holds it, on
-    Windows) stays, and so does its folder."""
+def _send_away(store: Store, held: list[_Held]) -> list[str]:
+    """Let go of each held image, the store remembering the tile's file that holds it and the
+    folder that listed it, then of that folder, remembered with its tile (what the Plan reads to
+    count the images a build takes back); say which artefacts went. An image that cannot go
+    (another program holds it, on Windows) stays, and so does its folder."""
     gone: list[str] = []
-    for info, images in held:
+    for h in held:
         whole = True
-        for key, copy in images.items():
+        for key, copy in h.images.items():
             try:
                 if store.send_away(
-                    key, rule="texture.dds", digest=copy.digest, size=copy.size, path=copy.path
+                    key,
+                    rule="texture.dds",
+                    digest=copy.digest,
+                    size=copy.size,
+                    path=copy.path,
+                    listed_in=h.info.key,
                 ):
                     gone.append(key)
             except OSError as exc:
                 log.warning("image %s not let go of: %s", key[:16], exc)
                 whole = False
-        if whole:
-            gone.extend(_delete(store, [info]))
+        if not whole:
+            continue
+        info = h.info
+        try:
+            if store.send_away(
+                info.key, rule=info.rule, digest=info.digest, size=info.size, path=h.pack
+            ):
+                gone.append(info.key)
+        except OSError as exc:
+            log.warning("textures folder %s not let go of: %s", info.key[:16], exc)
     return gone
 
 
 def _tidy_away(store: Store, packs: Iterable[Path]) -> None:
-    """The store's list of images held by tiles, kept true: an image made again here leaves it;
+    """The store's list of images held by tiles, kept true: an image back in the store leaves it;
     one whose tile's file is gone from a disk that is here is looked for in the tile's folders as
     the Library knows them now (moved with *Find again* or *File elsewhere*), and forgotten when
-    none holds it. A disk unplugged keeps its rows for when it is back."""
+    none holds it; so is a textures folder, by its tile's folder. A disk unplugged keeps its rows
+    for when it is back."""
     where: dict[str, list[Path]] = {}
     for pack in packs:
         where.setdefault(pack.name, []).append(Path(os.path.realpath(pack)))
@@ -821,14 +845,16 @@ def _tidy_away(store: Store, packs: Iterable[Path]) -> None:
         if store.has(row.key):
             forget.append(row.key)
             continue
-        if row.path.is_file() or disk_absent(row.path):
+        if row.path.exists() or disk_absent(row.path):
             continue
-        pack_name = row.path.parent.parent.name
-        moved = [
-            p / "textures" / row.path.name
-            for p in where.get(pack_name, [])
-            if (p / "textures" / row.path.name).is_file()
-        ]
+        if row.rule == "tile.textures":  # its tile's folder
+            moved = [p for p in where.get(row.path.name, []) if p.is_dir()]
+        else:
+            moved = [
+                p / "textures" / row.path.name
+                for p in where.get(row.path.parent.parent.name, [])
+                if (p / "textures" / row.path.name).is_file()
+            ]
         if moved:
             store.point_away(row.key, moved[0])
         else:

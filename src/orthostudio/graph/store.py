@@ -131,13 +131,17 @@ CREATE TABLE IF NOT EXISTS pins (
 );
 CREATE INDEX IF NOT EXISTS pins_key ON pins (key);
 CREATE TABLE IF NOT EXISTS away (
-    key    TEXT PRIMARY KEY,
-    rule   TEXT NOT NULL,
-    digest TEXT NOT NULL,
-    size   INTEGER NOT NULL,
-    path   TEXT NOT NULL,
-    since  REAL NOT NULL
+    key       TEXT PRIMARY KEY,
+    rule      TEXT NOT NULL,
+    version   INTEGER NOT NULL,
+    digest    TEXT NOT NULL,
+    size      INTEGER NOT NULL,
+    recipe    TEXT NOT NULL,
+    path      TEXT NOT NULL,
+    listed_in TEXT,
+    since     REAL NOT NULL
 );
+CREATE INDEX IF NOT EXISTS away_listed_in ON away (listed_in);
 """
 
 _DISK_BYTES_TRIGGERS = (
@@ -189,14 +193,16 @@ class ArtifactInfo:
 
 @dataclass(frozen=True, slots=True)
 class AwayInfo:
-    """A file artefact the store let go of while a file outside it holds its very bytes
-    (:meth:`Store.send_away`): where that file was, and what it must be to be taken back."""
+    """An artefact the store let go of while what is outside it holds its very bytes
+    (:meth:`Store.send_away`): where that is (a file, or the folder of a tile), what it must be
+    to be taken back, and the folder artefact that listed it (``listed_in``), if any."""
 
     key: str
     rule: str
     digest: str
     size: int
     path: Path
+    listed_in: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -698,13 +704,7 @@ class Store:
                 (rule, int(max_version)),
             ).fetchall()
         for row in rows:
-            doc = json.loads(row["recipe"])
-            if canonical_json(doc.get("params", {})) != want:
-                continue
-            made_of = doc.get("inputs", {})
-            if inputs and any(made_of.get(name) != digest for name, digest in inputs.items()):
-                continue
-            if self.has(str(row["key"])):
+            if _made_of(str(row["recipe"]), want, inputs) and self.has(str(row["key"])):
                 return str(row["key"])
         return None
 
@@ -904,27 +904,50 @@ class Store:
 
     # -- artefacts held outside the store --------------------------------------------------
 
-    def send_away(self, key: str, *, rule: str, digest: str, size: int, path: Path) -> bool:
-        """Let go of the file artefact ``key``, whose very bytes ``path`` holds outside the store
-        (a tile's own copy of its image, on another disk): its row in ``away`` says where, and
-        :meth:`take_back` puts it back from there. The row is written first, so that an artefact
-        deleted is never one the store forgot; True when the store held it and let go of it.
-        Raises as :meth:`delete` does when it cannot (the row then stays, and is of no use while
-        the artefact is there)."""
+    def send_away(
+        self,
+        key: str,
+        *,
+        rule: str,
+        digest: str,
+        size: int,
+        path: Path,
+        listed_in: str | None = None,
+    ) -> bool:
+        """Let go of the artefact ``key``, whose very bytes ``path`` holds outside the store (a
+        tile's own copy of its image, on another disk; for a folder, the tile that holds its
+        files): its row in ``away`` says where, with the version and the recipe the store had
+        (what :meth:`last_away` reads), and the folder artefact that listed it (``listed_in``,
+        what :meth:`away_listed` reads). :meth:`take_back` puts a file back from there. The row
+        is written first, so that an artefact deleted is never one the store forgot; True when
+        the store held it and let go of it. Raises as :meth:`delete` does when it cannot (the
+        row then stays, and is of no use while the artefact is there)."""
         check_digest(key, "key")
         check_digest(digest, "digest")
         with self._lock:
+            made = self._db.execute(
+                "SELECT version, recipe FROM artifacts WHERE key = ?", (key,)
+            ).fetchone()
+            version, recipe = (int(made["version"]), str(made["recipe"])) if made else (0, "")
             with self._tx():
                 self._db.execute(
                     """
-                    INSERT INTO away (key, rule, digest, size, path, since)
-                    VALUES (?, ?, ?, ?, ?, ?)
+                    INSERT INTO away
+                        (key, rule, version, digest, size, recipe, path, listed_in, since)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT (key) DO UPDATE SET
-                        rule = excluded.rule, digest = excluded.digest, size = excluded.size,
-                        path = excluded.path, since = excluded.since
+                        rule = excluded.rule, version = excluded.version,
+                        digest = excluded.digest, size = excluded.size,
+                        recipe = CASE WHEN excluded.recipe != '' THEN excluded.recipe
+                                      ELSE away.recipe END,
+                        path = excluded.path, listed_in = excluded.listed_in,
+                        since = excluded.since
                     """,
-                    (key, rule, digest, int(size), os.fspath(path), time.time()),
-                )
+                    (
+                        key, rule, version, digest, int(size), recipe, os.fspath(path),
+                        listed_in, time.time(),
+                    ),
+                )  # fmt: skip
             return self.delete(key, force=True)
 
     def away(self, key: str) -> AwayInfo | None:
@@ -937,6 +960,35 @@ class Store:
         with self._lock:
             rows = self._db.execute("SELECT * FROM away ORDER BY key").fetchall()
         return [_away_info(r) for r in rows]
+
+    def away_listed(self, key: str) -> list[AwayInfo]:
+        """The artefacts let go of that the folder artefact ``key`` listed (a tile's images)."""
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT * FROM away WHERE listed_in = ? ORDER BY key", (key,)
+            ).fetchall()
+        return [_away_info(r) for r in rows]
+
+    def last_away(
+        self,
+        rule: str,
+        params: dict[str, Any],
+        max_version: int,
+        inputs: dict[str, str] | None = None,
+    ) -> str | None:
+        """:meth:`last_made` among the artefacts let go of: what a step made the last time for
+        the same tile and settings, gone since with its files held outside (a tile's images)."""
+        want = canonical_json(params)
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT key, recipe FROM away WHERE rule = ? AND version <= ? AND recipe != ''"
+                " ORDER BY since DESC",
+                (rule, int(max_version)),
+            ).fetchall()
+        for row in rows:
+            if _made_of(str(row["recipe"]), want, inputs):
+                return str(row["key"])
+        return None
 
     def point_away(self, key: str, path: Path) -> None:
         """The file holding an artefact let go of is now at ``path`` (its folder moved)."""
@@ -1230,7 +1282,18 @@ def _away_info(row: sqlite3.Row) -> AwayInfo:
         digest=str(row["digest"]),
         size=int(row["size"]),
         path=Path(str(row["path"])),
+        listed_in=_opt_str(row["listed_in"]),
     )
+
+
+def _made_of(recipe: str, params: str, inputs: dict[str, str] | None) -> bool:
+    """Whether ``recipe`` made its artefact of exactly ``params`` (canonical JSON) and of the
+    ``inputs`` given, whatever its others."""
+    doc = json.loads(recipe)
+    if canonical_json(doc.get("params", {})) != params:
+        return False
+    made_of = doc.get("inputs", {})
+    return not inputs or all(made_of.get(name) == digest for name, digest in inputs.items())
 
 
 def _opt_str(v: object) -> str | None:

@@ -200,6 +200,7 @@ __all__ = [
     "source_ref",
     "texture_jobs_from_json",
     "textures_progress_message",
+    "tile_folders",
 ]
 
 log = logging.getLogger("orthostudio.build")
@@ -1071,7 +1072,7 @@ def photo_zone_shapes(
     return tuple(reversed(out))
 
 
-def _tile_folders(env: BuildEnv, tile: TileRef) -> tuple[Path, ...]:
+def tile_folders(env: BuildEnv, tile: TileRef) -> tuple[Path, ...]:
     """The textures folders of ``tile`` as the Library knows them now: where an image the store
     let go of, the tile holding it as a file of its own, is looked for when the tile has moved
     since (``TexturesSpec.held_in``). None without a Library, or one that cannot be read."""
@@ -1112,7 +1113,7 @@ def _tile_textures(ctx: RunContext) -> None:
     total = len(jobs)
     done_before = 0
     outcomes: list[dict[str, Any]] = []
-    held_in = _tile_folders(env, tile)
+    held_in = tile_folders(env, tile)
     cancel = node.cancel_event
     stop = cancel if isinstance(cancel, threading.Event) else threading.Event()
     for (code, zl), group in sorted(groups.items()):

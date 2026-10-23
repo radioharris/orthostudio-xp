@@ -120,12 +120,23 @@ def test_an_image_taken_as_it_is_reads_no_piece_of_the_cache(
         read.append(t)
         return real_read(self, t)
 
+    keep = frozenset(texture_name(t) for t in textures[1:])  # all but the first as they are
+    complete = ChunkContainer(
+        ChunkEntry(ChunkStatus.OK, b"jpeg", "image/jpeg", 0) for _ in range(256)
+    )
+    pieces = ChunkStore(tmp_path / "chunks", fsync=False)
+    for kept in textures[1:]:
+        pieces.write(kept, complete)
     monkeypatch.setattr(ChunkStore, "read", counted)
-    keep = {texture_name(t) for t in textures[1:]}  # all but the first taken as they are
-    monkeypatch.setattr(est_mod, "_textures_kept", lambda env, nodes, entries: keep)
+    monkeypatch.setattr(est_mod, "_textures_kept", lambda env, nodes, entries: est_mod._Kept(keep))
     (t,) = estimate([_spec(tmp_path)], env=env).tiles
     assert read == [textures[0]]
     assert t.requests == 256  # the one image to prepare, none of its pieces in the cache
+    # an image taken as it is needs its pieces for its key: deleted, they are downloaded again
+    pieces.path(textures[1]).unlink()
+    read.clear()
+    (t,) = estimate([_spec(tmp_path)], env=env).tiles
+    assert read == [textures[0]] and t.requests == 2 * 256
 
 
 def test_the_estimate_looks_where_a_build_would_for_a_source_of_the_users(
@@ -321,7 +332,7 @@ def test_a_dsf_written_again_by_an_update_keeps_the_images_already_prepared(
         entries: dict[str, PlanEntry] = {}
         nodes = SimpleNamespace(dsf=dsf, textures=tex)
         assert _earlier_build(env, dsf, entries) is None
-        assert _textures_kept(env, nodes, entries) == set()
+        assert _textures_kept(env, nodes, entries).names == set()
 
         # what the version before made of the same params and inputs
         digests = {name: r.digest for name, r in dsf_in.items()}
@@ -353,14 +364,39 @@ def test_a_dsf_written_again_by_an_update_keeps_the_images_already_prepared(
             params.canonical(),
             {"dsf": old_digest, "masks": ref(2).digest},
         )
-        assert _textures_kept(env, nodes, entries) == set()  # no textures step yet
+        assert _textures_kept(env, nodes, entries).names == set()  # no textures step yet
         put(TILE_TEXTURES.name, tex_key, tex_recipe, {"manifest.json": json.dumps(manifest)})
-        assert _textures_kept(env, nodes, entries) == {"a", "b"}
+        assert _textures_kept(env, nodes, entries).names == {"a", "b"}
         # other colours: another textures step, nothing kept
         tex.params = TileTexturesParams(
             tile="+43+005", encoder="ispc", encoder_version="1", photo_brightness=0.1
         )
-        assert _textures_kept(env, nodes, entries) == set()
+        assert _textures_kept(env, nodes, entries).names == set()
+
+        # Free space let go of the images, the tile holding them as files of its own: they come
+        # back from the tile, copied, not prepared (a user's tiles on another partition,
+        # 2026-10-23); the Plan counted them as to prepare
+        tex.params = params
+        tile = tmp_path / "Other disk" / "zOrthoStudio_+43+005"
+        (tile / "textures").mkdir(parents=True)
+        for name in ("a", "b"):
+            held = tile / "textures" / f"{name}.dds"
+            held.write_bytes(b"D")
+            digest = store.digest_of(dds[name])
+            assert digest is not None
+            store.send_away(
+                dds[name], rule="texture.dds", digest=digest, size=1, path=held, listed_in=tex_key
+            )
+        info = store.info(tex_key)
+        assert info is not None
+        store.send_away(tex_key, rule=info.rule, digest=info.digest, size=info.size, path=tile)
+        env.library_path, env.store_root = None, tmp_path / "store"
+        nodes.spec = SimpleNamespace(tile=TileRef(43, 5))
+        kept = _textures_kept(env, nodes, entries)
+        assert kept.names == {"a", "b"} and kept.back == 2
+        assert kept.copy_bytes == 0  # the tile on the store's disk: linked, nothing written
+        (tile / "textures" / "b.dds").write_bytes(b"DD")  # changed since: prepared
+        assert _textures_kept(env, nodes, entries).names == {"a"}
 
 
 def test_the_steps_to_run_count_what_they_wrote_the_last_time(tmp_path: Path) -> None:
@@ -449,7 +485,7 @@ def test_a_map_changed_by_an_update_goes_by_the_tiles_last_build(tmp_path: Path)
             "t/mesh": PlanEntry("t/mesh", None, "unknown", 1.0),
             "t/dsf": PlanEntry("t/dsf", None, "unknown", 1.0),
         }
-        assert _textures_kept(env, nodes, entries) == set()
+        assert _textures_kept(env, nodes, entries).names == set()
 
         # the tile's last build: other inputs, an earlier version of the rule
         listed = {
@@ -491,10 +527,10 @@ def test_a_map_changed_by_an_update_goes_by_the_tiles_last_build(tmp_path: Path)
         put(TILE_TEXTURES.name, tex_key, tex_recipe, files)
 
         assert _tile_textures(env, nodes, entries) == ([land, wet], False, 1, 0, 0, "", True)
-        assert _textures_kept(env, nodes, entries) == {texture_name(land), texture_name(wet)}
+        assert _textures_kept(env, nodes, entries).names == {texture_name(land), texture_name(wet)}
         # the DSF to write again counts what the last one wrote
         assert _other_gb(env, nodes, entries) == pytest.approx(0.01, abs=1e-3)
 
         # other settings: not the same tile build, nothing to go by
         dsf.params = TileDsfParams(tile="+43+005", default_zl=17)
-        assert _textures_kept(env, nodes, entries) == set()
+        assert _textures_kept(env, nodes, entries).names == set()

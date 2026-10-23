@@ -92,6 +92,23 @@ def test_the_images_a_tile_holds_on_another_disk_go_and_come_back_from_it(world:
         assert s.has(key) and _take_back(w, key) == s.info(key)  # the store's now
 
 
+def test_the_store_remembers_the_folder_that_listed_them(world: World) -> None:
+    """The tile's textures folder goes too, remembered with its recipe and its tile's folder: the
+    Plan finds there what the tile's last build made, and which images come back from the tile
+    (``estimate._taken_back``)."""
+    w = world
+    images = _images(w, F)
+    with Store(w.store, fsync=False) as s:
+        (folder,) = [k for k in w.keys[F] if (i := s.info(k)) and i.rule == "tile.textures"]
+    w.run()
+    with Store(w.store, fsync=False) as s:
+        assert s.last_away("tile.textures", {"n": 2}, 1) == folder  # F's build, n = 2
+        assert s.last_away("tile.textures", {"n": 9}, 1) is None
+        assert {r.key for r in s.away_listed(folder)} == set(images)
+        row = s.away(folder)
+        assert row is not None and row.path == Path(os.path.realpath(w.packs[F]))
+
+
 def test_an_image_changed_in_its_tile_is_not_taken_back(world: World) -> None:
     """Retouched in the tile since, the image is no longer the one the store let go of: nothing
     is taken back, and the build prepares it as any other."""
