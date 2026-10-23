@@ -8,9 +8,10 @@ intermediate states of next a user's store went through that day (the list of im
 in its first form, which the next form refused to open, "no such column: listed_in"; the list of
 trimmed files without digests; the file digests). Each holds a relief and a mesh in both forms, a
 vectors stage, an image and its textures folder, pinned; the later ones an image let go of (its
-tile's copy beside the store), a relief trimmed, a file's digest. Opened by this version, a store
-must keep every artefact readable and as built, and take everything this version does to it.
-The fixtures are copied before being opened: never changed in place.
+tile's copy beside the store, listed in an ``away`` table this version neither reads nor writes),
+a relief trimmed, a file's digest. Opened by this version, a store must keep every artefact
+readable and as built, and take everything this version does to it. The fixtures are copied
+before being opened: never changed in place.
 """
 
 from __future__ import annotations
@@ -20,7 +21,7 @@ from pathlib import Path
 
 import pytest
 
-from orthostudio.graph import Store, artifact_key
+from orthostudio.graph import Store
 
 STORES = sorted((Path(__file__).parent / "data" / "stores").iterdir())
 TILE = "+46+006"
@@ -34,13 +35,12 @@ def _columns(store: Store, table: str) -> set[str]:
 def test_a_store_an_earlier_version_left_opens_and_works(made_by: Path, tmp_path: Path) -> None:
     """Every table and column of this version is there after the opening; every artefact is
     there, readable and as it was built; the last build of a step is found; the second forms are
-    trimmed, the artefacts still as built; an image let go of comes back from its tile; a file's
-    digest is kept; opened again, nothing changed."""
+    trimmed, the artefacts still as built; a file's digest is kept, its file's number read again
+    once from a row an earlier version wrote; opened again, nothing changed."""
     copy = tmp_path / made_by.name
     shutil.copytree(made_by, copy)
     root, tiles = copy / "store", copy / "tiles"
     with Store(root, fsync=False) as s:
-        assert {"version", "recipe", "listed_in"} <= _columns(s, "away")
         assert "digest" in _columns(s, "trimmed") and _columns(s, "sources")
         infos = list(s.iter_artifacts())
         assert len(infos) >= 5 and all(s.has(i.key) for i in infos)
@@ -64,13 +64,6 @@ def test_a_store_an_earlier_version_left_opens_and_works(made_by: Path, tmp_path
             assert (info.path / f"Data{TILE}.alt").is_file()
         assert s.fsck(verify=True).clean
 
-        for row in s.away_rows():
-            _key, recipe = artifact_key("texture.dds", 1, {"tile": TILE, "n": 2}, {})
-            back = s.take_back(
-                row.key, version=1, recipe=recipe, inputs=[],
-                also=[tiles / "zOrthoStudio_+46+007" / "textures"],
-            )  # fmt: skip
-            assert back is not None and back.digest == row.digest
         dsf = tiles / "+46+006.dsf"
         dsf.parent.mkdir(parents=True, exist_ok=True)
         dsf.write_bytes(b"XPLNEDSF" + b"\1" * 64)

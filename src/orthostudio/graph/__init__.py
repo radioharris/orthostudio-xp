@@ -40,7 +40,6 @@ from orthostudio.graph.rule import Kind, ResolvedInput, Rule, RuleParams, RunCon
 from orthostudio.graph.store import (
     SCHEMA_VERSION,
     ArtifactInfo,
-    AwayInfo,
     Build,
     FsckReport,
     GcReport,
@@ -55,7 +54,6 @@ __all__ = [
     "ArtifactHeldError",
     "ArtifactInUseError",
     "ArtifactInfo",
-    "AwayInfo",
     "BudgetExceededError",
     "Build",
     "CanonError",

@@ -30,8 +30,6 @@ core for the encoding while the network is busy.
 plan ──► fetch missing tiles (Fetcher, AIMD, hedging) ──► container complete ──► parents? ──►
   key = blake3(rule, params, digest(chunks), digest(mask), digest(parents))
   ├─ in store  → hit: hard-link the DDS into textures/, write the .ter files
-  ├─ away      → taken back from the tile's own file when its digest is the one let go of
-  │              (Store.take_back), then as a hit; else as below
   └─ else      → worker (ProcessPoolExecutor): assemble → mask → imprint → mips → BC1/BC3
                  → DDS committed to the store → hard-link → .ter files
 ```
@@ -377,17 +375,14 @@ Per-process `Executor(Store(store_root))` in every worker: key from the input di
 the same key before submitting, so hits never reach the pool. `Rule.version` is bumped when
 `assemble`, `imprint`, `mip_chain` or `encode_dds` change their output for equal inputs.
 
-**Images taken back from their tile (2026-10-23).** *Free space* lets go of the images a tile holds
-as files of its own, the store keeping them a second time (`graph-keys.md` 9.1): the store's
-`away` table says which file of the tile holds each. A key the store does not have but that table
-names is taken back before any worker sees it (`_Pipeline._take_back`, `Store.take_back`): from
-the file the row names, else from the file of the same name in the tile's textures folders as the
-Library knows them now (`TexturesSpec.held_in`, `build.tile_folders`: a tile moved or filed since),
-linked on the store's disk, copied otherwise, committed with the texture's own recipe
-(`rule.dds_recipe`) only when its digest is the one let go of; then published as a hit
-(`counts["taken_back"]` says how many). A file gone, on a disk away or changed in the tile (an
-image retouched) leaves the texture to the worker, as any other. The key needs the texture's
-image pieces, as for any hit: with the downloaded images deleted, they are downloaded first.
+**The images of a tile on another disk, deleted from the store on request (2026-10-23).** *Free
+space*'s choice `apart` deletes the store's copy of the images of the tiles on another disk or
+partition, which hold their own (`graph-keys.md` 9.1). Nothing is taken back from the tile: their
+textures are prepared again as any other, from the image pieces, which that choice keeps in the
+cache. The encoder gives the same bytes from the same pieces: a ZL16 tile of 213 textures, made
+again after its DDS were deleted from the store, 9.8 s on the reference Mac, nothing downloaded,
+every DDS identical to the byte, so that the pack step was a hit and the tile was not touched
+(2026-10-23).
 
 ## 7. Worker (one texture, in one process, nothing large crosses a pickle)
 

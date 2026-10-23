@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 
+from orthostudio.errors import OsxpError
 from orthostudio.install import packs
 from orthostudio.install.scenery_packs import SceneryPacks
 from orthostudio.model import TileRef
@@ -131,9 +132,17 @@ def test_write_pack_layout_links_and_bak(tmp_path: Path, artefacts: dict[str, Pa
     ]
     # copy mode when links are refused
     out2 = tmp_path / "out2"
-    write_pack(out2, T, dsf_dir=artefacts["dsf"], textures_dir=None, overlay_file=None, link=False)
+    write_pack(
+        out2, T, dsf_dir=artefacts["dsf"], textures_dir=artefacts["tex"], overlay_file=None,
+        link=False,
+    )  # fmt: skip
     p = out2 / pack_dir_name(T) / T.dsf_relpath
     assert p.is_file() and not os.path.samefile(p, artefacts["dsf"] / f"{T.name}.dsf")
+    # no textures folder: refused before anything is written, never taken for one with no image
+    out3 = tmp_path / "out3"
+    with pytest.raises(OsxpError) as err:
+        write_pack(out3, T, dsf_dir=artefacts["dsf"], textures_dir=None, overlay_file=None)
+    assert err.value.code == "MESH_INPUT_MISSING" and not out3.exists()
 
 
 def test_manifest_round_trip_and_intact(tmp_path: Path) -> None:

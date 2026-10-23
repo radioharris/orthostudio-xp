@@ -236,12 +236,6 @@ def _rule_keys(w: World, rule: str) -> set[str]:
         return {i.key for i in s.iter_artifacts(rule)}
 
 
-def _images(w: World, tile: TileRef) -> set[str]:
-    """The tile's images and their textures folder: what Free space lets go of, whatever the
-    choices, for a tile holding them as files of its own (copied to another disk)."""
-    return w.keys[tile] & (_rule_keys(w, "texture.dds") | _rule_keys(w, "tile.textures"))
-
-
 def _own_mesh(w: World, tile: TileRef) -> set[str]:
     """The tile's own mesh, as its build laid it out, which freeing its cache keeps."""
     return {w.meshes[tile]}
@@ -260,13 +254,9 @@ def test_the_whole_cache_of_the_tiles_filed_outside_goes_on_request_and_they_sta
     assert seen.filed_tiles == 2 and seen.filed_bytes > 0
     assert seen.filed_images_bytes == 4000 + 3000
     assert seen.images_bytes == 2000 + 1000  # the others: each choice counts its own line
-    # F's images, copied to its disk, are held twice: they go whatever the choice
-    assert seen.held_images == 2 and seen.held_bytes > 0
 
-    held = _images(w, F)
-    plain = w.run()  # without the choice, nothing else of theirs goes
-    assert not plain.filed_removed and w.stored() >= (w.keys[F] - held) | w.keys[S]
-    assert not held & w.stored()
+    plain = w.run()  # without the choice, nothing of theirs goes
+    assert not plain.filed_removed and w.stored() >= w.keys[F] | w.keys[S]
     assert all(p.is_file() for p in pieces.values())
 
     before = w.disk()
@@ -295,8 +285,7 @@ def test_a_tile_filed_on_the_atelier_s_disk_keeps_its_files_and_a_second_clean_f
     assert dds and all(f.stat().st_nlink > 1 for f in dds)  # moved: the store's files too
     before = w.disk()
     done = w.run(filed=True)
-    # the shared files' room is not counted; F's images held twice go with it
-    assert done.held_bytes + done.filed_bytes == before - w.disk()
+    assert done.filed_bytes == before - w.disk()  # the shared files' room is not counted
     assert w.stored() & w.keys[S] == _own_mesh(w, S)
     assert w.whole(S) and all(f.stat().st_nlink == 1 for f in dds)  # the tile's own files now
     again = w.run()
@@ -416,12 +405,11 @@ def test_each_choice_frees_its_own_line(world: World) -> None:
     parent = w.chunks / "BI" / "_parents" / "14" / "1_2.chunks"
     parent.parent.mkdir(parents=True)
     parent.write_bytes(b"p" * 500)
-    held = _images(w, F)
     images = w.run(images=True)
     assert images.images_removed and images.images_bytes == 2000 + 1000 + 500
     assert pieces["F"].is_file() and pieces["S"].is_file()
     assert not pieces["AF"].exists() and not pieces["none"].exists() and not parent.exists()
-    assert w.keys[F] - held <= w.stored()  # the data of theirs too, but its images held twice
+    assert w.keys[F] <= w.stored()  # the data of theirs too
     _pieces(w)
     both = w.run(images=True, filed=True)
     assert both.images_bytes == 2000 + 1000 and both.filed_images_bytes == 4000 + 3000
@@ -512,9 +500,8 @@ def test_an_inode_the_unused_data_shares_with_a_filed_tile_is_counted_once(
     before = w.disk()
     done = w.run(filed=True)
     assert old not in w.stored()
-    freed = done.freed_bytes + done.held_bytes + done.filed_bytes
-    assert freed + done.filed_images_bytes == before - w.disk()
-    assert freed == seen.freed_bytes + seen.held_bytes + seen.filed_bytes
+    assert done.freed_bytes + done.filed_bytes + done.filed_images_bytes == before - w.disk()
+    assert done.freed_bytes + done.filed_bytes == seen.freed_bytes + seen.filed_bytes
 
 
 def test_a_file_another_program_holds_stays_and_is_not_counted(
@@ -544,7 +531,7 @@ def test_a_file_another_program_holds_stays_and_is_not_counted(
     assert pieces["F"].is_file() and not pieces["S"].exists()
     assert done.filed_images_bytes == 3000
     assert (w.keys[F] - {masks}) & w.stored() == _own_mesh(w, F)  # the others went
-    assert done.held_bytes + done.filed_bytes + done.filed_images_bytes == before - w.disk()
+    assert done.filed_bytes + done.filed_images_bytes == before - w.disk()
     monkeypatch.undo()
     again = w.run(dry_run=True)  # F has nothing else here: its piece counts with the images
     assert again.filed_tiles == 0 and again.filed_images_bytes == 0

@@ -34,7 +34,6 @@ __all__ = [
     "TextureDdsParams",
     "dds_key",
     "dds_node",
-    "dds_recipe",
     "take_build_info",
     "texture_dds",
 ]
@@ -235,23 +234,9 @@ def dds_key(
     parents_digest: str | None,
 ) -> str:
     """Key of the artefact without building a node (what the parent process checks)."""
-    key, _recipe = dds_recipe(
-        params, chunks_digest=chunks_digest, mask_digest=mask_digest, parents_digest=parents_digest
-    )
-    return key
-
-
-def dds_recipe(
-    params: TextureDdsParams,
-    *,
-    chunks_digest: str,
-    mask_digest: str | None,
-    parents_digest: str | None,
-) -> tuple[str, str]:
-    """``(key, recipe)`` of the artefact, as a build of it commits them: what an image taken back
-    from its tile is committed with (``Store.take_back``)."""
-    return key_for(
+    key, _recipe = key_for(
         texture_dds,
         params,
         {"chunks": chunks_digest, "mask": mask_digest, "parents": parents_digest},
     )
+    return key

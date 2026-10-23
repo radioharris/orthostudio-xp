@@ -1,17 +1,17 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Free space killed at every step: the tiles never change, the store always opens with every
-artefact left as it was built, nothing let go of is out of reach, and Free space run again ends
-where it would have ended.
+artefact left as it was built, and Free space run again ends where it would have ended.
 
 The process is really killed (``os._exit`` in a process of its own, no ``finally`` run, as a
 power cut or a SIGKILL leaves it) before and after each file removed, renamed or linked and each
 transaction of the store's index (begun, about to commit, committed), one kill point at a time, all
 of them.
 The world: a tile in the workshop sharing its files with the store, a tile filed on another disk
-holding its own copies (its images held twice), the relief and the mesh of both in two forms, data
-no tile needs, downloaded image pieces; Free space without its boxes, and with all of them. The
-owner asked for no data loss and no cache loss, "RIEN" (2026-10-23).
+holding its own copies (the store's copy of its images going with the box of the tiles on another
+disk), the relief and the mesh of both in two forms, data no tile needs, downloaded image pieces;
+Free space without its boxes, and with all of them. The owner asked for no data loss and no cache
+loss, "RIEN" (2026-10-23).
 """
 
 from __future__ import annotations
@@ -30,10 +30,10 @@ from typing import Any
 import numpy as np
 import pytest
 
+import orthostudio.clean as clean_module
 from orthostudio.clean import clean
 from orthostudio.graph import InputRef, Store, artifact_key
 from orthostudio.graph import store as store_module
-from orthostudio.graph.digest import digest_file
 from orthostudio.install import Library
 from orthostudio.mesh.mesh_file import MeshData, write_mesh_npz, write_mesh_text
 from orthostudio.model import TileRef
@@ -168,9 +168,13 @@ def _world(root: Path) -> dict[str, Path]:
 
 
 def _free(paths: dict[str, Path], boxes: bool) -> Any:
+    # the other disk is a folder here: told so, as filing is
+    away = os.path.realpath(paths["away"])
+    clean_module.same_disk = lambda a, b: not os.path.realpath(b).startswith(away)
     return clean(
         paths["store"], paths["chunks"], library_path=paths["library"], tiles_root=paths["tiles"],
-        grace_s=0.0, images=boxes, relief=boxes, filed=boxes, elevation_root=paths["elevation"],
+        grace_s=0.0, images=boxes, relief=boxes, filed=boxes, apart=boxes,
+        elevation_root=paths["elevation"],
     )  # fmt: skip
 
 
@@ -185,14 +189,12 @@ def _tiles(paths: dict[str, Path]) -> dict[str, str]:
 
 
 def _state(paths: dict[str, Path]) -> dict[str, Any]:
-    """What a Free space left: the artefacts, what was trimmed of them, what was let go of and
-    where it is, the downloads left."""
+    """What a Free space left: the artefacts, what was trimmed of them, the downloads left."""
     with Store(paths["store"], fsync=False) as s:
         keys = sorted(i.key for i in s.iter_artifacts() if s.has(i.key))
         return {
             "keys": keys,
             "trimmed": {k: s.trimmed(k) for k in keys if s.trimmed(k)},
-            "away": sorted((r.key, os.fspath(r.path)) for r in s.away_rows() if not s.has(r.key)),
             "downloads": sorted(
                 os.fspath(p.relative_to(paths["chunks"].parent))
                 for d in (paths["chunks"], paths["elevation"])
@@ -203,20 +205,12 @@ def _state(paths: dict[str, Path]) -> dict[str, Any]:
 
 
 def _healthy(paths: dict[str, Path], tiles: dict[str, str]) -> None:
-    """The tiles as they were; the store opens; every artefact left is as built; whatever was let
-    go of is held, intact, where the store says."""
+    """The tiles as they were; the store opens; every artefact left is as built."""
     assert _tiles(paths) == tiles
     with Store(paths["store"], fsync=False) as s:
         for info in list(s.iter_artifacts()):
             if s.has(info.key):
                 assert s.content_digest(info.key) == info.digest, info.rule
-        for row in s.away_rows():
-            if s.has(row.key):
-                continue
-            if row.rule == "tile.textures":  # a textures folder: the tile that holds its images
-                assert (row.path / "orthostudio.toml").is_file()
-            else:
-                assert row.path.is_file() and digest_file(row.path) == row.digest
 
 
 class _Kill:
@@ -299,14 +293,12 @@ def test_free_space_killed_at_every_step(tmp_path: Path, boxes: bool, part: int)
     assert _run(reference, boxes, None) == 0
     steps = int((reference["store"].parent / "steps.txt").read_text())
     expected = _state(reference)
-    assert steps > 40  # the world gives Free space things to do
-    assert expected["trimmed"] and (expected["away"] or boxes)
+    assert steps > (40 if boxes else 25)  # the world gives Free space things to do
+    assert expected["trimmed"]
+    if boxes:  # F's images went with their box: its steps are among the kill points
+        with Store(reference["store"], fsync=False) as s:
+            assert len(list(s.iter_artifacts("tile.textures"))) == 1
     _healthy(reference, tiles)
-
-    def moved(state: dict[str, Any], to: Path) -> dict[str, Any]:
-        here = os.fspath(tmp_path / "reference")
-        away = [(k, p.replace(here, os.fspath(to))) for k, p in state["away"]]
-        return {**state, "away": away}
 
     for at in range(1 + part, steps + 1, PARTS):
         run_root = tmp_path / f"kill-{at}"
@@ -316,5 +308,5 @@ def test_free_space_killed_at_every_step(tmp_path: Path, boxes: bool, part: int)
         _healthy(run, run_tiles)
         assert _run(run, boxes, None) == 0, at  # Free space again, to the end
         _healthy(run, run_tiles)
-        assert _state(run) == moved(expected, run_root), at
+        assert _state(run) == expected, at
         shutil.rmtree(run_root)

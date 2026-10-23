@@ -13,10 +13,12 @@ folders only.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import sqlite3
 import time
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import numpy as np
@@ -29,6 +31,7 @@ from orthostudio.api.jobs import JobManager
 from orthostudio.clean import clean
 from orthostudio.cli import app as cli_app
 from orthostudio.graph import Store, artifact_key
+from orthostudio.graph.digest import digest_file
 from orthostudio.install import Library
 from orthostudio.mesh.mesh_file import MeshData, write_mesh_npz, write_mesh_text
 from orthostudio.model import TileRef
@@ -100,7 +103,12 @@ def _keep(store_root: Path, library: Path, tiles: Path, keys: dict[str, str]) ->
             (b.out / f"{T.name}.dsf").write_bytes(b"XPLNEDSF" + b"\0" * 100)
             b.commit(version=1, recipe=recipe, inputs=[])
         dsf_dir = s.path(dsf_key)
-    files = write_pack(tiles, T, dsf_dir=dsf_dir, textures_dir=None, overlay_file=None)
+        tex_key, recipe = artifact_key("tile.textures", 1, {"tile": T.name}, {})
+        with s.begin("tile.textures", tex_key, "dir") as b:
+            (b.out / "textures").mkdir()  # no image: a pack takes them from a folder
+            b.commit(version=1, recipe=recipe, inputs=[])
+        tex_dir = s.path(tex_key)
+    files = write_pack(tiles, T, dsf_dir=dsf_dir, textures_dir=tex_dir, overlay_file=None)
     artefacts = {
         role: ArtefactEntry(key, "d" * 64, f"{rule}@1")
         for role, (key, rule) in {
@@ -453,3 +461,152 @@ def test_files_trimmed_in_two_goes_or_before_their_digests_were_kept(tmp_path: P
         )
         assert s.trim(other, ["c.mesh"]) == 0 and s.content_digest(other) is None
         assert s.fsck(verify=True).clean
+
+
+# -- a review's findings, 2026-10-23 -------------------------------------------------------------
+
+
+def test_a_file_number_too_big_for_an_sqlite_integer_is_kept(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """On ReFS (a Windows Dev Drive) a file's number is 128 bits: bound as an SQLite integer, it
+    raised OverflowError at every Plan and build. It is kept as text; a row an earlier version
+    wrote, with an integer, is read again once."""
+    import orthostudio.graph.store as store_module
+
+    read: list[Path] = []
+    real_digest = store_module.digest_file
+    monkeypatch.setattr(store_module, "digest_file", lambda p: read.append(p) or real_digest(p))
+    dsf = tmp_path / "+46+006.dsf"
+    dsf.write_bytes(b"A" * 1000)
+    real_stat = Path.stat
+    number = [2**63]
+
+    def stat(self: Path, *a: Any, **kw: Any) -> Any:
+        st = real_stat(self, *a, **kw)
+        if self.name != dsf.name:
+            return st
+        return SimpleNamespace(
+            st_size=st.st_size, st_mtime_ns=st.st_mtime_ns, st_ctime_ns=st.st_ctime_ns,
+            st_ino=number[0], st_mode=st.st_mode,
+        )  # fmt: skip
+
+    monkeypatch.setattr(Path, "stat", stat)
+    with Store(tmp_path / "store", fsync=False) as s:
+        for big in (2**63, 2**64 + 5, 2**127 + 3):
+            number[0] = big
+            first = s.file_digest(dsf)
+            assert s.file_digest(dsf) == first
+        assert len(read) == 3  # each number once: another number is another file
+        s._db.execute("UPDATE sources SET ino = 5")  # an earlier version's row
+        number[0] = 5
+        assert s.file_digest(dsf) == first and len(read) == 4
+        assert s.file_digest(dsf) == first and len(read) == 4
+
+
+def test_a_trim_asked_again_keeps_its_rows_and_takes_the_size_off_once(tmp_path: Path) -> None:
+    """Interrupted after its rows were written, before its files went, then asked again; or asked
+    by two stores at once, the other removing the file first: the rows stay, and the size in the
+    index is taken off once."""
+    alt = f"Data{T.name}.alt"
+    with Store(tmp_path / "store", fsync=False) as s:
+        key = _relief(s)
+        before = s.info(key)
+        assert before is not None
+        size = (before.path / alt).stat().st_size
+        digest = digest_file(before.path / alt)
+        with s._tx():  # what an interrupted trim left: its row and its size, the file still there
+            s._db.execute(
+                "INSERT INTO trimmed (key, path, size, digest) VALUES (?, ?, ?, ?)",
+                (key, alt, size, digest),
+            )
+            s._db.execute("UPDATE artifacts SET size = size - ? WHERE key = ?", (size, key))
+        s.trim(key, [alt])
+        assert not (before.path / alt).exists() and s.trimmed(key) == {alt: size}
+        assert s.info(key).size == before.size - size  # type: ignore[union-attr]
+        assert s.content_digest(key) == before.digest
+
+        other = _relief(s, 2)
+        was = s.info(other)
+        assert was is not None
+        real = Path.unlink
+
+        def first_removed_by_the_other(self: Path, *a: Any, **kw: Any) -> None:
+            real(self, *a, **kw)
+            raise FileNotFoundError(2, "removed by another trim", str(self))
+
+        with pytest.MonkeyPatch.context() as m:
+            m.setattr(Path, "unlink", first_removed_by_the_other)
+            s.trim(other, [alt])
+        assert s.trimmed(other) == {alt: size} and s.content_digest(other) == was.digest
+        assert s.info(other).size == was.size - size  # type: ignore[union-attr]
+
+
+def test_a_trim_of_an_artefact_deleted_meanwhile_does_nothing(tmp_path: Path) -> None:
+    """Deleted by another process between the reading and the rows: nothing goes, nothing is
+    listed, and no error."""
+    alt = f"Data{T.name}.alt"
+    with Store(tmp_path / "store", fsync=False) as s:
+        key = _relief(s)
+        folder = s.path(key)
+        real = s._trimmed_files
+
+        def deleted_meanwhile(k: str) -> Any:
+            found = real(k)
+            other = sqlite3.connect(s.root / "index.sqlite")
+            other.execute("DELETE FROM artifacts WHERE key = ?", (k,))
+            other.commit()
+            other.close()
+            return found
+
+        s._trimmed_files = deleted_meanwhile  # type: ignore[method-assign]
+        assert s.trim(key, [alt]) == 0
+        assert (folder / alt).is_file()
+
+
+def test_a_trim_writes_its_rows_to_the_disk_before_any_file_goes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A power cut must not leave a file gone that the index does not list: the rows are
+    committed with ``synchronous = FULL`` (and macOS's full sync), and the index goes back to its
+    usual setting after."""
+    alt = f"Data{T.name}.alt"
+    with Store(tmp_path / "store", fsync=False) as s:
+        key = _relief(s)
+        seen: list[tuple[int, int, bool]] = []
+        real_tx = Store._tx
+
+        @contextlib.contextmanager
+        def tx(store: Store) -> Any:
+            with real_tx(store) as db:
+                sync = int(db.execute("PRAGMA synchronous").fetchone()[0])
+                full = int(db.execute("PRAGMA fullfsync").fetchone()[0])
+                yield db
+                seen.append((sync, full, (s.path(key) / alt).exists()))
+
+        monkeypatch.setattr(Store, "_tx", tx)
+        s.trim(key, [alt])
+        assert seen[0] == (2, 1, True)  # FULL, full sync, the file still there
+        assert int(s._db.execute("PRAGMA synchronous").fetchone()[0]) == 1  # NORMAL again
+        assert int(s._db.execute("PRAGMA fullfsync").fetchone()[0]) == 0
+
+
+def test_a_check_of_the_store_never_deletes_what_it_cannot_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An artefact whose files cannot be read now (a disk that answers badly) is not taken for a
+    damaged one: ``repair`` leaves it."""
+    import orthostudio.graph.store as store_module
+
+    with Store(tmp_path / "store", fsync=False) as s:
+        key = _relief(s)
+        real = store_module.digest_path
+
+        def unreadable(path: Path, *a: Any, **kw: Any) -> Any:
+            if Path(path) == s.path(key):
+                raise PermissionError(13, "cannot be read now", str(path))
+            return real(path, *a, **kw)
+
+        monkeypatch.setattr(store_module, "digest_path", unreadable)
+        report = s.fsck(verify=True, repair=True)
+        assert key not in report.digest_mismatches and s.has(key)

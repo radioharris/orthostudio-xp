@@ -406,6 +406,10 @@
         <label class="disk-check"><input type="checkbox" id="disk-filed"> <span data-i18n="disk.also_filed">Also delete the cache of the tiles filed outside the workshop</span></label>
         <p class="help" data-i18n="disk.filed_check_help">The filed tiles are not touched: they stay whole and in X-Plane. Building them again downloads their images again.</p>
       </div>
+      <div id="disk-apart-choice" hidden>
+        <label class="disk-check"><input type="checkbox" id="disk-apart"> <span data-i18n="disk.also_apart">Also delete the cache's copy of the images of the tiles on another disk</span></label>
+        <p class="help" data-i18n="disk.apart_check_help">These tiles keep their own images: X-Plane sees no difference. Building one of them again prepares its images again from the downloaded images, which stay, without downloading anything.</p>
+      </div>
       <label class="disk-check"><input type="checkbox" id="disk-images"> <span data-i18n="disk.also_images">Also delete the downloaded images</span></label>
       <p class="help" data-i18n="disk.images_help">Tiles built later then download their images again.</p>
       <label class="disk-check"><input type="checkbox" id="disk-relief"> <span data-i18n="disk.also_relief">Also delete the downloaded relief</span></label>

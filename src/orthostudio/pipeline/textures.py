@@ -45,7 +45,7 @@ from PIL import Image
 
 from orthostudio.errors import OsxpError, disk_trouble
 from orthostudio.fsutil import atomic_link_or_copy, atomic_write_bytes, atomic_write_text
-from orthostudio.graph import Executor, InputRef, Source, Store, StoreError, digest_bytes
+from orthostudio.graph import Executor, InputRef, Source, Store, digest_bytes
 from orthostudio.imagery.chunks import (
     ChunkContainer,
     ChunkEntry,
@@ -67,11 +67,10 @@ from orthostudio.pipeline.parents import (
     resolve_parents,
 )
 from orthostudio.pipeline.rule import (
-    RULE_VERSION,
     BuildInfo,
     TextureDdsParams,
+    dds_key,
     dds_node,
-    dds_recipe,
     take_build_info,
 )
 from orthostudio.textures.assemble import GRID, image_body_complete
@@ -314,10 +313,6 @@ class TexturesSpec:
     wrote: Callable[[int], None] | None = None
     """Told what the image pieces kept in the cache add to the disk (``ChunkStore.on_write``):
     the build step's count of what it wrote, Works' report."""
-    held_in: tuple[Path, ...] = ()
-    """The textures folders of the tile as the Library knows them now: where an image the store
-    let go of, the tile holding it as a file of its own, is looked for when the file the store
-    remembers has moved with its tile (``Store.take_back``)."""
 
 
 @dataclass(slots=True)
@@ -919,7 +914,6 @@ class _Pipeline:
             "textures": len(self.jobs),
             "built": 0,
             "hits": 0,
-            "taken_back": 0,
             "incomplete": 0,
             "failed": 0,
             "cancelled": 0,
@@ -1824,7 +1818,7 @@ class _Pipeline:
         params = self._params(st)
         chunks_digest = st.chunks_digest
         assert chunks_digest is not None
-        key, recipe = dds_recipe(
+        key = dds_key(
             params,
             chunks_digest=chunks_digest,
             mask_digest=st.mask_digest,
@@ -1833,14 +1827,14 @@ class _Pipeline:
         assert st.outcome is not None
         st.outcome.key = key
         dest = self.out_dir / "textures" / texture_dds_name(t)
-        refs = [
-            InputRef("chunks", chunks_digest),
-            InputRef("mask", st.mask_digest),
-            InputRef("parents", parents_digest),
-        ]
         if self.store.has(key):
             info = self.store.info(key)
             assert info is not None
+            refs = [
+                InputRef("chunks", chunks_digest),
+                InputRef("mask", st.mask_digest),
+                InputRef("parents", parents_digest),
+            ]
             self.store.touch(key, refs)
             self._spawn(self._publish_hit(st, info.path, info.digest, dest), st)
             return
@@ -1859,36 +1853,7 @@ class _Pipeline:
             tmp_dir=self.tmp_dir,
             fsync=self.spec.fsync,
         )
-        if self.store.away(key) is not None:
-            self._spawn(self._take_back(st, job, dest, recipe, refs), st, encode=True)
-            return
         self._spawn(self._encode_one(st, job, dest), st, encode=True)
-
-    async def _take_back(
-        self, st: _TexState, job: WorkerJob, dest: Path, recipe: str, refs: list[InputRef]
-    ) -> None:
-        """An image the store let go of, its tile holding it as a file of its own (Free space):
-        taken back from the tile, checked to be the very same, and published as a hit; prepared
-        as any other when the tile no longer holds it as it was (moved away, retouched, its disk
-        unplugged)."""
-        assert st.outcome is not None and st.outcome.key is not None
-        try:
-            info = await asyncio.to_thread(
-                self.store.take_back,
-                st.outcome.key,
-                version=RULE_VERSION,
-                recipe=recipe,
-                inputs=refs,
-                also=self.spec.held_in,
-            )
-        except (OSError, StoreError) as exc:
-            log.warning("image %s not taken back from its tile: %s", st.outcome.name, exc)
-            info = None
-        if info is None:
-            await self._encode_one(st, job, dest)
-            return
-        self.counts["taken_back"] += 1
-        await self._publish_hit(st, info.path, info.digest, dest)
 
     async def _encode_one(self, st: _TexState, job: WorkerJob, dest: Path) -> None:
         """Wait for a worker, hand the texture over, then wait for its answer.

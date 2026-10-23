@@ -13,10 +13,8 @@ the time from the learnt costs and, online, from a 20-request probe of the provi
 from __future__ import annotations
 
 import json
-import os
 import shutil
 import sqlite3
-import stat
 import time
 from collections.abc import Sequence
 from dataclasses import dataclass, field
@@ -42,7 +40,6 @@ from orthostudio.pipeline.build import (
     make_scheduler,
     stored_osm_refs,
     texture_jobs_from_json,
-    tile_folders,
 )
 from orthostudio.sched import PlanEntry
 from orthostudio.zones import zone_list_textures
@@ -188,10 +185,10 @@ class TileEstimate:
     textures_prepare: int = 0
     """The textures the build prepares: ``textures_total`` but those it takes as they are."""
     textures_kept: int = 0
-    """The textures the build takes as they are, from the store or back from the tile that holds
-    them (`_textures_kept`): all of them when the textures step is in the store. The page said
-    every image of a tile was to prepare and counted the steps in the store as images already
-    prepared: 309 and 7 for a tile whose 309 images all came back, in a second (2026-10-23)."""
+    """The textures the build takes as they are from the store (`_textures_kept`): all of them
+    when the textures step is in the store. The page said every image of a tile was to prepare and
+    counted the steps in the store as images already prepared: 309 and 7 for a tile whose 309
+    images all came back, in a second (2026-10-23)."""
 
     @property
     def hits(self) -> int:
@@ -464,26 +461,20 @@ def _input_digests(
 
 
 def _earlier_build(
-    env: BuildEnv,
-    node: Any,
-    entries: dict[str, PlanEntry],
-    given: dict[str, str] | None = None,
-    *,
-    away: bool = False,
+    env: BuildEnv, node: Any, entries: dict[str, PlanEntry], given: dict[str, str] | None = None
 ) -> str | None:
     """The key of what ``node``'s rule made of the same params and inputs, at this version or an
     earlier one, when the store still holds it: a step that runs again only because its rule
     changed, as after an update. Rules 1.1.0 changed write every tile's DSF again, and the Plan
     then counted every image as to prepare again, 53.5 GB for fifteen tiles whose images were all
-    in the cache, and refused the build for want of twice that free (2026-10-16). With ``away``,
-    also one the store let go of, its files held by the tile (``Store.send_away``)."""
+    in the cache, and refused the build for want of twice that free (2026-10-16)."""
     inputs = _input_digests(env, node, entries, given)
     if inputs is None:
         return None
     params = node.params.canonical()
     for version in range(node.rule.version, 0, -1):
         key, _ = artifact_key(node.rule.name, version, params, inputs)
-        if env.store.has(key) or (away and env.store.away(key) is not None):
+        if env.store.has(key):
             return key
     return None
 
@@ -497,93 +488,38 @@ def _last_made(env: BuildEnv, node: Any, given: dict[str, str] | None = None) ->
     return env.store.last_made(node.rule.name, node.params.canonical(), node.rule.version, given)
 
 
-@dataclass(frozen=True, slots=True)
-class _Kept:
-    """The textures of a tile a build takes as they are, by name: from the store (its hits), or
-    back from the tile that holds them as files of its own (``back``, ``Store.take_back``), with
-    what copying those into the store writes (none for a tile on the store's disk: linked)."""
-
-    names: frozenset[str] = frozenset()
-    back: int = 0
-    copy_bytes: int = 0
-
-
-def _textures_kept(env: BuildEnv, nodes: TileNodes, entries: dict[str, PlanEntry]) -> _Kept:
-    """The textures of the tile a build takes as they are: those an earlier build prepared from
-    the same params and masks, its DSF made of the same inputs (`_earlier_build`), whose DDS the
-    store still holds (the build's ``texture.dds`` hits). Empty when there is no such build.
+def _textures_kept(env: BuildEnv, nodes: TileNodes, entries: dict[str, PlanEntry]) -> set[str]:
+    """The textures of the tile a build takes from the store as they are: those an earlier build
+    prepared from the same params and masks, its DSF made of the same inputs (`_earlier_build`),
+    whose DDS the store still holds (the build's ``texture.dds`` hits). Empty when there is no
+    such build.
 
     When the steps before the DSF are still to make, the tile's last build with the same settings
     (`_last_made`) stands in: what the store says, the most likely. A water mask made again may
-    still change a few images, which the build then prepares: a figure, not a promise.
-
-    An earlier build whose images the store let go of, the tile holding them as files of its own
-    (Free space), counts the images a build takes back from the tile (`_taken_back`): the Plan
-    counted them as to prepare, an hour for what takes seconds (2026-10-23)."""
+    still change a few images, which the build then prepares: a figure, not a promise."""
     dsf = _earlier_build(env, nodes.dsf, entries)
     last = dsf is None
     if last:
         dsf = _last_made(env, nodes.dsf)
     digest = env.store.digest_of(dsf) if dsf is not None else None
     if dsf is None or digest is None:
-        return _Kept()
+        return set()
     if last:
         textures = _last_made(env, nodes.textures, {"dsf": digest})
-        if textures is None:
-            textures = env.store.last_away(
-                nodes.textures.rule.name,
-                nodes.textures.params.canonical(),
-                nodes.textures.rule.version,
-                {"dsf": digest},
-            )
     else:
-        textures = _earlier_build(env, nodes.textures, entries, {"dsf": digest}, away=True)
+        textures = _earlier_build(env, nodes.textures, entries, {"dsf": digest})
     if textures is None:
-        return _Kept()
-    if not env.store.has(textures):
-        return _taken_back(env, nodes, textures)
+        return set()
     path = env.store.path(textures) / "manifest.json"
     try:
         manifest = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
-        return _Kept()
-    return _Kept(
-        frozenset(
-            str(t.get("name"))
-            for t in manifest.get("textures", [])
-            if t.get("status") in ("built", "hit") and t.get("key") and env.store.has(str(t["key"]))
-        )
-    )
-
-
-def _taken_back(env: BuildEnv, nodes: TileNodes, folder: str) -> _Kept:
-    """The images of the textures folder ``folder`` the store let go of that a build takes back
-    from the tile: each where the store remembers it, or in the tile's folders as the Library
-    knows them now, of the size it had (``Store.take_back`` checks its digest too, which a Plan
-    does not read). Copied when the tile is on another disk than the store, linked otherwise. One
-    the store kept, a neighbour's folder listing it too, is a hit."""
-    try:
-        device = os.stat(env.store_root).st_dev
-    except OSError:
-        device = None
-    folders = tile_folders(env, nodes.spec.tile)
-    names: set[str] = set()
-    back = copy = 0
-    for row in env.store.away_listed(folder):
-        if env.store.has(row.key):  # one a neighbour shares, kept in the store: a hit
-            names.add(row.path.name.removesuffix(".dds"))
-            continue
-        for place in (row.path, *(f / row.path.name for f in folders)):
-            try:
-                st = os.stat(place)
-            except OSError:
-                continue
-            if stat.S_ISREG(st.st_mode) and st.st_size == row.size:
-                names.add(row.path.name.removesuffix(".dds"))
-                back += 1
-                copy += row.size if st.st_dev != device else 0
-                break
-    return _Kept(frozenset(names), back=back, copy_bytes=copy)
+        return set()
+    return {
+        str(t.get("name"))
+        for t in manifest.get("textures", [])
+        if t.get("status") in ("built", "hit") and t.get("key") and env.store.has(str(t["key"]))
+    }
 
 
 def _other_gb(env: BuildEnv, nodes: TileNodes, entries: dict[str, PlanEntry]) -> float:
@@ -676,8 +612,8 @@ def estimate(
         tex_entry = entries.get(g.textures.id)
         textures_build = tex_entry is None or tex_entry.status != "hit"
         # the images already prepared the same way are taken as they are, not prepared again
-        kept = _textures_kept(env, g, entries) if textures_build else _Kept()
-        fresh = [t for t in textures if texture_name(t) not in kept.names] if textures_build else []
+        kept = _textures_kept(env, g, entries) if textures_build else set()
+        fresh = [t for t in textures if texture_name(t) not in kept] if textures_build else []
         to_prepare = len(fresh) if textures_build else 0
         # the pieces to download are those of the images to prepare: one taken as it is reads none,
         # but for its key, which needs its pieces: deleted, they are downloaded again (a user had
@@ -685,13 +621,8 @@ def estimate(
         # Build again of eighteen tiles took 16 s to ask its question, from a hard disk, to
         # download nothing (2026-10-16); a kept one is only looked for.
         requests = _requests_for(chunks, fresh) + 256 * sum(
-            1 for t in textures if texture_name(t) in kept.names and not chunks.has(t)
+            1 for t in textures if texture_name(t) in kept and not chunks.has(t)
         )
-        if kept.back:
-            notes.append(
-                f"{kept.back} image(s) taken back from the tile, which holds them as files of its "
-                "own: copied, not prepared"
-            )
         if requests and first_probe_texture is None:
             for t in fresh:
                 c = chunks.read(t) if chunks.has(t) else None
@@ -705,7 +636,6 @@ def estimate(
         dds_bytes = n_masked * BC3_BYTES + (len(textures) - n_masked) * BC1_BYTES
         if textures and to_prepare < len(textures):
             dds_bytes = dds_bytes * to_prepare / len(textures)
-        dds_bytes += kept.copy_bytes  # those taken back from a tile on another disk: copied
         tiles.append(
             TileEstimate(
                 tile=spec.tile.name,

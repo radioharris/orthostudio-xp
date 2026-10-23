@@ -29,11 +29,13 @@ Keeping the store's names of those files kept nothing whole: its DSF and texture
 other files too, and a texture no longer listed by a kept folder was collected by the next clean
 as data no tile needs (a review, 2026-10-06).
 
-The images tiles hold as files of their own, the store keeping them a second time (a tile moved to
-another disk, or copied apart), go whatever the choices, their textures folders with them
-(``held_images``): the store remembers which file of the tile holds each, and a build that needs one
-takes it back from there, checked to be the very same (``Store.take_back``). Nothing is lost: the
-image stays in its tile, and comes back to the store only when a build asks for it.
+A tile on another disk or partition than the store holds its images as files of its own, which
+X-Plane reads, and the store keeps them a second time. They go only on request (``apart``): the
+store's copy of their images, and their textures folders. Nothing is kept of where the tile's
+copies are, nor taken back from them: a tile belongs to its user, who may move it, retouch it,
+unplug its disk or delete it. A build of such a tile prepares its images again from the downloaded
+image pieces, the same bytes, which the ``images`` choice then keeps for it. A user's tiles moved to
+another partition left 358 GB of them twice, on the disk the move was to free (2026-10-23).
 
 Sizes are what the disk gets back, not what the index adds up. A DDS is hard-linked into its
 ``texture.dds`` artefact, into a ``tile.textures`` artefact and into the pack: its bytes are
@@ -54,7 +56,7 @@ import time
 import zipfile
 from collections import Counter
 from collections.abc import Collection, Iterable, Iterator
-from dataclasses import asdict, dataclass, field, replace
+from dataclasses import asdict, dataclass, field
 from math import ceil, floor
 from pathlib import Path
 from typing import IO, Any
@@ -62,10 +64,10 @@ from typing import IO, Any
 import numpy as np
 
 from orthostudio.graph import ArtifactInfo, Store
-from orthostudio.home import disk_absent
 from orthostudio.imagery.grid import TextureId, texture_bbox
 from orthostudio.install import Library
 from orthostudio.model import TileRef
+from orthostudio.pipeline.filing import same_disk
 from orthostudio.pipeline.pack import MANIFEST_NAME, read_manifest
 
 __all__ = [
@@ -147,15 +149,23 @@ class CleanReport:
     """Their downloaded image pieces: the texture containers whose texture touches the square of
     one of them and of no tile of the atelier."""
     filed_removed: bool = False
-    held_images: int = 0
-    """The images tiles hold as files of their own, the store keeping them a second time: a tile
-    moved to another disk, or copied apart. They go whatever the choices, the store remembering
-    where each is (:meth:`Store.send_away`), and a build takes one back from its tile when it
-    needs it (:meth:`Store.take_back`). A user's tiles moved to another partition left them all
-    twice, and the store filled the disk they had left (2026-10-23)."""
-    held_bytes: int = 0
-    """What letting go of ``held_images`` gives back, beyond ``freed_bytes``: their textures
-    folders with them."""
+    apart_tiles: int = 0
+    """The tiles on another disk or partition than the store whose images the store keeps a
+    second time (:func:`_apart`): the tile holds its own copies, which X-Plane reads."""
+    apart_bytes: int = 0
+    """What deleting the store's copy of their images gives back, beyond ``freed_bytes``, with
+    ``apart``: their ``texture.dds`` artefacts and textures folders, but an image a tile on the
+    store's disk needs too. A build of one of them prepares its images again, from the
+    downloaded image pieces."""
+    apart_images_bytes: int = 0
+    """The downloaded image pieces of those tiles, counted in ``images_bytes``: with ``apart``, the
+    ``images`` choice keeps them, so that a build of one prepares its images again without
+    downloading anything (the pieces of a tile whose images went before are kept and counted
+    nowhere)."""
+    apart_removed: bool = False
+    filed_apart_bytes: int = 0
+    """``filed_bytes`` once the store's copy of the images of the tiles on another disk went
+    (``apart``): a tile filed on another disk has its images in both."""
     twice_files: int = 0
     """The files of the relief and the mesh the store keeps a second time, in another form:
     Ortho4XP's ``Data<tile>.alt`` beside ``dem.npy``, its ``Data<tile>.mesh`` beside ``mesh.npz``,
@@ -467,8 +477,11 @@ def _squares(built: Iterable[_Built]) -> set[tuple[int, int]]:
 
 def _texture_squares(parts: list[str]) -> set[tuple[int, int]]:
     """The squares ``(lat, lon)`` the texture of a container touches, from its place in the imagery
-    cache (``<provider>/<zl>/<til_y>_<til_x>.chunks``); none for any other file (the parent cache,
-    a file being written)."""
+    cache (``<provider>/<zl>/<til_y>_<til_x>.chunks``, or ``<provider>/_parents/<zl>/...`` for the
+    pieces of the levels above, which fill the missing ones); none for any other file (a file
+    being written)."""
+    if len(parts) == 4 and parts[1] == "_parents":
+        parts = [parts[0], *parts[2:]]
     if len(parts) != 3 or not parts[1].isdigit():
         return set()
     m = _CONTAINER.fullmatch(parts[2])
@@ -488,27 +501,37 @@ def _texture_squares(parts: list[str]) -> set[tuple[int, int]]:
 
 
 def _image_pieces(
-    chunks: Path, atelier: set[tuple[int, int]], away: set[tuple[int, int]]
-) -> tuple[list[tuple[str, int]], int]:
+    chunks: Path,
+    atelier: set[tuple[int, int]],
+    away: set[tuple[int, int]],
+    apart: set[tuple[int, int]] = frozenset(),  # type: ignore[assignment]
+) -> tuple[list[tuple[str, int]], list[tuple[str, int, set[tuple[int, int]]]], int]:
     """The downloaded image pieces only the tiles filed outside the atelier with some of their data
     here use, with their sizes: the texture containers whose texture touches the square of such a
     tile (``away``) and of no tile of the atelier, a texture of a neighbour in the atelier staying
     (at any level of detail: one only a filed neighbour uses, astride the border, counts with the
-    images). Then the bytes of all the others. One walk of the cache, its sizes read from the
-    listings: its files are never linked."""
+    images). Then the other pieces that touch a square of ``apart`` (the tiles on another disk
+    whose images the store does not keep), with their sizes and the squares they touch. Then the
+    bytes of all the others. One walk of the cache, its sizes read from the listings: its files
+    are never linked."""
     root = os.fspath(chunks)
     pieces: list[tuple[str, int]] = []
+    kept: list[tuple[str, int, set[tuple[int, int]]]] = []
     rest = 0
+    look = bool(away or apart)
     try:
         for path, st in _files(chunks, links=False):
-            squares = _texture_squares(os.path.relpath(path, root).split(os.sep)) if away else set()
+            parts = os.path.relpath(path, root).split(os.sep)
+            squares = _texture_squares(parts) if look else set()
             if squares & away and not squares & atelier:
                 pieces.append((path, st.st_size))
+            elif squares & apart:
+                kept.append((path, st.st_size, squares & apart))
             else:
                 rest += st.st_size
     except OSError:
-        return [], 0
-    return pieces, rest
+        return [], [], 0
+    return pieces, kept, rest
 
 
 def clean(
@@ -524,16 +547,21 @@ def clean(
     elevation_root: Path | None = None,
     relief: bool = False,
     filed: bool = False,
+    apart: bool = False,
 ) -> CleanReport:
     """Collect what no pack needs; with ``images``, empty the imagery caches as well; with
     ``filed``, the cache of the tiles filed outside the atelier (``tiles_root``), but their own
-    meshes, which their neighbours' masks read (:data:`MESH_RULE`).
+    meshes, which their neighbours' masks read (:data:`MESH_RULE`); with ``apart``, the store's
+    copy of the images of the tiles on another disk or partition (:func:`_apart`).
 
     The imagery caches are ``chunks_root`` and the map cache ``mapcache_root``; both count in
     ``images_bytes``. Without ``mapcache_root`` (the default) no map cache is counted or
     emptied: a directory beside ``chunks_root`` is never assumed to be one (``osxp clean`` passes
     ``$OSXP_HOME/mapcache``). The image pieces only the tiles filed outside use are theirs, counted
-    in ``filed_images_bytes`` and deleted with ``filed``: each choice frees what it counts.
+    in ``filed_images_bytes`` and deleted with ``filed``: each choice frees what it counts. Those of
+    the tiles on another disk whose images the store no longer keeps stay, whatever the choices:
+    a build of one prepares its images again from them, the same bytes, without downloading
+    anything (``apart_images_bytes``).
 
     ``elevation_root`` is counted in ``relief_bytes`` and emptied with ``relief``, its own choice:
     the relief of a square is worth far less to download again than its imagery, and it used to be
@@ -547,6 +575,10 @@ def clean(
     report.packs = [str(p) for p in packs]
     atelier, away = _built(packs, library_path, tiles_root)
     theirs: set[str] = set()
+    # the squares of the tiles on another disk whose images the store no longer keeps (``gone``)
+    # or is about to stop keeping with ``apart`` (``going``): the images choice keeps their pieces
+    gone: set[tuple[int, int]] = set()
+    going: set[tuple[int, int]] = set()
     if Path(store_root).is_dir():
         with Store(store_root) as store:
             mine = needed_keys(store, _roots(atelier))
@@ -556,53 +588,57 @@ def clean(
             needed = needed_keys(store, _roots(away) - meshes) - mine
             theirs = needed - meshes
             unused = _doomed(store, store.iter_artifacts(), mine | needed | meshes, grace_s)
-            found = _held(store, packs, grace_s)
             infos = (store.info(key) for key in sorted(theirs))
             cache = _doomed(store, (i for i in infos if i is not None), set(), grace_s)
-            held_infos = [i for h in found for i in (h.info, *_stored(h.images))]
-            names = _Names([*unused, *held_infos, *cache])
+            tiles = _apart(store, packs, store_root)
+            built = {b.path: b for b in (*atelier, *away)}
+            # an image a tile on the store's disk needs stays: one astride its border, say
+            others = needed_keys(store, _roots(b for path, b in built.items() if path not in tiles))
+            candidates = (store.info(k) for k in sorted({k for ks in tiles.values() for k in ks}))
+            images_apart = _doomed(store, (i for i in candidates if i is not None), others, grace_s)
+            leaving = {i.key for i in images_apart}
+            for path, keys in tiles.items():
+                square = _squares([built[path]]) if path in built else set()
+                if not keys:
+                    gone |= square
+                elif set(keys) & leaving:
+                    going |= square
+            report.apart_tiles = sum(1 for keys in tiles.values() if set(keys) & leaving)
+            names = _Names([*unused, *images_apart, *cache])
             first = [i.key for i in unused]
-            held = _let_go(names, first, found)
-            letting = [k for h in held for k in h.keys]
-            # the filed tiles' images held twice go with the others, whatever the choice
-            cache = [i for i in cache if i.key not in set(letting)]
+            sent = [i.key for i in images_apart]
+            taken = [i.key for i in cache]
             report.removed = len(unused)
             report.freed_bytes = names.freed(first)
-            report.held_images = sum(len(h.images) - len(h.stays) for h in held)
-            report.held_bytes = names.freed([*first, *letting]) - report.freed_bytes
-            report.filed_bytes = (
-                names.freed([*first, *letting, *(i.key for i in cache)])
-                - report.freed_bytes
-                - report.held_bytes
+            report.apart_bytes = names.freed([*first, *sent]) - report.freed_bytes
+            report.filed_bytes = names.freed([*first, *taken]) - report.freed_bytes
+            report.filed_apart_bytes = (
+                names.freed([*first, *sent, *taken]) - report.freed_bytes - report.apart_bytes
             )
-            present = sum(1 for k in letting if store.info(k) is not None)
-            report.kept = len(store) - len(unused) - present - (len(cache) if filed else 0)
-            going = (
-                {i.key for i in unused}
-                | set(letting)
-                | ({i.key for i in cache} if filed else set())
-            )
-            twice = _twice(store, going, grace_s)
+            going_keys = {*first, *(sent if apart else ()), *(taken if filed else ())}
+            report.kept = len(store) - len(going_keys)
+            twice = _twice(store, going_keys, grace_s)
             report.twice_files = sum(len(files) for _info, files in twice)
             report.twice_bytes = sum(size for _info, files in twice for size in files.values())
             if not dry_run:
-                gone = _delete(store, unused)
-                report.removed = len(gone)
-                report.freed_bytes = names.freed(gone)
-                sent = _send_away(store, held)
-                report.held_bytes = names.freed([*gone, *sent]) - report.freed_bytes
+                went = _delete(store, unused)
+                report.removed = len(went)
+                report.freed_bytes = names.freed(went)
+                if apart:
+                    let = _delete(store, images_apart)
+                    report.apart_bytes = names.freed([*went, *let]) - report.freed_bytes
+                    report.apart_removed = True
+                    went = [*went, *let]
                 if filed:
-                    taken = _delete(store, cache)
-                    report.filed_bytes = (
-                        names.freed([*gone, *sent, *taken]) - report.freed_bytes - report.held_bytes
-                    )
+                    off = _delete(store, [i for i in cache if i.key not in set(went)])
+                    report.filed_bytes = names.freed([*went, *off]) - names.freed(went)
+                    report.filed_apart_bytes = report.filed_bytes
                 # each artefact read whole first, and trimmed only as it was built (``Store.trim``)
                 report.twice_files = report.twice_bytes = 0
                 for info, files in twice:
                     before = len(store.trimmed(info.key))
                     report.twice_bytes += store.trim(info.key, files)
                     report.twice_files += len(store.trimmed(info.key)) - before
-                _tidy_away(store, packs)
                 report.kept = len(store)
                 report.tmp_removed = len(store.sweep_tmp(max_age_s=grace_s))
     # the tiles filed outside with some of their data here (measured before anything goes): a tile
@@ -614,9 +650,16 @@ def clean(
     report.filed_tiles = len({b.path for b in cached})
     chunks = Path(chunks_root)
     pieces: list[tuple[str, int]] = []
+    kept: list[tuple[str, int, set[tuple[int, int]]]] = []
     if chunks.is_dir():
-        pieces, report.images_bytes = _image_pieces(chunks, _squares(atelier), _squares(cached))
+        pieces, kept, report.images_bytes = _image_pieces(
+            chunks, _squares(atelier), _squares(cached), gone | going
+        )
         report.filed_images_bytes = sum(size for _path, size in pieces)
+        # the pieces of the tiles whose images go now: counted with the images until they go
+        report.apart_images_bytes = sum(size for _p, size, sq in kept if not sq & gone)
+        if not apart:
+            report.images_bytes += report.apart_images_bytes
     mapcache = Path(mapcache_root) if mapcache_root is not None else None
     if mapcache is not None and (not mapcache.is_dir() or _overlap(mapcache, chunks)):
         mapcache = None
@@ -629,8 +672,13 @@ def clean(
     if images and not dry_run and (chunks.is_dir() or mapcache is not None):
         report.images_bytes = report.mapcache_bytes = 0
         if chunks.is_dir():
-            # the pieces of the tiles filed outside are their own choice's, gone with it or kept
-            report.images_bytes = _empty(chunks, keep=() if filed else {p for p, _ in pieces})
+            # the pieces of the tiles filed outside are their own choice's, gone with it or kept;
+            # those of the tiles on another disk whose images the store no longer keeps stay, so
+            # that a build of one prepares its images again without downloading anything
+            keep = {p for p, _size, sq in kept if sq & gone or (apart and sq & going)}
+            if not filed:
+                keep |= {p for p, _ in pieces}
+            report.images_bytes = _empty(chunks, keep=keep)
         if mapcache is not None:
             report.mapcache_bytes = _empty(mapcache)
             report.images_bytes += report.mapcache_bytes
@@ -675,9 +723,40 @@ def clean_after_delete(
             gone = _delete(store, doomed)
             report.removed = len(gone)
             report.freed_bytes = names.freed(gone)
-            _tidy_away(store, packs)  # the deleted tile's own images held nowhere else now
             report.kept = len(store)
     return report
+
+
+def _apart(store: Store, packs: Iterable[Path], store_root: Path) -> dict[str, list[str]]:
+    """The packs on another disk or partition than the store, by their folder with the links
+    followed: what their textures folder's file system says (``st_dev``, the volume on Windows),
+    as filing tells a disk from another. Each with the keys of the store's copy of its images:
+    its textures folder (``tile.textures``) and the ``texture.dds`` that folder lists; none when
+    the store no longer has that folder. Such a tile holds its images as files of its own: no
+    file can have a name on two file systems. A pack whose folder cannot be read now (a disk
+    away, a letter another disk took) is none of them, and its cache stays."""
+    if not Path(store_root).is_dir():
+        return {}
+    found: dict[str, list[str]] = {}
+    for pack in packs:
+        real = os.path.realpath(pack)
+        folder = Path(real) / "textures"
+        if real in found or not folder.is_dir() or same_disk(store_root, folder):
+            continue
+        try:
+            entry = read_manifest(pack).artefacts.get("textures")
+        except (OSError, ValueError, KeyError, TypeError):
+            continue
+        info = store.info(entry.key) if entry is not None else None
+        if info is None or info.rule != "tile.textures":
+            found[real] = []
+            continue
+        try:
+            doc = json.loads((info.path / "manifest.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            doc = {}
+        found[real] = [info.key, *(str(t["key"]) for t in doc.get("textures", []) if t.get("key"))]
+    return found
 
 
 def _doomed(
@@ -775,205 +854,6 @@ def _npy_header(f: IO[bytes]) -> tuple[tuple[int, ...], bool, np.dtype[Any]]:
     if major == 1:
         return np.lib.format.read_array_header_1_0(f)
     return np.lib.format.read_array_header_2_0(f)
-
-
-@dataclass(frozen=True, slots=True)
-class _Copy:
-    """A tile's own copy of one of its images: its file, and what the store's is (its digest and
-    size, its ``texture.dds`` artefact when the store still has it)."""
-
-    path: Path
-    digest: str
-    size: int
-    info: ArtifactInfo | None
-    inode: tuple[int, int]
-    """The store's file of it (in the textures folder)."""
-
-
-@dataclass(frozen=True, slots=True)
-class _Held:
-    """A tile that holds every image of its textures folder (``info``, a ``tile.textures``
-    artefact) as a file of its own: its folder, and its images by their ``texture.dds`` key."""
-
-    info: ArtifactInfo
-    pack: Path
-    images: dict[str, _Copy]
-    stays: frozenset[str] = frozenset()
-    """The images that stay in the store, another artefact that stays linking them too
-    (:func:`_let_go`): the folder goes without them."""
-
-    @property
-    def keys(self) -> list[str]:
-        """The artefacts that go: the folder and its images but those that stay."""
-        return [self.info.key, *(k for k in self.images if k not in self.stays)]
-
-
-def _held(store: Store, packs: Iterable[Path], grace_s: float) -> list[_Held]:
-    """The textures folders (``tile.textures``) of the tiles that hold every image of theirs as a
-    file of their own, with those images by their ``texture.dds`` key: a tile moved to another
-    disk, or copied apart. A tile whose images are the store's very files (hard links on the
-    store's disk) holds none twice, nor does one missing an image or with one of another size:
-    its folder stays, with its images. What was used in the last ``grace_s`` stays too, pinned or
-    not, as the rest of the clean keeps it. One folder per tile, reached by any of its names."""
-    found: list[_Held] = []
-    seen: set[str] = set()
-    cutoff = time.time() - grace_s
-
-    def free(info: ArtifactInfo) -> bool:
-        return max(info.last_used_at, info.created_at) <= cutoff and not store.pins(info.key)
-
-    for pack in packs:
-        real = os.path.realpath(pack)
-        if real in seen:
-            continue
-        seen.add(real)
-        try:
-            entry = read_manifest(pack).artefacts.get("textures")
-        except (OSError, ValueError, KeyError, TypeError):
-            continue
-        info = store.info(entry.key) if entry is not None else None
-        if info is None or info.rule != "tile.textures" or not free(info):
-            continue
-        images = _own_copies(store, Path(real), info.path)
-        if images and all(c.info is None or free(c.info) for c in images.values()):
-            found.append(_Held(info, Path(real), images))
-    return found
-
-
-def _own_copies(store: Store, pack: Path, folder: Path) -> dict[str, _Copy] | None:
-    """The images the textures folder ``folder`` lists, each as the tile ``pack`` holds it: a
-    file of its own of the same size. None when one of them is the store's very file, or missing
-    or of another size in the tile."""
-    try:
-        doc = json.loads((folder / "manifest.json").read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return None
-    images: dict[str, _Copy] = {}
-    for t in doc.get("textures", []):
-        name, key, digest = t.get("name"), t.get("key"), t.get("digest")
-        if not (name and key and digest):
-            return None
-        file = f"{name}.dds"
-        try:
-            kept = os.lstat(folder / "textures" / file)
-            there = os.lstat(pack / "textures" / file)
-        except OSError:
-            return None
-        if (
-            not stat.S_ISREG(there.st_mode)
-            or (there.st_dev, there.st_ino) == (kept.st_dev, kept.st_ino)
-            or there.st_size != kept.st_size
-        ):
-            return None
-        info = store.info(str(key))
-        if info is not None and info.rule != "texture.dds":
-            return None
-        images[str(key)] = _Copy(
-            pack / "textures" / file, str(digest), kept.st_size, info, (kept.st_dev, kept.st_ino)
-        )
-    return images
-
-
-def _stored(images: dict[str, _Copy]) -> list[ArtifactInfo]:
-    return [c.info for c in images.values() if c.info is not None]
-
-
-def _let_go(names: _Names, first: list[str], held: list[_Held]) -> list[_Held]:
-    """The ``held`` folders, each with the images whose bytes do not come back once it goes, after
-    the artefacts ``first``, as those that stay in the store: a texture astride the border with a
-    neighbour, which the neighbour's folder lists too, or one a tile on the store's disk shares.
-    The folder goes all the same, its tile holding every image, and the rest comes back: one image
-    a neighbour shared kept a whole tile in the store, 18 of a user's 309 (2026-10-23). A folder
-    none of whose images would come back stays, with them."""
-    links = names.links([*first, *(k for h in held for k in h.keys)])
-    out: list[_Held] = []
-    for h in held:
-        stays = frozenset(
-            k for k, c in h.images.items() if links.get(c.inode, 0) < names.nlink.get(c.inode, 0)
-        )
-        if len(stays) < len(h.images):
-            out.append(replace(h, stays=stays))
-    return out
-
-
-def _send_away(store: Store, held: list[_Held]) -> list[str]:
-    """Let go of each held image, the store remembering the tile's file that holds it and the
-    folder that listed it, then of that folder, remembered with its tile (what the Plan reads to
-    count the images a build takes back); say which artefacts went. An image that cannot go
-    (another program holds it, on Windows) stays, and so does its folder."""
-    gone: list[str] = []
-    for h in held:
-        whole = True
-        for key, copy in h.images.items():
-            if key in h.stays:  # its folder's list names it, the artefact staying
-                store.note_away(
-                    key,
-                    rule="texture.dds",
-                    digest=copy.digest,
-                    size=copy.size,
-                    path=copy.path,
-                    listed_in=h.info.key,
-                )
-                continue
-            try:
-                if store.send_away(
-                    key,
-                    rule="texture.dds",
-                    digest=copy.digest,
-                    size=copy.size,
-                    path=copy.path,
-                    listed_in=h.info.key,
-                ):
-                    gone.append(key)
-            except OSError as exc:
-                log.warning("image %s not let go of: %s", key[:16], exc)
-                whole = False
-        if not whole:
-            continue
-        info = h.info
-        try:
-            if store.send_away(
-                info.key, rule=info.rule, digest=info.digest, size=info.size, path=h.pack
-            ):
-                gone.append(info.key)
-        except OSError as exc:
-            log.warning("textures folder %s not let go of: %s", info.key[:16], exc)
-    return gone
-
-
-def _tidy_away(store: Store, packs: Iterable[Path]) -> None:
-    """The store's list of images held by tiles, kept true: an image back in the store leaves it;
-    one whose tile's file is gone from a disk that is here is looked for in the tile's folders as
-    the Library knows them now (moved with *Find again* or *File elsewhere*), and forgotten when
-    none holds it; so is a textures folder, by its tile's folder. A disk unplugged keeps its rows
-    for when it is back."""
-    where: dict[str, list[Path]] = {}
-    for pack in packs:
-        where.setdefault(pack.name, []).append(Path(os.path.realpath(pack)))
-    forget: list[str] = []
-    for row in store.away_rows():
-        if store.has(row.key):
-            # back in the store; one its folder still away lists stays on that folder's list
-            folder_away = row.listed_in is not None and not store.has(row.listed_in)
-            if not folder_away or store.away(row.listed_in or "") is None:
-                forget.append(row.key)
-            continue
-        if row.path.exists() or disk_absent(row.path):
-            continue
-        if row.rule == "tile.textures":  # its tile's folder
-            moved = [p for p in where.get(row.path.name, []) if p.is_dir()]
-        else:
-            moved = [
-                p / "textures" / row.path.name
-                for p in where.get(row.path.parent.parent.name, [])
-                if (p / "textures" / row.path.name).is_file()
-            ]
-        if moved:
-            store.point_away(row.key, moved[0])
-        else:
-            forget.append(row.key)
-    if forget:
-        store.forget_away(forget)
 
 
 def _delete_files(files: Iterable[tuple[str, int]]) -> int:

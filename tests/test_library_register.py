@@ -26,7 +26,7 @@ def test_a_relative_path_is_stored_absolute(
 ) -> None:
     monkeypatch.setattr(packs, "xplane_running", lambda: False)
     src = tmp_path / "src"
-    (src / "dsf").mkdir(parents=True)
+    (src / "dsf" / "terrain").mkdir(parents=True)
     (src / "dsf" / f"{T.name}.dsf").write_bytes(b"XPLNEDSF" + b"\0" * 100)
     (src / "tex" / "textures").mkdir(parents=True)
     build = tmp_path / "build"
@@ -71,7 +71,7 @@ def test_installing_a_tile_never_changes_who_built_it(
 
     monkeypatch.setattr(packs, "xplane_running", lambda: False)
     src = tmp_path / "src"
-    (src / "dsf").mkdir(parents=True)
+    (src / "dsf" / "terrain").mkdir(parents=True)
     (src / "dsf" / f"{T.name}.dsf").write_bytes(b"XPLNEDSF" + b"\0" * 100)
     (src / "tex" / "textures").mkdir(parents=True)
     ortho4xp = tmp_path / "Ortho4XP" / "Tiles"
@@ -133,7 +133,7 @@ def test_delete_refuses_an_ortho4xp_pack_even_when_the_library_says_it_is_ours(
 
     monkeypatch.setattr(packs, "xplane_running", lambda: False)
     src = tmp_path / "src"
-    (src / "dsf").mkdir(parents=True)
+    (src / "dsf" / "terrain").mkdir(parents=True)
     (src / "dsf" / f"{T.name}.dsf").write_bytes(b"XPLNEDSF" + b"\0" * 100)
     (src / "tex" / "textures").mkdir(parents=True)
     library = tmp_path / "library.sqlite"
@@ -194,7 +194,7 @@ def test_a_pack_reached_through_a_link_has_one_row(
     cs = tmp_path / "X-Plane 12" / "Custom Scenery"
     cs.mkdir(parents=True)
     src = tmp_path / "src"
-    (src / "dsf").mkdir(parents=True)
+    (src / "dsf" / "terrain").mkdir(parents=True)
     (src / "dsf" / f"{T.name}.dsf").write_bytes(b"XPLNEDSF" + b"\0" * 100)
     (src / "tex" / "textures").mkdir(parents=True)
     files = write_pack(default_tiles_root(), T, dsf_dir=src / "dsf", textures_dir=src / "tex",

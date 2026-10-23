@@ -310,6 +310,10 @@ class CleanRequest(BaseModel):
     filed: bool = False
     """Also delete the cache of the tiles filed outside the atelier: what only they need, and the
     image pieces only they use (the atelier, step 5). The tiles themselves are not touched."""
+    apart: bool = False
+    """Also delete the store's copy of the images of the tiles on another disk or partition, which
+    hold their own: a build of one prepares them again from the downloaded image pieces, which the
+    images choice then keeps. The tiles themselves are not touched."""
 
 
 class DeleteRequest(BaseModel):

@@ -346,6 +346,26 @@ class PackFiles:
     """``tile_settings.cfg`` when a tile cfg text was given."""
 
 
+def _unlisted(textures_dir: Path, present: set[str]) -> list[str]:
+    """The images the textures folder's ``manifest.json`` lists as made (built, or taken from the
+    store) that its ``textures/`` does not hold; none when it has no list (an earlier form)."""
+    try:
+        doc = json.loads((textures_dir / "manifest.json").read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return []
+    except (OSError, ValueError) as exc:
+        raise OsxpError(
+            "MESH_INPUT_MISSING",
+            context={"tile": "", "path": str(textures_dir), "reason": str(exc)},
+        ) from exc
+    names = [
+        f"{t['name']}.dds"
+        for t in doc.get("textures", [])
+        if isinstance(t, dict) and t.get("name") and t.get("status") in ("built", "hit")
+    ]
+    return [n for n in names if n not in present]
+
+
 def write_pack(
     out_root: Path,
     tile: TileRef,
@@ -367,61 +387,93 @@ def write_pack(
     backup). ``tile_cfg`` (the text of the 44 tile variables) is written as
     ``tile_settings.cfg``. ``decal``, when given, is written in the terrain files of the land,
     and of the sea with ``decal_on_sea`` (``with_decal``); the DSF artefact's have none.
+
+    Nothing of the pack is touched before every source is found, and nothing is removed before
+    every file is in place: a source folder missing, or an image its textures folder lists
+    missing from it, stops the pack as it is (``MESH_INPUT_MISSING``, ``TEX_MISSING``). A
+    textures folder gone was taken for one with no images, and every image of the tile was
+    removed as no longer wanted: a build that had found the folder in the store before Free
+    space deleted it, in another process, emptied the tile and said it was done (a review,
+    2026-10-23). The DSF goes in last, once its textures and terrain files are there.
     """
     out_root = Path(out_root)
     pack_dir = out_root / pack_dir_name(tile)
     changed = removed = 0
     dsf_src = Path(dsf_dir) / f"{tile.name}.dsf"
-    if not dsf_src.is_file():
+    terrain_src = Path(dsf_dir) / "terrain"
+    textures_src = None if textures_dir is None else Path(textures_dir) / "textures"
+    for need in (dsf_src, terrain_src, textures_src):
+        if need is None or not need.exists():
+            raise OsxpError(
+                "MESH_INPUT_MISSING",
+                context={
+                    "tile": tile.name,
+                    "path": str(need if need is not None else "textures"),
+                    "reason": "a source of the pack is missing",
+                },
+            )
+    assert textures_src is not None
+    try:
+        terrain_files = sorted(f for f in terrain_src.iterdir() if f.suffix == ".ter")
+        texture_files = sorted(
+            f for f in textures_src.iterdir() if f.suffix.lower() in (".dds", ".png")
+        )
+    except OSError as exc:
         raise OsxpError(
             "MESH_INPUT_MISSING",
-            context={
-                "tile": tile.name,
-                "path": str(dsf_src),
-                "reason": "DSF artefact has no DSF file",
-            },
-        )
+            context={"tile": tile.name, "path": str(dsf_dir), "reason": str(exc)},
+        ) from exc
+    missing = _unlisted(Path(textures_dir or ""), {f.name for f in texture_files})
+    if missing:
+        raise OsxpError("TEX_MISSING", context={"tile": tile.name, "count": len(missing)})
+
+    textures_dest = pack_dir / "textures"
+    textures_dest.mkdir(parents=True, exist_ok=True)
+    wanted_tex = {f.name for f in texture_files}
+    n_textures = sum(1 for f in texture_files if f.suffix.lower() == ".dds")
+    for src in texture_files:
+        try:
+            changed += _place(src, textures_dest / src.name, link=link)
+        except PermissionError as exc:
+            raise _pack_locked(textures_dest / src.name, exc) from exc
+        except FileNotFoundError as exc:  # gone since it was listed: the pack stops as it is
+            raise OsxpError("TEX_MISSING", context={"tile": tile.name, "count": 1}) from exc
+
+    terrain_dest = pack_dir / "terrain"
+    terrain_dest.mkdir(parents=True, exist_ok=True)
+    wanted_ter = {f.name for f in terrain_files}
+    for src in terrain_files:
+        dest = terrain_dest / src.name
+        wanted = decal if takes_decal(ter_kind(src.name), on_sea=decal_on_sea) else ""
+        try:
+            text = with_decal(src.read_bytes().decode("ascii"), wanted).encode("ascii")
+        except FileNotFoundError as exc:
+            raise OsxpError(
+                "MESH_INPUT_MISSING",
+                context={"tile": tile.name, "path": str(src), "reason": "gone while read"},
+            ) from exc
+        if not dest.is_file() or dest.read_bytes() != text:
+            atomic_write_bytes(dest, text)
+            changed += 1
+
     dsf_dest = pack_dir / tile.dsf_relpath
     dsf_dest.parent.mkdir(parents=True, exist_ok=True)
     try:
         changed += _place(dsf_src, dsf_dest, link=link, backup=True)
     except PermissionError as exc:
         raise _pack_locked(dsf_dest, exc) from exc
+    except FileNotFoundError as exc:
+        raise OsxpError(
+            "MESH_INPUT_MISSING",
+            context={"tile": tile.name, "path": str(dsf_src), "reason": "gone while read"},
+        ) from exc
 
-    terrain_src = Path(dsf_dir) / "terrain"
-    terrain_dest = pack_dir / "terrain"
-    terrain_dest.mkdir(parents=True, exist_ok=True)
-    wanted_ter: set[str] = set()
-    if terrain_src.is_dir():
-        for src in sorted(terrain_src.glob("*.ter")):
-            wanted_ter.add(src.name)
-            dest = terrain_dest / src.name
-            wanted = decal if takes_decal(ter_kind(src.name), on_sea=decal_on_sea) else ""
-            text = with_decal(src.read_bytes().decode("ascii"), wanted).encode("ascii")
-            if not dest.is_file() or dest.read_bytes() != text:
-                atomic_write_bytes(dest, text)
-                changed += 1
+    # every wanted file in place: only now what the new DSF no longer names goes
     for stale in terrain_dest.glob("*.ter"):
         if stale.name not in wanted_ter:
             stale.unlink()
             removed += 1
     removed += _sweep_bak(terrain_dest)
-
-    textures_dest = pack_dir / "textures"
-    textures_dest.mkdir(parents=True, exist_ok=True)
-    wanted_tex: set[str] = set()
-    n_textures = 0
-    if textures_dir is not None and (Path(textures_dir) / "textures").is_dir():
-        for src in sorted((Path(textures_dir) / "textures").iterdir()):
-            if src.suffix.lower() not in (".dds", ".png"):
-                continue
-            wanted_tex.add(src.name)
-            if src.suffix.lower() == ".dds":
-                n_textures += 1
-            try:
-                changed += _place(src, textures_dest / src.name, link=link)
-            except PermissionError as exc:
-                raise _pack_locked(textures_dest / src.name, exc) from exc
     for stale in textures_dest.iterdir():
         if stale.suffix.lower() in (".dds", ".png") and stale.name not in wanted_tex:
             stale.unlink()
@@ -647,8 +699,13 @@ def assemble_pack(
     decal_on_sea: bool = False,
 ) -> tuple[PackManifest, PackFiles]:
     """Write the pack from the three inputs and build its manifest (upstream keys from the
-    store's provenance edges of the DSF artefact)."""
-    assert dsf.path is not None and dsf.key is not None
+    store's provenance edges of the DSF artefact). A DSF missing stops it, as a textures folder
+    missing does in :func:`write_pack`, before anything is written."""
+    if dsf.path is None or dsf.key is None:
+        raise OsxpError(
+            "MESH_INPUT_MISSING",
+            context={"tile": tile.name, "path": "dsf", "reason": "the pack has no DSF"},
+        )
     files = write_pack(
         out_root,
         tile,

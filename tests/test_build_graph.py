@@ -396,6 +396,12 @@ def _artefact_dir(store: Store, rule: str, key: str, fill) -> ArtifactRef:
     return ArtifactRef(info.key, info.digest, info.path, info.rule, info.kind, info.size)
 
 
+def _no_images(store: Store) -> ArtifactRef:
+    """A textures folder with no image: a pack takes its images from a folder, and one missing
+    stops it (``write_pack``), where it was taken for one with no image."""
+    return _artefact_dir(store, "tile.textures", "3f" * 32, lambda out: (out / "textures").mkdir())
+
+
 def _on_rounding_boundaries(count: int) -> list[float]:
     """Altitudes (m) that the DSF rounds one way at Triangle4XP's precision and the other once
     rounded as the text writes them: just off the middle of a step of a pool spanning under 770 m
@@ -518,7 +524,7 @@ def test_dsf_and_pack_nodes_run_and_hit(tmp_path: Path, env: BuildEnv) -> None:
         "+43+005/BI14/pack",
         TILE_PACK,
         PackParams(tile=T.name, provider="BI", zl=14, out_dir=str(out_root)),
-        {"dsf": dsf, "textures": None, "overlay": None},
+        {"dsf": dsf, "textures": _no_images(store), "overlay": None},
         kind="io",
         run=pack_run,
     )
@@ -540,7 +546,8 @@ def test_dsf_and_pack_nodes_run_and_hit(tmp_path: Path, env: BuildEnv) -> None:
     manifest = PackManifest.from_toml(refs[pack.id].path.read_text())
     assert manifest.tile == T.name and manifest.files["terrain"] == 1
     assert manifest.files["textures"] == 0 and manifest.files["overlay"] == ""
-    assert set(manifest.artefacts) == {"dsf", "mesh", "masks"}  # provenance edges of the DSF
+    # its inputs and the provenance edges of the DSF
+    assert set(manifest.artefacts) == {"dsf", "textures", "mesh", "masks"}
     assert manifest.artefacts["mesh"].key == mesh_ref.key
     assert (pack_dir / T.dsf_relpath).read_bytes() == (dsf_dir / f"{T.name}.dsf").read_bytes()
     assert pack_is_intact(pack_dir, manifest)
@@ -592,7 +599,7 @@ def test_the_pack_forces_the_tiles_files_before_x_plane_is_handed_any(
             return run_p0_rule(ctx)
 
     params = PackParams(tile=T.name, provider="BI", zl=14, out_dir=str(out_root))
-    inputs = {"dsf": dsf, "textures": None, "overlay": None}
+    inputs = {"dsf": dsf, "textures": _no_images(store), "overlay": None}
     sched = _sched(env)
     sched.add(Node("+43+005/BI14/pack", TILE_PACK, params, inputs, kind="io", run=pack_run))
     asyncio.run(sched.run(["+43+005/BI14/pack"]))
@@ -633,7 +640,7 @@ def test_a_tile_whose_file_another_program_holds_is_packed_all_the_same(
             return run_p0_rule(ctx)
 
     params = PackParams(tile=T.name, provider="BI", zl=14, out_dir=str(out_root))
-    inputs = {"dsf": dsf, "textures": None, "overlay": None}
+    inputs = {"dsf": dsf, "textures": _no_images(store), "overlay": None}
     sched = _sched(env)
     sched.add(Node("+43+005/BI14/pack", TILE_PACK, params, inputs, kind="io", run=pack_run))
     asyncio.run(sched.run(["+43+005/BI14/pack"]))
@@ -672,7 +679,7 @@ def test_the_pack_records_the_colours_its_textures_are_encoded_with(
         (out / "terrain").mkdir()
 
     dsf = _artefact_dir(env.store, "tile.dsf", "33" * 32, fill_dsf)
-    inputs = {"dsf": dsf, "textures": None, "overlay": None}
+    inputs = {"dsf": dsf, "textures": _no_images(env.store), "overlay": None}
     sched = _sched(env)
     sched.add(Node(g.pack.id, TILE_PACK, params, inputs, kind="io", run=pack_run))
     refs = asyncio.run(sched.run([g.pack.id]))
@@ -713,7 +720,7 @@ def test_a_pack_x_plane_shows_is_not_rewritten_in_its_place_while_x_plane_runs(
         (out / "terrain").mkdir()
 
     dsf = _artefact_dir(env.store, "tile.dsf", "34" * 32, fill_dsf)
-    inputs = {"dsf": dsf, "textures": None, "overlay": None}
+    inputs = {"dsf": dsf, "textures": _no_images(env.store), "overlay": None}
     sched = _sched(env)
     sched.add(Node(g.pack.id, TILE_PACK, params, inputs, kind="io", run=pack_run))
     asyncio.run(sched.run([g.pack.id]))

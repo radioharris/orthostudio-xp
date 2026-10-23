@@ -7,12 +7,10 @@ kind). A build writes into ``<root>/<rule>/<key[:2]>/<key>.tmp-<pid>-<rand>/out`
 with a single ``rename``; the index row is inserted after the rename. See
 docs/specs/graph-keys.md for the crash matrix.
 
-A file artefact the store let go of while a file outside it holds its very bytes (a tile's own
-copy of an image, on another disk) is remembered in the ``away`` table, and taken back from that
-file when a build needs it again (:meth:`Store.send_away`, :meth:`Store.take_back`). A file of a
-folder artefact that holds what another of its files holds (the relief, the mesh, written twice by
-earlier versions) can go while the artefact keeps its identity, its digest: ``trimmed`` says which
-(:meth:`Store.trim`).
+A file of a folder artefact that holds what another of its files holds (the relief, the mesh,
+written twice by earlier versions) can go while the artefact keeps its identity, its digest:
+``trimmed`` says which (:meth:`Store.trim`). The store counts on its own files only: what a tile
+holds belongs to the user, who may move it, retouch it, unplug its disk or delete it.
 """
 
 from __future__ import annotations
@@ -34,7 +32,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from orthostudio.fsutil import atomic_link_or_copy
 from orthostudio.fsutil import fsync_dir as _fsync_dir
 from orthostudio.fsutil import replace as fs_replace
 from orthostudio.graph.canon import canonical_json
@@ -59,7 +56,6 @@ from orthostudio.graph.rule import Kind
 __all__ = [
     "SCHEMA_VERSION",
     "ArtifactInfo",
-    "AwayInfo",
     "Build",
     "FsckReport",
     "GcReport",
@@ -154,32 +150,16 @@ CREATE TABLE IF NOT EXISTS trimmed (
     digest TEXT,
     PRIMARY KEY (key, path)
 );
-CREATE TABLE IF NOT EXISTS away (
-    key       TEXT PRIMARY KEY,
-    rule      TEXT NOT NULL,
-    version   INTEGER NOT NULL,
-    digest    TEXT NOT NULL,
-    size      INTEGER NOT NULL,
-    recipe    TEXT NOT NULL,
-    path      TEXT NOT NULL,
-    listed_in TEXT,
-    since     REAL NOT NULL
-);
 """
+
+# An index may also hold an ``away`` table, which this version neither reads nor writes: the images
+# a tile held as files of its own and the store had let go of, written by builds of a development
+# branch for a few days (2026-10-23). It stays as it is: the store counts on its own files only.
 
 _TRIMMED_ADDED = (("digest", "TEXT"),)
 """The column ``trimmed`` gained after its first form (the file's digest, which keeps the artefact's
 own provable: :meth:`Store.fsck`); added at the opening of an index that has that form."""
 
-_AWAY_ADDED = (
-    ("version", "INTEGER NOT NULL DEFAULT 0"),
-    ("recipe", "TEXT NOT NULL DEFAULT ''"),
-    ("listed_in", "TEXT"),
-)
-"""The columns the ``away`` table gained after its first form, added at the opening of an index
-that has that form: the first form opened a user's store, then the next one refused to open it,
-"no such column: listed_in" (2026-10-23). Their defaults are what a row of an artefact the store no
-longer had says."""
 
 _DISK_BYTES_TRIGGERS = (
     """CREATE TRIGGER IF NOT EXISTS artifacts_disk_bytes_added AFTER INSERT ON artifacts
@@ -226,20 +206,6 @@ class ArtifactInfo:
     last_used_at: float
     uses: int
     path: Path
-
-
-@dataclass(frozen=True, slots=True)
-class AwayInfo:
-    """An artefact the store let go of while what is outside it holds its very bytes
-    (:meth:`Store.send_away`): where that is (a file, or the folder of a tile), what it must be
-    to be taken back, and the folder artefact that listed it (``listed_in``), if any."""
-
-    key: str
-    rule: str
-    digest: str
-    size: int
-    path: Path
-    listed_in: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -416,7 +382,7 @@ class Store:
         self._lock = threading.RLock()
         self._durable_lock = threading.Lock()
         self._writes = 0
-        self._made: dict[tuple[str, str], dict[str, list[_Made]]] = {}
+        self._made: dict[str, dict[str, list[_Made]]] = {}
         self._made_at = (-1, -1)
         self._db = self._open_index()
         if self.durable_until() is None:
@@ -477,12 +443,10 @@ class Store:
             for statement in _SCHEMA.split(";"):
                 if statement.strip():
                     db.execute(statement)
-            for table, added in (("away", _AWAY_ADDED), ("trimmed", _TRIMMED_ADDED)):
-                have = {str(r["name"]) for r in db.execute(f"PRAGMA table_info({table})")}
-                for name, declared in added:
-                    if name not in have:
-                        db.execute(f"ALTER TABLE {table} ADD COLUMN {name} {declared}")
-            db.execute("CREATE INDEX IF NOT EXISTS away_listed_in ON away (listed_in)")
+            have = {str(r["name"]) for r in db.execute("PRAGMA table_info(trimmed)")}
+            for name, declared in _TRIMMED_ADDED:
+                if name not in have:
+                    db.execute(f"ALTER TABLE trimmed ADD COLUMN {name} {declared}")
             row = db.execute("SELECT v FROM meta WHERE k = 'schema_version'").fetchone()
             if row is None:
                 db.execute(
@@ -743,14 +707,14 @@ class Store:
         """The newest present artefact ``rule`` made of exactly ``params``, at ``max_version`` or an
         earlier version, whatever its inputs but those given in ``inputs``: what a step made the
         last time for the same tile and settings, for the Plan to expect it again."""
-        for made in self._made_rows("artifacts", rule).get(canonical_json(params), ()):
+        for made in self._made_rows(rule).get(canonical_json(params), ()):
             if made.fits(max_version, inputs) and self.has(made.key):
                 return made.key
         return None
 
-    def _made_rows(self, table: str, rule: str) -> dict[str, list[_Made]]:
-        """The rows of ``table`` (``artifacts`` or ``away``) of ``rule`` by the canonical JSON of
-        the params their recipe holds, newest first: read once while the index stays as it was,
+    def _made_rows(self, rule: str) -> dict[str, list[_Made]]:
+        """The artefacts of ``rule`` by the canonical JSON of the params their recipe holds,
+        newest first: read once while the index stays as it was,
         this connection's writes and the other processes' (``PRAGMA data_version``) reading it
         again. Asked tile by tile and step by step, each ask read and parsed every row of the rule:
         11.5 s of a Plan of 60 tiles over a cache of 1 400 (a user's, 2026-10-23)."""
@@ -758,12 +722,11 @@ class Store:
             seen = (int(self._db.execute("PRAGMA data_version").fetchone()[0]), self._writes)
             if seen != self._made_at:
                 self._made, self._made_at = {}, seen
-            rows = self._made.get((table, rule))
+            rows = self._made.get(rule)
             if rows is not None:
                 return rows
-            when = {"artifacts": "created_at", "away": "since"}[table]  # these two tables only
             found = self._db.execute(
-                f"SELECT key, version, recipe, {when} AS t FROM {table}"
+                "SELECT key, version, recipe, created_at AS t FROM artifacts"
                 " WHERE rule = ? AND recipe != ''",
                 (rule,),
             ).fetchall()
@@ -783,7 +746,7 @@ class Store:
                 rows.setdefault(canonical_json(params), []).append(made)
             for made_alike in rows.values():
                 made_alike.sort(key=lambda m: m.when, reverse=True)
-            self._made[(table, rule)] = rows
+            self._made[rule] = rows
             return rows
 
     def iter_made(self, rule: str) -> Iterator[tuple[ArtifactInfo, dict[str, Any]]]:
@@ -993,117 +956,25 @@ class Store:
         _remove_path(doomed)
         return True
 
-    # -- artefacts held outside the store --------------------------------------------------
-
-    def note_away(
-        self,
-        key: str,
-        *,
-        rule: str,
-        digest: str,
-        size: int,
-        path: Path,
-        listed_in: str | None = None,
-    ) -> None:
-        """Remember that ``path``, outside the store, holds the very bytes of the artefact ``key``
-        (a tile's own copy of its image, on another disk; for a folder, the tile that holds its
-        files): its row in ``away`` says where, with the version and the recipe the store has (what
-        :meth:`last_away` reads), and the folder artefact that listed it (``listed_in``, what
-        :meth:`away_listed` reads). The artefact itself stays: an image of a folder let go of that a
-        neighbour's folder lists too, which the folder's list names all the same."""
-        check_digest(key, "key")
-        check_digest(digest, "digest")
-        with self._lock:
-            made = self._db.execute(
-                "SELECT version, recipe FROM artifacts WHERE key = ?", (key,)
-            ).fetchone()
-            version, recipe = (int(made["version"]), str(made["recipe"])) if made else (0, "")
-            with self._tx():
-                self._db.execute(
-                    """
-                    INSERT INTO away
-                        (key, rule, version, digest, size, recipe, path, listed_in, since)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ON CONFLICT (key) DO UPDATE SET
-                        rule = excluded.rule, version = excluded.version,
-                        digest = excluded.digest, size = excluded.size,
-                        recipe = CASE WHEN excluded.recipe != '' THEN excluded.recipe
-                                      ELSE away.recipe END,
-                        path = excluded.path, listed_in = excluded.listed_in,
-                        since = excluded.since
-                    """,
-                    (
-                        key, rule, version, digest, int(size), recipe, os.fspath(path),
-                        listed_in, time.time(),
-                    ),
-                )  # fmt: skip
-
-    def send_away(
-        self,
-        key: str,
-        *,
-        rule: str,
-        digest: str,
-        size: int,
-        path: Path,
-        listed_in: str | None = None,
-    ) -> bool:
-        """Let go of the artefact ``key``, whose very bytes ``path`` holds outside the store, its
-        row written first (:meth:`note_away`), so that an artefact deleted is never one the store
-        forgot; :meth:`take_back` puts a file back from there. True when the store held it and let
-        go of it. Raises as :meth:`delete` does when it cannot (the row then stays, and is of no
-        use while the artefact is there)."""
-        with self._lock:
-            self.note_away(key, rule=rule, digest=digest, size=size, path=path, listed_in=listed_in)
-            return self.delete(key, force=True)
-
-    def away(self, key: str) -> AwayInfo | None:
-        """Where the bytes of an artefact let go of are (:meth:`send_away`), or None."""
-        with self._lock:
-            row = self._db.execute("SELECT * FROM away WHERE key = ?", (key,)).fetchone()
-        return None if row is None else _away_info(row)
-
-    def away_rows(self) -> list[AwayInfo]:
-        with self._lock:
-            rows = self._db.execute("SELECT * FROM away ORDER BY key").fetchall()
-        return [_away_info(r) for r in rows]
-
-    def away_listed(self, key: str) -> list[AwayInfo]:
-        """The artefacts let go of that the folder artefact ``key`` listed (a tile's images)."""
-        with self._lock:
-            rows = self._db.execute(
-                "SELECT * FROM away WHERE listed_in = ? ORDER BY key", (key,)
-            ).fetchall()
-        return [_away_info(r) for r in rows]
-
-    def last_away(
-        self,
-        rule: str,
-        params: dict[str, Any],
-        max_version: int,
-        inputs: dict[str, str] | None = None,
-    ) -> str | None:
-        """:meth:`last_made` among the artefacts let go of: what a step made the last time for
-        the same tile and settings, gone since with its files held outside (a tile's images)."""
-        for made in self._made_rows("away", rule).get(canonical_json(params), ()):
-            if made.fits(max_version, inputs):
-                return made.key
-        return None
+    # -- files outside the store -------------------------------------------------------------
 
     def file_digest(self, path: Path) -> str:
         """The content digest of a file outside the store (an X-Plane scenery file), kept while
         the file stays the same file of the same size and times: read again, a Plan read some
         200 of X-Plane's files, 1.1 GB, at each estimate (2026-10-23). The change time is part of
-        it, which a program setting the modification time back changes all the same."""
+        it, which a program setting the modification time back changes all the same. The file's
+        number is kept as text: on ReFS (a Windows Dev Drive) it is a 128-bit number, which an
+        SQLite integer cannot hold (``OverflowError`` at every Plan, a review, 2026-10-23); a row
+        an earlier version wrote, with an integer, is read again once."""
         p = Path(path)
         st = p.stat()
-        here = (int(st.st_size), int(st.st_mtime_ns), int(st.st_ctime_ns), int(st.st_ino))
+        here = (int(st.st_size), int(st.st_mtime_ns), int(st.st_ctime_ns), f"i{st.st_ino}")
         name = os.fspath(p.resolve())
         with self._lock:
             row = self._db.execute(
                 "SELECT size, mtime_ns, ctime_ns, ino, digest FROM sources WHERE path = ?", (name,)
             ).fetchone()
-        if row is not None and tuple(int(row[k]) for k in range(4)) == here:
+        if row is not None and (int(row[0]), int(row[1]), int(row[2]), str(row[3])) == here:
             return str(row["digest"])
         digest = digest_file(p)
         with self._tx():
@@ -1113,58 +984,6 @@ class Store:
                 (name, *here, digest),
             )
         return digest
-
-    def point_away(self, key: str, path: Path) -> None:
-        """The file holding an artefact let go of is now at ``path`` (its folder moved)."""
-        with self._tx():
-            self._db.execute("UPDATE away SET path = ? WHERE key = ?", (os.fspath(path), key))
-
-    def forget_away(self, keys: Iterable[str]) -> int:
-        """Forget where those artefacts were held: nothing takes them back any more."""
-        with self._tx():
-            return sum(
-                self._db.execute("DELETE FROM away WHERE key = ?", (key,)).rowcount for key in keys
-            )
-
-    def take_back(
-        self,
-        key: str,
-        *,
-        version: int,
-        recipe: str,
-        inputs: Iterable[InputRef],
-        also: Iterable[Path] = (),
-    ) -> ArtifactInfo | None:
-        """Put back the artefact ``key`` let go of (:meth:`send_away`) from the file that holds it,
-        or from the file of the same name in one of the folders ``also`` (where its folder is now,
-        moved since): linked when it is on the store's disk, else copied, and kept only when its
-        digest is the one let go of. None when no file holds it any more (gone, changed, on a disk
-        away): the caller makes it as it would have."""
-        row = self.away(key)
-        if row is None:
-            return None
-        if self.has(key):
-            return self.info(key)
-        places: list[Path] = []
-        for place in (row.path, *(Path(folder) / row.path.name for folder in also)):
-            if place not in places:
-                places.append(place)
-        for place in places:
-            try:
-                if not place.is_file() or place.stat().st_size != row.size:
-                    continue
-            except OSError:
-                continue
-            with self.begin(row.rule, key, "file") as build:
-                try:
-                    atomic_link_or_copy(place, build.out)
-                    if digest_file(build.out) != row.digest:
-                        continue  # changed since (an image retouched): left as it is
-                except OSError:
-                    continue
-                info, _adopted = build.commit(version=version, recipe=recipe, inputs=inputs)
-            return info
-        return None
 
     # -- files trimmed from artefacts --------------------------------------------------------
 
@@ -1179,7 +998,13 @@ class Store:
         built: its files, and those trimmed before, give its digest again. A file damaged since,
         on a disk that failed, would otherwise have taken the good form with it; the artefact is
         then left as it is. A path outside the artefact, or not one of its files, is left out; a
-        file another program holds (on Windows) stays, and its row with it is taken back."""
+        file another program holds (on Windows) stays, and its row with it is taken back.
+
+        The rows are on the disk before any file goes (one transaction, ``synchronous = FULL``):
+        a power cut cannot leave a file gone that the index does not list. Asked again, after an
+        interruption or by another process at the same time, a row already there is kept as it
+        is and its size is not taken off twice; a file another trim removed first keeps its row.
+        An artefact deleted meanwhile is left alone."""
         info = self.info(key)
         if info is None or info.kind != "dir":
             return 0
@@ -1192,34 +1017,57 @@ class Store:
         if None in before.values() or digest_of_files({**before, **files}) != info.digest:  # type: ignore[arg-type]
             log.warning("%s not trimmed: its files are not those it was built with", key[:16])
             return 0
-        freed = 0
+        going: list[tuple[str, int, str, int]] = []
         for rel in paths:
             name = Path(rel).as_posix()
             if Path(rel).is_absolute() or ".." in Path(rel).parts or name not in files:
                 continue  # its own files only
-            size, digest = files[name]
-            path = info.path / name
+            if any(name == g[0] for g in going):
+                continue
             try:
-                links = path.lstat().st_nlink
+                links = (info.path / name).lstat().st_nlink
             except OSError:
                 continue
-            with self._tx():
-                self._db.execute(
-                    "INSERT OR REPLACE INTO trimmed (key, path, size, digest) VALUES (?, ?, ?, ?)",
-                    (key, name, size, digest),
-                )
-                self._db.execute(
-                    "UPDATE artifacts SET size = MAX(0, size - ?) WHERE key = ?", (size, key)
-                )
+            going.append((name, *files[name], links))
+        if not going:
+            return 0
+        added: set[str] = set()
+        with self._lock:
+            self._db.execute("PRAGMA synchronous = FULL")
+            self._db.execute("PRAGMA fullfsync = ON")  # macOS: to the disk, not its cache
             try:
-                path.unlink()
+                with self._tx():
+                    for name, size, digest, _links in going:
+                        new = self._db.execute(
+                            "INSERT OR IGNORE INTO trimmed (key, path, size, digest)"
+                            " VALUES (?, ?, ?, ?)",
+                            (key, name, size, digest),
+                        ).rowcount
+                        if new:
+                            added.add(name)
+                            self._db.execute(
+                                "UPDATE artifacts SET size = MAX(0, size - ?) WHERE key = ?",
+                                (size, key),
+                            )
+            except sqlite3.IntegrityError:
+                return 0  # the artefact was deleted meanwhile
+            finally:
+                self._db.execute("PRAGMA fullfsync = OFF")
+                self._db.execute("PRAGMA synchronous = NORMAL")
+        freed = 0
+        for name, size, _digest, links in going:
+            try:
+                (info.path / name).unlink()
+            except FileNotFoundError:
+                continue  # another trim removed it first: its row stays
             except OSError as exc:
                 log.warning("%s of %s not trimmed: %s", name, key[:16], exc)
                 with self._tx():
                     self._db.execute("DELETE FROM trimmed WHERE key = ? AND path = ?", (key, name))
-                    self._db.execute(
-                        "UPDATE artifacts SET size = size + ? WHERE key = ?", (size, key)
-                    )
+                    if name in added:
+                        self._db.execute(
+                            "UPDATE artifacts SET size = size + ? WHERE key = ?", (size, key)
+                        )
                 continue
             freed += size if links <= 1 else 0
         return freed
@@ -1348,10 +1196,13 @@ class Store:
             else:
                 indexed[p] = (key, digest)
                 # a trimmed artefact is checked from its files left and those trimmed
-                # (:meth:`trim`); one trimmed before their digests were kept is not checked
+                # (:meth:`trim`); one trimmed before their digests were kept is not checked, nor
+                # is one that cannot be read now, which ``repair`` must not delete for that
                 if verify:
                     found = self.content_digest(key)
-                    if found is None and self.trimmed(key):
+                    if found is None:
+                        if not self.trimmed(key):
+                            log.warning("%s not checked: it cannot be read", key[:16])
                         continue
                     if found != digest:
                         mismatches.append(key)
@@ -1497,17 +1348,6 @@ def info_recipe(store: Store, key: str) -> str:
     if row is None:
         raise MissingArtifactError(key)
     return str(row["recipe"])
-
-
-def _away_info(row: sqlite3.Row) -> AwayInfo:
-    return AwayInfo(
-        key=str(row["key"]),
-        rule=str(row["rule"]),
-        digest=str(row["digest"]),
-        size=int(row["size"]),
-        path=Path(str(row["path"])),
-        listed_in=_opt_str(row["listed_in"]),
-    )
 
 
 @dataclass(frozen=True, slots=True)

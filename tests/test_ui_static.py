@@ -2259,21 +2259,20 @@ def test_the_library_frees_disk_space_after_asking() -> None:
     # the relief is its own choice, counted apart: a user emptied everything and 1.4 GB of
     # elevation cells stayed, because nothing counted or freed them (2026-09-18)
     disk = "{unused_bytes: 5, images_bytes: 7, mapcache_bytes: 1, relief_bytes: 9}"
-    # the cache's copy of images the tiles hold as files of their own goes without a choice: a
-    # build takes them back from the tile (a user's tiles on another partition, 2026-10-23)
-    held = "{unused_bytes: 5, held_bytes: 3}"
+    # the relief and the mesh kept in a second form go without a choice (2026-10-23)
+    twice = "{unused_bytes: 5, twice_bytes: 3}"
     plans = _node_json(
         "app.js",
         f"[m.freeSpacePlan({disk}, false, false), m.freeSpacePlan({disk}, true, false), "
         f"m.freeSpacePlan({disk}, false, true), m.freeSpacePlan(null, true, true), "
-        f"m.freeSpacePlan({held}, false, false)]",
+        f"m.freeSpacePlan({twice}, false, false)]",
     )
     assert plans == [
-        {"unused": 5, "held": 0, "twice": 0, "pictures": 0, "heights": 0, "filed": 0, "total": 5},
-        {"unused": 5, "held": 0, "twice": 0, "pictures": 8, "heights": 0, "filed": 0, "total": 13},
-        {"unused": 5, "held": 0, "twice": 0, "pictures": 0, "heights": 9, "filed": 0, "total": 14},
-        {"unused": 0, "held": 0, "twice": 0, "pictures": 0, "heights": 0, "filed": 0, "total": 0},
-        {"unused": 5, "held": 3, "twice": 0, "pictures": 0, "heights": 0, "filed": 0, "total": 8},
+        {"unused": 5, "apart": 0, "twice": 0, "pictures": 0, "heights": 0, "filed": 0, "total": 5},
+        {"unused": 5, "apart": 0, "twice": 0, "pictures": 8, "heights": 0, "filed": 0, "total": 13},
+        {"unused": 5, "apart": 0, "twice": 0, "pictures": 0, "heights": 9, "filed": 0, "total": 14},
+        {"unused": 0, "apart": 0, "twice": 0, "pictures": 0, "heights": 0, "filed": 0, "total": 0},
+        {"unused": 5, "apart": 0, "twice": 3, "pictures": 0, "heights": 0, "filed": 0, "total": 8},
     ]
     script = """
     const before = (await call("GET", "/api/disk")).ok;
@@ -2285,10 +2284,10 @@ def test_the_library_frees_disk_space_after_asking() -> None:
     assert got["before"]["unused_bytes"] > 0 and got["before"]["building"] is False
     assert got["before"]["relief_bytes"] > 0
     assert got["freed"]["freed_bytes"] == got["before"]["unused_bytes"]
-    assert got["freed"]["held_freed_bytes"] == got["before"]["held_bytes"] > 0
+    assert got["freed"]["apart_freed_bytes"] == 0  # not asked: the tiles on another disk keep it
     assert got["freed"]["relief_freed_bytes"] == got["before"]["relief_bytes"]
     assert got["after"]["unused_bytes"] == got["after"]["images_bytes"] == 0
-    assert got["after"]["held_bytes"] == 0
+    assert got["after"]["apart_bytes"] == got["before"]["apart_bytes"] > 0
     assert got["after"]["relief_bytes"] == 0
     refused = 'process.stdout.write(JSON.stringify(await call("POST", "/api/clean", {})));'
     busy = _node_mock(refused, fail="busy")
@@ -2314,10 +2313,10 @@ def test_the_cache_of_the_tiles_filed_outside_is_its_own_choice() -> None:
         f" m.freeSpacePlan({{filed_bytes: -1}}, false, false, true)]",
     )
     assert plans == [
-        {"unused": 5, "held": 0, "twice": 0, "pictures": 0, "heights": 0, "filed": 7, "total": 12},
-        {"unused": 5, "held": 0, "twice": 0, "pictures": 8, "heights": 9, "filed": 7, "total": 29},
-        {"unused": 5, "held": 0, "twice": 0, "pictures": 8, "heights": 0, "filed": 0, "total": 13},
-        {"unused": 0, "held": 0, "twice": 0, "pictures": 0, "heights": 0, "filed": 0, "total": 0},
+        {"unused": 5, "apart": 0, "twice": 0, "pictures": 0, "heights": 0, "filed": 7, "total": 12},
+        {"unused": 5, "apart": 0, "twice": 0, "pictures": 8, "heights": 9, "filed": 7, "total": 29},
+        {"unused": 5, "apart": 0, "twice": 0, "pictures": 8, "heights": 0, "filed": 0, "total": 13},
+        {"unused": 0, "apart": 0, "twice": 0, "pictures": 0, "heights": 0, "filed": 0, "total": 0},
     ]
     offered = _node_json(
         "app.js",
@@ -2336,11 +2335,11 @@ def test_the_cache_of_the_tiles_filed_outside_is_its_own_choice() -> None:
     # unticked as it hides: it came back ticked with the next tile filed (a review, 2026-10-06)
     assert 'if (!offered) $("disk-filed").checked = false;' in body
     assert 'offered && $("disk-filed").checked' in body
-    assert "(Number(d.filed_bytes) || 0)" in body  # the data in use leaves their cache out
+    assert "Number(d.filed_bytes) || 0" in body  # the data in use leaves their cache out
     # "Free space" waits for a filing, which the engine refuses meanwhile
     assert "Boolean(state.filing)" in body and 't("disk.filing_note")' in body
     free = re.search(r"\nasync function freeSpace\(\) \{.*?\n\}\n", app, re.S)
-    assert free is not None and "{ images, relief, filed }" in free.group(0)
+    assert free is not None and "{ images, relief, filed, apart }" in free.group(0)
     assert "res?.filed_freed_bytes" in free.group(0)
     script = """
     const file = await call("POST", "/api/library/zOrthoStudio_%2B43%2B004/file", {
@@ -2363,6 +2362,65 @@ def test_the_cache_of_the_tiles_filed_outside_is_its_own_choice() -> None:
         'process.stdout.write(JSON.stringify((await call("GET", "/api/disk")).ok));'
     )
     assert untouched["filed_tiles"] == 0 and untouched["filed_bytes"] == 0
+
+
+def test_the_copy_of_the_images_of_the_tiles_on_another_disk_is_its_own_choice() -> None:
+    """The store's copy of the images of the tiles on another disk or partition, which hold their
+    own: a line and a choice of their own, shown only while there is some, unticked as they hide.
+    With it, the downloaded image pieces of those tiles stay, and a tile filed on another disk has
+    its images counted once (its cache's line counts what is left once they went)."""
+    html = (UI / INDEX_FILE).read_text(encoding="utf-8")
+    choice = re.search(r'<div id="disk-apart-choice" hidden>.*?</div>', html, re.S)
+    assert choice is not None and 'id="disk-apart"' in choice.group(0)
+    assert html.index('id="disk-apart"') < html.index('id="disk-images"')
+    disk = (
+        "{unused_bytes: 5, images_bytes: 7, mapcache_bytes: 1, apart_tiles: 1, apart_bytes: 3, "
+        "apart_images_bytes: 2, filed_tiles: 1, filed_bytes: 6, filed_apart_bytes: 4, "
+        "filed_images_bytes: 1}"
+    )
+    plans = _node_json(
+        "app.js",
+        f"[m.freeSpacePlan({disk}, false, false, false, true),"
+        f" m.freeSpacePlan({disk}, true, false, false, true),"
+        f" m.freeSpacePlan({disk}, true, false, false, false),"
+        f" m.freeSpacePlan({disk}, false, false, true, true),"
+        f" m.freeSpacePlan({disk}, false, false, true, false)]",
+    )
+    assert plans == [
+        {"unused": 5, "apart": 3, "twice": 0, "pictures": 0, "heights": 0, "filed": 0, "total": 8},
+        {"unused": 5, "apart": 3, "twice": 0, "pictures": 6, "heights": 0, "filed": 0, "total": 14},
+        {"unused": 5, "apart": 0, "twice": 0, "pictures": 8, "heights": 0, "filed": 0, "total": 13},
+        {"unused": 5, "apart": 3, "twice": 0, "pictures": 0, "heights": 0, "filed": 5, "total": 13},
+        {"unused": 5, "apart": 0, "twice": 0, "pictures": 0, "heights": 0, "filed": 7, "total": 12},
+    ]
+    offered = _node_json(
+        "app.js",
+        "[m.apartOffered({apart_bytes: 3}), m.apartOffered({apart_bytes: 0}),"
+        " m.apartOffered(null)]",
+    )
+    assert offered == [True, False, False]
+    app = (UI / "app.js").read_text(encoding="utf-8")
+    render = re.search(r"\nfunction renderDisk\(\) \{.*?\n\}\n", app, re.S)
+    assert render is not None
+    body = render.group(0)
+    assert '$("disk-apart-choice").hidden = copies <= 0;' in body
+    assert 'if (copies <= 0) $("disk-apart").checked = false;' in body
+    i18n = (UI / "i18n.js").read_text(encoding="utf-8")
+    for key in ("disk.apart", "disk.apart_help", "disk.also_apart", "disk.apart_check_help",
+                "disk.confirm_apart"):  # fmt: skip
+        assert i18n.count(f'"{key}":') == 2, key  # French and English
+    assert '"disk.held' not in i18n and "held_bytes" not in app
+    script = """
+    const before = (await call("GET", "/api/disk")).ok;
+    const kept = (await call("POST", "/api/clean", {images: true})).ok;
+    const freed = (await call("POST", "/api/clean", {apart: true})).ok;
+    const after = (await call("GET", "/api/disk")).ok;
+    process.stdout.write(JSON.stringify({before, kept, freed, after}));
+    """
+    got = _node_mock(script)
+    assert got["before"]["apart_bytes"] > 0 and got["kept"]["apart_freed_bytes"] == 0
+    assert got["freed"]["apart_freed_bytes"] == got["before"]["apart_bytes"]
+    assert got["after"]["apart_bytes"] == 0
 
 
 def test_a_zone_whose_level_changes_goes_to_its_place() -> None:

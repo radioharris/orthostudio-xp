@@ -437,7 +437,7 @@ adds nothing. These are approximations; step 3 gives the engine's numbers.
   the two cost centres, in plain words:
   - *Network: your line* — downloads (requests), MB, time range `seconds_low`–`seconds_high`,
     measured throughput `mbps_measured` (or "not measured");
-  - *Compute: your computer* (it said *your Mac* on Windows and Linux too until 1.1.0) — images to prepare (`compute.textures`), images already prepared (`compute.cached`: taken from the cache, or back from the tile that holds them), seconds. They were every image of the tiles and the steps in the store, 309 to prepare and 7 prepared for a tile whose 309 images all came back in a second (2026-10-23);
+  - *Compute: your computer* (it said *your Mac* on Windows and Linux too until 1.1.0) — images to prepare (`compute.textures`), images already prepared (`compute.cached`: taken from the cache as they are), seconds. They were every image of the tiles and the steps in the store, 309 to prepare and 7 prepared for a tile whose 309 images all came back in a second (2026-10-23);
   - *Disk* — the engine's verdict (`app.js` `diskVerdict`): space needed is `disk.needed_gb` (images
     and downloads), then `free_gb` labelled "OK" in green when `disk.ok`, else "may run short" in
     amber after an amber line "The disk may run short: about X to write, Y free. If it fills up,
@@ -920,11 +920,17 @@ tile, but for a neighbour whose masks were made from it), a line shown only whil
 their data here, and counting only those tiles: a tile of a data folder chosen before has its cache
 there, and a filed neighbour whose square only the pieces astride a border touch has nothing here,
 so filing one tile no longer reads "Cache of 5 tile(s)"; its box is unticked as it hides), the
-**images your tiles already hold** (`held_bytes`, a line shown only when there are some: the cache's
-copy of images a tile holds as files of its own, on another disk or copied apart; no box, *Free
-space…* always deletes it and the dialog says so on a line of its own, `disk.confirm_held`, since a
-build takes them back from the tile; not counted with the data used by the tiles; a user's tiles
-moved to another partition left every image twice, 2026-10-23), the **relief and mesh kept twice**
+**copy of the images of N tile(s) on another disk** (`apart_bytes`, `apart_tiles`, a line shown
+only when there is some: the cache's copy of the images of the tiles on another disk or partition,
+which hold their own; its own box, *Also delete the cache's copy of the images of the tiles on
+another disk* (`disk-apart`, in `disk-apart-choice`, hidden and unticked with the line), whose help
+says the tiles keep their images and a build of one prepares them again from the downloaded
+images, which stay, without downloading anything; the dialog's line `disk.confirm_apart`; with it,
+the downloaded images' figure leaves out their pieces (`apart_images_bytes`), which stay, and the
+filed tiles' line counts what is left of theirs (`filed_apart_bytes`); not counted with the data
+used by the tiles; a user's tiles moved to another partition left 358 GB of images twice,
+2026-10-23; a first form deleted it without a box and took the images back from the tile, a review
+found it open to losses), the **relief and mesh kept twice**
 (`twice_bytes`, shown only when there are some: the second form earlier builds wrote; no box either,
 *Free space…* always trims it, `disk.confirm_twice`; 90 GB and 272 GB of the same user's cache), the
 data no tile needs any more, the downloaded images (those of the filed tiles excepted: they are in their

@@ -289,7 +289,7 @@ what only those tiles need goes, their data and their downloaded images, and the
 gets the room back. Their mesh stays, about 240 MB a tile: a neighbour built again reads it to draw
 its shores along their border, which without it were drawn as if that tile did not exist. The tiles
 themselves are not touched: they stay whole and in X-Plane, and building one again later downloads
-its images again, then takes its textures back from the tile (see below). What a tile of the workshop uses
+its images again and prepares them. What a tile of the workshop uses
 too stays, such as the images astride the border with a neighbour. A tile filed on the workshop's
 own disk shares its textures and DSF with the cache, one file under two names: its cache goes all
 the same, but those files stay, the tile's own, so their room does not come back and the line does
@@ -722,12 +722,13 @@ and built again.
 | Remove from X-Plane (Library) | the link goes, the folder stays | stays | stays | stays |
 | Add to X-Plane (Library) | the link comes back, at once | stays | stays | stays |
 | Delete (Library, `osxp uninstall --delete`) | everything goes | what only this tile needed, unless used in the last 10 minutes | stays | stays |
-| `osxp clean` | - | what no tile on disk needs, the cache's copy of the images tiles hold as their own files, and the second form of the relief and the mesh, unless used in the last hour | stays | stays |
-| `osxp clean --images` | - | same as `osxp clean` | emptied, with the map cache, but for the pieces of the tiles filed outside the workshop | stays |
+| `osxp clean` | - | what no tile on disk needs, and the second form of the relief and the mesh, unless used in the last hour | stays | stays |
+| `osxp clean --images` | - | same as `osxp clean` | emptied, with the map cache, but for the pieces of the tiles filed outside the workshop, and of the tiles on another disk whose images the cache no longer copies | stays |
 | `osxp clean --relief` | - | same as `osxp clean` | stays | emptied |
 | `osxp clean --filed` | - | same as `osxp clean`, and the cache of the tiles filed outside the workshop | theirs go | stays |
-| `osxp clean --all` | - | everything no tile on disk needs, however recent, and the cache of the tiles filed outside the workshop | emptied, with the map cache | emptied |
-| Free space (Library) | - | everything no tile on disk needs, however recent, the cache's copy of the images tiles hold as their own files, and the second form of the relief and the mesh; the cache of the tiles filed outside the workshop if you tick its box | emptied with the map cache if you tick the box, those of the tiles filed outside with their own box | emptied if you tick its own box |
+| `osxp clean --apart` | - | same as `osxp clean`, and the cache's copy of the images of the tiles on another disk or partition | stays | stays |
+| `osxp clean --all` | - | everything no tile on disk needs, however recent, the cache of the tiles filed outside the workshop, and the cache's copy of the images of the tiles on another disk | emptied, with the map cache, but for the pieces of the tiles on another disk | emptied |
+| Free space (Library) | - | everything no tile on disk needs, however recent, and the second form of the relief and the mesh; the cache of the tiles filed outside the workshop, and the cache's copy of the images of the tiles on another disk, each if you tick its box | emptied with the map cache if you tick the box, those of the tiles filed outside with their own box, those of the tiles on another disk kept once their images left the cache | emptied if you tick its own box |
 | Clear the job list (Works) | stays | stays | stays; only the finished jobs' progress and logs (`jobs/`) go | stays |
 | Remove one build from the list (Works) | stays | stays | stays; only that build's progress and log go | stays |
 
@@ -744,18 +745,25 @@ manager shows the store folder larger. Deleting those files by hand frees nothin
 there, and the cache would believe it still has them: use *Free space…*. A tile copied from another
 disk, or whose cache was freed and made again, has its own copies, which do take their room.
 
-The cache does not keep a second copy of those: *Free space…* deletes the cache's copy of the images
-a tile holds as files of its own, every time, with no box to tick (the line *Images your tiles
-already hold* says how much). The cache remembers which file of the tile holds each. When a build
-needs one again, it takes it back from the tile, linked when it is on the cache's disk, copied
-otherwise, and only when its digest is the one the cache had: an image retouched in the tile, or on
-a disk that is not plugged in, is prepared again as any other. An image at the border with a
-neighbouring tile that the neighbour uses too stays in the cache, for the neighbour. To know which image it needs, a build
-reads the downloaded pieces; if you deleted them, it downloads them first, then takes the image
-back instead of preparing it. A user had moved their `tiles` folder to another partition with a
-link, for room: every image was then on both disks, and the cache filled the one it stayed on
-(2026-10-23). A tile you move or file elsewhere afterwards is followed: the build looks for its
-images where the Library knows the tile now.
+A tile on another disk or partition than the cache holds its images as files of its own, the ones
+X-Plane reads: no file can have a name on two disks. The cache keeps a second copy, so that
+building the tile again takes them as they are. *Free space…* offers that copy on a line and a box
+of their own, *Copy of the images of N tile(s) on another disk*: ticked, the cache's copy goes, and
+the tiles keep theirs. Building one of them again then prepares its images again from the
+downloaded images, which stay for it even with *Also delete the downloaded images* ticked: nothing
+is downloaded, and the images come out the very same (measured on a tile at ZL16 with 213 images:
+9.8 s, every image identical to the byte, 2026-10-23). Its tracing, mesh, relief and DSF stay in
+the cache. A user had moved their `tiles` folder to another partition with a link, for room: every
+image was then on both, 358 GB twice, and the cache filled the disk the move was to free
+(2026-10-23).
+
+The cache counts on its own files only. It keeps nothing of where a tile's copies are, and takes
+nothing back from them: a tile is yours, and you may move it, retouch it, unplug its disk or delete
+it. A version for a few days of 2026-10 let the cache's copy go without being asked and took the
+images back from the tile; a review found cases where a build ran from a copy that was no longer
+there. A tile's folder is now never written from a source that has gone: a build whose results in
+the cache were deleted meanwhile by another program (a terminal's `osxp clean` beside the app)
+stops before touching the tile, which stays as it was.
 
 The relief and the mesh of a tile are kept once too. Builds before this version wrote each in two
 forms, OrthoStudio XP's and Ortho4XP's (`Data<tile>.alt`, `Data<tile>.mesh`), the same numbers:
