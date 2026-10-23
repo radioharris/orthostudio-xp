@@ -385,10 +385,11 @@ async def test_plan_offline_two_lines(app, home: Path, xplane: Path) -> None:  #
         assert net["requests"] > 0 and net["mb"] > 0 and net["req_per_s"] == 400.0
         assert net["seconds_high"] == pytest.approx(net["seconds_low"] * 1.5, abs=0.11)
         assert comp["textures"] > 0 and comp["seconds"] > 0 and comp["workers"] >= 1
-        assert comp["cached"] == 0
+        assert comp["cached"] == 0  # images taken as they are: none, nothing built yet
         assert disk["free_gb"] > 0 and disk["dds_gb"] > 0 and isinstance(disk["ok"], bool)
         (tile,) = doc["tiles"]
         assert tile["tile"] == "+43+005" and tile["zl"] == 14 and not tile["textures"]["exact"]
+        assert tile["textures"]["prepare"] == tile["textures"]["total"] == comp["textures"]
         assert doc["specs"] == [{"tile": "+43+005", "provider": "BI", "zl": 14}]
         assert doc["estimate"]["probe"] is None and isinstance(doc["warnings"], list)
         # an airport area through the fake index

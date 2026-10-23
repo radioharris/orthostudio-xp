@@ -437,7 +437,7 @@ adds nothing. These are approximations; step 3 gives the engine's numbers.
   the two cost centres, in plain words:
   - *Network: your line* — downloads (requests), MB, time range `seconds_low`–`seconds_high`,
     measured throughput `mbps_measured` (or "not measured");
-  - *Compute: your computer* (it said *your Mac* on Windows and Linux too until 1.1.0) — images to prepare (textures), already prepared, seconds;
+  - *Compute: your computer* (it said *your Mac* on Windows and Linux too until 1.1.0) — images to prepare (`compute.textures`), images already prepared (`compute.cached`: taken from the cache, or back from the tile that holds them), seconds. They were every image of the tiles and the steps in the store, 309 to prepare and 7 prepared for a tile whose 309 images all came back in a second (2026-10-23);
   - *Disk* — the engine's verdict (`app.js` `diskVerdict`): space needed is `disk.needed_gb` (images
     and downloads), then `free_gb` labelled "OK" in green when `disk.ok`, else "may run short" in
     amber after an amber line "The disk may run short: about X to write, Y free. If it fills up,
@@ -453,7 +453,9 @@ adds nothing. These are approximations; step 3 gives the engine's numbers.
     and `ZONE_CONFLICT` included, but a `ZONE_*` card uses the engine's own message and remedy
     when it has them; unknown codes show the code and whatever `message`/`remedy` strings the
     response carries);
-  - per tile: already done / to build / images / downloads / MB.
+  - per tile: steps already done / steps to build / images to prepare (`textures.prepare`, the
+    tile's images when an engine older than the page sends none) / downloads / MB; the line under
+    the table says the images to prepare too.
 - Any change of tiles, source, level or zones (not a rename) works the estimate out again.
 - A refusal of the estimate or of *Build* by the engine is an error card under the button, as in Works
   (`renderPlanError`): the page's words for its code and the remedy, and a *Settings* button when

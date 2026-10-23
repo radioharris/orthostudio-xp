@@ -185,6 +185,13 @@ class TileEstimate:
     ``textures_total`` (upper bound only, as :attr:`textures_zones`)."""
     other_gb: float = 0.0
     """What the steps to run write besides the images (`_other_gb`)."""
+    textures_prepare: int = 0
+    """The textures the build prepares: ``textures_total`` but those it takes as they are."""
+    textures_kept: int = 0
+    """The textures the build takes as they are, from the store or back from the tile that holds
+    them (`_textures_kept`): all of them when the textures step is in the store. The page said
+    every image of a tile was to prepare and counted the steps in the store as images already
+    prepared: 309 and 7 for a tile whose 309 images all came back, in a second (2026-10-23)."""
 
     @property
     def hits(self) -> int:
@@ -213,6 +220,8 @@ class TileEstimate:
             "builds": self.builds,
             "textures": {
                 "total": self.textures_total,
+                "prepare": self.textures_prepare,
+                "kept": self.textures_kept,
                 "exact": self.textures_exact,
                 "masked": self.textures_masked,
                 "zones": self.textures_zones,
@@ -559,7 +568,7 @@ def _taken_back(env: BuildEnv, nodes: TileNodes, folder: str) -> _Kept:
         device = None
     folders = tile_folders(env, nodes.spec.tile)
     names: set[str] = set()
-    copy = 0
+    back = copy = 0
     for row in env.store.away_listed(folder):
         if env.store.has(row.key):  # one a neighbour shares, kept in the store: a hit
             names.add(row.path.name.removesuffix(".dds"))
@@ -571,9 +580,10 @@ def _taken_back(env: BuildEnv, nodes: TileNodes, folder: str) -> _Kept:
                 continue
             if stat.S_ISREG(st.st_mode) and st.st_size == row.size:
                 names.add(row.path.name.removesuffix(".dds"))
+                back += 1
                 copy += row.size if st.st_dev != device else 0
                 break
-    return _Kept(frozenset(names), back=len(names), copy_bytes=copy)
+    return _Kept(frozenset(names), back=back, copy_bytes=copy)
 
 
 def _other_gb(env: BuildEnv, nodes: TileNodes, entries: dict[str, PlanEntry]) -> float:
@@ -714,6 +724,8 @@ def estimate(
                 textures_zones=zone_textures,
                 textures_airports=apt_textures,
                 other_gb=_other_gb(env, g, entries),
+                textures_prepare=to_prepare,
+                textures_kept=len(textures) - to_prepare,
             )
         )
     if probe is None and online and first_probe_texture is not None:

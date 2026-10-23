@@ -132,6 +132,10 @@ def test_an_image_taken_as_it_is_reads_no_piece_of_the_cache(
     (t,) = estimate([_spec(tmp_path)], env=env).tiles
     assert read == [textures[0]]
     assert t.requests == 256  # the one image to prepare, none of its pieces in the cache
+    # what the page shows: one image to prepare, the others already prepared, not every image
+    # to prepare and the steps in the store as images (309 and 7 for 0 and 309, 2026-10-23)
+    assert (t.textures_prepare, t.textures_kept) == (1, len(textures) - 1)
+    assert t.to_dict()["textures"]["prepare"] == 1
     # an image taken as it is needs its pieces for its key: deleted, they are downloaded again
     pieces.path(textures[1]).unlink()
     read.clear()
@@ -397,6 +401,13 @@ def test_a_dsf_written_again_by_an_update_keeps_the_images_already_prepared(
         assert kept.copy_bytes == 0  # the tile on the store's disk: linked, nothing written
         (tile / "textures" / "b.dds").write_bytes(b"DD")  # changed since: prepared
         assert _textures_kept(env, nodes, entries).names == {"a"}
+        # one a neighbour shares stays in the store: a hit, not taken back
+        k, r = artifact_key("texture.dds", 1, {"n": "b"}, {})
+        with store.begin("texture.dds", k, "file") as b:
+            b.out.write_bytes(b"D")
+            b.commit(version=1, recipe=r, inputs=[])
+        kept = _textures_kept(env, nodes, entries)
+        assert kept.names == {"a", "b"} and kept.back == 1
 
 
 def test_the_steps_to_run_count_what_they_wrote_the_last_time(tmp_path: Path) -> None:

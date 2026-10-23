@@ -4071,7 +4071,7 @@ function renderPlanPanel() {
         h("td", { class: "tile-name" }, te.tile),
         h("td", { class: "num" }, fmtInt(te.hits)),
         h("td", { class: "num" }, fmtInt(te.builds)),
-        h("td", { class: "num" }, fmtInt(te.textures?.total ?? te.textures)),
+        h("td", { class: "num" }, fmtInt(te.textures?.prepare ?? te.textures?.total ?? te.textures)),
         h("td", { class: "num" }, fmtInt(te.requests)),
         h("td", { class: "num" }, fmtMB(te.download_mb))))));
     panel.append(h("h3", { class: "section-title" }, t("plan.per_tile")), h("div", { class: "table-wrap plan-tiles" }, table));

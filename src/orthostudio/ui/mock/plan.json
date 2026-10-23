@@ -9,7 +9,7 @@
   },
   "compute": {
     "seconds": 25.0,
-    "textures": 148,
+    "textures": 107,
     "cached": 41
   },
   "disk": {
@@ -25,7 +25,7 @@
       "zl": 16,
       "hits": 3,
       "builds": 6,
-      "textures": {"total": 148, "exact": true, "masked": 41},
+      "textures": {"total": 148, "prepare": 107, "kept": 41, "exact": true, "masked": 41},
       "requests": 37900,
       "download_mb": 610.0,
       "dds_gb": 2.1,

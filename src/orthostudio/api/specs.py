@@ -428,8 +428,9 @@ def plan_answer(est: Estimate, specs: Sequence[BuildSpec]) -> dict[str, Any]:
     doc = est.to_dict()
     requests = sum(t.requests for t in est.tiles)
     mb = sum(t.download_mb for t in est.tiles)
-    textures = sum(t.textures_total for t in est.tiles)
-    cached = sum(t.hits for t in est.tiles)
+    # the images to prepare and those taken as they are, not every image and the steps in the store
+    textures = sum(t.textures_prepare for t in est.tiles)
+    cached = sum(t.textures_kept for t in est.tiles)
     probe = est.probe
     mbps = None if probe is None or probe.bytes == 0 else round(probe.mb_per_s * 8, 2)
     warnings: list[str] = []

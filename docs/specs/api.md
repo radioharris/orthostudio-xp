@@ -349,7 +349,12 @@ per-tile counts; the answer regroups them for the page:
 
 `seconds_low` is `Estimate.network_s`; `seconds_high` is 1.5x (the fetcher's measured
 spread between a warm and a throttled Bing line). `mbps_measured` is the probe's `mb_per_s`
-(x8 for Mb/s) when one ran, else `null`. `cached` counts the nodes reported `hit`.
+(x8 for Mb/s) when one ran, else `null`. `textures` counts the images to prepare and `cached`
+the images taken as they are, from the store or back from the tile that holds them
+(`TileEstimate.textures_prepare`, `textures_kept`; per tile in `textures.prepare` and
+`textures.kept`): `textures` counted every image of the tiles and `cached` the steps reported
+`hit`, which the page showed as images to prepare and images already prepared, 309 and 7 for a
+tile whose 309 images all came back in a second (2026-10-23).
 `warnings` lists error codes: `SYS_DISK_FULL` when `disk_ok` is false; `TEX_MISSING` is never
 predicted. Section 5 of `pipeline-build.md` fixes the estimate itself.
 
