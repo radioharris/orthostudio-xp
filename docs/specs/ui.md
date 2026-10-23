@@ -907,7 +907,11 @@ build the tile again).
 **Disk space** (below the table, `GET /api/disk`, `POST /api/clean`, asked only while the Library
 shows: the measure goes over the whole store, the downloaded pieces and the relief, and each list of
 the Library asked for it, from the Plan at the start too): the data used by the tiles on this
-computer, the **cache of the tiles filed outside the atelier** (the atelier, step 5: their data only
+computer, besides their own images and DSFs (`app.js` `cacheBytes`: the store less `shared_bytes`,
+the files it shares with the tiles, which count in the tiles' sizes; a line under the figures says
+by how much a file manager shows the store folder larger, and that deleting them by hand frees
+nothing: a user's file manager showed it about twice the size of the tiles and he asked whether the
+images in it could be deleted, and the page added up the same files twice, 2026-10-22/23), the **cache of the tiles filed outside the atelier** (the atelier, step 5: their data only
 they need and the image pieces only they use, all of it but their meshes, which their neighbours'
 masks read (counted with the data used by the tiles, whose tooltip says so; a mesh goes with its
 tile, but for a neighbour whose masks were made from it), a line shown only while they have some of
@@ -946,7 +950,7 @@ an osxp build of the same tile are two rows.
 | Tile | `+43+005`, the pack's `path` in the `title` tooltip; when `present === false`, a *Not found* pill, or *Disk not connected* when `disk_absent` (its disk is away: plugged in again, the tile is back by itself) |
 | Imagery | the source's code and the detail level's name, the zoom level as secondary text ("BI · Standard ZL16"); tooltip: the source's name from `GET /api/providers` and the detail level at the tile's latitude; an em dash when neither is known |
 | In X-Plane | *yes* / *no* pill (`installed`) |
-| Size | `size_bytes` (`fmtBytes`), an em dash when `null`. The header's tooltip (dotted underline) says that, for a tile built by OrthoStudio XP, most of it is shared with OrthoStudio XP's cache, which the status bar counts under Store: the two are not on the disk twice |
+| Size | `size_bytes` (`fmtBytes`), an em dash when `null`. The header's tooltip (dotted underline) says that, for a tile built by OrthoStudio XP, most of it is the very files OrthoStudio XP's cache keeps, counted in this column and not again under Store in the status bar (`cacheBytes`, since API level 33) |
 | Built by | *OrthoStudio XP* / *Ortho4XP*; for the first, a click unfolds what the tile was built with (`builtLines`), its *Relief* line naming the file of one's own the tile stands on or saying why it was not used (`reliefSentence`, `relief_own`), the whole path in the line's tooltip |
 | (actions) | three columns, so that the buttons line up from row to row: the folder icon (2.5, *The file manager*), the X-Plane button, then *Delete…* or *Remove from the list* |
 

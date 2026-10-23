@@ -17,6 +17,7 @@ OrthoStudio XP built that a folder holds, which ``pipeline.pack.find_tiles_recei
 from __future__ import annotations
 
 import builtins
+import contextlib
 import json
 import logging
 import os
@@ -97,9 +98,14 @@ CREATE TABLE IF NOT EXISTS pack_facts (
     bytes       INTEGER NOT NULL,
     photo       TEXT,
     built       TEXT,
-    measured_at REAL NOT NULL
+    measured_at REAL NOT NULL,
+    shared      INTEGER,
+    shared_with TEXT
 );
 """
+
+_FACTS_ADDED = (("shared", "INTEGER"), ("shared_with", "TEXT"))
+"""The columns of ``pack_facts`` added after 0.1.19, which a library written before lacks."""
 
 
 def default_library_path() -> Path:
@@ -171,13 +177,16 @@ class PackFacts:
     """What the Library shows of a pack's files, as read at ``measured_at`` with the pack's
     ``stamp`` (``api.app._pack_stamp``): its ``bytes`` on the disk, the colours it was built with
     (``photo``) and what it was built with (``built``, ``{facts, at}``), each ``None`` when
-    nothing could say."""
+    nothing could say; and the bytes of its files that are the files of the store at
+    ``shared_with`` too (``clean.pack_disk_bytes``), ``None`` when read by an older version."""
 
     stamp: str
     bytes: int
     photo: dict[str, float] | None
     built: dict[str, Any] | None
     measured_at: float
+    shared: int | None = None
+    shared_with: str | None = None
 
 
 class Library:
@@ -192,6 +201,7 @@ class Library:
         self._db.execute("PRAGMA journal_mode = WAL")
         self._db.execute("PRAGMA synchronous = NORMAL")
         self._db.executescript(_SCHEMA)
+        self._add_fact_columns()
         self._db.execute(
             "INSERT OR IGNORE INTO meta (k, v) VALUES ('schema_version', ?)",
             (str(SCHEMA_VERSION),),
@@ -200,6 +210,15 @@ class Library:
         if opened not in _ONE_SPELLING:
             self._one_spelling()
             _ONE_SPELLING.add(opened)
+
+    def _add_fact_columns(self) -> None:
+        """The columns of ``pack_facts`` a library written by an older version lacks. Two
+        processes opening it at once may both add one: the second finds it there."""
+        have = {row[1] for row in self._db.execute("PRAGMA table_info(pack_facts)")}
+        for name, kind in _FACTS_ADDED:
+            if name not in have:
+                with contextlib.suppress(sqlite3.OperationalError):
+                    self._db.execute(f"ALTER TABLE pack_facts ADD COLUMN {name} {kind}")
 
     def _one_spelling(self) -> None:
         """Rewrite what an older version kept under another spelling of a pack's folder
@@ -260,10 +279,10 @@ class Library:
                 "DELETE FROM pack_facts WHERE path = ?", [(f["path"],) for f in same]
             )
             self._db.execute(
-                "INSERT INTO pack_facts (path, stamp, bytes, photo, built, measured_at) "
-                "VALUES (?, ?, ?, ?, ?, ?)",
+                "INSERT INTO pack_facts (path, stamp, bytes, photo, built, measured_at, shared, "
+                "shared_with) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                 (path, latest["stamp"], latest["bytes"], latest["photo"], latest["built"],
-                 latest["measured_at"]),
+                 latest["measured_at"], latest["shared"], latest["shared_with"]),
             )  # fmt: skip
 
     def close(self) -> None:
@@ -287,7 +306,8 @@ class Library:
         and the time it was read at. The table is new in 0.1.19; earlier versions leave it
         alone."""
         rows = self._db.execute(
-            "SELECT path, stamp, bytes, photo, built, measured_at FROM pack_facts"
+            "SELECT path, stamp, bytes, photo, built, measured_at, shared, shared_with "
+            "FROM pack_facts"
         )
         return {
             row["path"]: PackFacts(
@@ -296,6 +316,8 @@ class Library:
                 photo=None if row["photo"] is None else json.loads(row["photo"]),
                 built=None if row["built"] is None else json.loads(row["built"]),
                 measured_at=float(row["measured_at"]),
+                shared=None if row["shared"] is None else int(row["shared"]),
+                shared_with=row["shared_with"],
             )
             for row in rows
         }
@@ -305,10 +327,11 @@ class Library:
             return None if value is None else json.dumps(value, sort_keys=True, default=str)
 
         self._db.execute(
-            "INSERT INTO pack_facts (path, stamp, bytes, photo, built, measured_at) "
-            "VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (path) DO UPDATE SET stamp = excluded.stamp, "
-            "bytes = excluded.bytes, photo = excluded.photo, built = excluded.built, "
-            "measured_at = excluded.measured_at",
+            "INSERT INTO pack_facts (path, stamp, bytes, photo, built, measured_at, shared, "
+            "shared_with) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (path) DO UPDATE SET "
+            "stamp = excluded.stamp, bytes = excluded.bytes, photo = excluded.photo, "
+            "built = excluded.built, measured_at = excluded.measured_at, "
+            "shared = excluded.shared, shared_with = excluded.shared_with",
             (
                 str(real_pack_path(path)),
                 facts.stamp,
@@ -316,6 +339,8 @@ class Library:
                 text(facts.photo),
                 text(facts.built),
                 float(facts.measured_at),
+                None if facts.shared is None else int(facts.shared),
+                facts.shared_with,
             ),
         )
 

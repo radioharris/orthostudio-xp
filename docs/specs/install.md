@@ -702,7 +702,9 @@ folder's `tiles` once.
 
 Rule (new). `~/.orthostudio/library.sqlite` (root from `orthostudio.pipeline.home.osxp_home`) with
 three tables: `tiles`, the rows of the Library; `pack_facts`, what was last read of a pack's files
-with the pack's stamp, its size, colours and what it was built with (since 0.1.19, `api.md` 2.3);
+with the pack's stamp, its size, colours and what it was built with (since 0.1.19, `api.md` 2.3),
+and the bytes of its files that are the store's own too, with the store they were measured against
+(`shared`, `shared_with`, added to a library written before as it opens; `clean.pack_disk_bytes`);
 `meta`, the schema version:
 
 ```
@@ -710,7 +712,8 @@ tiles(lat INTEGER, lon INTEGER, kind TEXT ('ortho'|'overlay'), path TEXT,
       provider TEXT, zl INTEGER, built_by TEXT ('osxp'|'ortho4xp'), keys TEXT (JSON or NULL),
       registered_at REAL, updated_at REAL, PRIMARY KEY (lat, lon, kind, path))
 pack_facts(path TEXT PRIMARY KEY, stamp TEXT, bytes INTEGER, photo TEXT (JSON or NULL),
-           built TEXT (JSON or NULL), measured_at REAL)
+           built TEXT (JSON or NULL), measured_at REAL, shared INTEGER (or NULL),
+           shared_with TEXT (or NULL))
 meta(k TEXT PRIMARY KEY, v TEXT)
 ```
 

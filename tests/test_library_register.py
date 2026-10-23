@@ -263,7 +263,8 @@ def test_rows_an_older_version_wrote_twice_become_one(
             ],
         )  # fmt: skip
         db.executemany(
-            "INSERT INTO pack_facts VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO pack_facts (path, stamp, bytes, photo, built, measured_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
             [(str(link / "tiles" / name), "older", 1, None, None, 250.0),
              (str(disk / "tiles" / name), "newer", 2, None, None, 350.0)],
         )  # fmt: skip

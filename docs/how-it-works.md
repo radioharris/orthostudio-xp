@@ -724,6 +724,15 @@ The delays protect a build that may be running at the same time, in the page or 
 could still need a result it used a moment ago. *Free space* and `osxp clean --all` have no delay,
 so they refuse to run while a build is in progress.
 
+The store folder holds your tiles' images and DSFs too: on the workshop's disk a tile and the cache
+share each of those files, one file under two names, which takes its room once. A file manager that
+measures the folders one by one counts them twice, and the store folder then looks about as big as
+the tiles again. The Library counts them once, in the tiles' sizes, and *Store* in the status bar
+and *Disk space* show only what the cache adds; a line under *Disk space* says by how much a file
+manager shows the store folder larger. Deleting those files by hand frees nothing while the tile is
+there, and the cache would believe it still has them: use *Free space…*. A tile copied from another
+disk, or whose cache was freed and made again, has its own copies, which do take their room.
+
 Deleting a tile keeps its image pieces and its elevation cells on purpose: building the same area
 again then skips the download, which is most of the time. The relief has its own box because it
 weighs much less and comes back much faster: 40 MB a square from Copernicus, against 800 MB of

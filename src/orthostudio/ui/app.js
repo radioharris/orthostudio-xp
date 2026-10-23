@@ -1151,7 +1151,7 @@ export async function mockApi(method, path, body, options = {}) {
     status.active_job = mockActiveRun()?.doc.id ?? null;
     return status;
   }
-  if (p === "/api/sizes") return { store_bytes: 1830000000, chunks_bytes: 412000000 };
+  if (p === "/api/sizes") return { store_bytes: 1830000000, shared_bytes: 1120000000, chunks_bytes: 412000000 };
   if (p === "/api/providers") return [...(await mockFile("providers")), ...structuredClone(mock.sources || [])];
   if (p === "/api/sources/test" && method === "POST") {
     mockCheckSourceAddress(body?.url_template);
@@ -1365,7 +1365,7 @@ export async function mockApi(method, path, body, options = {}) {
     return structuredClone(mock.library);
   }
   if (p === "/api/disk" && method === "GET") {
-    if (!mock.disk) mock.disk = { store_bytes: 9.8e9, unused_bytes: 2.4e9, images_bytes: 3.1e9, mapcache_bytes: 12e6, relief_bytes: 1.4e9 };
+    if (!mock.disk) mock.disk = { store_bytes: 9.8e9, shared_bytes: 6.2e9, unused_bytes: 2.4e9, images_bytes: 3.1e9, mapcache_bytes: 12e6, relief_bytes: 1.4e9 };
     if (!mock.library) mock.library = await mockFile("library");
     return { ...mock.disk, ...mockFiledCache(), tiles: libraryTiles(mock.library).length, building: MOCK_FAIL === "busy" || Boolean(mockActiveRun()) };
   }
@@ -1373,7 +1373,7 @@ export async function mockApi(method, path, body, options = {}) {
     if (MOCK_FAIL === "busy" || mockActiveRun()) {
       throw mockError(409, "SYS_BUSY", "A build is running in OrthoStudio XP, and OrthoStudio XP frees space only between builds.", "Wait for the build to finish, or stop it, then try again.");
     }
-    if (!mock.disk) mock.disk = { store_bytes: 9.8e9, unused_bytes: 2.4e9, images_bytes: 3.1e9, mapcache_bytes: 12e6, relief_bytes: 1.4e9 };
+    if (!mock.disk) mock.disk = { store_bytes: 9.8e9, shared_bytes: 6.2e9, unused_bytes: 2.4e9, images_bytes: 3.1e9, mapcache_bytes: 12e6, relief_bytes: 1.4e9 };
     if (!mock.library) mock.library = await mockFile("library");
     const images = Boolean(body?.images);
     const relief = Boolean(body?.relief);
@@ -2339,7 +2339,7 @@ function routeFromHash() {
 // ------------------------------------------------------------------ status bar
 
 /** The engine API this page needs (orthostudio.api.app.API_LEVEL); a test keeps the two equal. */
-const PAGE_API_LEVEL = 32;
+const PAGE_API_LEVEL = 33;
 
 async function loadStatus() {
   try {
@@ -2387,7 +2387,19 @@ async function loadSizes() {
 /** The status bar's sizes of the store and of the downloaded images: "…" until measured. */
 function renderDiskSizes() {
   const sizes = state.sizes;
-  $("status-store").textContent = `${t("status.store")}: ${sizes ? fmtBytes(sizes.store_bytes) : "…"} · ${t("status.chunks")}: ${sizes ? fmtBytes(sizes.chunks_bytes) : "…"}`;
+  $("status-store").textContent = `${t("status.store")}: ${sizes ? fmtBytes(cacheBytes(sizes)) : "…"} · ${t("status.chunks")}: ${sizes ? fmtBytes(sizes.chunks_bytes) : "…"}`;
+}
+
+/**
+ * The store's bytes the tiles do not count already: its files that are a tile's own too, one file
+ * under two names, count once, in the tiles' sizes (`shared_bytes`). The store's size counted them
+ * again, and so does a file manager: a user saw the store folder about twice the size of his tiles
+ * and asked whether its images could be deleted (2026-10-22), and the owner's figures read 91 GB
+ * for a store adding 40 GB to 62 GB of tiles. An engine older than the page sends no
+ * `shared_bytes`: the store's size, as before.
+ */
+export function cacheBytes(d) {
+  return Math.max(0, (Number(d?.store_bytes) || 0) - (Number(d?.shared_bytes) || 0));
 }
 
 /** An engine older than the page (started before an update) cannot answer the new routes, and an
@@ -5249,7 +5261,7 @@ function renderDisk() {
     return;
   }
   const offered = filedOffered(d);
-  const inUse = Math.max(0, (Number(d.store_bytes) || 0) - (Number(d.unused_bytes) || 0) - (Number(d.filed_bytes) || 0));
+  const inUse = Math.max(0, cacheBytes(d) - (Number(d.unused_bytes) || 0) - (Number(d.filed_bytes) || 0));
   const row = (label, value, help) => [h("dt", { title: help || null }, label), h("dd", { class: "num" }, value)];
   list.append(
     ...row(t("disk.in_use", { n: d.tiles ?? 0 }), fmtBytes(inUse), t("disk.in_use_help")),
@@ -5259,6 +5271,10 @@ function renderDisk() {
     ...row(t("disk.mapcache"), fmtBytes(d.mapcache_bytes || 0)),
     ...row(t("disk.relief"), fmtBytes(d.relief_bytes || 0), t("disk.relief_help")),
   );
+  // what a file manager shows more for the store folder, said where the figures are
+  const shared = Number(d.shared_bytes) || 0;
+  $("disk-shared").hidden = shared <= 0;
+  setText($("disk-shared"), shared > 0 ? t("disk.shared_note", { size: fmtBytes(shared) }) : "");
   const reveal = $("disk-reveal");
   const data = state.status?.data_dir;
   reveal.hidden = !dataFolderShown(state.status);
