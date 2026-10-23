@@ -175,6 +175,7 @@ async def test_pages_that_ask_while_the_disk_is_measured_share_the_measure(
             filed_tiles=0,
             filed_bytes=0,
             filed_images_bytes=0,
+            held_bytes=0,
             packs=[],
         )
 

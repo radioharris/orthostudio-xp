@@ -218,7 +218,23 @@ CREATE TABLE pins (
     key       TEXT NOT NULL REFERENCES artifacts (key) ON DELETE CASCADE,
     pinned_at REAL NOT NULL
 );
+CREATE TABLE away (                  -- a file artefact let go of, its bytes held outside
+    key    TEXT PRIMARY KEY,
+    rule   TEXT NOT NULL,
+    digest TEXT NOT NULL,            -- what the file must hash to, to be taken back
+    size   INTEGER NOT NULL,
+    path   TEXT NOT NULL,            -- the file outside the store (a tile's image)
+    since  REAL NOT NULL
+);
 ```
+
+`away` (2026-10-23, created at the opening of an older index, which an older version opens and
+ignores): `Store.send_away` writes the row, then deletes the artefact; `Store.take_back` puts it
+back from the file the row names, or from the file of the same name in folders the caller gives
+(where its folder is now), hard-linked on the store's disk and copied otherwise, committed only
+when its digest is the row's, with the recipe and inputs the caller gives (a build of that key).
+A row stays when the artefact is made again: the artefact may go again as data no pack needs, and
+the row is what keeps the image within reach. `osxp clean` keeps the rows true (section 9.1).
 
 `meta.disk_bytes` is the store's size on the disk that `Store.disk_bytes` answers (the status
 bar's, `api.md` 2.1): every artefact's size but those of `tile.textures`, whose folders hard-link
@@ -314,6 +330,18 @@ collects by reachability from the packs on disk instead:
   directories are not swept: superseded builds stay for `osxp clean`, and the deleted tile is
   credited in `freed_bytes` with its own cache only. Running the whole clean there took other
   processes' finished artefacts that no pack referenced yet (review of the delete);
+* **images held twice**: whatever the options, the `tile.textures` of a pack that holds every
+  image it lists as a file of its own, of the same size (a tile copied to another disk, or apart),
+  goes with the `texture.dds` it lists, each recorded `away` at the pack's file first
+  (`clean._held`, `_send_away`; `held_images`, `held_bytes`). A pack whose images are the store's
+  very files (hard links), or missing one, holds none twice; a folder one of whose files another
+  artefact that stays still links (a neighbour's, an older build kept) stays with its images, its
+  bytes not coming back otherwise (`_let_go`); what was used within the grace period or is pinned
+  stays, as for the rest. Then the rows are kept true (`_tidy_away`, also after a delete): a row
+  whose file is gone from a disk that is here points to the file of the same name in a pack of the
+  same name the library knows now (moved with *Find again* or *File elsewhere*), or is forgotten;
+  one on a disk away stays. A user had moved the `tiles` folder to another partition with a link:
+  every image was then on both, and the store filled the disk it stayed on (2026-10-23);
 * **sizes shown**: `disk_bytes` measures a folder the same way, each inode once: the size of each
   pack in the library (`api.md` 2.3), and the page's store size until 0.1.19, which the index's
   sum put at twice the disk's (a DDS linked by two artefacts); the store's is now the figure its

@@ -395,6 +395,53 @@ def test_cold_then_warm_runs(
 # --- P2: parent fallback ----------------------
 
 
+def test_an_image_the_store_let_go_of_comes_back_from_its_tile(
+    server: TileServer, tmp_path: Path, mask_dir: Path
+) -> None:
+    """Free space lets go of the images a tile holds as files of its own (``clean._held``): built
+    again, each comes back from the tile, checked to be the very same, and nothing is downloaded
+    or prepared. From where the tile is now when it moved (``held_in``); prepared as any other
+    when it was changed in the tile. A user's tiles moved to another partition left every image
+    twice, and the store filled the disk they had left (2026-10-23)."""
+    first = build_textures(make_spec(server, tmp_path, mask_dir))
+    assert first.ok and first.counts["built"] == 2
+    tile = tmp_path / "Other disk" / "zOrthoStudio_+43+005" / "textures"
+    tile.mkdir(parents=True)
+    with Store(tmp_path / "store", fsync=False) as store:
+        for o in first.outcomes:
+            assert o.key and o.digest and o.dds_path
+            copy = tile / Path(o.dds_path).name
+            copy.write_bytes(Path(o.dds_path).read_bytes())  # the tile's own file
+            size = copy.stat().st_size
+            path = copy if o.name == "16_16_T6" else tmp_path / "moved since" / copy.name
+            assert store.send_away(o.key, rule=RULE_NAME, digest=o.digest, size=size, path=path)
+    server.reset_hits()
+    spec = make_spec(server, tmp_path, mask_dir, out_dir=tmp_path / "again", held_in=(tile,))
+    again = build_textures(spec)
+    assert again.ok, again.errors
+    assert again.counts["built"] == 0 and again.counts["taken_back"] == 2
+    assert again.counts["hits"] == 2 and server.state.total_hits() == 0
+    for o in again.outcomes:
+        assert Path(o.dds_path).read_bytes() == (tile / Path(o.dds_path).name).read_bytes()
+
+    with Store(tmp_path / "store", fsync=False) as store:
+        for o in first.outcomes:
+            assert o.key and o.digest and o.dds_path
+            copy = tile / Path(o.dds_path).name
+            size = copy.stat().st_size
+            store.send_away(o.key, rule=RULE_NAME, digest=o.digest, size=size, path=copy)
+    changed = tile / "16_32_T6.dds"
+    data = bytearray(changed.read_bytes())
+    data[-1] ^= 0xFF  # retouched in the tile
+    changed.write_bytes(bytes(data))
+    third = build_textures(make_spec(server, tmp_path, mask_dir, out_dir=tmp_path / "third"))
+    assert third.ok, third.errors
+    by_name = {o.name: o for o in third.outcomes}
+    assert by_name["16_32_T6"].status == "built"  # prepared again, from the image pieces kept
+    assert by_name["16_16_T6"].status == "hit" and third.counts["taken_back"] == 1
+    assert server.state.total_hits() == 0
+
+
 def test_containers_and_textures_are_written_without_forcing(
     server: TileServer, tmp_path: Path, mask_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

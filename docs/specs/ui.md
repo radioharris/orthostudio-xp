@@ -917,8 +917,12 @@ masks read (counted with the data used by the tiles, whose tooltip says so; a me
 tile, but for a neighbour whose masks were made from it), a line shown only while they have some of
 their data here, and counting only those tiles: a tile of a data folder chosen before has its cache
 there, and a filed neighbour whose square only the pieces astride a border touch has nothing here,
-so filing one tile no longer reads "Cache of 5 tile(s)"; its box is unticked as it hides), the data
-no tile needs any more, the downloaded images (those of the filed tiles excepted: they are in their
+so filing one tile no longer reads "Cache of 5 tile(s)"; its box is unticked as it hides), the
+**images your tiles already hold** (`held_bytes`, a line shown only when there are some: the cache's
+copy of images a tile holds as files of its own, on another disk or copied apart; no box, *Free
+space…* always deletes it and the dialog says so on a line of its own, `disk.confirm_held`, since a
+build takes them back from the tile; not counted with the data used by the tiles; a user's tiles
+moved to another partition left every image twice, 2026-10-23), the data no tile needs any more, the downloaded images (those of the filed tiles excepted: they are in their
 line; a piece astride the border with a tile of the atelier counts here, even at a level of detail
 only the filed tile uses, and so does a piece only a filed tile with nothing here touches), the map
 background and the **downloaded relief**, each with a plain tooltip. *Free space…* asks first, in a

@@ -60,6 +60,14 @@ Two things stay. Their mesh, about 240 MB a tile, because a neighbouring tile bu
 to draw the shores along their common border. And for tiles filed on the workshop's own disk, the
 tile and the cache share the same files, so that part of the room does not come back.
 
+A tile on another disk holds its own copy of its images, and the cache kept one too. *Free space…*
+deletes the cache's copy every time, with no box to tick: *Disk space* shows it on the line
+*Images your tiles already hold*. The tile keeps its images, and building it again takes them back
+from it, checked to be the very same, instead of preparing them again. If you deleted the
+downloaded images, the build downloads them first, to know which image is which. An image you
+retouched in the tile is prepared again, as is one whose disk is not plugged in. The same holds for
+a tile you moved to another disk yourself, or whose `tiles` folder is a link to another disk.
+
 ## Moving a tile yourself
 
 You can also move a tile's folder yourself, in the Finder or the File Explorer. The Library then

@@ -152,7 +152,7 @@ __all__ = [
     "sse_message",
 ]
 
-API_LEVEL = 33
+API_LEVEL = 34
 """What this engine's API offers, for the page: 1 = P2b, 2 = zones (``/api/zones``) and the base map
 (``/api/map``), 3 = deleting a tile (``POST /api/library/{name}/delete``) and the sizes of the
 library, 4 = the disk space of the Library (``GET /api/disk``, ``POST /api/clean``), 5 = clearing
@@ -190,7 +190,9 @@ and ``POST /api/flightplan/file`` (a Little Navmap or X-Plane plan file), 31 = `
 /api/zones/cells`` (the squares each zone takes, drawn on the map), 32 = ``POST
 /api/library/find-in-workshop`` and ``own`` in the import's answer (the tiles OrthoStudio XP built
 in a folder, taken back), 33 = ``shared_bytes`` in ``GET /api/sizes`` and ``GET /api/disk`` (the
-store's files that are the tiles' own too, counted once). A page
+store's files that are the tiles' own too, counted once), 34 = ``held_bytes`` in ``GET /api/disk``
+and ``held_freed_bytes`` in ``POST /api/clean`` (the images tiles hold as files of their own, which
+Free space lets go of whatever the choices). A page
 served by an engine older than itself (a ``osxp serve`` started before an update: the page's files
 are read from disk at each load, the routes were imported at start) asks the user to restart
 OrthoStudio XP instead of showing "Not Found"."""
@@ -2389,7 +2391,9 @@ def create_app(
         the tile data no tile on disk needs (``unused_bytes``, whatever its age), the downloaded
         image pieces, the map background, the relief downloaded and kept, and the cache of the
         ``filed_tiles`` filed outside the atelier: the tile data only they need (``filed_bytes``)
-        and the image pieces only they use (``filed_images_bytes``, not in ``images_bytes``).
+        and the image pieces only they use (``filed_images_bytes``, not in ``images_bytes``), and
+        the images tiles hold as files of their own, which the store keeps a second time
+        (``held_bytes``, freed whatever the choices: a build takes them back from the tile).
 
         Pages that ask while a measure runs share it, as ``/api/sizes``'s do: on a hard disk one
         takes minutes, and the Library asked again every five seconds while sizes were pending,
@@ -2413,15 +2417,17 @@ def create_app(
             "filed_tiles": report.filed_tiles,
             "filed_bytes": report.filed_bytes,
             "filed_images_bytes": report.filed_images_bytes,
+            "held_bytes": report.held_bytes,
             "tiles": len(report.packs),
             "building": manager.active() is not None or bool(other_builds()),
         }
 
     @app.post("/api/clean")
     async def free_space(req: CleanRequest | None = None) -> Any:
-        """Free the space: every piece of tile data no tile on disk needs, with ``images`` the
-        downloaded image pieces and the map background, with ``relief`` the elevation cells, and
-        with ``filed`` the cache of the tiles filed outside the atelier. Refused while a build
+        """Free the space: every piece of tile data no tile on disk needs and the images the tiles
+        hold as files of their own (``held_freed_bytes``), with ``images`` the downloaded image
+        pieces and the map background, with ``relief`` the elevation cells, and with ``filed`` the
+        cache of the tiles filed outside the atelier. Refused while a build
         runs, here or in another process, since nothing protects what a build is about to use
         otherwise, and while a tile is filed elsewhere, which moves a tile out of the atelier."""
         req = req or CleanRequest()
@@ -2443,6 +2449,7 @@ def create_app(
                 "images_freed_bytes": report.images_bytes if req.images else 0,
                 "relief_freed_bytes": report.relief_bytes if req.relief else 0,
                 "filed_freed_bytes": filed if req.filed else 0,
+                "held_freed_bytes": report.held_bytes,
                 "removed": report.removed,
             }
 

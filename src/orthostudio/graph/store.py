@@ -6,6 +6,10 @@ Layout: ``<root>/<rule>/<key[:2]>/<key>`` is the artefact (a file or a directory
 kind). A build writes into ``<root>/<rule>/<key[:2]>/<key>.tmp-<pid>-<rand>/out`` and commits
 with a single ``rename``; the index row is inserted after the rename. See
 docs/specs/graph-keys.md for the crash matrix.
+
+A file artefact the store let go of while a file outside it holds its very bytes (a tile's own
+copy of an image, on another disk) is remembered in the ``away`` table, and taken back from that
+file when a build needs it again (:meth:`Store.send_away`, :meth:`Store.take_back`).
 """
 
 from __future__ import annotations
@@ -27,10 +31,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from orthostudio.fsutil import atomic_link_or_copy
 from orthostudio.fsutil import fsync_dir as _fsync_dir
 from orthostudio.fsutil import replace as fs_replace
 from orthostudio.graph.canon import canonical_json
-from orthostudio.graph.digest import check_digest, digest_path
+from orthostudio.graph.digest import check_digest, digest_file, digest_path
 from orthostudio.graph.errors import (
     ArtifactHeldError,
     ArtifactInUseError,
@@ -45,6 +50,7 @@ from orthostudio.graph.rule import Kind
 __all__ = [
     "SCHEMA_VERSION",
     "ArtifactInfo",
+    "AwayInfo",
     "Build",
     "FsckReport",
     "GcReport",
@@ -124,6 +130,14 @@ CREATE TABLE IF NOT EXISTS pins (
     pinned_at REAL NOT NULL
 );
 CREATE INDEX IF NOT EXISTS pins_key ON pins (key);
+CREATE TABLE IF NOT EXISTS away (
+    key    TEXT PRIMARY KEY,
+    rule   TEXT NOT NULL,
+    digest TEXT NOT NULL,
+    size   INTEGER NOT NULL,
+    path   TEXT NOT NULL,
+    since  REAL NOT NULL
+);
 """
 
 _DISK_BYTES_TRIGGERS = (
@@ -170,6 +184,18 @@ class ArtifactInfo:
     created_at: float
     last_used_at: float
     uses: int
+    path: Path
+
+
+@dataclass(frozen=True, slots=True)
+class AwayInfo:
+    """A file artefact the store let go of while a file outside it holds its very bytes
+    (:meth:`Store.send_away`): where that file was, and what it must be to be taken back."""
+
+    key: str
+    rule: str
+    digest: str
+    size: int
     path: Path
 
 
@@ -876,6 +902,94 @@ class Store:
         _remove_path(doomed)
         return True
 
+    # -- artefacts held outside the store --------------------------------------------------
+
+    def send_away(self, key: str, *, rule: str, digest: str, size: int, path: Path) -> bool:
+        """Let go of the file artefact ``key``, whose very bytes ``path`` holds outside the store
+        (a tile's own copy of its image, on another disk): its row in ``away`` says where, and
+        :meth:`take_back` puts it back from there. The row is written first, so that an artefact
+        deleted is never one the store forgot; True when the store held it and let go of it.
+        Raises as :meth:`delete` does when it cannot (the row then stays, and is of no use while
+        the artefact is there)."""
+        check_digest(key, "key")
+        check_digest(digest, "digest")
+        with self._lock:
+            with self._tx():
+                self._db.execute(
+                    """
+                    INSERT INTO away (key, rule, digest, size, path, since)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    ON CONFLICT (key) DO UPDATE SET
+                        rule = excluded.rule, digest = excluded.digest, size = excluded.size,
+                        path = excluded.path, since = excluded.since
+                    """,
+                    (key, rule, digest, int(size), os.fspath(path), time.time()),
+                )
+            return self.delete(key, force=True)
+
+    def away(self, key: str) -> AwayInfo | None:
+        """Where the bytes of an artefact let go of are (:meth:`send_away`), or None."""
+        with self._lock:
+            row = self._db.execute("SELECT * FROM away WHERE key = ?", (key,)).fetchone()
+        return None if row is None else _away_info(row)
+
+    def away_rows(self) -> list[AwayInfo]:
+        with self._lock:
+            rows = self._db.execute("SELECT * FROM away ORDER BY key").fetchall()
+        return [_away_info(r) for r in rows]
+
+    def point_away(self, key: str, path: Path) -> None:
+        """The file holding an artefact let go of is now at ``path`` (its folder moved)."""
+        with self._tx():
+            self._db.execute("UPDATE away SET path = ? WHERE key = ?", (os.fspath(path), key))
+
+    def forget_away(self, keys: Iterable[str]) -> int:
+        """Forget where those artefacts were held: nothing takes them back any more."""
+        with self._tx():
+            return sum(
+                self._db.execute("DELETE FROM away WHERE key = ?", (key,)).rowcount for key in keys
+            )
+
+    def take_back(
+        self,
+        key: str,
+        *,
+        version: int,
+        recipe: str,
+        inputs: Iterable[InputRef],
+        also: Iterable[Path] = (),
+    ) -> ArtifactInfo | None:
+        """Put back the artefact ``key`` let go of (:meth:`send_away`) from the file that holds it,
+        or from the file of the same name in one of the folders ``also`` (where its folder is now,
+        moved since): linked when it is on the store's disk, else copied, and kept only when its
+        digest is the one let go of. None when no file holds it any more (gone, changed, on a disk
+        away): the caller makes it as it would have."""
+        row = self.away(key)
+        if row is None:
+            return None
+        if self.has(key):
+            return self.info(key)
+        places: list[Path] = []
+        for place in (row.path, *(Path(folder) / row.path.name for folder in also)):
+            if place not in places:
+                places.append(place)
+        for place in places:
+            try:
+                if not place.is_file() or place.stat().st_size != row.size:
+                    continue
+            except OSError:
+                continue
+            with self.begin(row.rule, key, "file") as build:
+                try:
+                    atomic_link_or_copy(place, build.out)
+                    if digest_file(build.out) != row.digest:
+                        continue  # changed since (an image retouched): left as it is
+                except OSError:
+                    continue
+                info, _adopted = build.commit(version=version, recipe=recipe, inputs=inputs)
+            return info
+        return None
+
     def gc(self, *, quota_bytes: int | None = None, min_age_s: float = 0.0) -> GcReport:
         """Collect unreferenced artefacts, least recently used first.
 
@@ -1107,6 +1221,16 @@ def info_recipe(store: Store, key: str) -> str:
     if row is None:
         raise MissingArtifactError(key)
     return str(row["recipe"])
+
+
+def _away_info(row: sqlite3.Row) -> AwayInfo:
+    return AwayInfo(
+        key=str(row["key"]),
+        rule=str(row["rule"]),
+        digest=str(row["digest"]),
+        size=int(row["size"]),
+        path=Path(str(row["path"])),
+    )
 
 
 def _opt_str(v: object) -> str | None:

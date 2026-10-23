@@ -1071,6 +1071,21 @@ def photo_zone_shapes(
     return tuple(reversed(out))
 
 
+def _tile_folders(env: BuildEnv, tile: TileRef) -> tuple[Path, ...]:
+    """The textures folders of ``tile`` as the Library knows them now: where an image the store
+    let go of, the tile holding it as a file of its own, is looked for when the tile has moved
+    since (``TexturesSpec.held_in``). None without a Library, or one that cannot be read."""
+    if env.library_path is None or not Path(env.library_path).is_file():
+        return ()
+    try:
+        with Library(env.library_path) as lib:
+            rows = [e for e in lib.list() if e.tile == tile and e.kind == "ortho"]
+    except Exception:  # the images are prepared as before, never the build lost over the Library
+        log.warning("cannot read where %s is filed: its images are not looked for", tile.name)
+        return ()
+    return tuple(Path(e.path) / "textures" for e in rows)
+
+
 def _tile_textures(ctx: RunContext) -> None:
     """Every texture the DSF references: ``build_textures`` (P1) per (provider, zl) group."""
     act = _active()
@@ -1097,6 +1112,7 @@ def _tile_textures(ctx: RunContext) -> None:
     total = len(jobs)
     done_before = 0
     outcomes: list[dict[str, Any]] = []
+    held_in = _tile_folders(env, tile)
     cancel = node.cancel_event
     stop = cancel if isinstance(cancel, threading.Event) else threading.Event()
     for (code, zl), group in sorted(groups.items()):
@@ -1158,6 +1174,7 @@ def _tile_textures(ctx: RunContext) -> None:
             cancel=stop,
             fsync=env.store.fsync,
             wrote=node.wrote,
+            held_in=held_in,
         )
         report: TexturesReport = build_textures(spec)
         # what this group really received and prepared, for Works' report: the pieces the cache

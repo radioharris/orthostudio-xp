@@ -2259,16 +2259,21 @@ def test_the_library_frees_disk_space_after_asking() -> None:
     # the relief is its own choice, counted apart: a user emptied everything and 1.4 GB of
     # elevation cells stayed, because nothing counted or freed them (2026-09-18)
     disk = "{unused_bytes: 5, images_bytes: 7, mapcache_bytes: 1, relief_bytes: 9}"
+    # the cache's copy of images the tiles hold as files of their own goes without a choice: a
+    # build takes them back from the tile (a user's tiles on another partition, 2026-10-23)
+    held = "{unused_bytes: 5, held_bytes: 3}"
     plans = _node_json(
         "app.js",
         f"[m.freeSpacePlan({disk}, false, false), m.freeSpacePlan({disk}, true, false), "
-        f"m.freeSpacePlan({disk}, false, true), m.freeSpacePlan(null, true, true)]",
+        f"m.freeSpacePlan({disk}, false, true), m.freeSpacePlan(null, true, true), "
+        f"m.freeSpacePlan({held}, false, false)]",
     )
     assert plans == [
-        {"unused": 5, "pictures": 0, "heights": 0, "filed": 0, "total": 5},
-        {"unused": 5, "pictures": 8, "heights": 0, "filed": 0, "total": 13},
-        {"unused": 5, "pictures": 0, "heights": 9, "filed": 0, "total": 14},
-        {"unused": 0, "pictures": 0, "heights": 0, "filed": 0, "total": 0},
+        {"unused": 5, "held": 0, "pictures": 0, "heights": 0, "filed": 0, "total": 5},
+        {"unused": 5, "held": 0, "pictures": 8, "heights": 0, "filed": 0, "total": 13},
+        {"unused": 5, "held": 0, "pictures": 0, "heights": 9, "filed": 0, "total": 14},
+        {"unused": 0, "held": 0, "pictures": 0, "heights": 0, "filed": 0, "total": 0},
+        {"unused": 5, "held": 3, "pictures": 0, "heights": 0, "filed": 0, "total": 8},
     ]
     script = """
     const before = (await call("GET", "/api/disk")).ok;
@@ -2280,8 +2285,10 @@ def test_the_library_frees_disk_space_after_asking() -> None:
     assert got["before"]["unused_bytes"] > 0 and got["before"]["building"] is False
     assert got["before"]["relief_bytes"] > 0
     assert got["freed"]["freed_bytes"] == got["before"]["unused_bytes"]
+    assert got["freed"]["held_freed_bytes"] == got["before"]["held_bytes"] > 0
     assert got["freed"]["relief_freed_bytes"] == got["before"]["relief_bytes"]
     assert got["after"]["unused_bytes"] == got["after"]["images_bytes"] == 0
+    assert got["after"]["held_bytes"] == 0
     assert got["after"]["relief_bytes"] == 0
     refused = 'process.stdout.write(JSON.stringify(await call("POST", "/api/clean", {})));'
     busy = _node_mock(refused, fail="busy")
@@ -2307,10 +2314,10 @@ def test_the_cache_of_the_tiles_filed_outside_is_its_own_choice() -> None:
         f" m.freeSpacePlan({{filed_bytes: -1}}, false, false, true)]",
     )
     assert plans == [
-        {"unused": 5, "pictures": 0, "heights": 0, "filed": 7, "total": 12},
-        {"unused": 5, "pictures": 8, "heights": 9, "filed": 7, "total": 29},
-        {"unused": 5, "pictures": 8, "heights": 0, "filed": 0, "total": 13},
-        {"unused": 0, "pictures": 0, "heights": 0, "filed": 0, "total": 0},
+        {"unused": 5, "held": 0, "pictures": 0, "heights": 0, "filed": 7, "total": 12},
+        {"unused": 5, "held": 0, "pictures": 8, "heights": 9, "filed": 7, "total": 29},
+        {"unused": 5, "held": 0, "pictures": 8, "heights": 0, "filed": 0, "total": 13},
+        {"unused": 0, "held": 0, "pictures": 0, "heights": 0, "filed": 0, "total": 0},
     ]
     offered = _node_json(
         "app.js",

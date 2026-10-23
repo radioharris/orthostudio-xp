@@ -883,6 +883,12 @@ def clean(
             f"elevation cells: {_size(report.relief_bytes)}, kept (--relief empties them; a tile "
             "built later downloads them again, which is far quicker than its images)"
         )
+    if report.held_images:
+        held = "let go of" if not dry_run else "would let go of"
+        typer.echo(
+            f"{held} {report.held_images} image(s) the tiles hold as files of their own: "
+            f"{verb} {_size(report.held_bytes)} (a build takes them back from the tile)"
+        )
     filed_cache = report.filed_bytes + report.filed_images_bytes
     if report.filed_removed:
         typer.echo(
@@ -901,7 +907,13 @@ def clean(
             "them again downloads their images again)"
         )
     if everything:
-        total = report.freed_bytes + report.images_bytes + report.relief_bytes + filed_cache
+        total = (
+            report.freed_bytes
+            + report.held_bytes
+            + report.images_bytes
+            + report.relief_bytes
+            + filed_cache
+        )
         typer.echo(f"in total: {verb} {_size(total)}")
 
 
