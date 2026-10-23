@@ -851,9 +851,9 @@ _SPECS: tuple[ErrorSpec, ...] = (
         "Choose a source that covers these tiles: Bing Maps and Esri cover the whole world.",
     ),
     _spec(
-        "CFG_TILES_OPEN_SEA",
-        _B,
-        _S,
+        "SYS_TILES_OPEN_SEA",
+        _I,
+        _C,
         "{tiles}: open sea. X-Plane has no scenery there and draws its own water: OrthoStudio XP "
         "leaves it out.",
         "Nothing to do; to build something, choose squares with land.",

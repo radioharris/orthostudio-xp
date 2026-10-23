@@ -414,14 +414,14 @@ async def test_a_square_of_open_sea_is_left_out_and_said(app, home: Path, xplane
         doc = r.json()
         assert doc["specs"] == [{"tile": land, "provider": "BI", "zl": 14}]
         (said,) = [w for w in doc["warnings"] if isinstance(w, dict)]
-        assert said == {"code": "CFG_TILES_OPEN_SEA", "severity": "info", "context": {"tiles": sea}}
+        assert said == {"code": "SYS_TILES_OPEN_SEA", "severity": "info", "context": {"tiles": sea}}
         for route in ("/api/plan", "/api/jobs"):
             r = await c.post(route, json={"tiles": [sea], "zoom_level": 14})
             assert r.status_code == 422, (route, r.text)
             err = r.json()["error"]
-            assert err["code"] == "CFG_TILES_OPEN_SEA" and err["context"]["tiles"] == sea
+            assert err["code"] == "SYS_TILES_OPEN_SEA" and err["context"]["tiles"] == sea
         r = await c.post("/api/plan", json={"tiles": ["+44+005"], "zoom_level": 14})
-        assert r.json()["error"]["code"] != "CFG_TILES_OPEN_SEA"  # land: its region is missing
+        assert r.json()["error"]["code"] != "SYS_TILES_OPEN_SEA"  # land: its region is missing
 
 
 def _ortho4xp_folder(root: Path) -> Path:

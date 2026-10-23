@@ -274,7 +274,7 @@ def make_specs(
     no zone touches keeps exactly the config it had without zones (same keys). The data folder
     must be there (``CFG_DATA_DIR_MISSING``): nothing is downloaded while its disk is unplugged.
     The squares of open sea (:func:`open_sea`) are left out, named in ``left_out`` when given;
-    a request of open sea alone is ``CFG_TILES_OPEN_SEA``.
+    a request of open sea alone is ``SYS_TILES_OPEN_SEA``.
     """
     require_data_root()
     tiles, area = req.area()
@@ -352,7 +352,7 @@ def make_specs(
     sea = open_sea(tiles, where.get("global_scenery_dir"))
     if sea:
         if len(sea) == len(tiles):
-            raise OsxpError("CFG_TILES_OPEN_SEA", context={"tiles": " ".join(sea)})
+            raise OsxpError("SYS_TILES_OPEN_SEA", context={"tiles": " ".join(sea)})
         if left_out is not None:
             left_out.extend(sea)
         tiles = [name for name in tiles if name not in sea]

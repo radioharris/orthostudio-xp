@@ -270,6 +270,7 @@ def _http_status(code: str) -> int:
         "SYS_TILE_INCOMPLETE",
         "SYS_TILE_NOT_IN_FOLDER",
         "SYS_TILE_OTHER_BUILD",
+        "SYS_TILES_OPEN_SEA",
     ):
         return 422
     if code.startswith("NET_"):
@@ -1708,10 +1709,10 @@ def create_app(
                 if isinstance(env, BuildEnv):
                     env.close()  # each plan opened the store's index and left it open
             answer = plan_answer(est, specs)
-            if sea:  # left out, said as a line of its own (CFG_TILES_OPEN_SEA)
+            if sea:  # left out, said as a line of its own (SYS_TILES_OPEN_SEA)
                 answer["warnings"].append(
                     {
-                        "code": "CFG_TILES_OPEN_SEA",
+                        "code": "SYS_TILES_OPEN_SEA",
                         "severity": "info",
                         "context": {"tiles": " ".join(sea)},
                     }

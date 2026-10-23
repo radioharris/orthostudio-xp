@@ -3910,17 +3910,20 @@ function renderBuildActions() {
   const plan = state.planStale ? null : state.plan;
   const disk = plan ? diskVerdict(plan.disk) : null;
   const refused = tiles && !state.planStale && !state.plan;
+  // squares of open sea alone: nothing to build, which is no refusal (a user's +33+012, 2026-10-23)
+  const onlySea = refused && errorDetail(state.planError?.err)?.code === "SYS_TILES_OPEN_SEA";
   const short = disk?.ok === false;
   const blocked = !tiles || refused || Boolean(state.buildStarting);
   $("build-install-btn").disabled = blocked;
   $("build-only-btn").disabled = blocked;
   let note = t("plan.estimating");
   if (!tiles) note = t("step4.need_tiles");
+  else if (onlySea) note = t("step4.only_sea");
   else if (refused) note = t("step4.refused");
   else if (short) note = t("step4.disk_short", { need: fmtGB(disk.needed), free: fmtGB(disk.free) });
   else if (plan) note = t("step4.summary", { download: fmtMB(plan.network?.mb), time: fmtRange(plan.network?.seconds_low, plan.network?.seconds_high), disk: fmtGB(disk.needed) });
   setText($("build-note"), note);
-  $("build-note").classList.toggle("is-fail", refused);
+  $("build-note").classList.toggle("is-fail", refused && !onlySea);
   $("build-note").classList.toggle("is-warn", short && !refused);
   // With a build under way or waiting, this one waits for its turn.
   const queue = $("build-queue");
