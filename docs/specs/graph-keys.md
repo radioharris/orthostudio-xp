@@ -233,15 +233,12 @@ CREATE TABLE trimmed (               -- files trimmed from an artefact, which ke
     digest TEXT,                     -- the file's own; NULL in a row of the table's first form
     PRIMARY KEY (key, path)
 );
-CREATE TABLE kept_pieces (           -- tiles whose images Free space's choice deleted (9.1)
-    tile  TEXT PRIMARY KEY,          -- "+46+006": the downloaded pieces of its square stay
-    since REAL NOT NULL
-);
 ```
 
-An index may also hold an `away` table, which this version neither creates, reads nor writes: the
-images a tile held as files of its own and the store had let go of, with where the tile held them,
-written by builds of a development branch for a few days (2026-10-23). It stays as it is. The store
+An index may also hold an `away` or a `kept_pieces` table, which this version neither creates,
+reads nor writes: the images a tile held as files of its own and the store had let go of, with
+where the tile held them, and the tiles whose downloaded pieces Free space kept, written by builds
+of a development branch for a few days (2026-10-23). They stay as they are. The store
 counts on its own files only: what a tile holds belongs to its user, who may move it, retouch it,
 unplug its disk or delete it, and a review found the rows, the take-back and the tidying they
 needed open to losses (section 9.1).
@@ -362,8 +359,7 @@ collects by reachability from the packs on disk instead:
   hard links are among the deleted paths; a DDS still linked from a pack frees nothing;
 * `--images` also empties `<data folder>/chunks`, the raw imagery a rebuilt texture would otherwise
   download again, but for the pieces only the tiles filed outside the atelier use (`--filed` deletes
-  them, with the rest of those tiles' cache) and those of the tiles on another disk whose images
-  the store no longer copies (`--apart`, below), and `<data folder>/mapcache`, the base-map tiles of the
+  them, with the rest of those tiles' cache), and `<data folder>/mapcache`, the base-map tiles of the
   page (`map-zones.md` section 6), both counted in the imagery size of the report; `--dry-run` deletes nothing and reports the
   same numbers. `--all` frees everything OrthoStudio XP can give back: it collects without the hour
   of grace (a result used a second ago goes too, unless a pack on disk needs it) and implies
@@ -398,17 +394,12 @@ collects by reachability from the packs on disk instead:
   used within the grace period or is pinned. Nothing is recorded of where the tile's copies are,
   and nothing is taken back from them: a build of such a tile prepares its images again from the
   downloaded image pieces, the same bytes (a ZL16 tile of 213 images, 9.8 s on the reference Mac,
-  every DDS identical, 2026-10-23), its tracing, mesh, relief and DSF hits. The tiles whose images
-  went are written in `kept_pieces` before any image goes (`Store.keep_pieces`, synchronous FULL):
-  the pieces of their squares, and the parent pieces, stay whatever the choices, the disk of the
-  tile plugged in or not, a run cut in the middle or not, until every pack and library row of the
-  tile has its textures folder and all its images in the store again (built since), or none names
-  the tile any more (deleted): `Store.release_pieces`. Read from the tiles at each run, as a first
-  form did, a disk unplugged or a run cut in the middle left them unprotected, and a tile whose
-  images were never in this store kept its pieces from the images choice (a review, 2026-10-23).
-  `apart_images_bytes` counts the pieces that stay only because of this run's choice;
-  `apart_unpieced` the tiles of `apart_tiles` whose pieces are gone already (the images choice
-  ticked before), whose build downloads their images again, which the page says. A pack
+  every DDS identical, 2026-10-23), its tracing, mesh, relief and DSF hits. Their downloaded pieces
+  are as any: the images choice frees them as in 1.1.0, and a build then downloads them again,
+  which the words under the box say. Keeping them for those tiles, read from the tiles and the
+  disks at each run and then from a list in the store, was the source of nearly every finding of
+  two reviews (a disk unplugged, a run cut, two runs at once, tiles whose images were never in this
+  store): it went, with its list (2026-10-24). A pack
   whose folder cannot be read now (a disk away, a letter another disk took, a mount point left
   empty) is none of them, and its cache stays through the keys the library recorded. On a file
   system that clones copies (btrfs between subvolumes, ZFS with block cloning, an NFS 4.2 server

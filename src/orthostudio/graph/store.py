@@ -150,15 +150,12 @@ CREATE TABLE IF NOT EXISTS trimmed (
     digest TEXT,
     PRIMARY KEY (key, path)
 );
-CREATE TABLE IF NOT EXISTS kept_pieces (
-    tile  TEXT PRIMARY KEY,
-    since REAL NOT NULL
-);
 """
 
-# An index may also hold an ``away`` table, which this version neither reads nor writes: the images
-# a tile held as files of its own and the store had let go of, written by builds of a development
-# branch for a few days (2026-10-23). It stays as it is: the store counts on its own files only.
+# An index may also hold an ``away`` or a ``kept_pieces`` table, which this version neither reads
+# nor writes: the images a tile held as files of its own and the store had let go of, and the
+# tiles whose downloaded pieces Free space kept, written by builds of a development branch for a
+# few days (2026-10-23). They stay as they are: the store counts on its own files only.
 
 _TRIMMED_ADDED = (("digest", "TEXT"),)
 """The column ``trimmed`` gained after its first form (the file's digest, which keeps the artefact's
@@ -1087,32 +1084,6 @@ class Store:
             finally:
                 self._db.execute("PRAGMA fullfsync = OFF")
                 self._db.execute("PRAGMA synchronous = NORMAL")
-
-    # -- downloaded pieces kept for tiles whose images left the store ---------------------------
-
-    def keep_pieces(self, tiles: Iterable[str]) -> None:
-        """Remember that the images of the tiles ``tiles`` left the store (Free space's choice of
-        the tiles on another disk): the downloaded pieces of their squares stay, whatever the
-        choices, until :meth:`release_pieces`. On the disk before the images go, so that a crash
-        in between cannot leave the images gone and the pieces unprotected. Kept here, not read
-        from the tiles: a disk unplugged, or a drive letter another disk took, does not change it
-        (a review, 2026-10-23)."""
-        now = time.time()
-        with self._durable_tx():
-            self._db.executemany(
-                "INSERT OR IGNORE INTO kept_pieces (tile, since) VALUES (?, ?)",
-                [(t, now) for t in tiles],
-            )
-
-    def pieces_kept(self) -> set[str]:
-        """The tiles :meth:`keep_pieces` named, not released since."""
-        with self._lock:
-            return {str(r["tile"]) for r in self._db.execute("SELECT tile FROM kept_pieces")}
-
-    def release_pieces(self, tiles: Iterable[str]) -> None:
-        """Their images are in the store again, or the tiles are gone: their pieces are as any."""
-        with self._tx():
-            self._db.executemany("DELETE FROM kept_pieces WHERE tile = ?", [(t,) for t in tiles])
 
     def trimmed(self, key: str) -> dict[str, int]:
         """The files trimmed from the artefact ``key`` (:meth:`trim`), with their sizes."""

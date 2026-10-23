@@ -1365,7 +1365,7 @@ export async function mockApi(method, path, body, options = {}) {
     return structuredClone(mock.library);
   }
   if (p === "/api/disk" && method === "GET") {
-    if (!mock.disk) mock.disk = { store_bytes: 9.8e9, shared_bytes: 6.2e9, unused_bytes: 2.4e9, apart_tiles: 3, apart_bytes: 1.1e9, apart_images_bytes: 0.3e9, twice_bytes: 0.8e9, images_bytes: 3.1e9, mapcache_bytes: 12e6, relief_bytes: 1.4e9 };
+    if (!mock.disk) mock.disk = { store_bytes: 9.8e9, shared_bytes: 6.2e9, unused_bytes: 2.4e9, apart_tiles: 3, apart_bytes: 1.1e9, twice_bytes: 0.8e9, images_bytes: 3.1e9, mapcache_bytes: 12e6, relief_bytes: 1.4e9 };
     if (!mock.library) mock.library = await mockFile("library");
     return { ...mock.disk, ...mockFiledCache(), tiles: libraryTiles(mock.library).length, building: MOCK_FAIL === "busy" || Boolean(mockActiveRun()) };
   }
@@ -1373,7 +1373,7 @@ export async function mockApi(method, path, body, options = {}) {
     if (MOCK_FAIL === "busy" || mockActiveRun()) {
       throw mockError(409, "SYS_BUSY", "A build is running in OrthoStudio XP, and OrthoStudio XP frees space only between builds.", "Wait for the build to finish, or stop it, then try again.");
     }
-    if (!mock.disk) mock.disk = { store_bytes: 9.8e9, shared_bytes: 6.2e9, unused_bytes: 2.4e9, apart_tiles: 3, apart_bytes: 1.1e9, apart_images_bytes: 0.3e9, twice_bytes: 0.8e9, images_bytes: 3.1e9, mapcache_bytes: 12e6, relief_bytes: 1.4e9 };
+    if (!mock.disk) mock.disk = { store_bytes: 9.8e9, shared_bytes: 6.2e9, unused_bytes: 2.4e9, apart_tiles: 3, apart_bytes: 1.1e9, twice_bytes: 0.8e9, images_bytes: 3.1e9, mapcache_bytes: 12e6, relief_bytes: 1.4e9 };
     if (!mock.library) mock.library = await mockFile("library");
     const images = Boolean(body?.images);
     const relief = Boolean(body?.relief);
@@ -1383,14 +1383,13 @@ export async function mockApi(method, path, body, options = {}) {
     const freed = mock.disk.unused_bytes;
     const apartFreed = apart ? mock.disk.apart_bytes || 0 : 0;
     const twiceFreed = mock.disk.twice_bytes || 0;
-    // the pieces of the tiles whose images go stay: their images are prepared again from them
-    const imagesFreed = images ? mock.disk.images_bytes + mock.disk.mapcache_bytes - (apart ? mock.disk.apart_images_bytes || 0 : 0) : 0;
+    const imagesFreed = images ? mock.disk.images_bytes + mock.disk.mapcache_bytes : 0;
     const reliefFreed = relief ? mock.disk.relief_bytes : 0;
     const filedFreed = filed ? cache.filed_bytes + cache.filed_images_bytes : 0;
     if (filed) mock.filedFreed = new Set(mockFiledTiles().map((e) => e.path));
     // the filed tiles' data is the store's too: it leaves the store with them
     const storeFreed = freed + apartFreed + twiceFreed + (filed ? cache.filed_bytes : 0);
-    mock.disk = { ...mock.disk, store_bytes: mock.disk.store_bytes - storeFreed, unused_bytes: 0, twice_bytes: 0, ...(apart ? { apart_tiles: 0, apart_bytes: 0, apart_images_bytes: 0 } : {}), ...(images ? { images_bytes: 0, mapcache_bytes: 0 } : {}), ...(relief ? { relief_bytes: 0 } : {}) };
+    mock.disk = { ...mock.disk, store_bytes: mock.disk.store_bytes - storeFreed, unused_bytes: 0, twice_bytes: 0, ...(apart ? { apart_tiles: 0, apart_bytes: 0 } : {}), ...(images ? { images_bytes: 0, mapcache_bytes: 0 } : {}), ...(relief ? { relief_bytes: 0 } : {}) };
     return { format: "osxp-clean-1", freed_bytes: freed, apart_freed_bytes: apartFreed, twice_freed_bytes: twiceFreed, images_freed_bytes: imagesFreed, relief_freed_bytes: reliefFreed, filed_freed_bytes: filedFreed, removed: freed ? 12 : 0 };
   }
   if (p === "/api/library/find-in-workshop") {
@@ -5232,9 +5231,8 @@ async function loadDisk() {
  * downloaded image pieces and the map background, with `filed` the cache of the tiles filed
  * outside the atelier, and with `apart` the cache's copy of the images of the tiles on another
  * disk or partition. Each choice frees its own line: the image pieces of the filed tiles are
- * theirs, not counted in the images'; with `apart`, the pieces of those tiles stay, their images
- * being prepared again from them, and a tile filed on another disk has its images counted once.
- * Exported for the tests. */
+ * theirs, not counted in the images', and a tile filed on another disk has its images counted
+ * once. Exported for the tests. */
 export function freeSpacePlan(disk, images, relief, filed = false, apart = false) {
   const n = (v) => Math.max(0, Number(v) || 0);
   const unused = n(disk?.unused_bytes);
@@ -5244,7 +5242,7 @@ export function freeSpacePlan(disk, images, relief, filed = false, apart = false
   // the cache's copy of the images of the tiles on another disk, which hold their own: 358 GB
   // twice for the same user, whose tiles were on another partition
   const copies = apart ? n(disk?.apart_bytes) : 0;
-  const pictures = images ? Math.max(0, n(disk?.images_bytes) - (apart ? n(disk?.apart_images_bytes) : 0)) + n(disk?.mapcache_bytes) : 0;
+  const pictures = images ? n(disk?.images_bytes) + n(disk?.mapcache_bytes) : 0;
   // The relief is its own choice: a square of it weighs 40 MB to 400 MB and costs far less to
   // fetch again than its imagery (a user found 1.4 GB of it left after emptying, 2026-09-18).
   const heights = relief ? n(disk?.relief_bytes) : 0;
@@ -5256,17 +5254,6 @@ export function freeSpacePlan(disk, images, relief, filed = false, apart = false
  * or partition: only while there is some. Exported for the tests. */
 export function apartOffered(disk) {
   return (Number(disk?.apart_bytes) || 0) > 0;
-}
-
-/** The words under the choice, and in the question before freeing: a build of those tiles
- * prepares their images again from the downloaded pieces, which stay; those whose pieces went
- * already download them again, which the page says rather than promise nothing downloaded (a
- * review, 2026-10-23). Exported for the tests. */
-export function apartHelp(disk) {
-  const none = Math.max(0, Number(disk?.apart_unpieced) || 0);
-  if (none <= 0) return t("disk.apart_check_help");
-  const all = Math.max(none, Number(disk?.apart_tiles) || 0);
-  return none >= all ? t("disk.apart_check_help_none") : t("disk.apart_check_help_some", { n: none });
 }
 
 /** The cache of the tiles filed outside the atelier (the atelier, step 5): the tile data only they
@@ -5325,9 +5312,6 @@ function renderDisk() {
   if (!offered) $("disk-filed").checked = false;
   $("disk-apart-choice").hidden = copies <= 0;
   if (copies <= 0) $("disk-apart").checked = false;
-  // what a build of one of them costs then: nothing downloaded while their pieces are kept, all
-  // of their images again for those whose pieces went (the images choice ticked before)
-  setText($("disk-apart-help"), apartHelp(d));
   const plan = freeSpacePlan(d, $("disk-images").checked, $("disk-relief").checked, offered && $("disk-filed").checked, copies > 0 && $("disk-apart").checked);
   // a filing moves a tile out of the atelier: the engine refuses meanwhile, the button waits
   button.disabled = Boolean(d.building) || Boolean(state.filing) || plan.total <= 0 || state.diskBusy;
@@ -5343,7 +5327,7 @@ function confirmFreeSpace(plan) {
   $("disk-confirm-title").textContent = t("disk.confirm_title", { size: fmtBytes(plan.total) });
   const lines = [];
   if (plan.unused > 0) lines.push(t("disk.confirm_unused", { size: fmtBytes(plan.unused) }));
-  if (plan.apart > 0) lines.push(t("disk.confirm_apart_size", { size: fmtBytes(plan.apart) }) + " " + apartHelp(state.disk));
+  if (plan.apart > 0) lines.push(t("disk.confirm_apart", { size: fmtBytes(plan.apart) }));
   if (plan.twice > 0) lines.push(t("disk.confirm_twice", { size: fmtBytes(plan.twice) }));
   if (plan.filed > 0) lines.push(t("disk.confirm_filed", { size: fmtBytes(plan.filed) }));
   if (plan.pictures > 0) lines.push(t("disk.confirm_images", { size: fmtBytes(plan.pictures) }));

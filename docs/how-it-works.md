@@ -723,12 +723,12 @@ and built again.
 | Add to X-Plane (Library) | the link comes back, at once | stays | stays | stays |
 | Delete (Library, `osxp uninstall --delete`) | everything goes | what only this tile needed, unless used in the last 10 minutes | stays | stays |
 | `osxp clean` | - | what no tile on disk needs, and the second form of the relief and the mesh, unless used in the last hour | stays | stays |
-| `osxp clean --images` | - | same as `osxp clean` | emptied, with the map cache, but for the pieces of the tiles filed outside the workshop, and of the tiles on another disk whose images the cache no longer copies | stays |
+| `osxp clean --images` | - | same as `osxp clean` | emptied, with the map cache, but for the pieces of the tiles filed outside the workshop | stays |
 | `osxp clean --relief` | - | same as `osxp clean` | stays | emptied |
 | `osxp clean --filed` | - | same as `osxp clean`, and the cache of the tiles filed outside the workshop | theirs go | stays |
 | `osxp clean --apart` | - | same as `osxp clean`, and the cache's copy of the images of the tiles on another disk or partition | stays | stays |
-| `osxp clean --all` | - | everything no tile on disk needs, however recent, the cache of the tiles filed outside the workshop, and the cache's copy of the images of the tiles on another disk | emptied, with the map cache, but for the pieces of the tiles on another disk | emptied |
-| Free space (Library) | - | everything no tile on disk needs, however recent, and the second form of the relief and the mesh; the cache of the tiles filed outside the workshop, and the cache's copy of the images of the tiles on another disk, each if you tick its box | emptied with the map cache if you tick the box, those of the tiles filed outside with their own box, those of the tiles on another disk kept once their images left the cache | emptied if you tick its own box |
+| `osxp clean --all` | - | everything no tile on disk needs, however recent, the cache of the tiles filed outside the workshop, and the cache's copy of the images of the tiles on another disk | emptied, with the map cache | emptied |
+| Free space (Library) | - | everything no tile on disk needs, however recent, and the second form of the relief and the mesh; the cache of the tiles filed outside the workshop, and the cache's copy of the images of the tiles on another disk, each if you tick its box | emptied with the map cache if you tick the box, those of the tiles filed outside with their own box | emptied if you tick its own box |
 | Clear the job list (Works) | stays | stays | stays; only the finished jobs' progress and logs (`jobs/`) go | stays |
 | Remove one build from the list (Works) | stays | stays | stays; only that build's progress and log go | stays |
 
@@ -750,13 +750,12 @@ X-Plane reads: no file can have a name on two disks. The cache keeps a second co
 building the tile again takes them as they are. *Free space…* offers that copy on a line and a box
 of their own, *Copy of the images of N tile(s) on another disk*: ticked, the cache's copy goes, and
 the tiles keep theirs. Building one of them again then prepares its images again from the
-downloaded images, which stay for it even with *Also delete the downloaded images* ticked, its disk
-plugged in or not: nothing is downloaded, and the images come out the very same (measured on a
-tile at ZL16 with 213 images: 9.8 s with the cache on the Mac's own disk, 42 s in a workshop
-whose cache is on an external USB disk, every image identical to the byte, 2026-10-23). Its tracing, mesh, relief and
-DSF stay in the cache. If you deleted the downloaded images before ticking the box, there is
-nothing left to prepare the images from: the line under the box says so, and building such a tile
-downloads its images again, which the provider may have changed since. A user had moved their
+downloaded images: nothing is downloaded, and the images come out the very same (measured on a
+tile at ZL16 with 213 images: 9.8 s with the cache on the Mac's own disk, 42 s in a workshop whose
+cache is on an external USB disk, every image identical to the byte, 2026-10-23). Its tracing,
+mesh, relief and DSF stay in the cache. If you delete the downloaded images too, at the same time
+or later, there is nothing left to prepare the images from: that build downloads them again, and
+the provider may have changed them since, as the words under the box say. A user had moved their
 `tiles` folder to another partition with a link, for room: every image was then on both, 358 GB
 twice, and the cache filled the disk the move was to free (2026-10-23).
 

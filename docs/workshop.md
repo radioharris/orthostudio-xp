@@ -65,9 +65,9 @@ building it again is quick. If you need that room without giving up the rest of 
 *Also delete the cache's copy of the images of the tiles on another disk* in *Free space…*
 (*Disk space* shows it on the line *Copy of the images of N tile(s) on another disk*). The tiles
 keep their images and X-Plane sees no difference. Building one of them again prepares its images
-again from the downloaded images, which stay for it, without downloading anything; its tracing,
-mesh and relief come from the cache as before. If you deleted the downloaded images earlier, the
-line under the box says so: building such a tile then downloads its images again. The same holds for a tile you moved to another disk
+again from the downloaded images; its tracing, mesh and relief come from the cache as before. If
+you delete the downloaded images too, at the same time or later, that build downloads its images
+again, and the provider may have changed them. The same holds for a tile you moved to another disk
 yourself, or whose `tiles` folder is a link to another disk or partition.
 
 ## Moving a tile yourself

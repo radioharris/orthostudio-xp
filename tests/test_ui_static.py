@@ -2367,16 +2367,15 @@ def test_the_cache_of_the_tiles_filed_outside_is_its_own_choice() -> None:
 def test_the_copy_of_the_images_of_the_tiles_on_another_disk_is_its_own_choice() -> None:
     """The store's copy of the images of the tiles on another disk or partition, which hold their
     own: a line and a choice of their own, shown only while there is some, unticked as they hide.
-    With it, the downloaded image pieces of those tiles stay, and a tile filed on another disk has
-    its images counted once (its cache's line counts what is left once they went)."""
+    A tile filed on another disk has its images counted once (its cache's line counts what is left
+    once they went); the words say a build downloads the images again when those were deleted."""
     html = (UI / INDEX_FILE).read_text(encoding="utf-8")
     choice = re.search(r'<div id="disk-apart-choice" hidden>.*?</div>', html, re.S)
     assert choice is not None and 'id="disk-apart"' in choice.group(0)
     assert html.index('id="disk-apart"') < html.index('id="disk-images"')
     disk = (
         "{unused_bytes: 5, images_bytes: 7, mapcache_bytes: 1, apart_tiles: 1, apart_bytes: 3, "
-        "apart_images_bytes: 2, filed_tiles: 1, filed_bytes: 6, filed_apart_bytes: 4, "
-        "filed_images_bytes: 1}"
+        "filed_tiles: 1, filed_bytes: 6, filed_apart_bytes: 4, filed_images_bytes: 1}"
     )
     plans = _node_json(
         "app.js",
@@ -2388,7 +2387,7 @@ def test_the_copy_of_the_images_of_the_tiles_on_another_disk_is_its_own_choice()
     )
     assert plans == [
         {"unused": 5, "apart": 3, "twice": 0, "pictures": 0, "heights": 0, "filed": 0, "total": 8},
-        {"unused": 5, "apart": 3, "twice": 0, "pictures": 6, "heights": 0, "filed": 0, "total": 14},
+        {"unused": 5, "apart": 3, "twice": 0, "pictures": 8, "heights": 0, "filed": 0, "total": 16},
         {"unused": 5, "apart": 0, "twice": 0, "pictures": 8, "heights": 0, "filed": 0, "total": 13},
         {"unused": 5, "apart": 3, "twice": 0, "pictures": 0, "heights": 0, "filed": 5, "total": 13},
         {"unused": 5, "apart": 0, "twice": 0, "pictures": 0, "heights": 0, "filed": 7, "total": 12},
@@ -2407,19 +2406,11 @@ def test_the_copy_of_the_images_of_the_tiles_on_another_disk_is_its_own_choice()
     assert 'if (copies <= 0) $("disk-apart").checked = false;' in body
     i18n = (UI / "i18n.js").read_text(encoding="utf-8")
     for key in ("disk.apart", "disk.apart_help", "disk.also_apart", "disk.apart_check_help",
-                "disk.apart_check_help_none", "disk.apart_check_help_some",
-                "disk.confirm_apart_size"):  # fmt: skip
+                "disk.confirm_apart"):  # fmt: skip
         assert i18n.count(f'"{key}":') == 2, key  # French and English
-    # a build of those tiles downloads again when their pieces went: said, not a promise of none
-    helps = _node_json(
-        "app.js",
-        "[m.apartHelp({apart_tiles: 3, apart_unpieced: 0}), m.apartHelp({apart_tiles: 3,"
-        " apart_unpieced: 1}), m.apartHelp({apart_tiles: 3, apart_unpieced: 3})]",
-    )
-    assert "without downloading anything" in helps[0]
-    assert "1 of them were deleted already" in helps[1]
-    assert "downloads all its images again" in helps[2]
-    assert 'setText($("disk-apart-help"), apartHelp(d));' in body
+    # nothing promised: a build downloads the images again when those were deleted, now or later
+    assert "if you delete those too, now or later, they are downloaded again" in i18n
+    assert "without downloading anything" not in i18n.split('"disk.also_apart"')[1][:2000]
     assert '"disk.held' not in i18n and "held_bytes" not in app
     script = """
     const before = (await call("GET", "/api/disk")).ok;

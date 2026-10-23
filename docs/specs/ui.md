@@ -924,13 +924,10 @@ so filing one tile no longer reads "Cache of 5 tile(s)"; its box is unticked as 
 only when there is some: the cache's copy of the images of the tiles on another disk or partition,
 which hold their own; its own box, *Also delete the cache's copy of the images of the tiles on
 another disk* (`disk-apart`, in `disk-apart-choice`, hidden and unticked with the line), whose help
-(`disk-apart-help`, `apartHelp`) says the tiles keep their images and a build of one prepares them
-again from the downloaded images, which stay, without downloading anything, or, when some or all of
-those tiles have no piece left (`apart_unpieced`, the images choice ticked before), that a build of
-those downloads their images again, which the provider may have changed (`disk.apart_check_help_some`,
-`_none`); the dialog's line `disk.confirm_apart_size` and the same words; with it,
-the downloaded images' figure leaves out their pieces (`apart_images_bytes`), which stay, and the
-filed tiles' line counts what is left of theirs (`filed_apart_bytes`); not counted with the data
+(`disk.apart_check_help`) says the tiles keep their images, that a build of one prepares them again
+from the downloaded images, and that deleting those too, then or later, makes that build download
+them again, which the provider may have changed; the dialog's line `disk.confirm_apart` says the
+same; with it, the filed tiles' line counts what is left of theirs (`filed_apart_bytes`); not counted with the data
 used by the tiles; a user's tiles moved to another partition left 358 GB of images twice,
 2026-10-23; a first form deleted it without a box and took the images back from the tile, a review
 found it open to losses), the **relief and mesh kept twice**

@@ -38,7 +38,6 @@ from orthostudio.cli import app as cli_app
 from orthostudio.errors import OsxpError
 from orthostudio.graph import ResolvedInput, Store
 from orthostudio.imagery.grid import texture_at
-from orthostudio.install import Library
 from orthostudio.pipeline.pack import assemble_pack, read_manifest
 from test_api_fakes import FakeBuild, FakeIndex, client_for
 from test_clean_filed import A, F, S, World
@@ -157,37 +156,6 @@ def test_a_tile_whose_folder_cannot_be_read_is_none_of_them(
     assert w.keys[F] <= w.stored()
 
 
-def test_the_images_choice_keeps_the_pieces_of_those_tiles(
-    world: World, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """A tile of the workshop whose tiles folder is a link to another partition (a user's, as
-    found on 2026-10-23): its images go with the choice, and the downloaded image pieces of its
-    square stay, the levels above too, so that a build of it prepares its images again without
-    downloading anything. Before, they count with the images; after, nowhere."""
-    w = world
-    _apart(monkeypatch, w.packs[A])
-    pieces = filed._pieces(w)
-    t = texture_at(46.5, 6.5, 14, "BI")
-    parent = w.chunks / "BI" / "_parents" / "14" / f"{t.til_y}_{t.til_x}.chunks"
-    parent.parent.mkdir(parents=True)
-    parent.write_bytes(b"p" * 500)
-    a_piece = w.piece(46.5, 6.5, 700)  # only A's square
-    seen = w.run(dry_run=True)
-    assert seen.apart_tiles == 1
-    assert seen.apart_images_bytes == 700 + 500 + 2000  # its own, the level above, astride A and F
-    told = w.run(dry_run=True, apart=True)
-    assert told.images_bytes == seen.images_bytes - seen.apart_images_bytes
-    done = w.run(apart=True, images=True)
-    assert done.apart_removed and done.images_removed
-    assert a_piece.is_file() and parent.is_file() and pieces["AF"].is_file()
-    assert pieces["F"].is_file() and pieces["S"].is_file()  # the filed tiles' choice's
-    assert not pieces["none"].exists()
-    again = w.run(dry_run=True, images=True)
-    assert again.apart_images_bytes == 0  # its images gone before: its pieces count nowhere
-    w.run(images=True)
-    assert a_piece.is_file() and parent.is_file()
-
-
 def _refs(w: World, tile: object) -> dict[str, ResolvedInput]:
     """What a build found in the store for the tile's pack step: its inputs' folders."""
     manifest = read_manifest(w.packs[tile])  # type: ignore[index]
@@ -301,7 +269,6 @@ async def test_the_page_offers_the_choice_and_free_space_frees_it_only_when_aske
     async with client_for(app) as c:
         disk = (await c.get("/api/disk")).json()
         assert disk["apart_tiles"] == 1 and disk["apart_bytes"] > 0
-        assert disk["apart_unpieced"] == 1  # the world downloaded no piece for F
         plain = (await c.post("/api/clean", json={})).json()
         assert plain["apart_freed_bytes"] == 0 and images <= w.stored()
         done = (await c.post("/api/clean", json={"apart": True})).json()
@@ -338,81 +305,11 @@ def _pieces_of_a(w: World) -> list[Path]:
     return [w.piece(46.5, 6.5, 700), parent, w.piece(46.5, 6.99999, 2000)]
 
 
-def test_the_pieces_stay_while_the_tile_s_disk_is_unplugged(
-    world: World, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """The store keeps the list of the tiles whose images the choice deleted: their pieces stay
-    when their disk is unplugged, or another disk took its letter, at the next Free space with the
-    images choice. They were deleted, the tile being no longer seen on another disk (a review)."""
-    w = world
-    _apart(monkeypatch, w.packs[A])
-    pieces = _pieces_of_a(w)
-    w.run(apart=True)
-    with Store(w.store, fsync=False) as s:
-        assert s.pieces_kept() == {A.name}
-    pack = w.packs[A]
-    shutil.move(pack, pack.with_name("unplugged"))
-    w.run(images=True)
-    assert all(p.is_file() for p in pieces)
-    with Store(w.store, fsync=False) as s:
-        assert s.pieces_kept() == {A.name}  # its library row still names it
-
-
-def test_a_free_space_cut_after_the_images_went_keeps_their_pieces(
-    world: World, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """The list is on the disk before any image goes: Free space cut in the middle (a crash, a
-    power cut) leaves the pieces protected all the same."""
-    w = world
-    _apart(monkeypatch, w.packs[A])
-    pieces = _pieces_of_a(w)
-    real = Store.delete
-    calls = [0]
-
-    def cut(self: Store, key: str, **kw: Any) -> bool:
-        calls[0] += 1
-        if calls[0] > 1:
-            raise SystemExit("cut")
-        return real(self, key, **kw)
-
-    with monkeypatch.context() as m:
-        m.setattr(Store, "delete", cut)
-        with pytest.raises(SystemExit):
-            w.run(apart=True)
-    w.run(images=True)
-    assert all(p.is_file() for p in pieces)
-
-
-def test_the_pieces_are_as_any_once_the_tile_is_built_again_or_deleted(
-    world: World, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Built again, the tile's images are in the store again: its pieces are as any, and the
-    images choice deletes them. Deleted, the same."""
-    w = world
-    _apart(monkeypatch, w.packs[A], w.packs[F])
-    a_pieces = _pieces_of_a(w)
-    w.run(apart=True)
-    w.pack(A, w.build(A, 9), w.tiles)  # A built again: its new textures folder in the store
-    w.run()
-    with Store(w.store, fsync=False) as s:
-        assert s.pieces_kept() == {F.name}
-    w.run(images=True)
-    assert not a_pieces[0].exists() and not a_pieces[1].exists()
-    pack = w.packs[F]
-    shutil.rmtree(pack)
-    with Library(w.library) as lib:
-        lib.forget(F, kind="ortho", path=pack)
-    w.run()
-    with Store(w.store, fsync=False) as s:
-        assert s.pieces_kept() == set()
-
-
 def test_the_images_choice_frees_what_it_did_when_the_choice_was_never_used(
     world: World, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """F filed on another disk, its cache freed with the filed tiles' choice, the new choice never
-    used: the images choice frees the pieces astride F's border as 1.1.0 did. A tile whose images
-    the store lacks for another reason is not one whose pieces stay (a review)."""
+    used: the images choice frees the pieces astride F's border as 1.1.0 did."""
     w = world
     _apart(monkeypatch, w.packs[F])
     pieces = filed._pieces(w)
@@ -423,15 +320,20 @@ def test_the_images_choice_frees_what_it_did_when_the_choice_was_never_used(
     assert not pieces["AF"].exists() and not pieces["none"].exists()
 
 
-def test_tiles_whose_pieces_went_are_said(world: World, monkeypatch: pytest.MonkeyPatch) -> None:
-    """The images choice ticked before the new one: the tile's pieces are gone while the store
-    still copies its images. The figures say how many such tiles, for the page to say that a build
-    of them downloads their images again."""
+def test_the_images_choice_frees_the_pieces_as_in_1_1_0_and_the_words_say_what_follows(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The choice keeps nothing of the tiles' downloaded pieces: the images choice frees them as
+    1.1.0 did, ticked with the choice or later, and a build of such a tile downloads its images
+    again. Read from the tiles and the disks at each run, keeping them was the source of nearly
+    every finding of two reviews (2026-10-23); the words under the choice say it instead."""
     w = world
     _apart(monkeypatch, w.packs[A])
     pieces = _pieces_of_a(w)
-    assert w.run(dry_run=True).apart_unpieced == 0
-    w.run(images=True)  # the choice not ticked: A's images in the store, its pieces go
+    seen = w.run(dry_run=True, images=True)
+    done = w.run(apart=True, images=True)
+    assert done.apart_removed and done.images_removed
+    assert done.images_bytes == seen.images_bytes  # what was counted is what went
     assert not any(p.exists() for p in pieces)
-    seen = w.run(dry_run=True)
-    assert seen.apart_tiles == 1 and seen.apart_unpieced == 1
+    i18n = (Path(clean_module.__file__).parent / "ui" / "i18n.js").read_text(encoding="utf-8")
+    assert "if you delete those too, now or later, they are downloaded again" in i18n
