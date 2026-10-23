@@ -109,6 +109,42 @@ def test_the_store_remembers_the_folder_that_listed_them(world: World) -> None:
         assert row is not None and row.path == Path(os.path.realpath(w.packs[F]))
 
 
+def test_a_store_opened_by_the_first_form_of_the_list_opens(tmp_path: Path) -> None:
+    """The first form of the list of images held by tiles had no version, recipe or folder: a
+    user's store opened by it was refused by the next, "no such column: listed_in" (2026-10-23).
+    It opens, gains the columns, and its rows keep what they said."""
+    import sqlite3
+
+    root = tmp_path / "store"
+    Store(root, fsync=False).close()
+    db = sqlite3.connect(root / "index.sqlite")
+    db.executescript(
+        """
+        DROP INDEX away_listed_in;
+        DROP TABLE away;
+        CREATE TABLE away (
+            key    TEXT PRIMARY KEY,
+            rule   TEXT NOT NULL,
+            digest TEXT NOT NULL,
+            size   INTEGER NOT NULL,
+            path   TEXT NOT NULL,
+            since  REAL NOT NULL
+        );
+        """
+    )
+    db.execute(
+        "INSERT INTO away VALUES (?, 'texture.dds', ?, 5, '/t/a.dds', 1.0)", ("a" * 64, "b" * 64)
+    )
+    db.commit()
+    db.close()
+    with Store(root, fsync=False) as s:
+        row = s.away("a" * 64)
+        assert row is not None and row.path == Path("/t/a.dds") and row.listed_in is None
+        assert s.away_listed("c" * 64) == [] and s.last_away("texture.dds", {}, 1) is None
+    with Store(root, fsync=False) as s:  # opened again: the columns are there already
+        assert s.away("a" * 64) is not None
+
+
 def test_an_image_changed_in_its_tile_is_not_taken_back(world: World) -> None:
     """Retouched in the tile since, the image is no longer the one the store let go of: nothing
     is taken back, and the build prepares it as any other."""

@@ -141,8 +141,17 @@ CREATE TABLE IF NOT EXISTS away (
     listed_in TEXT,
     since     REAL NOT NULL
 );
-CREATE INDEX IF NOT EXISTS away_listed_in ON away (listed_in);
 """
+
+_AWAY_ADDED = (
+    ("version", "INTEGER NOT NULL DEFAULT 0"),
+    ("recipe", "TEXT NOT NULL DEFAULT ''"),
+    ("listed_in", "TEXT"),
+)
+"""The columns the ``away`` table gained after its first form, added at the opening of an index
+that has that form: the first form opened a user's store, then the next one refused to open it,
+"no such column: listed_in" (2026-10-23). Their defaults are what a row of an artefact the store no
+longer had says."""
 
 _DISK_BYTES_TRIGGERS = (
     """CREATE TRIGGER IF NOT EXISTS artifacts_disk_bytes_added AFTER INSERT ON artifacts
@@ -437,6 +446,11 @@ class Store:
             for statement in _SCHEMA.split(";"):
                 if statement.strip():
                     db.execute(statement)
+            have = {str(r["name"]) for r in db.execute("PRAGMA table_info(away)")}
+            for name, declared in _AWAY_ADDED:
+                if name not in have:
+                    db.execute(f"ALTER TABLE away ADD COLUMN {name} {declared}")
+            db.execute("CREATE INDEX IF NOT EXISTS away_listed_in ON away (listed_in)")
             row = db.execute("SELECT v FROM meta WHERE k = 'schema_version'").fetchone()
             if row is None:
                 db.execute(

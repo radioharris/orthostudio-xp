@@ -229,7 +229,7 @@ CREATE TABLE away (                  -- an artefact let go of, its bytes held ou
     listed_in TEXT,                  -- the folder artefact that listed it (a tile's images)
     since     REAL NOT NULL
 );
-CREATE INDEX away_listed_in ON away (listed_in);
+CREATE INDEX away_listed_in ON away (listed_in);   -- made after the columns are there
 ```
 
 `away` (2026-10-23, created at the opening of an older index, which an older version opens and
@@ -241,7 +241,10 @@ recipe and inputs the caller gives (a build of that key); a folder's row is neve
 says what the folder was. `Store.away_listed(key)` gives the rows a folder listed (a tile's images)
 and `Store.last_away` is `last_made` among the rows: what the Plan reads to count the images a
 build takes back (`pipeline-build.md` 5). `osxp clean` keeps the rows true (section 9.1): a row
-whose artefact is back in the store goes there.
+whose artefact is back in the store goes there. The table's first form had no `version`, `recipe`
+or `listed_in`: the opening adds them to an index that has it (`_AWAY_ADDED`, their defaults
+those of an artefact the store no longer had), then the index on `listed_in`. A user's store
+opened by the first form was refused by the next, "no such column: listed_in" (2026-10-23).
 
 `meta.disk_bytes` is the store's size on the disk that `Store.disk_bytes` answers (the status
 bar's, `api.md` 2.1): every artefact's size but those of `tile.textures`, whose folders hard-link
