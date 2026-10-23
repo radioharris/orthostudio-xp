@@ -9,7 +9,9 @@ provider and ZL it holds, who built it (``osxp`` with the store keys of its arte
 ``import_ortho4xp`` scans an Ortho4XP folder the way its GUI does (``O4_File_Names.py:20-22,
 62-68``: ``Tiles/``, the custom build dir, ``yOrtho4XP_Overlays/``) and reads the tile cfg with
 ``orthostudio.tilefiles``. It is the one place OrthoStudio XP reads an Ortho4XP folder
-(decision 0010), and it only registers what it finds.
+(decision 0010), and it only registers what it finds. ``own_pack_dirs`` names the tiles
+OrthoStudio XP built that a folder holds, which ``pipeline.pack.find_tiles_receipt`` takes back
+(section 4.8).
 """
 
 from __future__ import annotations
@@ -29,11 +31,13 @@ from typing import Any, Literal
 
 from orthostudio.errors import OsxpError
 from orthostudio.install._model import TileRef
+from orthostudio.install.packs import is_link
 from orthostudio.install.scenery_packs import (
     IMPORTED_OVERLAY_PACK,
     IMPORTED_PACK_PREFIX,
     ORTHO_PREFIXES,
 )
+from orthostudio.model import PACK_PREFIX
 from orthostudio.pipeline.home import osxp_home
 from orthostudio.tilefiles import list_textures, tile_config
 
@@ -45,6 +49,8 @@ __all__ = [
     "LibraryEntry",
     "PackKind",
     "default_library_path",
+    "own_pack_dirs",
+    "own_searched",
     "pack_tile",
     "real_pack_path",
     "tile_from_name",
@@ -515,6 +521,51 @@ def looks_like_an_ortho_pack(folder: Path) -> bool:
 def holds_ortho4xp_tiles(folder: Path) -> bool:
     """Whether an import of ``folder`` finds at least one pack of photo tiles in it."""
     return next(_ortho4xp_pack_dirs(Path(folder)), None) is not None
+
+
+OWN_TILES_DIR = "tiles"
+"""Where a data folder keeps its tiles (``home.default_tiles_root``)."""
+
+
+def own_searched(folder: Path) -> list[Path]:
+    """Where :func:`own_pack_dirs` looks: the folder, and its ``tiles`` folder, a data folder's."""
+    return [Path(folder), Path(folder) / OWN_TILES_DIR]
+
+
+def own_pack_dirs(folder: Path) -> Iterator[Path]:
+    """The folders of tiles OrthoStudio XP built in ``folder``: itself when it is one, else those
+    it holds and those of its ``tiles`` folder, deduplicated. One is known by its name,
+    ``zOrthoStudio_<tile>``, which X-Plane's link and the Library go by, and its
+    ``orthostudio.toml``. A link is not one: Custom Scenery holds X-Plane's links to them.
+
+    A user moved his tiles by hand, the Library lost them, and nothing looked for them where they
+    were, his workshop's own tiles folder included: the map stayed empty (2026-10-22)."""
+    folder = Path(folder)
+    if _own_pack(folder):
+        yield folder
+        return
+    seen: set[Path] = set()
+    for root in own_searched(folder):
+        try:
+            children = sorted(root.iterdir()) if root.is_dir() else []
+            real_root = root.resolve()
+        except OSError:  # as the import: a folder we may not read is skipped
+            continue
+        for child in children:
+            # its folder followed once, not each tile's: a link is not one of them
+            real = real_root / child.name
+            if real not in seen and _own_pack(child):
+                seen.add(real)
+                yield child
+
+
+def _own_pack(folder: Path) -> bool:
+    return (
+        folder.name.startswith(PACK_PREFIX)
+        and tile_from_name(folder.name[len(PACK_PREFIX) :]) is not None
+        and not is_link(folder)
+        and (folder / OSXP_PACK_FILE).is_file()
+    )
 
 
 def _ortho4xp_roots(folder: Path) -> tuple[list[Path], list[Path]]:

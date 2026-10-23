@@ -66,6 +66,11 @@ You can also move a tile's folder yourself, in the Finder or the File Explorer. 
 shows the tile as *Not found*, with a *Find again…* button. Point it to the folder you put the tile
 in, and the Library and X-Plane follow. Nothing is copied. X-Plane must be closed.
 
+Moved many tiles? *Find tiles in a folder…* at the top of the Library finds them all in the folder
+you show, and puts back in the list those it no longer knows. Tiles in the workshop's own tiles
+folder come back by themselves each time the Library opens: a data folder you moved to another
+disk and chose again in Settings, for instance. A tile X-Plane does not show is added with *Add*.
+
 Do not put a tile inside X-Plane's own `Custom Scenery` folder: X-Plane reaches your tiles through
 links placed there, and OrthoStudio XP refuses that folder.
 

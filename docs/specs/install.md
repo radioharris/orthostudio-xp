@@ -15,7 +15,7 @@ One package, four responsibilities, all stdlib:
 | `xplane.py` | find the X-Plane 12 folder on the three OSes; tell whether X-Plane is running |
 | `scenery_packs.py` | read, reorder and rewrite `Custom Scenery/scenery_packs.ini` |
 | `packs.py` | link (or copy) a built pack into `Custom Scenery`, and undo it |
-| `library.py` | the sqlite library of built tiles (`~/.orthostudio/library.sqlite`) and `import-ortho4xp` |
+| `library.py` | the sqlite library of built tiles (`~/.orthostudio/library.sqlite`), `import-ortho4xp`, and the tiles OrthoStudio XP built that a folder holds (`own_pack_dirs`, 4.8) |
 
 Nothing here ever writes into an X-Plane installation other than through `SceneryPacks.save` and
 `install_pack`/`uninstall_pack`, which the caller points at an explicit `Custom Scenery` directory
@@ -644,6 +644,60 @@ tile after it settled and the stopped one not done; a tile on a disk away is not
 nothing of it done; a tile filed elsewhere has no install node; the put back weighs its copy; the
 rows of its folders gone follow it to the workshop.
 
+### 4.8 Tiles taken back from a folder (`pipeline/pack.py`, `library.own_pack_dirs`)
+
+A user moved his tiles by hand: the Library listed 1,300 of them as not found, he found 200 again
+one by one with *Find again…*, deleted the rest from the list, and his map stayed empty, while they
+sat in his workshop's own tiles folder, where nothing looked for them (2026-10-22). Nothing scanned
+a disk: only a build, an install, an import or *Find again…* wrote a row, and the import refused
+a folder holding OrthoStudio XP's tiles alone, saying they were in the Library already.
+`find_tiles_receipt(folder, custom_sceneries, library_path, leave)` takes them back:
+
+* The tiles of `folder` are `library.own_pack_dirs`: the folder itself when it is one, else those
+  it holds and those of its `tiles` folder (a data folder shown), each once. One is known by its
+  name, `zOrthoStudio_<tile>`, which X-Plane's link and the Library go by, and its
+  `orthostudio.toml`; a link is not one, Custom Scenery holding X-Plane's links to them, and a
+  folder renamed by hand, whose manifest names another tile, is not either.
+* A tile the Library lists in that very folder is `listed`, and a tile a build works on (`leave`)
+  is left to it. A folder that is not the whole tile its manifest lists (`pack_is_intact`, its
+  roads aside), or whose manifest cannot be read, is left (`incomplete`), and so is one inside an
+  X-Plane's Custom Scenery (`in_xplane`): *Find again…* refuses both (4.5).
+* A tile the Library lists, built by OrthoStudio XP, in a folder that is gone, the same build (the
+  row's keys, when it has any): found again there by `find_again_receipt`, every X-Plane that
+  showed it and its roads following as 4.5 says (`found`). The processes are listed once for all
+  of them (`xplane_checked`), where listing them for each tile took longer than the rest on
+  Windows; X-Plane running, those tiles change nothing (`waiting`). A failure of one tile
+  (`failed`, its tile and the error's words) does not stop the others.
+* Else a tile the Library lists in another folder that is there, or on a disk not connected: left
+  (`duplicates`, with the folder listed), the one listed staying, since X-Plane shows one folder of
+  that name; a tile built again while X-Plane ran waits so in the workshop, listed in its own
+  folder (4.7).
+* Else it is listed where it is, as the build that made it listed it: `built_by="osxp"`, its
+  manifest's source, level and keys, and the row of the overlays pack beside it when that holds
+  its roads (`added`), under the lock of every install, its manifest read again: a Delete takes
+  the folder, then the row, under the same lock. Its link in X-Plane, when it has one, is the
+  Library's `installed`; without one, *Add* puts it in X-Plane. A row of the tile in a folder gone
+  that is another build stays beside it, for *Delete…* or *Find again…*.
+* `no_roads` names the tiles taken back whose roads and forests are nowhere, in the pack, beside it
+  or left to another pack (deleted with the tile's old row): built again, they have them back.
+
+The receipt is `{format: "osxp-find-tiles-1", folder, added, found, listed, duplicates, in_xplane,
+incomplete, waiting, no_roads, failed}`. The page runs it on the workshop's tiles folder at its
+start and whenever the Library is opened (`POST /api/library/find-in-workshop`), and on the folder
+the user shows with *Find tiles in a folder…* (`POST /api/library/import-ortho4xp`, after the
+import of section 5); neither while a tile is filed elsewhere.
+
+Acceptance (`tests/test_library_find_tiles.py`, fake X-Planes): tiles of the workshop the list lost
+are put back, source, level, keys and roads, out of X-Plane, and *Add* puts them in it; looked for
+again, they are listed; every row leading to a data folder moved by hand is found again in the
+workshop, X-Plane's link and the overlays pack's following; X-Plane running, a tile to find again
+waits and one to put back does not, then it is found once X-Plane is closed; a tile listed in
+another folder keeps its row, and a copy of another build is listed beside a row whose folder is
+gone; a copy cut short, a folder renamed, a link, a tile in a build and a folder in Custom Scenery
+are left; a tile whose roads are nowhere comes back and says so; a folder shown finds its
+OrthoStudio XP tiles, those of a data folder's `tiles` and its Ortho4XP tiles, saying the data
+folder's `tiles` once.
+
 ## 5. Library (`library.py`)
 
 Rule (new). `~/.orthostudio/library.sqlite` (root from `orthostudio.pipeline.home.osxp_home`) with
@@ -708,7 +762,8 @@ meta(k TEXT PRIMARY KEY, v TEXT)
    `kind="overlay"` entry per tile, `provider=""`, `zl=0`.
 4. Returns the entries imported, in scan order; re-running is idempotent (upsert).
    `SYS_WORKING_DIR_INVALID` when `folder` is not a directory; the API refuses before, with the same
-   code, a folder that holds neither `Ortho4XP.py` nor any pack of photo tiles (`api.md` 2.2).
+   code, a folder that holds neither `Ortho4XP.py`, nor any pack of photo tiles, nor any tile
+   OrthoStudio XP built (`api.md` 2.2), whose tiles it then takes back (4.8).
 
 Acceptance: register/list/forget round-trip including `keys`; a synthetic Ortho4XP tree
 (`Tiles/zOrtho4XP_+43+005` with a tile cfg, a grouped `Tiles/zOrtho4XP_Group` with two DSFs and

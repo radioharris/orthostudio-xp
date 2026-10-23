@@ -31,8 +31,8 @@ experimental.
   delete it, file it on any disk ([docs/workshop.md](docs/workshop.md)), build the tiles you tick
   again after an update, and free the space the cache takes. Every action works on all the tiles
   you tick at once, and *Show* keeps to the tiles whose files are missing or the squares listed
-  twice. Tiles built with Ortho4XP are listed
-  too, and never deleted.
+  twice. Tiles moved by hand are found again, one or a whole folder at once. Tiles built with
+  Ortho4XP are listed too, and never deleted.
 - **Installation handled.** Each tile goes into Custom Scenery in the order X-Plane needs, with its
   roads, forests and buildings (left out when simHeaven X-World brings its own, or X-Plane's roads
   alone) and a backup of `scenery_packs.ini`.

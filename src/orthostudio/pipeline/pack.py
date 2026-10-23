@@ -24,7 +24,7 @@ import re
 import shutil
 import threading
 import tomllib
-from collections.abc import Callable, Iterable, Iterator, Mapping
+from collections.abc import Callable, Collection, Iterable, Iterator, Mapping
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -34,7 +34,7 @@ from orthostudio.dem.rule import DEM_RULE
 from orthostudio.errors import OsxpError
 from orthostudio.fsutil import atomic_link_or_copy, atomic_write_bytes, atomic_write_text
 from orthostudio.graph import ResolvedInput, Rule, RuleParams, RunContext, Store, rule
-from orthostudio.home import default_store_root, default_tiles_root
+from orthostudio.home import default_store_root, default_tiles_root, disk_absent
 from orthostudio.install import (
     Library,
     LibraryEntry,
@@ -45,7 +45,7 @@ from orthostudio.install import (
     uninstall_pack,
 )
 from orthostudio.install import packs as install_packs
-from orthostudio.install.library import pack_tile
+from orthostudio.install.library import own_pack_dirs, pack_tile, real_pack_path
 from orthostudio.install.packs import SCENERY_PACKS_INI
 from orthostudio.install.scenery_packs import (
     IMPORTED_PACK_PREFIX,
@@ -74,6 +74,7 @@ __all__ = [
     "assemble_pack",
     "delete_receipt",
     "find_again_receipt",
+    "find_tiles_receipt",
     "install_is_intact",
     "install_receipt",
     "is_installed",
@@ -110,6 +111,7 @@ RECEIPT_FORMAT = "osxp-install-1"
 UNINSTALL_FORMAT = "osxp-uninstall-1"
 DELETE_FORMAT = "osxp-delete-1"
 FIND_FORMAT = "osxp-find-1"
+FIND_TILES_FORMAT = "osxp-find-tiles-1"
 PARKED_OVERLAY = "osxp-overlay.dsf.uninstalled"
 """Where :func:`uninstall_receipt` parks the tile's DSF of the shared overlay pack: inside the
 tile pack, which X-Plane no longer reads, and where :func:`install_receipt` finds it again."""
@@ -1568,10 +1570,13 @@ def find_again_receipt(
     *,
     custom_sceneries: Iterable[Path],
     library_path: Path | None = None,
+    xplane_checked: bool = False,
 ) -> dict[str, Any]:
     """Find again a tile OrthoStudio XP built whose folder was moved by hand: ``entry`` is its
     Library row, whose folder is gone, and ``chosen`` the folder the user shows, the tile's own or
-    the one holding it (the atelier, step 2, 2026-10-05).
+    the one holding it (the atelier, step 2, 2026-10-05). ``xplane_checked``: the caller has just
+    seen X-Plane closed, for many tiles at once (:func:`find_tiles_receipt`), where listing the
+    processes for each took longer than the rest.
 
     Nothing of the tile moves. Its folder must keep its name and hold that very build, the
     manifest's tile and keys being the row's, with every file the manifest lists: else
@@ -1596,7 +1601,7 @@ def find_again_receipt(
         raise OsxpError("SYS_TILE_OTHER_BUILD", context=context)
     if not pack_is_intact(pack, manifest, with_overlay=False):
         raise OsxpError("SYS_TILE_INCOMPLETE", context=context)
-    if install_packs.xplane_running():
+    if not xplane_checked and install_packs.xplane_running():
         raise OsxpError(
             "XP_RUNNING",
             message="X-Plane is running, and its links never change while it runs: nothing was "
@@ -1639,6 +1644,127 @@ def find_again_receipt(
         # a tile whose roads, forests and buildings are nowhere: built again, it has them back
         "overlay_lost": bool(manifest.files.get("overlay")) and _own_overlay(pack, tile) is None,
     }
+
+
+def find_tiles_receipt(
+    folder: Path,
+    *,
+    custom_sceneries: Iterable[Path],
+    library_path: Path | None = None,
+    leave: Collection[str] = (),
+) -> dict[str, Any]:
+    """The tiles OrthoStudio XP built in ``folder`` (``library.own_pack_dirs``) that the Library
+    does not list there, each taken back (``install.md`` 4.8). A user moved his tiles by hand,
+    found 200 of 1,300 again one by one, deleted the rest from the list, and his map stayed
+    empty: nothing looked for them in his workshop's own tiles folder, where they were
+    (2026-10-22). The page runs it on the workshop's tiles folder whenever the Library is read
+    afresh, and on the folder the user shows.
+
+    A folder that is not the whole tile its manifest lists (``pack_is_intact``, its roads aside)
+    is left (``incomplete``), and so is one inside an X-Plane's Custom Scenery (``in_xplane``), as
+    *Find again…* refuses both. Then, for each tile:
+
+    * a tile listed in a folder that is gone, the same build: found again there,
+      :func:`find_again_receipt` for each, X-Plane and its roads following (``found``); with
+      X-Plane running, nothing changes (``waiting``);
+    * a tile listed in another folder that is there, or on a disk not connected: left, the one
+      listed stays (``duplicates``), as X-Plane shows one folder of that name;
+    * else listed where it is, as the build that made it listed it, with its roads when they are
+      beside it (``added``). Its link in X-Plane, if it has one, is the Library's ``installed``;
+      without one, *Add* puts it in X-Plane.
+
+    ``no_roads`` names the tiles taken back whose roads and forests are nowhere (deleted with
+    the tile's old row): built again, they have them back. ``leave`` names tiles a build is
+    working on, left to it. A failure of one tile (``failed``) does not stop the others.
+    """
+    folder = Path(folder)
+    sceneries = [Path(cs) for cs in custom_sceneries]
+    out: dict[str, Any] = {
+        "format": FIND_TILES_FORMAT,
+        "folder": str(folder),
+        "added": [],
+        "found": [],
+        "listed": 0,
+        "duplicates": [],
+        "in_xplane": [],
+        "incomplete": [],
+        "waiting": [],
+        "no_roads": [],
+        "failed": [],
+    }
+    running: bool | None = None
+    folders: dict[Path, Path] = {}
+    with Library(library_path) as lib:
+        # the list read once: the workshop's look runs at each opening of the Library, over every
+        # tile of the workshop, nearly all of them listed
+        listed = {r.path for r in lib.list(kind="ortho")}
+        for pack in own_pack_dirs(folder):
+            tile = pack_tile(pack.name)
+            if tile is None or tile.name in leave:
+                continue
+            if real_pack_path(pack, folders=folders) in listed:
+                out["listed"] += 1
+                continue
+            rows = [r for r in lib.list(tile=tile, kind="ortho") if r.path.name == pack.name]
+            try:
+                manifest = read_manifest(pack)
+            except (OSError, ValueError, KeyError, TypeError, tomllib.TOMLDecodeError):
+                out["incomplete"].append(tile.name)
+                continue
+            if manifest.tile != tile.name:  # renamed by hand: not the tile its name says
+                continue
+            if pack.parent.name == "Custom Scenery" and is_xplane_dir(pack.parent.parent):
+                out["in_xplane"].append(tile.name)
+                continue
+            if not pack_is_intact(pack, manifest, with_overlay=False):
+                out["incomplete"].append(tile.name)
+                continue
+            moved = next(
+                (
+                    r
+                    for r in rows
+                    if r.built_by == "osxp"
+                    and not r.path.is_dir()
+                    and (r.keys is None or r.keys == manifest.keys)
+                ),
+                None,
+            )
+            if moved is not None:
+                if running is None:
+                    running = install_packs.xplane_running()
+                if running:
+                    out["waiting"].append(tile.name)
+                    continue
+                try:
+                    receipt = find_again_receipt(
+                        moved,
+                        pack,
+                        custom_sceneries=sceneries,
+                        library_path=library_path,
+                        xplane_checked=True,
+                    )
+                except (OsxpError, OSError) as exc:
+                    out["failed"].append({"tile": tile.name, "error": str(exc)})
+                    continue
+                out["found"].append(tile.name)
+                if receipt["overlay_lost"]:
+                    out["no_roads"].append(tile.name)
+                continue
+            elsewhere = next((r for r in rows if r.path.is_dir() or disk_absent(r.path)), None)
+            if elsewhere is not None:
+                out["duplicates"].append({"tile": tile.name, "listed": str(elsewhere.path)})
+                continue
+            overlays = pack.parent / OVERLAY_PACK
+            with _INSTALL_LOCK:  # a Delete takes the folder, then the row, under the same lock
+                if not (pack / MANIFEST_NAME).is_file():
+                    continue
+                lib.register(tile, manifest.provider, manifest.zl, pack, "osxp", manifest.keys)
+                if (overlays / tile.dsf_relpath).is_file():
+                    lib.register(tile, "", 0, overlays, "osxp", None, kind="overlay")
+            out["added"].append(tile.name)
+            if manifest.files.get("overlay") and _own_overlay(pack, tile) is None:
+                out["no_roads"].append(tile.name)
+    return out
 
 
 def _let_go_of_overlays_out_of_reach(custom_scenery: Path, overlay_pack: Path) -> None:
