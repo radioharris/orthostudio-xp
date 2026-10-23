@@ -34,6 +34,19 @@ and every `DEMD` data atom being large. The order of the rasters is the Global S
 the bathymetry; OrthoStudio XP checks that the `DEMN` names start with `elevation`, `sea_level` and
 raises `DSF_SOURCE_CORRUPTED` otherwise rather than clamping the wrong raster.
 
+**Rasters of two sizes** (issue 17, 2026-10-23). Every Global Scenery DSF of X-Plane 12.4.4 holds
+both at 1201 x 1201, posts on the tile's edges (the 18,197 of the owner's). A user's `+32+012`,
+an older Global Scenery file by its content (no soundscape or season rasters, beaches from
+`lib/g8`, a `DEMN` naming a third raster, `bathymetry`, it does not hold), had its `sea_level`
+at 256 x 256 by cell (area-centric, flags `0x1`): the minimum post by post stopped there, as
+Ortho4XP's would, and so did every square of his. Each bathymetry value is then clamped by the
+ground at its own place (`_clamped`): the elevation read between its four nearest posts, each
+raster placed by its own centring (`_place`), and `floor` of it minus 2 m; the raster keeps its
+size, and every other byte stays. Rasters of one size give Ortho4XP's bytes, as before. A raster
+that cannot be placed (no `DEMI` before it, not 16-bit integers, a size its data does not have)
+is left as X-Plane wrote it, which X-Plane draws on its own scenery. That `+32+012` builds whole
+with it, its relief from -6 to 876 m, its `DEMN` and both rasters copied as they are.
+
 The result is used as is by `build_dsf` (`dsf-encoding.md` 3.6): `DEMN` becomes the payload of
 `DEFN/DEMN`, `DEMS` the payload of the trailing `DEMS` atom. A build without rasters
 (`rasters=None`) writes an empty `DEMN` and no `DEMS` atom, as Ortho4XP does when the extraction
@@ -55,6 +68,10 @@ in memory; typed errors instead of messages and empty bytes.
   `DEMD` of 200 int16 each: the bathymetry is clamped where it exceeds `elev - 2`, the other
   bytes are untouched; the same DSF inside a 7z archive gives the same result; a missing
   file, a non-DSF file and a DSF without `DEMS` raise the three coded errors.
+- Two sizes: a 17 x 17 elevation by post and an 8 x 8 bathymetry by cell: each value is the
+  minimum of its own and the ground between its four nearest posts minus 2 m, computed apart;
+  the raster keeps its size and every other byte; rasters of one size stay post by post; a
+  raster of floats is left as it is; the code before stopped on it as on the user's file.
 
 ## 5. Wanted differences from Ortho4XP
 

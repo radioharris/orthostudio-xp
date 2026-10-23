@@ -129,6 +129,13 @@ does not have, a point a few centimetres off a straight shore took the full seab
 on Groom Lake (Homey Airport, KXTA), where X-Plane has no lake and its seabed lies 200 m down, that
 drew blue triangles and needles along the shore. The open water keeps its depth.
 
+**Older X-Plane scenery files.** The seabed map and X-Plane's relief come from X-Plane's own
+scenery file of each square. A file of an older X-Plane scenery, kept or copied from another
+installation, may hold its seabed map at another size than its relief, or name a map it does not
+hold, and X-Plane still draws it. OrthoStudio XP reads both all the same: each depth is kept below
+the ground at its own place, and the tile carries the same maps as that file. Before, every build
+of such a square stopped.
+
 **Flat ground.** Runways, taxiways, aprons and the helipads of OpenStreetMap are made flat, as in
 Ortho4XP. *Flatten OpenStreetMap's helipads* (Settings, for experts, Airports) leaves the helipads
 on the relief's slope, for a scenery that places its own helipad there; the rest stays flat.

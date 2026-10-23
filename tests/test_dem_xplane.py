@@ -133,6 +133,15 @@ def test_a_dsf_without_a_usable_elevation_raster_is_corrupted(kw: Any, reason: s
     assert reason in excinfo.value.context["reason"]
 
 
+def test_a_name_without_its_raster_leaves_the_others_theirs() -> None:
+    """A user's +32+012 named three rasters, the third "bathymetry", and held two: his X-Plane
+    draws it, and the relief was refused, every square of his built on it stopping (issue 17,
+    2026-10-23). The rasters keep the order of the names: the elevation is still the first."""
+    south_up = np.arange(12, dtype=np.int16).reshape(3, 4)
+    dsf = xp12_dsf(south_up, names=b"elevation\0sea_level\0bathymetry\0")
+    assert np.array_equal(elevation_posts(dsf, tile=GERMANY), south_up[::-1].astype(np.float32))
+
+
 def test_other_post_counts_are_bilinear_on_the_same_square() -> None:
     posts = np.array([[0, 10, 20], [30, 40, 50], [60, 70, 80]], dtype=np.float32)
     out = resample_posts(posts, 3601)

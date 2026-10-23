@@ -761,7 +761,11 @@ Decision 0007. Module `orthostudio.dem.xplane` (reading), `orthostudio.dem.raste
   scale 1, offset 0, rows **south to north**, sea at 0 m. The reader pairs each `DEMI` with
   the following `DEMD`, flips the rows, applies scale and offset, and maps the most negative
   integer to `-32768`. Other shapes are accepted and refined bilinearly; a pixel-centred or
-  missing `elevation` raster is `DSF_SOURCE_CORRUPTED`.
+  missing `elevation` raster is `DSF_SOURCE_CORRUPTED`. The rasters keep the order of the
+  names, and a name past the last raster has none: a user's `+32+012`, an older Global Scenery
+  file, named three (`elevation`, `sea_level`, `bathymetry`) for two rasters, which his X-Plane
+  draws; the reader refused it, and every square of his built on X-Plane's relief stopped
+  (issue 17, 2026-10-23). Fewer names than rasters stays `DSF_SOURCE_CORRUPTED`.
 * **Assembly.** Same geometry as `View` (3601 posts, 1-post overlap, 36 posts beyond, window
   `[-0.01, 1.01]`). A 1201 cell is void-filled and refined by `upsample_1201_to_3601`, so the
   same posts give the same raster as a 3" `.hgt`, to the bit (`tests/test_dem_xplane.py`).
