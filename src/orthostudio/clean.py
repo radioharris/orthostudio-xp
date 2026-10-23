@@ -51,11 +51,15 @@ import os
 import re
 import stat
 import time
+import zipfile
 from collections import Counter
 from collections.abc import Collection, Iterable, Iterator
 from dataclasses import asdict, dataclass, field, replace
 from math import ceil, floor
 from pathlib import Path
+from typing import IO, Any
+
+import numpy as np
 
 from orthostudio.graph import ArtifactInfo, Store
 from orthostudio.home import disk_absent
@@ -152,6 +156,13 @@ class CleanReport:
     held_bytes: int = 0
     """What letting go of ``held_images`` gives back, beyond ``freed_bytes``: their textures
     folders with them."""
+    twice_files: int = 0
+    """The files of the relief and the mesh the store keeps a second time, in another form:
+    Ortho4XP's ``Data<tile>.alt`` beside ``dem.npy``, its ``Data<tile>.mesh`` beside ``mesh.npz``,
+    which builds before 2026-10-23 wrote. They are trimmed whatever the choices, their artefacts
+    keeping their identity (``Store.trim``): 90 GB and 272 GB of a user's 1.1 TB cache."""
+    twice_bytes: int = 0
+    """What trimming ``twice_files`` gives back."""
 
     def to_dict(self) -> dict[str, object]:
         return asdict(self)
@@ -566,6 +577,14 @@ def clean(
             )
             present = sum(1 for k in letting if store.info(k) is not None)
             report.kept = len(store) - len(unused) - present - (len(cache) if filed else 0)
+            going = (
+                {i.key for i in unused}
+                | set(letting)
+                | ({i.key for i in cache} if filed else set())
+            )
+            twice = _twice(store, going, grace_s)
+            report.twice_files = sum(len(files) for _info, files in twice)
+            report.twice_bytes = sum(size for _info, files in twice for size in files.values())
             if not dry_run:
                 gone = _delete(store, unused)
                 report.removed = len(gone)
@@ -577,6 +596,7 @@ def clean(
                     report.filed_bytes = (
                         names.freed([*gone, *sent, *taken]) - report.freed_bytes - report.held_bytes
                     )
+                report.twice_bytes = sum(store.trim(info.key, files) for info, files in twice)
                 _tidy_away(store, packs)
                 report.kept = len(store)
                 report.tmp_removed = len(store.sweep_tmp(max_age_s=grace_s))
@@ -682,6 +702,72 @@ def _delete(store: Store, infos: Iterable[ArtifactInfo]) -> list[str]:
         except OSError as exc:
             log.warning("artefact %s not deleted: %s", info.key[:16], exc)
     return gone
+
+
+_TWICE = {
+    "orthostudio.dem": ("dem.npy", "Data*.alt"),
+    "orthostudio.mesh": ("mesh.npz", "Data*.mesh"),
+}
+"""For each rule whose artefacts builds before 2026-10-23 wrote in two forms: the form kept, and
+Ortho4XP's, the same raster or mesh again, which goes (``CleanReport.twice_files``)."""
+
+
+def _twice(
+    store: Store, going: set[str], grace_s: float
+) -> list[tuple[ArtifactInfo, dict[str, int]]]:
+    """The relief and mesh artefacts that hold Ortho4XP's form beside the one OrthoStudio XP reads,
+    with those files and their sizes (``_TWICE``); not those going anyway (``going``), nor what
+    was used in the last ``grace_s`` or is pinned, which a build may be reading. A file goes only
+    when the kept form says the same size of the same thing: as many altitudes in ``dem.npy`` as
+    the raw ``.alt`` holds, as many points in ``mesh.npz`` as the ``.mesh`` names in its header;
+    the rest stays as it is. Its bytes count when it has no other name (never linked)."""
+    cutoff = time.time() - grace_s
+    found: list[tuple[ArtifactInfo, dict[str, int]]] = []
+    for rule, (kept, pattern) in _TWICE.items():
+        for info in store.iter_artifacts(rule):
+            if info.key in going or max(info.last_used_at, info.created_at) > cutoff:
+                continue
+            if not (info.path / kept).is_file() or store.pins(info.key):
+                continue
+            files: dict[str, int] = {}
+            for path in sorted(info.path.glob(pattern)):
+                try:
+                    st = path.lstat()
+                except OSError:
+                    continue
+                if stat.S_ISREG(st.st_mode) and _same_thing(info.path / kept, path, st.st_size):
+                    files[path.name] = st.st_size if st.st_nlink <= 1 else 0
+            if files:
+                found.append((info, files))
+    return found
+
+
+def _same_thing(kept: Path, other: Path, size: int) -> bool:
+    """Whether ``other`` holds as many values as ``kept``, read from their headers alone."""
+    try:
+        if kept.name == "dem.npy":
+            with open(kept, "rb") as f:
+                shape, _fortran, dtype = _npy_header(f)
+            return int(np.prod(shape)) * 4 == size and dtype.kind == "f"
+        with zipfile.ZipFile(kept) as z, z.open("vertices.npy") as f:
+            shape, _fortran, _dtype = _npy_header(f)
+        with open(other, "rb") as f:
+            head = f.read(4096)
+        at = head.find(b"Vertices\n")
+        if at < 0:
+            return False
+        line = head[at + len(b"Vertices\n") :].split(b"\n", 1)[0]
+        return int(line) == int(shape[0])
+    except (OSError, ValueError, KeyError, zipfile.BadZipFile):
+        return False
+
+
+def _npy_header(f: IO[bytes]) -> tuple[tuple[int, ...], bool, np.dtype[Any]]:
+    """The shape, order and type of the ``.npy`` array ``f`` starts with, its data unread."""
+    major, _minor = np.lib.format.read_magic(f)
+    if major == 1:
+        return np.lib.format.read_array_header_1_0(f)
+    return np.lib.format.read_array_header_2_0(f)
 
 
 @dataclass(frozen=True, slots=True)

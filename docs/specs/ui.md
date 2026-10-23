@@ -924,7 +924,10 @@ so filing one tile no longer reads "Cache of 5 tile(s)"; its box is unticked as 
 copy of images a tile holds as files of its own, on another disk or copied apart; no box, *Free
 space…* always deletes it and the dialog says so on a line of its own, `disk.confirm_held`, since a
 build takes them back from the tile; not counted with the data used by the tiles; a user's tiles
-moved to another partition left every image twice, 2026-10-23), the data no tile needs any more, the downloaded images (those of the filed tiles excepted: they are in their
+moved to another partition left every image twice, 2026-10-23), the **relief and mesh kept twice**
+(`twice_bytes`, shown only when there are some: the second form earlier builds wrote; no box either,
+*Free space…* always trims it, `disk.confirm_twice`; 90 GB and 272 GB of the same user's cache), the
+data no tile needs any more, the downloaded images (those of the filed tiles excepted: they are in their
 line; a piece astride the border with a tile of the atelier counts here, even at a level of detail
 only the filed tile uses, and so does a piece only a filed tile with nothing here touches), the map
 background and the **downloaded relief**, each with a plain tooltip. *Free space…* asks first, in a

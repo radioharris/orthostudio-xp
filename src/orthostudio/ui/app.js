@@ -1365,7 +1365,7 @@ export async function mockApi(method, path, body, options = {}) {
     return structuredClone(mock.library);
   }
   if (p === "/api/disk" && method === "GET") {
-    if (!mock.disk) mock.disk = { store_bytes: 9.8e9, shared_bytes: 6.2e9, unused_bytes: 2.4e9, held_bytes: 1.1e9, images_bytes: 3.1e9, mapcache_bytes: 12e6, relief_bytes: 1.4e9 };
+    if (!mock.disk) mock.disk = { store_bytes: 9.8e9, shared_bytes: 6.2e9, unused_bytes: 2.4e9, held_bytes: 1.1e9, twice_bytes: 0.8e9, images_bytes: 3.1e9, mapcache_bytes: 12e6, relief_bytes: 1.4e9 };
     if (!mock.library) mock.library = await mockFile("library");
     return { ...mock.disk, ...mockFiledCache(), tiles: libraryTiles(mock.library).length, building: MOCK_FAIL === "busy" || Boolean(mockActiveRun()) };
   }
@@ -1373,7 +1373,7 @@ export async function mockApi(method, path, body, options = {}) {
     if (MOCK_FAIL === "busy" || mockActiveRun()) {
       throw mockError(409, "SYS_BUSY", "A build is running in OrthoStudio XP, and OrthoStudio XP frees space only between builds.", "Wait for the build to finish, or stop it, then try again.");
     }
-    if (!mock.disk) mock.disk = { store_bytes: 9.8e9, shared_bytes: 6.2e9, unused_bytes: 2.4e9, held_bytes: 1.1e9, images_bytes: 3.1e9, mapcache_bytes: 12e6, relief_bytes: 1.4e9 };
+    if (!mock.disk) mock.disk = { store_bytes: 9.8e9, shared_bytes: 6.2e9, unused_bytes: 2.4e9, held_bytes: 1.1e9, twice_bytes: 0.8e9, images_bytes: 3.1e9, mapcache_bytes: 12e6, relief_bytes: 1.4e9 };
     if (!mock.library) mock.library = await mockFile("library");
     const images = Boolean(body?.images);
     const relief = Boolean(body?.relief);
@@ -1381,14 +1381,15 @@ export async function mockApi(method, path, body, options = {}) {
     const cache = mockFiledCache();
     const freed = mock.disk.unused_bytes;
     const heldFreed = mock.disk.held_bytes || 0;
+    const twiceFreed = mock.disk.twice_bytes || 0;
     const imagesFreed = images ? mock.disk.images_bytes + mock.disk.mapcache_bytes : 0;
     const reliefFreed = relief ? mock.disk.relief_bytes : 0;
     const filedFreed = filed ? cache.filed_bytes + cache.filed_images_bytes : 0;
     if (filed) mock.filedFreed = new Set(mockFiledTiles().map((e) => e.path));
     // the filed tiles' data is the store's too: it leaves the store with them
-    const storeFreed = freed + heldFreed + (filed ? cache.filed_bytes : 0);
-    mock.disk = { ...mock.disk, store_bytes: mock.disk.store_bytes - storeFreed, unused_bytes: 0, held_bytes: 0, ...(images ? { images_bytes: 0, mapcache_bytes: 0 } : {}), ...(relief ? { relief_bytes: 0 } : {}) };
-    return { format: "osxp-clean-1", freed_bytes: freed, held_freed_bytes: heldFreed, images_freed_bytes: imagesFreed, relief_freed_bytes: reliefFreed, filed_freed_bytes: filedFreed, removed: freed ? 12 : 0 };
+    const storeFreed = freed + heldFreed + twiceFreed + (filed ? cache.filed_bytes : 0);
+    mock.disk = { ...mock.disk, store_bytes: mock.disk.store_bytes - storeFreed, unused_bytes: 0, held_bytes: 0, twice_bytes: 0, ...(images ? { images_bytes: 0, mapcache_bytes: 0 } : {}), ...(relief ? { relief_bytes: 0 } : {}) };
+    return { format: "osxp-clean-1", freed_bytes: freed, held_freed_bytes: heldFreed, twice_freed_bytes: twiceFreed, images_freed_bytes: imagesFreed, relief_freed_bytes: reliefFreed, filed_freed_bytes: filedFreed, removed: freed ? 12 : 0 };
   }
   if (p === "/api/library/find-in-workshop") {
     // like the engine on a workshop whose tiles are all in the list
@@ -2340,7 +2341,7 @@ function routeFromHash() {
 // ------------------------------------------------------------------ status bar
 
 /** The engine API this page needs (orthostudio.api.app.API_LEVEL); a test keeps the two equal. */
-const PAGE_API_LEVEL = 34;
+const PAGE_API_LEVEL = 35;
 
 async function loadStatus() {
   try {
@@ -5234,12 +5235,15 @@ export function freeSpacePlan(disk, images, relief, filed = false) {
   // the cache's copy of images the tiles hold as files of their own goes whatever the choices: a
   // build takes them back from the tile (a user's tiles on another partition, 2026-10-23)
   const held = Math.max(0, Number(disk?.held_bytes) || 0);
+  // so do the relief and the mesh kept in a second form, which earlier builds wrote: the form the
+  // engine reads stays (90 GB and 272 GB of the same user's cache)
+  const twice = Math.max(0, Number(disk?.twice_bytes) || 0);
   const pictures = images ? Math.max(0, Number(disk?.images_bytes) || 0) + Math.max(0, Number(disk?.mapcache_bytes) || 0) : 0;
   // The relief is its own choice: a square of it weighs 40 MB to 400 MB and costs far less to
   // fetch again than its imagery (a user found 1.4 GB of it left after emptying, 2026-09-18).
   const heights = relief ? Math.max(0, Number(disk?.relief_bytes) || 0) : 0;
   const away = filed ? filedCacheBytes(disk) : 0;
-  return { unused, held, pictures, heights, filed: away, total: unused + held + pictures + heights + away };
+  return { unused, held, twice, pictures, heights, filed: away, total: unused + held + twice + pictures + heights + away };
 }
 
 /** The cache of the tiles filed outside the atelier (the atelier, step 5): the tile data only they
@@ -5269,12 +5273,14 @@ function renderDisk() {
   }
   const offered = filedOffered(d);
   const held = Number(d.held_bytes) || 0;
-  const inUse = Math.max(0, cacheBytes(d) - (Number(d.unused_bytes) || 0) - (Number(d.filed_bytes) || 0) - held);
+  const twice = Number(d.twice_bytes) || 0;
+  const inUse = Math.max(0, cacheBytes(d) - (Number(d.unused_bytes) || 0) - (Number(d.filed_bytes) || 0) - held - twice);
   const row = (label, value, help) => [h("dt", { title: help || null }, label), h("dd", { class: "num" }, value)];
   list.append(
     ...row(t("disk.in_use", { n: d.tiles ?? 0 }), fmtBytes(inUse), t("disk.in_use_help")),
     ...(offered ? row(t("disk.filed", { n: d.filed_tiles }), fmtBytes(filedCacheBytes(d)), t("disk.filed_help")) : []),
     ...(held > 0 ? row(t("disk.held"), fmtBytes(held), t("disk.held_help")) : []),
+    ...(twice > 0 ? row(t("disk.twice"), fmtBytes(twice), t("disk.twice_help")) : []),
     ...row(t("disk.unused"), fmtBytes(d.unused_bytes || 0), t("disk.unused_help")),
     ...row(t("disk.images"), fmtBytes(d.images_bytes || 0), t("disk.images_pieces_help")),
     ...row(t("disk.mapcache"), fmtBytes(d.mapcache_bytes || 0)),
@@ -5308,6 +5314,7 @@ function confirmFreeSpace(plan) {
   const lines = [];
   if (plan.unused > 0) lines.push(t("disk.confirm_unused", { size: fmtBytes(plan.unused) }));
   if (plan.held > 0) lines.push(t("disk.confirm_held", { size: fmtBytes(plan.held) }));
+  if (plan.twice > 0) lines.push(t("disk.confirm_twice", { size: fmtBytes(plan.twice) }));
   if (plan.filed > 0) lines.push(t("disk.confirm_filed", { size: fmtBytes(plan.filed) }));
   if (plan.pictures > 0) lines.push(t("disk.confirm_images", { size: fmtBytes(plan.pictures) }));
   if (plan.heights > 0) lines.push(t("disk.confirm_relief", { size: fmtBytes(plan.heights) }));
@@ -5338,7 +5345,7 @@ async function freeSpace() {
   renderDisk();
   try {
     const res = await api("POST", "/api/clean", { images, relief, filed });
-    const freed = (Number(res?.freed_bytes) || 0) + (Number(res?.held_freed_bytes) || 0) + (Number(res?.images_freed_bytes) || 0) + (Number(res?.relief_freed_bytes) || 0) + (Number(res?.filed_freed_bytes) || 0);
+    const freed = (Number(res?.freed_bytes) || 0) + (Number(res?.held_freed_bytes) || 0) + (Number(res?.twice_freed_bytes) || 0) + (Number(res?.images_freed_bytes) || 0) + (Number(res?.relief_freed_bytes) || 0) + (Number(res?.filed_freed_bytes) || 0);
     toast(freed > 0 ? t("disk.freed", { size: fmtBytes(freed) }) : t("disk.nothing"));
   } catch (err) {
     const found = errorDetail(err);

@@ -2269,11 +2269,11 @@ def test_the_library_frees_disk_space_after_asking() -> None:
         f"m.freeSpacePlan({held}, false, false)]",
     )
     assert plans == [
-        {"unused": 5, "held": 0, "pictures": 0, "heights": 0, "filed": 0, "total": 5},
-        {"unused": 5, "held": 0, "pictures": 8, "heights": 0, "filed": 0, "total": 13},
-        {"unused": 5, "held": 0, "pictures": 0, "heights": 9, "filed": 0, "total": 14},
-        {"unused": 0, "held": 0, "pictures": 0, "heights": 0, "filed": 0, "total": 0},
-        {"unused": 5, "held": 3, "pictures": 0, "heights": 0, "filed": 0, "total": 8},
+        {"unused": 5, "held": 0, "twice": 0, "pictures": 0, "heights": 0, "filed": 0, "total": 5},
+        {"unused": 5, "held": 0, "twice": 0, "pictures": 8, "heights": 0, "filed": 0, "total": 13},
+        {"unused": 5, "held": 0, "twice": 0, "pictures": 0, "heights": 9, "filed": 0, "total": 14},
+        {"unused": 0, "held": 0, "twice": 0, "pictures": 0, "heights": 0, "filed": 0, "total": 0},
+        {"unused": 5, "held": 3, "twice": 0, "pictures": 0, "heights": 0, "filed": 0, "total": 8},
     ]
     script = """
     const before = (await call("GET", "/api/disk")).ok;
@@ -2314,10 +2314,10 @@ def test_the_cache_of_the_tiles_filed_outside_is_its_own_choice() -> None:
         f" m.freeSpacePlan({{filed_bytes: -1}}, false, false, true)]",
     )
     assert plans == [
-        {"unused": 5, "held": 0, "pictures": 0, "heights": 0, "filed": 7, "total": 12},
-        {"unused": 5, "held": 0, "pictures": 8, "heights": 9, "filed": 7, "total": 29},
-        {"unused": 5, "held": 0, "pictures": 8, "heights": 0, "filed": 0, "total": 13},
-        {"unused": 0, "held": 0, "pictures": 0, "heights": 0, "filed": 0, "total": 0},
+        {"unused": 5, "held": 0, "twice": 0, "pictures": 0, "heights": 0, "filed": 7, "total": 12},
+        {"unused": 5, "held": 0, "twice": 0, "pictures": 8, "heights": 9, "filed": 7, "total": 29},
+        {"unused": 5, "held": 0, "twice": 0, "pictures": 8, "heights": 0, "filed": 0, "total": 13},
+        {"unused": 0, "held": 0, "twice": 0, "pictures": 0, "heights": 0, "filed": 0, "total": 0},
     ]
     offered = _node_json(
         "app.js",

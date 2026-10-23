@@ -76,7 +76,7 @@ from orthostudio.masks.rule import MasksJob, masks_job
 from orthostudio.masks.rule import MasksParams as OsxpMasksParams
 from orthostudio.masks.water import NEIGHBOUR_OFFSETS
 from orthostudio.mesh.build import mesh_file_name
-from orthostudio.mesh.mesh_file import read_mesh, read_mesh_npz
+from orthostudio.mesh.mesh_file import as_written, read_mesh, read_mesh_npz
 from orthostudio.mesh.rule import OSXP_MESH, MeshJob, mesh_job
 from orthostudio.mesh.rule import MeshParams as OsxpMeshParams
 from orthostudio.meter import counting
@@ -890,14 +890,15 @@ def _tile_dsf(ctx: RunContext) -> None:
     mesh_dir = ctx.input_path("mesh")
     mesh_text = mesh_dir / mesh_file_name(tile)
     npz = mesh_dir / "mesh.npz"
-    # The text file is authoritative when the artefact has one: it is what Ortho4XP's step 3
-    # reads, and `orthostudio.mesh` publishes an npz carrying the *full precision* doubles of
-    # Triangle4XP, which the text file truncates to 15 significant digits of z/100000. That
-    # 5e-11 m is enough to move elevations across a u16 rounding boundary: the DSF of
-    # +43+005 built from the npz has the same size but differs from Ortho4XP's on 23 bytes
-    # spread over several pools (the first is GEOD/POOL[5]).
-    # Cost of reading the text instead: 0.32 s against 0.006 s (spec 8.8).
-    mesh = read_mesh(mesh_text) if mesh_text.is_file() else read_mesh_npz(npz)
+    # The mesh as Ortho4XP's step 3 reads it, from its text: `orthostudio.mesh` publishes an npz
+    # carrying the *full precision* doubles of Triangle4XP, which the text truncates to 15
+    # decimals of z/100000. That 5e-11 m is enough to move elevations across a u16 rounding
+    # boundary: the DSF of +43+005 built from the npz as it is had the same size but differed
+    # from Ortho4XP's on 23 bytes spread over several pools (the first is GEOD/POOL[5]). The text
+    # is no longer kept (the same mesh twice, 272 GB of a user's cache, 2026-10-23): the npz is
+    # read as the text would have given it, bit for bit (`as_written`); an artefact built before
+    # and not trimmed yet still has its text, the same numbers.
+    mesh = read_mesh(mesh_text) if mesh_text.is_file() else as_written(read_mesh_npz(npz))
     masks_input = ctx.inputs["masks"]
     lookup = None
     distance = None
@@ -1769,12 +1770,18 @@ def _refuse_pack_dir_conflict(
 
 
 def stored_neighbour_mesh(store: Store, neighbour: TileRef) -> ArtifactRef | None:
-    """The most recently used ``orthostudio.mesh@1`` artefact holding ``Data<neighbour>.mesh``
-    (spec 8.5)."""
+    """The most recently used ``orthostudio.mesh`` artefact of ``neighbour``: made for it (its
+    recipe's tile) and holding its ``mesh.npz``, or holding its ``Data<neighbour>.mesh`` (spec 8.5).
+    The text alone named the tile: a mesh without it, as built since 2026-10-23 or trimmed by Free
+    space, was no neighbour's, and the shores along its border were drawn as if it did not
+    exist."""
     best: ArtifactRef | None = None
     best_used = -1.0
-    for info in store.iter_artifacts(OSXP_MESH.name):
-        if (info.path / mesh_file_name(neighbour)).is_file() and info.last_used_at > best_used:
+    for info, made_for in store.iter_made(OSXP_MESH.name):
+        if info.last_used_at <= best_used:
+            continue
+        theirs = made_for.get("tile") == neighbour.name and (info.path / "mesh.npz").is_file()
+        if theirs or (info.path / mesh_file_name(neighbour)).is_file():
             best_used = info.last_used_at
             best = ArtifactRef(info.key, info.digest, info.path, info.rule, info.kind, info.size)
     return best

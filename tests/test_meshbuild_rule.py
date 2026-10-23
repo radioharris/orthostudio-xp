@@ -34,6 +34,7 @@ from orthostudio.mesh.build import (
     triangle_command,
     triangle_switches,
 )
+from orthostudio.mesh.mesh_file import read_mesh_npz
 from orthostudio.mesh.rule import OSXP_MESH, MeshParams, run_mesh, triangle_binary
 from orthostudio.model import ArtifactRef, TileRef
 from orthostudio.sched.workers import execute
@@ -302,8 +303,10 @@ def test_end_to_end_on_a_square(synthetic: dict) -> None:
         out_dir=out,
         coast_nodes=np.array([[5.5, 43.5]]),
     )
-    for name in ("Data+43+005.mesh", "mesh.npz", "water_tris.npz", "stats.json"):
+    for name in ("mesh.npz", "water_tris.npz", "stats.json"):
         assert (out / name).is_file(), name
+    # the mesh once: Ortho4XP's text was the same mesh again (272 GB of a user's cache, 2026-10-23)
+    assert not (out / "Data+43+005.mesh").exists() and result.mesh_path == out / "mesh.npz"
     assert result.mesh.n_triangles > 50
     assert result.mesh.vertices[:, 0].min() >= 5.0 and result.mesh.vertices[:, 0].max() <= 6.0
     assert result.mesh.vertices[:, 1].min() >= 43.0
@@ -373,7 +376,7 @@ def test_retry_relaxes_min_angle_and_not_nodata(synthetic: dict) -> None:
     assert argv_first[0].startswith("-pq10")  # the first attempt
     assert result.argv[1].startswith("-pq0")  # the retry relaxed the angle
     assert result.argv[10] == argv_first[9] == "-32768"  # ... and left nodata alone
-    assert (root / "out2" / "Data+43+005.mesh").is_file()
+    assert (root / "out2" / "mesh.npz").is_file()
 
 
 @needs_binary
@@ -428,7 +431,7 @@ def test_rule_runs_through_a_run_context(synthetic: dict) -> None:
         scratch=scratch,
     )
     result = run_mesh(ctx)
-    assert (out / "Data+43+005.mesh").is_file()
+    assert (out / "mesh.npz").is_file() and not (out / "Data+43+005.mesh").exists()
     assert (out / "water_tris.npz").is_file()
     # neither a coastline nor an airport input: both degraded warnings, and the build goes on
     assert [w.code for w in result.warnings] == [
@@ -525,3 +528,42 @@ def test_subprocess_is_never_run_through_a_shell() -> None:
     assert "shell=True" not in source
     assert re.search(r"subprocess\.run\(\s*argv,", source)
     assert subprocess.run  # the module is the one we think it is
+
+
+@needs_binary
+def test_the_native_relief_kept_once_gives_the_same_mesh(synthetic: dict) -> None:
+    """``--dem native`` reads the relief stage's raster, which keeps it as ``dem.npy`` alone since
+    2026-10-23: the mesh writes Ortho4XP's ``.alt`` from it in its scratch, and comes out the same
+    as from the ``.alt`` the stage wrote before, whose bytes it is."""
+    root = synthetic["root"]
+    once = root / "dem-once"
+    once.mkdir()
+    raster = np.fromfile(synthetic["dem"] / "Data+43+005.alt", dtype=np.float32)
+    np.save(once / "dem.npy", raster.reshape(_DEM["ny"], _DEM["nx"]), allow_pickle=False)
+    (once / "dem.json").write_text((synthetic["dem"] / "dem.json").read_text(), encoding="utf-8")
+
+    def mesh_of(dem_dir: Path, name: str) -> bytes:
+        out, scratch = root / f"out-{name}", root / f"scratch-{name}"
+        out.mkdir()
+        scratch.mkdir()
+        ctx = RunContext(
+            rule=OSXP_MESH,
+            key="0" * 64,
+            params=MeshParams(tile="+43+005"),
+            inputs={
+                "vectors": ResolvedInput("vectors", "a" * 64, synthetic["vectors"]),
+                "dem": ResolvedInput("dem", "b" * 64, dem_dir),
+                "coastline": ResolvedInput("coastline", None, None),
+            },
+            out=out,
+            scratch=scratch,
+        )
+        run_mesh(ctx)
+        written = scratch / "Data+43+005.alt"
+        assert written.is_file() == (name == "once")
+        if name == "once":
+            assert written.read_bytes() == (synthetic["dem"] / "Data+43+005.alt").read_bytes()
+        mesh = read_mesh_npz(out / "mesh.npz")
+        return mesh.vertices.tobytes() + mesh.tris.tobytes() + mesh.tri_attr.tobytes()
+
+    assert mesh_of(once, "once") == mesh_of(synthetic["dem"], "twice")

@@ -889,6 +889,11 @@ def clean(
             f"{held} {report.held_images} image(s) the tiles hold as files of their own: "
             f"{verb} {_size(report.held_bytes)} (a build takes them back from the tile)"
         )
+    if report.twice_files:
+        typer.echo(
+            f"relief and mesh files kept in a second form: {report.twice_files}, {verb} "
+            f"{_size(report.twice_bytes)} (the form OrthoStudio XP reads stays)"
+        )
     filed_cache = report.filed_bytes + report.filed_images_bytes
     if report.filed_removed:
         typer.echo(
@@ -910,6 +915,7 @@ def clean(
         total = (
             report.freed_bytes
             + report.held_bytes
+            + report.twice_bytes
             + report.images_bytes
             + report.relief_bytes
             + filed_cache

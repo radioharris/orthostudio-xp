@@ -2,8 +2,9 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """The graph rule ``orthostudio.mesh@1``: stage 2 of Ortho4XP, natively.
 
-Spec: ``docs/specs/mesh-build.md`` section 9. The artefact is a directory holding
-``Data<tile>.mesh`` and its npz twin, the water table the masks stage needs and a ``stats.json``.
+Spec: ``docs/specs/mesh-build.md`` section 9. The artefact is a directory holding the mesh as
+``mesh.npz``, the water table the masks stage needs and a ``stats.json``; built before 2026-10-23,
+also as Ortho4XP's ``Data<tile>.mesh``, the same mesh in text, which Free space trims.
 
 Inputs: ``vectors`` (the ``Data<tile>.{node,poly}`` of the vector stage), ``dem``
 (``Data<tile>.alt`` and, when the DEM stage publishes one, ``dem.json``) and ``coastline``
@@ -18,8 +19,10 @@ import shutil
 import threading
 from collections.abc import Iterator
 from contextvars import ContextVar
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
+
+import numpy as np
 
 from orthostudio.graph import Rule, RuleParams, RunContext, rule
 from orthostudio.mesh.build import (
@@ -149,7 +152,16 @@ def run_mesh(ctx: RunContext) -> MeshBuildResult:
     assert isinstance(params, MeshParams)
     tile = TileRef.parse(params.tile)
     vectors = ctx.input_path("vectors")
-    dem = DemSpec.from_dir(ctx.input_path("dem"), tile, iterate=params.iterate)
+    dem_dir = ctx.input_path("dem")
+    dem = DemSpec.from_dir(dem_dir, tile, iterate=params.iterate)
+    if not dem.alt_path.is_file() and (dem_dir / "dem.npy").is_file():
+        # ``--dem native``: the relief stage keeps its raster as ``dem.npy`` alone since
+        # 2026-10-23 (``Dem.save``); Triangle4XP reads Ortho4XP's raw float32, written here from it
+        # as ``Dem.write_alt`` wrote it
+        alt = ctx.scratch / dem.alt_path.name
+        raster = np.load(dem_dir / "dem.npy", mmap_mode="r", allow_pickle=False)
+        np.asarray(raster, dtype=np.float32).tofile(alt)
+        dem = replace(dem, alt_path=alt)
     coast = ctx.inputs.get("coastline")
     coast_nodes = None
     if coast is not None and coast.present and coast.path is not None:
@@ -173,7 +185,7 @@ def run_mesh(ctx: RunContext) -> MeshBuildResult:
 @rule(name="orthostudio.mesh", version=2, params=MeshParams, inputs=("vectors", "dem", "coastline"),
       ram_mb=900, kind="dir")  # fmt: skip
 def osxp_mesh(ctx: RunContext) -> None:
-    """Native stage 2: ``Data<tile>.mesh``, ``mesh.npz``, ``water_tris.npz``, ``stats.json``."""
+    """Native stage 2: ``mesh.npz``, ``water_tris.npz``, ``stats.json``."""
     run_mesh(ctx)
 
 

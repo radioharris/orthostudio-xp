@@ -100,6 +100,16 @@ more than 20 % of size) with keys `format` (`"osxp-mesh-npz-1"`), `vertices`, `n
 `tris`, `tri_attr`, `extra_json` (JSON of `extra`). `read_mesh_npz` rejects another format
 string. Round trip is exact (same dtypes, same bytes).
 
+**The npz read as written** (`as_written`, 2026-10-23). Since the text is no longer kept (the same
+mesh a second time, `mesh-build.md` 6), what reading it gave is computed from the npz: the vertices
+(altitude divided by `Z_SCALE`) and the normals formatted by the text writer's own `"%.15f"` and
+`"%.2f"` lines, a chunk of `_WRITE_CHUNK` rows at a time, and parsed by the reader's own
+`_parse_block` (so `numtext.SPLIT_TOKENS` on Windows as elsewhere), the altitude multiplied back;
+the triangles, attributes and header tokens as the text carries them. Bit for bit what
+`read_mesh(write_mesh_text(mesh))` gives, NaN and signed zeros included, on random meshes over
+several chunks, numbers on rounding boundaries, the ends of the globe, an empty mesh and a single
+point (`test_mesh_file.py`), and on the 33 real meshes of the reference machine's stores.
+
 ## 6. Performance (acceptance: read < 1 s on the 69 MB fixture)
 
 The reader loads the whole file as bytes, finds the three section headers, and hands each

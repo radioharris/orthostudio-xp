@@ -152,7 +152,7 @@ __all__ = [
     "sse_message",
 ]
 
-API_LEVEL = 34
+API_LEVEL = 35
 """What this engine's API offers, for the page: 1 = P2b, 2 = zones (``/api/zones``) and the base map
 (``/api/map``), 3 = deleting a tile (``POST /api/library/{name}/delete``) and the sizes of the
 library, 4 = the disk space of the Library (``GET /api/disk``, ``POST /api/clean``), 5 = clearing
@@ -192,7 +192,9 @@ and ``POST /api/flightplan/file`` (a Little Navmap or X-Plane plan file), 31 = `
 in a folder, taken back), 33 = ``shared_bytes`` in ``GET /api/sizes`` and ``GET /api/disk`` (the
 store's files that are the tiles' own too, counted once), 34 = ``held_bytes`` in ``GET /api/disk``
 and ``held_freed_bytes`` in ``POST /api/clean`` (the images tiles hold as files of their own, which
-Free space lets go of whatever the choices). A page
+Free space lets go of whatever the choices), 35 = ``twice_bytes`` in ``GET /api/disk`` and
+``twice_freed_bytes`` in ``POST /api/clean`` (the relief and mesh kept in a second form, which Free
+space trims whatever the choices). A page
 served by an engine older than itself (a ``osxp serve`` started before an update: the page's files
 are read from disk at each load, the routes were imported at start) asks the user to restart
 OrthoStudio XP instead of showing "Not Found"."""
@@ -2393,7 +2395,9 @@ def create_app(
         ``filed_tiles`` filed outside the atelier: the tile data only they need (``filed_bytes``)
         and the image pieces only they use (``filed_images_bytes``, not in ``images_bytes``), and
         the images tiles hold as files of their own, which the store keeps a second time
-        (``held_bytes``, freed whatever the choices: a build takes them back from the tile).
+        (``held_bytes``, freed whatever the choices: a build takes them back from the tile), and
+        the relief and mesh files the store keeps in a second form (``twice_bytes``, trimmed
+        whatever the choices).
 
         Pages that ask while a measure runs share it, as ``/api/sizes``'s do: on a hard disk one
         takes minutes, and the Library asked again every five seconds while sizes were pending,
@@ -2418,6 +2422,7 @@ def create_app(
             "filed_bytes": report.filed_bytes,
             "filed_images_bytes": report.filed_images_bytes,
             "held_bytes": report.held_bytes,
+            "twice_bytes": report.twice_bytes,
             "tiles": len(report.packs),
             "building": manager.active() is not None or bool(other_builds()),
         }
@@ -2450,6 +2455,7 @@ def create_app(
                 "relief_freed_bytes": report.relief_bytes if req.relief else 0,
                 "filed_freed_bytes": filed if req.filed else 0,
                 "held_freed_bytes": report.held_bytes,
+                "twice_freed_bytes": report.twice_bytes,
                 "removed": report.removed,
             }
 

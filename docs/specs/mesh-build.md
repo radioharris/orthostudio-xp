@@ -329,13 +329,19 @@ Intel or AMD), which X-Plane on Windows could not load. Step 4 now keeps column 
 the ground Triangle4XP read under the vertex, wherever column 5 is not finite; the count goes in
 `MESH_ALTITUDE_MISSING` (degraded, continue) and the log. `orthostudio.mesh` went to version 2.
 
-## 6. Output: `Data<tile>.mesh` and `mesh.npz`
+## 6. Output: `mesh.npz`
 
-Built through `mesh_file.MeshData` and `mesh_file.write_mesh_text` (`docs/specs/mesh-file.md`):
+Built through `mesh_file.MeshData` and `mesh_file.write_mesh_npz` (`docs/specs/mesh-file.md`):
 `vertices[:, 0] = x + tile.lon`, `vertices[:, 1] = y + tile.lat`, `vertices[:, 2] = z`
 (metres), `normals = (u, v)` as float32, `tris = corners - 1` (0-based int32),
-`tri_attr = attr` (uint8), `extra = {"version": "2", "dimension": "3"}`. `mesh.npz` is the
-npz twin of the same object, so stages 2.5 and 3 never parse the text file.
+`tri_attr = attr` (uint8), `extra = {"version": "2", "dimension": "3"}`. Until 2026-10-23 the rule
+also wrote Ortho4XP's text, `Data<tile>.mesh`, the same mesh a second time: 272 GB of a user's
+1.1 TB cache, at ZL14 with a dense mesh. It is no longer written, with no new version of the rule
+(a tile built before is not built again), and Free space trims it from the artefacts that have it
+(`graph-keys.md` 9.1). What the text gave its readers is `mesh_file.as_written(mesh)`: the npz's
+numbers formatted and parsed by the text writer's and reader's own code, bit for bit what reading
+the text gave, checked on the 33 real meshes of the reference machine's stores (all identical,
+up to 2.8 million points) and on edge values (`test_mesh_file.py`).
 
 ### 6.1 Normals: the answer to `mesh-file.md` section 8.3
 
@@ -353,10 +359,10 @@ What matters is that a consumer sees the same numbers whichever it reads. Measur
 text values agrees on **all 1 207 298 components**, so the normals cost nothing. The
 *elevations* do: the npz keeps the full doubles and the text file 15 significant digits of
 `z/100000`, so 451 285 of 603 649 elevations differ by up to 5.0e-11 m and a DSF built from
-the npz differs from Ortho4XP's on **23 bytes** spread over several pools (`pipeline-build.md`
-8.8). A `mesh.npz` derived *from the text file* (rounded values) and the one `orthostudio.mesh`
-writes (the sidecar's full precision) do not carry the same numbers, which is why the DSF reads
-`Data<tile>.mesh`. Section 8.3's warning ("do not round a
+the npz as it is differs from Ortho4XP's on **23 bytes** spread over several pools
+(`pipeline-build.md` 8.8). A `mesh.npz` derived *from the text file* (rounded values) and the one
+`orthostudio.mesh` writes (the sidecar's full precision) do not carry the same numbers, which is
+why the DSF reads the npz as the text would have given it (`as_written`). Section 8.3's warning ("do not round a
 natively computed normal") does not apply yet: these normals still come from Ortho4XP's own DEM
 sampling inside the sidecar, and the byte-identity target *requires* the 2-decimal
 quantisation. It will apply when OrthoStudio XP computes normals from its own geometry — blocage B4.
@@ -428,7 +434,8 @@ reaches `0.99 * limit_tris * 1e6`: that is how the user learns the mesh is coars
 
 ## 9. The rule `orthostudio.mesh@1` (`rule.py`)
 
-* `kind = "dir"`, artefact = `Data<tile>.mesh`, `mesh.npz`, `water_tris.npz`, `stats.json`.
+* `kind = "dir"`, artefact = `mesh.npz`, `water_tris.npz`, `stats.json` (`Data<tile>.mesh` too
+  until 2026-10-23, section 6).
 * inputs: `vectors` (required), `dem` (required), `coastline` (optional, may resolve absent).
 * `cancel`: the rule takes the scheduler's token through `MeshJob` / `mesh_job(...)` (bound
   by `pipeline.build._mesh_run`). `build_mesh_native` polls the sidecar every 0.1 s instead of
@@ -504,10 +511,10 @@ Measured by `tests/test_meshbuild_oracle.py` (`-s` printed them; removed with de
   ~0.005 s. Without it: 2.49 s, **3.0x**.
 * the 0.94 s of `.mesh` text (34 % of the stage) was then written for consumers that were not
   OrthoStudio XP: the Ortho4XP stage 2.5 fallback, the community mesh format, and the oracle
-  comparisons; without it the stage would take 1.85 s, **4.0x**. The text file stays: the DSF
-  stage reads `Data<tile>.mesh` whenever the artefact has one, because a DSF built from the npz's
-  full-precision elevations differed from Ortho4XP's on 23 bytes of +43+005 (`pipeline-build.md`
-  8.8), and only the masks read `mesh.npz` first.
+  comparisons; without it the stage would take 1.85 s, **4.0x**. The text file stayed until
+  2026-10-23, for the DSF, because a DSF built from the npz's full-precision elevations differed
+  from Ortho4XP's on 23 bytes of +43+005 (`pipeline-build.md` 8.8); the DSF now reads the npz as
+  the text would have given it (`as_written`), and the text is no longer written (section 6).
 
 Memory: `maxrss` 417 MB for the Python process (the `(N, 6)` node table is 29 MB, the text
 writer's chunks dominate) and 304 MB for the Triangle4XP child (54 MB `.alt` + 4 MB

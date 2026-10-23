@@ -292,8 +292,8 @@ def _elevation(path: Path, tile: TileRef) -> Elevation:
         "DEM_FILE_UNREADABLE",
         context={"path": path, "tile": tile.name, "reason": "no meta.json"},
         remedy=(
-            "orthostudio.vectors needs the artefact of orthostudio.dem@1 (Data<tile>.alt, dem.npy, "
-            "meta.json); build with --dem native."
+            "orthostudio.vectors needs the artefact of orthostudio.dem@1 (dem.npy, meta.json); "
+            "build with --dem native."
         ),
     )
 

@@ -297,6 +297,9 @@ pre-mask of 6000_8432, 14.3 M of the 37.7 M pixels have an exact sum that is a m
   (`read_water_tris_artifact`) and hands it to `water_triangles(..., water_tris=...)`, which then
   only computes the cells; the mesh itself is still read for the coordinates of the corners, and a
   mesh artefact without the file is searched as before (`mesh_file.read_mesh` / `read_mesh_npz`).
+  A neighbour's mesh is found by its recipe's tile and its `mesh.npz`, or by its `Data<tile>.mesh`
+  (`pipeline.build.stored_neighbour_mesh`): the text alone named the tile, and a mesh without it,
+  as built since 2026-10-23 or trimmed by Free space, was no neighbour's.
 * **Elevation source**: `masks_use_DEM_too` needs the elevation as a directory of per-cell
   `<til_y>_<til_x>.npy` arrays, which no rule publishes (the DEM stage, `orthostudio.dem@1`,
   publishes one raster per tile). `dem_pre_mask` is written and tested as a pure function; the

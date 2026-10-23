@@ -186,7 +186,8 @@ def xp12_dsfs_of(ctx: RunContext, tile: TileRef) -> dict[tuple[int, int], Path]:
     ram_mb=600,
 )
 def _dem_rule(ctx: RunContext) -> None:
-    """Elevation raster of one tile: ``Data<tile>.alt``, ``dem.npy``, ``meta.json``.
+    """Elevation raster of one tile: ``dem.npy``, ``meta.json`` (``Data<tile>.alt`` too until
+    2026-10-23, the same raster, trimmed by Free space).
 
     The nine ``xp12*`` inputs are the Global Scenery DSFs of the 3x3 block when the relief is
     X-Plane's (``custom_dem = "XP12"``), all absent otherwise: the root of the graph is keyed

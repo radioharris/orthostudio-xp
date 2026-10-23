@@ -1,0 +1,335 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
+"""The relief and the mesh the cache kept in two forms: trimmed from the artefacts that hold both,
+which keep their identity, so that nothing made from them is made again.
+
+Builds before 2026-10-23 wrote Ortho4XP's ``Data<tile>.alt`` beside ``dem.npy`` and its
+``Data<tile>.mesh`` beside ``mesh.npz``, the same raster and the same mesh: 90 GB and 272 GB of a
+user's 1.1 TB cache. ``Store.trim`` removes a file of an artefact and keeps its digest, which the
+artefacts made from it were keyed with; Free space trims those files whatever the choices
+(``clean._twice``), each only when the form kept says the same size of the same thing. Temporary
+folders only.
+"""
+
+from __future__ import annotations
+
+import sqlite3
+import time
+from pathlib import Path
+from typing import Any
+
+import numpy as np
+import pytest
+from typer.testing import CliRunner
+
+import test_api_fakes as fakes
+from orthostudio.api.app import create_app
+from orthostudio.api.jobs import JobManager
+from orthostudio.clean import clean
+from orthostudio.cli import app as cli_app
+from orthostudio.graph import Store, artifact_key
+from orthostudio.install import Library
+from orthostudio.mesh.mesh_file import MeshData, write_mesh_npz, write_mesh_text
+from orthostudio.model import TileRef
+from orthostudio.pipeline.pack import ArtefactEntry, PackManifest, write_pack
+from test_api_fakes import FakeBuild, FakeIndex, client_for
+
+anyio_backend = fakes.anyio_backend
+
+T = TileRef(46, 6)
+SIDE = 33
+
+
+def _mesh(n: int = 50) -> MeshData:
+    rng = np.random.default_rng(n)
+    vertices = np.column_stack([6 + rng.random(n), 46 + rng.random(n), rng.uniform(300, 900, n)])
+    tris = np.array([[i, i + 1, i + 2] for i in range(n - 2)], np.int32)
+    normals = rng.uniform(-1, 1, (n, 2)).astype(np.float32)
+    return MeshData(vertices, normals, tris, np.zeros(n - 2, np.uint8))
+
+
+def _put(store: Store, rule: str, n: int, files: dict[str, Any]) -> str:
+    key, recipe = artifact_key(rule, 1, {"n": n, "tile": T.name}, {})
+    with store.begin(rule, key, "dir") as b:
+        for name, content in files.items():
+            if callable(content):
+                content(b.out / name)
+            else:
+                (b.out / name).write_bytes(content)
+        b.commit(version=1, recipe=recipe, inputs=[])
+    return key
+
+
+def _relief(store: Store, n: int = 1, *, alt_side: int = SIDE) -> str:
+    raster = np.random.default_rng(n).uniform(0, 3000, (SIDE, SIDE)).astype(np.float32)
+    alt = np.random.default_rng(n).uniform(0, 3000, (alt_side, alt_side)).astype(np.float32)
+    return _put(
+        store,
+        "orthostudio.dem",
+        n,
+        {
+            "dem.npy": lambda p: np.save(p, raster, allow_pickle=False),
+            f"Data{T.name}.alt": alt.tobytes(),
+            "meta.json": b'{"format": "osxp-dem-1"}',
+        },
+    )
+
+
+def _mesh_artefact(store: Store, n: int = 1, *, text_points: int | None = None) -> str:
+    mesh = _mesh(40 + n)
+    text = _mesh(text_points) if text_points else mesh
+    return _put(
+        store,
+        "orthostudio.mesh",
+        n,
+        {
+            "mesh.npz": lambda p: write_mesh_npz(p, mesh),
+            f"Data{T.name}.mesh": lambda p: write_mesh_text(p, text),
+            "stats.json": b"{}",
+        },
+    )
+
+
+def _keep(store_root: Path, library: Path, tiles: Path, keys: dict[str, str]) -> Path:
+    """A pack whose manifest names ``keys``, as a build leaves one: what the clean keeps."""
+    with Store(store_root, fsync=False) as s:
+        dsf_key, recipe = artifact_key("tile.dsf", 1, {"tile": T.name}, {})
+        with s.begin("tile.dsf", dsf_key, "dir") as b:
+            (b.out / "terrain").mkdir()
+            (b.out / f"{T.name}.dsf").write_bytes(b"XPLNEDSF" + b"\0" * 100)
+            b.commit(version=1, recipe=recipe, inputs=[])
+        dsf_dir = s.path(dsf_key)
+    files = write_pack(tiles, T, dsf_dir=dsf_dir, textures_dir=None, overlay_file=None)
+    artefacts = {
+        role: ArtefactEntry(key, "d" * 64, f"{rule}@1")
+        for role, (key, rule) in {
+            "dsf": (dsf_key, "tile.dsf"),
+            **{r: (k, f"orthostudio.{r}") for r, k in keys.items()},
+        }.items()
+    }
+    listed = {"dsf": T.dsf_relpath.as_posix(), "dsf_size": 108, "textures": 0, "terrain": 0}
+    manifest = PackManifest(T.name, "BI", 16, artefacts, listed)
+    (files.pack_dir / "orthostudio.toml").write_text(manifest.to_toml())
+    with Library(library) as lib:
+        lib.register(T, "BI", 16, files.pack_dir, "osxp", manifest.keys)
+    return files.pack_dir
+
+
+@pytest.fixture
+def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Path]:
+    monkeypatch.setenv("OSXP_HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("OSXP_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setenv("OSXP_API_NO_AIRPORTS", "1")
+    paths = {
+        "store": tmp_path / "data" / "store",
+        "chunks": tmp_path / "data" / "chunks",
+        "tiles": tmp_path / "data" / "tiles",
+        "library": tmp_path / "home" / "library.sqlite",
+    }
+    for key in ("chunks", "tiles"):
+        paths[key].mkdir(parents=True)
+    paths["library"].parent.mkdir(parents=True)
+    return paths
+
+
+def _run(h: dict[str, Path], **kw: Any) -> Any:
+    return clean(
+        h["store"], h["chunks"], library_path=h["library"], tiles_root=h["tiles"],
+        **{"grace_s": 0.0, **kw},
+    )  # fmt: skip
+
+
+# -- the store ----------------------------------------------------------------------------------
+
+
+def test_a_trimmed_artefact_keeps_its_identity(tmp_path: Path) -> None:
+    """Its key and digest stay, which what was made from it was keyed with; its size in the index
+    and the store's are what is left; the files that went are listed; a check of the store finds
+    it whole and leaves it; trimmed again, nothing more goes."""
+    with Store(tmp_path / "store", fsync=False) as s:
+        key = _relief(s)
+        before = s.info(key)
+        disk = s.disk_bytes()
+        alt = f"Data{T.name}.alt"
+        size = (before.path / alt).stat().st_size  # type: ignore[union-attr]
+        assert s.trim(key, [alt]) == size
+        after = s.info(key)
+        assert after is not None and before is not None
+        assert (after.key, after.digest) == (before.key, before.digest)
+        assert after.size == before.size - size and s.disk_bytes() == disk - size
+        assert not (after.path / alt).exists() and (after.path / "dem.npy").is_file()
+        assert s.trimmed(key) == {alt: size}
+        report = s.fsck(verify=True, repair=True)
+        assert report.clean and s.has(key)
+        assert s.trim(key, [alt]) == 0 and s.trimmed(key) == {alt: size}
+
+
+def test_only_files_inside_a_folder_artefact_are_trimmed(tmp_path: Path) -> None:
+    """A path outside the artefact, one not there, a folder, a file artefact: nothing goes."""
+    with Store(tmp_path / "store", fsync=False) as s:
+        key = _relief(s)
+        outside = tmp_path / "outside.alt"
+        outside.write_bytes(b"x")
+        for rel in ("../../../../outside.alt", str(outside), "missing.alt", "."):
+            assert s.trim(key, [rel]) == 0
+        assert outside.is_file() and s.trimmed(key) == {}
+        file_key, recipe = artifact_key("texture.dds", 1, {"n": 1}, {})
+        with s.begin("texture.dds", file_key, "file") as b:
+            b.out.write_bytes(b"DDS")
+            b.commit(version=1, recipe=recipe, inputs=[])
+        assert s.trim(file_key, ["x"]) == 0 and s.path(file_key).is_file()
+
+
+def test_a_file_another_program_holds_stays_untrimmed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """On Windows a file another program holds cannot be removed: it stays, listed nowhere, and
+    the index's size with it."""
+    with Store(tmp_path / "store", fsync=False) as s:
+        key = _relief(s)
+        before = s.info(key)
+        real = Path.unlink
+
+        def held(self: Path, *a: Any, **kw: Any) -> None:
+            if self.suffix == ".alt":
+                raise PermissionError(13, "held by another program", str(self))
+            real(self, *a, **kw)
+
+        monkeypatch.setattr(Path, "unlink", held)
+        assert s.trim(key, [f"Data{T.name}.alt"]) == 0
+        monkeypatch.undo()
+        assert s.trimmed(key) == {} and s.info(key).size == before.size  # type: ignore[union-attr]
+
+
+def test_a_deleted_artefact_takes_its_list_with_it(tmp_path: Path) -> None:
+    with Store(tmp_path / "store", fsync=False) as s:
+        key = _relief(s)
+        s.trim(key, [f"Data{T.name}.alt"])
+        s.delete(key, force=True)
+        db = sqlite3.connect(s.root / "index.sqlite")
+        assert db.execute("SELECT COUNT(*) FROM trimmed").fetchone() == (0,)
+        db.close()
+
+
+def test_an_index_from_before_gains_the_list(tmp_path: Path) -> None:
+    root = tmp_path / "store"
+    Store(root, fsync=False).close()
+    db = sqlite3.connect(root / "index.sqlite")
+    db.execute("DROP TABLE trimmed")
+    db.commit()
+    db.close()
+    with Store(root, fsync=False) as s:
+        key = _relief(s)
+        assert s.trim(key, [f"Data{T.name}.alt"]) > 0
+
+
+# -- Free space ---------------------------------------------------------------------------------
+
+
+def test_free_space_trims_the_second_forms_whatever_the_choices(home: dict[str, Path]) -> None:
+    """The relief's ``.alt`` and the mesh's text go from the artefacts a tile needs, the forms
+    OrthoStudio XP reads stay, every artefact keeps its key; the figures are what the disk gets
+    back; a second time there is nothing."""
+    with Store(home["store"], fsync=False) as s:
+        relief, mesh = _relief(s), _mesh_artefact(s)
+        digests = {k: s.digest_of(k) for k in (relief, mesh)}
+        sizes = {
+            k: sum(f.stat().st_size for f in s.path(k).glob(p))
+            for k, p in ((relief, "Data*.alt"), (mesh, "Data*.mesh"))
+        }
+    _keep(home["store"], home["library"], home["tiles"], {"dem": relief, "mesh": mesh})
+    seen = _run(home, dry_run=True)
+    assert seen.twice_files == 2 and seen.twice_bytes == sum(sizes.values())
+    assert seen.freed_bytes == 0
+    done = _run(home)
+    assert done.twice_files == 2 and done.twice_bytes == seen.twice_bytes
+    with Store(home["store"], fsync=False) as s:
+        assert {k: s.digest_of(k) for k in (relief, mesh)} == digests
+        assert sorted(p.name for p in s.path(relief).iterdir()) == ["dem.npy", "meta.json"]
+        assert sorted(p.name for p in s.path(mesh).iterdir()) == ["mesh.npz", "stats.json"]
+    again = _run(home, dry_run=True)
+    assert again.twice_files == 0 and again.twice_bytes == 0
+
+
+def test_a_second_form_that_does_not_match_stays(home: dict[str, Path]) -> None:
+    """The kept form must say the same size of the same thing: a raster of another size, a mesh
+    text naming another number of points, an npz that is not one, stay as they are."""
+    with Store(home["store"], fsync=False) as s:
+        relief = _relief(s, alt_side=SIDE + 1)
+        mesh = _mesh_artefact(s, text_points=77)
+        broken = _put(
+            s, "orthostudio.mesh", 9,
+            {"mesh.npz": b"not a zip", f"Data{T.name}.mesh": b"MeshVersionFormatted 2\n"},
+        )  # fmt: skip
+    _keep(home["store"], home["library"], home["tiles"], {"dem": relief, "mesh": mesh})
+    with Library(home["library"]) as lib:  # the broken one is another tile's, kept as well
+        other = TileRef(47, 6)
+        lib.register(other, "BI", 16, home["tiles"] / "elsewhere", "osxp", {"mesh": broken})
+    assert _run(home).twice_files == 0
+    with Store(home["store"], fsync=False) as s:
+        assert len(list(s.path(relief).glob("Data*.alt"))) == 1
+        assert len(list(s.path(mesh).glob("Data*.mesh"))) == 1
+
+
+def test_what_goes_anyway_was_just_used_or_is_pinned_is_not_trimmed(
+    home: dict[str, Path],
+) -> None:
+    """Data no tile needs goes whole, counted once; what a build may be reading (used within the
+    grace period) and what is pinned keep both forms."""
+    with Store(home["store"], fsync=False) as s:
+        unused = _relief(s, 1)
+        recent = _mesh_artefact(s, 2)
+        pinned = _relief(s, 3)
+        s.pin("kept", pinned)
+        old = time.time() - 7200
+        s._db.execute("UPDATE artifacts SET last_used_at = ?, created_at = ?", (old, old))
+        s.touch(recent)
+    _keep(home["store"], home["library"], home["tiles"], {"mesh": recent, "dem": pinned})
+    seen = _run(home, dry_run=True, grace_s=3600.0)
+    assert seen.twice_files == 0 and seen.removed == 1
+    done = _run(home, grace_s=3600.0)
+    with Store(home["store"], fsync=False) as s:
+        assert not s.has(unused) and s.trimmed(recent) == {} and s.trimmed(pinned) == {}
+    assert done.twice_bytes == 0
+
+
+def test_the_command_says_it(home: dict[str, Path], monkeypatch: pytest.MonkeyPatch) -> None:
+    with Store(home["store"], fsync=False) as s:
+        relief = _relief(s)
+        old = time.time() - 7200
+        s._db.execute("UPDATE artifacts SET last_used_at = ?, created_at = ?", (old, old))
+    _keep(home["store"], home["library"], home["tiles"], {"dem": relief})
+    with Store(home["store"], fsync=False) as s:
+        s._db.execute("UPDATE artifacts SET last_used_at = ?, created_at = ?", (old, old))
+    out = CliRunner().invoke(cli_app, ["clean", "--dry-run"])
+    assert out.exit_code == 0, out.output
+    assert "relief and mesh files kept in a second form: 1, would free" in out.output
+    assert CliRunner().invoke(cli_app, ["clean"]).exit_code == 0
+    with Store(home["store"], fsync=False) as s:
+        assert s.trimmed(relief)
+
+
+@pytest.fixture
+def app(home: dict[str, Path], tmp_path: Path) -> Any:
+    mgr = JobManager(jobs_dir=tmp_path / "home" / "jobs", build=FakeBuild(), env_factory=None)
+    application = create_app(
+        env_factory=None,
+        jobs=mgr,
+        airports=FakeIndex(),
+        settings_path=tmp_path / "home" / "config.toml",
+    )
+    yield application
+    mgr.close()
+
+
+@pytest.mark.anyio
+async def test_the_page_is_told_and_free_space_trims_them(app: Any, home: dict[str, Path]) -> None:
+    with Store(home["store"], fsync=False) as s:
+        relief, mesh = _relief(s), _mesh_artefact(s)
+    _keep(home["store"], home["library"], home["tiles"], {"dem": relief, "mesh": mesh})
+    async with client_for(app) as c:
+        disk = (await c.get("/api/disk")).json()
+        assert disk["twice_bytes"] > 0
+        done = (await c.post("/api/clean", json={})).json()
+        assert done["twice_freed_bytes"] == disk["twice_bytes"]
+        assert (await c.get("/api/disk")).json()["twice_bytes"] == 0

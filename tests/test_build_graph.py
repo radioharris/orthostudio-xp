@@ -361,6 +361,96 @@ def _artefact_dir(store: Store, rule: str, key: str, fill) -> ArtifactRef:
     return ArtifactRef(info.key, info.digest, info.path, info.rule, info.kind, info.size)
 
 
+def _on_rounding_boundaries(count: int) -> list[float]:
+    """Altitudes (m) that the DSF rounds one way at Triangle4XP's precision and the other once
+    rounded as the text writes them: just off the middle of a step of a pool spanning under 770 m
+    (``dsf.encode._pool_scales``: 85 steps a metre from the pool's floor, 0 here)."""
+    found: list[float] = []
+    for k in range(1, 10_000):
+        for eps in (1e-11, -1e-11, 2e-11, -2e-11, 3e-11, -3e-11):
+            z = (k + 0.5) / 85 + eps
+            text = float("%.15f" % (z / 100000)) * 100000
+            if np.round(z * 85) != np.round(text * 85):
+                found.append(z)
+                break
+        if len(found) == count:
+            return found
+    raise AssertionError("no altitude on a boundary")
+
+
+def test_the_dsf_of_a_mesh_kept_once_is_the_dsf_of_its_text(
+    env: BuildEnv, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The mesh is kept as its npz alone since 2026-10-23, the text being the same mesh again
+    (272 GB of a user's cache): the DSF reads the npz as the text would have given it, and comes
+    out byte for byte as from the text. Read as it is, Triangle4XP's full precision changes the
+    DSF wherever an altitude sits on a rounding boundary, as 23 bytes of +43+005's did
+    (pipeline/build.py ``_tile_dsf``): the mesh here has some, and the npz read as it is gives
+    another DSF."""
+    import orthostudio.pipeline.build as build_mod
+
+    store = env.store
+    rng = np.random.default_rng(23)
+    side = 40
+    lon, lat = np.meshgrid(np.linspace(5.0, 6.0, side), np.linspace(43.0, 44.0, side))
+    vertices = np.column_stack(
+        [
+            lon.ravel() + rng.uniform(-1e-9, 1e-9, side * side),
+            lat.ravel() + rng.uniform(-1e-9, 1e-9, side * side),
+            rng.uniform(1.0, 600.0, side * side) + rng.uniform(0, 1e-9, side * side),
+        ]
+    )
+    boundary = _on_rounding_boundaries(12)
+    vertices[side + 1 : side + 1 + len(boundary), 2] = boundary
+    vertices[:, :2] = np.clip(vertices[:, :2], [5.0, 43.0], [6.0, 44.0])
+    i = np.arange(side - 1)
+    a_, b_ = np.meshgrid(i, i)
+    corner = (b_ * side + a_).ravel()
+    tris = np.vstack(
+        [
+            np.column_stack([corner, corner + 1, corner + side + 1]),
+            np.column_stack([corner, corner + side + 1, corner + side]),
+        ]
+    ).astype(np.int32)
+    normals = rng.uniform(-0.3, 0.3, (side * side, 2)).astype(np.float32)
+    mesh = MeshData(vertices, normals, tris, np.zeros(len(tris), dtype=np.uint8))
+
+    def with_text(out: Path) -> None:
+        write_mesh_text(out / f"Data{T.name}.mesh", mesh)
+        write_mesh_npz(out / "mesh.npz", mesh)
+
+    def once(out: Path) -> None:
+        write_mesh_npz(out / "mesh.npz", mesh)
+
+    def once_again(out: Path) -> None:  # another digest, or its DSF is the one above
+        once(out)
+        (out / "stats.json").write_text("{}")
+
+    def masks(out: Path) -> None:
+        (out / "index.json").write_text(json.dumps({"format": "osxp-masks-1", "masks": []}))
+
+    masks_ref = _artefact_dir(store, "orthostudio.masks", "44" * 32, masks)
+    dsfs = []
+    for key, fill in (("55" * 32, with_text), ("66" * 32, once), ("77" * 32, once_again)):
+        if key == "77" * 32:  # the npz as it is: what the DSF read before
+            monkeypatch.setattr(build_mod, "as_written", lambda mesh: mesh)
+        mesh_ref = _artefact_dir(store, "orthostudio.mesh", key, fill)
+        node = Node(
+            f"{T.name}/BI14/dsf-{key[:2]}",
+            TILE_DSF,
+            TileDsfParams(tile=T.name, default_website="BI", default_zl=14),
+            {"mesh": mesh_ref, "masks": masks_ref, "rasters": None, "vectors": None},
+            kind="cpu",
+        )
+        sched = make_scheduler(store, env, cpu_workers=1, cpu_in_threads=True)
+        sched.add(node)
+        refs = asyncio.run(sched.run([node.id]))
+        assert not sched.failed, sched.failed
+        dsfs.append((refs[node.id].path / f"{T.name}.dsf").read_bytes())
+    assert dsfs[0] == dsfs[1]
+    assert dsfs[2] != dsfs[0]  # the test sees what full precision does
+
+
 def test_dsf_and_pack_nodes_run_and_hit(tmp_path: Path, env: BuildEnv) -> None:
     store = env.store
     mesh = _tiny_mesh()

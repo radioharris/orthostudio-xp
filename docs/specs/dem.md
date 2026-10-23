@@ -601,13 +601,17 @@ elevation files, is external state (the rule is keyed by its params and re-run w
 Files written to `ctx.out`:
 
 ```
-Data<tile>.alt   the raster, float32 row-major, no header (4 * nxdem * nydem bytes)
-dem.npy          the same array as a .npy (mmap-able by the mesh and the masks rules)
+dem.npy          the raster as a .npy (mmap-able by the mesh and the masks rules)
 meta.json        {"format": "osxp-dem-1", "tile", "source", "epsg", "x0", "y0", "x1", "y1",
                   "nodata", "nxdem", "nydem", "min", "max", "mean", "nodata_pixels",
                   "alt_layout", "laid_over", "own": [{"file", "used", "why"}],
                   "cells": [{"cell", "state", "path", "detail"} x 9]}
 ```
+
+Until 2026-10-23 the rule also wrote `Data<tile>.alt`, the same raster as Ortho4XP's raw float32
+(`Dem.write_alt`), read only by the mesh with `--dem native`: 90 GB of a user's cache. The mesh
+writes it from `dem.npy` in its scratch where it needs it, the same bytes, and Free space trims it
+from the artefacts that have it (`graph-keys.md` 9.1).
 
 `Dem.load(dir)` reads it back through `numpy.load(mmap_mode="r")`, so a consumer that only
 needs `alt_vec` never copies 54 MB.

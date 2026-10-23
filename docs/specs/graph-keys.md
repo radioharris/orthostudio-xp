@@ -218,6 +218,12 @@ CREATE TABLE pins (
     key       TEXT NOT NULL REFERENCES artifacts (key) ON DELETE CASCADE,
     pinned_at REAL NOT NULL
 );
+CREATE TABLE trimmed (               -- files trimmed from an artefact, which keeps its identity
+    key  TEXT NOT NULL REFERENCES artifacts (key) ON DELETE CASCADE,
+    path TEXT NOT NULL,              -- relative to the artefact
+    size INTEGER NOT NULL,
+    PRIMARY KEY (key, path)
+);
 CREATE TABLE away (                  -- an artefact let go of, its bytes held outside
     key       TEXT PRIMARY KEY,
     rule      TEXT NOT NULL,
@@ -245,6 +251,17 @@ whose artefact is back in the store goes there. The table's first form had no `v
 or `listed_in`: the opening adds them to an index that has it (`_AWAY_ADDED`, their defaults
 those of an artefact the store no longer had), then the index on `listed_in`. A user's store
 opened by the first form was refused by the next, "no such column: listed_in" (2026-10-23).
+
+`trimmed` (2026-10-23): `Store.trim(key, paths)` removes files of a folder artefact that hold
+what another of its files holds (the relief's `.alt` beside `dem.npy`, the mesh's text beside
+`mesh.npz`), and the artefact keeps its key and its digest, which what was made from it was keyed
+with: nothing downstream is made again. The index's `size` becomes what is left (the store's
+`disk_bytes` follows, by its triggers), the table lists what went, and `fsck(verify=True)` does not
+read a trimmed artefact against its digest, which no longer describes its files. A path outside
+the artefact is refused; a file another program holds stays, and its row with it is taken back.
+Its digest is no longer what its files hash to: a version that reads the files alone (an older
+OrthoStudio XP opening the store) sees the artefact as it is, and builds what it makes from it from
+the form left.
 
 `meta.disk_bytes` is the store's size on the disk that `Store.disk_bytes` answers (the status
 bar's, `api.md` 2.1): every artefact's size but those of `tile.textures`, whose folders hard-link
@@ -340,6 +357,13 @@ collects by reachability from the packs on disk instead:
   directories are not swept: superseded builds stay for `osxp clean`, and the deleted tile is
   credited in `freed_bytes` with its own cache only. Running the whole clean there took other
   processes' finished artefacts that no pack referenced yet (review of the delete);
+* **relief and mesh kept twice**: whatever the options, the `orthostudio.dem` and
+  `orthostudio.mesh` artefacts that stay and hold Ortho4XP's form beside the one OrthoStudio XP
+  reads (`Data<tile>.alt` beside `dem.npy`, `Data<tile>.mesh` beside `mesh.npz`) are trimmed of it
+  (`clean._twice`, `Store.trim`; `twice_files`, `twice_bytes`), but those used within the grace
+  period or pinned. A file goes only when the kept form says the same size of the same thing, read
+  from headers alone: as many float altitudes in `dem.npy` as the `.alt` holds, as many points in
+  `mesh.npz`'s `vertices` as the `.mesh` names. 90 GB and 272 GB of a user's 1.1 TB cache;
 * **images held twice**: whatever the options, the `tile.textures` of a pack that holds every
   image it lists as a file of its own, of the same size (a tile copied to another disk, or apart),
   goes with the `texture.dds` it lists, each recorded `away` at the pack's file first, listed in

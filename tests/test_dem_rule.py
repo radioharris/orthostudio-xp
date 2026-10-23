@@ -108,18 +108,16 @@ def test_build_dem_needs_no_store(elevation: Path, tmp_path: Path) -> None:
     assert dem.alt_dem[1836, 1836] == 100 + 5
 
 
-def test_the_rule_writes_the_three_files(elevation: Path, tmp_path: Path) -> None:
+def test_the_rule_writes_the_raster_once(elevation: Path, tmp_path: Path) -> None:
+    """``dem.npy`` and its ``meta.json``: Ortho4XP's ``Data<tile>.alt``, the same raster a second
+    time, is no longer written (90 GB of a user's cache, 2026-10-23)."""
     store = Store(tmp_path / "store")
     executor = Executor(store)
     with dem_job(_job(elevation, tmp_path)):
         report = executor.run(Node(DEM_RULE, dem_params(TILE), NO_XP12))
     out = report.target.path
-    assert sorted(p.name for p in out.iterdir()) == [
-        alt_file_name(TILE),
-        "dem.npy",
-        "meta.json",
-    ]
-    assert (out / alt_file_name(TILE)).stat().st_size == 4 * 3673 * 3673
+    assert sorted(p.name for p in out.iterdir()) == ["dem.npy", "meta.json"]
+    assert np.load(out / "dem.npy", mmap_mode="r").shape == (3673, 3673)
     meta = json.loads((out / "meta.json").read_text())
     assert meta["tile"] == TILE.name
     assert meta["source"] == "View"
@@ -140,11 +138,14 @@ def test_the_second_run_is_a_cache_hit(elevation: Path, tmp_path: Path) -> None:
 
 
 def test_the_alt_file_is_exactly_the_npy_content(elevation: Path, tmp_path: Path) -> None:
+    """What Ortho4XP's ``.alt`` held is the raster read back as float32: written from the artefact
+    where it is needed (``--dem native``), it is the file the rule wrote before."""
     store = Store(tmp_path / "store")
     executor = Executor(store)
     with dem_job(_job(elevation, tmp_path)):
         out = executor.run(Node(DEM_RULE, dem_params(TILE), NO_XP12)).target.path
-    raw = np.fromfile(out / alt_file_name(TILE), dtype=np.float32)
+    Dem.load(out).write_alt(tmp_path / alt_file_name(TILE))
+    raw = np.fromfile(tmp_path / alt_file_name(TILE), dtype=np.float32)
     npy = np.load(out / "dem.npy")
     assert raw.tobytes() == npy.astype(np.float32).tobytes()
 

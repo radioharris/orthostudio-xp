@@ -27,6 +27,7 @@ __all__ = [
     "Z_SCALE",
     "MeshData",
     "MeshFormatError",
+    "as_written",
     "read_mesh",
     "read_mesh_npz",
     "write_mesh_npz",
@@ -216,6 +217,43 @@ def write_mesh_text(path: str | Path, mesh: MeshData) -> None:
         for start in range(0, m, _WRITE_CHUNK):
             f.write(_lines(table[start : start + _WRITE_CHUNK].tolist(), "%d %d %d %d\n"))
     tmp.replace(path)
+
+
+def as_written(mesh: MeshData) -> MeshData:
+    """``mesh`` as :func:`read_mesh` reads it back from the text :func:`write_mesh_text` makes of
+    it, without the file: its numbers formatted and parsed by that very code, a chunk at a time.
+
+    The text rounds the coordinates to 15 decimals (the altitude in units of 100 km) and the
+    normals to 2, where the npz holds Triangle4XP's full precision: a DSF made from the npz as it
+    is differs from Ortho4XP's on a few bytes, and the DSF reads this instead. The cache keeps
+    the npz alone since 2026-10-23, the text being the same mesh a second time (272 GB of a user's
+    1.1 TB)."""
+    n = mesh.n_vertices
+    scaled = mesh.vertices.copy()
+    scaled[:, 2] /= Z_SCALE
+    vertices = np.empty((n, 3), dtype=np.float64)
+    normals = np.empty((n, 2), dtype=np.float32)
+    for start in range(0, n, _WRITE_CHUNK):
+        rows = scaled[start : start + _WRITE_CHUNK]
+        text = _lines(rows.tolist(), "%.15f %.15f %.15f 0\n").encode("ascii")
+        vertices[start : start + len(rows)] = _parse_block(
+            text, np.float64, len(rows), 4, "vertices"
+        )[:, :3]
+        text = _lines(mesh.normals[start : start + _WRITE_CHUNK].tolist(), "%.2f %.2f 0\n")
+        normals[start : start + len(rows)] = _parse_block(
+            text.encode("ascii"), np.float64, len(rows), 3, "normals"
+        )[:, :2].astype(np.float32)
+    vertices[:, 2] *= Z_SCALE  # read_mesh_file:864
+    return MeshData(
+        vertices=vertices,
+        normals=normals,
+        tris=mesh.tris.copy(),
+        tri_attr=mesh.tri_attr.copy(),
+        extra={
+            "version": str(mesh.extra["version"]).strip(),
+            "dimension": str(mesh.extra["dimension"]).strip(),
+        },
+    )
 
 
 # -- npz twin ------------------------------------------------------------------------------

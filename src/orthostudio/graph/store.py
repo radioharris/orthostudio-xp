@@ -9,7 +9,10 @@ docs/specs/graph-keys.md for the crash matrix.
 
 A file artefact the store let go of while a file outside it holds its very bytes (a tile's own
 copy of an image, on another disk) is remembered in the ``away`` table, and taken back from that
-file when a build needs it again (:meth:`Store.send_away`, :meth:`Store.take_back`).
+file when a build needs it again (:meth:`Store.send_away`, :meth:`Store.take_back`). A file of a
+folder artefact that holds what another of its files holds (the relief, the mesh, written twice by
+earlier versions) can go while the artefact keeps its identity, its digest: ``trimmed`` says which
+(:meth:`Store.trim`).
 """
 
 from __future__ import annotations
@@ -130,6 +133,12 @@ CREATE TABLE IF NOT EXISTS pins (
     pinned_at REAL NOT NULL
 );
 CREATE INDEX IF NOT EXISTS pins_key ON pins (key);
+CREATE TABLE IF NOT EXISTS trimmed (
+    key  TEXT NOT NULL REFERENCES artifacts (key) ON DELETE CASCADE,
+    path TEXT NOT NULL,
+    size INTEGER NOT NULL,
+    PRIMARY KEY (key, path)
+);
 CREATE TABLE IF NOT EXISTS away (
     key       TEXT PRIMARY KEY,
     rule      TEXT NOT NULL,
@@ -722,6 +731,19 @@ class Store:
                 return str(row["key"])
         return None
 
+    def iter_made(self, rule: str) -> Iterator[tuple[ArtifactInfo, dict[str, Any]]]:
+        """Every artefact of ``rule`` with the params its recipe holds."""
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT * FROM artifacts WHERE rule = ? ORDER BY created_at", (rule,)
+            ).fetchall()
+        for row in rows:
+            try:
+                params = json.loads(str(row["recipe"])).get("params", {})
+            except ValueError:
+                params = {}
+            yield self._row_info(row), params if isinstance(params, dict) else {}
+
     def iter_artifacts(self, rule: str | None = None) -> Iterator[ArtifactInfo]:
         with self._lock:
             if rule is None:
@@ -1072,6 +1094,62 @@ class Store:
             return info
         return None
 
+    # -- files trimmed from artefacts --------------------------------------------------------
+
+    def trim(self, key: str, paths: Iterable[str]) -> int:
+        """Remove from the folder artefact ``key`` the files ``paths`` (relative to it), which hold
+        what another of its files holds, and say how many bytes went. The artefact keeps its key
+        and its digest, which the artefacts made from it were keyed with: nothing downstream is
+        made again. ``trimmed`` lists what went, :meth:`fsck` knows, and the index's size is what
+        is left. A path not there, or not a file, is left out; one that cannot be removed (another
+        program holds it, on Windows) stays, and its row with it is taken back."""
+        info = self.info(key)
+        if info is None or info.kind != "dir":
+            return 0
+        freed = 0
+        for rel in paths:
+            if Path(rel).is_absolute() or ".." in Path(rel).parts:
+                continue  # inside the artefact only
+            path = info.path / rel
+            try:
+                st = path.lstat()
+            except OSError:
+                continue
+            if not path.is_file() or path.is_symlink():
+                continue
+            with self._tx():
+                self._db.execute(
+                    "INSERT OR REPLACE INTO trimmed (key, path, size) VALUES (?, ?, ?)",
+                    (key, Path(rel).as_posix(), int(st.st_size)),
+                )
+                self._db.execute(
+                    "UPDATE artifacts SET size = MAX(0, size - ?) WHERE key = ?",
+                    (int(st.st_size), key),
+                )
+            try:
+                path.unlink()
+            except OSError as exc:
+                log.warning("%s of %s not trimmed: %s", rel, key[:16], exc)
+                with self._tx():
+                    self._db.execute(
+                        "DELETE FROM trimmed WHERE key = ? AND path = ?",
+                        (key, Path(rel).as_posix()),
+                    )
+                    self._db.execute(
+                        "UPDATE artifacts SET size = size + ? WHERE key = ?", (int(st.st_size), key)
+                    )
+                continue
+            freed += int(st.st_size) if st.st_nlink <= 1 else 0
+        return freed
+
+    def trimmed(self, key: str) -> dict[str, int]:
+        """The files trimmed from the artefact ``key`` (:meth:`trim`), with their sizes."""
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT path, size FROM trimmed WHERE key = ? ORDER BY path", (key,)
+            ).fetchall()
+        return {str(r["path"]): int(r["size"]) for r in rows}
+
     def gc(self, *, quota_bytes: int | None = None, min_age_s: float = 0.0) -> GcReport:
         """Collect unreferenced artefacts, least recently used first.
 
@@ -1159,7 +1237,9 @@ class Store:
                 rows_without.append(key)
             else:
                 indexed[p] = (key, digest)
-                if verify and digest_path(p)[0] != digest:
+                # a trimmed artefact holds less than its digest: what is left is all there is to
+                # read, and its identity is the digest it was made with (:meth:`trim`)
+                if verify and not self.trimmed(key) and digest_path(p)[0] != digest:
                     mismatches.append(key)
         for p in self._iter_finals():
             if p not in indexed:
