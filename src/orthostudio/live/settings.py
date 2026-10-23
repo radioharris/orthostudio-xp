@@ -79,9 +79,10 @@ def disk_floor(max_zoom: int, max_zoom_airports: int) -> float:
     return DISK_MIN_SHARP_GB if max_zoom > 16 or max_zoom_airports > 18 else DISK_MIN_GB
 
 
-LIVE_DECAL = "grass_and_stony_dirt_1.dcl"
-"""The decal of Live's squares until the pilot chooses another: grass and stony dirt (the user,
-2026-10-18), where OrthoStudio XP's tiles keep Ortho4XP's ``maquify_2_green_key.dcl``."""
+LIVE_DECAL = "maquify_2_green_key.dcl"
+"""The decal of Live's squares until the pilot chooses another: Ortho4XP's, as OrthoStudio XP's
+tiles and XPME have it (the user, 2026-10-23: its larger, stronger grain looks better on the land
+than ``grass_and_stony_dirt_1.dcl``, Live's default from 2026-10-18)."""
 
 
 class LiveSettings(BaseModel):

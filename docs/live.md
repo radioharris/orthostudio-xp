@@ -238,8 +238,9 @@ keeps its colours.
 
 X-Plane 12's decals: a fine grain X-Plane draws over the photo seen from very low, which softens
 its blur. Live writes the one chosen in its settings on the land of its squares (the `DECAL_LIB`
-line of each land terrain file it places), from OrthoStudio XP's list: `grass_and_stony_dirt_1`
-by default, long grass on the green and stony dirt elsewhere; `maquify_2_green_key` is Ortho4XP's;
+line of each land terrain file it places), from OrthoStudio XP's list: `maquify_2_green_key`
+by default, Ortho4XP's, shrubby vegetation on the green and stony dirt elsewhere, the one
+OrthoStudio XP's tiles have; `grass_and_stony_dirt_1`, long grass on the green, a finer grain;
 or none. The sea keeps none. A new choice takes effect at the next start: the terrain files of the
 squares flown already are made again as X-Plane comes, not while X-Plane runs.
 

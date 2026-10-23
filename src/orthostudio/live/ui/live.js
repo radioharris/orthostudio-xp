@@ -1041,7 +1041,7 @@ function bindSeason() {
   });
 }
 
-const LIVE_DECAL = "grass_and_stony_dirt_1.dcl"; // orthostudio.live.settings.LIVE_DECAL
+const LIVE_DECAL = "maquify_2_green_key.dcl"; // orthostudio.live.settings.LIVE_DECAL
 let decalList = []; // OrthoStudio XP's decals, from the status (orthostudio.decals.DECALS)
 let decalsDrawn = "";
 
