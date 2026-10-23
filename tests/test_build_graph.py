@@ -152,6 +152,41 @@ def test_neighbours_in_batch_and_in_store(tmp_path: Path, env: BuildEnv) -> None
     assert isinstance(src, ArtifactRef) and src.key == src.digest and src.rule == "global_scenery"
 
 
+def test_a_batch_reads_the_stored_meshes_and_x_plane_s_files_once(
+    tmp_path: Path, env: BuildEnv, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The Plan of 60 tiles over a cache of 1 400 went through every stored mesh for each
+    neighbour of each tile (5.4 s), and read X-Plane's scenery files again at each estimate (172
+    of them, 1.1 GB, for 25 tiles): the meshes are read once a batch, and a scenery file's digest
+    is kept while the file stays the same (2026-10-23)."""
+    import orthostudio.graph.store as store_module
+
+    walks: list[str] = []
+    real_walk = Store.iter_made
+
+    def counted(self: Store, rule: str):  # type: ignore[no-untyped-def]
+        walks.append(rule)
+        return real_walk(self, rule)
+
+    hashed: list[Path] = []
+    real_digest = store_module.digest_file
+
+    def hashing(path):  # type: ignore[no-untyped-def]
+        hashed.append(Path(path))
+        return real_digest(path)
+
+    monkeypatch.setattr(Store, "iter_made", counted)
+    monkeypatch.setattr(store_module, "digest_file", hashing)
+    tiles = [T, W, N]
+    first = _declare([_spec(tmp_path, tile=t) for t in tiles], _sched(env), env)
+    assert walks == [OSXP_MESH.name]  # once for the three tiles and their neighbours
+    files = len(hashed)
+    assert files > 0
+    again = _declare([_spec(tmp_path, tile=t) for t in tiles], _sched(env), env)
+    assert len(hashed) == files  # the same files: not read again
+    assert [g.xp12.inputs["source"] for g in again] == [g.xp12.inputs["source"] for g in first]
+
+
 def test_conflicting_params_get_a_suffix(tmp_path: Path, env: BuildEnv) -> None:
     sched = _sched(env)
     specs = [

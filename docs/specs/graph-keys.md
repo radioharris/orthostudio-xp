@@ -218,6 +218,14 @@ CREATE TABLE pins (
     key       TEXT NOT NULL REFERENCES artifacts (key) ON DELETE CASCADE,
     pinned_at REAL NOT NULL
 );
+CREATE TABLE sources (               -- digests of files outside the store, while they stay the same
+    path     TEXT PRIMARY KEY,       -- resolved
+    size     INTEGER NOT NULL,
+    mtime_ns INTEGER NOT NULL,
+    ctime_ns INTEGER NOT NULL,
+    ino      INTEGER NOT NULL,
+    digest   TEXT NOT NULL
+);
 CREATE TABLE trimmed (               -- files trimmed from an artefact, which keeps its identity
     key  TEXT NOT NULL REFERENCES artifacts (key) ON DELETE CASCADE,
     path TEXT NOT NULL,              -- relative to the artefact
@@ -251,6 +259,18 @@ whose artefact is back in the store goes there. The table's first form had no `v
 or `listed_in`: the opening adds them to an index that has it (`_AWAY_ADDED`, their defaults
 those of an artefact the store no longer had), then the index on `listed_in`. A user's store
 opened by the first form was refused by the next, "no such column: listed_in" (2026-10-23).
+
+`sources` (2026-10-23): `Store.file_digest(path)` gives the digest of a file outside the store
+(X-Plane's scenery DSFs, the inputs keyed by content), read again only when its size, modification
+time, change time or inode differ from those recorded: a Plan read 172 of X-Plane's files, 1.1 GB,
+at each estimate for 25 tiles. The change time catches a file written again with its modification
+time put back; a file replaced under its name has another inode.
+
+`Store.last_made` and `Store.last_away` read a rule's rows once, grouped by the canonical JSON of
+their params, newest first (`Store._made_rows`), until the index changes: this connection's writes
+(counted in `_tx`) and the other processes' (`PRAGMA data_version`) make the next ask read them
+again. Each ask read and parsed every row of the rule: a Plan of 60 tiles over a cache of 1 400
+asked some 480 times, 11.3 s on the reference Mac, 0.21 s since.
 
 `trimmed` (2026-10-23): `Store.trim(key, paths)` removes files of a folder artefact that hold
 what another of its files holds (the relief's `.alt` beside `dem.npy`, the mesh's text beside

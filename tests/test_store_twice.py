@@ -13,6 +13,7 @@ folders only.
 
 from __future__ import annotations
 
+import os
 import sqlite3
 import time
 from pathlib import Path
@@ -333,3 +334,69 @@ async def test_the_page_is_told_and_free_space_trims_them(app: Any, home: dict[s
         done = (await c.post("/api/clean", json={})).json()
         assert done["twice_freed_bytes"] == disk["twice_bytes"]
         assert (await c.get("/api/disk")).json()["twice_bytes"] == 0
+
+
+# -- what the store reads once ------------------------------------------------------------------
+
+
+def _made(store: Store, rule: str, n: int, *, version: int = 1, dsf: str = "a" * 64) -> str:
+    key, recipe = artifact_key(rule, version, {"tile": T.name}, {"dsf": dsf, "n": f"{n:064x}"})
+    with store.begin(rule, key, "dir") as b:
+        (b.out / "x").write_text(str(n))
+        b.commit(version=version, recipe=recipe, inputs=[])
+    return key
+
+
+def test_the_last_build_is_found_from_rows_read_once_and_read_again_when_they_change(
+    tmp_path: Path,
+) -> None:
+    """``last_made`` reads a rule's rows once while the index stays as it was: what this store
+    writes, and what another process writes (another connection), is seen at the next ask; what
+    went is not returned; the version and the inputs asked are kept to."""
+    rule = "tile.textures"
+    with Store(tmp_path / "store", fsync=False) as s, Store(tmp_path / "store", fsync=False) as o:
+        assert s.last_made(rule, {"tile": T.name}, 1) is None
+        first = _made(s, rule, 1)
+        assert s.last_made(rule, {"tile": T.name}, 1) == first  # its own write
+        time.sleep(0.01)
+        second = _made(o, rule, 2, dsf="b" * 64)  # another process's
+        assert s.last_made(rule, {"tile": T.name}, 1) == second
+        assert s.last_made(rule, {"tile": T.name}, 1, {"dsf": "a" * 64}) == first
+        assert s.last_made(rule, {"tile": T.name}, 1, {"dsf": "c" * 64}) is None
+        newer = _made(o, rule, 3, version=2)
+        assert s.last_made(rule, {"tile": T.name}, 1) == second  # made by a later version
+        assert s.last_made(rule, {"tile": T.name}, 2) == newer
+        o.delete(newer, force=True)
+        o.delete(second, force=True)
+        assert s.last_made(rule, {"tile": T.name}, 2) == first
+        assert s.last_made(rule, {"tile": "+00+000"}, 2) is None
+
+
+def test_a_file_s_digest_is_kept_while_it_stays_the_same(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """X-Plane's scenery files were read again at each estimate. Kept by path while the file has
+    the same size, times and inode: written again (even with its modification time put back),
+    or replaced by another file, it is read again."""
+    import orthostudio.graph.store as store_module
+
+    read: list[Path] = []
+    real = store_module.digest_file
+    monkeypatch.setattr(store_module, "digest_file", lambda p: read.append(Path(p)) or real(p))
+    dsf = tmp_path / "+46+006.dsf"
+    dsf.write_bytes(b"A" * 1000)
+    with Store(tmp_path / "store", fsync=False) as s:
+        first = s.file_digest(dsf)
+        assert s.file_digest(dsf) == first and len(read) == 1
+    with Store(tmp_path / "store", fsync=False) as s:  # kept in the index, for the next Plan
+        assert s.file_digest(dsf) == first and len(read) == 1
+        stamp = dsf.stat()
+        time.sleep(0.02)
+        dsf.write_bytes(b"B" * 1000)  # same size
+        os.utime(dsf, ns=(stamp.st_atime_ns, stamp.st_mtime_ns))  # its time put back
+        second = s.file_digest(dsf)
+        assert second != first and len(read) == 2
+        other = tmp_path / "other.dsf"
+        other.write_bytes(b"A" * 1000)
+        other.replace(dsf)  # another file under the name
+        assert s.file_digest(dsf) == first and len(read) == 3

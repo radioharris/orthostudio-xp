@@ -133,6 +133,14 @@ CREATE TABLE IF NOT EXISTS pins (
     pinned_at REAL NOT NULL
 );
 CREATE INDEX IF NOT EXISTS pins_key ON pins (key);
+CREATE TABLE IF NOT EXISTS sources (
+    path     TEXT PRIMARY KEY,
+    size     INTEGER NOT NULL,
+    mtime_ns INTEGER NOT NULL,
+    ctime_ns INTEGER NOT NULL,
+    ino      INTEGER NOT NULL,
+    digest   TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS trimmed (
     key  TEXT NOT NULL REFERENCES artifacts (key) ON DELETE CASCADE,
     path TEXT NOT NULL,
@@ -396,6 +404,9 @@ class Store:
         self.fsync = fsync
         self._lock = threading.RLock()
         self._durable_lock = threading.Lock()
+        self._writes = 0
+        self._made: dict[tuple[str, str], dict[str, list[_Made]]] = {}
+        self._made_at = (-1, -1)
         self._db = self._open_index()
         if self.durable_until() is None:
             # a new store, or one every earlier version forced file by file: all durable
@@ -489,6 +500,7 @@ class Store:
                 raise
             else:
                 self._db.execute("COMMIT")
+                self._writes += 1  # what this connection reads of the index may have changed
 
     def _begin_immediate(self) -> None:
         """``BEGIN IMMEDIATE``, asked again while another process holds the index, for up to
@@ -719,17 +731,48 @@ class Store:
         """The newest present artefact ``rule`` made of exactly ``params``, at ``max_version`` or an
         earlier version, whatever its inputs but those given in ``inputs``: what a step made the
         last time for the same tile and settings, for the Plan to expect it again."""
-        want = canonical_json(params)
-        with self._lock:
-            rows = self._db.execute(
-                "SELECT key, recipe FROM artifacts WHERE rule = ? AND version <= ?"
-                " ORDER BY created_at DESC",
-                (rule, int(max_version)),
-            ).fetchall()
-        for row in rows:
-            if _made_of(str(row["recipe"]), want, inputs) and self.has(str(row["key"])):
-                return str(row["key"])
+        for made in self._made_rows("artifacts", rule).get(canonical_json(params), ()):
+            if made.fits(max_version, inputs) and self.has(made.key):
+                return made.key
         return None
+
+    def _made_rows(self, table: str, rule: str) -> dict[str, list[_Made]]:
+        """The rows of ``table`` (``artifacts`` or ``away``) of ``rule`` by the canonical JSON of
+        the params their recipe holds, newest first: read once while the index stays as it was,
+        this connection's writes and the other processes' (``PRAGMA data_version``) reading it
+        again. Asked tile by tile and step by step, each ask read and parsed every row of the rule:
+        11.5 s of a Plan of 60 tiles over a cache of 1 400 (a user's, 2026-10-23)."""
+        with self._lock:
+            seen = (int(self._db.execute("PRAGMA data_version").fetchone()[0]), self._writes)
+            if seen != self._made_at:
+                self._made, self._made_at = {}, seen
+            rows = self._made.get((table, rule))
+            if rows is not None:
+                return rows
+            when = {"artifacts": "created_at", "away": "since"}[table]  # these two tables only
+            found = self._db.execute(
+                f"SELECT key, version, recipe, {when} AS t FROM {table}"
+                " WHERE rule = ? AND recipe != ''",
+                (rule,),
+            ).fetchall()
+            rows = {}
+            for row in found:
+                try:
+                    doc = json.loads(str(row["recipe"]))
+                except ValueError:
+                    continue
+                params, inputs = doc.get("params", {}), doc.get("inputs", {})
+                made = _Made(
+                    float(row["t"]),
+                    int(row["version"]),
+                    str(row["key"]),
+                    inputs if isinstance(inputs, dict) else {},
+                )
+                rows.setdefault(canonical_json(params), []).append(made)
+            for made_alike in rows.values():
+                made_alike.sort(key=lambda m: m.when, reverse=True)
+            self._made[(table, rule)] = rows
+            return rows
 
     def iter_made(self, rule: str) -> Iterator[tuple[ArtifactInfo, dict[str, Any]]]:
         """Every artefact of ``rule`` with the params its recipe holds."""
@@ -1030,17 +1073,34 @@ class Store:
     ) -> str | None:
         """:meth:`last_made` among the artefacts let go of: what a step made the last time for
         the same tile and settings, gone since with its files held outside (a tile's images)."""
-        want = canonical_json(params)
-        with self._lock:
-            rows = self._db.execute(
-                "SELECT key, recipe FROM away WHERE rule = ? AND version <= ? AND recipe != ''"
-                " ORDER BY since DESC",
-                (rule, int(max_version)),
-            ).fetchall()
-        for row in rows:
-            if _made_of(str(row["recipe"]), want, inputs):
-                return str(row["key"])
+        for made in self._made_rows("away", rule).get(canonical_json(params), ()):
+            if made.fits(max_version, inputs):
+                return made.key
         return None
+
+    def file_digest(self, path: Path) -> str:
+        """The content digest of a file outside the store (an X-Plane scenery file), kept while
+        the file stays the same file of the same size and times: read again, a Plan read some
+        200 of X-Plane's files, 1.1 GB, at each estimate (2026-10-23). The change time is part of
+        it, which a program setting the modification time back changes all the same."""
+        p = Path(path)
+        st = p.stat()
+        here = (int(st.st_size), int(st.st_mtime_ns), int(st.st_ctime_ns), int(st.st_ino))
+        name = os.fspath(p.resolve())
+        with self._lock:
+            row = self._db.execute(
+                "SELECT size, mtime_ns, ctime_ns, ino, digest FROM sources WHERE path = ?", (name,)
+            ).fetchone()
+        if row is not None and tuple(int(row[k]) for k in range(4)) == here:
+            return str(row["digest"])
+        digest = digest_file(p)
+        with self._tx():
+            self._db.execute(
+                "INSERT OR REPLACE INTO sources (path, size, mtime_ns, ctime_ns, ino, digest)"
+                " VALUES (?, ?, ?, ?, ?, ?)",
+                (name, *here, digest),
+            )
+        return digest
 
     def point_away(self, key: str, path: Path) -> None:
         """The file holding an artefact let go of is now at ``path`` (its folder moved)."""
@@ -1396,14 +1456,21 @@ def _away_info(row: sqlite3.Row) -> AwayInfo:
     )
 
 
-def _made_of(recipe: str, params: str, inputs: dict[str, str] | None) -> bool:
-    """Whether ``recipe`` made its artefact of exactly ``params`` (canonical JSON) and of the
-    ``inputs`` given, whatever its others."""
-    doc = json.loads(recipe)
-    if canonical_json(doc.get("params", {})) != params:
-        return False
-    made_of = doc.get("inputs", {})
-    return not inputs or all(made_of.get(name) == digest for name, digest in inputs.items())
+@dataclass(frozen=True, slots=True)
+class _Made:
+    """One artefact as :meth:`Store.last_made` weighs it: when, by which version of its rule,
+    under which key, of which inputs."""
+
+    when: float
+    version: int
+    key: str
+    inputs: dict[str, Any]
+
+    def fits(self, max_version: int, inputs: dict[str, str] | None) -> bool:
+        """Made at ``max_version`` or before, of the ``inputs`` given, whatever its others."""
+        if self.version > max_version:
+            return False
+        return not inputs or all(self.inputs.get(n) == d for n, d in inputs.items())
 
 
 def _opt_str(v: object) -> str | None:

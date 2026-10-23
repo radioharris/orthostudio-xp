@@ -724,13 +724,14 @@ def patches_ref(patches_dir: Path | None, tile: TileRef) -> ArtifactRef | None:
     )
 
 
-def source_ref(path: Path, *, label: str = "source") -> ArtifactRef:
-    """An external file as a graph input: key and digest are both its content digest.
+def source_ref(path: Path, *, label: str = "source", store: Store | None = None) -> ArtifactRef:
+    """An external file as a graph input: key and digest are both its content digest, which
+    ``store`` keeps while the file stays the same (``Store.file_digest``) when it is given.
 
     The store never holds that key, so the edge is recorded as a *source* (P0 ``Source``).
     """
     p = Path(path)
-    digest = digest_file(p)
+    digest = store.file_digest(p) if store is not None else digest_file(p)
     return ArtifactRef(digest, digest, p, label, "file", p.stat().st_size)
 
 
@@ -1770,21 +1771,32 @@ def _refuse_pack_dir_conflict(
 
 
 def stored_neighbour_mesh(store: Store, neighbour: TileRef) -> ArtifactRef | None:
-    """The most recently used ``orthostudio.mesh`` artefact of ``neighbour``: made for it (its
-    recipe's tile) and holding its ``mesh.npz``, or holding its ``Data<neighbour>.mesh`` (spec 8.5).
-    The text alone named the tile: a mesh without it, as built since 2026-10-23 or trimmed by Free
-    space, was no neighbour's, and the shores along its border were drawn as if it did not
-    exist."""
-    best: ArtifactRef | None = None
-    best_used = -1.0
+    """The most recently used ``orthostudio.mesh`` artefact of ``neighbour`` (spec 8.5), as
+    :func:`neighbour_meshes` finds them."""
+    return neighbour_meshes(store).get(neighbour.name)
+
+
+def neighbour_meshes(store: Store) -> dict[str, ArtifactRef]:
+    """The most recently used ``orthostudio.mesh`` artefact of each tile: made for it (its
+    recipe's tile) and holding its ``mesh.npz`` or its ``Data<tile>.mesh``, or, its recipe naming
+    no tile, holding that text, which names it. Read once for a whole batch: looked for neighbour
+    by neighbour, each went through every mesh of the store, 5.4 s for 60 tiles of a cache of
+    1 400 (a user's, 2026-10-23). The text alone named the tile before: a mesh without it, as built
+    since 2026-10-23 or trimmed by Free space, was no neighbour's, and the shores along its border
+    were drawn as if it did not exist."""
+    best: dict[str, tuple[float, ArtifactRef]] = {}
     for info, made_for in store.iter_made(OSXP_MESH.name):
-        if info.last_used_at <= best_used:
-            continue
-        theirs = made_for.get("tile") == neighbour.name and (info.path / "mesh.npz").is_file()
-        if theirs or (info.path / mesh_file_name(neighbour)).is_file():
-            best_used = info.last_used_at
-            best = ArtifactRef(info.key, info.digest, info.path, info.rule, info.kind, info.size)
-    return best
+        tile = made_for.get("tile")
+        if isinstance(tile, str) and tile:
+            held = (info.path / "mesh.npz").is_file() or (info.path / f"Data{tile}.mesh").is_file()
+            names = [tile] if held else []
+        else:
+            names = [p.name[len("Data") : -len(".mesh")] for p in info.path.glob("Data*.mesh")]
+        for name in names:
+            if name not in best or info.last_used_at > best[name][0]:
+                ref = ArtifactRef(info.key, info.digest, info.path, info.rule, info.kind, info.size)
+                best[name] = (info.last_used_at, ref)
+    return {name: ref for name, (_used, ref) in best.items()}
 
 
 def _masks_ram_mb(env: BuildEnv) -> int:
@@ -2143,7 +2155,9 @@ def declare(
             if env.global_scenery is not None:
                 path = global_scenery_dsf(env.global_scenery, tile)
                 if path.is_file():
-                    ref = source_ref(path, label="global_scenery")
+                    # X-Plane's file read once while it stays the same: the Plan of 25 tiles
+                    # read 172 of them, 1.1 GB, at each estimate (2026-10-23)
+                    ref = source_ref(path, label="global_scenery", store=env.store)
             source_cache[tile] = ref
         return source_cache[tile]
 
@@ -2248,6 +2262,7 @@ def declare(
 
     out: list[TileNodes] = []
     pack_dirs: dict[tuple[str, str], tuple[BuildSpec, Node, Node]] = {}
+    stored_meshes: dict[str, ArtifactRef] | None = None
     for spec, cfg, choice, vectors, mesh, dem, coast, osm in zip(
         specs,
         configs,
@@ -2264,8 +2279,10 @@ def declare(
         for input_name, (dlat, dlon) in NEIGHBOUR_OFFSETS.items():
             nb = tile.neighbour(dlat, dlon)
             node_nb = None if nb in unavailable else mesh_by_tile.get(nb)
+            if node_nb is None and stored_meshes is None:
+                stored_meshes = neighbour_meshes(env.store)  # once for the whole batch
             neighbours[input_name] = (
-                node_nb if node_nb is not None else stored_neighbour_mesh(env.store, nb)
+                node_nb if node_nb is not None else (stored_meshes or {}).get(nb.name)
             )
         masks = reg.node(
             f"{name}/masks",
