@@ -4,9 +4,10 @@
 artefact left as it was built, nothing let go of is out of reach, and Free space run again ends
 where it would have ended.
 
-The process is really killed (``os._exit`` in a forked child, no ``finally`` run, as a power cut or
-a SIGKILL leaves it) before and after each file removed, renamed or linked and each transaction
-of the store's index (begun, about to commit, committed), one kill point at a time, all of them.
+The process is really killed (``os._exit`` in a process of its own, no ``finally`` run, as a
+power cut or a SIGKILL leaves it) before and after each file removed, renamed or linked and each
+transaction of the store's index (begun, about to commit, committed), one kill point at a time, all
+of them.
 The world: a tile in the workshop sharing its files with the store, a tile filed on another disk
 holding its own copies (its images held twice), the relief and the mesh of both in two forms, data
 no tile needs, downloaded image pieces; Free space without its boxes, and with all of them. The
@@ -20,6 +21,7 @@ import hashlib
 import json
 import os
 import shutil
+import subprocess
 import sys
 from collections.abc import Callable, Iterator
 from pathlib import Path
@@ -37,11 +39,11 @@ from orthostudio.mesh.mesh_file import MeshData, write_mesh_npz, write_mesh_text
 from orthostudio.model import TileRef
 from orthostudio.pipeline.pack import ArtefactEntry, PackManifest, write_pack
 
-pytestmark = pytest.mark.skipif(not hasattr(os, "fork"), reason="kills a forked child (POSIX)")
-
 A = TileRef(46, 6)  # in the workshop, its files the store's
 F = TileRef(46, 7)  # filed on another disk, its own copies
 KILLED = 137
+PARTS = 6
+HERE = Path(__file__).parent
 
 
 def _put(store: Store, rule: str, n: str, files: dict[str, Any], inputs: list[InputRef]) -> Any:
@@ -264,29 +266,34 @@ class _Kill:
         return wrapped
 
 
+def _child(paths: dict[str, str], boxes: bool, at: int | None) -> None:
+    """In the child process: Free space, killed at step ``at``; with no kill, the number of steps
+    in a status file."""
+    data = {k: Path(v) for k, v in paths.items()}
+    kill = _Kill(at)
+    with kill.armed():
+        _free(data, boxes)
+    (data["store"].parent / "steps.txt").write_text(str(kill.count))
+
+
 def _run(paths: dict[str, Path], boxes: bool, at: int | None) -> int:
-    """Free space in a forked child, killed at step ``at``; the child's exit code, and with no
-    kill the number of steps through a status file."""
-    count_file = paths["store"].parent / "steps.txt"
-    pid = os.fork()
-    if pid == 0:  # the child: no pytest, no finally
-        code = 0
-        try:
-            kill = _Kill(at)
-            with kill.armed():
-                _free(paths, boxes)
-            count_file.write_text(str(kill.count))
-        except BaseException:  # anything at all is a failure of the child
-            code = 3
-        os._exit(code)
-    _pid, status = os.waitpid(pid, 0)
-    return os.waitstatus_to_exitcode(status)
+    """Free space in a process of its own (a fresh interpreter: forking pytest's, which runs
+    threads, may deadlock the child), killed at step ``at``; its exit code."""
+    args = json.dumps([{k: os.fspath(v) for k, v in paths.items()}, boxes, at])
+    env = {
+        **os.environ,
+        "PYTHONPATH": os.pathsep.join([str(HERE), os.environ.get("PYTHONPATH", "")]),
+    }
+    code = f"import json, test_free_space_kill as t; t._child(*json.loads({args!r}))"
+    return subprocess.run([sys.executable, "-c", code], env=env, check=False).returncode
 
 
+@pytest.mark.parametrize("part", range(PARTS), ids=[f"part {i + 1}" for i in range(PARTS)])
 @pytest.mark.parametrize("boxes", [False, True], ids=["no boxes", "every box"])
-def test_free_space_killed_at_every_step(tmp_path: Path, boxes: bool) -> None:
+def test_free_space_killed_at_every_step(tmp_path: Path, boxes: bool, part: int) -> None:
     """Each run builds its world anew: copying a folder breaks the hard links between the tiles
-    and the store, and the Library would still name the first folder's tiles."""
+    and the store, and the Library would still name the first folder's tiles. The kill points are
+    shared among ``PARTS`` tests, which run side by side: every point is one part's."""
     reference = _world(tmp_path / "reference")
     tiles = _tiles(reference)
     assert _run(reference, boxes, None) == 0
@@ -301,7 +308,7 @@ def test_free_space_killed_at_every_step(tmp_path: Path, boxes: bool) -> None:
         away = [(k, p.replace(here, os.fspath(to))) for k, p in state["away"]]
         return {**state, "away": away}
 
-    for at in range(1, steps + 1):
+    for at in range(1 + part, steps + 1, PARTS):
         run_root = tmp_path / f"kill-{at}"
         run = _world(run_root)
         run_tiles = _tiles(run)
@@ -311,4 +318,3 @@ def test_free_space_killed_at_every_step(tmp_path: Path, boxes: bool) -> None:
         _healthy(run, run_tiles)
         assert _state(run) == moved(expected, run_root), at
         shutil.rmtree(run_root)
-    print(f"{steps} kill points", file=sys.stderr)
