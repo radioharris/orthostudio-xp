@@ -212,6 +212,20 @@ tile again to have them, drawn even if you had turned that folder's roads off in
 before starting X-Plane: started without it, X-Plane takes the tile off its list, then puts it back
 at the bottom, where another pack's mesh may hide it.
 
+Many tiles moved at once are found again at once. *Find tiles in a folder…* at the top of the
+Library takes the folder you put them in, or a data folder, whose `tiles` folder it reads, and
+finds every tile OrthoStudio XP built there: each tile listed as *Not found* is found again, as
+with *Find again…*, and each tile the list no longer knows is put back in it, the source, zoom level
+and roads it was built with. The tiles in the workshop's own tiles folder need nothing: the Library
+looks there by itself each time it opens, and when the app starts, so a data folder moved by hand
+and chosen again in Settings, or a list lost, comes back with its map. A tile put back that X-Plane
+does not show is out of X-Plane: tick it, then *Add*. A tile the list already has in another folder
+is left aside, and so is a folder inside X-Plane's Custom Scenery or a folder missing files; the
+line under the button names them. A tile whose roads and forests were lost on the way, deleted from
+the list with *Delete…* for instance, comes back without them, and the line says so: build it again
+to have them. With X-Plane open, a tile listed as *Not found* waits: quit X-Plane, then look
+again.
+
 **Many tiles at once.** Every tile of the Library has its box, but a tile a build is working on;
 a click on a tile's name ticks it too. The
 bar above the table does what a row's buttons do, to the ticked tiles on screen that it applies to
@@ -654,8 +668,8 @@ back or built again.
 
 OrthoStudio XP does not need Ortho4XP: it never runs it and a build never reads an Ortho4XP folder.
 It downloads its own OpenStreetMap data and elevation files. The only time it looks into an Ortho4XP
-folder is when you import the tiles Ortho4XP built there, from the Library (*Import tiles built
-elsewhere…*, which asks for the folder) or with `osxp import-ortho4xp <folder>`. The folder is
+folder is when you import the tiles Ortho4XP built there, from the Library (*Find tiles in a
+folder…*, which asks for the folder) or with `osxp import-ortho4xp <folder>`. The folder is
 Ortho4XP's own, the one holding `Ortho4XP.py`, where its `Tiles` and the build folder it remembers
 are read, or any folder holding ortho tiles, whatever it is called, such as a disk they were built on: a
 user's `M:\XPTilesZL14` was refused until 0.1.14. They are listed beside

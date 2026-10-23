@@ -1045,21 +1045,37 @@ tooltip of the card's message (`app.js` `libraryCardContent`):
 Any other error (a network failure included) shows the engine's words, or the page's for the
 codes `i18n.js` knows.
 
-*Import tiles built elsewhere…* (« Importer des tuiles faites ailleurs… », *Import my Ortho4XP
-tiles…* until 1.1.0, which said less than it does: a pack of photo tiles is known by its images
-since 0.1.14, whatever made it, a user's remark, 2026-10-15) is one button (user report, 2026-09-21: a field, *Choose…* beside it
-and *Import* were two buttons for one thing, and the field left empty imported nothing without a
-word). It asks for the folder in the platform's own dialog, opened by the engine (`POST
-/api/choose-folder`, "Choose the Ortho4XP folder (the one holding Ortho4XP.py), or a folder holding
-your tiles", since 0.1.14 a folder of ortho tiles on another disk will do, whatever it is called: a page cannot learn
-the full path of a folder picked in the browser), starting at the folder imported last, else at
-the Ortho4XP folder of the newest imported tile (`app.js` `ortho4xpStart`), then imports it: `POST
-/api/library/import-ortho4xp {folder}`. The line under the button counts the tiles, not the
-overlays pack beside them, and names the folder ("2 tile(s) imported from ~/Ortho4XP."); finding
-none, it says where it looked (`searched`). A cancel changes nothing. Where no dialog opens (a
-Linux without zenity or kdialog: `501 SYS_NO_FOLDER_DIALOG`, a toast; an engine older than the
-page), the field *Tiles folder* appears and the button imports what is typed in it; finding
-nothing, the line says « No photo tile found in … ». The status
+*Find tiles in a folder…* (« Chercher des tuiles dans un dossier… »; *Import my Ortho4XP tiles…*
+until 1.1.0, then *Import tiles built elsewhere…*, which both said less than it does: a pack of
+photo tiles is known by its images since 0.1.14, whatever made it, a user's remark, 2026-10-15,
+and since 2026-10-22 it takes back the tiles OrthoStudio XP built too) is one button (user report,
+2026-09-21: a field, *Choose…* beside it and *Import* were two buttons for one thing, and the field
+left empty imported nothing without a word). It asks for the folder in the platform's own dialog,
+opened by the engine (`POST /api/choose-folder`, "Choose the folder holding your tiles: Ortho4XP's
+(the one holding Ortho4XP.py), or any folder you put tiles in": a page cannot learn the full path of
+a folder picked in the browser), starting at the folder imported last, else at the Ortho4XP folder
+of the newest imported tile (`app.js` `ortho4xpStart`), then sends it: `POST
+/api/library/import-ortho4xp {folder}`, which imports the Ortho4XP tiles and takes back the tiles
+OrthoStudio XP built in it (`own`, `install.md` 4.8). The line under the button counts the tiles
+imported, not the overlays pack beside them, and names the folder ("2 tile(s) imported from
+~/Ortho4XP."), then says in a sentence each what was done with OrthoStudio XP's (`app.js`
+`ownLines`): put back in the list, with *Add* for those X-Plane does not show; found again;
+already in the list; their roads and forests missing, which a build gives back; left aside, listed
+already in another folder, inside X-Plane's Custom Scenery, or a folder lacking files, each with
+its tiles (six at most, then "…"); waiting for X-Plane to be closed. Finding nothing at all, it says
+where it looked (`searched`, each folder once: Ortho4XP's `Tiles` and a data folder's `tiles` are one
+folder on macOS and Windows). A cancel changes nothing. Where no dialog opens (a Linux without
+zenity or kdialog: `501 SYS_NO_FOLDER_DIALOG`, a toast; an engine older than the page), the field
+*Tiles folder* appears and the button sends what is typed in it; finding nothing, the line says
+« No tile found in … ».
+
+The page also looks at the workshop's own tiles folder by itself, at its start and whenever the
+Library is opened (`app.js` `findInWorkshop`, `POST /api/library/find-in-workshop`): a user moved
+his tiles by hand, found 200 of 1,300 again one by one, deleted the rest from the list, and his map
+stayed empty while they sat in his workshop (2026-10-22). It reads the list again only when a tile
+came back, and the same line says so; tiles left aside there are not mentioned, being as they
+should be (a tile built again while X-Plane ran waits in the workshop, listed in its own folder),
+and tiles waiting for X-Plane to be closed are found at the next opening. The status
 bar's count is `library_count`, which counts tiles, not rows.
 
 ### 2.4 Settings
@@ -1594,7 +1610,7 @@ toast.
 **Choosing a folder** (user request, 2026-09-15: the X-Plane folder had to be typed): *Choose the
 X-Plane folder…* beside the field of *Where is X-Plane 12 installed?* and *Choose the folder for the
 tiles…* beside the one of *Where should the tiles and the downloaded imagery go?* in Settings (one
-label for both read as the same button), *Import tiles built elsewhere…* in the Library (above) and
+label for both read as the same button), *Find tiles in a folder…* in the Library (above) and
 *Choose…* beside *Folder of hand-made mesh patches* under *For experts*,
 ask the engine to open the platform's own dialog
 (`POST /api/choose-folder`: the Finder's, the File Explorer's, zenity's or kdialog's), starting in

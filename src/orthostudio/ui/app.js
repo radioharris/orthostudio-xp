@@ -1388,12 +1388,17 @@ export async function mockApi(method, path, body, options = {}) {
     mock.disk = { ...mock.disk, store_bytes: mock.disk.store_bytes - storeFreed, unused_bytes: 0, ...(images ? { images_bytes: 0, mapcache_bytes: 0 } : {}), ...(relief ? { relief_bytes: 0 } : {}) };
     return { format: "osxp-clean-1", freed_bytes: freed, images_freed_bytes: imagesFreed, relief_freed_bytes: reliefFreed, filed_freed_bytes: filedFreed, removed: freed ? 12 : 0 };
   }
+  if (p === "/api/library/find-in-workshop") {
+    // like the engine on a workshop whose tiles are all in the list
+    return { format: "osxp-find-tiles-1", folder: "~/.orthostudio/tiles", added: [], found: [], listed: 0, duplicates: [], in_xplane: [], incomplete: [], waiting: [], no_roads: [], failed: [] };
+  }
   if (p === "/api/library/import-ortho4xp") {
     if (!mock.library) mock.library = await mockFile("library");
     // like the engine: what was found, and where it looked. A folder named "empty" finds nothing,
     // so that the other answer can be seen too.
     const searched = [`${body.folder}/Tiles`];
-    if (/empty/i.test(body.folder)) return { entries: [], searched };
+    const own = { format: "osxp-find-tiles-1", folder: body.folder, added: [], found: [], listed: 0, duplicates: [], in_xplane: [], incomplete: [], waiting: [], no_roads: [], failed: [] };
+    if (/empty/i.test(body.folder)) return { entries: [], searched, own };
     const now = Date.now() / 1000;
     const row = { tile: "+42+009", kind: "ortho", provider: "BI", zl: 16, path: `${body.folder}/Tiles/zOrtho4XP_+42+009`, name: "zOrtho4XP_+42+009", built_by: "ortho4xp", installed: false, keys: null, registered_at: now, updated_at: now, size_bytes: 1650000000, present: true, photo: null, built: null, overlay: null };
     if (!mock.library.some((e) => e.path === row.path)) {
@@ -1401,7 +1406,7 @@ export async function mockApi(method, path, body, options = {}) {
       mockSortLibrary();
     }
     const { tile, kind, provider, zl, path: packPath, name, built_by: builtBy } = row;
-    return { entries: [{ tile, kind, provider, zl, path: packPath, name, built_by: builtBy }], searched };
+    return { entries: [{ tile, kind, provider, zl, path: packPath, name, built_by: builtBy }], searched, own };
   }
   m = p.match(/^\/api\/library\/([^/]+)\/forget$/);
   if (m) {
@@ -2292,6 +2297,7 @@ function showScreen(name, arg) {
   else followBuildUnderWay();
   if (name === "library") {
     loadLibrary();
+    findInWorkshop().then((changed) => changed && loadLibrary());
     refreshJobList(); // its buttons wait for the builds under way or waiting
   }
   if (name === "settings") renderSettings();
@@ -2317,7 +2323,7 @@ function routeFromHash() {
 // ------------------------------------------------------------------ status bar
 
 /** The engine API this page needs (orthostudio.api.app.API_LEVEL); a test keeps the two equal. */
-const PAGE_API_LEVEL = 31;
+const PAGE_API_LEVEL = 32;
 
 async function loadStatus() {
   try {
@@ -6710,13 +6716,72 @@ function showImportPath() {
   $("import-path").focus();
 }
 
+/** At most six tiles of a list, then "…": a line under a button, not the list itself. */
+function someTiles(tiles) {
+  return tiles.length > 6 ? `${tiles.slice(0, 6).join(", ")} …` : tiles.join(", ");
+}
+
 /**
- * "Import my Ortho4XP tiles…", one button. A user pressed Import with the field still empty and
- * nothing happened at all, and could not tell which folder was meant (2026-09-21); the button then
- * opened the folder dialog when no folder was typed, and "Choose…" beside it did the same: two
- * buttons for one thing (the same user). It now asks for the folder, then imports it; the answer
- * counts the tiles, not the overlays pack beside them, names the folder, and says where it looked
- * when it found none. A cancel changes nothing.
+ * What a look for the tiles OrthoStudio XP built said (`own`, the engine's find_tiles_receipt):
+ * one sentence for each thing that happened, none when nothing did. `workshop` for the look the
+ * page takes at the workshop by itself, where tiles left aside are as they should be (a tile built
+ * again while X-Plane ran waits in it, listed in its own folder) and nothing is to search again.
+ */
+export function ownLines(own, where, { workshop = false } = {}) {
+  if (!own || typeof own !== "object") return [];
+  const list = (key) => (Array.isArray(own[key]) ? own[key] : []);
+  const lines = [];
+  const added = list("added");
+  const found = list("found");
+  if (added.length) lines.push(t("library.own_added", { n: fmtInt(added.length), where }));
+  if (found.length) lines.push(t("library.own_found", { n: fmtInt(found.length), where }));
+  const noRoads = list("no_roads");
+  if (noRoads.length) lines.push(t("library.own_no_roads", { n: fmtInt(noRoads.length), tiles: someTiles(noRoads) }));
+  const waiting = list("waiting");
+  const n = fmtInt(waiting.length);
+  if (waiting.length) lines.push(workshop ? t("library.own_waiting_workshop", { n }) : t("library.own_waiting", { n }));
+  const failed = list("failed");
+  if (failed.length) lines.push(t("library.own_failed", { n: fmtInt(failed.length), error: failed[0]?.error || "" }));
+  if (workshop) return lines;
+  const listed = Number(own.listed) || 0;
+  if (listed) lines.push(t("library.own_listed", { n: fmtInt(listed) }));
+  const duplicates = list("duplicates").map((d) => d?.tile).filter(Boolean);
+  if (duplicates.length) lines.push(t("library.own_duplicates", { n: fmtInt(duplicates.length), tiles: someTiles(duplicates) }));
+  const inXplane = list("in_xplane");
+  if (inXplane.length) lines.push(t("library.own_in_xplane", { n: fmtInt(inXplane.length), tiles: someTiles(inXplane) }));
+  const incomplete = list("incomplete");
+  if (incomplete.length) lines.push(t("library.own_incomplete", { n: fmtInt(incomplete.length), tiles: someTiles(incomplete) }));
+  return lines;
+}
+
+/**
+ * The tiles OrthoStudio XP built that are in the workshop's tiles folder and not in the list,
+ * taken back: asked at the page's start and whenever the Library is opened. A user moved his
+ * tiles by hand, deleted from the list those he had not found again one by one, and his map
+ * stayed empty while they sat in the workshop (2026-10-22). The list is read again only when
+ * something changed, and the line under *Find tiles in a folder…* says what. Returns whether
+ * anything changed; an engine that does not answer changes nothing.
+ */
+async function findInWorkshop() {
+  let res = null;
+  try {
+    res = await api("POST", "/api/library/find-in-workshop");
+  } catch (_err) {
+    return false;
+  }
+  const lines = ownLines(res, t("library.the_workshop"), { workshop: true });
+  if (lines.length) $("import-result").textContent = lines.join(" ");
+  return Boolean(res?.added?.length || res?.found?.length);
+}
+
+/**
+ * "Find tiles in a folder…", one button: first "Import my Ortho4XP tiles…". A user pressed
+ * Import with the field still empty and nothing happened at all, and could not tell which folder
+ * was meant (2026-09-21); the button then opened the folder dialog when no folder was typed, and
+ * "Choose…" beside it did the same: two buttons for one thing (the same user). It now asks for the
+ * folder, then imports its Ortho4XP tiles and takes back the tiles OrthoStudio XP built in it
+ * (2026-10-22); the answer counts the tiles, not the overlays pack beside them, names the folder,
+ * and says where it looked when it found none. A cancel changes nothing.
  */
 async function importOrtho4xp(ev) {
   ev.preventDefault();
@@ -6744,7 +6809,9 @@ async function importOrtho4xp(ev) {
     const entries = Array.isArray(res) ? res : res?.entries || []; // an older engine sent the list
     const tiles = entries.filter((e) => e.kind == null || e.kind === "ortho").length;
     const where = (Array.isArray(res?.searched) && res.searched.length ? res.searched : [dir]).map(homely).join(", ");
-    out.textContent = tiles ? t("library.imported", { n: fmtInt(tiles), where: homely(dir) }) : t("library.import_none", { where });
+    const lines = ownLines(res?.own, homely(dir));
+    if (tiles) lines.unshift(t("library.imported", { n: fmtInt(tiles), where: homely(dir) }));
+    out.textContent = lines.length ? lines.join(" ") : t("library.import_none", { where });
     await loadLibrary();
     loadStatus();
   } catch (err) {
@@ -7397,6 +7464,9 @@ async function boot() {
   // of those waiting cannot be chosen again.
   if (!state.jobId && state.status?.active_job) watchJob(state.status.active_job);
   jobsChanged();
+  // The workshop's tiles the list lost, at the start too, for the map to show them; the Library
+  // looks each time it is opened, so it did just now if it is the screen shown.
+  if (state.screen !== "library") findInWorkshop().then((changed) => changed && loadLibrary());
   loadUpdate(); // not awaited: a slow GitHub must never hold the page back
   loadPatches();
 }

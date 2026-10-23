@@ -448,8 +448,12 @@ async def test_library_import_install_uninstall(
         assert r.status_code == 200, r.text
         (row,) = r.json()["entries"]
         assert row["tile"] == "+43+005" and row["built_by"] == "ortho4xp" and row["zl"] == 16
-        # and where it looked, for a page to say when it found nothing
-        assert r.json()["searched"] == [str(ortho4xp_dir.resolve() / "Tiles")]
+        # and where it looked, for a page to say when it found nothing: Ortho4XP's Tiles, and the
+        # folder itself, where tiles of OrthoStudio XP moved by hand are looked for too
+        assert r.json()["searched"] == [
+            str(ortho4xp_dir.resolve() / "Tiles"),
+            str(ortho4xp_dir.resolve()),
+        ]
         r = await c.get("/api/library")
         (row,) = r.json()
         assert row["name"] == "zOrtho4XP_+43+005" and row["installed"] is False

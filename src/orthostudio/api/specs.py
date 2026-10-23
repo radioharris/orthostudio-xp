@@ -21,7 +21,7 @@ from orthostudio.errors import OsxpError
 from orthostudio.estimate import Estimate
 from orthostudio.imagery.providers import Provider, load_registry
 from orthostudio.install import custom_scenery_dir, detect_xplane, is_xplane_dir
-from orthostudio.install.library import holds_ortho4xp_tiles
+from orthostudio.install.library import holds_ortho4xp_tiles, own_pack_dirs
 from orthostudio.model import TileRef
 from orthostudio.pipeline.build import (
     OVERLAY_SETTINGS,
@@ -96,22 +96,25 @@ def check_xplane_dir(value: str | Path) -> Path:
 
 
 def check_ortho4xp_folder(value: str | Path) -> Path:
-    """A folder to import Ortho4XP tiles from: Ortho4XP's own (``Ortho4XP.py`` at its root), or one
-    its tiles were built into or moved to (``holds_ortho4xp_tiles``), such as a user's
-    ``M:\\XPTilesZL14`` on another disk, refused until 2026-09-22."""
+    """A folder to find tiles in: Ortho4XP's own (``Ortho4XP.py`` at its root), one its tiles were
+    built into or moved to (``holds_ortho4xp_tiles``), such as a user's ``M:\\XPTilesZL14`` on
+    another disk, refused until 2026-09-22, or one holding tiles OrthoStudio XP built
+    (``own_pack_dirs``), moved there by hand (2026-10-22)."""
     p = Path(str(value)).expanduser()
     with contextlib.suppress(OSError):
         p = p.resolve()
-    if not (p / "Ortho4XP.py").is_file() and not holds_ortho4xp_tiles(p):
+    if (
+        not (p / "Ortho4XP.py").is_file()
+        and not holds_ortho4xp_tiles(p)
+        and next(own_pack_dirs(p), None) is None
+    ):
         raise OsxpError(
             "SYS_WORKING_DIR_INVALID",
             context={"path": str(p)},
             message=f"{p} holds neither Ortho4XP nor any scenery pack of photo tiles.",
             remedy=(
                 "Choose the folder holding Ortho4XP.py, or the one holding your tiles, whatever "
-                "they are called. "
-                "A tile OrthoStudio XP built needs no import: it is in the Library already, where "
-                "Add to X-Plane puts it in X-Plane."
+                "they are called, or the one you moved tiles of OrthoStudio XP to."
             ),
         )
     return p

@@ -99,7 +99,7 @@ from orthostudio.install import (
     packs_of_their_own,
     xplane_running,
 )
-from orthostudio.install.library import PackFacts, ortho4xp_searched
+from orthostudio.install.library import PackFacts, ortho4xp_searched, own_searched
 from orthostudio.model import TileRef, pack_dir_name
 from orthostudio.net.fetch import FetchRequest
 from orthostudio.pipeline.build import BuildEnv, patched_tiles
@@ -127,6 +127,7 @@ from orthostudio.pipeline.pack import (
     PackManifest,
     delete_receipt,
     find_again_receipt,
+    find_tiles_receipt,
     install_receipt,
     is_installed,
     leave_overlay,
@@ -151,7 +152,7 @@ __all__ = [
     "sse_message",
 ]
 
-API_LEVEL = 31
+API_LEVEL = 32
 """What this engine's API offers, for the page: 1 = P2b, 2 = zones (``/api/zones``) and the base map
 (``/api/map``), 3 = deleting a tile (``POST /api/library/{name}/delete``) and the sizes of the
 library, 4 = the disk space of the Library (``GET /api/disk``, ``POST /api/clean``), 5 = clearing
@@ -186,7 +187,9 @@ refuses a settings document that holds it), 26 = the stages ``osm`` and ``relief
 (``filed``, ``filed_freed_bytes``), 30 = the setting ``expert.flatten_helipads`` and the answer
 ``roads`` of ``essential.overlays`` (an older engine refuses a settings document that holds them),
 and ``POST /api/flightplan/file`` (a Little Navmap or X-Plane plan file), 31 = ``POST
-/api/zones/cells`` (the squares each zone takes, drawn on the map). A page
+/api/zones/cells`` (the squares each zone takes, drawn on the map), 32 = ``POST
+/api/library/find-in-workshop`` and ``own`` in the import's answer (the tiles OrthoStudio XP built
+in a folder, taken back). A page
 served by an engine older than itself (a ``osxp serve`` started before an update: the page's files
 are read from disk at each load, the routes were imported at start) asks the user to restart
 OrthoStudio XP instead of showing "Not Found"."""
@@ -689,6 +692,17 @@ def _library_rows(cs: Path | None) -> list[dict[str, Any]]:
         )
     # once the list has read what it needed, which the disk then serves first
     _measure_later(lib.path, later)
+    return out
+
+
+def _searched(folder: Path) -> list[Path]:
+    """The folders *Find tiles in a folder…* looked in, each once: Ortho4XP's ``Tiles`` and a
+    data folder's ``tiles`` are one folder where names ignore the case (macOS, Windows)."""
+    out = ortho4xp_searched(folder)
+    for p in own_searched(folder):
+        if p in out or not p.is_dir() or any(q.is_dir() and os.path.samefile(p, q) for q in out):
+            continue
+        out.append(p)
     return out
 
 
@@ -1840,12 +1854,25 @@ def create_app(
 
     @app.post("/api/library/import-ortho4xp")
     async def import_ortho4xp(req: ImportRequest) -> Any:
+        """The Library's *Find tiles in a folder…*: the tiles Ortho4XP built in ``folder``,
+        imported, and those OrthoStudio XP built, taken back where the Library lost them
+        (``own``, ``pack.find_tiles_receipt``). Its name is the first version's, which imported
+        Ortho4XP's alone. Refused while a tile is filed elsewhere, as *Find again…* is."""
+        if filing_lock.locked():
+            return busy_filing()
+
         def run() -> dict[str, Any]:
             # in the thread, not on the loop: it walks the folder, and a user's tiles live on
             # another disk that may be asleep or on the network (found in review, 2026-09-23)
             folder = check_ortho4xp_folder(req.folder)
             with Library(default_library_path()) as lib:
                 rows = lib.import_ortho4xp(folder)
+            own = find_tiles_receipt(
+                folder,
+                custom_sceneries=sceneries_of(None),
+                library_path=default_library_path(),
+                leave=manager.building_tiles(),
+            )
             # where it looked as well as what it found: finding nothing then says where not
             return {
                 "entries": [
@@ -1860,8 +1887,35 @@ def create_app(
                     }
                     for r in rows
                 ],
-                "searched": [str(p) for p in ortho4xp_searched(folder)],
+                "searched": [str(p) for p in _searched(folder)],
+                "own": own,
             }
+
+        return await asyncio.to_thread(run)
+
+    workshop_scan = threading.Lock()
+
+    @app.post("/api/library/find-in-workshop")
+    async def library_find_in_workshop() -> Any:
+        """The tiles of the workshop's tiles folder the Library does not list there, taken back
+        (``pack.find_tiles_receipt``): the page asks whenever it reads the Library afresh, at its
+        start and when the Library is opened. Nothing while a tile is filed elsewhere, or while
+        another such look is under way (``skipped``): the next one does it."""
+        if filing_lock.locked():
+            return {"skipped": "filing"}
+
+        def run() -> dict[str, Any]:
+            if not workshop_scan.acquire(blocking=False):
+                return {"skipped": "busy"}
+            try:
+                return find_tiles_receipt(
+                    default_tiles_root(),
+                    custom_sceneries=sceneries_of(None),
+                    library_path=default_library_path(),
+                    leave=manager.building_tiles(),
+                )
+            finally:
+                workshop_scan.release()
 
         return await asyncio.to_thread(run)
 
