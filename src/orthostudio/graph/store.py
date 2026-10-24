@@ -7,10 +7,11 @@ kind). A build writes into ``<root>/<rule>/<key[:2]>/<key>.tmp-<pid>-<rand>/out`
 with a single ``rename``; the index row is inserted after the rename. See
 docs/specs/graph-keys.md for the crash matrix.
 
-A file of a folder artefact that holds what another of its files holds (the relief, the mesh,
-written twice by earlier versions) can go while the artefact keeps its identity, its digest:
-``trimmed`` says which (:meth:`Store.trim`). The store counts on its own files only: what a tile
-holds belongs to the user, who may move it, retouch it, unplug its disk or delete it.
+A file of a folder artefact that holds what another of its files holds (the relief and the mesh,
+in Ortho4XP's form beside OrthoStudio XP's) can go while the artefact keeps its identity, its
+digest: ``trimmed`` says which (:meth:`Store.trim`). A cache keeps both forms, which every version
+reads, until it is compacted (:meth:`Store.compact`). The store counts on its own files only: what
+a tile holds belongs to the user, who may move it, retouch it, unplug its disk or delete it.
 """
 
 from __future__ import annotations
@@ -54,6 +55,7 @@ from orthostudio.graph.keys import parse_recipe
 from orthostudio.graph.rule import Kind
 
 __all__ = [
+    "COMPACT_VERSION",
     "SCHEMA_VERSION",
     "ArtifactInfo",
     "Build",
@@ -68,12 +70,14 @@ __all__ = [
 
 log = logging.getLogger("orthostudio.graph.store")
 
-SCHEMA_VERSION = 2
-"""2 since the relief and the mesh are kept in one form (9f514094): a version before it looks for
-``Data<tile>.alt`` and ``Data<tile>.mesh`` in their artefacts, does not find them, and failed in
-the middle of a build. Every version since 0.1.22 refuses an index whose number is not its own, so
-it now turns the store away at its opening, with nothing changed (2026-10-24). An index of 1 is
-opened and becomes 2."""
+SCHEMA_VERSION = 1
+"""The number of a new index, which every version since 0.1.22 reads."""
+COMPACT_VERSION = 2
+"""The number of a compacted cache's index (:meth:`Store.compact`): the relief and the mesh kept in
+OrthoStudio XP's form alone, where a version before this one looks for ``Data<tile>.alt`` and
+``Data<tile>.mesh`` in their artefacts and failed in the middle of a build. Every version since
+0.1.22 refuses an index whose number is not its own, so it turns a compacted cache away at its
+opening, with nothing changed."""
 INDEX_FILENAME = "index.sqlite"
 TMP_MARKER = ".tmp-"
 TMP_HARD_MAX_AGE_S = 86400.0
@@ -458,14 +462,8 @@ class Store:
                 db.execute(
                     "INSERT INTO meta (k, v) VALUES ('schema_version', ?)", (str(SCHEMA_VERSION),)
                 )
-            elif int(row["v"]) == 1:
-                # every form an index of 1 holds is read; its number turns the versions before
-                # this one away from the forms they cannot read
-                db.execute(
-                    "UPDATE meta SET v = ? WHERE k = 'schema_version'", (str(SCHEMA_VERSION),)
-                )
-            elif int(row["v"]) != SCHEMA_VERSION:
-                raise IncompatibleIndexError(self.root, int(row["v"]), SCHEMA_VERSION)
+            elif int(row["v"]) not in (SCHEMA_VERSION, COMPACT_VERSION):
+                raise IncompatibleIndexError(self.root, int(row["v"]), COMPACT_VERSION)
             for trigger in _DISK_BYTES_TRIGGERS:
                 db.execute(trigger)
         except BaseException:
@@ -993,6 +991,25 @@ class Store:
                 (name, *here, digest),
             )
         return digest
+
+    # -- the relief and the mesh in one form ---------------------------------------------------
+
+    def compacted(self) -> bool:
+        """Whether this cache keeps the relief and the mesh in OrthoStudio XP's form alone
+        (:meth:`compact`): builds then write that form only."""
+        with self._lock:
+            row = self._db.execute("SELECT v FROM meta WHERE k = 'schema_version'").fetchone()
+        return row is not None and int(row["v"]) == COMPACT_VERSION
+
+    def compact(self) -> None:
+        """Keep the relief and the mesh in OrthoStudio XP's form alone from now on: builds write
+        no other, and Free space trims Ortho4XP's from the artefacts that hold it (:meth:`trim`).
+        The index's number becomes :data:`COMPACT_VERSION` on the disk itself, before anything is
+        trimmed: a version before this one turns the cache away at its opening rather than failing
+        in the middle of a build. Nothing turns it back: going back to an older version is
+        emptying the cache folder."""
+        with self._durable_tx() as db:
+            db.execute("UPDATE meta SET v = ? WHERE k = 'schema_version'", (str(COMPACT_VERSION),))
 
     # -- files trimmed from artefacts --------------------------------------------------------
 

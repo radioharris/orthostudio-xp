@@ -462,7 +462,9 @@ def test_save_and_load_round_trip(tmp_path: Path) -> None:
     dem.source = "View"
     out = tmp_path / "artifact"
     dem.save(out)
-    assert not (out / alt_file_name(TILE)).exists()  # the raster once, in dem.npy (2026-10-23)
+    assert (out / alt_file_name(TILE)).stat().st_size == 4 * 51 * 51
+    dem.save(tmp_path / "compacted", alt=False)  # a compacted cache: dem.npy alone
+    assert not (tmp_path / "compacted" / alt_file_name(TILE)).exists()
     again = Dem.load(out)
     assert again.tile == TILE
     assert (again.nxdem, again.nydem) == (51, 51)

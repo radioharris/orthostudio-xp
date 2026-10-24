@@ -3,8 +3,9 @@
 """The graph rule ``orthostudio.mesh@1``: stage 2 of Ortho4XP, natively.
 
 Spec: ``docs/specs/mesh-build.md`` section 9. The artefact is a directory holding the mesh as
-``mesh.npz``, the water table the masks stage needs and a ``stats.json``; built before 2026-10-23,
-also as Ortho4XP's ``Data<tile>.mesh``, the same mesh in text, which Free space trims.
+``mesh.npz`` and as Ortho4XP's ``Data<tile>.mesh``, the same mesh in text, which a compacted cache
+goes without (``MeshJob.ortho4xp_form``), the water table the masks stage needs and a
+``stats.json``.
 
 Inputs: ``vectors`` (the ``Data<tile>.{node,poly}`` of the vector stage), ``dem``
 (``Data<tile>.alt`` and, when the DEM stage publishes one, ``dem.json``) and ``coastline``
@@ -126,6 +127,9 @@ class MeshJob:
     """
 
     cancel: threading.Event | None = None
+    ortho4xp_form: bool = True
+    """Write Ortho4XP's ``Data<tile>.mesh`` beside ``mesh.npz``, the same mesh, which versions
+    before this one read; not in a compacted cache (``Store.compacted``)."""
 
 
 _JOB: ContextVar[MeshJob | None] = ContextVar("osxp_mesh_job", default=None)
@@ -155,9 +159,9 @@ def run_mesh(ctx: RunContext) -> MeshBuildResult:
     dem_dir = ctx.input_path("dem")
     dem = DemSpec.from_dir(dem_dir, tile, iterate=params.iterate)
     if not dem.alt_path.is_file() and (dem_dir / "dem.npy").is_file():
-        # ``--dem native``: the relief stage keeps its raster as ``dem.npy`` alone since
-        # 2026-10-23 (``Dem.save``); Triangle4XP reads Ortho4XP's raw float32, written here from it
-        # as ``Dem.write_alt`` wrote it
+        # ``--dem native`` in a compacted cache: the relief stage keeps its raster as ``dem.npy``
+        # alone (``Dem.save``); Triangle4XP reads Ortho4XP's raw float32, written here from it as
+        # ``Dem.write_alt`` writes it
         alt = ctx.scratch / dem.alt_path.name
         raster = np.load(dem_dir / "dem.npy", mmap_mode="r", allow_pickle=False)
         np.asarray(raster, dtype=np.float32).tofile(alt)
@@ -168,6 +172,7 @@ def run_mesh(ctx: RunContext) -> MeshBuildResult:
         candidate = coast.path if coast.path.is_file() else coast.path / "coastline.npz"
         if candidate.is_file():
             coast_nodes = read_coastline_nodes(candidate)
+    job = _JOB.get()
     return build_mesh_native(
         tile,
         vectors,
@@ -177,7 +182,8 @@ def run_mesh(ctx: RunContext) -> MeshBuildResult:
         ctx.scratch,
         out_dir=ctx.out,
         coast_nodes=coast_nodes,
-        cancel=job.cancel if (job := _JOB.get()) is not None else None,
+        cancel=job.cancel if job is not None else None,
+        text=job.ortho4xp_form if job is not None else True,
     )
 
 
@@ -185,7 +191,7 @@ def run_mesh(ctx: RunContext) -> MeshBuildResult:
 @rule(name="orthostudio.mesh", version=2, params=MeshParams, inputs=("vectors", "dem", "coastline"),
       ram_mb=900, kind="dir")  # fmt: skip
 def osxp_mesh(ctx: RunContext) -> None:
-    """Native stage 2: ``mesh.npz``, ``water_tris.npz``, ``stats.json``."""
+    """Native stage 2: ``Data<tile>.mesh``, ``mesh.npz``, ``water_tris.npz``, ``stats.json``."""
     run_mesh(ctx)
 
 

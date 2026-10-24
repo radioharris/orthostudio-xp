@@ -806,6 +806,16 @@ def clean(
             "deleted them, now or later)",
         ),
     ] = False,
+    compact: Annotated[
+        bool,
+        typer.Option(
+            "--compact",
+            help="keep the relief and the mesh in one form, OrthoStudio XP's, now and for the "
+            "tiles built later: a version before this one can no longer use the cache, and going "
+            "back to one is emptying the cache folder (not part of --all); refused while a build "
+            "runs",
+        ),
+    ] = False,
     everything: Annotated[
         bool,
         typer.Option(
@@ -836,14 +846,16 @@ def clean(
     )
 
     store_root = store or default_store_root()
-    if (everything or filed or apart) and store_root.is_dir():
+    if (everything or filed or apart or compact) and store_root.is_dir():
         # Without the hour of grace, a build running now could lose what it is about to use; and
         # the image pieces of a tile filed outside have none: a build of it may be fetching them.
-        # The images of a tile on another disk are what its build may be laying now.
+        # The images of a tile on another disk are what its build may be laying now. A build
+        # running when the cache is compacted chose its forms when it started.
         with Store(store_root) as st:
             busy = sorted(st.building_pids())
         if busy:
-            again = "--all" if everything else "--filed" if filed else "--apart"
+            flags = [(everything, "--all"), (filed, "--filed"), (apart, "--apart")]
+            again = next((flag for asked, flag in flags if asked), "--compact")
             typer.echo(
                 f"a build is running (process {', '.join(map(str, busy))}): nothing was deleted. "
                 f"Wait for it to finish (or stop it), then run osxp clean {again} again.",
@@ -863,6 +875,7 @@ def clean(
         relief=relief or everything,
         filed=filed or everything,
         apart=apart or everything,
+        compact=compact,
     )
     if json_output:
         typer.echo(json.dumps(report.to_dict(), indent=1))
@@ -913,10 +926,23 @@ def clean(
             "building one again prepares its images again from the downloaded pieces, or "
             "downloads them again if those were deleted)"
         )
-    if report.twice_files:
+    trimming = report.compacted or compact
+    if compact:
+        typer.echo(
+            f"{'would compact' if dry_run else 'compacted'} the cache: the relief and the mesh "
+            "are kept in one form; a version before this one can no longer use it"
+        )
+    if report.twice_files and trimming:
         typer.echo(
             f"relief and mesh files kept in a second form: {report.twice_files}, {verb} "
             f"{_size(report.twice_bytes)} (the form OrthoStudio XP reads stays)"
+        )
+    elif report.twice_files:
+        typer.echo(
+            f"relief and mesh files kept in a second form, which older versions read: "
+            f"{report.twice_files}, {_size(report.twice_bytes)}, kept (--compact keeps one form: "
+            "a version before this one can no longer use the cache, and going back to one is "
+            "emptying the cache folder)"
         )
     # a tile filed on another disk has its images in both lines: counted once
     filed_share = report.filed_apart_bytes if apart or everything else report.filed_bytes
@@ -941,7 +967,7 @@ def clean(
         total = (
             report.freed_bytes
             + report.apart_bytes
-            + report.twice_bytes
+            + (report.twice_bytes if trimming else 0)
             + report.images_bytes
             + report.relief_bytes
             + filed_cache

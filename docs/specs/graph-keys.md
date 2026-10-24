@@ -185,14 +185,17 @@ committed without forcing, and made durable as a group:
 
 The executor never trusts a path that is not both indexed and present.
 
-## 7. SQLite index (`schema_version = 2`, WAL, `synchronous=NORMAL`, `foreign_keys=ON`)
+## 7. SQLite index (`schema_version = 1`, 2 once compacted, WAL, `synchronous=NORMAL`, `foreign_keys=ON`)
 
-`schema_version` is 2 since the relief and the mesh are kept in one form (9f514094): a version
-before it looks for `Data<tile>.alt` and `Data<tile>.mesh` in their artefacts and fails in the
-middle of a build. Every version since 0.1.22 refuses an index whose number is not its own
-(`IncompatibleIndexError`, inside the opening's transaction, so nothing is changed): an index of 1
-is opened and becomes 2, and the versions before turn the store away at its opening. An index a newer
-version numbered higher is refused the same way, said as `SYS_STORE_NEWER` (2026-10-24).
+`schema_version` is 1, which every version since 0.1.22 reads, and becomes 2 when the cache is
+compacted (`Store.compact`: *Free space*'s box *Compact the relief and the mesh*, `osxp clean
+--compact`). A compacted cache keeps the relief and the mesh in OrthoStudio XP's form alone, where
+a version before this one looks for `Data<tile>.alt` and `Data<tile>.mesh` in their artefacts and
+fails in the middle of a build. Every version since 0.1.22 refuses an index whose number is not its
+own (`IncompatibleIndexError`, inside the opening's transaction, so nothing is changed): the
+versions before turn a compacted cache away at its opening. This one reads 1 and 2 and refuses a
+higher number the same way, said as `SYS_STORE_NEWER`. Nothing turns 2 back to 1: going back to an
+older version is emptying the cache folder (2026-10-24).
 
 ```sql
 CREATE TABLE meta (k TEXT PRIMARY KEY, v TEXT NOT NULL);           -- schema_version, disk_bytes
@@ -287,9 +290,8 @@ trim wrote stays when its file cannot be removed now (another program holds it),
 off once. `fsck(repair=True)` never deletes an artefact it cannot read now: only one whose files
 hash to another digest. A folder that cannot be listed raises in the walk (`digest._walk_files`),
 where it counted as empty and made an unreadable artefact look damaged (a review, 2026-10-23).
-Its digest is no longer what its files hash to: a version that reads the files alone (an older
-OrthoStudio XP opening the store) sees the artefact as it is, and builds what it makes from it from
-the form left.
+Its digest is no longer what its files hash to. Only a compacted cache is trimmed (section 7),
+which a version before this one does not open.
 
 `meta.disk_bytes` is the store's size on the disk that `Store.disk_bytes` answers (the status
 bar's, `api.md` 2.1): every artefact's size but those of `tile.textures`, whose folders hard-link
@@ -370,9 +372,11 @@ collects by reachability from the packs on disk instead:
   page (`map-zones.md` section 6), both counted in the imagery size of the report; `--dry-run` deletes nothing and reports the
   same numbers. `--all` frees everything OrthoStudio XP can give back: it collects without the hour
   of grace (a result used a second ago goes too, unless a pack on disk needs it) and implies
-  `--images`, `--relief`, `--filed` and `--apart`. It, `--filed` and `--apart` refuse to run while another process builds into the store (`Store.building_pids`,
-  read from the `*.tmp-<pid>-*` directories of builds in progress), since the grace period is what
-  protects such a build otherwise. The command passes the map cache explicitly (`mapcache_root`);
+  `--images`, `--relief`, `--filed` and `--apart`, not `--compact`, its own choice (the cache kept
+  in one form, which a version before this one refuses). It, `--filed`, `--apart` and `--compact`
+  refuse to run while another process builds into the store (`Store.building_pids`, read from the
+  `*.tmp-<pid>-*` directories of builds in progress), since the grace period is what protects such
+  a build otherwise, and a build running chose its forms when it started. The command passes the map cache explicitly (`mapcache_root`);
   `clean()` called without it counts and empties no map cache. It used to take the `mapcache` beside
   the chunks root for one, so a caller passing its own chunks folder had the folder next to it
   emptied (review of 2026-09-13);
@@ -385,13 +389,18 @@ collects by reachability from the packs on disk instead:
   directories are not swept: superseded builds stay for `osxp clean`, and the deleted tile is
   credited in `freed_bytes` with its own cache only. Running the whole clean there took other
   processes' finished artefacts that no pack referenced yet (review of the delete);
-* **relief and mesh kept twice**: whatever the options, the `orthostudio.dem` and
+* **relief and mesh kept twice** (`compact`, its own choice): the `orthostudio.dem` and
   `orthostudio.mesh` artefacts that stay and hold Ortho4XP's form beside the one OrthoStudio XP
   reads (`Data<tile>.alt` beside `dem.npy`, `Data<tile>.mesh` beside `mesh.npz`) are trimmed of it
-  (`clean._twice`, `Store.trim`; `twice_files`, `twice_bytes`), but those used within the grace
+  (`clean._twice`, `Store.trim`; `twice_files`, `twice_bytes`) once the cache is compacted, its
+  number 2 on the disk before anything goes (section 7): with `compact`, or whatever the options in
+  a cache compacted already (what a compaction cut short left); but those used within the grace
   period or pinned. A file goes only when the kept form says the same size of the same thing, read
   from headers alone: as many float altitudes in `dem.npy` as the `.alt` holds, as many points in
-  `mesh.npz`'s `vertices` as the `.mesh` names. 90 GB and 272 GB of a user's 1.1 TB cache;
+  `mesh.npz`'s `vertices` as the `.mesh` names. 90 GB and 272 GB of a user's 1.1 TB cache.
+  `compacted` says the cache's state. A build in a compacted cache writes OrthoStudio XP's form
+  alone (`DemJob.ortho4xp_form`, `MeshJob.ortho4xp_form`, from `Store.compacted` as each node
+  starts); `compact` is refused while a build runs, which chose its forms when it started;
 * **images of the tiles on another disk** (`apart`, its own choice): the packs whose textures
   folder is on another file system than the store (`filing.same_disk`, the volume on Windows), by
   their folder with the links followed, hold their images as files of their own, which X-Plane

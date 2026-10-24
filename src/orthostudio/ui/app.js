@@ -455,6 +455,11 @@ function mockFiledTiles() {
   return libraryTiles(mock.library || []).filter((e) => e.built_by === "osxp" && String(e.path).replace(/[\\/][^\\/]*$/, "") !== atelier);
 }
 
+/** Disk space's figures in the mock: a cache keeping the relief and the mesh in two forms. */
+function mockDisk() {
+  return { store_bytes: 9.8e9, shared_bytes: 6.2e9, unused_bytes: 2.4e9, apart_tiles: 3, apart_bytes: 1.1e9, twice_bytes: 0.8e9, compacted: false, images_bytes: 3.1e9, mapcache_bytes: 12e6, relief_bytes: 1.4e9 };
+}
+
 /** `GET /api/disk`'s figures of their cache, as the engine gives them: some 2.1 GB of tile data
  * and 0.7 GB of image pieces a tile, nothing for one whose cache was freed (`POST /api/clean`). */
 function mockFiledCache() {
@@ -1365,7 +1370,7 @@ export async function mockApi(method, path, body, options = {}) {
     return structuredClone(mock.library);
   }
   if (p === "/api/disk" && method === "GET") {
-    if (!mock.disk) mock.disk = { store_bytes: 9.8e9, shared_bytes: 6.2e9, unused_bytes: 2.4e9, apart_tiles: 3, apart_bytes: 1.1e9, twice_bytes: 0.8e9, images_bytes: 3.1e9, mapcache_bytes: 12e6, relief_bytes: 1.4e9 };
+    if (!mock.disk) mock.disk = mockDisk();
     if (!mock.library) mock.library = await mockFile("library");
     return { ...mock.disk, ...mockFiledCache(), tiles: libraryTiles(mock.library).length, building: MOCK_FAIL === "busy" || Boolean(mockActiveRun()) };
   }
@@ -1373,24 +1378,25 @@ export async function mockApi(method, path, body, options = {}) {
     if (MOCK_FAIL === "busy" || mockActiveRun()) {
       throw mockError(409, "SYS_BUSY", "A build is running in OrthoStudio XP, and OrthoStudio XP frees space only between builds.", "Wait for the build to finish, or stop it, then try again.");
     }
-    if (!mock.disk) mock.disk = { store_bytes: 9.8e9, shared_bytes: 6.2e9, unused_bytes: 2.4e9, apart_tiles: 3, apart_bytes: 1.1e9, twice_bytes: 0.8e9, images_bytes: 3.1e9, mapcache_bytes: 12e6, relief_bytes: 1.4e9 };
+    if (!mock.disk) mock.disk = mockDisk();
     if (!mock.library) mock.library = await mockFile("library");
     const images = Boolean(body?.images);
     const relief = Boolean(body?.relief);
     const filed = Boolean(body?.filed);
     const apart = Boolean(body?.apart);
+    const compacted = Boolean(body?.compact) || Boolean(mock.disk.compacted);
     const cache = mockFiledCache();
     const freed = mock.disk.unused_bytes;
     const apartFreed = apart ? mock.disk.apart_bytes || 0 : 0;
-    const twiceFreed = mock.disk.twice_bytes || 0;
+    const twiceFreed = compacted ? mock.disk.twice_bytes || 0 : 0;
     const imagesFreed = images ? mock.disk.images_bytes + mock.disk.mapcache_bytes : 0;
     const reliefFreed = relief ? mock.disk.relief_bytes : 0;
     const filedFreed = filed ? cache.filed_bytes + cache.filed_images_bytes : 0;
     if (filed) mock.filedFreed = new Set(mockFiledTiles().map((e) => e.path));
     // the filed tiles' data is the store's too: it leaves the store with them
     const storeFreed = freed + apartFreed + twiceFreed + (filed ? cache.filed_bytes : 0);
-    mock.disk = { ...mock.disk, store_bytes: mock.disk.store_bytes - storeFreed, unused_bytes: 0, twice_bytes: 0, ...(apart ? { apart_tiles: 0, apart_bytes: 0 } : {}), ...(images ? { images_bytes: 0, mapcache_bytes: 0 } : {}), ...(relief ? { relief_bytes: 0 } : {}) };
-    return { format: "osxp-clean-1", freed_bytes: freed, apart_freed_bytes: apartFreed, twice_freed_bytes: twiceFreed, images_freed_bytes: imagesFreed, relief_freed_bytes: reliefFreed, filed_freed_bytes: filedFreed, removed: freed ? 12 : 0 };
+    mock.disk = { ...mock.disk, store_bytes: mock.disk.store_bytes - storeFreed, unused_bytes: 0, compacted, ...(compacted ? { twice_bytes: 0 } : {}), ...(apart ? { apart_tiles: 0, apart_bytes: 0 } : {}), ...(images ? { images_bytes: 0, mapcache_bytes: 0 } : {}), ...(relief ? { relief_bytes: 0 } : {}) };
+    return { format: "osxp-clean-1", freed_bytes: freed, apart_freed_bytes: apartFreed, twice_freed_bytes: twiceFreed, compacted, images_freed_bytes: imagesFreed, relief_freed_bytes: reliefFreed, filed_freed_bytes: filedFreed, removed: freed ? 12 : 0 };
   }
   if (p === "/api/library/find-in-workshop") {
     // like the engine on a workshop whose tiles are all in the list
@@ -2342,7 +2348,7 @@ function routeFromHash() {
 // ------------------------------------------------------------------ status bar
 
 /** The engine API this page needs (orthostudio.api.app.API_LEVEL); a test keeps the two equal. */
-const PAGE_API_LEVEL = 36;
+const PAGE_API_LEVEL = 37;
 
 async function loadStatus() {
   try {
@@ -5230,16 +5236,17 @@ async function loadDisk() {
 
 /** The sizes a confirmation and the panel show: the unused tile data, with `images` the
  * downloaded image pieces and the map background, with `filed` the cache of the tiles filed
- * outside the atelier, and with `apart` the cache's copy of the images of the tiles on another
- * disk or partition. Each choice frees its own line: the image pieces of the filed tiles are
- * theirs, not counted in the images', and a tile filed on another disk has its images counted
- * once. Exported for the tests. */
-export function freeSpacePlan(disk, images, relief, filed = false, apart = false) {
+ * outside the atelier, with `apart` the cache's copy of the images of the tiles on another disk
+ * or partition, and with `compact` the relief and the mesh kept in a second form. Each choice
+ * frees its own line: the image pieces of the filed tiles are theirs, not counted in the images',
+ * and a tile filed on another disk has its images counted once. Exported for the tests. */
+export function freeSpacePlan(disk, images, relief, filed = false, apart = false, compact = false) {
   const n = (v) => Math.max(0, Number(v) || 0);
   const unused = n(disk?.unused_bytes);
-  // the relief and the mesh kept in a second form, which earlier builds wrote, go whatever the
-  // choices: the form the engine reads stays (90 GB and 272 GB of a user's cache, 2026-10-23)
-  const twice = n(disk?.twice_bytes);
+  // the relief and the mesh in Ortho4XP's form beside the engine's, which older versions read:
+  // 90 GB and 272 GB of a user's cache (2026-10-23). They go once the cache is compacted, which
+  // only the user decides: a compaction cut short left some, which go whatever the choices.
+  const twice = compact || disk?.compacted ? n(disk?.twice_bytes) : 0;
   // the cache's copy of the images of the tiles on another disk, which hold their own: 358 GB
   // twice for the same user, whose tiles were on another partition
   const copies = apart ? n(disk?.apart_bytes) : 0;
@@ -5256,6 +5263,12 @@ export function freeSpacePlan(disk, images, relief, filed = false, apart = false
 export function fmtFreeBytes(b) {
   const n = Math.max(0, Number(b) || 0);
   return n > 0 && n < 50_000 ? fmtKB(n) : fmtBytes(n);
+}
+
+/** Whether the panel offers to compact the cache: while it keeps the relief and the mesh in two
+ * forms, and there is some to compact. Exported for the tests. */
+export function compactOffered(disk) {
+  return !disk?.compacted && (Number(disk?.twice_bytes) || 0) > 0;
 }
 
 /** Whether the panel offers to delete the cache's copy of the images of the tiles on another disk
@@ -5320,7 +5333,14 @@ function renderDisk() {
   if (!offered) $("disk-filed").checked = false;
   $("disk-apart-choice").hidden = copies <= 0;
   if (copies <= 0) $("disk-apart").checked = false;
-  const plan = freeSpacePlan(d, $("disk-images").checked, $("disk-relief").checked, offered && $("disk-filed").checked, copies > 0 && $("disk-apart").checked);
+  // a compacted cache shows its box ticked, for good: there is no going back but emptying it
+  const compact = compactOffered(d);
+  $("disk-compact-choice").hidden = !compact && !d.compacted;
+  $("disk-compact").disabled = !compact;
+  if (d.compacted) $("disk-compact").checked = true;
+  else if (!compact) $("disk-compact").checked = false;
+  setText($("disk-compact-note"), d.compacted ? t("disk.compacted_note") : t("disk.compact_warn"));
+  const plan = freeSpacePlan(d, $("disk-images").checked, $("disk-relief").checked, offered && $("disk-filed").checked, copies > 0 && $("disk-apart").checked, compact && $("disk-compact").checked);
   // a build this page started or follows is known before the next measure says so: the note
   // said "Nothing to free" from the last one right after a build started (2026-10-23)
   const building = Boolean(d.building) || activeJobs().length > 0;
@@ -5364,13 +5384,14 @@ async function freeSpace() {
   const relief = $("disk-relief").checked;
   const filed = filedOffered(state.disk) && $("disk-filed").checked;
   const apart = apartOffered(state.disk) && $("disk-apart").checked;
-  const plan = freeSpacePlan(state.disk, images, relief, filed, apart);
+  const compact = compactOffered(state.disk) && $("disk-compact").checked;
+  const plan = freeSpacePlan(state.disk, images, relief, filed, apart, compact);
   if (plan.total <= 0 || !(await confirmFreeSpace(plan))) return;
   const errors = clear($("disk-errors"));
   state.diskBusy = true;
   renderDisk();
   try {
-    const res = await api("POST", "/api/clean", { images, relief, filed, apart });
+    const res = await api("POST", "/api/clean", { images, relief, filed, apart, compact });
     const freed = (Number(res?.freed_bytes) || 0) + (Number(res?.apart_freed_bytes) || 0) + (Number(res?.twice_freed_bytes) || 0) + (Number(res?.images_freed_bytes) || 0) + (Number(res?.relief_freed_bytes) || 0) + (Number(res?.filed_freed_bytes) || 0);
     toast(freed > 0 ? t("disk.freed", { size: fmtFreeBytes(freed) }) : t("disk.nothing"));
   } catch (err) {
@@ -7385,6 +7406,7 @@ async function boot() {
   $("disk-relief").addEventListener("change", renderDisk);
   $("disk-filed").addEventListener("change", renderDisk);
   $("disk-apart").addEventListener("change", renderDisk);
+  $("disk-compact").addEventListener("change", renderDisk);
   $("settings-search").addEventListener("input", (e) => {
     state.settingsSearch = e.target.value;
     renderSettings();

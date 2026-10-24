@@ -60,9 +60,10 @@ experimental.
 - **Shores without blue needles.** Water closer than a metre to the shore is shallow, as the shore
   is, so X-Plane no longer draws its deep seabed at the edge of a lake.
 - **A cache.** An unchanged tile builds again in a fraction of a second, a new zone builds again
-  only what it touches, and imagery is never downloaded twice. The relief and the mesh are written
-  once, and *Free space* can delete the cache's copy of the images of the tiles on another disk:
-  a build of one prepares them again from the downloaded images.
+  only what it touches, and imagery is never downloaded twice. *Free space* can compact the relief
+  and the mesh, which an older version then no longer reads, and delete the cache's copy of the
+  images of the tiles on another disk: a build of one prepares them again from the downloaded
+  images.
 - **Your disk of choice.** Tiles are built in the workshop, the data folder chosen in Settings, then
   filed wherever you want; an unplugged disk is said as such, and nothing is written in its place.
 - **Text as large as you need.** `− 100 % +` zooms the whole page and `Aa` makes the text alone

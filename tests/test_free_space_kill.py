@@ -10,8 +10,8 @@ of them.
 The world: a tile in the workshop sharing its files with the store, a tile filed on another disk
 holding its own copies (the store's copy of its images going with the box of the tiles on another
 disk), the relief and the mesh of both in two forms, data no tile needs, downloaded image pieces;
-Free space without its boxes, and with all of them. The owner asked for no data loss and no cache
-loss, "RIEN" (2026-10-23).
+Free space without its boxes, and with all of them, compacting the cache among them. The owner
+asked for no data loss and no cache loss, "RIEN" (2026-10-23).
 """
 
 from __future__ import annotations
@@ -173,7 +173,7 @@ def _free(paths: dict[str, Path], boxes: bool) -> Any:
     clean_module.same_disk = lambda a, b: not os.path.realpath(b).startswith(away)
     return clean(
         paths["store"], paths["chunks"], library_path=paths["library"], tiles_root=paths["tiles"],
-        grace_s=0.0, images=boxes, relief=boxes, filed=boxes, apart=boxes,
+        grace_s=0.0, images=boxes, relief=boxes, filed=boxes, apart=boxes, compact=boxes,
         elevation_root=paths["elevation"],
     )  # fmt: skip
 
@@ -293,8 +293,8 @@ def test_free_space_killed_at_every_step(tmp_path: Path, boxes: bool, part: int)
     assert _run(reference, boxes, None) == 0
     steps = int((reference["store"].parent / "steps.txt").read_text())
     expected = _state(reference)
-    assert steps > (40 if boxes else 25)  # the world gives Free space things to do
-    assert expected["trimmed"]
+    assert steps > (40 if boxes else 8)  # the world gives Free space things to do
+    assert bool(expected["trimmed"]) == boxes  # the second forms go with the cache compacted
     if boxes:  # F's images went with their box: its steps are among the kill points
         with Store(reference["store"], fsync=False) as s:
             assert len(list(s.iter_artifacts("tile.textures"))) == 1

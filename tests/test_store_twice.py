@@ -1,14 +1,15 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""The relief and the mesh the cache kept in two forms: trimmed from the artefacts that hold both,
-which keep their identity, so that nothing made from them is made again.
+"""The relief and the mesh the cache keeps in two forms: trimmed from the artefacts that hold both
+once the cache is compacted, the artefacts keeping their identity, so that nothing made from them
+is made again.
 
-Builds before 2026-10-23 wrote Ortho4XP's ``Data<tile>.alt`` beside ``dem.npy`` and its
-``Data<tile>.mesh`` beside ``mesh.npz``, the same raster and the same mesh: 90 GB and 272 GB of a
-user's 1.1 TB cache. ``Store.trim`` removes a file of an artefact and keeps its digest, which the
-artefacts made from it were keyed with; Free space trims those files whatever the choices
-(``clean._twice``), each only when the form kept says the same size of the same thing. Temporary
-folders only.
+Builds write Ortho4XP's ``Data<tile>.alt`` beside ``dem.npy`` and its ``Data<tile>.mesh`` beside
+``mesh.npz``, the same raster and the same mesh, which the versions before this one read: 90 GB and
+272 GB of a user's 1.1 TB cache. ``Store.trim`` removes a file of an artefact and keeps its digest,
+which the artefacts made from it were keyed with; Free space trims those files when it is asked to
+compact the cache, and whatever the choices once it is (``clean._twice``), each only when the form
+kept says the same size of the same thing. Temporary folders only.
 """
 
 from __future__ import annotations
@@ -235,10 +236,12 @@ def test_an_index_from_before_gains_the_list(tmp_path: Path) -> None:
 # -- Free space ---------------------------------------------------------------------------------
 
 
-def test_free_space_trims_the_second_forms_whatever_the_choices(home: dict[str, Path]) -> None:
-    """The relief's ``.alt`` and the mesh's text go from the artefacts a tile needs, the forms
-    OrthoStudio XP reads stay, every artefact keeps its key; the figures are what the disk gets
-    back; a second time there is nothing."""
+def test_free_space_trims_the_second_forms_when_asked_to_compact(home: dict[str, Path]) -> None:
+    """Measured, then left as they are by a Free space that is not asked to compact: the versions
+    before this one go on reading the cache. Asked, the cache is compacted and the relief's
+    ``.alt`` and the mesh's text go from the artefacts a tile needs, the forms OrthoStudio XP reads
+    stay, every artefact keeps its key; the figures are what the disk gets back; a second time
+    there is nothing."""
     with Store(home["store"], fsync=False) as s:
         relief, mesh = _relief(s), _mesh_artefact(s)
         digests = {k: s.digest_of(k) for k in (relief, mesh)}
@@ -249,15 +252,34 @@ def test_free_space_trims_the_second_forms_whatever_the_choices(home: dict[str, 
     _keep(home["store"], home["library"], home["tiles"], {"dem": relief, "mesh": mesh})
     seen = _run(home, dry_run=True)
     assert seen.twice_files == 2 and seen.twice_bytes == sum(sizes.values())
-    assert seen.freed_bytes == 0
-    done = _run(home)
-    assert done.twice_files == 2 and done.twice_bytes == seen.twice_bytes
+    assert seen.freed_bytes == 0 and not seen.compacted
+    kept = _run(home, images=True, relief=True, filed=True, apart=True)
+    assert not kept.compacted
     with Store(home["store"], fsync=False) as s:
+        assert not s.compacted() and not s.trimmed(relief) and not s.trimmed(mesh)
+        assert len(list(s.path(relief).glob("Data*.alt"))) == 1
+    done = _run(home, compact=True)
+    assert done.compacted and done.twice_files == 2 and done.twice_bytes == seen.twice_bytes
+    with Store(home["store"], fsync=False) as s:
+        assert s.compacted()
         assert {k: s.digest_of(k) for k in (relief, mesh)} == digests
         assert sorted(p.name for p in s.path(relief).iterdir()) == ["dem.npy", "meta.json"]
         assert sorted(p.name for p in s.path(mesh).iterdir()) == ["mesh.npz", "stats.json"]
     again = _run(home, dry_run=True)
-    assert again.twice_files == 0 and again.twice_bytes == 0
+    assert again.compacted and again.twice_files == 0 and again.twice_bytes == 0
+
+
+def test_a_compacted_cache_trims_what_is_left_whatever_the_choices(home: dict[str, Path]) -> None:
+    """A compaction cut short (the program closed meanwhile) leaves some second forms in a cache
+    compacted already: the next Free space trims them, asked or not."""
+    with Store(home["store"], fsync=False) as s:
+        relief = _relief(s)
+        s.compact()
+    _keep(home["store"], home["library"], home["tiles"], {"dem": relief})
+    done = _run(home)
+    assert done.compacted and done.twice_files == 1
+    with Store(home["store"], fsync=False) as s:
+        assert sorted(p.name for p in s.path(relief).iterdir()) == ["dem.npy", "meta.json"]
 
 
 def test_a_second_form_that_does_not_match_stays(home: dict[str, Path]) -> None:
@@ -274,7 +296,7 @@ def test_a_second_form_that_does_not_match_stays(home: dict[str, Path]) -> None:
     with Library(home["library"]) as lib:  # the broken one is another tile's, kept as well
         other = TileRef(47, 6)
         lib.register(other, "BI", 16, home["tiles"] / "elsewhere", "osxp", {"mesh": broken})
-    assert _run(home).twice_files == 0
+    assert _run(home, compact=True).twice_files == 0
     with Store(home["store"], fsync=False) as s:
         assert len(list(s.path(relief).glob("Data*.alt"))) == 1
         assert len(list(s.path(mesh).glob("Data*.mesh"))) == 1
@@ -294,9 +316,9 @@ def test_what_goes_anyway_was_just_used_or_is_pinned_is_not_trimmed(
         s._db.execute("UPDATE artifacts SET last_used_at = ?, created_at = ?", (old, old))
         s.touch(recent)
     _keep(home["store"], home["library"], home["tiles"], {"mesh": recent, "dem": pinned})
-    seen = _run(home, dry_run=True, grace_s=3600.0)
+    seen = _run(home, dry_run=True, grace_s=3600.0, compact=True)
     assert seen.twice_files == 0 and seen.removed == 1
-    done = _run(home, grace_s=3600.0)
+    done = _run(home, grace_s=3600.0, compact=True)
     with Store(home["store"], fsync=False) as s:
         assert not s.has(unused) and s.trimmed(recent) == {} and s.trimmed(pinned) == {}
     assert done.twice_bytes == 0
@@ -312,10 +334,19 @@ def test_the_command_says_it(home: dict[str, Path], monkeypatch: pytest.MonkeyPa
         s._db.execute("UPDATE artifacts SET last_used_at = ?, created_at = ?", (old, old))
     out = CliRunner().invoke(cli_app, ["clean", "--dry-run"])
     assert out.exit_code == 0, out.output
+    assert "which older versions read: 1, " in out.output and "kept (--compact" in out.output
+    out = CliRunner().invoke(cli_app, ["clean", "--compact", "--dry-run"])
+    assert out.exit_code == 0, out.output
+    assert "would compact the cache" in out.output
     assert "relief and mesh files kept in a second form: 1, would free" in out.output
-    assert CliRunner().invoke(cli_app, ["clean"]).exit_code == 0
+    assert CliRunner().invoke(cli_app, ["clean", "--all"]).exit_code == 0  # not part of --all
     with Store(home["store"], fsync=False) as s:
-        assert s.trimmed(relief)
+        assert not s.compacted() and not s.trimmed(relief)
+    out = CliRunner().invoke(cli_app, ["clean", "--compact"])
+    assert out.exit_code == 0, out.output
+    assert "compacted the cache" in out.output
+    with Store(home["store"], fsync=False) as s:
+        assert s.compacted() and s.trimmed(relief)
 
 
 @pytest.fixture
@@ -338,10 +369,14 @@ async def test_the_page_is_told_and_free_space_trims_them(app: Any, home: dict[s
     _keep(home["store"], home["library"], home["tiles"], {"dem": relief, "mesh": mesh})
     async with client_for(app) as c:
         disk = (await c.get("/api/disk")).json()
-        assert disk["twice_bytes"] > 0
-        done = (await c.post("/api/clean", json={})).json()
-        assert done["twice_freed_bytes"] == disk["twice_bytes"]
-        assert (await c.get("/api/disk")).json()["twice_bytes"] == 0
+        assert disk["twice_bytes"] > 0 and disk["compacted"] is False
+        kept = (await c.post("/api/clean", json={})).json()
+        assert kept["twice_freed_bytes"] == 0 and kept["compacted"] is False
+        assert (await c.get("/api/disk")).json()["twice_bytes"] == disk["twice_bytes"]
+        done = (await c.post("/api/clean", json={"compact": True})).json()
+        assert done["twice_freed_bytes"] == disk["twice_bytes"] and done["compacted"] is True
+        after = (await c.get("/api/disk")).json()
+        assert after["twice_bytes"] == 0 and after["compacted"] is True
 
 
 # -- what the store reads once ------------------------------------------------------------------

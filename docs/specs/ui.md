@@ -931,9 +931,19 @@ same; with it, the filed tiles' line counts what is left of theirs (`filed_apart
 used by the tiles; a user's tiles moved to another partition left 358 GB of images twice,
 2026-10-23; a first form deleted it without a box and took the images back from the tile, a review
 found it open to losses), the **relief and mesh kept twice**
-(`twice_bytes`, shown only when there are some: the second form earlier builds wrote; no box either,
-*Free space…* always trims it, `disk.confirm_twice`; 90 GB and 272 GB of the same user's cache), the
-data no tile needs any more, the downloaded images (those of the filed tiles excepted: they are in their
+(`twice_bytes`, shown only when there are some: Ortho4XP's form beside OrthoStudio XP's, which the
+versions before this one read; 90 GB and 272 GB of the same user's cache; its own box, *Compact
+the relief and the mesh* (`disk-compact`, in `disk-compact-choice`, shown while the cache is not
+compacted and has some, `compactOffered`), with a note in the warning's colour under it
+(`disk.compact_warn`): an older version of OrthoStudio XP will no longer be able to use the cache,
+going back to one means emptying its folder, and the tiles stay whole but building them again
+downloads their images again; the dialog's line `disk.confirm_twice` says it too. Ticked, the
+cache is compacted (`compact`, `graph-keys.md` 7): Ortho4XP's form goes, and the tiles built after
+keep OrthoStudio XP's alone. A compacted cache (`compacted`) shows the box ticked and disabled,
+for good, with `disk.compacted_note` in the same colour; what a compaction cut short left goes
+then whatever the choices. A first form of 2026-10-23 trimmed it with no box, and a button put it
+back for an older version: two mechanisms where one choice was enough), the data no tile needs any
+more, the downloaded images (those of the filed tiles excepted: they are in their
 line; a piece astride the border with a tile of the atelier counts here, even at a level of detail
 only the filed tile uses, and so does a piece only a filed tile with nothing here touches), the map
 background and the **downloaded relief**, each with a plain tooltip. *Free space…* asks first, in a

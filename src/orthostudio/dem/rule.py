@@ -98,6 +98,9 @@ class DemJob:
     global_scenery_dir: Path | None = None
     """X-Plane 12 Global Scenery, for ``custom_dem = "XP12"`` when :func:`build_dem` is called
     directly. The rule ignores it and reads only the DSFs of its inputs."""
+    ortho4xp_form: bool = True
+    """Write Ortho4XP's ``Data<tile>.alt`` beside ``dem.npy``, the same raster, which versions
+    before this one read; not in a compacted cache (``Store.compacted``)."""
 
     def options(self, *, dem1_local_fallback: bool = False) -> EnsureOptions:
         """The :class:`EnsureOptions` this job implies."""
@@ -186,8 +189,8 @@ def xp12_dsfs_of(ctx: RunContext, tile: TileRef) -> dict[tuple[int, int], Path]:
     ram_mb=600,
 )
 def _dem_rule(ctx: RunContext) -> None:
-    """Elevation raster of one tile: ``dem.npy``, ``meta.json`` (``Data<tile>.alt`` too until
-    2026-10-23, the same raster, trimmed by Free space).
+    """Elevation raster of one tile: ``Data<tile>.alt``, ``dem.npy``, ``meta.json``, without the
+    ``.alt`` in a compacted cache (``DemJob.ortho4xp_form``).
 
     The nine ``xp12*`` inputs are the Global Scenery DSFs of the 3x3 block when the relief is
     X-Plane's (``custom_dem = "XP12"``), all absent otherwise: the root of the graph is keyed
@@ -198,7 +201,7 @@ def _dem_rule(ctx: RunContext) -> None:
     job = _job()
     tile = TileRef.parse(params.tile) if params.tile else job.tile
     dem = build_dem(params, job, xp12_dsfs=xp12_dsfs_of(ctx, tile))
-    dem.save(ctx.out)
+    dem.save(ctx.out, alt=job.ortho4xp_form)
 
 
 DEM_RULE: Rule = _dem_rule

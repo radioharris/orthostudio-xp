@@ -410,6 +410,10 @@
         <label class="disk-check"><input type="checkbox" id="disk-apart"> <span data-i18n="disk.also_apart">Also delete the cache's copy of the images of the tiles on another disk</span></label>
         <p class="help" data-i18n="disk.apart_check_help">These tiles keep their own images: X-Plane sees no difference. Building one of them again prepares its images again from the downloaded images; if you delete those too, now or later, they are downloaded again, and the provider may have changed them.</p>
       </div>
+      <div id="disk-compact-choice" hidden>
+        <label class="disk-check"><input type="checkbox" id="disk-compact"> <span data-i18n="disk.compact">Compact the relief and the mesh</span></label>
+        <p class="help disk-warn" id="disk-compact-note">An older version of OrthoStudio XP will no longer be able to use this cache: going back to one means emptying its folder. Your tiles stay whole, but building them again downloads their images again.</p>
+      </div>
       <label class="disk-check"><input type="checkbox" id="disk-images"> <span data-i18n="disk.also_images">Also delete the downloaded images</span></label>
       <p class="help" data-i18n="disk.images_help">Tiles built later then download their images again.</p>
       <label class="disk-check"><input type="checkbox" id="disk-relief"> <span data-i18n="disk.also_relief">Also delete the downloaded relief</span></label>

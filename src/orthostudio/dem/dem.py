@@ -463,14 +463,17 @@ class Dem:
             ],
         }
 
-    def save(self, directory: Path) -> None:
-        """Write ``dem.npy`` and ``meta.json`` into ``directory``.
+    def save(self, directory: Path, *, alt: bool = True) -> None:
+        """Write ``dem.npy``, ``meta.json`` and, with ``alt``, Ortho4XP's ``Data<tile>.alt`` into
+        ``directory``.
 
-        Ortho4XP's ``Data<tile>.alt``, the same raster a second time, is no longer written
-        (2026-10-23: 90 GB of a user's cache): the mesh reads the tracing's own, smoothed over the
-        airports, and ``--dem native`` writes it from ``dem.npy`` where it needs it
-        (``mesh.rule.run_mesh``). Free space trims it from the artefacts built before."""
+        The ``.alt`` is the same raster a second time, which versions before this one read: a
+        compacted cache goes without it (``Store.compact``, 90 GB of a user's cache, 2026-10-23),
+        the mesh reading the tracing's own, smoothed over the airports, and ``--dem native``
+        writing it from ``dem.npy`` where it needs it (``mesh.rule.run_mesh``)."""
         directory.mkdir(parents=True, exist_ok=True)
+        if alt:
+            self.write_alt(directory / alt_file_name(self.tile))
         np.save(directory / "dem.npy", self.alt_dem, allow_pickle=False)
         (directory / "meta.json").write_text(
             json.dumps(self.meta(), indent=1, sort_keys=True), "utf-8"

@@ -8,6 +8,7 @@ Spec: ``docs/specs/dem.md`` section 9.
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -108,16 +109,25 @@ def test_build_dem_needs_no_store(elevation: Path, tmp_path: Path) -> None:
     assert dem.alt_dem[1836, 1836] == 100 + 5
 
 
-def test_the_rule_writes_the_raster_once(elevation: Path, tmp_path: Path) -> None:
-    """``dem.npy`` and its ``meta.json``: Ortho4XP's ``Data<tile>.alt``, the same raster a second
-    time, is no longer written (90 GB of a user's cache, 2026-10-23)."""
+def test_the_rule_writes_both_forms_but_in_a_compacted_cache(
+    elevation: Path, tmp_path: Path
+) -> None:
+    """``Data<tile>.alt``, ``dem.npy`` and its ``meta.json``: the ``.alt`` is the same raster a
+    second time, which the versions before this one read; a compacted cache goes without it (90 GB
+    of a user's cache, 2026-10-23)."""
     store = Store(tmp_path / "store")
     executor = Executor(store)
     with dem_job(_job(elevation, tmp_path)):
         report = executor.run(Node(DEM_RULE, dem_params(TILE), NO_XP12))
     out = report.target.path
-    assert sorted(p.name for p in out.iterdir()) == ["dem.npy", "meta.json"]
+    assert sorted(p.name for p in out.iterdir()) == [alt_file_name(TILE), "dem.npy", "meta.json"]
+    assert (out / alt_file_name(TILE)).stat().st_size == 4 * 3673 * 3673
     assert np.load(out / "dem.npy", mmap_mode="r").shape == (3673, 3673)
+    one = Executor(Store(tmp_path / "compacted"))
+    with dem_job(replace(_job(elevation, tmp_path), ortho4xp_form=False)):
+        alone = one.run(Node(DEM_RULE, dem_params(TILE), NO_XP12)).target.path
+    assert sorted(p.name for p in alone.iterdir()) == ["dem.npy", "meta.json"]
+    assert (alone / "dem.npy").read_bytes() == (out / "dem.npy").read_bytes()
     meta = json.loads((out / "meta.json").read_text())
     assert meta["tile"] == TILE.name
     assert meta["source"] == "View"

@@ -2259,19 +2259,25 @@ def test_the_library_frees_disk_space_after_asking() -> None:
     # the relief is its own choice, counted apart: a user emptied everything and 1.4 GB of
     # elevation cells stayed, because nothing counted or freed them (2026-09-18)
     disk = "{unused_bytes: 5, images_bytes: 7, mapcache_bytes: 1, relief_bytes: 9}"
-    # the relief and the mesh kept in a second form go without a choice (2026-10-23)
+    # the relief and the mesh kept in a second form go with their own choice, which compacts the
+    # cache, and whatever the choices in a cache compacted already (2026-10-24)
     twice = "{unused_bytes: 5, twice_bytes: 3}"
+    compacted = "{unused_bytes: 5, twice_bytes: 3, compacted: true}"
     plans = _node_json(
         "app.js",
         f"[m.freeSpacePlan({disk}, false, false), m.freeSpacePlan({disk}, true, false), "
         f"m.freeSpacePlan({disk}, false, true), m.freeSpacePlan(null, true, true), "
-        f"m.freeSpacePlan({twice}, false, false)]",
+        f"m.freeSpacePlan({twice}, false, false), "
+        f"m.freeSpacePlan({twice}, false, false, false, false, true), "
+        f"m.freeSpacePlan({compacted}, false, false)]",
     )
     assert plans == [
         {"unused": 5, "apart": 0, "twice": 0, "pictures": 0, "heights": 0, "filed": 0, "total": 5},
         {"unused": 5, "apart": 0, "twice": 0, "pictures": 8, "heights": 0, "filed": 0, "total": 13},
         {"unused": 5, "apart": 0, "twice": 0, "pictures": 0, "heights": 9, "filed": 0, "total": 14},
         {"unused": 0, "apart": 0, "twice": 0, "pictures": 0, "heights": 0, "filed": 0, "total": 0},
+        {"unused": 5, "apart": 0, "twice": 0, "pictures": 0, "heights": 0, "filed": 0, "total": 5},
+        {"unused": 5, "apart": 0, "twice": 3, "pictures": 0, "heights": 0, "filed": 0, "total": 8},
         {"unused": 5, "apart": 0, "twice": 3, "pictures": 0, "heights": 0, "filed": 0, "total": 8},
     ]
     script = """
@@ -2363,7 +2369,7 @@ def test_the_cache_of_the_tiles_filed_outside_is_its_own_choice() -> None:
     # "Free space" waits for a filing, which the engine refuses meanwhile
     assert "Boolean(state.filing)" in body and 't("disk.filing_note")' in body
     free = re.search(r"\nasync function freeSpace\(\) \{.*?\n\}\n", app, re.S)
-    assert free is not None and "{ images, relief, filed, apart }" in free.group(0)
+    assert free is not None and "{ images, relief, filed, apart, compact }" in free.group(0)
     assert "res?.filed_freed_bytes" in free.group(0)
     script = """
     const file = await call("POST", "/api/library/zOrthoStudio_%2B43%2B004/file", {
@@ -2447,6 +2453,52 @@ def test_the_copy_of_the_images_of_the_tiles_on_another_disk_is_its_own_choice()
     assert got["before"]["apart_bytes"] > 0 and got["kept"]["apart_freed_bytes"] == 0
     assert got["freed"]["apart_freed_bytes"] == got["before"]["apart_bytes"]
     assert got["after"]["apart_bytes"] == 0
+
+
+def test_compacting_the_relief_and_the_mesh_is_its_own_choice_with_its_cost_in_yellow() -> None:
+    """The relief and the mesh kept in two forms, the second the one older versions read: their
+    own box, offered while the cache keeps both and has some, with what it costs under it in the
+    warning's colour, an older version no longer able to use the cache (the owner's words,
+    2026-10-24). A compacted cache shows the box ticked and disabled, for good."""
+    html = (UI / INDEX_FILE).read_text(encoding="utf-8")
+    choice = re.search(r'<div id="disk-compact-choice" hidden>.*?</div>', html, re.S)
+    assert choice is not None and 'id="disk-compact"' in choice.group(0)
+    assert 'class="help disk-warn" id="disk-compact-note"' in choice.group(0)
+    assert html.index('id="disk-compact"') < html.index('id="disk-images"')
+    css = (UI / "styles.css").read_text(encoding="utf-8")
+    assert ".disk-check + .help.disk-warn { color: var(--warn); }" in css
+    offered = _node_json(
+        "app.js",
+        "[m.compactOffered({twice_bytes: 3}), m.compactOffered({twice_bytes: 3, compacted: true}),"
+        " m.compactOffered({twice_bytes: 0}), m.compactOffered(null)]",
+    )
+    assert offered == [True, False, False, False]
+    app = (UI / "app.js").read_text(encoding="utf-8")
+    render = re.search(r"\nfunction renderDisk\(\) \{.*?\n\}\n", app, re.S)
+    assert render is not None
+    body = render.group(0)
+    assert '$("disk-compact-choice").hidden = !compact && !d.compacted;' in body
+    assert '$("disk-compact").disabled = !compact;' in body
+    assert 'if (d.compacted) $("disk-compact").checked = true;' in body
+    assert 'd.compacted ? t("disk.compacted_note") : t("disk.compact_warn")' in body
+    i18n = (UI / "i18n.js").read_text(encoding="utf-8")
+    for key in ("disk.compact", "disk.compact_warn", "disk.compacted_note", "disk.confirm_twice"):
+        assert i18n.count(f'"{key}":') == 2, key  # French and English
+    assert "Une version plus ancienne d'OrthoStudio XP ne pourra plus utiliser ce cache" in i18n
+    assert "An older version of OrthoStudio XP will no longer be able to use this cache" in i18n
+    script = """
+    const before = (await call("GET", "/api/disk")).ok;
+    const kept = (await call("POST", "/api/clean", {images: true, apart: true})).ok;
+    const freed = (await call("POST", "/api/clean", {compact: true})).ok;
+    const after = (await call("GET", "/api/disk")).ok;
+    process.stdout.write(JSON.stringify({before, kept, freed, after}));
+    """
+    got = _node_mock(script)
+    assert got["before"]["twice_bytes"] > 0 and got["before"]["compacted"] is False
+    assert got["kept"]["twice_freed_bytes"] == 0 and got["kept"]["compacted"] is False
+    assert got["freed"]["twice_freed_bytes"] == got["before"]["twice_bytes"]
+    assert got["freed"]["compacted"] is True
+    assert got["after"]["twice_bytes"] == 0 and got["after"]["compacted"] is True
 
 
 def test_a_zone_whose_level_changes_goes_to_its_place() -> None:

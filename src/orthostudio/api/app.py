@@ -152,7 +152,7 @@ __all__ = [
     "sse_message",
 ]
 
-API_LEVEL = 36
+API_LEVEL = 37
 """What this engine's API offers, for the page: 1 = P2b, 2 = zones (``/api/zones``) and the base map
 (``/api/map``), 3 = deleting a tile (``POST /api/library/{name}/delete``) and the sizes of the
 library, 4 = the disk space of the Library (``GET /api/disk``, ``POST /api/clean``), 5 = clearing
@@ -196,7 +196,10 @@ and ``held_freed_bytes`` in ``POST /api/clean`` (a development build's, never re
 (the relief and mesh kept in a second form, which Free space trims whatever the choices), 36 = the
 choice ``apart`` of ``POST /api/clean`` and its ``apart_freed_bytes``, with ``apart_tiles``,
 ``apart_bytes`` and ``filed_apart_bytes`` in ``GET /api/disk`` (the store's
-copy of the images of the tiles on another disk or partition, deleted only on request). A page
+copy of the images of the tiles on another disk or partition, deleted only on request), 37 = the
+choice ``compact`` of ``POST /api/clean`` and ``compacted`` in its answer and in ``GET /api/disk``
+(the relief and the mesh kept in one form, which a version before this one refuses; ``twice_bytes``
+trimmed only then). A page
 served by an engine older than itself (a ``osxp serve`` started before an update: the page's files
 are read from disk at each load, the routes were imported at start) asks the user to restart
 OrthoStudio XP instead of showing "Not Found"."""
@@ -2365,7 +2368,13 @@ def create_app(
             return st.building_pids()
 
     def collect(
-        *, images: bool, relief: bool, filed: bool, dry_run: bool, apart: bool = False
+        *,
+        images: bool,
+        relief: bool,
+        filed: bool,
+        dry_run: bool,
+        apart: bool = False,
+        compact: bool = False,
     ) -> Any:
         # No grace period: the callers check first that nothing is building (osxp clean --all).
         return clean(
@@ -2381,6 +2390,7 @@ def create_app(
             relief=relief,
             filed=filed,
             apart=apart,
+            compact=compact,
         )
 
     def busy_building(other: bool) -> JSONResponse:
@@ -2401,8 +2411,8 @@ def create_app(
         ``filed_apart_bytes`` once the next line went) and the image pieces only they use
         (``filed_images_bytes``, not in ``images_bytes``); the store's copy of the images of the
         ``apart_tiles`` on another disk or partition, which hold their own (``apart_bytes``); and
-        the relief and mesh files the store keeps in a second form (``twice_bytes``, trimmed
-        whatever the choices).
+        the relief and mesh files the store keeps in a second form (``twice_bytes``), trimmed
+        with the choice ``compact``, or whatever the choices once the cache is ``compacted``.
 
         Pages that ask while a measure runs share it, as ``/api/sizes``'s do: on a hard disk one
         takes minutes, and the Library asked again every five seconds while sizes were pending,
@@ -2430,17 +2440,19 @@ def create_app(
             "apart_bytes": report.apart_bytes,
             "filed_apart_bytes": report.filed_apart_bytes,
             "twice_bytes": report.twice_bytes,
+            "compacted": report.compacted,
             "tiles": len(report.packs),
             "building": manager.active() is not None or bool(other_builds()),
         }
 
     @app.post("/api/clean")
     async def free_space(req: CleanRequest | None = None) -> Any:
-        """Free the space: every piece of tile data no tile on disk needs and the relief and mesh
-        kept in a second form (``twice_freed_bytes``), with ``images`` the downloaded image pieces
-        and the map background, with ``relief`` the elevation cells, with ``filed`` the cache of the
-        tiles filed outside the atelier, and with ``apart`` the store's copy of the images of the
-        tiles on another disk or partition (``apart_freed_bytes``). Refused while a build
+        """Free the space: every piece of tile data no tile on disk needs, with ``images`` the
+        downloaded image pieces and the map background, with ``relief`` the elevation cells, with
+        ``filed`` the cache of the tiles filed outside the atelier, with ``apart`` the store's copy
+        of the images of the tiles on another disk or partition (``apart_freed_bytes``), and with
+        ``compact`` the relief and mesh kept in a second form (``twice_freed_bytes``, whatever the
+        choices once the cache is ``compacted``), the cache keeping one form. Refused while a build
         runs, here or in another process, since nothing protects what a build is about to use
         otherwise, and while a tile is filed elsewhere, which moves a tile out of the atelier."""
         req = req or CleanRequest()
@@ -2458,6 +2470,7 @@ def create_app(
                 relief=req.relief,
                 filed=req.filed,
                 apart=req.apart,
+                compact=req.compact,
                 dry_run=False,
             )
             filed = report.filed_bytes + report.filed_images_bytes
@@ -2468,7 +2481,8 @@ def create_app(
                 "relief_freed_bytes": report.relief_bytes if req.relief else 0,
                 "filed_freed_bytes": filed if req.filed else 0,
                 "apart_freed_bytes": report.apart_bytes if req.apart else 0,
-                "twice_freed_bytes": report.twice_bytes,
+                "twice_freed_bytes": report.twice_bytes if report.compacted else 0,
+                "compacted": report.compacted,
                 "removed": report.removed,
             }
 

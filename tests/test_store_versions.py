@@ -33,17 +33,19 @@ def _columns(store: Store, table: str) -> set[str]:
 
 @pytest.mark.parametrize("made_by", STORES, ids=[p.name for p in STORES])
 def test_a_store_an_earlier_version_left_opens_and_works(made_by: Path, tmp_path: Path) -> None:
-    """Every table and column of this version is there after the opening; every artefact is
-    there, readable and as it was built; the last build of a step is found; the second forms are
-    trimmed, the artefacts still as built; a file's digest is kept, its file's number read again
-    once from a row an earlier version wrote; opened again, nothing changed."""
+    """Every table and column of this version is there after the opening, its format number kept,
+    which the versions before read; every artefact is there, readable and as it was built; the last
+    build of a step is found; compacted, its second forms are trimmed, the artefacts still as
+    built; a file's digest is kept, its file's number read again once from a row an earlier version
+    wrote; opened again, nothing changed."""
     copy = tmp_path / made_by.name
     shutil.copytree(made_by, copy)
     root, tiles = copy / "store", copy / "tiles"
     with Store(root, fsync=False) as s:
         assert "digest" in _columns(s, "trimmed") and _columns(s, "sources")
-        # its format number raised: the versions before this one turn it away at the opening
-        assert s._db.execute("SELECT v FROM meta WHERE k = 'schema_version'").fetchone()[0] == "2"
+        # its format number kept: the versions before this one go on reading it
+        assert s._db.execute("SELECT v FROM meta WHERE k = 'schema_version'").fetchone()[0] == "1"
+        assert not s.compacted()
         infos = list(s.iter_artifacts())
         assert len(infos) >= 5 and all(s.has(i.key) for i in infos)
         for info in infos:
@@ -56,6 +58,8 @@ def test_a_store_an_earlier_version_left_opens_and_works(made_by: Path, tmp_path
         assert s.last_made("orthostudio.mesh", {"tile": TILE, "n": 1}, 1) is not None
         assert s.pins()  # what was pinned stays pinned
 
+        s.compact()
+        assert s.compacted()
         seconds = {"orthostudio.dem": f"Data{TILE}.alt", "orthostudio.mesh": f"Data{TILE}.mesh"}
         for rule, second in seconds.items():
             for info in s.iter_artifacts(rule):
@@ -72,7 +76,7 @@ def test_a_store_an_earlier_version_left_opens_and_works(made_by: Path, tmp_path
         digest = s.file_digest(dsf)
         keys = {i.key: i.digest for i in s.iter_artifacts()}
     with Store(root, fsync=False) as s:  # opened again: the same store
-        assert {i.key: i.digest for i in s.iter_artifacts()} == keys
+        assert s.compacted() and {i.key: i.digest for i in s.iter_artifacts()} == keys
         assert s.file_digest(dsf) == digest and s.fsck(verify=True).clean
 
 

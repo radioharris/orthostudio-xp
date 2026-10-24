@@ -334,11 +334,12 @@ the ground Triangle4XP read under the vertex, wherever column 5 is not finite; t
 Built through `mesh_file.MeshData` and `mesh_file.write_mesh_npz` (`docs/specs/mesh-file.md`):
 `vertices[:, 0] = x + tile.lon`, `vertices[:, 1] = y + tile.lat`, `vertices[:, 2] = z`
 (metres), `normals = (u, v)` as float32, `tris = corners - 1` (0-based int32),
-`tri_attr = attr` (uint8), `extra = {"version": "2", "dimension": "3"}`. Until 2026-10-23 the rule
-also wrote Ortho4XP's text, `Data<tile>.mesh`, the same mesh a second time: 272 GB of a user's
-1.1 TB cache, at ZL14 with a dense mesh. It is no longer written, with no new version of the rule
-(a tile built before is not built again), and Free space trims it from the artefacts that have it
-(`graph-keys.md` 9.1). What the text gave its readers is `mesh_file.as_written(mesh)`: the npz's
+`tri_attr = attr` (uint8), `extra = {"version": "2", "dimension": "3"}`. The rule also writes
+Ortho4XP's text, `Data<tile>.mesh`, the same mesh a second time, which the versions before this one
+read: 272 GB of a user's 1.1 TB cache, at ZL14 with a dense mesh, and 2 s and 155 MB for a tile of
+2.6 million triangles. A compacted cache goes without it (`MeshJob.ortho4xp_form`, with no new
+version of the rule), and Free space trims it from the artefacts that have it (`graph-keys.md` 7
+and 9.1). What the text gave its readers is `mesh_file.as_written(mesh)`: the npz's
 numbers formatted and parsed by the text writer's and reader's own code, bit for bit what reading
 the text gave, checked on the 33 real meshes of the reference machine's stores (all identical,
 up to 2.8 million points) and on edge values (`test_mesh_file.py`).
@@ -434,8 +435,8 @@ reaches `0.99 * limit_tris * 1e6`: that is how the user learns the mesh is coars
 
 ## 9. The rule `orthostudio.mesh@1` (`rule.py`)
 
-* `kind = "dir"`, artefact = `mesh.npz`, `water_tris.npz`, `stats.json` (`Data<tile>.mesh` too
-  until 2026-10-23, section 6).
+* `kind = "dir"`, artefact = `Data<tile>.mesh`, `mesh.npz`, `water_tris.npz`, `stats.json`
+  (without the text in a compacted cache, section 6).
 * inputs: `vectors` (required), `dem` (required), `coastline` (optional, may resolve absent).
 * `cancel`: the rule takes the scheduler's token through `MeshJob` / `mesh_job(...)` (bound
   by `pipeline.build._mesh_run`). `build_mesh_native` polls the sidecar every 0.1 s instead of
@@ -511,10 +512,10 @@ Measured by `tests/test_meshbuild_oracle.py` (`-s` printed them; removed with de
   ~0.005 s. Without it: 2.49 s, **3.0x**.
 * the 0.94 s of `.mesh` text (34 % of the stage) was then written for consumers that were not
   OrthoStudio XP: the Ortho4XP stage 2.5 fallback, the community mesh format, and the oracle
-  comparisons; without it the stage would take 1.85 s, **4.0x**. The text file stayed until
-  2026-10-23, for the DSF, because a DSF built from the npz's full-precision elevations differed
-  from Ortho4XP's on 23 bytes of +43+005 (`pipeline-build.md` 8.8); the DSF now reads the npz as
-  the text would have given it (`as_written`), and the text is no longer written (section 6).
+  comparisons; without it the stage would take 1.85 s, **4.0x**. The DSF read the text,
+  because a DSF built from the npz's full-precision elevations differed from Ortho4XP's on 23
+  bytes of +43+005 (`pipeline-build.md` 8.8); it now reads the npz as the text would have given it
+  (`as_written`) where there is no text, in a compacted cache (section 6).
 
 Memory: `maxrss` 417 MB for the Python process (the `(N, 6)` node table is 29 MB, the text
 writer's chunks dominate) and 304 MB for the Triangle4XP child (54 MB `.alt` + 4 MB

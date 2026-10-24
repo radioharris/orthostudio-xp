@@ -896,10 +896,9 @@ def _tile_dsf(ctx: RunContext) -> None:
     # carrying the *full precision* doubles of Triangle4XP, which the text truncates to 15
     # decimals of z/100000. That 5e-11 m is enough to move elevations across a u16 rounding
     # boundary: the DSF of +43+005 built from the npz as it is had the same size but differed
-    # from Ortho4XP's on 23 bytes spread over several pools (the first is GEOD/POOL[5]). The text
-    # is no longer kept (the same mesh twice, 272 GB of a user's cache, 2026-10-23): the npz is
-    # read as the text would have given it, bit for bit (`as_written`); an artefact built before
-    # and not trimmed yet still has its text, the same numbers.
+    # from Ortho4XP's on 23 bytes spread over several pools (the first is GEOD/POOL[5]). A
+    # compacted cache keeps no text (the same mesh twice, 272 GB of a user's cache, 2026-10-23):
+    # the npz is read as the text would have given it, bit for bit (`as_written`).
     mesh = read_mesh(mesh_text) if mesh_text.is_file() else as_written(read_mesh_npz(npz))
     masks_input = ctx.inputs["masks"]
     lookup = None
@@ -1546,6 +1545,7 @@ def _dem_run(env: BuildEnv, spec: BuildSpec) -> Callable[[NodeContext], Any]:
             ranges=ranges,
             cancel=cast(Any, ctx.cancel_event),
             on_event=hear,
+            ortho4xp_form=not ctx.store.compacted(),
         )
         reading()  # a relief already on disk is read at once: the page says so from the start
         ticker = threading.Thread(target=tick, name=f"relief-{spec.tile.name}", daemon=True)
@@ -1628,11 +1628,13 @@ def _masks_run(env: BuildEnv) -> Callable[[NodeContext], Any]:
 
 
 def _mesh_run(env: BuildEnv) -> Callable[[NodeContext], Any]:
-    """Bind the mesh job so that Triangle4XP can be interrupted (review 4, finding C4), and say
-    when the mesh reached its triangle budget (:func:`mesh_budget_line`)."""
+    """Bind the mesh job so that Triangle4XP can be interrupted (review 4, finding C4) and a
+    compacted cache gets no text of the mesh, and say when the mesh reached its triangle budget
+    (:func:`mesh_budget_line`)."""
 
     def run(ctx: NodeContext) -> ArtifactRef:
-        with _active_env(env, ctx), mesh_job(MeshJob(cancel=cast(Any, ctx.cancel_event))):
+        job = MeshJob(cancel=cast(Any, ctx.cancel_event), ortho4xp_form=not ctx.store.compacted())
+        with _active_env(env, ctx), mesh_job(job):
             ref = run_p0_rule(ctx)
         line = mesh_budget_line(ref.path, float(getattr(ctx.params, "limit_tris", 0) or 0))
         if line is not None:
@@ -1772,9 +1774,9 @@ def neighbour_meshes(store: Store) -> dict[str, ArtifactRef]:
     recipe's tile) and holding its ``mesh.npz`` or its ``Data<tile>.mesh``, or, its recipe naming
     no tile, holding that text, which names it. Read once for a whole batch: looked for neighbour
     by neighbour, each went through every mesh of the store, 5.4 s for 60 tiles of a cache of
-    1 400 (a user's, 2026-10-23). The text alone named the tile before: a mesh without it, as built
-    since 2026-10-23 or trimmed by Free space, was no neighbour's, and the shores along its border
-    were drawn as if it did not exist."""
+    1 400 (a user's, 2026-10-23). The text alone named the tile before: a mesh without it, as a
+    compacted cache keeps it, was no neighbour's, and the shores along its border were drawn as if
+    it did not exist."""
     best: dict[str, tuple[float, ArtifactRef]] = {}
     for info, made_for in store.iter_made(OSXP_MESH.name):
         tile = made_for.get("tile")

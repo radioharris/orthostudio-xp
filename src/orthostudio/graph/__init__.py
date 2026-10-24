@@ -38,6 +38,7 @@ from orthostudio.graph.executor import (
 from orthostudio.graph.keys import KEY_FORMAT, artifact_key, key_for
 from orthostudio.graph.rule import Kind, ResolvedInput, Rule, RuleParams, RunContext, rule
 from orthostudio.graph.store import (
+    COMPACT_VERSION,
     SCHEMA_VERSION,
     ArtifactInfo,
     Build,
@@ -49,6 +50,7 @@ from orthostudio.graph.store import (
 )
 
 __all__ = [
+    "COMPACT_VERSION",
     "KEY_FORMAT",
     "SCHEMA_VERSION",
     "ArtifactHeldError",

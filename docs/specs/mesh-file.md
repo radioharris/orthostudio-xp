@@ -100,8 +100,9 @@ more than 20 % of size) with keys `format` (`"osxp-mesh-npz-1"`), `vertices`, `n
 `tris`, `tri_attr`, `extra_json` (JSON of `extra`). `read_mesh_npz` rejects another format
 string. Round trip is exact (same dtypes, same bytes).
 
-**The npz read as written** (`as_written`, 2026-10-23). Since the text is no longer kept (the same
-mesh a second time, `mesh-build.md` 6), what reading it gave is computed from the npz: the vertices
+**The npz read as written** (`as_written`, 2026-10-23). Where the text is not kept (a compacted
+cache: the same mesh a second time, `mesh-build.md` 6), what reading it gave is computed from the
+npz: the vertices
 (altitude divided by `Z_SCALE`) and the normals formatted by the text writer's own `"%.15f"` and
 `"%.2f"` lines, a chunk of `_WRITE_CHUNK` rows at a time, and parsed by the reader's own
 `_parse_block` (so `numtext.SPLIT_TOKENS` on Windows as elsewhere), the altitude multiplied back;

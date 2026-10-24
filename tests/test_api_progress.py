@@ -1143,6 +1143,7 @@ def test_a_downloaded_relief_says_as_it_arrives_then_that_it_is_read(
 
     class Ctx:
         cancel_event = None
+        store = SimpleNamespace(compacted=lambda: False)  # a cache keeping both forms
         downloaded = 0
         written = 0
 
@@ -1203,6 +1204,7 @@ def test_a_downloaded_relief_moves_its_bar_while_it_is_read(
 
     class Ctx:
         cancel_event = None
+        store = SimpleNamespace(compacted=lambda: False)  # a cache keeping both forms
         downloaded = 0
         written = 0
 
@@ -1911,6 +1913,7 @@ def test_the_relief_says_in_works_what_it_set_aside(monkeypatch: pytest.MonkeyPa
 
     class Ctx:
         cancel_event = None
+        store = SimpleNamespace(compacted=lambda: False)  # a cache keeping both forms
         downloaded = 0
         written = 0
 
@@ -1975,6 +1978,7 @@ def test_the_relief_says_in_works_when_his_file_is_coarser_than_the_relief_chose
 
     class Ctx:
         cancel_event = None
+        store = SimpleNamespace(compacted=lambda: False)  # a cache keeping both forms
         downloaded = 0
         written = 0
 

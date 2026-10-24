@@ -850,6 +850,8 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .disk-check { display: flex; align-items: center; gap: 6px; }
 /* the box sits 3px above the bottom of its line */
 .disk-check + .help { margin-top: calc(var(--help-gap) - 3px); }
+/* what compacting the cache costs, under its box (app.js renderDisk) */
+.disk-check + .help.disk-warn { color: var(--warn); }
 /* The buttons keep their label on one line; the note goes under them when the card is narrow. */
 .disk-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px; margin-top: var(--block-gap); }
 .disk-actions .btn { white-space: nowrap; }

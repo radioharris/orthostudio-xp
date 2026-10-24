@@ -31,10 +31,12 @@ class StoreError(GraphError):
 
 class IncompatibleIndexError(StoreError):
     """The sqlite index was written by another schema version: ``found`` at ``root``, where this
-    version reads ``expected``."""
+    version reads up to ``expected``."""
 
     def __init__(self, root: object, found: int, expected: int) -> None:
-        super().__init__(f"index schema {found} at {root}, this OrthoStudio XP expects {expected}")
+        super().__init__(
+            f"index schema {found} at {root}, this OrthoStudio XP reads up to {expected}"
+        )
         self.root = str(root)
         self.found = found
         self.expected = expected

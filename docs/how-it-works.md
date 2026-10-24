@@ -722,13 +722,14 @@ and built again.
 | Remove from X-Plane (Library) | the link goes, the folder stays | stays | stays | stays |
 | Add to X-Plane (Library) | the link comes back, at once | stays | stays | stays |
 | Delete (Library, `osxp uninstall --delete`) | everything goes | what only this tile needed, unless used in the last 10 minutes | stays | stays |
-| `osxp clean` | - | what no tile on disk needs, and the second form of the relief and the mesh, unless used in the last hour | stays | stays |
+| `osxp clean` | - | what no tile on disk needs, unless used in the last hour | stays | stays |
 | `osxp clean --images` | - | same as `osxp clean` | emptied, with the map cache, but for the pieces of the tiles filed outside the workshop | stays |
 | `osxp clean --relief` | - | same as `osxp clean` | stays | emptied |
 | `osxp clean --filed` | - | same as `osxp clean`, and the cache of the tiles filed outside the workshop | theirs go | stays |
 | `osxp clean --apart` | - | same as `osxp clean`, and the cache's copy of the images of the tiles on another disk or partition | stays | stays |
+| `osxp clean --compact` | - | same as `osxp clean`, and the second form of the relief and the mesh: the cache keeps one form from then on | stays | stays |
 | `osxp clean --all` | - | everything no tile on disk needs, however recent, the cache of the tiles filed outside the workshop, and the cache's copy of the images of the tiles on another disk | emptied, with the map cache | emptied |
-| Free space (Library) | - | everything no tile on disk needs, however recent, and the second form of the relief and the mesh; the cache of the tiles filed outside the workshop, and the cache's copy of the images of the tiles on another disk, each if you tick its box | emptied with the map cache if you tick the box, those of the tiles filed outside with their own box | emptied if you tick its own box |
+| Free space (Library) | - | everything no tile on disk needs, however recent; the cache of the tiles filed outside the workshop, the cache's copy of the images of the tiles on another disk, and the second form of the relief and the mesh, each if you tick its box | emptied with the map cache if you tick the box, those of the tiles filed outside with their own box | emptied if you tick its own box |
 | Clear the job list (Works) | stays | stays | stays; only the finished jobs' progress and logs (`jobs/`) go | stays |
 | Remove one build from the list (Works) | stays | stays | stays; only that build's progress and log go | stays |
 
@@ -767,17 +768,17 @@ there. A tile's folder is now never written from a source that has gone: a build
 the cache were deleted meanwhile by another program (a terminal's `osxp clean` beside the app)
 stops before touching the tile, which stays as it was.
 
-The relief and the mesh of a tile are kept once too. Builds before this version wrote each in two
-forms, OrthoStudio XP's and Ortho4XP's (`Data<tile>.alt`, `Data<tile>.mesh`), the same numbers:
-90 GB and 272 GB of a user's 1.1 TB cache, at ZL14 with a dense mesh. Builds now write OrthoStudio
-XP's alone, and *Free space…* deletes Ortho4XP's from what earlier builds left, every time, with no
-box to tick (the line *Relief and mesh kept twice*). Nothing is built again: the DSF reads the
-mesh's other form exactly as it read the text, number for number, and comes out byte for byte the
-same. An earlier version of OrthoStudio XP, opened on the same data folder after that, reads the
-forms left a little differently: it makes the DSF of a tile it builds again from the mesh's full
-precision, a few bytes apart, and does not find a neighbour's mesh without its text, so the shores
-along that border are drawn as if the neighbour were not built. Build those tiles again with this
-version.
+The relief and the mesh of a tile are kept in two forms, OrthoStudio XP's and Ortho4XP's
+(`Data<tile>.alt`, `Data<tile>.mesh`), the same numbers: the second is the one the versions before
+this one read. Together they took 90 GB and 272 GB of a user's 1.1 TB cache, at ZL14 with a dense
+mesh. *Free space…* offers to keep one, on a line and a box of their own (*Relief and mesh kept
+twice*, *Compact the relief and the mesh*): ticked, Ortho4XP's form goes, and the tiles built after
+keep OrthoStudio XP's alone. Nothing is built again: the DSF reads the mesh's other form exactly as
+it read the text, number for number, and comes out byte for byte the same. The note under the box
+says what it costs: a version before this one can no longer use the cache, and turns it away as
+it opens, before it builds anything. Going back to one means emptying the cache folder: the tiles
+stay whole, and building them again downloads their images again. Once the cache is compacted, its
+box stays ticked.
 
 Deleting a tile keeps its image pieces and its elevation cells on purpose: building the same area
 again then skips the download, which is most of the time. The relief has its own box because it

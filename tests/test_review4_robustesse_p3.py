@@ -240,7 +240,8 @@ def test_the_native_mesh_can_be_interrupted() -> None:
     src = (SRC / "mesh" / "build.py").read_text(encoding="utf-8")
     assert "_kill_sidecar" in src and "proc.poll()" in src
     build_src = (SRC / "pipeline" / "build.py").read_text(encoding="utf-8")
-    assert "mesh_job(MeshJob(cancel=cast(Any, ctx.cancel_event)))" in build_src
+    assert "MeshJob(cancel=cast(Any, ctx.cancel_event)" in build_src
+    assert "mesh_job(job)" in build_src
 
 
 def test_a_subprocess_started_by_a_node_outlives_the_cancelled_scheduler(

@@ -1031,7 +1031,7 @@ _SPECS: tuple[ErrorSpec, ...] = (
         _B,
         _S,
         "The cache in {path} was made by a newer version of OrthoStudio XP (its format {found}; "
-        "this version reads {expected}).",
+        "this version reads up to {expected}).",
         "Use that newer version again, or empty that folder to start afresh: the tiles are not "
         "in it, and a build downloads and computes again what it needs.",
     ),
@@ -1436,8 +1436,9 @@ def disk_trouble(exc: BaseException) -> OsxpError | None:
 
 def store_trouble(exc: BaseException) -> OsxpError | None:
     """A cache a newer version made, which this one refuses to open (``graph.store``
-    ``SCHEMA_VERSION``): said as such, where it was an internal error to report. Recognised by
-    name, as the sqlite errors of :func:`disk_trouble`: this module imports nothing of the graph."""
+    ``COMPACT_VERSION``, the highest it reads): said as such, where it was an internal error to
+    report. Recognised by name, as the sqlite errors of :func:`disk_trouble`: this module imports
+    nothing of the graph."""
     if type(exc).__name__ != "IncompatibleIndexError":
         return None
     found, expected = getattr(exc, "found", 0), getattr(exc, "expected", 0)

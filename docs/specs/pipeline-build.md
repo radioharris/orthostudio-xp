@@ -577,7 +577,7 @@ There is no fallback recipe: a tile is built by these rules or refused. The one 
 
 * `orthostudio.vectors@1` publishes the raster **after** `smooth_raster_over_airports`
   (`O4_Airport_Utils.py:1034`), smoothed over the tile's airports as Ortho4XP's step 1 did;
-* `orthostudio.dem@1` published it **before** that smoothing (`dem.md` 9.2); since 2026-10-23 it
+* `orthostudio.dem@1` publishes it **before** that smoothing (`dem.md` 9.2); a compacted cache
   keeps the raster as `dem.npy` alone, and `--dem native` writes the `.alt` from it in the mesh's
   scratch, the same bytes (`mesh.rule.run_mesh`). It is the vector stage's elevation input, so it
   is declared for every tile.
@@ -790,9 +790,9 @@ file offsets 591 194, 2 513 916, 6 588 280, 7 916 314, 7 916 624. (The earlier "
 was `compare_dsf.first_difference`, which names the first difference, not their count.)
 
 `tile.dsf` therefore reads the mesh as the text gives it: `Data<tile>.mesh` when the mesh artefact
-still has one (what Ortho4XP's step 3 does), else `mesh_file.as_written(read_mesh_npz(...))`, the
-npz's numbers formatted and parsed by the text's own writer and reader, the same bits (2026-10-23:
-the text is no longer kept, the same mesh a second time, 272 GB of a user's cache). A test puts
+has one (what Ortho4XP's step 3 does), else `mesh_file.as_written(read_mesh_npz(...))`, the npz's
+numbers formatted and parsed by the text's own writer and reader, the same bits (a compacted cache
+keeps no text, the same mesh a second time, 272 GB of a user's cache, 2026-10-23). A test puts
 altitudes on rounding boundaries and sees the DSF of the npz read as it is change, and the DSF of
 `as_written` equal the text's (`test_build_graph.py`). Cost: about the text's own, a few seconds for
 a dense mesh, instead of 0.006 s per DSF.

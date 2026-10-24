@@ -225,9 +225,8 @@ def as_written(mesh: MeshData) -> MeshData:
 
     The text rounds the coordinates to 15 decimals (the altitude in units of 100 km) and the
     normals to 2, where the npz holds Triangle4XP's full precision: a DSF made from the npz as it
-    is differs from Ortho4XP's on a few bytes, and the DSF reads this instead. The cache keeps
-    the npz alone since 2026-10-23, the text being the same mesh a second time (272 GB of a user's
-    1.1 TB)."""
+    is differs from Ortho4XP's on a few bytes, and the DSF reads this instead. A compacted cache
+    keeps the npz alone, the text being the same mesh a second time (272 GB of a user's 1.1 TB)."""
     n = mesh.n_vertices
     scaled = mesh.vertices.copy()
     scaled[:, 2] /= Z_SCALE

@@ -17,6 +17,7 @@ import stat
 import subprocess
 import sys
 import threading
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -34,8 +35,15 @@ from orthostudio.mesh.build import (
     triangle_command,
     triangle_switches,
 )
-from orthostudio.mesh.mesh_file import read_mesh_npz
-from orthostudio.mesh.rule import OSXP_MESH, MeshParams, run_mesh, triangle_binary
+from orthostudio.mesh.mesh_file import as_written, read_mesh, read_mesh_npz
+from orthostudio.mesh.rule import (
+    OSXP_MESH,
+    MeshJob,
+    MeshParams,
+    mesh_job,
+    run_mesh,
+    triangle_binary,
+)
 from orthostudio.model import ArtifactRef, TileRef
 from orthostudio.sched.workers import execute
 
@@ -303,10 +311,9 @@ def test_end_to_end_on_a_square(synthetic: dict) -> None:
         out_dir=out,
         coast_nodes=np.array([[5.5, 43.5]]),
     )
-    for name in ("mesh.npz", "water_tris.npz", "stats.json"):
+    for name in ("Data+43+005.mesh", "mesh.npz", "water_tris.npz", "stats.json"):
         assert (out / name).is_file(), name
-    # the mesh once: Ortho4XP's text was the same mesh again (272 GB of a user's cache, 2026-10-23)
-    assert not (out / "Data+43+005.mesh").exists() and result.mesh_path == out / "mesh.npz"
+    assert result.mesh_path == out / "mesh.npz"
     assert result.mesh.n_triangles > 50
     assert result.mesh.vertices[:, 0].min() >= 5.0 and result.mesh.vertices[:, 0].max() <= 6.0
     assert result.mesh.vertices[:, 1].min() >= 43.0
@@ -376,7 +383,7 @@ def test_retry_relaxes_min_angle_and_not_nodata(synthetic: dict) -> None:
     assert argv_first[0].startswith("-pq10")  # the first attempt
     assert result.argv[1].startswith("-pq0")  # the retry relaxed the angle
     assert result.argv[10] == argv_first[9] == "-32768"  # ... and left nodata alone
-    assert (root / "out2" / "mesh.npz").is_file()
+    assert (root / "out2" / "mesh.npz").is_file() and (root / "out2" / "Data+43+005.mesh").is_file()
 
 
 @needs_binary
@@ -431,8 +438,19 @@ def test_rule_runs_through_a_run_context(synthetic: dict) -> None:
         scratch=scratch,
     )
     result = run_mesh(ctx)
-    assert (out / "mesh.npz").is_file() and not (out / "Data+43+005.mesh").exists()
+    assert (out / "mesh.npz").is_file() and (out / "Data+43+005.mesh").is_file()
     assert (out / "water_tris.npz").is_file()
+    # a compacted cache: the npz alone, Ortho4XP's text being the same mesh again (272 GB of a
+    # user's cache, 2026-10-23), the same numbers as the text reads them
+    alone, scratch2 = root / "alone", root / "scratch2"
+    alone.mkdir()
+    scratch2.mkdir()
+    with mesh_job(MeshJob(ortho4xp_form=False)):
+        run_mesh(replace(ctx, out=alone, scratch=scratch2))
+    assert sorted(p.name for p in alone.iterdir()) == ["mesh.npz", "stats.json", "water_tris.npz"]
+    text, npz = read_mesh(out / "Data+43+005.mesh"), as_written(read_mesh_npz(alone / "mesh.npz"))
+    assert text.vertices.tobytes() == npz.vertices.tobytes()
+    assert text.tris.tobytes() == npz.tris.tobytes()
     # neither a coastline nor an airport input: both degraded warnings, and the build goes on
     assert [w.code for w in result.warnings] == [
         "MESH_WEIGHT_MAP_INCOMPLETE",  # airports

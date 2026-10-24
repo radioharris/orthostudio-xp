@@ -16,6 +16,7 @@ from typing import Any
 import pytest
 
 from orthostudio.graph import (
+    COMPACT_VERSION,
     SCHEMA_VERSION,
     ArtifactInUseError,
     CommitError,
@@ -180,39 +181,51 @@ def test_reopen_persists_and_schema_is_checked(tmp_path: Path) -> None:
     with Store(root, fsync=False) as s:
         assert s.has(key) and s.path(key).read_bytes() == b"persist"
         assert s.info(key) is not None
+    newer = COMPACT_VERSION + 1
     db = sqlite3.connect(root / "index.sqlite")
-    db.execute("UPDATE meta SET v = ? WHERE k = 'schema_version'", (str(SCHEMA_VERSION + 1),))
+    db.execute("UPDATE meta SET v = ? WHERE k = 'schema_version'", (str(newer),))
     db.commit()
     db.close()
     with pytest.raises(IncompatibleIndexError) as refused:
         Store(root, fsync=False)
-    assert (refused.value.found, refused.value.expected) == (SCHEMA_VERSION + 1, SCHEMA_VERSION)
+    assert (refused.value.found, refused.value.expected) == (newer, COMPACT_VERSION)
     assert refused.value.root == str(root.resolve())
     # refused inside the opening's transaction: the newer index is left as it was
     db = sqlite3.connect(root / "index.sqlite")
-    assert db.execute("SELECT v FROM meta WHERE k = 'schema_version'").fetchone()[0] == str(
-        SCHEMA_VERSION + 1
-    )
+    assert db.execute("SELECT v FROM meta WHERE k = 'schema_version'").fetchone()[0] == str(newer)
     db.close()
 
 
-def test_an_index_of_1_opens_and_becomes_2(tmp_path: Path) -> None:
-    """2 since the relief and the mesh are kept in one form: the versions before refuse the store
-    at its opening rather than fail in the middle of a build (2026-10-24). An index of 1 is read
-    whole, its number raised once."""
-    assert SCHEMA_VERSION == 2
+def _number(root: Path) -> str:
+    """The index's number as another program reads it from the disk."""
+    db = sqlite3.connect(root / "index.sqlite")
+    try:
+        return str(db.execute("SELECT v FROM meta WHERE k = 'schema_version'").fetchone()[0])
+    finally:
+        db.close()
+
+
+def test_an_index_stays_1_until_the_cache_is_compacted(tmp_path: Path) -> None:
+    """Every version since 0.1.22 reads an index of 1 and refuses any other number. A cache keeps
+    that number, and the relief and the mesh in both forms, until it is compacted: then 2, on the
+    disk at once, which the versions before refuse at the opening rather than fail in the middle
+    of a build (2026-10-24). Nothing turns it back."""
+    assert (SCHEMA_VERSION, COMPACT_VERSION) == (1, 2)
     root = tmp_path / "store"
     with Store(root, fsync=False) as s:
         key = _put(s, 9, b"kept")
-    db = sqlite3.connect(root / "index.sqlite")
-    db.execute("UPDATE meta SET v = '1' WHERE k = 'schema_version'")
-    db.commit()
-    db.close()
+        assert not s.compacted()
+    with Store(root, fsync=False) as s:
+        assert not s.compacted() and _number(root) == "1"
+        with Store(root, fsync=False) as other:
+            s.compact()
+            assert s.compacted() and other.compacted()  # another opening sees it at once
+        assert _number(root) == "2"
+        s.compact()  # asked again: nothing changes
     for _ in range(2):
         with Store(root, fsync=False) as s:
-            assert s.has(key) and s.path(key).read_bytes() == b"kept"
-            row = s._db.execute("SELECT v FROM meta WHERE k = 'schema_version'").fetchone()
-            assert row[0] == "2"
+            assert s.compacted() and s.has(key) and s.path(key).read_bytes() == b"kept"
+    assert _number(root) == "2"
 
 
 def test_wal_mode_is_on(store: Store) -> None:

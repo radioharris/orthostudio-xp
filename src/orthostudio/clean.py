@@ -38,6 +38,11 @@ image pieces, the same bytes; with the pieces deleted too (the ``images`` choice
 downloads them again, which the provider may have changed. A user's tiles moved to another partition
 left 358 GB of them twice, on the disk the move was to free (2026-10-23).
 
+The relief and the mesh of each tile are kept in two forms, OrthoStudio XP's and Ortho4XP's, which
+versions before this one read: 90 GB and 272 GB of the same user's 1.1 TB cache. With ``compact``
+the cache keeps the first alone, from then on (``Store.compact``): a version before this one turns
+it away at its opening, and going back to one is emptying the cache folder.
+
 Sizes are what the disk gets back, not what the index adds up. A DDS is hard-linked into its
 ``texture.dds`` artefact, into a ``tile.textures`` artefact and into the pack: its bytes are
 freed only when the last of those links goes, and :func:`disk_bytes` counts them once (the page's
@@ -165,10 +170,14 @@ class CleanReport:
     twice_files: int = 0
     """The files of the relief and the mesh the store keeps a second time, in another form:
     Ortho4XP's ``Data<tile>.alt`` beside ``dem.npy``, its ``Data<tile>.mesh`` beside ``mesh.npz``,
-    which builds before 2026-10-23 wrote. They are trimmed whatever the choices, their artefacts
-    keeping their identity (``Store.trim``): 90 GB and 272 GB of a user's 1.1 TB cache."""
+    which versions before this one read. They are trimmed in a compacted cache, their artefacts
+    keeping their identity (``Store.trim``): with ``compact``, or whatever the choices once it is
+    (left by a compaction that was interrupted)."""
     twice_bytes: int = 0
     """What trimming ``twice_files`` gives back."""
+    compacted: bool = False
+    """Whether the cache keeps the relief and the mesh in one form (``Store.compacted``), once this
+    clean is done; with ``dry_run``, as it is."""
 
     def to_dict(self) -> dict[str, object]:
         return asdict(self)
@@ -531,11 +540,14 @@ def clean(
     relief: bool = False,
     filed: bool = False,
     apart: bool = False,
+    compact: bool = False,
 ) -> CleanReport:
     """Collect what no pack needs; with ``images``, empty the imagery caches as well; with
     ``filed``, the cache of the tiles filed outside the atelier (``tiles_root``), but their own
     meshes, which their neighbours' masks read (:data:`MESH_RULE`); with ``apart``, the store's
-    copy of the images of the tiles on another disk or partition (:func:`_apart`).
+    copy of the images of the tiles on another disk or partition (:func:`_apart`); with
+    ``compact``, Ortho4XP's form of the relief and the mesh, the cache keeping OrthoStudio XP's
+    alone from then on (``Store.compact``).
 
     The imagery caches are ``chunks_root`` and the map cache ``mapcache_root``; both count in
     ``images_bytes``. Without ``mapcache_root`` (the default) no map cache is counted or
@@ -587,6 +599,7 @@ def clean(
             )
             going_keys = {*first, *(sent if apart else ()), *(taken if filed else ())}
             report.kept = len(store) - len(going_keys)
+            report.compacted = store.compacted()
             twice = _twice(store, going_keys, grace_s)
             report.twice_files = sum(len(files) for _info, files in twice)
             report.twice_bytes = sum(size for _info, files in twice for size in files.values())
@@ -603,12 +616,16 @@ def clean(
                     off = _delete(store, [i for i in cache if i.key not in set(went)])
                     report.filed_bytes = names.freed([*went, *off]) - names.freed(went)
                     report.filed_apart_bytes = report.filed_bytes
-                # each artefact read whole first, and trimmed only as it was built (``Store.trim``)
-                report.twice_files = report.twice_bytes = 0
-                for info, files in twice:
-                    before = len(store.trimmed(info.key))
-                    report.twice_bytes += store.trim(info.key, files)
-                    report.twice_files += len(store.trimmed(info.key)) - before
+                if compact and not report.compacted:
+                    store.compact()  # on the disk before anything is trimmed
+                    report.compacted = True
+                if report.compacted:
+                    # each artefact read whole first, and trimmed only as it was built (``trim``)
+                    report.twice_files = report.twice_bytes = 0
+                    for info, files in twice:
+                        before = len(store.trimmed(info.key))
+                        report.twice_bytes += store.trim(info.key, files)
+                        report.twice_files += len(store.trimmed(info.key)) - before
                 report.kept = len(store)
                 report.tmp_removed = len(store.sweep_tmp(max_age_s=grace_s))
     # the tiles filed outside with some of their data here (measured before anything goes): a tile
@@ -749,7 +766,7 @@ _TWICE = {
     "orthostudio.dem": ("dem.npy", "Data*.alt"),
     "orthostudio.mesh": ("mesh.npz", "Data*.mesh"),
 }
-"""For each rule whose artefacts builds before 2026-10-23 wrote in two forms: the form kept, and
+"""For each rule whose artefacts hold two forms outside a compacted cache: the form kept, and
 Ortho4XP's, the same raster or mesh again, which goes (``CleanReport.twice_files``)."""
 
 
