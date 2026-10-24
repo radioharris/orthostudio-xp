@@ -1653,23 +1653,51 @@ for the user; the same words in the confirmation.
   showed the data folder 5.98 GB larger (a campaign, 2026-10-24). A user's file manager showed the store about twice the size of the tiles and he
   asked whether the images in it could be deleted, and the page added up the same files twice
   (2026-10-22/23).
-* **The boxes**, each with its size on its right (`disk-*-size`) and what it changes under it, what
-  was downloaded first, since the boxes after speak of the images:
+* **The boxes**, each with its size on its right (`disk-*-size`), what was downloaded first, since
+  the boxes after speak of the images. Under each, what it is in a line when its name does not say
+  it (`disk-what`), then its points (`disk-points`), always in one order and each with its sign:
+  what does not change (✓, `pt-ok`), what costs nothing (↻, `pt-same`), what is downloaded again
+  and when (↓, `pt-dl`), the warning (⚠, `pt-warn`, in the warning's colour). Each point is a
+  sentence of its own ("Rebuilding a tile without changing anything downloads nothing"), three at
+  most in sight; the rarer cases of the images and the relief fold under *See all the cases*
+  (`disk-more`, `disk.all_cases`, closed, in the links' colour: in the points' grey it read as one more point). Each sign sits in the line, on its baseline, centred in
+  one column of 14px, the fold's triangle in the same column and its words where the points'
+  words start, the text hanging after it. In one paragraph a box said "a rebuilt tile downloads
+  its photos again", which read as always, where a tile rebuilt the same downloads nothing; the
+  owner asked for every case, said plainly, then found a sentence ending on a colon over a list of
+  cases unreadable, every case in sight too much text, and the signs off their lines
+  (2026-10-24). Each case below follows from what an artefact's key holds
+  (`graph-keys.md`): a deleted download is fetched again only for an artefact that must be made
+  again.
   1. *Delete the downloaded images* (`disk-images`): the pieces received from the provider, those
-     of the tiles filed outside excepted (in their own box), and the map background. A rebuilt tile
-     downloads its photos again, which takes longer, and the provider may have changed them.
-     Shown, as the next one, only when it has something to free, unticked as it hides: two boxes of
+     of the tiles filed outside excepted (in their own box), and the map background. In sight: a
+     tile rebuilt the same takes its textures back, nothing downloaded (`disk.images_same`); other
+     colours or a tile deleted download its photos again (`disk.images_dl`). Folded: another level or
+     source needs new photos whether these went or not (`disk.images_other`); they are downloaded
+     again when a tile makes its textures again at the same level, which takes longer and the
+     provider may have changed them: other colours, for the tile or a zone (`photo_*`,
+     `photo_shapes` of `TextureDdsParams`); a tile deleted, whose data went with the leftovers; by
+     the sea, a setting that changes the coast's masks (coast, water, roads, relief: `MasksParams`
+     and the mesh it reads), only the coastline's textures; an update that makes the textures
+     differently (the rule's or the encoder's version). The map background loads again as the Plan
+     shows it. Shown, as the next one, only when it has something to free, unticked as it hides: two boxes of
      0 MB stood on an empty data folder (a campaign, 2026-10-24).
-  2. *Delete the downloaded relief* (`disk-relief`): downloaded again for a rebuilt tile, much
-     quicker than the photos (a square is 40 MB from Copernicus against 800 MB of imagery at
-     ZL16). It was counted by nothing until a user emptied everything and found 1.4 GB of it left
+  2. *Delete the downloaded relief* (`disk-relief`): read by the relief's computation alone
+     (`_dem_run`), whose result is kept: a tile rebuilt the same or at another level, with other
+     colours, zones or imagery source downloads nothing; it is downloaded again, much quicker than
+     the photos (a square is 40 MB from Copernicus against 800 MB of imagery at ZL16), when a
+     tile's relief must be worked out again: another relief in Settings (its source, the small
+     holes, one's own file: `DemParams`), in sight; a tile deleted, an update that works it out
+     differently, folded. Checked on the Shadow: a filed tile rebuilt after the relief went downloaded none
+     (2026-10-24). It was counted by nothing until a user emptied everything and found 1.4 GB of it left
      (2026-09-18).
   3. *Delete the textures kept here of the N tiles on another disk* (`disk-apart`, in
      `disk-apart-choice`, `apart_bytes`, `apart_tiles`; shown only when there are some, unticked
-     as it hides): those tiles keep their own textures, which X-Plane reads; a rebuilt one has its
-     textures made again, identical, from the downloaded images, nothing downloaded, a little
-     longer (said of one tile in the singular, `disk.apart_check_help_one`, as the filed tiles'
-     box does, `disk.filed_check_help_one`; a tile at ZL16 with 213 textures: 9.8 s with the folder on the Mac's own disk, 42 s on
+     as it hides): those tiles keep their own textures, which X-Plane reads; one rebuilt the same
+     has its textures made again, identical, from the downloaded images, nothing downloaded, a
+     little longer; with the images deleted too, its photos are downloaded again (said of one tile
+     in the singular, `disk.apart_ok_one`, `disk.apart_same_one`, as the filed tiles' box does,
+     `disk.filed_ok_one`, `disk.filed_dl_one`; a tile at ZL16 with 213 textures: 9.8 s with the folder on the Mac's own disk, 42 s on
      an external USB disk, every texture identical to the byte, 2026-10-23). With it, the filed
      tiles' box counts what is left of theirs (`filed_apart_bytes`). A user's tiles moved to
      another partition left 358 GB of them twice (2026-10-23); a first form deleted them without a
@@ -1678,13 +1706,13 @@ for the user; the same words in the confirmation.
      `disk-compact-choice`, `twice_bytes`; shown while the cache is not compacted and has some,
      `compactOffered`): the relief and the mesh in Ortho4XP's form, which the versions before this
      one read (90 GB and 272 GB of the same user's cache). Under it, *your tiles and X-Plane do not
-     change*, then in the warning's colour `disk.compact_warn`: an older version reinstalled one
-     day has to calculate everything again to rebuild the tiles, without downloading the images
-     again unless they were deleted. Ticked, the cache is compacted (`compact`, `graph-keys.md` 7)
+     change*, then in the warning's colour `disk.compact_warn`: an older version reinstalled has
+     to calculate everything again (it downloads no images again unless they were deleted: the
+     README says how to go back). Ticked, the cache is compacted (`compact`, `graph-keys.md` 7)
      and the tiles built after keep OrthoStudio XP's form alone. A compacted cache (`compacted`)
      shows the box ticked, for good, refusing any change (`aria-disabled`, its click prevented)
      rather than disabled, whose tick the browser paled until it read unticked in the light theme
-     (a campaign, 2026-10-24), its first line hidden and `disk.compacted_note`
+     (a campaign, 2026-10-24), its first points hidden (`disk-compact-before`) and `disk.compacted_note`
      in the same colour; what a compaction cut short left goes then whatever the choices, its size
      shown. The tick goes with the compacted state: another data folder, not compacted, found the
      box ticked (a review, 2026-10-24). Its size counts the second forms of the tiles filed
@@ -1699,7 +1727,8 @@ for the user; the same words in the confirmation.
      their data here, counting only those tiles: a tile of a data folder chosen before has its
      data there, and a filed neighbour whose square only the pieces astride a border touch has
      nothing here, so filing one tile no longer counted five; unticked as it hides. They still
-     work in X-Plane; a rebuilt one downloads its images again.
+     work in X-Plane; a rebuilt one downloads its photos again and makes its textures again, which
+     takes longer.
 
   A count of tiles has its own words for one tile and for none (`tCount`, the keys' `_one` and
   `_zero` forms).

@@ -416,24 +416,60 @@
       <div class="disk-choices">
         <div id="disk-images-choice">
           <label class="disk-check"><input type="checkbox" id="disk-images"> <span class="disk-check-text" data-i18n="disk.also_images">Delete the downloaded images</span> <span class="disk-size" id="disk-images-size"></span></label>
-          <p class="help" data-i18n="disk.images_help">The photos received from Bing or another provider, and the page's map background. Your tiles and X-Plane do not change. If you rebuild a tile, its photos will be downloaded again: it takes longer, and the provider may have changed them since.</p>
+          <p class="help disk-what" data-i18n="disk.images_what">The photos from Bing or another provider, and the Plan's map background.</p>
+          <ul class="help disk-points">
+            <li class="pt-ok" data-i18n="disk.pt_unchanged">Your tiles and X-Plane do not change.</li>
+            <li class="pt-same" data-i18n="disk.images_same">Rebuilding a tile without changing anything downloads nothing.</li>
+            <li class="pt-dl" data-i18n="disk.images_dl">Changing its colours, or rebuilding a deleted tile, downloads its photos again: it takes longer.</li>
+          </ul>
+          <details class="disk-more">
+            <summary data-i18n="disk.all_cases">See all the cases</summary>
+            <ul class="help disk-points">
+              <li class="pt-same" data-i18n="disk.images_other">Changing the level of detail or the imagery source needs new photos anyway.</li>
+              <li class="pt-dl" data-i18n="disk.images_dl_coast">By the sea, changing the coast, the water, the roads or the relief downloads the coastline's photos again.</li>
+              <li class="pt-dl" data-i18n="disk.images_dl_update">An update of OrthoStudio XP may also download them again.</li>
+              <li class="pt-dl" data-i18n="disk.images_provider">The provider may have changed its photos since.</li>
+              <li class="pt-dl" data-i18n="disk.images_map">The Plan's map background loads again as you look at it.</li>
+            </ul>
+          </details>
         </div>
         <div id="disk-relief-choice">
           <label class="disk-check"><input type="checkbox" id="disk-relief"> <span class="disk-check-text" data-i18n="disk.also_relief">Delete the downloaded relief</span> <span class="disk-size" id="disk-relief-size"></span></label>
-          <p class="help" data-i18n="disk.relief_help">The altitudes received from Copernicus, the USGS or a lidar. Your tiles and X-Plane do not change. If you rebuild a tile, its relief will be downloaded again, which is much quicker than for the photos.</p>
+          <p class="help disk-what" data-i18n="disk.relief_what">The altitudes from Copernicus, the USGS or a lidar.</p>
+          <ul class="help disk-points">
+            <li class="pt-ok" data-i18n="disk.pt_unchanged">Your tiles and X-Plane do not change.</li>
+            <li class="pt-same" data-i18n="disk.relief_same">Rebuilding a tile, even differently, downloads nothing.</li>
+            <li class="pt-dl" data-i18n="disk.relief_dl_settings">Changing the relief in Settings downloads it again, quickly.</li>
+          </ul>
+          <details class="disk-more">
+            <summary data-i18n="disk.all_cases">See all the cases</summary>
+            <ul class="help disk-points">
+              <li class="pt-dl" data-i18n="disk.relief_dl_deleted">Rebuilding a deleted tile downloads its relief again.</li>
+              <li class="pt-dl" data-i18n="disk.relief_dl_update">An update of OrthoStudio XP may also download it again.</li>
+            </ul>
+          </details>
         </div>
         <div id="disk-apart-choice" hidden>
           <label class="disk-check"><input type="checkbox" id="disk-apart"> <span class="disk-check-text" id="disk-apart-text"></span> <span class="disk-size" id="disk-apart-size"></span></label>
-          <p class="help" id="disk-apart-help">These tiles keep their own textures: X-Plane sees no difference. If you rebuild one, its textures will be made again, identical, from the downloaded images, also kept in this folder: nothing is downloaded again, it only takes a little longer.</p>
+          <ul class="help disk-points">
+            <li class="pt-ok" id="disk-apart-ok"></li>
+            <li class="pt-same" id="disk-apart-same"></li>
+            <li class="pt-dl" data-i18n="disk.apart_dl">If you delete these images too, its photos will be downloaded again.</li>
+          </ul>
         </div>
         <div id="disk-compact-choice" hidden>
           <label class="disk-check"><input type="checkbox" id="disk-compact"> <span class="disk-check-text" data-i18n="disk.compact">Delete the data kept for older versions of OrthoStudio XP</span> <span class="disk-size" id="disk-compact-size"></span></label>
-          <p class="help disk-tight" id="disk-compact-help" data-i18n="disk.compact_help">Your tiles and X-Plane do not change.</p>
-          <p class="help disk-warn" id="disk-compact-note"></p>
+          <ul class="help disk-points">
+            <li class="pt-ok disk-compact-before" data-i18n="disk.pt_unchanged">Your tiles and X-Plane do not change.</li>
+            <li class="pt-warn" id="disk-compact-note"></li>
+          </ul>
         </div>
         <div id="disk-filed-choice" hidden>
           <label class="disk-check"><input type="checkbox" id="disk-filed"> <span class="disk-check-text" id="disk-filed-text"></span> <span class="disk-size" id="disk-filed-size"></span></label>
-          <p class="help" id="disk-filed-help">They still work in X-Plane. If you rebuild one, its images will be downloaded again.</p>
+          <ul class="help disk-points">
+            <li class="pt-ok" id="disk-filed-ok"></li>
+            <li class="pt-dl" id="disk-filed-dl"></li>
+          </ul>
         </div>
       </div>
       <div class="disk-actions">

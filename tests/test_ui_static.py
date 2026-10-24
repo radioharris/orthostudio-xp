@@ -2443,12 +2443,14 @@ def test_the_copy_of_the_images_of_the_tiles_on_another_disk_is_its_own_choice()
     assert '$("disk-apart-choice").hidden = copies <= 0;' in body
     assert 'if (copies <= 0) $("disk-apart").checked = false;' in body
     i18n = (UI / "i18n.js").read_text(encoding="utf-8")
-    for key in ("disk.also_apart", "disk.also_apart_one", "disk.apart_check_help",
-                "disk.confirm_apart", "disk.confirm_apart_one"):  # fmt: skip
+    for key in ("disk.also_apart", "disk.also_apart_one", "disk.apart_ok", "disk.apart_same",
+                "disk.apart_dl", "disk.confirm_apart", "disk.confirm_apart_one"):  # fmt: skip
         assert i18n.count(f'"{key}":') == 2, key  # French and English
-    # the textures are made again from the downloaded images, identical, nothing downloaded
-    assert "nothing is downloaded again, it only takes a little longer" in i18n
-    assert "rien n'est retéléchargé, ça prend seulement un peu plus de temps" in i18n
+    # the textures are made again from the downloaded images, identical, nothing downloaded,
+    # unless those images went too
+    assert "its textures again from the downloaded images, with nothing downloaded" in i18n
+    assert "ses textures depuis les images téléchargées, sans rien retélécharger" in i18n
+    assert "If you delete these images too, its photos will be downloaded again." in i18n
     assert "without downloading anything" not in i18n.split('"disk.also_apart"')[1][:2000]
     assert '"disk.held' not in i18n and "held_bytes" not in app
     script = """
@@ -2474,10 +2476,10 @@ def test_compacting_the_relief_and_the_mesh_is_its_own_choice_with_its_cost_in_y
     html = (UI / INDEX_FILE).read_text(encoding="utf-8")
     choice = re.search(r'<div id="disk-compact-choice" hidden>.*?</div>', html, re.S)
     assert choice is not None and 'id="disk-compact"' in choice.group(0)
-    assert 'class="help disk-warn" id="disk-compact-note"' in choice.group(0)
+    assert '<li class="pt-warn" id="disk-compact-note"></li>' in choice.group(0)
     assert html.index('id="disk-apart"') < html.index('id="disk-compact"')
     css = (UI / "styles.css").read_text(encoding="utf-8")
-    assert ".help.disk-warn { color: var(--warn); }" in css
+    assert ".disk-points > .pt-warn { color: var(--warn); }" in css
     offered = _node_json(
         "app.js",
         "[m.compactOffered({twice_bytes: 3}), m.compactOffered({twice_bytes: 3, compacted: true}),"
@@ -2509,8 +2511,8 @@ def test_compacting_the_relief_and_the_mesh_is_its_own_choice_with_its_cost_in_y
     assert '{ class: "is-warn" }' in ask.group(0)
     assert ".dialog-text p.is-warn { color: var(--warn); font-weight: 600; }" in css
     assert "await confirmFreeSpace(plan, compact, state.disk)" in app
-    assert "Si vous réinstallez un jour une ancienne version, elle devra tout recalculer" in i18n
-    assert "If you ever reinstall an older version, it will have to calculate everything" in i18n
+    assert "Une ancienne version réinstallée devra tout recalculer." in i18n
+    assert "An older version reinstalled will have to calculate everything again." in i18n
     script = """
     const before = (await call("GET", "/api/disk")).ok;
     const kept = (await call("POST", "/api/clean", {images: true, apart: true})).ok;
@@ -2605,7 +2607,8 @@ def test_disk_space_after_the_campaign_says_what_it_could_not_measure_and_what_i
     assert html.index('id="disk-list"') < html.index('id="disk-measure-error"')
     for box in ("images", "relief"):
         assert f'<div id="disk-{box}-choice">' in html
-    assert 'id="disk-apart-help"' in html and 'id="disk-filed-help"' in html
+    for point in ("apart-ok", "apart-same", "filed-ok", "filed-dl"):
+        assert f'id="disk-{point}"' in html, point
     app = (UI / "app.js").read_text(encoding="utf-8")
     load = _function_body(app, "loadDisk")
     assert "const status = loadStatus();" in load and "await status;" in load
@@ -2619,12 +2622,15 @@ def test_disk_space_after_the_campaign_says_what_it_could_not_measure_and_what_i
     assert body.index("if (away || !d) {") < body.index("list.append(")
     assert '$("disk-images-choice").hidden = pictures <= 0;' in body
     assert '$("disk-relief-choice").hidden = heights <= 0;' in body
-    assert 'apartTiles === 1 ? t("disk.apart_check_help_one")' in body
-    assert 'filedTiles === 1 ? t("disk.filed_check_help_one")' in body
+    assert 'apartTiles === 1 ? t("disk.apart_ok_one") : t("disk.apart_ok")' in body
+    assert 'apartTiles === 1 ? t("disk.apart_same_one") : t("disk.apart_same")' in body
+    assert 'filedTiles === 1 ? t("disk.filed_ok_one") : t("disk.filed_ok")' in body
+    assert 'filedTiles === 1 ? t("disk.filed_dl_one") : t("disk.filed_dl")' in body
     assert "Number(d.finder_extra_bytes ?? d.shared_bytes)" in body
     tables = _i18n_tables()
     for lang in ("fr", "en"):
-        for key in ("disk.apart_check_help_one", "disk.filed_check_help_one",
+        for key in ("disk.apart_ok_one", "disk.apart_same_one", "disk.filed_ok_one",
+                    "disk.filed_dl_one",
                     "plan.built_change_where"):  # fmt: skip
             assert tables[lang].get(key), (lang, key)
     assert "le compte plusieurs fois" in tables["fr"]["disk.shared_note"]
@@ -2641,6 +2647,67 @@ def test_disk_space_after_the_campaign_says_what_it_could_not_measure_and_what_i
         'process.stdout.write(JSON.stringify(await call("GET", "/api/disk")));', fail="store_newer"
     )
     assert refused == {"status": 409, "code": "SYS_STORE_NEWER"}
+
+
+def test_each_disk_space_box_lists_its_cases_as_points_in_one_order() -> None:
+    """In one paragraph per box, "if you rebuild a tile, its photos will be downloaded again" read
+    as always, where a tile rebuilt the same downloads nothing (the Shadow campaign, 2026-10-24):
+    each box says what it is, then its points in one order with their signs, what does not
+    change, what costs nothing, what is downloaded again and when, the warning; every case
+    checked against the code (the owner: "mets tous les cas possibles en étant clair"). Then
+    "ça fait beaucoup de texte": three points at most in sight, the rarer cases folded under
+    "See all the cases", its chevron in the signs' column (the owner, 2026-10-24)."""
+    html = (UI / INDEX_FILE).read_text(encoding="utf-8")
+    order = {"pt-ok": 0, "pt-same": 1, "pt-dl": 2, "pt-warn": 3}
+    for box in ("images", "relief", "apart", "compact", "filed"):
+        block = re.search(rf'<div id="disk-{box}-choice"[^>]*>.*?\n {{8}}</div>', html, re.S)
+        assert block is not None, box
+        lists = re.findall(r'<ul class="help disk-points">(.*?)</ul>', block.group(0), re.S)
+        assert lists, box
+        for i, listed in enumerate(lists):
+            points = re.findall(r'<li class="(pt-[a-z]+)', listed)
+            assert points and (i or points[0] == "pt-ok"), box  # what does not change first
+            assert [order[p] for p in points] == sorted(order[p] for p in points), box
+        shown = re.findall(r'<li class="pt-', block.group(0).split("<details")[0])
+        assert len(shown) <= 3, box  # three points at most in sight
+        if box in ("images", "relief"):  # their rarer cases folded under "See all the cases"
+            assert '<details class="disk-more">' in block.group(0), box
+            assert '<summary data-i18n="disk.all_cases">' in block.group(0), box
+    css = (UI / "styles.css").read_text(encoding="utf-8")
+    for sign, point in (("✓", "pt-ok"), ("↻", "pt-same"), ("↓", "pt-dl"), ("⚠", "pt-warn")):
+        assert f'.disk-points > .{point}::before {{ content: "{sign}";' in css, point
+    tables = _i18n_tables()
+    fr, en = tables["fr"], tables["en"]
+    keys = re.findall(r'data-i18n="(disk\.[a-z_]+)"', html)
+    for key in keys:
+        assert fr.get(key) and en.get(key), key
+    # the cases the code has: the same tile reuses its textures and its relief; other colours, a
+    # tile deleted, the coast's settings by the sea and an update make the textures again; a
+    # level or source other needs new photos anyway; the relief only for its own settings
+    same = "Reconstruire une tuile sans rien changer ne retélécharge rien."
+    assert fr["disk.images_same"] == same
+    cases = (
+        "disk.images_dl", "disk.images_other", "disk.images_dl_coast", "disk.images_dl_update",
+        "disk.images_provider", "disk.images_map", "disk.relief_dl_settings",
+        "disk.relief_dl_deleted", "disk.relief_dl_update",
+    )  # fmt: skip
+    for key in cases:
+        assert key in keys, key
+    assert "couleurs" in fr["disk.images_dl"] and "supprimée" in fr["disk.images_dl"]
+    assert "même autrement" in fr["disk.relief_same"]
+    assert "de toute façon" in fr["disk.images_other"]
+    assert '.disk-more > summary::before { content: "▶";' in css
+    assert ".disk-choices .disk-more { margin: 6px 0 0 22px;" in css
+    # each point a sentence of its own, what you do then what follows: a sentence ending on a
+    # colon over a list of cases read as nothing (the owner, 2026-10-24)
+    assert "<ul>" not in html.split('id="disk-images-choice"')[1].split('class="disk-actions"')[0]
+    for key in keys:
+        if key not in ("disk.images_what", "disk.relief_what", "disk.all_cases"):
+            assert not fr[key].endswith(" :") and not en[key].endswith(":"), key
+    for gone in ("disk.images_help", "disk.relief_help", "disk.apart_check_help",
+                 "disk.filed_check_help", "disk.compact_help"):  # fmt: skip
+        assert gone not in fr and gone not in en, gone
+    assert not fr["disk.compact_warn"].startswith("⚠")  # the point's sign says it
 
 
 def test_a_zone_whose_level_changes_goes_to_its_place() -> None:

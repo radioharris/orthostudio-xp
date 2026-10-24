@@ -5407,7 +5407,9 @@ function renderDisk() {
   if (copies <= 0) $("disk-apart").checked = false;
   const apartTiles = Number(d.apart_tiles) || 0;
   setText($("disk-apart-text"), tCount("disk.also_apart", apartTiles));
-  setText($("disk-apart-help"), apartTiles === 1 ? t("disk.apart_check_help_one") : t("disk.apart_check_help"));
+  // its points in the singular for one tile: "these tiles" read wrong for one (a campaign, 2026-10-24)
+  setText($("disk-apart-ok"), apartTiles === 1 ? t("disk.apart_ok_one") : t("disk.apart_ok"));
+  setText($("disk-apart-same"), apartTiles === 1 ? t("disk.apart_same_one") : t("disk.apart_same"));
   setText($("disk-apart-size"), fmtFreeBytes(copies));
   // a compacted cache shows its box ticked, for good: there is no going back but emptying it. Its
   // tick goes with it: another data folder, not compacted, found it ticked (a review, 2026-10-24).
@@ -5421,7 +5423,7 @@ function renderDisk() {
   box.setAttribute("aria-disabled", d.compacted ? "true" : "false");
   if (d.compacted) box.checked = true;
   else if (!compact || shownDone) box.checked = false;
-  $("disk-compact-help").hidden = Boolean(d.compacted);
+  for (const point of $("disk-compact-choice").querySelectorAll(".disk-compact-before")) point.hidden = Boolean(d.compacted);
   setText($("disk-compact-note"), d.compacted ? t("disk.compacted_note") : t("disk.compact_warn"));
   const apart = copies > 0 && $("disk-apart").checked;
   $("disk-filed-choice").hidden = !offered;
@@ -5432,7 +5434,8 @@ function renderDisk() {
   setText($("disk-compact-size"), twiceShown > 0 ? fmtFreeBytes(twiceShown) : "");
   const filedTiles = Number(d.filed_tiles) || 0;
   setText($("disk-filed-text"), tCount("disk.also_filed", filedTiles));
-  setText($("disk-filed-help"), filedTiles === 1 ? t("disk.filed_check_help_one") : t("disk.filed_check_help"));
+  setText($("disk-filed-ok"), filedTiles === 1 ? t("disk.filed_ok_one") : t("disk.filed_ok"));
+  setText($("disk-filed-dl"), filedTiles === 1 ? t("disk.filed_dl_one") : t("disk.filed_dl"));
   setText($("disk-filed-size"), fmtFreeBytes(freeSpacePlan(d, false, false, true, apart).filed));
   const plan = freeSpacePlan(d, $("disk-images").checked, $("disk-relief").checked, filedTicked, apart, compact && box.checked);
   setText(button, plan.total > 0 ? t("disk.free_size", { size: fmtFreeBytes(plan.total) }) : t("disk.free"));

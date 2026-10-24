@@ -859,9 +859,35 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .disk-size { margin-left: auto; padding-left: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; font-weight: 600; }
 /* the box sits 3px above the bottom of its line */
 .disk-check + .help { margin-top: calc(var(--help-gap) - 3px); }
-.help.disk-tight { margin-bottom: 2px; }
-/* what deleting the data of older versions costs, under its box (app.js renderDisk) */
-.help.disk-warn { color: var(--warn); }
+/* under each box, what it is, then its points in one order, each with its sign: what does not
+   change, what costs nothing, what is downloaded again, the warning. In one paragraph, a rebuild
+   "downloading the photos again" read as always, where a tile rebuilt the same downloads nothing
+   (the owner, 2026-10-24) */
+.help.disk-what { margin-bottom: 2px; }
+.disk-points { list-style: none; margin-top: 0; margin-bottom: 0; padding: 0; display: grid; gap: 2px; }
+/* the sign in the line itself, on its baseline, the text hanging after it: set beside the text,
+   the signs of another font sat off their lines (the owner, 2026-10-24) */
+.disk-points > li { padding-left: 18px; text-indent: -18px; }
+.disk-points > li::before, .disk-more > summary::before {
+  display: inline-block; width: 14px; margin-right: 4px; text-align: center; text-indent: 0;
+}
+.disk-points > .pt-ok::before { content: "✓"; color: var(--ok); }
+.disk-points > .pt-same::before { content: "↻"; }
+.disk-points > .pt-dl::before { content: "↓"; }
+.disk-points > .pt-warn { color: var(--warn); }
+.disk-points > .pt-warn::before { content: "⚠"; }
+/* the rarer cases folded under "All the cases": its chevron in the signs' column, its words where
+   the points' words start, a little apart from the points above (the owner, 2026-10-24) */
+.disk-choices .disk-more { margin: 6px 0 0 22px; font-size: var(--fs-2); color: var(--fg-2); }
+/* in the links' colour: in the points' grey it read as one more point (the owner, 2026-10-24) */
+.disk-more > summary { list-style: none; cursor: pointer; width: fit-content; padding-left: 18px; text-indent: -18px; color: var(--accent); }
+.disk-more > summary:hover { text-decoration: underline; }
+.disk-more > summary::-webkit-details-marker { display: none; }
+/* each sign centred in one column of 14px: the smaller triangle, set at its left, stood off the
+   signs above it (the owner, 2026-10-24) */
+.disk-more > summary::before { content: "▶"; font-size: 0.8em; }
+.disk-more[open] > summary::before { content: "▼"; }
+.disk-choices .disk-more > .disk-points { margin: 4px 0 0; }
 .disk-check input[aria-disabled="true"], .disk-check:has(input[aria-disabled="true"]) { cursor: default; }
 /* The buttons keep their label on one line; the note goes under them when the card is narrow. */
 .disk-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px; margin-top: var(--block-gap); }

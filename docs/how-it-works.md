@@ -737,6 +737,17 @@ The delays protect a build that may be running at the same time, in the page or 
 could still need a result it used a moment ago. *Free space* and `osxp clean --all` have no delay,
 so they refuse to run while a build is in progress.
 
+Deleting the downloaded images or relief changes nothing in the tiles, and costs nothing while
+nothing has to be made again: a tile built again the same takes its textures and its relief back
+from the cache, and downloads nothing. The images are downloaded again when a tile makes its
+textures again at the same level: other colours, for the tile or a zone; a tile you had deleted;
+by the sea, a setting that changes the coastline (coast, water, roads, relief), for the
+coastline's textures; an update of OrthoStudio XP that makes the textures differently. Another
+level of detail or another imagery source needs new images whether these were deleted or not. The
+relief is downloaded again only when a tile's relief must be worked out again: another relief in
+Settings (its source, the small holes, your own file), a tile you had deleted, an update that works
+it out differently. *Disk space* lists these cases under each box.
+
 The store folder holds your tiles' images and DSFs too: on the workshop's disk a tile and the cache
 share each of those files, one file under two names, which takes its room once. A file manager that
 measures the folders one by one counts them twice, and the store folder then looks about as big as
