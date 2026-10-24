@@ -375,6 +375,13 @@ def test_the_command_says_it(home: dict[str, Path], monkeypatch: pytest.MonkeyPa
     assert "compacted the cache" in out.output and "nothing to compact" not in out.output
     with Store(home["store"], fsync=False) as s:
         assert s.compacted() and s.trimmed(relief)
+    # asked again, it says the cache was compacted already: it said it compacted it each time
+    # (a campaign, 2026-10-24)
+    for args in (["clean", "--compact"], ["clean", "--compact", "--dry-run"]):
+        out = CliRunner().invoke(cli_app, args)
+        assert out.exit_code == 0, out.output
+        assert "the cache is compacted already" in out.output
+        assert "compacted the cache" not in out.output and "would compact" not in out.output
 
 
 def test_the_command_compacts_no_cache_that_is_not_there(
@@ -416,6 +423,32 @@ async def test_the_page_is_told_and_free_space_trims_them(app: Any, home: dict[s
         assert done["twice_freed_bytes"] == disk["twice_bytes"] and done["compacted"] is True
         after = (await c.get("/api/disk")).json()
         assert after["twice_bytes"] == 0 and after["compacted"] is True
+
+
+@pytest.mark.anyio
+async def test_a_cache_a_newer_version_made_is_said_to_the_page(
+    app: Any, home: dict[str, Path]
+) -> None:
+    """Opening a cache whose format is above what this version reads raised a bare 500: Disk space
+    stayed blank and the Plan said the engine did not answer (a campaign, 2026-10-24). It is said
+    as SYS_STORE_NEWER, and nothing is changed."""
+    from orthostudio.graph.store import COMPACT_VERSION
+
+    with Store(home["store"], fsync=False) as s:
+        _relief(s)
+    newer = str(COMPACT_VERSION + 1)
+    with contextlib.closing(sqlite3.connect(home["store"] / "index.sqlite")) as db:
+        db.execute("UPDATE meta SET v = ? WHERE k = 'schema_version'", (newer,))
+        db.commit()
+    async with client_for(app) as c:
+        r = await c.get("/api/disk")
+        assert r.status_code == 409, r.text
+        error = r.json()["error"]
+        assert error["code"] == "SYS_STORE_NEWER" and error["context"]["found"] == int(newer)
+        r = await c.post("/api/clean", json={"compact": True})
+        assert r.status_code == 409 and r.json()["error"]["code"] == "SYS_STORE_NEWER", r.text
+    with contextlib.closing(sqlite3.connect(home["store"] / "index.sqlite")) as db:
+        assert db.execute("SELECT v FROM meta WHERE k = 'schema_version'").fetchone()[0] == newer
 
 
 # -- what the store reads once ------------------------------------------------------------------

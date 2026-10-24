@@ -2468,7 +2468,9 @@ def test_compacting_the_relief_and_the_mesh_is_its_own_choice_with_its_cost_in_y
     """The relief and the mesh kept in two forms, the second the one older versions read: their
     own box, offered while the cache keeps both and has some, with what it costs under it in the
     warning's colour, an older version no longer able to use the cache (the owner's words,
-    2026-10-24). A compacted cache shows the box ticked and disabled, for good."""
+    2026-10-24). A compacted cache shows the box ticked, for good: refusing any change rather
+    than disabled, which paled its tick until it read unticked in the light theme (a campaign,
+    2026-10-24)."""
     html = (UI / INDEX_FILE).read_text(encoding="utf-8")
     choice = re.search(r'<div id="disk-compact-choice" hidden>.*?</div>', html, re.S)
     assert choice is not None and 'id="disk-compact"' in choice.group(0)
@@ -2487,8 +2489,13 @@ def test_compacting_the_relief_and_the_mesh_is_its_own_choice_with_its_cost_in_y
     assert render is not None
     body = render.group(0)
     assert '$("disk-compact-choice").hidden = !compact && !d.compacted;' in body
-    assert "box.disabled = !compact;" in body
+    assert "box.disabled = !compact && !d.compacted;" in body
+    assert 'box.setAttribute("aria-disabled", d.compacted ? "true" : "false");' in body
     assert "if (d.compacted) box.checked = true;" in body
+    boot = re.search(r"\nasync function boot\(\) \{.*?\n\}\n", app, re.S)
+    assert boot is not None
+    assert 'getAttribute("aria-disabled") === "true") ev.preventDefault();' in boot.group(0)
+    assert '.disk-check input[aria-disabled="true"]' in css
     assert 'd.compacted ? t("disk.compacted_note") : t("disk.compact_warn")' in body
     i18n = (UI / "i18n.js").read_text(encoding="utf-8")
     for key in ("disk.compact", "disk.compact_warn", "disk.compacted_note", "disk.confirm_twice",
@@ -2574,7 +2581,7 @@ def test_disk_space_counts_waits_and_unticks_as_its_review_asked() -> None:
     assert [p["total"] for p in plans] == [5, 10]
     app = (UI / "app.js").read_text(encoding="utf-8")
     body = _function_body(app, "renderDisk")
-    assert "const shownDone = box.disabled && box.checked;" in body
+    assert 'const shownDone = box.getAttribute("aria-disabled") === "true";' in body
     assert "else if (!compact || shownDone) box.checked = false;" in body
     assert "state.diskMeasuring" in body and 't("disk.measuring")' in body
     load = _function_body(app, "loadDisk")
@@ -2587,6 +2594,53 @@ def test_disk_space_counts_waits_and_unticks_as_its_review_asked() -> None:
     assert store > got["unused_bytes"] + got["apart_bytes"] + got["twice_bytes"]  # data in use > 0
     assert "twice_filed_bytes" in got and "filed_apart_bytes" in got
     assert got["atelier_tiles"] == got["tiles"] - got["filed_tiles"]
+
+
+def test_disk_space_after_the_campaign_says_what_it_could_not_measure_and_what_it_offers() -> None:
+    """The hybrid campaign of the tab (2026-10-24): a cache a newer version made left it blank; its
+    disk unplugged, its lines read "your 24 tiles 0 MB"; boxes of 0 MB stood on an empty folder;
+    the help of one tile spoke of "these tiles"; the compacted box's tick read unticked once
+    disabled; the folded note said how much larger the store looks, not the data folder."""
+    html = (UI / INDEX_FILE).read_text(encoding="utf-8")
+    assert html.index('id="disk-list"') < html.index('id="disk-measure-error"')
+    for box in ("images", "relief"):
+        assert f'<div id="disk-{box}-choice">' in html
+    assert 'id="disk-apart-help"' in html and 'id="disk-filed-help"' in html
+    app = (UI / "app.js").read_text(encoding="utf-8")
+    load = _function_body(app, "loadDisk")
+    assert "const status = loadStatus();" in load and "await status;" in load
+    assert "state.diskError = found?.code ? found : null;" in load
+    boot = _function_body(app, "boot")
+    assert 'window.addEventListener("focus", recheckDisk);' in boot
+    assert "if (state.status?.data_dir?.present !== was) loadDisk();" in boot
+    body = _function_body(app, "renderDisk")
+    assert "if (!d && state.diskError) failed.append(errorCard(state.diskError));" in body
+    assert "const away = data?.present === false;" in body
+    assert body.index("if (away || !d) {") < body.index("list.append(")
+    assert '$("disk-images-choice").hidden = pictures <= 0;' in body
+    assert '$("disk-relief-choice").hidden = heights <= 0;' in body
+    assert 'apartTiles === 1 ? t("disk.apart_check_help_one")' in body
+    assert 'filedTiles === 1 ? t("disk.filed_check_help_one")' in body
+    assert "Number(d.finder_extra_bytes ?? d.shared_bytes)" in body
+    tables = _i18n_tables()
+    for lang in ("fr", "en"):
+        for key in ("disk.apart_check_help_one", "disk.filed_check_help_one",
+                    "plan.built_change_where"):  # fmt: skip
+            assert tables[lang].get(key), (lang, key)
+    assert "le compte plusieurs fois" in tables["fr"]["disk.shared_note"]
+    assert "counts it several times" in tables["en"]["disk.shared_note"]
+    # no "cache" left in what the page says of a tile, its images or the atelier
+    said = ("works.dec_cached", "works.act_images_cache", "library.size_help",
+            "library.delete_cache", "library.deleted_cache_later", "library.file_kept")  # fmt: skip
+    for lang in ("fr", "en"):
+        for key in said:
+            assert "cache" not in tables[lang][key].lower(), (lang, key)
+    got = _node_mock('process.stdout.write(JSON.stringify((await call("GET", "/api/disk")).ok));')
+    assert got["finder_extra_bytes"] > got["shared_bytes"]
+    refused = _node_mock(
+        'process.stdout.write(JSON.stringify(await call("GET", "/api/disk")));', fail="store_newer"
+    )
+    assert refused == {"status": 409, "code": "SYS_STORE_NEWER"}
 
 
 def test_a_zone_whose_level_changes_goes_to_its_place() -> None:
@@ -5539,7 +5593,12 @@ def test_the_plan_says_what_a_built_tile_was_built_with() -> None:
     # what a build would change is never folded: it has to be read before Build is pressed
     warn = built[built.index('class: "tiles-built-warn"') - 120 :]
     assert "hidden" not in warn[: warn.index("tiles-built-warn") + 40]
-    assert 't("plan.built_change", { changes: changes.join(t("plan.built_and")) })' in built
+    assert 'const changed = changes.join(t("plan.built_and"));' in built
+    assert 't("plan.built_change", { changes: changed })' in built
+    # a tile of another folder is built again there, which is said with its folder: a test
+    # atelier's build replaced two tiles of another folder (a campaign, 2026-10-24)
+    assert 't("plan.built_change_where", { folder: folder.label, changes: changed })' in built
+    assert "atelier ? tileFolder(e, atelier, state.status?.platform) : null;" in built
     assert 'e.built_by !== "osxp"' in built  # an Ortho4XP tile is never built again here
     # the square's colours too, by the Library's own test, and said again as soon as a slider
     # moves: a user moved one and was told nothing here (2026-09-21)
@@ -7633,7 +7692,7 @@ def test_the_tiles_picked_are_filed_elsewhere_after_a_question_that_says_what_ha
         "Not whole, to build again first: +44+007.",
         "Another folder of the same name is there already: +45+007.",
         "Built by Ortho4XP, to move by hand: +45+006.",
-        "The cache stays in the workshop. X-Plane must stay closed until the end.",
+        "What rebuilds them stays in the workshop. X-Plane must stay closed until the end.",
     ]
     assert got["go"] == ["+46+006", "+46+007", "+47+006"]
     assert got["fullGo"] == 0 and got["fullLast"].startswith("Not enough room on that disk")
@@ -8283,7 +8342,7 @@ def test_the_bar_asks_before_it_deletes_or_takes_tiles_off_the_list() -> None:
     assert got["del"]["body"] == [
         "Their files are deleted from this computer (about 3 GB).",
         "1 of them are in X-Plane: they are removed from it.",
-        "The imagery already downloaded stays in the cache, so a later build is faster.",
+        "The imagery already downloaded stays in the data folder, so a later build is faster.",
         "1 other tile(s) picked are left as they are: this action does not apply to them.",
     ]
     assert got["delUnknown"]["body"][0] == "Their files are deleted from this computer."

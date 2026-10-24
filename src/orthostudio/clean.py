@@ -188,6 +188,9 @@ class CleanReport:
     compacted: bool = False
     """Whether the cache keeps the relief and the mesh in one form (``Store.compacted``), once this
     clean is done; with ``dry_run``, as it is."""
+    compacted_now: bool = False
+    """Whether this clean compacted it: false for a cache compacted already, which the command line
+    said it compacted (a campaign, 2026-10-24)."""
 
     def to_dict(self) -> dict[str, object]:
         return asdict(self)
@@ -635,7 +638,7 @@ def clean(
                     report.filed_apart_bytes = report.filed_bytes
                 if compact and not report.compacted:
                     store.compact()  # on the disk before anything is trimmed
-                    report.compacted = True
+                    report.compacted = report.compacted_now = True
                 if report.compacted:
                     # each artefact read whole first, and trimmed only as it was built (``trim``)
                     report.twice_files = report.twice_bytes = 0

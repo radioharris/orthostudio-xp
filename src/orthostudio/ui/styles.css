@@ -862,6 +862,7 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .help.disk-tight { margin-bottom: 2px; }
 /* what deleting the data of older versions costs, under its box (app.js renderDisk) */
 .help.disk-warn { color: var(--warn); }
+.disk-check input[aria-disabled="true"], .disk-check:has(input[aria-disabled="true"]) { cursor: default; }
 /* The buttons keep their label on one line; the note goes under them when the card is narrow. */
 .disk-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px; margin-top: var(--block-gap); }
 .disk-actions .btn { white-space: nowrap; }

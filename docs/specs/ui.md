@@ -227,7 +227,12 @@ with folded under it (the Library's block); what a build now would change (anoth
 detail level, other colours) is never folded: a warning line under the tile's, a `--help-gap` apart,
 its "!" mark before it and its second line under its first (`app.js` `renderTilesBuilt`), and the
 tile's chip in the warning's colour, which says the same on hover, so that the square a build would
-change is found among the chosen ones at a glance (a user, 2026-09-22). Then:
+change is found among the chosen ones at a glance (a user, 2026-09-22). A tile of another folder
+than the atelier, filed elsewhere or of a data folder chosen before, is built again there, which
+the line says with the folder, "Will be built again in its folder, ~/Tiles, with ZL13 instead of
+ZL16." (`plan.built_change_where`, `tileFolder`; nothing is said while the status is not known): a
+test atelier's build replaced two tiles of another folder at another level, and nothing said where
+the build would go (a campaign, 2026-10-24). Then:
 
 - **Imagery source** (`<select>` from `GET /api/providers`), grouped since a user found the
   sources of several countries mixed in one list, and asked for Bing and Esri first (2026-09-14;
@@ -1622,7 +1627,15 @@ for the user; the same words in the confirmation.
 * **Where.** The screen's title carries the data folder (`disk-where`, `dataFolderShown`, shortened
   by `homely`), and its lead, `disk.where_note`, says that what is deleted here is in that folder and that the
   tiles are never deleted: every choice deletes in it alone (store, `chunks`, `elevation`,
-  `mapcache`).
+  `mapcache`). Each measure reads the status again (`loadDisk`, `loadStatus`): with its disk
+  unplugged, the tab says only `disk.data_missing`, its lines, boxes, folded note and lead hidden
+  and the button disabled; its lines read "your 24 tiles 0 MB" while it was away (a campaign,
+  2026-10-24). Back to the window with the tab showing, the status is read again (`recheckDisk`,
+  on `focus` and on the page shown again), and the tab measured again when the disk came or went:
+  a disk unplugged with the tab open went unsaid for a minute and more.
+* **A measure refused** with an error code shows its card under the lines (`disk-measure-error`,
+  `state.diskError`, `errorCard`): a cache a newer version made (`SYS_STORE_NEWER`, a 409) left
+  the tab blank and the Plan saying the engine did not answer (a campaign, 2026-10-24).
 * **Two lines without a box**, each saying what becomes of it: *what is used to rebuild your N
   tiles*, kept (N the atelier's tiles alone, `atelier_tiles`: the tiles filed elsewhere have their
   own box, and counted here too they read as counted twice, a review, 2026-10-24) (`app.js` `cacheBytes`, the store less `shared_bytes`, the files it shares with the
@@ -1633,8 +1646,11 @@ for the user; the same words in the confirmation.
   `disk.shared_note`, by the file manager's name: the Finder, File Explorer, the file manager on
   Linux, `fileManager`): the tiles on this same disk share their
   textures and DSFs with OrthoStudio XP, each file on the disk once, which the file manager counts
-  twice; deleting them by hand frees nothing. A tile on another disk shares nothing (the textures'
-  box below). A user's file manager showed the store about twice the size of the tiles and he
+  several times; deleting them by hand frees nothing. A tile on another disk shares nothing (the
+  textures' box below). The size said is how much larger the data folder looks
+  (`finder_extra_bytes`): an image is under three names, the store's, its textures folder's and the
+  tile's; the note said how much larger the store looks (`shared_bytes`), 3.03 GB where the Finder
+  showed the data folder 5.98 GB larger (a campaign, 2026-10-24). A user's file manager showed the store about twice the size of the tiles and he
   asked whether the images in it could be deleted, and the page added up the same files twice
   (2026-10-22/23).
 * **The boxes**, each with its size on its right (`disk-*-size`) and what it changes under it, what
@@ -1642,6 +1658,8 @@ for the user; the same words in the confirmation.
   1. *Delete the downloaded images* (`disk-images`): the pieces received from the provider, those
      of the tiles filed outside excepted (in their own box), and the map background. A rebuilt tile
      downloads its photos again, which takes longer, and the provider may have changed them.
+     Shown, as the next one, only when it has something to free, unticked as it hides: two boxes of
+     0 MB stood on an empty data folder (a campaign, 2026-10-24).
   2. *Delete the downloaded relief* (`disk-relief`): downloaded again for a rebuilt tile, much
      quicker than the photos (a square is 40 MB from Copernicus against 800 MB of imagery at
      ZL16). It was counted by nothing until a user emptied everything and found 1.4 GB of it left
@@ -1650,7 +1668,8 @@ for the user; the same words in the confirmation.
      `disk-apart-choice`, `apart_bytes`, `apart_tiles`; shown only when there are some, unticked
      as it hides): those tiles keep their own textures, which X-Plane reads; a rebuilt one has its
      textures made again, identical, from the downloaded images, nothing downloaded, a little
-     longer (a tile at ZL16 with 213 textures: 9.8 s with the folder on the Mac's own disk, 42 s on
+     longer (said of one tile in the singular, `disk.apart_check_help_one`, as the filed tiles'
+     box does, `disk.filed_check_help_one`; a tile at ZL16 with 213 textures: 9.8 s with the folder on the Mac's own disk, 42 s on
      an external USB disk, every texture identical to the byte, 2026-10-23). With it, the filed
      tiles' box counts what is left of theirs (`filed_apart_bytes`). A user's tiles moved to
      another partition left 358 GB of them twice (2026-10-23); a first form deleted them without a
@@ -1663,7 +1682,9 @@ for the user; the same words in the confirmation.
      day has to calculate everything again to rebuild the tiles, without downloading the images
      again unless they were deleted. Ticked, the cache is compacted (`compact`, `graph-keys.md` 7)
      and the tiles built after keep OrthoStudio XP's form alone. A compacted cache (`compacted`)
-     shows the box ticked and disabled, for good, its first line hidden and `disk.compacted_note`
+     shows the box ticked, for good, refusing any change (`aria-disabled`, its click prevented)
+     rather than disabled, whose tick the browser paled until it read unticked in the light theme
+     (a campaign, 2026-10-24), its first line hidden and `disk.compacted_note`
      in the same colour; what a compaction cut short left goes then whatever the choices, its size
      shown. The tick goes with the compacted state: another data folder, not compacted, found the
      box ticked (a review, 2026-10-24). Its size counts the second forms of the tiles filed

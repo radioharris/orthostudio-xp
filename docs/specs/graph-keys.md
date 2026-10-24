@@ -377,7 +377,9 @@ collects by reachability from the packs on disk instead:
   in one form, which a version before this one refuses). It, `--filed`, `--apart` and `--compact`
   refuse to run while another process builds into the store (`Store.building_pids`, read from the
   `*.tmp-<pid>-*` directories of builds in progress), since the grace period is what protects such
-  a build otherwise, and a build running may be reading the second form a compaction trims. The command passes the map cache explicitly (`mapcache_root`);
+  a build otherwise, and a build running may be reading the second form a compaction trims. On a
+  cache compacted already, `--compact` says so rather than that it compacted it, which it said at
+  each run (`CleanReport.compacted_now`, a campaign, 2026-10-24). The command passes the map cache explicitly (`mapcache_root`);
   `clean()` called without it counts and empties no map cache. It used to take the `mapcache` beside
   the chunks root for one, so a caller passing its own chunks folder had the folder next to it
   emptied (review of 2026-09-13);

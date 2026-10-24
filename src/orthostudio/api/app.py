@@ -69,13 +69,14 @@ from orthostudio.api.specs import (
     where_now,
 )
 from orthostudio.api.zones_api import zones_router
-from orthostudio.clean import clean, disk_bytes, pack_disk_bytes
+from orthostudio.clean import GRACE_S, clean, disk_bytes, pack_disk_bytes
 from orthostudio.codemark import code_mark
 from orthostudio.dem.sources import default_elevation_dir
 from orthostudio.doctor import run_doctor
-from orthostudio.errors import Action, OsxpError, Severity
+from orthostudio.errors import Action, OsxpError, Severity, wrap
 from orthostudio.fsutil import choose_folder, platform_name, reveal_in_file_manager
 from orthostudio.graph import GraphError, Store
+from orthostudio.graph.errors import IncompatibleIndexError
 from orthostudio.imagery.grid import wgs84_to_tile
 from orthostudio.imagery.providers import (
     USER_SOURCE_IN_FLIGHT,
@@ -260,6 +261,7 @@ _STATUS_BY_CODE = {
     "XP_PACK_CONFLICT": 409,
     "ZONE_CONFLICT": 409,
     "SYS_PACK_NOT_OSXP": 409,
+    "SYS_STORE_NEWER": 409,
     "SYS_INTERNAL_ERROR": 500,
 }
 
@@ -467,13 +469,17 @@ def _sizes() -> dict[str, int]:
     }
 
 
-def _shared_bytes(root: Path) -> int:
+def _shared_bytes(root: Path, within: Path | None = None) -> int:
     """The bytes of the store at ``root`` that are the files of the tiles in the Library too, one
     file under two names: the page counts them once, in the tiles' sizes, where the store's size
     counted them again (91 GB for a store adding 40 GB to the owner's 62 GB of tiles,
     2026-10-23). Read from what the Library remembers of each tile (``PackFacts.shared``), measured
     against this store, of the tiles whose folder is there: a tile moved off the disk by hand
-    left the store's files alone, the store's own again. 0 when nothing can say."""
+    left the store's files alone, the store's own again. With ``within``, of the tiles inside that
+    folder alone, links followed. 0 when nothing can say."""
+    inside = _real_path(within) if within is not None else None
+    if within is not None and inside is None:
+        return 0
     try:
         with Library(default_library_path()) as lib:
             facts = lib.remembered_facts()
@@ -484,9 +490,41 @@ def _shared_bytes(root: Path) -> int:
     total = 0
     for pack in packs:
         f = facts.get(str(pack))
-        if f is not None and f.shared and f.shared_with == store and pack.is_dir():
-            total += f.shared
+        if f is None or not f.shared or f.shared_with != store or not pack.is_dir():
+            continue
+        if inside is not None:
+            real = _real_path(pack)
+            if real is None or not real.startswith(inside.rstrip("/\\") + os.sep):
+                continue
+        total += f.shared
     return total
+
+
+def _finder_extra_bytes(root: Path, data: Path) -> int:
+    """How much larger a file manager shows the data folder ``data`` than what it holds: it counts
+    a file at each of its names. The store's tiles' textures folders hard-link its ``texture.dds``
+    artefacts (``Store.total_size`` less ``disk_bytes``), and the tiles inside the data folder hold
+    the store's textures and DSFs under their own names (``_shared_bytes`` within it). The page
+    said the second alone, which is how much larger the store folder looks: the Finder showed the
+    data folder of a test 5.98 GB larger, where the note said 3.03 GB (a campaign, 2026-10-24)."""
+    if not root.is_dir():
+        return 0
+    try:
+        with Store(root, sweep=False) as st:
+            linked = max(0, st.total_size() - st.disk_bytes())
+    except Exception:  # a figure of the page never stops the engine
+        return 0
+    return linked + _shared_bytes(root, within=data)
+
+
+def _measure_grace(started_at: float | None, other_build: bool, now: float) -> float:
+    """How recent what Disk space's measure leaves out is: while a build runs here, what it made
+    since it began (its fresh data read as leftovers, and as the data of tiles filed elsewhere
+    whose keys it shares, until it registered its tile: a campaign, 2026-10-24); while one runs in
+    another process, the hour ``osxp clean`` gives; none otherwise, as Free space deletes."""
+    if started_at is not None:
+        return max(0.0, now - started_at) + 60.0
+    return GRACE_S if other_build else 0.0
 
 
 def _store_bytes(root: Path) -> int:
@@ -1031,6 +1069,12 @@ def create_app(
     @app.exception_handler(OsxpError)
     async def _osxp_error(_request: Request, exc: OsxpError) -> JSONResponse:
         return _error_response(exc)
+
+    @app.exception_handler(IncompatibleIndexError)
+    async def _store_refused(_request: Request, exc: IncompatibleIndexError) -> JSONResponse:
+        # a cache a newer version made, said as such (SYS_STORE_NEWER): a bare 500 left Disk space
+        # blank and the Plan saying the engine did not answer (a campaign, 2026-10-24)
+        return _error_response(wrap(exc))
 
     @app.exception_handler(RequestValidationError)
     async def _validation(_request: Request, exc: RequestValidationError) -> JSONResponse:
@@ -2377,8 +2421,10 @@ def create_app(
         dry_run: bool,
         apart: bool = False,
         compact: bool = False,
+        grace_s: float = 0.0,
     ) -> Any:
-        # No grace period: the callers check first that nothing is building (osxp clean --all).
+        # No grace period to free space: the callers check first that nothing is building (osxp
+        # clean --all); the measure may give one (``_measure_grace``).
         return clean(
             default_store_root(),
             default_chunks_root(),
@@ -2386,7 +2432,7 @@ def create_app(
             tiles_root=default_tiles_root(),
             images=images,
             dry_run=dry_run,
-            grace_s=0.0,
+            grace_s=grace_s,
             mapcache_root=default_mapcache_root(),
             elevation_root=default_elevation_dir(),
             relief=relief,
@@ -2427,10 +2473,16 @@ def create_app(
 
     def measure_disk() -> dict[str, Any]:
         """``GET /api/disk``'s figures, measured once for every page waiting on them."""
-        report = collect(images=True, relief=True, filed=True, dry_run=True)
+        job = manager.active()
+        other = bool(other_builds())
+        # begun and not ended, whatever it is doing now (stopping still writes)
+        started = job.started_at if job is not None and job.finished_at is None else None
+        grace = _measure_grace(started, other and job is None, time.time())
+        report = collect(images=True, relief=True, filed=True, dry_run=True, grace_s=grace)
         return {
             "store_bytes": _store_bytes(default_store_root()),
             "shared_bytes": _shared_bytes(default_store_root()),
+            "finder_extra_bytes": _finder_extra_bytes(default_store_root(), data_root()),
             "unused_bytes": report.freed_bytes,
             "images_bytes": report.images_bytes - report.mapcache_bytes,
             "mapcache_bytes": report.mapcache_bytes,
@@ -2448,7 +2500,7 @@ def create_app(
             "compacted": report.compacted,
             "tiles": len(report.packs),
             "atelier_tiles": report.atelier_tiles,
-            "building": manager.active() is not None or bool(other_builds()),
+            "building": job is not None or other,
         }
 
     @app.post("/api/clean")

@@ -927,11 +927,14 @@ def clean(
             "downloads them again if those were deleted)"
         )
     trimming = report.compacted or compact
-    if compact and (report.compacted or (dry_run and store_root.is_dir())):
+    would = dry_run and not report.compacted and store_root.is_dir()
+    if compact and (report.compacted_now or would):
         typer.echo(
             f"{'would compact' if dry_run else 'compacted'} the cache: the relief and the mesh "
             "are kept in one form; a version before this one can no longer use it"
         )
+    elif compact and report.compacted:
+        typer.echo("the cache is compacted already: the relief and the mesh are kept in one form")
     elif compact:  # no cache yet: nothing compacted, the first build makes one in both forms
         typer.echo(f"no cache in {store_root}: nothing to compact")
     if report.twice_files and trimming:

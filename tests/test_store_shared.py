@@ -144,3 +144,20 @@ async def test_the_page_is_told_what_the_store_shares_with_the_tiles(
         appmod_sizes = (await c.get("/api/sizes")).json()
     assert appmod_sizes["shared_bytes"] == 0
     assert appmod._shared_bytes(home / "elsewhere") == 0  # measured against this store only
+
+
+def test_the_note_says_how_much_larger_a_file_manager_shows_the_data_folder(
+    home: Path, tmp_path: Path
+) -> None:
+    """A file manager counts a file at each of its names: the store's textures folders link its
+    images, and the tiles inside the data folder hold its images and DSFs. The note said the
+    second alone: the Finder showed a test's data folder 5.98 GB larger where it said 3.03 GB (a
+    campaign, 2026-10-24). A tile outside the data folder adds nothing to it."""
+    pack = _pack(home / "tiles", _store(home / "store"))
+    with Library(default_library_path()) as lib:
+        lib.register(T, "BI", 16, pack, "osxp")
+        # what the Library remembers once it measured the tile (``pack_disk_bytes``)
+        lib.remember_facts(pack, PackFacts("s", 1, None, None, 1.0, DDS + DSF, str(home / "store")))
+    assert appmod._finder_extra_bytes(home / "store", home) == DDS + DDS + DSF
+    assert appmod._finder_extra_bytes(home / "store", tmp_path / "other") == DDS
+    assert appmod._finder_extra_bytes(home / "none", home) == 0

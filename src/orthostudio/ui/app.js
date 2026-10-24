@@ -457,7 +457,7 @@ function mockFiledTiles() {
 
 /** Disk space's figures in the mock: a cache keeping the relief and the mesh in two forms. */
 function mockDisk() {
-  return { store_bytes: 14.8e9, shared_bytes: 6.2e9, unused_bytes: 2.4e9, apart_tiles: 3, apart_bytes: 1.1e9, twice_bytes: 0.8e9, compacted: false, images_bytes: 3.1e9, mapcache_bytes: 12e6, relief_bytes: 1.4e9 };
+  return { store_bytes: 14.8e9, shared_bytes: 6.2e9, finder_extra_bytes: 9.3e9, unused_bytes: 2.4e9, apart_tiles: 3, apart_bytes: 1.1e9, twice_bytes: 0.8e9, compacted: false, images_bytes: 3.1e9, mapcache_bytes: 12e6, relief_bytes: 1.4e9 };
 }
 
 /** `GET /api/disk`'s figures of their cache, as the engine gives them: some 2.1 GB of tile data
@@ -1372,6 +1372,11 @@ export async function mockApi(method, path, body, options = {}) {
     return structuredClone(mock.library);
   }
   if (p === "/api/disk" && method === "GET") {
+    // a cache a newer version made, as the engine refuses it (fail=store_newer)
+    if (MOCK_FAIL === "store_newer") {
+      const context = { path: "~/OrthoStudio XP/store", found: 3, expected: 2 };
+      throw new ApiError(409, { error: { code: "SYS_STORE_NEWER", severity: "blocking", action: "stop", message: "", remedy: "", context } });
+    }
     if (!mock.disk) mock.disk = mockDisk();
     if (!mock.library) mock.library = await mockFile("library");
     const cache = mockFiledCache();
@@ -2986,7 +2991,14 @@ function renderTilesBuilt() {
     // the square's colours, against those the tile was built with: the Library's own test, so the
     // two say the same (a user moved a slider and was told nothing here, 2026-09-21)
     if (photoDiffers(e)) changes.push(t("plan.built_colours"));
-    const change = changes.length ? t("plan.built_change", { changes: changes.join(t("plan.built_and")) }) : null;
+    // a tile of another folder is built again there, outside this data folder: said, since a
+    // test atelier's build replaced two tiles of another folder at other settings (a campaign,
+    // 2026-10-24)
+    const atelier = atelierFolders(state.status);  // null while the status is not known: not said then
+    const folder = atelier ? tileFolder(e, atelier, state.status?.platform) : null;
+    const elsewhere = Boolean(folder?.key) && folder.key !== "atelier";
+    const changed = changes.join(t("plan.built_and"));
+    const change = !changes.length ? null : elsewhere ? t("plan.built_change_where", { folder: folder.label, changes: changed }) : t("plan.built_change", { changes: changed });
     if (change) warned.set(name, change);
     box.append(
       h("div", { class: "tiles-built-item" },
@@ -5235,13 +5247,20 @@ async function loadDisk() {
   if (!$("disk-list") || state.screen !== "disk") return;
   state.diskMeasuring = true;
   renderDisk(); // the last figures at once, the builds and filings as they are now
+  // the status too: the data folder's disk may have gone or come back since it was read; a disk
+  // unplugged with the tab open went unsaid until the page was loaded again (a campaign, 2026-10-24)
+  const status = loadStatus();
   try {
     state.disk = await api("GET", "/api/disk");
-  } catch (_err) {
+    state.diskError = null;
+  } catch (err) {
     state.disk = null; // an older engine has no such route: the banner asks for a restart
+    const found = errorDetail(err);
+    state.diskError = found?.code ? found : null; // a cache a newer version made, say
   } finally {
     state.diskMeasuring = false;
   }
+  await status;
   renderDisk();
 }
 
@@ -5330,10 +5349,26 @@ function renderDisk() {
   // every box deletes in this folder alone
   const where = dataFolderShown(state.status);
   setText($("disk-where"), where ? `· ${homely(where)}` : "");
-  if (!d) {
+  const reveal = $("disk-reveal");
+  reveal.hidden = !where;
+  const action = revealLabel(state.status?.platform);
+  setText(reveal, data?.chosen ? t("disk.reveal_data", { action }) : t("disk.reveal", { action }));
+  // what the measure could not do, said in its own words: a cache a newer version made left the
+  // tab blank (a campaign, 2026-10-24)
+  const failed = clear($("disk-measure-error"));
+  if (!d && state.diskError) failed.append(errorCard(state.diskError));
+  // the data folder's disk away: nothing can be measured or freed, and that alone is said; its
+  // lines read "vos 24 tuiles 0 Mo" while it was unplugged (a campaign, 2026-10-24)
+  const away = data?.present === false;
+  $("disk-where-note").hidden = away;  // "this folder" names none then: the note below does
+  const choices = $("disk-space").querySelector(".disk-choices");
+  list.hidden = away || !d;
+  choices.hidden = away || !d;
+  if (away || !d) {
+    $("disk-shared").hidden = true;
     button.disabled = true;
     setText(button, t("disk.free"));
-    setText(note, "");
+    setText(note, away ? t("disk.data_missing", { path: homely(data.path) }) : "");
     return;
   }
   const offered = filedOffered(d);
@@ -5351,30 +5386,39 @@ function renderDisk() {
     ...row(t("disk.unused"), fmtFreeBytes(d.unused_bytes), t("disk.always")),
   );
   // what a file manager shows more for the folder, folded under its question: it matters only to
-  // whoever compares (the owner, 2026-10-24)
-  const shared = Number(d.shared_bytes) || 0;
+  // whoever compares (the owner, 2026-10-24). The whole folder's figure, which counts the cache's
+  // own links too: the store's alone was said (a campaign, 2026-10-24)
+  const extra = Number(d.finder_extra_bytes ?? d.shared_bytes) || 0;
   const manager = fileManager(state.status?.platform);
-  $("disk-shared").hidden = shared <= 0;
+  $("disk-shared").hidden = extra <= 0;
   setText($("disk-shared-why"), t("disk.shared_why", manager));
-  setText($("disk-shared-text"), shared > 0 ? t("disk.shared_note", { size: fmtBytes(shared), ...manager }) : "");
-  const reveal = $("disk-reveal");
-  reveal.hidden = !where;
-  const action = revealLabel(state.status?.platform);
-  setText(reveal, data?.chosen ? t("disk.reveal_data", { action }) : t("disk.reveal", { action }));
-  setText($("disk-images-size"), fmtFreeBytes((Number(d.images_bytes) || 0) + (Number(d.mapcache_bytes) || 0)));
-  setText($("disk-relief-size"), fmtFreeBytes(d.relief_bytes));
+  setText($("disk-shared-text"), extra > 0 ? t("disk.shared_note", { size: fmtBytes(extra), ...manager }) : "");
+  // a box is offered while it has something to free: two boxes of 0 MB stood on an empty folder
+  const pictures = (Number(d.images_bytes) || 0) + (Number(d.mapcache_bytes) || 0);
+  const heights = Number(d.relief_bytes) || 0;
+  $("disk-images-choice").hidden = pictures <= 0;
+  if (pictures <= 0) $("disk-images").checked = false;
+  setText($("disk-images-size"), fmtFreeBytes(pictures));
+  $("disk-relief-choice").hidden = heights <= 0;
+  if (heights <= 0) $("disk-relief").checked = false;
+  setText($("disk-relief-size"), fmtFreeBytes(heights));
   $("disk-apart-choice").hidden = copies <= 0;
   // unticked as it hides: ticked once, it came back ticked with the next tile (a review)
   if (copies <= 0) $("disk-apart").checked = false;
-  setText($("disk-apart-text"), tCount("disk.also_apart", Number(d.apart_tiles) || 0));
+  const apartTiles = Number(d.apart_tiles) || 0;
+  setText($("disk-apart-text"), tCount("disk.also_apart", apartTiles));
+  setText($("disk-apart-help"), apartTiles === 1 ? t("disk.apart_check_help_one") : t("disk.apart_check_help"));
   setText($("disk-apart-size"), fmtFreeBytes(copies));
   // a compacted cache shows its box ticked, for good: there is no going back but emptying it. Its
-  // tick goes with it: another data folder, not compacted, found it ticked (a review, 2026-10-24)
+  // tick goes with it: another data folder, not compacted, found it ticked (a review, 2026-10-24).
+  // Not disabled but refusing any change (its click, `bindDisk`): disabled, the browser paled its
+  // tick until it read unticked in the light theme (a campaign, 2026-10-24)
   const compact = compactOffered(d);
   const box = $("disk-compact");
-  const shownDone = box.disabled && box.checked;
+  const shownDone = box.getAttribute("aria-disabled") === "true";
   $("disk-compact-choice").hidden = !compact && !d.compacted;
-  box.disabled = !compact;
+  box.disabled = !compact && !d.compacted;
+  box.setAttribute("aria-disabled", d.compacted ? "true" : "false");
   if (d.compacted) box.checked = true;
   else if (!compact || shownDone) box.checked = false;
   $("disk-compact-help").hidden = Boolean(d.compacted);
@@ -5386,20 +5430,20 @@ function renderDisk() {
   const filedTicked = offered && $("disk-filed").checked;
   const twiceShown = Math.max(0, twice - (filedTicked ? Number(d.twice_filed_bytes) || 0 : 0));
   setText($("disk-compact-size"), twiceShown > 0 ? fmtFreeBytes(twiceShown) : "");
-  setText($("disk-filed-text"), tCount("disk.also_filed", Number(d.filed_tiles) || 0));
+  const filedTiles = Number(d.filed_tiles) || 0;
+  setText($("disk-filed-text"), tCount("disk.also_filed", filedTiles));
+  setText($("disk-filed-help"), filedTiles === 1 ? t("disk.filed_check_help_one") : t("disk.filed_check_help"));
   setText($("disk-filed-size"), fmtFreeBytes(freeSpacePlan(d, false, false, true, apart).filed));
   const plan = freeSpacePlan(d, $("disk-images").checked, $("disk-relief").checked, filedTicked, apart, compact && box.checked);
   setText(button, plan.total > 0 ? t("disk.free_size", { size: fmtFreeBytes(plan.total) }) : t("disk.free"));
   // a build this page started or follows is known before the next measure says so: the note
   // said "Nothing to free" from the last one right after a build started (2026-10-23)
   const building = Boolean(d.building) || activeJobs().length > 0;
-  // a filing moves a tile out of the atelier: the engine refuses meanwhile, the button waits
+  // a filing moves a tile out of the atelier: the engine refuses meanwhile, the button waits;
   // the figures of the last measure wait for the new one: after a filing or deletes in the
   // Library they were minutes old on a hard disk, the button free to act on them (a review)
   button.disabled = building || Boolean(state.filing) || plan.total <= 0 || state.diskBusy || state.diskMeasuring;
-  let said = building ? t("disk.busy_note") : state.filing ? t("disk.filing_note") : state.diskMeasuring ? t("disk.measuring") : plan.total <= 0 ? t("disk.nothing") : "";
-  if (data?.present === false) said = t("disk.data_missing", { path: homely(data.path) });
-  setText(note, said);
+  setText(note, building ? t("disk.busy_note") : state.filing ? t("disk.filing_note") : state.diskMeasuring ? t("disk.measuring") : plan.total <= 0 ? t("disk.nothing") : "");
 }
 
 /** The question before deleting, in the page's modal <dialog>; resolves true for "Delete": what
@@ -7464,6 +7508,24 @@ async function boot() {
   $("disk-filed").addEventListener("change", renderDisk);
   $("disk-apart").addEventListener("change", renderDisk);
   $("disk-compact").addEventListener("change", renderDisk);
+  // a compacted cache's box keeps its tick: it refuses the click rather than being disabled
+  $("disk-compact").addEventListener("click", (ev) => {
+    if (ev.currentTarget.getAttribute("aria-disabled") === "true") ev.preventDefault();
+  });
+  // back to the window with Disk space showing: the data folder's disk may have gone or come
+  // back meanwhile, which the tab told only at its next measure, a minute and more after it was
+  // unplugged (a campaign, 2026-10-24). The status alone is read, and the tab measured again only
+  // when the disk came or went: a measure takes minutes on a hard disk.
+  const recheckDisk = async () => {
+    if (state.screen !== "disk" || state.diskMeasuring) return;
+    const was = state.status?.data_dir?.present;
+    await loadStatus();
+    if (state.status?.data_dir?.present !== was) loadDisk();
+  };
+  window.addEventListener("focus", recheckDisk);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") recheckDisk();
+  });
   $("settings-search").addEventListener("input", (e) => {
     state.settingsSearch = e.target.value;
     renderSettings();

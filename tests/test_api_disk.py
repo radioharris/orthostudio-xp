@@ -206,3 +206,18 @@ async def test_pages_that_ask_while_the_disk_is_measured_share_the_measure(
     finally:
         release.set()
         mgr.close()
+
+
+def test_the_measure_leaves_out_what_a_running_build_made() -> None:
+    """While a build ran here, its fresh data read as leftovers, and as the data of the tiles
+    filed elsewhere that share its keys, until it registered its tile (a campaign, 2026-10-24):
+    what it made since it began is left out, with a minute to spare; a build in another process
+    gives the hour of ``osxp clean``; with none, nothing is left out, as Free space deletes."""
+    from orthostudio.api.app import _measure_grace
+    from orthostudio.clean import GRACE_S
+
+    assert _measure_grace(1000.0, False, 1600.0) == 660.0
+    assert _measure_grace(1000.0, True, 1600.0) == 660.0  # the one here says how long
+    assert _measure_grace(2000.0, False, 1600.0) == 60.0  # a clock set back
+    assert _measure_grace(None, True, 1600.0) == GRACE_S
+    assert _measure_grace(None, False, 1600.0) == 0.0
