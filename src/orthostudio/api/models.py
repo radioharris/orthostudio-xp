@@ -299,6 +299,15 @@ class UninstallRequest(BaseModel):
     ``None``: the newest row of the name."""
 
 
+class OlderRequest(BaseModel):
+    """``POST /api/older``: the cache made ready for an older version (``orthostudio.older``)."""
+
+    model_config = ConfigDict(extra="forbid")
+    remove: bool = False
+    """Remove the relief and mesh an older version cannot read rather than write their second form,
+    when the disk of the cache has not the room: that version builds them again."""
+
+
 class CleanRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     images: bool = False

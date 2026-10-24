@@ -1103,6 +1103,34 @@ class Store:
         """The files trimmed from the artefact ``key`` (:meth:`trim`), with their sizes."""
         return {path: size for path, (size, _digest) in self._trimmed_rows(key).items()}
 
+    def complete(self, key: str, name: str) -> bool:
+        """Take into the folder artefact ``key`` its file ``name``, written beside the files it
+        was built with and holding what another of them holds (the relief and the mesh in the form
+        an older version reads, ``orthostudio.older``): its digest and size become those of its
+        files now, as if it had been built with it. What was made from it was keyed with its
+        former digest, and is made again once when asked. Refused (``False``) when the artefact
+        has trimmed files, or when its other files are not those it was built with; ``True`` too
+        when the file is already counted (an earlier run stopped after this)."""
+        info = self.info(key)
+        if info is None or info.kind != "dir" or self._trimmed_rows(key):
+            return False
+        try:
+            files = dir_files(info.path)
+        except OSError:
+            return False
+        if name not in files:
+            return False
+        if digest_of_files(files) == info.digest:
+            return True
+        if digest_of_files({k: v for k, v in files.items() if k != name}) != info.digest:
+            return False
+        with self._durable_tx():
+            self._db.execute(
+                "UPDATE artifacts SET digest = ?, size = ? WHERE key = ?",
+                (digest_of_files(files), sum(size for size, _ in files.values()), key),
+            )
+        return True
+
     def trimmed_proven(self, key: str) -> bool:
         """Whether every file trimmed from ``key`` has its digest recorded, which :meth:`untrim`
         needs to take it back (the table's first form kept none)."""
@@ -1431,18 +1459,24 @@ def close_for_older(root: str | Path, version: int) -> None:
     an opening here would raise the number back at once. Every :class:`Store` of it is closed
     first; the number is written straight into the index, on the disk itself."""
     root = Path(root).expanduser().resolve()
+    # refused before the number is written, so that no opening here slips in between; given back
+    # when it cannot be written, the store staying this version's (a lock held long elsewhere)
     _CLOSED_FOR_OLDER.add(root)
-    db = sqlite3.connect(root / INDEX_FILENAME, timeout=30.0, isolation_level=None)
     try:
-        db.execute("PRAGMA busy_timeout = 30000")
-        db.execute("PRAGMA synchronous = FULL")
-        db.execute("PRAGMA fullfsync = ON")
-        db.execute("BEGIN IMMEDIATE")
-        db.execute("UPDATE meta SET v = ? WHERE k = 'schema_version'", (str(version),))
-        db.execute("COMMIT")
-        db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-    finally:
-        db.close()
+        db = sqlite3.connect(root / INDEX_FILENAME, timeout=30.0, isolation_level=None)
+        try:
+            db.execute("PRAGMA busy_timeout = 300000")
+            db.execute("PRAGMA synchronous = FULL")
+            db.execute("PRAGMA fullfsync = ON")
+            db.execute("BEGIN IMMEDIATE")
+            db.execute("UPDATE meta SET v = ? WHERE k = 'schema_version'", (str(version),))
+            db.execute("COMMIT")
+            db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        finally:
+            db.close()
+    except BaseException:
+        _CLOSED_FOR_OLDER.discard(root)
+        raise
 
 
 def _opt_str(v: object) -> str | None:

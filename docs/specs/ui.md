@@ -954,13 +954,19 @@ switch writes its lines again from the last measure, measuring nothing (`rerende
 `renderDisk`): they stayed in the former language, under a title in the new one, until the next
 measure (2026-10-05).
 
-Under a line, *Prepare for an older version…* (`app.js` `prepareOlder`) makes the cache ready for a
-version before the relief and the mesh were kept once (`orthostudio.older`): it asks in a modal
-dialog with what `GET /api/older` measured (the bytes written back, the items removed, then that
-OrthoStudio XP stops; the button waits when the disk of the cache has not the room, and says how
-much it needs), says how far the writing is under itself, then that the cache is ready and to
-install the older version, and shows the *stopped* overlay as Quit does. It waits for builds and
-filings as *Free space…* does; an error shows as a card in the panel.
+Under a line, *Prepare for an older version…* (`app.js` `prepareOlder`, `followOlder`) makes the
+cache ready for a version before the relief and the mesh were kept once (`orthostudio.older`). It
+asks in a modal dialog with what `GET /api/older` measured: the bytes written back, the items
+removed, then that OrthoStudio XP stops; when the disk of the cache has not the room, it says how
+much it needs and offers to remove them instead (*Remove them and stop*), the older version
+building them again. It says how far the writing is under itself, then shows the *stopped*
+overlay with its own words: install the older version now, since opening this one first puts the
+cache back in its new form. It is set before any measure, and waits for builds, filings and an
+engine older than the page, as *Free space…* does, which waits for it in turn; a second click
+waits for the first measure. A run that failed shows its card (a refusal in the page's words) and
+is asked again on the next click; a page loaded meanwhile follows the run (`preparing_older` in
+`GET /api/status`); *Quit* says that it stops it, and the window's close button asks first
+(`desktop.PREPARING_ON_QUIT`).
 
 What is on this computer, what is in X-Plane, and what each button will do, in plain words
 (`map-zones.md` 7.0). The lead says it: removing a tile from X-Plane keeps its files, so it can

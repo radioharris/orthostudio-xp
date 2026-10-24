@@ -427,8 +427,20 @@ about, and the answer says what it costs, which is the time since its last finis
 the work before it (the store is keyed by content: a build started again takes what is there)."""
 
 
-def a_build_runs(port: int = ENGINE_PORT, *, timeout_s: float = 1.5) -> bool:
-    """Whether the engine on ``port`` has a build running or waiting (``GET /api/engine``).
+PREPARING_ON_QUIT = (
+    "OrthoStudio XP is preparing the cache for an older version. Quit and stop it?\n\n"
+    "The cache stays as this version left it, and Prepare for an older version… can be started "
+    "again."
+)
+"""Asked by the close button, as :data:`BUILDING_ON_QUIT`, while the cache is made ready for an
+older version (``orthostudio.older``): quitting stops it between two files, the cache left sound,
+where it went on unseen after the window was gone (a review, 2026-10-24)."""
+
+
+def what_runs(port: int = ENGINE_PORT, *, timeout_s: float = 1.5) -> str | None:
+    """What the engine on ``port`` is doing that quitting would stop (``GET /api/engine``):
+    ``"older"`` while it prepares the cache for an older version, ``"build"`` while a build runs
+    or waits, ``None`` otherwise.
 
     Asked on the thread that draws, when the close button is pressed, so it does not wait long:
     the engine is on the loopback, and a slow answer is one the user would feel.
@@ -439,8 +451,17 @@ def a_build_runs(port: int = ENGINE_PORT, *, timeout_s: float = 1.5) -> bool:
         ) as answer:
             doc = json.load(answer)
     except (OSError, ValueError):
-        return False
-    return isinstance(doc, dict) and doc.get("active_job") is not None
+        return None
+    if not isinstance(doc, dict):
+        return None
+    if doc.get("preparing_older"):
+        return "older"
+    return "build" if doc.get("active_job") is not None else None
+
+
+def a_build_runs(port: int = ENGINE_PORT, *, timeout_s: float = 1.5) -> bool:
+    """Whether the engine on ``port`` has a build running or waiting (:func:`what_runs`)."""
+    return what_runs(port, timeout_s=timeout_s) == "build"
 
 
 def stop_the_engine(
@@ -491,13 +512,15 @@ def on_close() -> Callable[[], bool] | None:
     def quit_the_app() -> bool:
         if said_yes[0]:
             return True  # asked and answered: closing must not ask the same question again
-        if not a_build_runs(ENGINE_PORT):
+        running = what_runs(ENGINE_PORT)
+        if running is None:
             stop_the_engine(ENGINE_PORT)  # nothing to ask about, and nothing left behind
             return True
+        question = PREPARING_ON_QUIT if running == "older" else BUILDING_ON_QUIT
 
         def aside() -> None:
             """Closing the window comes back through here, which is why the answer is kept."""
-            if window.ask(APP_NAME, BUILDING_ON_QUIT):
+            if window.ask(APP_NAME, question):
                 stop_the_engine(ENGINE_PORT, force=True)
                 said_yes[0] = True
                 window.close_now()

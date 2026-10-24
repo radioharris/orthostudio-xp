@@ -2321,32 +2321,51 @@ def test_free_space_says_a_running_build_and_a_few_kilobytes() -> None:
 def test_the_library_prepares_the_cache_for_an_older_version() -> None:
     """Going back to a version before the relief and the mesh were kept once: the Library's
     *Prepare for an older version…* asks with what GET /api/older measured (what is written back,
-    what goes, the room), waits for the builds and filings as Free space does, says how far the
-    writing is, then that OrthoStudio XP stops (orthostudio.older). The mock answers like the
-    engine."""
+    what goes, the room; without it, to remove them instead), waits for the builds and filings as
+    Free space does and Free space waits for it, says how far the writing is, then what to do
+    once OrthoStudio XP stopped: install the older version now, since opening this one first
+    undoes it. A run that failed is asked again; a page loaded meanwhile follows the run; Quit
+    says it stops it. The mock answers like the engine."""
     html = (UI / INDEX_FILE).read_text(encoding="utf-8")
     for element in ('id="disk-older"', 'id="disk-older-note"', 'id="older-confirm"',
-                    'id="older-confirm-text"', 'id="older-confirm-go"'):  # fmt: skip
+                    'id="older-confirm-text"', 'id="older-confirm-go"',
+                    'id="older-confirm-remove"'):  # fmt: skip
         assert element in html, element
     app_js = (UI / "app.js").read_text(encoding="utf-8")
     assert 'addEventListener("click", prepareOlder)' in app_js
-    assert '$("disk-older").disabled = building' in _function_body(app_js, "renderDisk")
-    run = _function_body(app_js, "prepareOlder")
-    assert 'api("POST", "/api/older")' in run and '$("stopped").hidden = false' in run
-    assert '$("older-confirm-go").disabled = !plan.room' in _function_body(app_js, "confirmOlder")
+    render = _function_body(app_js, "renderDisk")
+    assert render.index('$("disk-older").disabled') < render.index("if (!d)")  # before a measure
+    assert "state.engineOutdated" in render and "Boolean(state.older)" in render
+    ask = _function_body(app_js, "prepareOlder")
+    assert 'api("POST", "/api/older", { remove: choice === "remove" })' in ask
+    assert "state.olderAsking" in ask  # a second click waits for the first measure
+    confirm = _function_body(app_js, "confirmOlder")
+    assert '$("older-confirm-go").hidden = !plan.room' in confirm
+    assert '$("older-confirm-remove").hidden = Boolean(plan.room)' in confirm
+    follow = _function_body(app_js, "followOlder")
+    assert '"older.stopped_text"' in follow and '$("stopped").hidden = false' in follow
+    assert "state.status?.preparing_older" in _function_body(app_js, "loadStatus")
+    quit_ = _function_body(app_js, "quitOsxp")
+    assert "force: Boolean(active) || older" in quit_
     script = """
     const plan = (await call("GET", "/api/older")).ok;
-    const started = (await call("POST", "/api/older")).ok;
+    const started = (await call("POST", "/api/older", {})).ok;
     const running = (await call("GET", "/api/older")).ok;
     process.stdout.write(JSON.stringify({plan, started, running}));
     """
     got = _node_mock(script)
     assert got["plan"]["state"] == "idle" and got["plan"]["room"] is True
     assert got["plan"]["restore"] > 0 and got["plan"]["write_bytes"] > 0
+    assert got["plan"]["need_bytes"] > got["plan"]["write_bytes"]
     assert got["started"]["state"] == "running"
     assert got["running"]["state"] in ("running", "done")
-    assert _node_mock('process.stdout.write(JSON.stringify((await call("GET", "/api/older")).ok))',
-                      fail="no-room")["room"] is False  # fmt: skip
+    tight = """
+    const plan = (await call("GET", "/api/older")).ok;
+    const removing = (await call("POST", "/api/older", {remove: true})).ok;
+    process.stdout.write(JSON.stringify({plan, removing}));
+    """
+    got = _node_mock(tight, fail="no-room")
+    assert got["plan"]["room"] is False and got["removing"]["remove"] is True
     busy = _node_mock('process.stdout.write(JSON.stringify(await call("POST", "/api/older")));',
                       fail="busy")  # fmt: skip
     assert busy == {"status": 409, "code": "SYS_BUSY"}
