@@ -2318,6 +2318,40 @@ def test_free_space_says_a_running_build_and_a_few_kilobytes() -> None:
     assert sizes[5] == "2.5 GB"
 
 
+def test_the_library_prepares_the_cache_for_an_older_version() -> None:
+    """Going back to a version before the relief and the mesh were kept once: the Library's
+    *Prepare for an older version…* asks with what GET /api/older measured (what is written back,
+    what goes, the room), waits for the builds and filings as Free space does, says how far the
+    writing is, then that OrthoStudio XP stops (orthostudio.older). The mock answers like the
+    engine."""
+    html = (UI / INDEX_FILE).read_text(encoding="utf-8")
+    for element in ('id="disk-older"', 'id="disk-older-note"', 'id="older-confirm"',
+                    'id="older-confirm-text"', 'id="older-confirm-go"'):  # fmt: skip
+        assert element in html, element
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    assert 'addEventListener("click", prepareOlder)' in app_js
+    assert '$("disk-older").disabled = building' in _function_body(app_js, "renderDisk")
+    run = _function_body(app_js, "prepareOlder")
+    assert 'api("POST", "/api/older")' in run and '$("stopped").hidden = false' in run
+    assert '$("older-confirm-go").disabled = !plan.room' in _function_body(app_js, "confirmOlder")
+    script = """
+    const plan = (await call("GET", "/api/older")).ok;
+    const started = (await call("POST", "/api/older")).ok;
+    const running = (await call("GET", "/api/older")).ok;
+    process.stdout.write(JSON.stringify({plan, started, running}));
+    """
+    got = _node_mock(script)
+    assert got["plan"]["state"] == "idle" and got["plan"]["room"] is True
+    assert got["plan"]["restore"] > 0 and got["plan"]["write_bytes"] > 0
+    assert got["started"]["state"] == "running"
+    assert got["running"]["state"] in ("running", "done")
+    assert _node_mock('process.stdout.write(JSON.stringify((await call("GET", "/api/older")).ok))',
+                      fail="no-room")["room"] is False  # fmt: skip
+    busy = _node_mock('process.stdout.write(JSON.stringify(await call("POST", "/api/older")));',
+                      fail="busy")  # fmt: skip
+    assert busy == {"status": 409, "code": "SYS_BUSY"}
+
+
 def test_the_cache_of_the_tiles_filed_outside_is_its_own_choice() -> None:
     """The atelier, step 5: "Free space" offers the cache of the tiles filed outside the atelier as
     a line and a choice of its own, shown only while some tile is filed outside. Each choice frees

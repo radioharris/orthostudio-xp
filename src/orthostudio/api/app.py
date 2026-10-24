@@ -73,7 +73,7 @@ from orthostudio.clean import clean, disk_bytes, pack_disk_bytes
 from orthostudio.codemark import code_mark
 from orthostudio.dem.sources import default_elevation_dir
 from orthostudio.doctor import run_doctor
-from orthostudio.errors import Action, OsxpError, Severity
+from orthostudio.errors import Action, OsxpError, Severity, wrap
 from orthostudio.fsutil import choose_folder, platform_name, reveal_in_file_manager
 from orthostudio.graph import GraphError, Store
 from orthostudio.imagery.grid import wgs84_to_tile
@@ -102,6 +102,7 @@ from orthostudio.install import (
 from orthostudio.install.library import PackFacts, ortho4xp_searched, own_searched
 from orthostudio.model import TileRef, pack_dir_name
 from orthostudio.net.fetch import FetchRequest
+from orthostudio.older import plan_older, prepare_older
 from orthostudio.pipeline.build import BuildEnv, patched_tiles
 from orthostudio.pipeline.filing import (
     ROOM_MARGIN,
@@ -152,7 +153,7 @@ __all__ = [
     "sse_message",
 ]
 
-API_LEVEL = 36
+API_LEVEL = 37
 """What this engine's API offers, for the page: 1 = P2b, 2 = zones (``/api/zones``) and the base map
 (``/api/map``), 3 = deleting a tile (``POST /api/library/{name}/delete``) and the sizes of the
 library, 4 = the disk space of the Library (``GET /api/disk``, ``POST /api/clean``), 5 = clearing
@@ -196,7 +197,9 @@ and ``held_freed_bytes`` in ``POST /api/clean`` (a development build's, never re
 (the relief and mesh kept in a second form, which Free space trims whatever the choices), 36 = the
 choice ``apart`` of ``POST /api/clean`` and its ``apart_freed_bytes``, with ``apart_tiles``,
 ``apart_bytes`` and ``filed_apart_bytes`` in ``GET /api/disk`` (the store's
-copy of the images of the tiles on another disk or partition, deleted only on request). A page
+copy of the images of the tiles on another disk or partition, deleted only on request), 37 =
+``GET /api/older`` and ``POST /api/older`` (the cache made ready for an older version, then the
+engine stops: ``orthostudio.older``). A page
 served by an engine older than itself (a ``osxp serve`` started before an update: the page's files
 are read from disk at each load, the routes were imported at start) asks the user to restart
 OrthoStudio XP instead of showing "Not Found"."""
@@ -2471,6 +2474,98 @@ def create_app(
                 "twice_freed_bytes": report.twice_bytes,
                 "removed": report.removed,
             }
+
+    # The Library's "Prepare for an older version…" (orthostudio.older): one run per engine, which
+    # stops it once the cache is ready, so that nothing here opens the cache again meanwhile
+    older_state: dict[str, Any] = {"state": "idle"}
+    older_tasks: set[asyncio.Task[None]] = set()
+
+    @app.get("/api/older")
+    async def older() -> Any:
+        """What "Prepare for an older version…" would do, measured without writing anything
+        (``idle``: the second forms to write again and their bytes, the artefacts to remove, the
+        room on the disk of the cache), or how far it has gone (``running``, ``done``,
+        ``failed``)."""
+        if older_state["state"] != "idle":
+            return dict(older_state)
+        root = default_store_root()
+
+        def measure() -> dict[str, Any]:
+            if not (root / "index.sqlite").is_file():
+                return {"restore": 0, "remove": 0, "write_bytes": 0, "free_bytes": 0, "room": True}
+            with Store(root, sweep=False) as st:
+                plan = plan_older(st)
+            return {
+                "restore": len(plan.restore),
+                "remove": len(plan.remove),
+                "write_bytes": plan.write_bytes,
+                "free_bytes": plan.free_bytes,
+                "room": plan.room,
+            }
+
+        measured = await asyncio.to_thread(measure)
+        return {"state": "idle", "can_quit": shutdown is not None, **measured}
+
+    @app.post("/api/older")
+    async def start_older() -> Any:
+        """Make the cache ready for an older version, then stop OrthoStudio XP (it must not open
+        the cache again: its format would go back to 2). Refused while a build runs or a tile is
+        filed, and by an engine the page cannot stop. ``GET /api/older`` says how far it is."""
+        if shutdown is None:
+            return _plain_error(
+                "SYS_NOT_STOPPABLE",
+                "This OrthoStudio XP was not started by osxp serve: it cannot stop once the cache "
+                "is ready.",
+                "Start OrthoStudio XP from its application, then try again.",
+                status=409,
+            )
+        if older_state["state"] in ("running", "done"):
+            return dict(older_state)
+        await deleting.acquire()  # no build starts meanwhile, nor after: the engine stops
+        try:
+            if filing_lock.locked():
+                deleting.release()
+                return busy_filing()
+            if manager.active() is not None or await asyncio.to_thread(other_builds):
+                deleting.release()
+                return _plain_error(
+                    "SYS_BUSY",
+                    "A build is running, and the cache is prepared only between builds.",
+                    "Wait for the build to finish, or stop it, then try again.",
+                    status=409,
+                )
+        except BaseException:
+            deleting.release()
+            raise
+        older_state.clear()
+        older_state.update(state="running", written_bytes=0, write_bytes=0)
+
+        def progress(written: int, to_write: int) -> None:
+            older_state.update(written_bytes=written, write_bytes=to_write)
+
+        async def run() -> None:
+            try:
+                report = await asyncio.to_thread(
+                    prepare_older, default_store_root(), progress=progress
+                )
+            except Exception as exc:
+                log.exception("the cache could not be prepared for an older version")
+                older_state.update(state="failed", error=wrap(exc).to_dict())
+                deleting.release()
+                return
+            older_state.update(
+                state="done",
+                restored=report.restored,
+                removed=report.removed,
+                written_bytes=report.written_bytes,
+            )
+            # after the page has read "done": it says what to do next, then that it stopped
+            asyncio.get_running_loop().call_later(3.0, shutdown)
+
+        task = asyncio.create_task(run())
+        older_tasks.add(task)
+        task.add_done_callback(older_tasks.discard)
+        return dict(older_state)
 
     # -- the page ----------------------------------------------------------------------------
 

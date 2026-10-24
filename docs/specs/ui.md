@@ -954,6 +954,14 @@ switch writes its lines again from the last measure, measuring nothing (`rerende
 `renderDisk`): they stayed in the former language, under a title in the new one, until the next
 measure (2026-10-05).
 
+Under a line, *Prepare for an older version…* (`app.js` `prepareOlder`) makes the cache ready for a
+version before the relief and the mesh were kept once (`orthostudio.older`): it asks in a modal
+dialog with what `GET /api/older` measured (the bytes written back, the items removed, then that
+OrthoStudio XP stops; the button waits when the disk of the cache has not the room, and says how
+much it needs), says how far the writing is under itself, then that the cache is ready and to
+install the older version, and shows the *stopped* overlay as Quit does. It waits for builds and
+filings as *Free space…* does; an error shows as a card in the panel.
+
 What is on this computer, what is in X-Plane, and what each button will do, in plain words
 (`map-zones.md` 7.0). The lead says it: removing a tile from X-Plane keeps its files, so it can
 be added back at once; deleting it also frees the disk space (tiles built by OrthoStudio XP only).

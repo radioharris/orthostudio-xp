@@ -854,6 +854,10 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .disk-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px; margin-top: var(--block-gap); }
 .disk-actions .btn { white-space: nowrap; }
 .disk-actions .help { flex: 1 1 220px; }
+/* going back to an older version: apart from Free space, under a line */
+.disk-older { margin-top: var(--block-gap); padding-top: var(--block-gap); border-top: 1px solid var(--line); }
+.disk-older .btn { white-space: nowrap; }
+.disk-older .help { margin-top: var(--help-gap); }
 #library-title:focus { outline: none; }
 
 /* The delete confirmation (index.html #library-delete): a native modal <dialog> on the tokens. */
