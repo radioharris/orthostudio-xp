@@ -560,8 +560,8 @@ async function mockCheckCoverage(body) {
   throw new ApiError(422, { error: { code: "CFG_PROVIDER_OUT_OF_COVERAGE", severity: "blocking", action: "stop", message: `Imagery source ${code} covers ${p.extent} only, not tile(s) ${missing.join(" ")}.`, remedy: "Choose a source that covers these tiles: Bing Maps and Esri cover the whole world.", context: { provider: code, extent: p.extent, tiles: missing.join(" ") } } });
 }
 
-function mockError(status, code, message, remedy) {
-  return new ApiError(status, { error: { code, severity: "blocking", action: "stop", message, remedy, context: {} } });
+function mockError(status, code, message, remedy, context = {}) {
+  return new ApiError(status, { error: { code, severity: "blocking", action: "stop", message, remedy, context } });
 }
 
 /** X-Plane runs in the mock when mock/status.json says so, or with `fail=xplane`. */
@@ -1149,6 +1149,7 @@ export async function mockApi(method, path, body, options = {}) {
     // Like the engine: tiles, not rows (a tile's overlay row is not a tile of its own).
     if (mock.library) status.library_count = new Set(libraryTiles(mock.library).map((e) => e.tile)).size;
     status.active_job = mockActiveRun()?.doc.id ?? null;
+    status.preparing_older = mock.older?.state === "running";
     return status;
   }
   if (p === "/api/sizes") return { store_bytes: 1830000000, shared_bytes: 1120000000, chunks_bytes: 412000000 };
@@ -1275,6 +1276,10 @@ export async function mockApi(method, path, body, options = {}) {
     return [...live, ...past];
   }
   if (p === "/api/jobs" && method === "POST") {
+    if (mock.older) {
+      const done = mock.older.state === "done";
+      throw mockError(409, "SYS_BUSY", done ? "The cache is ready for an older version, and this OrthoStudio XP opens it no more." : "The cache is being prepared for an older version.", done ? "Quit OrthoStudio XP and install the older version." : "Wait for it to end.", { older: done ? "done" : "running" });
+    }
     mockCheckDataDisk();
     await mockCheckZones(body.zones);
     mockCheckXplane();
@@ -1370,6 +1375,10 @@ export async function mockApi(method, path, body, options = {}) {
     return { ...mock.disk, ...mockFiledCache(), tiles: libraryTiles(mock.library).length, building: MOCK_FAIL === "busy" || Boolean(mockActiveRun()) };
   }
   if (p === "/api/clean" && method === "POST") {
+    if (mock.older) {
+      const done = mock.older.state === "done";
+      throw mockError(409, "SYS_BUSY", done ? "The cache is ready for an older version, and this OrthoStudio XP opens it no more." : "The cache is being prepared for an older version.", done ? "Quit OrthoStudio XP and install the older version." : "Wait for it to end.", { older: done ? "done" : "running" });
+    }
     if (MOCK_FAIL === "busy" || mockActiveRun()) {
       throw mockError(409, "SYS_BUSY", "A build is running in OrthoStudio XP, and OrthoStudio XP frees space only between builds.", "Wait for the build to finish, or stop it, then try again.");
     }
@@ -1404,6 +1413,7 @@ export async function mockApi(method, path, body, options = {}) {
     return { state: "idle", can_quit: true, restore: 12, complete: 3, remove: 1, write_bytes: 3.7e9, need_bytes: need, free_bytes: MOCK_FAIL === "no-room" ? 2e9 : 52e9, room: MOCK_FAIL !== "no-room" };
   }
   if (p === "/api/older" && method === "POST") {
+    if (mock.older) return { ...mock.older };
     if (MOCK_FAIL === "busy" || mockActiveRun()) {
       throw mockError(409, "SYS_BUSY", "A build is running, and the cache is prepared only between builds.", "Wait for the build to finish, or stop it, then try again.");
     }
@@ -3915,6 +3925,8 @@ async function build(install) {
       // Another window queued them: the map learns it, and the user takes them out of the selection.
       showPlanError(t("plan.tiles_in_build_refused", { tiles: (d.context?.tiles || []).join(" ") }));
       refreshJobList();
+    } else if (olderBusy(d)) {
+      showPlanError(olderBusy(d).join(" "));
     } else if (d?.code === "SYS_BUSY" && !state.engineOutdated) {
       showPlanError(t("plan.busy_deleting")); // a build asked for with queue waits: a delete refuses it
     } else if (err instanceof ApiError && err.status === 409) {
@@ -5156,6 +5168,7 @@ async function retryJob() {
   } catch (err) {
     const d = errorDetail(err);
     if (d?.code === "SYS_TILE_IN_BUILD") toast(t("works.retry_in_build", { tiles: (d.context?.tiles || []).join(" ") }), "fail");
+    else if (olderBusy(d)) toast(olderBusy(d).join(" "), "fail");
     else if (d?.code === "SYS_BUSY" && !state.engineOutdated) toast(t("plan.busy_deleting"), "fail");
     else if (err instanceof ApiError && err.status === 409) toast(t("plan.job_running"), "fail");
     else toast(errorMessage(err), "fail");
@@ -5310,7 +5323,7 @@ function renderDisk() {
   const d = state.disk;
   // set before any measure: it waited for nothing while the first one took minutes (a review)
   const working = Boolean(d?.building) || activeJobs().length > 0 || Boolean(state.filing);
-  $("disk-older").disabled = working || state.diskBusy || Boolean(state.older) || Boolean(state.engineOutdated);
+  $("disk-older").disabled = working || state.diskBusy || Boolean(state.older) || Boolean(state.olderAsking) || Boolean(state.engineOutdated);
   clear(list);
   const button = $("disk-free");
   const note = $("disk-note");
@@ -5419,13 +5432,24 @@ function confirmOlder(plan) {
   });
 }
 
+/** The words of a refusal the engine gives while the cache is prepared for an older version,
+ * or once it is ready (`context.older`): every other button said its own reason, a delete or a
+ * build, where the engine said this one (a review, 2026-10-24). Null for any other refusal. */
+function olderBusy(d) {
+  const older = d?.code === "SYS_BUSY" ? d.context?.older : null;
+  if (older === "done") return [t("older.busy_done"), t("older.busy_done_remedy")];
+  if (older === "running") return [t("older.busy_running"), t("older.busy_running_remedy")];
+  return null;
+}
+
 /** An error of the preparation as a card of the panel, in the page's words for a refusal. */
 function olderErrorCard(found) {
   const d = found && found.code ? found : { code: "SYS_INTERNAL_ERROR", message: t("older.failed"), severity: "blocking" };
   const card = errorCard(d.code === "SYS_BUSY" ? { ...d, action: "none", severity: "blocking" } : d);
   if (d.code === "SYS_BUSY") {
-    card.querySelector(".error-msg").textContent = t("older.err_busy");
-    card.querySelector(".error-remedy").textContent = t("older.err_busy_remedy");
+    const [message, remedy] = olderBusy(d) || [t("older.err_busy"), t("older.err_busy_remedy")];
+    card.querySelector(".error-msg").textContent = message;
+    card.querySelector(".error-remedy").textContent = remedy;
   }
   return card;
 }
@@ -5439,20 +5463,15 @@ async function followOlder(run, plan = null) {
   renderDisk();
   try {
     while (run.state === "running") {
-      setText(note, t("older.progress", { done: fmtFreeBytes(run.written_bytes), total: fmtFreeBytes(run.write_bytes || plan?.write_bytes || 0) }));
+      setText(note, run.remove ? t("older.removing") : t("older.progress", { done: fmtFreeBytes(run.written_bytes), total: fmtFreeBytes(run.write_bytes || plan?.write_bytes || 0) }));
       await new Promise((resolve) => setTimeout(resolve, 1000));
       run = await api("GET", "/api/older");
     }
     if (run.state === "done") {
+      // the engine waits for the user, the cache closed to it: the words stay until Quit
       setText(note, t("older.done"));
       clearInterval(jobsTimer);
-      // what this page says once it stopped: opening this version again undoes the preparation
-      const text = $("stopped").querySelector("p");
-      text.dataset.i18n = "older.stopped_text";
-      text.textContent = t("older.stopped_text");
-      setTimeout(() => {
-        $("stopped").hidden = false;
-      }, 2500);
+      await olderDone();
       return;
     }
     if (run.state === "failed") clear($("disk-errors")).append(olderErrorCard(run.error));
@@ -5462,6 +5481,31 @@ async function followOlder(run, plan = null) {
   state.older = false;
   setText(note, t("older.help"));
   renderDisk();
+  loadDisk(); // what a run that failed wrote back is counted again
+}
+
+/** The last screen once the cache is ready: what to do now, and Quit, which stops OrthoStudio XP
+ * and leaves the stopped overlay in the same words. It stopped by itself 3 s after "done", its
+ * words gone with the window before they were read (a review, 2026-10-24). */
+async function olderDone() {
+  const dialog = $("older-done");
+  dialog.returnValue = "";
+  dialog.onkeydown = (ev) => {
+    if (ev.key === "Escape") ev.preventDefault(); // nothing else to do here: Quit
+  };
+  await new Promise((resolve) => {
+    dialog.addEventListener("close", resolve, { once: true });
+    dialog.showModal();
+  });
+  try {
+    await api("POST", "/api/quit", { force: false });
+  } catch (_err) {
+    // the engine may be gone already: the overlay says the same
+  }
+  const text = $("stopped").querySelector("p");
+  text.dataset.i18n = "older.stopped_text";
+  text.textContent = t("older.stopped_text");
+  $("stopped").hidden = false;
 }
 
 /** "Prepare for an older version…": asks with what GET /api/older measured, then POST /api/older,
@@ -5471,6 +5515,8 @@ async function followOlder(run, plan = null) {
 async function prepareOlder() {
   if (state.older || state.olderAsking || state.diskBusy) return;
   state.olderAsking = true; // measuring walks the whole cache: a second click waits for the first
+  $("disk-older").disabled = true;
+  setText($("disk-older-note"), t("older.measuring"));
   try {
     clear($("disk-errors"));
     let plan;
@@ -5496,6 +5542,10 @@ async function prepareOlder() {
     await followOlder(run, plan);
   } finally {
     state.olderAsking = false;
+    if (!state.older) {
+      setText($("disk-older-note"), t("older.help"));
+      renderDisk();
+    }
   }
 }
 
@@ -5520,8 +5570,9 @@ async function freeSpace() {
     const d = found && found.code ? found : { code: "SYS_INTERNAL_ERROR", message: errorMessage(err), severity: "blocking" };
     const card = errorCard(d.code === "SYS_BUSY" ? { ...d, action: "none", severity: "blocking" } : d);
     if (d.code === "SYS_BUSY") {
-      card.querySelector(".error-msg").textContent = t("disk.err_busy");
-      card.querySelector(".error-remedy").textContent = t("disk.err_busy_remedy");
+      const [message, remedy] = olderBusy(d) || [t("disk.err_busy"), t("disk.err_busy_remedy")];
+      card.querySelector(".error-msg").textContent = message;
+      card.querySelector(".error-remedy").textContent = remedy;
     }
     errors.append(card);
   } finally {
@@ -6194,7 +6245,7 @@ function focusLibraryRow(key, index, column = -1) {
  * orthostudio.toml or osxp clean. */
 const LIBRARY_REFUSALS = {
   XP_RUNNING: () => [t("library.err_xp_running"), t("library.err_xp_running_remedy")],
-  SYS_BUSY: () => [t("library.err_busy"), t("library.err_busy_remedy")],
+  SYS_BUSY: (d) => olderBusy(d) || [t("library.err_busy"), t("library.err_busy_remedy")],
   SYS_TILE_IN_BUILD: () => [t("library.err_in_build"), t("library.err_in_build_remedy")],
   SYS_PACK_NOT_OSXP: () => [t("library.err_not_osxp"), t("library.err_not_osxp_remedy")],
   SYS_PACK_IN_XPLANE: () => [t("library.err_in_xplane"), t("library.forget_installed")],

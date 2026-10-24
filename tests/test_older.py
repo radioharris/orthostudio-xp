@@ -363,9 +363,11 @@ async def _until(c: Any, *states: str) -> dict[str, Any]:
 
 
 @pytest.mark.anyio
-async def test_the_library_prepares_the_cache_then_stops(home: Path) -> None:
-    """``GET /api/older`` measures, ``POST /api/older`` writes back, says how far it is, and
-    stops the engine once the cache is format 1: nothing here opens it again meanwhile."""
+async def test_the_library_prepares_the_cache_then_waits_for_quit(home: Path) -> None:
+    """``GET /api/older`` measures, ``POST /api/older`` writes back and says how far it is; once
+    the cache is format 1 the engine opens it no more and refuses what would, saying so, until
+    the user quits from the last screen: it stopped by itself, its words gone with the window
+    (a review, 2026-10-24)."""
     root = home / "store"
     with Store(root, fsync=False) as s:
         relief = _relief(s, 20, second=True)
@@ -373,7 +375,8 @@ async def test_the_library_prepares_the_cache_then_stops(home: Path) -> None:
         s.trim(relief, [f"Data{T.name}.alt"])
         _mesh(s, 21, second=False)
     stopped: list[float] = []
-    async with client_for(_app(home, stopped)) as c:
+    app = _app(home, stopped)
+    async with client_for(app) as c:
         plan = (await c.get("/api/older")).json()
         assert plan["state"] == "idle" and plan["can_quit"] is True and plan["room"] is True
         assert (plan["restore"], plan["complete"], plan["remove"]) == (1, 1, 0)
@@ -385,6 +388,14 @@ async def test_the_library_prepares_the_cache_then_stops(home: Path) -> None:
         assert run["state"] == "done", run
         assert (run["restored"], run["completed"], run["removed"]) == (1, 1, 0)
         assert (await c.post("/api/older")).json()["state"] == "done"  # once
+        await anyio.sleep(3.5)
+        assert stopped == []  # it waits for the user
+        refused = await c.post("/api/clean", json={})
+        assert refused.status_code == 409 and refused.json()["error"]["context"] == {
+            "older": "done"
+        }
+        assert _format(root) == "1"
+        assert (await c.post("/api/quit", json={"force": False})).json()["stopping"] is True
         for _ in range(100):
             if stopped:
                 break
@@ -447,7 +458,8 @@ async def test_quitting_stops_the_preparation_and_the_rest_waits_with_its_own_wo
 
     monkeypatch.setattr(older, "_write_second", slow)
     stopped: list[float] = []
-    async with client_for(_app(home, stopped)) as c:
+    app = _app(home, stopped)
+    async with client_for(app) as c:
         assert (await c.post("/api/older")).json()["state"] == "running"
         assert (await c.get("/api/engine")).json()["preparing_older"] is True
         for method, path, body in (
@@ -455,7 +467,12 @@ async def test_quitting_stops_the_preparation_and_the_rest_waits_with_its_own_wo
             ("POST", "/api/jobs", {"tiles": ["+46+006"]}),
         ):
             r = await c.request(method, path, json=body)
-            assert r.status_code == 409 and "older version" in r.json()["error"]["message"], path
+            assert r.status_code == 409 and r.json()["error"]["context"] == {"older": "running"}
+        settings = (await c.get("/api/settings")).json()
+        settings["essential"]["data_dir"] = str(home / "elsewhere")
+        r = await c.put("/api/settings", json=settings)
+        assert r.status_code == 409 and r.json()["error"]["context"] == {"older": "running"}
+        assert app.state.orthostudio["preparing_older"]() is True  # osxp serve's watch waits
         refused = await c.post("/api/quit", json={"force": False})
         assert refused.status_code == 409 and "older version" in refused.json()["error"]["message"]
         assert (await c.post("/api/quit", json={"force": True})).json()["stopping"] is True
@@ -481,3 +498,86 @@ async def test_an_engine_the_page_cannot_stop_does_not_prepare(home: Path) -> No
         r = await c.post("/api/older")
         assert r.status_code == 409 and r.json()["error"]["code"] == "SYS_NOT_STOPPABLE"
     assert _format(home / "store") == "2"
+
+
+@pytest.mark.anyio
+async def test_a_request_that_waited_for_another_run_asks_again(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Two pages click at once: the second, which waited for the first, is refused once that run
+    ended, its question measured before it; it ran with its own choice (a review, 2026-10-24)."""
+    with Store(home / "store", fsync=False) as s:
+        relief = _relief(s, 26, second=True)
+        s.trim(relief, [f"Data{T.name}.alt"])
+    import orthostudio.api.app as app_module
+
+    def fails(*a: Any, **k: Any) -> Any:
+        time.sleep(0.3)
+        raise PermissionError(13, "held", "x")
+
+    monkeypatch.setattr(app_module, "prepare_older", fails)
+    async with client_for(_app(home, [])) as c:
+        first, second = await asyncio_gather(c.post("/api/older"), c.post("/api/older"))
+        answers = sorted([first.status_code, second.status_code])
+        assert answers == [200, 409]
+        stale = first if first.status_code == 409 else second
+        assert "Another page" in stale.json()["error"]["message"]
+
+
+async def asyncio_gather(*aws: Any) -> list[Any]:
+    out: list[Any] = [None] * len(aws)
+
+    async def one(i: int, aw: Any) -> None:
+        out[i] = await aw
+
+    async with anyio.create_task_group() as tg:
+        for i, aw in enumerate(aws):
+            tg.start_soon(one, i, aw)
+    return out
+
+
+def test_room_is_asked_only_for_a_write_and_removal_takes_only_what_needs_one(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Nothing to write needs no room; removing instead takes the artefacts that needed a write,
+    not a file already back or one written by a run that stopped (a review, 2026-10-24)."""
+    root = tmp_path / "store"
+    with Store(root, fsync=False) as s:
+        back = _relief(s, 27, second=True)
+        s.trim(back, [f"Data{T.name}.alt"])
+        (s.path(back) / f"Data{T.name}.alt").write_bytes(_raster(27).tobytes())  # already back
+        written = _relief(s, 28, second=False)
+        (s.path(written) / f"Data{T.name}.alt").write_bytes(_raster(28).tobytes())  # not taken
+        needs = _mesh(s, 29, second=False)
+    real = shutil.disk_usage
+
+    def none_free(path: Any) -> Any:
+        u = real(path)
+        return type(u)(u.total, u.used, 1024)
+
+    monkeypatch.setattr(older.shutil, "disk_usage", none_free)
+    with Store(root, fsync=False) as s:
+        plan = plan_older(s)
+        assert plan.write_bytes > 0 and not plan.room
+    report = prepare_older(root, remove_instead=True)
+    assert report.removed == 1 and report.restored == 1 and report.completed == 1
+    store_module._CLOSED_FOR_OLDER.clear()
+    with Store(root, fsync=False) as s:
+        assert s.has(back) and s.has(written) and not s.has(needs)
+        assert plan_older(s).need_bytes == 0 and plan_older(s).room  # nothing left to write
+
+
+def test_a_quit_while_measuring_stops_at_once(tmp_path: Path) -> None:
+    """The measure walks the whole cache, minutes on a hard disk: a stop asked meanwhile ends it
+    before the first file is written, the cache this version's (a review, 2026-10-24)."""
+    root = tmp_path / "store"
+    with Store(root, fsync=False) as s:
+        relief = _relief(s, 30, second=True)
+        s.trim(relief, [f"Data{T.name}.alt"])
+    stop = threading.Event()
+    stop.set()
+    with pytest.raises(OlderStoppedError):
+        prepare_older(root, stop=stop)
+    assert _format(root) == "2"
+    with Store(root, fsync=False) as s:
+        assert s.trimmed(relief)

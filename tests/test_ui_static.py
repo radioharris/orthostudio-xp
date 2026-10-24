@@ -2329,7 +2329,7 @@ def test_the_library_prepares_the_cache_for_an_older_version() -> None:
     html = (UI / INDEX_FILE).read_text(encoding="utf-8")
     for element in ('id="disk-older"', 'id="disk-older-note"', 'id="older-confirm"',
                     'id="older-confirm-text"', 'id="older-confirm-go"',
-                    'id="older-confirm-remove"'):  # fmt: skip
+                    'id="older-confirm-remove"', 'id="older-done"'):  # fmt: skip
         assert element in html, element
     app_js = (UI / "app.js").read_text(encoding="utf-8")
     assert 'addEventListener("click", prepareOlder)' in app_js
@@ -2343,7 +2343,14 @@ def test_the_library_prepares_the_cache_for_an_older_version() -> None:
     assert '$("older-confirm-go").hidden = !plan.room' in confirm
     assert '$("older-confirm-remove").hidden = Boolean(plan.room)' in confirm
     follow = _function_body(app_js, "followOlder")
-    assert '"older.stopped_text"' in follow and '$("stopped").hidden = false' in follow
+    assert "await olderDone()" in follow and "loadDisk()" in follow  # a failure measured again
+    assert '$("stopped").hidden = false' not in follow  # the engine waits for the user's Quit
+    done = _function_body(app_js, "olderDone")
+    assert 'api("POST", "/api/quit"' in done and '"older.stopped_text"' in done
+    # every refusal while the cache is prepared or ready says so, where each said its own
+    assert "olderBusy(d)" in _function_body(app_js, "olderErrorCard")
+    assert "SYS_BUSY: (d) => olderBusy(d) ||" in app_js
+    assert app_js.count("olderBusy(d)") >= 6
     assert "state.status?.preparing_older" in _function_body(app_js, "loadStatus")
     quit_ = _function_body(app_js, "quitOsxp")
     assert "force: Boolean(active) || older" in quit_
@@ -2369,6 +2376,16 @@ def test_the_library_prepares_the_cache_for_an_older_version() -> None:
     busy = _node_mock('process.stdout.write(JSON.stringify(await call("POST", "/api/older")));',
                       fail="busy")  # fmt: skip
     assert busy == {"status": 409, "code": "SYS_BUSY"}
+    meanwhile = """
+    await call("POST", "/api/older", {});
+    const again = (await call("POST", "/api/older", {})).ok;
+    const clean = await call("POST", "/api/clean", {});
+    const status = (await call("GET", "/api/status")).ok;
+    process.stdout.write(JSON.stringify({again, clean, preparing: status.preparing_older}));
+    """
+    got = _node_mock(meanwhile)
+    assert got["again"]["state"] == "running"  # one run at a time, as the engine
+    assert got["clean"] == {"status": 409, "code": "SYS_BUSY"} and got["preparing"] is True
 
 
 def test_the_cache_of_the_tiles_filed_outside_is_its_own_choice() -> None:

@@ -974,17 +974,34 @@ def create_app(
     older_stop = threading.Event()
     older_tasks: set[asyncio.Task[None]] = set()
 
+    older_runs = [0]  # runs started: a request that waited for the lock sees another ran
+
     def older_running() -> bool:
         return older_state["state"] == "running"
 
+    def older_blocks() -> bool:
+        """While the cache is prepared, and once it is ready, which this engine opens no more."""
+        return older_state["state"] in ("running", "done")
+
     def busy_older() -> JSONResponse:
+        """The refusal while the cache is prepared or ready, said as such: the page tells it by
+        its ``context.older`` (``running`` or ``done``)."""
+        if older_state["state"] == "done":
+            return _plain_error(
+                "SYS_BUSY",
+                "The cache is ready for an older version, and this OrthoStudio XP opens it no "
+                "more.",
+                "Quit OrthoStudio XP and install the older version.",
+                status=409,
+                context={"older": "done"},
+            )
         return _plain_error(
             "SYS_BUSY",
-            "The cache is being prepared for an older version, and OrthoStudio XP stops once it "
-            "is ready.",
+            "The cache is being prepared for an older version.",
             "Wait for it to end. To keep this version instead, quit OrthoStudio XP: the "
             "preparation stops and the cache stays this version's.",
             status=409,
+            context={"older": "running"},
         )
 
     def busy_deleting() -> JSONResponse:
@@ -1043,6 +1060,8 @@ def create_app(
         "page_came": False,
     }
     app.state.orthostudio = state
+    # osxp serve's watch for the last page keeps the engine up while the cache is prepared
+    state["preparing_older"] = lambda: older_state["state"] == "running"
 
     # -- errors ------------------------------------------------------------------------------
 
@@ -1615,6 +1634,8 @@ def create_app(
             s = s.model_copy(update={"essential": essential})
         data_dir = (s.essential.data_dir or "").strip() or None
         if data_dir != previous.data_dir:
+            if older_blocks():
+                return busy_older()
             if manager.active() is not None:
                 return _plain_error(
                     "SYS_BUSY",
@@ -1770,7 +1791,7 @@ def create_app(
     @app.post("/api/jobs", status_code=201)
     async def post_job(req: JobRequest) -> Any:
         specs = await asyncio.to_thread(_specs, req, install=req.install)
-        if older_running():
+        if older_blocks():
             return busy_older()
         if deleting.locked():
             return busy_deleting()
@@ -1854,7 +1875,7 @@ def create_app(
             xplane_dir=(job.request or {}).get("xplane_dir"),
             global_scenery=any(spec.overlay or spec.xp12_rasters for spec in job.specs),
         )
-        if older_running():
+        if older_blocks():
             return busy_older()
         if deleting.locked():
             return busy_deleting()
@@ -2295,7 +2316,7 @@ def create_app(
         lasts as long as the copy: ``GET /api/library/filing`` says how far it is, ``POST
         /api/library/filing/stop`` stops it before its next file. One at a time, and not while a
         build runs or waits, nor a tile is deleted."""
-        if older_running():
+        if older_blocks():
             return busy_older()
         if filing_lock.locked():
             return busy_filing()
@@ -2389,7 +2410,7 @@ def create_app(
                 library_path=default_library_path(),
             )
 
-        if older_running():
+        if older_blocks():
             return busy_older()
         async with deleting:  # a second delete waits for this one
             if manager.active() is not None:
@@ -2492,7 +2513,7 @@ def create_app(
         runs, here or in another process, since nothing protects what a build is about to use
         otherwise, and while a tile is filed elsewhere, which moves a tile out of the atelier."""
         req = req or CleanRequest()
-        if older_running():
+        if older_blocks():
             return busy_older()
         async with deleting:  # no build starts meanwhile, and deletes wait
             # asked once this lock is held: a filing that starts now finds it held and refuses
@@ -2555,11 +2576,13 @@ def create_app(
 
     @app.post("/api/older")
     async def start_older(req: OlderRequest | None = None) -> Any:
-        """Make the cache ready for an older version, then stop OrthoStudio XP (it must not open
-        the cache again: its format would go back to 2); with ``remove``, the relief and mesh that
-        version cannot read are removed rather than written, for a disk without the room. Refused
-        while a build runs or a tile is filed, and by an engine the page cannot stop; started
-        again after a run that failed or stopped. ``GET /api/older`` says how far it is."""
+        """Make the cache ready for an older version, then close it to this engine, which opens it
+        no more (its format would go back to 2) and refuses what would until the user quits; with
+        ``remove``, the relief and mesh that version cannot read are removed rather than written,
+        for a disk without the room. Refused while a build runs or a tile is filed, by an engine
+        the page cannot stop, and when another page started a run while this request waited;
+        started again after a run that failed or stopped. ``GET /api/older`` says how far it
+        is."""
         req = req or OlderRequest()
         if shutdown is None:
             return _plain_error(
@@ -2573,8 +2596,19 @@ def create_app(
             return dict(older_state)
         if filing_lock.locked():
             return busy_filing()
-        await deleting.acquire()  # no build starts meanwhile, nor after: the engine stops
+        runs = older_runs[0]
+        await deleting.acquire()  # no build starts meanwhile, nor after: the cache is closed
         try:
+            if older_runs[0] != runs or older_state["state"] in ("running", "done"):
+                # another page started a run while this one waited: its question is stale
+                deleting.release()
+                return _plain_error(
+                    "SYS_BUSY",
+                    "Another page prepared the cache for an older version meanwhile.",
+                    "Look at Disk space again, then ask again if you still want to.",
+                    status=409,
+                    context={"older": older_state["state"]},
+                )
             if filing_lock.locked():
                 deleting.release()
                 return busy_filing()
@@ -2589,6 +2623,7 @@ def create_app(
         except BaseException:
             deleting.release()
             raise
+        older_runs[0] += 1
         older_stop.clear()
         older_state.clear()
         older_state.update(state="running", written_bytes=0, write_bytes=0, remove=req.remove)
@@ -2616,6 +2651,8 @@ def create_app(
                 older_state.update(state="failed", error=wrap(exc).to_dict())
                 deleting.release()
                 return
+            # the engine stays, the cache closed to it, so that the page can say what to do next
+            # until the user quits: it stopped by itself, its words gone with the window
             older_state.update(
                 state="done",
                 restored=report.restored,
@@ -2623,8 +2660,6 @@ def create_app(
                 removed=report.removed,
                 written_bytes=report.written_bytes,
             )
-            # after the page has read "done": it says what to do next, then that it stopped
-            asyncio.get_running_loop().call_later(3.0, shutdown)
 
         task = asyncio.create_task(run())
         older_tasks.add(task)

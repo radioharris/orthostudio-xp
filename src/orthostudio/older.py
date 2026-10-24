@@ -19,7 +19,8 @@ Library's *Prepare for an older version…* puts the cache in the form it reads:
 * one whose form kept cannot be read, or whose trimmed form cannot be proved the same, is removed:
   the older version builds it again when it needs it, nothing downloaded;
 * the index gets the format number 1, and this process opens it no more
-  (:func:`~orthostudio.graph.store.close_for_older`): the engine stops after.
+  (:func:`~orthostudio.graph.store.close_for_older`): the engine refuses what would open it,
+  and the page says to quit and install the older version.
 
 Nothing is written unless the disk of the cache has room for all of it first; without that room,
 ``remove_instead`` removes those artefacts rather than writing them, the older version building
@@ -94,8 +95,9 @@ class OlderPlan:
 
     @property
     def need_bytes(self) -> int:
-        """What the disk must have free: the bytes to write and the margin."""
-        return self.write_bytes + ROOM_MARGIN
+        """What the disk must have free: the bytes to write and the margin, nothing when there is
+        nothing to write."""
+        return self.write_bytes + ROOM_MARGIN if self.write_bytes else 0
 
     @property
     def room(self) -> bool:
@@ -159,11 +161,14 @@ def _others_bytes(info: ArtifactInfo, suffix: str) -> int:
     )
 
 
-def plan_older(store: Store) -> OlderPlan:
-    """What the cache needs before an older version reads it, measured without writing."""
+def plan_older(store: Store, stop: Callable[[], None] | None = None) -> OlderPlan:
+    """What the cache needs before an older version reads it, measured without writing;
+    ``stop`` is called before each artefact, and raises to end the measure (a quit meanwhile)."""
     plan = OlderPlan()
     for rule, (kept, suffix) in SECOND_FORMS.items():
         for info in store.iter_artifacts(rule):
+            if stop is not None:
+                stop()
             if info.kind != "dir" or not (info.path / kept).is_file():
                 continue
             gone = store.trimmed(info.key)
@@ -196,10 +201,16 @@ def plan_older(store: Store) -> OlderPlan:
     return plan
 
 
-def _sweep_tmp(store: Store) -> None:
+def _on_disk(store: Store, key: str, name: str) -> bool:
+    info = store.info(key)
+    return info is not None and (info.path / name).is_file()
+
+
+def _sweep_tmp(store: Store, stop: Callable[[], None]) -> None:
     """The second forms an interrupted run left half written: gone, a new run writes them again."""
     for rule in SECOND_FORMS:
         for info in store.iter_artifacts(rule):
+            stop()
             if info.kind == "dir" and info.path.is_dir():
                 for path in info.path.glob(f"*{TMP_SUFFIX}*"):
                     path.unlink(missing_ok=True)
@@ -253,11 +264,14 @@ def prepare_older(
     report = OlderReport()
     root = Path(store_root)
     with Store(root, sweep=False) as store:
-        _sweep_tmp(store)
-        plan = plan_older(store)
+        _sweep_tmp(store, check)
+        plan = plan_older(store, check)
         doomed = set(plan.remove)
         if remove_instead:
-            doomed |= {key for key, _name, _size in plan.restore + plan.complete}
+            # those that need a write, and those alone: a file already back, or written by a run
+            # that stopped (counted 0), needs no room
+            doomed |= {key for key, name, _size in plan.restore if not _on_disk(store, key, name)}
+            doomed |= {key for key, _name, size in plan.complete if size}
         elif not plan.room:
             raise OSError(
                 errno.ENOSPC,
