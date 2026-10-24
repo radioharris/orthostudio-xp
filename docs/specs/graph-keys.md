@@ -185,7 +185,14 @@ committed without forcing, and made durable as a group:
 
 The executor never trusts a path that is not both indexed and present.
 
-## 7. SQLite index (`schema_version = 1`, WAL, `synchronous=NORMAL`, `foreign_keys=ON`)
+## 7. SQLite index (`schema_version = 2`, WAL, `synchronous=NORMAL`, `foreign_keys=ON`)
+
+`schema_version` is 2 since the relief and the mesh are kept in one form (9f514094): a version
+before it looks for `Data<tile>.alt` and `Data<tile>.mesh` in their artefacts and fails in the
+middle of a build. Every version since 0.1.22 refuses an index whose number is not its own
+(`IncompatibleIndexError`, inside the opening's transaction, so nothing is changed): an index of 1
+is opened and becomes 2, and the versions before turn the store away at its opening. An index a newer
+version numbered higher is refused the same way, said as `SYS_STORE_NEWER` (2026-10-24).
 
 ```sql
 CREATE TABLE meta (k TEXT PRIMARY KEY, v TEXT NOT NULL);           -- schema_version, disk_bytes

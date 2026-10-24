@@ -184,8 +184,35 @@ def test_reopen_persists_and_schema_is_checked(tmp_path: Path) -> None:
     db.execute("UPDATE meta SET v = ? WHERE k = 'schema_version'", (str(SCHEMA_VERSION + 1),))
     db.commit()
     db.close()
-    with pytest.raises(IncompatibleIndexError):
+    with pytest.raises(IncompatibleIndexError) as refused:
         Store(root, fsync=False)
+    assert (refused.value.found, refused.value.expected) == (SCHEMA_VERSION + 1, SCHEMA_VERSION)
+    assert refused.value.root == str(root.resolve())
+    # refused inside the opening's transaction: the newer index is left as it was
+    db = sqlite3.connect(root / "index.sqlite")
+    assert db.execute("SELECT v FROM meta WHERE k = 'schema_version'").fetchone()[0] == str(
+        SCHEMA_VERSION + 1
+    )
+    db.close()
+
+
+def test_an_index_of_1_opens_and_becomes_2(tmp_path: Path) -> None:
+    """2 since the relief and the mesh are kept in one form: the versions before refuse the store
+    at its opening rather than fail in the middle of a build (2026-10-24). An index of 1 is read
+    whole, its number raised once."""
+    assert SCHEMA_VERSION == 2
+    root = tmp_path / "store"
+    with Store(root, fsync=False) as s:
+        key = _put(s, 9, b"kept")
+    db = sqlite3.connect(root / "index.sqlite")
+    db.execute("UPDATE meta SET v = '1' WHERE k = 'schema_version'")
+    db.commit()
+    db.close()
+    for _ in range(2):
+        with Store(root, fsync=False) as s:
+            assert s.has(key) and s.path(key).read_bytes() == b"kept"
+            row = s._db.execute("SELECT v FROM meta WHERE k = 'schema_version'").fetchone()
+            assert row[0] == "2"
 
 
 def test_wal_mode_is_on(store: Store) -> None:

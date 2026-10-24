@@ -42,6 +42,8 @@ def test_a_store_an_earlier_version_left_opens_and_works(made_by: Path, tmp_path
     root, tiles = copy / "store", copy / "tiles"
     with Store(root, fsync=False) as s:
         assert "digest" in _columns(s, "trimmed") and _columns(s, "sources")
+        # its format number raised: the versions before this one turn it away at the opening
+        assert s._db.execute("SELECT v FROM meta WHERE k = 'schema_version'").fetchone()[0] == "2"
         infos = list(s.iter_artifacts())
         assert len(infos) >= 5 and all(s.has(i.key) for i in infos)
         for info in infos:

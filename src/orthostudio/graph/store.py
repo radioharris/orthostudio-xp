@@ -68,7 +68,12 @@ __all__ = [
 
 log = logging.getLogger("orthostudio.graph.store")
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
+"""2 since the relief and the mesh are kept in one form (9f514094): a version before it looks for
+``Data<tile>.alt`` and ``Data<tile>.mesh`` in their artefacts, does not find them, and failed in
+the middle of a build. Every version since 0.1.22 refuses an index whose number is not its own, so
+it now turns the store away at its opening, with nothing changed (2026-10-24). An index of 1 is
+opened and becomes 2."""
 INDEX_FILENAME = "index.sqlite"
 TMP_MARKER = ".tmp-"
 TMP_HARD_MAX_AGE_S = 86400.0
@@ -453,11 +458,14 @@ class Store:
                 db.execute(
                     "INSERT INTO meta (k, v) VALUES ('schema_version', ?)", (str(SCHEMA_VERSION),)
                 )
-            elif int(row["v"]) != SCHEMA_VERSION:
-                raise IncompatibleIndexError(
-                    f"index schema {row['v']} at {self.root}, this OrthoStudio XP expects "
-                    f"{SCHEMA_VERSION}"
+            elif int(row["v"]) == 1:
+                # every form an index of 1 holds is read; its number turns the versions before
+                # this one away from the forms they cannot read
+                db.execute(
+                    "UPDATE meta SET v = ? WHERE k = 'schema_version'", (str(SCHEMA_VERSION),)
                 )
+            elif int(row["v"]) != SCHEMA_VERSION:
+                raise IncompatibleIndexError(self.root, int(row["v"]), SCHEMA_VERSION)
             for trigger in _DISK_BYTES_TRIGGERS:
                 db.execute(trigger)
         except BaseException:

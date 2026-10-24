@@ -44,6 +44,7 @@ __all__ = [
     "disk_trouble",
     "render_json",
     "spec_for",
+    "store_trouble",
     "wrap",
 ]
 
@@ -1026,6 +1027,15 @@ _SPECS: tuple[ErrorSpec, ...] = (
         "Reinstall OrthoStudio XP; the bundle is incomplete.",
     ),
     _spec(
+        "SYS_STORE_NEWER",
+        _B,
+        _S,
+        "The cache in {path} was made by a newer version of OrthoStudio XP (its format {found}; "
+        "this version reads {expected}).",
+        "Use that newer version again, or empty that folder to start afresh: the tiles are not "
+        "in it, and a build downloads and computes again what it needs.",
+    ),
+    _spec(
         "SYS_INTERNAL_ERROR",
         _B,
         _S,
@@ -1424,11 +1434,26 @@ def disk_trouble(exc: BaseException) -> OsxpError | None:
     return None
 
 
+def store_trouble(exc: BaseException) -> OsxpError | None:
+    """A cache a newer version made, which this one refuses to open (``graph.store``
+    ``SCHEMA_VERSION``): said as such, where it was an internal error to report. Recognised by
+    name, as the sqlite errors of :func:`disk_trouble`: this module imports nothing of the graph."""
+    if type(exc).__name__ != "IncompatibleIndexError":
+        return None
+    found, expected = getattr(exc, "found", 0), getattr(exc, "expected", 0)
+    if not found > expected:
+        return None
+    return OsxpError(
+        "SYS_STORE_NEWER",
+        context={"path": getattr(exc, "root", ""), "found": found, "expected": expected},
+    )
+
+
 def wrap(exc: BaseException) -> OsxpError:
     """Return ``exc`` if it is an ``OsxpError``, else wrap it as ``SYS_INTERNAL_ERROR``."""
     if isinstance(exc, OsxpError):
         return exc
-    known = disk_trouble(exc)
+    known = disk_trouble(exc) or store_trouble(exc)
     if known is not None:
         known.__cause__ = exc
         return known

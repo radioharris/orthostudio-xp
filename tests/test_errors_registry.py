@@ -250,6 +250,19 @@ def test_context_is_sanitized_to_json_types() -> None:
     json.loads(err.to_json())
 
 
+def test_a_cache_a_newer_version_made_is_said_as_such() -> None:
+    """The store refuses an index whose format number is above its own (graph/store.py
+    SCHEMA_VERSION): said as SYS_STORE_NEWER with the folder, where it was an internal error to
+    report (2026-10-24). Any other refusal stays an internal error, which does not mislead."""
+    from orthostudio.graph import IncompatibleIndexError
+
+    newer = errors.wrap(IncompatibleIndexError("/data/store", 3, 2))
+    assert newer.code == "SYS_STORE_NEWER"
+    assert newer.context == {"path": "/data/store", "found": 3, "expected": 2}
+    assert "/data/store" in newer.message and "newer version" in newer.message
+    assert errors.wrap(IncompatibleIndexError("/data/store", 0, 2)).code == "SYS_INTERNAL_ERROR"
+
+
 def test_error_is_an_exception_usable_with_raise_from() -> None:
     try:
         try:
