@@ -1376,7 +1376,9 @@ export async function mockApi(method, path, body, options = {}) {
     if (!mock.library) mock.library = await mockFile("library");
     const cache = mockFiledCache();
     // like the engine: the second forms of the tiles filed outside counted too, and its own tiles alone
-    return { ...mock.disk, ...cache, twice_bytes: (mock.disk.twice_bytes || 0) + cache.twice_filed_bytes, tiles: libraryTiles(mock.library).filter((e) => e.built_by === "osxp").length, building: MOCK_FAIL === "busy" || Boolean(mockActiveRun()) };
+    const own = libraryTiles(mock.library).filter((e) => e.built_by === "osxp");
+    const filedPaths = new Set(mockFiledTiles().map((e) => e.path));
+    return { ...mock.disk, ...cache, twice_bytes: (mock.disk.twice_bytes || 0) + cache.twice_filed_bytes, tiles: own.length, atelier_tiles: own.filter((e) => !filedPaths.has(e.path)).length, building: MOCK_FAIL === "busy" || Boolean(mockActiveRun()) };
   }
   if (p === "/api/clean" && method === "POST") {
     if (MOCK_FAIL === "busy" || mockActiveRun()) {
@@ -5344,7 +5346,8 @@ function renderDisk() {
   const inUse = Math.max(0, cacheBytes(d) - (Number(d.unused_bytes) || 0) - filedShare - copies - twiceHere);
   const row = (label, value, fate) => [h("dt", null, label), h("dd", { class: "num" }, value, h("span", { class: "disk-fate" }, ` · ${fate}`))];
   list.append(
-    ...row(tCount("disk.in_use", Number(d.tiles) || 0), fmtFreeBytes(inUse), t("disk.kept")),
+    // the atelier's tiles alone: those filed elsewhere have their own box below
+    ...row(tCount("disk.in_use", Number(d.atelier_tiles ?? d.tiles) || 0), fmtFreeBytes(inUse), t("disk.kept")),
     ...row(t("disk.unused"), fmtFreeBytes(d.unused_bytes), t("disk.always")),
   );
   // what a file manager shows more for the folder, folded under its question: it matters only to

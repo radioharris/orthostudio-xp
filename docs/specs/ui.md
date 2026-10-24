@@ -1624,7 +1624,8 @@ for the user; the same words in the confirmation.
   tiles are never deleted: every choice deletes in it alone (store, `chunks`, `elevation`,
   `mapcache`).
 * **Two lines without a box**, each saying what becomes of it: *what is used to rebuild your N
-  tiles*, kept (`app.js` `cacheBytes`, the store less `shared_bytes`, the files it shares with the
+  tiles*, kept (N the atelier's tiles alone, `atelier_tiles`: the tiles filed elsewhere have their
+  own box, and counted here too they read as counted twice, a review, 2026-10-24) (`app.js` `cacheBytes`, the store less `shared_bytes`, the files it shares with the
   tiles, which count in the tiles' sizes, less what the boxes below free), and *leftovers of tiles
   deleted or rebuilt differently* (`unused_bytes`), always deleted.
 * **The folder's size in the file manager**, folded under its question, *Why does the Finder show

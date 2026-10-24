@@ -2547,7 +2547,9 @@ def test_free_space_says_what_each_box_changes_in_words_chosen_one_by_one() -> N
     app = (UI / "app.js").read_text(encoding="utf-8")
     body = _function_body(app, "renderDisk")
     assert 't("disk.free_size", { size: fmtFreeBytes(plan.total) })' in body
-    assert 'tCount("disk.in_use", Number(d.tiles) || 0)' in body and 't("disk.always")' in body
+    # the atelier's tiles alone: the tiles filed elsewhere have their own box (a review)
+    assert 'tCount("disk.in_use", Number(d.atelier_tiles ?? d.tiles) || 0)' in body
+    assert 't("disk.always")' in body
     assert "fileManager(state.status?.platform)" in body  # the Finder, File Explorer
     ask = _function_body(app, "confirmFreeSpace")
     assert '"disk-confirm-list"' in ask and 't("disk.confirm_line"' in ask
@@ -2584,6 +2586,7 @@ def test_disk_space_counts_waits_and_unticks_as_its_review_asked() -> None:
     store = got["store_bytes"] - got["shared_bytes"]
     assert store > got["unused_bytes"] + got["apart_bytes"] + got["twice_bytes"]  # data in use > 0
     assert "twice_filed_bytes" in got and "filed_apart_bytes" in got
+    assert got["atelier_tiles"] == got["tiles"] - got["filed_tiles"]
 
 
 def test_a_zone_whose_level_changes_goes_to_its_place() -> None:

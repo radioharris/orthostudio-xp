@@ -200,7 +200,8 @@ copy of the images of the tiles on another disk or partition, deleted only on re
 /api/older`` and ``POST /api/older`` (a development build's, never released, gone at 38), 38 = the
 choice ``compact`` of ``POST /api/clean`` and ``compacted`` in its answer and in ``GET /api/disk``
 (the relief and the mesh kept in one form, which a version before this one refuses; ``twice_bytes``
-trimmed only then), with ``twice_filed_bytes``, the share of the tiles filed outside. A page
+trimmed only then), with ``twice_filed_bytes``, the share of the tiles filed outside, and
+``atelier_tiles``, the tiles whose data the page's first line keeps. A page
 served by an engine older than itself (a ``osxp serve`` started before an update: the page's files
 are read from disk at each load, the routes were imported at start) asks the user to restart
 OrthoStudio XP instead of showing "Not Found"."""
@@ -2446,6 +2447,7 @@ def create_app(
             "twice_filed_bytes": report.twice_filed_bytes,
             "compacted": report.compacted,
             "tiles": len(report.packs),
+            "atelier_tiles": report.atelier_tiles,
             "building": manager.active() is not None or bool(other_builds()),
         }
 

@@ -145,6 +145,10 @@ class CleanReport:
     fetching it again costs far less than the imagery, so it is offered as its own choice. It was
     invisible until a user emptied everything and found 1.4 GB left (2026-09-18)."""
     relief_removed: bool = False
+    atelier_tiles: int = 0
+    """The tiles of the atelier (its ``tiles`` folder, links followed), whose data the page's first
+    line keeps: those filed outside have a box of their own (``filed_tiles``), and counted in that
+    line too they read as counted twice (a review, 2026-10-24)."""
     filed_tiles: int = 0
     """The tiles OrthoStudio XP built that are filed outside the atelier with some of their data
     here (the atelier's step 5): their cache is ``filed_bytes`` and ``filed_images_bytes``."""
@@ -572,6 +576,7 @@ def clean(
     packs = pack_dirs(library_path, tiles_root)
     report.packs = [str(p) for p in packs]
     atelier, away = _built(packs, library_path, tiles_root)
+    report.atelier_tiles = len({b.path for b in atelier if b.ortho})
     theirs: set[str] = set()
     if Path(store_root).is_dir():
         with Store(store_root) as store:

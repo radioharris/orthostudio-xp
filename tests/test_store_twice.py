@@ -275,22 +275,26 @@ def test_the_second_forms_of_the_tiles_filed_outside_count_with_the_compaction(
     """Measured with the filed tiles' choice, as the page measures, their relief's second form was
     left out of the figure, though compacting alone trims it too (a review, 2026-10-24). It is
     counted apart: in the figure without their choice, out of it with their choice, which deletes
-    their data whole."""
+    their data whole. The atelier's tiles are counted apart from them too, for the page's first
+    line."""
     with Store(home["store"], fsync=False) as s:
-        relief = _relief(s)
-        size = sum(f.stat().st_size for f in s.path(relief).glob("Data*.alt"))
+        theirs, mine = _relief(s, 1), _relief(s, 2)
+        size = sum(f.stat().st_size for f in s.path(theirs).glob("Data*.alt"))
+        assert size == sum(f.stat().st_size for f in s.path(mine).glob("Data*.alt"))
     away = home["tiles"].parent / "elsewhere"
     away.mkdir()
-    _keep(home["store"], home["library"], away, {"dem": relief})
+    _keep(home["store"], home["library"], away, {"dem": theirs})
+    _keep(home["store"], home["library"], home["tiles"], {"dem": mine})
     with_theirs = _run(home, dry_run=True, filed=True)
-    assert with_theirs.filed_tiles == 1
-    assert with_theirs.twice_bytes == 0 and with_theirs.twice_filed_bytes == size
+    assert with_theirs.filed_tiles == 1 and with_theirs.atelier_tiles == 1
+    assert with_theirs.twice_bytes == size and with_theirs.twice_filed_bytes == size
     alone = _run(home, dry_run=True)
-    assert alone.twice_bytes == size and alone.twice_filed_bytes == size
+    assert alone.twice_bytes == 2 * size and alone.twice_filed_bytes == size
     done = _run(home, compact=True)
-    assert done.compacted and done.twice_bytes == size
+    assert done.compacted and done.twice_bytes == 2 * size
     with Store(home["store"], fsync=False) as s:
-        assert not list(s.path(relief).glob("Data*.alt"))
+        assert not list(s.path(theirs).glob("Data*.alt"))
+        assert not list(s.path(mine).glob("Data*.alt"))
 
 
 def test_a_compacted_cache_trims_what_is_left_whatever_the_choices(home: dict[str, Path]) -> None:
