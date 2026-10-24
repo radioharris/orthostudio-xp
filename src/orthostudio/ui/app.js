@@ -4140,6 +4140,7 @@ function jobsChanged() {
   renderBuildActions();
   planMap?.jobChanged();
   if (state.screen === "library" && state.library) renderLibrary();
+  if (state.screen === "library") renderDisk(); // Free space waits for a build, from the last measure
   followBuildUnderWay();
 }
 
@@ -5250,6 +5251,13 @@ export function freeSpacePlan(disk, images, relief, filed = false, apart = false
   return { unused, apart: copies, twice, pictures, heights, filed: away, total: unused + copies + twice + pictures + heights + away };
 }
 
+/** A size of Free space: a few kilobytes in kilobytes, which one decimal of a megabyte rounded to
+ * "0 MB" in the confirmation, as if there were nothing to free (2026-10-23). Exported for the tests. */
+export function fmtFreeBytes(b) {
+  const n = Math.max(0, Number(b) || 0);
+  return n > 0 && n < 50_000 ? fmtKB(n) : fmtBytes(n);
+}
+
 /** Whether the panel offers to delete the cache's copy of the images of the tiles on another disk
  * or partition: only while there is some. Exported for the tests. */
 export function apartOffered(disk) {
@@ -5289,14 +5297,14 @@ function renderDisk() {
   const inUse = Math.max(0, cacheBytes(d) - (Number(d.unused_bytes) || 0) - filedShare - copies - twice);
   const row = (label, value, help) => [h("dt", { title: help || null }, label), h("dd", { class: "num" }, value)];
   list.append(
-    ...row(t("disk.in_use", { n: d.tiles ?? 0 }), fmtBytes(inUse), t("disk.in_use_help")),
-    ...(offered ? row(t("disk.filed", { n: d.filed_tiles }), fmtBytes(filedCacheBytes(d)), t("disk.filed_help")) : []),
-    ...(copies > 0 ? row(t("disk.apart", { n: d.apart_tiles ?? 0 }), fmtBytes(copies), t("disk.apart_help")) : []),
-    ...(twice > 0 ? row(t("disk.twice"), fmtBytes(twice), t("disk.twice_help")) : []),
-    ...row(t("disk.unused"), fmtBytes(d.unused_bytes || 0), t("disk.unused_help")),
-    ...row(t("disk.images"), fmtBytes(d.images_bytes || 0), t("disk.images_pieces_help")),
-    ...row(t("disk.mapcache"), fmtBytes(d.mapcache_bytes || 0)),
-    ...row(t("disk.relief"), fmtBytes(d.relief_bytes || 0), t("disk.relief_help")),
+    ...row(t("disk.in_use", { n: d.tiles ?? 0 }), fmtFreeBytes(inUse), t("disk.in_use_help")),
+    ...(offered ? row(t("disk.filed", { n: d.filed_tiles }), fmtFreeBytes(filedCacheBytes(d)), t("disk.filed_help")) : []),
+    ...(copies > 0 ? row(t("disk.apart", { n: d.apart_tiles ?? 0 }), fmtFreeBytes(copies), t("disk.apart_help")) : []),
+    ...(twice > 0 ? row(t("disk.twice"), fmtFreeBytes(twice), t("disk.twice_help")) : []),
+    ...row(t("disk.unused"), fmtFreeBytes(d.unused_bytes), t("disk.unused_help")),
+    ...row(t("disk.images"), fmtFreeBytes(d.images_bytes), t("disk.images_pieces_help")),
+    ...row(t("disk.mapcache"), fmtFreeBytes(d.mapcache_bytes)),
+    ...row(t("disk.relief"), fmtFreeBytes(d.relief_bytes), t("disk.relief_help")),
   );
   // what a file manager shows more for the store folder, said where the figures are
   const shared = Number(d.shared_bytes) || 0;
@@ -5313,9 +5321,12 @@ function renderDisk() {
   $("disk-apart-choice").hidden = copies <= 0;
   if (copies <= 0) $("disk-apart").checked = false;
   const plan = freeSpacePlan(d, $("disk-images").checked, $("disk-relief").checked, offered && $("disk-filed").checked, copies > 0 && $("disk-apart").checked);
+  // a build this page started or follows is known before the next measure says so: the note
+  // said "Nothing to free" from the last one right after a build started (2026-10-23)
+  const building = Boolean(d.building) || activeJobs().length > 0;
   // a filing moves a tile out of the atelier: the engine refuses meanwhile, the button waits
-  button.disabled = Boolean(d.building) || Boolean(state.filing) || plan.total <= 0 || state.diskBusy;
-  let said = d.building ? t("disk.busy_note") : state.filing ? t("disk.filing_note") : plan.total <= 0 ? t("disk.nothing") : "";
+  button.disabled = building || Boolean(state.filing) || plan.total <= 0 || state.diskBusy;
+  let said = building ? t("disk.busy_note") : state.filing ? t("disk.filing_note") : plan.total <= 0 ? t("disk.nothing") : "";
   if (data?.present === false) said = t("disk.data_missing", { path: homely(data.path) });
   setText(note, said);
 }
@@ -5324,14 +5335,14 @@ function renderDisk() {
 function confirmFreeSpace(plan) {
   const dialog = $("disk-confirm");
   if (dialog.open) return Promise.resolve(false);
-  $("disk-confirm-title").textContent = t("disk.confirm_title", { size: fmtBytes(plan.total) });
+  $("disk-confirm-title").textContent = t("disk.confirm_title", { size: fmtFreeBytes(plan.total) });
   const lines = [];
-  if (plan.unused > 0) lines.push(t("disk.confirm_unused", { size: fmtBytes(plan.unused) }));
-  if (plan.apart > 0) lines.push(t("disk.confirm_apart", { size: fmtBytes(plan.apart) }));
-  if (plan.twice > 0) lines.push(t("disk.confirm_twice", { size: fmtBytes(plan.twice) }));
-  if (plan.filed > 0) lines.push(t("disk.confirm_filed", { size: fmtBytes(plan.filed) }));
-  if (plan.pictures > 0) lines.push(t("disk.confirm_images", { size: fmtBytes(plan.pictures) }));
-  if (plan.heights > 0) lines.push(t("disk.confirm_relief", { size: fmtBytes(plan.heights) }));
+  if (plan.unused > 0) lines.push(t("disk.confirm_unused", { size: fmtFreeBytes(plan.unused) }));
+  if (plan.apart > 0) lines.push(t("disk.confirm_apart", { size: fmtFreeBytes(plan.apart) }));
+  if (plan.twice > 0) lines.push(t("disk.confirm_twice", { size: fmtFreeBytes(plan.twice) }));
+  if (plan.filed > 0) lines.push(t("disk.confirm_filed", { size: fmtFreeBytes(plan.filed) }));
+  if (plan.pictures > 0) lines.push(t("disk.confirm_images", { size: fmtFreeBytes(plan.pictures) }));
+  if (plan.heights > 0) lines.push(t("disk.confirm_relief", { size: fmtFreeBytes(plan.heights) }));
   lines.push(t("disk.confirm_kept"));
   clear($("disk-confirm-text")).append(...lines.map((line) => h("p", null, line)));
   dialog.returnValue = "";
@@ -5361,7 +5372,7 @@ async function freeSpace() {
   try {
     const res = await api("POST", "/api/clean", { images, relief, filed, apart });
     const freed = (Number(res?.freed_bytes) || 0) + (Number(res?.apart_freed_bytes) || 0) + (Number(res?.twice_freed_bytes) || 0) + (Number(res?.images_freed_bytes) || 0) + (Number(res?.relief_freed_bytes) || 0) + (Number(res?.filed_freed_bytes) || 0);
-    toast(freed > 0 ? t("disk.freed", { size: fmtBytes(freed) }) : t("disk.nothing"));
+    toast(freed > 0 ? t("disk.freed", { size: fmtFreeBytes(freed) }) : t("disk.nothing"));
   } catch (err) {
     const found = errorDetail(err);
     const d = found && found.code ? found : { code: "SYS_INTERNAL_ERROR", message: errorMessage(err), severity: "blocking" };

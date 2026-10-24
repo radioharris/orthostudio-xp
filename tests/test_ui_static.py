@@ -2294,6 +2294,30 @@ def test_the_library_frees_disk_space_after_asking() -> None:
     assert busy == {"status": 409, "code": "SYS_BUSY"}
 
 
+def test_free_space_says_a_running_build_and_a_few_kilobytes() -> None:
+    """Two things the Windows and Mac campaign of 2026-10-23 saw. Right after a build started,
+    the panel said "Nothing to free" from its last measure before it said a build was running:
+    the builds the page itself knows count too, and a change of the builds draws the panel again.
+    And a confirmation showed "0 MB" for a few kilobytes left: a size under 50 kB is said in
+    kilobytes, nothing at all as before."""
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    render = _function_body(app_js, "renderDisk")
+    assert "activeJobs().length > 0" in render
+    assert "d.building ?" not in render  # the note reads the building the page knows too
+    assert "renderDisk()" in _function_body(app_js, "jobsChanged")
+    confirm = _function_body(app_js, "confirmFreeSpace")
+    assert "fmtFreeBytes(" in confirm and "fmtBytes(" not in confirm
+    sizes = _node_json(
+        "app.js",
+        "[m.fmtFreeBytes(0), m.fmtFreeBytes(3000), m.fmtFreeBytes(49999), m.fmtFreeBytes(50000), "
+        "m.fmtFreeBytes(null), m.fmtFreeBytes(2.5e9)]",
+    )
+    assert sizes[1:3] == ["3 KB", "50 KB"]
+    assert "KB" not in sizes[0] and "MB" in sizes[0] and sizes[4] == sizes[0]
+    assert "KB" not in sizes[3] and "MB" in sizes[3]
+    assert sizes[5] == "2.5 GB"
+
+
 def test_the_cache_of_the_tiles_filed_outside_is_its_own_choice() -> None:
     """The atelier, step 5: "Free space" offers the cache of the tiles filed outside the atelier as
     a line and a choice of its own, shown only while some tile is filed outside. Each choice frees

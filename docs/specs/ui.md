@@ -943,8 +943,12 @@ tiles stay whole and in X-Plane, and building them again downloads their images 
 downloaded images, and the relief: a square of relief is 40 MB from Copernicus against 800 MB of
 imagery at ZL16, and comes back much faster, so the choices are separate. The relief was counted by
 nothing until a user emptied everything and found 1.4 GB of it left (2026-09-18). It is disabled
-while a build runs, while this page files tiles (the engine refuses meanwhile: a filing moves a tile
-out of the atelier) and when there is nothing to free, and ends with a toast of what came back. A
+while a build runs (the measure's `building`, or a build this page started or follows, known at
+once: the panel said *Nothing to free* from its last measure right after a build started,
+2026-10-23; a change of the builds draws the panel again), while this page files tiles (the engine
+refuses meanwhile: a filing moves a tile out of the atelier) and when there is nothing to free, and
+ends with a toast of what came back. Its sizes under 50 kB are said in kilobytes (`fmtFreeBytes`):
+a confirmation showed *0 MB* for a few kilobytes left, as if nothing would go. A
 409 `SYS_BUSY` shows as a card in the Library's words, which name builds and filings. A language
 switch writes its lines again from the last measure, measuring nothing (`rerenderAll` calls
 `renderDisk`): they stayed in the former language, under a title in the new one, until the next
