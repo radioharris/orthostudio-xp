@@ -476,7 +476,12 @@ def _shared_bytes(root: Path, within: Path | None = None) -> int:
     2026-10-23). Read from what the Library remembers of each tile (``PackFacts.shared``), measured
     against this store, of the tiles whose folder is there: a tile moved off the disk by hand
     left the store's files alone, the store's own again. With ``within``, of the tiles inside that
-    folder alone, links followed. 0 when nothing can say."""
+    folder alone, links followed. 0 when nothing can say.
+
+    A tile the Library measured against another data folder's store, or never, is measured
+    against this one first, as the Library list does in the background: Disk space, opened
+    after the data folder was set elsewhere and back, counted none of them (4.09 GB "to
+    rebuild your 2 tiles" for 699 MB) until the Library was opened (a campaign, 2026-10-25)."""
     inside = _real_path(within) if within is not None else None
     if within is not None and inside is None:
         return 0
@@ -484,6 +489,14 @@ def _shared_bytes(root: Path, within: Path | None = None) -> int:
         with Library(default_library_path()) as lib:
             facts = lib.remembered_facts()
             packs = {row.path for row in lib.list(kind="ortho")}
+            current = str(default_store_root())
+            with _PhotoStore() as photos:
+                for pack in packs:
+                    f = facts.get(str(pack))
+                    if (f is None or f.shared_with != current) and pack.is_dir():
+                        measured = _measure_pack(lib, pack, photos)
+                        if measured is not None:
+                            facts[str(pack)] = measured
     except Exception:  # a figure of the page never stops the engine
         return 0
     store = str(root)
@@ -525,6 +538,18 @@ def _measure_grace(started_at: float | None, other_build: bool, now: float) -> f
     if started_at is not None:
         return max(0.0, now - started_at) + 60.0
     return GRACE_S if other_build else 0.0
+
+
+def _doctor_reads() -> tuple[bool, int | None]:
+    """What the doctor's checks read of the data folder that can change between two statuses:
+    whether the folder is there (its disk unplugged or plugged back), and the time of its
+    store's index (one a newer version wrote, put in the Recycle Bin as the page says). A few
+    stats, where the checks walk the downloaded images."""
+    try:
+        index = (default_store_root() / "index.sqlite").stat().st_mtime_ns
+    except OSError:
+        index = None
+    return data_root_missing() is None, index
 
 
 def _store_bytes(root: Path) -> int:
@@ -1046,6 +1071,7 @@ def create_app(
         "settings_path": settings_path,
         "doctor": None,
         "doctor_at": 0.0,
+        "doctor_read": None,
         # the measure of GET /api/sizes under way, shared by the pages that ask meanwhile
         "sizes": None,
         # and GET /api/disk's, minutes long on a hard disk
@@ -1157,14 +1183,24 @@ def create_app(
         return state["airports"]
 
     def doctor_checks() -> list[dict[str, Any]]:
+        """The doctor's checks, kept :data:`DOCTOR_TTL_S` unless what they read of the data
+        folder changed meanwhile (:func:`_doctor_reads`): its disk plugged back, the banner still
+        said "not working: disk" for up to a minute, and the page reads the status only when
+        something happens (a campaign, 2026-10-25)."""
         now = time.monotonic()
-        if state["doctor"] is None or now - state["doctor_at"] > DOCTOR_TTL_S:
+        reads = _doctor_reads()
+        if (
+            state["doctor"] is None
+            or now - state["doctor_at"] > DOCTOR_TTL_S
+            or reads != state["doctor_read"]
+        ):
             report = run_doctor(offline=True, xplane=xplane_dir())
             for name, took in report.took_s.items():
                 if took > SLOW_S:  # the status waits for them (orthostudio.startclock)
                     log.info("the doctor's %s check took %.1f s", name, took)
             state["doctor"] = [c.to_dict() for c in report.checks]
             state["doctor_at"] = now
+            state["doctor_read"] = reads
         return list(state["doctor"])
 
     def job_or_404(job_id: str) -> Job | JSONResponse:

@@ -2447,10 +2447,12 @@ def test_the_copy_of_the_images_of_the_tiles_on_another_disk_is_its_own_choice()
                 "disk.apart_dl", "disk.confirm_apart", "disk.confirm_apart_one"):  # fmt: skip
         assert i18n.count(f'"{key}":') == 2, key  # French and English
     # the textures are made again from the downloaded images, identical, nothing downloaded,
-    # unless those images went too
+    # unless its photos went too: "these images", the images box, does not hold a tile filed
+    # elsewhere's own photos, its own box does (23 MB of 346 came back, a campaign, 2026-10-25)
     assert "its textures again from the downloaded images, with nothing downloaded" in i18n
     assert "ses textures depuis les images téléchargées, sans rien retélécharger" in i18n
-    assert "If you delete these images too, its photos will be downloaded again." in i18n
+    assert "If its downloaded photos are deleted too, they will be downloaded again." in i18n
+    assert "these images" not in i18n and "ces images," not in i18n
     assert "without downloading anything" not in i18n.split('"disk.also_apart"')[1][:2000]
     assert '"disk.held' not in i18n and "held_bytes" not in app
     script = """
@@ -2614,8 +2616,11 @@ def test_disk_space_after_the_campaign_says_what_it_could_not_measure_and_what_i
     assert "const status = loadStatus();" in load and "await status;" in load
     assert "state.diskError = found?.code ? found : null;" in load
     boot = _function_body(app, "boot")
-    assert 'window.addEventListener("focus", recheckDisk);' in boot
-    assert "if (state.status?.data_dir?.present !== was) loadDisk();" in boot
+    assert 'window.addEventListener("focus", recheckStatus);' in boot
+    assert "if (disk && state.status?.data_dir?.present !== was) loadDisk();" in boot
+    # the yellow banner, on any screen, is read again too: a disk plugged back left it showing
+    # (a campaign, 2026-10-25)
+    assert "if (!disk && !failedChecks().length) return;" in boot
     body = _function_body(app, "renderDisk")
     assert "if (!d && state.diskError) failed.append(errorCard(state.diskError));" in body
     assert "const away = data?.present === false;" in body
@@ -2682,12 +2687,12 @@ def test_each_disk_space_box_lists_its_cases_as_points_in_one_order() -> None:
     for key in keys:
         assert fr.get(key) and en.get(key), key
     # the cases the code has: the same tile reuses its textures and its relief; other colours, a
-    # tile deleted, the coast's settings by the sea and an update make the textures again; a
-    # level or source other needs new photos anyway; the relief only for its own settings
+    # tile deleted, another terrain and an update make the textures again; a level or source
+    # other needs new photos anyway; the relief only for its own settings
     same = "Reconstruire une tuile sans rien changer ne retélécharge rien."
     assert fr["disk.images_same"] == same
     cases = (
-        "disk.images_dl", "disk.images_other", "disk.images_dl_coast", "disk.images_dl_update",
+        "disk.images_dl", "disk.images_other", "disk.images_dl_terrain", "disk.images_dl_update",
         "disk.images_provider", "disk.images_map", "disk.relief_dl_settings",
         "disk.relief_dl_deleted", "disk.relief_dl_update",
     )  # fmt: skip
@@ -2696,6 +2701,11 @@ def test_each_disk_space_box_lists_its_cases_as_points_in_one_order() -> None:
     assert "couleurs" in fr["disk.images_dl"] and "supprimée" in fr["disk.images_dl"]
     assert "même autrement" in fr["disk.relief_same"]
     assert "de toute façon" in fr["disk.images_other"]
+    # any terrain change downloads a tile's deleted photos again, inland too: "by the sea… the
+    # coastline's photos" was wrong (475 MB for a Swiss tile whose relief alone changed, a
+    # campaign, 2026-10-25)
+    assert "relief" in fr["disk.images_dl_terrain"] and "routes" in fr["disk.images_dl_terrain"]
+    assert "mer" not in fr["disk.images_dl_terrain"] and "sea" not in en["disk.images_dl_terrain"]
     assert '.disk-more > summary::before { content: "▶";' in css
     assert ".disk-choices .disk-more { margin: 6px 0 0 22px;" in css
     # each point a sentence of its own, what you do then what follows: a sentence ending on a
@@ -4830,13 +4840,50 @@ def test_a_check_that_failed_is_said_at_the_top_of_the_page() -> None:
     js = (UI / "app.js").read_text(encoding="utf-8")
     banner = js[js.index("function renderEngineBanner") :]
     banner = banner[: banner.index("\nfunction ", 10)]
-    assert "failedChecks()" in banner and "app.checks_failed" in banner
+    assert "failedChecks()" in banner and "failed.map(checkSentence)" in banner
     # loud, like the other things that stop you: the same banner, not the quiet note
     assert "window-note" not in banner
     # and it gives the way to what failed, rather than leaving the user to find the foot
     assert "app.checks_failed_show" in banner and "showChecks" in banner
     # it yields to what is more urgent: an engine that cannot answer says so first
-    assert banner.index("app.engine_error") < banner.index("app.checks_failed")
+    assert banner.index("app.engine_error") < banner.index("failed.map(checkSentence)")
+
+
+def test_the_banner_says_each_failed_check_in_the_page_s_words() -> None:
+    """The banner gave the checks' own names, the program's, in English: "… is not working:
+    disk." on a French page whose data folder's disk was unplugged, "store" for a cache a newer
+    version wrote (a campaign, 2026-10-25). Each check that can fail has a sentence of its own,
+    in both languages; the four that only warn or skip keep the old sentence should one ever
+    fail. The banner follows a change of language at once, as the rest of the page does."""
+    doctor = (Path(__file__).resolve().parents[1] / "src" / "orthostudio" / "doctor.py").read_text(
+        encoding="utf-8"
+    )
+    names = set(re.findall(r'Check\(\s*"(\w+)"', doctor))
+    never_fail = {"xplane", "architecture", "window", "chunks"}
+    assert never_fail < names
+    js = (UI / "app.js").read_text(encoding="utf-8")
+    sentence = _function_body(js, "checkSentence")
+    for name in sorted(names - never_fail):
+        assert f'case "{name}":' in sentence, name
+    for name in never_fail:
+        assert f'case "{name}":' not in sentence, name
+    assert 'default:\n      return t("app.checks_failed", { list: check.name });' in sentence
+    # the disk check fails for two reasons, said apart
+    assert 'd.exists === false\n        ? t("check.disk_missing")' in sentence
+    assert "check.disk_full" in sentence
+    tables = _i18n_tables()
+    for key in ("check.disk_missing", "check.disk_full", "check.store", "check.junctions"):
+        for lang in ("fr", "en"):
+            assert tables[lang][key].endswith("."), (lang, key)
+    for lang in ("fr", "en"):
+        assert "{free}" in tables[lang]["check.disk_full"], lang
+    # no name of the program's in what it says
+    for lang, words in (("fr", r"\b(disk|store|chunks)\b"), ("en", r"\b(store|chunks)\b")):
+        for key, text in tables[lang].items():
+            if key.startswith("check."):
+                assert not re.search(words, text), (lang, key)
+    # a change of language writes the banner again (it stayed in the other one)
+    assert "renderEngineBanner();" in _function_body(js, "rerenderAll")
 
 
 def test_the_map_leaves_room_for_the_status_bar_under_it() -> None:

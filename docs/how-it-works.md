@@ -741,8 +741,9 @@ Deleting the downloaded images or relief changes nothing in the tiles, and costs
 nothing has to be made again: a tile built again the same takes its textures and its relief back
 from the cache, and downloads nothing. The images are downloaded again when a tile makes its
 textures again at the same level: other colours, for the tile or a zone; a tile you had deleted;
-by the sea, a setting that changes the coastline (coast, water, roads, relief), for the
-coastline's textures; an update of OrthoStudio XP that makes the textures differently. Another
+another terrain for the tile (relief, water, coast, roads), all its photos, inland too, even
+where every texture comes out the same; an update of OrthoStudio XP that makes the textures
+differently. Another
 level of detail or another imagery source needs new images whether these were deleted or not. The
 relief is downloaded again only when a tile's relief must be worked out again: another relief in
 Settings (its source, the small holes, your own file), a tile you had deleted, an update that works

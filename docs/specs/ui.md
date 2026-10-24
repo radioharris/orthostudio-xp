@@ -1542,6 +1542,18 @@ every screen as empty as it was drawn: a user on Windows saw the fields greyed o
 go on, and the thread guessed for two days (flusi.info, 2026-09-20). An engine that answers nothing
 at all is still the *stopped* screen, through the presence ping.
 
+**A check that failed** (`renderEngineBanner`, `checkSentence`): the same banner says, in the
+page's language, what each failed check means and what to do (*The data folder was not found: plug
+in its disk, or choose another folder in Settings.*, *Only 3.2 GB is left on the data folder's
+disk…*, *What is used to rebuild your tiles cannot be read.*, *A tool of OrthoStudio XP is missing
+(Triangle4XP)…*), then *Show the checks*, the doctor's own lines. It gave the checks' names, the
+program's, in English: "… is not working: disk." on a French page whose data folder's disk was
+unplugged (a campaign, 2026-10-25). A check this page does not know keeps its name in that
+sentence. Back to the window with the banner showing, on any screen, the status is read again
+(`recheckStatus`), and the engine runs its checks again when the data folder came or went
+(`api.md` 8): the disk plugged back, the banner stayed until something else read the status. A
+change of language writes it again with the rest of the page (`rerenderAll`).
+
 **Your own elevation files** (2026-09-19): under the relief question, *Do you have elevation files
 of your own?* takes a folder (`essential.relief.folder`, a field and a *Choose the folder…* button
 like the other folders of Settings). It says what the files must be called, that subfolders are
@@ -1630,7 +1642,7 @@ for the user; the same words in the confirmation.
   `mapcache`). Each measure reads the status again (`loadDisk`, `loadStatus`): with its disk
   unplugged, the tab says only `disk.data_missing`, its lines, boxes, folded note and lead hidden
   and the button disabled; its lines read "your 24 tiles 0 MB" while it was away (a campaign,
-  2026-10-24). Back to the window with the tab showing, the status is read again (`recheckDisk`,
+  2026-10-24). Back to the window with the tab showing, the status is read again (`recheckStatus`,
   on `focus` and on the page shown again), and the tab measured again when the disk came or went:
   a disk unplugged with the tab open went unsaid for a minute and more.
 * **A measure refused** with an error code shows its card under the lines (`disk-measure-error`,
@@ -1676,9 +1688,13 @@ for the user; the same words in the confirmation.
      source needs new photos whether these went or not (`disk.images_other`); they are downloaded
      again when a tile makes its textures again at the same level, which takes longer and the
      provider may have changed them: other colours, for the tile or a zone (`photo_*`,
-     `photo_shapes` of `TextureDdsParams`); a tile deleted, whose data went with the leftovers; by
-     the sea, a setting that changes the coast's masks (coast, water, roads, relief: `MasksParams`
-     and the mesh it reads), only the coastline's textures; an update that makes the textures
+     `photo_shapes` of `TextureDdsParams`); a tile deleted, whose data went with the leftovers; a
+     tile whose terrain changes (relief, water, coast, roads: its DSF or its masks change, its
+     textures folder `tile.textures` is made again, and each texture's key holds its pieces'
+     digest, `textures.py` `chunks_digest`), all its photos, inland too and even where every
+     texture comes out the same (`disk.images_dl_terrain`: it said by the sea and the coastline's
+     photos only, and a Swiss tile whose relief alone changed downloaded 475 MB, a campaign,
+     2026-10-25); an update that makes the textures
      differently (the rule's or the encoder's version). The map background loads again as the Plan
      shows it. Shown, as the next one, only when it has something to free, unticked as it hides: two boxes of
      0 MB stood on an empty data folder (a campaign, 2026-10-24).
@@ -1695,7 +1711,10 @@ for the user; the same words in the confirmation.
      `disk-apart-choice`, `apart_bytes`, `apart_tiles`; shown only when there are some, unticked
      as it hides): those tiles keep their own textures, which X-Plane reads; one rebuilt the same
      has its textures made again, identical, from the downloaded images, nothing downloaded, a
-     little longer; with the images deleted too, its photos are downloaded again (said of one tile
+     little longer; with its downloaded photos deleted too, they are downloaded again
+     (`disk.apart_dl`: it said "if you delete these images too", but a tile filed elsewhere keeps
+     its photos in its own box, not the images', and 23 MB of 346 came back, a campaign,
+     2026-10-25; said of one tile
      in the singular, `disk.apart_ok_one`, `disk.apart_same_one`, as the filed tiles' box does,
      `disk.filed_ok_one`, `disk.filed_dl_one`; a tile at ZL16 with 213 textures: 9.8 s with the folder on the Mac's own disk, 42 s on
      an external USB disk, every texture identical to the byte, 2026-10-23). With it, the filed

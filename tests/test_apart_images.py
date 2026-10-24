@@ -337,5 +337,6 @@ def test_the_images_choice_frees_the_pieces_as_in_1_1_0_and_the_words_say_what_f
     assert done.images_bytes == seen.images_bytes  # what was counted is what went
     assert not any(p.exists() for p in pieces)
     i18n = (Path(clean_module.__file__).parent / "ui" / "i18n.js").read_text(encoding="utf-8")
-    # said under the textures' own box, among its points (2026-10-24)
-    assert "If you delete these images too, its photos will be downloaded again." in i18n
+    # said under the textures' own box, among its points (2026-10-24), of its downloaded photos
+    # wherever they are counted: a tile filed elsewhere keeps them in its own box (2026-10-25)
+    assert "If its downloaded photos are deleted too, they will be downloaded again." in i18n

@@ -2537,7 +2537,41 @@ function renderUpdateNote() {
  * impossible, and nothing said so where the user was looking (a user asked, 2026-09-20). */
 function failedChecks() {
   const checks = Array.isArray(state.status?.doctor) ? state.status.doctor : [];
-  return checks.filter((c) => c && c.status === "fail").map((c) => c.name);
+  return checks.filter((c) => c && c.status === "fail");
+}
+
+/** What a failed check means, in the page's language, for the yellow banner: the checks' names
+ * are the program's own, in English, and the banner said "… is not working: disk." on a French
+ * page whose data folder's disk was unplugged (a campaign, 2026-10-25). A check this page does
+ * not know keeps its name in the sentence it had. */
+function checkSentence(check) {
+  const d = check.details || {};
+  switch (check.name) {
+    case "disk":
+      return d.exists === false
+        ? t("check.disk_missing")
+        : t("check.disk_full", { free: fmtFreeBytes((Number(d.free_gb) || 0) * 1e9) });
+    case "store":
+      return t("check.store");
+    case "triangle4xp":
+      return t("check.triangle4xp");
+    case "encoder":
+      return t("check.encoder");
+    case "http_client":
+      return t("check.http_client");
+    case "python":
+      return t("check.python");
+    case "junctions":
+      return t("check.junctions");
+    case "bing":
+      return t("check.bing");
+    case "map_data":
+      return t("check.map_data");
+    case "map_library":
+      return t("check.map_library");
+    default:
+      return t("app.checks_failed", { list: check.name });
+  }
 }
 
 /** Open the checks at the foot and bring them into view: what failed says there what it is. */
@@ -2558,7 +2592,7 @@ function renderEngineBanner() {
       : unread.length
         ? t("app.settings_unread", { list: unread.join(" · ") })
         : failed.length
-          ? t("app.checks_failed", { list: failed.join(" · ") })
+          ? failed.map(checkSentence).join(" ")
           : null;
   let banner = $("engine-outdated");
   if (!words) {
@@ -7362,6 +7396,9 @@ function rerenderAll() {
   zoomRefresh?.();
   textSizeRefresh?.();
   renderStatus();
+  // the yellow banner too: it stayed in the other language until the next status (a campaign,
+  // 2026-10-25)
+  renderEngineBanner();
   renderProviders();
   renderTiles();
   renderPlanPanel();
@@ -7518,16 +7555,20 @@ async function boot() {
   // back to the window with Disk space showing: the data folder's disk may have gone or come
   // back meanwhile, which the tab told only at its next measure, a minute and more after it was
   // unplugged (a campaign, 2026-10-24). The status alone is read, and the tab measured again only
-  // when the disk came or went: a measure takes minutes on a hard disk.
-  const recheckDisk = async () => {
-    if (state.screen !== "disk" || state.diskMeasuring) return;
+  // when the disk came or went: a measure takes minutes on a hard disk. With the yellow banner
+  // showing, on any screen, the status is read again too: what it names may have been put right
+  // meanwhile, a disk plugged back, and it stayed until something else read the status (a
+  // campaign, 2026-10-25).
+  const recheckStatus = async () => {
+    const disk = state.screen === "disk" && !state.diskMeasuring;
+    if (!disk && !failedChecks().length) return;
     const was = state.status?.data_dir?.present;
     await loadStatus();
-    if (state.status?.data_dir?.present !== was) loadDisk();
+    if (disk && state.status?.data_dir?.present !== was) loadDisk();
   };
-  window.addEventListener("focus", recheckDisk);
+  window.addEventListener("focus", recheckStatus);
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible") recheckDisk();
+    if (document.visibilityState === "visible") recheckStatus();
   });
   $("settings-search").addEventListener("input", (e) => {
     state.settingsSearch = e.target.value;

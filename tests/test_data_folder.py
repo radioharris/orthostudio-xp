@@ -10,6 +10,7 @@ import asyncio
 import errno
 import os
 import shutil
+import sqlite3
 from pathlib import Path
 from typing import Any
 
@@ -25,6 +26,7 @@ from orthostudio.config.store import default_config_path
 from orthostudio.dem.sources import default_elevation_dir, default_memo_path
 from orthostudio.doctor import run_doctor
 from orthostudio.errors import OsxpError
+from orthostudio.graph import Store
 from orthostudio.home import (
     DATA_DIR_ENV,
     check_data_dir,
@@ -316,6 +318,42 @@ async def test_settings_save_a_data_folder_between_builds_and_builds_wait_for_it
             r = await c.put("/api/settings", json=saved)
             assert r.status_code == 200 and r.json()["essential"]["data_dir"] is None, r.text
             assert data_root() == home
+
+
+@pytest.mark.anyio
+async def test_the_checks_follow_the_data_folder_at_once(
+    app: Any, home: Path, tmp_path: Path
+) -> None:
+    """Its disk plugged back, Disk space was right at once, but the yellow banner still said "not
+    working: disk" for up to a minute: the engine kept its checks a minute (a campaign,
+    2026-10-25). They run again as soon as the data folder comes or goes, or its store's index
+    changes: one a newer version wrote, then put in the Recycle Bin as the page says. Fails on
+    the code before: the disk check still fails once the folder is back."""
+    application, _mgr, _ = app
+    disk = tmp_path / "SSD" / "OrthoStudio"
+    disk.mkdir(parents=True)
+    _choose(home, disk)
+
+    async def check(c: Any, name: str) -> str:
+        status = (await c.get("/api/status")).json()
+        return str(next(x["status"] for x in status["doctor"] if x["name"] == name))
+
+    async with client_for(application) as c:
+        assert await check(c, "disk") != "fail"
+        disk.rename(tmp_path / "SSD away")
+        assert await check(c, "disk") == "fail"
+        (tmp_path / "SSD away").rename(disk)
+        assert await check(c, "disk") != "fail"
+
+        Store(default_store_root()).close()
+        assert await check(c, "store") == "ok"
+        db = sqlite3.connect(default_store_root() / "index.sqlite")
+        db.execute("UPDATE meta SET v = '3' WHERE k = 'schema_version'")
+        db.commit()
+        db.close()
+        assert await check(c, "store") == "fail"
+        shutil.rmtree(default_store_root())
+        assert await check(c, "store") == "ok"
 
 
 @pytest.mark.anyio

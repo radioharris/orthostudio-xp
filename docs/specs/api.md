@@ -828,7 +828,10 @@ in the Task Manager (2026-09-17). Then, when the port is taken:
 * Cross-thread hand-off: the job thread appends to a list under a lock; the SSE generator
   polls it (50-250 ms) rather than waking a loop-bound primitive, so the manager has no
   dependency on the server's loop (the CLI could drive a `JobManager` too).
-* `/api/status` runs `run_doctor(offline=True)` (no Bing probe) and caches it for 60 s;
+* `/api/status` runs `run_doctor(offline=True)` (no Bing probe) and caches it for 60 s, unless
+  what the checks read of the data folder changed meanwhile (`app._doctor_reads`: whether the
+  folder is there, the time of its store's index): its disk plugged back, the page's banner still
+  said "not working: disk" for up to a minute (a campaign, 2026-10-25);
   `active_job` is the id of the queued or running job, else `null`.
 * A job's `<id>.json` is written when it is created, queued or started, and again at its end.
   The start of the engine lists the `<id>.json` files; one still `queued` or `running` was

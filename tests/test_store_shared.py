@@ -146,6 +146,29 @@ async def test_the_page_is_told_what_the_store_shares_with_the_tiles(
     assert appmod._shared_bytes(home / "elsewhere") == 0  # measured against this store only
 
 
+@pytest.mark.anyio
+async def test_a_tile_measured_against_another_data_folder_is_measured_again(
+    app: Any, home: Path, tmp_path: Path
+) -> None:
+    """The data folder set elsewhere, the Library opened there, then set back: the Library
+    remembered the tile against the other folder's store, and Disk space counted none of its
+    files as shared (4.09 GB "to rebuild your 2 tiles" for 699 MB) until the Library was opened
+    (a campaign, 2026-10-25). Disk space measures it against this store itself. Fails on the
+    code before: ``shared_bytes`` 0."""
+    pack = _pack(home / "tiles", _store(home / "store"))
+    other = str(tmp_path / "other data" / "store")
+    with Library(default_library_path()) as lib:
+        lib.register(T, "BI", 16, pack, "osxp")
+        # what the Library list remembered while the other data folder was set
+        lib.remember_facts(pack, PackFacts("s", 1, None, None, 9e9, 0, other))
+    async with client_for(app) as c:
+        disk = (await c.get("/api/disk")).json()
+    assert disk["shared_bytes"] == DDS + DSF
+    with Library(default_library_path()) as lib:
+        (facts,) = lib.remembered_facts().values()
+    assert (facts.shared, facts.shared_with) == (DDS + DSF, str(home / "store"))
+
+
 def test_the_note_says_how_much_larger_a_file_manager_shows_the_data_folder(
     home: Path, tmp_path: Path
 ) -> None:
