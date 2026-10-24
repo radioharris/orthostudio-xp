@@ -326,7 +326,8 @@ def test_the_images_choice_frees_the_pieces_as_in_1_1_0_and_the_words_say_what_f
     """The choice keeps nothing of the tiles' downloaded pieces: the images choice frees them as
     1.1.0 did, ticked with the choice or later, and a build of such a tile downloads its images
     again. Read from the tiles and the disks at each run, keeping them was the source of nearly
-    every finding of two reviews (2026-10-23); the words under the choice say it instead."""
+    every finding of two reviews (2026-10-23); the words under the images' choice say it instead,
+    for every tile."""
     w = world
     _apart(monkeypatch, w.packs[A])
     pieces = _pieces_of_a(w)
@@ -336,4 +337,4 @@ def test_the_images_choice_frees_the_pieces_as_in_1_1_0_and_the_words_say_what_f
     assert done.images_bytes == seen.images_bytes  # what was counted is what went
     assert not any(p.exists() for p in pieces)
     i18n = (Path(clean_module.__file__).parent / "ui" / "i18n.js").read_text(encoding="utf-8")
-    assert "if you delete those too, now or later, they are downloaded again" in i18n
+    assert "If you rebuild a tile, its photos will be downloaded again" in i18n

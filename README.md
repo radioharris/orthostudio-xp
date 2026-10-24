@@ -60,10 +60,9 @@ experimental.
 - **Shores without blue needles.** Water closer than a metre to the shore is shallow, as the shore
   is, so X-Plane no longer draws its deep seabed at the edge of a lake.
 - **A cache.** An unchanged tile builds again in a fraction of a second, a new zone builds again
-  only what it touches, and imagery is never downloaded twice. *Free space* can compact the relief
-  and the mesh, which an older version then no longer reads, and delete the cache's copy of the
-  images of the tiles on another disk: a build of one prepares them again from the downloaded
-  images.
+  only what it touches, and imagery is never downloaded twice. *Free space* says what each choice
+  changes: it can delete the data kept for older versions, and the textures kept a second time of
+  the tiles on another disk, which a rebuild makes again, identical, from the downloaded images.
 - **Your disk of choice.** Tiles are built in the workshop, the data folder chosen in Settings, then
   filed wherever you want; an unplugged disk is said as such, and nothing is written in its place.
 - **Text as large as you need.** `− 100 % +` zooms the whole page and `Aa` makes the text alone
@@ -193,6 +192,12 @@ to `serve.log`, in
 `~/Library/Logs/OrthoStudio XP` (macOS), `%LOCALAPPDATA%\OrthoStudio XP\Logs` (Windows) or
 `~/.orthostudio/log` (Linux, beside the rest of what it keeps). Your tiles and settings stay in `~/.orthostudio` (the
 tiles in the data folder chosen in Settings, if you chose one) when the app is removed.
+
+Going back to an older version works as is, unless *Free space* deleted the data kept for older
+versions: that version then refuses the data folder. Quit OrthoStudio XP and delete the `store`
+folder inside the data folder (the folder *Disk space* names). Your tiles stay whole and in
+X-Plane; that version calculates everything again to rebuild one, without downloading the images
+again unless you deleted them.
 
 OrthoStudio XP runs entirely on your computer: its screens are a page it serves itself, at
 127.0.0.1, shown in a window of its own. Nothing goes through a server of ours, and its downloads

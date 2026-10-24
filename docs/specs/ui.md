@@ -58,8 +58,8 @@ text is one of seven styles, defined once at the top of `styles.css` with tokens
 
 | Style | Look | For |
 |---|---|---|
-| Title 1 | 18px, bold | the four screens |
-| Title 2 | 15px, bold | a card, a column or a dialog: the Plan's steps, Settings' questions, *For experts*, *Disk space*, *Jobs*, a job, a dialog |
+| Title 1 | 18px, bold | the screens |
+| Title 2 | 15px, bold | a card, a column or a dialog: the Plan's steps, Settings' questions, *For experts*, *Jobs*, a job, a dialog |
 | Title 3 | 13.5px, bold | inside a card or a column: a group of expert settings, the presets, the parts of the cost, *Errors*, *Decisions* |
 | Text | 13.5px | what the page says |
 | Secondary | 12.5px, grey | the sentence under a title, the text under a field, notes |
@@ -96,7 +96,7 @@ values stay in `styles.css`, and `TEXT_TOKENS` keeps the two equal). It was a qu
 first, saved with the rest, and the user wanted it at hand and at once. The controls' own sizes and
 the map do not grow: that is the zoom's work. In a browser too: the page draws its text itself.
 
-## 2. The four screens
+## 2. The screens
 
 Each screen keeps its own scroll position, as tabs do (`app.js` `showScreen`, `screenScroll`): the
 window scrolls, not the screens, so a screen opened where the last one was left, which a user
@@ -906,64 +906,6 @@ disk away fails there at once, with its words (`SYS_TILE_DISK_ABSENT`), and noth
 done; X-Plane running at the put back has its own words (`SYS_PUT_BACK_XP_RUNNING`: quit X-Plane,
 build the tile again).
 
-**Disk space** (below the table, `GET /api/disk`, `POST /api/clean`, asked only while the Library
-shows: the measure goes over the whole store, the downloaded pieces and the relief, and each list of
-the Library asked for it, from the Plan at the start too): the data used by the tiles on this
-computer, besides their own images and DSFs (`app.js` `cacheBytes`: the store less `shared_bytes`,
-the files it shares with the tiles, which count in the tiles' sizes; a line under the figures says
-by how much a file manager shows the store folder larger, and that deleting them by hand frees
-nothing: a user's file manager showed it about twice the size of the tiles and he asked whether the
-images in it could be deleted, and the page added up the same files twice, 2026-10-22/23), the **cache of the tiles filed outside the atelier** (the atelier, step 5: their data only
-they need and the image pieces only they use, all of it but their meshes, which their neighbours'
-masks read (counted with the data used by the tiles, whose tooltip says so; a mesh goes with its
-tile, but for a neighbour whose masks were made from it), a line shown only while they have some of
-their data here, and counting only those tiles: a tile of a data folder chosen before has its cache
-there, and a filed neighbour whose square only the pieces astride a border touch has nothing here,
-so filing one tile no longer reads "Cache of 5 tile(s)"; its box is unticked as it hides), the
-**copy of the images of N tile(s) on another disk** (`apart_bytes`, `apart_tiles`, a line shown
-only when there is some: the cache's copy of the images of the tiles on another disk or partition,
-which hold their own; its own box, *Also delete the cache's copy of the images of the tiles on
-another disk* (`disk-apart`, in `disk-apart-choice`, hidden and unticked with the line), whose help
-(`disk.apart_check_help`) says the tiles keep their images, that a build of one prepares them again
-from the downloaded images, and that deleting those too, then or later, makes that build download
-them again, which the provider may have changed; the dialog's line `disk.confirm_apart` says the
-same; with it, the filed tiles' line counts what is left of theirs (`filed_apart_bytes`); not counted with the data
-used by the tiles; a user's tiles moved to another partition left 358 GB of images twice,
-2026-10-23; a first form deleted it without a box and took the images back from the tile, a review
-found it open to losses), the **relief and mesh kept twice**
-(`twice_bytes`, shown only when there are some: Ortho4XP's form beside OrthoStudio XP's, which the
-versions before this one read; 90 GB and 272 GB of the same user's cache; its own box, *Compact
-the relief and the mesh* (`disk-compact`, in `disk-compact-choice`, shown while the cache is not
-compacted and has some, `compactOffered`), with a note in the warning's colour under it
-(`disk.compact_warn`): an older version of OrthoStudio XP will no longer be able to use the cache,
-going back to one means emptying its folder, and the tiles stay whole but building them again
-downloads their images again; the dialog's line `disk.confirm_twice` says it too. Ticked, the
-cache is compacted (`compact`, `graph-keys.md` 7): Ortho4XP's form goes, and the tiles built after
-keep OrthoStudio XP's alone. A compacted cache (`compacted`) shows the box ticked and disabled,
-for good, with `disk.compacted_note` in the same colour; what a compaction cut short left goes
-then whatever the choices. A first form of 2026-10-23 trimmed it with no box, and a button put it
-back for an older version: two mechanisms where one choice was enough), the data no tile needs any
-more, the downloaded images (those of the filed tiles excepted: they are in their
-line; a piece astride the border with a tile of the atelier counts here, even at a level of detail
-only the filed tile uses, and so does a piece only a filed tile with nothing here touches), the map
-background and the **downloaded relief**, each with a plain tooltip. *Free space…* asks first, in a
-modal dialog that says what goes and how much (Escape keeps everything), with a checkbox per choice,
-each freeing its own line: the cache of the filed tiles (shown with its line; its help says the
-tiles stay whole and in X-Plane, and building them again downloads their images again), the
-downloaded images, and the relief: a square of relief is 40 MB from Copernicus against 800 MB of
-imagery at ZL16, and comes back much faster, so the choices are separate. The relief was counted by
-nothing until a user emptied everything and found 1.4 GB of it left (2026-09-18). It is disabled
-while a build runs (the measure's `building`, or a build this page started or follows, known at
-once: the panel said *Nothing to free* from its last measure right after a build started,
-2026-10-23; a change of the builds draws the panel again), while this page files tiles (the engine
-refuses meanwhile: a filing moves a tile out of the atelier) and when there is nothing to free, and
-ends with a toast of what came back. Its sizes under 50 kB are said in kilobytes (`fmtFreeBytes`):
-a confirmation showed *0 MB* for a few kilobytes left, as if nothing would go. A
-409 `SYS_BUSY` shows as a card in the Library's words, which name builds and filings. A language
-switch writes its lines again from the last measure, measuring nothing (`rerenderAll` calls
-`renderDisk`): they stayed in the former language, under a title in the new one, until the next
-measure (2026-10-05).
-
 What is on this computer, what is in X-Plane, and what each button will do, in plain words
 (`map-zones.md` 7.0). The lead says it: removing a tile from X-Plane keeps its files, so it can
 be added back at once; deleting it also frees the disk space (tiles built by OrthoStudio XP only).
@@ -1666,6 +1608,93 @@ the status bar follow) and drops a refusal step 3 still showed. The folder field
 the detected folder" shows only when a folder was detected. Nothing is saved by leaving Settings:
 answers not saved are said on the tab and in step 3 until they are saved or undone (see the
 Settings screen above; until 2026-10-15 a toast said it once, on leaving).
+
+### 2.6 Disk space
+
+Its own tab, between Library and Settings (`#disk`, `screen-disk`), since 2026-10-24: below the
+Library's table, a list of hundreds of tiles hid it. `GET /api/disk` and `POST /api/clean`, asked
+only while it shows (`showScreen`, `loadDisk`): the measure goes over the whole store, the
+downloaded pieces and the relief, and each list of the Library asked for it, from the Plan at the
+start too. Its words were read box by box with the owner, who understood none of the first ones
+(2026-10-24): no "cache", which no reader could place; each line and each box says what it changes
+for the user; the same words in the confirmation.
+
+* **Where.** The screen's title carries the data folder (`disk-where`, `dataFolderShown`, shortened
+  by `homely`), and its lead, `disk.where_note`, says that what is deleted here is in that folder and that the
+  tiles are never deleted: every choice deletes in it alone (store, `chunks`, `elevation`,
+  `mapcache`).
+* **Two lines without a box**, each saying what becomes of it: *what is used to rebuild your N
+  tiles*, kept (`app.js` `cacheBytes`, the store less `shared_bytes`, the files it shares with the
+  tiles, which count in the tiles' sizes, less what the boxes below free), and *leftovers of tiles
+  deleted or rebuilt differently* (`unused_bytes`), always deleted.
+* **The folder's size in the file manager**, folded under its question, *Why does the Finder show
+  more?* (`disk-shared`, a `<details>`: it matters only to whoever compares; `disk.shared_why`,
+  `disk.shared_note`, by the file manager's name: the Finder, File Explorer, the file manager on
+  Linux, `fileManager`): the tiles on this same disk share their
+  textures and DSFs with OrthoStudio XP, each file on the disk once, which the file manager counts
+  twice; deleting them by hand frees nothing. A tile on another disk shares nothing (the textures'
+  box below). A user's file manager showed the store about twice the size of the tiles and he
+  asked whether the images in it could be deleted, and the page added up the same files twice
+  (2026-10-22/23).
+* **The boxes**, each with its size on its right (`disk-*-size`) and what it changes under it, what
+  was downloaded first, since the boxes after speak of the images:
+  1. *Delete the downloaded images* (`disk-images`): the pieces received from the provider, those
+     of the tiles filed outside excepted (in their own box), and the map background. A rebuilt tile
+     downloads its photos again, which takes longer, and the provider may have changed them.
+  2. *Delete the downloaded relief* (`disk-relief`): downloaded again for a rebuilt tile, much
+     quicker than the photos (a square is 40 MB from Copernicus against 800 MB of imagery at
+     ZL16). It was counted by nothing until a user emptied everything and found 1.4 GB of it left
+     (2026-09-18).
+  3. *Delete the textures kept here of the N tiles on another disk* (`disk-apart`, in
+     `disk-apart-choice`, `apart_bytes`, `apart_tiles`; shown only when there are some, unticked
+     as it hides): those tiles keep their own textures, which X-Plane reads; a rebuilt one has its
+     textures made again, identical, from the downloaded images, nothing downloaded, a little
+     longer (a tile at ZL16 with 213 textures: 9.8 s with the folder on the Mac's own disk, 42 s on
+     an external USB disk, every texture identical to the byte, 2026-10-23). With it, the filed
+     tiles' box counts what is left of theirs (`filed_apart_bytes`). A user's tiles moved to
+     another partition left 358 GB of them twice (2026-10-23); a first form deleted them without a
+     box and took them back from the tile, which a review found open to losses.
+  4. *Delete the data kept for older versions of OrthoStudio XP* (`disk-compact`, in
+     `disk-compact-choice`, `twice_bytes`; shown while the cache is not compacted and has some,
+     `compactOffered`): the relief and the mesh in Ortho4XP's form, which the versions before this
+     one read (90 GB and 272 GB of the same user's cache). Under it, *your tiles and X-Plane do not
+     change*, then in the warning's colour `disk.compact_warn`: an older version reinstalled one
+     day has to calculate everything again to rebuild the tiles, without downloading the images
+     again unless they were deleted. Ticked, the cache is compacted (`compact`, `graph-keys.md` 7)
+     and the tiles built after keep OrthoStudio XP's form alone. A compacted cache (`compacted`)
+     shows the box ticked and disabled, for good, its first line hidden and `disk.compacted_note`
+     in the same colour; what a compaction cut short left goes then whatever the choices, its size
+     shown. How to go back (deleting the store folder) is in the README, not in the page. A first
+     form of 2026-10-23 trimmed it with no box, and a button put it back for an older version: two
+     mechanisms where one choice was enough.
+  5. *Delete what is used to rebuild the N tiles filed elsewhere* (`disk-filed`, in
+     `disk-filed-choice`; the atelier, step 5): their data only they need and the image pieces only
+     they use, all of it but their meshes, which their neighbours' masks read (a mesh goes with its
+     tile, but for a neighbour whose masks were made from it). Shown only while they have some of
+     their data here, counting only those tiles: a tile of a data folder chosen before has its
+     data there, and a filed neighbour whose square only the pieces astride a border touch has
+     nothing here, so filing one tile no longer counted five; unticked as it hides. They still
+     work in X-Plane; a rebuilt one downloads its images again.
+
+  A count of tiles has its own words for one tile and for none (`tCount`, the keys' `_one` and
+  `_zero` forms).
+* **The button** says how much goes, following the boxes (`disk.free_size`; *Free space…* when
+  nothing would). It is disabled while a build runs (the measure's `building`, or a build this page
+  started or follows, known at once: the panel said *Nothing to free* from its last measure right
+  after a build started, 2026-10-23; a change of the builds draws the panel again), while this page
+  files tiles (the engine refuses meanwhile: a filing moves a tile out of the atelier) and when
+  there is nothing to free, and ends with a toast of what came back.
+* **The confirmation** (a modal dialog, Escape keeps everything): *Delete X?*, the list of what
+  goes in the panel's words and order with its size, then, with the older versions' box, the same
+  warning bold in the warning's colour on a line of its own (`disk.confirm_compact_warn`; within a
+  sentence it read as a detail, 2026-10-24), then *your tiles are not touched*; *Cancel* and
+  *Delete*.
+
+Its sizes under 50 kB are said in kilobytes (`fmtFreeBytes`): a confirmation showed *0 MB* for a
+few kilobytes left, as if nothing would go. A 409 `SYS_BUSY` shows as a card in the Library's
+words, which name builds and filings. A language switch writes its lines again from the last
+measure, measuring nothing (`rerenderAll` calls `renderDisk`): they stayed in the former language,
+under a title in the new one, until the next measure (2026-10-05).
 
 ## 3. Mock mode
 

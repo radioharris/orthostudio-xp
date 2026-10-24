@@ -729,7 +729,7 @@ and built again.
 | `osxp clean --apart` | - | same as `osxp clean`, and the cache's copy of the images of the tiles on another disk or partition | stays | stays |
 | `osxp clean --compact` | - | same as `osxp clean`, and the second form of the relief and the mesh: the cache keeps one form from then on | stays | stays |
 | `osxp clean --all` | - | everything no tile on disk needs, however recent, the cache of the tiles filed outside the workshop, and the cache's copy of the images of the tiles on another disk | emptied, with the map cache | emptied |
-| Free space (Library) | - | everything no tile on disk needs, however recent; the cache of the tiles filed outside the workshop, the cache's copy of the images of the tiles on another disk, and the second form of the relief and the mesh, each if you tick its box | emptied with the map cache if you tick the box, those of the tiles filed outside with their own box | emptied if you tick its own box |
+| Free space (Library) | - | everything no tile on disk needs, however recent; what is used to rebuild the tiles filed elsewhere, the textures kept here of the tiles on another disk, and the data kept for older versions, each if you tick its box | emptied with the map cache if you tick the box, those of the tiles filed outside with their own box | emptied if you tick its own box |
 | Clear the job list (Works) | stays | stays | stays; only the finished jobs' progress and logs (`jobs/`) go | stays |
 | Remove one build from the list (Works) | stays | stays | stays; only that build's progress and log go | stays |
 
@@ -741,17 +741,17 @@ The store folder holds your tiles' images and DSFs too: on the workshop's disk a
 share each of those files, one file under two names, which takes its room once. A file manager that
 measures the folders one by one counts them twice, and the store folder then looks about as big as
 the tiles again. The Library counts them once, in the tiles' sizes, and *Store* in the status bar
-and *Disk space* show only what the cache adds; a line under *Disk space* says by how much a file
-manager shows the store folder larger. Deleting those files by hand frees nothing while the tile is
+and *Disk space* show only what the cache adds; *Disk space* says by how much a file manager shows
+the folder larger, under *Why does the Finder show more?*. Deleting those files by hand frees nothing while the tile is
 there, and the cache would believe it still has them: use *Free space…*. A tile copied from another
 disk, or whose cache was freed and made again, has its own copies, which do take their room.
 
 A tile on another disk or partition than the cache holds its images as files of its own, the ones
 X-Plane reads: no file can have a name on two disks. The cache keeps a second copy, so that
-building the tile again takes them as they are. *Free space…* offers that copy on a line and a box
-of their own, *Copy of the images of N tile(s) on another disk*: ticked, the cache's copy goes, and
-the tiles keep theirs. Building one of them again then prepares its images again from the
-downloaded images: nothing is downloaded, and the images come out the very same (measured on a
+building the tile again takes them as they are. *Disk space* offers that copy in a box of its own,
+*Delete the textures kept here of the N tiles on another disk*: ticked, the cache's copy goes, and
+the tiles keep theirs. Building one of them again then makes its textures again from the
+downloaded images: nothing is downloaded, and the textures come out the very same (measured on a
 tile at ZL16 with 213 images: 9.8 s with the cache on the Mac's own disk, 42 s in a workshop whose
 cache is on an external USB disk, every image identical to the byte, 2026-10-23). Its tracing,
 mesh, relief and DSF stay in the cache. If you delete the downloaded images too, at the same time
@@ -771,14 +771,15 @@ stops before touching the tile, which stays as it was.
 The relief and the mesh of a tile are kept in two forms, OrthoStudio XP's and Ortho4XP's
 (`Data<tile>.alt`, `Data<tile>.mesh`), the same numbers: the second is the one the versions before
 this one read. Together they took 90 GB and 272 GB of a user's 1.1 TB cache, at ZL14 with a dense
-mesh. *Free space…* offers to keep one, on a line and a box of their own (*Relief and mesh kept
-twice*, *Compact the relief and the mesh*): ticked, Ortho4XP's form goes, and the tiles built after
-keep OrthoStudio XP's alone. Nothing is built again: the DSF reads the mesh's other form exactly as
-it read the text, number for number, and comes out byte for byte the same. The note under the box
-says what it costs: a version before this one can no longer use the cache, and turns it away as
-it opens, before it builds anything. Going back to one means emptying the cache folder: the tiles
-stay whole, and building them again downloads their images again. Once the cache is compacted, its
-box stays ticked.
+mesh. *Disk space* offers to keep one, in a box of its own, *Delete the data kept for older
+versions of OrthoStudio XP*: ticked, Ortho4XP's form goes, and the tiles built after keep
+OrthoStudio XP's alone. Nothing is built again: the DSF reads the mesh's other form exactly as it
+read the text, number for number, and comes out byte for byte the same. The note under the box
+says what it costs: a version before this one, reinstalled one day, turns the data folder away as
+it opens, before it builds anything. Going back to one means deleting the `store` folder inside the
+data folder (README, *Getting started*): the tiles stay whole and in X-Plane, and that version
+calculates everything again to rebuild one, without downloading the images again unless they were
+deleted. Once done, the box stays ticked.
 
 Deleting a tile keeps its image pieces and its elevation cells on purpose: building the same area
 again then skips the download, which is most of the time. The relief has its own box because it

@@ -2278,7 +2278,7 @@ async function watchJob(jobId) {
 
 // ------------------------------------------------------------------ navigation
 
-const SCREENS = ["plan", "works", "library", "settings"];
+const SCREENS = ["plan", "works", "library", "disk", "settings"];
 
 /**
  * A table wider than its box scrolls sideways (`.table-wrap`). Where the scrollbar takes room (a
@@ -2325,6 +2325,7 @@ function showScreen(name, arg) {
     findInWorkshop().then((changed) => changed && loadLibrary());
     refreshJobList(); // its buttons wait for the builds under way or waiting
   }
+  if (name === "disk") loadDisk();
   if (name === "settings") renderSettings();
   if (name === "plan") {
     loadPatches();
@@ -4146,7 +4147,7 @@ function jobsChanged() {
   renderBuildActions();
   planMap?.jobChanged();
   if (state.screen === "library" && state.library) renderLibrary();
-  if (state.screen === "library") renderDisk(); // Free space waits for a build, from the last measure
+  if (state.screen === "disk") renderDisk(); // Free space waits for a build, from the last measure
   followBuildUnderWay();
 }
 
@@ -5211,9 +5212,9 @@ async function loadLibrary() {
   loadDisk(); // a delete or a removal changes what can be freed
 }
 
-// ------------------------------------------------------------------ Library: disk space
+// ------------------------------------------------------------------ Disk space
 
-/** The folder the Library's disk space is measured in: the data folder, when its disk is there. */
+/** The folder Disk space is measured in: the data folder, when its disk is there. */
 export function dataFolderShown(status) {
   const data = status?.data_dir;
   if (data && data.path) return data.present === false ? null : data.path;
@@ -5223,9 +5224,9 @@ export function dataFolderShown(status) {
 /** GET /api/disk: what "Free space" would give back, measured without deleting anything. */
 async function loadDisk() {
   // What "Free space" would give back is measured over the whole store, the downloaded pieces and
-  // the relief: only for the Library, which shows it. Every list of the Library asked for it,
-  // from the Plan at the start too, and a user's hard disk measured it for minutes (2026-09-28).
-  if (!$("disk-list") || state.screen !== "library") return;
+  // the relief: only for Disk space, while it shows. Every list of the Library asked for it, from
+  // the Plan at the start too, and a user's hard disk measured it for minutes (2026-09-28).
+  if (!$("disk-list") || state.screen !== "disk") return;
   try {
     state.disk = await api("GET", "/api/disk");
   } catch (_err) {
@@ -5290,6 +5291,23 @@ export function filedOffered(disk) {
   return (Number(disk?.filed_tiles) || 0) > 0 && filedCacheBytes(disk) > 0;
 }
 
+/** A text for a count of tiles: its `_one` form for one tile and its `_zero` form for none, when
+ * the language has them ("vos 1 tuiles" read wrong). */
+function tCount(key, n, params = {}) {
+  const form = n === 1 ? tOpt(`${key}_one`, params) : n === 0 ? tOpt(`${key}_zero`, params) : null;
+  return form ?? tOpt(key, { n, ...params }) ?? key;
+}
+
+/** The file manager by its name, for the note on the folder's size: the Finder, File Explorer. */
+function fileManager(platform) {
+  const os = platform === "mac" || platform === "win" ? platform : "lin";
+  return { in_app: tOpt(`disk.fm_in_${os}`) ?? "", app: tOpt(`disk.fm_${os}`) ?? "" };
+}
+
+/** The panel, in words the owner chose one by one (2026-10-24): where all of it is, said once under
+ * the title; the two lines without a box, each saying what becomes of it; then each box with its
+ * size on its right and what it changes under it, what was downloaded first, since the boxes
+ * after speak of the images; no "cache", which nobody reading it could place. */
 function renderDisk() {
   const list = $("disk-list");
   if (!list) return;
@@ -5297,50 +5315,61 @@ function renderDisk() {
   clear(list);
   const button = $("disk-free");
   const note = $("disk-note");
+  const data = state.status?.data_dir;
+  // every box deletes in this folder alone
+  const where = dataFolderShown(state.status);
+  setText($("disk-where"), where ? `· ${homely(where)}` : "");
   if (!d) {
     button.disabled = true;
+    setText(button, t("disk.free"));
     setText(note, "");
     return;
   }
   const offered = filedOffered(d);
   const copies = apartOffered(d) ? Number(d.apart_bytes) || 0 : 0;
   const twice = Number(d.twice_bytes) || 0;
-  // a tile filed on another disk has its images on both lines: taken off once
+  // a tile filed on another disk has its images in both choices: taken off once
   const filedShare = copies > 0 ? Number(d.filed_apart_bytes) || 0 : Number(d.filed_bytes) || 0;
   const inUse = Math.max(0, cacheBytes(d) - (Number(d.unused_bytes) || 0) - filedShare - copies - twice);
-  const row = (label, value, help) => [h("dt", { title: help || null }, label), h("dd", { class: "num" }, value)];
+  const row = (label, value, fate) => [h("dt", null, label), h("dd", { class: "num" }, value, h("span", { class: "disk-fate" }, ` · ${fate}`))];
   list.append(
-    ...row(t("disk.in_use", { n: d.tiles ?? 0 }), fmtFreeBytes(inUse), t("disk.in_use_help")),
-    ...(offered ? row(t("disk.filed", { n: d.filed_tiles }), fmtFreeBytes(filedCacheBytes(d)), t("disk.filed_help")) : []),
-    ...(copies > 0 ? row(t("disk.apart", { n: d.apart_tiles ?? 0 }), fmtFreeBytes(copies), t("disk.apart_help")) : []),
-    ...(twice > 0 ? row(t("disk.twice"), fmtFreeBytes(twice), t("disk.twice_help")) : []),
-    ...row(t("disk.unused"), fmtFreeBytes(d.unused_bytes), t("disk.unused_help")),
-    ...row(t("disk.images"), fmtFreeBytes(d.images_bytes), t("disk.images_pieces_help")),
-    ...row(t("disk.mapcache"), fmtFreeBytes(d.mapcache_bytes)),
-    ...row(t("disk.relief"), fmtFreeBytes(d.relief_bytes), t("disk.relief_help")),
+    ...row(tCount("disk.in_use", Number(d.tiles) || 0), fmtFreeBytes(inUse), t("disk.kept")),
+    ...row(t("disk.unused"), fmtFreeBytes(d.unused_bytes), t("disk.always")),
   );
-  // what a file manager shows more for the store folder, said where the figures are
+  // what a file manager shows more for the folder, folded under its question: it matters only to
+  // whoever compares (the owner, 2026-10-24)
   const shared = Number(d.shared_bytes) || 0;
+  const manager = fileManager(state.status?.platform);
   $("disk-shared").hidden = shared <= 0;
-  setText($("disk-shared"), shared > 0 ? t("disk.shared_note", { size: fmtBytes(shared) }) : "");
+  setText($("disk-shared-why"), t("disk.shared_why", manager));
+  setText($("disk-shared-text"), shared > 0 ? t("disk.shared_note", { size: fmtBytes(shared), ...manager }) : "");
   const reveal = $("disk-reveal");
-  const data = state.status?.data_dir;
-  reveal.hidden = !dataFolderShown(state.status);
+  reveal.hidden = !where;
   const action = revealLabel(state.status?.platform);
   setText(reveal, data?.chosen ? t("disk.reveal_data", { action }) : t("disk.reveal", { action }));
-  $("disk-filed-choice").hidden = !offered;
-  // unticked as it hides: ticked once, it came back ticked with the next tile filed (a review)
-  if (!offered) $("disk-filed").checked = false;
+  setText($("disk-images-size"), fmtFreeBytes((Number(d.images_bytes) || 0) + (Number(d.mapcache_bytes) || 0)));
+  setText($("disk-relief-size"), fmtFreeBytes(d.relief_bytes));
   $("disk-apart-choice").hidden = copies <= 0;
+  // unticked as it hides: ticked once, it came back ticked with the next tile (a review)
   if (copies <= 0) $("disk-apart").checked = false;
+  setText($("disk-apart-text"), tCount("disk.also_apart", Number(d.apart_tiles) || 0));
+  setText($("disk-apart-size"), fmtFreeBytes(copies));
   // a compacted cache shows its box ticked, for good: there is no going back but emptying it
   const compact = compactOffered(d);
   $("disk-compact-choice").hidden = !compact && !d.compacted;
   $("disk-compact").disabled = !compact;
   if (d.compacted) $("disk-compact").checked = true;
   else if (!compact) $("disk-compact").checked = false;
+  $("disk-compact-help").hidden = Boolean(d.compacted);
+  setText($("disk-compact-size"), twice > 0 ? fmtFreeBytes(twice) : "");
   setText($("disk-compact-note"), d.compacted ? t("disk.compacted_note") : t("disk.compact_warn"));
-  const plan = freeSpacePlan(d, $("disk-images").checked, $("disk-relief").checked, offered && $("disk-filed").checked, copies > 0 && $("disk-apart").checked, compact && $("disk-compact").checked);
+  const apart = copies > 0 && $("disk-apart").checked;
+  $("disk-filed-choice").hidden = !offered;
+  if (!offered) $("disk-filed").checked = false;
+  setText($("disk-filed-text"), tCount("disk.also_filed", Number(d.filed_tiles) || 0));
+  setText($("disk-filed-size"), fmtFreeBytes(freeSpacePlan(d, false, false, true, apart).filed));
+  const plan = freeSpacePlan(d, $("disk-images").checked, $("disk-relief").checked, offered && $("disk-filed").checked, apart, compact && $("disk-compact").checked);
+  setText(button, plan.total > 0 ? t("disk.free_size", { size: fmtFreeBytes(plan.total) }) : t("disk.free"));
   // a build this page started or follows is known before the next measure says so: the note
   // said "Nothing to free" from the last one right after a build started (2026-10-23)
   const building = Boolean(d.building) || activeJobs().length > 0;
@@ -5351,20 +5380,26 @@ function renderDisk() {
   setText(note, said);
 }
 
-/** The question before freeing space, in the page's modal <dialog>; resolves true for "Free". */
-function confirmFreeSpace(plan) {
+/** The question before deleting, in the page's modal <dialog>; resolves true for "Delete": what
+ * goes, in the panel's words and order, with its size. With `compact`, what deleting the data kept
+ * for older versions costs is said apart, in the warning's colour: within a sentence it read as a
+ * detail (the owner, 2026-10-24). */
+function confirmFreeSpace(plan, compact = false, disk = null) {
   const dialog = $("disk-confirm");
   if (dialog.open) return Promise.resolve(false);
   $("disk-confirm-title").textContent = t("disk.confirm_title", { size: fmtFreeBytes(plan.total) });
   const lines = [];
-  if (plan.unused > 0) lines.push(t("disk.confirm_unused", { size: fmtFreeBytes(plan.unused) }));
-  if (plan.apart > 0) lines.push(t("disk.confirm_apart", { size: fmtFreeBytes(plan.apart) }));
-  if (plan.twice > 0) lines.push(t("disk.confirm_twice", { size: fmtFreeBytes(plan.twice) }));
-  if (plan.filed > 0) lines.push(t("disk.confirm_filed", { size: fmtFreeBytes(plan.filed) }));
-  if (plan.pictures > 0) lines.push(t("disk.confirm_images", { size: fmtFreeBytes(plan.pictures) }));
-  if (plan.heights > 0) lines.push(t("disk.confirm_relief", { size: fmtFreeBytes(plan.heights) }));
-  lines.push(t("disk.confirm_kept"));
-  clear($("disk-confirm-text")).append(...lines.map((line) => h("p", null, line)));
+  const line = (what, size) => lines.push(t("disk.confirm_line", { what, size: fmtFreeBytes(size) }));
+  if (plan.unused > 0) line(t("disk.unused"), plan.unused);
+  if (plan.pictures > 0) line(t("disk.confirm_images"), plan.pictures);
+  if (plan.heights > 0) line(t("disk.confirm_relief"), plan.heights);
+  if (plan.apart > 0) line(tCount("disk.confirm_apart", Number(disk?.apart_tiles) || 0), plan.apart);
+  if (plan.twice > 0) line(t("disk.confirm_twice"), plan.twice);
+  if (plan.filed > 0) line(tCount("disk.confirm_filed", Number(disk?.filed_tiles) || 0), plan.filed);
+  const text = clear($("disk-confirm-text"));
+  text.append(h("ul", { class: "disk-confirm-list" }, ...lines.map((l) => h("li", null, l))));
+  if (compact) text.append(h("p", { class: "is-warn" }, t("disk.confirm_compact_warn")));
+  text.append(h("p", null, t("disk.confirm_kept")));
   dialog.returnValue = "";
   dialog.onkeydown = (ev) => {
     if (ev.key !== "Escape") return;
@@ -5386,7 +5421,7 @@ async function freeSpace() {
   const apart = apartOffered(state.disk) && $("disk-apart").checked;
   const compact = compactOffered(state.disk) && $("disk-compact").checked;
   const plan = freeSpacePlan(state.disk, images, relief, filed, apart, compact);
-  if (plan.total <= 0 || !(await confirmFreeSpace(plan))) return;
+  if (plan.total <= 0 || !(await confirmFreeSpace(plan, compact, state.disk))) return;
   const errors = clear($("disk-errors"));
   state.diskBusy = true;
   renderDisk();

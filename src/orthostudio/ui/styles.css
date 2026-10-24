@@ -841,17 +841,27 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .overlay-back:disabled { cursor: default; opacity: 0.5; }
 
 /* The Library's disk space (app.js renderDisk). */
-.disk-space { margin-top: var(--section-gap); padding: var(--card-pad); border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg-2); max-width: 640px; }
-.disk-space .section-title { margin-top: 0; }
+.disk-space { padding: var(--card-pad); border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg-2); max-width: 640px; }
 .disk-list { display: grid; grid-template-columns: 1fr auto; gap: 4px 16px; margin: 0 0 var(--block-gap); }
 .disk-list dt { color: var(--fg-2); font-size: var(--fs-2); }
-.disk-list dt[title] { cursor: help; text-decoration: underline dotted; text-underline-offset: 3px; }
 .disk-list dd { margin: 0; font-variant-numeric: tabular-nums; }
+.disk-where { font-size: var(--fs-2); font-weight: 400; color: var(--fg-2); overflow-wrap: anywhere; }
+.disk-shared { margin: 0 0 var(--block-gap); }
+.disk-shared summary { cursor: pointer; color: var(--fg-2); font-size: var(--fs-2); }
+.disk-shared summary + .help { margin: 4px 0 0; }
+.disk-list dd .disk-fate { color: var(--fg-2); font-size: var(--fs-2); }
 .disk-check { display: flex; align-items: center; gap: 6px; }
+/* each choice a block of its own, its name and size first, what it changes under it, set in from
+   the box: in one grey, the sentences of the choices ran into each other (the owner, 2026-10-24) */
+.disk-choices > div { padding: 10px 0; border-top: 1px solid var(--line); }
+.disk-choices .help { margin-left: 22px; }
+.disk-check-text { flex: 1 1 auto; min-width: 0; color: var(--fg); font-weight: 600; }
+.disk-size { margin-left: auto; padding-left: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; font-weight: 600; }
 /* the box sits 3px above the bottom of its line */
 .disk-check + .help { margin-top: calc(var(--help-gap) - 3px); }
-/* what compacting the cache costs, under its box (app.js renderDisk) */
-.disk-check + .help.disk-warn { color: var(--warn); }
+.help.disk-tight { margin-bottom: 2px; }
+/* what deleting the data of older versions costs, under its box (app.js renderDisk) */
+.help.disk-warn { color: var(--warn); }
 /* The buttons keep their label on one line; the note goes under them when the card is narrow. */
 .disk-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px; margin-top: var(--block-gap); }
 .disk-actions .btn { white-space: nowrap; }
@@ -866,6 +876,10 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 }
 .dialog::backdrop { background: rgba(0, 0, 0, 0.4); }
 .dialog-text p { margin: 0 0 var(--gap); }
+/* what Free space deletes, one line each, and what cannot be undone on a line of its own
+   (app.js confirmFreeSpace) */
+.dialog-text .disk-confirm-list { margin: 0 0 var(--gap); padding-left: 1.2em; }
+.dialog-text p.is-warn { color: var(--warn); font-weight: 600; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: var(--block-gap); }
 .btn-danger-solid, .btn-danger-solid:hover { background: var(--fail); border-color: var(--fail); color: var(--bg-2); font-weight: 600; }
 .btn-danger-solid:hover { filter: brightness(1.08); }

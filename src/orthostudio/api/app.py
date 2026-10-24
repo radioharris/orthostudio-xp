@@ -2357,7 +2357,7 @@ def create_app(
                 )
             return await asyncio.to_thread(run)
 
-    # -- disk space (the Library's "Free space") ---------------------------------------------
+    # -- disk space (the page's Disk space, "Free space") -------------------------------------
 
     def other_builds() -> set[int]:
         """Processes other than this one building into the store now (a CLI build)."""
@@ -2404,7 +2404,7 @@ def create_app(
 
     @app.get("/api/disk")
     async def disk() -> Any:
-        """What the Library's "Free space" would give back, measured without deleting anything:
+        """What "Free space", in Disk space, would give back, measured without deleting anything:
         the tile data no tile on disk needs (``unused_bytes``, whatever its age), the downloaded
         image pieces, the map background, the relief downloaded and kept, and the cache of the
         ``filed_tiles`` filed outside the atelier: the tile data only they need (``filed_bytes``,

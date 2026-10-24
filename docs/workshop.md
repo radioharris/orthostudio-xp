@@ -51,8 +51,8 @@ If the tile's disk is not plugged in, the tile is not built, and Works says why.
 ## Getting room back on the workshop's disk
 
 The workshop keeps the cache of the tiles you filed elsewhere, so that building them again stays
-quick. If you need the space: Library, *Free space…*, and tick the line of the tiles filed outside
-the workshop. Their downloaded images and data are deleted. The tiles themselves are not touched:
+quick. If you need the space: *Disk space*, and tick *Delete what is used to rebuild the N tiles
+filed elsewhere*. Their downloaded images and data are deleted. The tiles themselves are not touched:
 they stay complete and in X-Plane. Building one of them again later downloads its images again, as
 the first time.
 
@@ -60,12 +60,11 @@ Two things stay. Their mesh, about 240 MB a tile, because a neighbouring tile bu
 to draw the shores along their common border. And for tiles filed on the workshop's own disk, the
 tile and the cache share the same files, so that part of the room does not come back.
 
-A tile on another disk holds its own copy of its images, and the cache keeps one too, so that
-building it again is quick. If you need that room without giving up the rest of the cache: tick
-*Also delete the cache's copy of the images of the tiles on another disk* in *Free space…*
-(*Disk space* shows it on the line *Copy of the images of N tile(s) on another disk*). The tiles
-keep their images and X-Plane sees no difference. Building one of them again prepares its images
-again from the downloaded images; its tracing, mesh and relief come from the cache as before. If
+A tile on another disk holds its own textures, and OrthoStudio XP keeps them a second time in the
+data folder, so that building it again is quick. If you need that room without giving up the rest:
+tick *Delete the textures kept here of the N tiles on another disk* in *Disk space*. The tiles
+keep their textures and X-Plane sees no difference. Building one of them again makes its textures
+again, identical, from the downloaded images; its tracing, mesh and relief are kept as before. If
 you delete the downloaded images too, at the same time or later, that build downloads its images
 again, and the provider may have changed them. The same holds for a tile you moved to another disk
 yourself, or whose `tiles` folder is a link to another disk or partition.

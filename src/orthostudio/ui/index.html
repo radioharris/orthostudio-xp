@@ -29,6 +29,7 @@
     <button type="button" class="nav-btn" data-screen="plan" data-i18n="nav.plan">Plan</button>
     <button type="button" class="nav-btn" data-screen="works" data-i18n="nav.works">Works</button>
     <button type="button" class="nav-btn" data-screen="library" data-i18n="nav.library">Library</button>
+    <button type="button" class="nav-btn" data-screen="disk" data-i18n="nav.disk">Disk space</button>
     <button type="button" class="nav-btn" data-screen="settings" data-i18n="nav.settings">Settings</button>
   </nav>
   <div class="topbar-tools">
@@ -397,34 +398,50 @@
         <tbody id="library-body"></tbody>
       </table>
     </div>
+  </section>
 
-    <section class="disk-space" id="disk-space" aria-labelledby="disk-title">
-      <h2 class="section-title" id="disk-title" data-i18n="disk.title">Disk space</h2>
+  <!-- ============================================================ Disk space -->
+  <!-- Its own tab since 2026-10-24: below the Library's table, a list of hundreds of tiles hid it. -->
+  <section id="screen-disk" class="screen" hidden aria-labelledby="disk-title">
+    <div class="screen-head">
+      <h1 id="disk-title"><span data-i18n="disk.title">Disk space</span> <span class="disk-where" id="disk-where"></span></h1>
+      <p class="lead" data-i18n="disk.where_note">What you delete here is in this folder. Your tiles are never deleted.</p>
+    </div>
+    <div class="disk-space" id="disk-space">
       <dl class="disk-list" id="disk-list"></dl>
-      <p class="help" id="disk-shared" hidden></p>
-      <div id="disk-filed-choice" hidden>
-        <label class="disk-check"><input type="checkbox" id="disk-filed"> <span data-i18n="disk.also_filed">Also delete the cache of the tiles filed outside the workshop</span></label>
-        <p class="help" data-i18n="disk.filed_check_help">The filed tiles are not touched: they stay whole and in X-Plane. Building them again downloads their images again.</p>
+      <!-- folded: it matters only to whoever compares with the file manager (the owner, 2026-10-24) -->
+      <details class="disk-shared" id="disk-shared" hidden><summary id="disk-shared-why"></summary><p class="help" id="disk-shared-text"></p></details>
+      <!-- what was downloaded first, then what was calculated: the later boxes speak of the images -->
+      <div class="disk-choices">
+        <div>
+          <label class="disk-check"><input type="checkbox" id="disk-images"> <span class="disk-check-text" data-i18n="disk.also_images">Delete the downloaded images</span> <span class="disk-size" id="disk-images-size"></span></label>
+          <p class="help" data-i18n="disk.images_help">The photos received from Bing or another provider, and the page's map background. Your tiles and X-Plane do not change. If you rebuild a tile, its photos will be downloaded again: it takes longer, and the provider may have changed them since.</p>
+        </div>
+        <div>
+          <label class="disk-check"><input type="checkbox" id="disk-relief"> <span class="disk-check-text" data-i18n="disk.also_relief">Delete the downloaded relief</span> <span class="disk-size" id="disk-relief-size"></span></label>
+          <p class="help" data-i18n="disk.relief_help">The altitudes received from Copernicus, the USGS or a lidar. Your tiles and X-Plane do not change. If you rebuild a tile, its relief will be downloaded again, which is much quicker than for the photos.</p>
+        </div>
+        <div id="disk-apart-choice" hidden>
+          <label class="disk-check"><input type="checkbox" id="disk-apart"> <span class="disk-check-text" id="disk-apart-text"></span> <span class="disk-size" id="disk-apart-size"></span></label>
+          <p class="help" data-i18n="disk.apart_check_help">These tiles keep their own textures: X-Plane sees no difference. If you rebuild one, its textures will be made again, identical, from the downloaded images, also kept in this folder: nothing is downloaded again, it only takes a little longer.</p>
+        </div>
+        <div id="disk-compact-choice" hidden>
+          <label class="disk-check"><input type="checkbox" id="disk-compact"> <span class="disk-check-text" data-i18n="disk.compact">Delete the data kept for older versions of OrthoStudio XP</span> <span class="disk-size" id="disk-compact-size"></span></label>
+          <p class="help disk-tight" id="disk-compact-help" data-i18n="disk.compact_help">Your tiles and X-Plane do not change.</p>
+          <p class="help disk-warn" id="disk-compact-note"></p>
+        </div>
+        <div id="disk-filed-choice" hidden>
+          <label class="disk-check"><input type="checkbox" id="disk-filed"> <span class="disk-check-text" id="disk-filed-text"></span> <span class="disk-size" id="disk-filed-size"></span></label>
+          <p class="help" data-i18n="disk.filed_check_help">They still work in X-Plane. If you rebuild one, its images will be downloaded again.</p>
+        </div>
       </div>
-      <div id="disk-apart-choice" hidden>
-        <label class="disk-check"><input type="checkbox" id="disk-apart"> <span data-i18n="disk.also_apart">Also delete the cache's copy of the images of the tiles on another disk</span></label>
-        <p class="help" data-i18n="disk.apart_check_help">These tiles keep their own images: X-Plane sees no difference. Building one of them again prepares its images again from the downloaded images; if you delete those too, now or later, they are downloaded again, and the provider may have changed them.</p>
-      </div>
-      <div id="disk-compact-choice" hidden>
-        <label class="disk-check"><input type="checkbox" id="disk-compact"> <span data-i18n="disk.compact">Compact the relief and the mesh</span></label>
-        <p class="help disk-warn" id="disk-compact-note">An older version of OrthoStudio XP will no longer be able to use this cache: going back to one means emptying its folder. Your tiles stay whole, but building them again downloads their images again.</p>
-      </div>
-      <label class="disk-check"><input type="checkbox" id="disk-images"> <span data-i18n="disk.also_images">Also delete the downloaded images</span></label>
-      <p class="help" data-i18n="disk.images_help">Tiles built later then download their images again.</p>
-      <label class="disk-check"><input type="checkbox" id="disk-relief"> <span data-i18n="disk.also_relief">Also delete the downloaded relief</span></label>
-      <p class="help" data-i18n="disk.relief_help">Tiles built later then download their elevation cells again, which is far quicker than their images.</p>
       <div class="disk-actions">
         <button type="button" class="btn" id="disk-free" data-i18n="disk.free">Free space…</button>
         <button type="button" class="btn reveal-btn" id="disk-reveal" hidden>Show OrthoStudio XP's folder</button>
         <span class="help" id="disk-note" aria-live="polite"></span>
       </div>
       <div id="disk-errors" class="error-list" aria-live="polite"></div>
-    </section>
+    </div>
   </section>
 
   <!-- ============================================================ Settings -->
@@ -549,7 +566,7 @@
     <div class="dialog-text" id="disk-confirm-text"></div>
     <div class="dialog-actions">
       <button type="submit" class="btn" value="keep" autofocus data-i18n="disk.cancel">Cancel</button>
-      <button type="submit" class="btn btn-danger-solid" value="free" data-i18n="disk.confirm">Free space</button>
+      <button type="submit" class="btn btn-danger-solid" value="free" data-i18n="disk.confirm">Delete</button>
     </div>
   </form>
 </dialog>
