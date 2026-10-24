@@ -446,7 +446,10 @@ def write_elevation_and_airports(out_dir: Path, tile: TileRef, build: LayerBuild
     # 12: every region seed lies 10 cm inside its polygon, or the polygon gets none
     # (``vectors-assembly.md`` 4.1): a Haneda RUNWAY seed 1 mm from its edge made all +35+139
     # runway (2026-10-16). 11 is taken by a first fix of the same tile, never released.
-    version=12,
+    # 13: the road and airport bands get 8 segments a quadrant at their rounded ends, as
+    # Ortho4XP 1.30's do (``vectors-water-roads.md`` 7.9, KSME, 2026-10-24); 12's angular bands bent
+    # the roads laid on them.
+    version=13,
     params=VectorsParams,
     inputs=("osm", "dem", "patches", "airports", "global_scenery"),
     ram_mb=1200,
@@ -458,4 +461,4 @@ def osxp_vectors(ctx: RunContext) -> None:
 
 
 VECTORS: Rule = osxp_vectors
-"""``orthostudio.vectors@10``."""
+"""``orthostudio.vectors@13``."""

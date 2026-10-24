@@ -135,17 +135,18 @@ def improved_buffer(
 ) -> BaseGeometry:
     """Buffer in metres, grown then shrunk so small holes stay closed (``:1021-1069``).
 
-    ``join_style=2`` (mitre), ``mitre_limit=1.5`` and ``quad_segs=1`` (Ortho4XP spells it
-    ``resolution``, the name shapely 2.1 deprecates) are Ortho4XP's; they are
-    what gives the buffered roads their angular outline, so they are not "improvements" to
-    revisit -- they are the shape of the reference mesh.
+    ``join_style=2`` (mitre) and ``mitre_limit=1.5`` are Ortho4XP's. Ortho4XP also asks for
+    ``resolution=1``, which shapely 1.8, the library Ortho4XP 1.30 runs on, ignores with a mitre
+    join: it draws 8 segments a quadrant, the rounded ends and corners of Ortho4XP 1.30's bands.
+    shapely 2 honours the 1 and gives angular bands that bend the roads laid on them (KSME,
+    2026-10-24), so ``quad_segs=8`` here: the bands of Ortho4XP 1.30, point for point.
     """
     bw = buffer_width * M_TO_LAT
     sw = separation_width * M_TO_LAT
     sl = simplify_length * M_TO_LAT
     scaled = affinity.affine_transform(geom, [scalx, 0, 0, 1, 0, 0])
-    out = scaled.buffer(bw + sw, join_style=2, mitre_limit=1.5, quad_segs=1)
-    out = out.buffer(-1 * sw, join_style=2, mitre_limit=1.5, quad_segs=1)
+    out = scaled.buffer(bw + sw, join_style=2, mitre_limit=1.5, quad_segs=8)
+    out = out.buffer(-1 * sw, join_style=2, mitre_limit=1.5, quad_segs=8)
     if sl:
         out = out.simplify(sl)
     return affinity.affine_transform(out, [1 / scalx, 0, 0, 1, 0, 0])
