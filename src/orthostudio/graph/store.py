@@ -62,7 +62,6 @@ __all__ = [
     "InputRef",
     "Provenance",
     "Store",
-    "close_for_older",
     "flush_disk",
     "send_to_disk",
 ]
@@ -76,9 +75,6 @@ the middle of a build. Every version since 0.1.22 refuses an index whose number 
 it now turns the store away at its opening, with nothing changed (2026-10-24). An index of 1 is
 opened and becomes 2."""
 INDEX_FILENAME = "index.sqlite"
-_CLOSED_FOR_OLDER: set[Path] = set()
-"""The stores this process prepared for an older version (``orthostudio.older``): opened again
-here, their index of 1 would become 2 at once, which that version refuses."""
 TMP_MARKER = ".tmp-"
 TMP_HARD_MAX_AGE_S = 86400.0
 """Age after which a ``*.tmp-*`` directory is swept even if its owner pid still exists."""
@@ -387,8 +383,6 @@ class Store:
         next build: finding them lists every folder of the store, tens of thousands of entries a
         hard disk read at each start of the app for minutes (a user's, 2026-09-28)."""
         self.root = Path(root).expanduser().resolve()
-        if self.root in _CLOSED_FOR_OLDER:
-            raise StoreError(f"the cache at {self.root} was prepared for an older version")
         self.root.mkdir(parents=True, exist_ok=True)
         self.fsync = fsync
         self._lock = threading.RLock()
@@ -1103,65 +1097,6 @@ class Store:
         """The files trimmed from the artefact ``key`` (:meth:`trim`), with their sizes."""
         return {path: size for path, (size, _digest) in self._trimmed_rows(key).items()}
 
-    def complete(self, key: str, name: str) -> bool:
-        """Take into the folder artefact ``key`` its file ``name``, written beside the files it
-        was built with and holding what another of them holds (the relief and the mesh in the form
-        an older version reads, ``orthostudio.older``): its digest and size become those of its
-        files now, as if it had been built with it. What was made from it was keyed with its
-        former digest, and is made again once when asked. Refused (``False``) when the artefact
-        has trimmed files, or when its other files are not those it was built with; ``True`` too
-        when the file is already counted (an earlier run stopped after this)."""
-        info = self.info(key)
-        if info is None or info.kind != "dir" or self._trimmed_rows(key):
-            return False
-        try:
-            files = dir_files(info.path)
-        except OSError:
-            return False
-        if name not in files:
-            return False
-        if digest_of_files(files) == info.digest:
-            return True
-        if digest_of_files({k: v for k, v in files.items() if k != name}) != info.digest:
-            return False
-        with self._durable_tx():
-            self._db.execute(
-                "UPDATE artifacts SET digest = ?, size = ? WHERE key = ?",
-                (digest_of_files(files), sum(size for size, _ in files.values()), key),
-            )
-        return True
-
-    def trimmed_proven(self, key: str) -> bool:
-        """Whether every file trimmed from ``key`` has its digest recorded, which :meth:`untrim`
-        needs to take it back (the table's first form kept none)."""
-        return all(digest is not None for _size, digest in self._trimmed_rows(key).values())
-
-    def untrim(self, key: str, name: str) -> bool:
-        """Take back into the artefact ``key`` its file ``name`` that :meth:`trim` removed, once it
-        is on the disk again as it was: its size and its digest those recorded when it went. The
-        row goes and the artefact's size comes back. A file recorded without its digest (the
-        table's first form), absent, or not the same, is not taken back (``False``)."""
-        info = self.info(key)
-        if info is None:
-            return False
-        row = self._trimmed_rows(key).get(name)
-        if row is None or row[1] is None:
-            return False
-        size, digest = row
-        path = info.path / name
-        try:
-            if not path.is_file() or path.stat().st_size != size or digest_file(path) != digest:
-                return False
-        except OSError:
-            return False
-        with self._durable_tx():
-            gone = self._db.execute(
-                "DELETE FROM trimmed WHERE key = ? AND path = ?", (key, name)
-            ).rowcount
-            if gone:
-                self._db.execute("UPDATE artifacts SET size = size + ? WHERE key = ?", (size, key))
-        return True
-
     def _trimmed_rows(self, key: str) -> dict[str, tuple[int, str | None]]:
         with self._lock:
             rows = self._db.execute(
@@ -1451,32 +1386,6 @@ class _Made:
         if self.version > max_version:
             return False
         return not inputs or all(self.inputs.get(n) == d for n, d in inputs.items())
-
-
-def close_for_older(root: str | Path, version: int) -> None:
-    """Give the index at ``root`` the format number ``version`` of an older OrthoStudio XP, which
-    opens it then as its own, and refuse to open it again in this process (``_CLOSED_FOR_OLDER``):
-    an opening here would raise the number back at once. Every :class:`Store` of it is closed
-    first; the number is written straight into the index, on the disk itself."""
-    root = Path(root).expanduser().resolve()
-    # refused before the number is written, so that no opening here slips in between; given back
-    # when it cannot be written, the store staying this version's (a lock held long elsewhere)
-    _CLOSED_FOR_OLDER.add(root)
-    try:
-        db = sqlite3.connect(root / INDEX_FILENAME, timeout=30.0, isolation_level=None)
-        try:
-            db.execute("PRAGMA busy_timeout = 300000")
-            db.execute("PRAGMA synchronous = FULL")
-            db.execute("PRAGMA fullfsync = ON")
-            db.execute("BEGIN IMMEDIATE")
-            db.execute("UPDATE meta SET v = ? WHERE k = 'schema_version'", (str(version),))
-            db.execute("COMMIT")
-            db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-        finally:
-            db.close()
-    except BaseException:
-        _CLOSED_FOR_OLDER.discard(root)
-        raise
 
 
 def _opt_str(v: object) -> str | None:

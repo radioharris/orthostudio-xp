@@ -193,16 +193,6 @@ to `serve.log`, in
 `~/.orthostudio/log` (Linux, beside the rest of what it keeps). Your tiles and settings stay in `~/.orthostudio` (the
 tiles in the data folder chosen in Settings, if you chose one) when the app is removed.
 
-To go back to a version before this one, first click *Prepare for an older version…* under *Disk
-space* in the Library: the cache keeps the relief and the mesh once now, and an older version reads
-them in the form it wrote, so this writes that form back (the place it takes comes back too; on a
-disk without that room it offers to remove them instead, the older version building them again)
-then asks you to quit OrthoStudio XP. Then install the older version at once, without opening this
-one again first, which would undo it; your tiles are not touched. An older version refuses a cache that was
-not prepared, and changes nothing: come back to this version, click, then go back again, or empty
-the cache folder (`store` in the data folder) to start afresh, which downloads the images of the
-tiles built later again.
-
 OrthoStudio XP runs entirely on your computer: its screens are a page it serves itself, at
 127.0.0.1, shown in a window of its own. Nothing goes through a server of ours, and its downloads
 from the imagery, map and elevation services go over HTTPS, except a source you add yourself with

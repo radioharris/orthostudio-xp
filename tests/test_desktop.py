@@ -4,7 +4,6 @@
 
 from __future__ import annotations
 
-import contextlib
 import json
 import os
 import socket
@@ -445,7 +444,7 @@ def test_the_close_button_quits_without_a_word_when_nothing_is_building(
     from orthostudio import window
 
     monkeypatch.setattr(window, "puts_away_on_close", lambda: False)
-    monkeypatch.setattr(desktop, "what_runs", lambda *a, **k: None)
+    monkeypatch.setattr(desktop, "a_build_runs", lambda *a, **k: False)
     monkeypatch.setattr(window, "ask", lambda *a: pytest.fail("asked a question nobody needed"))
     stopped: list[bool] = []
     monkeypatch.setattr(
@@ -460,7 +459,7 @@ def test_the_close_button_asks_when_a_build_runs(monkeypatch: pytest.MonkeyPatch
     from orthostudio import window
 
     monkeypatch.setattr(window, "puts_away_on_close", lambda: False)
-    monkeypatch.setattr(desktop, "what_runs", lambda *a, **k: "build")
+    monkeypatch.setattr(desktop, "a_build_runs", lambda *a, **k: True)
     asked: list[tuple[str, str]] = []
     closed: list[bool] = []
     monkeypatch.setattr(window, "ask", lambda t, m: (asked.append((t, m)), True)[1])
@@ -494,7 +493,7 @@ def test_the_close_button_asks_again_on_a_later_close(monkeypatch: pytest.Monkey
     from orthostudio import window
 
     monkeypatch.setattr(window, "puts_away_on_close", lambda: False)
-    monkeypatch.setattr(desktop, "what_runs", lambda *a, **k: "build")
+    monkeypatch.setattr(desktop, "a_build_runs", lambda *a, **k: True)
     monkeypatch.setattr(window, "ask", lambda t, m: False)  # the user says no
     monkeypatch.setattr(window, "close_now", lambda: pytest.fail("closed on a no"))
     monkeypatch.setattr(
@@ -503,52 +502,6 @@ def test_the_close_button_asks_again_on_a_later_close(monkeypatch: pytest.Monkey
     answer = desktop.on_close()
     assert answer is not None
     assert answer() is False and answer() is False  # a no never lets it through
-
-
-def test_the_close_button_asks_while_the_cache_is_prepared(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Preparing the cache for an older version went on unseen after the window was gone (a
-    review, 2026-10-24): closing asks as for a build, in its own words, then stops it."""
-    from orthostudio import window
-
-    monkeypatch.setattr(window, "puts_away_on_close", lambda: False)
-    monkeypatch.setattr(desktop, "what_runs", lambda *a, **k: "older")
-    asked: list[str] = []
-    monkeypatch.setattr(window, "ask", lambda t, m: (asked.append(m), True)[1])
-    monkeypatch.setattr(window, "close_now", lambda: None)
-    forced: list[bool] = []
-    monkeypatch.setattr(
-        desktop, "stop_the_engine", lambda *a, **k: forced.append(k.get("force", False))
-    )
-    answer = desktop.on_close()
-    assert answer is not None and answer() is False
-    for _ in range(50):
-        if forced:
-            break
-        time.sleep(0.02)
-    assert asked == [desktop.PREPARING_ON_QUIT] and forced == [True]
-    assert "older version" in asked[0] and "started again" in asked[0]
-
-
-def test_what_runs_reads_the_engine(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A build, the cache made ready for an older version, or nothing, from ``GET /api/engine``;
-    an engine that does not answer has nothing to ask about."""
-    import io
-
-    def answering(doc: dict[str, Any]) -> Any:
-        return lambda *a, **k: contextlib.closing(io.BytesIO(json.dumps(doc).encode("utf-8")))
-
-    for doc, said in (
-        ({"active_job": "j1", "preparing_older": False}, "build"),
-        ({"active_job": None, "preparing_older": True}, "older"),
-        ({"active_job": None}, None),
-    ):
-        monkeypatch.setattr(desktop.urllib.request, "urlopen", answering(doc))
-        assert desktop.what_runs(1) == said
-        assert desktop.a_build_runs(1) is (said == "build")
-    monkeypatch.setattr(
-        desktop.urllib.request, "urlopen", lambda *a, **k: (_ for _ in ()).throw(OSError())
-    )
-    assert desktop.what_runs(1) is None
 
 
 def test_a_log_that_has_grown_too_big_is_set_aside_and_one_is_kept(tmp_path: Path) -> None:

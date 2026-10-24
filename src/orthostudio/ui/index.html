@@ -420,10 +420,6 @@
         <span class="help" id="disk-note" aria-live="polite"></span>
       </div>
       <div id="disk-errors" class="error-list" aria-live="polite"></div>
-      <div class="disk-older">
-        <button type="button" class="btn" id="disk-older" data-i18n="older.button">Prepare for an older version…</button>
-        <p class="help" id="disk-older-note" aria-live="polite" data-i18n="older.help">Before installing an older version of OrthoStudio XP: puts the cache back in the form that version reads. Your tiles are not touched.</p>
-      </div>
     </section>
   </section>
 
@@ -550,30 +546,6 @@
     <div class="dialog-actions">
       <button type="submit" class="btn" value="keep" autofocus data-i18n="disk.cancel">Cancel</button>
       <button type="submit" class="btn btn-danger-solid" value="free" data-i18n="disk.confirm">Free space</button>
-    </div>
-  </form>
-</dialog>
-
-<!-- The cache made ready for an older version (app.js confirmOlder), like Free space's. -->
-<dialog id="older-confirm" class="dialog" role="alertdialog" aria-labelledby="older-confirm-title" aria-describedby="older-confirm-text">
-  <form method="dialog">
-    <h2 class="dialog-title" id="older-confirm-title" data-i18n="older.confirm_title">Prepare the cache for an older version?</h2>
-    <div class="dialog-text" id="older-confirm-text"></div>
-    <div class="dialog-actions">
-      <button type="submit" class="btn" value="keep" autofocus data-i18n="disk.cancel">Cancel</button>
-      <button type="submit" class="btn btn-danger-solid" value="older" id="older-confirm-go" data-i18n="older.confirm">Prepare</button>
-      <button type="submit" class="btn btn-danger-solid" value="remove" id="older-confirm-remove" data-i18n="older.confirm_remove_go" hidden>Remove them</button>
-    </div>
-  </form>
-</dialog>
-
-<!-- The cache is ready for an older version (app.js olderDone): what to do now, then Quit. -->
-<dialog id="older-done" class="dialog" role="alertdialog" aria-labelledby="older-done-title" aria-describedby="older-done-text">
-  <form method="dialog">
-    <h2 class="dialog-title" id="older-done-title" data-i18n="older.done_title">The cache is ready for an older version</h2>
-    <div class="dialog-text"><p id="older-done-text" data-i18n="older.done_text">Quit OrthoStudio XP, then install the older version at once. Opening this version again first puts the cache back in its new form, which the older version refuses: click Prepare for an older version… again in that case. Your tiles are not touched.</p></div>
-    <div class="dialog-actions">
-      <button type="submit" class="btn btn-danger-solid" value="quit" autofocus data-i18n="quit.confirm">Quit OrthoStudio XP</button>
     </div>
   </form>
 </dialog>

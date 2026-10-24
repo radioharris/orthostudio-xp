@@ -48,7 +48,6 @@ from orthostudio.api.models import (
     ImportRequest,
     InstallRequest,
     JobRequest,
-    OlderRequest,
     OverlaysRequest,
     PlanRequest,
     QuitRequest,
@@ -74,7 +73,7 @@ from orthostudio.clean import clean, disk_bytes, pack_disk_bytes
 from orthostudio.codemark import code_mark
 from orthostudio.dem.sources import default_elevation_dir
 from orthostudio.doctor import run_doctor
-from orthostudio.errors import Action, OsxpError, Severity, wrap
+from orthostudio.errors import Action, OsxpError, Severity
 from orthostudio.fsutil import choose_folder, platform_name, reveal_in_file_manager
 from orthostudio.graph import GraphError, Store
 from orthostudio.imagery.grid import wgs84_to_tile
@@ -103,7 +102,6 @@ from orthostudio.install import (
 from orthostudio.install.library import PackFacts, ortho4xp_searched, own_searched
 from orthostudio.model import TileRef, pack_dir_name
 from orthostudio.net.fetch import FetchRequest
-from orthostudio.older import OlderStoppedError, plan_older, prepare_older
 from orthostudio.pipeline.build import BuildEnv, patched_tiles
 from orthostudio.pipeline.filing import (
     ROOM_MARGIN,
@@ -154,7 +152,7 @@ __all__ = [
     "sse_message",
 ]
 
-API_LEVEL = 37
+API_LEVEL = 36
 """What this engine's API offers, for the page: 1 = P2b, 2 = zones (``/api/zones``) and the base map
 (``/api/map``), 3 = deleting a tile (``POST /api/library/{name}/delete``) and the sizes of the
 library, 4 = the disk space of the Library (``GET /api/disk``, ``POST /api/clean``), 5 = clearing
@@ -198,9 +196,7 @@ and ``held_freed_bytes`` in ``POST /api/clean`` (a development build's, never re
 (the relief and mesh kept in a second form, which Free space trims whatever the choices), 36 = the
 choice ``apart`` of ``POST /api/clean`` and its ``apart_freed_bytes``, with ``apart_tiles``,
 ``apart_bytes`` and ``filed_apart_bytes`` in ``GET /api/disk`` (the store's
-copy of the images of the tiles on another disk or partition, deleted only on request), 37 =
-``GET /api/older`` and ``POST /api/older`` (the cache made ready for an older version, then the
-engine stops: ``orthostudio.older``). A page
+copy of the images of the tiles on another disk or partition, deleted only on request). A page
 served by an engine older than itself (a ``osxp serve`` started before an update: the page's files
 are read from disk at each load, the routes were imported at start) asks the user to restart
 OrthoStudio XP instead of showing "Not Found"."""
@@ -968,42 +964,6 @@ def create_app(
             status=409,
         )
 
-    # The Library's "Prepare for an older version…" (orthostudio.older): one run at a time, which
-    # stops the engine once the cache is ready, so that nothing here opens it again meanwhile
-    older_state: dict[str, Any] = {"state": "idle"}
-    older_stop = threading.Event()
-    older_tasks: set[asyncio.Task[None]] = set()
-
-    older_runs = [0]  # runs started: a request that waited for the lock sees another ran
-
-    def older_running() -> bool:
-        return older_state["state"] == "running"
-
-    def older_blocks() -> bool:
-        """While the cache is prepared, and once it is ready, which this engine opens no more."""
-        return older_state["state"] in ("running", "done")
-
-    def busy_older() -> JSONResponse:
-        """The refusal while the cache is prepared or ready, said as such: the page tells it by
-        its ``context.older`` (``running`` or ``done``)."""
-        if older_state["state"] == "done":
-            return _plain_error(
-                "SYS_BUSY",
-                "The cache is ready for an older version, and this OrthoStudio XP opens it no "
-                "more.",
-                "Quit OrthoStudio XP and install the older version.",
-                status=409,
-                context={"older": "done"},
-            )
-        return _plain_error(
-            "SYS_BUSY",
-            "The cache is being prepared for an older version.",
-            "Wait for it to end. To keep this version instead, quit OrthoStudio XP: the "
-            "preparation stops and the cache stays this version's.",
-            status=409,
-            context={"older": "running"},
-        )
-
     def busy_deleting() -> JSONResponse:
         return _plain_error(
             "SYS_BUSY",
@@ -1060,8 +1020,6 @@ def create_app(
         "page_came": False,
     }
     app.state.orthostudio = state
-    # osxp serve's watch for the last page keeps the engine up while the cache is prepared
-    state["preparing_older"] = lambda: older_state["state"] == "running"
 
     # -- errors ------------------------------------------------------------------------------
 
@@ -1247,7 +1205,6 @@ def create_app(
             "library_count": count,
             "language": _language(request),
             "active_job": None if active is None else active.id,
-            "preparing_older": older_running(),
             "platform": platform_name(),
             "can_quit": shutdown is not None,
             "engine": this_engine,
@@ -1275,7 +1232,6 @@ def create_app(
             "api_level": API_LEVEL,
             "can_quit": shutdown is not None,
             "active_job": None if active is None else active.id,
-            "preparing_older": older_running(),
             "engine": this_engine,
         }
 
@@ -1303,21 +1259,6 @@ def create_app(
                 "Stop it where it was started.",
                 status=409,
             )
-        if older_running():
-            if not req.force:
-                return _plain_error(
-                    "SYS_BUSY",
-                    "The cache is being prepared for an older version: quitting OrthoStudio XP "
-                    "stops that, and the cache stays this version's.",
-                    "Wait for it to end, or confirm that it may stop.",
-                    status=409,
-                )
-            # stopped between two files, the cache left sound; the engine stops once it has
-            older_stop.set()
-            loop = asyncio.get_running_loop()
-            for task in list(older_tasks):
-                task.add_done_callback(lambda _done: loop.call_later(0.3, shutdown))
-            return {"stopping": True, "cancelled": None, "queued_cancelled": [], "older": True}
         active = manager.active()
         if active is not None and not req.force:
             return _plain_error(
@@ -1634,8 +1575,6 @@ def create_app(
             s = s.model_copy(update={"essential": essential})
         data_dir = (s.essential.data_dir or "").strip() or None
         if data_dir != previous.data_dir:
-            if older_blocks():
-                return busy_older()
             if manager.active() is not None:
                 return _plain_error(
                     "SYS_BUSY",
@@ -1791,8 +1730,6 @@ def create_app(
     @app.post("/api/jobs", status_code=201)
     async def post_job(req: JobRequest) -> Any:
         specs = await asyncio.to_thread(_specs, req, install=req.install)
-        if older_blocks():
-            return busy_older()
         if deleting.locked():
             return busy_deleting()
         if filing_lock.locked():
@@ -1875,8 +1812,6 @@ def create_app(
             xplane_dir=(job.request or {}).get("xplane_dir"),
             global_scenery=any(spec.overlay or spec.xp12_rasters for spec in job.specs),
         )
-        if older_blocks():
-            return busy_older()
         if deleting.locked():
             return busy_deleting()
         if filing_lock.locked():
@@ -2316,8 +2251,6 @@ def create_app(
         lasts as long as the copy: ``GET /api/library/filing`` says how far it is, ``POST
         /api/library/filing/stop`` stops it before its next file. One at a time, and not while a
         build runs or waits, nor a tile is deleted."""
-        if older_blocks():
-            return busy_older()
         if filing_lock.locked():
             return busy_filing()
         # held before anything is read: a build or a delete asked meanwhile is refused
@@ -2410,8 +2343,6 @@ def create_app(
                 library_path=default_library_path(),
             )
 
-        if older_blocks():
-            return busy_older()
         async with deleting:  # a second delete waits for this one
             if manager.active() is not None:
                 # the store clean that follows could take an artefact the build is about to reuse
@@ -2513,8 +2444,6 @@ def create_app(
         runs, here or in another process, since nothing protects what a build is about to use
         otherwise, and while a tile is filed elsewhere, which moves a tile out of the atelier."""
         req = req or CleanRequest()
-        if older_blocks():
-            return busy_older()
         async with deleting:  # no build starts meanwhile, and deletes wait
             # asked once this lock is held: a filing that starts now finds it held and refuses
             if filing_lock.locked():
@@ -2542,129 +2471,6 @@ def create_app(
                 "twice_freed_bytes": report.twice_bytes,
                 "removed": report.removed,
             }
-
-    @app.get("/api/older")
-    async def older() -> Any:
-        """What "Prepare for an older version…" would do, measured without writing anything: the
-        second forms of the relief and the mesh to write again (``restore``) or to add
-        (``complete``), the artefacts to remove, the bytes to write, what the disk must have free
-        (``need_bytes``) and has; with the state of the last run (``idle``, ``failed`` and its
-        ``error``, ``stopped``). While it runs or once it ran: how far it has gone (``running``,
-        ``done``)."""
-        if older_state["state"] in ("running", "done"):
-            return dict(older_state)
-        root = default_store_root()
-
-        def measure() -> dict[str, Any]:
-            if not (root / "index.sqlite").is_file():
-                empty = {"restore": 0, "complete": 0, "remove": 0, "write_bytes": 0}
-                return {**empty, "need_bytes": 0, "free_bytes": 0, "room": True}
-            with Store(root, sweep=False) as st:
-                plan = plan_older(st)
-            return {
-                "restore": len(plan.restore),
-                "complete": len(plan.complete),
-                "remove": len(plan.remove),
-                "write_bytes": plan.write_bytes,
-                "need_bytes": plan.need_bytes,
-                "free_bytes": plan.free_bytes,
-                "room": plan.room,
-            }
-
-        measured = await asyncio.to_thread(measure)
-        return {**older_state, "can_quit": shutdown is not None, **measured}
-
-    @app.post("/api/older")
-    async def start_older(req: OlderRequest | None = None) -> Any:
-        """Make the cache ready for an older version, then close it to this engine, which opens it
-        no more (its format would go back to 2) and refuses what would until the user quits; with
-        ``remove``, the relief and mesh that version cannot read are removed rather than written,
-        for a disk without the room. Refused while a build runs or a tile is filed, by an engine
-        the page cannot stop, and when another page started a run while this request waited;
-        started again after a run that failed or stopped. ``GET /api/older`` says how far it
-        is."""
-        req = req or OlderRequest()
-        if shutdown is None:
-            return _plain_error(
-                "SYS_NOT_STOPPABLE",
-                "This OrthoStudio XP was not started by osxp serve: it cannot stop once the cache "
-                "is ready.",
-                "Start OrthoStudio XP from its application, then try again.",
-                status=409,
-            )
-        if older_state["state"] in ("running", "done"):
-            return dict(older_state)
-        if filing_lock.locked():
-            return busy_filing()
-        runs = older_runs[0]
-        await deleting.acquire()  # no build starts meanwhile, nor after: the cache is closed
-        try:
-            if older_runs[0] != runs or older_state["state"] in ("running", "done"):
-                # another page started a run while this one waited: its question is stale
-                deleting.release()
-                return _plain_error(
-                    "SYS_BUSY",
-                    "Another page prepared the cache for an older version meanwhile.",
-                    "Look at Disk space again, then ask again if you still want to.",
-                    status=409,
-                    context={"older": older_state["state"]},
-                )
-            if filing_lock.locked():
-                deleting.release()
-                return busy_filing()
-            if manager.active() is not None or await asyncio.to_thread(other_builds):
-                deleting.release()
-                return _plain_error(
-                    "SYS_BUSY",
-                    "A build is running, and the cache is prepared only between builds.",
-                    "Wait for the build to finish, or stop it, then try again.",
-                    status=409,
-                )
-        except BaseException:
-            deleting.release()
-            raise
-        older_runs[0] += 1
-        older_stop.clear()
-        older_state.clear()
-        older_state.update(state="running", written_bytes=0, write_bytes=0, remove=req.remove)
-
-        def progress(written: int, to_write: int) -> None:
-            older_state.update(written_bytes=written, write_bytes=to_write)
-
-        async def run() -> None:
-            try:
-                report = await asyncio.to_thread(
-                    prepare_older,
-                    default_store_root(),
-                    progress=progress,
-                    remove_instead=req.remove,
-                    stop=older_stop,
-                )
-            except OlderStoppedError:
-                older_state.clear()
-                older_state.update(state="stopped")
-                deleting.release()
-                return
-            except Exception as exc:
-                log.exception("the cache could not be prepared for an older version")
-                older_state.clear()
-                older_state.update(state="failed", error=wrap(exc).to_dict())
-                deleting.release()
-                return
-            # the engine stays, the cache closed to it, so that the page can say what to do next
-            # until the user quits: it stopped by itself, its words gone with the window
-            older_state.update(
-                state="done",
-                restored=report.restored,
-                completed=report.completed,
-                removed=report.removed,
-                written_bytes=report.written_bytes,
-            )
-
-        task = asyncio.create_task(run())
-        older_tasks.add(task)
-        task.add_done_callback(older_tasks.discard)
-        return dict(older_state)
 
     # -- the page ----------------------------------------------------------------------------
 

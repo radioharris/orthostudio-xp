@@ -283,12 +283,7 @@ def serve(
         state = app.state.orthostudio
         threading.Thread(
             target=presence.quit_when_closed,
-            # a build, or the cache being prepared for an older version, keeps it up
-            args=(
-                state["presence"],
-                lambda: state["jobs"].active() is not None or state["preparing_older"](),
-                shutdown,
-            ),
+            args=(state["presence"], lambda: state["jobs"].active() is not None, shutdown),
             kwargs={"wait": stopping.wait},
             name="quit-when-closed",
             daemon=True,

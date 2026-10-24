@@ -192,13 +192,7 @@ before it looks for `Data<tile>.alt` and `Data<tile>.mesh` in their artefacts an
 middle of a build. Every version since 0.1.22 refuses an index whose number is not its own
 (`IncompatibleIndexError`, inside the opening's transaction, so nothing is changed): an index of 1
 is opened and becomes 2, and the versions before turn the store away at its opening. An index a newer
-version numbered higher is refused the same way, said as `SYS_STORE_NEWER` (2026-10-24). Before
-going back to an older version, the Library's *Prepare for an older version…* gives the index
-the number 1 again, once every second form Free space trimmed is back as it was built
-(`orthostudio.older`, `Store.untrim`), each relief and mesh built in one form has its second form
-too, its digest made that of its files (`Store.complete`: what was made from it is made again once
-when asked), and what cannot be written back is removed; the engine then opens it no more
-(`store.close_for_older`, which gives the store back if the number cannot be written) and stops.
+version numbered higher is refused the same way, said as `SYS_STORE_NEWER` (2026-10-24).
 
 ```sql
 CREATE TABLE meta (k TEXT PRIMARY KEY, v TEXT NOT NULL);           -- schema_version, disk_bytes

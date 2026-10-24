@@ -954,24 +954,6 @@ switch writes its lines again from the last measure, measuring nothing (`rerende
 `renderDisk`): they stayed in the former language, under a title in the new one, until the next
 measure (2026-10-05).
 
-Under a line, *Prepare for an older version…* (`app.js` `prepareOlder`, `followOlder`, `olderDone`)
-makes the cache ready for a version before the relief and the mesh were kept once
-(`orthostudio.older`). It asks in a modal dialog with what `GET /api/older` measured (*Measuring
-the cache…* meanwhile, the button waiting): the bytes written back, the items removed, and that once
-it is done one quits and installs the older version at once, since opening this one first puts
-the cache back in its new form; when the disk of the cache has not the room, it says how much it
-needs and offers to remove them instead (*Remove them*), the older version building them again.
-It says how far the writing is under itself, then shows a last modal screen in those words with
-one button, *Quit OrthoStudio XP*, which stops the engine and leaves the *stopped* overlay in the
-same words: the engine stopped by itself 3 s after `done`, its words gone with the window before
-they were read (a review, 2026-10-24). It is set before any measure, and waits for builds,
-filings and an engine older than the page, as *Free space…* does, which waits for it in turn. A
-run that failed shows its card, Disk space is measured again, and the next click asks again; a
-page loaded meanwhile follows the run (`preparing_older` in `GET /api/status`); every refusal
-the engine gives meanwhile, or once the cache is ready (`context.older`), is said in those words
-by the Plan, Works, the Library and Free space (`olderBusy`); *Quit* says that it stops the run,
-and the window's close button asks first (`desktop.PREPARING_ON_QUIT`).
-
 What is on this computer, what is in X-Plane, and what each button will do, in plain words
 (`map-zones.md` 7.0). The lead says it: removing a tile from X-Plane keeps its files, so it can
 be added back at once; deleting it also frees the disk space (tiles built by OrthoStudio XP only).

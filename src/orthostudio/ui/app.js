@@ -560,8 +560,8 @@ async function mockCheckCoverage(body) {
   throw new ApiError(422, { error: { code: "CFG_PROVIDER_OUT_OF_COVERAGE", severity: "blocking", action: "stop", message: `Imagery source ${code} covers ${p.extent} only, not tile(s) ${missing.join(" ")}.`, remedy: "Choose a source that covers these tiles: Bing Maps and Esri cover the whole world.", context: { provider: code, extent: p.extent, tiles: missing.join(" ") } } });
 }
 
-function mockError(status, code, message, remedy, context = {}) {
-  return new ApiError(status, { error: { code, severity: "blocking", action: "stop", message, remedy, context } });
+function mockError(status, code, message, remedy) {
+  return new ApiError(status, { error: { code, severity: "blocking", action: "stop", message, remedy, context: {} } });
 }
 
 /** X-Plane runs in the mock when mock/status.json says so, or with `fail=xplane`. */
@@ -1149,7 +1149,6 @@ export async function mockApi(method, path, body, options = {}) {
     // Like the engine: tiles, not rows (a tile's overlay row is not a tile of its own).
     if (mock.library) status.library_count = new Set(libraryTiles(mock.library).map((e) => e.tile)).size;
     status.active_job = mockActiveRun()?.doc.id ?? null;
-    status.preparing_older = mock.older?.state === "running";
     return status;
   }
   if (p === "/api/sizes") return { store_bytes: 1830000000, shared_bytes: 1120000000, chunks_bytes: 412000000 };
@@ -1276,10 +1275,6 @@ export async function mockApi(method, path, body, options = {}) {
     return [...live, ...past];
   }
   if (p === "/api/jobs" && method === "POST") {
-    if (mock.older) {
-      const done = mock.older.state === "done";
-      throw mockError(409, "SYS_BUSY", done ? "The cache is ready for an older version, and this OrthoStudio XP opens it no more." : "The cache is being prepared for an older version.", done ? "Quit OrthoStudio XP and install the older version." : "Wait for it to end.", { older: done ? "done" : "running" });
-    }
     mockCheckDataDisk();
     await mockCheckZones(body.zones);
     mockCheckXplane();
@@ -1375,10 +1370,6 @@ export async function mockApi(method, path, body, options = {}) {
     return { ...mock.disk, ...mockFiledCache(), tiles: libraryTiles(mock.library).length, building: MOCK_FAIL === "busy" || Boolean(mockActiveRun()) };
   }
   if (p === "/api/clean" && method === "POST") {
-    if (mock.older) {
-      const done = mock.older.state === "done";
-      throw mockError(409, "SYS_BUSY", done ? "The cache is ready for an older version, and this OrthoStudio XP opens it no more." : "The cache is being prepared for an older version.", done ? "Quit OrthoStudio XP and install the older version." : "Wait for it to end.", { older: done ? "done" : "running" });
-    }
     if (MOCK_FAIL === "busy" || mockActiveRun()) {
       throw mockError(409, "SYS_BUSY", "A build is running in OrthoStudio XP, and OrthoStudio XP frees space only between builds.", "Wait for the build to finish, or stop it, then try again.");
     }
@@ -1400,26 +1391,6 @@ export async function mockApi(method, path, body, options = {}) {
     const storeFreed = freed + apartFreed + twiceFreed + (filed ? cache.filed_bytes : 0);
     mock.disk = { ...mock.disk, store_bytes: mock.disk.store_bytes - storeFreed, unused_bytes: 0, twice_bytes: 0, ...(apart ? { apart_tiles: 0, apart_bytes: 0 } : {}), ...(images ? { images_bytes: 0, mapcache_bytes: 0 } : {}), ...(relief ? { relief_bytes: 0 } : {}) };
     return { format: "osxp-clean-1", freed_bytes: freed, apart_freed_bytes: apartFreed, twice_freed_bytes: twiceFreed, images_freed_bytes: imagesFreed, relief_freed_bytes: reliefFreed, filed_freed_bytes: filedFreed, removed: freed ? 12 : 0 };
-  }
-  if (p === "/api/older" && method === "GET") {
-    if (mock.older) {
-      // the demo writes a gigabyte a second, then says it is done
-      const run = mock.older;
-      run.written_bytes = Math.min(run.write_bytes, (Date.now() - run.started) * 1e6);
-      if (run.written_bytes >= run.write_bytes) Object.assign(run, run.remove ? { state: "done", restored: 0, completed: 0, removed: 16 } : { state: "done", restored: 12, completed: 3, removed: 1 });
-      return { ...run };
-    }
-    const need = 3.7e9 + 512 * 1024 * 1024;
-    return { state: "idle", can_quit: true, restore: 12, complete: 3, remove: 1, write_bytes: 3.7e9, need_bytes: need, free_bytes: MOCK_FAIL === "no-room" ? 2e9 : 52e9, room: MOCK_FAIL !== "no-room" };
-  }
-  if (p === "/api/older" && method === "POST") {
-    if (mock.older) return { ...mock.older };
-    if (MOCK_FAIL === "busy" || mockActiveRun()) {
-      throw mockError(409, "SYS_BUSY", "A build is running, and the cache is prepared only between builds.", "Wait for the build to finish, or stop it, then try again.");
-    }
-    const remove = Boolean(body?.remove);
-    mock.older = { state: "running", written_bytes: 0, write_bytes: remove ? 0 : 3.7e9, remove, started: Date.now() };
-    return { state: "running", written_bytes: 0, write_bytes: mock.older.write_bytes, remove };
   }
   if (p === "/api/library/find-in-workshop") {
     // like the engine on a workshop whose tiles are all in the list
@@ -2371,7 +2342,7 @@ function routeFromHash() {
 // ------------------------------------------------------------------ status bar
 
 /** The engine API this page needs (orthostudio.api.app.API_LEVEL); a test keeps the two equal. */
-const PAGE_API_LEVEL = 37;
+const PAGE_API_LEVEL = 36;
 
 async function loadStatus() {
   try {
@@ -2391,10 +2362,6 @@ async function loadStatus() {
   state.engineOutdated = (Number(state.status?.api_level) || 1) < PAGE_API_LEVEL;
   renderEngineBanner();
   renderStatus();
-  // a page loaded while the cache is prepared for an older version follows it too
-  if (state.status?.preparing_older && !state.older && !state.olderAsking) {
-    api("GET", "/api/older").then((run) => followOlder(run)).catch(() => {});
-  }
   loadSizes(); // not awaited: measuring the disk must hold nothing back
 }
 
@@ -2671,11 +2638,10 @@ async function revealPath(path) {
   }
 }
 
-function confirmQuit(active, queued = 0, older = false) {
+function confirmQuit(active, queued = 0) {
   const dialog = $("quit-confirm");
   if (dialog.open) return Promise.resolve(false);
   const lines = [t("quit.text")];
-  if (older) lines.push(t("quit.older"));
   if (active) lines.push(t("quit.running"));
   if (queued > 0) lines.push(t("quit.queued", { n: queued }));
   clear($("quit-confirm-text")).append(...lines.map((line) => h("p", null, line)));
@@ -2694,20 +2660,17 @@ function confirmQuit(active, queued = 0, older = false) {
 /** "Quit": asks (saying that a running build stops), then stops the engine and says so. */
 async function quitOsxp() {
   let active = state.status?.active_job || null;
-  let older = Boolean(state.status?.preparing_older) || Boolean(state.older);
   let queued = 0;
   try {
-    const status = await api("GET", "/api/status");
-    active = status?.active_job || null;
-    older = Boolean(status?.preparing_older);
+    active = (await api("GET", "/api/status"))?.active_job || null;
     state.jobs = await api("GET", "/api/jobs");
     queued = state.jobs.filter((j) => j.status === "queued").length;
   } catch (_e) {
     // the engine may already be gone: the question stays the same
   }
-  if (!(await confirmQuit(active, queued, older))) return;
+  if (!(await confirmQuit(active, queued))) return;
   try {
-    await api("POST", "/api/quit", { force: Boolean(active) || older });
+    await api("POST", "/api/quit", { force: Boolean(active) });
   } catch (err) {
     toast(errorMessage(err), "fail");
     return;
@@ -3925,8 +3888,6 @@ async function build(install) {
       // Another window queued them: the map learns it, and the user takes them out of the selection.
       showPlanError(t("plan.tiles_in_build_refused", { tiles: (d.context?.tiles || []).join(" ") }));
       refreshJobList();
-    } else if (olderBusy(d)) {
-      showPlanError(olderBusy(d).join(" "));
     } else if (d?.code === "SYS_BUSY" && !state.engineOutdated) {
       showPlanError(t("plan.busy_deleting")); // a build asked for with queue waits: a delete refuses it
     } else if (err instanceof ApiError && err.status === 409) {
@@ -5168,7 +5129,6 @@ async function retryJob() {
   } catch (err) {
     const d = errorDetail(err);
     if (d?.code === "SYS_TILE_IN_BUILD") toast(t("works.retry_in_build", { tiles: (d.context?.tiles || []).join(" ") }), "fail");
-    else if (olderBusy(d)) toast(olderBusy(d).join(" "), "fail");
     else if (d?.code === "SYS_BUSY" && !state.engineOutdated) toast(t("plan.busy_deleting"), "fail");
     else if (err instanceof ApiError && err.status === 409) toast(t("plan.job_running"), "fail");
     else toast(errorMessage(err), "fail");
@@ -5321,9 +5281,6 @@ function renderDisk() {
   const list = $("disk-list");
   if (!list) return;
   const d = state.disk;
-  // set before any measure: it waited for nothing while the first one took minutes (a review)
-  const working = Boolean(d?.building) || activeJobs().length > 0 || Boolean(state.filing);
-  $("disk-older").disabled = working || state.diskBusy || Boolean(state.older) || Boolean(state.olderAsking) || Boolean(state.engineOutdated);
   clear(list);
   const button = $("disk-free");
   const note = $("disk-note");
@@ -5368,7 +5325,7 @@ function renderDisk() {
   // said "Nothing to free" from the last one right after a build started (2026-10-23)
   const building = Boolean(d.building) || activeJobs().length > 0;
   // a filing moves a tile out of the atelier: the engine refuses meanwhile, the button waits
-  button.disabled = building || Boolean(state.filing) || plan.total <= 0 || state.diskBusy || Boolean(state.older);
+  button.disabled = building || Boolean(state.filing) || plan.total <= 0 || state.diskBusy;
   let said = building ? t("disk.busy_note") : state.filing ? t("disk.filing_note") : plan.total <= 0 ? t("disk.nothing") : "";
   if (data?.present === false) said = t("disk.data_missing", { path: homely(data.path) });
   setText(note, said);
@@ -5400,155 +5357,6 @@ function confirmFreeSpace(plan) {
   });
 }
 
-/** The question before preparing the cache for an older version, from what GET /api/older
- * measured; resolves "older" (write back), "remove" (remove instead, for a disk without the
- * room) or false. */
-function confirmOlder(plan) {
-  const dialog = $("older-confirm");
-  if (dialog.open) return Promise.resolve(false);
-  const lines = [];
-  const items = (plan.restore || 0) + (plan.complete || 0);
-  if (plan.room) {
-    if (items > 0) lines.push(t("older.confirm_write", { size: fmtFreeBytes(plan.write_bytes), n: items }));
-    if (plan.remove > 0) lines.push(t("older.confirm_remove", { n: plan.remove }));
-    if (!items && !plan.remove) lines.push(t("older.confirm_nothing"));
-  } else {
-    lines.push(t("older.no_room", { need: fmtFreeBytes(plan.need_bytes), free: fmtFreeBytes(plan.free_bytes) }));
-    lines.push(t("older.no_room_remove", { n: items + (plan.remove || 0) }));
-  }
-  lines.push(t("older.confirm_stop"));
-  clear($("older-confirm-text")).append(...lines.map((line) => h("p", null, line)));
-  $("older-confirm-go").hidden = !plan.room;
-  $("older-confirm-remove").hidden = Boolean(plan.room);
-  dialog.returnValue = "";
-  dialog.onkeydown = (ev) => {
-    if (ev.key !== "Escape") return;
-    ev.preventDefault();
-    dialog.close();
-  };
-  return new Promise((resolve) => {
-    dialog.addEventListener("close", () => resolve(["older", "remove"].includes(dialog.returnValue) ? dialog.returnValue : false), { once: true });
-    dialog.showModal();
-  });
-}
-
-/** The words of a refusal the engine gives while the cache is prepared for an older version,
- * or once it is ready (`context.older`): every other button said its own reason, a delete or a
- * build, where the engine said this one (a review, 2026-10-24). Null for any other refusal. */
-function olderBusy(d) {
-  const older = d?.code === "SYS_BUSY" ? d.context?.older : null;
-  if (older === "done") return [t("older.busy_done"), t("older.busy_done_remedy")];
-  if (older === "running") return [t("older.busy_running"), t("older.busy_running_remedy")];
-  return null;
-}
-
-/** An error of the preparation as a card of the panel, in the page's words for a refusal. */
-function olderErrorCard(found) {
-  const d = found && found.code ? found : { code: "SYS_INTERNAL_ERROR", message: t("older.failed"), severity: "blocking" };
-  const card = errorCard(d.code === "SYS_BUSY" ? { ...d, action: "none", severity: "blocking" } : d);
-  if (d.code === "SYS_BUSY") {
-    const [message, remedy] = olderBusy(d) || [t("older.err_busy"), t("older.err_busy_remedy")];
-    card.querySelector(".error-msg").textContent = message;
-    card.querySelector(".error-remedy").textContent = remedy;
-  }
-  return card;
-}
-
-/** Says how far the preparation is until it ends: done, the stopped overlay says to install the
- * older version now; failed, its card; stopped, the panel is as before. `plan` gives the bytes
- * to write until the engine counts them. A page loaded meanwhile follows it too. */
-async function followOlder(run, plan = null) {
-  const note = $("disk-older-note");
-  state.older = true;
-  renderDisk();
-  try {
-    while (run.state === "running") {
-      setText(note, run.remove ? t("older.removing") : t("older.progress", { done: fmtFreeBytes(run.written_bytes), total: fmtFreeBytes(run.write_bytes || plan?.write_bytes || 0) }));
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-      run = await api("GET", "/api/older");
-    }
-    if (run.state === "done") {
-      // the engine waits for the user, the cache closed to it: the words stay until Quit
-      setText(note, t("older.done"));
-      clearInterval(jobsTimer);
-      await olderDone();
-      return;
-    }
-    if (run.state === "failed") clear($("disk-errors")).append(olderErrorCard(run.error));
-  } catch (err) {
-    clear($("disk-errors")).append(olderErrorCard(errorDetail(err)));
-  }
-  state.older = false;
-  setText(note, t("older.help"));
-  renderDisk();
-  loadDisk(); // what a run that failed wrote back is counted again
-}
-
-/** The last screen once the cache is ready: what to do now, and Quit, which stops OrthoStudio XP
- * and leaves the stopped overlay in the same words. It stopped by itself 3 s after "done", its
- * words gone with the window before they were read (a review, 2026-10-24). */
-async function olderDone() {
-  const dialog = $("older-done");
-  dialog.returnValue = "";
-  dialog.onkeydown = (ev) => {
-    if (ev.key === "Escape") ev.preventDefault(); // nothing else to do here: Quit
-  };
-  await new Promise((resolve) => {
-    dialog.addEventListener("close", resolve, { once: true });
-    dialog.showModal();
-  });
-  try {
-    await api("POST", "/api/quit", { force: false });
-  } catch (_err) {
-    // the engine may be gone already: the overlay says the same
-  }
-  const text = $("stopped").querySelector("p");
-  text.dataset.i18n = "older.stopped_text";
-  text.textContent = t("older.stopped_text");
-  $("stopped").hidden = false;
-}
-
-/** "Prepare for an older version…": asks with what GET /api/older measured, then POST /api/older,
- * then follows it until the cache is ready and OrthoStudio XP stops (the engine must not open the
- * cache again: orthostudio.older). A run that failed or stopped is asked again from a new measure;
- * one already running is followed. */
-async function prepareOlder() {
-  if (state.older || state.olderAsking || state.diskBusy) return;
-  state.olderAsking = true; // measuring walks the whole cache: a second click waits for the first
-  $("disk-older").disabled = true;
-  setText($("disk-older-note"), t("older.measuring"));
-  try {
-    clear($("disk-errors"));
-    let plan;
-    try {
-      plan = await api("GET", "/api/older");
-    } catch (err) {
-      $("disk-errors").append(olderErrorCard(errorDetail(err)));
-      return;
-    }
-    if (plan.state === "running" || plan.state === "done") {
-      await followOlder(plan);
-      return;
-    }
-    const choice = await confirmOlder(plan);
-    if (!choice) return;
-    let run;
-    try {
-      run = await api("POST", "/api/older", { remove: choice === "remove" });
-    } catch (err) {
-      $("disk-errors").append(olderErrorCard(errorDetail(err)));
-      return;
-    }
-    await followOlder(run, plan);
-  } finally {
-    state.olderAsking = false;
-    if (!state.older) {
-      setText($("disk-older-note"), t("older.help"));
-      renderDisk();
-    }
-  }
-}
-
 /** "Free space…": asks, then POST /api/clean, then says how much came back. */
 async function freeSpace() {
   if (state.diskBusy || !state.disk) return;
@@ -5570,9 +5378,8 @@ async function freeSpace() {
     const d = found && found.code ? found : { code: "SYS_INTERNAL_ERROR", message: errorMessage(err), severity: "blocking" };
     const card = errorCard(d.code === "SYS_BUSY" ? { ...d, action: "none", severity: "blocking" } : d);
     if (d.code === "SYS_BUSY") {
-      const [message, remedy] = olderBusy(d) || [t("disk.err_busy"), t("disk.err_busy_remedy")];
-      card.querySelector(".error-msg").textContent = message;
-      card.querySelector(".error-remedy").textContent = remedy;
+      card.querySelector(".error-msg").textContent = t("disk.err_busy");
+      card.querySelector(".error-remedy").textContent = t("disk.err_busy_remedy");
     }
     errors.append(card);
   } finally {
@@ -6245,7 +6052,7 @@ function focusLibraryRow(key, index, column = -1) {
  * orthostudio.toml or osxp clean. */
 const LIBRARY_REFUSALS = {
   XP_RUNNING: () => [t("library.err_xp_running"), t("library.err_xp_running_remedy")],
-  SYS_BUSY: (d) => olderBusy(d) || [t("library.err_busy"), t("library.err_busy_remedy")],
+  SYS_BUSY: () => [t("library.err_busy"), t("library.err_busy_remedy")],
   SYS_TILE_IN_BUILD: () => [t("library.err_in_build"), t("library.err_in_build_remedy")],
   SYS_PACK_NOT_OSXP: () => [t("library.err_not_osxp"), t("library.err_not_osxp_remedy")],
   SYS_PACK_IN_XPLANE: () => [t("library.err_in_xplane"), t("library.forget_installed")],
@@ -7573,7 +7380,6 @@ async function boot() {
   $("build-only-btn").addEventListener("click", () => build(false));
   $("import-form").addEventListener("submit", importOrtho4xp);
   $("disk-free").addEventListener("click", freeSpace);
-  $("disk-older").addEventListener("click", prepareOlder);
   $("jobs-clear").addEventListener("click", clearJobs);
   $("disk-images").addEventListener("change", renderDisk);
   $("disk-relief").addEventListener("change", renderDisk);
