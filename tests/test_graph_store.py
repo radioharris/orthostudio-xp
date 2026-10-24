@@ -196,6 +196,41 @@ def test_reopen_persists_and_schema_is_checked(tmp_path: Path) -> None:
     db.close()
 
 
+def test_a_refused_index_is_closed_at_once(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A newer version's index, refused at the opening, stayed open until a garbage collection:
+    the engine held it, and Windows refused to empty the folder, the very remedy the page gives
+    (the Shadow, 2026-10-24). Its connection is closed before the refusal goes up, the collector
+    off to show it does not wait for one."""
+    import gc
+
+    root = tmp_path / "store"
+    with Store(root, fsync=False):
+        pass
+    db = sqlite3.connect(root / "index.sqlite")
+    db.execute("UPDATE meta SET v = ? WHERE k = 'schema_version'", (str(COMPACT_VERSION + 1),))
+    db.commit()
+    db.close()
+    opened: list[sqlite3.Connection] = []
+    connect = sqlite3.connect
+
+    def recording(*args: Any, **kwargs: Any) -> sqlite3.Connection:
+        conn = connect(*args, **kwargs)
+        opened.append(conn)
+        return conn
+
+    monkeypatch.setattr(sqlite3, "connect", recording)
+    gc.disable()
+    try:
+        with pytest.raises(IncompatibleIndexError):
+            Store(root, fsync=False)
+        assert opened
+        for conn in opened:
+            with pytest.raises(sqlite3.ProgrammingError):  # "Cannot operate on a closed database"
+                conn.execute("SELECT 1")
+    finally:
+        gc.enable()
+
+
 def _number(root: Path) -> str:
     """The index's number as another program reads it from the disk."""
     db = sqlite3.connect(root / "index.sqlite")

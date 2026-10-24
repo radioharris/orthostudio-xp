@@ -446,6 +446,12 @@ class Store:
                 log.debug("index at %s busy while opening (%s), retrying", self.root, exc)
                 time.sleep(delay)
                 delay = min(delay * 2, 0.25)
+            except BaseException:
+                # an index refused (a newer version's, IncompatibleIndexError) is closed at once:
+                # left to a garbage collection, it stayed open in the engine, and Windows refused
+                # to empty the folder, the very remedy the page gives (a campaign, 2026-10-24)
+                db.close()
+                raise
 
     def _init_schema(self, db: sqlite3.Connection) -> None:
         db.execute("BEGIN IMMEDIATE")

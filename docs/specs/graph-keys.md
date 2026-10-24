@@ -194,8 +194,10 @@ a version before this one looks for `Data<tile>.alt` and `Data<tile>.mesh` in th
 fails in the middle of a build. Every version since 0.1.22 refuses an index whose number is not its
 own (`IncompatibleIndexError`, inside the opening's transaction, so nothing is changed): the
 versions before turn a compacted cache away at its opening. This one reads 1 and 2 and refuses a
-higher number the same way, said as `SYS_STORE_NEWER`. Nothing turns 2 back to 1: going back to an
-older version is emptying the cache folder (2026-10-24).
+higher number the same way, said as `SYS_STORE_NEWER`, its connection closed before the refusal goes
+up: left to a garbage collection, the engine held the index open, and Windows refused to empty the
+folder, the remedy the page gives (a campaign on Windows, 2026-10-24). Nothing turns 2 back to 1:
+going back to an older version is emptying the cache folder (2026-10-24).
 
 ```sql
 CREATE TABLE meta (k TEXT PRIMARY KEY, v TEXT NOT NULL);           -- schema_version, disk_bytes
