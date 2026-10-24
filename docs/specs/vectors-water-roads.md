@@ -178,7 +178,8 @@ road_area = improved_buffer(banked.difference(improved_buffer(apt_area, lane_wid
 `buffer(bw + sw, join_style=2, mitre_limit=1.5, resolution=1)`, `buffer(-sw, ...)`,
 `simplify(sl)` when non-zero, `x` unscaled. Growing then shrinking is what closes the small
 holes between nearby roads. **Keep** exactly, arguments included (`2` m of separation,
-`0.5` m of simplification).
+`0.5` m of simplification), but for `resolution=1`, which is `quad_segs=8` here (section 7,
+difference 9).
 
 The airport area subtracted is the `treated_area` of `include_airports` (runways, taxiways,
 aprons and patches), buffered by `lane_width + 2` metres: a road inside an airport is already
@@ -363,8 +364,16 @@ and one `weighted_normals` each).
 8. **A ramp shorter than one cell** (4.4): Ortho4XP leaves `alti_way` unset when `cuts_long == 0`
    (`:750`) and either crashes or reuses the previous way's altitudes; OrthoStudio XP falls back on
    the DEM.
-9. **`resolution=1`** is spelled `quad_segs=1`: shapely 2.1 deprecates the old name, the
-   value and the geometry are unchanged (checked segment by segment on the reference tile).
+9. **`resolution=1` is `quad_segs=8`**: shapely 1.8, which Ortho4XP 1.30 runs on, draws the
+   rounded ends and corners of a band with 8 segments a quadrant whatever the resolution when
+   the join is a mitre (an L-shaped line buffered: 37 points with `resolution=1` as with 8);
+   shapely 2 honours the 1 (9 points), and the angular bands it gives (Ortho4XP 1.40, and
+   OrthoStudio XP up to vectors version 12) bent the roads laid on them: triangles cut along the
+   band's corners tilted the road at the KSME crossroad (2026-10-24). `quad_segs=8` gives the
+   bands of Ortho4XP 1.30 point for point: on KSME's roads 290 341 points, as shapely 1.8, against
+   271 064 with `quad_segs=1`, the same area. Against `quad_segs=1` on 200 tiles (the 72 witness
+   tiles and 128 drawn at random): all built, 59 identical, triangles -1.2 % to +1.1 %, and the
+   ground away from the roads as close to the relief (median gap 1.312 m, then 1.313 m).
 10. **Dry rainwater basins are not water** (2.1). OpenStreetMap maps rainwater basins as
    `natural=water` + `water=basin` (retention, detention, infiltration), most marked
    `intermittent=yes` because they are dry grass most of the year; Ortho4XP draws them as water,
