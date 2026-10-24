@@ -152,7 +152,7 @@ __all__ = [
     "sse_message",
 ]
 
-API_LEVEL = 37
+API_LEVEL = 38
 """What this engine's API offers, for the page: 1 = P2b, 2 = zones (``/api/zones``) and the base map
 (``/api/map``), 3 = deleting a tile (``POST /api/library/{name}/delete``) and the sizes of the
 library, 4 = the disk space of the Library (``GET /api/disk``, ``POST /api/clean``), 5 = clearing
@@ -196,10 +196,11 @@ and ``held_freed_bytes`` in ``POST /api/clean`` (a development build's, never re
 (the relief and mesh kept in a second form, which Free space trims whatever the choices), 36 = the
 choice ``apart`` of ``POST /api/clean`` and its ``apart_freed_bytes``, with ``apart_tiles``,
 ``apart_bytes`` and ``filed_apart_bytes`` in ``GET /api/disk`` (the store's
-copy of the images of the tiles on another disk or partition, deleted only on request), 37 = the
+copy of the images of the tiles on another disk or partition, deleted only on request), 37 = ``GET
+/api/older`` and ``POST /api/older`` (a development build's, never released, gone at 38), 38 = the
 choice ``compact`` of ``POST /api/clean`` and ``compacted`` in its answer and in ``GET /api/disk``
 (the relief and the mesh kept in one form, which a version before this one refuses; ``twice_bytes``
-trimmed only then). A page
+trimmed only then), with ``twice_filed_bytes``, the share of the tiles filed outside. A page
 served by an engine older than itself (a ``osxp serve`` started before an update: the page's files
 are read from disk at each load, the routes were imported at start) asks the user to restart
 OrthoStudio XP instead of showing "Not Found"."""
@@ -2439,7 +2440,10 @@ def create_app(
             "apart_tiles": report.apart_tiles,
             "apart_bytes": report.apart_bytes,
             "filed_apart_bytes": report.filed_apart_bytes,
-            "twice_bytes": report.twice_bytes,
+            # compacting alone trims the filed tiles' second forms too; with their own choice
+            # ticked as well, they go whole with it (``twice_filed_bytes``, the page takes it off)
+            "twice_bytes": report.twice_bytes + report.twice_filed_bytes,
+            "twice_filed_bytes": report.twice_filed_bytes,
             "compacted": report.compacted,
             "tiles": len(report.packs),
             "building": manager.active() is not None or bool(other_builds()),

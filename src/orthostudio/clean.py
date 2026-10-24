@@ -175,6 +175,12 @@ class CleanReport:
     (left by a compaction that was interrupted)."""
     twice_bytes: int = 0
     """What trimming ``twice_files`` gives back."""
+    twice_filed_bytes: int = 0
+    """The share of the second forms that the cache of the tiles filed outside holds: in
+    ``twice_bytes`` without ``filed``, left out of it with ``filed``, since their data goes whole
+    then. Measured with ``filed`` (the page's measure), the figure of compacting alone is
+    ``twice_bytes + twice_filed_bytes``: it left them out, though compacting alone trims them too
+    (a review, 2026-10-24)."""
     compacted: bool = False
     """Whether the cache keeps the relief and the mesh in one form (``Store.compacted``), once this
     clean is done; with ``dry_run``, as it is."""
@@ -600,7 +606,13 @@ def clean(
             going_keys = {*first, *(sent if apart else ()), *(taken if filed else ())}
             report.kept = len(store) - len(going_keys)
             report.compacted = store.compacted()
-            twice = _twice(store, going_keys, grace_s)
+            twice = _twice(store, {*first, *(sent if apart else ())}, grace_s)
+            filed_keys = set(taken)
+            report.twice_filed_bytes = sum(
+                size for info, files in twice if info.key in filed_keys for size in files.values()
+            )
+            if filed:  # they go whole with the cache of the tiles filed outside
+                twice = [(info, files) for info, files in twice if info.key not in filed_keys]
             report.twice_files = sum(len(files) for _info, files in twice)
             report.twice_bytes = sum(size for _info, files in twice for size in files.values())
             if not dry_run:

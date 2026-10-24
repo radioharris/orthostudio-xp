@@ -729,7 +729,7 @@ and built again.
 | `osxp clean --apart` | - | same as `osxp clean`, and the cache's copy of the images of the tiles on another disk or partition | stays | stays |
 | `osxp clean --compact` | - | same as `osxp clean`, and the second form of the relief and the mesh: the cache keeps one form from then on | stays | stays |
 | `osxp clean --all` | - | everything no tile on disk needs, however recent, the cache of the tiles filed outside the workshop, and the cache's copy of the images of the tiles on another disk | emptied, with the map cache | emptied |
-| Free space (Library) | - | everything no tile on disk needs, however recent; what is used to rebuild the tiles filed elsewhere, the textures kept here of the tiles on another disk, and the data kept for older versions, each if you tick its box | emptied with the map cache if you tick the box, those of the tiles filed outside with their own box | emptied if you tick its own box |
+| Free space (Disk space) | - | everything no tile on disk needs, however recent; what is used to rebuild the tiles filed elsewhere, the textures kept here of the tiles on another disk, and the data kept for older versions, each if you tick its box | emptied with the map cache if you tick the box, those of the tiles filed outside with their own box | emptied if you tick its own box |
 | Clear the job list (Works) | stays | stays | stays; only the finished jobs' progress and logs (`jobs/`) go | stays |
 | Remove one build from the list (Works) | stays | stays | stays; only that build's progress and log go | stays |
 

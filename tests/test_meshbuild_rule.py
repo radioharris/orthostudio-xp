@@ -550,9 +550,9 @@ def test_subprocess_is_never_run_through_a_shell() -> None:
 
 @needs_binary
 def test_the_native_relief_kept_once_gives_the_same_mesh(synthetic: dict) -> None:
-    """``--dem native`` reads the relief stage's raster, which keeps it as ``dem.npy`` alone since
-    2026-10-23: the mesh writes Ortho4XP's ``.alt`` from it in its scratch, and comes out the same
-    as from the ``.alt`` the stage wrote before, whose bytes it is."""
+    """``--dem native`` reads the relief stage's raster, which a compacted cache keeps as
+    ``dem.npy`` alone: the mesh writes Ortho4XP's ``.alt`` from it in its scratch, and comes out the
+    same as from the ``.alt`` the stage writes elsewhere, whose bytes it is."""
     root = synthetic["root"]
     once = root / "dem-once"
     once.mkdir()

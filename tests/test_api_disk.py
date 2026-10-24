@@ -181,6 +181,7 @@ async def test_pages_that_ask_while_the_disk_is_measured_share_the_measure(
             apart_unpieced=0,
             filed_apart_bytes=0,
             twice_bytes=0,
+            twice_filed_bytes=0,
             compacted=False,
             packs=[],
         )

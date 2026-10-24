@@ -291,7 +291,8 @@ off once. `fsck(repair=True)` never deletes an artefact it cannot read now: only
 hash to another digest. A folder that cannot be listed raises in the walk (`digest._walk_files`),
 where it counted as empty and made an unreadable artefact look damaged (a review, 2026-10-23).
 Its digest is no longer what its files hash to. Only a compacted cache is trimmed (section 7),
-which a version before this one does not open.
+which a version before this one does not open; the release candidates 1.1.1-rc.4 and rc.5, never
+released, trimmed and built in one form with the number at 1.
 
 `meta.disk_bytes` is the store's size on the disk that `Store.disk_bytes` answers (the status
 bar's, `api.md` 2.1): every artefact's size but those of `tile.textures`, whose folders hard-link
@@ -306,8 +307,8 @@ than code, so that an earlier version writing to the same index keeps the figure
 version writes a row by an upsert and removes one by its key (a `REPLACE` would not fire the
 delete trigger).
 
-`refcount(key) = pins on key + edges whose parent_key is key`. A different schema version
-raises `IncompatibleIndexError` at open (no migration in P0). One connection per `Store`,
+`refcount(key) = pins on key + edges whose parent_key is key`. A schema version this version does
+not read (section 7) raises `IncompatibleIndexError` at open. One connection per `Store`,
 guarded by an `RLock`; several processes share the file through WAL and `busy_timeout`.
 Opening is retried for up to 15 s: when several processes create the same index at the same
 instant, the WAL switch can fail with "database is locked" without consulting the busy
@@ -376,7 +377,7 @@ collects by reachability from the packs on disk instead:
   in one form, which a version before this one refuses). It, `--filed`, `--apart` and `--compact`
   refuse to run while another process builds into the store (`Store.building_pids`, read from the
   `*.tmp-<pid>-*` directories of builds in progress), since the grace period is what protects such
-  a build otherwise, and a build running chose its forms when it started. The command passes the map cache explicitly (`mapcache_root`);
+  a build otherwise, and a build running may be reading the second form a compaction trims. The command passes the map cache explicitly (`mapcache_root`);
   `clean()` called without it counts and empties no map cache. It used to take the `mapcache` beside
   the chunks root for one, so a caller passing its own chunks folder had the folder next to it
   emptied (review of 2026-09-13);
@@ -397,10 +398,13 @@ collects by reachability from the packs on disk instead:
   a cache compacted already (what a compaction cut short left); but those used within the grace
   period or pinned. A file goes only when the kept form says the same size of the same thing, read
   from headers alone: as many float altitudes in `dem.npy` as the `.alt` holds, as many points in
-  `mesh.npz`'s `vertices` as the `.mesh` names. 90 GB and 272 GB of a user's 1.1 TB cache.
+  `mesh.npz`'s `vertices` as the `.mesh` names. 90 GB and 272 GB of a user's 1.1 TB cache. The
+  share of the tiles filed outside is `twice_filed_bytes`: trimmed with the rest by `compact`
+  alone, deleted whole with their data by `filed`.
   `compacted` says the cache's state. A build in a compacted cache writes OrthoStudio XP's form
   alone (`DemJob.ortho4xp_form`, `MeshJob.ortho4xp_form`, from `Store.compacted` as each node
-  starts); `compact` is refused while a build runs, which chose its forms when it started;
+  starts); `compact` is refused while a build runs, which may be reading the second form it trims
+  (Triangle4XP the relief's `.alt`);
 * **images of the tiles on another disk** (`apart`, its own choice): the packs whose textures
   folder is on another file system than the store (`filing.same_disk`, the volume on Windows), by
   their folder with the links followed, hold their images as files of their own, which X-Plane

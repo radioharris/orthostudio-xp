@@ -1664,7 +1664,10 @@ for the user; the same words in the confirmation.
      and the tiles built after keep OrthoStudio XP's form alone. A compacted cache (`compacted`)
      shows the box ticked and disabled, for good, its first line hidden and `disk.compacted_note`
      in the same colour; what a compaction cut short left goes then whatever the choices, its size
-     shown. How to go back (deleting the store folder) is in the README, not in the page. A first
+     shown. The tick goes with the compacted state: another data folder, not compacted, found the
+     box ticked (a review, 2026-10-24). Its size counts the second forms of the tiles filed
+     elsewhere too (`twice_filed_bytes`), which compacting alone trims, less them when their own
+     box is ticked, which deletes their data whole. How to go back (deleting the store folder) is in the README, not in the page. A first
      form of 2026-10-23 trimmed it with no box, and a button put it back for an older version: two
      mechanisms where one choice was enough.
   5. *Delete what is used to rebuild the N tiles filed elsewhere* (`disk-filed`, in
@@ -1679,7 +1682,10 @@ for the user; the same words in the confirmation.
   A count of tiles has its own words for one tile and for none (`tCount`, the keys' `_one` and
   `_zero` forms).
 * **The button** says how much goes, following the boxes (`disk.free_size`; *Free space…* when
-  nothing would). It is disabled while a build runs (the measure's `building`, or a build this page
+  nothing would). Opening the tab draws the last figures at once and measures again; meanwhile the
+  button waits and the note says *Measuring…* (`state.diskMeasuring`): after a filing or deletes in
+  the Library, the figures were minutes old on a hard disk, the button free to act on them (a
+  review, 2026-10-24). It is disabled while a build runs (the measure's `building`, or a build this page
   started or follows, known at once: the panel said *Nothing to free* from its last measure right
   after a build started, 2026-10-23; a change of the builds draws the panel again), while this page
   files tiles (the engine refuses meanwhile: a filing moves a tile out of the atelier) and when

@@ -850,12 +850,12 @@ def clean(
         # Without the hour of grace, a build running now could lose what it is about to use; and
         # the image pieces of a tile filed outside have none: a build of it may be fetching them.
         # The images of a tile on another disk are what its build may be laying now. A build
-        # running when the cache is compacted chose its forms when it started.
+        # running may be reading the second form a compaction trims (Triangle4XP the relief's .alt).
         with Store(store_root) as st:
             busy = sorted(st.building_pids())
         if busy:
-            flags = [(everything, "--all"), (filed, "--filed"), (apart, "--apart")]
-            again = next((flag for asked, flag in flags if asked), "--compact")
+            asked = {"--all": everything, "--filed": filed, "--apart": apart, "--compact": compact}
+            again = " ".join(flag for flag, on in asked.items() if on)  # none of them lost
             typer.echo(
                 f"a build is running (process {', '.join(map(str, busy))}): nothing was deleted. "
                 f"Wait for it to finish (or stop it), then run osxp clean {again} again.",
@@ -927,11 +927,13 @@ def clean(
             "downloads them again if those were deleted)"
         )
     trimming = report.compacted or compact
-    if compact:
+    if compact and (report.compacted or (dry_run and store_root.is_dir())):
         typer.echo(
             f"{'would compact' if dry_run else 'compacted'} the cache: the relief and the mesh "
             "are kept in one form; a version before this one can no longer use it"
         )
+    elif compact:  # no cache yet: nothing compacted, the first build makes one in both forms
+        typer.echo(f"no cache in {store_root}: nothing to compact")
     if report.twice_files and trimming:
         typer.echo(
             f"relief and mesh files kept in a second form: {report.twice_files}, {verb} "

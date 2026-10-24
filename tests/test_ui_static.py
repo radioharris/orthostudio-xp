@@ -2487,8 +2487,8 @@ def test_compacting_the_relief_and_the_mesh_is_its_own_choice_with_its_cost_in_y
     assert render is not None
     body = render.group(0)
     assert '$("disk-compact-choice").hidden = !compact && !d.compacted;' in body
-    assert '$("disk-compact").disabled = !compact;' in body
-    assert 'if (d.compacted) $("disk-compact").checked = true;' in body
+    assert "box.disabled = !compact;" in body
+    assert "if (d.compacted) box.checked = true;" in body
     assert 'd.compacted ? t("disk.compacted_note") : t("disk.compact_warn")' in body
     i18n = (UI / "i18n.js").read_text(encoding="utf-8")
     for key in ("disk.compact", "disk.compact_warn", "disk.compacted_note", "disk.confirm_twice",
@@ -2555,6 +2555,35 @@ def test_free_space_says_what_each_box_changes_in_words_chosen_one_by_one() -> N
              't("disk.confirm_relief")', '"disk.confirm_apart"', 't("disk.confirm_twice")',
              '"disk.confirm_filed"')]  # fmt: skip
     assert order == sorted(order)  # the panel's order
+
+
+def test_disk_space_counts_waits_and_unticks_as_its_review_asked() -> None:
+    """A review of the tab (2026-10-24): the data kept for older versions left out the tiles filed
+    outside, though compacting alone trims theirs too; a box ticked on a compacted folder stayed
+    ticked on the next one; the tab showed minutes-old figures with its button free until the new
+    measure came; the demo answered unlike the engine."""
+    disk = "{unused_bytes: 0, twice_bytes: 5, twice_filed_bytes: 2, filed_tiles: 1, filed_bytes: 7}"
+    plans = _node_json(
+        "app.js",
+        f"[m.freeSpacePlan({disk}, false, false, false, false, true),"
+        f" m.freeSpacePlan({disk}, false, false, true, false, true)]",
+    )
+    assert [p["twice"] for p in plans] == [5, 3]  # their share goes with their own box
+    assert [p["total"] for p in plans] == [5, 10]
+    app = (UI / "app.js").read_text(encoding="utf-8")
+    body = _function_body(app, "renderDisk")
+    assert "const shownDone = box.disabled && box.checked;" in body
+    assert "else if (!compact || shownDone) box.checked = false;" in body
+    assert "state.diskMeasuring" in body and 't("disk.measuring")' in body
+    load = _function_body(app, "loadDisk")
+    assert load.index("state.diskMeasuring = true;") < load.index('api("GET", "/api/disk")')
+    assert "renderDisk(); // the last figures at once" in load
+    tables = _i18n_tables()
+    assert tables["fr"]["disk.measuring"] == "Mesure en cours…"
+    got = _node_mock('process.stdout.write(JSON.stringify((await call("GET", "/api/disk")).ok));')
+    store = got["store_bytes"] - got["shared_bytes"]
+    assert store > got["unused_bytes"] + got["apart_bytes"] + got["twice_bytes"]  # data in use > 0
+    assert "twice_filed_bytes" in got and "filed_apart_bytes" in got
 
 
 def test_a_zone_whose_level_changes_goes_to_its_place() -> None:
