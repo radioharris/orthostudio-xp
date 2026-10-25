@@ -37,11 +37,16 @@ batch of 8 tiles. A tile already in `--out` is kept, so a stopped run goes on wh
 
 ```bash
 cd <checkout of the release>
-OSXP_HOME=/tmp/witness-home .venv/bin/python <branch>/tools/witness/witness.py build --out ~/Desktop/Dev/osxp-witness/v1.0.2
+OSXP_HOME=/tmp/witness-home .venv/bin/python <checkout to check>/tools/witness/witness.py build --out ~/Desktop/Dev/orthostudio-xp-witness-tiles/v1.1.0
 cd <checkout to check>
-OSXP_HOME=/tmp/witness-home .venv/bin/python tools/witness/witness.py build --out ~/Desktop/Dev/osxp-witness/<branch>
-.venv/bin/python tools/witness/witness.py compare ~/Desktop/Dev/osxp-witness/v1.0.2 ~/Desktop/Dev/osxp-witness/<branch> --report report.txt
+OSXP_HOME=/tmp/witness-home .venv/bin/python tools/witness/witness.py build --out ~/Desktop/Dev/orthostudio-xp-witness-tiles/<branch>
+.venv/bin/python tools/witness/witness.py compare ~/Desktop/Dev/orthostudio-xp-witness-tiles/v1.1.0 ~/Desktop/Dev/orthostudio-xp-witness-tiles/<branch> --report report.txt
 ```
+
+The reference kept today, `~/Desktop/Dev/orthostudio-xp-witness-tiles/v1.1.0`, was built on
+2026-10-15 from e3c4250a, a 1.1.0 candidate 62 commits before the release (airports, bathymetry
+and masks changed after it): build it again from the tag `v1.1.0` before checking a change against
+1.1.0. The folder was `osxp-witness` before 2026-10-25.
 
 Measured on the reference Mac (2026-10-13): 72 tiles in 14 minutes, 2.1 GB kept per
 version (the meshes). `build --digests-only` keeps the digests and the counts without the mesh
