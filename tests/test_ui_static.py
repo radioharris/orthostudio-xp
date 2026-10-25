@@ -2702,6 +2702,16 @@ def test_each_disk_space_box_lists_its_cases_as_points_in_one_order() -> None:
     assert not fr["disk.compact_warn"].startswith("⚠")  # the point's sign says it
 
 
+def test_the_zone_help_follows_a_language_switch() -> None:
+    """The help under the zone buttons was written once, at the map's start: after a switch from
+    English to French it stayed in English under French buttons (a campaign, 2026-10-25). The
+    map's redraw for a new language writes it again."""
+    map_js = (UI / "map.js").read_text(encoding="utf-8")
+    body = re.search(r"\n  function rerender\(\) \{.*?\n  \}\n", map_js, re.S)
+    assert body is not None and "renderWhichShape();" in body.group(0)
+    assert "planMap?.rerender();" in (UI / "app.js").read_text(encoding="utf-8")
+
+
 def test_a_zone_whose_level_changes_goes_to_its_place() -> None:
     """A user drew zones at ZL19, ZL18 and another, then set the last one to ZL15: it stayed above
     the ZL18 one and hid it. A changed level now moves the zone where a new zone of that level
