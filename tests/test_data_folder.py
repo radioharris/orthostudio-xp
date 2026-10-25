@@ -356,6 +356,40 @@ async def test_the_checks_follow_the_data_folder_at_once(
         assert await check(c, "store") == "ok"
 
 
+def test_a_build_whose_data_folder_went_says_only_that(home: Path, tmp_path: Path) -> None:
+    """The data folder's disk unplugged during a build: Works showed a map layer "missing" with
+    command-line options, and an internal error to report (a campaign, 2026-10-25). The build
+    says the data folder is not found, plug its disk in again; the steps that failed for it stay
+    in the journal. Fails on the code before: the two cards."""
+    from orthostudio.api.jobs import _expected_nodes
+    from orthostudio.sched import Failed, Started
+
+    disk = tmp_path / "SSD" / "OrthoStudio"
+    disk.mkdir(parents=True)
+    _choose(home, disk)
+
+    def unplugged(specs: Any, *, on_event: Any, env: Any) -> None:
+        node_id, _role = _expected_nodes(specs[0])[1]
+        on_event(Started(node_id, "cpu", "k" * 64))
+        layer = OsxpError("OSM_LAYER_UNAVAILABLE", context={"tile": specs[0].tile.name})
+        on_event(Failed(node_id, layer))
+        disk.rename(tmp_path / "SSD away")  # its disk goes
+        raise OsxpError(
+            "SYS_INTERNAL_ERROR", context={"type": "OperationalError", "detail": "disk I/O error"}
+        )
+
+    mgr = JobManager(jobs_dir=home / "jobs", build=unplugged, env_factory=None)
+    job = mgr.start([make_spec(home=home)], install=False, request={"tiles": ["+43+005"]})
+    assert job.wait(10.0) and job.status == "failed"
+    state = job.state()
+    assert [(e["code"], e["context"]) for e in state["errors"]] == [
+        ("CFG_DATA_DIR_MISSING", {"path": str(disk)})
+    ]
+    journal = (home / "jobs" / f"{job.id}.jsonl").read_text(encoding="utf-8")
+    assert "OSM_LAYER_UNAVAILABLE" in journal and "disk I/O error" in journal
+    mgr.close()
+
+
 @pytest.mark.anyio
 async def test_build_again_builds_in_the_data_folder_chosen_now_and_waits_for_its_disk(
     app: Any, tmp_path: Path, xplane: Path

@@ -23,6 +23,7 @@ from orthostudio.graph.errors import (
     MissingArtifactError,
     RuleFailedError,
     StoreError,
+    UnreadableIndexError,
 )
 from orthostudio.graph.executor import (
     Event,
@@ -87,6 +88,7 @@ __all__ = [
     "Source",
     "Store",
     "StoreError",
+    "UnreadableIndexError",
     "artifact_key",
     "canonical_bytes",
     "canonical_json",

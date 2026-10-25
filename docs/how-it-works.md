@@ -478,7 +478,11 @@ folders at once, so every tile keeps its roads, forests and buildings. A tile bu
 new folder takes the place of its old build in X-Plane, and the old build stays in the Library,
 where it can be deleted. When the disk is not plugged in, the status bar says so, the page's map
 still shows without keeping its images, and nothing is estimated or built: nothing is written on
-the computer's own disk instead.
+the computer's own disk instead. Unplugged during a build, the build stops and *Works* says just
+that; plugged in again, everything reads it at once, and *Build again* goes on from what was done,
+with no restart of the app. Should the cache's index itself be damaged (a disk that failed),
+*Disk space* and the Plan say so, and emptying the store folder starts it afresh: the tiles are not
+in it.
 
 `tile_settings.cfg` lists the settings the tile was built with. The tiles Ortho4XP built keep their
 own folders, `zOrtho4XP_<tile>` and `yOrtho4XP_Overlays`, which OrthoStudio XP never writes into.

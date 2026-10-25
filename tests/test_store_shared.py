@@ -9,6 +9,7 @@ twice: 91 GB for a store adding 40 GB to 62 GB of tiles (2026-10-23). Temporary 
 from __future__ import annotations
 
 import os
+import shutil
 import sqlite3
 from pathlib import Path
 from typing import Any
@@ -167,6 +168,26 @@ async def test_a_tile_measured_against_another_data_folder_is_measured_again(
     with Library(default_library_path()) as lib:
         (facts,) = lib.remembered_facts().values()
     assert (facts.shared, facts.shared_with) == (DDS + DSF, str(home / "store"))
+
+
+@pytest.mark.skipif(not hasattr(os.stat("."), "st_birthtime"), reason="no birth time here")
+def test_a_store_emptied_and_made_again_shares_nothing_with_the_tiles(home: Path) -> None:
+    """The store folder emptied by hand (the remedy the page gives for a newer version's cache or
+    a damaged one), then made again at the same path: the Library's measures of the tiles were
+    taken against the store that went, and the folded note still said the data folder looked
+    3.5 GB bigger in the Finder (a campaign, 2026-10-25). A measure older than the store is taken
+    again. Fails on the code before: the old figure."""
+    pack = _pack(home / "tiles", _store(home / "store"))
+    with Library(default_library_path()) as lib:
+        lib.register(T, "BI", 16, pack, "osxp")
+        lib.remember_facts(pack, PackFacts("s", 1, None, None, 1.0, DDS + DSF, str(home / "store")))
+    shutil.rmtree(home / "store")
+    Store(home / "store", fsync=False).close()  # made again, empty, by the next build or plan
+    assert appmod._finder_extra_bytes(home / "store", home) == 0
+    assert appmod._shared_bytes(home / "store") == 0
+    with Library(default_library_path()) as lib:
+        (facts,) = lib.remembered_facts().values()
+    assert (facts.shared, facts.shared_with) == (0, str(home / "store"))
 
 
 def test_the_note_says_how_much_larger_a_file_manager_shows_the_data_folder(

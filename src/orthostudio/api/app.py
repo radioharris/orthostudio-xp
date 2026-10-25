@@ -76,7 +76,7 @@ from orthostudio.doctor import run_doctor
 from orthostudio.errors import Action, OsxpError, Severity, wrap
 from orthostudio.fsutil import choose_folder, platform_name, reveal_in_file_manager
 from orthostudio.graph import GraphError, Store
-from orthostudio.graph.errors import IncompatibleIndexError
+from orthostudio.graph.errors import IncompatibleIndexError, UnreadableIndexError
 from orthostudio.imagery.grid import wgs84_to_tile
 from orthostudio.imagery.providers import (
     USER_SOURCE_IN_FLIGHT,
@@ -262,6 +262,7 @@ _STATUS_BY_CODE = {
     "ZONE_CONFLICT": 409,
     "SYS_PACK_NOT_OSXP": 409,
     "SYS_STORE_NEWER": 409,
+    "SYS_STORE_UNREADABLE": 409,
     "SYS_INTERNAL_ERROR": 500,
 }
 
@@ -469,6 +470,26 @@ def _sizes() -> dict[str, int]:
     }
 
 
+def _store_born(root: Path) -> float | None:
+    """When the store at ``root`` was made: its index's birth. ``None`` where the system does not
+    say (Linux), or without an index."""
+    try:
+        return float((Path(root) / "index.sqlite").stat().st_birthtime)
+    except (OSError, AttributeError):
+        return None
+
+
+def _measured_with(facts: PackFacts | None, store: str, born: float | None) -> bool:
+    """Whether ``facts`` were measured against the store at ``store`` as it is now: at that path,
+    and not before that store was made. One emptied by hand and made again at the same path (the
+    remedy the page gives for a newer version's cache or a damaged one) shares nothing with the
+    tiles yet: Disk space's folded note still said the data folder looked 3.5 GB bigger in the
+    Finder (a campaign, 2026-10-25)."""
+    if facts is None or facts.shared_with != store:
+        return False
+    return born is None or facts.measured_at >= born
+
+
 def _shared_bytes(root: Path, within: Path | None = None) -> int:
     """The bytes of the store at ``root`` that are the files of the tiles in the Library too, one
     file under two names: the page counts them once, in the tiles' sizes, where the store's size
@@ -489,21 +510,24 @@ def _shared_bytes(root: Path, within: Path | None = None) -> int:
         with Library(default_library_path()) as lib:
             facts = lib.remembered_facts()
             packs = {row.path for row in lib.list(kind="ortho")}
-            current = str(default_store_root())
+            current = default_store_root()
+            born = _store_born(current)
             with _PhotoStore() as photos:
                 for pack in packs:
                     f = facts.get(str(pack))
-                    if (f is None or f.shared_with != current) and pack.is_dir():
+                    if not _measured_with(f, str(current), born) and pack.is_dir():
                         measured = _measure_pack(lib, pack, photos)
                         if measured is not None:
                             facts[str(pack)] = measured
     except Exception:  # a figure of the page never stops the engine
         return 0
-    store = str(root)
+    store, born_here = str(root), _store_born(root)
     total = 0
     for pack in packs:
         f = facts.get(str(pack))
-        if f is None or not f.shared or f.shared_with != store or not pack.is_dir():
+        if f is None or not f.shared or not _measured_with(f, store, born_here):
+            continue
+        if not pack.is_dir():
             continue
         if inside is not None:
             real = _real_path(pack)
@@ -640,13 +664,15 @@ def _pack_facts(
     todo: list[Path] = []
     check: list[tuple[Path, str | None]] = []
     measured_with = str(default_store_root())
+    born = _store_born(default_store_root())
     for pack, updated_at in registered.items():
         facts = remembered.get(str(pack))
         if facts is not None and facts.measured_at > updated_at:
             known[pack] = facts
-            # measured before the files it shares with this store were (an older version, or
-            # another data folder): measured again in the background, its size shown meanwhile
-            check.append((pack, facts.stamp if facts.shared_with == measured_with else ""))
+            # measured before the files it shares with this store were (an older version, another
+            # data folder, a store emptied since): measured again in the background, its size
+            # shown meanwhile
+            check.append((pack, facts.stamp if _measured_with(facts, measured_with, born) else ""))
         else:
             todo.append(pack)
     deadline = time.monotonic() + PACK_SIZES_BUDGET_S
@@ -1097,9 +1123,11 @@ def create_app(
         return _error_response(exc)
 
     @app.exception_handler(IncompatibleIndexError)
-    async def _store_refused(_request: Request, exc: IncompatibleIndexError) -> JSONResponse:
-        # a cache a newer version made, said as such (SYS_STORE_NEWER): a bare 500 left Disk space
-        # blank and the Plan saying the engine did not answer (a campaign, 2026-10-24)
+    @app.exception_handler(UnreadableIndexError)
+    async def _store_refused(_request: Request, exc: Exception) -> JSONResponse:
+        # a cache a newer version made (SYS_STORE_NEWER), or a damaged one (SYS_STORE_UNREADABLE),
+        # said as such: a bare 500 left Disk space blank and the Plan saying the engine did not
+        # answer (campaigns, 2026-10-24 and 25)
         return _error_response(wrap(exc))
 
     @app.exception_handler(RequestValidationError)

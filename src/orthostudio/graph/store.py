@@ -50,6 +50,7 @@ from orthostudio.graph.errors import (
     IncompatibleIndexError,
     MissingArtifactError,
     StoreError,
+    UnreadableIndexError,
 )
 from orthostudio.graph.keys import parse_recipe
 from orthostudio.graph.rule import Kind
@@ -446,6 +447,12 @@ class Store:
                 log.debug("index at %s busy while opening (%s), retrying", self.root, exc)
                 time.sleep(delay)
                 delay = min(delay * 2, 0.25)
+            except sqlite3.DatabaseError as exc:
+                # no database any more, or a damaged one: said as such (SYS_STORE_UNREADABLE),
+                # where it was a bare 500 that left Disk space blank and the Plan saying the
+                # engine did not answer (a campaign, 2026-10-25)
+                db.close()
+                raise UnreadableIndexError(self.root, str(exc)) from exc
             except BaseException:
                 # an index refused (a newer version's, IncompatibleIndexError) is closed at once:
                 # left to a garbage collection, it stayed open in the engine, and Windows refused

@@ -42,6 +42,16 @@ class IncompatibleIndexError(StoreError):
         self.expected = expected
 
 
+class UnreadableIndexError(StoreError):
+    """The sqlite index at ``root`` cannot be read at all: no database any more, or a damaged one
+    (``detail``, sqlite's words). Nothing in it can be trusted; the folder can only be emptied."""
+
+    def __init__(self, root: object, detail: str) -> None:
+        super().__init__(f"index at {root} cannot be read: {detail}")
+        self.root = str(root)
+        self.detail = detail
+
+
 class MissingArtifactError(StoreError, KeyError):
     """The key is not in the store (or its files vanished)."""
 

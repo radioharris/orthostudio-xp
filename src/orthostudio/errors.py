@@ -1036,6 +1036,14 @@ _SPECS: tuple[ErrorSpec, ...] = (
         "in it, and a build downloads and computes again what it needs.",
     ),
     _spec(
+        "SYS_STORE_UNREADABLE",
+        _B,
+        _S,
+        "The data in {path} is damaged: OrthoStudio XP cannot read it.",
+        "Empty that folder to start afresh: the tiles are not in it, and a build downloads and "
+        "computes again what it needs.",
+    ),
+    _spec(
         "SYS_INTERNAL_ERROR",
         _B,
         _S,
@@ -1436,9 +1444,15 @@ def disk_trouble(exc: BaseException) -> OsxpError | None:
 
 def store_trouble(exc: BaseException) -> OsxpError | None:
     """A cache a newer version made, which this one refuses to open (``graph.store``
-    ``COMPACT_VERSION``, the highest it reads): said as such, where it was an internal error to
-    report. Recognised by name, as the sqlite errors of :func:`disk_trouble`: this module imports
-    nothing of the graph."""
+    ``COMPACT_VERSION``, the highest it reads), or one whose index cannot be read at all (no
+    database any more, or a damaged one): said as such, where it was an internal error to report.
+    Recognised by name, as the sqlite errors of :func:`disk_trouble`: this module imports nothing
+    of the graph."""
+    if type(exc).__name__ == "UnreadableIndexError":
+        return OsxpError(
+            "SYS_STORE_UNREADABLE",
+            context={"path": getattr(exc, "root", ""), "detail": getattr(exc, "detail", "")},
+        )
     if type(exc).__name__ != "IncompatibleIndexError":
         return None
     found, expected = getattr(exc, "found", 0), getattr(exc, "expected", 0)

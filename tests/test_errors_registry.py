@@ -263,6 +263,19 @@ def test_a_cache_a_newer_version_made_is_said_as_such() -> None:
     assert errors.wrap(IncompatibleIndexError("/data/store", 0, 2)).code == "SYS_INTERNAL_ERROR"
 
 
+def test_a_damaged_cache_is_said_as_such() -> None:
+    """An index that is no database any more, or a damaged one, made a bare 500: Disk space blank,
+    the Plan saying the engine did not answer (a campaign, 2026-10-25). Said as SYS_STORE_UNREADABLE
+    with the folder and the remedy, sqlite's words kept in the context."""
+    from orthostudio.graph import UnreadableIndexError
+
+    damaged = errors.wrap(UnreadableIndexError("/data/store", "file is not a database"))
+    assert damaged.code == "SYS_STORE_UNREADABLE"
+    assert damaged.context == {"path": "/data/store", "detail": "file is not a database"}
+    assert "/data/store" in damaged.message and "damaged" in damaged.message
+    assert "Empty that folder" in damaged.remedy
+
+
 def test_error_is_an_exception_usable_with_raise_from() -> None:
     try:
         try:

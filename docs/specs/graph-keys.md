@@ -310,7 +310,10 @@ version writes a row by an upsert and removes one by its key (a `REPLACE` would 
 delete trigger).
 
 `refcount(key) = pins on key + edges whose parent_key is key`. A schema version this version does
-not read (section 7) raises `IncompatibleIndexError` at open. One connection per `Store`,
+not read (section 7) raises `IncompatibleIndexError` at open, and an index sqlite cannot read at
+all (no database any more, or a damaged one) `UnreadableIndexError`, said as
+`SYS_STORE_UNREADABLE`, its connection closed first as well (a campaign, 2026-10-25). One
+connection per `Store`,
 guarded by an `RLock`; several processes share the file through WAL and `busy_timeout`.
 Opening is retried for up to 15 s: when several processes create the same index at the same
 instant, the WAL switch can fail with "database is locked" without consulting the busy

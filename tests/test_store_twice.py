@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import contextlib
 import os
+import shutil
 import sqlite3
 import time
 from pathlib import Path
@@ -31,7 +32,7 @@ from orthostudio.api.app import create_app
 from orthostudio.api.jobs import JobManager
 from orthostudio.clean import clean
 from orthostudio.cli import app as cli_app
-from orthostudio.graph import Store, artifact_key
+from orthostudio.graph import Store, UnreadableIndexError, artifact_key
 from orthostudio.graph.digest import digest_file
 from orthostudio.install import Library
 from orthostudio.mesh.mesh_file import MeshData, write_mesh_npz, write_mesh_text
@@ -449,6 +450,32 @@ async def test_a_cache_a_newer_version_made_is_said_to_the_page(
         assert r.status_code == 409 and r.json()["error"]["code"] == "SYS_STORE_NEWER", r.text
     with contextlib.closing(sqlite3.connect(home["store"] / "index.sqlite")) as db:
         assert db.execute("SELECT v FROM meta WHERE k = 'schema_version'").fetchone()[0] == newer
+
+
+@pytest.mark.anyio
+async def test_a_damaged_cache_is_said_to_the_page(app: Any, home: dict[str, Path]) -> None:
+    """An index whose first bytes were overwritten made a bare 500: Disk space stayed blank and
+    the Plan said the engine did not answer (a campaign, 2026-10-25). It is said as
+    SYS_STORE_UNREADABLE, the index is let go at once (the folder can be emptied with the app
+    open), and the store opens again once the folder is emptied. Fails on the code before: 500."""
+    with Store(home["store"], fsync=False) as s:
+        _relief(s)
+    index = home["store"] / "index.sqlite"
+    with open(index, "r+b") as f:
+        f.write(b"this is not an index any more".ljust(100, b"\0"))
+    with pytest.raises(UnreadableIndexError) as refused:
+        Store(home["store"], fsync=False)
+    assert refused.value.root == str(home["store"]) and "not a database" in refused.value.detail
+    async with client_for(app) as c:
+        r = await c.get("/api/disk")
+        assert r.status_code == 409, r.text
+        error = r.json()["error"]
+        assert error["code"] == "SYS_STORE_UNREADABLE"
+        assert error["context"]["path"] == str(home["store"])
+        r = await c.post("/api/clean", json={"images": True})
+        assert r.status_code == 409 and r.json()["error"]["code"] == "SYS_STORE_UNREADABLE"
+        shutil.rmtree(home["store"])  # the card's remedy, the app open
+        assert (await c.get("/api/disk")).status_code == 200
 
 
 # -- what the store reads once ------------------------------------------------------------------

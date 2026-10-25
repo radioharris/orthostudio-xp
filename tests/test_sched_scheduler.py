@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import sqlite3
 import threading
 import time
 from collections.abc import Callable
@@ -659,6 +660,27 @@ def test_a_waiting_node_lends_its_network_slot(store: Store) -> None:
     assert _max_concurrent(spans) == 2, "the waiting node never lent its slot"
     # and the slot is counted once: the run ends without the counter going negative
     assert sched._running["net"] == 0
+
+
+def test_a_run_whose_estimates_cannot_be_written_still_stops_its_threads(
+    store: Store, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The estimates go into the store's index at the end of a run. When the data folder's disk had
+    gone during it, that write raised before the pools were stopped: their threads kept the run,
+    and the index it holds, in the engine, which read nothing of it once the disk was back, and the
+    build said an internal error (a campaign, 2026-10-25)."""
+    before = set(threading.enumerate())
+    sched = _sched(store)
+    sched.add(_node("a", SRC, seconds=0.02, tag="a"))
+
+    def disk_gone() -> int:
+        raise sqlite3.OperationalError("disk I/O error")
+
+    monkeypatch.setattr(sched.costs, "flush", disk_gone)
+    refs, _ = _run(sched, ["a"])
+    assert set(refs) == {"a"}  # the run says what it built; only the estimates are left
+    left = [t.name for t in set(threading.enumerate()) - before if t.name.startswith("osxp-sched")]
+    assert left == []
 
 
 def test_a_listener_that_stops_the_run_never_prints_from_a_callback(store: Store) -> None:

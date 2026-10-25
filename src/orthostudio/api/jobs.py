@@ -60,7 +60,7 @@ from orthostudio.pipeline.build import (
     build_tiles,
     default_subprocess_slots,
 )
-from orthostudio.pipeline.home import osxp_home
+from orthostudio.pipeline.home import data_root_missing, osxp_home
 from orthostudio.pipeline.textures import default_workers
 from orthostudio.sched import Done, Failed, Progress, Started, Stats
 from orthostudio.sources.osm import shared_board
@@ -899,13 +899,21 @@ class Job:
 
     # -- end of the run (job thread) ----------------------------------------------------------
 
-    def _finish(self, status: str, report: BuildReport | None, env: BuildEnv | None) -> None:
+    def _finish(
+        self,
+        status: str,
+        report: BuildReport | None,
+        env: BuildEnv | None,
+        lost: Path | None = None,
+    ) -> None:
         with self._lock:
             self.status = status
             self.finished_at = _now()
             if report is not None:
                 self.report = report.to_dict()
                 self._adopt_report(report)
+            if lost is not None:
+                self._lost_data_folder(lost)
             self.decisions = self._decisions(env)
             self._emit_stats()  # the last one: progress 1 when done, nothing left
             self._append(
@@ -919,6 +927,18 @@ class Job:
                 with contextlib.suppress(OSError):
                     self._file.close()
                 self._file = None
+
+    def _lost_data_folder(self, folder: Path) -> None:
+        """The data folder's disk went during the build: that is the one thing said
+        (CFG_DATA_DIR_MISSING, plug it in again), the steps that failed for it kept in the journal.
+        Works showed a map layer "missing" with command-line options, and an internal error to
+        report (a campaign, 2026-10-25)."""
+        lost = OsxpError("CFG_DATA_DIR_MISSING", context={"path": str(folder)})
+        self.job_error = error_json(lost)
+        for ts in self._tiles.values():
+            for st in ts.nodes.values():
+                if st.error is not None and st.cause is None:
+                    st.cause = "data_folder"
 
     def _adopt_report(self, report: BuildReport) -> None:
         """Nodes the report knows and the events did not (the second pass, ``repair``)."""
@@ -1567,13 +1587,17 @@ class JobManager:
             _drop_frames(err)
         finally:
             job.stop_ticker()
+            lost = None
+            if status == "failed":
+                with contextlib.suppress(OSError):
+                    lost = data_root_missing()
             # The end is one step for whoever asks the manager: the job announced, written, and
             # out of the active slot together. A page hears `finished` and asks the status at
             # once, and the status named the job still while its state was being written (a run
             # of the suite under load, 2026-10-05). Written before it leaves the slot: a job out
             # of it may be removed from the list, files and all.
             with self._lock:
-                job._finish(status, report, env if isinstance(env, BuildEnv) else None)
+                job._finish(status, report, env if isinstance(env, BuildEnv) else None, lost)
                 with contextlib.suppress(OSError):
                     job.save_state()
                 if self._active is job:
@@ -1581,10 +1605,13 @@ class JobManager:
                 self._threads.pop(job.id, None)
                 if self._queue:
                     self._launch(self._queue.popleft())
-            if isinstance(env, BuildEnv) and report is not None and not report.cancelled:
-                # the store's index is not held between builds; after a Stop, a step still running
-                # past the scheduler's grace commits into it later (a review, 2026-10-06). Out of
-                # the lock: a slow disk's closing never holds the page's status
+            if isinstance(env, BuildEnv) and status != "cancelled":
+                # the store's index is not held between builds, one that failed included: left to
+                # a garbage collection, a build that died with its data folder's disk kept that
+                # index open, and once the disk was back the engine read nothing of it ("disk I/O
+                # error") until it was restarted (a campaign, 2026-10-25). After a Stop, a step
+                # still running past the scheduler's grace commits into it later (a review,
+                # 2026-10-06). Out of the lock: a slow disk's closing never holds the page's status
                 with contextlib.suppress(Exception):
                     env.close()
             job._done.set()

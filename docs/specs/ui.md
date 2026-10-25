@@ -730,7 +730,10 @@ ended row, its fraction while it runs, 0 otherwise; by count when nothing weighs
 page's steps are the engine's after every entry (a test drives the engine's `Job` and compares,
 `tests/test_ui_static.py`). A recompute never moves a bar back between two reads (the rows no entry
 touched keep the weights of the last read); the next read may. `failed` adds an error card, one per
-failure (a node skipped because of it adds none).
+failure (a node skipped because of it adds none). A build whose data folder went while it ran (its
+disk unplugged) shows one card, `CFG_DATA_DIR_MISSING`, its nodes' errors kept in the journal
+with the cause `data_folder`: it showed a map layer missing with command-line options, in English
+on a French page, and an internal error to report (a campaign, 2026-10-25).
 
 **Error cards** sit in a grid of columns at least 320 px wide, `auto-fit`: a card alone takes the
 whole width, two or more share it. `auto-fill` kept an empty column beside a lone card, which then
@@ -1647,7 +1650,8 @@ for the user; the same words in the confirmation.
   a disk unplugged with the tab open went unsaid for a minute and more.
 * **A measure refused** with an error code shows its card under the lines (`disk-measure-error`,
   `state.diskError`, `errorCard`): a cache a newer version made (`SYS_STORE_NEWER`, a 409) left
-  the tab blank and the Plan saying the engine did not answer (a campaign, 2026-10-24).
+  the tab blank and the Plan saying the engine did not answer (a campaign, 2026-10-24), and so did
+  a damaged one (`SYS_STORE_UNREADABLE`, a 409 too, a campaign, 2026-10-25).
 * **Two lines without a box**, each saying what becomes of it: *what is used to rebuild your N
   tiles*, kept (N the atelier's tiles alone, `atelier_tiles`: the tiles filed elsewhere have their
   own box, and counted here too they read as counted twice, a review, 2026-10-24) (`app.js` `cacheBytes`, the store less `shared_bytes`, the files it shares with the
@@ -1662,7 +1666,9 @@ for the user; the same words in the confirmation.
   textures' box below). The size said is how much larger the data folder looks
   (`finder_extra_bytes`): an image is under three names, the store's, its textures folder's and the
   tile's; the note said how much larger the store looks (`shared_bytes`), 3.03 GB where the Finder
-  showed the data folder 5.98 GB larger (a campaign, 2026-10-24). A user's file manager showed the store about twice the size of the tiles and he
+  showed the data folder 5.98 GB larger (a campaign, 2026-10-24). A tile's share is measured again
+  when it was measured before the store was made: a store emptied by hand and made again shares
+  nothing with the tiles, and the note kept the old figure (a campaign, 2026-10-25). A user's file manager showed the store about twice the size of the tiles and he
   asked whether the images in it could be deleted, and the page added up the same files twice
   (2026-10-22/23).
 * **The boxes**, each with its size on its right (`disk-*-size`), what was downloaded first, since
