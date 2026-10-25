@@ -6,8 +6,8 @@ on the rules of [Ortho4XP](https://github.com/oscarpilote/Ortho4XP), which Oscar
 contributors have refined for ten years: it makes the same kind of tiles, with a different
 architecture that builds them faster. It would not exist without Ortho4XP.
 
-**Status: 1.0, the first stable version.** OrthoStudio XP builds and installs tiles end to end on
-macOS and Windows, with their installers. The installers for Intel Macs and for Linux are built and
+**Status: stable since 1.0.** OrthoStudio XP builds and installs tiles end to end on macOS and
+Windows, with their installers. The installers for Intel Macs and for Linux are built and
 checked automatically at every release, and downloaded far less often than the others; Linux is
 experimental.
 
@@ -20,7 +20,7 @@ experimental.
   map, the airports with their ICAO codes, the tiles you already have, and what the view is worth
   on the ground in the zoom levels a build works in.
 - **The cost before you build**: disk space, download and time, then build and install in one
-  click.
+  click. Squares of open sea are left out and said, as there is nothing to build there.
 - **Works, as it happens.** A bar for every step of every tile, the time left, errors that say what
   happened and what to do, and a button to fetch again only what is missing. Builds queue up, up to
   500 tiles each.
@@ -28,9 +28,9 @@ experimental.
   every Ortho4XP setting under "For experts" with a plain label.
 - **A Library.** Every tile on the computer, its size, whether X-Plane shows it and what it was
   built with, searched, sorted and opened in its folder. Take a tile out of X-Plane and back,
-  delete it, file it on any disk ([docs/workshop.md](docs/workshop.md)), build the tiles you tick
-  again after an update, and free the space the cache takes. Every action works on all the tiles
-  you tick at once, and *Show* keeps to the tiles whose files are missing or the squares listed
+  delete it, file it on any disk and bring it back into the workshop
+  ([docs/workshop.md](docs/workshop.md)), and build the tiles you tick again after an update.
+  Every action works on all the tiles you tick at once, and *Show* keeps to the tiles whose files are missing or the squares listed
   twice. Tiles moved by hand are found again, one or a whole folder at once. Tiles built with
   Ortho4XP are listed too, and never deleted.
 - **Installation handled.** Each tile goes into Custom Scenery in the order X-Plane needs, with its
@@ -59,10 +59,12 @@ experimental.
   tidal bay no longer sink under the sea; seaplane bases keep their water.
 - **Shores without blue needles.** Water closer than a metre to the shore is shallow, as the shore
   is, so X-Plane no longer draws its deep seabed at the edge of a lake.
-- **A cache.** An unchanged tile builds again in a fraction of a second, a new zone builds again
-  only what it touches, and imagery is never downloaded twice. *Free space* says what each choice
-  changes: it can delete the data kept for older versions, and the textures kept a second time of
-  the tiles on another disk, which a rebuild makes again, identical, from the downloaded images.
+- **A cache, and a tab to see it.** An unchanged tile builds again in a fraction of a second, a
+  new zone builds again only what it touches, and imagery is never downloaded twice. *Disk space*
+  shows what the data folder holds and, box by box, what freeing each part changes and what would
+  be downloaded again: the downloaded images and relief, what is used to rebuild the tiles filed
+  elsewhere, the textures kept a second time of the tiles on another disk, and the data kept for
+  older versions.
 - **Your disk of choice.** Tiles are built in the workshop, the data folder chosen in Settings, then
   filed wherever you want; an unplugged disk is said as such, and nothing is written in its place.
 - **Text as large as you need.** `− 100 % +` zooms the whole page and `Aa` makes the text alone

@@ -32,6 +32,11 @@ where it was.
 Afterwards the Library lists the tile in its new folder and X-Plane reads it from there. Its roads
 and forests go with it, and a tile you had turned off in X-Plane stays off.
 
+To bring a tile back into the workshop, file it the same way into the workshop's own *Tiles*
+folder, in your data folder. Brought back from another disk, it arrives with copies of its photos
+that the workshop already keeps: *Free space* makes each of them one file again, and *Disk space*
+says how much room that gives back.
+
 X-Plane must be closed. Tiles are filed between builds: while a build runs, *File elsewhere…* is
 greyed out until it ends.
 

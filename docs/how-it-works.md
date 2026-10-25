@@ -250,7 +250,8 @@ instance: tick them all, and one click takes the old ones off the list.
 
 The workshop has a short page of its own, the steps and the limits: [workshop.md](workshop.md).
 To file tiles yourself, tick them in the Library (*Pick all shown* takes every tile the search,
-the folder and *Show* leave), then *File elsewhere…* and choose the folder, on any disk. A question says
+the folder and *Show* leave), then *File elsewhere…* and choose the folder, on any disk; the
+workshop's own *Tiles* folder brings a tile back into the workshop. A question says
 first what will happen: on the same disk the tiles are moved, at once; on another they are
 copied, read back file by file, and only then taken out of the workshop, the cache staying there.
 X-Plane must stay closed, and tiles are filed between builds. A line shows how far the copy is,
@@ -284,7 +285,7 @@ never rewritten while X-Plane runs: quit X-Plane, then build it again, what was 
 macOS, Windows and Linux do the same.
 
 The workshop keeps the cache of the tiles filed elsewhere, so that building them again is quick.
-*Free space…* at the bottom of the Library shows it on a line of its own, with its own box: ticked,
+The *Disk space* tab shows it on a line of its own, with its own box: ticked,
 what only those tiles need goes, their data and their downloaded images, and the workshop's disk
 gets the room back. Their mesh stays, about 240 MB a tile: a neighbour built again reads it to draw
 its shores along their border, which without it were drawn as if that tile did not exist. The tiles
@@ -794,11 +795,18 @@ data folder (README, *Getting started*): the tiles stay whole and in X-Plane, an
 calculates everything again to rebuild one, without downloading the images again unless they were
 deleted. Once done, the box stays ticked.
 
+A tile of the workshop shares its photos and its DSF with the cache: one file under two names,
+which takes its room once. A tile brought back from another disk, filed back or moved by hand,
+arrives with copies, and holds them twice on the workshop's disk: *Disk space* says how much on a
+line of its own, and every *Free space* makes each of them one file with the cache's again,
+whatever the boxes, once both are read the same; a photo you retouched stays as it is. A build
+does the same when it finds a photo of the same bytes in the tile.
+
 Deleting a tile keeps its image pieces and its elevation cells on purpose: building the same area
 again then skips the download, which is most of the time. The relief has its own box because it
 weighs much less and comes back much faster: 40 MB a square from Copernicus, against 800 MB of
-imagery at ZL16. To give everything back, use *Free space…* at the bottom of
-the Library (it shows the sizes and asks first), or from a terminal:
+imagery at ZL16. To give everything back, tick every box of the *Disk space* tab and use *Free
+space…* (it shows the sizes and asks first), or from a terminal:
 
 ```bash
 osxp clean --all --dry-run   # says what would be freed, deletes nothing
