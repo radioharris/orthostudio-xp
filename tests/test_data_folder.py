@@ -11,6 +11,7 @@ import errno
 import os
 import shutil
 import sqlite3
+import time
 from pathlib import Path
 from typing import Any
 
@@ -354,6 +355,33 @@ async def test_the_checks_follow_the_data_folder_at_once(
         assert await check(c, "store") == "fail"
         shutil.rmtree(default_store_root())
         assert await check(c, "store") == "ok"
+
+
+@pytest.mark.anyio
+async def test_statuses_asked_together_run_the_checks_once(
+    app: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """On a disk not read yet, with a cache of 300 tiles, the checks took 8 s alone, and up to
+    30 s when several statuses asked at the same time each ran them again (a campaign,
+    2026-10-25). The statuses asked while they run wait for them and take their answer. Fails on
+    the code before: the checks run once per status."""
+    import orthostudio.api.app as app_mod
+
+    real = app_mod.run_doctor
+    runs: list[float] = []
+
+    def slow(**kwargs: Any) -> Any:
+        runs.append(time.monotonic())
+        time.sleep(0.3)  # the disk not read yet
+        return real(**kwargs)
+
+    monkeypatch.setattr(app_mod, "run_doctor", slow)
+    application, _mgr, _ = app
+    async with client_for(application) as c:
+        answers = await asyncio.gather(*(c.get("/api/status") for _ in range(5)))
+    assert all(r.status_code == 200 for r in answers)
+    assert len(runs) == 1
+    assert len({str(r.json()["doctor"]) for r in answers}) == 1
 
 
 def test_a_build_whose_data_folder_went_says_only_that(home: Path, tmp_path: Path) -> None:

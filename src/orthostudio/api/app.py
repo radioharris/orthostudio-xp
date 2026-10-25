@@ -1209,26 +1209,33 @@ def create_app(
                 state["airports"] = default_airport_index(xplane_dir())
         return state["airports"]
 
+    doctor_lock = threading.Lock()
+
     def doctor_checks() -> list[dict[str, Any]]:
         """The doctor's checks, kept :data:`DOCTOR_TTL_S` unless what they read of the data
         folder changed meanwhile (:func:`_doctor_reads`): its disk plugged back, the banner still
         said "not working: disk" for up to a minute, and the page reads the status only when
-        something happens (a campaign, 2026-10-25)."""
-        now = time.monotonic()
-        reads = _doctor_reads()
-        if (
-            state["doctor"] is None
-            or now - state["doctor_at"] > DOCTOR_TTL_S
-            or reads != state["doctor_read"]
-        ):
-            report = run_doctor(offline=True, xplane=xplane_dir())
-            for name, took in report.took_s.items():
-                if took > SLOW_S:  # the status waits for them (orthostudio.startclock)
-                    log.info("the doctor's %s check took %.1f s", name, took)
-            state["doctor"] = [c.to_dict() for c in report.checks]
-            state["doctor_at"] = now
-            state["doctor_read"] = reads
-        return list(state["doctor"])
+        something happens (a campaign, 2026-10-25).
+
+        One run at a time: a status asked while the checks run waits for them and takes their
+        answer. Each ran them again, and on a disk not read yet with a cache of 300 tiles the
+        checks took 8 s alone and up to 30 s side by side (a campaign, 2026-10-25)."""
+        with doctor_lock:
+            now = time.monotonic()
+            reads = _doctor_reads()
+            if (
+                state["doctor"] is None
+                or now - state["doctor_at"] > DOCTOR_TTL_S
+                or reads != state["doctor_read"]
+            ):
+                report = run_doctor(offline=True, xplane=xplane_dir())
+                for name, took in report.took_s.items():
+                    if took > SLOW_S:  # the status waits for them (orthostudio.startclock)
+                        log.info("the doctor's %s check took %.1f s", name, took)
+                state["doctor"] = [c.to_dict() for c in report.checks]
+                state["doctor_at"] = now
+                state["doctor_read"] = reads
+            return list(state["doctor"])
 
     def job_or_404(job_id: str) -> Job | JSONResponse:
         job = manager.get(job_id)
