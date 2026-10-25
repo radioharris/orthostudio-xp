@@ -841,6 +841,11 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 
 /* The Library's disk space (app.js renderDisk). */
 .disk-space { padding: var(--card-pad); border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg-2); max-width: 640px; }
+.disk-measuring {
+  display: flex; align-items: center; justify-content: center; gap: var(--gap);
+  padding: 40px 0; color: var(--fg-2);
+}
+.disk-measuring .spinner { width: 20px; height: 20px; }
 .disk-list { display: grid; grid-template-columns: 1fr auto; gap: 4px 16px; margin: 0 0 var(--block-gap); }
 .disk-list dt { color: var(--fg-2); font-size: var(--fs-2); }
 .disk-list dd { margin: 0; font-variant-numeric: tabular-nums; }

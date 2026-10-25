@@ -1645,6 +1645,11 @@ for the user; the same words in the confirmation.
   2026-10-24). Back to the window with the tab showing, the status is read again (`recheckStatus`,
   on `focus` and on the page shown again), and the tab measured again when the disk came or went:
   a disk unplugged with the tab open went unsaid for a minute and more.
+* **The first measure** shows *Measuring…* in the middle of the panel with a spinner
+  (`disk-measuring`, `state.diskMeasuring` with no figure yet): the tab showed its title and its
+  buttons and nothing else while a cache of 300 tiles took 2.5 s to measure, 9 s on a Windows disk
+  not read yet (a campaign, 2026-10-25). A later measure keeps the last figures and says it under
+  the button.
 * **A measure refused** with an error code shows its card under the lines (`disk-measure-error`,
   `state.diskError`, `errorCard`): a cache a newer version made (`SYS_STORE_NEWER`, a 409) left
   the tab blank and the Plan saying the engine did not answer (a campaign, 2026-10-24), and so did

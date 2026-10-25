@@ -2552,6 +2552,25 @@ def test_free_space_says_what_each_box_changes_in_words_chosen_one_by_one() -> N
     assert order == sorted(order)  # the panel's order
 
 
+def test_disk_space_says_it_measures_the_first_time_too() -> None:
+    """Opened for the first time, with no figure yet, the tab showed its title and its buttons and
+    nothing else for the 2.5 s a cache of 300 tiles took to measure, 9 s on a Windows disk not read
+    yet (a campaign, 2026-10-25): it says so in the middle of the panel, with a spinner."""
+    html = (UI / "index.html").read_text(encoding="utf-8")
+    opening = '<div class="disk-measuring" id="disk-measuring" role="status" hidden>'
+    block = re.search(re.escape(opening) + ".*?</div>", html)
+    assert block is not None
+    assert '<span class="spinner"' in block.group(0)
+    assert 'data-i18n="disk.measuring"' in block.group(0)
+    body = _function_body((UI / "app.js").read_text(encoding="utf-8"), "renderDisk")
+    first = body[body.index("if (away || !d) {") :]
+    first = first[: first.index("return;")]
+    assert '$("disk-measuring").hidden = away || !state.diskMeasuring;' in first
+    assert body.count('$("disk-measuring").hidden = true;') == 1  # figures there: the note says it
+    css = (UI / "styles.css").read_text(encoding="utf-8")
+    assert re.search(r"\.disk-measuring \{[^}]*justify-content: center", css)
+
+
 def test_disk_space_counts_waits_and_unticks_as_its_review_asked() -> None:
     """A review of the tab (2026-10-24): the data kept for older versions left out the tiles filed
     outside, though compacting alone trims theirs too; a box ticked on a compacted folder stayed

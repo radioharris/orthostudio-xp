@@ -5398,8 +5398,13 @@ function renderDisk() {
     button.disabled = true;
     setText(button, t("disk.free"));
     setText(note, away ? t("disk.data_missing", { path: homely(data.path) }) : "");
+    // the first measure, in the middle with a spinner: the tab stayed empty, without a word, while
+    // a cache of 300 tiles took 2.5 s to measure, 9 s on a Windows disk not read yet (a campaign,
+    // 2026-10-25)
+    $("disk-measuring").hidden = away || !state.diskMeasuring;
     return;
   }
+  $("disk-measuring").hidden = true;
   const offered = filedOffered(d);
   const copies = apartOffered(d) ? Number(d.apart_bytes) || 0 : 0;
   const twice = Number(d.twice_bytes) || 0;
