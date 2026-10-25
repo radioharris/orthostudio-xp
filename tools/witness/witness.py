@@ -505,7 +505,7 @@ def _record(
         # the masks read the meshes of the neighbours built in the same batch
         "batch": batch,
         "nodes": {
-            role: {"status": n["status"], "error": n.get("error")}
+            role: {"status": n["status"], "error": n.get("error"), "wall_s": n.get("wall_s")}
             for role, n in nodes.items()
             if role in ("osm", "dem", "coastline", "vectors", "mesh", "masks", "dsf")
         },
