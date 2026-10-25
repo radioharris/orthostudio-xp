@@ -457,7 +457,7 @@ function mockFiledTiles() {
 
 /** Disk space's figures in the mock: a cache keeping the relief and the mesh in two forms. */
 function mockDisk() {
-  return { store_bytes: 14.8e9, shared_bytes: 6.2e9, finder_extra_bytes: 9.3e9, unused_bytes: 2.4e9, apart_tiles: 3, apart_bytes: 1.1e9, twice_bytes: 0.8e9, compacted: false, images_bytes: 3.1e9, mapcache_bytes: 12e6, relief_bytes: 1.4e9 };
+  return { store_bytes: 14.8e9, shared_bytes: 6.2e9, finder_extra_bytes: 9.3e9, unused_bytes: 2.4e9, doubles_bytes: 0.6e9, apart_tiles: 3, apart_bytes: 1.1e9, twice_bytes: 0.8e9, compacted: false, images_bytes: 3.1e9, mapcache_bytes: 12e6, relief_bytes: 1.4e9 };
 }
 
 /** `GET /api/disk`'s figures of their cache, as the engine gives them: some 2.1 GB of tile data
@@ -745,10 +745,34 @@ function mockJobState(run) {
   });
 }
 
+/** A build's detail level as Works writes it: its tiles' most common level, then how many tiles are
+ * at each other one, "ZL16 (2 tuiles en ZL13)" (the engine's `levels`). Build again of 25 tiles,
+ * 2 of them at ZL13, read ZL16 alone (a user, 2026-10-25). An engine without `levels` gives its
+ * level alone. Exported for the tests. */
+export function jobLevel(job) {
+  const counts = Object.entries(job?.levels || {})
+    .map(([zl, n]) => [Number(zl), Number(n)])
+    .filter(([zl, n]) => zl > 0 && n > 0)
+    .sort((a, b) => b[1] - a[1] || b[0] - a[0]);
+  if (!counts.length) return `ZL${job?.zoom_level ?? job?.zl ?? ""}`;
+  const [[main], ...others] = counts;
+  const rest = others
+    .sort((a, b) => a[0] - b[0])
+    .map(([zl, n]) => (n === 1 ? t("works.zl_other_one", { zl }) : t("works.zl_other", { n: fmtInt(n), zl })));
+  return rest.length ? `ZL${main} (${rest.join(", ")})` : `ZL${main}`;
+}
+
 /** GET /api/jobs of a mock job: the engine's `Job.summary()`. */
 function mockJobSummary(run) {
   const d = run.doc;
-  return { id: d.id, status: d.status, created_at: d.created_at, started_at: d.started_at, finished_at: d.finished_at, install: d.install, tiles: d.tiles.map((x) => x.tile), provider: d.provider, zl: d.zl, ok: d.status === "done" };
+  return { id: d.id, status: d.status, created_at: d.created_at, started_at: d.started_at, finished_at: d.finished_at, install: d.install, tiles: d.tiles.map((x) => x.tile), provider: d.provider, zl: d.zl, levels: mockLevels(d.tiles), ok: d.status === "done" };
+}
+
+/** The engine's `levels` of a mock job: how many of its tiles at each level. */
+function mockLevels(tiles) {
+  const levels = {};
+  for (const x of tiles) levels[x.zl] = (levels[x.zl] || 0) + 1;
+  return levels;
 }
 
 /** The job's stats: counts, the whole job's elapsed time and progress (never decreasing), a range
@@ -1398,6 +1422,7 @@ export async function mockApi(method, path, body, options = {}) {
     const compacted = Boolean(body?.compact) || Boolean(mock.disk.compacted);
     const cache = mockFiledCache();
     const freed = mock.disk.unused_bytes;
+    const doublesFreed = mock.disk.doubles_bytes || 0;
     const apartFreed = apart ? mock.disk.apart_bytes || 0 : 0;
     const twiceFreed = compacted ? (mock.disk.twice_bytes || 0) + (filed ? 0 : cache.twice_filed_bytes) : 0;
     const imagesFreed = images ? mock.disk.images_bytes + mock.disk.mapcache_bytes : 0;
@@ -1406,8 +1431,8 @@ export async function mockApi(method, path, body, options = {}) {
     if (filed) mock.filedFreed = new Set(mockFiledTiles().map((e) => e.path));
     // the filed tiles' data is the store's too: it leaves the store with them
     const storeFreed = freed + apartFreed + twiceFreed + (filed ? cache.filed_bytes : 0);
-    mock.disk = { ...mock.disk, store_bytes: mock.disk.store_bytes - storeFreed, unused_bytes: 0, compacted, ...(compacted ? { twice_bytes: 0 } : {}), ...(apart ? { apart_tiles: 0, apart_bytes: 0 } : {}), ...(images ? { images_bytes: 0, mapcache_bytes: 0 } : {}), ...(relief ? { relief_bytes: 0 } : {}) };
-    return { format: "osxp-clean-1", freed_bytes: freed, apart_freed_bytes: apartFreed, twice_freed_bytes: twiceFreed, compacted, images_freed_bytes: imagesFreed, relief_freed_bytes: reliefFreed, filed_freed_bytes: filedFreed, removed: freed ? 12 : 0 };
+    mock.disk = { ...mock.disk, store_bytes: mock.disk.store_bytes - storeFreed, unused_bytes: 0, doubles_bytes: 0, compacted, ...(compacted ? { twice_bytes: 0 } : {}), ...(apart ? { apart_tiles: 0, apart_bytes: 0 } : {}), ...(images ? { images_bytes: 0, mapcache_bytes: 0 } : {}), ...(relief ? { relief_bytes: 0 } : {}) };
+    return { format: "osxp-clean-1", freed_bytes: freed, doubles_freed_bytes: doublesFreed, apart_freed_bytes: apartFreed, twice_freed_bytes: twiceFreed, compacted, images_freed_bytes: imagesFreed, relief_freed_bytes: reliefFreed, filed_freed_bytes: filedFreed, removed: freed ? 12 : 0 };
   }
   if (p === "/api/library/find-in-workshop") {
     // like the engine on a workshop whose tiles are all in the list
@@ -2360,7 +2385,7 @@ function routeFromHash() {
 // ------------------------------------------------------------------ status bar
 
 /** The engine API this page needs (orthostudio.api.app.API_LEVEL); a test keeps the two equal. */
-const PAGE_API_LEVEL = 38;
+const PAGE_API_LEVEL = 40;
 
 async function loadStatus() {
   try {
@@ -4252,7 +4277,7 @@ function renderJobList() {
     const btn = h("button", { type: "button", class: "job-item", "aria-current": String(j.id === state.jobId), onclick: () => { history.replaceState(null, "", `#works/${j.id}`); watchJob(j.id); renderJobList(); } },
       h("span", { class: "job-tiles" }, tiles.length > 3 ? `${tiles.slice(0, 3).join(" ")} +${tiles.length - 3}` : tiles.join(" ")),
       jobStatusPill(j.status),
-      h("span", { class: "job-meta num" }, `${j.provider || ""} ZL${j.zoom_level ?? j.zl ?? ""} · ${fmtDate(j.started_at || j.created_at)} · ${j.install ? t("works.install") : t("works.no_install")}`));
+      h("span", { class: "job-meta num" }, `${j.provider || ""} ${jobLevel(j)} · ${fmtDate(j.started_at || j.created_at)} · ${j.install ? t("works.install") : t("works.no_install")}`));
     const row = h("li", null, btn);
     if (!jobActive(j)) row.append(forgetButton(j, all));
     ul.append(row);
@@ -4555,7 +4580,7 @@ function updateJobView(v, job) {
     chosen && gap ? `${chosen} (${gap})` : chosen,
     job.relief_own ? t("works.relief_own") : "",
   ].filter(Boolean).join(" + ");
-  const parts = [`${job.provider || ""} ZL${job.zoom_level ?? job.zl ?? ""}`, relief, job.install ? t("works.install") : t("works.no_install")];
+  const parts = [`${job.provider || ""} ${jobLevel(job)}`, relief, job.install ? t("works.install") : t("works.no_install")];
   setText(v.meta, parts.filter(Boolean).join(" · "));
   const waiting = job.status === "queued";
   v.stop.hidden = !active;
@@ -5302,6 +5327,9 @@ async function loadDisk() {
 export function freeSpacePlan(disk, images, relief, filed = false, apart = false, compact = false) {
   const n = (v) => Math.max(0, Number(v) || 0);
   const unused = n(disk?.unused_bytes);
+  // the atelier's tiles' copies of the store's own files, made one file whatever the choices: a
+  // tile brought back from another disk held its photos twice, 358 GB for a user (2026-10-25)
+  const doubles = n(disk?.doubles_bytes);
   // the relief and the mesh in Ortho4XP's form beside the engine's, which older versions read:
   // 90 GB and 272 GB of a user's cache (2026-10-23). They go once the cache is compacted, which
   // only the user decides: a compaction cut short left some, which go whatever the choices. The
@@ -5315,7 +5343,7 @@ export function freeSpacePlan(disk, images, relief, filed = false, apart = false
   // fetch again than its imagery (a user found 1.4 GB of it left after emptying, 2026-09-18).
   const heights = relief ? n(disk?.relief_bytes) : 0;
   const away = filed ? (apart ? n(disk?.filed_apart_bytes) + n(disk?.filed_images_bytes) : filedCacheBytes(disk)) : 0;
-  return { unused, apart: copies, twice, pictures, heights, filed: away, total: unused + copies + twice + pictures + heights + away };
+  return { unused, doubles, apart: copies, twice, pictures, heights, filed: away, total: unused + doubles + copies + twice + pictures + heights + away };
 }
 
 /** A size of Free space: a few kilobytes in kilobytes, which one decimal of a megabyte rounded to
@@ -5412,12 +5440,14 @@ function renderDisk() {
   const filedShare = copies > 0 ? Number(d.filed_apart_bytes) || 0 : Number(d.filed_bytes) || 0;
   // the filed tiles' second forms are in both twice and their share: taken off once
   const twiceHere = Math.max(0, twice - (Number(d.twice_filed_bytes) || 0));
-  const inUse = Math.max(0, cacheBytes(d) - (Number(d.unused_bytes) || 0) - filedShare - copies - twiceHere);
+  const doubles = Number(d.doubles_bytes) || 0;
+  const inUse = Math.max(0, cacheBytes(d) - (Number(d.unused_bytes) || 0) - doubles - filedShare - copies - twiceHere);
   const row = (label, value, fate) => [h("dt", null, label), h("dd", { class: "num" }, value, h("span", { class: "disk-fate" }, ` · ${fate}`))];
   list.append(
     // the atelier's tiles alone: those filed elsewhere have their own box below
     ...row(tCount("disk.in_use", Number(d.atelier_tiles ?? d.tiles) || 0), fmtFreeBytes(inUse), t("disk.kept")),
     ...row(t("disk.unused"), fmtFreeBytes(d.unused_bytes), t("disk.always")),
+    ...(doubles > 0 ? row(t("disk.doubles"), fmtFreeBytes(doubles), t("disk.always_freed")) : []),
   );
   // what a file manager shows more for the folder, folded under its question: it matters only to
   // whoever compares (the owner, 2026-10-24). The whole folder's figure, which counts the cache's
@@ -5494,6 +5524,7 @@ function confirmFreeSpace(plan, compact = false, disk = null) {
   const lines = [];
   const line = (what, size) => lines.push(t("disk.confirm_line", { what, size: fmtFreeBytes(size) }));
   if (plan.unused > 0) line(t("disk.unused"), plan.unused);
+  if (plan.doubles > 0) line(t("disk.doubles"), plan.doubles);
   if (plan.pictures > 0) line(t("disk.confirm_images"), plan.pictures);
   if (plan.heights > 0) line(t("disk.confirm_relief"), plan.heights);
   if (plan.apart > 0) line(tCount("disk.confirm_apart", Number(disk?.apart_tiles) || 0), plan.apart);
@@ -5530,7 +5561,7 @@ async function freeSpace() {
   renderDisk();
   try {
     const res = await api("POST", "/api/clean", { images, relief, filed, apart, compact });
-    const freed = (Number(res?.freed_bytes) || 0) + (Number(res?.apart_freed_bytes) || 0) + (Number(res?.twice_freed_bytes) || 0) + (Number(res?.images_freed_bytes) || 0) + (Number(res?.relief_freed_bytes) || 0) + (Number(res?.filed_freed_bytes) || 0);
+    const freed = (Number(res?.freed_bytes) || 0) + (Number(res?.doubles_freed_bytes) || 0) + (Number(res?.apart_freed_bytes) || 0) + (Number(res?.twice_freed_bytes) || 0) + (Number(res?.images_freed_bytes) || 0) + (Number(res?.relief_freed_bytes) || 0) + (Number(res?.filed_freed_bytes) || 0);
     toast(freed > 0 ? t("disk.freed", { size: fmtFreeBytes(freed) }) : t("disk.nothing"));
   } catch (err) {
     const found = errorDetail(err);
@@ -6228,7 +6259,7 @@ const LIBRARY_REFUSALS = {
   SYS_FOLDER_GONE: () => [t("library.err_folder_gone"), t("library.err_folder_other")],
   SYS_FOLDER_IN_CUSTOM_SCENERY: () => [t("library.err_in_custom_scenery"), t("library.err_folder_outside_xplane")],
   SYS_FOLDER_IN_TILE: () => [t("library.err_folder_in_tile"), t("library.err_folder_other")],
-  SYS_FOLDER_IS_ATELIER: () => [t("library.err_folder_atelier"), t("library.err_folder_other")],
+  SYS_FOLDER_IS_ATELIER: () => [t("library.err_folder_atelier"), t("library.err_folder_atelier_other")],
   SYS_TILE_NAME_TAKEN: () => [t("library.err_name_taken"), t("library.err_name_taken_remedy")],
   SYS_TILE_NOT_WHOLE: () => [t("library.err_not_whole"), t("library.err_not_whole_remedy")],
   SYS_TILE_COPY_DIFFERS: () => [t("library.err_copy_differs"), t("library.err_copy_differs_remedy")],

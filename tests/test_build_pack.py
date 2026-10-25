@@ -145,6 +145,43 @@ def test_write_pack_layout_links_and_bak(tmp_path: Path, artefacts: dict[str, Pa
     assert err.value.code == "MESH_INPUT_MISSING" and not out3.exists()
 
 
+def test_a_pack_s_copy_of_the_same_bytes_becomes_one_file_with_its_source(
+    tmp_path: Path, artefacts: dict[str, Path]
+) -> None:
+    """A pack kept a file of the same bytes as it was: a tile brought back from another disk, or an
+    image made again the same after an update, held its images twice on the workshop's disk (11 GB
+    of a user's 16 tiles, 2026-10-25). Written again, it holds the source's own file, and says
+    nothing changed; without links, it keeps its copy."""
+    out = tmp_path / "out"
+    write_pack(out, T, dsf_dir=artefacts["dsf"], textures_dir=artefacts["tex"], overlay_file=None)
+    pack = out / pack_dir_name(T)
+    dds = "6000_8448_BI14.dds"
+    pairs = (
+        (pack / "textures" / dds, artefacts["tex"] / "textures" / dds),
+        (pack / T.dsf_relpath, artefacts["dsf"] / f"{T.name}.dsf"),
+    )
+    for mine, theirs in pairs:
+        data = mine.read_bytes()
+        mine.unlink()
+        mine.write_bytes(data)  # a copy, as one brought back from another disk
+        assert not os.path.samefile(mine, theirs)
+    again = write_pack(
+        out, T, dsf_dir=artefacts["dsf"], textures_dir=artefacts["tex"], overlay_file=None
+    )
+    assert again.changed == 0
+    for mine, theirs in pairs:
+        assert os.path.samefile(mine, theirs) and mine.read_bytes() == theirs.read_bytes()
+        assert not list(mine.parent.glob("*.osxp-join"))
+    copies = tmp_path / "copies"
+    for _ in range(2):
+        write_pack(
+            copies, T, dsf_dir=artefacts["dsf"], textures_dir=artefacts["tex"], overlay_file=None,
+            link=False,
+        )  # fmt: skip
+    kept = copies / pack_dir_name(T) / T.dsf_relpath
+    assert not os.path.samefile(kept, artefacts["dsf"] / f"{T.name}.dsf")
+
+
 def test_manifest_round_trip_and_intact(tmp_path: Path) -> None:
     m = PackManifest(
         tile="+43+005",

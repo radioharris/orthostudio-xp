@@ -78,6 +78,7 @@ __all__ = [
     "install_is_intact",
     "install_receipt",
     "is_installed",
+    "join_same_file",
     "lays_the_same",
     "leave_overlay",
     "library_pack",
@@ -290,8 +291,9 @@ def overlay_dsf_path(out_root: Path, tile: TileRef) -> Path:
 def _place(src: Path, dest: Path, *, link: bool, backup: bool = False) -> bool:
     """Put ``src`` at ``dest`` (hard link or copy).
 
-    Returns True when the destination changed. An existing file that is the same inode or the
-    same bytes is left alone; a different one is replaced, after a ``<name>.bak`` copy when
+    Returns True when the destination changed. An existing file that is the same inode is left
+    alone, one of the same bytes made the same file with ``link`` (:func:`join_same_file`), else
+    left as it is; a different one is replaced, after a ``<name>.bak`` copy when
     ``backup`` is set (the DSF only, as Ortho4XP did: a ``.dds.bak`` per re-encoded texture would
     leave gigabytes behind).
     """
@@ -302,6 +304,8 @@ def _place(src: Path, dest: Path, *, link: bool, backup: bool = False) -> bool:
         except OSError:
             pass
         if src.stat().st_size == dest.stat().st_size and _same_bytes(src, dest):
+            if link:
+                join_same_file(src, dest)
             return False
         if backup:
             os.replace(dest, dest.with_name(dest.name + ".bak"))
@@ -316,6 +320,29 @@ def _sweep_bak(directory: Path) -> int:
         stale.unlink()
         n += 1
     return n
+
+
+def join_same_file(src: Path, dest: Path) -> bool:
+    """Make ``dest``, which holds the bytes of ``src``, one file with it: a link to ``src`` made
+    beside ``dest``, then renamed over it, so that ``dest`` is always there. ``False``, and ``dest``
+    left as it is, the same bytes, when the two are on two disks or the link cannot be made (a
+    file another program holds, on Windows). A pack kept a file of the same bytes as it was, a copy
+    beside the store's own: a tile brought back from another disk, or an image made again the
+    same after an update, held its images twice on the workshop's disk, 11 GB of a user's 16 tiles
+    (2026-10-25)."""
+    tmp = dest.with_name(dest.name + ".osxp-join")
+    try:
+        if os.stat(src).st_dev != os.stat(dest).st_dev:
+            return False
+        with contextlib.suppress(FileNotFoundError):
+            tmp.unlink()
+        os.link(src, tmp)
+        os.replace(tmp, dest)
+    except OSError:
+        with contextlib.suppress(OSError):
+            tmp.unlink()
+        return False
+    return True
 
 
 def _same_bytes(a: Path, b: Path, chunk: int = 1 << 20) -> bool:

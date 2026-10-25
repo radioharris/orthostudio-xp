@@ -169,6 +169,7 @@ async def test_pages_that_ask_while_the_disk_is_measured_share_the_measure(
         release.wait(10)
         return SimpleNamespace(
             freed_bytes=1,
+            doubles_bytes=0,
             images_bytes=5,
             mapcache_bytes=2,
             relief_bytes=4,

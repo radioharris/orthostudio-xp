@@ -153,6 +153,32 @@ def test_a_measure_leaves_abandoned_build_folders_and_free_space_sweeps_them(
     assert _keys(world) == world["kept"]
 
 
+def test_free_space_makes_a_tile_s_copy_of_the_store_s_image_one_file_with_it(
+    world: dict[str, object],
+) -> None:
+    """A tile brought back from another disk holds its images as copies of the store's own, twice
+    on the workshop's disk, which no choice freed (11 GB of a user's 16 tiles, 2026-10-25): Free
+    space makes each one file with the store's, whatever the choices, and the tile keeps the same
+    bytes. One its user retouched stays as it is."""
+    tex = Path(world["tiles"]) / "zOrthoStudio_+43+005" / "textures" / "a.dds"  # type: ignore[arg-type]
+    data = tex.read_bytes()
+    tex.unlink()
+    tex.write_bytes(data)  # a copy, as one brought back from another disk
+    measured = _run(world, dry_run=True)
+    assert measured.doubles_files == 1 and measured.doubles_bytes == len(data)  # type: ignore[attr-defined]
+    assert tex.stat().st_nlink == 1  # a measure changes nothing
+    report = _run(world)
+    assert report.doubles_files == 1 and report.doubles_bytes == len(data)  # type: ignore[attr-defined]
+    assert tex.stat().st_nlink > 1 and tex.read_bytes() == data
+    assert _run(world, dry_run=True).doubles_files == 0  # type: ignore[attr-defined]
+    retouched = bytes(255 - b for b in data)
+    tex.unlink()
+    tex.write_bytes(retouched)  # the same size, other bytes
+    assert _run(world, dry_run=True).doubles_files == 1  # type: ignore[attr-defined]
+    assert _run(world).doubles_files == 0  # type: ignore[attr-defined]
+    assert tex.read_bytes() == retouched and tex.stat().st_nlink == 1
+
+
 def test_a_recent_artefact_is_left_to_the_build_that_may_need_it(world: dict[str, object]) -> None:
     report = _run(world, grace_s=3600.0)
     assert report.removed == 0 and _keys(world) == world["kept"] | world["gone"]  # type: ignore[attr-defined, operator]

@@ -886,6 +886,12 @@ def clean(
         f"{'would remove' if dry_run else 'removed'} {report.removed} artefact(s) no pack needs: "
         f"{verb} {_size(report.freed_bytes)}"
     )
+    if report.doubles_files:
+        typer.echo(
+            f"textures and DSF of the workshop's tiles held as copies of the cache's own: "
+            f"{report.doubles_files}, {verb} {_size(report.doubles_bytes)} (made one file with "
+            "the cache's, the same bytes)"
+        )
     if report.images_removed:
         but = (
             ", but for the pieces of the tiles filed outside the workshop (--filed)"
@@ -971,6 +977,7 @@ def clean(
     if everything:
         total = (
             report.freed_bytes
+            + report.doubles_bytes
             + report.apart_bytes
             + (report.twice_bytes if trimming else 0)
             + report.images_bytes

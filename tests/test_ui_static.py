@@ -104,6 +104,12 @@ def _index_refs() -> list[str]:
     return [r for r in refs if not r.startswith(("#", "data:"))]
 
 
+def _plan(**figures: int) -> dict[str, int]:
+    """What ``freeSpacePlan`` answers: every figure 0 but those named."""
+    names = ("unused", "doubles", "apart", "twice", "pictures", "heights", "filed", "total")
+    return {name: figures.get(name, 0) for name in names}
+
+
 def _node_json(module: str, expression: str) -> Any:
     """Import ``module`` of the page as ``m`` under node and return ``expression`` as JSON."""
     if NODE is None:
@@ -349,7 +355,7 @@ def test_mock_jobs_follow_the_engine_state() -> None:
     from orthostudio.api.stages import ROLE_STAGE
 
     summary = {"id", "status", "created_at", "started_at", "finished_at", "install", "tiles"}
-    summary |= {"provider", "zl", "relief", "ok"}
+    summary |= {"provider", "zl", "levels", "relief", "ok"}
     state = summary | {"request", "errors", "stats", "eta", "last_seq", "report", "decisions"}
     for name in ("job", "job_done"):
         doc = _mock_json(name)
@@ -758,6 +764,41 @@ def test_the_plan_says_how_many_tiles_one_build_takes() -> None:
             ' m.t("plan.too_many_tiles", {max: 500, n: 612}))',
         )
         assert "500" in text and "612" in text, text
+
+
+def test_works_writes_every_level_of_a_build() -> None:
+    """The tiles' most common level, then how many tiles are at each other one: Build again of 25
+    tiles, 2 of them at ZL13, read ZL16 alone (a user, 2026-10-25). An engine without ``levels``
+    gives its level alone."""
+    if NODE is None:
+        pytest.skip("node is not installed")
+    got = _run_node(
+        """const m = await import("./app.js");
+        const i18n = await import("./i18n.js");
+        globalThis.document = { documentElement: {} };
+        const cases = [{ levels: { 16: 23, 13: 2 } }, { levels: { 16: 5, 17: 2, 18: 1 } },
+                       { levels: { 16: 3 } }, { zl: 16 }, { levels: { 17: 1, 16: 1 } }];
+        const out = {};
+        for (const lang of ["en", "fr"]) {
+          i18n.setLanguage(lang);
+          out[lang] = cases.map((c) => m.jobLevel(c));
+        }
+        process.stdout.write(JSON.stringify(out));"""
+    )
+    assert got["en"] == [
+        "ZL16 (2 tiles at ZL13)",
+        "ZL16 (2 tiles at ZL17, 1 tile at ZL18)",
+        "ZL16",
+        "ZL16",
+        "ZL17 (1 tile at ZL16)",
+    ]
+    assert got["fr"] == [
+        "ZL16 (2 tuiles en ZL13)",
+        "ZL16 (2 tuiles en ZL17, 1 tuile en ZL18)",
+        "ZL16",
+        "ZL16",
+        "ZL17 (1 tuile en ZL16)",
+    ]
 
 
 def test_the_page_and_the_engine_agree_on_the_api_level() -> None:
@@ -2253,22 +2294,26 @@ def test_the_library_frees_disk_space_after_asking() -> None:
     # cache, and whatever the choices in a cache compacted already (2026-10-24)
     twice = "{unused_bytes: 5, twice_bytes: 3}"
     compacted = "{unused_bytes: 5, twice_bytes: 3, compacted: true}"
+    # the atelier's tiles' copies of the store's files are made one file whatever the choices: a
+    # tile brought back from another disk held its photos twice (2026-10-25)
+    doubles = "{unused_bytes: 5, doubles_bytes: 4}"
     plans = _node_json(
         "app.js",
         f"[m.freeSpacePlan({disk}, false, false), m.freeSpacePlan({disk}, true, false), "
         f"m.freeSpacePlan({disk}, false, true), m.freeSpacePlan(null, true, true), "
         f"m.freeSpacePlan({twice}, false, false), "
         f"m.freeSpacePlan({twice}, false, false, false, false, true), "
-        f"m.freeSpacePlan({compacted}, false, false)]",
+        f"m.freeSpacePlan({compacted}, false, false), m.freeSpacePlan({doubles}, false, false)]",
     )
     assert plans == [
-        {"unused": 5, "apart": 0, "twice": 0, "pictures": 0, "heights": 0, "filed": 0, "total": 5},
-        {"unused": 5, "apart": 0, "twice": 0, "pictures": 8, "heights": 0, "filed": 0, "total": 13},
-        {"unused": 5, "apart": 0, "twice": 0, "pictures": 0, "heights": 9, "filed": 0, "total": 14},
-        {"unused": 0, "apart": 0, "twice": 0, "pictures": 0, "heights": 0, "filed": 0, "total": 0},
-        {"unused": 5, "apart": 0, "twice": 0, "pictures": 0, "heights": 0, "filed": 0, "total": 5},
-        {"unused": 5, "apart": 0, "twice": 3, "pictures": 0, "heights": 0, "filed": 0, "total": 8},
-        {"unused": 5, "apart": 0, "twice": 3, "pictures": 0, "heights": 0, "filed": 0, "total": 8},
+        _plan(unused=5, total=5),
+        _plan(unused=5, pictures=8, total=13),
+        _plan(unused=5, heights=9, total=14),
+        _plan(),
+        _plan(unused=5, total=5),
+        _plan(unused=5, twice=3, total=8),
+        _plan(unused=5, twice=3, total=8),
+        _plan(unused=5, doubles=4, total=9),
     ]
     script = """
     const before = (await call("GET", "/api/disk")).ok;
@@ -2333,10 +2378,10 @@ def test_the_cache_of_the_tiles_filed_outside_is_its_own_choice() -> None:
         f" m.freeSpacePlan({{filed_bytes: -1}}, false, false, true)]",
     )
     assert plans == [
-        {"unused": 5, "apart": 0, "twice": 0, "pictures": 0, "heights": 0, "filed": 7, "total": 12},
-        {"unused": 5, "apart": 0, "twice": 0, "pictures": 8, "heights": 9, "filed": 7, "total": 29},
-        {"unused": 5, "apart": 0, "twice": 0, "pictures": 8, "heights": 0, "filed": 0, "total": 13},
-        {"unused": 0, "apart": 0, "twice": 0, "pictures": 0, "heights": 0, "filed": 0, "total": 0},
+        _plan(unused=5, filed=7, total=12),
+        _plan(unused=5, pictures=8, heights=9, filed=7, total=29),
+        _plan(unused=5, pictures=8, total=13),
+        _plan(),
     ]
     offered = _node_json(
         "app.js",
@@ -2406,11 +2451,11 @@ def test_the_copy_of_the_images_of_the_tiles_on_another_disk_is_its_own_choice()
         f" m.freeSpacePlan({disk}, false, false, true, false)]",
     )
     assert plans == [
-        {"unused": 5, "apart": 3, "twice": 0, "pictures": 0, "heights": 0, "filed": 0, "total": 8},
-        {"unused": 5, "apart": 3, "twice": 0, "pictures": 8, "heights": 0, "filed": 0, "total": 16},
-        {"unused": 5, "apart": 0, "twice": 0, "pictures": 8, "heights": 0, "filed": 0, "total": 13},
-        {"unused": 5, "apart": 3, "twice": 0, "pictures": 0, "heights": 0, "filed": 5, "total": 13},
-        {"unused": 5, "apart": 0, "twice": 0, "pictures": 0, "heights": 0, "filed": 7, "total": 12},
+        _plan(unused=5, apart=3, total=8),
+        _plan(unused=5, apart=3, pictures=8, total=16),
+        _plan(unused=5, pictures=8, total=13),
+        _plan(unused=5, apart=3, filed=5, total=13),
+        _plan(unused=5, filed=7, total=12),
     ]
     offered = _node_json(
         "app.js",

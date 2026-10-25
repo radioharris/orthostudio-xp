@@ -12,6 +12,7 @@ import asyncio
 import json
 import threading
 import time
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -143,6 +144,22 @@ def test_manager_runs_a_job_to_done(home: Path) -> None:
     lines = (home / "jobs" / f"{job.id}.jsonl").read_text().splitlines()
     assert [json.loads(line)["seq"] for line in lines] == list(range(1, len(lines) + 1))
     assert (home / "jobs" / f"{job.id}.json").is_file()
+
+
+def test_a_job_says_how_many_of_its_tiles_are_at_each_level(home: Path) -> None:
+    """Works writes "ZL16 (2 tiles at ZL13)": Build again of 25 tiles, 2 of them at ZL13, read ZL16
+    alone (a user, 2026-10-25)."""
+    specs = [
+        make_spec("+43+005", home=home),
+        make_spec("+43+006", home=home),
+        replace(make_spec("+44+005", home=home), zl=13),
+    ]
+    job = _manager(home, FakeBuild()).start(
+        specs, install=False, request={"tiles": [s.tile.name for s in specs]}
+    )
+    assert job.wait(10.0)
+    assert job.summary()["levels"] == {"14": 2, "13": 1}
+    assert job.state()["levels"] == {"14": 2, "13": 1}
 
 
 def test_a_started_job_gives_every_overpass_mirror_another_chance(home: Path) -> None:

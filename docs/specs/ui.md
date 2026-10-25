@@ -508,7 +508,7 @@ build zones the page never showed.
 
 ### 2.2 Works
 
-Job list (`GET /api/jobs`, newest first, status pill, tiles, provider, ZL, started).
+Job list (`GET /api/jobs`, newest first, status pill, tiles, provider, ZL, started). The level is the tiles' most common one, then how many tiles are at each other level (`levels`, `jobLevel`): "BI ZL16 (2 tiles at ZL13)", in the list and above the job; Build again of 25 tiles, 2 of them at ZL13, read ZL16 alone (a user, 2026-10-25).
 
 **Searching a tile** (a user, 2026-09-26: many jobs, or the 33 of a flight plan): a field above the
 list, the look of Settings' search (`#works-search`, "Search for a tile: +49+011, +49…"). A job
@@ -1657,8 +1657,13 @@ for the user; the same words in the confirmation.
 * **Two lines without a box**, each saying what becomes of it: *what is used to rebuild your N
   tiles*, kept (N the atelier's tiles alone, `atelier_tiles`: the tiles filed elsewhere have their
   own box, and counted here too they read as counted twice, a review, 2026-10-24) (`app.js` `cacheBytes`, the store less `shared_bytes`, the files it shares with the
-  tiles, which count in the tiles' sizes, less what the boxes below free), and *leftovers of tiles
-  deleted or rebuilt differently* (`unused_bytes`), always deleted.
+  tiles, which count in the tiles' sizes, less what the boxes below free and the next line), and
+  *leftovers of tiles deleted or rebuilt differently* (`unused_bytes`), always deleted. A third
+  shows when it is not 0: *room your tiles' photos take twice* (`doubles_bytes`, API level 40),
+  always freed: the copies a tile brought back from another disk holds of the photos and DSF the
+  store keeps, which Free space makes one file with the store's (a user's 16 tiles held 11 GB that
+  way, and another's 552 GB moved back to his workshop's partition would have kept 358 GB twice,
+  2026-10-25).
 * **The folder's size in the file manager**, folded under its question, *Why does the Finder show
   more?* (`disk-shared`, a `<details>`: it matters only to whoever compares; `disk.shared_why`,
   `disk.shared_note`, by the file manager's name: the Finder, File Explorer, the file manager on

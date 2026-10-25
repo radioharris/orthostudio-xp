@@ -1129,8 +1129,9 @@ _SPECS: tuple[ErrorSpec, ...] = (
         "SYS_FOLDER_IS_ATELIER",
         _B,
         _S,
-        "{folder} is the workshop, or one of its folders: tiles are filed out of it, not into it.",
-        "Nothing was changed. Choose another folder.",
+        "{folder} is inside the workshop: a tile filed there could be erased by a build or by "
+        "Free space.",
+        "Nothing was changed. Choose another folder, or the workshop's Tiles folder itself.",
     ),
     _spec(
         "SYS_TILE_COPY_DIFFERS",

@@ -514,9 +514,11 @@ tiles picked (2026-10-05), one at a time, `file_tile(entry, dest, custom_sceneri
   Scenery of a known X-Plane however reached, through a link, a junction or another case
   (`SYS_FOLDER_IN_CUSTOM_SCENERY`: a Custom Scenery moved to a big disk and linked back, its real
   folder chosen, made the tile's own link there pass for a copy of it, and the tile was deleted, a
-  review, 2026-10-05); not the workshop's `tiles` or another of the data folder's own folders
-  (`WORKSHOP_FOLDERS`: `store`, `chunks`, `work`, `mapcache`, `elevation`, `dem`, which the builds
-  write and Free space empties whole), nor a folder inside one (`SYS_FOLDER_IS_ATELIER`); not
+  review, 2026-10-05); not inside the workshop's `tiles`, nor another of the data folder's own
+  folders (`WORKSHOP_FOLDERS`: `store`, `chunks`, `work`, `mapcache`, `elevation`, `dem`, which
+  the builds write and Free space empties whole), nor a folder inside one (`SYS_FOLDER_IS_ATELIER`).
+  The workshop's `tiles` itself takes a tile back, as it takes back one put there by hand: refused
+  until a user moved his tile back by hand and it worked (2026-10-25); not
   inside a tile's folder, which deleting that tile would take away (`SYS_FOLDER_IN_TILE`). X-Plane
   running: `XP_RUNNING`. Nothing changes.
 * The tile must be whole where the Library says, its manifest's tile and keys the row's, every

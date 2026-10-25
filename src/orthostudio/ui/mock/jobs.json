@@ -16,6 +16,9 @@
     ],
     "provider": "BI",
     "zl": 16,
+    "levels": {
+      "16": 6
+    },
     "relief": "canada",
     "ok": false
   }

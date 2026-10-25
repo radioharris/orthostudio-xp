@@ -153,7 +153,7 @@ __all__ = [
     "sse_message",
 ]
 
-API_LEVEL = 38
+API_LEVEL = 40
 """What this engine's API offers, for the page: 1 = P2b, 2 = zones (``/api/zones``) and the base map
 (``/api/map``), 3 = deleting a tile (``POST /api/library/{name}/delete``) and the sizes of the
 library, 4 = the disk space of the Library (``GET /api/disk``, ``POST /api/clean``), 5 = clearing
@@ -202,7 +202,10 @@ copy of the images of the tiles on another disk or partition, deleted only on re
 choice ``compact`` of ``POST /api/clean`` and ``compacted`` in its answer and in ``GET /api/disk``
 (the relief and the mesh kept in one form, which a version before this one refuses; ``twice_bytes``
 trimmed only then), with ``twice_filed_bytes``, the share of the tiles filed outside, and
-``atelier_tiles``, the tiles whose data the page's first line keeps. A page
+``atelier_tiles``, the tiles whose data the page's first line keeps, 39 = ``levels`` in a job's
+summary (how many of its tiles at each detail level, which Works writes), 40 = ``doubles_bytes`` in
+``GET /api/disk`` and ``doubles_freed_bytes`` in ``POST /api/clean`` (the atelier's tiles' copies of
+the store's files, made one file with them whatever the choices). A page
 served by an engine older than itself (a ``osxp serve`` started before an update: the page's files
 are read from disk at each load, the routes were imported at start) asks the user to restart
 OrthoStudio XP instead of showing "Not Found"."""
@@ -707,6 +710,13 @@ def _measure_pack(
     facts = PackFacts(stamp, size, photo, _pack_built([pack])[pack], at, shared, str(root))
     lib.remember_facts(pack, facts)
     return facts
+
+
+def _measure_again(packs: list[Path]) -> None:
+    """Measure ``packs`` now, whatever the Library remembers of them."""
+    with contextlib.suppress(Exception), Library(default_library_path()) as lib, _PhotoStore() as s:
+        for pack in packs:
+            _measure_pack(lib, pack, s)
 
 
 def _measure_later(library: Path, packs: list[tuple[Path, str | None]]) -> None:
@@ -2555,6 +2565,7 @@ def create_app(
             "shared_bytes": _shared_bytes(default_store_root()),
             "finder_extra_bytes": _finder_extra_bytes(default_store_root(), data_root()),
             "unused_bytes": report.freed_bytes,
+            "doubles_bytes": report.doubles_bytes,
             "images_bytes": report.images_bytes - report.mapcache_bytes,
             "mapcache_bytes": report.mapcache_bytes,
             "relief_bytes": report.relief_bytes,
@@ -2603,6 +2614,10 @@ def create_app(
                 dry_run=False,
             )
             filed = report.filed_bytes + report.filed_images_bytes
+            if report.doubles_packs:
+                # their files are one with the store's now: what they share with it, which Disk
+                # space takes off the store's size, is measured again
+                await asyncio.to_thread(_measure_again, [Path(p) for p in report.doubles_packs])
             return {
                 "format": "osxp-clean-1",
                 "freed_bytes": report.freed_bytes,
@@ -2611,6 +2626,7 @@ def create_app(
                 "filed_freed_bytes": filed if req.filed else 0,
                 "apart_freed_bytes": report.apart_bytes if req.apart else 0,
                 "twice_freed_bytes": report.twice_bytes if report.compacted else 0,
+                "doubles_freed_bytes": report.doubles_bytes,
                 "compacted": report.compacted,
                 "removed": report.removed,
             }

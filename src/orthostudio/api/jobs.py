@@ -23,7 +23,7 @@ import os
 import secrets
 import threading
 import time
-from collections import deque
+from collections import Counter, deque
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -1017,6 +1017,9 @@ class Job:
                 "tiles": [t.tile for t in self._tiles.values()],
                 "provider": self.specs[0].provider if self.specs else None,
                 "zl": self.specs[0].zl if self.specs else None,
+                # how many of its tiles at each level, which Works writes: Build again of 25 tiles,
+                # 2 of them at ZL13, read ZL16 alone (a user, 2026-10-25)
+                "levels": dict(Counter(str(s.zl) for s in self.specs)),
                 # which relief the tiles are built on, so that Works says it while it builds
                 # (a user missed it during a build, 2026-09-17)
                 "relief": _relief_of(self.specs[0]) if self.specs else None,
