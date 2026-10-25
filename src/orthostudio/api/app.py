@@ -712,6 +712,14 @@ def _measure_pack(
     return facts
 
 
+def _measured_before(came: Mapping[str, float]) -> list[Path]:
+    """The packs of ``came`` the Library last measured before that time, or never."""
+    with contextlib.suppress(Exception), Library(default_library_path()) as lib:
+        facts = lib.remembered_facts()
+        return [Path(p) for p, at in came.items() if p not in facts or facts[p].measured_at < at]
+    return [Path(p) for p in came]
+
+
 def _measure_again(packs: list[Path]) -> None:
     """Measure ``packs`` now, whatever the Library remembers of them."""
     with contextlib.suppress(Exception), Library(default_library_path()) as lib, _PhotoStore() as s:
@@ -2560,11 +2568,12 @@ def create_app(
         started = job.started_at if job is not None and job.finished_at is None else None
         grace = _measure_grace(started, other and job is None, time.time())
         report = collect(images=True, relief=True, filed=True, dry_run=True, grace_s=grace)
-        if report.doubles_packs:
-            # a tile holding copies shares less with the store than the Library remembers: moved
-            # away by hand and back, it kept its files' dates, its share was taken off the store
-            # and its copies again, and "used to rebuild your 3 tiles" read 0 MB (2026-10-25)
-            _measure_again([Path(p) for p in report.doubles_packs])
+        if report.doubles_since:
+            # a tile holding copies shares less with the store than the Library remembers when it
+            # was measured before they came: moved away by hand and back, it kept its files' dates,
+            # its share was taken off the store and its copies again, and "used to rebuild your 3
+            # tiles" read 0 MB (2026-10-25). One measured since is not measured again.
+            _measure_again(_measured_before(report.doubles_since))
         return {
             "store_bytes": _store_bytes(default_store_root()),
             "shared_bytes": _shared_bytes(default_store_root()),

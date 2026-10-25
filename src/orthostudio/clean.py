@@ -207,6 +207,10 @@ class CleanReport:
     """The tiles holding those copies (with ``dry_run``), or whose files were made one file with
     the store's: what the Library remembers of their sizes is out of date (a tile moved away by
     hand and back keeps its files' dates, and was still counted as sharing them, 2026-10-25)."""
+    doubles_since: dict[str, float] = field(default_factory=dict)
+    """For each of ``doubles_packs`` (with ``dry_run``), when the newest of its copies came: what
+    the Library measured of the tile before that is out of date, and a tile measured since is not
+    measured again at every Disk space (19.6 s with 300 tiles on a Windows PC, 2026-10-25)."""
 
     def to_dict(self) -> dict[str, object]:
         return asdict(self)
@@ -670,6 +674,7 @@ def clean(
             report.doubles_files = len(doubles)
             report.doubles_bytes = sum(size for _pack, _mine, _theirs, size in doubles)
             report.doubles_packs = sorted({str(pack) for pack, _mine, _theirs, _size in doubles})
+            report.doubles_since = _came(doubles)
             if not dry_run:
                 went = _delete(store, unused)
                 report.removed = len(went)
@@ -880,6 +885,20 @@ def _doubles(store: Store, built: Iterable[_Built]) -> list[tuple[Path, Path, Pa
     return found
 
 
+def _came(doubles: Iterable[tuple[Path, Path, Path, int]]) -> dict[str, float]:
+    """For each tile of ``doubles``, when the newest of its copies was made: its creation time where
+    the system keeps one (macOS, Windows), else its change time (Linux); a copy is a new file."""
+    came: dict[str, float] = {}
+    for pack, mine, _theirs, _size in doubles:
+        try:
+            st = os.stat(mine)
+        except OSError:
+            continue
+        at = getattr(st, "st_birthtime", None) or st.st_ctime
+        came[str(pack)] = max(came.get(str(pack), 0.0), float(at))
+    return came
+
+
 _DIFFERENT = "clean.different"
 """The index's note of the tiles' files Free space read different from the store's own, the same
 size: an image its user retouched in the tile, which a DDS of the same picture size always is. As
@@ -900,11 +919,20 @@ def _different(store: Store) -> set[tuple[str, int, int, int]]:
         return set()
 
 
+_LISTED_NUMBERS = os.name != "nt"
+"""Whether a folder's listing carries each file's number (macOS, Linux), or only its size and
+time (Windows), for :func:`_unlinked`."""
+
+
 def _unlinked(mine: Path, theirs: Path) -> list[tuple[Path, Path]]:
     """The images of the tile's folder ``mine`` and of the store's ``theirs`` of the same name that
-    are not one file, from the two folders' listings: their file numbers come with the listing on
-    macOS and Linux, so the images a tile shares with the store, nearly all of them, cost no
-    stat. Measuring every pair took Disk space from 0.8 to 3.4 s with 300 tiles (2026-10-25)."""
+    may not be one file, from the two folders' listings, so that the images a tile shares with the
+    store, nearly all of them, cost no call of their own. On macOS and Linux the listing carries
+    each file's number: those that differ. On Windows it carries their size and time, and a file
+    number costs a call per file (Disk space took 31 s with 300 tiles on a Windows PC, 2026-10-25):
+    those whose size or time differs, and those that agree too when one of them is not one file
+    (a folder copied with its times kept). Measuring every pair took Disk space from 0.8 to 3.4 s
+    with 300 tiles on a Mac (2026-10-25)."""
     try:
         with os.scandir(theirs) as it:
             store_side = {e.name: e for e in it if e.name.lower().endswith(".dds")}
@@ -912,14 +940,31 @@ def _unlinked(mine: Path, theirs: Path) -> list[tuple[Path, Path]]:
             tile_side = [e for e in it if e.name in store_side]
     except OSError:
         return []
-    found: list[tuple[Path, Path]] = []
-    for e in tile_side:
-        other = store_side[e.name]
-        with contextlib.suppress(OSError):
-            if e.inode() and e.inode() == other.inode():
+    found: list[os.DirEntry[str]] = []
+    if _LISTED_NUMBERS:
+        for e in tile_side:
+            with contextlib.suppress(OSError):
+                if e.inode() and e.inode() == store_side[e.name].inode():
+                    continue
+            found.append(e)
+    else:
+        agree: list[os.DirEntry[str]] = []
+        for e in tile_side:
+            try:
+                a, s = e.stat(), store_side[e.name].stat()
+            except OSError:
                 continue
-        found.append((Path(e.path), Path(other.path)))
-    return found
+            same = (a.st_size, a.st_mtime_ns) == (s.st_size, s.st_mtime_ns)
+            (agree if same else found).append(e)
+        if agree:
+            first = agree[0]
+            try:
+                one = os.path.samefile(first.path, store_side[first.name].path)
+            except OSError:
+                one = False
+            if not one:
+                found += agree
+    return [(Path(e.path), Path(store_side[e.name].path)) for e in found]
 
 
 def _join(

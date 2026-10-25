@@ -171,6 +171,7 @@ async def test_pages_that_ask_while_the_disk_is_measured_share_the_measure(
             freed_bytes=1,
             doubles_bytes=0,
             doubles_packs=[],
+            doubles_since={},
             images_bytes=5,
             mapcache_bytes=2,
             relief_bytes=4,
@@ -225,6 +226,7 @@ async def test_a_tile_holding_copies_is_measured_again_before_the_store_s_share(
     report = CleanReport(dry_run=True)
     report.doubles_files, report.doubles_bytes = 2, 900
     report.doubles_packs = [str(home / "tiles" / "zOrthoStudio_+46+006")]
+    report.doubles_since = {report.doubles_packs[0]: 1.0}  # never measured: measured again
     monkeypatch.setattr(api_app, "clean", lambda *a, **kw: report)
     monkeypatch.setattr(api_app, "_measure_again", lambda packs: order.append(f"measure {packs}"))
     monkeypatch.setattr(api_app, "_shared_bytes", lambda *a, **kw: order.append("share") or 0)
@@ -237,6 +239,24 @@ async def test_a_tile_holding_copies_is_measured_again_before_the_store_s_share(
     assert doc["doubles_bytes"] == 900
     assert order[0] == f"measure {[home / 'tiles' / 'zOrthoStudio_+46+006']}"
     assert "share" in order[1:]
+
+
+def test_a_tile_measured_since_its_copies_came_is_not_measured_again(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Measured again at every Disk space while its copies stayed, 300 tiles took 19.6 s on a
+    Windows PC (2026-10-25): a tile the Library measured after its copies came is left as it is."""
+    from orthostudio.api import app as api_app
+    from orthostudio.install import Library
+    from orthostudio.install.library import PackFacts
+
+    pack = home / "tiles" / "zOrthoStudio_+46+006"
+    with Library(home / "library.sqlite") as lib:
+        lib.remember_facts(pack, PackFacts("s", 10, None, None, 500.0, 0, str(home / "store")))
+    monkeypatch.setattr(api_app, "default_library_path", lambda: home / "library.sqlite")
+    assert api_app._measured_before({str(pack): 400.0}) == []
+    assert api_app._measured_before({str(pack): 600.0}) == [pack]
+    assert api_app._measured_before({str(home / "other"): 1.0}) == [home / "other"]
 
 
 def test_the_measure_leaves_out_what_a_running_build_made() -> None:

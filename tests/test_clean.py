@@ -187,6 +187,29 @@ def test_free_space_makes_a_tile_s_copy_of_the_store_s_image_one_file_with_it(
     assert _run(world).doubles_files == 1 and tex.stat().st_nlink > 1  # type: ignore[attr-defined]
 
 
+@pytest.mark.parametrize("numbers", [True, False], ids=["listing-numbers", "listing-size-time"])
+def test_copies_are_found_from_the_listings_whatever_they_carry(
+    world: dict[str, object], monkeypatch: pytest.MonkeyPatch, numbers: bool
+) -> None:
+    """macOS and Linux list each file's number, Windows its size and time (a number costs a call
+    per file there: Disk space took 31 s with 300 tiles, 2026-10-25). A tile sharing its images is
+    passed by; a copy is found, its time new or kept as a copied folder keeps it."""
+    import orthostudio.clean as clean_module
+
+    monkeypatch.setattr(clean_module, "_LISTED_NUMBERS", numbers)
+    assert _run(world, dry_run=True).doubles_files == 0  # type: ignore[attr-defined]
+    tex = Path(world["tiles"]) / "zOrthoStudio_+43+005" / "textures" / "a.dds"  # type: ignore[arg-type]
+    stamp = tex.stat()
+    data = tex.read_bytes()
+    tex.unlink()
+    tex.write_bytes(data)  # a copy with a time of its own
+    assert _run(world, dry_run=True).doubles_files == 1  # type: ignore[attr-defined]
+    os.utime(tex, ns=(stamp.st_atime_ns, stamp.st_mtime_ns))  # a folder copied with its times
+    assert _run(world, dry_run=True).doubles_files == 1  # type: ignore[attr-defined]
+    assert _run(world).doubles_files == 1 and tex.stat().st_nlink > 1  # type: ignore[attr-defined]
+    assert _run(world, dry_run=True).doubles_files == 0  # type: ignore[attr-defined]
+
+
 def test_a_recent_artefact_is_left_to_the_build_that_may_need_it(world: dict[str, object]) -> None:
     report = _run(world, grace_s=3600.0)
     assert report.removed == 0 and _keys(world) == world["kept"] | world["gone"]  # type: ignore[attr-defined, operator]
