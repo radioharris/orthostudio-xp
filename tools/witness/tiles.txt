@@ -1,0 +1,89 @@
+# The witness tiles (docs/testing/witness-tiles.md): one tile a line, then why it is here.
+# A tile that ever showed a bug comes in and never leaves; the others cover the kinds of ground.
+# Every tile needs X-Plane's own scenery (Global Scenery or its Demo Areas): the default relief.
+
+# -- tiles that once showed a bug ------------------------------------------------------------
++35+139  Tokyo: Triangle fans hung X-Plane at RJTT (1.0.2); Haneda's taxiway bridges over the sea
++54+010  Lolland: a coastline left open by an OSM edit at the library's cut (issue 3)
++54+011  Lolland, east: the same open coast
++49-003  Jersey: EGJA's runway glued into a zero-long loop, NaN heights (1.0.1)
++48-003  Brittany: LFRT's runway drawn twice, the same loop (1.0.1)
++46+006  Geneva: the Dranse river pocket the first near-node rule closed (1.0.2)
++22+113  Hong Kong and Macau: crossing edges from a knot of nodes (1.0.2); airports on reclaimed land
++34-118  Los Angeles: the noder's crash near the grid lines
++35+051  Tehran: an OSM building tagged natural=coastline makes the whole tile sea (2026-10-01)
++51+001  Clacton (EGSQ): stacked DSF points lifting a ridge
++37+013  Sicily: a Triangle fan of 1 430 triangles, gone with 1.0.2
++57-008  Barra: runways on the beach, X-Plane's pavement on our sea
++26-082  Florida: X-Plane's runway on a pond OSM calls water
++17+099  Sukhothai: lake remnants around the airport
+
+# -- coasts and water --------------------------------------------------------------------------
++43+005  Marseille: the default sea coast
++60+005  Bergen: fjords, the most intricate coastline
++52+004  The Netherlands: more water than land, Schiphol
++45+012  Venice: lagoon and islands
++53+008  Wadden Sea: tidal flats
++48-002  Mont-Saint-Michel: a tidal bay
++43-125  Oregon coast: dunes and estuaries
++65-019  North Iceland: fjords and a coastal airport
++45-074  Montreal: a great river and its islands
++61+025  Finland: thousands of lakes
+-04-061  Manaus: the Amazon's braided rivers
++30+031  Cairo: the Nile delta
++13+080  Chennai: a coastal airport over a river
+-35-059  Buenos Aires: the Rio de la Plata, an estuary the width of a sea
++41-088  Chicago: Lake Michigan, a lake as wide as a sea, beside a dense city
++22+089  Sundarbans: a delta of countless channels and mangroves
++06+003  Lagos: West African coast, lagoons, a dense city
++59+018  Stockholm: an archipelago of thousands of islets and a city
+
+# -- islands alone in a sea tile ---------------------------------------------------------------
+-22+055  La Reunion: a volcanic island, cliffs, an airport on the coast
++38-028  Azores: islands, no mainland
++62-007  Faroe Islands: cliffs straight into the sea
++28-017  Tenerife: a volcano from the sea to 3 700 m
+-18+177  Fiji, Nadi: tropical reefs
+-17-180  Fiji, Taveuni: land across the antimeridian
++04+073  Maldives: coral atolls, an airport on its own island
++32-017  Madeira: a runway on pillars over the sea, cliffs
++18-064  Saint Martin: the beach approach to Princess Juliana, small islands
+
+# -- mountains ---------------------------------------------------------------------------------
++46+007  Bernese Alps
++47+011  Innsbruck: an airport in an Alpine valley
++27+086  Everest and Lukla
+-34-071  Santiago and the Andes
++39-106  The Colorado Rockies
+-01-079  Quito: a high airport on the equator
+-34+018  Cape Town: mountains straight into the sea
++36-006  Gibraltar: a runway across the isthmus between two seas
+
+# -- cities and big airports -------------------------------------------------------------------
++40-074  New York: JFK, LaGuardia, the densest roads
++51-001  London: Heathrow and the Thames
++49+002  Paris: Charles de Gaulle
++37-123  San Francisco: an airport on a bay
++01+103  Singapore: a city state on reclaimed land
++31+121  Shanghai: Pudong and Hongqiao
+-34+151  Sydney: a runway into the bay
++55+037  Moscow: inland, rivers
++19-100  Mexico City: a high basin
+-24-047  Sao Paulo
++28+077  Delhi: the plains
++25+055  Dubai: desert, coast, artificial islands
++34+135  Osaka: Kansai on its island
++37+126  Seoul: Incheon on reclaimed land
++52+013  Berlin
+
+# -- deserts and plains ------------------------------------------------------------------------
++36-116  Las Vegas and the Mojave
++24+032  Aswan: the Nile across the desert
+-02+036  Nairobi: savanna on the equator
+
+# -- the far north and south -------------------------------------------------------------------
++69+018  Tromso: Arctic fjords
++64-022  Reykjavik: lava coast
++68-134  Inuvik: the Mackenzie delta, Arctic lakes
++64-052  Nuuk: Greenland's fjords and ice
+-55-069  Ushuaia: the southernmost city
