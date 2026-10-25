@@ -204,8 +204,9 @@ class CleanReport:
     doubles_bytes: int = 0
     """What making ``doubles_files`` one file gives back."""
     doubles_packs: list[str] = field(default_factory=list)
-    """The tiles whose files were made one file with the store's: their sizes, which the Library
-    remembers, changed."""
+    """The tiles holding those copies (with ``dry_run``), or whose files were made one file with
+    the store's: what the Library remembers of their sizes is out of date (a tile moved away by
+    hand and back keeps its files' dates, and was still counted as sharing them, 2026-10-25)."""
 
     def to_dict(self) -> dict[str, object]:
         return asdict(self)
@@ -668,6 +669,7 @@ def clean(
             doubles = _doubles(store, atelier)
             report.doubles_files = len(doubles)
             report.doubles_bytes = sum(size for _pack, _mine, _theirs, size in doubles)
+            report.doubles_packs = sorted({str(pack) for pack, _mine, _theirs, _size in doubles})
             if not dry_run:
                 went = _delete(store, unused)
                 report.removed = len(went)
@@ -691,7 +693,9 @@ def clean(
                         before = len(store.trimmed(info.key))
                         report.twice_bytes += store.trim(info.key, files)
                         report.twice_files += len(store.trimmed(info.key)) - before
-                report.doubles_files, report.doubles_bytes, report.doubles_packs = _join(doubles)
+                report.doubles_files, report.doubles_bytes, report.doubles_packs = _join(
+                    store, doubles
+                )
                 report.kept = len(store)
                 report.tmp_removed = len(store.sweep_tmp(max_age_s=grace_s))
     # the tiles filed outside with some of their data here (measured before anything goes): a tile
@@ -843,6 +847,7 @@ def _doubles(store: Store, built: Iterable[_Built]) -> list[tuple[Path, Path, Pa
         dev = os.stat(store.root).st_dev
     except OSError:
         return []
+    different = _different(store)
     found: list[tuple[Path, Path, Path, int]] = []
     for b in built:
         if not b.ortho or b.tile is None:
@@ -855,12 +860,7 @@ def _doubles(store: Store, built: Iterable[_Built]) -> list[tuple[Path, Path, Pa
         pairs: list[tuple[Path, Path]] = []
         textures = store.info(keys["textures"]) if keys.get("textures") else None
         if textures is not None:
-            with contextlib.suppress(OSError):
-                pairs += [
-                    (pack / "textures" / f.name, f)
-                    for f in (textures.path / "textures").iterdir()
-                    if f.suffix.lower() == ".dds"
-                ]
+            pairs += _unlinked(pack / "textures", textures.path / "textures")
         dsf = store.info(keys["dsf"]) if keys.get("dsf") else None
         if dsf is not None:
             pairs.append((pack / b.tile.dsf_relpath, dsf.path / f"{b.tile.name}.dsf"))
@@ -874,27 +874,87 @@ def _doubles(store: Store, built: Iterable[_Built]) -> list[tuple[Path, Path, Pa
                 and a.st_ino != s.st_ino
                 and a.st_size == s.st_size
                 and a.st_nlink == 1
+                and _stamp(mine, a) not in different
             ):
                 found.append((pack, mine, theirs, a.st_size))
     return found
 
 
-def _join(doubles: Iterable[tuple[Path, Path, Path, int]]) -> tuple[int, int, list[str]]:
+_DIFFERENT = "clean.different"
+"""The index's note of the tiles' files Free space read different from the store's own, the same
+size: an image its user retouched in the tile, which a DDS of the same picture size always is. As
+a copy, it was counted among the room the photos take twice at every measure, and Free space gave
+back nothing for it, each time (a campaign, 2026-10-25)."""
+
+
+def _stamp(path: Path, st: os.stat_result) -> tuple[str, int, int, int]:
+    """What tells a file read before from one changed since: its path, size, date and inode."""
+    return (str(path), st.st_size, st.st_mtime_ns, st.st_ino)
+
+
+def _different(store: Store) -> set[tuple[str, int, int, int]]:
+    """The files of :data:`_DIFFERENT`, as :func:`_stamp` gives them."""
+    try:
+        return {tuple(x) for x in json.loads(store.note(_DIFFERENT) or "[]")}  # type: ignore[misc]
+    except (ValueError, TypeError):
+        return set()
+
+
+def _unlinked(mine: Path, theirs: Path) -> list[tuple[Path, Path]]:
+    """The images of the tile's folder ``mine`` and of the store's ``theirs`` of the same name that
+    are not one file, from the two folders' listings: their file numbers come with the listing on
+    macOS and Linux, so the images a tile shares with the store, nearly all of them, cost no
+    stat. Measuring every pair took Disk space from 0.8 to 3.4 s with 300 tiles (2026-10-25)."""
+    try:
+        with os.scandir(theirs) as it:
+            store_side = {e.name: e for e in it if e.name.lower().endswith(".dds")}
+        with os.scandir(mine) as it:
+            tile_side = [e for e in it if e.name in store_side]
+    except OSError:
+        return []
+    found: list[tuple[Path, Path]] = []
+    for e in tile_side:
+        other = store_side[e.name]
+        with contextlib.suppress(OSError):
+            if e.inode() and e.inode() == other.inode():
+                continue
+        found.append((Path(e.path), Path(other.path)))
+    return found
+
+
+def _join(
+    store: Store, doubles: Iterable[tuple[Path, Path, Path, int]]
+) -> tuple[int, int, list[str]]:
     """Make each of :func:`_doubles` one file with the store's, after reading both whole: a file of
-    the tile that is not the same bytes (an image retouched by its user) stays as it is. Returns the
-    files joined, the bytes given back and the tiles they belong to."""
+    the tile that is not the same bytes (an image retouched by its user) stays as it is, and is
+    noted (:data:`_DIFFERENT`), so that a measure no longer counts it until it changes again; the
+    note keeps those of this pass alone, with those read different before and left out of it.
+    Returns the files joined, the bytes given back and the tiles they belong to."""
     files = freed = 0
     packs: set[str] = set()
+    different = {d for d in _different(store) if _still(d)}
     for pack, mine, theirs, size in doubles:
         try:
             same = filecmp.cmp(mine, theirs, shallow=False)
+            st = os.stat(mine)
         except OSError:
             continue
-        if same and join_same_file(theirs, mine):
+        if not same:
+            different.add(_stamp(mine, st))
+        elif join_same_file(theirs, mine):
             files += 1
             freed += size
             packs.add(str(pack))
+    store.set_note(_DIFFERENT, json.dumps(sorted(different)))
     return files, freed, sorted(packs)
+
+
+def _still(stamp: tuple[str, int, int, int]) -> bool:
+    """Whether the file a :func:`_stamp` names is still as it was then."""
+    try:
+        return _stamp(Path(stamp[0]), os.stat(stamp[0])) == tuple(stamp)
+    except (OSError, IndexError):
+        return False
 
 
 _TWICE = {

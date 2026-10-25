@@ -1021,6 +1021,19 @@ class Store:
             )
         return digest
 
+    # -- notes ---------------------------------------------------------------------------------
+
+    def note(self, name: str) -> str | None:
+        """A note kept in the index under ``name`` (its ``meta`` table), or ``None``."""
+        with self._lock:
+            row = self._db.execute("SELECT v FROM meta WHERE k = ?", (name,)).fetchone()
+        return None if row is None else str(row["v"])
+
+    def set_note(self, name: str, value: str) -> None:
+        """Keep ``value`` under ``name`` in the index, in place of what was there."""
+        with self._tx() as db:
+            db.execute("INSERT OR REPLACE INTO meta (k, v) VALUES (?, ?)", (name, value))
+
     # -- the relief and the mesh in one form ---------------------------------------------------
 
     def compacted(self) -> bool:

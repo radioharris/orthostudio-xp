@@ -170,6 +170,7 @@ async def test_pages_that_ask_while_the_disk_is_measured_share_the_measure(
         return SimpleNamespace(
             freed_bytes=1,
             doubles_bytes=0,
+            doubles_packs=[],
             images_bytes=5,
             mapcache_bytes=2,
             relief_bytes=4,
@@ -207,6 +208,35 @@ async def test_pages_that_ask_while_the_disk_is_measured_share_the_measure(
     finally:
         release.set()
         mgr.close()
+
+
+@pytest.mark.anyio
+async def test_a_tile_holding_copies_is_measured_again_before_the_store_s_share(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A tile moved away by hand and back keeps its files' dates: the Library still remembered it
+    as sharing its files with the store, Disk space took them off the store and its copies again,
+    and "what is used to rebuild your 3 tiles" read 0 MB (a campaign, 2026-10-25). The tiles a
+    measure finds copies in are measured again before the share is counted."""
+    from orthostudio.api import app as api_app
+    from orthostudio.clean import CleanReport
+
+    order: list[str] = []
+    report = CleanReport(dry_run=True)
+    report.doubles_files, report.doubles_bytes = 2, 900
+    report.doubles_packs = [str(home / "tiles" / "zOrthoStudio_+46+006")]
+    monkeypatch.setattr(api_app, "clean", lambda *a, **kw: report)
+    monkeypatch.setattr(api_app, "_measure_again", lambda packs: order.append(f"measure {packs}"))
+    monkeypatch.setattr(api_app, "_shared_bytes", lambda *a, **kw: order.append("share") or 0)
+    app, mgr = _app(home)
+    try:
+        async with client_for(app) as c:
+            doc = (await c.get("/api/disk")).json()
+    finally:
+        mgr.close()
+    assert doc["doubles_bytes"] == 900
+    assert order[0] == f"measure {[home / 'tiles' / 'zOrthoStudio_+46+006']}"
+    assert "share" in order[1:]
 
 
 def test_the_measure_leaves_out_what_a_running_build_made() -> None:

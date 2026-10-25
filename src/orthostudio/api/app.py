@@ -2560,6 +2560,11 @@ def create_app(
         started = job.started_at if job is not None and job.finished_at is None else None
         grace = _measure_grace(started, other and job is None, time.time())
         report = collect(images=True, relief=True, filed=True, dry_run=True, grace_s=grace)
+        if report.doubles_packs:
+            # a tile holding copies shares less with the store than the Library remembers: moved
+            # away by hand and back, it kept its files' dates, its share was taken off the store
+            # and its copies again, and "used to rebuild your 3 tiles" read 0 MB (2026-10-25)
+            _measure_again([Path(p) for p in report.doubles_packs])
         return {
             "store_bytes": _store_bytes(default_store_root()),
             "shared_bytes": _shared_bytes(default_store_root()),

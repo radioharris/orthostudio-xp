@@ -177,6 +177,14 @@ def test_free_space_makes_a_tile_s_copy_of_the_store_s_image_one_file_with_it(
     assert _run(world, dry_run=True).doubles_files == 1  # type: ignore[attr-defined]
     assert _run(world).doubles_files == 0  # type: ignore[attr-defined]
     assert tex.read_bytes() == retouched and tex.stat().st_nlink == 1
+    # read different once, it is no longer counted as a copy (a campaign, 2026-10-25), until it
+    # changes again
+    assert _run(world, dry_run=True).doubles_files == 0  # type: ignore[attr-defined]
+    assert _run(world).doubles_files == 0  # type: ignore[attr-defined]
+    tex.unlink()
+    tex.write_bytes(data)  # its user puts the first picture back
+    assert _run(world, dry_run=True).doubles_files == 1  # type: ignore[attr-defined]
+    assert _run(world).doubles_files == 1 and tex.stat().st_nlink > 1  # type: ignore[attr-defined]
 
 
 def test_a_recent_artefact_is_left_to_the_build_that_may_need_it(world: dict[str, object]) -> None:

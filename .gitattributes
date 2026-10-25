@@ -1,0 +1,3 @@
+# the stores and jobs the tests open are byte for byte what a version wrote: a text file of them
+# turned to CRLF on a Windows checkout changed the digests the store recorded (CI, 2026-10-25)
+tests/data/** -text

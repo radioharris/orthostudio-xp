@@ -535,13 +535,18 @@ def test_a_file_s_digest_is_kept_while_it_stays_the_same(
         stamp = dsf.stat()
         time.sleep(0.02)
         dsf.write_bytes(b"B" * 1000)  # same size
-        os.utime(dsf, ns=(stamp.st_atime_ns, stamp.st_mtime_ns))  # its time put back
+        expected = 1
+        if os.name != "nt":
+            # its time put back: the change time tells it, which Windows does not give (its
+            # st_ctime is the creation time), a case no installer makes (CI, 2026-10-25)
+            os.utime(dsf, ns=(stamp.st_atime_ns, stamp.st_mtime_ns))
         second = s.file_digest(dsf)
-        assert second != first and len(read) == 2
+        expected += 1
+        assert second != first and len(read) == expected
         other = tmp_path / "other.dsf"
         other.write_bytes(b"A" * 1000)
         other.replace(dsf)  # another file under the name
-        assert s.file_digest(dsf) == first and len(read) == 3
+        assert s.file_digest(dsf) == first and len(read) == expected + 1
 
 
 # -- read whole before anything goes ------------------------------------------------------------

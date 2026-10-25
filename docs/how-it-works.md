@@ -478,7 +478,9 @@ where it can be deleted. When the disk is not plugged in, the status bar says so
 still shows without keeping its images, and nothing is estimated or built: nothing is written on
 the computer's own disk instead. Unplugged during a build, the build stops and *Works* says just
 that; plugged in again, everything reads it at once, and *Build again* goes on from what was done,
-with no restart of the app. Should the cache's index itself be damaged (a disk that failed),
+with no restart of the app. Pulled out at the very moment the cache's index is read, it can also
+close OrthoStudio XP at once (the index's shared memory, which SQLite maps from that disk, is gone):
+plug it back and open OrthoStudio XP again, nothing is lost. Should the cache's index itself be damaged (a disk that failed),
 *Disk space* and the Plan say so, and emptying the store folder starts it afresh: the tiles are not
 in it.
 
@@ -754,7 +756,7 @@ it out differently. *Disk space* lists these cases under each box.
 The store folder holds your tiles' images and DSFs too: on the workshop's disk a tile and the cache
 share each of those files, one file under two names, which takes its room once. A file manager that
 measures the folders one by one counts them twice, and the store folder then looks about as big as
-the tiles again. The Library counts them once, in the tiles' sizes, and *Store* in the status bar
+the tiles again. The Library counts them once, in the tiles' sizes, and *Data kept* in the status bar
 and *Disk space* show only what the cache adds; *Disk space* says by how much a file manager shows
 the folder larger, under *Why does the Finder show more?*. Deleting those files by hand frees nothing while the tile is
 there, and the cache would believe it still has them: use *Free space…*. A tile copied from another
