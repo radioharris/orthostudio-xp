@@ -27,7 +27,7 @@ import sqlite3
 import sys
 import threading
 import time
-from collections.abc import Callable, Iterable, Iterator
+from collections.abc import Callable, Collection, Iterable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -782,7 +782,12 @@ class Store:
                 params = {}
             yield self._row_info(row), params if isinstance(params, dict) else {}
 
-    def iter_artifacts(self, rule: str | None = None) -> Iterator[ArtifactInfo]:
+    def iter_artifacts(
+        self, rule: str | None = None, *, skip: Collection[str] = ()
+    ) -> Iterator[ArtifactInfo]:
+        """Every artefact, or every one of ``rule``, oldest first; those of ``skip`` are left out
+        before their info is made: Disk space made one for each of the 92,000 artefacts of 301
+        tiles to keep them all, 1.7 s of its 4.8 on Windows (2026-10-25)."""
         with self._lock:
             if rule is None:
                 rows = self._db.execute("SELECT * FROM artifacts ORDER BY created_at").fetchall()
@@ -791,7 +796,8 @@ class Store:
                     "SELECT * FROM artifacts WHERE rule = ? ORDER BY created_at", (rule,)
                 ).fetchall()
         for row in rows:
-            yield self._row_info(row)
+            if str(row["key"]) not in skip:
+                yield self._row_info(row)
 
     def disk_bytes(self) -> int:
         """The store's bytes on the disk from its index alone: every artefact's size, save those
@@ -914,6 +920,12 @@ class Store:
         Follows the recorded inputs (``edges.parent_key``) transitively; a source input or an
         absent one has no key and ends the walk. What ``osxp clean`` keeps.
         """
+        return self.reach()(keys)
+
+    def reach(self) -> Callable[[Iterable[str]], set[str]]:
+        """:meth:`reachable` for several walks over one read of the index: a Disk space measure
+        walks from the tiles three times, and each walk read every key and edge again (6 reads,
+        1 s of its 4.8 with 301 tiles on Windows, 2026-10-25)."""
         with self._lock:
             known = {str(r["key"]) for r in self._db.execute("SELECT key FROM artifacts")}
             rows = self._db.execute(
@@ -922,15 +934,19 @@ class Store:
         inputs: dict[str, list[str]] = {}
         for row in rows:
             inputs.setdefault(str(row["child"]), []).append(str(row["parent_key"]))
-        seen: set[str] = set()
-        stack = [k for k in keys if k in known]
-        while stack:
-            key = stack.pop()
-            if key in seen:
-                continue
-            seen.add(key)
-            stack.extend(p for p in inputs.get(key, ()) if p in known and p not in seen)
-        return seen
+
+        def walk(keys: Iterable[str]) -> set[str]:
+            seen: set[str] = set()
+            stack = [k for k in keys if k in known]
+            while stack:
+                key = stack.pop()
+                if key in seen:
+                    continue
+                seen.add(key)
+                stack.extend(p for p in inputs.get(key, ()) if p in known and p not in seen)
+            return seen
+
+        return walk
 
     def refcount(self, key: str) -> int:
         """Pins on ``key`` plus artefacts that list it as an input."""
@@ -1380,10 +1396,12 @@ class Store:
         return pids
 
     def _iter_tmp(self) -> Iterator[Path]:
+        # by name first, a Path made only for a build folder: one for each of the store's 92,000
+        # entries (301 tiles) was most of the walk, which Disk space made twice (2026-10-25)
         for shard in self._iter_shards():
-            for p in shard.iterdir():
-                if TMP_MARKER in p.name and p.is_dir():
-                    yield p
+            with os.scandir(shard) as entries:
+                found = [e.path for e in entries if TMP_MARKER in e.name and e.is_dir()]
+            yield from map(Path, found)
 
     def _iter_finals(self) -> Iterator[Path]:
         for shard in self._iter_shards():

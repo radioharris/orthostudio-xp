@@ -2480,7 +2480,8 @@ def create_app(
         root = default_store_root()
         if not root.is_dir():
             return set()
-        with Store(root) as st:
+        # a read: the abandoned build folders are left to the next build (``Store``'s sweep)
+        with Store(root, sweep=False) as st:
             return st.building_pids()
 
     def collect(

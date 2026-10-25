@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from pathlib import Path
 
 import pytest
@@ -131,6 +132,25 @@ def test_dry_run_deletes_nothing_and_says_the_same(world: dict[str, object]) -> 
     assert _keys(world) == before
     assert report.removed == 3 and report.freed_bytes == world["freed"]  # type: ignore[attr-defined]
     assert not report.images_removed  # type: ignore[attr-defined]
+
+
+def test_a_measure_leaves_abandoned_build_folders_and_free_space_sweeps_them(
+    world: dict[str, object],
+) -> None:
+    """Finding them lists every folder of the store: 1 s of Disk space's 4.8 with 301 tiles on
+    Windows (2026-10-25). A measure leaves them to the next build or to Free space."""
+    key = sorted(world["kept"])[0]  # type: ignore[call-overload]
+    with Store(world["store"], fsync=False) as s:  # type: ignore[arg-type]
+        shard = s.path(key).parent
+    abandoned = shard / f"{key}.tmp-{2**30}-abcd"  # a process long gone
+    abandoned.mkdir()
+    old = time.time() - 7200
+    os.utime(abandoned, (old, old))
+    report = _run(world, dry_run=True)
+    assert abandoned.is_dir() and report.removed == 3  # type: ignore[attr-defined]
+    _run(world)
+    assert not abandoned.exists()
+    assert _keys(world) == world["kept"]
 
 
 def test_a_recent_artefact_is_left_to_the_build_that_may_need_it(world: dict[str, object]) -> None:

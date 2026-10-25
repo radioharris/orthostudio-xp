@@ -698,6 +698,20 @@ def test_iter_artifacts_and_keys_with_digest(store: Store) -> None:
     assert store.keys_with_digest(RULE, digest_bytes(b"same")) == [a, b]
     assert [i.key for i in store.iter_artifacts(RULE)] == [a, b]
     assert len(list(store.iter_artifacts())) == 3
+    # skipped keys are left out before their info is made, the order kept
+    assert [i.key for i in store.iter_artifacts(RULE, skip={a})] == [b]
+    assert len(list(store.iter_artifacts(skip={a, b}))) == 1
+
+
+def test_one_read_of_the_index_walks_as_reachable_does(store: Store) -> None:
+    a = _put(store, 80, b"a")
+    b = _put(store, 81, b"b", rule="mesh", inputs=[InputRef("v", store.digest_of(a), a)])
+    c = _put(store, 82, b"c", rule="mesh", inputs=[InputRef("v", store.digest_of(b), b)])
+    lone = _put(store, 83, b"lone")
+    reach = store.reach()
+    for keys in ([c], [b], [lone], [c, lone], ["00" * 32], []):
+        assert reach(keys) == store.reachable(keys)
+    assert reach([c]) == {a, b, c}
 
 
 def test_symlinks_are_refused_in_artifacts(store: Store, tmp_path: Path) -> None:

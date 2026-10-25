@@ -289,18 +289,40 @@ def needed_keys(store: Store, roots: Iterable[str]) -> set[str]:
     need: what they were built from, through the inputs the store recorded, plus the DDS the
     ``tile.textures`` among them list (a texture artefact is the input of nothing, so the walk alone
     misses it)."""
-    keep = store.reachable(roots)
-    textures: set[str] = set()
-    for key in keep:
-        info = store.info(key)
-        if info is None or info.rule != "tile.textures":
-            continue
-        try:
-            doc = json.loads((info.path / "manifest.json").read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            continue
-        textures.update(str(t["key"]) for t in doc.get("textures", []) if t.get("key"))
-    return keep | store.reachable(textures)
+    return _Needs(store)(roots)
+
+
+class _Needs:
+    """:func:`needed_keys` for several sets of roots over one read of the store's index, each
+    textures list read once: a Disk space measure asks for three sets (the atelier's tiles, those
+    filed outside, those on the store's disk), and each read the whole index and the lists again
+    (2026-10-25)."""
+
+    def __init__(self, store: Store) -> None:
+        self._store = store
+        self._reach = store.reach()
+        self._listed: dict[str, set[str]] = {}
+
+    def __call__(self, roots: Iterable[str]) -> set[str]:
+        keep = self._reach(roots)
+        textures: set[str] = set()
+        for key in keep:
+            if key not in self._listed:
+                self._listed[key] = _textures_listed(self._store, key)
+            textures |= self._listed[key]
+        return keep | self._reach(textures)
+
+
+def _textures_listed(store: Store, key: str) -> set[str]:
+    """The DDS a ``tile.textures`` artefact lists; nothing for any other artefact."""
+    info = store.info(key)
+    if info is None or info.rule != "tile.textures":
+        return set()
+    try:
+        doc = json.loads((info.path / "manifest.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return set()
+    return {str(t["key"]) for t in doc.get("textures", []) if t.get("key")}
 
 
 def _files(root: Path, *, links: bool = True) -> Iterator[tuple[str, os.stat_result]]:
@@ -582,20 +604,25 @@ def clean(
     report.atelier_tiles = len({b.path for b in atelier if b.ortho})
     theirs: set[str] = set()
     if Path(store_root).is_dir():
-        with Store(store_root) as store:
-            mine = needed_keys(store, _roots(atelier))
+        # a measure leaves the abandoned build folders to the next build or Free space: looking
+        # for them lists every folder of the store, 1 s of Disk space's 4.8 with 301 tiles on
+        # Windows (2026-10-25); Free space sweeps them at its end
+        with Store(store_root, sweep=not dry_run) as store:
+            needs = _Needs(store)
+            mine = needs(_roots(atelier))
             # their meshes stay; walked from, they kept what they were made of past the free, a
             # file held then staying on no line (a review, 2026-10-06)
             meshes = _own_meshes(store, away)
-            needed = needed_keys(store, _roots(away) - meshes) - mine
+            needed = needs(_roots(away) - meshes) - mine
             theirs = needed - meshes
-            unused = _doomed(store, store.iter_artifacts(), mine | needed | meshes, grace_s)
+            keep = mine | needed | meshes
+            unused = _doomed(store, store.iter_artifacts(skip=keep), keep, grace_s)
             infos = (store.info(key) for key in sorted(theirs))
             cache = _doomed(store, (i for i in infos if i is not None), set(), grace_s)
             tiles = _apart(store, packs, store_root)
             built = {b.path: b for b in (*atelier, *away)}
             # an image a tile on the store's disk needs stays: one astride its border, say
-            others = needed_keys(store, _roots(b for path, b in built.items() if path not in tiles))
+            others = needs(_roots(b for path, b in built.items() if path not in tiles))
             candidates = (store.info(k) for k in sorted({k for ks in tiles.values() for k in ks}))
             images_apart = _doomed(store, (i for i in candidates if i is not None), others, grace_s)
             leaving = {i.key for i in images_apart}
