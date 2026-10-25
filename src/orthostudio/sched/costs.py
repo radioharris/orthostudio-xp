@@ -90,8 +90,23 @@ class CostModel:
         return self.estimate_name(cost_name(rule))
 
     def estimate_name(self, name: str) -> float:
-        entry = self._entries.get(name)
+        entry = self._entries.get(name) or self._latest_version(name)
         return self.default_s if entry is None else entry.ewma
+
+    def _latest_version(self, name: str) -> CostEntry | None:
+        """The same rule's estimate at the latest version it was measured at: a new version of a
+        rule starts from its old time, not from the default. The roads' new version (VECTORS 13)
+        made Build again of a tile announce 8 s of work after the update, its roads counted 1 s
+        instead of the 8 s they took, and the build took 18 s (2026-10-25)."""
+        rule, _, _version = name.rpartition("@")
+        best: tuple[int, CostEntry] | None = None
+        for other, entry in self._entries.items():
+            other_rule, _, other_version = other.rpartition("@")
+            if other_rule != rule or not other_version.isdigit():
+                continue
+            if best is None or int(other_version) > best[0]:
+                best = (int(other_version), entry)
+        return None if best is None else best[1]
 
     def entry(self, name: str) -> CostEntry | None:
         return self._entries.get(name)

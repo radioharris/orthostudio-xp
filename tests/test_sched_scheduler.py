@@ -321,6 +321,11 @@ def test_costs_learned_persisted_and_used_for_priority(store: Store) -> None:
     reloaded = CostModel(store)
     assert reloaded.estimate_name("fake.src@1") == pytest.approx(entry.ewma)
     assert reloaded.estimate_name("never.seen@1") == 1.0
+    # a new version of a rule starts from the time of its latest measured version
+    reloaded.set("fake.src@0", 9.0)
+    assert reloaded.estimate_name("fake.src@2") == pytest.approx(entry.ewma)
+    assert reloaded.estimate_name("fake.src@1") == pytest.approx(entry.ewma)
+    assert reloaded.estimate_name("fake.srcx@2") == 1.0
 
     # a lone node whose rule is known to be slow beats a chain of three cheap ones
     LOG.clear()
