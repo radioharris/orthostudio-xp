@@ -605,25 +605,6 @@ def test_the_build_obeys_the_rate_the_provider_names(
     assert report.ok and seen and all(rate == 500.0 for rate in seen)
 
 
-def test_the_build_asks_over_the_protocol_the_provider_names(
-    server: TileServer, tmp_path: Path, mask_dir: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Google's hosts give a third of their speed over HTTP/2 (2026-10-21): a provider that says
-    ``http2 = false`` is asked over HTTP/1.1, the others as before."""
-    seen: list[bool] = []
-    real = textures_mod.Fetcher
-
-    class Recording(real):  # type: ignore[misc, valid-type]
-        def __init__(self, **kwargs: object) -> None:
-            super().__init__(**kwargs)  # type: ignore[arg-type]
-            seen.append(self.http2)
-
-    monkeypatch.setattr(textures_mod, "Fetcher", Recording)
-    plain = server.provider().model_copy(update={"http2": False})
-    report = build_textures(make_spec(server, tmp_path, mask_dir, provider=plain))
-    assert report.ok and seen and not any(seen)
-
-
 def test_fetcher_cancelled_before_workers_start_returns(server: TileServer) -> None:
     """Regression: a cancel arriving right after dispatch used to leave the fetcher hanging."""
     import asyncio

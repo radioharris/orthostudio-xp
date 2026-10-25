@@ -1,6 +1,6 @@
 # OrthoStudio XP imagery provider registry (docs/specs/imagery-providers.md, section 4).
 #
-# Fourteen providers alive in October 2026 without a key or token, converted from the
+# Thirteen providers alive in September 2026 without a key or token, converted from the
 # Ortho4XP definitions named in each comment (docs/providers-audit.md). Values marked
 # "assumed" are not in those files and are not confirmed yet.
 # max_in_flight: the most requests in flight each server took on 2026-09-15, rising until it
@@ -74,25 +74,6 @@ name = "EOX Sentinel-2 cloudless 2024"  # they publish a new mosaic every year, 
 # address names the one we ask for: the list must say which, or a pilot cannot tell (user, 2026-09-24)
 terms_url = "https://cloudless.eox.at/documentation/license"
 licence = "CC BY-NC-SA 4.0, non-commercial use only"
-
-[providers.GO2]
-# Providers/Global/GO2.lay (mt{0-3}.google.com, max_threads=16), asked by users who build with it
-# in Ortho4XP (2026-10-21). Over HTTPS the same images come back. Over HTTP/2 the four hosts gave
-# 86 to 109 req/s whatever the window (16, 32, 64 in flight: the streams of one connection wait on
-# each other), and over HTTP/1.1 16 connections, Ortho4XP's pattern, gave 171 and 32 gave 332,
-# with no refusal (2 000 images each, 2026-10-21). Google blocks an address it finds too eager, and
-# nobody knows its limit, so the rate is held at about twice Ortho4XP's and the Plan says so.
-# Where it has no imagery (open sea, Antarctica) it answers 404, read as no imagery there.
-url_template = "https://mt{switch:0,1,2,3}.google.com/vt/lyrs=s&x={x}&y={y}&z={zoom}"
-max_zl = 20  # answers at ZL20 over rural Scotland and the Sahara (2026-10-21)
-http2 = false
-max_in_flight = 32
-server_req_per_s = 320
-held_back = true
-attribution = "Google satellite imagery"
-name = "Google"
-terms_url = "https://www.google.com/help/terms_maps/"
-licence = "(Google's terms forbid using it outside Google's own apps: for your own use, at your own risk)"
 
 # ------------------------------------------------------------------ national
 

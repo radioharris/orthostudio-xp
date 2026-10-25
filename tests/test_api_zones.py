@@ -270,7 +270,7 @@ async def test_a_saved_zone_with_an_unknown_provider_refuses_only_its_tiles(
     app: FastAPI, home: Path, xplane: Path
 ) -> None:
     """Review finding: one invalid zone in zones.json refused the page (422) and every build."""
-    go2 = {**ZONE, "id": "go2", "provider": "APPLE"}
+    go2 = {**ZONE, "id": "go2", "provider": "GO2"}
     path = home / "zones.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(_document(CAPE_TOWN, go2)), encoding="utf-8")
@@ -286,8 +286,8 @@ async def test_a_saved_zone_with_an_unknown_provider_refuses_only_its_tiles(
             "zone": "go2",
             "index": 1,
             "code": "ZONE_INVALID",
-            "reason": "provider APPLE is not in the registry",
-            "message": f"Zone go2 of {path} is invalid: provider APPLE is not in the registry.",
+            "reason": "provider GO2 is not in the registry",
+            "message": f"Zone go2 of {path} is invalid: provider GO2 is not in the registry.",
         }
         # far from the bad zone: planned and built with the saved zones that are valid
         r = await c.post("/api/plan", json={**body, "tiles": ["-34+018"]})

@@ -237,8 +237,7 @@ the build would go (a campaign, 2026-10-24). Then:
 - **Imagery source** (`<select>` from `GET /api/providers`), grouped since a user found the
   sources of several countries mixed in one list, and asked for Bing and Esri first (2026-09-14;
   `sources.js` `sourceGroups`): *Whole world* (Bing Maps, Esri World Imagery, Esri World Imagery
-  Clarity, since 2026-09-22 EOX Sentinel-2 cloudless 2024 and since 2026-10-21 Google, in the
-  engine's order), *For your
+  Clarity and, since 2026-09-22, EOX Sentinel-2 cloudless 2024, in the engine's order), *For your
   tiles* (a country's source whose rectangle meets every tile chosen), *My sources* (those the
   user added), then *Other countries* (*By country* when no tile is chosen), by country name, each
   labelled with its country ("Netherlands · PDOK
@@ -246,11 +245,9 @@ the build would go (a campaign, 2026-10-24). Then:
   greyed when `alive === false`. The groups follow the tiles as they change; the source selected
   stays. Under the field, in red, the tiles the source does not cover ("Netherlands · PDOK 2020
   does not cover +46+006: it is one country's source (Netherlands). Choose a Whole world source
-  for these tiles."), before the estimate refuses them; for a source held back (`held_back`,
-  Google), in amber and on two lines at most: "Google is slower on purpose, so that it does not
-  block your address. The estimate counts it."; then the attribution, with the licence after it.
+  for these tiles."), before the estimate refuses them; then the attribution, with the licence after it.
 - **My sources…** (a small button under the field; user request, 2026-09-14: Apple Maps and
-  Google Maps, much used in the USA; Apple is still not shipped, Google is since 2026-10-21, `imagery-providers.md`
+  Google Maps, much used in the USA, which OrthoStudio XP does not ship, `imagery-providers.md`
   4.1): a dialog that says in a yellow box that the user adds the source themselves, that its
   terms of use apply to them, and that OrthoStudio XP does not ship it nor check that they may
   download its images. It lists the sources added (name, code, address, *Remove*) and has a form:

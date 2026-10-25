@@ -439,7 +439,6 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .actions-build + .help { margin-top: var(--help-gap); }
 #build-note.is-fail { color: var(--fail); }
 #build-note.is-warn { color: var(--warn); }
-#provider-held.is-warn { color: var(--warn); } /* a source slower on purpose (Google) */
 #build-queue { margin-top: 0; }
 /* Step 3 follows the Plan by itself: while the cost is worked out again, the figures of before are
    dimmed, and beside the step's title a spinner says so. On a line of its own under the build

@@ -80,9 +80,7 @@ Result semantics:
   connections) tops at 219 req/s (s. 5). The client asks libcurl for "HTTP/2 over TLS, HTTP/1.1
   in clear" (`CURL_HTTP_VERSION_2TLS`), so a local `http://` test server and an HTTP/1.1-only
   provider work unchanged, with the lower concurrency the registry gives them. `http2=False`
-  forces HTTP/1.1, and a provider asks for it with `http2 = false` in the registry: Google's hosts
-  serve the streams of one HTTP/2 connection one after the other, about 100 req/s whatever the
-  window, where 32 HTTP/1.1 connections gave 332 (2026-10-21).
+  forces HTTP/1.1.
 - One `AsyncSession` (one libcurl multi handle, one connection cache) for the life of the
   `Fetcher`: connections are opened at the first request and kept alive between textures. The
   ramp of the TCP and HTTP/2 windows (748 -> 974 req/s in the first 10-20 s at 64 in flight,

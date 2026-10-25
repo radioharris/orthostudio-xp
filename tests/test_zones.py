@@ -185,7 +185,7 @@ def test_a_broken_saved_document_is_a_coded_error_never_ignored(tmp_path: Path) 
 # -- the saved document, read zone by zone ------------------------------------------------------
 # Review finding: one invalid zone in zones.json refused the page and every build, even far away.
 
-GO2 = {"id": "go2", "name": "Genève", "zl": 18, "provider": "APPLE", "polygon": [*LSGG, LSGG[0]]}
+GO2 = {"id": "go2", "name": "Genève", "zl": 18, "provider": "GO2", "polygon": [*LSGG, LSGG[0]]}
 
 
 def _saved(tmp_path: Path, content: Any) -> tuple[Path, SavedZones]:
@@ -217,7 +217,7 @@ def test_a_zone_with_a_problem_is_listed_as_stored_and_refuses_only_the_tiles_it
     assert saved.listed == ({**cape_town, "name": "", "provider": None, "photo": empty_photo}, GO2)
     assert [zone.id for zone in saved.zones] == ["cpt"]
     (problem,) = saved.problems
-    reason = "provider APPLE is not in the registry"
+    reason = "provider GO2 is not in the registry"
     message = f"Zone go2 of {path} is invalid: {reason}."
     expected = {"zone": "go2", "index": 1, "code": "ZONE_INVALID", "reason": reason}
     assert problem.to_dict() == {**expected, "message": message}

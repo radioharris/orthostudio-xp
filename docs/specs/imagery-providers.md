@@ -75,10 +75,7 @@ own defaults apply otherwise), `max_in_flight`, `server_req_per_s`, `placeholder
 `attribution`, `terms_url`, and three **additions** of 2026-09-14: `name` (a short name for the
 page's lists, "Bing Maps"; `attribution` stays the credit line), `same_as` (another code of the very
 same imagery: `NL` is `PDOK`, still accepted, listed once) and `custom` (a source the user added,
-section 4.1), and two of 2026-10-21 for Google: `http2` (`false` asks over plain HTTP/1.1
-connections, `net-download.md` R1) and `held_back` (its rate is held well under what its server
-gives, so that the server does not block the user's address; the Plan says the source is slower on
-purpose). Codes match `^[A-Za-z0-9_@-]{1,32}$` (the Ortho4XP codes contain `@`).
+section 4.1). Codes match `^[A-Za-z0-9_@-]{1,32}$` (the Ortho4XP codes contain `@`).
 `load_registry()` keeps the file's order: Bing Maps, then Esri, first in every list (a user asked
 for them first).
 
@@ -95,10 +92,8 @@ own source does not meet its polygon is `ZONE_INVALID`.
 A user asked for Apple Maps and Google Maps, much used in the USA (2026-09-14). Apple publishes no
 tiles to download (its imagery only goes through MapKit, with a key of an Apple developer account),
 and Google's terms forbid downloading and storing its tiles outside its APIs (`GO2` was left out of
-the registry for that reason, `docs/providers-audit.md`). Users who build with Google in Ortho4XP
-kept asking for it, and Google is shipped since 2026-10-21 (`GO2`, section 4), its terms said
-beside its credit; Apple is still not. A user may add a source of their own, at their own risk:
-its terms apply to them.
+the registry for that reason, `docs/providers-audit.md`). OrthoStudio XP ships neither; a user may
+add a source of their own instead, at their own risk: its terms apply to them.
 
 `sources.toml` has the registry's schema. `load_registry()` without a path adds its sources after
 the shipped ones, each `custom`, with `max_in_flight` 16 unless the entry says otherwise
@@ -128,7 +123,7 @@ which named only the code, so the map went on showing the old address's images f
 already seen. A shipped source's documents and URLs are as before, and so is every tile the
 browser already keeps.
 
-### Initial content (decided by the user; 12 providers, EOX since 0.1.14, Google since 2026-10-21)
+### Initial content (decided by the user; 12 providers, and EOX since 0.1.14)
 
 | Code | Ortho4XP file | Template (OrthoStudio XP) | max_zl | in flight | Placeholder | Extent |
 |---|---|---|---|---|---|---|
@@ -136,7 +131,6 @@ browser already keeps.
 | Arc | Global/Arc.lay | `https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{zoom}/{y}/{x}` (Ortho4XP: `http://`, the server redirects to https) | 19 | 128 (measured, `docs/benchmarks/network.md` 7; was 16, an HTTP/1.1 guess) | 2 521 bytes (Ortho4XP rule `:1029-1032`, `arcgisonline` in the URL) | global |
 | Arc@ | Global/Arc@.lay | unchanged (`https://clarity.maptiles.arcgis.com/...`) | 19 | 192 (HTTP/2, measured: `docs/benchmarks/network.md` 6 and 7) | none: the Ortho4XP rule tests `arcgisonline` in the URL, which this host does not contain; **open point**, to be measured | global |
 | EOX | Global/EOX.lay, EOX2.lay (`a.s2maps-tiles.eu`, refused: 403 in the audit) | `https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-2024_3857/default/g/{zoom}/{y}/{x}.jpg`, EOX's Sentinel-2 mosaic of 2024 ("EOxCloudless"), added for a pilot flying IFR long haul (2026-09-22); non-commercial use (CC BY-NC-SA 4.0), credit shown | 14 (10 m to the pixel) | 32 (measured: 8, 16, 32, 64 gave 76, 138, 224, 240 req/s) | none; over open sea a plain dark blue 256x256 PNG, which decodes like the JPEGs | global |
-| GO2 | Global/GO2.lay (`http://mt{switch:0,1,2,3}.google.com/vt/lyrs=s&x={x}&y={y}&z={zoom}`, `max_threads=16`) | over HTTPS, same images; asked over HTTP/1.1 (`http2 = false`): over HTTP/2 the four hosts gave 86 to 109 req/s at 16, 32 and 64 in flight, over HTTP/1.1 16 connections gave 171 and 32 gave 332 (2 000 images each, no refusal, 2026-10-21); credit "Google satellite imagery", its terms beside it (`licence`) | 20 (answers at ZL20 over rural Scotland and the Sahara) | 32, rate held at 320 (`held_back`) | none: 404 where it has no imagery (open sea, Antarctica), read as missing | global |
 | Lux | Luxembourg/Lux.lay | `https://{switch:wmts1,wmts2}.geoportail.lu/opendata/wmts/ortho_latest/GLOBAL_WEBMERCATOR_4_V3/{zoom}/{x}/{y}.jpeg` (Ortho4XP: `http://`) | 20 | 16 (measured: slower at 32) | none | Luxembourg (bounds of `Extents/LowRes/Luxembourg.ext`) |
 | NL, PDOK | Netherland/NL.lay, PDOK.lay (identical definitions, layer `Actueel_ortho25`) | WMTS concatenation, section 2 | 19 (matrices `00`..`19`) | 32 (measured: slower at 64) | none | Netherlands `3.06,50.72,7.26,53.76` |
 | PDOK18 / PDOK19 / PDOK20 | Netherland/PDOK1{8,9}.lay, PDOK20.lay | same, layers `2018_ortho25`, `2019_ortho25`, `2020_ortho25` | 19 | 32 (the same host) | none | Netherlands |
@@ -166,9 +160,7 @@ of a server that slows down. `server_req_per_s` is a **ceiling the fetcher climb
 with the window when it does not, and the probe is not paced at all, because a probe measures the
 line. The figures are what each server gave when it, not the line, was the limit: Esri Clarity 522,
 Spain 584, USGS 280, the Netherlands 181, Luxembourg 130, Japan 103; none for Bing and Esri `Arc`,
-which kept up with the line, and those two are not paced. Google's 320 is not its server's limit:
-32 connections gave 332 with no refusal, and nobody knows where Google starts blocking an address,
-so it is held at about twice the rate of Ortho4XP's pattern (171 from here) and the Plan says so.
+which kept up with the line, and those two are not paced.
 
 **EOX's 90 is not a measurement of ours.** We read 224 from here on 2026-09-22, sustained and
 without an error, and a user's builds kept failing on it from an address where the server stops
@@ -180,7 +172,7 @@ The time left of a build
 and the Plan's estimate never count faster downloads (`api.md` 5.6, `estimate.ProbeResult`):
 counted from its requests in flight alone, Esri Clarity was expected three times faster than a
 user's builds downloaded, and Japan five times faster than its measured rate (2026-09-15). `headers` is empty for
-all fourteen: none declares `fake_headers`; the fetcher sends its own User-Agent.
+all thirteen: none declares `fake_headers`; the fetcher sends its own User-Agent.
 `attribution` / `terms_url` are indicative strings for the UI, taken from the audit's
 `POLICY_NOTES` and the services' public pages; they are not legal review.
 

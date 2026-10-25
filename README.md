@@ -141,7 +141,7 @@ Other differences in use:
 
 Ortho4XP remains the reference, and does things OrthoStudio XP does not do:
 
-- **many more imagery sources**: 71 definitions, mostly national, against 14 checked ones here (a
+- **many more imagery sources**: 71 definitions, mostly national, against 13 checked ones here (a
   source of your own can be added in the page), and a **combined** layer that stitches several of
   them into a single texture, each with its own extent, priority and colour filter — where
   OrthoStudio XP uses one source per tile, or per zone drawn inside it;
@@ -276,8 +276,7 @@ Without a GitHub account, the comments on OrthoStudio XP's page on X-Plane.Org a
 ## Imagery and responsible use
 
 OrthoStudio XP downloads imagery from public map services for your personal use in X-Plane, as
-Ortho4XP does. Their terms of use apply to you; many forbid redistributing the imagery. Google's
-forbid even using its imagery outside its own apps: choosing it is your decision. Do not share
+Ortho4XP does. Their terms of use apply to you; many forbid redistributing the imagery. Do not share
 or sell tiles built from them. You can add a source OrthoStudio XP does not ship (*My sources…* in
 the Plan): you add it yourself, and its terms apply to you as well.
 
