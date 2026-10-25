@@ -169,12 +169,24 @@ async def test_pages_that_ask_while_the_disk_is_measured_share_the_measure(
         release.wait(10)
         return SimpleNamespace(
             freed_bytes=1,
+            doubles_bytes=0,
+            doubles_packs=[],
+            doubles_since={},
             images_bytes=5,
             mapcache_bytes=2,
             relief_bytes=4,
             filed_tiles=0,
             filed_bytes=0,
             filed_images_bytes=0,
+            apart_tiles=0,
+            apart_bytes=0,
+            apart_images_bytes=0,
+            apart_unpieced=0,
+            filed_apart_bytes=0,
+            twice_bytes=0,
+            twice_filed_bytes=0,
+            compacted=False,
+            atelier_tiles=0,
             packs=[],
         )
 
@@ -197,3 +209,66 @@ async def test_pages_that_ask_while_the_disk_is_measured_share_the_measure(
     finally:
         release.set()
         mgr.close()
+
+
+@pytest.mark.anyio
+async def test_a_tile_holding_copies_is_measured_again_before_the_store_s_share(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A tile moved away by hand and back keeps its files' dates: the Library still remembered it
+    as sharing its files with the store, Disk space took them off the store and its copies again,
+    and "what is used to rebuild your 3 tiles" read 0 MB (a campaign, 2026-10-25). The tiles a
+    measure finds copies in are measured again before the share is counted."""
+    from orthostudio.api import app as api_app
+    from orthostudio.clean import CleanReport
+
+    order: list[str] = []
+    report = CleanReport(dry_run=True)
+    report.doubles_files, report.doubles_bytes = 2, 900
+    report.doubles_packs = [str(home / "tiles" / "zOrthoStudio_+46+006")]
+    report.doubles_since = {report.doubles_packs[0]: 1.0}  # never measured: measured again
+    monkeypatch.setattr(api_app, "clean", lambda *a, **kw: report)
+    monkeypatch.setattr(api_app, "_measure_again", lambda packs: order.append(f"measure {packs}"))
+    monkeypatch.setattr(api_app, "_shared_bytes", lambda *a, **kw: order.append("share") or 0)
+    app, mgr = _app(home)
+    try:
+        async with client_for(app) as c:
+            doc = (await c.get("/api/disk")).json()
+    finally:
+        mgr.close()
+    assert doc["doubles_bytes"] == 900
+    assert order[0] == f"measure {[home / 'tiles' / 'zOrthoStudio_+46+006']}"
+    assert "share" in order[1:]
+
+
+def test_a_tile_measured_since_its_copies_came_is_not_measured_again(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Measured again at every Disk space while its copies stayed, 300 tiles took 19.6 s on a
+    Windows PC (2026-10-25): a tile the Library measured after its copies came is left as it is."""
+    from orthostudio.api import app as api_app
+    from orthostudio.install import Library
+    from orthostudio.install.library import PackFacts
+
+    pack = home / "tiles" / "zOrthoStudio_+46+006"
+    with Library(home / "library.sqlite") as lib:
+        lib.remember_facts(pack, PackFacts("s", 10, None, None, 500.0, 0, str(home / "store")))
+    monkeypatch.setattr(api_app, "default_library_path", lambda: home / "library.sqlite")
+    assert api_app._measured_before({str(pack): 400.0}) == []
+    assert api_app._measured_before({str(pack): 600.0}) == [pack]
+    assert api_app._measured_before({str(home / "other"): 1.0}) == [home / "other"]
+
+
+def test_the_measure_leaves_out_what_a_running_build_made() -> None:
+    """While a build ran here, its fresh data read as leftovers, and as the data of the tiles
+    filed elsewhere that share its keys, until it registered its tile (a campaign, 2026-10-24):
+    what it made since it began is left out, with a minute to spare; a build in another process
+    gives the hour of ``osxp clean``; with none, nothing is left out, as Free space deletes."""
+    from orthostudio.api.app import _measure_grace
+    from orthostudio.clean import GRACE_S
+
+    assert _measure_grace(1000.0, False, 1600.0) == 660.0
+    assert _measure_grace(1000.0, True, 1600.0) == 660.0  # the one here says how long
+    assert _measure_grace(2000.0, False, 1600.0) == 60.0  # a clock set back
+    assert _measure_grace(None, True, 1600.0) == GRACE_S
+    assert _measure_grace(None, False, 1600.0) == 0.0

@@ -185,7 +185,19 @@ committed without forcing, and made durable as a group:
 
 The executor never trusts a path that is not both indexed and present.
 
-## 7. SQLite index (`schema_version = 1`, WAL, `synchronous=NORMAL`, `foreign_keys=ON`)
+## 7. SQLite index (`schema_version = 1`, 2 once compacted, WAL, `synchronous=NORMAL`, `foreign_keys=ON`)
+
+`schema_version` is 1, which every version since 0.1.22 reads, and becomes 2 when the cache is
+compacted (`Store.compact`: *Free space*'s box *Compact the relief and the mesh*, `osxp clean
+--compact`). A compacted cache keeps the relief and the mesh in OrthoStudio XP's form alone, where
+a version before this one looks for `Data<tile>.alt` and `Data<tile>.mesh` in their artefacts and
+fails in the middle of a build. Every version since 0.1.22 refuses an index whose number is not its
+own (`IncompatibleIndexError`, inside the opening's transaction, so nothing is changed): the
+versions before turn a compacted cache away at its opening. This one reads 1 and 2 and refuses a
+higher number the same way, said as `SYS_STORE_NEWER`, its connection closed before the refusal goes
+up: left to a garbage collection, the engine held the index open, and Windows refused to empty the
+folder, the remedy the page gives (a campaign on Windows, 2026-10-24). Nothing turns 2 back to 1:
+going back to an older version is emptying the cache folder (2026-10-24).
 
 ```sql
 CREATE TABLE meta (k TEXT PRIMARY KEY, v TEXT NOT NULL);           -- schema_version, disk_bytes
@@ -218,7 +230,71 @@ CREATE TABLE pins (
     key       TEXT NOT NULL REFERENCES artifacts (key) ON DELETE CASCADE,
     pinned_at REAL NOT NULL
 );
+CREATE TABLE sources (               -- digests of files outside the store, while they stay the same
+    path     TEXT PRIMARY KEY,       -- resolved
+    size     INTEGER NOT NULL,
+    mtime_ns INTEGER NOT NULL,
+    ctime_ns INTEGER NOT NULL,
+    ino      INTEGER NOT NULL,       -- written as text, "i<number>" (a ReFS number is 128 bits)
+    digest   TEXT NOT NULL
+);
+CREATE TABLE trimmed (               -- files trimmed from an artefact, which keeps its identity
+    key    TEXT NOT NULL REFERENCES artifacts (key) ON DELETE CASCADE,
+    path   TEXT NOT NULL,            -- relative to the artefact
+    size   INTEGER NOT NULL,
+    digest TEXT,                     -- the file's own; NULL in a row of the table's first form
+    PRIMARY KEY (key, path)
+);
 ```
+
+An index may also hold an `away` or a `kept_pieces` table, which this version neither creates,
+reads nor writes: the images a tile held as files of its own and the store had let go of, with
+where the tile held them, and the tiles whose downloaded pieces Free space kept, written by builds
+of a development branch for a few days (2026-10-23). They stay as they are. The store
+counts on its own files only: what a tile holds belongs to its user, who may move it, retouch it,
+unplug its disk or delete it, and a review found the rows, the take-back and the tidying they
+needed open to losses (section 9.1).
+
+`sources` (2026-10-23): `Store.file_digest(path)` gives the digest of a file outside the store
+(X-Plane's scenery DSFs, the inputs keyed by content), read again only when its size, modification
+time, change time or inode differ from those recorded: a Plan read 172 of X-Plane's files, 1.1 GB,
+at each estimate for 25 tiles. The change time catches a file written again with its modification
+time put back; a file replaced under its name has another inode. The number is written as text
+(`"i<number>"`): bound as an SQLite integer, a 128-bit ReFS number (a Windows Dev Drive) raised
+`OverflowError` at every Plan and build (a review, 2026-10-23); a row an earlier version wrote,
+with an integer, differs once and is written again.
+
+`Store.last_made` reads a rule's rows once, grouped by the canonical JSON of
+their params, newest first (`Store._made_rows`), until the index changes: this connection's writes
+(counted in `_tx`) and the other processes' (`PRAGMA data_version`) make the next ask read them
+again. Each ask read and parsed every row of the rule: a Plan of 60 tiles over a cache of 1 400
+asked some 480 times, 11.3 s on the reference Mac, 0.21 s since.
+
+`trimmed` (2026-10-23): `Store.trim(key, paths)` removes files of a folder artefact that hold
+what another of its files holds (the relief's `.alt` beside `dem.npy`, the mesh's text beside
+`mesh.npz`), and the artefact keeps its key and its digest, which what was made from it was keyed
+with: nothing downstream is made again. Nothing goes before every file of the artefact is read
+whole and found as it was built: its files left and those trimmed before give its digest again
+(`digest.digest_of_files`), else the artefact is left as it is, the good form with it (a file
+damaged since, on a disk that failed). The index's `size` becomes what is left (the store's
+`disk_bytes` follows, by its triggers), the table lists what went with each file's size and digest,
+and `fsck(verify=True)` checks a trimmed artefact from those and the files left
+(`Store.content_digest`); a row of the table's first form, without its digest (2026-10-23 only),
+leaves its artefact untrimmed from then on and unchecked. The first form gains the column at the
+opening (`_TRIMMED_ADDED`). A path outside
+the artefact is refused; a file another program holds stays, and its row with it is taken back.
+The rows of one call are written in one transaction with `synchronous = FULL` (and `fullfsync` on
+macOS) before any file goes: a power cut cannot leave a file gone that the index does not list.
+Asked again (after an interruption, or by another process at the same time), a row already there
+is kept and its size not taken off twice, and a file another trim removed first keeps its row; an
+artefact deleted meanwhile is left alone (the rows' foreign key refuses them); a row an interrupted
+trim wrote stays when its file cannot be removed now (another program holds it), its size taken
+off once. `fsck(repair=True)` never deletes an artefact it cannot read now: only one whose files
+hash to another digest. A folder that cannot be listed raises in the walk (`digest._walk_files`),
+where it counted as empty and made an unreadable artefact look damaged (a review, 2026-10-23).
+Its digest is no longer what its files hash to. Only a compacted cache is trimmed (section 7),
+which a version before this one does not open; the release candidates 1.1.1-rc.4 and rc.5, never
+released, trimmed and built in one form with the number at 1.
 
 `meta.disk_bytes` is the store's size on the disk that `Store.disk_bytes` answers (the status
 bar's, `api.md` 2.1): every artefact's size but those of `tile.textures`, whose folders hard-link
@@ -233,8 +309,11 @@ than code, so that an earlier version writing to the same index keeps the figure
 version writes a row by an upsert and removes one by its key (a `REPLACE` would not fire the
 delete trigger).
 
-`refcount(key) = pins on key + edges whose parent_key is key`. A different schema version
-raises `IncompatibleIndexError` at open (no migration in P0). One connection per `Store`,
+`refcount(key) = pins on key + edges whose parent_key is key`. A schema version this version does
+not read (section 7) raises `IncompatibleIndexError` at open, and an index sqlite cannot read at
+all (no database any more, or a damaged one) `UnreadableIndexError`, said as
+`SYS_STORE_UNREADABLE`, its connection closed first as well (a campaign, 2026-10-25). One
+connection per `Store`,
 guarded by an `RLock`; several processes share the file through WAL and `busy_timeout`.
 Opening is retried for up to 15 s: when several processes create the same index at the same
 instant, the WAL switch can fail with "database is locked" without consulting the busy
@@ -299,9 +378,13 @@ collects by reachability from the packs on disk instead:
   page (`map-zones.md` section 6), both counted in the imagery size of the report; `--dry-run` deletes nothing and reports the
   same numbers. `--all` frees everything OrthoStudio XP can give back: it collects without the hour
   of grace (a result used a second ago goes too, unless a pack on disk needs it) and implies
-  `--images`. It refuses to run while another process builds into the store (`Store.building_pids`,
-  read from the `*.tmp-<pid>-*` directories of builds in progress), since the grace period is what
-  protects such a build otherwise. The command passes the map cache explicitly (`mapcache_root`);
+  `--images`, `--relief`, `--filed` and `--apart`, not `--compact`, its own choice (the cache kept
+  in one form, which a version before this one refuses). It, `--filed`, `--apart` and `--compact`
+  refuse to run while another process builds into the store (`Store.building_pids`, read from the
+  `*.tmp-<pid>-*` directories of builds in progress), since the grace period is what protects such
+  a build otherwise, and a build running may be reading the second form a compaction trims. On a
+  cache compacted already, `--compact` says so rather than that it compacted it, which it said at
+  each run (`CleanReport.compacted_now`, a campaign, 2026-10-24). The command passes the map cache explicitly (`mapcache_root`);
   `clean()` called without it counts and empties no map cache. It used to take the `mapcache` beside
   the chunks root for one, so a caller passing its own chunks folder had the folder next to it
   emptied (review of 2026-09-13);
@@ -314,6 +397,72 @@ collects by reachability from the packs on disk instead:
   directories are not swept: superseded builds stay for `osxp clean`, and the deleted tile is
   credited in `freed_bytes` with its own cache only. Running the whole clean there took other
   processes' finished artefacts that no pack referenced yet (review of the delete);
+* **relief and mesh kept twice** (`compact`, its own choice): the `orthostudio.dem` and
+  `orthostudio.mesh` artefacts that stay and hold Ortho4XP's form beside the one OrthoStudio XP
+  reads (`Data<tile>.alt` beside `dem.npy`, `Data<tile>.mesh` beside `mesh.npz`) are trimmed of it
+  (`clean._twice`, `Store.trim`; `twice_files`, `twice_bytes`) once the cache is compacted, its
+  number 2 on the disk before anything goes (section 7): with `compact`, or whatever the options in
+  a cache compacted already (what a compaction cut short left); but those used within the grace
+  period or pinned. A file goes only when the kept form says the same size of the same thing, read
+  from headers alone: as many float altitudes in `dem.npy` as the `.alt` holds, as many points in
+  `mesh.npz`'s `vertices` as the `.mesh` names. 90 GB and 272 GB of a user's 1.1 TB cache. The
+  share of the tiles filed outside is `twice_filed_bytes`: trimmed with the rest by `compact`
+  alone, deleted whole with their data by `filed`.
+  `compacted` says the cache's state. A build in a compacted cache writes OrthoStudio XP's form
+  alone (`DemJob.ortho4xp_form`, `MeshJob.ortho4xp_form`, from `Store.compacted` as each node
+  starts); `compact` is refused while a build runs, which may be reading the second form it trims
+  (Triangle4XP the relief's `.alt`);
+* **images of the tiles on another disk** (`apart`, its own choice): the packs whose textures
+  folder is on another file system than the store (`filing.same_disk`, the volume on Windows), by
+  their folder with the links followed, hold their images as files of their own, which X-Plane
+  reads; the store's copy goes on request: their `tile.textures` and the `texture.dds` it lists
+  (`clean._apart`; `apart_tiles`, `apart_bytes`), but an image a pack on the store's disk, or a
+  library row, needs too (`needed_keys` of the others: a texture astride a border), and what was
+  used within the grace period or is pinned. Nothing is recorded of where the tile's copies are,
+  and nothing is taken back from them: a build of such a tile prepares its images again from the
+  downloaded image pieces, the same bytes (a ZL16 tile of 213 images, 9.8 s on the reference Mac,
+  every DDS identical, 2026-10-23), its tracing, mesh, relief and DSF hits. Their downloaded pieces
+  are as any: the images choice frees them as in 1.1.0, and a build then downloads them again,
+  which the words under the box say. Keeping them for those tiles, read from the tiles and the
+  disks at each run and then from a list in the store, was the source of nearly every finding of
+  two reviews (a disk unplugged, a run cut, two runs at once, tiles whose images were never in this
+  store): it went, with its list (2026-10-24). A pack
+  whose folder cannot be read now (a disk away, a letter another disk took, a mount point left
+  empty) is none of them, and its cache stays through the keys the library recorded. On a file
+  system that clones copies (btrfs between subvolumes, ZFS with block cloning, an NFS 4.2 server
+  that clones), a tile's copy may share its blocks with the store's: the figure then counts bytes
+  the disk does not give back. A user had
+  moved the `tiles` folder to another partition with a link: every image was then on both, 358 GB
+  twice, and the store filled the disk the move was to free (2026-10-23). A first form let them go
+  whatever the choices, recording each tile's file, and took them back from it; a review found a
+  build emptying a tile whose textures folder it had found before Free space deleted it in another
+  process, photos replaced after a rebuild that downloaded changed pieces, and rows forgotten when
+  another disk took a drive letter. `write_pack` now stops before writing when a source is gone
+  (`pipeline-build.md`), and the choice keeps no record of the tile's files. With both `apart` and `filed`, a tile
+  filed on another disk has its images counted once: `filed_apart_bytes` is the filed tiles' data
+  once those went;
+* **copies made one file** (every run, whatever the choices; API level 40): the textures and the
+  DSF of the atelier's tiles that are copies of the store's own, on the store's disk, the same size,
+  not one file with it and with no other name of their own (`clean._doubles`; `doubles_files`,
+  `doubles_bytes`, `doubles_packs`). A tile of the atelier holds them as links to the store's; one
+  brought back from another disk, by hand or filed back, holds copies, and so did a pack kept as it
+  was when an image made again came out the same: 11 GB of a user's 16 tiles, freed by no choice
+  (2026-10-25). The run reads both files whole (`filecmp`) and makes the tile's one file with the
+  store's (`pack.join_same_file`: a link made beside it, `<name>.osxp-join`, then renamed over it,
+  so the tile's file is always there; a leftover of a run killed between the two goes at the next
+  run); a pair on two disks, or one another program holds open (Windows), is left. A file read
+  different, an image its user retouched in the tile (a DDS of the same picture size has the same
+  size), stays as it is and goes into the index's note `clean.different` (`Store.note`, the `meta`
+  table) with its path, size, date and inode, so that a measure no longer counts it while it stays
+  as noted; each run keeps in the note the files it read different and those still as noted. The
+  dry run finds the candidates from the folders' listings (`clean._unlinked`): on macOS and Linux
+  the listing carries each file's number, and only the pairs whose numbers differ are stat'ed; on
+  Windows it carries size and time, the pairs that differ are candidates, and those that agree are
+  too when the first of them is not one file (a folder copied with its times kept): one call per
+  tile, where a file number per image took Disk space to 31 s with 300 tiles (2026-10-25). The dry
+  run also says when each tile's newest copy came (`doubles_since`, from the copies' creation time,
+  the change time on Linux), which `GET /api/disk` reads to measure again the tiles the Library
+  measured before it (`api.md` 2.1);
 * **sizes shown**: `disk_bytes` measures a folder the same way, each inode once: the size of each
   pack in the library (`api.md` 2.3), and the page's store size until 0.1.19, which the index's
   sum put at twice the disk's (a DDS linked by two artefacts); the store's is now the figure its

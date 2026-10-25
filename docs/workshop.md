@@ -32,6 +32,11 @@ where it was.
 Afterwards the Library lists the tile in its new folder and X-Plane reads it from there. Its roads
 and forests go with it, and a tile you had turned off in X-Plane stays off.
 
+To bring a tile back into the workshop, file it the same way into the workshop's own *Tiles*
+folder, in your data folder. Brought back from another disk, it arrives with copies of its photos
+that the workshop already keeps: *Free space* makes each of them one file again, and *Disk space*
+says how much room that gives back.
+
 X-Plane must be closed. Tiles are filed between builds: while a build runs, *File elsewhere…* is
 greyed out until it ends.
 
@@ -51,8 +56,8 @@ If the tile's disk is not plugged in, the tile is not built, and Works says why.
 ## Getting room back on the workshop's disk
 
 The workshop keeps the cache of the tiles you filed elsewhere, so that building them again stays
-quick. If you need the space: Library, *Free space…*, and tick the line of the tiles filed outside
-the workshop. Their downloaded images and data are deleted. The tiles themselves are not touched:
+quick. If you need the space: *Disk space*, and tick *Delete what is used to rebuild the N tiles
+filed elsewhere*. Their downloaded images and data are deleted. The tiles themselves are not touched:
 they stay complete and in X-Plane. Building one of them again later downloads its images again, as
 the first time.
 
@@ -60,11 +65,25 @@ Two things stay. Their mesh, about 240 MB a tile, because a neighbouring tile bu
 to draw the shores along their common border. And for tiles filed on the workshop's own disk, the
 tile and the cache share the same files, so that part of the room does not come back.
 
+A tile on another disk holds its own textures, and OrthoStudio XP keeps them a second time in the
+data folder, so that building it again is quick. If you need that room without giving up the rest:
+tick *Delete the textures kept here of the N tiles on another disk* in *Disk space*. The tiles
+keep their textures and X-Plane sees no difference. Building one of them again makes its textures
+again, identical, from the downloaded images; its tracing, mesh and relief are kept as before. If
+you delete the downloaded images too, at the same time or later, that build downloads its images
+again, and the provider may have changed them. The same holds for a tile you moved to another disk
+yourself, or whose `tiles` folder is a link to another disk or partition.
+
 ## Moving a tile yourself
 
 You can also move a tile's folder yourself, in the Finder or the File Explorer. The Library then
 shows the tile as *Not found*, with a *Find again…* button. Point it to the folder you put the tile
 in, and the Library and X-Plane follow. Nothing is copied. X-Plane must be closed.
+
+Moved many tiles? *Find tiles in a folder…* at the top of the Library finds them all in the folder
+you show, and puts back in the list those it no longer knows. Tiles in the workshop's own tiles
+folder come back by themselves each time the Library opens: a data folder you moved to another
+disk and chose again in Settings, for instance. A tile X-Plane does not show is added with *Add*.
 
 Do not put a tile inside X-Plane's own `Custom Scenery` folder: X-Plane reaches your tiles through
 links placed there, and OrthoStudio XP refuses that folder.

@@ -108,7 +108,8 @@ and counters. Default `host_group=""` is a group like any other.
 - **Additive increase**: +1 when `window` successful completions have been observed since the
   last change (one "round"), until `max_in_flight` (128 for Bing: 1 436 req/s, last level with
   p99.9 < 0.6 s and no transfer above 1 s, s. 2). A success for AIMD is any HTTP answer that
-  is not a push-back (2xx, 3xx, 404 and other 4xx except 429).
+  is not a push-back (2xx, 3xx, 404 and other 4xx except 429 and the statuses the caller names
+  as the server's own push-back, `pushback_status`).
 - **Multiplicative decrease** (`window = max(min_in_flight, window // 2)`, `min_in_flight = 8`
   or `start_in_flight` if smaller): on any **429 or 503**, and on a latency signal: p90 of the
   last 100 completions > 2 x the p90 of the completions since the last decrease (at most the last
@@ -128,6 +129,11 @@ and counters. Default `host_group=""` is a group like any other.
   signal, so that the recent ring holds only post-decrease samples): one burst of 429, or one
   stalled connection whose 32 streams complete late together, halves once, not once per
   answer. (The first Bing run of P1 without that rule fell from 128 to 12 on a single burst.)
+- **A server's own push-back**: a status the caller names (`Fetcher(pushback_status=...)`, from
+  the provider's `pushback_status`, `imagery-providers.md` 4) is a 429 in every rule below.
+  EOX answers 403 at once to the requests above the rate it tolerates: as an answer, the window
+  climbed on, the image was given up and the build failed, its retry too (2026-10-25). Any other
+  source keeps its 403 an answer, asked once.
 - **Pause on 429**: no new dispatch for the group until `Retry-After` (integer seconds or HTTP
   date, clamped to [1, 120] s) or, without it, 5 s, doubling on repeats within 60 s up to 30 s.
   The affected request is re-queued **at the tail** of the group's queue and retried after

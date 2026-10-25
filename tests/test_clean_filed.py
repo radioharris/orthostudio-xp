@@ -126,7 +126,10 @@ class World:
                 inputs=(_ref(s, "mesh", mesh), _ref(s, "masks", masks)))  # fmt: skip
             one = _put(s, "texture.dds", 10 * n + 1, data=b"K" * (5000 + n))
             two = _put(s, "texture.dds", 10 * n + 2, data=b"L" * (6000 + n))
-            textures = [{"key": one, "name": f"{name}.dds"}, {"key": two, "name": f"{other}.dds"}]
+            textures = [  # as the build writes it: the name without .dds, the image's digest
+                {"key": one, "name": name, "digest": s.digest_of(one), "status": "built"},
+                {"key": two, "name": other, "digest": s.digest_of(two), "status": "built"},
+            ]
             doc = json.dumps({"format": "osxp-textures-1", "textures": textures}).encode()
             folder = _put(s, "tile.textures", n, files={
                 "manifest.json": doc, f"terrain/{name}.ter": _ter(name),

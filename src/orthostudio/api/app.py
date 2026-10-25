@@ -21,7 +21,7 @@ import subprocess
 import threading
 import time
 import tomllib
-from collections.abc import AsyncIterator, Callable, Iterable
+from collections.abc import AsyncIterator, Callable, Iterable, Mapping
 from pathlib import Path
 from typing import Any
 
@@ -76,13 +76,14 @@ from orthostudio.api.specs import (
     where_now,
 )
 from orthostudio.api.zones_api import zones_router
-from orthostudio.clean import clean, disk_bytes
+from orthostudio.clean import GRACE_S, clean, disk_bytes, pack_disk_bytes
 from orthostudio.codemark import code_mark
 from orthostudio.dem.sources import default_elevation_dir
 from orthostudio.doctor import run_doctor
-from orthostudio.errors import Action, OsxpError, Severity
+from orthostudio.errors import Action, OsxpError, Severity, wrap
 from orthostudio.fsutil import choose_folder, platform_name, reveal_in_file_manager
 from orthostudio.graph import GraphError, Store
+from orthostudio.graph.errors import IncompatibleIndexError, UnreadableIndexError
 from orthostudio.imagery.grid import wgs84_to_tile
 from orthostudio.imagery.providers import (
     USER_SOURCE_IN_FLIGHT,
@@ -106,7 +107,7 @@ from orthostudio.install import (
     packs_of_their_own,
     xplane_running,
 )
-from orthostudio.install.library import PackFacts, ortho4xp_searched
+from orthostudio.install.library import PackFacts, ortho4xp_searched, own_searched
 from orthostudio.model import TileRef, pack_dir_name
 from orthostudio.net.fetch import FetchRequest
 from orthostudio.pipeline.build import BuildEnv, patched_tiles
@@ -134,6 +135,7 @@ from orthostudio.pipeline.pack import (
     PackManifest,
     delete_receipt,
     find_again_receipt,
+    find_tiles_receipt,
     install_receipt,
     is_installed,
     leave_overlay,
@@ -158,7 +160,7 @@ __all__ = [
     "sse_message",
 ]
 
-API_LEVEL = 31
+API_LEVEL = 40
 """What this engine's API offers, for the page: 1 = P2b, 2 = zones (``/api/zones``) and the base map
 (``/api/map``), 3 = deleting a tile (``POST /api/library/{name}/delete``) and the sizes of the
 library, 4 = the disk space of the Library (``GET /api/disk``, ``POST /api/clean``), 5 = clearing
@@ -193,7 +195,24 @@ refuses a settings document that holds it), 26 = the stages ``osm`` and ``relief
 (``filed``, ``filed_freed_bytes``), 30 = the setting ``expert.flatten_helipads`` and the answer
 ``roads`` of ``essential.overlays`` (an older engine refuses a settings document that holds them),
 and ``POST /api/flightplan/file`` (a Little Navmap or X-Plane plan file), 31 = ``POST
-/api/zones/cells`` (the squares each zone takes, drawn on the map). A page
+/api/zones/cells`` (the squares each zone takes, drawn on the map), 32 = ``POST
+/api/library/find-in-workshop`` and ``own`` in the import's answer (the tiles OrthoStudio XP built
+in a folder, taken back), 33 = ``shared_bytes`` in ``GET /api/sizes`` and ``GET /api/disk`` (the
+store's files that are the tiles' own too, counted once), 34 = ``held_bytes`` in ``GET /api/disk``
+and ``held_freed_bytes`` in ``POST /api/clean`` (a development build's, never released, gone at
+36), 35 = ``twice_bytes`` in ``GET /api/disk`` and ``twice_freed_bytes`` in ``POST /api/clean``
+(the relief and mesh kept in a second form, which Free space trims whatever the choices), 36 = the
+choice ``apart`` of ``POST /api/clean`` and its ``apart_freed_bytes``, with ``apart_tiles``,
+``apart_bytes`` and ``filed_apart_bytes`` in ``GET /api/disk`` (the store's
+copy of the images of the tiles on another disk or partition, deleted only on request), 37 = ``GET
+/api/older`` and ``POST /api/older`` (a development build's, never released, gone at 38), 38 = the
+choice ``compact`` of ``POST /api/clean`` and ``compacted`` in its answer and in ``GET /api/disk``
+(the relief and the mesh kept in one form, which a version before this one refuses; ``twice_bytes``
+trimmed only then), with ``twice_filed_bytes``, the share of the tiles filed outside, and
+``atelier_tiles``, the tiles whose data the page's first line keeps, 39 = ``levels`` in a job's
+summary (how many of its tiles at each detail level, which Works writes), 40 = ``doubles_bytes`` in
+``GET /api/disk`` and ``doubles_freed_bytes`` in ``POST /api/clean`` (the atelier's tiles' copies of
+the store's files, made one file with them whatever the choices). A page
 served by an engine older than itself (a ``osxp serve`` started before an update: the page's files
 are read from disk at each load, the routes were imported at start) asks the user to restart
 OrthoStudio XP instead of showing "Not Found"."""
@@ -209,6 +228,8 @@ _STATUS_BY_CODE = {
     "XP_PACK_CONFLICT": 409,
     "ZONE_CONFLICT": 409,
     "SYS_PACK_NOT_OSXP": 409,
+    "SYS_STORE_NEWER": 409,
+    "SYS_STORE_UNREADABLE": 409,
     "SYS_INTERNAL_ERROR": 500,
 }
 
@@ -230,6 +251,7 @@ def _http_status(code: str) -> int:
         "SYS_TILE_INCOMPLETE",
         "SYS_TILE_NOT_IN_FOLDER",
         "SYS_TILE_OTHER_BUILD",
+        "SYS_TILES_OPEN_SEA",
     ):
         return 422
     if code.startswith("NET_"):
@@ -312,13 +334,121 @@ def _dir_bytes(path: Path, *, links: bool = True) -> int:
 
 
 def _sizes() -> dict[str, int]:
-    """``GET /api/sizes``: the store's bytes on the disk and the downloaded images'. The images are
-    never hard-linked, so their sizes come from the folder listings alone (``links=False``): on
-    Windows that saves opening each file."""
+    """``GET /api/sizes``: the store's bytes on the disk, those of them that are the tiles' own
+    files too (:func:`_shared_bytes`), and the downloaded images'. The images are never
+    hard-linked, so their sizes come from the folder listings alone (``links=False``): on Windows
+    that saves opening each file."""
     return {
         "store_bytes": _store_bytes(default_store_root()),
+        "shared_bytes": _shared_bytes(default_store_root()),
         "chunks_bytes": _dir_bytes(default_chunks_root(), links=False),
     }
+
+
+def _store_born(root: Path) -> float | None:
+    """When the store at ``root`` was made: its index's birth. ``None`` where the system does not
+    say (Linux), or without an index."""
+    try:
+        return float((Path(root) / "index.sqlite").stat().st_birthtime)
+    except (OSError, AttributeError):
+        return None
+
+
+def _measured_with(facts: PackFacts | None, store: str, born: float | None) -> bool:
+    """Whether ``facts`` were measured against the store at ``store`` as it is now: at that path,
+    and not before that store was made. One emptied by hand and made again at the same path (the
+    remedy the page gives for a newer version's cache or a damaged one) shares nothing with the
+    tiles yet: Disk space's folded note still said the data folder looked 3.5 GB bigger in the
+    Finder (a campaign, 2026-10-25)."""
+    if facts is None or facts.shared_with != store:
+        return False
+    return born is None or facts.measured_at >= born
+
+
+def _shared_bytes(root: Path, within: Path | None = None) -> int:
+    """The bytes of the store at ``root`` that are the files of the tiles in the Library too, one
+    file under two names: the page counts them once, in the tiles' sizes, where the store's size
+    counted them again (91 GB for a store adding 40 GB to the owner's 62 GB of tiles,
+    2026-10-23). Read from what the Library remembers of each tile (``PackFacts.shared``), measured
+    against this store, of the tiles whose folder is there: a tile moved off the disk by hand
+    left the store's files alone, the store's own again. With ``within``, of the tiles inside that
+    folder alone, links followed. 0 when nothing can say.
+
+    A tile the Library measured against another data folder's store, or never, is measured
+    against this one first, as the Library list does in the background: Disk space, opened
+    after the data folder was set elsewhere and back, counted none of them (4.09 GB "to
+    rebuild your 2 tiles" for 699 MB) until the Library was opened (a campaign, 2026-10-25)."""
+    inside = _real_path(within) if within is not None else None
+    if within is not None and inside is None:
+        return 0
+    try:
+        with Library(default_library_path()) as lib:
+            facts = lib.remembered_facts()
+            packs = {row.path for row in lib.list(kind="ortho")}
+            current = default_store_root()
+            born = _store_born(current)
+            with _PhotoStore() as photos:
+                for pack in packs:
+                    f = facts.get(str(pack))
+                    if not _measured_with(f, str(current), born) and pack.is_dir():
+                        measured = _measure_pack(lib, pack, photos)
+                        if measured is not None:
+                            facts[str(pack)] = measured
+    except Exception:  # a figure of the page never stops the engine
+        return 0
+    store, born_here = str(root), _store_born(root)
+    total = 0
+    for pack in packs:
+        f = facts.get(str(pack))
+        if f is None or not f.shared or not _measured_with(f, store, born_here):
+            continue
+        if not pack.is_dir():
+            continue
+        if inside is not None:
+            real = _real_path(pack)
+            if real is None or not real.startswith(inside.rstrip("/\\") + os.sep):
+                continue
+        total += f.shared
+    return total
+
+
+def _finder_extra_bytes(root: Path, data: Path) -> int:
+    """How much larger a file manager shows the data folder ``data`` than what it holds: it counts
+    a file at each of its names. The store's tiles' textures folders hard-link its ``texture.dds``
+    artefacts (``Store.total_size`` less ``disk_bytes``), and the tiles inside the data folder hold
+    the store's textures and DSFs under their own names (``_shared_bytes`` within it). The page
+    said the second alone, which is how much larger the store folder looks: the Finder showed the
+    data folder of a test 5.98 GB larger, where the note said 3.03 GB (a campaign, 2026-10-24)."""
+    if not root.is_dir():
+        return 0
+    try:
+        with Store(root, sweep=False) as st:
+            linked = max(0, st.total_size() - st.disk_bytes())
+    except Exception:  # a figure of the page never stops the engine
+        return 0
+    return linked + _shared_bytes(root, within=data)
+
+
+def _measure_grace(started_at: float | None, other_build: bool, now: float) -> float:
+    """How recent what Disk space's measure leaves out is: while a build runs here, what it made
+    since it began (its fresh data read as leftovers, and as the data of tiles filed elsewhere
+    whose keys it shares, until it registered its tile: a campaign, 2026-10-24); while one runs in
+    another process, the hour ``osxp clean`` gives; none otherwise, as Free space deletes."""
+    if started_at is not None:
+        return max(0.0, now - started_at) + 60.0
+    return GRACE_S if other_build else 0.0
+
+
+def _doctor_reads() -> tuple[bool, int | None]:
+    """What the doctor's checks read of the data folder that can change between two statuses:
+    whether the folder is there (its disk unplugged or plugged back), and the time of its
+    store's index (one a newer version wrote, put in the Recycle Bin as the page says). A few
+    stats, where the checks walk the downloaded images."""
+    try:
+        index = (default_store_root() / "index.sqlite").stat().st_mtime_ns
+    except OSError:
+        index = None
+    return data_root_missing() is None, index
 
 
 def _store_bytes(root: Path) -> int:
@@ -408,11 +538,16 @@ def _pack_facts(
     known: dict[Path, PackFacts] = {}
     todo: list[Path] = []
     check: list[tuple[Path, str | None]] = []
+    measured_with = str(default_store_root())
+    born = _store_born(default_store_root())
     for pack, updated_at in registered.items():
         facts = remembered.get(str(pack))
         if facts is not None and facts.measured_at > updated_at:
             known[pack] = facts
-            check.append((pack, facts.stamp))
+            # measured before the files it shares with this store were (an older version, another
+            # data folder, a store emptied since): measured again in the background, its size
+            # shown meanwhile
+            check.append((pack, facts.stamp if _measured_with(facts, measured_with, born) else ""))
         else:
             todo.append(pack)
     deadline = time.monotonic() + PACK_SIZES_BUDGET_S
@@ -438,13 +573,30 @@ def _measure_pack(
     stamp = _pack_stamp(pack)
     if stamp is None or stamp == known_stamp:
         return None
-    size = _pack_bytes(pack)
-    if size is None:
+    root = default_store_root()
+    sizes = _pack_bytes(pack, root)
+    if sizes is None:
         return None
     photo = _pack_photos([pack], store)[pack]
-    facts = PackFacts(stamp, size, photo, _pack_built([pack])[pack], at)
+    size, shared = sizes
+    facts = PackFacts(stamp, size, photo, _pack_built([pack])[pack], at, shared, str(root))
     lib.remember_facts(pack, facts)
     return facts
+
+
+def _measured_before(came: Mapping[str, float]) -> list[Path]:
+    """The packs of ``came`` the Library last measured before that time, or never."""
+    with contextlib.suppress(Exception), Library(default_library_path()) as lib:
+        facts = lib.remembered_facts()
+        return [Path(p) for p, at in came.items() if p not in facts or facts[p].measured_at < at]
+    return [Path(p) for p in came]
+
+
+def _measure_again(packs: list[Path]) -> None:
+    """Measure ``packs`` now, whatever the Library remembers of them."""
+    with contextlib.suppress(Exception), Library(default_library_path()) as lib, _PhotoStore() as s:
+        for pack in packs:
+            _measure_pack(lib, pack, s)
 
 
 def _measure_later(library: Path, packs: list[tuple[Path, str | None]]) -> None:
@@ -473,12 +625,13 @@ def _measure_packs(library: Path, packs: list[tuple[Path, str | None]]) -> None:
             _PACK_SIZES_MEASURING.difference_update(p for p, _ in packs)
 
 
-def _pack_bytes(path: Path) -> int | None:
-    """``size_bytes`` of an ortho row whose folder exists: its files on the disk, each inode
-    once. A DDS hard-linked from the store counts in full although deleting the pack alone does
-    not free it (the store clean after a delete does). ``None`` when the folder cannot be read."""
+def _pack_bytes(path: Path, store_root: Path) -> tuple[int, int] | None:
+    """``size_bytes`` of an ortho row whose folder exists, its files on the disk, each inode
+    once, and the bytes of them that are the store's files too (``clean.pack_disk_bytes``). A
+    DDS hard-linked from the store counts in full although deleting the pack alone does not free
+    it (the store clean after a delete does). ``None`` when the folder cannot be read."""
     try:
-        return disk_bytes([path])
+        return pack_disk_bytes(path, store_root)
     except OSError:
         return None
 
@@ -561,6 +714,17 @@ def _library_rows(cs: Path | None) -> list[dict[str, Any]]:
         )
     # once the list has read what it needed, which the disk then serves first
     _measure_later(lib.path, later)
+    return out
+
+
+def _searched(folder: Path) -> list[Path]:
+    """The folders *Find tiles in a folder…* looked in, each once: Ortho4XP's ``Tiles`` and a
+    data folder's ``tiles`` are one folder where names ignore the case (macOS, Windows)."""
+    out = ortho4xp_searched(folder)
+    for p in own_searched(folder):
+        if p in out or not p.is_dir() or any(q.is_dir() and os.path.samefile(p, q) for q in out):
+            continue
+        out.append(p)
     return out
 
 
@@ -799,6 +963,7 @@ def create_app(
         "settings_path": settings_path,
         "doctor": None,
         "doctor_at": 0.0,
+        "doctor_read": None,
         # the measure of GET /api/sizes under way, shared by the pages that ask meanwhile
         "sizes": None,
         # and GET /api/disk's, minutes long on a hard disk
@@ -822,6 +987,14 @@ def create_app(
     @app.exception_handler(OsxpError)
     async def _osxp_error(_request: Request, exc: OsxpError) -> JSONResponse:
         return _error_response(exc)
+
+    @app.exception_handler(IncompatibleIndexError)
+    @app.exception_handler(UnreadableIndexError)
+    async def _store_refused(_request: Request, exc: Exception) -> JSONResponse:
+        # a cache a newer version made (SYS_STORE_NEWER), or a damaged one (SYS_STORE_UNREADABLE),
+        # said as such: a bare 500 left Disk space blank and the Plan saying the engine did not
+        # answer (campaigns, 2026-10-24 and 25)
+        return _error_response(wrap(exc))
 
     @app.exception_handler(RequestValidationError)
     async def _validation(_request: Request, exc: RequestValidationError) -> JSONResponse:
@@ -910,16 +1083,33 @@ def create_app(
                 state["airports"] = default_airport_index(xplane_dir())
         return state["airports"]
 
+    doctor_lock = threading.Lock()
+
     def doctor_checks() -> list[dict[str, Any]]:
-        now = time.monotonic()
-        if state["doctor"] is None or now - state["doctor_at"] > DOCTOR_TTL_S:
-            report = run_doctor(offline=True, xplane=xplane_dir())
-            for name, took in report.took_s.items():
-                if took > SLOW_S:  # the status waits for them (orthostudio.startclock)
-                    log.info("the doctor's %s check took %.1f s", name, took)
-            state["doctor"] = [c.to_dict() for c in report.checks]
-            state["doctor_at"] = now
-        return list(state["doctor"])
+        """The doctor's checks, kept :data:`DOCTOR_TTL_S` unless what they read of the data
+        folder changed meanwhile (:func:`_doctor_reads`): its disk plugged back, the banner still
+        said "not working: disk" for up to a minute, and the page reads the status only when
+        something happens (a campaign, 2026-10-25).
+
+        One run at a time: a status asked while the checks run waits for them and takes their
+        answer. Each ran them again, and on a disk not read yet with a cache of 300 tiles the
+        checks took 8 s alone and up to 30 s side by side (a campaign, 2026-10-25)."""
+        with doctor_lock:
+            now = time.monotonic()
+            reads = _doctor_reads()
+            if (
+                state["doctor"] is None
+                or now - state["doctor_at"] > DOCTOR_TTL_S
+                or reads != state["doctor_read"]
+            ):
+                report = run_doctor(offline=True, xplane=xplane_dir())
+                for name, took in report.took_s.items():
+                    if took > SLOW_S:  # the status waits for them (orthostudio.startclock)
+                        log.info("the doctor's %s check took %.1f s", name, took)
+                state["doctor"] = [c.to_dict() for c in report.checks]
+                state["doctor_at"] = now
+                state["doctor_read"] = reads
+            return list(state["doctor"])
 
     def job_or_404(job_id: str) -> Job | JSONResponse:
         job = manager.get(job_id)
@@ -1477,13 +1667,14 @@ def create_app(
 
     # -- plan, jobs --------------------------------------------------------------------------
 
-    def _specs(req: PlanRequest, *, install: bool) -> list[Any]:
+    def _specs(req: PlanRequest, *, install: bool, left_out: list[str] | None = None) -> list[Any]:
         return make_specs(
             req,
             settings=settings(),
             install=install,
             airports=airport_index() if req.airport is not None else None,
             config_module=config,
+            left_out=left_out,
         )
 
     @app.post("/api/plan")
@@ -1491,7 +1682,8 @@ def create_app(
         from orthostudio.estimate import estimate
 
         def run() -> dict[str, Any]:
-            specs = _specs(req, install=False)
+            sea: list[str] = []
+            specs = _specs(req, install=False, left_out=sea)
             factory = state["env_factory"]
             env = None
             if factory is not None:
@@ -1515,7 +1707,16 @@ def create_app(
             finally:
                 if isinstance(env, BuildEnv):
                     env.close()  # each plan opened the store's index and left it open
-            return plan_answer(est, specs)
+            answer = plan_answer(est, specs)
+            if sea:  # left out, said as a line of its own (SYS_TILES_OPEN_SEA)
+                answer["warnings"].append(
+                    {
+                        "code": "SYS_TILES_OPEN_SEA",
+                        "severity": "info",
+                        "context": {"tiles": " ".join(sea)},
+                    }
+                )
+            return answer
 
         return await asyncio.to_thread(run)
 
@@ -1696,12 +1897,25 @@ def create_app(
 
     @app.post("/api/library/import-ortho4xp")
     async def import_ortho4xp(req: ImportRequest) -> Any:
+        """The Library's *Find tiles in a folder…*: the tiles Ortho4XP built in ``folder``,
+        imported, and those OrthoStudio XP built, taken back where the Library lost them
+        (``own``, ``pack.find_tiles_receipt``). Its name is the first version's, which imported
+        Ortho4XP's alone. Refused while a tile is filed elsewhere, as *Find again…* is."""
+        if filing_lock.locked():
+            return busy_filing()
+
         def run() -> dict[str, Any]:
             # in the thread, not on the loop: it walks the folder, and a user's tiles live on
             # another disk that may be asleep or on the network (found in review, 2026-09-23)
             folder = check_ortho4xp_folder(req.folder)
             with Library(default_library_path()) as lib:
                 rows = lib.import_ortho4xp(folder)
+            own = find_tiles_receipt(
+                folder,
+                custom_sceneries=sceneries_of(None),
+                library_path=default_library_path(),
+                leave=manager.building_tiles(),
+            )
             # where it looked as well as what it found: finding nothing then says where not
             return {
                 "entries": [
@@ -1716,8 +1930,35 @@ def create_app(
                     }
                     for r in rows
                 ],
-                "searched": [str(p) for p in ortho4xp_searched(folder)],
+                "searched": [str(p) for p in _searched(folder)],
+                "own": own,
             }
+
+        return await asyncio.to_thread(run)
+
+    workshop_scan = threading.Lock()
+
+    @app.post("/api/library/find-in-workshop")
+    async def library_find_in_workshop() -> Any:
+        """The tiles of the workshop's tiles folder the Library does not list there, taken back
+        (``pack.find_tiles_receipt``): the page asks whenever it reads the Library afresh, at its
+        start and when the Library is opened. Nothing while a tile is filed elsewhere, or while
+        another such look is under way (``skipped``): the next one does it."""
+        if filing_lock.locked():
+            return {"skipped": "filing"}
+
+        def run() -> dict[str, Any]:
+            if not workshop_scan.acquire(blocking=False):
+                return {"skipped": "busy"}
+            try:
+                return find_tiles_receipt(
+                    default_tiles_root(),
+                    custom_sceneries=sceneries_of(None),
+                    library_path=default_library_path(),
+                    leave=manager.building_tiles(),
+                )
+            finally:
+                workshop_scan.release()
 
         return await asyncio.to_thread(run)
 
@@ -2106,18 +2347,29 @@ def create_app(
                 )
             return await asyncio.to_thread(run)
 
-    # -- disk space (the Library's "Free space") ---------------------------------------------
+    # -- disk space (the page's Disk space, "Free space") -------------------------------------
 
     def other_builds() -> set[int]:
         """Processes other than this one building into the store now (a CLI build)."""
         root = default_store_root()
         if not root.is_dir():
             return set()
-        with Store(root) as st:
+        # a read: the abandoned build folders are left to the next build (``Store``'s sweep)
+        with Store(root, sweep=False) as st:
             return st.building_pids()
 
-    def collect(*, images: bool, relief: bool, filed: bool, dry_run: bool) -> Any:
-        # No grace period: the callers check first that nothing is building (osxp clean --all).
+    def collect(
+        *,
+        images: bool,
+        relief: bool,
+        filed: bool,
+        dry_run: bool,
+        apart: bool = False,
+        compact: bool = False,
+        grace_s: float = 0.0,
+    ) -> Any:
+        # No grace period to free space: the callers check first that nothing is building (osxp
+        # clean --all); the measure may give one (``_measure_grace``).
         return clean(
             default_store_root(),
             default_chunks_root(),
@@ -2125,11 +2377,13 @@ def create_app(
             tiles_root=default_tiles_root(),
             images=images,
             dry_run=dry_run,
-            grace_s=0.0,
+            grace_s=grace_s,
             mapcache_root=default_mapcache_root(),
             elevation_root=default_elevation_dir(),
             relief=relief,
             filed=filed,
+            apart=apart,
+            compact=compact,
         )
 
     def busy_building(other: bool) -> JSONResponse:
@@ -2143,11 +2397,15 @@ def create_app(
 
     @app.get("/api/disk")
     async def disk() -> Any:
-        """What the Library's "Free space" would give back, measured without deleting anything:
+        """What "Free space", in Disk space, would give back, measured without deleting anything:
         the tile data no tile on disk needs (``unused_bytes``, whatever its age), the downloaded
         image pieces, the map background, the relief downloaded and kept, and the cache of the
-        ``filed_tiles`` filed outside the atelier: the tile data only they need (``filed_bytes``)
-        and the image pieces only they use (``filed_images_bytes``, not in ``images_bytes``).
+        ``filed_tiles`` filed outside the atelier: the tile data only they need (``filed_bytes``,
+        ``filed_apart_bytes`` once the next line went) and the image pieces only they use
+        (``filed_images_bytes``, not in ``images_bytes``); the store's copy of the images of the
+        ``apart_tiles`` on another disk or partition, which hold their own (``apart_bytes``); and
+        the relief and mesh files the store keeps in a second form (``twice_bytes``), trimmed
+        with the choice ``compact``, or whatever the choices once the cache is ``compacted``.
 
         Pages that ask while a measure runs share it, as ``/api/sizes``'s do: on a hard disk one
         takes minutes, and the Library asked again every five seconds while sizes were pending,
@@ -2160,25 +2418,51 @@ def create_app(
 
     def measure_disk() -> dict[str, Any]:
         """``GET /api/disk``'s figures, measured once for every page waiting on them."""
-        report = collect(images=True, relief=True, filed=True, dry_run=True)
+        job = manager.active()
+        other = bool(other_builds())
+        # begun and not ended, whatever it is doing now (stopping still writes)
+        started = job.started_at if job is not None and job.finished_at is None else None
+        grace = _measure_grace(started, other and job is None, time.time())
+        report = collect(images=True, relief=True, filed=True, dry_run=True, grace_s=grace)
+        if report.doubles_since:
+            # a tile holding copies shares less with the store than the Library remembers when it
+            # was measured before they came: moved away by hand and back, it kept its files' dates,
+            # its share was taken off the store and its copies again, and "used to rebuild your 3
+            # tiles" read 0 MB (2026-10-25). One measured since is not measured again.
+            _measure_again(_measured_before(report.doubles_since))
         return {
             "store_bytes": _store_bytes(default_store_root()),
+            "shared_bytes": _shared_bytes(default_store_root()),
+            "finder_extra_bytes": _finder_extra_bytes(default_store_root(), data_root()),
             "unused_bytes": report.freed_bytes,
+            "doubles_bytes": report.doubles_bytes,
             "images_bytes": report.images_bytes - report.mapcache_bytes,
             "mapcache_bytes": report.mapcache_bytes,
             "relief_bytes": report.relief_bytes,
             "filed_tiles": report.filed_tiles,
             "filed_bytes": report.filed_bytes,
             "filed_images_bytes": report.filed_images_bytes,
+            "apart_tiles": report.apart_tiles,
+            "apart_bytes": report.apart_bytes,
+            "filed_apart_bytes": report.filed_apart_bytes,
+            # compacting alone trims the filed tiles' second forms too; with their own choice
+            # ticked as well, they go whole with it (``twice_filed_bytes``, the page takes it off)
+            "twice_bytes": report.twice_bytes + report.twice_filed_bytes,
+            "twice_filed_bytes": report.twice_filed_bytes,
+            "compacted": report.compacted,
             "tiles": len(report.packs),
-            "building": manager.active() is not None or bool(other_builds()),
+            "atelier_tiles": report.atelier_tiles,
+            "building": job is not None or other,
         }
 
     @app.post("/api/clean")
     async def free_space(req: CleanRequest | None = None) -> Any:
         """Free the space: every piece of tile data no tile on disk needs, with ``images`` the
-        downloaded image pieces and the map background, with ``relief`` the elevation cells, and
-        with ``filed`` the cache of the tiles filed outside the atelier. Refused while a build
+        downloaded image pieces and the map background, with ``relief`` the elevation cells, with
+        ``filed`` the cache of the tiles filed outside the atelier, with ``apart`` the store's copy
+        of the images of the tiles on another disk or partition (``apart_freed_bytes``), and with
+        ``compact`` the relief and mesh kept in a second form (``twice_freed_bytes``, whatever the
+        choices once the cache is ``compacted``), the cache keeping one form. Refused while a build
         runs, here or in another process, since nothing protects what a build is about to use
         otherwise, and while a tile is filed elsewhere, which moves a tile out of the atelier."""
         req = req or CleanRequest()
@@ -2191,15 +2475,29 @@ def create_app(
             if await asyncio.to_thread(other_builds):
                 return busy_building(other=True)
             report = await asyncio.to_thread(
-                collect, images=req.images, relief=req.relief, filed=req.filed, dry_run=False
+                collect,
+                images=req.images,
+                relief=req.relief,
+                filed=req.filed,
+                apart=req.apart,
+                compact=req.compact,
+                dry_run=False,
             )
             filed = report.filed_bytes + report.filed_images_bytes
+            if report.doubles_packs:
+                # their files are one with the store's now: what they share with it, which Disk
+                # space takes off the store's size, is measured again
+                await asyncio.to_thread(_measure_again, [Path(p) for p in report.doubles_packs])
             return {
                 "format": "osxp-clean-1",
                 "freed_bytes": report.freed_bytes,
                 "images_freed_bytes": report.images_bytes if req.images else 0,
                 "relief_freed_bytes": report.relief_bytes if req.relief else 0,
                 "filed_freed_bytes": filed if req.filed else 0,
+                "apart_freed_bytes": report.apart_bytes if req.apart else 0,
+                "twice_freed_bytes": report.twice_bytes if report.compacted else 0,
+                "doubles_freed_bytes": report.doubles_bytes,
+                "compacted": report.compacted,
                 "removed": report.removed,
             }
 

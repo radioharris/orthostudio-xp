@@ -256,6 +256,9 @@ def build_layers(request: object) -> LayerBuild:
     airports, airport_counts = build_airports(
         airport_store, tile, airport_params, on_event=on_event
     )
+    # each phase of the airports says itself: a large airport on a fine relief, then its patch,
+    # took twelve silent minutes on a user's tile (EDDM, 2026-10-18)
+    say(0.06, "flattening the airports into the relief")
     dem = smooth_elevation(dem, airports, airport_params)
     timing.airports_s = time.perf_counter() - started
 
@@ -269,7 +272,13 @@ def build_layers(request: object) -> LayerBuild:
     if patch_root is not None:
         # The input **is** the tile's patch folder. Appending ``Patches/<tile>`` to it again
         # dropped every patch in silence (review 5, blocking finding).
-        patched = build_patch_layers(Path(patch_root), tile, dem, on_event=on_event)
+        patched = build_patch_layers(
+            Path(patch_root),
+            tile,
+            dem,
+            on_event=on_event,
+            on_file=lambda name: say(0.08, f"the patch {name}"),
+        )
         patches = to_vector_layers("patches", patched.layers, _seeds(patched.seeds))
         patch_names = patched.names
         patches_area = patched.area
@@ -290,6 +299,7 @@ def build_layers(request: object) -> LayerBuild:
 
     # -- airports, steps 11 to 15 (:215-222) -----------------------------------------------
     check()
+    say(0.1, "the runways, taxiways and aprons")
     started = time.perf_counter()
     stage = encode(
         airports,

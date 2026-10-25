@@ -56,7 +56,7 @@ async def test_status_providers_and_language(app, home: Path, xplane: Path) -> N
         # the sizes are measured apart (GET /api/sizes): on Windows they held the status up
         assert "store_bytes" not in doc and "chunks_bytes" not in doc
         sizes = (await c.get("/api/sizes")).json()
-        assert sizes == {"store_bytes": 0, "chunks_bytes": 0}
+        assert sizes == {"store_bytes": 0, "shared_bytes": 0, "chunks_bytes": 0}
         names = {c["name"] for c in doc["doctor"]}
         assert {"python", "encoder", "xplane", "disk"} <= names
         assert doc["active_job"] is None
@@ -385,10 +385,11 @@ async def test_plan_offline_two_lines(app, home: Path, xplane: Path) -> None:  #
         assert net["requests"] > 0 and net["mb"] > 0 and net["req_per_s"] == 400.0
         assert net["seconds_high"] == pytest.approx(net["seconds_low"] * 1.5, abs=0.11)
         assert comp["textures"] > 0 and comp["seconds"] > 0 and comp["workers"] >= 1
-        assert comp["cached"] == 0
+        assert comp["cached"] == 0  # images taken as they are: none, nothing built yet
         assert disk["free_gb"] > 0 and disk["dds_gb"] > 0 and isinstance(disk["ok"], bool)
         (tile,) = doc["tiles"]
         assert tile["tile"] == "+43+005" and tile["zl"] == 14 and not tile["textures"]["exact"]
+        assert tile["textures"]["prepare"] == tile["textures"]["total"] == comp["textures"]
         assert doc["specs"] == [{"tile": "+43+005", "provider": "BI", "zl": 14}]
         assert doc["estimate"]["probe"] is None and isinstance(doc["warnings"], list)
         # an airport area through the fake index
@@ -398,6 +399,30 @@ async def test_plan_offline_two_lines(app, home: Path, xplane: Path) -> None:  #
         assert r.status_code == 200 and r.json()["specs"][0]["tile"] == "+43+005"
         r = await c.post("/api/plan", json={"airport": {"icao": "ZZZZ"}, "zoom_level": 14})
         assert r.status_code == 422 and r.json()["error"]["code"] == "CFG_LATLON_INVALID"
+
+
+@pytest.mark.anyio
+async def test_a_square_of_open_sea_is_left_out_and_said(app, home: Path, xplane: Path) -> None:  # type: ignore[no-untyped-def]
+    """A user picked +33+012 off Libya's coast: open sea, which X-Plane has no scenery for, and
+    the Plan told him to install a region X-Plane does not have (2026-10-23). A square with no
+    land on the map of the world and no X-Plane file is left out of the plan and of the build,
+    said as an info line; open sea alone is refused with the same words. A square of land
+    without its file still stops the build, as before: its region is to install."""
+    sea, land = "+42+005", "+43+005"  # the Gulf of Lion, Marseille (the fake X-Plane has it)
+    async with client_for(app) as c:
+        r = await c.post("/api/plan", json={"tiles": [land, sea], "zoom_level": 14})
+        assert r.status_code == 200, r.text
+        doc = r.json()
+        assert doc["specs"] == [{"tile": land, "provider": "BI", "zl": 14}]
+        (said,) = [w for w in doc["warnings"] if isinstance(w, dict)]
+        assert said == {"code": "SYS_TILES_OPEN_SEA", "severity": "info", "context": {"tiles": sea}}
+        for route in ("/api/plan", "/api/jobs"):
+            r = await c.post(route, json={"tiles": [sea], "zoom_level": 14})
+            assert r.status_code == 422, (route, r.text)
+            err = r.json()["error"]
+            assert err["code"] == "SYS_TILES_OPEN_SEA" and err["context"]["tiles"] == sea
+        r = await c.post("/api/plan", json={"tiles": ["+44+005"], "zoom_level": 14})
+        assert r.json()["error"]["code"] != "SYS_TILES_OPEN_SEA"  # land: its region is missing
 
 
 def _ortho4xp_folder(root: Path) -> Path:
@@ -448,8 +473,12 @@ async def test_library_import_install_uninstall(
         assert r.status_code == 200, r.text
         (row,) = r.json()["entries"]
         assert row["tile"] == "+43+005" and row["built_by"] == "ortho4xp" and row["zl"] == 16
-        # and where it looked, for a page to say when it found nothing
-        assert r.json()["searched"] == [str(ortho4xp_dir.resolve() / "Tiles")]
+        # and where it looked, for a page to say when it found nothing: Ortho4XP's Tiles, and the
+        # folder itself, where tiles of OrthoStudio XP moved by hand are looked for too
+        assert r.json()["searched"] == [
+            str(ortho4xp_dir.resolve() / "Tiles"),
+            str(ortho4xp_dir.resolve()),
+        ]
         r = await c.get("/api/library")
         (row,) = r.json()
         assert row["name"] == "zOrtho4XP_+43+005" and row["installed"] is False
@@ -841,7 +870,7 @@ def test_the_library_remembers_its_tiles_facts_and_waits_for_none(
         read.append((threading.current_thread().name, list(packs)))
         return built_of(packs)
 
-    monkeypatch.setattr(appmod, "_pack_bytes", lambda p: measured.append(p) or measure(p))
+    monkeypatch.setattr(appmod, "_pack_bytes", lambda p, r: measured.append(p) or measure(p, r))
     monkeypatch.setattr(
         appmod, "_pack_stamp", lambda p: stamped.append(threading.current_thread().name) or stamp(p)
     )

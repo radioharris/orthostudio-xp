@@ -152,6 +152,41 @@ def test_neighbours_in_batch_and_in_store(tmp_path: Path, env: BuildEnv) -> None
     assert isinstance(src, ArtifactRef) and src.key == src.digest and src.rule == "global_scenery"
 
 
+def test_a_batch_reads_the_stored_meshes_and_x_plane_s_files_once(
+    tmp_path: Path, env: BuildEnv, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The Plan of 60 tiles over a cache of 1 400 went through every stored mesh for each
+    neighbour of each tile (5.4 s), and read X-Plane's scenery files again at each estimate (172
+    of them, 1.1 GB, for 25 tiles): the meshes are read once a batch, and a scenery file's digest
+    is kept while the file stays the same (2026-10-23)."""
+    import orthostudio.graph.store as store_module
+
+    walks: list[str] = []
+    real_walk = Store.iter_made
+
+    def counted(self: Store, rule: str):  # type: ignore[no-untyped-def]
+        walks.append(rule)
+        return real_walk(self, rule)
+
+    hashed: list[Path] = []
+    real_digest = store_module.digest_file
+
+    def hashing(path):  # type: ignore[no-untyped-def]
+        hashed.append(Path(path))
+        return real_digest(path)
+
+    monkeypatch.setattr(Store, "iter_made", counted)
+    monkeypatch.setattr(store_module, "digest_file", hashing)
+    tiles = [T, W, N]
+    first = _declare([_spec(tmp_path, tile=t) for t in tiles], _sched(env), env)
+    assert walks == [OSXP_MESH.name]  # once for the three tiles and their neighbours
+    files = len(hashed)
+    assert files > 0
+    again = _declare([_spec(tmp_path, tile=t) for t in tiles], _sched(env), env)
+    assert len(hashed) == files  # the same files: not read again
+    assert [g.xp12.inputs["source"] for g in again] == [g.xp12.inputs["source"] for g in first]
+
+
 def test_conflicting_params_get_a_suffix(tmp_path: Path, env: BuildEnv) -> None:
     sched = _sched(env)
     specs = [
@@ -361,6 +396,102 @@ def _artefact_dir(store: Store, rule: str, key: str, fill) -> ArtifactRef:
     return ArtifactRef(info.key, info.digest, info.path, info.rule, info.kind, info.size)
 
 
+def _no_images(store: Store) -> ArtifactRef:
+    """A textures folder with no image: a pack takes its images from a folder, and one missing
+    stops it (``write_pack``), where it was taken for one with no image."""
+    return _artefact_dir(store, "tile.textures", "3f" * 32, lambda out: (out / "textures").mkdir())
+
+
+def _on_rounding_boundaries(count: int) -> list[float]:
+    """Altitudes (m) that the DSF rounds one way at Triangle4XP's precision and the other once
+    rounded as the text writes them: just off the middle of a step of a pool spanning under 770 m
+    (``dsf.encode._pool_scales``: 85 steps a metre from the pool's floor, 0 here)."""
+    found: list[float] = []
+    for k in range(1, 10_000):
+        for eps in (1e-11, -1e-11, 2e-11, -2e-11, 3e-11, -3e-11):
+            z = (k + 0.5) / 85 + eps
+            text = float("%.15f" % (z / 100000)) * 100000
+            if np.round(z * 85) != np.round(text * 85):
+                found.append(z)
+                break
+        if len(found) == count:
+            return found
+    raise AssertionError("no altitude on a boundary")
+
+
+def test_the_dsf_of_a_mesh_kept_once_is_the_dsf_of_its_text(
+    env: BuildEnv, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The mesh is kept as its npz alone since 2026-10-23, the text being the same mesh again
+    (272 GB of a user's cache): the DSF reads the npz as the text would have given it, and comes
+    out byte for byte as from the text. Read as it is, Triangle4XP's full precision changes the
+    DSF wherever an altitude sits on a rounding boundary, as 23 bytes of +43+005's did
+    (pipeline/build.py ``_tile_dsf``): the mesh here has some, and the npz read as it is gives
+    another DSF."""
+    import orthostudio.pipeline.build as build_mod
+
+    store = env.store
+    rng = np.random.default_rng(23)
+    side = 40
+    lon, lat = np.meshgrid(np.linspace(5.0, 6.0, side), np.linspace(43.0, 44.0, side))
+    vertices = np.column_stack(
+        [
+            lon.ravel() + rng.uniform(-1e-9, 1e-9, side * side),
+            lat.ravel() + rng.uniform(-1e-9, 1e-9, side * side),
+            rng.uniform(1.0, 600.0, side * side) + rng.uniform(0, 1e-9, side * side),
+        ]
+    )
+    boundary = _on_rounding_boundaries(12)
+    vertices[side + 1 : side + 1 + len(boundary), 2] = boundary
+    vertices[:, :2] = np.clip(vertices[:, :2], [5.0, 43.0], [6.0, 44.0])
+    i = np.arange(side - 1)
+    a_, b_ = np.meshgrid(i, i)
+    corner = (b_ * side + a_).ravel()
+    tris = np.vstack(
+        [
+            np.column_stack([corner, corner + 1, corner + side + 1]),
+            np.column_stack([corner, corner + side + 1, corner + side]),
+        ]
+    ).astype(np.int32)
+    normals = rng.uniform(-0.3, 0.3, (side * side, 2)).astype(np.float32)
+    mesh = MeshData(vertices, normals, tris, np.zeros(len(tris), dtype=np.uint8))
+
+    def with_text(out: Path) -> None:
+        write_mesh_text(out / f"Data{T.name}.mesh", mesh)
+        write_mesh_npz(out / "mesh.npz", mesh)
+
+    def once(out: Path) -> None:
+        write_mesh_npz(out / "mesh.npz", mesh)
+
+    def once_again(out: Path) -> None:  # another digest, or its DSF is the one above
+        once(out)
+        (out / "stats.json").write_text("{}")
+
+    def masks(out: Path) -> None:
+        (out / "index.json").write_text(json.dumps({"format": "osxp-masks-1", "masks": []}))
+
+    masks_ref = _artefact_dir(store, "orthostudio.masks", "44" * 32, masks)
+    dsfs = []
+    for key, fill in (("55" * 32, with_text), ("66" * 32, once), ("77" * 32, once_again)):
+        if key == "77" * 32:  # the npz as it is: what the DSF read before
+            monkeypatch.setattr(build_mod, "as_written", lambda mesh: mesh)
+        mesh_ref = _artefact_dir(store, "orthostudio.mesh", key, fill)
+        node = Node(
+            f"{T.name}/BI14/dsf-{key[:2]}",
+            TILE_DSF,
+            TileDsfParams(tile=T.name, default_website="BI", default_zl=14),
+            {"mesh": mesh_ref, "masks": masks_ref, "rasters": None, "vectors": None},
+            kind="cpu",
+        )
+        sched = make_scheduler(store, env, cpu_workers=1, cpu_in_threads=True)
+        sched.add(node)
+        refs = asyncio.run(sched.run([node.id]))
+        assert not sched.failed, sched.failed
+        dsfs.append((refs[node.id].path / f"{T.name}.dsf").read_bytes())
+    assert dsfs[0] == dsfs[1]
+    assert dsfs[2] != dsfs[0]  # the test sees what full precision does
+
+
 def test_dsf_and_pack_nodes_run_and_hit(tmp_path: Path, env: BuildEnv) -> None:
     store = env.store
     mesh = _tiny_mesh()
@@ -393,7 +524,7 @@ def test_dsf_and_pack_nodes_run_and_hit(tmp_path: Path, env: BuildEnv) -> None:
         "+43+005/BI14/pack",
         TILE_PACK,
         PackParams(tile=T.name, provider="BI", zl=14, out_dir=str(out_root)),
-        {"dsf": dsf, "textures": None, "overlay": None},
+        {"dsf": dsf, "textures": _no_images(store), "overlay": None},
         kind="io",
         run=pack_run,
     )
@@ -415,7 +546,8 @@ def test_dsf_and_pack_nodes_run_and_hit(tmp_path: Path, env: BuildEnv) -> None:
     manifest = PackManifest.from_toml(refs[pack.id].path.read_text())
     assert manifest.tile == T.name and manifest.files["terrain"] == 1
     assert manifest.files["textures"] == 0 and manifest.files["overlay"] == ""
-    assert set(manifest.artefacts) == {"dsf", "mesh", "masks"}  # provenance edges of the DSF
+    # its inputs and the provenance edges of the DSF
+    assert set(manifest.artefacts) == {"dsf", "textures", "mesh", "masks"}
     assert manifest.artefacts["mesh"].key == mesh_ref.key
     assert (pack_dir / T.dsf_relpath).read_bytes() == (dsf_dir / f"{T.name}.dsf").read_bytes()
     assert pack_is_intact(pack_dir, manifest)
@@ -467,7 +599,7 @@ def test_the_pack_forces_the_tiles_files_before_x_plane_is_handed_any(
             return run_p0_rule(ctx)
 
     params = PackParams(tile=T.name, provider="BI", zl=14, out_dir=str(out_root))
-    inputs = {"dsf": dsf, "textures": None, "overlay": None}
+    inputs = {"dsf": dsf, "textures": _no_images(store), "overlay": None}
     sched = _sched(env)
     sched.add(Node("+43+005/BI14/pack", TILE_PACK, params, inputs, kind="io", run=pack_run))
     asyncio.run(sched.run(["+43+005/BI14/pack"]))
@@ -508,7 +640,7 @@ def test_a_tile_whose_file_another_program_holds_is_packed_all_the_same(
             return run_p0_rule(ctx)
 
     params = PackParams(tile=T.name, provider="BI", zl=14, out_dir=str(out_root))
-    inputs = {"dsf": dsf, "textures": None, "overlay": None}
+    inputs = {"dsf": dsf, "textures": _no_images(store), "overlay": None}
     sched = _sched(env)
     sched.add(Node("+43+005/BI14/pack", TILE_PACK, params, inputs, kind="io", run=pack_run))
     asyncio.run(sched.run(["+43+005/BI14/pack"]))
@@ -547,7 +679,7 @@ def test_the_pack_records_the_colours_its_textures_are_encoded_with(
         (out / "terrain").mkdir()
 
     dsf = _artefact_dir(env.store, "tile.dsf", "33" * 32, fill_dsf)
-    inputs = {"dsf": dsf, "textures": None, "overlay": None}
+    inputs = {"dsf": dsf, "textures": _no_images(env.store), "overlay": None}
     sched = _sched(env)
     sched.add(Node(g.pack.id, TILE_PACK, params, inputs, kind="io", run=pack_run))
     refs = asyncio.run(sched.run([g.pack.id]))
@@ -588,7 +720,7 @@ def test_a_pack_x_plane_shows_is_not_rewritten_in_its_place_while_x_plane_runs(
         (out / "terrain").mkdir()
 
     dsf = _artefact_dir(env.store, "tile.dsf", "34" * 32, fill_dsf)
-    inputs = {"dsf": dsf, "textures": None, "overlay": None}
+    inputs = {"dsf": dsf, "textures": _no_images(env.store), "overlay": None}
     sched = _sched(env)
     sched.add(Node(g.pack.id, TILE_PACK, params, inputs, kind="io", run=pack_run))
     asyncio.run(sched.run([g.pack.id]))

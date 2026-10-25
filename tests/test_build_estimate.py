@@ -120,12 +120,27 @@ def test_an_image_taken_as_it_is_reads_no_piece_of_the_cache(
         read.append(t)
         return real_read(self, t)
 
-    monkeypatch.setattr(ChunkStore, "read", counted)
     keep = {texture_name(t) for t in textures[1:]}  # all but the first taken as they are
+    complete = ChunkContainer(
+        ChunkEntry(ChunkStatus.OK, b"jpeg", "image/jpeg", 0) for _ in range(256)
+    )
+    pieces = ChunkStore(tmp_path / "chunks", fsync=False)
+    for kept in textures[1:]:
+        pieces.write(kept, complete)
+    monkeypatch.setattr(ChunkStore, "read", counted)
     monkeypatch.setattr(est_mod, "_textures_kept", lambda env, nodes, entries: keep)
     (t,) = estimate([_spec(tmp_path)], env=env).tiles
     assert read == [textures[0]]
     assert t.requests == 256  # the one image to prepare, none of its pieces in the cache
+    # what the page shows: one image to prepare, the others already prepared, not every image
+    # to prepare and the steps in the store as images (309 and 7 for 0 and 309, 2026-10-23)
+    assert (t.textures_prepare, t.textures_kept) == (1, len(textures) - 1)
+    assert t.to_dict()["textures"]["prepare"] == 1
+    # an image taken as it is needs its pieces for its key: deleted, they are downloaded again
+    pieces.path(textures[1]).unlink()
+    read.clear()
+    (t,) = estimate([_spec(tmp_path)], env=env).tiles
+    assert read == [textures[0]] and t.requests == 2 * 256
 
 
 def test_the_estimate_looks_where_a_build_would_for_a_source_of_the_users(

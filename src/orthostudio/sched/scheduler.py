@@ -17,6 +17,7 @@ import logging
 import os
 import re
 import shutil
+import sqlite3
 import threading
 import time
 from collections import deque
@@ -278,7 +279,12 @@ class Scheduler:
             await self._settle_cancel()
             raise
         finally:
-            self.costs.flush()
+            # the estimates only order the next runs: an index that cannot take them (the data
+            # folder's disk gone during this one) leaves them, and the pools still stop. Written
+            # first and raising, they left the threads running, holding the run and the store's
+            # index; once the disk was back the engine read nothing of it (a campaign, 2026-10-25)
+            with contextlib.suppress(OSError, sqlite3.Error):
+                self.costs.flush()
             self._stop_pools()
             self._loop = None
             self._wake = None

@@ -16,6 +16,7 @@ from typing import Any
 import pytest
 
 from orthostudio.graph import (
+    COMPACT_VERSION,
     SCHEMA_VERSION,
     ArtifactInUseError,
     CommitError,
@@ -180,12 +181,86 @@ def test_reopen_persists_and_schema_is_checked(tmp_path: Path) -> None:
     with Store(root, fsync=False) as s:
         assert s.has(key) and s.path(key).read_bytes() == b"persist"
         assert s.info(key) is not None
+    newer = COMPACT_VERSION + 1
     db = sqlite3.connect(root / "index.sqlite")
-    db.execute("UPDATE meta SET v = ? WHERE k = 'schema_version'", (str(SCHEMA_VERSION + 1),))
+    db.execute("UPDATE meta SET v = ? WHERE k = 'schema_version'", (str(newer),))
     db.commit()
     db.close()
-    with pytest.raises(IncompatibleIndexError):
+    with pytest.raises(IncompatibleIndexError) as refused:
         Store(root, fsync=False)
+    assert (refused.value.found, refused.value.expected) == (newer, COMPACT_VERSION)
+    assert refused.value.root == str(root.resolve())
+    # refused inside the opening's transaction: the newer index is left as it was
+    db = sqlite3.connect(root / "index.sqlite")
+    assert db.execute("SELECT v FROM meta WHERE k = 'schema_version'").fetchone()[0] == str(newer)
+    db.close()
+
+
+def test_a_refused_index_is_closed_at_once(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A newer version's index, refused at the opening, stayed open until a garbage collection:
+    the engine held it, and Windows refused to empty the folder, the very remedy the page gives
+    (the Shadow, 2026-10-24). Its connection is closed before the refusal goes up, the collector
+    off to show it does not wait for one."""
+    import gc
+
+    root = tmp_path / "store"
+    with Store(root, fsync=False):
+        pass
+    db = sqlite3.connect(root / "index.sqlite")
+    db.execute("UPDATE meta SET v = ? WHERE k = 'schema_version'", (str(COMPACT_VERSION + 1),))
+    db.commit()
+    db.close()
+    opened: list[sqlite3.Connection] = []
+    connect = sqlite3.connect
+
+    def recording(*args: Any, **kwargs: Any) -> sqlite3.Connection:
+        conn = connect(*args, **kwargs)
+        opened.append(conn)
+        return conn
+
+    monkeypatch.setattr(sqlite3, "connect", recording)
+    gc.disable()
+    try:
+        with pytest.raises(IncompatibleIndexError):
+            Store(root, fsync=False)
+        assert opened
+        for conn in opened:
+            with pytest.raises(sqlite3.ProgrammingError):  # "Cannot operate on a closed database"
+                conn.execute("SELECT 1")
+    finally:
+        gc.enable()
+
+
+def _number(root: Path) -> str:
+    """The index's number as another program reads it from the disk."""
+    db = sqlite3.connect(root / "index.sqlite")
+    try:
+        return str(db.execute("SELECT v FROM meta WHERE k = 'schema_version'").fetchone()[0])
+    finally:
+        db.close()
+
+
+def test_an_index_stays_1_until_the_cache_is_compacted(tmp_path: Path) -> None:
+    """Every version since 0.1.22 reads an index of 1 and refuses any other number. A cache keeps
+    that number, and the relief and the mesh in both forms, until it is compacted: then 2, on the
+    disk at once, which the versions before refuse at the opening rather than fail in the middle
+    of a build (2026-10-24). Nothing turns it back."""
+    assert (SCHEMA_VERSION, COMPACT_VERSION) == (1, 2)
+    root = tmp_path / "store"
+    with Store(root, fsync=False) as s:
+        key = _put(s, 9, b"kept")
+        assert not s.compacted()
+    with Store(root, fsync=False) as s:
+        assert not s.compacted() and _number(root) == "1"
+        with Store(root, fsync=False) as other:
+            s.compact()
+            assert s.compacted() and other.compacted()  # another opening sees it at once
+        assert _number(root) == "2"
+        s.compact()  # asked again: nothing changes
+    for _ in range(2):
+        with Store(root, fsync=False) as s:
+            assert s.compacted() and s.has(key) and s.path(key).read_bytes() == b"kept"
+    assert _number(root) == "2"
 
 
 def test_wal_mode_is_on(store: Store) -> None:
@@ -623,6 +698,20 @@ def test_iter_artifacts_and_keys_with_digest(store: Store) -> None:
     assert store.keys_with_digest(RULE, digest_bytes(b"same")) == [a, b]
     assert [i.key for i in store.iter_artifacts(RULE)] == [a, b]
     assert len(list(store.iter_artifacts())) == 3
+    # skipped keys are left out before their info is made, the order kept
+    assert [i.key for i in store.iter_artifacts(RULE, skip={a})] == [b]
+    assert len(list(store.iter_artifacts(skip={a, b}))) == 1
+
+
+def test_one_read_of_the_index_walks_as_reachable_does(store: Store) -> None:
+    a = _put(store, 80, b"a")
+    b = _put(store, 81, b"b", rule="mesh", inputs=[InputRef("v", store.digest_of(a), a)])
+    c = _put(store, 82, b"c", rule="mesh", inputs=[InputRef("v", store.digest_of(b), b)])
+    lone = _put(store, 83, b"lone")
+    reach = store.reach()
+    for keys in ([c], [b], [lone], [c, lone], ["00" * 32], []):
+        assert reach(keys) == store.reachable(keys)
+    assert reach([c]) == {a, b, c}
 
 
 def test_symlinks_are_refused_in_artifacts(store: Store, tmp_path: Path) -> None:

@@ -395,8 +395,12 @@ def build_mesh_native(
     binary: bool | None = None,
     timeout_s: float = 1800,
     cancel: threading.Event | None = None,
+    text: bool = True,
 ) -> MeshBuildResult:
-    """Run stage 2 natively and, when ``out_dir`` is given, write the artefact into it.
+    """Run stage 2 natively and, when ``out_dir`` is given, write the artefact into it: the
+    mesh's ``mesh.npz``, ``water_tris.npz``, ``stats.json`` and, with ``text``, Ortho4XP's
+    ``Data<tile>.mesh``, the same mesh, which versions before this one read (a compacted cache
+    goes without it: ``mesh_file.as_written`` gives what it read).
 
     ``vectors_dir`` holds ``Data<tile>.{node,poly}`` (and ``airports.json`` when the tile has
     airports); ``dem`` describes ``Data<tile>.alt``; ``workdir`` is a scratch
@@ -582,12 +586,15 @@ def build_mesh_native(
     if out_dir is not None:
         out = Path(out_dir)
         out.mkdir(parents=True, exist_ok=True)
+        if text:
+            # the same mesh a second time: 2 s and 155 MB for a tile of 2.6 million triangles,
+            # 272 GB of a user's 1.1 TB cache, which a compacted cache goes without
+            t = time.perf_counter()
+            write_mesh_text(out / mesh_file_name(tile), mesh)
+            timings["mesh_text"] = time.perf_counter() - t
         t = time.perf_counter()
-        mesh_path = out / mesh_file_name(tile)
-        write_mesh_text(mesh_path, mesh)
-        timings["mesh_text"] = time.perf_counter() - t
-        t = time.perf_counter()
-        write_mesh_npz(out / "mesh.npz", mesh)
+        mesh_path = out / "mesh.npz"
+        write_mesh_npz(mesh_path, mesh)
         write_water_tris_npz(out / "water_tris.npz", water)
         timings["npz"] = time.perf_counter() - t
     if params.iterate:  # the next round reads the post-processed node table (TODO: untested)

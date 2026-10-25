@@ -60,6 +60,7 @@ STATS_KEYS = {
     "progress",
     "eta_low_s",
     "eta_high_s",
+    "overdue",
     "phase",
 }
 RULES = {
@@ -1142,6 +1143,7 @@ def test_a_downloaded_relief_says_as_it_arrives_then_that_it_is_read(
 
     class Ctx:
         cancel_event = None
+        store = SimpleNamespace(compacted=lambda: False)  # a cache keeping both forms
         downloaded = 0
         written = 0
 
@@ -1202,6 +1204,7 @@ def test_a_downloaded_relief_moves_its_bar_while_it_is_read(
 
     class Ctx:
         cancel_event = None
+        store = SimpleNamespace(compacted=lambda: False)  # a cache keeping both forms
         downloaded = 0
         written = 0
 
@@ -1773,6 +1776,65 @@ def test_the_same_line_is_not_written_to_the_log_again_and_again(tmp_path: Path)
     assert len(lines()) == 2, "and a line that says something new is written"
 
 
+def test_a_step_past_its_time_and_not_advancing_is_overdue(tmp_path: Path) -> None:
+    """A tile's terrain step said 3 % then nothing for twelve minutes while the header counted
+    "1 min 30 s" (a user, 2026-10-18): a running node well beyond its expected seconds and not
+    advancing is named in ``stats.overdue``; one still rising, or not yet late, is not."""
+    from orthostudio.api.progress import OVERDUE_MIN_S, overdue
+    from orthostudio.sched.events import Progress, Started
+
+    at = [0.0]
+    job = _job([_spec("+48+011")], lambda: at[0], tmp_path)
+    node = "+48+011/vectors"
+    job.on_event(Started(node, "cpu", KEY))
+    at[0] = 0.1
+    job.on_event(Progress(node, 0.02, "+48+011: reading the relief"))
+    at[0] = 0.2
+    job.on_event(Progress(node, 0.05, "+48+011: airports"))
+    st = job._node(node)
+    weight = st.weight_s
+    assert weight > 0
+    late = max(1.5 * weight, weight + OVERDUE_MIN_S) + 1.0
+    assert not overdue(st, min(late, 0.2 + OVERDUE_MIN_S) - 1.0)
+    at[0] = late
+    assert overdue(st, at[0])
+    assert job._stats_now()["overdue"] == [node]
+    # it moves again: no longer overdue until it is silent once more
+    job.on_event(Progress(node, 0.25, "+48+011: roads and railways at level 1"))
+    assert job._stats_now()["overdue"] == []
+
+
+def test_a_held_back_line_is_written_once_its_second_has_passed(tmp_path: Path) -> None:
+    """A tile's terrain step said "reading the relief" then "airports" within the second, then
+    nothing for twelve minutes while it flattened a large airport and applied two patches: the
+    log showed "reading the relief" all along (a user, 2026-10-18). The ticker writes the held
+    line as soon as its second has passed, once."""
+    from orthostudio.sched.events import Progress, Started
+
+    at = [0.0]
+    job = _job([_spec("+48+011")], lambda: at[0], tmp_path)
+    node = "+48+011/vectors"
+    relief, airports = "+48+011: reading the relief", "+48+011: airports"
+
+    def lines() -> list[str]:
+        return [e["message"] for e in job.events() if e["event"] == "log" and e.get("node") == node]
+
+    job.on_event(Started(node, "cpu", KEY))
+    job.on_event(Progress(node, 0.02, relief))
+    at[0] = 0.05
+    job.on_event(Progress(node, 0.05, airports))
+    assert lines() == [relief]
+    at[0] = 0.6
+    job._say_held_lines()
+    assert lines() == [relief]  # still within the second
+    at[0] = 1.1
+    job._say_held_lines()
+    assert lines() == [relief, airports]
+    at[0] = 30.0
+    job._say_held_lines()
+    assert lines() == [relief, airports]  # and only once
+
+
 def test_a_steps_last_line_reaches_the_log_even_within_the_second(tmp_path: Path) -> None:
     """Two tiles read from the library, and the log said "4 OSM layers received" for one: the
     other's came 0.8 s after its "waiting for the map data server", and the rule of one line a
@@ -1851,6 +1913,7 @@ def test_the_relief_says_in_works_what_it_set_aside(monkeypatch: pytest.MonkeyPa
 
     class Ctx:
         cancel_event = None
+        store = SimpleNamespace(compacted=lambda: False)  # a cache keeping both forms
         downloaded = 0
         written = 0
 
@@ -1915,6 +1978,7 @@ def test_the_relief_says_in_works_when_his_file_is_coarser_than_the_relief_chose
 
     class Ctx:
         cancel_event = None
+        store = SimpleNamespace(compacted=lambda: False)  # a cache keeping both forms
         downloaded = 0
         written = 0
 

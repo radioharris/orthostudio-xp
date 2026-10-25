@@ -138,3 +138,29 @@ def test_a_build_that_fails_lets_its_store_go(home: Path, xplane: Path) -> None:
         mgr.close()
     finally:
         gc.enable()
+
+
+def test_a_build_that_fails_closes_its_store_even_if_held(home: Path, xplane: Path) -> None:
+    """A build that died with its data folder's disk kept the store's index open, held by what
+    still used the environment: once the disk was back, the engine read nothing of that index
+    ("disk I/O error") until it was restarted (a campaign, 2026-10-25). A failed build closes it,
+    as a finished one does. Fails on the code before: the store still open."""
+    from orthostudio.errors import OsxpError
+
+    envs: list[BuildEnv] = []  # what still holds the environments, as a step left running would
+
+    def fails(specs: Sequence[BuildSpec], *, on_event: object, env: object) -> None:
+        raise OsxpError(
+            "SYS_INTERNAL_ERROR", context={"type": "OperationalError", "detail": "disk I/O error"}
+        )
+
+    mgr = JobManager(jobs_dir=home / "jobs", build=fails, env_factory=_recording(envs))
+    job = mgr.start([make_spec(home=home)], install=False, request={"tiles": ["+43+005"]})
+    assert job.wait(10.0) and job.status == "failed"
+    (env,) = envs
+    for _ in range(250):  # closed just after the job's end, out of the manager's lock
+        if _closed(env.store):
+            break
+        time.sleep(0.02)
+    assert _closed(env.store)
+    mgr.close()

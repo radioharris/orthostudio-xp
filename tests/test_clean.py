@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from pathlib import Path
 
 import pytest
@@ -131,6 +132,82 @@ def test_dry_run_deletes_nothing_and_says_the_same(world: dict[str, object]) -> 
     assert _keys(world) == before
     assert report.removed == 3 and report.freed_bytes == world["freed"]  # type: ignore[attr-defined]
     assert not report.images_removed  # type: ignore[attr-defined]
+
+
+def test_a_measure_leaves_abandoned_build_folders_and_free_space_sweeps_them(
+    world: dict[str, object],
+) -> None:
+    """Finding them lists every folder of the store: 1 s of Disk space's 4.8 with 301 tiles on
+    Windows (2026-10-25). A measure leaves them to the next build or to Free space."""
+    key = sorted(world["kept"])[0]  # type: ignore[call-overload]
+    with Store(world["store"], fsync=False) as s:  # type: ignore[arg-type]
+        shard = s.path(key).parent
+    abandoned = shard / f"{key}.tmp-{2**30}-abcd"  # a process long gone
+    abandoned.mkdir()
+    old = time.time() - 7200
+    os.utime(abandoned, (old, old))
+    report = _run(world, dry_run=True)
+    assert abandoned.is_dir() and report.removed == 3  # type: ignore[attr-defined]
+    _run(world)
+    assert not abandoned.exists()
+    assert _keys(world) == world["kept"]
+
+
+def test_free_space_makes_a_tile_s_copy_of_the_store_s_image_one_file_with_it(
+    world: dict[str, object],
+) -> None:
+    """A tile brought back from another disk holds its images as copies of the store's own, twice
+    on the workshop's disk, which no choice freed (11 GB of a user's 16 tiles, 2026-10-25): Free
+    space makes each one file with the store's, whatever the choices, and the tile keeps the same
+    bytes. One its user retouched stays as it is."""
+    tex = Path(world["tiles"]) / "zOrthoStudio_+43+005" / "textures" / "a.dds"  # type: ignore[arg-type]
+    data = tex.read_bytes()
+    tex.unlink()
+    tex.write_bytes(data)  # a copy, as one brought back from another disk
+    measured = _run(world, dry_run=True)
+    assert measured.doubles_files == 1 and measured.doubles_bytes == len(data)  # type: ignore[attr-defined]
+    assert tex.stat().st_nlink == 1  # a measure changes nothing
+    report = _run(world)
+    assert report.doubles_files == 1 and report.doubles_bytes == len(data)  # type: ignore[attr-defined]
+    assert tex.stat().st_nlink > 1 and tex.read_bytes() == data
+    assert _run(world, dry_run=True).doubles_files == 0  # type: ignore[attr-defined]
+    retouched = bytes(255 - b for b in data)
+    tex.unlink()
+    tex.write_bytes(retouched)  # the same size, other bytes
+    assert _run(world, dry_run=True).doubles_files == 1  # type: ignore[attr-defined]
+    assert _run(world).doubles_files == 0  # type: ignore[attr-defined]
+    assert tex.read_bytes() == retouched and tex.stat().st_nlink == 1
+    # read different once, it is no longer counted as a copy (a campaign, 2026-10-25), until it
+    # changes again
+    assert _run(world, dry_run=True).doubles_files == 0  # type: ignore[attr-defined]
+    assert _run(world).doubles_files == 0  # type: ignore[attr-defined]
+    tex.unlink()
+    tex.write_bytes(data)  # its user puts the first picture back
+    assert _run(world, dry_run=True).doubles_files == 1  # type: ignore[attr-defined]
+    assert _run(world).doubles_files == 1 and tex.stat().st_nlink > 1  # type: ignore[attr-defined]
+
+
+@pytest.mark.parametrize("numbers", [True, False], ids=["listing-numbers", "listing-size-time"])
+def test_copies_are_found_from_the_listings_whatever_they_carry(
+    world: dict[str, object], monkeypatch: pytest.MonkeyPatch, numbers: bool
+) -> None:
+    """macOS and Linux list each file's number, Windows its size and time (a number costs a call
+    per file there: Disk space took 31 s with 300 tiles, 2026-10-25). A tile sharing its images is
+    passed by; a copy is found, its time new or kept as a copied folder keeps it."""
+    import orthostudio.clean as clean_module
+
+    monkeypatch.setattr(clean_module, "_LISTED_NUMBERS", numbers)
+    assert _run(world, dry_run=True).doubles_files == 0  # type: ignore[attr-defined]
+    tex = Path(world["tiles"]) / "zOrthoStudio_+43+005" / "textures" / "a.dds"  # type: ignore[arg-type]
+    stamp = tex.stat()
+    data = tex.read_bytes()
+    tex.unlink()
+    tex.write_bytes(data)  # a copy with a time of its own
+    assert _run(world, dry_run=True).doubles_files == 1  # type: ignore[attr-defined]
+    os.utime(tex, ns=(stamp.st_atime_ns, stamp.st_mtime_ns))  # a folder copied with its times
+    assert _run(world, dry_run=True).doubles_files == 1  # type: ignore[attr-defined]
+    assert _run(world).doubles_files == 1 and tex.stat().st_nlink > 1  # type: ignore[attr-defined]
+    assert _run(world, dry_run=True).doubles_files == 0  # type: ignore[attr-defined]
 
 
 def test_a_recent_artefact_is_left_to_the_build_that_may_need_it(world: dict[str, object]) -> None:

@@ -6,6 +6,12 @@ Layout: ``<root>/<rule>/<key[:2]>/<key>`` is the artefact (a file or a directory
 kind). A build writes into ``<root>/<rule>/<key[:2]>/<key>.tmp-<pid>-<rand>/out`` and commits
 with a single ``rename``; the index row is inserted after the rename. See
 docs/specs/graph-keys.md for the crash matrix.
+
+A file of a folder artefact that holds what another of its files holds (the relief and the mesh,
+in Ortho4XP's form beside OrthoStudio XP's) can go while the artefact keeps its identity, its
+digest: ``trimmed`` says which (:meth:`Store.trim`). A cache keeps both forms, which every version
+reads, until it is compacted (:meth:`Store.compact`). The store counts on its own files only: what
+a tile holds belongs to the user, who may move it, retouch it, unplug its disk or delete it.
 """
 
 from __future__ import annotations
@@ -21,7 +27,7 @@ import sqlite3
 import sys
 import threading
 import time
-from collections.abc import Callable, Iterable, Iterator
+from collections.abc import Callable, Collection, Iterable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -30,7 +36,13 @@ from typing import Any
 from orthostudio.fsutil import fsync_dir as _fsync_dir
 from orthostudio.fsutil import replace as fs_replace
 from orthostudio.graph.canon import canonical_json
-from orthostudio.graph.digest import check_digest, digest_path
+from orthostudio.graph.digest import (
+    check_digest,
+    digest_file,
+    digest_of_files,
+    digest_path,
+    dir_files,
+)
 from orthostudio.graph.errors import (
     ArtifactHeldError,
     ArtifactInUseError,
@@ -38,11 +50,13 @@ from orthostudio.graph.errors import (
     IncompatibleIndexError,
     MissingArtifactError,
     StoreError,
+    UnreadableIndexError,
 )
 from orthostudio.graph.keys import parse_recipe
 from orthostudio.graph.rule import Kind
 
 __all__ = [
+    "COMPACT_VERSION",
     "SCHEMA_VERSION",
     "ArtifactInfo",
     "Build",
@@ -58,6 +72,13 @@ __all__ = [
 log = logging.getLogger("orthostudio.graph.store")
 
 SCHEMA_VERSION = 1
+"""The number of a new index, which every version since 0.1.22 reads."""
+COMPACT_VERSION = 2
+"""The number of a compacted cache's index (:meth:`Store.compact`): the relief and the mesh kept in
+OrthoStudio XP's form alone, where a version before this one looks for ``Data<tile>.alt`` and
+``Data<tile>.mesh`` in their artefacts and failed in the middle of a build. Every version since
+0.1.22 refuses an index whose number is not its own, so it turns a compacted cache away at its
+opening, with nothing changed."""
 INDEX_FILENAME = "index.sqlite"
 TMP_MARKER = ".tmp-"
 TMP_HARD_MAX_AGE_S = 86400.0
@@ -124,7 +145,32 @@ CREATE TABLE IF NOT EXISTS pins (
     pinned_at REAL NOT NULL
 );
 CREATE INDEX IF NOT EXISTS pins_key ON pins (key);
+CREATE TABLE IF NOT EXISTS sources (
+    path     TEXT PRIMARY KEY,
+    size     INTEGER NOT NULL,
+    mtime_ns INTEGER NOT NULL,
+    ctime_ns INTEGER NOT NULL,
+    ino      INTEGER NOT NULL,
+    digest   TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS trimmed (
+    key    TEXT NOT NULL REFERENCES artifacts (key) ON DELETE CASCADE,
+    path   TEXT NOT NULL,
+    size   INTEGER NOT NULL,
+    digest TEXT,
+    PRIMARY KEY (key, path)
+);
 """
+
+# An index may also hold an ``away`` or a ``kept_pieces`` table, which this version neither reads
+# nor writes: the images a tile held as files of its own and the store had let go of, and the
+# tiles whose downloaded pieces Free space kept, written by builds of a development branch for a
+# few days (2026-10-23). They stay as they are: the store counts on its own files only.
+
+_TRIMMED_ADDED = (("digest", "TEXT"),)
+"""The column ``trimmed`` gained after its first form (the file's digest, which keeps the artefact's
+own provable: :meth:`Store.fsck`); added at the opening of an index that has that form."""
+
 
 _DISK_BYTES_TRIGGERS = (
     """CREATE TRIGGER IF NOT EXISTS artifacts_disk_bytes_added AFTER INSERT ON artifacts
@@ -346,6 +392,9 @@ class Store:
         self.fsync = fsync
         self._lock = threading.RLock()
         self._durable_lock = threading.Lock()
+        self._writes = 0
+        self._made: dict[str, dict[str, list[_Made]]] = {}
+        self._made_at = (-1, -1)
         self._db = self._open_index()
         if self.durable_until() is None:
             # a new store, or one every earlier version forced file by file: all durable
@@ -398,6 +447,18 @@ class Store:
                 log.debug("index at %s busy while opening (%s), retrying", self.root, exc)
                 time.sleep(delay)
                 delay = min(delay * 2, 0.25)
+            except sqlite3.DatabaseError as exc:
+                # no database any more, or a damaged one: said as such (SYS_STORE_UNREADABLE),
+                # where it was a bare 500 that left Disk space blank and the Plan saying the
+                # engine did not answer (a campaign, 2026-10-25)
+                db.close()
+                raise UnreadableIndexError(self.root, str(exc)) from exc
+            except BaseException:
+                # an index refused (a newer version's, IncompatibleIndexError) is closed at once:
+                # left to a garbage collection, it stayed open in the engine, and Windows refused
+                # to empty the folder, the very remedy the page gives (a campaign, 2026-10-24)
+                db.close()
+                raise
 
     def _init_schema(self, db: sqlite3.Connection) -> None:
         db.execute("BEGIN IMMEDIATE")
@@ -405,16 +466,17 @@ class Store:
             for statement in _SCHEMA.split(";"):
                 if statement.strip():
                     db.execute(statement)
+            have = {str(r["name"]) for r in db.execute("PRAGMA table_info(trimmed)")}
+            for name, declared in _TRIMMED_ADDED:
+                if name not in have:
+                    db.execute(f"ALTER TABLE trimmed ADD COLUMN {name} {declared}")
             row = db.execute("SELECT v FROM meta WHERE k = 'schema_version'").fetchone()
             if row is None:
                 db.execute(
                     "INSERT INTO meta (k, v) VALUES ('schema_version', ?)", (str(SCHEMA_VERSION),)
                 )
-            elif int(row["v"]) != SCHEMA_VERSION:
-                raise IncompatibleIndexError(
-                    f"index schema {row['v']} at {self.root}, this OrthoStudio XP expects "
-                    f"{SCHEMA_VERSION}"
-                )
+            elif int(row["v"]) not in (SCHEMA_VERSION, COMPACT_VERSION):
+                raise IncompatibleIndexError(self.root, int(row["v"]), COMPACT_VERSION)
             for trigger in _DISK_BYTES_TRIGGERS:
                 db.execute(trigger)
         except BaseException:
@@ -434,6 +496,7 @@ class Store:
                 raise
             else:
                 self._db.execute("COMMIT")
+                self._writes += 1  # what this connection reads of the index may have changed
 
     def _begin_immediate(self) -> None:
         """``BEGIN IMMEDIATE``, asked again while another process holds the index, for up to
@@ -664,25 +727,67 @@ class Store:
         """The newest present artefact ``rule`` made of exactly ``params``, at ``max_version`` or an
         earlier version, whatever its inputs but those given in ``inputs``: what a step made the
         last time for the same tile and settings, for the Plan to expect it again."""
-        want = canonical_json(params)
-        with self._lock:
-            rows = self._db.execute(
-                "SELECT key, recipe FROM artifacts WHERE rule = ? AND version <= ?"
-                " ORDER BY created_at DESC",
-                (rule, int(max_version)),
-            ).fetchall()
-        for row in rows:
-            doc = json.loads(row["recipe"])
-            if canonical_json(doc.get("params", {})) != want:
-                continue
-            made_of = doc.get("inputs", {})
-            if inputs and any(made_of.get(name) != digest for name, digest in inputs.items()):
-                continue
-            if self.has(str(row["key"])):
-                return str(row["key"])
+        for made in self._made_rows(rule).get(canonical_json(params), ()):
+            if made.fits(max_version, inputs) and self.has(made.key):
+                return made.key
         return None
 
-    def iter_artifacts(self, rule: str | None = None) -> Iterator[ArtifactInfo]:
+    def _made_rows(self, rule: str) -> dict[str, list[_Made]]:
+        """The artefacts of ``rule`` by the canonical JSON of the params their recipe holds,
+        newest first: read once while the index stays as it was,
+        this connection's writes and the other processes' (``PRAGMA data_version``) reading it
+        again. Asked tile by tile and step by step, each ask read and parsed every row of the rule:
+        11.5 s of a Plan of 60 tiles over a cache of 1 400 (a user's, 2026-10-23)."""
+        with self._lock:
+            seen = (int(self._db.execute("PRAGMA data_version").fetchone()[0]), self._writes)
+            if seen != self._made_at:
+                self._made, self._made_at = {}, seen
+            rows = self._made.get(rule)
+            if rows is not None:
+                return rows
+            found = self._db.execute(
+                "SELECT key, version, recipe, created_at AS t FROM artifacts"
+                " WHERE rule = ? AND recipe != ''",
+                (rule,),
+            ).fetchall()
+            rows = {}
+            for row in found:
+                try:
+                    doc = json.loads(str(row["recipe"]))
+                except ValueError:
+                    continue
+                params, inputs = doc.get("params", {}), doc.get("inputs", {})
+                made = _Made(
+                    float(row["t"]),
+                    int(row["version"]),
+                    str(row["key"]),
+                    inputs if isinstance(inputs, dict) else {},
+                )
+                rows.setdefault(canonical_json(params), []).append(made)
+            for made_alike in rows.values():
+                made_alike.sort(key=lambda m: m.when, reverse=True)
+            self._made[rule] = rows
+            return rows
+
+    def iter_made(self, rule: str) -> Iterator[tuple[ArtifactInfo, dict[str, Any]]]:
+        """Every artefact of ``rule`` with the params its recipe holds."""
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT * FROM artifacts WHERE rule = ? ORDER BY created_at", (rule,)
+            ).fetchall()
+        for row in rows:
+            try:
+                params = json.loads(str(row["recipe"])).get("params", {})
+            except ValueError:
+                params = {}
+            yield self._row_info(row), params if isinstance(params, dict) else {}
+
+    def iter_artifacts(
+        self, rule: str | None = None, *, skip: Collection[str] = ()
+    ) -> Iterator[ArtifactInfo]:
+        """Every artefact, or every one of ``rule``, oldest first; those of ``skip`` are left out
+        before their info is made: Disk space made one for each of the 92,000 artefacts of 301
+        tiles to keep them all, 1.7 s of its 4.8 on Windows (2026-10-25)."""
         with self._lock:
             if rule is None:
                 rows = self._db.execute("SELECT * FROM artifacts ORDER BY created_at").fetchall()
@@ -691,7 +796,8 @@ class Store:
                     "SELECT * FROM artifacts WHERE rule = ? ORDER BY created_at", (rule,)
                 ).fetchall()
         for row in rows:
-            yield self._row_info(row)
+            if str(row["key"]) not in skip:
+                yield self._row_info(row)
 
     def disk_bytes(self) -> int:
         """The store's bytes on the disk from its index alone: every artefact's size, save those
@@ -814,6 +920,12 @@ class Store:
         Follows the recorded inputs (``edges.parent_key``) transitively; a source input or an
         absent one has no key and ends the walk. What ``osxp clean`` keeps.
         """
+        return self.reach()(keys)
+
+    def reach(self) -> Callable[[Iterable[str]], set[str]]:
+        """:meth:`reachable` for several walks over one read of the index: a Disk space measure
+        walks from the tiles three times, and each walk read every key and edge again (6 reads,
+        1 s of its 4.8 with 301 tiles on Windows, 2026-10-25)."""
         with self._lock:
             known = {str(r["key"]) for r in self._db.execute("SELECT key FROM artifacts")}
             rows = self._db.execute(
@@ -822,15 +934,19 @@ class Store:
         inputs: dict[str, list[str]] = {}
         for row in rows:
             inputs.setdefault(str(row["child"]), []).append(str(row["parent_key"]))
-        seen: set[str] = set()
-        stack = [k for k in keys if k in known]
-        while stack:
-            key = stack.pop()
-            if key in seen:
-                continue
-            seen.add(key)
-            stack.extend(p for p in inputs.get(key, ()) if p in known and p not in seen)
-        return seen
+
+        def walk(keys: Iterable[str]) -> set[str]:
+            seen: set[str] = set()
+            stack = [k for k in keys if k in known]
+            while stack:
+                key = stack.pop()
+                if key in seen:
+                    continue
+                seen.add(key)
+                stack.extend(p for p in inputs.get(key, ()) if p in known and p not in seen)
+            return seen
+
+        return walk
 
     def refcount(self, key: str) -> int:
         """Pins on ``key`` plus artefacts that list it as an input."""
@@ -875,6 +991,202 @@ class Store:
                 self._db.execute("DELETE FROM artifacts WHERE key = ?", (key,))
         _remove_path(doomed)
         return True
+
+    # -- files outside the store -------------------------------------------------------------
+
+    def file_digest(self, path: Path) -> str:
+        """The content digest of a file outside the store (an X-Plane scenery file), kept while
+        the file stays the same file of the same size and times: read again, a Plan read some
+        200 of X-Plane's files, 1.1 GB, at each estimate (2026-10-23). The change time is part of
+        it, which a program setting the modification time back changes all the same. The file's
+        number is kept as text: on ReFS (a Windows Dev Drive) it is a 128-bit number, which an
+        SQLite integer cannot hold (``OverflowError`` at every Plan, a review, 2026-10-23); a row
+        an earlier version wrote, with an integer, is read again once."""
+        p = Path(path)
+        st = p.stat()
+        here = (int(st.st_size), int(st.st_mtime_ns), int(st.st_ctime_ns), f"i{st.st_ino}")
+        name = os.fspath(p.resolve())
+        with self._lock:
+            row = self._db.execute(
+                "SELECT size, mtime_ns, ctime_ns, ino, digest FROM sources WHERE path = ?", (name,)
+            ).fetchone()
+        if row is not None and (int(row[0]), int(row[1]), int(row[2]), str(row[3])) == here:
+            return str(row["digest"])
+        digest = digest_file(p)
+        with self._tx():
+            self._db.execute(
+                "INSERT OR REPLACE INTO sources (path, size, mtime_ns, ctime_ns, ino, digest)"
+                " VALUES (?, ?, ?, ?, ?, ?)",
+                (name, *here, digest),
+            )
+        return digest
+
+    # -- notes ---------------------------------------------------------------------------------
+
+    def note(self, name: str) -> str | None:
+        """A note kept in the index under ``name`` (its ``meta`` table), or ``None``."""
+        with self._lock:
+            row = self._db.execute("SELECT v FROM meta WHERE k = ?", (name,)).fetchone()
+        return None if row is None else str(row["v"])
+
+    def set_note(self, name: str, value: str) -> None:
+        """Keep ``value`` under ``name`` in the index, in place of what was there."""
+        with self._tx() as db:
+            db.execute("INSERT OR REPLACE INTO meta (k, v) VALUES (?, ?)", (name, value))
+
+    # -- the relief and the mesh in one form ---------------------------------------------------
+
+    def compacted(self) -> bool:
+        """Whether this cache keeps the relief and the mesh in OrthoStudio XP's form alone
+        (:meth:`compact`): builds then write that form only."""
+        with self._lock:
+            row = self._db.execute("SELECT v FROM meta WHERE k = 'schema_version'").fetchone()
+        return row is not None and int(row["v"]) == COMPACT_VERSION
+
+    def compact(self) -> None:
+        """Keep the relief and the mesh in OrthoStudio XP's form alone from now on: builds write
+        no other, and Free space trims Ortho4XP's from the artefacts that hold it (:meth:`trim`).
+        The index's number becomes :data:`COMPACT_VERSION` on the disk itself, before anything is
+        trimmed: a version before this one turns the cache away at its opening rather than failing
+        in the middle of a build. Nothing turns it back: going back to an older version is
+        emptying the cache folder."""
+        with self._durable_tx() as db:
+            db.execute("UPDATE meta SET v = ? WHERE k = 'schema_version'", (str(COMPACT_VERSION),))
+
+    # -- files trimmed from artefacts --------------------------------------------------------
+
+    def trim(self, key: str, paths: Iterable[str]) -> int:
+        """Remove from the folder artefact ``key`` the files ``paths`` (relative to it), which hold
+        what another of its files holds, and say how many bytes went. The artefact keeps its key
+        and its digest, which the artefacts made from it were keyed with: nothing downstream is
+        made again. ``trimmed`` lists what went with each file's size and digest, so that the
+        artefact's digest stays provable (:meth:`fsck`); the index's size is what is left.
+
+        Nothing goes unless every file of the artefact is first read whole and found as it was
+        built: its files, and those trimmed before, give its digest again. A file damaged since,
+        on a disk that failed, would otherwise have taken the good form with it; the artefact is
+        then left as it is. A path outside the artefact, or not one of its files, is left out; a
+        file another program holds (on Windows) stays, and its row with it is taken back.
+
+        The rows are on the disk before any file goes (one transaction, ``synchronous = FULL``):
+        a power cut cannot leave a file gone that the index does not list. Asked again, after an
+        interruption or by another process at the same time, a row already there is kept as it
+        is and its size is not taken off twice; a file another trim removed first keeps its row.
+        An artefact deleted meanwhile is left alone."""
+        info = self.info(key)
+        if info is None or info.kind != "dir":
+            return 0
+        try:
+            files = dir_files(info.path)
+        except OSError as exc:
+            log.warning("%s not trimmed: its files cannot be read (%s)", key[:16], exc)
+            return 0
+        before = self._trimmed_files(key)
+        if None in before.values() or digest_of_files({**before, **files}) != info.digest:  # type: ignore[arg-type]
+            log.warning("%s not trimmed: its files are not those it was built with", key[:16])
+            return 0
+        going: list[tuple[str, int, str, int]] = []
+        for rel in paths:
+            name = Path(rel).as_posix()
+            if Path(rel).is_absolute() or ".." in Path(rel).parts or name not in files:
+                continue  # its own files only
+            if any(name == g[0] for g in going):
+                continue
+            try:
+                links = (info.path / name).lstat().st_nlink
+            except OSError:
+                continue
+            going.append((name, *files[name], links))
+        if not going:
+            return 0
+        added: set[str] = set()
+        with self._lock:
+            try:
+                with self._durable_tx():
+                    for name, size, digest, _links in going:
+                        new = self._db.execute(
+                            "INSERT OR IGNORE INTO trimmed (key, path, size, digest)"
+                            " VALUES (?, ?, ?, ?)",
+                            (key, name, size, digest),
+                        ).rowcount
+                        if new:
+                            added.add(name)
+                            self._db.execute(
+                                "UPDATE artifacts SET size = MAX(0, size - ?) WHERE key = ?",
+                                (size, key),
+                            )
+            except sqlite3.IntegrityError:
+                return 0  # the artefact was deleted meanwhile
+        freed = 0
+        for name, size, _digest, links in going:
+            try:
+                (info.path / name).unlink()
+            except FileNotFoundError:
+                continue  # another trim removed it first: its row stays
+            except OSError as exc:
+                log.warning("%s of %s not trimmed: %s", name, key[:16], exc)
+                if name in added:  # a row an interrupted trim wrote stays: its size went with it
+                    with self._tx():
+                        self._db.execute(
+                            "DELETE FROM trimmed WHERE key = ? AND path = ?", (key, name)
+                        )
+                        self._db.execute(
+                            "UPDATE artifacts SET size = size + ? WHERE key = ?", (size, key)
+                        )
+                continue
+            freed += size if links <= 1 else 0
+        return freed
+
+    @contextmanager
+    def _durable_tx(self) -> Iterator[sqlite3.Connection]:
+        """:meth:`_tx` committed to the disk itself (``synchronous = FULL``, and ``fullfsync`` on
+        macOS, where FULL stops at the disk's cache): for rows that must be there before files go.
+        The index goes back to its usual setting after, whatever happens."""
+        with self._lock:
+            self._db.execute("PRAGMA synchronous = FULL")
+            self._db.execute("PRAGMA fullfsync = ON")
+            try:
+                with self._tx() as db:
+                    yield db
+            finally:
+                self._db.execute("PRAGMA fullfsync = OFF")
+                self._db.execute("PRAGMA synchronous = NORMAL")
+
+    def trimmed(self, key: str) -> dict[str, int]:
+        """The files trimmed from the artefact ``key`` (:meth:`trim`), with their sizes."""
+        return {path: size for path, (size, _digest) in self._trimmed_rows(key).items()}
+
+    def _trimmed_rows(self, key: str) -> dict[str, tuple[int, str | None]]:
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT path, size, digest FROM trimmed WHERE key = ? ORDER BY path", (key,)
+            ).fetchall()
+        return {str(r["path"]): (int(r["size"]), _opt_str(r["digest"])) for r in rows}
+
+    def _trimmed_files(self, key: str) -> dict[str, tuple[int, str] | None]:
+        """The trimmed files of ``key`` as :func:`digest_of_files` takes them; ``None`` for one
+        recorded without its digest (the table's first form)."""
+        return {
+            path: (size, digest) if digest is not None else None
+            for path, (size, digest) in self._trimmed_rows(key).items()
+        }
+
+    def content_digest(self, key: str) -> str | None:
+        """The digest of the artefact ``key`` as its files on disk and those trimmed from it give
+        it, which is its own when it is as it was built; ``None`` when a trimmed file has no
+        recorded digest, or the artefact cannot be read."""
+        info = self.info(key)
+        if info is None:
+            return None
+        trimmed = self._trimmed_files(key)
+        if None in trimmed.values():
+            return None
+        try:
+            if not trimmed:
+                return digest_path(info.path)[0]
+            return digest_of_files({**trimmed, **dir_files(info.path)})  # type: ignore[arg-type]
+        except OSError:
+            return None
 
     def gc(self, *, quota_bytes: int | None = None, min_age_s: float = 0.0) -> GcReport:
         """Collect unreferenced artefacts, least recently used first.
@@ -963,8 +1275,17 @@ class Store:
                 rows_without.append(key)
             else:
                 indexed[p] = (key, digest)
-                if verify and digest_path(p)[0] != digest:
-                    mismatches.append(key)
+                # a trimmed artefact is checked from its files left and those trimmed
+                # (:meth:`trim`); one trimmed before their digests were kept is not checked, nor
+                # is one that cannot be read now, which ``repair`` must not delete for that
+                if verify:
+                    found = self.content_digest(key)
+                    if found is None:
+                        if not self.trimmed(key):
+                            log.warning("%s not checked: it cannot be read", key[:16])
+                        continue
+                    if found != digest:
+                        mismatches.append(key)
         for p in self._iter_finals():
             if p not in indexed:
                 files_without.append(p)
@@ -1088,10 +1409,12 @@ class Store:
         return pids
 
     def _iter_tmp(self) -> Iterator[Path]:
+        # by name first, a Path made only for a build folder: one for each of the store's 92,000
+        # entries (301 tiles) was most of the walk, which Disk space made twice (2026-10-25)
         for shard in self._iter_shards():
-            for p in shard.iterdir():
-                if TMP_MARKER in p.name and p.is_dir():
-                    yield p
+            with os.scandir(shard) as entries:
+                found = [e.path for e in entries if TMP_MARKER in e.name and e.is_dir()]
+            yield from map(Path, found)
 
     def _iter_finals(self) -> Iterator[Path]:
         for shard in self._iter_shards():
@@ -1107,6 +1430,23 @@ def info_recipe(store: Store, key: str) -> str:
     if row is None:
         raise MissingArtifactError(key)
     return str(row["recipe"])
+
+
+@dataclass(frozen=True, slots=True)
+class _Made:
+    """One artefact as :meth:`Store.last_made` weighs it: when, by which version of its rule,
+    under which key, of which inputs."""
+
+    when: float
+    version: int
+    key: str
+    inputs: dict[str, Any]
+
+    def fits(self, max_version: int, inputs: dict[str, str] | None) -> bool:
+        """Made at ``max_version`` or before, of the ``inputs`` given, whatever its others."""
+        if self.version > max_version:
+            return False
+        return not inputs or all(self.inputs.get(n) == d for n, d in inputs.items())
 
 
 def _opt_str(v: object) -> str | None:

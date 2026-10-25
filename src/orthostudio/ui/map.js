@@ -2935,6 +2935,9 @@ export function createPlanMap(ctx) {
     if (el && el.dataset.unavailable) setUnavailable();
     if (map) {
       el.setAttribute("aria-label", t("map.label"));
+      // written once at the map's start, the help under the zone buttons stayed in the language
+      // the page opened in after a switch (a campaign, 2026-10-25)
+      renderWhichShape();
       addZoomControl();
       if (ctx.mock) setBaseLayer(true);
       if (borders.ready) {

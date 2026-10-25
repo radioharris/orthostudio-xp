@@ -70,6 +70,8 @@ def test_every_family_says_what_it_is_while_the_step_runs(tmp_path: Path) -> Non
     said = [message for _fraction, message in seen]
     assert said == [
         "+49+008: airports",
+        "+49+008: flattening the airports into the relief",
+        "+49+008: the runways, taxiways and aprons",
         "+49+008: roads and railways at level 5",
         "+49+008: lakes and rivers",
         "+49+008: the coastline",

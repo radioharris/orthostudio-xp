@@ -129,6 +129,13 @@ does not have, a point a few centimetres off a straight shore took the full seab
 on Groom Lake (Homey Airport, KXTA), where X-Plane has no lake and its seabed lies 200 m down, that
 drew blue triangles and needles along the shore. The open water keeps its depth.
 
+**Older X-Plane scenery files.** The seabed map and X-Plane's relief come from X-Plane's own
+scenery file of each square. A file of an older X-Plane scenery, kept or copied from another
+installation, may hold its seabed map at another size than its relief, or name a map it does not
+hold, and X-Plane still draws it. OrthoStudio XP reads both all the same: each depth is kept below
+the ground at its own place, and the tile carries the same maps as that file. Before, every build
+of such a square stopped.
+
 **Flat ground.** Runways, taxiways, aprons and the helipads of OpenStreetMap are made flat, as in
 Ortho4XP. *Flatten OpenStreetMap's helipads* (Settings, for experts, Airports) leaves the helipads
 on the relief's slope, for a scenery that places its own helipad there; the rest stays flat.
@@ -166,7 +173,10 @@ build, the OpenStreetMap downloads included. Each step weighs what it usually co
 most of all. The download time starts from the speed your connection showed on your last builds
 (read from their reports, the latest ones counting most), and the estimate corrects itself with the
 speed the build actually shows, moving smoothly rather than jumping. A step reads *running* only
-while it works, and *waiting* when part of it is done and the rest waits for its turn.
+while it works, and *waiting* when part of it is done and the rest waits for its turn. A step far
+past its usual time that has stopped moving says *longer than usual*, and the time left then reads
+*longer than expected* rather than a range it can no longer keep. A tile's Vectors step once sat at
+10 % for twelve minutes on a large airport while the time left still promised a few (2026-10-19).
 
 **Every bar means something.** A step that counts what it does fills its bar with that: the map
 layers received, the megabytes of a relief file, the images done. The steps that count nothing,
@@ -212,6 +222,20 @@ tile again to have them, drawn even if you had turned that folder's roads off in
 before starting X-Plane: started without it, X-Plane takes the tile off its list, then puts it back
 at the bottom, where another pack's mesh may hide it.
 
+Many tiles moved at once are found again at once. *Find tiles in a folder…* at the top of the
+Library takes the folder you put them in, or a data folder, whose `tiles` folder it reads, and
+finds every tile OrthoStudio XP built there: each tile listed as *Not found* is found again, as
+with *Find again…*, and each tile the list no longer knows is put back in it, the source, zoom level
+and roads it was built with. The tiles in the workshop's own tiles folder need nothing: the Library
+looks there by itself each time it opens, and when the app starts, so a data folder moved by hand
+and chosen again in Settings, or a list lost, comes back with its map. A tile put back that X-Plane
+does not show is out of X-Plane: tick it, then *Add*. A tile the list already has in another folder
+is left aside, and so is a folder inside X-Plane's Custom Scenery or a folder missing files; the
+line under the button names them. A tile whose roads and forests were lost on the way, deleted from
+the list with *Delete…* for instance, comes back without them, and the line says so: build it again
+to have them. With X-Plane open, a tile listed as *Not found* waits: quit X-Plane, then look
+again.
+
 **Many tiles at once.** Every tile of the Library has its box, but a tile a build is working on;
 a click on a tile's name ticks it too. The
 bar above the table does what a row's buttons do, to the ticked tiles on screen that it applies to
@@ -226,7 +250,8 @@ instance: tick them all, and one click takes the old ones off the list.
 
 The workshop has a short page of its own, the steps and the limits: [workshop.md](workshop.md).
 To file tiles yourself, tick them in the Library (*Pick all shown* takes every tile the search,
-the folder and *Show* leave), then *File elsewhere…* and choose the folder, on any disk. A question says
+the folder and *Show* leave), then *File elsewhere…* and choose the folder, on any disk; the
+workshop's own *Tiles* folder brings a tile back into the workshop. A question says
 first what will happen: on the same disk the tiles are moved, at once; on another they are
 copied, read back file by file, and only then taken out of the workshop, the cache staying there.
 X-Plane must stay closed, and tiles are filed between builds. A line shows how far the copy is,
@@ -260,12 +285,12 @@ never rewritten while X-Plane runs: quit X-Plane, then build it again, what was 
 macOS, Windows and Linux do the same.
 
 The workshop keeps the cache of the tiles filed elsewhere, so that building them again is quick.
-*Free space…* at the bottom of the Library shows it on a line of its own, with its own box: ticked,
+The *Disk space* tab shows it on a line of its own, with its own box: ticked,
 what only those tiles need goes, their data and their downloaded images, and the workshop's disk
 gets the room back. Their mesh stays, about 240 MB a tile: a neighbour built again reads it to draw
 its shores along their border, which without it were drawn as if that tile did not exist. The tiles
 themselves are not touched: they stay whole and in X-Plane, and building one again later downloads
-its images again and makes its textures again, like the first time. What a tile of the workshop uses
+its images again and prepares them. What a tile of the workshop uses
 too stays, such as the images astride the border with a neighbour. A tile filed on the workshop's
 own disk shares its textures and DSF with the cache, one file under two names: its cache goes all
 the same, but those files stay, the tile's own, so their room does not come back and the line does
@@ -278,7 +303,8 @@ list does the same for every finished build at once. A build still running or wa
 cross: stop it first.
 
 **Imagery sources.** Bing Maps and Esri cover the whole world and come first in every list, then
-EOX's Sentinel-2 mosaic, the whole world too but at ZL14 at most, light for flying high. The
+EOX's Sentinel-2 mosaic, the whole world too but at ZL14 at most, light for flying high; EOX
+refuses images when asked too fast, and OrthoStudio XP then waits, slows down and asks again. The
 other sources are a country's (the Netherlands, Spain, Luxembourg, Japan, the United States): the
 list puts first those that cover the tiles you chose, and a source that misses a tile says so,
 since its server has no image there. *My sources…* adds a source OrthoStudio XP does not ship,
@@ -450,7 +476,13 @@ folders at once, so every tile keeps its roads, forests and buildings. A tile bu
 new folder takes the place of its old build in X-Plane, and the old build stays in the Library,
 where it can be deleted. When the disk is not plugged in, the status bar says so, the page's map
 still shows without keeping its images, and nothing is estimated or built: nothing is written on
-the computer's own disk instead.
+the computer's own disk instead. Unplugged during a build, the build stops and *Works* says just
+that; plugged in again, everything reads it at once, and *Build again* goes on from what was done,
+with no restart of the app. Pulled out at the very moment the cache's index is read, it can also
+close OrthoStudio XP at once (the index's shared memory, which SQLite maps from that disk, is gone):
+plug it back and open OrthoStudio XP again, nothing is lost. Should the cache's index itself be damaged (a disk that failed),
+*Disk space* and the Plan say so, and emptying the store folder starts it afresh: the tiles are not
+in it.
 
 `tile_settings.cfg` lists the settings the tile was built with. The tiles Ortho4XP built keep their
 own folders, `zOrtho4XP_<tile>` and `yOrtho4XP_Overlays`, which OrthoStudio XP never writes into.
@@ -552,6 +584,10 @@ level of step 1 and the route at ZL14, the ground you fly over rather than land 
 own list, and a tick before the route leaves its squares out if you want the two airports alone.
 Squares X-Plane has no scenery for, open sea or a region not installed, are left out, since a
 build would stop on them, and a route longer than one build takes stops at a square the box names.
+A square of open sea you choose by hand is left out too: X-Plane has no scenery there and draws its
+own water, with its depth, which a tile of photos would only make worse. The Plan says which, in a
+line of its own, and builds the others; open sea alone has nothing to build, and the Plan says so.
+A square with land whose region of X-Plane is not installed still stops the build, as before.
 *Delete the flight plan* takes it away with its squares; those you chose by hand stay. The plan is
 kept in the browser until then, with your levels and the squares you took out, and its squares are
 computed again at each visit, so a new version's rules apply to it. Only your name goes to
@@ -654,8 +690,8 @@ back or built again.
 
 OrthoStudio XP does not need Ortho4XP: it never runs it and a build never reads an Ortho4XP folder.
 It downloads its own OpenStreetMap data and elevation files. The only time it looks into an Ortho4XP
-folder is when you import the tiles Ortho4XP built there, from the Library (*Import tiles built
-elsewhere…*, which asks for the folder) or with `osxp import-ortho4xp <folder>`. The folder is
+folder is when you import the tiles Ortho4XP built there, from the Library (*Find tiles in a
+folder…*, which asks for the folder) or with `osxp import-ortho4xp <folder>`. The folder is
 Ortho4XP's own, the one holding `Ortho4XP.py`, where its `Tiles` and the build folder it remembers
 are read, or any folder holding ortho tiles, whatever it is called, such as a disk they were built on: a
 user's `M:\XPTilesZL14` was refused until 0.1.14. They are listed beside
@@ -694,8 +730,10 @@ and built again.
 | `osxp clean --images` | - | same as `osxp clean` | emptied, with the map cache, but for the pieces of the tiles filed outside the workshop | stays |
 | `osxp clean --relief` | - | same as `osxp clean` | stays | emptied |
 | `osxp clean --filed` | - | same as `osxp clean`, and the cache of the tiles filed outside the workshop | theirs go | stays |
-| `osxp clean --all` | - | everything no tile on disk needs, however recent, and the cache of the tiles filed outside the workshop | emptied, with the map cache | emptied |
-| Free space (Library) | - | everything no tile on disk needs, however recent; the cache of the tiles filed outside the workshop if you tick its box | emptied with the map cache if you tick the box, those of the tiles filed outside with their own box | emptied if you tick its own box |
+| `osxp clean --apart` | - | same as `osxp clean`, and the cache's copy of the images of the tiles on another disk or partition | stays | stays |
+| `osxp clean --compact` | - | same as `osxp clean`, and the second form of the relief and the mesh: the cache keeps one form from then on | stays | stays |
+| `osxp clean --all` | - | everything no tile on disk needs, however recent, the cache of the tiles filed outside the workshop, and the cache's copy of the images of the tiles on another disk | emptied, with the map cache | emptied |
+| Free space (Disk space) | - | everything no tile on disk needs, however recent; what is used to rebuild the tiles filed elsewhere, the textures kept here of the tiles on another disk, and the data kept for older versions, each if you tick its box | emptied with the map cache if you tick the box, those of the tiles filed outside with their own box | emptied if you tick its own box |
 | Clear the job list (Works) | stays | stays | stays; only the finished jobs' progress and logs (`jobs/`) go | stays |
 | Remove one build from the list (Works) | stays | stays | stays; only that build's progress and log go | stays |
 
@@ -703,11 +741,74 @@ The delays protect a build that may be running at the same time, in the page or 
 could still need a result it used a moment ago. *Free space* and `osxp clean --all` have no delay,
 so they refuse to run while a build is in progress.
 
+Deleting the downloaded images or relief changes nothing in the tiles, and costs nothing while
+nothing has to be made again: a tile built again the same takes its textures and its relief back
+from the cache, and downloads nothing. The images are downloaded again when a tile makes its
+textures again at the same level: other colours, for the tile or a zone; a tile you had deleted;
+another terrain for the tile (relief, water, coast, roads), all its photos, inland too, even
+where every texture comes out the same; an update of OrthoStudio XP that makes the textures
+differently. Another
+level of detail or another imagery source needs new images whether these were deleted or not. The
+relief is downloaded again only when a tile's relief must be worked out again: another relief in
+Settings (its source, the small holes, your own file), a tile you had deleted, an update that works
+it out differently. *Disk space* lists these cases under each box.
+
+The store folder holds your tiles' images and DSFs too: on the workshop's disk a tile and the cache
+share each of those files, one file under two names, which takes its room once. A file manager that
+measures the folders one by one counts them twice, and the store folder then looks about as big as
+the tiles again. The Library counts them once, in the tiles' sizes, and *Data kept* in the status bar
+and *Disk space* show only what the cache adds; *Disk space* says by how much a file manager shows
+the folder larger, under *Why does the Finder show more?*. Deleting those files by hand frees nothing while the tile is
+there, and the cache would believe it still has them: use *Free space…*. A tile copied from another
+disk, or whose cache was freed and made again, has its own copies, which do take their room.
+
+A tile on another disk or partition than the cache holds its images as files of its own, the ones
+X-Plane reads: no file can have a name on two disks. The cache keeps a second copy, so that
+building the tile again takes them as they are. *Disk space* offers that copy in a box of its own,
+*Delete the textures kept here of the N tiles on another disk*: ticked, the cache's copy goes, and
+the tiles keep theirs. Building one of them again then makes its textures again from the
+downloaded images: nothing is downloaded, and the textures come out the very same (measured on a
+tile at ZL16 with 213 images: 9.8 s with the cache on the Mac's own disk, 42 s in a workshop whose
+cache is on an external USB disk, every image identical to the byte, 2026-10-23). Its tracing,
+mesh, relief and DSF stay in the cache. If you delete the downloaded images too, at the same time
+or later, there is nothing left to prepare the images from: that build downloads them again, and
+the provider may have changed them since, as the words under the box say. A user had moved their
+`tiles` folder to another partition with a link, for room: every image was then on both, 358 GB
+twice, and the cache filled the disk the move was to free (2026-10-23).
+
+The cache counts on its own files only. It keeps nothing of where a tile's copies are, and takes
+nothing back from them: a tile is yours, and you may move it, retouch it, unplug its disk or delete
+it. A version for a few days of 2026-10 let the cache's copy go without being asked and took the
+images back from the tile; a review found cases where a build ran from a copy that was no longer
+there. A tile's folder is now never written from a source that has gone: a build whose results in
+the cache were deleted meanwhile by another program (a terminal's `osxp clean` beside the app)
+stops before touching the tile, which stays as it was.
+
+The relief and the mesh of a tile are kept in two forms, OrthoStudio XP's and Ortho4XP's
+(`Data<tile>.alt`, `Data<tile>.mesh`), the same numbers: the second is the one the versions before
+this one read. Together they took 90 GB and 272 GB of a user's 1.1 TB cache, at ZL14 with a dense
+mesh. *Disk space* offers to keep one, in a box of its own, *Delete the data kept for older
+versions of OrthoStudio XP*: ticked, Ortho4XP's form goes, and the tiles built after keep
+OrthoStudio XP's alone. Nothing is built again: the DSF reads the mesh's other form exactly as it
+read the text, number for number, and comes out byte for byte the same. The note under the box
+says what it costs: a version before this one, reinstalled one day, turns the data folder away as
+it opens, before it builds anything. Going back to one means deleting the `store` folder inside the
+data folder (README, *Getting started*): the tiles stay whole and in X-Plane, and that version
+calculates everything again to rebuild one, without downloading the images again unless they were
+deleted. Once done, the box stays ticked.
+
+A tile of the workshop shares its photos and its DSF with the cache: one file under two names,
+which takes its room once. A tile brought back from another disk, filed back or moved by hand,
+arrives with copies, and holds them twice on the workshop's disk: *Disk space* says how much on a
+line of its own, and every *Free space* makes each of them one file with the cache's again,
+whatever the boxes, once both are read the same; a photo you retouched stays as it is. A build
+does the same when it finds a photo of the same bytes in the tile.
+
 Deleting a tile keeps its image pieces and its elevation cells on purpose: building the same area
 again then skips the download, which is most of the time. The relief has its own box because it
 weighs much less and comes back much faster: 40 MB a square from Copernicus, against 800 MB of
-imagery at ZL16. To give everything back, use *Free space…* at the bottom of
-the Library (it shows the sizes and asks first), or from a terminal:
+imagery at ZL16. To give everything back, tick every box of the *Disk space* tab and use *Free
+space…* (it shows the sizes and asks first), or from a terminal:
 
 ```bash
 osxp clean --all --dry-run   # says what would be freed, deletes nothing
@@ -719,7 +820,7 @@ downloads its image pieces again.
 
 ## 6. Flying without tiles: OrthoStudio XP Live
 
-From 1.2, in beta, OrthoStudio XP has a second way to get ortho in X-Plane: OrthoStudio XP Live
+From 1.3, in beta, OrthoStudio XP has a second way to get ortho in X-Plane: OrthoStudio XP Live
 downloads the imagery while you fly, as AutoOrtho and XPME do, with no tile to build first, but
 with no virtual disk between X-Plane and its textures: it builds them beside X-Plane as ordinary
 files, so X-Plane waits only on its loading screen at a flight's start, never in flight. At its

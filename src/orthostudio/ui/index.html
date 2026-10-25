@@ -29,6 +29,7 @@
     <button type="button" class="nav-btn" data-screen="plan" data-i18n="nav.plan">Plan</button>
     <button type="button" class="nav-btn" data-screen="works" data-i18n="nav.works">Works</button>
     <button type="button" class="nav-btn" data-screen="library" data-i18n="nav.library">Library</button>
+    <button type="button" class="nav-btn" data-screen="disk" data-i18n="nav.disk">Disk space</button>
     <button type="button" class="nav-btn" data-screen="settings" data-i18n="nav.settings">Settings</button>
   </nav>
   <div class="topbar-tools">
@@ -319,10 +320,10 @@
           <label for="import-path" data-i18n="library.import_path">Ortho4XP folder</label>
           <input id="import-path" type="text" spellcheck="false" placeholder="/Users/…/Ortho4XP">
         </div>
-        <button type="submit" class="btn" data-i18n="library.import">Import tiles built elsewhere…</button>
+        <button type="submit" class="btn" data-i18n="library.import">Find tiles in a folder…</button>
       </form>
       <p class="help" id="import-result" aria-live="polite"></p>
-      <p class="help" data-i18n="library.import_help">The folder holding Ortho4XP.py, or a folder holding your zOrtho4XP_ tiles, on another disk for instance. Nothing is copied or moved: your tiles stay in that folder, and they are listed here so OrthoStudio XP can put them into X-Plane and take them out again. It never deletes a tile Ortho4XP built.</p>
+      <p class="help" data-i18n="library.import_help">Ortho4XP's folder (the one holding Ortho4XP.py), any folder of photo tiles, whatever it is called, on another disk for instance, or the one you moved tiles of OrthoStudio XP to by hand: a tile is known by its images, named the way Ortho4XP names them. Nothing is copied or moved: your tiles stay in that folder, and they are listed here so OrthoStudio XP can put them into X-Plane and take them out again. It never deletes a tile it did not build.</p>
     </div>
     <p class="help library-building" id="library-building" data-i18n="library.building_note" hidden>A build is under way or waiting: deleting tiles waits for it to end.</p>
     <div class="library-overlays" id="library-overlays" role="status" hidden></div>
@@ -388,7 +389,7 @@
             <th scope="col" data-sort="tile" aria-sort="ascending"><button type="button" class="th-sort" data-i18n="library.tile" data-i18n-title="library.sort_help" title="Sort by this column">Tile</button></th>
             <th scope="col" data-sort="imagery" aria-sort="none"><button type="button" class="th-sort" data-i18n="library.imagery" data-i18n-title="library.sort_help" title="Sort by this column">Imagery</button></th>
             <th scope="col" data-sort="xplane" aria-sort="none"><button type="button" class="th-sort" data-i18n="library.in_xplane" data-i18n-title="library.sort_help" title="Sort by this column">In X-Plane</button></th>
-            <th scope="col" class="num" data-sort="size" aria-sort="none" data-i18n-title="library.size_help" title="The space this tile's files take. For a tile built by OrthoStudio XP, most of it is shared with OrthoStudio XP's cache (Store, in the status bar): it is not on the disk twice."><button type="button" class="th-sort" data-i18n="library.size">Size</button></th>
+            <th scope="col" class="num" data-sort="size" aria-sort="none" data-i18n-title="library.size_help" title="The space this tile's files take. For a tile built by OrthoStudio XP, most of it is the very files OrthoStudio XP keeps in its data folder: they count here, and not again under Store in the status bar."><button type="button" class="th-sort" data-i18n="library.size">Size</button></th>
             <th scope="col" data-sort="built" aria-sort="none"><button type="button" class="th-sort" data-i18n="library.built_by" data-i18n-title="library.sort_help" title="Sort by this column">Built by</button></th>
             <th scope="col" colspan="3"><span class="sr-only" data-i18n="library.actions">Actions</span></th>
           </tr>
@@ -396,25 +397,88 @@
         <tbody id="library-body"></tbody>
       </table>
     </div>
+  </section>
 
-    <section class="disk-space" id="disk-space" aria-labelledby="disk-title">
-      <h2 class="section-title" id="disk-title" data-i18n="disk.title">Disk space</h2>
+  <!-- ============================================================ Disk space -->
+  <!-- Its own tab since 2026-10-24: below the Library's table, a list of hundreds of tiles hid it. -->
+  <section id="screen-disk" class="screen" hidden aria-labelledby="disk-title">
+    <div class="screen-head">
+      <h1 id="disk-title"><span data-i18n="disk.title">Disk space</span> <span class="disk-where" id="disk-where"></span></h1>
+      <p class="lead" id="disk-where-note" data-i18n="disk.where_note">What you delete here is in this folder. Your tiles are never deleted.</p>
+    </div>
+    <div class="disk-space" id="disk-space">
+      <div class="disk-measuring" id="disk-measuring" role="status" hidden><span class="spinner" aria-hidden="true"></span><span data-i18n="disk.measuring">Measuring…</span></div>
       <dl class="disk-list" id="disk-list"></dl>
-      <div id="disk-filed-choice" hidden>
-        <label class="disk-check"><input type="checkbox" id="disk-filed"> <span data-i18n="disk.also_filed">Also delete the cache of the tiles filed outside the workshop</span></label>
-        <p class="help" data-i18n="disk.filed_check_help">The filed tiles are not touched: they stay whole and in X-Plane. Building them again downloads their images again.</p>
+      <div id="disk-measure-error" class="error-list" aria-live="polite"></div>
+      <!-- folded: it matters only to whoever compares with the file manager (the owner, 2026-10-24) -->
+      <details class="disk-shared" id="disk-shared" hidden><summary id="disk-shared-why"></summary><p class="help" id="disk-shared-text"></p></details>
+      <!-- what was downloaded first, then what was calculated: the later boxes speak of the images -->
+      <div class="disk-choices">
+        <div id="disk-images-choice">
+          <label class="disk-check"><input type="checkbox" id="disk-images"> <span class="disk-check-text" data-i18n="disk.also_images">Delete the downloaded images</span> <span class="disk-size" id="disk-images-size"></span></label>
+          <p class="help disk-what" data-i18n="disk.images_what">The photos from Bing or another provider, and the Plan's map background.</p>
+          <ul class="help disk-points">
+            <li class="pt-ok" data-i18n="disk.pt_unchanged">Your tiles and X-Plane do not change.</li>
+            <li class="pt-same" data-i18n="disk.images_same">Rebuilding a tile without changing anything downloads nothing.</li>
+            <li class="pt-dl" data-i18n="disk.images_dl">Changing its colours, or rebuilding a deleted tile, downloads its photos again: it takes longer.</li>
+          </ul>
+          <details class="disk-more">
+            <summary data-i18n="disk.all_cases">See all the cases</summary>
+            <ul class="help disk-points">
+              <li class="pt-same" data-i18n="disk.images_other">Changing the level of detail or the imagery source needs new photos anyway.</li>
+              <li class="pt-dl" data-i18n="disk.images_dl_terrain">Changing a tile's relief, water, coast or roads downloads its photos again too.</li>
+              <li class="pt-dl" data-i18n="disk.images_dl_update">An update of OrthoStudio XP may also download them again.</li>
+              <li class="pt-dl" data-i18n="disk.images_provider">The provider may have changed its photos since.</li>
+              <li class="pt-dl" data-i18n="disk.images_map">The Plan's map background loads again as you look at it.</li>
+            </ul>
+          </details>
+        </div>
+        <div id="disk-relief-choice">
+          <label class="disk-check"><input type="checkbox" id="disk-relief"> <span class="disk-check-text" data-i18n="disk.also_relief">Delete the downloaded relief</span> <span class="disk-size" id="disk-relief-size"></span></label>
+          <p class="help disk-what" data-i18n="disk.relief_what">The altitudes from Copernicus, the USGS or a lidar.</p>
+          <ul class="help disk-points">
+            <li class="pt-ok" data-i18n="disk.pt_unchanged">Your tiles and X-Plane do not change.</li>
+            <li class="pt-same" data-i18n="disk.relief_same">Rebuilding a tile, even differently, downloads nothing.</li>
+            <li class="pt-dl" data-i18n="disk.relief_dl_settings">Changing the relief in Settings downloads it again, quickly.</li>
+          </ul>
+          <details class="disk-more">
+            <summary data-i18n="disk.all_cases">See all the cases</summary>
+            <ul class="help disk-points">
+              <li class="pt-dl" data-i18n="disk.relief_dl_deleted">Rebuilding a deleted tile downloads its relief again.</li>
+              <li class="pt-dl" data-i18n="disk.relief_dl_update">An update of OrthoStudio XP may also download it again.</li>
+            </ul>
+          </details>
+        </div>
+        <div id="disk-apart-choice" hidden>
+          <label class="disk-check"><input type="checkbox" id="disk-apart"> <span class="disk-check-text" id="disk-apart-text"></span> <span class="disk-size" id="disk-apart-size"></span></label>
+          <ul class="help disk-points">
+            <li class="pt-ok" id="disk-apart-ok"></li>
+            <li class="pt-same" id="disk-apart-same"></li>
+            <li class="pt-dl" data-i18n="disk.apart_dl">If its downloaded photos are deleted too, they will be downloaded again.</li>
+          </ul>
+        </div>
+        <div id="disk-compact-choice" hidden>
+          <label class="disk-check"><input type="checkbox" id="disk-compact"> <span class="disk-check-text" data-i18n="disk.compact">Delete the data kept for older versions of OrthoStudio XP</span> <span class="disk-size" id="disk-compact-size"></span></label>
+          <ul class="help disk-points">
+            <li class="pt-ok disk-compact-before" data-i18n="disk.pt_unchanged">Your tiles and X-Plane do not change.</li>
+            <li class="pt-warn" id="disk-compact-note"></li>
+          </ul>
+        </div>
+        <div id="disk-filed-choice" hidden>
+          <label class="disk-check"><input type="checkbox" id="disk-filed"> <span class="disk-check-text" id="disk-filed-text"></span> <span class="disk-size" id="disk-filed-size"></span></label>
+          <ul class="help disk-points">
+            <li class="pt-ok" id="disk-filed-ok"></li>
+            <li class="pt-dl" id="disk-filed-dl"></li>
+          </ul>
+        </div>
       </div>
-      <label class="disk-check"><input type="checkbox" id="disk-images"> <span data-i18n="disk.also_images">Also delete the downloaded images</span></label>
-      <p class="help" data-i18n="disk.images_help">Tiles built later then download their images again.</p>
-      <label class="disk-check"><input type="checkbox" id="disk-relief"> <span data-i18n="disk.also_relief">Also delete the downloaded relief</span></label>
-      <p class="help" data-i18n="disk.relief_help">Tiles built later then download their elevation cells again, which is far quicker than their images.</p>
       <div class="disk-actions">
         <button type="button" class="btn" id="disk-free" data-i18n="disk.free">Free space…</button>
         <button type="button" class="btn reveal-btn" id="disk-reveal" hidden>Show OrthoStudio XP's folder</button>
         <span class="help" id="disk-note" aria-live="polite"></span>
       </div>
       <div id="disk-errors" class="error-list" aria-live="polite"></div>
-    </section>
+    </div>
   </section>
 
   <!-- ============================================================ Settings -->
@@ -539,7 +603,7 @@
     <div class="dialog-text" id="disk-confirm-text"></div>
     <div class="dialog-actions">
       <button type="submit" class="btn" value="keep" autofocus data-i18n="disk.cancel">Cancel</button>
-      <button type="submit" class="btn btn-danger-solid" value="free" data-i18n="disk.confirm">Free space</button>
+      <button type="submit" class="btn btn-danger-solid" value="free" data-i18n="disk.confirm">Delete</button>
     </div>
   </form>
 </dialog>

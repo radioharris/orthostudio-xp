@@ -81,8 +81,9 @@ CHUNK = 8 * 2**20
 ROOM_MARGIN = 256 * 2**20
 """Free space kept on the disk a copy goes to, beyond the copy itself."""
 WORKSHOP_FOLDERS = ("tiles", "store", "chunks", "work", "mapcache", "elevation", "dem")
-"""The data folder's own folders: the workshop's tiles, which tiles are filed out of, and what the
-builds write and Free space empties whole (a tile filed there would go with it)."""
+"""The data folder's own folders: the workshop's tiles, which takes a tile back but no folder
+inside it, and what the builds write and Free space empties whole (a tile filed there would go
+with it)."""
 
 
 class FilingStoppedError(Exception):
@@ -128,10 +129,11 @@ def _around(folder: Path) -> list[Path]:
 def check_destination(dest: Path, custom_sceneries: Iterable[Path] = ()) -> None:
     """Refuse a folder no tile is filed into: inside an X-Plane's Custom Scenery, where X-Plane
     reads OrthoStudio XP's tiles through a link, named so or one of ``custom_sceneries`` however
-    reached (``SYS_FOLDER_IN_CUSTOM_SCENERY``); the workshop or another of the data folder's own
-    folders (:data:`WORKSHOP_FOLDERS`, ``SYS_FOLDER_IS_ATELIER``); a folder inside a tile, which
-    deleting that tile would take away with it (``SYS_FOLDER_IN_TILE``); a folder that is not
-    there, gone since it was chosen (``SYS_FOLDER_GONE``)."""
+    reached (``SYS_FOLDER_IN_CUSTOM_SCENERY``); a folder inside the workshop, or another of the
+    data folder's own folders (:data:`WORKSHOP_FOLDERS`, ``SYS_FOLDER_IS_ATELIER``), the workshop
+    itself taking a tile back; a folder inside a tile, which deleting that tile would take away
+    with it (``SYS_FOLDER_IN_TILE``); a folder that is not there, gone since it was chosen
+    (``SYS_FOLDER_GONE``)."""
     if not dest.is_dir():
         raise OsxpError("SYS_FOLDER_GONE", context={"folder": str(dest)})
     around = _around(dest)
@@ -141,7 +143,10 @@ def check_destination(dest: Path, custom_sceneries: Iterable[Path] = ()) -> None
     ):
         raise OsxpError("SYS_FOLDER_IN_CUSTOM_SCENERY", context={"folder": str(dest)})
     data = data_root()
-    if any(_same_folder(p, data / name) for p in around for name in WORKSHOP_FOLDERS):
+    # the workshop itself takes a tile back, as it takes back one put there by hand: refused until
+    # a user moved his tile back by hand and it worked (2026-10-25)
+    back = _same_folder(dest, data / "tiles")
+    if not back and any(_same_folder(p, data / name) for p in around for name in WORKSHOP_FOLDERS):
         raise OsxpError("SYS_FOLDER_IS_ATELIER", context={"folder": str(dest)})
     pack = next((p for p in around if (p / MANIFEST_NAME).is_file()), None)
     if pack is not None:

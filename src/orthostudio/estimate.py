@@ -182,6 +182,13 @@ class TileEstimate:
     ``textures_total`` (upper bound only, as :attr:`textures_zones`)."""
     other_gb: float = 0.0
     """What the steps to run write besides the images (`_other_gb`)."""
+    textures_prepare: int = 0
+    """The textures the build prepares: ``textures_total`` but those it takes as they are."""
+    textures_kept: int = 0
+    """The textures the build takes as they are from the store (`_textures_kept`): all of them
+    when the textures step is in the store. The page said every image of a tile was to prepare and
+    counted the steps in the store as images already prepared: 309 and 7 for a tile whose 309
+    images all came back, in a second (2026-10-23)."""
 
     @property
     def hits(self) -> int:
@@ -210,6 +217,8 @@ class TileEstimate:
             "builds": self.builds,
             "textures": {
                 "total": self.textures_total,
+                "prepare": self.textures_prepare,
+                "kept": self.textures_kept,
                 "exact": self.textures_exact,
                 "masked": self.textures_masked,
                 "zones": self.textures_zones,
@@ -606,10 +615,14 @@ def estimate(
         kept = _textures_kept(env, g, entries) if textures_build else set()
         fresh = [t for t in textures if texture_name(t) not in kept] if textures_build else []
         to_prepare = len(fresh) if textures_build else 0
-        # the pieces to download are those of the images to prepare: one taken as it is reads none.
-        # Every container of every image was read, all of them kept: Build again of eighteen tiles
-        # took 16 s to ask its question, from a hard disk, to download nothing (2026-10-16)
-        requests = _requests_for(chunks, fresh)
+        # the pieces to download are those of the images to prepare: one taken as it is reads none,
+        # but for its key, which needs its pieces: deleted, they are downloaded again (a user had
+        # deleted them, 2026-10-23). Every container of every image was read, all of them kept:
+        # Build again of eighteen tiles took 16 s to ask its question, from a hard disk, to
+        # download nothing (2026-10-16); a kept one is only looked for.
+        requests = _requests_for(chunks, fresh) + 256 * sum(
+            1 for t in textures if texture_name(t) in kept and not chunks.has(t)
+        )
         if requests and first_probe_texture is None:
             for t in fresh:
                 c = chunks.read(t) if chunks.has(t) else None
@@ -641,6 +654,8 @@ def estimate(
                 textures_zones=zone_textures,
                 textures_airports=apt_textures,
                 other_gb=_other_gb(env, g, entries),
+                textures_prepare=to_prepare,
+                textures_kept=len(textures) - to_prepare,
             )
         )
     if probe is None and online and first_probe_texture is not None:

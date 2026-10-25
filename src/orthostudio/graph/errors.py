@@ -30,7 +30,26 @@ class StoreError(GraphError):
 
 
 class IncompatibleIndexError(StoreError):
-    """The sqlite index was written by another schema version."""
+    """The sqlite index was written by another schema version: ``found`` at ``root``, where this
+    version reads up to ``expected``."""
+
+    def __init__(self, root: object, found: int, expected: int) -> None:
+        super().__init__(
+            f"index schema {found} at {root}, this OrthoStudio XP reads up to {expected}"
+        )
+        self.root = str(root)
+        self.found = found
+        self.expected = expected
+
+
+class UnreadableIndexError(StoreError):
+    """The sqlite index at ``root`` cannot be read at all: no database any more, or a damaged one
+    (``detail``, sqlite's words). Nothing in it can be trusted; the folder can only be emptied."""
+
+    def __init__(self, root: object, detail: str) -> None:
+        super().__init__(f"index at {root} cannot be read: {detail}")
+        self.root = str(root)
+        self.detail = detail
 
 
 class MissingArtifactError(StoreError, KeyError):

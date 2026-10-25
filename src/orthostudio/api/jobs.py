@@ -23,7 +23,7 @@ import os
 import secrets
 import threading
 import time
-from collections import deque
+from collections import Counter, deque
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -37,6 +37,7 @@ from orthostudio.api.progress import (
     line_factor,
     node_seconds,
     observe_progress,
+    overdue,
     read_line_history,
     texture_cost,
     weight_of,
@@ -59,7 +60,7 @@ from orthostudio.pipeline.build import (
     build_tiles,
     default_subprocess_slots,
 )
-from orthostudio.pipeline.home import osxp_home
+from orthostudio.pipeline.home import data_root_missing, osxp_home
 from orthostudio.pipeline.textures import default_workers
 from orthostudio.sched import Done, Failed, Progress, Started, Stats
 from orthostudio.sources.osm import shared_board
@@ -819,6 +820,9 @@ class Job:
             "progress": math.floor(self._progress * 10_000) / 10_000,
             "eta_low_s": None if low is None else round(low, 1),
             "eta_high_s": None if high is None else round(high, 1),
+            # the running nodes past their time: the page says "longer than expected" there
+            # and in the header rather than a time left already gone by (2026-10-18)
+            "overdue": [] if self.finished else sorted(n.node for n in rows if overdue(n, now)),
             "phase": self._phase,
             **(
                 {"check": {"done": self._check[0], "total": self._check[1]}}
@@ -856,16 +860,48 @@ class Job:
                 if self.finished:
                     return
                 self._emit_stats(min_period=STATS_PERIOD_S)
+                self._say_held_lines()
+
+    def _say_held_lines(self) -> None:
+        """Write the line a running node said within the second of its last one, once that second
+        has passed, instead of waiting for the node's next message.
+
+        A tile's terrain step said "reading the relief" then "airports" in the same second, then
+        nothing for twelve minutes while it flattened a large airport and applied two patches: the
+        once-a-second rule held "airports" back until the next message, and the log showed twelve
+        minutes of "reading the relief" (a user, 2026-10-18).
+        """
+        now = self._clock()
+        for ts in self._tiles.values():
+            for st in ts.nodes.values():
+                heard = self._last_heard.get(st.node)
+                if st.status != "running" or not heard or heard == self._last_said.get(st.node):
+                    continue
+                if now - self._last_log.get(st.node, now - LOG_PERIOD_S) < LOG_PERIOD_S:
+                    continue
+                self._last_log[st.node] = now
+                self._last_said[st.node] = heard
+                tile = parse_node_id(st.node)[0]
+                base = {"tile": tile, "stage": st.stage, "node": st.node, "role": st.role}
+                self._append("log", **base, message=heard)
 
     # -- end of the run (job thread) ----------------------------------------------------------
 
-    def _finish(self, status: str, report: BuildReport | None, env: BuildEnv | None) -> None:
+    def _finish(
+        self,
+        status: str,
+        report: BuildReport | None,
+        env: BuildEnv | None,
+        lost: Path | None = None,
+    ) -> None:
         with self._lock:
             self.status = status
             self.finished_at = _now()
             if report is not None:
                 self.report = report.to_dict()
                 self._adopt_report(report)
+            if lost is not None:
+                self._lost_data_folder(lost)
             self.decisions = self._decisions(env)
             self._emit_stats()  # the last one: progress 1 when done, nothing left
             self._append(
@@ -879,6 +915,18 @@ class Job:
                 with contextlib.suppress(OSError):
                     self._file.close()
                 self._file = None
+
+    def _lost_data_folder(self, folder: Path) -> None:
+        """The data folder's disk went during the build: that is the one thing said
+        (CFG_DATA_DIR_MISSING, plug it in again), the steps that failed for it kept in the journal.
+        Works showed a map layer "missing" with command-line options, and an internal error to
+        report (a campaign, 2026-10-25)."""
+        lost = OsxpError("CFG_DATA_DIR_MISSING", context={"path": str(folder)})
+        self.job_error = error_json(lost)
+        for ts in self._tiles.values():
+            for st in ts.nodes.values():
+                if st.error is not None and st.cause is None:
+                    st.cause = "data_folder"
 
     def _adopt_report(self, report: BuildReport) -> None:
         """Nodes the report knows and the events did not (the second pass, ``repair``)."""
@@ -957,6 +1005,9 @@ class Job:
                 "tiles": [t.tile for t in self._tiles.values()],
                 "provider": self.specs[0].provider if self.specs else None,
                 "zl": self.specs[0].zl if self.specs else None,
+                # how many of its tiles at each level, which Works writes: Build again of 25 tiles,
+                # 2 of them at ZL13, read ZL16 alone (a user, 2026-10-25)
+                "levels": dict(Counter(str(s.zl) for s in self.specs)),
                 # which relief the tiles are built on, so that Works says it while it builds
                 # (a user missed it during a build, 2026-09-17)
                 "relief": _relief_of(self.specs[0]) if self.specs else None,
@@ -1527,13 +1578,17 @@ class JobManager:
             _drop_frames(err)
         finally:
             job.stop_ticker()
+            lost = None
+            if status == "failed":
+                with contextlib.suppress(OSError):
+                    lost = data_root_missing()
             # The end is one step for whoever asks the manager: the job announced, written, and
             # out of the active slot together. A page hears `finished` and asks the status at
             # once, and the status named the job still while its state was being written (a run
             # of the suite under load, 2026-10-05). Written before it leaves the slot: a job out
             # of it may be removed from the list, files and all.
             with self._lock:
-                job._finish(status, report, env if isinstance(env, BuildEnv) else None)
+                job._finish(status, report, env if isinstance(env, BuildEnv) else None, lost)
                 with contextlib.suppress(OSError):
                     job.save_state()
                 if self._active is job:
@@ -1541,10 +1596,13 @@ class JobManager:
                 self._threads.pop(job.id, None)
                 if self._queue:
                     self._launch(self._queue.popleft())
-            if isinstance(env, BuildEnv) and report is not None and not report.cancelled:
-                # the store's index is not held between builds; after a Stop, a step still running
-                # past the scheduler's grace commits into it later (a review, 2026-10-06). Out of
-                # the lock: a slow disk's closing never holds the page's status
+            if isinstance(env, BuildEnv) and status != "cancelled":
+                # the store's index is not held between builds, one that failed included: left to
+                # a garbage collection, a build that died with its data folder's disk kept that
+                # index open, and once the disk was back the engine read nothing of it ("disk I/O
+                # error") until it was restarted (a campaign, 2026-10-25). After a Stop, a step
+                # still running past the scheduler's grace commits into it later (a review,
+                # 2026-10-06). Out of the lock: a slow disk's closing never holds the page's status
                 with contextlib.suppress(Exception):
                     env.close()
             job._done.set()

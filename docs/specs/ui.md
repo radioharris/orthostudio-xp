@@ -58,8 +58,8 @@ text is one of seven styles, defined once at the top of `styles.css` with tokens
 
 | Style | Look | For |
 |---|---|---|
-| Title 1 | 18px, bold | the four screens |
-| Title 2 | 15px, bold | a card, a column or a dialog: the Plan's steps, Settings' questions, *For experts*, *Disk space*, *Jobs*, a job, a dialog |
+| Title 1 | 18px, bold | the screens |
+| Title 2 | 15px, bold | a card, a column or a dialog: the Plan's steps, Settings' questions, *For experts*, *Jobs*, a job, a dialog |
 | Title 3 | 13.5px, bold | inside a card or a column: a group of expert settings, the presets, the parts of the cost, *Errors*, *Decisions* |
 | Text | 13.5px | what the page says |
 | Secondary | 12.5px, grey | the sentence under a title, the text under a field, notes |
@@ -97,7 +97,7 @@ values stay in `styles.css`, and `TEXT_TOKENS` keeps the two equal; a module of 
 first, saved with the rest, and the user wanted it at hand and at once. The controls' own sizes and
 the map do not grow: that is the zoom's work. In a browser too: the page draws its text itself.
 
-## 2. The four screens
+## 2. The screens
 
 Each screen keeps its own scroll position, as tabs do (`app.js` `showScreen`, `screenScroll`): the
 window scrolls, not the screens, so a screen opened where the last one was left, which a user
@@ -228,7 +228,12 @@ with folded under it (the Library's block); what a build now would change (anoth
 detail level, other colours) is never folded: a warning line under the tile's, a `--help-gap` apart,
 its "!" mark before it and its second line under its first (`app.js` `renderTilesBuilt`), and the
 tile's chip in the warning's colour, which says the same on hover, so that the square a build would
-change is found among the chosen ones at a glance (a user, 2026-09-22). Then:
+change is found among the chosen ones at a glance (a user, 2026-09-22). A tile of another folder
+than the atelier, filed elsewhere or of a data folder chosen before, is built again there, which
+the line says with the folder, "Will be built again in its folder, ~/Tiles, with ZL13 instead of
+ZL16." (`plan.built_change_where`, `tileFolder`; nothing is said while the status is not known): a
+test atelier's build replaced two tiles of another folder at another level, and nothing said where
+the build would go (a campaign, 2026-10-24). Then:
 
 - **Imagery source** (`<select>` from `GET /api/providers`), grouped since a user found the
   sources of several countries mixed in one list, and asked for Bing and Esri first (2026-09-14;
@@ -241,7 +246,7 @@ change is found among the chosen ones at a glance (a user, 2026-09-22). Then:
   greyed when `alive === false`. The groups follow the tiles as they change; the source selected
   stays. Under the field, in red, the tiles the source does not cover ("Netherlands · PDOK 2020
   does not cover +46+006: it is one country's source (Netherlands). Choose a Whole world source
-  for these tiles."), before the estimate refuses them; then the attribution.
+  for these tiles."), before the estimate refuses them; then the attribution, with the licence after it.
 - **My sources…** (a small button under the field; user request, 2026-09-14: Apple Maps and
   Google Maps, much used in the USA, which OrthoStudio XP does not ship, `imagery-providers.md`
   4.1): a dialog that says in a yellow box that the user adds the source themselves, that its
@@ -435,7 +440,7 @@ adds nothing. These are approximations; step 3 gives the engine's numbers.
   the two cost centres, in plain words:
   - *Network: your line* — downloads (requests), MB, time range `seconds_low`–`seconds_high`,
     measured throughput `mbps_measured` (or "not measured");
-  - *Compute: your computer* (it said *your Mac* on Windows and Linux too until 1.1.0) — images to prepare (textures), already prepared, seconds;
+  - *Compute: your computer* (it said *your Mac* on Windows and Linux too until 1.1.0) — images to prepare (`compute.textures`), images already prepared (`compute.cached`: taken from the cache as they are), seconds. They were every image of the tiles and the steps in the store, 309 to prepare and 7 prepared for a tile whose 309 images all came back in a second (2026-10-23);
   - *Disk* — the engine's verdict (`app.js` `diskVerdict`): space needed is `disk.needed_gb` (images
     and downloads), then `free_gb` labelled "OK" in green when `disk.ok`, else "may run short" in
     amber after an amber line "The disk may run short: about X to write, Y free. If it fills up,
@@ -451,7 +456,9 @@ adds nothing. These are approximations; step 3 gives the engine's numbers.
     and `ZONE_CONFLICT` included, but a `ZONE_*` card uses the engine's own message and remedy
     when it has them; unknown codes show the code and whatever `message`/`remedy` strings the
     response carries);
-  - per tile: already done / to build / images / downloads / MB.
+  - per tile: steps already done / steps to build / images to prepare (`textures.prepare`, the
+    tile's images when an engine older than the page sends none) / downloads / MB; the line under
+    the table says the images to prepare too.
 - Any change of tiles, source, level or zones (not a rename) works the estimate out again.
 - A refusal of the estimate or of *Build* by the engine is an error card under the button, as in Works
   (`renderPlanError`): the page's words for its code and the remedy, and a *Settings* button when
@@ -502,7 +509,7 @@ build zones the page never showed.
 
 ### 2.2 Works
 
-Job list (`GET /api/jobs`, newest first, status pill, tiles, provider, ZL, started).
+Job list (`GET /api/jobs`, newest first, status pill, tiles, provider, ZL, started). The level is the tiles' most common one, then how many tiles are at each other level (`levels`, `jobLevel`): "BI ZL16 (2 tiles at ZL13)", in the list and above the job; Build again of 25 tiles, 2 of them at ZL13, read ZL16 alone (a user, 2026-10-25).
 
 **Searching a tile** (a user, 2026-09-26: many jobs, or the 33 of a flight plan): a field above the
 list, the look of Settings' search (`#works-search`, "Search for a tile: +49+011, +49…"). A job
@@ -549,7 +556,9 @@ The selected job (default: the running one, else the newest) shows, from top to 
     since those stats arrived; once the job ended, `finished_at - started_at`; a figure arriving
     a little late never sets the clock back;
   - *Remaining*, while the job runs only: `eta_low_s`–`eta_high_s` formatted `1 min 40 – 3 min`,
-    or *estimating…* while they are `null`;
+    *estimating…* while they are `null`, and *longer than expected* while `stats.overdue` names
+    a step (a step far past its usual time that has not moved for 20 s): a range that has
+    stopped meaning anything is not shown;
   - *Throughput* when the stats carry `req_per_s` / `mb_per_s`.
   - While `stats.phase` is `"data"` (an older engine, which downloaded every tile's map data
     before building), a line under the bar: "Downloading map data (airports, roads, coastline,
@@ -597,10 +606,11 @@ The selected job (default: the running one, else the newest) shows, from top to 
   the airports*, *meshing the terrain*, *coast masks*, *X-Plane 12 layers*, *writing the X-Plane
   terrain*, *X-Plane's objects*, *putting the tile together*, *installing in X-Plane*) and *about
   10 s to go* while three seconds or more are left of their usual time, *longer than usual* once
-  they ran half as long again. Nothing runs: why its Imagery waits, when it does (*waits for the
-  DSF (Assembly)*, *waits for the images of +46+006*: one tile downloads at a time). A finished
-  tile, a tile still to start and a job that ended have no words, so a batch shows three or four
-  lines with words at most.
+  they ran half as long again. Any running step the engine names in `stats.overdue` reads
+  *longer than usual* too, whatever its fraction: a step stuck at 10 % for minutes says so.
+  Nothing runs: why its Imagery waits, when it does (*waits for the DSF (Assembly)*, *waits for
+  the images of +46+006*: one tile downloads at a time). A finished tile, a tile still to start
+  and a job that ended have no words, so a batch shows three or four lines with words at most.
 
   The line keeps its place in every row from the start, one line high, empty (a no-break space)
   while nothing of the tile runs: shown only while a step ran, it made every row grow and shrink,
@@ -718,7 +728,10 @@ ended row, its fraction while it runs, 0 otherwise; by count when nothing weighs
 page's steps are the engine's after every entry (a test drives the engine's `Job` and compares,
 `tests/test_ui_static.py`). A recompute never moves a bar back between two reads (the rows no entry
 touched keep the weights of the last read); the next read may. `failed` adds an error card, one per
-failure (a node skipped because of it adds none).
+failure (a node skipped because of it adds none). A build whose data folder went while it ran (its
+disk unplugged) shows one card, `CFG_DATA_DIR_MISSING`, its nodes' errors kept in the journal
+with the cause `data_folder`: it showed a map layer missing with command-line options, in English
+on a French page, and an internal error to report (a campaign, 2026-10-25).
 
 **Error cards** sit in a grid of columns at least 320 px wide, `auto-fit`: a card alone takes the
 whole width, two or more share it. `auto-fill` kept an empty column beside a lone card, which then
@@ -899,33 +912,6 @@ disk away fails there at once, with its words (`SYS_TILE_DISK_ABSENT`), and noth
 done; X-Plane running at the put back has its own words (`SYS_PUT_BACK_XP_RUNNING`: quit X-Plane,
 build the tile again).
 
-**Disk space** (below the table, `GET /api/disk`, `POST /api/clean`, asked only while the Library
-shows: the measure goes over the whole store, the downloaded pieces and the relief, and each list of
-the Library asked for it, from the Plan at the start too): the data used by the tiles on this
-computer, the **cache of the tiles filed outside the atelier** (the atelier, step 5: their data only
-they need and the image pieces only they use, all of it but their meshes, which their neighbours'
-masks read (counted with the data used by the tiles, whose tooltip says so; a mesh goes with its
-tile, but for a neighbour whose masks were made from it), a line shown only while they have some of
-their data here, and counting only those tiles: a tile of a data folder chosen before has its cache
-there, and a filed neighbour whose square only the pieces astride a border touch has nothing here,
-so filing one tile no longer reads "Cache of 5 tile(s)"; its box is unticked as it hides), the data
-no tile needs any more, the downloaded images (those of the filed tiles excepted: they are in their
-line; a piece astride the border with a tile of the atelier counts here, even at a level of detail
-only the filed tile uses, and so does a piece only a filed tile with nothing here touches), the map
-background and the **downloaded relief**, each with a plain tooltip. *Free space…* asks first, in a
-modal dialog that says what goes and how much (Escape keeps everything), with a checkbox per choice,
-each freeing its own line: the cache of the filed tiles (shown with its line; its help says the
-tiles stay whole and in X-Plane, and building them again downloads their images again), the
-downloaded images, and the relief: a square of relief is 40 MB from Copernicus against 800 MB of
-imagery at ZL16, and comes back much faster, so the choices are separate. The relief was counted by
-nothing until a user emptied everything and found 1.4 GB of it left (2026-09-18). It is disabled
-while a build runs, while this page files tiles (the engine refuses meanwhile: a filing moves a tile
-out of the atelier) and when there is nothing to free, and ends with a toast of what came back. A
-409 `SYS_BUSY` shows as a card in the Library's words, which name builds and filings. A language
-switch writes its lines again from the last measure, measuring nothing (`rerenderAll` calls
-`renderDisk`): they stayed in the former language, under a title in the new one, until the next
-measure (2026-10-05).
-
 What is on this computer, what is in X-Plane, and what each button will do, in plain words
 (`map-zones.md` 7.0). The lead says it: removing a tile from X-Plane keeps its files, so it can
 be added back at once; deleting it also frees the disk space (tiles built by OrthoStudio XP only).
@@ -941,7 +927,7 @@ an osxp build of the same tile are two rows.
 | Tile | `+43+005`, the pack's `path` in the `title` tooltip; when `present === false`, a *Not found* pill, or *Disk not connected* when `disk_absent` (its disk is away: plugged in again, the tile is back by itself) |
 | Imagery | the source's code and the detail level's name, the zoom level as secondary text ("BI · Standard ZL16"); tooltip: the source's name from `GET /api/providers` and the detail level at the tile's latitude; an em dash when neither is known |
 | In X-Plane | *yes* / *no* pill (`installed`) |
-| Size | `size_bytes` (`fmtBytes`), an em dash when `null`. The header's tooltip (dotted underline) says that, for a tile built by OrthoStudio XP, most of it is shared with OrthoStudio XP's cache, which the status bar counts under Store: the two are not on the disk twice |
+| Size | `size_bytes` (`fmtBytes`), an em dash when `null`. The header's tooltip (dotted underline) says that, for a tile built by OrthoStudio XP, most of it is the very files OrthoStudio XP's cache keeps, counted in this column and not again under Store in the status bar (`cacheBytes`, since API level 33) |
 | Built by | *OrthoStudio XP* / *Ortho4XP*; for the first, a click unfolds what the tile was built with (`builtLines`), its *Relief* line naming the file of one's own the tile stands on or saying why it was not used (`reliefSentence`, `relief_own`), the whole path in the line's tooltip |
 | (actions) | three columns, so that the buttons line up from row to row: the folder icon (2.5, *The file manager*), the X-Plane button, then *Delete…* or *Remove from the list* |
 
@@ -1046,21 +1032,37 @@ tooltip of the card's message (`app.js` `libraryCardContent`):
 Any other error (a network failure included) shows the engine's words, or the page's for the
 codes `i18n.js` knows.
 
-*Import tiles built elsewhere…* (« Importer des tuiles faites ailleurs… », *Import my Ortho4XP
-tiles…* until 1.1.0, which said less than it does: a pack of photo tiles is known by its images
-since 0.1.14, whatever made it, a user's remark, 2026-10-15) is one button (user report, 2026-09-21: a field, *Choose…* beside it
-and *Import* were two buttons for one thing, and the field left empty imported nothing without a
-word). It asks for the folder in the platform's own dialog, opened by the engine (`POST
-/api/choose-folder`, "Choose the Ortho4XP folder (the one holding Ortho4XP.py), or a folder holding
-your tiles", since 0.1.14 a folder of ortho tiles on another disk will do, whatever it is called: a page cannot learn
-the full path of a folder picked in the browser), starting at the folder imported last, else at
-the Ortho4XP folder of the newest imported tile (`app.js` `ortho4xpStart`), then imports it: `POST
-/api/library/import-ortho4xp {folder}`. The line under the button counts the tiles, not the
-overlays pack beside them, and names the folder ("2 tile(s) imported from ~/Ortho4XP."); finding
-none, it says where it looked (`searched`). A cancel changes nothing. Where no dialog opens (a
-Linux without zenity or kdialog: `501 SYS_NO_FOLDER_DIALOG`, a toast; an engine older than the
-page), the field *Tiles folder* appears and the button imports what is typed in it; finding
-nothing, the line says « No photo tile found in … ». The status
+*Find tiles in a folder…* (« Chercher des tuiles dans un dossier… »; *Import my Ortho4XP tiles…*
+until 1.1.0, then *Import tiles built elsewhere…*, which both said less than it does: a pack of
+photo tiles is known by its images since 0.1.14, whatever made it, a user's remark, 2026-10-15,
+and since 2026-10-22 it takes back the tiles OrthoStudio XP built too) is one button (user report,
+2026-09-21: a field, *Choose…* beside it and *Import* were two buttons for one thing, and the field
+left empty imported nothing without a word). It asks for the folder in the platform's own dialog,
+opened by the engine (`POST /api/choose-folder`, "Choose the folder holding your tiles: Ortho4XP's
+(the one holding Ortho4XP.py), or any folder you put tiles in": a page cannot learn the full path of
+a folder picked in the browser), starting at the folder imported last, else at the Ortho4XP folder
+of the newest imported tile (`app.js` `ortho4xpStart`), then sends it: `POST
+/api/library/import-ortho4xp {folder}`, which imports the Ortho4XP tiles and takes back the tiles
+OrthoStudio XP built in it (`own`, `install.md` 4.8). The line under the button counts the tiles
+imported, not the overlays pack beside them, and names the folder ("2 tile(s) imported from
+~/Ortho4XP."), then says in a sentence each what was done with OrthoStudio XP's (`app.js`
+`ownLines`): put back in the list, with *Add* for those X-Plane does not show; found again;
+already in the list; their roads and forests missing, which a build gives back; left aside, listed
+already in another folder, inside X-Plane's Custom Scenery, or a folder lacking files, each with
+its tiles (six at most, then "…"); waiting for X-Plane to be closed. Finding nothing at all, it says
+where it looked (`searched`, each folder once: Ortho4XP's `Tiles` and a data folder's `tiles` are one
+folder on macOS and Windows). A cancel changes nothing. Where no dialog opens (a Linux without
+zenity or kdialog: `501 SYS_NO_FOLDER_DIALOG`, a toast; an engine older than the page), the field
+*Tiles folder* appears and the button sends what is typed in it; finding nothing, the line says
+« No tile found in … ».
+
+The page also looks at the workshop's own tiles folder by itself, at its start and whenever the
+Library is opened (`app.js` `findInWorkshop`, `POST /api/library/find-in-workshop`): a user moved
+his tiles by hand, found 200 of 1,300 again one by one, deleted the rest from the list, and his map
+stayed empty while they sat in his workshop (2026-10-22). It reads the list again only when a tile
+came back, and the same line says so; tiles left aside there are not mentioned, being as they
+should be (a tile built again while X-Plane ran waits in the workshop, listed in its own folder),
+and tiles waiting for X-Plane to be closed are found at the next opening. The status
 bar's count is `library_count`, which counts tiles, not rows.
 
 ### 2.4 Settings
@@ -1493,7 +1495,9 @@ whether it runs (a warning when it does, since installation is refused then), do
 or the data folder chosen in Settings with a *disk not plugged in* pill while it is missing, and
 beside it a button that shows it in the file manager (`renderStatus`, `revealPath`; *Show in
 Finder* on a Mac): `.orthostudio` starts with a dot, which hides it in the Finder, and a user looked
-for his tiles in vain (2026-09-22). The store and chunk sizes come from `GET /api/sizes`, asked
+for his tiles in vain (2026-09-22). The sizes read *Data kept: … · downloaded images: …*
+(`status.store`, `status.chunks`; *Store · chunks* until 1.2.0, the engine's words), the first the
+store less what the tiles share with it, counted in their own sizes (`cacheBytes`). They come from `GET /api/sizes`, asked
 after each status and not awaited (`loadSizes`): "…" until they come, then that line alone is drawn
 again (`renderDiskSizes`), so the doctor's popover stays open. On Windows their walk opens every
 file of the store, and the page used to wait for them. The language and theme switches are in the
@@ -1540,6 +1544,18 @@ comes back. Before that, `GET /api/status` failing wrote one line at the foot of
 every screen as empty as it was drawn: a user on Windows saw the fields greyed out, had nothing to
 go on, and the thread guessed for two days (flusi.info, 2026-09-20). An engine that answers nothing
 at all is still the *stopped* screen, through the presence ping.
+
+**A check that failed** (`renderEngineBanner`, `checkSentence`): the same banner says, in the
+page's language, what each failed check means and what to do (*The data folder was not found: plug
+in its disk, or choose another folder in Settings.*, *Only 3.2 GB is left on the data folder's
+disk…*, *What is used to rebuild your tiles cannot be read.*, *A tool of OrthoStudio XP is missing
+(Triangle4XP)…*), then *Show the checks*, the doctor's own lines. It gave the checks' names, the
+program's, in English: "… is not working: disk." on a French page whose data folder's disk was
+unplugged (a campaign, 2026-10-25). A check this page does not know keeps its name in that
+sentence. Back to the window with the banner showing, on any screen, the status is read again
+(`recheckStatus`), and the engine runs its checks again when the data folder came or went
+(`api.md` 8): the disk plugged back, the banner stayed until something else read the status. A
+change of language writes it again with the rest of the page (`rerenderAll`).
 
 **Your own elevation files** (2026-09-19): under the relief question, *Do you have elevation files
 of your own?* takes a folder (`essential.relief.folder`, a field and a *Choose the folder…* button
@@ -1595,7 +1611,7 @@ toast.
 **Choosing a folder** (user request, 2026-09-15: the X-Plane folder had to be typed): *Choose the
 X-Plane folder…* beside the field of *Where is X-Plane 12 installed?* and *Choose the folder for the
 tiles…* beside the one of *Where should the tiles and the downloaded imagery go?* in Settings (one
-label for both read as the same button), *Import tiles built elsewhere…* in the Library (above) and
+label for both read as the same button), *Find tiles in a folder…* in the Library (above) and
 *Choose…* beside *Folder of hand-made mesh patches* under *For experts*,
 ask the engine to open the platform's own dialog
 (`POST /api/choose-folder`: the Finder's, the File Explorer's, zenity's or kdialog's), starting in
@@ -1612,6 +1628,165 @@ the status bar follow) and drops a refusal step 3 still showed. The folder field
 the detected folder" shows only when a folder was detected. Nothing is saved by leaving Settings:
 answers not saved are said on the tab and in step 3 until they are saved or undone (see the
 Settings screen above; until 2026-10-15 a toast said it once, on leaving).
+
+### 2.6 Disk space
+
+Its own tab, between Library and Settings (`#disk`, `screen-disk`), since 2026-10-24: below the
+Library's table, a list of hundreds of tiles hid it. `GET /api/disk` and `POST /api/clean`, asked
+only while it shows (`showScreen`, `loadDisk`): the measure goes over the whole store, the
+downloaded pieces and the relief, and each list of the Library asked for it, from the Plan at the
+start too. Its words were read box by box with the owner, who understood none of the first ones
+(2026-10-24): no "cache", which no reader could place; each line and each box says what it changes
+for the user; the same words in the confirmation.
+
+* **Where.** The screen's title carries the data folder (`disk-where`, `dataFolderShown`, shortened
+  by `homely`), and its lead, `disk.where_note`, says that what is deleted here is in that folder and that the
+  tiles are never deleted: every choice deletes in it alone (store, `chunks`, `elevation`,
+  `mapcache`). Each measure reads the status again (`loadDisk`, `loadStatus`): with its disk
+  unplugged, the tab says only `disk.data_missing`, its lines, boxes, folded note and lead hidden
+  and the button disabled; its lines read "your 24 tiles 0 MB" while it was away (a campaign,
+  2026-10-24). Back to the window with the tab showing, the status is read again (`recheckStatus`,
+  on `focus` and on the page shown again), and the tab measured again when the disk came or went:
+  a disk unplugged with the tab open went unsaid for a minute and more.
+* **The first measure** shows *Measuring…* in the middle of the panel with a spinner
+  (`disk-measuring`, `state.diskMeasuring` with no figure yet): the tab showed its title and its
+  buttons and nothing else while a cache of 300 tiles took 2.5 s to measure, 9 s on a Windows disk
+  not read yet (a campaign, 2026-10-25). A later measure keeps the last figures and says it under
+  the button.
+* **A measure refused** with an error code shows its card under the lines (`disk-measure-error`,
+  `state.diskError`, `errorCard`): a cache a newer version made (`SYS_STORE_NEWER`, a 409) left
+  the tab blank and the Plan saying the engine did not answer (a campaign, 2026-10-24), and so did
+  a damaged one (`SYS_STORE_UNREADABLE`, a 409 too, a campaign, 2026-10-25).
+* **Two lines without a box**, each saying what becomes of it: *what is used to rebuild your N
+  tiles*, kept (N the atelier's tiles alone, `atelier_tiles`: the tiles filed elsewhere have their
+  own box, and counted here too they read as counted twice, a review, 2026-10-24) (`app.js` `cacheBytes`, the store less `shared_bytes`, the files it shares with the
+  tiles, which count in the tiles' sizes, less what the boxes below free and the next line), and
+  *leftovers of tiles deleted or rebuilt differently* (`unused_bytes`), always deleted. A third
+  shows when it is not 0: *room your tiles' photos take twice* (`doubles_bytes`, API level 40),
+  always freed: the copies a tile brought back from another disk holds of the photos and DSF the
+  store keeps, which Free space makes one file with the store's (a user's 16 tiles held 11 GB that
+  way, and another's 552 GB moved back to his workshop's partition would have kept 358 GB twice,
+  2026-10-25).
+* **The folder's size in the file manager**, folded under its question, *Why does the Finder show
+  more?* (`disk-shared`, a `<details>`: it matters only to whoever compares; `disk.shared_why`,
+  `disk.shared_note`, by the file manager's name: the Finder, File Explorer, the file manager on
+  Linux, `fileManager`): the tiles on this same disk share their
+  textures and DSFs with OrthoStudio XP, each file on the disk once, which the file manager counts
+  several times; deleting them by hand frees nothing. A tile on another disk shares nothing (the
+  textures' box below). The size said is how much larger the data folder looks
+  (`finder_extra_bytes`): an image is under three names, the store's, its textures folder's and the
+  tile's; the note said how much larger the store looks (`shared_bytes`), 3.03 GB where the Finder
+  showed the data folder 5.98 GB larger (a campaign, 2026-10-24). A tile's share is measured again
+  when it was measured before the store was made: a store emptied by hand and made again shares
+  nothing with the tiles, and the note kept the old figure (a campaign, 2026-10-25). A user's file manager showed the store about twice the size of the tiles and he
+  asked whether the images in it could be deleted, and the page added up the same files twice
+  (2026-10-22/23).
+* **The boxes**, each with its size on its right (`disk-*-size`), what was downloaded first, since
+  the boxes after speak of the images. Under each, what it is in a line when its name does not say
+  it (`disk-what`), then its points (`disk-points`), always in one order and each with its sign:
+  what does not change (✓, `pt-ok`), what costs nothing (↻, `pt-same`), what is downloaded again
+  and when (↓, `pt-dl`), the warning (⚠, `pt-warn`, in the warning's colour). Each point is a
+  sentence of its own ("Rebuilding a tile without changing anything downloads nothing"), three at
+  most in sight; the rarer cases of the images and the relief fold under *See all the cases*
+  (`disk-more`, `disk.all_cases`, closed, in the links' colour: in the points' grey it read as one more point). Each sign sits in the line, on its baseline, centred in
+  one column of 14px, the fold's triangle in the same column and its words where the points'
+  words start, the text hanging after it. In one paragraph a box said "a rebuilt tile downloads
+  its photos again", which read as always, where a tile rebuilt the same downloads nothing; the
+  owner asked for every case, said plainly, then found a sentence ending on a colon over a list of
+  cases unreadable, every case in sight too much text, and the signs off their lines
+  (2026-10-24). Each case below follows from what an artefact's key holds
+  (`graph-keys.md`): a deleted download is fetched again only for an artefact that must be made
+  again.
+  1. *Delete the downloaded images* (`disk-images`): the pieces received from the provider, those
+     of the tiles filed outside excepted (in their own box), and the map background. In sight: a
+     tile rebuilt the same takes its textures back, nothing downloaded (`disk.images_same`); other
+     colours or a tile deleted download its photos again (`disk.images_dl`). Folded: another level or
+     source needs new photos whether these went or not (`disk.images_other`); they are downloaded
+     again when a tile makes its textures again at the same level, which takes longer and the
+     provider may have changed them: other colours, for the tile or a zone (`photo_*`,
+     `photo_shapes` of `TextureDdsParams`); a tile deleted, whose data went with the leftovers; a
+     tile whose terrain changes (relief, water, coast, roads: its DSF or its masks change, its
+     textures folder `tile.textures` is made again, and each texture's key holds its pieces'
+     digest, `textures.py` `chunks_digest`), all its photos, inland too and even where every
+     texture comes out the same (`disk.images_dl_terrain`: it said by the sea and the coastline's
+     photos only, and a Swiss tile whose relief alone changed downloaded 475 MB, a campaign,
+     2026-10-25); an update that makes the textures
+     differently (the rule's or the encoder's version). The map background loads again as the Plan
+     shows it. Shown, as the next one, only when it has something to free, unticked as it hides: two boxes of
+     0 MB stood on an empty data folder (a campaign, 2026-10-24).
+  2. *Delete the downloaded relief* (`disk-relief`): read by the relief's computation alone
+     (`_dem_run`), whose result is kept: a tile rebuilt the same or at another level, with other
+     colours, zones or imagery source downloads nothing; it is downloaded again, much quicker than
+     the photos (a square is 40 MB from Copernicus against 800 MB of imagery at ZL16), when a
+     tile's relief must be worked out again: another relief in Settings (its source, the small
+     holes, one's own file: `DemParams`), in sight; a tile deleted, an update that works it out
+     differently, folded. Checked on the Shadow: a filed tile rebuilt after the relief went downloaded none
+     (2026-10-24). It was counted by nothing until a user emptied everything and found 1.4 GB of it left
+     (2026-09-18).
+  3. *Delete the textures kept here of the N tiles on another disk* (`disk-apart`, in
+     `disk-apart-choice`, `apart_bytes`, `apart_tiles`; shown only when there are some, unticked
+     as it hides): those tiles keep their own textures, which X-Plane reads; one rebuilt the same
+     has its textures made again, identical, from the downloaded images, nothing downloaded, a
+     little longer; with its downloaded photos deleted too, they are downloaded again
+     (`disk.apart_dl`: it said "if you delete these images too", but a tile filed elsewhere keeps
+     its photos in its own box, not the images', and 23 MB of 346 came back, a campaign,
+     2026-10-25; said of one tile
+     in the singular, `disk.apart_ok_one`, `disk.apart_same_one`, as the filed tiles' box does,
+     `disk.filed_ok_one`, `disk.filed_dl_one`; a tile at ZL16 with 213 textures: 9.8 s with the folder on the Mac's own disk, 42 s on
+     an external USB disk, every texture identical to the byte, 2026-10-23). With it, the filed
+     tiles' box counts what is left of theirs (`filed_apart_bytes`). A user's tiles moved to
+     another partition left 358 GB of them twice (2026-10-23); a first form deleted them without a
+     box and took them back from the tile, which a review found open to losses.
+  4. *Delete the data kept for older versions of OrthoStudio XP* (`disk-compact`, in
+     `disk-compact-choice`, `twice_bytes`; shown while the cache is not compacted and has some,
+     `compactOffered`): the relief and the mesh in Ortho4XP's form, which the versions before this
+     one read (90 GB and 272 GB of the same user's cache). Under it, *your tiles and X-Plane do not
+     change*, then in the warning's colour `disk.compact_warn`: an older version reinstalled has
+     to calculate everything again (it downloads no images again unless they were deleted: the
+     README says how to go back). Ticked, the cache is compacted (`compact`, `graph-keys.md` 7)
+     and the tiles built after keep OrthoStudio XP's form alone. A compacted cache (`compacted`)
+     shows the box ticked, for good, refusing any change (`aria-disabled`, its click prevented)
+     rather than disabled, whose tick the browser paled until it read unticked in the light theme
+     (a campaign, 2026-10-24), its first points hidden (`disk-compact-before`) and `disk.compacted_note`
+     in the same colour; what a compaction cut short left goes then whatever the choices, its size
+     shown. The tick goes with the compacted state: another data folder, not compacted, found the
+     box ticked (a review, 2026-10-24). Its size counts the second forms of the tiles filed
+     elsewhere too (`twice_filed_bytes`), which compacting alone trims, less them when their own
+     box is ticked, which deletes their data whole. How to go back (deleting the store folder) is in the README, not in the page. A first
+     form of 2026-10-23 trimmed it with no box, and a button put it back for an older version: two
+     mechanisms where one choice was enough.
+  5. *Delete what is used to rebuild the N tiles filed elsewhere* (`disk-filed`, in
+     `disk-filed-choice`; the atelier, step 5): their data only they need and the image pieces only
+     they use, all of it but their meshes, which their neighbours' masks read (a mesh goes with its
+     tile, but for a neighbour whose masks were made from it). Shown only while they have some of
+     their data here, counting only those tiles: a tile of a data folder chosen before has its
+     data there, and a filed neighbour whose square only the pieces astride a border touch has
+     nothing here, so filing one tile no longer counted five; unticked as it hides. They still
+     work in X-Plane; a rebuilt one downloads its photos again and makes its textures again, which
+     takes longer.
+
+  A count of tiles has its own words for one tile and for none (`tCount`, the keys' `_one` and
+  `_zero` forms).
+* **The button** says how much goes, following the boxes (`disk.free_size`; *Free space…* when
+  nothing would). Opening the tab draws the last figures at once and measures again; meanwhile the
+  button waits and the note says *Measuring…* (`state.diskMeasuring`): after a filing or deletes in
+  the Library, the figures were minutes old on a hard disk, the button free to act on them (a
+  review, 2026-10-24). It is disabled while a build runs (the measure's `building`, or a build this page
+  started or follows, known at once: the panel said *Nothing to free* from its last measure right
+  after a build started, 2026-10-23; a change of the builds draws the panel again), while this page
+  files tiles (the engine refuses meanwhile: a filing moves a tile out of the atelier) and when
+  there is nothing to free, and ends with a toast of what came back.
+* **The confirmation** (a modal dialog, Escape keeps everything): *Delete X?*, the list of what
+  goes in the panel's words and order with its size, then, with the older versions' box, the same
+  warning bold in the warning's colour on a line of its own (`disk.confirm_compact_warn`; within a
+  sentence it read as a detail, 2026-10-24), then *your tiles are not touched*; *Cancel* and
+  *Delete*.
+
+Its sizes under 50 kB are said in kilobytes (`fmtFreeBytes`): a confirmation showed *0 MB* for a
+few kilobytes left, as if nothing would go. A 409 `SYS_BUSY` shows as a card in the Library's
+words, which name builds and filings. A language switch writes its lines again from the last
+measure, measuring nothing (`rerenderAll` calls `renderDisk`): they stayed in the former language,
+under a title in the new one, until the next measure (2026-10-05).
 
 ## 3. Mock mode
 

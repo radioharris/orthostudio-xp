@@ -796,15 +796,36 @@ def clean(
             "their images again)",
         ),
     ] = False,
+    apart: Annotated[
+        bool,
+        typer.Option(
+            "--apart",
+            help="also delete the cache's copy of the images of the tiles on another disk or "
+            "partition, which hold their own (the tiles stay whole; building one again prepares "
+            "its images again from the downloaded pieces, or downloads them again if --images "
+            "deleted them, now or later)",
+        ),
+    ] = False,
+    compact: Annotated[
+        bool,
+        typer.Option(
+            "--compact",
+            help="keep the relief and the mesh in one form, OrthoStudio XP's, now and for the "
+            "tiles built later: a version before this one can no longer use the cache, and going "
+            "back to one is emptying the cache folder (not part of --all); refused while a build "
+            "runs",
+        ),
+    ] = False,
     everything: Annotated[
         bool,
         typer.Option(
             "--all",
             help="free all the space OrthoStudio XP can give back: every built result no tile on "
             "disk needs, even from a build that just ended, plus the downloaded image pieces, the "
-            "map cache, the elevation cells and the cache of the tiles filed outside the workshop "
+            "map cache, the elevation cells, the cache of the tiles filed outside the workshop "
             "but their meshes, which their neighbours read (a tile built again downloads them "
-            "again); refused while a build runs",
+            "again), and the cache's copy of the images of the tiles on another disk; refused "
+            "while a build runs",
         ),
     ] = False,
     store: Annotated[Path | None, _STORE_OPT] = None,
@@ -825,13 +846,16 @@ def clean(
     )
 
     store_root = store or default_store_root()
-    if (everything or filed) and store_root.is_dir():
+    if (everything or filed or apart or compact) and store_root.is_dir():
         # Without the hour of grace, a build running now could lose what it is about to use; and
         # the image pieces of a tile filed outside have none: a build of it may be fetching them.
+        # The images of a tile on another disk are what its build may be laying now. A build
+        # running may be reading the second form a compaction trims (Triangle4XP the relief's .alt).
         with Store(store_root) as st:
             busy = sorted(st.building_pids())
         if busy:
-            again = "--all" if everything else "--filed"
+            asked = {"--all": everything, "--filed": filed, "--apart": apart, "--compact": compact}
+            again = " ".join(flag for flag, on in asked.items() if on)  # none of them lost
             typer.echo(
                 f"a build is running (process {', '.join(map(str, busy))}): nothing was deleted. "
                 f"Wait for it to finish (or stop it), then run osxp clean {again} again.",
@@ -850,6 +874,8 @@ def clean(
         elevation_root=default_elevation_dir(),
         relief=relief or everything,
         filed=filed or everything,
+        apart=apart or everything,
+        compact=compact,
     )
     if json_output:
         typer.echo(json.dumps(report.to_dict(), indent=1))
@@ -860,6 +886,12 @@ def clean(
         f"{'would remove' if dry_run else 'removed'} {report.removed} artefact(s) no pack needs: "
         f"{verb} {_size(report.freed_bytes)}"
     )
+    if report.doubles_files:
+        typer.echo(
+            f"textures and DSF of the workshop's tiles held as copies of the cache's own: "
+            f"{report.doubles_files}, {verb} {_size(report.doubles_bytes)} (made one file with "
+            "the cache's, the same bytes)"
+        )
     if report.images_removed:
         but = (
             ", but for the pieces of the tiles filed outside the workshop (--filed)"
@@ -883,7 +915,49 @@ def clean(
             f"elevation cells: {_size(report.relief_bytes)}, kept (--relief empties them; a tile "
             "built later downloads them again, which is far quicker than its images)"
         )
-    filed_cache = report.filed_bytes + report.filed_images_bytes
+    if report.apart_removed:
+        typer.echo(
+            f"cache's copy of the images of the {report.apart_tiles} tile(s) on another disk: "
+            f"freed {_size(report.apart_bytes)}"
+        )
+    elif apart or everything:
+        typer.echo(
+            f"cache's copy of the images of the {report.apart_tiles} tile(s) on another disk: "
+            f"{verb} {_size(report.apart_bytes)}"
+        )
+    elif report.apart_bytes:
+        typer.echo(
+            f"cache's copy of the images of the {report.apart_tiles} tile(s) on another disk: "
+            f"{_size(report.apart_bytes)}, kept (--apart deletes it; the tiles stay whole, and "
+            "building one again prepares its images again from the downloaded pieces, or "
+            "downloads them again if those were deleted)"
+        )
+    trimming = report.compacted or compact
+    would = dry_run and not report.compacted and store_root.is_dir()
+    if compact and (report.compacted_now or would):
+        typer.echo(
+            f"{'would compact' if dry_run else 'compacted'} the cache: the relief and the mesh "
+            "are kept in one form; a version before this one can no longer use it"
+        )
+    elif compact and report.compacted:
+        typer.echo("the cache is compacted already: the relief and the mesh are kept in one form")
+    elif compact:  # no cache yet: nothing compacted, the first build makes one in both forms
+        typer.echo(f"no cache in {store_root}: nothing to compact")
+    if report.twice_files and trimming:
+        typer.echo(
+            f"relief and mesh files kept in a second form: {report.twice_files}, {verb} "
+            f"{_size(report.twice_bytes)} (the form OrthoStudio XP reads stays)"
+        )
+    elif report.twice_files:
+        typer.echo(
+            f"relief and mesh files kept in a second form, which older versions read: "
+            f"{report.twice_files}, {_size(report.twice_bytes)}, kept (--compact keeps one form: "
+            "a version before this one can no longer use the cache, and going back to one is "
+            "emptying the cache folder)"
+        )
+    # a tile filed on another disk has its images in both lines: counted once
+    filed_share = report.filed_apart_bytes if apart or everything else report.filed_bytes
+    filed_cache = filed_share + report.filed_images_bytes
     if report.filed_removed:
         typer.echo(
             f"cache of the {report.filed_tiles} tile(s) filed outside the workshop: freed "
@@ -901,7 +975,15 @@ def clean(
             "them again downloads their images again)"
         )
     if everything:
-        total = report.freed_bytes + report.images_bytes + report.relief_bytes + filed_cache
+        total = (
+            report.freed_bytes
+            + report.doubles_bytes
+            + report.apart_bytes
+            + (report.twice_bytes if trimming else 0)
+            + report.images_bytes
+            + report.relief_bytes
+            + filed_cache
+        )
         typer.echo(f"in total: {verb} {_size(total)}")
 
 

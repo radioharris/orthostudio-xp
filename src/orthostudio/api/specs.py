@@ -12,16 +12,18 @@ the saved document touching the requested tiles, are clipped into each tile's ``
 from __future__ import annotations
 
 import contextlib
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from pathlib import Path
 from typing import Any
 
 from orthostudio.api.models import AirportArea, PlanRequest
+from orthostudio.dem.raster import cell_has_land
+from orthostudio.dsf.xp12 import global_scenery_dsf
 from orthostudio.errors import OsxpError
 from orthostudio.estimate import Estimate
 from orthostudio.imagery.providers import Provider, load_registry
 from orthostudio.install import custom_scenery_dir, detect_xplane, is_xplane_dir
-from orthostudio.install.library import holds_ortho4xp_tiles
+from orthostudio.install.library import holds_ortho4xp_tiles, own_pack_dirs
 from orthostudio.model import TileRef
 from orthostudio.pipeline.build import (
     OVERLAY_SETTINGS,
@@ -54,6 +56,7 @@ __all__ = [
     "check_ortho4xp_folder",
     "check_xplane_dir",
     "make_specs",
+    "open_sea",
     "patches_dir_of",
     "plan_answer",
     "request_zones",
@@ -96,22 +99,25 @@ def check_xplane_dir(value: str | Path) -> Path:
 
 
 def check_ortho4xp_folder(value: str | Path) -> Path:
-    """A folder to import Ortho4XP tiles from: Ortho4XP's own (``Ortho4XP.py`` at its root), or one
-    its tiles were built into or moved to (``holds_ortho4xp_tiles``), such as a user's
-    ``M:\\XPTilesZL14`` on another disk, refused until 2026-09-22."""
+    """A folder to find tiles in: Ortho4XP's own (``Ortho4XP.py`` at its root), one its tiles were
+    built into or moved to (``holds_ortho4xp_tiles``), such as a user's ``M:\\XPTilesZL14`` on
+    another disk, refused until 2026-09-22, or one holding tiles OrthoStudio XP built
+    (``own_pack_dirs``), moved there by hand (2026-10-22)."""
     p = Path(str(value)).expanduser()
     with contextlib.suppress(OSError):
         p = p.resolve()
-    if not (p / "Ortho4XP.py").is_file() and not holds_ortho4xp_tiles(p):
+    if (
+        not (p / "Ortho4XP.py").is_file()
+        and not holds_ortho4xp_tiles(p)
+        and next(own_pack_dirs(p), None) is None
+    ):
         raise OsxpError(
             "SYS_WORKING_DIR_INVALID",
             context={"path": str(p)},
             message=f"{p} holds neither Ortho4XP nor any scenery pack of photo tiles.",
             remedy=(
                 "Choose the folder holding Ortho4XP.py, or the one holding your tiles, whatever "
-                "they are called. "
-                "A tile OrthoStudio XP built needs no import: it is in the Library already, where "
-                "Add to X-Plane puts it in X-Plane."
+                "they are called, or the one you moved tiles of OrthoStudio XP to."
             ),
         )
     return p
@@ -232,6 +238,25 @@ def request_tiles(req: Any, *, zones_path: Path | None = None) -> dict[str, Tile
     return dict(read_saved_zones(path).tiles)
 
 
+def open_sea(names: Iterable[str], global_scenery: Path | None) -> list[str]:
+    """The squares of ``names`` that are open sea: no land on Ortho4XP's map of the world
+    (``world_tiles.png``) and no scenery file of X-Plane's. X-Plane draws its own water there,
+    and a build had nothing to take its relief, rasters and overlays from: a user picked +33+012
+    off Libya's coast and was told to install a region X-Plane does not have (2026-10-23). A
+    flight plan leaves them out the same way (``flightplan.has_scenery``). ``[]`` without a
+    Global Scenery folder, which cannot say."""
+    if global_scenery is None:
+        return []
+    sea = []
+    for name in names:
+        tile = TileRef.parse(name)
+        if not cell_has_land(tile.lat, tile.lon) and not (
+            global_scenery_dsf(global_scenery, tile).is_file()
+        ):
+            sea.append(name)
+    return sea
+
+
 def make_specs(
     req: PlanRequest,
     *,
@@ -241,12 +266,15 @@ def make_specs(
     registry: dict[str, Provider] | None = None,
     config_module: Any = None,
     zones_path: Path | None = None,
+    left_out: list[str] | None = None,
 ) -> list[BuildSpec]:
     """The specs of a plan or a job (spec 2.2); raises ``OsxpError`` on any bad input.
 
     Every tile a zone touches gets ``config["zone_list"]``, the zones clipped to it; a tile
     no zone touches keeps exactly the config it had without zones (same keys). The data folder
     must be there (``CFG_DATA_DIR_MISSING``): nothing is downloaded while its disk is unplugged.
+    The squares of open sea (:func:`open_sea`) are left out, named in ``left_out`` when given;
+    a request of open sea alone is ``SYS_TILES_OPEN_SEA``.
     """
     require_data_root()
     tiles, area = req.area()
@@ -321,6 +349,13 @@ def make_specs(
         xplane_dir=req.xplane_dir,
         global_scenery=bool(overlay or req.xp12_rasters),
     )
+    sea = open_sea(tiles, where.get("global_scenery_dir"))
+    if sea:
+        if len(sea) == len(tiles):
+            raise OsxpError("SYS_TILES_OPEN_SEA", context={"tiles": " ".join(sea)})
+        if left_out is not None:
+            left_out.extend(sea)
+        tiles = [name for name in tiles if name not in sea]
     specs: list[BuildSpec] = []
     for name in tiles:
         tile = TileRef.parse(name)
@@ -393,8 +428,9 @@ def plan_answer(est: Estimate, specs: Sequence[BuildSpec]) -> dict[str, Any]:
     doc = est.to_dict()
     requests = sum(t.requests for t in est.tiles)
     mb = sum(t.download_mb for t in est.tiles)
-    textures = sum(t.textures_total for t in est.tiles)
-    cached = sum(t.hits for t in est.tiles)
+    # the images to prepare and those taken as they are, not every image and the steps in the store
+    textures = sum(t.textures_prepare for t in est.tiles)
+    cached = sum(t.textures_kept for t in est.tiles)
     probe = est.probe
     mbps = None if probe is None or probe.bytes == 0 else round(probe.mb_per_s * 8, 2)
     warnings: list[str] = []

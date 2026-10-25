@@ -117,7 +117,13 @@ the node's cancel token. `build_textures` commits one `texture.dds` artefact per
 the same store (its own connection) and hard-links it into `textures/`; the node's own artefact
 is that directory. Its full report (timings, network counters) is written next to the logs, one
 per group (`<workdir>/logs/textures-<tile>-<provider><zl>-<key12>.json`), never inside the
-artefact (timestamps would defeat early cutoff for the pack).
+artefact (timestamps would defeat early cutoff for the pack). The artefact's `manifest.json` lists
+each image with what the folder holds, not how it came (`build.listed_texture`): prepared here or
+taken from the store as it was, both `built`. It said `hit` for the second, and the same folder made
+again after *Free space* deleted it (the images of a tile on another disk, `graph-keys.md` 9.1)
+differed from the first by that alone: the pack's key changed, and a tile filed on another disk was
+copied whole to its disk again, or refused while X-Plane ran (a review, 2026-10-23). A list an
+earlier version wrote, with `hit`, is read as before; that folder made again differs once.
 
 The node **fails** (nothing committed) when the report is not `ok`: a texture is `incomplete`
 (`IMG_TILE_MISSING`), `failed` (`MASK_STALE`, encoder) or cancelled. A committed textures
@@ -147,6 +153,18 @@ left the row with the keys of the build before (a tile built with its airports s
 without, then sharp again), and the atelier took the tile's own folder for another build, to
 build again, which changed nothing (the owner's +44+009, 2026-10-06; so since 0.1.0, read by
 nothing before the atelier).
+
+A pack is never written from a source that has gone (`pack.write_pack`, 2026-10-23): its DSF, its
+terrain folder and its textures folder are found first, and every image the textures folder's
+`manifest.json` lists as made, before anything of the pack is touched; the images and terrain
+files are placed, the DSF last, and only then is what the new DSF no longer names removed. A source
+missing stops the pack as it is (`MESH_INPUT_MISSING`, `TEX_MISSING`), and a filed tile is then not
+put back. A textures folder gone was taken for one with no images: every image of the tile was
+removed as no longer wanted, and the build said it was done. A build that had found the folder in
+the store before *Free space* deleted it, in another process (a terminal's `osxp clean` beside the
+app, or the app's beside a terminal's build), emptied the tile that way (a review, 2026-10-23); the
+pack step re-reads nothing it was handed, so the check is in the writer. `assemble_pack` refuses a
+DSF input without a folder the same way (an `assert` before, which `python -O` drops).
 
 A tile the build installs has its folder checked earlier, as soon as its pack hits: the scheduler
 hands a node's `Done` to the build's listener before it starts what follows, and a folder that is
@@ -193,7 +211,12 @@ An existing DSF of a different content becomes `<name>.dsf.bak` (Ortho4XP conven
 the overlay DSF likewise); DDS files are **replaced without a backup** (a `.dds.bak` per re-encoded
 texture would leave gigabytes in `textures/`; stray `*.bak` in `textures/` and `terrain/` are swept)
 and DDS and `.ter` files that are no longer referenced by the new DSF are removed from the pack
-(they stay in the store). The pack directory is named by the tile only, so `declare` **refuses** two
+(they stay in the store). A file of the pack that already holds its source's bytes is not written
+again (`_place`), and with `link` it is made one file with the source (`join_same_file`: a link
+beside it, then renamed over it): kept as it was, a copy stayed beside the store's own, and a tile
+brought back from another disk, or an image made again the same after an update, held its images
+twice on the workshop's disk (11 GB of a user's 16 tiles, 2026-10-25; Free space joins those a pack
+already holds, `graph-keys.md` 9.1). The pack directory is named by the tile only, so `declare` **refuses** two
 specs of a batch that would write different content (another level, another parameter set) into the
 same `<out>/zOrthoStudio_<tile>/` (`CFG_VALUE_INVALID`: one level per output directory). On every
 system, `tile.pack` refuses (`SYS_REBUILD_XP_RUNNING`) to rewrite in its place a pack X-Plane shows
@@ -408,12 +431,19 @@ For each spec, without building anything:
 | `nodes` | `Scheduler.plan(targets)`: `hit` / `build` / `unknown` and the EWMA seconds of each node (spec `scheduler.md` 2.8) |
 | `textures.total`, `textures.exact` | when the DSF node is a hit, the `textures.json` of that artefact (exact: 100 % sea cells produce no texture), or of the DSF an earlier version of its rule made of the same params and inputs when the store holds it (`_earlier_build`: an update that changes only how the DSF is written names the same textures); when the steps before the DSF are still to make, so that no earlier DSF can match their inputs, the DSF of the tile's last build with the same params (`_last_made`, `Store.last_made`: the newest artefact of the rule made of the same params, whatever its inputs), `exact = false` and a note; else every texture covering the tile (`textures_covering`), plus those of its zones (`textures.zones`, `map-zones.md` 5) and of the airports the build makes sharper (`textures.airports`, below), `exact = false` |
 | `textures.masked` | from the same list: textures with a sea kind (DXT5, 22.4 MB) versus DXT1 (11.2 MB); unknown without the DSF: all DXT1 plus a note |
-| `requests`, `download_mb` | per texture to prepare (none when the textures step is a hit, and not those `_textures_kept` takes as they are: Build again of eighteen tiles read every container of every image, all kept, 16 s from a hard disk to download nothing, 2026-10-16), the container of the chunk store: absent = 256 requests, present = its `ERROR` entries; MB = requests x mean body size (the probe's, else 13 kB, the Bing ZL14 mean) |
+| `requests`, `download_mb` | per texture to prepare (none when the textures step is a hit, and not those `_textures_kept` takes as they are: Build again of eighteen tiles read every container of every image, all kept, 16 s from a hard disk to download nothing, 2026-10-16), the container of the chunk store: absent = 256 requests, present = its `ERROR` entries; a texture taken as it is still needs its pieces for its key, so one whose container is absent counts 256 (`ChunkStore.has` alone, no read: a user had deleted the downloaded images, 2026-10-23); MB = requests x mean body size (the probe's, else 13 kB, the Bing ZL14 mean) |
 | `probe` | `--online` only: 20 chunks of the first incomplete texture through `Fetcher` (20 in flight, one round, polite, not stored); gives the line's latency (`seconds` of the round), `kb_per_request`, and `throughput = min(2000, max(20 / seconds, max_in_flight / seconds))` req/s, and no more than the provider's `server_req_per_s` when it has one (`ProbeResult.throughput`): the fetcher keeps `max_in_flight` (128 for Bing) transfers open, so a 0.1 s latency sustains ~1 300 req/s (measured 1 300-1 500 on this line, section 6 runs) |
 | `network_s` | `requests / throughput` (probe) or `requests / 400` (no probe: a conservative sustained rate, `net-download.md` measured 1 000+) |
 | `compute_s` | the sum of the `build` and `unknown` node estimates plus the textures to prepare (`textures.total` but those kept) x the per-texture cost (`sched.cost.tile.textures/texture`, learnt by `build_tiles` as `wall / textures`, default 0.5 s) divided by `workers` |
 | `dds_gb`, `disk_free_gb`, `disk_ok` | DDS bytes of the plan, but those of the textures a build takes from the store as they are (`_textures_kept`: the textures step an earlier build ran from that earlier DSF, the same params and masks, its manifest naming each texture's DDS key, those the store still holds); when the steps before the DSF are still to make, the textures step of the tile's last build (`_last_made`, its `dsf` input that build's DSF): what the store says, the most likely, a water mask made again possibly changing a few images. `shutil.disk_usage` of the store root; `disk_ok = free > 2 x needed`, a warning for the page, never a refusal (`ui.md` 7.0.4): a disk that fills up stops a build cleanly (`SYS_DISK_FULL`). Rules 1.1.0 changed write every DSF again, and Build again of fifteen tiles counted 53.5 GB of images all in the cache and was refused for want of twice that free (2026-10-16); the map's rule 1.1.0 changed (version 12) then made every step after it unknown, and the same Build again counted 50 GB, 3.33 GB to download, and was refused: it now counts what its last builds wrote, nothing to download, and goes |
 | `other_gb` | what the tile's steps to run write besides the images: for each, the size of what it made the last time from the same params and inputs (`_other_gb`, `_earlier_build`), or from the same params when its inputs are still to make (`_last_made`), the steps whose artefacts are links (`textures`, `pack`, `install`) left out; 0.25 GB once (`OTHER_ARTEFACTS_GB`) when one has no such earlier artefact. Needed is `dds_gb + download_mb + other_gb` over the tiles. The flat 0.25 GB per tile counted 3.75 GB for the fifteen tiles above, 0.9 GB written, the new DSFs alone; it now counts 0.8 GB |
+
+What grows with the cache is read once a Plan (2026-10-23, a user's Plan of 50 to 60 tiles over a
+cache of 1 400 "really slow"): the tile's last builds (`Store.last_made` reads a rule's rows once,
+`graph-keys.md` 7), the stored meshes of the neighbours (`neighbour_meshes`, once a batch, where
+each of 8 neighbours of each tile went through every mesh of the store), and the digests of
+X-Plane's scenery files, kept while each file stays the same (`Store.file_digest`). Measured on a
+synthetic cache of 1 400 tiles, 60 asked: 11.3 s and 5.4 s before, 0.21 s and 0.02 s after.
 
 The graph is declared as a build would declare it, the OSM snapshot of a tile included: the one
 the store holds is found as phase 0 finds it, its key a pure function of its params, but read only
@@ -552,8 +582,10 @@ There is no fallback recipe: a tile is built by these rules or refused. The one 
 
 * `orthostudio.vectors@1` publishes the raster **after** `smooth_raster_over_airports`
   (`O4_Airport_Utils.py:1034`), smoothed over the tile's airports as Ortho4XP's step 1 did;
-* `orthostudio.dem@1` publishes it **before** that smoothing (`dem.md` 9.2). It is the vector
-  stage's elevation input, so it is declared for every tile.
+* `orthostudio.dem@1` publishes it **before** that smoothing (`dem.md` 9.2); a compacted cache
+  keeps the raster as `dem.npy` alone, and `--dem native` writes the `.alt` from it in the mesh's
+  scratch, the same bytes (`mesh.rule.run_mesh`). It is the vector stage's elevation input, so it
+  is declared for every tile.
 
 `--dem vectors`, the default, wires the mesh's `dem` input to the vectors artefact, which is what
 Ortho4XP meshed; `--dem native` wires the raw raster. On `+43+005` the two differ on 21 923 of
@@ -762,8 +794,13 @@ on **23 bytes** spread over several pools -- the first is `GEOD/POOL[5]`, payloa
 file offsets 591 194, 2 513 916, 6 588 280, 7 916 314, 7 916 624. (The earlier "exactly one byte"
 was `compare_dsf.first_difference`, which names the first difference, not their count.)
 
-`tile.dsf` therefore reads `Data<tile>.mesh` when the mesh artefact has one (what Ortho4XP's step
-3 does) and falls back to `mesh.npz` otherwise. Cost: 0.32 s instead of 0.006 s per DSF.
+`tile.dsf` therefore reads the mesh as the text gives it: `Data<tile>.mesh` when the mesh artefact
+has one (what Ortho4XP's step 3 does), else `mesh_file.as_written(read_mesh_npz(...))`, the npz's
+numbers formatted and parsed by the text's own writer and reader, the same bits (a compacted cache
+keeps no text, the same mesh a second time, 272 GB of a user's cache, 2026-10-23). A test puts
+altitudes on rounding boundaries and sees the DSF of the npz read as it is change, and the DSF of
+`as_written` equal the text's (`test_build_graph.py`). Cost: about the text's own, a few seconds for
+a dense mesh, instead of 0.006 s per DSF.
 Normals are unaffected: `_normals_as_ortho4xp` rounds both representations to the same value on
 all 1 207 298 components.
 

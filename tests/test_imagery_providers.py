@@ -112,6 +112,14 @@ def test_each_server_takes_the_requests_in_flight_it_was_measured_at(
     assert registry["BI"].server_req_per_s is None and registry["Arc"].server_req_per_s is None
 
 
+def test_only_eox_says_too_fast_with_a_status_of_its_own(registry: dict[str, Provider]) -> None:
+    """EOX answers 403 at once above the rate it tolerates (2026-10-25): it is the one source
+    whose 403 slows the download down and is asked again; every other one keeps it an answer."""
+    assert {code: p.pushback_status for code, p in registry.items() if p.pushback_status} == {
+        "EOX": (403,)
+    }
+
+
 def test_bing_url_and_switch(registry: dict[str, Provider]) -> None:
     bi = registry["BI"]
     assert bi.max_in_flight == 128

@@ -468,16 +468,19 @@ class Dem:
             ],
         }
 
-    def save(self, directory: Path) -> None:
-        """Write ``Data<tile>.alt``, ``dem.npy`` and ``meta.json`` into ``directory``.
+    def save(self, directory: Path, *, alt: bool = True) -> None:
+        """Write ``dem.npy``, ``meta.json`` and, with ``alt``, Ortho4XP's ``Data<tile>.alt`` into
+        ``directory``.
 
-        With :data:`NO_ALT_ENV` set, no ``Data<tile>.alt``: only ``--dem native`` reads it, the
-        tracing loads ``dem.npy`` and the mesh reads the tracing's own, flattened over the
-        airports. Live's world bake sets it: the same 54 MB grid written twice a square
-        (2026-10-21). Neither the rule's version nor its params change, so a store keeps its
-        artefacts either way."""
+        The ``.alt`` is the same raster a second time, which versions before this one read: a
+        compacted cache goes without it (``Store.compact``, 90 GB of a user's cache, 2026-10-23),
+        the mesh reading the tracing's own, smoothed over the airports, and ``--dem native``
+        writing it from ``dem.npy`` where it needs it (``mesh.rule.run_mesh``). Live's world
+        bake goes without it too, through :data:`NO_ALT_ENV` (the same 54 MB grid written twice
+        a square, 2026-10-21). Neither the rule's version nor its params change, so a store keeps
+        its artefacts either way."""
         directory.mkdir(parents=True, exist_ok=True)
-        if os.environ.get(NO_ALT_ENV) != "1":
+        if alt and os.environ.get(NO_ALT_ENV) != "1":
             self.write_alt(directory / alt_file_name(self.tile))
         np.save(directory / "dem.npy", self.alt_dem, allow_pickle=False)
         (directory / "meta.json").write_text(

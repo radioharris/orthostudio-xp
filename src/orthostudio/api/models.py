@@ -310,6 +310,14 @@ class CleanRequest(BaseModel):
     filed: bool = False
     """Also delete the cache of the tiles filed outside the atelier: what only they need, and the
     image pieces only they use (the atelier, step 5). The tiles themselves are not touched."""
+    apart: bool = False
+    """Also delete the store's copy of the images of the tiles on another disk or partition, which
+    hold their own: a build of one prepares them again from the downloaded image pieces, or
+    downloads them again when those were deleted. The tiles themselves are not touched."""
+    compact: bool = False
+    """Keep the relief and the mesh in one form, OrthoStudio XP's, now and for the tiles built
+    later (``Store.compact``): a version before this one can no longer use the cache, and going back
+    to one is emptying the cache folder."""
 
 
 class DeleteRequest(BaseModel):

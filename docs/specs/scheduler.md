@@ -195,10 +195,17 @@ terminal. The page's time left is the API's own estimate from the nodes' rows
 ### 2.7 Cost model (EWMA, persisted)
 
 `CostModel(store)` keeps one estimate per `"<rule>@<version>"`: `ewma <- 0.3 * wall +
-0.7 * ewma` (first observation replaces the default of **1.0 s**); hits are not observed.
+0.7 * ewma` (first observation replaces the default of **1.0 s**); hits are not observed. A
+version not measured yet takes the same rule's estimate at the latest version measured, and the
+default only when the rule never ran: after an update that changed the roads' rule, Build again
+announced their 8 s as 1 s, and 8 s of work for a tile that took 18 (2026-10-25).
 Estimates are read at scheduler construction from the store's `meta` table (rows
 `sched.cost.<rule>@<version>` = `{"ewma": s, "n": count}`) and written back at the end of
-`run()`; they survive processes and drive both priority (2.4) and ETA (2.5). The store
+`run()`; they survive processes and drive both priority (2.4) and ETA (2.5). A write the index
+refuses (the data folder's disk gone during the run) leaves them unsaved and the pools are
+stopped all the same: raising first, it left their threads running, which held the run and the
+store's index, and the engine read nothing of that index once the disk was back; the build said
+an internal error besides (a campaign, 2026-10-25). The store
 exposes no public meta accessor in P0, so `costs.py` uses the store's connection under its
 lock (to be replaced by `Store.meta_get/meta_set` when `orthostudio.graph` grows them).
 

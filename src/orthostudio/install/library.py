@@ -9,12 +9,15 @@ provider and ZL it holds, who built it (``osxp`` with the store keys of its arte
 ``import_ortho4xp`` scans an Ortho4XP folder the way its GUI does (``O4_File_Names.py:20-22,
 62-68``: ``Tiles/``, the custom build dir, ``yOrtho4XP_Overlays/``) and reads the tile cfg with
 ``orthostudio.tilefiles``. It is the one place OrthoStudio XP reads an Ortho4XP folder
-(decision 0010), and it only registers what it finds.
+(decision 0010), and it only registers what it finds. ``own_pack_dirs`` names the tiles
+OrthoStudio XP built that a folder holds, which ``pipeline.pack.find_tiles_receipt`` takes back
+(section 4.8).
 """
 
 from __future__ import annotations
 
 import builtins
+import contextlib
 import json
 import logging
 import os
@@ -30,11 +33,13 @@ from typing import Any, Literal
 from orthostudio.errors import OsxpError
 from orthostudio.home import osxp_home
 from orthostudio.install._model import TileRef
+from orthostudio.install.packs import is_link
 from orthostudio.install.scenery_packs import (
     IMPORTED_OVERLAY_PACK,
     IMPORTED_PACK_PREFIX,
     ORTHO_PREFIXES,
 )
+from orthostudio.model import PACK_PREFIX
 from orthostudio.tilefiles import list_textures, tile_config
 
 __all__ = [
@@ -45,6 +50,8 @@ __all__ = [
     "LibraryEntry",
     "PackKind",
     "default_library_path",
+    "own_pack_dirs",
+    "own_searched",
     "pack_tile",
     "real_pack_path",
     "tile_from_name",
@@ -91,9 +98,14 @@ CREATE TABLE IF NOT EXISTS pack_facts (
     bytes       INTEGER NOT NULL,
     photo       TEXT,
     built       TEXT,
-    measured_at REAL NOT NULL
+    measured_at REAL NOT NULL,
+    shared      INTEGER,
+    shared_with TEXT
 );
 """
+
+_FACTS_ADDED = (("shared", "INTEGER"), ("shared_with", "TEXT"))
+"""The columns of ``pack_facts`` added after 0.1.19, which a library written before lacks."""
 
 
 def default_library_path() -> Path:
@@ -165,13 +177,16 @@ class PackFacts:
     """What the Library shows of a pack's files, as read at ``measured_at`` with the pack's
     ``stamp`` (``api.app._pack_stamp``): its ``bytes`` on the disk, the colours it was built with
     (``photo``) and what it was built with (``built``, ``{facts, at}``), each ``None`` when
-    nothing could say."""
+    nothing could say; and the bytes of its files that are the files of the store at
+    ``shared_with`` too (``clean.pack_disk_bytes``), ``None`` when read by an older version."""
 
     stamp: str
     bytes: int
     photo: dict[str, float] | None
     built: dict[str, Any] | None
     measured_at: float
+    shared: int | None = None
+    shared_with: str | None = None
 
 
 class Library:
@@ -186,6 +201,7 @@ class Library:
         self._db.execute("PRAGMA journal_mode = WAL")
         self._db.execute("PRAGMA synchronous = NORMAL")
         self._db.executescript(_SCHEMA)
+        self._add_fact_columns()
         self._db.execute(
             "INSERT OR IGNORE INTO meta (k, v) VALUES ('schema_version', ?)",
             (str(SCHEMA_VERSION),),
@@ -194,6 +210,15 @@ class Library:
         if opened not in _ONE_SPELLING:
             self._one_spelling()
             _ONE_SPELLING.add(opened)
+
+    def _add_fact_columns(self) -> None:
+        """The columns of ``pack_facts`` a library written by an older version lacks. Two
+        processes opening it at once may both add one: the second finds it there."""
+        have = {row[1] for row in self._db.execute("PRAGMA table_info(pack_facts)")}
+        for name, kind in _FACTS_ADDED:
+            if name not in have:
+                with contextlib.suppress(sqlite3.OperationalError):
+                    self._db.execute(f"ALTER TABLE pack_facts ADD COLUMN {name} {kind}")
 
     def _one_spelling(self) -> None:
         """Rewrite what an older version kept under another spelling of a pack's folder
@@ -254,10 +279,10 @@ class Library:
                 "DELETE FROM pack_facts WHERE path = ?", [(f["path"],) for f in same]
             )
             self._db.execute(
-                "INSERT INTO pack_facts (path, stamp, bytes, photo, built, measured_at) "
-                "VALUES (?, ?, ?, ?, ?, ?)",
+                "INSERT INTO pack_facts (path, stamp, bytes, photo, built, measured_at, shared, "
+                "shared_with) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                 (path, latest["stamp"], latest["bytes"], latest["photo"], latest["built"],
-                 latest["measured_at"]),
+                 latest["measured_at"], latest["shared"], latest["shared_with"]),
             )  # fmt: skip
 
     def close(self) -> None:
@@ -281,7 +306,8 @@ class Library:
         and the time it was read at. The table is new in 0.1.19; earlier versions leave it
         alone."""
         rows = self._db.execute(
-            "SELECT path, stamp, bytes, photo, built, measured_at FROM pack_facts"
+            "SELECT path, stamp, bytes, photo, built, measured_at, shared, shared_with "
+            "FROM pack_facts"
         )
         return {
             row["path"]: PackFacts(
@@ -290,6 +316,8 @@ class Library:
                 photo=None if row["photo"] is None else json.loads(row["photo"]),
                 built=None if row["built"] is None else json.loads(row["built"]),
                 measured_at=float(row["measured_at"]),
+                shared=None if row["shared"] is None else int(row["shared"]),
+                shared_with=row["shared_with"],
             )
             for row in rows
         }
@@ -299,10 +327,11 @@ class Library:
             return None if value is None else json.dumps(value, sort_keys=True, default=str)
 
         self._db.execute(
-            "INSERT INTO pack_facts (path, stamp, bytes, photo, built, measured_at) "
-            "VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (path) DO UPDATE SET stamp = excluded.stamp, "
-            "bytes = excluded.bytes, photo = excluded.photo, built = excluded.built, "
-            "measured_at = excluded.measured_at",
+            "INSERT INTO pack_facts (path, stamp, bytes, photo, built, measured_at, shared, "
+            "shared_with) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (path) DO UPDATE SET "
+            "stamp = excluded.stamp, bytes = excluded.bytes, photo = excluded.photo, "
+            "built = excluded.built, measured_at = excluded.measured_at, "
+            "shared = excluded.shared, shared_with = excluded.shared_with",
             (
                 str(real_pack_path(path)),
                 facts.stamp,
@@ -310,6 +339,8 @@ class Library:
                 text(facts.photo),
                 text(facts.built),
                 float(facts.measured_at),
+                None if facts.shared is None else int(facts.shared),
+                facts.shared_with,
             ),
         )
 
@@ -515,6 +546,51 @@ def looks_like_an_ortho_pack(folder: Path) -> bool:
 def holds_ortho4xp_tiles(folder: Path) -> bool:
     """Whether an import of ``folder`` finds at least one pack of photo tiles in it."""
     return next(_ortho4xp_pack_dirs(Path(folder)), None) is not None
+
+
+OWN_TILES_DIR = "tiles"
+"""Where a data folder keeps its tiles (``home.default_tiles_root``)."""
+
+
+def own_searched(folder: Path) -> list[Path]:
+    """Where :func:`own_pack_dirs` looks: the folder, and its ``tiles`` folder, a data folder's."""
+    return [Path(folder), Path(folder) / OWN_TILES_DIR]
+
+
+def own_pack_dirs(folder: Path) -> Iterator[Path]:
+    """The folders of tiles OrthoStudio XP built in ``folder``: itself when it is one, else those
+    it holds and those of its ``tiles`` folder, deduplicated. One is known by its name,
+    ``zOrthoStudio_<tile>``, which X-Plane's link and the Library go by, and its
+    ``orthostudio.toml``. A link is not one: Custom Scenery holds X-Plane's links to them.
+
+    A user moved his tiles by hand, the Library lost them, and nothing looked for them where they
+    were, his workshop's own tiles folder included: the map stayed empty (2026-10-22)."""
+    folder = Path(folder)
+    if _own_pack(folder):
+        yield folder
+        return
+    seen: set[Path] = set()
+    for root in own_searched(folder):
+        try:
+            children = sorted(root.iterdir()) if root.is_dir() else []
+            real_root = root.resolve()
+        except OSError:  # as the import: a folder we may not read is skipped
+            continue
+        for child in children:
+            # its folder followed once, not each tile's: a link is not one of them
+            real = real_root / child.name
+            if real not in seen and _own_pack(child):
+                seen.add(real)
+                yield child
+
+
+def _own_pack(folder: Path) -> bool:
+    return (
+        folder.name.startswith(PACK_PREFIX)
+        and tile_from_name(folder.name[len(PACK_PREFIX) :]) is not None
+        and not is_link(folder)
+        and (folder / OSXP_PACK_FILE).is_file()
+    )
 
 
 def _ortho4xp_roots(folder: Path) -> tuple[list[Path], list[Path]]:

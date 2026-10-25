@@ -5,6 +5,11 @@ tiles in X-Plane, in flight. Since decision 0010 no test compares OrthoStudio XP
 Ortho4XP's any more: flights are the only check of what a pilot sees. Tick each box, note the
 tile and what you saw, and keep screenshots of anything wrong.
 
+## 0. What the release changes
+
+- [ ] **Witness tiles** (`docs/testing/witness-tiles.md`): the branch against the last release.
+      Every tile listed under *To look at* is explained before the release goes on.
+
 ## 1. Install, on each system
 
 - [ ] **Windows 10 or 11 PC with X-Plane 12** (the systems most pilots fly on).

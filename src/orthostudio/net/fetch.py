@@ -17,7 +17,8 @@ Rules and their justification: ``docs/specs/net-download.md`` (R1-R7). In short:
   answer wins, the loser is cancelled;
 - bounded attempts with a short exponential back-off for transport errors and 5xx; a 429
   obeyed with its pause does not cost an attempt but has its own bounded budget (count and
-  total pause time); 4xx other than 429 are answers, not errors;
+  total pause time), and so is a status the caller names as the server's own way of saying it
+  (``pushback_status``: EOX's 403); other 4xx are answers, not errors;
 - cooperative cancellation through an ``asyncio.Event`` (returns within a second);
 - sliding statistics delivered at most four times per second;
 - per-run overrides of the in-flight ceiling and of the attempts, so that a caller can run a
@@ -374,7 +375,12 @@ class Fetcher:
         http2: bool = True,
         max_pushbacks: int = MAX_PUSHBACKS,
         pushback_budget_s: float = PUSHBACK_BUDGET_S,
+        pushback_status: tuple[int, ...] = (),
     ) -> None:
+        """``pushback_status``: the statuses besides 429 with which the server asks to be asked
+        more slowly, taken as a 429 (spec R2): EOX answers 403 to the requests above the rate it
+        tolerates, where a 403 is otherwise an answer that is neither slowed down for nor asked
+        again (2026-10-25)."""
         if max_in_flight < 1 or start_in_flight < 1:
             raise ValueError("in-flight limits must be >= 1")
         if max_attempts < 1:
@@ -393,6 +399,7 @@ class Fetcher:
         self.req_per_s = req_per_s
         self.max_pushbacks = max_pushbacks
         self.pushback_budget_s = pushback_budget_s
+        self.pushback_status = frozenset((429, *pushback_status))
         self.http2 = http2
         self._session: AsyncSession | None = None
         self._session_loop: asyncio.AbstractEventLoop | None = None
@@ -823,7 +830,7 @@ class Fetcher:
             status = int(response.status_code)
             headers = {str(k).lower(): str(v) for k, v in response.headers.items()}
             body = response.content
-            if status == 429:
+            if status in self.pushback_status:
                 kind: _Kind = "pushback"
             elif status >= 500:
                 kind = "server"

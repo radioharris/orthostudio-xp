@@ -13,6 +13,7 @@ from orthostudio.mesh.mesh_file import (
     NPZ_FORMAT,
     MeshData,
     MeshFormatError,
+    as_written,
     read_mesh,
     read_mesh_npz,
     write_mesh_npz,
@@ -136,3 +137,69 @@ def test_empty_mesh_round_trips(tmp_path: Path) -> None:
     write_mesh_text(p, m)
     back = read_mesh(p)
     assert back.n_vertices == 0 and back.n_triangles == 0
+
+
+def _same(a: MeshData, b: MeshData) -> bool:
+    """Bit for bit, NaN and the sign of zero included."""
+    return (
+        a.vertices.tobytes() == b.vertices.tobytes()
+        and a.normals.tobytes() == b.normals.tobytes()
+        and a.tris.tobytes() == b.tris.tobytes()
+        and a.tri_attr.tobytes() == b.tri_attr.tobytes()
+        and a.extra == b.extra
+    )
+
+
+def _through_text(tmp_path: Path, mesh: MeshData) -> MeshData:
+    p = tmp_path / "Data+46+006.mesh"
+    write_mesh_text(p, mesh)
+    return read_mesh(p)
+
+
+def _mesh(vertices: np.ndarray, normals: np.ndarray, extra: dict | None = None) -> MeshData:
+    n = len(vertices)
+    tris = np.array([[i, (i + 1) % n, (i + 2) % n] for i in range(max(0, n - 2))], np.int32)
+    attr = (np.arange(len(tris)) * 37 % 256).astype(np.uint8)
+    return MeshData(vertices, normals, tris.reshape(-1, 3), attr, extra or {})
+
+
+def test_the_npz_read_as_written_is_the_text_read_back(tmp_path: Path) -> None:
+    """The DSF reads the npz as the text would have given it: the cache keeps the npz alone since
+    2026-10-23, the text being the same mesh a second time (272 GB of a user's 1.1 TB). Bit for bit
+    on a real-sized mesh over several write chunks, with Triangle4XP's full precision."""
+    rng = np.random.default_rng(7)
+    n = 140_000  # more than two chunks of the writer
+    vertices = np.column_stack(
+        [
+            5 + rng.random(n),
+            43 + rng.random(n),
+            rng.uniform(-430.0, 4810.0, n),  # the Dead Sea's shore to Mont Blanc, in metres
+        ]
+    )
+    normals = rng.uniform(-1, 1, (n, 2)).astype(np.float32)
+    mesh = _mesh(vertices, normals)
+    written = as_written(mesh)
+    assert _same(written, _through_text(tmp_path, mesh))
+    assert not np.array_equal(written.vertices, mesh.vertices)  # the text does round
+    assert _same(as_written(written), written)  # and once rounded, stays
+
+
+def test_the_npz_read_as_written_holds_at_the_edges(tmp_path: Path) -> None:
+    """Numbers on a rounding boundary of 15 or of 2 decimals, both signs of zero, the ends of the
+    globe, the deepest and highest ground, the tiniest and NaN, an empty mesh, a single point, and
+    header tokens as the npz keeps them."""
+    halves = [0.1234567890123455, -0.1234567890123455, 2.0000000000000005, 1e-16, -1e-16, 5e-16]
+    lons = [-180.0, 180.0, -0.0, 0.0, 179.99999999999997, *halves, float("nan")]
+    lats = [90.0, -90.0, 0.0, -0.0, 89.99999999999999, *halves, 45.0]
+    zs = [-11034.0, 8848.86, 0.0, -0.0, 1e-12, -1e-12, 0.000005, 4.999999999999999e-11,
+          5e-11, 1234.5678901234567, 1e-300, 3.0]  # fmt: skip
+    normal_values = [0.005, -0.005, 0.015, 0.125, -0.125, 0.995, -0.995, 1.0, -0.0, 0.0, 0.335,
+                     -0.665, float("nan")]  # fmt: skip
+    vertices = np.column_stack([lons, lats, zs])
+    normals = np.column_stack([normal_values[:12], normal_values[1:13]]).astype(np.float32)
+    mesh = _mesh(vertices, normals, {"version": "2", "dimension": "3"})
+    assert _same(as_written(mesh), _through_text(tmp_path, mesh))
+    one = _mesh(vertices[:1], normals[:1], {"version": " 2 ", "dimension": 3})
+    assert _same(as_written(one), _through_text(tmp_path, one))
+    empty = _mesh(np.zeros((0, 3)), np.zeros((0, 2), np.float32))
+    assert _same(as_written(empty), _through_text(tmp_path, empty))

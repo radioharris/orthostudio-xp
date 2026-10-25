@@ -76,7 +76,7 @@ from orthostudio.masks.rule import MasksJob, masks_job
 from orthostudio.masks.rule import MasksParams as OsxpMasksParams
 from orthostudio.masks.water import NEIGHBOUR_OFFSETS
 from orthostudio.mesh.build import mesh_file_name
-from orthostudio.mesh.mesh_file import read_mesh, read_mesh_npz
+from orthostudio.mesh.mesh_file import as_written, read_mesh, read_mesh_npz
 from orthostudio.mesh.rule import OSXP_MESH, MeshJob, mesh_job
 from orthostudio.mesh.rule import MeshParams as OsxpMeshParams
 from orthostudio.meter import counting
@@ -141,6 +141,7 @@ from orthostudio.pipeline.pack import (
 from orthostudio.pipeline.rule import TEXTURE_RAM_MB
 from orthostudio.pipeline.textures import (
     ProgressSnapshot,
+    TextureOutcome,
     TexturesReport,
     TexturesSpec,
     build_textures,
@@ -193,6 +194,7 @@ __all__ = [
     "build_tile",
     "build_tiles",
     "declare",
+    "listed_texture",
     "parse_overlay_setting",
     "photo_zone_shapes",
     "resolve_global_scenery",
@@ -723,13 +725,14 @@ def patches_ref(patches_dir: Path | None, tile: TileRef) -> ArtifactRef | None:
     )
 
 
-def source_ref(path: Path, *, label: str = "source") -> ArtifactRef:
-    """An external file as a graph input: key and digest are both its content digest.
+def source_ref(path: Path, *, label: str = "source", store: Store | None = None) -> ArtifactRef:
+    """An external file as a graph input: key and digest are both its content digest, which
+    ``store`` keeps while the file stays the same (``Store.file_digest``) when it is given.
 
     The store never holds that key, so the edge is recorded as a *source* (P0 ``Source``).
     """
     p = Path(path)
-    digest = digest_file(p)
+    digest = store.file_digest(p) if store is not None else digest_file(p)
     return ArtifactRef(digest, digest, p, label, "file", p.stat().st_size)
 
 
@@ -889,14 +892,14 @@ def _tile_dsf(ctx: RunContext) -> None:
     mesh_dir = ctx.input_path("mesh")
     mesh_text = mesh_dir / mesh_file_name(tile)
     npz = mesh_dir / "mesh.npz"
-    # The text file is authoritative when the artefact has one: it is what Ortho4XP's step 3
-    # reads, and `orthostudio.mesh` publishes an npz carrying the *full precision* doubles of
-    # Triangle4XP, which the text file truncates to 15 significant digits of z/100000. That
-    # 5e-11 m is enough to move elevations across a u16 rounding boundary: the DSF of
-    # +43+005 built from the npz has the same size but differs from Ortho4XP's on 23 bytes
-    # spread over several pools (the first is GEOD/POOL[5]).
-    # Cost of reading the text instead: 0.32 s against 0.006 s (spec 8.8).
-    mesh = read_mesh(mesh_text) if mesh_text.is_file() else read_mesh_npz(npz)
+    # The mesh as Ortho4XP's step 3 reads it, from its text: `orthostudio.mesh` publishes an npz
+    # carrying the *full precision* doubles of Triangle4XP, which the text truncates to 15
+    # decimals of z/100000. That 5e-11 m is enough to move elevations across a u16 rounding
+    # boundary: the DSF of +43+005 built from the npz as it is had the same size but differed
+    # from Ortho4XP's on 23 bytes spread over several pools (the first is GEOD/POOL[5]). A
+    # compacted cache keeps no text (the same mesh twice, 272 GB of a user's cache, 2026-10-23):
+    # the npz is read as the text would have given it, bit for bit (`as_written`).
+    mesh = read_mesh(mesh_text) if mesh_text.is_file() else as_written(read_mesh_npz(npz))
     masks_input = ctx.inputs["masks"]
     lookup = None
     distance = None
@@ -1071,6 +1074,23 @@ def photo_zone_shapes(
     return tuple(reversed(out))
 
 
+def listed_texture(o: TextureOutcome) -> dict[str, Any]:
+    """One image as the textures folder's ``manifest.json`` lists it: what the folder holds, not
+    how the image came, prepared here or taken from the store as it was (a ``hit``), both
+    ``built``. The list said which, and the same folder made again after Free space deleted it
+    (the images of a tile on another disk) differed from the first by that alone: the pack took
+    the tile for another build, and copied it all to its disk again, or was refused while X-Plane
+    ran (a review, 2026-10-23)."""
+    return {
+        "name": o.name,
+        "kinds": list(o.kinds),
+        "status": "built" if o.status == "hit" else o.status,
+        "fmt": o.fmt,
+        "key": o.key,
+        "digest": o.digest,
+    }
+
+
 def _tile_textures(ctx: RunContext) -> None:
     """Every texture the DSF references: ``build_textures`` (P1) per (provider, zl) group."""
     act = _active()
@@ -1190,17 +1210,7 @@ def _tile_textures(ctx: RunContext) -> None:
                 + "; nothing is committed.",
                 remedy=_missing_textures_remedy(codes, env.logs),
             )
-        outcomes.extend(
-            {
-                "name": o.name,
-                "kinds": list(o.kinds),
-                "status": o.status,
-                "fmt": o.fmt,
-                "key": o.key,
-                "digest": o.digest,
-            }
-            for o in report.outcomes
-        )
+        outcomes.extend(listed_texture(o) for o in report.outcomes)
         done_before += n
     manifest = {
         "format": MANIFEST_FORMAT,
@@ -1535,6 +1545,7 @@ def _dem_run(env: BuildEnv, spec: BuildSpec) -> Callable[[NodeContext], Any]:
             ranges=ranges,
             cancel=cast(Any, ctx.cancel_event),
             on_event=hear,
+            ortho4xp_form=not ctx.store.compacted(),
         )
         reading()  # a relief already on disk is read at once: the page says so from the start
         ticker = threading.Thread(target=tick, name=f"relief-{spec.tile.name}", daemon=True)
@@ -1617,11 +1628,13 @@ def _masks_run(env: BuildEnv) -> Callable[[NodeContext], Any]:
 
 
 def _mesh_run(env: BuildEnv) -> Callable[[NodeContext], Any]:
-    """Bind the mesh job so that Triangle4XP can be interrupted (review 4, finding C4), and say
-    when the mesh reached its triangle budget (:func:`mesh_budget_line`)."""
+    """Bind the mesh job so that Triangle4XP can be interrupted (review 4, finding C4) and a
+    compacted cache gets no text of the mesh, and say when the mesh reached its triangle budget
+    (:func:`mesh_budget_line`)."""
 
     def run(ctx: NodeContext) -> ArtifactRef:
-        with _active_env(env, ctx), mesh_job(MeshJob(cancel=cast(Any, ctx.cancel_event))):
+        job = MeshJob(cancel=cast(Any, ctx.cancel_event), ortho4xp_form=not ctx.store.compacted())
+        with _active_env(env, ctx), mesh_job(job):
             ref = run_p0_rule(ctx)
         line = mesh_budget_line(ref.path, float(getattr(ctx.params, "limit_tris", 0) or 0))
         if line is not None:
@@ -1751,15 +1764,32 @@ def _refuse_pack_dir_conflict(
 
 
 def stored_neighbour_mesh(store: Store, neighbour: TileRef) -> ArtifactRef | None:
-    """The most recently used ``orthostudio.mesh@1`` artefact holding ``Data<neighbour>.mesh``
-    (spec 8.5)."""
-    best: ArtifactRef | None = None
-    best_used = -1.0
-    for info in store.iter_artifacts(OSXP_MESH.name):
-        if (info.path / mesh_file_name(neighbour)).is_file() and info.last_used_at > best_used:
-            best_used = info.last_used_at
-            best = ArtifactRef(info.key, info.digest, info.path, info.rule, info.kind, info.size)
-    return best
+    """The most recently used ``orthostudio.mesh`` artefact of ``neighbour`` (spec 8.5), as
+    :func:`neighbour_meshes` finds them."""
+    return neighbour_meshes(store).get(neighbour.name)
+
+
+def neighbour_meshes(store: Store) -> dict[str, ArtifactRef]:
+    """The most recently used ``orthostudio.mesh`` artefact of each tile: made for it (its
+    recipe's tile) and holding its ``mesh.npz`` or its ``Data<tile>.mesh``, or, its recipe naming
+    no tile, holding that text, which names it. Read once for a whole batch: looked for neighbour
+    by neighbour, each went through every mesh of the store, 5.4 s for 60 tiles of a cache of
+    1 400 (a user's, 2026-10-23). The text alone named the tile before: a mesh without it, as a
+    compacted cache keeps it, was no neighbour's, and the shores along its border were drawn as if
+    it did not exist."""
+    best: dict[str, tuple[float, ArtifactRef]] = {}
+    for info, made_for in store.iter_made(OSXP_MESH.name):
+        tile = made_for.get("tile")
+        if isinstance(tile, str) and tile:
+            held = (info.path / "mesh.npz").is_file() or (info.path / f"Data{tile}.mesh").is_file()
+            names = [tile] if held else []
+        else:
+            names = [p.name[len("Data") : -len(".mesh")] for p in info.path.glob("Data*.mesh")]
+        for name in names:
+            if name not in best or info.last_used_at > best[name][0]:
+                ref = ArtifactRef(info.key, info.digest, info.path, info.rule, info.kind, info.size)
+                best[name] = (info.last_used_at, ref)
+    return {name: ref for name, (_used, ref) in best.items()}
 
 
 def _masks_ram_mb(env: BuildEnv) -> int:
@@ -2118,7 +2148,9 @@ def declare(
             if env.global_scenery is not None:
                 path = global_scenery_dsf(env.global_scenery, tile)
                 if path.is_file():
-                    ref = source_ref(path, label="global_scenery")
+                    # X-Plane's file read once while it stays the same: the Plan of 25 tiles
+                    # read 172 of them, 1.1 GB, at each estimate (2026-10-23)
+                    ref = source_ref(path, label="global_scenery", store=env.store)
             source_cache[tile] = ref
         return source_cache[tile]
 
@@ -2223,6 +2255,7 @@ def declare(
 
     out: list[TileNodes] = []
     pack_dirs: dict[tuple[str, str], tuple[BuildSpec, Node, Node]] = {}
+    stored_meshes: dict[str, ArtifactRef] | None = None
     for spec, cfg, choice, vectors, mesh, dem, coast, osm in zip(
         specs,
         configs,
@@ -2239,8 +2272,10 @@ def declare(
         for input_name, (dlat, dlon) in NEIGHBOUR_OFFSETS.items():
             nb = tile.neighbour(dlat, dlon)
             node_nb = None if nb in unavailable else mesh_by_tile.get(nb)
+            if node_nb is None and stored_meshes is None:
+                stored_meshes = neighbour_meshes(env.store)  # once for the whole batch
             neighbours[input_name] = (
-                node_nb if node_nb is not None else stored_neighbour_mesh(env.store, nb)
+                node_nb if node_nb is not None else (stored_meshes or {}).get(nb.name)
             )
         masks = reg.node(
             f"{name}/masks",

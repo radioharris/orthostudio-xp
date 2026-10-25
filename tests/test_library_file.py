@@ -202,8 +202,8 @@ async def test_a_whole_copy_a_stop_left_is_taken_and_another_folder_of_its_name_
 async def test_a_folder_no_tile_goes_into_is_refused_and_nothing_changes(
     app: Any, home: Path, xplane: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Inside X-Plane's Custom Scenery, the workshop itself, a folder inside a tile's folder,
-    X-Plane running, a disk without room: refused, and the tile is where it was."""
+    """Inside X-Plane's Custom Scenery, a folder inside a tile's folder, X-Plane running, a disk
+    without room: refused, and the tile is where it was."""
     application, _mgr = app
     pack, cs = _installed(home, xplane)
     other = _pack(tmp_path / "Filed", key="k2")
@@ -212,7 +212,6 @@ async def test_a_folder_no_tile_goes_into_is_refused_and_nothing_changes(
     async with client_for(application) as c:
         for folder, code in (
             (cs, "SYS_FOLDER_IN_CUSTOM_SCENERY"),
-            (home / "tiles", "SYS_FOLDER_IS_ATELIER"),
             (other / "textures", "SYS_FOLDER_IN_TILE"),
         ):
             r = await c.post(
@@ -424,11 +423,17 @@ async def test_a_copy_found_there_is_taken_only_when_it_reads_back_the_same_byte
 async def test_the_workshop_s_own_folders_are_refused(
     app: Any, home: Path, xplane: Path, tmp_path: Path
 ) -> None:
-    """A folder inside the workshop's tiles, or one of the data folder's caches, which Free space
-    empties whole (the tile filed there would go with them): refused, and nothing changes."""
+    """A folder inside the workshop's tiles, its roads and forests' pack among them, or one of the
+    data folder's caches, which Free space empties whole (the tile filed there would go with them):
+    refused, and nothing changes."""
     application, _mgr = app
     pack, cs = _installed(home, xplane)
-    folders = [data_root() / "tiles" / "Alps", data_root() / "chunks", data_root() / "store" / "x"]
+    folders = [
+        data_root() / "tiles" / "Alps",
+        data_root() / "tiles" / OVERLAY_PACK,
+        data_root() / "chunks",
+        data_root() / "store" / "x",
+    ]
     for folder in folders:
         folder.mkdir(parents=True, exist_ok=True)
     async with client_for(application) as c:
@@ -437,6 +442,34 @@ async def test_the_workshop_s_own_folders_are_refused(
             assert r.status_code == 422, (folder, r.text)
             assert r.json()["error"]["code"] == "SYS_FOLDER_IS_ATELIER", folder
     assert links_to(cs / NAME, pack) and all(not (f / NAME).exists() for f in folders)
+
+
+@pytest.mark.anyio
+async def test_a_tile_filed_elsewhere_comes_back_into_the_workshop(
+    app: Any, home: Path, xplane: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The workshop's Tiles folder itself takes a tile back, copied from another disk and read back
+    as any filing is: X-Plane, the Library and its roads and forests follow it, and nothing is left
+    where it was. Refused until a user moved his tile back by hand, and it worked (2026-10-25)."""
+    application, _mgr = app
+    _copied(monkeypatch)
+    pack, cs = _installed(home, xplane)
+    before = _bytes(pack)
+    alps = tmp_path / "Other disk" / "Alps"
+    alps.mkdir(parents=True)
+    async with client_for(application) as c:
+        out = await _file(c, pack, alps)
+        assert out.status_code == 200, out.text
+        back = await _file(c, alps / NAME, data_root() / "tiles")
+        rows = await _rows(c)
+    assert back.status_code == 200, back.text
+    target = data_root() / "tiles" / NAME
+    assert back.json()["to"] == str(target) and back.json()["left"] is None
+    assert _bytes(target) == before and not (alps / NAME).exists()
+    assert rows["ortho"]["path"] == str(target) and rows["ortho"]["installed"] is True
+    assert links_to(cs / NAME, target)
+    assert (data_root() / "tiles" / OVERLAY_PACK / T.dsf_relpath).is_file()
+    assert not (alps / OVERLAY_PACK / T.dsf_relpath).exists()
 
 
 @pytest.mark.anyio

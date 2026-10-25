@@ -82,6 +82,15 @@ def test_a_closed_way_is_an_interp_alt_polygon_with_a_seed(tmp_path: Path) -> No
     assert result.counts["polygons"] == 1
 
 
+def test_each_patch_is_named_as_its_reading_starts(tmp_path: Path) -> None:
+    """A large patch on a fine relief took minutes in silence (a user's EDDM, 2026-10-18): its
+    name is heard before it is read, so the step can say it."""
+    directory = patch(tmp_path, way(SQUARE_IDS, SQUARE, {"cst_alt_abs": "42"}))
+    heard: list[str] = []
+    result = build_patch_layers(directory, TILE, RampDem(), on_file=heard.append)
+    assert heard == ["test"] == list(result.names)
+
+
 def test_an_open_way_is_a_dummy_line(tmp_path: Path) -> None:
     directory = patch(tmp_path, way([-1, -2], [(5.2, 43.2), (5.3, 43.25)], {}))
     result = build_patch_layers(directory, TILE, RampDem())

@@ -24,7 +24,7 @@ import re
 import shutil
 import threading
 import tomllib
-from collections.abc import Callable, Iterable, Iterator, Mapping
+from collections.abc import Callable, Collection, Iterable, Iterator, Mapping
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -34,7 +34,7 @@ from orthostudio.dem.rule import DEM_RULE
 from orthostudio.errors import OsxpError
 from orthostudio.fsutil import atomic_link_or_copy, atomic_write_bytes, atomic_write_text
 from orthostudio.graph import ResolvedInput, Rule, RuleParams, RunContext, Store, rule
-from orthostudio.home import default_store_root, default_tiles_root
+from orthostudio.home import default_store_root, default_tiles_root, disk_absent
 from orthostudio.install import (
     Library,
     LibraryEntry,
@@ -45,7 +45,7 @@ from orthostudio.install import (
     uninstall_pack,
 )
 from orthostudio.install import packs as install_packs
-from orthostudio.install.library import pack_tile
+from orthostudio.install.library import own_pack_dirs, pack_tile, real_pack_path
 from orthostudio.install.packs import SCENERY_PACKS_INI
 from orthostudio.install.scenery_packs import (
     IMPORTED_PACK_PREFIX,
@@ -74,9 +74,11 @@ __all__ = [
     "assemble_pack",
     "delete_receipt",
     "find_again_receipt",
+    "find_tiles_receipt",
     "install_is_intact",
     "install_receipt",
     "is_installed",
+    "join_same_file",
     "lays_the_same",
     "leave_overlay",
     "library_pack",
@@ -110,6 +112,7 @@ RECEIPT_FORMAT = "osxp-install-1"
 UNINSTALL_FORMAT = "osxp-uninstall-1"
 DELETE_FORMAT = "osxp-delete-1"
 FIND_FORMAT = "osxp-find-1"
+FIND_TILES_FORMAT = "osxp-find-tiles-1"
 PARKED_OVERLAY = "osxp-overlay.dsf.uninstalled"
 """Where :func:`uninstall_receipt` parks the tile's DSF of the shared overlay pack: inside the
 tile pack, which X-Plane no longer reads, and where :func:`install_receipt` finds it again."""
@@ -288,8 +291,9 @@ def overlay_dsf_path(out_root: Path, tile: TileRef) -> Path:
 def _place(src: Path, dest: Path, *, link: bool, backup: bool = False) -> bool:
     """Put ``src`` at ``dest`` (hard link or copy).
 
-    Returns True when the destination changed. An existing file that is the same inode or the
-    same bytes is left alone; a different one is replaced, after a ``<name>.bak`` copy when
+    Returns True when the destination changed. An existing file that is the same inode is left
+    alone, one of the same bytes made the same file with ``link`` (:func:`join_same_file`), else
+    left as it is; a different one is replaced, after a ``<name>.bak`` copy when
     ``backup`` is set (the DSF only, as Ortho4XP did: a ``.dds.bak`` per re-encoded texture would
     leave gigabytes behind).
     """
@@ -300,6 +304,8 @@ def _place(src: Path, dest: Path, *, link: bool, backup: bool = False) -> bool:
         except OSError:
             pass
         if src.stat().st_size == dest.stat().st_size and _same_bytes(src, dest):
+            if link:
+                join_same_file(src, dest)
             return False
         if backup:
             os.replace(dest, dest.with_name(dest.name + ".bak"))
@@ -314,6 +320,29 @@ def _sweep_bak(directory: Path) -> int:
         stale.unlink()
         n += 1
     return n
+
+
+def join_same_file(src: Path, dest: Path) -> bool:
+    """Make ``dest``, which holds the bytes of ``src``, one file with it: a link to ``src`` made
+    beside ``dest``, then renamed over it, so that ``dest`` is always there. ``False``, and ``dest``
+    left as it is, the same bytes, when the two are on two disks or the link cannot be made (a
+    file another program holds, on Windows). A pack kept a file of the same bytes as it was, a copy
+    beside the store's own: a tile brought back from another disk, or an image made again the
+    same after an update, held its images twice on the workshop's disk, 11 GB of a user's 16 tiles
+    (2026-10-25)."""
+    tmp = dest.with_name(dest.name + ".osxp-join")
+    try:
+        if os.stat(src).st_dev != os.stat(dest).st_dev:
+            return False
+        with contextlib.suppress(FileNotFoundError):
+            tmp.unlink()
+        os.link(src, tmp)
+        os.replace(tmp, dest)
+    except OSError:
+        with contextlib.suppress(OSError):
+            tmp.unlink()
+        return False
+    return True
 
 
 def _same_bytes(a: Path, b: Path, chunk: int = 1 << 20) -> bool:
@@ -344,6 +373,26 @@ class PackFiles:
     """``tile_settings.cfg`` when a tile cfg text was given."""
 
 
+def _unlisted(textures_dir: Path, present: set[str]) -> list[str]:
+    """The images the textures folder's ``manifest.json`` lists as made (built, or taken from the
+    store) that its ``textures/`` does not hold; none when it has no list (an earlier form)."""
+    try:
+        doc = json.loads((textures_dir / "manifest.json").read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return []
+    except (OSError, ValueError) as exc:
+        raise OsxpError(
+            "MESH_INPUT_MISSING",
+            context={"tile": "", "path": str(textures_dir), "reason": str(exc)},
+        ) from exc
+    names = [
+        f"{t['name']}.dds"
+        for t in doc.get("textures", [])
+        if isinstance(t, dict) and t.get("name") and t.get("status") in ("built", "hit")
+    ]
+    return [n for n in names if n not in present]
+
+
 def write_pack(
     out_root: Path,
     tile: TileRef,
@@ -365,61 +414,93 @@ def write_pack(
     backup). ``tile_cfg`` (the text of the 44 tile variables) is written as
     ``tile_settings.cfg``. ``decal``, when given, is written in the terrain files of the land,
     and of the sea with ``decal_on_sea`` (``with_decal``); the DSF artefact's have none.
+
+    Nothing of the pack is touched before every source is found, and nothing is removed before
+    every file is in place: a source folder missing, or an image its textures folder lists
+    missing from it, stops the pack as it is (``MESH_INPUT_MISSING``, ``TEX_MISSING``). A
+    textures folder gone was taken for one with no images, and every image of the tile was
+    removed as no longer wanted: a build that had found the folder in the store before Free
+    space deleted it, in another process, emptied the tile and said it was done (a review,
+    2026-10-23). The DSF goes in last, once its textures and terrain files are there.
     """
     out_root = Path(out_root)
     pack_dir = out_root / pack_dir_name(tile)
     changed = removed = 0
     dsf_src = Path(dsf_dir) / f"{tile.name}.dsf"
-    if not dsf_src.is_file():
+    terrain_src = Path(dsf_dir) / "terrain"
+    textures_src = None if textures_dir is None else Path(textures_dir) / "textures"
+    for need in (dsf_src, terrain_src, textures_src):
+        if need is None or not need.exists():
+            raise OsxpError(
+                "MESH_INPUT_MISSING",
+                context={
+                    "tile": tile.name,
+                    "path": str(need if need is not None else "textures"),
+                    "reason": "a source of the pack is missing",
+                },
+            )
+    assert textures_src is not None
+    try:
+        terrain_files = sorted(f for f in terrain_src.iterdir() if f.suffix == ".ter")
+        texture_files = sorted(
+            f for f in textures_src.iterdir() if f.suffix.lower() in (".dds", ".png")
+        )
+    except OSError as exc:
         raise OsxpError(
             "MESH_INPUT_MISSING",
-            context={
-                "tile": tile.name,
-                "path": str(dsf_src),
-                "reason": "DSF artefact has no DSF file",
-            },
-        )
+            context={"tile": tile.name, "path": str(dsf_dir), "reason": str(exc)},
+        ) from exc
+    missing = _unlisted(Path(textures_dir or ""), {f.name for f in texture_files})
+    if missing:
+        raise OsxpError("TEX_MISSING", context={"tile": tile.name, "count": len(missing)})
+
+    textures_dest = pack_dir / "textures"
+    textures_dest.mkdir(parents=True, exist_ok=True)
+    wanted_tex = {f.name for f in texture_files}
+    n_textures = sum(1 for f in texture_files if f.suffix.lower() == ".dds")
+    for src in texture_files:
+        try:
+            changed += _place(src, textures_dest / src.name, link=link)
+        except PermissionError as exc:
+            raise _pack_locked(textures_dest / src.name, exc) from exc
+        except FileNotFoundError as exc:  # gone since it was listed: the pack stops as it is
+            raise OsxpError("TEX_MISSING", context={"tile": tile.name, "count": 1}) from exc
+
+    terrain_dest = pack_dir / "terrain"
+    terrain_dest.mkdir(parents=True, exist_ok=True)
+    wanted_ter = {f.name for f in terrain_files}
+    for src in terrain_files:
+        dest = terrain_dest / src.name
+        wanted = decal if takes_decal(ter_kind(src.name), on_sea=decal_on_sea) else ""
+        try:
+            text = with_decal(src.read_bytes().decode("ascii"), wanted).encode("ascii")
+        except FileNotFoundError as exc:
+            raise OsxpError(
+                "MESH_INPUT_MISSING",
+                context={"tile": tile.name, "path": str(src), "reason": "gone while read"},
+            ) from exc
+        if not dest.is_file() or dest.read_bytes() != text:
+            atomic_write_bytes(dest, text)
+            changed += 1
+
     dsf_dest = pack_dir / tile.dsf_relpath
     dsf_dest.parent.mkdir(parents=True, exist_ok=True)
     try:
         changed += _place(dsf_src, dsf_dest, link=link, backup=True)
     except PermissionError as exc:
         raise _pack_locked(dsf_dest, exc) from exc
+    except FileNotFoundError as exc:
+        raise OsxpError(
+            "MESH_INPUT_MISSING",
+            context={"tile": tile.name, "path": str(dsf_src), "reason": "gone while read"},
+        ) from exc
 
-    terrain_src = Path(dsf_dir) / "terrain"
-    terrain_dest = pack_dir / "terrain"
-    terrain_dest.mkdir(parents=True, exist_ok=True)
-    wanted_ter: set[str] = set()
-    if terrain_src.is_dir():
-        for src in sorted(terrain_src.glob("*.ter")):
-            wanted_ter.add(src.name)
-            dest = terrain_dest / src.name
-            wanted = decal if takes_decal(ter_kind(src.name), on_sea=decal_on_sea) else ""
-            text = with_decal(src.read_bytes().decode("ascii"), wanted).encode("ascii")
-            if not dest.is_file() or dest.read_bytes() != text:
-                atomic_write_bytes(dest, text)
-                changed += 1
+    # every wanted file in place: only now what the new DSF no longer names goes
     for stale in terrain_dest.glob("*.ter"):
         if stale.name not in wanted_ter:
             stale.unlink()
             removed += 1
     removed += _sweep_bak(terrain_dest)
-
-    textures_dest = pack_dir / "textures"
-    textures_dest.mkdir(parents=True, exist_ok=True)
-    wanted_tex: set[str] = set()
-    n_textures = 0
-    if textures_dir is not None and (Path(textures_dir) / "textures").is_dir():
-        for src in sorted((Path(textures_dir) / "textures").iterdir()):
-            if src.suffix.lower() not in (".dds", ".png"):
-                continue
-            wanted_tex.add(src.name)
-            if src.suffix.lower() == ".dds":
-                n_textures += 1
-            try:
-                changed += _place(src, textures_dest / src.name, link=link)
-            except PermissionError as exc:
-                raise _pack_locked(textures_dest / src.name, exc) from exc
     for stale in textures_dest.iterdir():
         if stale.suffix.lower() in (".dds", ".png") and stale.name not in wanted_tex:
             stale.unlink()
@@ -645,8 +726,13 @@ def assemble_pack(
     decal_on_sea: bool = False,
 ) -> tuple[PackManifest, PackFiles]:
     """Write the pack from the three inputs and build its manifest (upstream keys from the
-    store's provenance edges of the DSF artefact)."""
-    assert dsf.path is not None and dsf.key is not None
+    store's provenance edges of the DSF artefact). A DSF missing stops it, as a textures folder
+    missing does in :func:`write_pack`, before anything is written."""
+    if dsf.path is None or dsf.key is None:
+        raise OsxpError(
+            "MESH_INPUT_MISSING",
+            context={"tile": tile.name, "path": "dsf", "reason": "the pack has no DSF"},
+        )
     files = write_pack(
         out_root,
         tile,
@@ -1568,10 +1654,13 @@ def find_again_receipt(
     *,
     custom_sceneries: Iterable[Path],
     library_path: Path | None = None,
+    xplane_checked: bool = False,
 ) -> dict[str, Any]:
     """Find again a tile OrthoStudio XP built whose folder was moved by hand: ``entry`` is its
     Library row, whose folder is gone, and ``chosen`` the folder the user shows, the tile's own or
-    the one holding it (the atelier, step 2, 2026-10-05).
+    the one holding it (the atelier, step 2, 2026-10-05). ``xplane_checked``: the caller has just
+    seen X-Plane closed, for many tiles at once (:func:`find_tiles_receipt`), where listing the
+    processes for each took longer than the rest.
 
     Nothing of the tile moves. Its folder must keep its name and hold that very build, the
     manifest's tile and keys being the row's, with every file the manifest lists: else
@@ -1596,7 +1685,7 @@ def find_again_receipt(
         raise OsxpError("SYS_TILE_OTHER_BUILD", context=context)
     if not pack_is_intact(pack, manifest, with_overlay=False):
         raise OsxpError("SYS_TILE_INCOMPLETE", context=context)
-    if install_packs.xplane_running():
+    if not xplane_checked and install_packs.xplane_running():
         raise OsxpError(
             "XP_RUNNING",
             message="X-Plane is running, and its links never change while it runs: nothing was "
@@ -1639,6 +1728,127 @@ def find_again_receipt(
         # a tile whose roads, forests and buildings are nowhere: built again, it has them back
         "overlay_lost": bool(manifest.files.get("overlay")) and _own_overlay(pack, tile) is None,
     }
+
+
+def find_tiles_receipt(
+    folder: Path,
+    *,
+    custom_sceneries: Iterable[Path],
+    library_path: Path | None = None,
+    leave: Collection[str] = (),
+) -> dict[str, Any]:
+    """The tiles OrthoStudio XP built in ``folder`` (``library.own_pack_dirs``) that the Library
+    does not list there, each taken back (``install.md`` 4.8). A user moved his tiles by hand,
+    found 200 of 1,300 again one by one, deleted the rest from the list, and his map stayed
+    empty: nothing looked for them in his workshop's own tiles folder, where they were
+    (2026-10-22). The page runs it on the workshop's tiles folder whenever the Library is read
+    afresh, and on the folder the user shows.
+
+    A folder that is not the whole tile its manifest lists (``pack_is_intact``, its roads aside)
+    is left (``incomplete``), and so is one inside an X-Plane's Custom Scenery (``in_xplane``), as
+    *Find again…* refuses both. Then, for each tile:
+
+    * a tile listed in a folder that is gone, the same build: found again there,
+      :func:`find_again_receipt` for each, X-Plane and its roads following (``found``); with
+      X-Plane running, nothing changes (``waiting``);
+    * a tile listed in another folder that is there, or on a disk not connected: left, the one
+      listed stays (``duplicates``), as X-Plane shows one folder of that name;
+    * else listed where it is, as the build that made it listed it, with its roads when they are
+      beside it (``added``). Its link in X-Plane, if it has one, is the Library's ``installed``;
+      without one, *Add* puts it in X-Plane.
+
+    ``no_roads`` names the tiles taken back whose roads and forests are nowhere (deleted with
+    the tile's old row): built again, they have them back. ``leave`` names tiles a build is
+    working on, left to it. A failure of one tile (``failed``) does not stop the others.
+    """
+    folder = Path(folder)
+    sceneries = [Path(cs) for cs in custom_sceneries]
+    out: dict[str, Any] = {
+        "format": FIND_TILES_FORMAT,
+        "folder": str(folder),
+        "added": [],
+        "found": [],
+        "listed": 0,
+        "duplicates": [],
+        "in_xplane": [],
+        "incomplete": [],
+        "waiting": [],
+        "no_roads": [],
+        "failed": [],
+    }
+    running: bool | None = None
+    folders: dict[Path, Path] = {}
+    with Library(library_path) as lib:
+        # the list read once: the workshop's look runs at each opening of the Library, over every
+        # tile of the workshop, nearly all of them listed
+        listed = {r.path for r in lib.list(kind="ortho")}
+        for pack in own_pack_dirs(folder):
+            tile = pack_tile(pack.name)
+            if tile is None or tile.name in leave:
+                continue
+            if real_pack_path(pack, folders=folders) in listed:
+                out["listed"] += 1
+                continue
+            rows = [r for r in lib.list(tile=tile, kind="ortho") if r.path.name == pack.name]
+            try:
+                manifest = read_manifest(pack)
+            except (OSError, ValueError, KeyError, TypeError, tomllib.TOMLDecodeError):
+                out["incomplete"].append(tile.name)
+                continue
+            if manifest.tile != tile.name:  # renamed by hand: not the tile its name says
+                continue
+            if pack.parent.name == "Custom Scenery" and is_xplane_dir(pack.parent.parent):
+                out["in_xplane"].append(tile.name)
+                continue
+            if not pack_is_intact(pack, manifest, with_overlay=False):
+                out["incomplete"].append(tile.name)
+                continue
+            moved = next(
+                (
+                    r
+                    for r in rows
+                    if r.built_by == "osxp"
+                    and not r.path.is_dir()
+                    and (r.keys is None or r.keys == manifest.keys)
+                ),
+                None,
+            )
+            if moved is not None:
+                if running is None:
+                    running = install_packs.xplane_running()
+                if running:
+                    out["waiting"].append(tile.name)
+                    continue
+                try:
+                    receipt = find_again_receipt(
+                        moved,
+                        pack,
+                        custom_sceneries=sceneries,
+                        library_path=library_path,
+                        xplane_checked=True,
+                    )
+                except (OsxpError, OSError) as exc:
+                    out["failed"].append({"tile": tile.name, "error": str(exc)})
+                    continue
+                out["found"].append(tile.name)
+                if receipt["overlay_lost"]:
+                    out["no_roads"].append(tile.name)
+                continue
+            elsewhere = next((r for r in rows if r.path.is_dir() or disk_absent(r.path)), None)
+            if elsewhere is not None:
+                out["duplicates"].append({"tile": tile.name, "listed": str(elsewhere.path)})
+                continue
+            overlays = pack.parent / OVERLAY_PACK
+            with _INSTALL_LOCK:  # a Delete takes the folder, then the row, under the same lock
+                if not (pack / MANIFEST_NAME).is_file():
+                    continue
+                lib.register(tile, manifest.provider, manifest.zl, pack, "osxp", manifest.keys)
+                if (overlays / tile.dsf_relpath).is_file():
+                    lib.register(tile, "", 0, overlays, "osxp", None, kind="overlay")
+            out["added"].append(tile.name)
+            if manifest.files.get("overlay") and _own_overlay(pack, tile) is None:
+                out["no_roads"].append(tile.name)
+    return out
 
 
 def _let_go_of_overlays_out_of_reach(custom_scenery: Path, overlay_pack: Path) -> None:

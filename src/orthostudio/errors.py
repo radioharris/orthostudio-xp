@@ -44,6 +44,7 @@ __all__ = [
     "disk_trouble",
     "render_json",
     "spec_for",
+    "store_trouble",
     "wrap",
 ]
 
@@ -443,7 +444,8 @@ _SPECS: tuple[ErrorSpec, ...] = (
         _D,
         _C,
         "{count} nodata pixels of cell {cell} were set to 0 m.",
-        "Use a DEM without voids for this cell or set fill_nodata to nearest.",
+        "If this is not sea: from 10,000 voids in a cell no setting fills them, so use a DEM "
+        "without voids for this cell; with fewer, set fill_nodata to nearest.",
     ),
     _spec(
         "DEM_CELL_ASSUMED_OCEAN",
@@ -850,6 +852,14 @@ _SPECS: tuple[ErrorSpec, ...] = (
         "Choose a source that covers these tiles: Bing Maps and Esri cover the whole world.",
     ),
     _spec(
+        "SYS_TILES_OPEN_SEA",
+        _I,
+        _C,
+        "{tiles}: open sea. X-Plane has no scenery there and draws its own water: OrthoStudio XP "
+        "leaves it out.",
+        "Nothing to do; to build something, choose squares with land.",
+    ),
+    _spec(
         "CFG_DATA_DIR_INVALID",
         _B,
         _S,
@@ -1017,6 +1027,23 @@ _SPECS: tuple[ErrorSpec, ...] = (
         "Reinstall OrthoStudio XP; the bundle is incomplete.",
     ),
     _spec(
+        "SYS_STORE_NEWER",
+        _B,
+        _S,
+        "The cache in {path} was made by a newer version of OrthoStudio XP (its format {found}; "
+        "this version reads up to {expected}).",
+        "Use that newer version again, or empty that folder to start afresh: the tiles are not "
+        "in it, and a build downloads and computes again what it needs.",
+    ),
+    _spec(
+        "SYS_STORE_UNREADABLE",
+        _B,
+        _S,
+        "The data in {path} is damaged: OrthoStudio XP cannot read it.",
+        "Empty that folder to start afresh: the tiles are not in it, and a build downloads and "
+        "computes again what it needs.",
+    ),
+    _spec(
         "SYS_INTERNAL_ERROR",
         _B,
         _S,
@@ -1102,8 +1129,9 @@ _SPECS: tuple[ErrorSpec, ...] = (
         "SYS_FOLDER_IS_ATELIER",
         _B,
         _S,
-        "{folder} is the workshop, or one of its folders: tiles are filed out of it, not into it.",
-        "Nothing was changed. Choose another folder.",
+        "{folder} is inside the workshop: a tile filed there could be erased by a build or by "
+        "Free space.",
+        "Nothing was changed. Choose another folder, or the workshop's Tiles folder itself.",
     ),
     _spec(
         "SYS_TILE_COPY_DIFFERS",
@@ -1415,11 +1443,33 @@ def disk_trouble(exc: BaseException) -> OsxpError | None:
     return None
 
 
+def store_trouble(exc: BaseException) -> OsxpError | None:
+    """A cache a newer version made, which this one refuses to open (``graph.store``
+    ``COMPACT_VERSION``, the highest it reads), or one whose index cannot be read at all (no
+    database any more, or a damaged one): said as such, where it was an internal error to report.
+    Recognised by name, as the sqlite errors of :func:`disk_trouble`: this module imports nothing
+    of the graph."""
+    if type(exc).__name__ == "UnreadableIndexError":
+        return OsxpError(
+            "SYS_STORE_UNREADABLE",
+            context={"path": getattr(exc, "root", ""), "detail": getattr(exc, "detail", "")},
+        )
+    if type(exc).__name__ != "IncompatibleIndexError":
+        return None
+    found, expected = getattr(exc, "found", 0), getattr(exc, "expected", 0)
+    if not found > expected:
+        return None
+    return OsxpError(
+        "SYS_STORE_NEWER",
+        context={"path": getattr(exc, "root", ""), "found": found, "expected": expected},
+    )
+
+
 def wrap(exc: BaseException) -> OsxpError:
     """Return ``exc`` if it is an ``OsxpError``, else wrap it as ``SYS_INTERNAL_ERROR``."""
     if isinstance(exc, OsxpError):
         return exc
-    known = disk_trouble(exc)
+    known = disk_trouble(exc) or store_trouble(exc)
     if known is not None:
         known.__cause__ = exc
         return known

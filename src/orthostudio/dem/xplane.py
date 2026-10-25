@@ -91,7 +91,8 @@ class RasterInfo(NamedTuple):
 def dem_rasters(demn: bytes, dems: bytes) -> dict[str, tuple[RasterInfo, bytes]]:
     """Name -> ``(info, data)`` of every raster of a DSF, from its DEMN and DEMS payloads.
 
-    Raises :class:`DsfFormatError` when the atoms do not pair up with the names.
+    Raises :class:`DsfFormatError` when the atoms do not pair up with the names; a name past
+    the last raster has none.
     """
     names = [n.decode("ascii", "replace") for n in demn.split(b"\0") if n]
     infos: list[RasterInfo] = []
@@ -112,11 +113,14 @@ def dem_rasters(demn: bytes, dems: bytes) -> dict[str, tuple[RasterInfo, bytes]]
         elif atom_id == b"DEMD":
             datas.append(body)
         pos += size
-    if not len(names) == len(infos) == len(datas):
+    # a name may come without its raster, at the end: a user's +32+012 named three, the third
+    # "bathymetry", for two, which X-Plane draws (issue 17, 2026-10-23); the rasters keep the
+    # order of the names, so each one still has its own
+    if len(infos) != len(datas) or len(names) < len(infos):
         raise DsfFormatError(
             f"{len(names)} raster names, {len(infos)} DEMI and {len(datas)} DEMD atoms"
         )
-    return {name: (info, data) for name, info, data in zip(names, infos, datas, strict=True)}
+    return {name: (info, data) for name, info, data in zip(names, infos, datas, strict=False)}
 
 
 def elevation_posts(data: bytes, *, tile: TileRef) -> F32:

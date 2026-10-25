@@ -375,6 +375,15 @@ Per-process `Executor(Store(store_root))` in every worker: key from the input di
 the same key before submitting, so hits never reach the pool. `Rule.version` is bumped when
 `assemble`, `imprint`, `mip_chain` or `encode_dds` change their output for equal inputs.
 
+**The images of a tile on another disk, deleted from the store on request (2026-10-23).** *Free
+space*'s choice `apart` deletes the store's copy of the images of the tiles on another disk or
+partition, which hold their own (`graph-keys.md` 9.1). Nothing is taken back from the tile: their
+textures are prepared again as any other, from the image pieces, which that choice keeps in the
+cache. The encoder gives the same bytes from the same pieces: a ZL16 tile of 213 textures, made
+again after its DDS were deleted from the store, 9.8 s on the reference Mac, nothing downloaded,
+every DDS identical to the byte, so that the pack step was a hit and the tile was not touched
+(2026-10-23).
+
 ## 7. Worker (one texture, in one process, nothing large crosses a pickle)
 
 `assemble_texture_detailed(container, fallback)` (parents from the blob) → mask crop

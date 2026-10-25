@@ -69,7 +69,9 @@ terms_url = "..."
 `Provider` and `PlaceholderRule` are frozen pydantic models (`extra="forbid"`: a typo in a
 TOML key is an error at load time). Fields: `code`, `grid_type` (only `webmercator`),
 `url_template`, `max_zl`, `tile_size` (256), `headers` (extra request headers; the fetcher's
-own defaults apply otherwise), `max_in_flight`, `server_req_per_s`, `placeholder`, `extent` (name),
+own defaults apply otherwise), `max_in_flight`, `server_req_per_s`, `pushback_status` (the statuses
+besides 429 with which the server says it is asked too fast, taken as a 429 by the fetcher,
+`net-download.md` R2: EOX's 403 alone), `placeholder`, `extent` (name),
 `extent_bounds` (**addition**: `(lon_min, lat_min, lon_max, lat_max)` copied from the
 `mask_bounds` of the Ortho4XP `.ext` file so that the coverage test needs no extent files),
 `attribution`, `terms_url`, and three **additions** of 2026-09-14: `name` (a short name for the
@@ -166,7 +168,12 @@ which kept up with the line, and those two are not paced.
 without an error, and a user's builds kept failing on it from an address where the server stops
 answering around 90 (2026-09-24). A throughput one machine obtained is not a ceiling a server
 tolerates from everyone, which is the whole reason these are approached and not held. None of the
-others has been checked against a second address.
+others has been checked against a second address. EOX now says no another way: a **403 at once**
+to the requests above what it takes (2026-10-25: 956 of 2 048 at 67 requests a second, then
+36 659 of 37 888 at 80 on the retry, the same images coming back one by one a moment later).
+Taken as an answer, the 403 neither lowered the rate, which climbed on, nor was asked again, and
+the build failed with its retry; `pushback_status = [403]` makes it a 429: the download pauses,
+halves and asks again.
 
 The time left of a build
 and the Plan's estimate never count faster downloads (`api.md` 5.6, `estimate.ProbeResult`):

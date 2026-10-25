@@ -29,6 +29,25 @@ Keeping the store's names of those files kept nothing whole: its DSF and texture
 other files too, and a texture no longer listed by a kept folder was collected by the next clean
 as data no tile needs (a review, 2026-10-06).
 
+A tile on another disk or partition than the store holds its images as files of its own, which
+X-Plane reads, and the store keeps them a second time. They go only on request (``apart``): the
+store's copy of their images, and their textures folders. Nothing is kept of where the tile's
+copies are, nor taken back from them: a tile belongs to its user, who may move it, retouch it,
+unplug its disk or delete it. A build of such a tile prepares its images again from the downloaded
+image pieces, the same bytes; with the pieces deleted too (the ``images`` choice, then or later), it
+downloads them again, which the provider may have changed. A user's tiles moved to another partition
+left 358 GB of them twice, on the disk the move was to free (2026-10-23).
+
+A tile of the atelier on the store's disk holding a texture or its DSF as a copy of the store's own
+(brought back from another disk, by hand or filed back) has it made one file with the store's,
+whatever the choices, once the two are read the same (:func:`_doubles`): the one change a clean
+makes to a tile, which keeps the same bytes under the same name.
+
+The relief and the mesh of each tile are kept in two forms, OrthoStudio XP's and Ortho4XP's, which
+versions before this one read: 90 GB and 272 GB of the same user's 1.1 TB cache. With ``compact``
+the cache keeps the first alone, from then on (``Store.compact``): a version before this one turns
+it away at its opening, and going back to one is emptying the cache folder.
+
 Sizes are what the disk gets back, not what the index adds up. A DDS is hard-linked into its
 ``texture.dds`` artefact, into a ``tile.textures`` artefact and into the pack: its bytes are
 freed only when the last of those links goes, and :func:`disk_bytes` counts them once (the page's
@@ -39,23 +58,29 @@ program holds, on Windows) stays, the rest goes, and only what went is counted a
 from __future__ import annotations
 
 import contextlib
+import filecmp
 import json
 import logging
 import os
 import re
 import stat
 import time
+import zipfile
 from collections import Counter
 from collections.abc import Collection, Iterable, Iterator
 from dataclasses import asdict, dataclass, field
 from math import ceil, floor
 from pathlib import Path
+from typing import IO, Any
+
+import numpy as np
 
 from orthostudio.graph import ArtifactInfo, Store
 from orthostudio.imagery.grid import TextureId, texture_bbox
 from orthostudio.install import Library
 from orthostudio.model import TileRef
-from orthostudio.pipeline.pack import MANIFEST_NAME, read_manifest
+from orthostudio.pipeline.filing import same_disk
+from orthostudio.pipeline.pack import MANIFEST_NAME, join_same_file, read_manifest
 
 __all__ = [
     "DELETE_GRACE_S",
@@ -70,6 +95,7 @@ __all__ = [
     "keep_keys",
     "needed_keys",
     "pack_dirs",
+    "pack_disk_bytes",
 ]
 
 log = logging.getLogger("orthostudio.clean")
@@ -125,6 +151,10 @@ class CleanReport:
     fetching it again costs far less than the imagery, so it is offered as its own choice. It was
     invisible until a user emptied everything and found 1.4 GB left (2026-09-18)."""
     relief_removed: bool = False
+    atelier_tiles: int = 0
+    """The tiles of the atelier (its ``tiles`` folder, links followed), whose data the page's first
+    line keeps: those filed outside have a box of their own (``filed_tiles``), and counted in that
+    line too they read as counted twice (a review, 2026-10-24)."""
     filed_tiles: int = 0
     """The tiles OrthoStudio XP built that are filed outside the atelier with some of their data
     here (the atelier's step 5): their cache is ``filed_bytes`` and ``filed_images_bytes``."""
@@ -135,6 +165,52 @@ class CleanReport:
     """Their downloaded image pieces: the texture containers whose texture touches the square of
     one of them and of no tile of the atelier."""
     filed_removed: bool = False
+    apart_tiles: int = 0
+    """The tiles on another disk or partition than the store whose images the store keeps a
+    second time (:func:`_apart`): the tile holds its own copies, which X-Plane reads."""
+    apart_bytes: int = 0
+    """What deleting the store's copy of their images gives back, beyond ``freed_bytes``, with
+    ``apart``: their ``texture.dds`` artefacts and textures folders, but an image a tile on the
+    store's disk needs too. A build of one of them prepares its images again from the downloaded
+    image pieces, or downloads them again when those were deleted."""
+    apart_removed: bool = False
+    filed_apart_bytes: int = 0
+    """``filed_bytes`` once the store's copy of the images of the tiles on another disk went
+    (``apart``): a tile filed on another disk has its images in both."""
+    twice_files: int = 0
+    """The files of the relief and the mesh the store keeps a second time, in another form:
+    Ortho4XP's ``Data<tile>.alt`` beside ``dem.npy``, its ``Data<tile>.mesh`` beside ``mesh.npz``,
+    which versions before this one read. They are trimmed in a compacted cache, their artefacts
+    keeping their identity (``Store.trim``): with ``compact``, or whatever the choices once it is
+    (left by a compaction that was interrupted)."""
+    twice_bytes: int = 0
+    """What trimming ``twice_files`` gives back."""
+    twice_filed_bytes: int = 0
+    """The share of the second forms that the cache of the tiles filed outside holds: in
+    ``twice_bytes`` without ``filed``, left out of it with ``filed``, since their data goes whole
+    then. Measured with ``filed`` (the page's measure), the figure of compacting alone is
+    ``twice_bytes + twice_filed_bytes``: it left them out, though compacting alone trims them too
+    (a review, 2026-10-24)."""
+    compacted: bool = False
+    """Whether the cache keeps the relief and the mesh in one form (``Store.compacted``), once this
+    clean is done; with ``dry_run``, as it is."""
+    compacted_now: bool = False
+    """Whether this clean compacted it: false for a cache compacted already, which the command line
+    said it compacted (a campaign, 2026-10-24)."""
+    doubles_files: int = 0
+    """The textures and DSF of the atelier's tiles that are copies of the store's own on the same
+    disk, made one file with them whatever the choices (:func:`_doubles`); with ``dry_run``, those
+    of the same size, their bytes compared only when they are joined."""
+    doubles_bytes: int = 0
+    """What making ``doubles_files`` one file gives back."""
+    doubles_packs: list[str] = field(default_factory=list)
+    """The tiles holding those copies (with ``dry_run``), or whose files were made one file with
+    the store's: what the Library remembers of their sizes is out of date (a tile moved away by
+    hand and back keeps its files' dates, and was still counted as sharing them, 2026-10-25)."""
+    doubles_since: dict[str, float] = field(default_factory=dict)
+    """For each of ``doubles_packs`` (with ``dry_run``), when the newest of its copies came: what
+    the Library measured of the tile before that is out of date, and a tile measured since is not
+    measured again at every Disk space (19.6 s with 300 tiles on a Windows PC, 2026-10-25)."""
 
     def to_dict(self) -> dict[str, object]:
         return asdict(self)
@@ -233,18 +309,40 @@ def needed_keys(store: Store, roots: Iterable[str]) -> set[str]:
     need: what they were built from, through the inputs the store recorded, plus the DDS the
     ``tile.textures`` among them list (a texture artefact is the input of nothing, so the walk alone
     misses it)."""
-    keep = store.reachable(roots)
-    textures: set[str] = set()
-    for key in keep:
-        info = store.info(key)
-        if info is None or info.rule != "tile.textures":
-            continue
-        try:
-            doc = json.loads((info.path / "manifest.json").read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            continue
-        textures.update(str(t["key"]) for t in doc.get("textures", []) if t.get("key"))
-    return keep | store.reachable(textures)
+    return _Needs(store)(roots)
+
+
+class _Needs:
+    """:func:`needed_keys` for several sets of roots over one read of the store's index, each
+    textures list read once: a Disk space measure asks for three sets (the atelier's tiles, those
+    filed outside, those on the store's disk), and each read the whole index and the lists again
+    (2026-10-25)."""
+
+    def __init__(self, store: Store) -> None:
+        self._store = store
+        self._reach = store.reach()
+        self._listed: dict[str, set[str]] = {}
+
+    def __call__(self, roots: Iterable[str]) -> set[str]:
+        keep = self._reach(roots)
+        textures: set[str] = set()
+        for key in keep:
+            if key not in self._listed:
+                self._listed[key] = _textures_listed(self._store, key)
+            textures |= self._listed[key]
+        return keep | self._reach(textures)
+
+
+def _textures_listed(store: Store, key: str) -> set[str]:
+    """The DDS a ``tile.textures`` artefact lists; nothing for any other artefact."""
+    info = store.info(key)
+    if info is None or info.rule != "tile.textures":
+        return set()
+    try:
+        doc = json.loads((info.path / "manifest.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return set()
+    return {str(t["key"]) for t in doc.get("textures", []) if t.get("key")}
 
 
 def _files(root: Path, *, links: bool = True) -> Iterator[tuple[str, os.stat_result]]:
@@ -322,6 +420,59 @@ def disk_bytes(paths: Iterable[Path], *, links: bool = True) -> int:
     return total
 
 
+def pack_disk_bytes(pack: Path, store_root: Path | None) -> tuple[int, int]:
+    """``(bytes, shared)`` of a tile's folder: its files on the disk, each inode once (as
+    :func:`disk_bytes`), and those of them that are the store's own files too, one file under the
+    tile's name and the store's (a hard link). Raises ``OSError`` when the folder cannot be listed.
+
+    The store's size counted them again: a user's file manager showed the store folder about twice
+    the size of the tiles, and the page's own figures added up the same files twice, 91 GB for a
+    store that adds 40 GB to 62 GB of tiles (the owner's, 2026-10-23). A tile shares when one of its
+    images is the very file the store keeps for it (``tile.textures``, named in its manifest): a
+    tile copied to another disk, or one whose cache went, shares nothing, and the tiles of a
+    former data folder on the same disk share with that folder's store, not this one. Then each of
+    its files on the store's disk under more than one name is the store's too. Its DSF may be a
+    copy where its images are not, as a few of the owner's were: each file is asked."""
+    seen: set[tuple[int, int]] = set()
+    linked: list[tuple[str, os.stat_result]] = []
+    total = 0
+    for path, st in _files(Path(pack)):
+        if st.st_nlink > 1:
+            inode = (st.st_dev, st.st_ino)
+            if inode in seen:
+                continue
+            seen.add(inode)
+            linked.append((path, st))
+        total += st.st_size
+    if store_root is None or not linked or not _shares_with(Path(pack), linked, Path(store_root)):
+        return total, 0
+    device = os.stat(store_root).st_dev
+    return total, sum(st.st_size for _path, st in linked if st.st_dev == device)
+
+
+def _shares_with(pack: Path, linked: list[tuple[str, os.stat_result]], store_root: Path) -> bool:
+    """Whether one image of ``pack`` linked elsewhere is the store's own file for it (its
+    ``tile.textures`` artefact, laid out as ``Store.artifact_path`` lays it)."""
+    try:
+        entry = read_manifest(pack).artefacts.get("textures")
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
+    if entry is None:
+        return False
+    rule = entry.rule.partition("@")[0] or "tile.textures"
+    kept = store_root / rule / entry.key[:2] / entry.key / "textures"
+    textures = os.path.join(os.fspath(pack), "textures")
+    for path, st in linked:
+        if os.path.dirname(path) != textures:
+            continue
+        try:
+            there = os.stat(kept / os.path.basename(path))
+        except OSError:
+            return False
+        return (there.st_dev, there.st_ino) == (st.st_dev, st.st_ino)
+    return False
+
+
 def freed_bytes(paths: Iterable[Path]) -> int:
     """Bytes the disk gets back when every file under ``paths`` is deleted.
 
@@ -360,16 +511,17 @@ class _Names:
                 here = Counter()
             self.of[info.key] = here
 
-    def _held(self, keys: Iterable[str]) -> Counter[tuple[int, int]]:
+    def links(self, keys: Iterable[str]) -> Counter[tuple[int, int]]:
+        """How many links to each file the artefacts ``keys`` hold, each artefact once."""
         held: Counter[tuple[int, int]] = Counter()
-        for key in keys:
+        for key in dict.fromkeys(keys):
             held.update(self.of.get(key, Counter()))
         return held
 
     def freed(self, keys: Iterable[str]) -> int:
         """Bytes the disk gets back once the artefacts ``keys`` are deleted: a file counts when
         all its links are theirs."""
-        held = self._held(keys)
+        held = self.links(keys)
         return sum(self.size[i] for i, n in held.items() if n >= self.nlink[i])
 
 
@@ -442,10 +594,15 @@ def clean(
     elevation_root: Path | None = None,
     relief: bool = False,
     filed: bool = False,
+    apart: bool = False,
+    compact: bool = False,
 ) -> CleanReport:
     """Collect what no pack needs; with ``images``, empty the imagery caches as well; with
     ``filed``, the cache of the tiles filed outside the atelier (``tiles_root``), but their own
-    meshes, which their neighbours' masks read (:data:`MESH_RULE`).
+    meshes, which their neighbours' masks read (:data:`MESH_RULE`); with ``apart``, the store's
+    copy of the images of the tiles on another disk or partition (:func:`_apart`); with
+    ``compact``, Ortho4XP's form of the relief and the mesh, the cache keeping OrthoStudio XP's
+    alone from then on (``Store.compact``).
 
     The imagery caches are ``chunks_root`` and the map cache ``mapcache_root``; both count in
     ``images_bytes``. Without ``mapcache_root`` (the default) no map cache is counted or
@@ -464,31 +621,86 @@ def clean(
     packs = pack_dirs(library_path, tiles_root)
     report.packs = [str(p) for p in packs]
     atelier, away = _built(packs, library_path, tiles_root)
+    report.atelier_tiles = len({b.path for b in atelier if b.ortho})
     theirs: set[str] = set()
     if Path(store_root).is_dir():
-        with Store(store_root) as store:
-            mine = needed_keys(store, _roots(atelier))
+        # a measure leaves the abandoned build folders to the next build or Free space: looking
+        # for them lists every folder of the store, 1 s of Disk space's 4.8 with 301 tiles on
+        # Windows (2026-10-25); Free space sweeps them at its end
+        with Store(store_root, sweep=not dry_run) as store:
+            needs = _Needs(store)
+            mine = needs(_roots(atelier))
             # their meshes stay; walked from, they kept what they were made of past the free, a
             # file held then staying on no line (a review, 2026-10-06)
             meshes = _own_meshes(store, away)
-            needed = needed_keys(store, _roots(away) - meshes) - mine
+            needed = needs(_roots(away) - meshes) - mine
             theirs = needed - meshes
-            unused = _doomed(store, store.iter_artifacts(), mine | needed | meshes, grace_s)
+            keep = mine | needed | meshes
+            unused = _doomed(store, store.iter_artifacts(skip=keep), keep, grace_s)
             infos = (store.info(key) for key in sorted(theirs))
             cache = _doomed(store, (i for i in infos if i is not None), set(), grace_s)
-            names = _Names([*unused, *cache])
+            tiles = _apart(store, packs, store_root)
+            built = {b.path: b for b in (*atelier, *away)}
+            # an image a tile on the store's disk needs stays: one astride its border, say
+            others = needs(_roots(b for path, b in built.items() if path not in tiles))
+            candidates = (store.info(k) for k in sorted({k for ks in tiles.values() for k in ks}))
+            images_apart = _doomed(store, (i for i in candidates if i is not None), others, grace_s)
+            leaving = {i.key for i in images_apart}
+            report.apart_tiles = sum(1 for keys in tiles.values() if set(keys) & leaving)
+            names = _Names([*unused, *images_apart, *cache])
             first = [i.key for i in unused]
+            sent = [i.key for i in images_apart]
+            taken = [i.key for i in cache]
             report.removed = len(unused)
             report.freed_bytes = names.freed(first)
-            report.filed_bytes = names.freed([*first, *(i.key for i in cache)]) - report.freed_bytes
-            report.kept = len(store) - len(unused) - (len(cache) if filed else 0)
+            report.apart_bytes = names.freed([*first, *sent]) - report.freed_bytes
+            report.filed_bytes = names.freed([*first, *taken]) - report.freed_bytes
+            report.filed_apart_bytes = (
+                names.freed([*first, *sent, *taken]) - report.freed_bytes - report.apart_bytes
+            )
+            going_keys = {*first, *(sent if apart else ()), *(taken if filed else ())}
+            report.kept = len(store) - len(going_keys)
+            report.compacted = store.compacted()
+            twice = _twice(store, {*first, *(sent if apart else ())}, grace_s)
+            filed_keys = set(taken)
+            report.twice_filed_bytes = sum(
+                size for info, files in twice if info.key in filed_keys for size in files.values()
+            )
+            if filed:  # they go whole with the cache of the tiles filed outside
+                twice = [(info, files) for info, files in twice if info.key not in filed_keys]
+            report.twice_files = sum(len(files) for _info, files in twice)
+            report.twice_bytes = sum(size for _info, files in twice for size in files.values())
+            doubles = _doubles(store, atelier)
+            report.doubles_files = len(doubles)
+            report.doubles_bytes = sum(size for _pack, _mine, _theirs, size in doubles)
+            report.doubles_packs = sorted({str(pack) for pack, _mine, _theirs, _size in doubles})
+            report.doubles_since = _came(doubles)
             if not dry_run:
-                gone = _delete(store, unused)
-                report.removed = len(gone)
-                report.freed_bytes = names.freed(gone)
+                went = _delete(store, unused)
+                report.removed = len(went)
+                report.freed_bytes = names.freed(went)
+                if apart:
+                    let = _delete(store, images_apart)
+                    report.apart_bytes = names.freed([*went, *let]) - report.freed_bytes
+                    report.apart_removed = True
+                    went = [*went, *let]
                 if filed:
-                    taken = _delete(store, cache)
-                    report.filed_bytes = names.freed([*gone, *taken]) - report.freed_bytes
+                    off = _delete(store, [i for i in cache if i.key not in set(went)])
+                    report.filed_bytes = names.freed([*went, *off]) - names.freed(went)
+                    report.filed_apart_bytes = report.filed_bytes
+                if compact and not report.compacted:
+                    store.compact()  # on the disk before anything is trimmed
+                    report.compacted = report.compacted_now = True
+                if report.compacted:
+                    # each artefact read whole first, and trimmed only as it was built (``trim``)
+                    report.twice_files = report.twice_bytes = 0
+                    for info, files in twice:
+                        before = len(store.trimmed(info.key))
+                        report.twice_bytes += store.trim(info.key, files)
+                        report.twice_files += len(store.trimmed(info.key)) - before
+                report.doubles_files, report.doubles_bytes, report.doubles_packs = _join(
+                    store, doubles
+                )
                 report.kept = len(store)
                 report.tmp_removed = len(store.sweep_tmp(max_age_s=grace_s))
     # the tiles filed outside with some of their data here (measured before anything goes): a tile
@@ -565,6 +777,37 @@ def clean_after_delete(
     return report
 
 
+def _apart(store: Store, packs: Iterable[Path], store_root: Path) -> dict[str, list[str]]:
+    """The packs on another disk or partition than the store, by their folder with the links
+    followed: what their textures folder's file system says (``st_dev``, the volume on Windows),
+    as filing tells a disk from another. Each with the keys of the store's copy of its images:
+    its textures folder (``tile.textures``) and the ``texture.dds`` that folder lists; a pack
+    whose folder the store no longer has is not among them. Such a tile holds its images as files
+    of its own: no file can have a name on two file systems. A pack whose folder cannot be read
+    now (a disk away, a letter another disk took) is none of them, and its cache stays."""
+    if not Path(store_root).is_dir():
+        return {}
+    found: dict[str, list[str]] = {}
+    for pack in packs:
+        real = os.path.realpath(pack)
+        folder = Path(real) / "textures"
+        if real in found or not folder.is_dir() or same_disk(store_root, folder):
+            continue
+        try:
+            entry = read_manifest(pack).artefacts.get("textures")
+        except (OSError, ValueError, KeyError, TypeError):
+            continue
+        info = store.info(entry.key) if entry is not None else None
+        if info is None or info.rule != "tile.textures" or not store.has(info.key):
+            continue
+        try:
+            doc = json.loads((info.path / "manifest.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            doc = {}
+        found[real] = [info.key, *(str(t["key"]) for t in doc.get("textures", []) if t.get("key"))]
+    return found
+
+
 def _doomed(
     store: Store, candidates: Iterable[ArtifactInfo], keep: set[str], grace_s: float
 ) -> list[ArtifactInfo]:
@@ -592,6 +835,239 @@ def _delete(store: Store, infos: Iterable[ArtifactInfo]) -> list[str]:
         except OSError as exc:
             log.warning("artefact %s not deleted: %s", info.key[:16], exc)
     return gone
+
+
+def _doubles(store: Store, built: Iterable[_Built]) -> list[tuple[Path, Path, Path, int]]:
+    """The textures and the DSF of the atelier's tiles that are copies of the store's own, with
+    their tile, the store's file and their size: on the store's disk, the same size, not one file
+    with it, and no other name of their own, so that making them one file gives their bytes back.
+    Read from their sizes alone, which is what Disk space measures; :func:`_join` compares the
+    bytes first. A tile of the atelier holds them as links to the store's; a tile brought back
+    from another disk, by hand or filed back, holds copies, and so did a pack kept as it was when
+    an image made again after an update came out the same: 11 GB of a user's 16 tiles, which no
+    choice freed, and a user who moved 552 GB of tiles back to his workshop's partition would
+    have kept 358 GB of them twice (2026-10-25). The tiles filed elsewhere and those on another
+    disk have their own choices, which delete the store's copy."""
+    try:
+        dev = os.stat(store.root).st_dev
+    except OSError:
+        return []
+    different = _different(store)
+    found: list[tuple[Path, Path, Path, int]] = []
+    for b in built:
+        if not b.ortho or b.tile is None:
+            continue
+        pack = Path(b.path)
+        try:
+            keys = read_manifest(pack).keys
+        except (OSError, ValueError, KeyError):
+            continue
+        pairs: list[tuple[Path, Path]] = []
+        textures = store.info(keys["textures"]) if keys.get("textures") else None
+        if textures is not None:
+            pairs += _unlinked(pack / "textures", textures.path / "textures")
+        dsf = store.info(keys["dsf"]) if keys.get("dsf") else None
+        if dsf is not None:
+            pairs.append((pack / b.tile.dsf_relpath, dsf.path / f"{b.tile.name}.dsf"))
+        for mine, theirs in pairs:
+            try:
+                a, s = os.stat(mine), os.stat(theirs)
+            except OSError:
+                continue
+            if (
+                a.st_dev == s.st_dev == dev
+                and a.st_ino != s.st_ino
+                and a.st_size == s.st_size
+                and a.st_nlink == 1
+                and _stamp(mine, a) not in different
+            ):
+                found.append((pack, mine, theirs, a.st_size))
+    return found
+
+
+def _came(doubles: Iterable[tuple[Path, Path, Path, int]]) -> dict[str, float]:
+    """For each tile of ``doubles``, when the newest of its copies was made: its creation time where
+    the system keeps one (macOS, Windows), else its change time (Linux); a copy is a new file."""
+    came: dict[str, float] = {}
+    for pack, mine, _theirs, _size in doubles:
+        try:
+            st = os.stat(mine)
+        except OSError:
+            continue
+        at = getattr(st, "st_birthtime", None) or st.st_ctime
+        came[str(pack)] = max(came.get(str(pack), 0.0), float(at))
+    return came
+
+
+_DIFFERENT = "clean.different"
+"""The index's note of the tiles' files Free space read different from the store's own, the same
+size: an image its user retouched in the tile, which a DDS of the same picture size always is. As
+a copy, it was counted among the room the photos take twice at every measure, and Free space gave
+back nothing for it, each time (a campaign, 2026-10-25)."""
+
+
+def _stamp(path: Path, st: os.stat_result) -> tuple[str, int, int, int]:
+    """What tells a file read before from one changed since: its path, size, date and inode."""
+    return (str(path), st.st_size, st.st_mtime_ns, st.st_ino)
+
+
+def _different(store: Store) -> set[tuple[str, int, int, int]]:
+    """The files of :data:`_DIFFERENT`, as :func:`_stamp` gives them."""
+    try:
+        return {tuple(x) for x in json.loads(store.note(_DIFFERENT) or "[]")}  # type: ignore[misc]
+    except (ValueError, TypeError):
+        return set()
+
+
+_LISTED_NUMBERS = os.name != "nt"
+"""Whether a folder's listing carries each file's number (macOS, Linux), or only its size and
+time (Windows), for :func:`_unlinked`."""
+
+
+def _unlinked(mine: Path, theirs: Path) -> list[tuple[Path, Path]]:
+    """The images of the tile's folder ``mine`` and of the store's ``theirs`` of the same name that
+    may not be one file, from the two folders' listings, so that the images a tile shares with the
+    store, nearly all of them, cost no call of their own. On macOS and Linux the listing carries
+    each file's number: those that differ. On Windows it carries their size and time, and a file
+    number costs a call per file (Disk space took 31 s with 300 tiles on a Windows PC, 2026-10-25):
+    those whose size or time differs, and those that agree too when one of them is not one file
+    (a folder copied with its times kept). Measuring every pair took Disk space from 0.8 to 3.4 s
+    with 300 tiles on a Mac (2026-10-25)."""
+    try:
+        with os.scandir(theirs) as it:
+            store_side = {e.name: e for e in it if e.name.lower().endswith(".dds")}
+        with os.scandir(mine) as it:
+            tile_side = [e for e in it if e.name in store_side]
+    except OSError:
+        return []
+    found: list[os.DirEntry[str]] = []
+    if _LISTED_NUMBERS:
+        for e in tile_side:
+            with contextlib.suppress(OSError):
+                if e.inode() and e.inode() == store_side[e.name].inode():
+                    continue
+            found.append(e)
+    else:
+        agree: list[os.DirEntry[str]] = []
+        for e in tile_side:
+            try:
+                a, s = e.stat(), store_side[e.name].stat()
+            except OSError:
+                continue
+            same = (a.st_size, a.st_mtime_ns) == (s.st_size, s.st_mtime_ns)
+            (agree if same else found).append(e)
+        if agree:
+            first = agree[0]
+            try:
+                one = os.path.samefile(first.path, store_side[first.name].path)
+            except OSError:
+                one = False
+            if not one:
+                found += agree
+    return [(Path(e.path), Path(store_side[e.name].path)) for e in found]
+
+
+def _join(
+    store: Store, doubles: Iterable[tuple[Path, Path, Path, int]]
+) -> tuple[int, int, list[str]]:
+    """Make each of :func:`_doubles` one file with the store's, after reading both whole: a file of
+    the tile that is not the same bytes (an image retouched by its user) stays as it is, and is
+    noted (:data:`_DIFFERENT`), so that a measure no longer counts it until it changes again; the
+    note keeps those of this pass alone, with those read different before and left out of it.
+    Returns the files joined, the bytes given back and the tiles they belong to."""
+    files = freed = 0
+    packs: set[str] = set()
+    different = {d for d in _different(store) if _still(d)}
+    for pack, mine, theirs, size in doubles:
+        try:
+            same = filecmp.cmp(mine, theirs, shallow=False)
+            st = os.stat(mine)
+        except OSError:
+            continue
+        if not same:
+            different.add(_stamp(mine, st))
+        elif join_same_file(theirs, mine):
+            files += 1
+            freed += size
+            packs.add(str(pack))
+    store.set_note(_DIFFERENT, json.dumps(sorted(different)))
+    return files, freed, sorted(packs)
+
+
+def _still(stamp: tuple[str, int, int, int]) -> bool:
+    """Whether the file a :func:`_stamp` names is still as it was then."""
+    try:
+        return _stamp(Path(stamp[0]), os.stat(stamp[0])) == tuple(stamp)
+    except (OSError, IndexError):
+        return False
+
+
+_TWICE = {
+    "orthostudio.dem": ("dem.npy", "Data*.alt"),
+    "orthostudio.mesh": ("mesh.npz", "Data*.mesh"),
+}
+"""For each rule whose artefacts hold two forms outside a compacted cache: the form kept, and
+Ortho4XP's, the same raster or mesh again, which goes (``CleanReport.twice_files``)."""
+
+
+def _twice(
+    store: Store, going: set[str], grace_s: float
+) -> list[tuple[ArtifactInfo, dict[str, int]]]:
+    """The relief and mesh artefacts that hold Ortho4XP's form beside the one OrthoStudio XP reads,
+    with those files and their sizes (``_TWICE``); not those going anyway (``going``), nor what
+    was used in the last ``grace_s`` or is pinned, which a build may be reading. A file is offered
+    only when the kept form says the same size of the same thing: as many altitudes in ``dem.npy``
+    as the raw ``.alt`` holds, as many points in ``mesh.npz`` as the ``.mesh`` names in its header,
+    read from the headers alone, which is what Disk space measures; the trim itself reads every
+    file of the artefact whole first and goes only if they are those it was built with
+    (``Store.trim``). Its bytes count when it has no other name (never linked)."""
+    cutoff = time.time() - grace_s
+    found: list[tuple[ArtifactInfo, dict[str, int]]] = []
+    for rule, (kept, pattern) in _TWICE.items():
+        for info in store.iter_artifacts(rule):
+            if info.key in going or max(info.last_used_at, info.created_at) > cutoff:
+                continue
+            if not (info.path / kept).is_file() or store.pins(info.key):
+                continue
+            files: dict[str, int] = {}
+            for path in sorted(info.path.glob(pattern)):
+                try:
+                    st = path.lstat()
+                except OSError:
+                    continue
+                if stat.S_ISREG(st.st_mode) and _same_thing(info.path / kept, path, st.st_size):
+                    files[path.name] = st.st_size if st.st_nlink <= 1 else 0
+            if files:
+                found.append((info, files))
+    return found
+
+
+def _same_thing(kept: Path, other: Path, size: int) -> bool:
+    """Whether ``other`` holds as many values as ``kept``, read from their headers alone."""
+    try:
+        if kept.name == "dem.npy":
+            with open(kept, "rb") as f:
+                shape, _fortran, dtype = _npy_header(f)
+            return int(np.prod(shape)) * 4 == size and dtype.kind == "f"
+        with zipfile.ZipFile(kept) as z, z.open("vertices.npy") as f:
+            shape, _fortran, _dtype = _npy_header(f)
+        with open(other, "rb") as f:
+            head = f.read(4096)
+        at = head.find(b"Vertices\n")
+        if at < 0:
+            return False
+        line = head[at + len(b"Vertices\n") :].split(b"\n", 1)[0]
+        return int(line) == int(shape[0])
+    except (OSError, ValueError, KeyError, zipfile.BadZipFile):
+        return False
+
+
+def _npy_header(f: IO[bytes]) -> tuple[tuple[int, ...], bool, np.dtype[Any]]:
+    """The shape, order and type of the ``.npy`` array ``f`` starts with, its data unread."""
+    major, _minor = np.lib.format.read_magic(f)
+    if major == 1:
+        return np.lib.format.read_array_header_1_0(f)
+    return np.lib.format.read_array_header_2_0(f)
 
 
 def _delete_files(files: Iterable[tuple[str, int]]) -> int:

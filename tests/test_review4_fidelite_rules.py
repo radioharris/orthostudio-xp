@@ -294,6 +294,26 @@ def test_a_stored_neighbour_mesh_is_found(tmp_path: Path) -> None:
     assert stored_neighbour_mesh(store, TileRef(1, 1)) is None
 
 
+def test_a_stored_neighbour_mesh_without_its_text_is_found(tmp_path: Path) -> None:
+    """A mesh built since 2026-10-23, or trimmed by Free space, holds no ``Data<tile>.mesh``, the
+    text that named its tile: its recipe does. Without it the neighbour was not found, and the
+    shores along their border were drawn as if it did not exist."""
+    store = Store(tmp_path / "store")
+    neighbour = TILE.neighbour(1, 0)
+    with store.begin("orthostudio.mesh", "c" * 64, "dir") as build:
+        (build.out / "mesh.npz").write_bytes(b"npz")
+        recipe = json.dumps({"format": "osxp-key-1", "params": {"tile": neighbour.name}})
+        build.commit(version=2, recipe=recipe, inputs=[])
+    found = stored_neighbour_mesh(store, neighbour)
+    assert found is not None and found.key == "c" * 64
+    assert stored_neighbour_mesh(store, TILE) is None  # another tile's mesh is not it
+    with store.begin("orthostudio.mesh", "d" * 64, "dir") as build:
+        (build.out / "stats.json").write_text("{}")  # made for it, but no mesh in it
+        recipe = json.dumps({"format": "osxp-key-1", "params": {"tile": TILE.name}})
+        build.commit(version=2, recipe=recipe, inputs=[])
+    assert stored_neighbour_mesh(store, TILE) is None
+
+
 def test_the_masks_rule_names_the_eight_neighbours() -> None:
     """A silent swap here would give a tile the sea of the wrong border."""
     assert NEIGHBOUR_OFFSETS == {

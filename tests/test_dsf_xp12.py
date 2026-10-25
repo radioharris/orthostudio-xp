@@ -90,6 +90,51 @@ def test_clamp_bathymetry_only_touches_the_second_large_raster(rasters_pair) -> 
     assert clamp_bathymetry(original) == r.dems
 
 
+def _dems(rasters: list[tuple[np.ndarray, int]]) -> bytes:
+    """A DEMS payload: each raster (rows x columns, int16) with its DEMI and its flags."""
+    out = b""
+    for raster, flags in rasters:
+        h, w = raster.shape
+        out += _demi(w, h, 2, flags) + _atom("DEMD", raster.astype("<i2").tobytes())
+    return out
+
+
+def test_bathymetry_of_another_size_is_clamped_at_its_own_place() -> None:
+    """A user's +32+012 from X-Plane's Global Scenery had its elevation at 1201 x 1201 by post and
+    its bathymetry at 256 x 256 by cell, with none of X-Plane 12's season and sound rasters: every
+    square of his stopped at the copy of X-Plane's rasters, taken post by post as Ortho4XP takes
+    them (issue 17, 2026-10-23). Each bathymetry value is clamped by the ground at its own place
+    (the four nearest posts), and the raster keeps its size, flags and every other byte."""
+    rng = np.random.default_rng(7)
+    # rasters longer than 100 bytes, as Ortho4XP counts them: 17 x 17 posts on the tile's edges,
+    # 8 x 8 cells with their values at their centres
+    elev = rng.integers(-20, 300, (17, 17)).astype(np.int16)
+    bathy = rng.integers(-60, 320, (8, 8)).astype(np.int16)
+    dems = _dems([(elev, 5), (bathy, 1)])
+    got = clamp_bathymetry(dems)
+    assert len(got) == len(dems) and got[: len(dems) - 128] == dems[: len(dems) - 128]
+    out = np.frombuffer(got[-128:], dtype="<i2").reshape(8, 8)
+    for r in range(8):
+        for c in range(8):
+            y, x = (r + 0.5) / 8 * 16, (c + 0.5) / 8 * 16  # the cell's centre among the posts
+            r0, c0 = int(y), int(x)
+            fy, fx = y - r0, x - c0
+            ground = (
+                elev[r0, c0] * (1 - fx) * (1 - fy) + elev[r0, c0 + 1] * fx * (1 - fy)
+                + elev[r0 + 1, c0] * (1 - fx) * fy + elev[r0 + 1, c0 + 1] * fx * fy
+            )  # fmt: skip
+            assert out[r, c] == min(int(bathy[r, c]), int(np.floor(ground)) - 2), (r, c)
+    assert (out < bathy).any() and (out == bathy).any()
+    # rasters of one size: post by post, the bytes Ortho4XP gives, whatever their flags
+    same = _dems([(elev, 5), (elev + 5, 5)])
+    tail = np.frombuffer(clamp_bathymetry(same)[-578:], dtype="<i2").reshape(17, 17)
+    assert np.array_equal(tail, np.minimum(elev + 5, elev - 2))
+    # a raster that cannot be placed (floats) is left as X-Plane wrote it
+    floats = _demi(8, 8, 4, 4) + _atom("DEMD", bathy.astype("<f4").tobytes())
+    odd = _dems([(elev, 5)]) + floats
+    assert clamp_bathymetry(odd) == odd
+
+
 def test_extract_from_7z_and_plain_files(tmp_path: Path, rasters_pair) -> None:
     elev, bathy = rasters_pair
     data = synthetic_dsf(elev, bathy)

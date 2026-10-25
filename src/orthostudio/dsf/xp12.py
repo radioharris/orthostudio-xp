@@ -132,14 +132,44 @@ def read_global_scenery_dsf(path: Path, tile: TileRef) -> bytes:
     return members[0].buffer.getvalue()
 
 
+_DEM_INFO = struct.Struct("<BBHIIff")
+"""A ``DEMI`` atom: version, bytes per post, flags, width, height, scale, offset."""
+
+
+@dataclass(frozen=True)
+class _DemInfo:
+    """What a ``DEMI`` says of the raster after it: its size, and whether its values lie on the
+    tile's edges (post-centric, flag 4) or at the centres of cells (area-centric)."""
+
+    bpp: int
+    flags: int
+    width: int
+    height: int
+
+    @property
+    def post(self) -> bool:
+        return bool(self.flags & 4)
+
+    @property
+    def int16(self) -> bool:
+        return self.bpp == 2 and self.flags & 3 == 1
+
+
 def clamp_bathymetry(dems: bytes) -> bytes:
     """Copy of a ``DEMS`` payload with the second large raster clamped to ``elevation - 2``.
 
     ``O4_DSF_Utils.py:418-441``: sub-atoms longer than 100 bytes are counted; the first is
-    the elevation, the second the bathymetry, ``int16`` little-endian.
+    the elevation, the second the bathymetry, ``int16`` little-endian. Ortho4XP takes them post by
+    post, which holds when both have the same size, as every Global Scenery DSF of X-Plane 12.4.4
+    has (1201 x 1201, the 18,197 of the owner's). A user's +32+012 had its bathymetry at 256 x 256
+    by cell, without X-Plane 12's season and sound rasters: every square of his stopped there,
+    and Ortho4XP would have too (issue 17, 2026-10-23). Each bathymetry value is then clamped by
+    the elevation at its own place (:func:`_clamped`), and the raster keeps its size.
     """
     out = bytearray()
     pos, large, elev = 0, 0, b""
+    info: _DemInfo | None = None
+    elev_info: _DemInfo | None = None
     while pos < len(dems):
         if pos + 8 > len(dems):
             raise DsfFormatError(f"dangling {len(dems) - pos} bytes in DEMS")
@@ -148,17 +178,65 @@ def clamp_bathymetry(dems: bytes) -> bytes:
         if size < 8 or pos + size > len(dems):
             raise DsfFormatError(f"DEMS sub-atom at {pos} has size {size}")
         body = dems[pos + 8 : pos + size]
+        if header[:4][::-1] == b"DEMI" and len(body) >= _DEM_INFO.size:
+            _version, bpp, flags, width, height, _scale, _offset = _DEM_INFO.unpack_from(body)
+            info = _DemInfo(bpp, flags, width, height)
         if size > LARGE_SUBATOM:
             large += 1
             if large == 1:
-                elev = body
+                elev, elev_info = body, info
             elif large == 2:
-                bathy = np.frombuffer(body, dtype="<i2")
-                safe = np.frombuffer(elev, dtype="<i2") - np.int16(2)
-                body = np.minimum(bathy, safe).astype("<i2").tobytes()
+                body = _clamped(np.frombuffer(body, dtype="<i2"), elev, elev_info, info)
         out += header + body
         pos += size
     return bytes(out)
+
+
+def _clamped(bathy: np.ndarray, elev: bytes, e: _DemInfo | None, b: _DemInfo | None) -> bytes:
+    """``bathy`` clamped to the elevation minus 2 m at the place of each of its values.
+
+    Rasters of one size are taken post by post, as Ortho4XP takes them: the same bytes as it
+    gives. Of two sizes, the elevation is read at each bathymetry value's place, between its four
+    nearest posts, each raster placed by its own centring. A raster that cannot be placed (no
+    ``DEMI``, not 16-bit integers, a size its data does not have) is left as X-Plane wrote it,
+    which X-Plane draws on its own scenery."""
+    heights = np.frombuffer(elev, dtype="<i2")
+    if len(heights) == len(bathy):
+        return np.minimum(bathy, heights - np.int16(2)).astype("<i2").tobytes()
+    if (
+        e is None
+        or b is None
+        or not (e.int16 and b.int16)
+        or e.width * e.height != len(heights)
+        or b.width * b.height != len(bathy)
+        or min(e.width, e.height) < 2
+    ):
+        return bathy.astype("<i2").tobytes()
+    grid = heights.reshape(e.height, e.width).astype(np.float64)
+    cols = _place(b.width, b.post, e.width, e.post)
+    rows = _place(b.height, b.post, e.height, e.post)
+    c0 = np.minimum(np.floor(cols).astype(np.int64), e.width - 2)
+    r0 = np.minimum(np.floor(rows).astype(np.int64), e.height - 2)
+    fc = (cols - c0)[None, :]
+    fr = (rows - r0)[:, None]
+    g00 = grid[np.ix_(r0, c0)]
+    g01 = grid[np.ix_(r0, c0 + 1)]
+    g10 = grid[np.ix_(r0 + 1, c0)]
+    g11 = grid[np.ix_(r0 + 1, c0 + 1)]
+    ground = (g00 * (1 - fc) + g01 * fc) * (1 - fr) + (g10 * (1 - fc) + g11 * fc) * fr
+    safe = np.floor(ground) - 2
+    clamped = np.minimum(bathy.reshape(b.height, b.width).astype(np.float64), safe)
+    return clamped.astype("<i2").tobytes()
+
+
+def _place(n: int, post: bool, m: int, m_post: bool) -> np.ndarray:
+    """Where each of ``n`` values along one side of the tile falls among ``m`` others, as a
+    fractional index, clipped to them: a post-centric raster lies on the tile's edges, an
+    area-centric one at the centres of its cells."""
+    k = np.arange(n, dtype=np.float64)
+    where = k / (n - 1) if post and n > 1 else (k + 0.5) / n
+    index = where * (m - 1) if m_post else where * m - 0.5
+    return np.clip(index, 0.0, m - 1.0)
 
 
 def rasters_from_dsf(data: bytes, *, tile: TileRef | None = None) -> Xp12Rasters:

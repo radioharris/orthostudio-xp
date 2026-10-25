@@ -457,12 +457,19 @@ function mockFiledTiles() {
   return libraryTiles(mock.library || []).filter((e) => e.built_by === "osxp" && String(e.path).replace(/[\\/][^\\/]*$/, "") !== atelier);
 }
 
+/** Disk space's figures in the mock: a cache keeping the relief and the mesh in two forms. */
+function mockDisk() {
+  return { store_bytes: 14.8e9, shared_bytes: 6.2e9, finder_extra_bytes: 9.3e9, unused_bytes: 2.4e9, doubles_bytes: 0.6e9, apart_tiles: 3, apart_bytes: 1.1e9, twice_bytes: 0.8e9, compacted: false, images_bytes: 3.1e9, mapcache_bytes: 12e6, relief_bytes: 1.4e9 };
+}
+
 /** `GET /api/disk`'s figures of their cache, as the engine gives them: some 2.1 GB of tile data
  * and 0.7 GB of image pieces a tile, nothing for one whose cache was freed (`POST /api/clean`). */
 function mockFiledCache() {
   const filed = mockFiledTiles();
   const kept = filed.filter((e) => !mock.filedFreed?.has(e.path)).length;
-  return { filed_tiles: filed.length, filed_bytes: kept * 2.1e9, filed_images_bytes: kept * 0.7e9 };
+  // their relief and mesh's second forms are theirs too, gone with a compaction or with them
+  const twice = mock.disk?.compacted ? 0 : kept * 0.1e9;
+  return { filed_tiles: filed.length, filed_bytes: kept * 2.1e9, filed_apart_bytes: kept * 2.1e9, filed_images_bytes: kept * 0.7e9, twice_filed_bytes: twice };
 }
 
 /** Like the engine: nothing is estimated or built while the data folder's disk is unplugged. */
@@ -740,10 +747,34 @@ function mockJobState(run) {
   });
 }
 
+/** A build's detail level as Works writes it: its tiles' most common level, then how many tiles are
+ * at each other one, "ZL16 (2 tuiles en ZL13)" (the engine's `levels`). Build again of 25 tiles,
+ * 2 of them at ZL13, read ZL16 alone (a user, 2026-10-25). An engine without `levels` gives its
+ * level alone. Exported for the tests. */
+export function jobLevel(job) {
+  const counts = Object.entries(job?.levels || {})
+    .map(([zl, n]) => [Number(zl), Number(n)])
+    .filter(([zl, n]) => zl > 0 && n > 0)
+    .sort((a, b) => b[1] - a[1] || b[0] - a[0]);
+  if (!counts.length) return `ZL${job?.zoom_level ?? job?.zl ?? ""}`;
+  const [[main], ...others] = counts;
+  const rest = others
+    .sort((a, b) => a[0] - b[0])
+    .map(([zl, n]) => (n === 1 ? t("works.zl_other_one", { zl }) : t("works.zl_other", { n: fmtInt(n), zl })));
+  return rest.length ? `ZL${main} (${rest.join(", ")})` : `ZL${main}`;
+}
+
 /** GET /api/jobs of a mock job: the engine's `Job.summary()`. */
 function mockJobSummary(run) {
   const d = run.doc;
-  return { id: d.id, status: d.status, created_at: d.created_at, started_at: d.started_at, finished_at: d.finished_at, install: d.install, tiles: d.tiles.map((x) => x.tile), provider: d.provider, zl: d.zl, ok: d.status === "done" };
+  return { id: d.id, status: d.status, created_at: d.created_at, started_at: d.started_at, finished_at: d.finished_at, install: d.install, tiles: d.tiles.map((x) => x.tile), provider: d.provider, zl: d.zl, levels: mockLevels(d.tiles), ok: d.status === "done" };
+}
+
+/** The engine's `levels` of a mock job: how many of its tiles at each level. */
+function mockLevels(tiles) {
+  const levels = {};
+  for (const x of tiles) levels[x.zl] = (levels[x.zl] || 0) + 1;
+  return levels;
 }
 
 /** The job's stats: counts, the whole job's elapsed time and progress (never decreasing), a range
@@ -775,6 +806,7 @@ function mockStats(run) {
     progress: round(p, 4),
     eta_low_s: low,
     eta_high_s: low == null ? null : round(low * 1.5, 1),
+    overdue: [], // the mock's steps never run late
     // The engine downloads the map data inside the build (a tile goes on once its own is in):
     // its `data` phase belonged to the engines that downloaded every tile's first.
     phase: "build",
@@ -1152,7 +1184,7 @@ export async function mockApi(method, path, body, options = {}) {
     status.active_job = mockActiveRun()?.doc.id ?? null;
     return status;
   }
-  if (p === "/api/sizes") return { store_bytes: 1830000000, chunks_bytes: 412000000 };
+  if (p === "/api/sizes") return { store_bytes: 1830000000, shared_bytes: 1120000000, chunks_bytes: 412000000 };
   if (p === "/api/providers") return [...(await mockFile("providers")), ...structuredClone(mock.sources || [])];
   if (p === "/api/sources/test" && method === "POST") {
     mockCheckSourceAddress(body?.url_template);
@@ -1366,36 +1398,55 @@ export async function mockApi(method, path, body, options = {}) {
     return structuredClone(mock.library);
   }
   if (p === "/api/disk" && method === "GET") {
-    if (!mock.disk) mock.disk = { store_bytes: 9.8e9, unused_bytes: 2.4e9, images_bytes: 3.1e9, mapcache_bytes: 12e6, relief_bytes: 1.4e9 };
+    // a cache a newer version made, as the engine refuses it (fail=store_newer)
+    if (MOCK_FAIL === "store_newer") {
+      const context = { path: "~/OrthoStudio XP/store", found: 3, expected: 2 };
+      throw new ApiError(409, { error: { code: "SYS_STORE_NEWER", severity: "blocking", action: "stop", message: "", remedy: "", context } });
+    }
+    if (!mock.disk) mock.disk = mockDisk();
     if (!mock.library) mock.library = await mockFile("library");
-    return { ...mock.disk, ...mockFiledCache(), tiles: libraryTiles(mock.library).length, building: MOCK_FAIL === "busy" || Boolean(mockActiveRun()) };
+    const cache = mockFiledCache();
+    // like the engine: the second forms of the tiles filed outside counted too, and its own tiles alone
+    const own = libraryTiles(mock.library).filter((e) => e.built_by === "osxp");
+    const filedPaths = new Set(mockFiledTiles().map((e) => e.path));
+    return { ...mock.disk, ...cache, twice_bytes: (mock.disk.twice_bytes || 0) + cache.twice_filed_bytes, tiles: own.length, atelier_tiles: own.filter((e) => !filedPaths.has(e.path)).length, building: MOCK_FAIL === "busy" || Boolean(mockActiveRun()) };
   }
   if (p === "/api/clean" && method === "POST") {
     if (MOCK_FAIL === "busy" || mockActiveRun()) {
       throw mockError(409, "SYS_BUSY", "A build is running in OrthoStudio XP, and OrthoStudio XP frees space only between builds.", "Wait for the build to finish, or stop it, then try again.");
     }
-    if (!mock.disk) mock.disk = { store_bytes: 9.8e9, unused_bytes: 2.4e9, images_bytes: 3.1e9, mapcache_bytes: 12e6, relief_bytes: 1.4e9 };
+    if (!mock.disk) mock.disk = mockDisk();
     if (!mock.library) mock.library = await mockFile("library");
     const images = Boolean(body?.images);
     const relief = Boolean(body?.relief);
     const filed = Boolean(body?.filed);
+    const apart = Boolean(body?.apart);
+    const compacted = Boolean(body?.compact) || Boolean(mock.disk.compacted);
     const cache = mockFiledCache();
     const freed = mock.disk.unused_bytes;
+    const doublesFreed = mock.disk.doubles_bytes || 0;
+    const apartFreed = apart ? mock.disk.apart_bytes || 0 : 0;
+    const twiceFreed = compacted ? (mock.disk.twice_bytes || 0) + (filed ? 0 : cache.twice_filed_bytes) : 0;
     const imagesFreed = images ? mock.disk.images_bytes + mock.disk.mapcache_bytes : 0;
     const reliefFreed = relief ? mock.disk.relief_bytes : 0;
     const filedFreed = filed ? cache.filed_bytes + cache.filed_images_bytes : 0;
     if (filed) mock.filedFreed = new Set(mockFiledTiles().map((e) => e.path));
     // the filed tiles' data is the store's too: it leaves the store with them
-    const storeFreed = freed + (filed ? cache.filed_bytes : 0);
-    mock.disk = { ...mock.disk, store_bytes: mock.disk.store_bytes - storeFreed, unused_bytes: 0, ...(images ? { images_bytes: 0, mapcache_bytes: 0 } : {}), ...(relief ? { relief_bytes: 0 } : {}) };
-    return { format: "osxp-clean-1", freed_bytes: freed, images_freed_bytes: imagesFreed, relief_freed_bytes: reliefFreed, filed_freed_bytes: filedFreed, removed: freed ? 12 : 0 };
+    const storeFreed = freed + apartFreed + twiceFreed + (filed ? cache.filed_bytes : 0);
+    mock.disk = { ...mock.disk, store_bytes: mock.disk.store_bytes - storeFreed, unused_bytes: 0, doubles_bytes: 0, compacted, ...(compacted ? { twice_bytes: 0 } : {}), ...(apart ? { apart_tiles: 0, apart_bytes: 0 } : {}), ...(images ? { images_bytes: 0, mapcache_bytes: 0 } : {}), ...(relief ? { relief_bytes: 0 } : {}) };
+    return { format: "osxp-clean-1", freed_bytes: freed, doubles_freed_bytes: doublesFreed, apart_freed_bytes: apartFreed, twice_freed_bytes: twiceFreed, compacted, images_freed_bytes: imagesFreed, relief_freed_bytes: reliefFreed, filed_freed_bytes: filedFreed, removed: freed ? 12 : 0 };
+  }
+  if (p === "/api/library/find-in-workshop") {
+    // like the engine on a workshop whose tiles are all in the list
+    return { format: "osxp-find-tiles-1", folder: "~/.orthostudio/tiles", added: [], found: [], listed: 0, duplicates: [], in_xplane: [], incomplete: [], waiting: [], no_roads: [], failed: [] };
   }
   if (p === "/api/library/import-ortho4xp") {
     if (!mock.library) mock.library = await mockFile("library");
     // like the engine: what was found, and where it looked. A folder named "empty" finds nothing,
     // so that the other answer can be seen too.
     const searched = [`${body.folder}/Tiles`];
-    if (/empty/i.test(body.folder)) return { entries: [], searched };
+    const own = { format: "osxp-find-tiles-1", folder: body.folder, added: [], found: [], listed: 0, duplicates: [], in_xplane: [], incomplete: [], waiting: [], no_roads: [], failed: [] };
+    if (/empty/i.test(body.folder)) return { entries: [], searched, own };
     const now = Date.now() / 1000;
     const row = { tile: "+42+009", kind: "ortho", provider: "BI", zl: 16, path: `${body.folder}/Tiles/zOrtho4XP_+42+009`, name: "zOrtho4XP_+42+009", built_by: "ortho4xp", installed: false, keys: null, registered_at: now, updated_at: now, size_bytes: 1650000000, present: true, photo: null, built: null, overlay: null };
     if (!mock.library.some((e) => e.path === row.path)) {
@@ -1403,7 +1454,7 @@ export async function mockApi(method, path, body, options = {}) {
       mockSortLibrary();
     }
     const { tile, kind, provider, zl, path: packPath, name, built_by: builtBy } = row;
-    return { entries: [{ tile, kind, provider, zl, path: packPath, name, built_by: builtBy }], searched };
+    return { entries: [{ tile, kind, provider, zl, path: packPath, name, built_by: builtBy }], searched, own };
   }
   m = p.match(/^\/api\/library\/([^/]+)\/forget$/);
   if (m) {
@@ -1990,6 +2041,21 @@ export function jobElapsed(job, nowMs = Date.now()) {
 }
 
 /** [low, high] seconds left for the whole job, or [null, null] while the engine does not know. */
+/** The running nodes the engine says are past their time (`stats.overdue`, api/progress.py
+ * `overdue`): well beyond their expected seconds and not advancing. */
+export function overdueNodes(stats) {
+  return new Set(stats && Array.isArray(stats.overdue) ? stats.overdue.filter((x) => typeof x === "string") : []);
+}
+
+/** What the header says is left: "longer than expected" while a step is past its time, rather
+ * than a range already gone by (a tile's terrain step sat at 3 % for twelve minutes under
+ * "1 min 30 s left", a user, 2026-10-18); else the range, or that it is not known yet. */
+export function etaWords(stats) {
+  if (overdueNodes(stats).size) return t("works.eta_longer");
+  const [lo, hi] = etaRange(stats);
+  return lo == null ? t("works.eta_unknown") : fmtRange(lo, hi);
+}
+
 export function etaRange(stats) {
   if (!stats || typeof stats !== "object") return [null, null];
   const lo = finite(stats.eta_low_s);
@@ -2250,7 +2316,7 @@ async function watchJob(jobId) {
 
 // ------------------------------------------------------------------ navigation
 
-const SCREENS = ["plan", "works", "library", "settings"];
+const SCREENS = ["plan", "works", "library", "disk", "settings"];
 
 /**
  * A table wider than its box scrolls sideways (`.table-wrap`). Where the scrollbar takes room (a
@@ -2295,8 +2361,10 @@ function showScreen(name, arg) {
   else followBuildUnderWay();
   if (name === "library") {
     loadLibrary();
+    findInWorkshop().then((changed) => changed && loadLibrary());
     refreshJobList(); // its buttons wait for the builds under way or waiting
   }
+  if (name === "disk") loadDisk();
   if (name === "settings") renderSettings();
   if (name === "plan") {
     loadPatches();
@@ -2320,7 +2388,7 @@ function routeFromHash() {
 // ------------------------------------------------------------------ status bar
 
 /** The engine API this page needs (orthostudio.api.app.API_LEVEL); a test keeps the two equal. */
-const PAGE_API_LEVEL = 31;
+const PAGE_API_LEVEL = 40;
 
 async function loadStatus() {
   try {
@@ -2368,7 +2436,19 @@ async function loadSizes() {
 /** The status bar's sizes of the store and of the downloaded images: "…" until measured. */
 function renderDiskSizes() {
   const sizes = state.sizes;
-  $("status-store").textContent = `${t("status.store")}: ${sizes ? fmtBytes(sizes.store_bytes) : "…"} · ${t("status.chunks")}: ${sizes ? fmtBytes(sizes.chunks_bytes) : "…"}`;
+  $("status-store").textContent = `${t("status.store")}: ${sizes ? fmtBytes(cacheBytes(sizes)) : "…"} · ${t("status.chunks")}: ${sizes ? fmtBytes(sizes.chunks_bytes) : "…"}`;
+}
+
+/**
+ * The store's bytes the tiles do not count already: its files that are a tile's own too, one file
+ * under two names, count once, in the tiles' sizes (`shared_bytes`). The store's size counted them
+ * again, and so does a file manager: a user saw the store folder about twice the size of his tiles
+ * and asked whether its images could be deleted (2026-10-22), and the owner's figures read 91 GB
+ * for a store adding 40 GB to 62 GB of tiles. An engine older than the page sends no
+ * `shared_bytes`: the store's size, as before.
+ */
+export function cacheBytes(d) {
+  return Math.max(0, (Number(d?.store_bytes) || 0) - (Number(d?.shared_bytes) || 0));
 }
 
 /** An engine older than the page (started before an update) cannot answer the new routes, and an
@@ -2485,7 +2565,41 @@ function renderUpdateNote() {
  * impossible, and nothing said so where the user was looking (a user asked, 2026-09-20). */
 function failedChecks() {
   const checks = Array.isArray(state.status?.doctor) ? state.status.doctor : [];
-  return checks.filter((c) => c && c.status === "fail").map((c) => c.name);
+  return checks.filter((c) => c && c.status === "fail");
+}
+
+/** What a failed check means, in the page's language, for the yellow banner: the checks' names
+ * are the program's own, in English, and the banner said "… is not working: disk." on a French
+ * page whose data folder's disk was unplugged (a campaign, 2026-10-25). A check this page does
+ * not know keeps its name in the sentence it had. */
+function checkSentence(check) {
+  const d = check.details || {};
+  switch (check.name) {
+    case "disk":
+      return d.exists === false
+        ? t("check.disk_missing")
+        : t("check.disk_full", { free: fmtFreeBytes((Number(d.free_gb) || 0) * 1e9) });
+    case "store":
+      return t("check.store");
+    case "triangle4xp":
+      return t("check.triangle4xp");
+    case "encoder":
+      return t("check.encoder");
+    case "http_client":
+      return t("check.http_client");
+    case "python":
+      return t("check.python");
+    case "junctions":
+      return t("check.junctions");
+    case "bing":
+      return t("check.bing");
+    case "map_data":
+      return t("check.map_data");
+    case "map_library":
+      return t("check.map_library");
+    default:
+      return t("app.checks_failed", { list: check.name });
+  }
 }
 
 /** Open the checks at the foot and bring them into view: what failed says there what it is. */
@@ -2506,7 +2620,7 @@ function renderEngineBanner() {
       : unread.length
         ? t("app.settings_unread", { list: unread.join(" · ") })
         : failed.length
-          ? t("app.checks_failed", { list: failed.join(" · ") })
+          ? failed.map(checkSentence).join(" ")
           : null;
   let banner = $("engine-outdated");
   if (!words) {
@@ -2975,7 +3089,14 @@ function renderTilesBuilt() {
     // the square's colours, against those the tile was built with: the Library's own test, so the
     // two say the same (a user moved a slider and was told nothing here, 2026-09-21)
     if (photoDiffers(e)) changes.push(t("plan.built_colours"));
-    const change = changes.length ? t("plan.built_change", { changes: changes.join(t("plan.built_and")) }) : null;
+    // a tile of another folder is built again there, outside this data folder: said, since a
+    // test atelier's build replaced two tiles of another folder at other settings (a campaign,
+    // 2026-10-24)
+    const atelier = atelierFolders(state.status);  // null while the status is not known: not said then
+    const folder = atelier ? tileFolder(e, atelier, state.status?.platform) : null;
+    const elsewhere = Boolean(folder?.key) && folder.key !== "atelier";
+    const changed = changes.join(t("plan.built_and"));
+    const change = !changes.length ? null : elsewhere ? t("plan.built_change_where", { folder: folder.label, changes: changed }) : t("plan.built_change", { changes: changed });
     if (change) warned.set(name, change);
     box.append(
       h("div", { class: "tiles-built-item" },
@@ -3911,17 +4032,20 @@ function renderBuildActions() {
   const plan = state.planStale ? null : state.plan;
   const disk = plan ? diskVerdict(plan.disk) : null;
   const refused = tiles && !state.planStale && !state.plan;
+  // squares of open sea alone: nothing to build, which is no refusal (a user's +33+012, 2026-10-23)
+  const onlySea = refused && errorDetail(state.planError?.err)?.code === "SYS_TILES_OPEN_SEA";
   const short = disk?.ok === false;
   const blocked = !tiles || refused || Boolean(state.buildStarting);
   $("build-install-btn").disabled = blocked;
   $("build-only-btn").disabled = blocked;
   let note = t("plan.estimating");
   if (!tiles) note = t("step4.need_tiles");
+  else if (onlySea) note = t("step4.only_sea");
   else if (refused) note = t("step4.refused");
   else if (short) note = t("step4.disk_short", { need: fmtGB(disk.needed), free: fmtGB(disk.free) });
   else if (plan) note = t("step4.summary", { download: fmtMB(plan.network?.mb), time: fmtRange(plan.network?.seconds_low, plan.network?.seconds_high), disk: fmtGB(disk.needed) });
   setText($("build-note"), note);
-  $("build-note").classList.toggle("is-fail", refused);
+  $("build-note").classList.toggle("is-fail", refused && !onlySea);
   $("build-note").classList.toggle("is-warn", short && !refused);
   // With a build under way or waiting, this one waits for its turn.
   const queue = $("build-queue");
@@ -4068,7 +4192,7 @@ function renderPlanPanel() {
         h("td", { class: "tile-name" }, te.tile),
         h("td", { class: "num" }, fmtInt(te.hits)),
         h("td", { class: "num" }, fmtInt(te.builds)),
-        h("td", { class: "num" }, fmtInt(te.textures?.total ?? te.textures)),
+        h("td", { class: "num" }, fmtInt(te.textures?.prepare ?? te.textures?.total ?? te.textures)),
         h("td", { class: "num" }, fmtInt(te.requests)),
         h("td", { class: "num" }, fmtMB(te.download_mb))))));
     panel.append(h("h3", { class: "section-title" }, t("plan.per_tile")), h("div", { class: "table-wrap plan-tiles" }, table));
@@ -4136,6 +4260,7 @@ function jobsChanged() {
   renderBuildActions();
   planMap?.jobChanged();
   if (state.screen === "library" && state.library) renderLibrary();
+  if (state.screen === "disk") renderDisk(); // Free space waits for a build, from the last measure
   followBuildUnderWay();
 }
 
@@ -4193,7 +4318,7 @@ function renderJobList() {
     const btn = h("button", { type: "button", class: "job-item", "aria-current": String(j.id === state.jobId), onclick: () => { history.replaceState(null, "", `#works/${j.id}`); watchJob(j.id); renderJobList(); } },
       h("span", { class: "job-tiles" }, tiles.length > 3 ? `${tiles.slice(0, 3).join(" ")} +${tiles.length - 3}` : tiles.join(" ")),
       jobStatusPill(j.status),
-      h("span", { class: "job-meta num" }, `${j.provider || ""} ZL${j.zoom_level ?? j.zl ?? ""} · ${fmtDate(j.started_at || j.created_at)} · ${j.install ? t("works.install") : t("works.no_install")}`));
+      h("span", { class: "job-meta num" }, `${j.provider || ""} ${jobLevel(j)} · ${fmtDate(j.started_at || j.created_at)} · ${j.install ? t("works.install") : t("works.no_install")}`));
     const row = h("li", null, btn);
     if (!jobActive(j)) row.append(forgetButton(j, all));
     ul.append(row);
@@ -4496,7 +4621,7 @@ function updateJobView(v, job) {
     chosen && gap ? `${chosen} (${gap})` : chosen,
     job.relief_own ? t("works.relief_own") : "",
   ].filter(Boolean).join(" + ");
-  const parts = [`${job.provider || ""} ZL${job.zoom_level ?? job.zl ?? ""}`, relief, job.install ? t("works.install") : t("works.no_install")];
+  const parts = [`${job.provider || ""} ${jobLevel(job)}`, relief, job.install ? t("works.install") : t("works.no_install")];
   setText(v.meta, parts.filter(Boolean).join(" · "));
   const waiting = job.status === "queued";
   v.stop.hidden = !active;
@@ -4509,8 +4634,7 @@ function updateJobView(v, job) {
   updateClock(v, job);
   v.etaItem.hidden = !active || waiting;
   if (active && !waiting) {
-    const [lo, hi] = etaRange(job.stats);
-    setText(v.eta, lo == null ? t("works.eta_unknown") : fmtRange(lo, hi));
+    setText(v.eta, etaWords(job.stats));
   }
   const st = job.stats || {};
   const rate = [];
@@ -4867,7 +4991,7 @@ export function tileActivity(job, tile, nowMs = Date.now()) {
 /** What a running step is doing, in words: the words of its running rows, with the rate of a
  * download when `rate` is asked and the time left of a row that reports nothing; "" when no row
  * runs. The tile's line (tileActivity) and the step's tooltip (stepTipLines) say it. */
-function stepActivity(step, nowMs, rate = true) {
+function stepActivity(step, nowMs, rate = true, late = overdueNodes(state.job?.stats)) {
   const parts = [];
   for (const [id, n] of Object.entries(step?.nodes || {})) {
     if (n.status !== "running") continue;
@@ -4877,7 +5001,10 @@ function stepActivity(step, nowMs, rate = true) {
     if (mbps) words += `, ${fmtMbps(mbps)}`;
     const started = finite(n.startedMs);
     const weight = finite(n.weight) ?? 0;
-    if (clamp01(n.fraction) === 0 && started != null && weight > 0) {
+    // past its time whatever it reported: the "longer than usual" of a step that never moved
+    // also for one that said 3 % and then nothing (2026-10-18)
+    if (late.has(id)) words += `, ${t("works.act_longer")}`;
+    else if (clamp01(n.fraction) === 0 && started != null && weight > 0) {
       const elapsed = (nowMs - started) / 1000;
       if (weight - elapsed >= 3) words += `, ${t("works.act_left", { time: fmtDuration(weight - elapsed) })}`;
       else if (elapsed > 1.5 * weight && elapsed >= 5) words += `, ${t("works.act_longer")}`;
@@ -5199,9 +5326,9 @@ async function loadLibrary() {
   loadDisk(); // a delete or a removal changes what can be freed
 }
 
-// ------------------------------------------------------------------ Library: disk space
+// ------------------------------------------------------------------ Disk space
 
-/** The folder the Library's disk space is measured in: the data folder, when its disk is there. */
+/** The folder Disk space is measured in: the data folder, when its disk is there. */
 export function dataFolderShown(status) {
   const data = status?.data_dir;
   if (data && data.path) return data.present === false ? null : data.path;
@@ -5211,29 +5338,73 @@ export function dataFolderShown(status) {
 /** GET /api/disk: what "Free space" would give back, measured without deleting anything. */
 async function loadDisk() {
   // What "Free space" would give back is measured over the whole store, the downloaded pieces and
-  // the relief: only for the Library, which shows it. Every list of the Library asked for it,
-  // from the Plan at the start too, and a user's hard disk measured it for minutes (2026-09-28).
-  if (!$("disk-list") || state.screen !== "library") return;
+  // the relief: only for Disk space, while it shows. Every list of the Library asked for it, from
+  // the Plan at the start too, and a user's hard disk measured it for minutes (2026-09-28).
+  if (!$("disk-list") || state.screen !== "disk") return;
+  state.diskMeasuring = true;
+  renderDisk(); // the last figures at once, the builds and filings as they are now
+  // the status too: the data folder's disk may have gone or come back since it was read; a disk
+  // unplugged with the tab open went unsaid until the page was loaded again (a campaign, 2026-10-24)
+  const status = loadStatus();
   try {
     state.disk = await api("GET", "/api/disk");
-  } catch (_err) {
+    state.diskError = null;
+  } catch (err) {
     state.disk = null; // an older engine has no such route: the banner asks for a restart
+    const found = errorDetail(err);
+    state.diskError = found?.code ? found : null; // a cache a newer version made, say
+  } finally {
+    state.diskMeasuring = false;
   }
+  await status;
   renderDisk();
 }
 
 /** The sizes a confirmation and the panel show: the unused tile data, with `images` the
- * downloaded image pieces and the map background, and with `filed` the cache of the tiles filed
- * outside the atelier. Each choice frees its own line: the image pieces of those tiles are theirs,
- * not counted in the images'. Exported for the tests. */
-export function freeSpacePlan(disk, images, relief, filed = false) {
-  const unused = Math.max(0, Number(disk?.unused_bytes) || 0);
-  const pictures = images ? Math.max(0, Number(disk?.images_bytes) || 0) + Math.max(0, Number(disk?.mapcache_bytes) || 0) : 0;
+ * downloaded image pieces and the map background, with `filed` the cache of the tiles filed
+ * outside the atelier, with `apart` the cache's copy of the images of the tiles on another disk
+ * or partition, and with `compact` the relief and the mesh kept in a second form. Each choice
+ * frees its own line: the image pieces of the filed tiles are theirs, not counted in the images',
+ * and a tile filed on another disk has its images counted once. Exported for the tests. */
+export function freeSpacePlan(disk, images, relief, filed = false, apart = false, compact = false) {
+  const n = (v) => Math.max(0, Number(v) || 0);
+  const unused = n(disk?.unused_bytes);
+  // the atelier's tiles' copies of the store's own files, made one file whatever the choices: a
+  // tile brought back from another disk held its photos twice, 358 GB for a user (2026-10-25)
+  const doubles = n(disk?.doubles_bytes);
+  // the relief and the mesh in Ortho4XP's form beside the engine's, which older versions read:
+  // 90 GB and 272 GB of a user's cache (2026-10-23). They go once the cache is compacted, which
+  // only the user decides: a compaction cut short left some, which go whatever the choices. The
+  // tiles filed outside have theirs too, which go whole with their own choice (a review, 2026-10-24).
+  const twice = compact || disk?.compacted ? Math.max(0, n(disk?.twice_bytes) - (filed ? n(disk?.twice_filed_bytes) : 0)) : 0;
+  // the cache's copy of the images of the tiles on another disk, which hold their own: 358 GB
+  // twice for the same user, whose tiles were on another partition
+  const copies = apart ? n(disk?.apart_bytes) : 0;
+  const pictures = images ? n(disk?.images_bytes) + n(disk?.mapcache_bytes) : 0;
   // The relief is its own choice: a square of it weighs 40 MB to 400 MB and costs far less to
   // fetch again than its imagery (a user found 1.4 GB of it left after emptying, 2026-09-18).
-  const heights = relief ? Math.max(0, Number(disk?.relief_bytes) || 0) : 0;
-  const away = filed ? filedCacheBytes(disk) : 0;
-  return { unused, pictures, heights, filed: away, total: unused + pictures + heights + away };
+  const heights = relief ? n(disk?.relief_bytes) : 0;
+  const away = filed ? (apart ? n(disk?.filed_apart_bytes) + n(disk?.filed_images_bytes) : filedCacheBytes(disk)) : 0;
+  return { unused, doubles, apart: copies, twice, pictures, heights, filed: away, total: unused + doubles + copies + twice + pictures + heights + away };
+}
+
+/** A size of Free space: a few kilobytes in kilobytes, which one decimal of a megabyte rounded to
+ * "0 MB" in the confirmation, as if there were nothing to free (2026-10-23). Exported for the tests. */
+export function fmtFreeBytes(b) {
+  const n = Math.max(0, Number(b) || 0);
+  return n > 0 && n < 50_000 ? fmtKB(n) : fmtBytes(n);
+}
+
+/** Whether the panel offers to compact the cache: while it keeps the relief and the mesh in two
+ * forms, and there is some to compact. Exported for the tests. */
+export function compactOffered(disk) {
+  return !disk?.compacted && (Number(disk?.twice_bytes) || 0) > 0;
+}
+
+/** Whether the panel offers to delete the cache's copy of the images of the tiles on another disk
+ * or partition: only while there is some. Exported for the tests. */
+export function apartOffered(disk) {
+  return (Number(disk?.apart_bytes) || 0) > 0;
 }
 
 /** The cache of the tiles filed outside the atelier (the atelier, step 5): the tile data only they
@@ -5249,6 +5420,23 @@ export function filedOffered(disk) {
   return (Number(disk?.filed_tiles) || 0) > 0 && filedCacheBytes(disk) > 0;
 }
 
+/** A text for a count of tiles: its `_one` form for one tile and its `_zero` form for none, when
+ * the language has them ("vos 1 tuiles" read wrong). */
+function tCount(key, n, params = {}) {
+  const form = n === 1 ? tOpt(`${key}_one`, params) : n === 0 ? tOpt(`${key}_zero`, params) : null;
+  return form ?? tOpt(key, { n, ...params }) ?? key;
+}
+
+/** The file manager by its name, for the note on the folder's size: the Finder, File Explorer. */
+function fileManager(platform) {
+  const os = platform === "mac" || platform === "win" ? platform : "lin";
+  return { in_app: tOpt(`disk.fm_in_${os}`) ?? "", app: tOpt(`disk.fm_${os}`) ?? "" };
+}
+
+/** The panel, in words the owner chose one by one (2026-10-24): where all of it is, said once under
+ * the title; the two lines without a box, each saying what becomes of it; then each box with its
+ * size on its right and what it changes under it, what was downloaded first, since the boxes
+ * after speak of the images; no "cache", which nobody reading it could place. */
 function renderDisk() {
   const list = $("disk-list");
   if (!list) return;
@@ -5256,50 +5444,138 @@ function renderDisk() {
   clear(list);
   const button = $("disk-free");
   const note = $("disk-note");
-  if (!d) {
-    button.disabled = true;
-    setText(note, "");
-    return;
-  }
-  const offered = filedOffered(d);
-  const inUse = Math.max(0, (Number(d.store_bytes) || 0) - (Number(d.unused_bytes) || 0) - (Number(d.filed_bytes) || 0));
-  const row = (label, value, help) => [h("dt", { title: help || null }, label), h("dd", { class: "num" }, value)];
-  list.append(
-    ...row(t("disk.in_use", { n: d.tiles ?? 0 }), fmtBytes(inUse), t("disk.in_use_help")),
-    ...(offered ? row(t("disk.filed", { n: d.filed_tiles }), fmtBytes(filedCacheBytes(d)), t("disk.filed_help")) : []),
-    ...row(t("disk.unused"), fmtBytes(d.unused_bytes || 0), t("disk.unused_help")),
-    ...row(t("disk.images"), fmtBytes(d.images_bytes || 0), t("disk.images_pieces_help")),
-    ...row(t("disk.mapcache"), fmtBytes(d.mapcache_bytes || 0)),
-    ...row(t("disk.relief"), fmtBytes(d.relief_bytes || 0), t("disk.relief_help")),
-  );
-  const reveal = $("disk-reveal");
   const data = state.status?.data_dir;
-  reveal.hidden = !dataFolderShown(state.status);
+  // every box deletes in this folder alone
+  const where = dataFolderShown(state.status);
+  setText($("disk-where"), where ? `· ${homely(where)}` : "");
+  const reveal = $("disk-reveal");
+  reveal.hidden = !where;
   const action = revealLabel(state.status?.platform);
   setText(reveal, data?.chosen ? t("disk.reveal_data", { action }) : t("disk.reveal", { action }));
+  // what the measure could not do, said in its own words: a cache a newer version made left the
+  // tab blank (a campaign, 2026-10-24)
+  const failed = clear($("disk-measure-error"));
+  if (!d && state.diskError) failed.append(errorCard(state.diskError));
+  // the data folder's disk away: nothing can be measured or freed, and that alone is said; its
+  // lines read "vos 24 tuiles 0 Mo" while it was unplugged (a campaign, 2026-10-24)
+  const away = data?.present === false;
+  $("disk-where-note").hidden = away;  // "this folder" names none then: the note below does
+  const choices = $("disk-space").querySelector(".disk-choices");
+  list.hidden = away || !d;
+  choices.hidden = away || !d;
+  if (away || !d) {
+    $("disk-shared").hidden = true;
+    button.disabled = true;
+    setText(button, t("disk.free"));
+    setText(note, away ? t("disk.data_missing", { path: homely(data.path) }) : "");
+    // the first measure, in the middle with a spinner: the tab stayed empty, without a word, while
+    // a cache of 300 tiles took 2.5 s to measure, 9 s on a Windows disk not read yet (a campaign,
+    // 2026-10-25)
+    $("disk-measuring").hidden = away || !state.diskMeasuring;
+    return;
+  }
+  $("disk-measuring").hidden = true;
+  const offered = filedOffered(d);
+  const copies = apartOffered(d) ? Number(d.apart_bytes) || 0 : 0;
+  const twice = Number(d.twice_bytes) || 0;
+  // a tile filed on another disk has its images in both choices: taken off once
+  const filedShare = copies > 0 ? Number(d.filed_apart_bytes) || 0 : Number(d.filed_bytes) || 0;
+  // the filed tiles' second forms are in both twice and their share: taken off once
+  const twiceHere = Math.max(0, twice - (Number(d.twice_filed_bytes) || 0));
+  const doubles = Number(d.doubles_bytes) || 0;
+  const inUse = Math.max(0, cacheBytes(d) - (Number(d.unused_bytes) || 0) - doubles - filedShare - copies - twiceHere);
+  const row = (label, value, fate) => [h("dt", null, label), h("dd", { class: "num" }, value, h("span", { class: "disk-fate" }, ` · ${fate}`))];
+  list.append(
+    // the atelier's tiles alone: those filed elsewhere have their own box below
+    ...row(tCount("disk.in_use", Number(d.atelier_tiles ?? d.tiles) || 0), fmtFreeBytes(inUse), t("disk.kept")),
+    ...row(t("disk.unused"), fmtFreeBytes(d.unused_bytes), t("disk.always")),
+    ...(doubles > 0 ? row(t("disk.doubles"), fmtFreeBytes(doubles), t("disk.always_freed")) : []),
+  );
+  // what a file manager shows more for the folder, folded under its question: it matters only to
+  // whoever compares (the owner, 2026-10-24). The whole folder's figure, which counts the cache's
+  // own links too: the store's alone was said (a campaign, 2026-10-24)
+  const extra = Number(d.finder_extra_bytes ?? d.shared_bytes) || 0;
+  const manager = fileManager(state.status?.platform);
+  $("disk-shared").hidden = extra <= 0;
+  setText($("disk-shared-why"), t("disk.shared_why", manager));
+  setText($("disk-shared-text"), extra > 0 ? t("disk.shared_note", { size: fmtBytes(extra), ...manager }) : "");
+  // a box is offered while it has something to free: two boxes of 0 MB stood on an empty folder
+  const pictures = (Number(d.images_bytes) || 0) + (Number(d.mapcache_bytes) || 0);
+  const heights = Number(d.relief_bytes) || 0;
+  $("disk-images-choice").hidden = pictures <= 0;
+  if (pictures <= 0) $("disk-images").checked = false;
+  setText($("disk-images-size"), fmtFreeBytes(pictures));
+  $("disk-relief-choice").hidden = heights <= 0;
+  if (heights <= 0) $("disk-relief").checked = false;
+  setText($("disk-relief-size"), fmtFreeBytes(heights));
+  $("disk-apart-choice").hidden = copies <= 0;
+  // unticked as it hides: ticked once, it came back ticked with the next tile (a review)
+  if (copies <= 0) $("disk-apart").checked = false;
+  const apartTiles = Number(d.apart_tiles) || 0;
+  setText($("disk-apart-text"), tCount("disk.also_apart", apartTiles));
+  // its points in the singular for one tile: "these tiles" read wrong for one (a campaign, 2026-10-24)
+  setText($("disk-apart-ok"), apartTiles === 1 ? t("disk.apart_ok_one") : t("disk.apart_ok"));
+  setText($("disk-apart-same"), apartTiles === 1 ? t("disk.apart_same_one") : t("disk.apart_same"));
+  setText($("disk-apart-size"), fmtFreeBytes(copies));
+  // a compacted cache shows its box ticked, for good: there is no going back but emptying it. Its
+  // tick goes with it: another data folder, not compacted, found it ticked (a review, 2026-10-24).
+  // Not disabled but refusing any change (its click, `bindDisk`): disabled, the browser paled its
+  // tick until it read unticked in the light theme (a campaign, 2026-10-24)
+  const compact = compactOffered(d);
+  const box = $("disk-compact");
+  const shownDone = box.getAttribute("aria-disabled") === "true";
+  $("disk-compact-choice").hidden = !compact && !d.compacted;
+  box.disabled = !compact && !d.compacted;
+  box.setAttribute("aria-disabled", d.compacted ? "true" : "false");
+  if (d.compacted) box.checked = true;
+  else if (!compact || shownDone) box.checked = false;
+  for (const point of $("disk-compact-choice").querySelectorAll(".disk-compact-before")) point.hidden = Boolean(d.compacted);
+  setText($("disk-compact-note"), d.compacted ? t("disk.compacted_note") : t("disk.compact_warn"));
+  const apart = copies > 0 && $("disk-apart").checked;
   $("disk-filed-choice").hidden = !offered;
-  // unticked as it hides: ticked once, it came back ticked with the next tile filed (a review)
   if (!offered) $("disk-filed").checked = false;
-  const plan = freeSpacePlan(d, $("disk-images").checked, $("disk-relief").checked, offered && $("disk-filed").checked);
-  // a filing moves a tile out of the atelier: the engine refuses meanwhile, the button waits
-  button.disabled = Boolean(d.building) || Boolean(state.filing) || plan.total <= 0 || state.diskBusy;
-  let said = d.building ? t("disk.busy_note") : state.filing ? t("disk.filing_note") : plan.total <= 0 ? t("disk.nothing") : "";
-  if (data?.present === false) said = t("disk.data_missing", { path: homely(data.path) });
-  setText(note, said);
+  // with the filed tiles' box ticked, their second forms go with it, not with this one
+  const filedTicked = offered && $("disk-filed").checked;
+  const twiceShown = Math.max(0, twice - (filedTicked ? Number(d.twice_filed_bytes) || 0 : 0));
+  setText($("disk-compact-size"), twiceShown > 0 ? fmtFreeBytes(twiceShown) : "");
+  const filedTiles = Number(d.filed_tiles) || 0;
+  setText($("disk-filed-text"), tCount("disk.also_filed", filedTiles));
+  setText($("disk-filed-ok"), filedTiles === 1 ? t("disk.filed_ok_one") : t("disk.filed_ok"));
+  setText($("disk-filed-dl"), filedTiles === 1 ? t("disk.filed_dl_one") : t("disk.filed_dl"));
+  setText($("disk-filed-size"), fmtFreeBytes(freeSpacePlan(d, false, false, true, apart).filed));
+  const plan = freeSpacePlan(d, $("disk-images").checked, $("disk-relief").checked, filedTicked, apart, compact && box.checked);
+  setText(button, plan.total > 0 ? t("disk.free_size", { size: fmtFreeBytes(plan.total) }) : t("disk.free"));
+  // a build this page started or follows is known before the next measure says so: the note
+  // said "Nothing to free" from the last one right after a build started (2026-10-23)
+  const building = Boolean(d.building) || activeJobs().length > 0;
+  // a filing moves a tile out of the atelier: the engine refuses meanwhile, the button waits;
+  // the figures of the last measure wait for the new one: after a filing or deletes in the
+  // Library they were minutes old on a hard disk, the button free to act on them (a review)
+  button.disabled = building || Boolean(state.filing) || plan.total <= 0 || state.diskBusy || state.diskMeasuring;
+  setText(note, building ? t("disk.busy_note") : state.filing ? t("disk.filing_note") : state.diskMeasuring ? t("disk.measuring") : plan.total <= 0 ? t("disk.nothing") : "");
 }
 
-/** The question before freeing space, in the page's modal <dialog>; resolves true for "Free". */
-function confirmFreeSpace(plan) {
+/** The question before deleting, in the page's modal <dialog>; resolves true for "Delete": what
+ * goes, in the panel's words and order, with its size. With `compact`, what deleting the data kept
+ * for older versions costs is said apart, in the warning's colour: within a sentence it read as a
+ * detail (the owner, 2026-10-24). */
+function confirmFreeSpace(plan, compact = false, disk = null) {
   const dialog = $("disk-confirm");
   if (dialog.open) return Promise.resolve(false);
-  $("disk-confirm-title").textContent = t("disk.confirm_title", { size: fmtBytes(plan.total) });
+  $("disk-confirm-title").textContent = t("disk.confirm_title", { size: fmtFreeBytes(plan.total) });
   const lines = [];
-  if (plan.unused > 0) lines.push(t("disk.confirm_unused", { size: fmtBytes(plan.unused) }));
-  if (plan.filed > 0) lines.push(t("disk.confirm_filed", { size: fmtBytes(plan.filed) }));
-  if (plan.pictures > 0) lines.push(t("disk.confirm_images", { size: fmtBytes(plan.pictures) }));
-  if (plan.heights > 0) lines.push(t("disk.confirm_relief", { size: fmtBytes(plan.heights) }));
-  lines.push(t("disk.confirm_kept"));
-  clear($("disk-confirm-text")).append(...lines.map((line) => h("p", null, line)));
+  const line = (what, size) => lines.push(t("disk.confirm_line", { what, size: fmtFreeBytes(size) }));
+  if (plan.unused > 0) line(t("disk.unused"), plan.unused);
+  if (plan.doubles > 0) line(t("disk.doubles"), plan.doubles);
+  if (plan.pictures > 0) line(t("disk.confirm_images"), plan.pictures);
+  if (plan.heights > 0) line(t("disk.confirm_relief"), plan.heights);
+  if (plan.apart > 0) line(tCount("disk.confirm_apart", Number(disk?.apart_tiles) || 0), plan.apart);
+  if (plan.twice > 0) line(t("disk.confirm_twice"), plan.twice);
+  if (plan.filed > 0) line(tCount("disk.confirm_filed", Number(disk?.filed_tiles) || 0), plan.filed);
+  const text = clear($("disk-confirm-text"));
+  text.append(h("ul", { class: "disk-confirm-list" }, ...lines.map((l) => h("li", null, l))));
+  if (compact) text.append(h("p", { class: "is-warn" }, t("disk.confirm_compact_warn")));
+  text.append(h("p", null, t("disk.confirm_kept")));
   dialog.returnValue = "";
   dialog.onkeydown = (ev) => {
     if (ev.key !== "Escape") return;
@@ -5318,15 +5594,17 @@ async function freeSpace() {
   const images = $("disk-images").checked;
   const relief = $("disk-relief").checked;
   const filed = filedOffered(state.disk) && $("disk-filed").checked;
-  const plan = freeSpacePlan(state.disk, images, relief, filed);
-  if (plan.total <= 0 || !(await confirmFreeSpace(plan))) return;
+  const apart = apartOffered(state.disk) && $("disk-apart").checked;
+  const compact = compactOffered(state.disk) && $("disk-compact").checked;
+  const plan = freeSpacePlan(state.disk, images, relief, filed, apart, compact);
+  if (plan.total <= 0 || !(await confirmFreeSpace(plan, compact, state.disk))) return;
   const errors = clear($("disk-errors"));
   state.diskBusy = true;
   renderDisk();
   try {
-    const res = await api("POST", "/api/clean", { images, relief, filed });
-    const freed = (Number(res?.freed_bytes) || 0) + (Number(res?.images_freed_bytes) || 0) + (Number(res?.relief_freed_bytes) || 0) + (Number(res?.filed_freed_bytes) || 0);
-    toast(freed > 0 ? t("disk.freed", { size: fmtBytes(freed) }) : t("disk.nothing"));
+    const res = await api("POST", "/api/clean", { images, relief, filed, apart, compact });
+    const freed = (Number(res?.freed_bytes) || 0) + (Number(res?.doubles_freed_bytes) || 0) + (Number(res?.apart_freed_bytes) || 0) + (Number(res?.twice_freed_bytes) || 0) + (Number(res?.images_freed_bytes) || 0) + (Number(res?.relief_freed_bytes) || 0) + (Number(res?.filed_freed_bytes) || 0);
+    toast(freed > 0 ? t("disk.freed", { size: fmtFreeBytes(freed) }) : t("disk.nothing"));
   } catch (err) {
     const found = errorDetail(err);
     const d = found && found.code ? found : { code: "SYS_INTERNAL_ERROR", message: errorMessage(err), severity: "blocking" };
@@ -6023,7 +6301,7 @@ const LIBRARY_REFUSALS = {
   SYS_FOLDER_GONE: () => [t("library.err_folder_gone"), t("library.err_folder_other")],
   SYS_FOLDER_IN_CUSTOM_SCENERY: () => [t("library.err_in_custom_scenery"), t("library.err_folder_outside_xplane")],
   SYS_FOLDER_IN_TILE: () => [t("library.err_folder_in_tile"), t("library.err_folder_other")],
-  SYS_FOLDER_IS_ATELIER: () => [t("library.err_folder_atelier"), t("library.err_folder_other")],
+  SYS_FOLDER_IS_ATELIER: () => [t("library.err_folder_atelier"), t("library.err_folder_atelier_other")],
   SYS_TILE_NAME_TAKEN: () => [t("library.err_name_taken"), t("library.err_name_taken_remedy")],
   SYS_TILE_NOT_WHOLE: () => [t("library.err_not_whole"), t("library.err_not_whole_remedy")],
   SYS_TILE_COPY_DIFFERS: () => [t("library.err_copy_differs"), t("library.err_copy_differs_remedy")],
@@ -6752,13 +7030,72 @@ function showImportPath() {
   $("import-path").focus();
 }
 
+/** At most six tiles of a list, then "…": a line under a button, not the list itself. */
+function someTiles(tiles) {
+  return tiles.length > 6 ? `${tiles.slice(0, 6).join(", ")} …` : tiles.join(", ");
+}
+
 /**
- * "Import my Ortho4XP tiles…", one button. A user pressed Import with the field still empty and
- * nothing happened at all, and could not tell which folder was meant (2026-09-21); the button then
- * opened the folder dialog when no folder was typed, and "Choose…" beside it did the same: two
- * buttons for one thing (the same user). It now asks for the folder, then imports it; the answer
- * counts the tiles, not the overlays pack beside them, names the folder, and says where it looked
- * when it found none. A cancel changes nothing.
+ * What a look for the tiles OrthoStudio XP built said (`own`, the engine's find_tiles_receipt):
+ * one sentence for each thing that happened, none when nothing did. `workshop` for the look the
+ * page takes at the workshop by itself, where tiles left aside are as they should be (a tile built
+ * again while X-Plane ran waits in it, listed in its own folder) and nothing is to search again.
+ */
+export function ownLines(own, where, { workshop = false } = {}) {
+  if (!own || typeof own !== "object") return [];
+  const list = (key) => (Array.isArray(own[key]) ? own[key] : []);
+  const lines = [];
+  const added = list("added");
+  const found = list("found");
+  if (added.length) lines.push(t("library.own_added", { n: fmtInt(added.length), where }));
+  if (found.length) lines.push(t("library.own_found", { n: fmtInt(found.length), where }));
+  const noRoads = list("no_roads");
+  if (noRoads.length) lines.push(t("library.own_no_roads", { n: fmtInt(noRoads.length), tiles: someTiles(noRoads) }));
+  const waiting = list("waiting");
+  const n = fmtInt(waiting.length);
+  if (waiting.length) lines.push(workshop ? t("library.own_waiting_workshop", { n }) : t("library.own_waiting", { n }));
+  const failed = list("failed");
+  if (failed.length) lines.push(t("library.own_failed", { n: fmtInt(failed.length), error: failed[0]?.error || "" }));
+  if (workshop) return lines;
+  const listed = Number(own.listed) || 0;
+  if (listed) lines.push(t("library.own_listed", { n: fmtInt(listed) }));
+  const duplicates = list("duplicates").map((d) => d?.tile).filter(Boolean);
+  if (duplicates.length) lines.push(t("library.own_duplicates", { n: fmtInt(duplicates.length), tiles: someTiles(duplicates) }));
+  const inXplane = list("in_xplane");
+  if (inXplane.length) lines.push(t("library.own_in_xplane", { n: fmtInt(inXplane.length), tiles: someTiles(inXplane) }));
+  const incomplete = list("incomplete");
+  if (incomplete.length) lines.push(t("library.own_incomplete", { n: fmtInt(incomplete.length), tiles: someTiles(incomplete) }));
+  return lines;
+}
+
+/**
+ * The tiles OrthoStudio XP built that are in the workshop's tiles folder and not in the list,
+ * taken back: asked at the page's start and whenever the Library is opened. A user moved his
+ * tiles by hand, deleted from the list those he had not found again one by one, and his map
+ * stayed empty while they sat in the workshop (2026-10-22). The list is read again only when
+ * something changed, and the line under *Find tiles in a folder…* says what. Returns whether
+ * anything changed; an engine that does not answer changes nothing.
+ */
+async function findInWorkshop() {
+  let res = null;
+  try {
+    res = await api("POST", "/api/library/find-in-workshop");
+  } catch (_err) {
+    return false;
+  }
+  const lines = ownLines(res, t("library.the_workshop"), { workshop: true });
+  if (lines.length) $("import-result").textContent = lines.join(" ");
+  return Boolean(res?.added?.length || res?.found?.length);
+}
+
+/**
+ * "Find tiles in a folder…", one button: first "Import my Ortho4XP tiles…". A user pressed
+ * Import with the field still empty and nothing happened at all, and could not tell which folder
+ * was meant (2026-09-21); the button then opened the folder dialog when no folder was typed, and
+ * "Choose…" beside it did the same: two buttons for one thing (the same user). It now asks for the
+ * folder, then imports its Ortho4XP tiles and takes back the tiles OrthoStudio XP built in it
+ * (2026-10-22); the answer counts the tiles, not the overlays pack beside them, names the folder,
+ * and says where it looked when it found none. A cancel changes nothing.
  */
 async function importOrtho4xp(ev) {
   ev.preventDefault();
@@ -6786,7 +7123,9 @@ async function importOrtho4xp(ev) {
     const entries = Array.isArray(res) ? res : res?.entries || []; // an older engine sent the list
     const tiles = entries.filter((e) => e.kind == null || e.kind === "ortho").length;
     const where = (Array.isArray(res?.searched) && res.searched.length ? res.searched : [dir]).map(homely).join(", ");
-    out.textContent = tiles ? t("library.imported", { n: fmtInt(tiles), where: homely(dir) }) : t("library.import_none", { where });
+    const lines = ownLines(res?.own, homely(dir));
+    if (tiles) lines.unshift(t("library.imported", { n: fmtInt(tiles), where: homely(dir) }));
+    out.textContent = lines.length ? lines.join(" ") : t("library.import_none", { where });
     await loadLibrary();
     loadStatus();
   } catch (err) {
@@ -7073,6 +7412,9 @@ function rerenderAll() {
   zoomRefresh?.();
   textSizeRefresh?.();
   renderStatus();
+  // the yellow banner too: it stayed in the other language until the next status (a campaign,
+  // 2026-10-25)
+  renderEngineBanner();
   renderProviders();
   renderTiles();
   renderPlanPanel();
@@ -7265,6 +7607,30 @@ async function boot() {
   $("disk-images").addEventListener("change", renderDisk);
   $("disk-relief").addEventListener("change", renderDisk);
   $("disk-filed").addEventListener("change", renderDisk);
+  $("disk-apart").addEventListener("change", renderDisk);
+  $("disk-compact").addEventListener("change", renderDisk);
+  // a compacted cache's box keeps its tick: it refuses the click rather than being disabled
+  $("disk-compact").addEventListener("click", (ev) => {
+    if (ev.currentTarget.getAttribute("aria-disabled") === "true") ev.preventDefault();
+  });
+  // back to the window with Disk space showing: the data folder's disk may have gone or come
+  // back meanwhile, which the tab told only at its next measure, a minute and more after it was
+  // unplugged (a campaign, 2026-10-24). The status alone is read, and the tab measured again only
+  // when the disk came or went: a measure takes minutes on a hard disk. With the yellow banner
+  // showing, on any screen, the status is read again too: what it names may have been put right
+  // meanwhile, a disk plugged back, and it stayed until something else read the status (a
+  // campaign, 2026-10-25).
+  const recheckStatus = async () => {
+    const disk = state.screen === "disk" && !state.diskMeasuring;
+    if (!disk && !failedChecks().length) return;
+    const was = state.status?.data_dir?.present;
+    await loadStatus();
+    if (disk && state.status?.data_dir?.present !== was) loadDisk();
+  };
+  window.addEventListener("focus", recheckStatus);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") recheckStatus();
+  });
   $("settings-search").addEventListener("input", (e) => {
     state.settingsSearch = e.target.value;
     renderSettings();
@@ -7427,6 +7793,9 @@ async function boot() {
   // of those waiting cannot be chosen again.
   if (!state.jobId && state.status?.active_job) watchJob(state.status.active_job);
   jobsChanged();
+  // The workshop's tiles the list lost, at the start too, for the map to show them; the Library
+  // looks each time it is opened, so it did just now if it is the screen shown.
+  if (state.screen !== "library") findInWorkshop().then((changed) => changed && loadLibrary());
   loadUpdate(); // not awaited: a slow GitHub must never hold the page back
   loadPatches();
 }

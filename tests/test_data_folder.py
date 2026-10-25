@@ -10,6 +10,8 @@ import asyncio
 import errno
 import os
 import shutil
+import sqlite3
+import time
 from pathlib import Path
 from typing import Any
 
@@ -25,6 +27,7 @@ from orthostudio.config.store import default_config_path
 from orthostudio.dem.sources import default_elevation_dir, default_memo_path
 from orthostudio.doctor import run_doctor
 from orthostudio.errors import OsxpError
+from orthostudio.graph import Store
 from orthostudio.home import (
     DATA_DIR_ENV,
     check_data_dir,
@@ -316,6 +319,103 @@ async def test_settings_save_a_data_folder_between_builds_and_builds_wait_for_it
             r = await c.put("/api/settings", json=saved)
             assert r.status_code == 200 and r.json()["essential"]["data_dir"] is None, r.text
             assert data_root() == home
+
+
+@pytest.mark.anyio
+async def test_the_checks_follow_the_data_folder_at_once(
+    app: Any, home: Path, tmp_path: Path
+) -> None:
+    """Its disk plugged back, Disk space was right at once, but the yellow banner still said "not
+    working: disk" for up to a minute: the engine kept its checks a minute (a campaign,
+    2026-10-25). They run again as soon as the data folder comes or goes, or its store's index
+    changes: one a newer version wrote, then put in the Recycle Bin as the page says. Fails on
+    the code before: the disk check still fails once the folder is back."""
+    application, _mgr, _ = app
+    disk = tmp_path / "SSD" / "OrthoStudio"
+    disk.mkdir(parents=True)
+    _choose(home, disk)
+
+    async def check(c: Any, name: str) -> str:
+        status = (await c.get("/api/status")).json()
+        return str(next(x["status"] for x in status["doctor"] if x["name"] == name))
+
+    async with client_for(application) as c:
+        assert await check(c, "disk") != "fail"
+        disk.rename(tmp_path / "SSD away")
+        assert await check(c, "disk") == "fail"
+        (tmp_path / "SSD away").rename(disk)
+        assert await check(c, "disk") != "fail"
+
+        Store(default_store_root()).close()
+        assert await check(c, "store") == "ok"
+        db = sqlite3.connect(default_store_root() / "index.sqlite")
+        db.execute("UPDATE meta SET v = '3' WHERE k = 'schema_version'")
+        db.commit()
+        db.close()
+        assert await check(c, "store") == "fail"
+        shutil.rmtree(default_store_root())
+        assert await check(c, "store") == "ok"
+
+
+@pytest.mark.anyio
+async def test_statuses_asked_together_run_the_checks_once(
+    app: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """On a disk not read yet, with a cache of 300 tiles, the checks took 8 s alone, and up to
+    30 s when several statuses asked at the same time each ran them again (a campaign,
+    2026-10-25). The statuses asked while they run wait for them and take their answer. Fails on
+    the code before: the checks run once per status."""
+    import orthostudio.api.app as app_mod
+
+    real = app_mod.run_doctor
+    runs: list[float] = []
+
+    def slow(**kwargs: Any) -> Any:
+        runs.append(time.monotonic())
+        time.sleep(0.3)  # the disk not read yet
+        return real(**kwargs)
+
+    monkeypatch.setattr(app_mod, "run_doctor", slow)
+    application, _mgr, _ = app
+    async with client_for(application) as c:
+        answers = await asyncio.gather(*(c.get("/api/status") for _ in range(5)))
+    assert all(r.status_code == 200 for r in answers)
+    assert len(runs) == 1
+    assert len({str(r.json()["doctor"]) for r in answers}) == 1
+
+
+def test_a_build_whose_data_folder_went_says_only_that(home: Path, tmp_path: Path) -> None:
+    """The data folder's disk unplugged during a build: Works showed a map layer "missing" with
+    command-line options, and an internal error to report (a campaign, 2026-10-25). The build
+    says the data folder is not found, plug its disk in again; the steps that failed for it stay
+    in the journal. Fails on the code before: the two cards."""
+    from orthostudio.api.jobs import _expected_nodes
+    from orthostudio.sched import Failed, Started
+
+    disk = tmp_path / "SSD" / "OrthoStudio"
+    disk.mkdir(parents=True)
+    _choose(home, disk)
+
+    def unplugged(specs: Any, *, on_event: Any, env: Any) -> None:
+        node_id, _role = _expected_nodes(specs[0])[1]
+        on_event(Started(node_id, "cpu", "k" * 64))
+        layer = OsxpError("OSM_LAYER_UNAVAILABLE", context={"tile": specs[0].tile.name})
+        on_event(Failed(node_id, layer))
+        disk.rename(tmp_path / "SSD away")  # its disk goes
+        raise OsxpError(
+            "SYS_INTERNAL_ERROR", context={"type": "OperationalError", "detail": "disk I/O error"}
+        )
+
+    mgr = JobManager(jobs_dir=home / "jobs", build=unplugged, env_factory=None)
+    job = mgr.start([make_spec(home=home)], install=False, request={"tiles": ["+43+005"]})
+    assert job.wait(10.0) and job.status == "failed"
+    state = job.state()
+    assert [(e["code"], e["context"]) for e in state["errors"]] == [
+        ("CFG_DATA_DIR_MISSING", {"path": str(disk)})
+    ]
+    journal = (home / "jobs" / f"{job.id}.jsonl").read_text(encoding="utf-8")
+    assert "OSM_LAYER_UNAVAILABLE" in journal and "disk I/O error" in journal
+    mgr.close()
 
 
 @pytest.mark.anyio
