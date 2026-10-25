@@ -1280,6 +1280,7 @@ class _Pipeline:
             timeout_s=self.spec.timeout_s,
             max_attempts=self.spec.max_attempts,
             req_per_s=self.spec.req_per_s or self.provider.server_req_per_s,
+            pushback_status=self.provider.pushback_status,
         )
         async with fetcher:
             if requests:

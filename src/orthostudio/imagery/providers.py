@@ -88,6 +88,10 @@ class Provider(BaseModel):
     """The requests per second the server itself gave at ``max_in_flight``, where it and not the
     line was the limit (``docs/benchmarks/network.md`` 7); ``None`` for a server that kept up with
     the line (Bing, Esri). The estimates never count downloads faster than this."""
+    pushback_status: tuple[int, ...] = ()
+    """The statuses besides 429 with which the server says it is asked too fast: they slow the
+    download down and the image is asked again, as after a 429 (``net-download.md`` R2). EOX's
+    403, 2026-10-25."""
     placeholder: PlaceholderRule | None = None
     extent: str | None = None
     """The country or region the imagery covers (English name), ``None`` for the whole world."""

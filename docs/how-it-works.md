@@ -302,7 +302,8 @@ list does the same for every finished build at once. A build still running or wa
 cross: stop it first.
 
 **Imagery sources.** Bing Maps and Esri cover the whole world and come first in every list, then
-EOX's Sentinel-2 mosaic, the whole world too but at ZL14 at most, light for flying high. The
+EOX's Sentinel-2 mosaic, the whole world too but at ZL14 at most, light for flying high; EOX
+refuses images when asked too fast, and OrthoStudio XP then waits, slows down and asks again. The
 other sources are a country's (the Netherlands, Spain, Luxembourg, Japan, the United States): the
 list puts first those that cover the tiles you chose, and a source that misses a tile says so,
 since its server has no image there. *My sources…* adds a source OrthoStudio XP does not ship,

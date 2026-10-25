@@ -69,6 +69,10 @@ max_zl = 14
 # rate is, so the ceiling of connections is the measured one again.
 max_in_flight = 32
 server_req_per_s = 90
+# It now says no by answering 403 at once (2026-10-25): 956 of 2 048 requests at 67 req/s, then
+# 36 659 of 37 888 at 80, the same images coming back one by one a moment later. Taken as a 429:
+# the download pauses, slows down and asks again, where it climbed on and gave the images up.
+pushback_status = [403]
 attribution = "EOxCloudless https://cloudless.eox.at by EOX IT Services GmbH (Contains modified Copernicus Sentinel data 2024)"
 name = "EOX Sentinel-2 cloudless 2024"  # they publish a new mosaic every year, and the
 # address names the one we ask for: the list must say which, or a pilot cannot tell (user, 2026-09-24)

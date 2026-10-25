@@ -88,6 +88,11 @@ class _Handler(BaseHTTPRequestHandler):
                 self._send(200, body_for(3))
         elif route == "ratelimit-always":
             self._send(429, b"slow down", {"Retry-After": "1"})
+        elif route == "forbidden-busy":  # EOX: 403 at once to a request above its rate
+            if count == 1:
+                self._send(403, b"Forbidden")
+            else:
+                self._send(200, body_for(8))
         elif route == "slow":
             if count == 1:
                 time.sleep(5.0)
@@ -255,6 +260,38 @@ def test_429_budget_is_bounded(server: LocalServer) -> None:
     (r,) = run(fetch(fetcher, [FetchRequest("k", server.url("ratelimit-always/1"))]))
     assert r.status == 429 and r.error == "NET_RATE_LIMITED" and r.attempts == 3
     assert len(server.hits("/ratelimit-always/1")) == 3
+
+
+def test_a_status_a_server_says_too_fast_with_is_taken_as_a_429(
+    server: LocalServer, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """EOX answers 403 at once to the requests above the rate it tolerates. Taken as an answer,
+    the window kept climbing and the image was given up: 956 of 2 048 at ZL13, the build failed
+    and its retry too (2026-10-25). Named by its provider, the 403 pauses, halves and is asked
+    again, without costing an attempt, as a 429 is."""
+    monkeypatch.setattr(fetch_mod, "PAUSE_BASE_S", 0.3)
+    fetcher = Fetcher(max_in_flight=16, start_in_flight=16, max_attempts=1, pushback_status=(403,))
+    seen: list[bool] = []
+    (r,) = run(
+        fetch(
+            fetcher,
+            [FetchRequest("k", server.url("forbidden-busy/1"), host_group="p")],
+            on_stats=lambda s: seen.append(s.pushed_back),
+        )
+    )
+    assert r.status == 200 and r.error is None and r.attempts == 2 and r.body == body_for(8)
+    hits = server.hits("/forbidden-busy/1")
+    assert len(hits) == 2 and hits[1] - hits[0] >= 0.29
+    assert fetcher.windows()["p"] == 8 and fetcher.stats().errors == 0
+    assert True in seen  # the page says the source asks to slow down
+
+
+def test_a_403_not_named_is_an_answer(server: LocalServer) -> None:
+    """Every other source keeps its 403 as an answer: asked once, given back as it came."""
+    fetcher = Fetcher(max_in_flight=16, start_in_flight=16)
+    (r,) = run(fetch(fetcher, [FetchRequest("k", server.url("forbidden-busy/2"), host_group="p")]))
+    assert r.status == 403 and r.error is None and r.attempts == 1
+    assert len(server.hits("/forbidden-busy/2")) == 1 and fetcher.windows()["p"] == 16
 
 
 def test_hedge_beats_a_straggler(server: LocalServer) -> None:
