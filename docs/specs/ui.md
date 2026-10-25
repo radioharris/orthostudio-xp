@@ -1494,7 +1494,9 @@ whether it runs (a warning when it does, since installation is refused then), do
 or the data folder chosen in Settings with a *disk not plugged in* pill while it is missing, and
 beside it a button that shows it in the file manager (`renderStatus`, `revealPath`; *Show in
 Finder* on a Mac): `.orthostudio` starts with a dot, which hides it in the Finder, and a user looked
-for his tiles in vain (2026-09-22). The store and chunk sizes come from `GET /api/sizes`, asked
+for his tiles in vain (2026-09-22). The sizes read *Data kept: … · downloaded images: …*
+(`status.store`, `status.chunks`; *Store · chunks* until 1.2.0, the engine's words), the first the
+store less what the tiles share with it, counted in their own sizes (`cacheBytes`). They come from `GET /api/sizes`, asked
 after each status and not awaited (`loadSizes`): "…" until they come, then that line alone is drawn
 again (`renderDiskSizes`), so the doctor's popover stays open. On Windows their walk opens every
 file of the store, and the page used to wait for them. The language and theme switches are in the

@@ -211,7 +211,12 @@ An existing DSF of a different content becomes `<name>.dsf.bak` (Ortho4XP conven
 the overlay DSF likewise); DDS files are **replaced without a backup** (a `.dds.bak` per re-encoded
 texture would leave gigabytes in `textures/`; stray `*.bak` in `textures/` and `terrain/` are swept)
 and DDS and `.ter` files that are no longer referenced by the new DSF are removed from the pack
-(they stay in the store). The pack directory is named by the tile only, so `declare` **refuses** two
+(they stay in the store). A file of the pack that already holds its source's bytes is not written
+again (`_place`), and with `link` it is made one file with the source (`join_same_file`: a link
+beside it, then renamed over it): kept as it was, a copy stayed beside the store's own, and a tile
+brought back from another disk, or an image made again the same after an update, held its images
+twice on the workshop's disk (11 GB of a user's 16 tiles, 2026-10-25; Free space joins those a pack
+already holds, `graph-keys.md` 9.1). The pack directory is named by the tile only, so `declare` **refuses** two
 specs of a batch that would write different content (another level, another parameter set) into the
 same `<out>/zOrthoStudio_<tile>/` (`CFG_VALUE_INVALID`: one level per output directory). On every
 system, `tile.pack` refuses (`SYS_REBUILD_XP_RUNNING`) to rewrite in its place a pack X-Plane shows

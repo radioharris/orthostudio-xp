@@ -441,6 +441,28 @@ collects by reachability from the packs on disk instead:
   (`pipeline-build.md`), and the choice keeps no record of the tile's files. With both `apart` and `filed`, a tile
   filed on another disk has its images counted once: `filed_apart_bytes` is the filed tiles' data
   once those went;
+* **copies made one file** (every run, whatever the choices; API level 40): the textures and the
+  DSF of the atelier's tiles that are copies of the store's own, on the store's disk, the same size,
+  not one file with it and with no other name of their own (`clean._doubles`; `doubles_files`,
+  `doubles_bytes`, `doubles_packs`). A tile of the atelier holds them as links to the store's; one
+  brought back from another disk, by hand or filed back, holds copies, and so did a pack kept as it
+  was when an image made again came out the same: 11 GB of a user's 16 tiles, freed by no choice
+  (2026-10-25). The run reads both files whole (`filecmp`) and makes the tile's one file with the
+  store's (`pack.join_same_file`: a link made beside it, `<name>.osxp-join`, then renamed over it,
+  so the tile's file is always there; a leftover of a run killed between the two goes at the next
+  run); a pair on two disks, or one another program holds open (Windows), is left. A file read
+  different, an image its user retouched in the tile (a DDS of the same picture size has the same
+  size), stays as it is and goes into the index's note `clean.different` (`Store.note`, the `meta`
+  table) with its path, size, date and inode, so that a measure no longer counts it while it stays
+  as noted; each run keeps in the note the files it read different and those still as noted. The
+  dry run finds the candidates from the folders' listings (`clean._unlinked`): on macOS and Linux
+  the listing carries each file's number, and only the pairs whose numbers differ are stat'ed; on
+  Windows it carries size and time, the pairs that differ are candidates, and those that agree are
+  too when the first of them is not one file (a folder copied with its times kept): one call per
+  tile, where a file number per image took Disk space to 31 s with 300 tiles (2026-10-25). The dry
+  run also says when each tile's newest copy came (`doubles_since`, from the copies' creation time,
+  the change time on Linux), which `GET /api/disk` reads to measure again the tiles the Library
+  measured before it (`api.md` 2.1);
 * **sizes shown**: `disk_bytes` measures a folder the same way, each inode once: the size of each
   pack in the library (`api.md` 2.3), and the page's store size until 0.1.19, which the index's
   sum put at twice the disk's (a DDS linked by two artefacts); the store's is now the figure its
