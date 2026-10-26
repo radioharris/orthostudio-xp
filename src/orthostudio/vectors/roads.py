@@ -13,6 +13,10 @@ side -- buffer them by ``lane_width``, and hand the resulting polygons to the no
 ``INTERP_ALT``, so that Triangle4XP levels the mesh under them. Roads that are flat enough are
 left to the DEM.
 
+``road_smoothing``, OrthoStudio XP's own and off unless chosen, then averages the altitude of
+those polygons along their outline over 100 or 250 m: the relief's small waves stay out of the
+levelled roads, which X-Plane's draped roads followed as bumps (KSME, 2026-10-26).
+
 The airport areas Ortho4XP computes in ``include_airports`` enter here as an *injected* input
 (arbitration A2): wave 1 has no airport builder, so ``airports=None`` builds a tile as if it
 had no aerodrome, and wave 2 will fill :class:`AirportAreas` in.
@@ -61,6 +65,7 @@ __all__ = [
     "length_in_meters",
     "refine_way",
     "shift_way",
+    "smooth_along",
     "weighted_normals",
 ]
 
@@ -78,6 +83,18 @@ BUFFER_SIMPLIFY_M = 0.5
 
 APT_BUFFER_EXTRA_M = 2.0
 """The airport area is buffered by ``lane_width + 2`` metres before subtraction (``:335``)."""
+
+ROAD_SMOOTHING_CHOICES = (0, 100, 250)
+"""The lengths, in metres, the altitude of a levelled road may be averaged over; 0 is off.
+
+100 m takes out the small waves of a 30 m relief and moves the roads little (KSME: half their
+points by about a quarter of a metre, none by 10 m); 250 m smooths longer waves but begins to
+plane real slopes; 50 m changed almost nothing and 500 m planed too much (measured and chosen on
+2026-10-26, ``vectors-water-roads.md`` 3.6)."""
+
+SMOOTH_STEP_M = 2.0
+"""Spacing of the samples :func:`smooth_along` averages, fine against the 100 m segments of a
+refined outline and the 30 m of the relief."""
 
 
 # -- metric helpers (``O4_Vector_Utils.py``, module-level ``scalx`` made explicit) --------------
@@ -152,17 +169,63 @@ def improved_buffer(
     return affinity.affine_transform(out, [1 / scalx, 0, 0, 1, 0, 0])
 
 
+def smooth_along(
+    way: NDArray[np.floating], alt: NDArray[np.floating], window_m: float, scalx: float
+) -> NDArray[np.float64]:
+    """``alt``, the altitude at each point of ``way``, averaged over ``window_m`` metres along it.
+
+    The way is sampled every :data:`SMOOTH_STEP_M` metres of its length; each sample takes the mean
+    of those within half the window on either side, around a closed ring past its start, on an
+    open way up to its ends; each point then takes the value at its place. A closed ring shorter
+    than the window takes its mean all round. The points do not move, their altitudes alone change.
+    """
+    pts = np.asarray(way, dtype=np.float64)
+    z = np.asarray(alt, dtype=np.float64).reshape(-1)
+    if window_m <= 0 or len(pts) < 2:
+        return z.copy()
+    step = np.hypot(np.diff(pts[:, 0]) * scalx, np.diff(pts[:, 1])) * LAT_TO_M
+    places = np.concatenate(([0.0], np.cumsum(step)))
+    length = float(places[-1])
+    if length <= 0:
+        return z.copy()
+    moving = np.concatenate(([True], step > 0))  # np.interp asks for increasing places
+    count = max(int(np.ceil(length / SMOOTH_STEP_M)), 1)
+    grid = np.linspace(0.0, length, count + 1)
+    closed = bool((pts[0] == pts[-1]).all())
+    if closed:
+        grid = grid[:-1]  # the end of a ring is its start
+    samples = np.interp(grid, places[moving], z[moving])
+    half = round(window_m / 2 / (length / count))
+    n = len(samples)
+    if closed:
+        if 2 * half + 1 >= n:
+            smooth = np.full(n, samples.mean())
+        else:
+            ring = np.concatenate((samples[n - half :], samples, samples[:half]))
+            sums = np.concatenate(([0.0], np.cumsum(ring)))
+            smooth = (sums[2 * half + 1 :] - sums[: -2 * half - 1]) / (2 * half + 1)
+        return np.interp(places, np.append(grid, length), np.append(smooth, smooth[0]))
+    sums = np.concatenate(([0.0], np.cumsum(samples)))
+    i = np.arange(n)
+    lo, hi = np.maximum(i - half, 0), np.minimum(i + half, n - 1)
+    return np.interp(places, grid, (sums[hi + 1] - sums[lo]) / (hi - lo + 1))
+
+
 # -- parameters and results --------------------------------------------------------------------
 
 
 @dataclass(frozen=True, slots=True)
 class RoadParams:
-    """The four Ortho4XP settings of the road stage (``O4_Config_Utils.py:122-142``)."""
+    """The four Ortho4XP settings of the road stage (``O4_Config_Utils.py:122-142``), and
+    OrthoStudio XP's ``road_smoothing``."""
 
     road_level: int = 1
     road_banking_limit: float = 0.5
     lane_width: float = 4.0
     max_levelled_segs: int = 200000
+    road_smoothing: float = 0.0
+    """Metres the altitude of a levelled road is averaged over along its outline; 0, Ortho4XP's
+    way, takes each point's own (:data:`ROAD_SMOOTHING_CHOICES`)."""
 
 
 DEFAULT_ROAD_PARAMS = RoadParams()
@@ -305,9 +368,13 @@ def build_road_layers(
         """``:251-252``: the altitude ``lane_width`` metres to the left, i.e. on the road."""
         return dem.alt_vec(shift_way(way, params.lane_width, "left", scalx))
 
+    def alt_vec_smooth(way: NDArray[np.floating]) -> NDArray[np.float64]:
+        """The same altitudes, averaged along the outline over ``road_smoothing`` metres."""
+        return smooth_along(way, alt_vec_shift(way), params.road_smoothing, scalx)
+
     encoded = encode_multipolygon(
         polygons_of(road_area),
-        pol_to_alt=alt_vec_shift,
+        pol_to_alt=alt_vec_smooth if params.road_smoothing else alt_vec_shift,
         refine=ROAD_REFINE_M,
         scalx=scalx,
         margin=seed_margin(tile),

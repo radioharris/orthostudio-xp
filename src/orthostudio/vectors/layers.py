@@ -348,6 +348,7 @@ def build_layers(request: object) -> LayerBuild:
                     road_banking_limit=float(params.road_banking_limit),
                     lane_width=float(params.lane_width),
                     max_levelled_segs=int(params.max_levelled_segs),
+                    road_smoothing=float(params.road_smoothing),
                 ),
                 airports=stage.layers.airport_areas(),
                 on_event=on_event,

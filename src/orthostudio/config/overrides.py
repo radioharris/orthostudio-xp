@@ -64,6 +64,7 @@ _SAME: tuple[tuple[str, str], ...] = (
     # switch reached nothing before this line (found on 2026-09-18, shipped in 0.1.3).
     ("decal_on_sea", "decal_on_sea"),
     ("flatten_helipads", "flatten_helipads"),
+    ("road_smoothing", "road_smoothing"),
     ("decal", "decal"),
     ("ovl_exclude_pol", "ovl_exclude_pol"),
     ("ovl_exclude_net", "ovl_exclude_net"),

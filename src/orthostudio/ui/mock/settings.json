@@ -50,6 +50,7 @@
     "road_banking_limit": 0.5,
     "lane_width": 4.0,
     "max_levelled_segs": 200000,
+    "road_smoothing": 0,
     "water_simplification": 0.0,
     "masks_use_dem_too": false,
     "masks_custom_extent": "",

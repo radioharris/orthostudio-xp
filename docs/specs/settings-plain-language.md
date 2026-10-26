@@ -122,6 +122,7 @@ Findings that change what the page may say (details in section 6):
 | 34 | `expert.road_banking_limit` | `road_banking_limit` | 0.5 m | Folded | Side slope that triggers flattening |
 | 35 | `expert.lane_width` | `lane_width` | 4 m | Folded | Half-width of the flattened strip |
 | 36 | `expert.max_levelled_segs` | `max_levelled_segs` | 200 000 | Folded | Road points flattened per layer |
+| 36b | `expert.road_smoothing` | – | 0 (off) | Folded (Roads group, under *Flatten the ground under roads*) | Smooth the roads |
 | 37 | `expert.water_simplification` | `water_simplification` | 0 m | Folded | Simplify lake and river outlines |
 | 38 | `expert.masks_use_dem_too` | `masks_use_DEM_too` | false | Folded (with a relief file); not offered on the page, and refused by a build since 2026-09-14 (4.12) | Use the relief for the coast fade |
 | 39 | `expert.masks_custom_extent` | `masks_custom_extent` | `""` | Removed (broken) | — |
@@ -1021,6 +1022,23 @@ and read 50 or more as 5; OrthoStudio XP refuses those, and until 1.0 it stopped
 - **Recommendation. Folded.**
 - **Expert label.** EN *Maximum road points flattened per layer* · FR *Nombre maximal de points
   de route aplanis par couche*.
+
+### 4.10b `expert.road_smoothing` (OrthoStudio XP only)
+
+`–` · 0 · one of 0, 100, 250 (m).
+
+- **Does.** Averages the altitude of each flattened road along its outline over 100 or 250 m,
+  the points staying where they are (`vectors-water-roads.md` 3.6). 0 keeps each point's own
+  altitude, as Ortho4XP does, and changes nothing in a tile built before.
+- **In X-Plane.** X-Plane's roads are draped on the mesh: on a 30 m relief, the flattened roads
+  follow its small waves and the roads bump over them (KSME, `+37-085`, 2026-10-26). Light
+  (100 m) takes the bumps out and moves the road points little, half of them by about a
+  quarter of a metre and none by 10 m; strong (250 m) smooths longer waves too, but begins to flatten real
+  slopes (239 points moved by more than 10 m on that square). Only flattened roads are smoothed:
+  with *Flatten the ground under roads* on *None* it does nothing.
+- **Recommendation. Folded**, off: it is a remedy for a relief whose waves show under the roads.
+- **Expert label.** EN *Smooth the roads* (Off · Light, over 100 m · Strong, over 250 m) · FR
+  *Lisser les routes* (Non · Léger, sur 100 m · Fort, sur 250 m).
 
 ### 4.11 `expert.water_simplification`
 

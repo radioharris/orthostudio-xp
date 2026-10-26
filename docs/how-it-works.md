@@ -140,6 +140,13 @@ of such a square stopped.
 Ortho4XP. *Flatten OpenStreetMap's helipads* (Settings, for experts, Airports) leaves the helipads
 on the relief's slope, for a scenery that places its own helipad there; the rest stays flat.
 
+**Smooth roads.** Where the ground is flattened under the roads, it still follows the relief along
+them, small waves included, and X-Plane's roads, laid on the ground, bump over them. *Smooth the
+roads* (Settings, for experts, Roads) averages the height of each flattened road over 100 m
+(light) or 250 m (strong), on whichever relief the tile is built. Light takes the bumps out and
+moves the roads little; strong smooths longer waves too, but begins to flatten real slopes. Off
+by default, as in Ortho4XP; a tile takes it at its next build, which makes its terrain again.
+
 **An image piece that does not arrive.** Out of tens of thousands of requests, a few can stall while
 the others flow. Once the rest of the tile's imagery is done, OrthoStudio XP asks for them again
 after a pause of 5 s, then 15 s, then 45 s, each time through another Bing server, and for at most

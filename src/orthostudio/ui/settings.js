@@ -444,7 +444,7 @@ export const EXPERT_GROUPS = [
     title: () => t("settings.x.group_terrain"),
     fields: ["advanced.curvature_tol", "advanced.limit_tris", "expert.min_angle", "expert.apt_curv_tol", "expert.apt_curv_ext", "expert.coast_curv_tol", "expert.coast_curv_ext", "advanced.apt_smoothing_pix", "expert.patches_dir"],
   },
-  { id: "roads", title: () => t("settings.x.group_roads"), fields: ["advanced.road_level", "expert.road_banking_limit", "expert.lane_width", "expert.max_levelled_segs"] },
+  { id: "roads", title: () => t("settings.x.group_roads"), fields: ["advanced.road_level", "expert.road_smoothing", "expert.road_banking_limit", "expert.lane_width", "expert.max_levelled_segs"] },
   { id: "look", title: () => t("settings.x.group_look"), fields: ["advanced.terrain_casts_shadows", "expert.normal_map_strength", "expert.use_decal_on_terrain", "expert.decal_on_sea", "expert.decal", "expert.photo_brightness", "expert.photo_contrast", "expert.photo_saturation"] },
   { id: "objects", title: () => t("settings.x.group_objects"), fields: ["expert.ovl_exclude_pol", "expert.ovl_exclude_net"] },
   // Where the map data of a tile comes from, before the public servers are asked (osm-prepared.md).
@@ -485,6 +485,7 @@ const FIELD_TEXT = {
   "expert.osm_folder": [() => t("settings.x.osm_folder"), () => t("settings.x.osm_folder_hint")],
   "expert.osm_library": [() => t("settings.x.osm_library"), () => t("settings.x.osm_library_hint")],
   "expert.osm_library_token": [() => t("settings.x.osm_token"), () => t("settings.x.osm_token_hint")],
+  "expert.road_smoothing": [() => t("settings.x.road_smoothing"), () => t("settings.x.road_smoothing_hint")],
   "expert.road_banking_limit": [() => t("settings.x.banking"), () => t("settings.x.banking_hint")],
   "expert.lane_width": [() => t("settings.x.lane_width"), () => t("settings.x.lane_width_hint")],
   "expert.max_levelled_segs": [() => t("settings.x.max_segs"), () => t("settings.x.max_segs_hint")],
@@ -515,6 +516,11 @@ const OPTION_TEXT = {
     3: () => t("settings.x.road_3"),
     4: () => t("settings.x.road_4"),
     5: () => t("settings.x.road_5"),
+  },
+  "expert.road_smoothing": {
+    0: () => t("settings.x.smooth_0"),
+    100: () => t("settings.x.smooth_100"),
+    250: () => t("settings.x.smooth_250"),
   },
   "advanced.sea_smoothing_mode": {
     zero: () => t("settings.x.sea_zero"),
