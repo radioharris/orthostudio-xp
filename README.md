@@ -48,6 +48,9 @@ experimental.
 - **The colours of the photos, seen on the map**: as delivered, toned down, or by your own numbers,
   for everything, one square or one zone. Changing them builds a tile again without downloading
   anything.
+- **Roads without bumps.** The ground flattened under the roads can be smoothed along them over
+  100 or 250 m, so that X-Plane's roads no longer bump over the small waves of the relief, on
+  whichever relief you build with. Off by default, as in Ortho4XP.
 - **The grain of the ground.** One of X-Plane 12's decals over the photos, the one you choose;
   turning it on, off or to another writes a tile's terrain files again, and nothing else.
 - **The squares of a flight plan.** Your last SimBrief plan, or a plan file from Little Navmap

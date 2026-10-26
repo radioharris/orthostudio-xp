@@ -153,7 +153,7 @@ __all__ = [
     "sse_message",
 ]
 
-API_LEVEL = 40
+API_LEVEL = 41
 """What this engine's API offers, for the page: 1 = P2b, 2 = zones (``/api/zones``) and the base map
 (``/api/map``), 3 = deleting a tile (``POST /api/library/{name}/delete``) and the sizes of the
 library, 4 = the disk space of the Library (``GET /api/disk``, ``POST /api/clean``), 5 = clearing
@@ -205,7 +205,8 @@ trimmed only then), with ``twice_filed_bytes``, the share of the tiles filed out
 ``atelier_tiles``, the tiles whose data the page's first line keeps, 39 = ``levels`` in a job's
 summary (how many of its tiles at each detail level, which Works writes), 40 = ``doubles_bytes`` in
 ``GET /api/disk`` and ``doubles_freed_bytes`` in ``POST /api/clean`` (the atelier's tiles' copies of
-the store's files, made one file with them whatever the choices). A page
+the store's files, made one file with them whatever the choices), 41 = the setting
+``expert.road_smoothing`` (an older engine refuses a settings document that holds it). A page
 served by an engine older than itself (a ``osxp serve`` started before an update: the page's files
 are read from disk at each load, the routes were imported at start) asks the user to restart
 OrthoStudio XP instead of showing "Not Found"."""

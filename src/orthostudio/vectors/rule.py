@@ -28,6 +28,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass, replace
 from dataclasses import field as dc_field
 from pathlib import Path
+from typing import Any
 
 from pydantic import field_validator
 
@@ -48,6 +49,7 @@ from orthostudio.vectors.assemble import (
     VectorLayers,
     assemble_vectors,
 )
+from orthostudio.vectors.roads import ROAD_SMOOTHING_CHOICES
 
 __all__ = [
     "DEM_JSON",
@@ -107,6 +109,35 @@ class VectorsParams(RuleParams):
     flatten_helipads: bool = True
     """Ortho4XP flattens every OSM helipad (``flatten_helipads``, ``O4_Airport_Utils.py:1370``);
     off, the ground keeps its slope there (OrthoStudio XP's, idea #8, 2026-10-11)."""
+
+    road_smoothing: int = 0
+    """Metres the altitude of a levelled road is averaged over along its outline, one of
+    :data:`~orthostudio.vectors.roads.ROAD_SMOOTHING_CHOICES`; 0, Ortho4XP's way, is off and
+    leaves the key out (:meth:`canonical`), so no tile built before is built again
+    (OrthoStudio XP's, 2026-10-26)."""
+
+    @field_validator("road_smoothing")
+    @classmethod
+    def _road_smoothing_is_a_choice(cls, value: int) -> int:
+        """Refuse a length the page does not offer, with the code the pipeline reports."""
+        if value not in ROAD_SMOOTHING_CHOICES:
+            raise OsxpError(
+                "CFG_VALUE_INVALID",
+                context={
+                    "name": "road_smoothing",
+                    "value": value,
+                    "type": "int",
+                    "range": ", ".join(str(v) for v in ROAD_SMOOTHING_CHOICES),
+                },
+                remedy="Set road_smoothing to 0 (off), 100 or 250.",
+            )
+        return value
+
+    def canonical(self) -> dict[str, Any]:
+        doc = super().canonical()
+        if not self.road_smoothing:  # off: the key of every tile built before
+            doc.pop("road_smoothing", None)
+        return doc
 
     apt_smoothing_pix: int = 8
     """Airport elevation smoothing width, in DEM pixels (``O4_Config_Utils.py:117``).

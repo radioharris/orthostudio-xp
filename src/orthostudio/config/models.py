@@ -297,6 +297,15 @@ class Expert(BaseModel):
     road_banking_limit: float = _field(0.5, "expert", "road_banking_limit", "m", ge=0)
     lane_width: float = _field(4.0, "expert", "lane_width", "m", gt=0)
     max_levelled_segs: int = _field(200000, "expert", "max_levelled_segs", "segments", ge=0)
+    road_smoothing: Literal[0, 100, 250] = _field(
+        0,
+        "expert",
+        None,
+        "m",
+        hint="The height of each flattened road is averaged over this length along it, so that "
+        "X-Plane's roads no longer bump over the small waves of the relief. 0 keeps each point's "
+        "own height, as Ortho4XP does. A tile already built takes it at its next build.",
+    )
     water_simplification: float = _field(0.0, "expert", "water_simplification", "m", ge=0)
     masks_use_dem_too: bool = _field(False, "expert", "masks_use_DEM_too", "")
     masks_custom_extent: str = _field("", "expert", "masks_custom_extent", "")

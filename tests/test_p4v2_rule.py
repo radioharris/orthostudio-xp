@@ -60,6 +60,7 @@ def test_every_consumed_parameter_is_in_the_key() -> None:
         "apt_smoothing_pix": 4,
         "exact_grid_order": True,
         "flatten_helipads": False,
+        "road_smoothing": 100,
     }
     assert set(probes) == set(VectorsParams.model_fields), "a field was added without a probe"
     for name, value in probes.items():

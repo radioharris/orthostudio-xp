@@ -26,8 +26,8 @@ def test_levels_and_field_counts() -> None:
     # region is P5; overlays, data_dir and simbrief_user are OrthoStudio XP's own
     assert len(Essential.model_fields) == 11
     assert len(Advanced.model_fields) == 14
-    # decal_on_sea, decal and flatten_helipads are OrthoStudio XP's own
-    assert len(Expert.model_fields) == 30
+    # decal_on_sea, decal, flatten_helipads and road_smoothing are OrthoStudio XP's own
+    assert len(Expert.model_fields) == 31
 
 
 def test_defaults_are_the_ortho4xp_defaults() -> None:

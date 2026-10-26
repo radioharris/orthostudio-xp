@@ -623,6 +623,21 @@
      "type": "integer",
      "unit": "segments"
     },
+    "road_smoothing": {
+     "default": 0,
+     "description": "The height of each flattened road is averaged over this length along it, so that X-Plane's roads no longer bump over the small waves of the relief. 0 keeps each point's own height, as Ortho4XP does. A tile already built takes it at its next build.",
+     "enum": [
+      0,
+      100,
+      250
+     ],
+     "hint": "The height of each flattened road is averaged over this length along it, so that X-Plane's roads no longer bump over the small waves of the relief. 0 keeps each point's own height, as Ortho4XP does. A tile already built takes it at its next build.",
+     "level": "expert",
+     "ortho4xp": null,
+     "title": "Road Smoothing",
+     "type": "integer",
+     "unit": "m"
+    },
     "water_simplification": {
      "default": 0.0,
      "description": "In case the OSM data for water areas would become too large, this parameter (in meter) can be used for node simplification.",

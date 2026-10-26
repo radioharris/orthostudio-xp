@@ -208,6 +208,34 @@ The branch that would insert the non-banked roads as `DUMMY` lines is `if False 
 since 23/02/2024 and the roads rejected by the banking test are dropped. **Drop** (the
 rejected ways are counted and reported, not inserted).
 
+### 3.6 Smoothing along the outline (OrthoStudio XP's own, off by default)
+
+`road_smoothing` (`expert.road_smoothing`, 0, 100 or 250 m, 0 by default) replaces
+`alt_vec_shift` in 3.4 by `smooth_along(ring, alt_vec_shift(ring), road_smoothing)`: each ring of
+the encoded road area, already refined every 100 m, is sampled every 2 m of its length
+(`SMOOTH_STEP_M`, the last stretch evened out so the samples are equally spaced), each sample
+takes the mean of the samples within half the length on either side, running on past the start
+of the ring, and each point of the ring takes the value at its place. A ring shorter than the
+length takes its mean all round. The points do not move: the road area, the seeds, the triangles
+and the counts are those of 3.3 and 3.4, only the altitudes Triangle4XP interpolates between change.
+
+Why: the levelled roads follow the relief's small waves, 30 m apart on a 30 m relief, and
+X-Plane's roads, draped on the mesh, bump over them; Ortho4XP 1.30 on the same relief bumps the same
+(KSME, `+37-085`, 2026-10-26). Measured there on a 1" relief, road_level 1, banking limit 0,
+lane width 9 m, against the same tile unsmoothed: same points and triangles, same build time, only
+the 129 111 vertices of the levelled roads and airports moved, the 1 133 075 others identical.
+Road points moved, median / 90 % / most: 100 m 0.26 / 0.91 / 9.6 m; 250 m 0.63 / 2.21 / 21.7 m.
+This code at 100 m on the same square and relief: 0.27 / 0.93 / 9.61 m, the 128 851 points of the
+flattened triangles alone; of the 123 points moved by more than 5 m, 66 lie within 150 m of a
+bridge or a tunnel, where the smoothed height falls between the valley or the hill and the track.
+50 m moved almost nothing (median 0.13 m) and 500 m planed real slopes (993 points by more than
+10 m): the page offers off, 100 m and 250 m (chosen on 2026-10-26). The largest moves are
+probably at interchanges, where one outline holds roads at two heights.
+
+0 leaves the key of `orthostudio.vectors` as it was (`VectorsParams.canonical` drops the field),
+so no tile built before is built again; any other length is in the key, and a value the page
+does not offer is refused (`CFG_VALUE_INVALID`).
+
 ## 4. Rules of the patch builder (`:639-968`)
 
 The terrain step says each phase as it starts, so a long one is never silent: "flattening the
@@ -283,7 +311,7 @@ refine_way / scale_x / lon_to_m      # cut_to_tile is re-exported from orthostud
 build_road_layers(osm_data, tile, dem, params=RoadParams(), airports=None, *, on_event=None)
     -> RoadResult(layers, seeds, area, counts)
 AirportAreas(array, area)          # the wave-2 injection point (A2)
-weighted_normals / shift_way / refine_way / improved_buffer / length_in_meters
+weighted_normals / shift_way / refine_way / improved_buffer / length_in_meters / smooth_along
 
 # patches.py
 build_patch_layers(directory, tile, dem=None, *, on_event=None)

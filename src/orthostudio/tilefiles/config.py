@@ -96,6 +96,7 @@ OSXP_PARAMETERS: dict[str, TileParameter] = {
     "decal_on_sea": TileParameter(bool, False),
     "decal": TileParameter(str, DEFAULT_DECAL),
     "flatten_helipads": TileParameter(bool, True),
+    "road_smoothing": TileParameter(int, 0),
     "own_relief_first": TileParameter(bool, False),
     "photo_brightness": TileParameter(float, 0.0),
     "photo_contrast": TileParameter(float, 0.0),
@@ -106,13 +107,14 @@ OSXP_PARAMETERS: dict[str, TileParameter] = {
     "osm_library_token": TileParameter(str, ""),
 }
 """Settings of OrthoStudio XP's own, read and written like a tile variable but absent from
-Ortho4XP: the decals on the sea (2026-09-17), the colours of the photo (2026-09-18) and which decal
-the ground takes (2026-09-26). They are not part of the 44, so ``tile_cfg_text`` does not write
-them; ``--set`` and the page's overrides accept them beside the 44. Where a tile's map data may
-come from joined them on 2026-09-23: the settings existed, the page showed them, and nothing
-carried them to a build, so the folder source was never built and the public library could not be
-switched off. The key travels this way and no other: ``tile_cfg_text`` writes the 44 alone, so it
-never reaches a scenery pack's ``tile_settings.cfg``."""
+Ortho4XP: the decals on the sea (2026-09-17), the colours of the photo (2026-09-18), which decal
+the ground takes (2026-09-26) and the smoothing of the levelled roads (2026-10-26). They are not
+part of the 44, so ``tile_cfg_text`` does not write them; ``--set`` and the page's overrides accept
+them beside the 44. Where a tile's map data may come from joined them on 2026-09-23: the settings
+existed, the page showed them, and nothing carried them to a build, so the folder source was never
+built and the public library could not be switched off. The key travels this way and no other:
+``tile_cfg_text`` writes the 44 alone, so it never reaches a scenery
+pack's ``tile_settings.cfg``."""
 
 _LITERAL_TYPES = (bool, list)
 _ZONE_APPEND = "zone_list.append("
