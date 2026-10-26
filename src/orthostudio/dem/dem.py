@@ -14,7 +14,6 @@ about sixteen times faster (``docs/specs/dem.md`` section 11).
 from __future__ import annotations
 
 import json
-import os
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -129,10 +128,6 @@ def _relief_remedy(source: str, cell: str) -> str | None:
         f"Check the file is readable and is one of {kinds}, and that it covers {cell}. "
         "Otherwise choose another relief above."
     )
-
-
-NO_ALT_ENV = "OSXP_DEM_NO_ALT"
-"""Set to ``1``: :meth:`Dem.save` writes no ``Data<tile>.alt`` (Live's world bake)."""
 
 
 @dataclass(slots=True)
@@ -475,12 +470,9 @@ class Dem:
         The ``.alt`` is the same raster a second time, which versions before this one read: a
         compacted cache goes without it (``Store.compact``, 90 GB of a user's cache, 2026-10-23),
         the mesh reading the tracing's own, smoothed over the airports, and ``--dem native``
-        writing it from ``dem.npy`` where it needs it (``mesh.rule.run_mesh``). Live's world
-        bake goes without it too, through :data:`NO_ALT_ENV` (the same 54 MB grid written twice
-        a square, 2026-10-21). Neither the rule's version nor its params change, so a store keeps
-        its artefacts either way."""
+        writing it from ``dem.npy`` where it needs it (``mesh.rule.run_mesh``)."""
         directory.mkdir(parents=True, exist_ok=True)
-        if alt and os.environ.get(NO_ALT_ENV) != "1":
+        if alt:
             self.write_alt(directory / alt_file_name(self.tile))
         np.save(directory / "dem.npy", self.alt_dem, allow_pickle=False)
         (directory / "meta.json").write_text(
