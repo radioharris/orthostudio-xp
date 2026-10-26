@@ -389,7 +389,7 @@ Windows, ext4 on Linux, never Mac OS Extended, exFAT or FAT32.
   coarser for the disk, then built sharp again, downloads them again.
 - `regions`: the mesh's regions Live installed.
 - `overlays`: the roads, forests and buildings of Live's squares, linked as `y_osxp_live_overlays`
-  while Live runs.
+  while Live runs, listed right above Live's pack: X-Plane reads none listed under it.
 
 The textures and the imagery share one disk space, 20 GB by default, set in the Settings tab, and
 never under 10 GB at 16/18 nor 20 GB at 16/19 and 17/19: a smaller space is raised to it, and the

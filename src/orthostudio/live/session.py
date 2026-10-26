@@ -462,7 +462,11 @@ def _overlays(
         return
     placed = overlays.build(xp_dir, pack_dir, folder, sources, live_root(), covered, setting, log)
     if placed:
-        install_link(xp_dir, folder, OVERLAY_LINK_NAME, log=log, kind="overlay")
+        # right above Live's pack, wherever "Live everywhere" put it, and back there at each start:
+        # listed under it, X-Plane read none of them (2026-10-26)
+        install_link(
+            xp_dir, folder, OVERLAY_LINK_NAME, log=log, kind="overlay", above=LINK_NAME, again=True
+        )
     elif is_installed(xp_dir, OVERLAY_LINK_NAME) or is_folder_link(
         xp_dir / "Custom Scenery" / OVERLAY_LINK_NAME
     ):
