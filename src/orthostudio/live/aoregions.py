@@ -301,6 +301,7 @@ class Progress:
     zips: int = 0
     error: str = ""
     started: float = field(default_factory=time.time)
+    mbs: float = 0.0  # the download's pace over its last seconds, in megabytes a second
 
     def as_dict(self) -> dict[str, Any]:
         return asdict(self)

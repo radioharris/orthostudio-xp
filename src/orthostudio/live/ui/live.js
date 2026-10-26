@@ -678,8 +678,10 @@ function drawRegions(status) {
     const line = $("region-progress");
     line.classList.toggle("is-warn", install.phase === "failed");
     if (running) {
-      line.textContent = t("regions.progress", { done: gb(install.done_bytes), total: gb(install.total_bytes),
-        unpacked: install.unpacked, zips: install.zips });
+      // the pace while files come; none once only unpacking is left
+      const pace = install.mbs >= 0.05 ? install.mbs : 0;
+      line.textContent = t(pace ? "regions.progress_pace" : "regions.progress", { done: gb(install.done_bytes),
+        total: gb(install.total_bytes), mbs: number(pace, 1), unpacked: install.unpacked, zips: install.zips });
     } else if (install.phase === "failed") line.textContent = t("regions.failed", { error: install.error });
     else if (install.phase === "cancelled") line.textContent = t("regions.cancelled");
     else line.textContent = t("regions.done");
