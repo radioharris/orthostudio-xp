@@ -4,7 +4,7 @@
 
 import time as _time
 
-__version__ = "1.2.0"
+__version__ = "1.2.1rc1"
 
 STARTED_AT = _time.time()
 """When this process reached OrthoStudio XP's own code, Python's own start behind it: what a start
