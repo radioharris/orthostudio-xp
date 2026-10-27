@@ -101,7 +101,7 @@ there). Works' final report shows both per step (a user, 2026-10-16).
 | kind | executes in | limit | typical rule |
 |---|---|---|---|
 | `cpu` | `ProcessPoolExecutor` (`spawn`), `cpu_workers` = `os.cpu_count() - 2` (min 1) | `cpu_workers` | DSF encoding (`tile.dsf`, the one `cpu` node of a build: the stages' run callables do not pickle, `pipeline-build.md` 8.6) |
-| `subprocess` | thread of the shared pool, the node spawns and owns its child process | `subprocess_slots` | Triangle4XP (mesh), DSFTool (overlay), the vector stage (a Python process of its own, below); also the masks stage (with a process pool of its own) and X-Plane 12's relief, run in a thread on a subprocess slot (`pipeline-build.md` 4) |
+| `subprocess` | thread of the shared pool, the node spawns and owns its child process | `subprocess_slots` | Triangle4XP (mesh), DSFTool (overlay), the vector stage (a Python process of its own, below, on the `tracing` lane); also the masks stage (with a process pool of its own) and X-Plane 12's relief, run in a thread on a subprocess slot (`pipeline-build.md` 4) |
 | `net` | thread of the shared pool; the node drives its own `Fetcher` | `net_slots` | chunk downloads (the textures node, with an encoding pool of its own; each slot is one network pipeline of 64-128 requests); the OSM and relief downloads are `net` too, on lanes of their own (below) |
 | `io` | thread of the shared pool | `io_slots` | linking, copying, `.ter` writing, install |
 
@@ -112,8 +112,10 @@ against that lane's limit (`Scheduler(lanes={"overpass": 1})`) instead of its ki
 OSM downloads of a build share the Overpass mirrors' quota, not the imagery's network pipeline:
 on one `net` slot with the images, a tile's download waited for another tile's images
 (`pipeline-build.md` 4). A downloaded relief has the `relief` lane for the same reason, since
-0.1.19. A lane keeps the RAM budget of every node. A lane the scheduler has no limit for is
-refused when the node is added.
+0.1.19. The tracings have one too (`tracing`, as wide as the subprocess slots), so that the
+meshes and masks no longer wait for the batch's last tracing (`pipeline-build.md` 8.6). A lane
+keeps the RAM budget of every node. A lane the scheduler has no limit for is refused when the node
+is added.
 
 `cpu_in_threads=True` runs `cpu` nodes in threads (tests and debugging: no spawn, plain
 tracebacks); `cpu_workers` is at least 1. A node is **admitted** when a slot of its kind (or

@@ -33,7 +33,7 @@ consumed subset contains it, and everything below them whose input bytes changed
                         :
                  +43+005/dem       (orthostudio.dem, subprocess; net, lane relief, when downloaded)
                         |
-                 +43+005/vectors   (orthostudio.vectors, subprocess) <- OSM layers
+                 +43+005/vectors   (orthostudio.vectors, subprocess, lane tracing) <- OSM layers
                         |          +43+005/coastline (orthostudio.coastline, io) <- OSM layers
                         |                 |
                  +43+005/mesh      (orthostudio.mesh, subprocess)
@@ -60,7 +60,7 @@ id gets a `#2` suffix.
 | Node | Rule (version) | Kind, RAM | Params (consumed subset) | Inputs | Artefact |
 |---|---|---|---|---|---|
 | dem | `orthostudio.dem@1` | subprocess with X-Plane's relief (the default), net on the `relief` lane when it downloads one; 0.6 GB | `DemParams` (spec `dem.md` 9) + `tile` | the Global Scenery DSFs of the 3x3 block when the relief is X-Plane's (decision 0007) | dir `Data<tile>.alt`, `dem.npy`, `meta.json` |
-| vectors | `orthostudio.vectors@1` | subprocess, 1.2 GB | `VectorsParams` (spec `vectors-assembly.md`) + `tile` | `osm` (8.5), `dem`, `patches` (the tile's folder of hand-made patches, absent without one: 8.5), `airports` (absent) | dir `Data<tile>.{node,poly,alt}`, `dem.json`, `airports.json`, `airports.npz`, `airports.wkb.json` |
+| vectors | `orthostudio.vectors@1` | subprocess on the `tracing` lane, in a process of its own (8.6); 1.2 GB | `VectorsParams` (spec `vectors-assembly.md`) + `tile` | `osm` (8.5), `dem`, `patches` (the tile's folder of hand-made patches, absent without one: 8.5), `airports` (absent) | dir `Data<tile>.{node,poly,alt}`, `dem.json`, `airports.json`, `airports.npz`, `airports.wkb.json` |
 | coastline | `orthostudio.coastline@1` | io, 0.2 GB | `tile` | `osm` (8.4) | file `coastline.npz` |
 | mesh | `orthostudio.mesh@1` | subprocess, 0.9 GB | `MeshParams` (spec `mesh-build.md` 9) + `tile` | `vectors`, `dem` (8.2), `coastline` | dir `Data<tile>.mesh`, `mesh.npz` |
 | masks | `orthostudio.masks@1` | subprocess, `300 + 800 x workers` MB | `MasksParams` (spec `masks-build.md`) + `tile` | `mesh`, `nb_n`..`nb_nw` | dir `<y>_<x>.png`, `index.json` |
@@ -751,6 +751,19 @@ progress and no token. What it logs reaches the engine's log; its traceback is c
 error the node fails with. A process the system ends (`SIGKILL`) or one that runs out of memory
 fails the node with `SYS_OUT_OF_MEMORY`: that node and what needs it fail, the engine goes on.
 The tiles are the same, byte for byte, and so are the keys: nothing is built again.
+
+**The tracings have a lane of their own** (`TRACING_LANE`, as wide as the subprocess slots, 3 at
+most). On the slots they shared with the relief, the meshes and the masks, every slot that came
+free went to a tracing, since a tracing's path to the images is the longest: no mesh started
+before the batch's last tracing, so no tile had its neighbours' meshes, its masks, its DSF nor its
+images before that. On 25 tiles at the service roads and 0.3 MB/s (2026-10-28): four neighbours
+traced at 3 min 26 s, the first mesh at 8 min 34 s, the first images at 10 min 58 s, the terrain
+done at 11 min 02 s. On their own lane, a tile's mesh starts as soon as its tracing is done: the
+first mesh at 1 min 35 s, the first images at 3 min 13 s, the terrain done at 8 min 07 s, the
+tracings' summed time unchanged (1 299 s against 1 315 s) and the engine's peak 0.4 GB higher. The
+images downloaded during the terrain came at two thirds of the line (24 useful pieces a second
+against 36), the engine's own Python work (the meshes' side of it among others) holding its
+interpreter. The time-left estimate queues the tracings on that lane too (`api/progress.py`).
 
 The masks node's `ram_mb` is `300 + 800 x workers` MB, and **the same `workers` is given to the
 rule**: `_masks_run` binds `MasksJob(workers=masks_workers(env), cancel=...)`, the rule passes it to

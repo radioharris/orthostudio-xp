@@ -399,6 +399,7 @@ class Job:
         self._slots: dict[str, int] = {
             "overpass": 1,
             "relief": 1,
+            "tracing": default_subprocess_slots(),
             "net": 1,
             "io": 2,
             "subprocess": default_subprocess_slots(),

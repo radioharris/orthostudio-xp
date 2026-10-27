@@ -163,6 +163,12 @@ roads ran out of 64 GB and went through once the app was started again, and the 
 of the line while tracings ran. A tracing that runs out of memory stops its tile, and the tiles
 that need it, with a message that says so; the rest of the batch goes on.
 
+The tracings also have places of their own, so a tile is meshed as soon as it is traced, and its
+images start as soon as it and its neighbours are meshed, while the other tiles are still being
+traced. Until 1.2.1 every tile was traced before any was meshed, and the images waited for the
+whole batch's terrain: on 25 tiles at the service roads, the first images started after 3 min 13 s
+instead of 20 min 24 s, and the terrain was done after 8 min instead of 23.
+
 **An image piece that does not arrive.** Out of tens of thousands of requests, a few can stall while
 the others flow. Once the rest of the tile's imagery is done, OrthoStudio XP asks for them again
 after a pause of 5 s, then 15 s, then 45 s, each time through another Bing server, and for at most

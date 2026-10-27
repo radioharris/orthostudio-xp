@@ -2217,13 +2217,12 @@ def declare(
                 # agree with (``vectors-coastline.md`` section 9; Tehran and Manaus, 2026-10).
                 "global_scenery": global_source(spec.tile),
             },
-            # Not "cpu": a cpu node is shipped to a spawned worker process, and neither this
-            # node's run closure (it binds the build env) nor the decorated rule function
-            # pickles -- every real build failed with a PicklingError before the first layer was
-            # read (found by the review-6 fix pass; the tests ran the scheduler with
-            # cpu_in_threads). It runs in the scheduler's thread pool, in a subprocess slot;
-            # numpy, shapely and Triangle-free noding release the GIL enough.
+            # Not "cpu": a cpu node is shipped to a pool's worker process, and this node's run
+            # closure binds the build env -- every real build failed with a PicklingError before
+            # the first layer was read (found by the review-6 fix pass). Its run starts a process
+            # of its own for the tracing (``_vectors_run``), on a slot of the tracings' lane.
             kind="subprocess",
+            lane=TRACING_LANE,
             run=_vectors_run(env, spec),
             **relief_ram(OSXP_VECTORS, relief_mb, RELIEF_RAM["vectors"]),
         )
@@ -2532,10 +2531,11 @@ class BuildReport:
 
 
 def default_subprocess_slots() -> int:
-    """How many relief, vector, mesh, masks and overlay nodes run at once: the cores less one, 3
-    at most. It was a quarter of the cores: 3 on a 14-core Mac, but 1 on a 4-core Windows virtual
-    machine, where these stages of a batch ran one after the other and a user saw every tile's
-    data before any terrain (2026-09-15). The RAM budget still holds back what memory cannot."""
+    """How many relief, mesh, masks and overlay nodes run at once, and how many tracings beside
+    them (:data:`TRACING_LANE`): the cores less one, 3 at most. It was a quarter of the cores: 3
+    on a 14-core Mac, but 1 on a 4-core Windows virtual machine, where these stages of a batch
+    ran one after the other and a user saw every tile's data before any terrain (2026-09-15).
+    The RAM budget still holds back what memory cannot."""
     return min(3, max(1, (os.cpu_count() or 4) - 1))
 
 
@@ -2550,6 +2550,14 @@ network slot. On that slot the batch's reliefs ran one after the other before an
 held it while their files were read: a user's first tile, ready at 4:01, had its images wait until
 8:51 behind the batch's last three USGS reliefs, about 400 MB each (a build of 2026-09-26).
 X-Plane 12's relief, read from its own DSFs, takes a subprocess slot and no lane."""
+
+TRACING_LANE = "tracing"
+"""The lane of the tracings (``Node.lane``), as wide as the subprocess slots and apart from them.
+On the same slots, every slot that came free went to a tracing, whose path to the images is the
+longest, so no mesh started before the batch's last tracing and no tile's images before that: on
+25 tiles at the service roads, four neighbours were traced at 3 min 26 s, the first mesh started
+at 8 min 34 s and the first images at 10 min 58 s (2026-10-28). Apart, a tile's mesh starts once
+its tracing is done, and its images once its neighbours' meshes are."""
 
 
 def make_scheduler(
@@ -2575,7 +2583,7 @@ def make_scheduler(
         ram_budget_mb=None if mem is None else int(mem * 0.6),
         workdir=env.workdir / "sched",
         cpu_in_threads=cpu_in_threads,
-        lanes={OVERPASS_LANE: 1, RELIEF_LANE: 1},
+        lanes={OVERPASS_LANE: 1, RELIEF_LANE: 1, TRACING_LANE: default_subprocess_slots()},
     )
 
 

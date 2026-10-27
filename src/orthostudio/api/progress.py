@@ -42,7 +42,7 @@ expected cost is zero, and with its full weight a retry whose first second is si
   its group's speed, because the textures still queued share the line of the one that runs;
 * the remaining seconds then queue the way the scheduler runs them: in lanes of its slots --
   one network slot, so the textures nodes of a batch run one after the other, a downloaded
-  relief on a lane of its own (:data:`RELIEF_LANE`) --
+  relief and the tracings on lanes of their own (:data:`RELIEF_LANE`, :data:`TRACING_LANE`) --
   and along each tile's chain, elevation to install; the main graph ends with the slowest lane
   or chain. Before it, phase 0 downloads one tile at a time, then the main graph is declared
   (:data:`DECLARE_S`).
@@ -164,6 +164,10 @@ RELIEF_LANE: str | None = "relief"
 """``pipeline.build.RELIEF_LANE``: a downloaded relief (a ``dem`` row of kind ``net``), one tile at
 a time, apart from the images' network slot. ``None`` queues it with them, as engines before
 0.1.19 ran it (the tests that replay their journals say so)."""
+TRACING_LANE: str | None = "tracing"
+"""``pipeline.build.TRACING_LANE``: the tracings (``vectors`` rows), on slots of their own beside
+the meshes and masks. ``None`` queues them on the subprocess slots with those, as 1.2.1 and the
+engines before it ran them."""
 CHAIN_ROLES = frozenset({"dem", "vectors", "mesh", "masks", "dsf", "textures", "pack", "install"})
 DECLARE_S = 0.3
 """Declaring the main graph (0.2 s for one tile)."""
@@ -770,7 +774,9 @@ def estimate(
             continue  # counted above
         kind = n.kind or ROLE_KIND.get(n.role, "cpu")
         downloaded = RELIEF_LANE is not None and n.role == "dem" and kind == "net"
-        lanes.setdefault(RELIEF_LANE if downloaded else kind, []).append(left)
+        traced = TRACING_LANE is not None and n.role == "vectors"
+        lane = RELIEF_LANE if downloaded else TRACING_LANE if traced else kind
+        lanes.setdefault(lane, []).append(left)
         if n.role in CHAIN_ROLES:
             parts = n.node.split("/")
             if len(parts) >= 3:
