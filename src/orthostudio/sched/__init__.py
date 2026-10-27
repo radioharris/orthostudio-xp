@@ -7,6 +7,7 @@ Spec: docs/specs/scheduler.md.
 
 from __future__ import annotations
 
+from orthostudio.sched.apart import run_p0_rule_apart
 from orthostudio.sched.costs import DEFAULT_ALPHA, DEFAULT_COST_S, CostEntry, CostModel, cost_name
 from orthostudio.sched.events import Done, Event, Failed, NodeKind, Progress, Started, Stats
 from orthostudio.sched.node import (
@@ -41,4 +42,5 @@ __all__ = [
     "cost_name",
     "default_cpu_workers",
     "run_p0_rule",
+    "run_p0_rule_apart",
 ]

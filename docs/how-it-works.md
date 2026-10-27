@@ -155,6 +155,14 @@ and memory the tracing takes (Atlanta: 25 min 38 s and 23.9 GB against 11 min 46
 default, as in 1.1.0: a tile built with 1.1.0 keeps its terrain; one built with 1.2.0, which drew
 them round, keeps it with the box ticked and makes it again angular otherwise.
 
+**Each tracing in a program of its own.** The tracing of a tile runs in a program started for that
+tile alone, beside the one that builds and downloads, and closed when the tracing is done. All the
+memory it took goes back to the computer then, and the images of the batch keep downloading at full
+speed while tracings run. Until 1.2.1 it ran inside the app: a row of 23 dense tiles at the service
+roads ran out of 64 GB and went through once the app was started again, and the images came at 60 %
+of the line while tracings ran. A tracing that runs out of memory stops its tile, and the tiles
+that need it, with a message that says so; the rest of the batch goes on.
+
 **An image piece that does not arrive.** Out of tens of thousands of requests, a few can stall while
 the others flow. Once the rest of the tile's imagery is done, OrthoStudio XP asks for them again
 after a pause of 5 s, then 15 s, then 45 s, each time through another Bing server, and for at most

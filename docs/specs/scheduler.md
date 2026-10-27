@@ -101,7 +101,7 @@ there). Works' final report shows both per step (a user, 2026-10-16).
 | kind | executes in | limit | typical rule |
 |---|---|---|---|
 | `cpu` | `ProcessPoolExecutor` (`spawn`), `cpu_workers` = `os.cpu_count() - 2` (min 1) | `cpu_workers` | DSF encoding (`tile.dsf`, the one `cpu` node of a build: the stages' run callables do not pickle, `pipeline-build.md` 8.6) |
-| `subprocess` | thread of the shared pool, the node spawns and owns its child process | `subprocess_slots` | Triangle4XP (mesh), DSFTool (overlay); also the vector and masks stages (the masks with a process pool of their own) and X-Plane 12's relief, run in a thread on a subprocess slot (`pipeline-build.md` 4) |
+| `subprocess` | thread of the shared pool, the node spawns and owns its child process | `subprocess_slots` | Triangle4XP (mesh), DSFTool (overlay), the vector stage (a Python process of its own, below); also the masks stage (with a process pool of its own) and X-Plane 12's relief, run in a thread on a subprocess slot (`pipeline-build.md` 4) |
 | `net` | thread of the shared pool; the node drives its own `Fetcher` | `net_slots` | chunk downloads (the textures node, with an encoding pool of its own; each slot is one network pipeline of 64-128 requests); the OSM and relief downloads are `net` too, on lanes of their own (below) |
 | `io` | thread of the shared pool | `io_slots` | linking, copying, `.ter` writing, install |
 
@@ -126,6 +126,21 @@ always available for an admitted node.
 
 Workers ignore `SIGINT` (the parent handles Ctrl-C) and open their own `Store` on the same
 root (one sqlite connection per process, as `pipeline/textures.py` does).
+
+**A process of its own** (`orthostudio.sched.apart.run_p0_rule_apart(ctx, bind=None)`, a node's
+`run`): the rule's P0 function runs in a `spawn` process started for this node alone and gone when
+it ends, so all the memory it took goes back to the system, and its Python work leaves the engine's
+interpreter to the threads of the other nodes (the downloads). The engine keeps the write protocol:
+it opens the build, hands the process a `RunContext` on the build's `out` and `scratch`, and commits
+after the process said `done`. The process sends its progress and its log records through one
+`multiprocessing.Queue` (log records at the `orthostudio` logger's level, handled by the engine's
+logger of the same name); `bind(progress)`, a module-level callable, is entered around the function
+there, for what the rule reads from its context. An error comes back by its `to_dict()` with the
+process's traceback chained under it; `MemoryError`, or a process ended by `SIGKILL` (the system's
+answer to memory running out), is `SYS_OUT_OF_MEMORY`; a process that ends without a word is
+`SYS_INTERNAL_ERROR` with its exit code. Cancelling ends the process at once (`terminate`), the
+engine raising `SYS_CANCELLED`. The rule and its params are pickled: the function must be found
+by its module and name. The vector stage runs so (`pipeline-build.md` 8.6).
 
 ### 2.4 Priority: remaining critical path
 

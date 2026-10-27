@@ -33,6 +33,7 @@ __all__ = [
     "NodeRun",
     "artifact_ref",
     "own_bytes",
+    "run_context",
     "run_p0_rule",
 ]
 
@@ -193,25 +194,28 @@ class NodeContext:
 NodeRun = Callable[[NodeContext], ArtifactRef]
 
 
+def run_context(ctx: NodeContext, build: Build) -> RunContext:
+    """What the rule's P0 ``fn`` receives for a build started with ``ctx.begin()``."""
+    resolved = {
+        name: ResolvedInput(name, None, None)
+        if ref is None
+        else ResolvedInput(name, ref.digest, ref.path, ref.key)
+        for name, ref in ctx.inputs.items()
+    }
+    return RunContext(
+        rule=ctx.rule,
+        key=ctx.key,
+        params=ctx.params,
+        inputs=resolved,
+        out=build.out,
+        scratch=build.scratch,
+    )
+
+
 def run_p0_rule(ctx: NodeContext) -> ArtifactRef:
     """Default ``run``: apply the rule's P0 ``fn`` through the write protocol."""
     with ctx.begin() as build:
-        resolved = {
-            name: ResolvedInput(name, None, None)
-            if ref is None
-            else ResolvedInput(name, ref.digest, ref.path, ref.key)
-            for name, ref in ctx.inputs.items()
-        }
-        ctx.rule.fn(
-            RunContext(
-                rule=ctx.rule,
-                key=ctx.key,
-                params=ctx.params,
-                inputs=resolved,
-                out=build.out,
-                scratch=build.scratch,
-            )
-        )
+        ctx.rule.fn(run_context(ctx, build))
         return ctx.commit(build)
 
 

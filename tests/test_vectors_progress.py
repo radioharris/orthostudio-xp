@@ -107,12 +107,14 @@ def test_the_builder_passes_the_page_down_to_the_families() -> None:
 
 
 def test_the_node_hands_it_the_pages_own_progress() -> None:
+    """The tracing runs in a process of its own, which reports through the node's progress."""
     import inspect
 
     from orthostudio.pipeline import build
+    from orthostudio.vectors import rule
 
-    body = inspect.getsource(build._vectors_run)
-    assert "progress=ctx.progress" in body
+    assert "run_p0_rule_apart(ctx, apart_job)" in inspect.getsource(build._vectors_run)
+    assert "VectorsJob(progress=progress)" in inspect.getsource(rule.apart_job)
 
 
 def _unused(_x: Any) -> None:

@@ -287,6 +287,13 @@ def vectors_job(job: VectorsJob) -> Iterator[VectorsJob]:
         _JOB.reset(token)
 
 
+def apart_job(progress: Callable[[float, str], None]) -> contextlib.AbstractContextManager[object]:
+    """The job of a tracing run in a process of its own (``orthostudio.sched.apart``): the layer
+    builders of :data:`LAYER_BUILDER` and the node's progress, and no token, since the engine
+    cancels it by ending the process."""
+    return vectors_job(VectorsJob(progress=progress))
+
+
 def current_vectors_job() -> VectorsJob | None:
     """The job bound by :func:`vectors_job` in *this* context, if any."""
     return _JOB.get()
@@ -451,6 +458,15 @@ def write_elevation_and_airports(out_dir: Path, tile: TileRef, build: LayerBuild
         os.replace(tmp, final)
 
 
+def osxp_vectors(ctx: RunContext) -> None:
+    """Native step 1: ``Data<tile>.{node,poly}``, ``layers.npz``, ``stats.json``.
+
+    A function under its own name beside :data:`VECTORS`, not decorated in place: the rule is
+    pickled by reference into the process the tracing runs in (:mod:`orthostudio.sched.apart`),
+    which finds the function by this name."""
+    run_vectors(ctx)
+
+
 # Version 2: the dry rainwater basins OpenStreetMap marks as water are left out of the water
 # layer (``vectors.water.is_dry_basin``), so a tile's water built by version 1 is not this one.
 # Version 3: a runway drawn in parts that close on themselves is an outline or two copies of one
@@ -461,7 +477,7 @@ def write_elevation_and_airports(out_dir: Path, tile: TileRef, build: LayerBuild
 # its ends, is put on that edge (``vectors-pslg.md`` 2.14, +35+139, 2026-10-13; version 4 in
 # 1.0.2, which has no dry basins); a tile with no such node gets the same files again, so its mesh
 # and DSF come from the cache.
-@rule(
+VECTORS: Rule = rule(
     name="orthostudio.vectors",
     # 2: a runway drawn in parts that close on themselves is an outline or two copies of one
     # line, never a centre line of zero length (``airports-geometry.md`` 3.3, EGJA and LFRT,
@@ -489,17 +505,11 @@ def write_elevation_and_airports(out_dir: Path, tile: TileRef, build: LayerBuild
     inputs=("osm", "dem", "patches", "airports", "global_scenery"),
     ram_mb=1200,
     kind="dir",
-)
-def osxp_vectors(ctx: RunContext) -> None:
-    """Native step 1: ``Data<tile>.{node,poly}``, ``layers.npz``, ``stats.json``."""
-    run_vectors(ctx)
-
-
-VECTORS: Rule = osxp_vectors
+)(osxp_vectors)
 """``orthostudio.vectors@13``: the road and taxiway bands with round ends
 (``rounded_road_ends``)."""
 
-VECTORS_ANGULAR: Rule = replace(osxp_vectors, version=12)
+VECTORS_ANGULAR: Rule = replace(VECTORS, version=12)
 """``orthostudio.vectors@12``, the same rule with the angular band ends of Ortho4XP 1.40, the
 default since 2026-10-27: they are what 1.1.0 drew at version 12, and nothing else of the tracing
 changed between them, so a tile 1.1.0 traced is found as it is. Round ends doubled the tracing's

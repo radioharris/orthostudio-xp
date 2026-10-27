@@ -161,15 +161,15 @@ from orthostudio.sched import (
     Scheduler,
     Started,
     run_p0_rule,
+    run_p0_rule_apart,
 )
 from orthostudio.sched.costs import cost_name, timed_fraction
 from orthostudio.sources.osm import SnapshotStore, layers_for
 from orthostudio.textures.ter import TerKind, TerParams
 from orthostudio.tilefiles import OSXP_PARAMETERS, masks_index, tile_cfg_text, tile_defaults
-from orthostudio.vectors.layers import build_layers
 from orthostudio.vectors.rule import VECTORS as OSXP_VECTORS
-from orthostudio.vectors.rule import VectorsJob, vectors_job, vectors_rule
 from orthostudio.vectors.rule import VectorsParams as OsxpVectorsParams
+from orthostudio.vectors.rule import apart_job, vectors_rule
 
 __all__ = [
     "OVERLAY_SETTINGS",
@@ -1872,16 +1872,13 @@ def _vectors_osm_input(
 
 
 def _vectors_run(env: BuildEnv, spec: BuildSpec) -> Callable[[NodeContext], Any]:
-    """Bind the layer builders and the cancellation token for ``orthostudio.vectors@1``."""
+    """The tracing of a tile, in a process of its own (``orthostudio.sched.apart``): its memory
+    goes back to the system when it ends, and the downloads of the batch keep the engine's
+    interpreter. The process reports through the node's progress (``apart_job``)."""
 
     def run(ctx: NodeContext) -> ArtifactRef:
-        job = VectorsJob(
-            build_layers=build_layers,
-            cancel=cast(Any, ctx.cancel_event),
-            progress=ctx.progress,
-        )
-        with _active_env(env, ctx), vectors_job(job):
-            return run_p0_rule(ctx)
+        with _active_env(env, ctx):
+            return run_p0_rule_apart(ctx, apart_job)
 
     return run
 

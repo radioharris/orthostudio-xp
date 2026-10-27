@@ -738,6 +738,20 @@ the stage rules need a bound job (`dem_job`, `masks_job`, the build environment)
 pool. The vector node found that the hard way: declared `cpu`, every real build failed with a
 `PicklingError` before its first layer was read.
 
+**The tracing runs in a process of its own** (`run_p0_rule_apart`, `scheduler.md` 2.3), started
+for one tile and gone when it ends, still on a `subprocess` slot with the same `ram_mb`. It ran in a
+thread of the engine's process until 2026-10-27, and two things came of it. What a dense tile's
+tracing took of the memory stayed with the engine: a user's row of 23 tiles at
+the service roads ran out of 64 GB, and went through once the engine was started again (2026-10).
+And its Python work held the interpreter the downloads run in: on 25 tiles at the service roads
+and 0.3 MB/s, images came at 22 pieces a second while tracings ran, 36 without them.
+The rule's function is pickled by reference (`vectors.rule.osxp_vectors`, a function under its own
+name beside `VECTORS`); the process binds `apart_job`, which gives the layer builders the node's
+progress and no token. What it logs reaches the engine's log; its traceback is chained under the
+error the node fails with. A process the system ends (`SIGKILL`) or one that runs out of memory
+fails the node with `SYS_OUT_OF_MEMORY`: that node and what needs it fail, the engine goes on.
+The tiles are the same, byte for byte, and so are the keys: nothing is built again.
+
 The masks node's `ram_mb` is `300 + 800 x workers` MB, and **the same `workers` is given to the
 rule**: `_masks_run` binds `MasksJob(workers=masks_workers(env), cancel=...)`, the rule passes it to
 `build_masks`, and `worker_count` honours it, so the declared budget describes the pool that starts.
@@ -759,8 +773,10 @@ it was.
 
 Cancellation reaches every stage: `orthostudio.osm` (token and timeout to the Overpass client),
 `orthostudio.dem` (`EnsureOptions.cancel`, polled between the nine cells of the block),
-`orthostudio.mesh` (the sidecar is polled and killed), `orthostudio.masks` (raises between cells
-and cancels the pending ones), `orthostudio.coastline` (a single small read). Every one of them
+`orthostudio.mesh` (the sidecar is polled and killed), `orthostudio.vectors` (its process is ended
+at once: what it wrote is in the build directory, which goes with the failed build),
+`orthostudio.masks` (raises between cells and cancels the pending ones), `orthostudio.coastline` (a
+single small read). Every one of them
 *raises* `SYS_CANCELLED` rather than returning early, so the store commits nothing.
 
 The elevation cells are read from and downloaded into `$OSXP_ELEVATION_DIR` /
