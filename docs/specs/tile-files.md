@@ -8,9 +8,9 @@ Ortho4XP's output formats.
 - the **44 tile variables** (`TILE_PARAMETERS`) and the text of their settings file: the tile
   configuration of a build uses Ortho4XP's names, `--set` and the API parse values with them, and
   every pack carries the values it was built with in `tile_settings.cfg` (decision 0011);
-- twelve settings of OrthoStudio XP's own, read and typed like a tile variable but absent from
+- thirteen settings of OrthoStudio XP's own, read and typed like a tile variable but absent from
   Ortho4XP (`OSXP_PARAMETERS`: `decal_on_sea`, `decal`, `flatten_helipads`, `road_smoothing`,
-  `own_relief_first`, `photo_brightness`, `photo_contrast`, `photo_saturation`, `photo_zones`,
+  `rounded_road_ends`, `own_relief_first`, `photo_brightness`, `photo_contrast`, `photo_saturation`, `photo_zones`,
   `osm_folder`, `osm_library`, `osm_library_token`): `--set`
   and the API accept them beside the 44, and `tile_cfg_text` does not write them, so they never
   reach a pack's `tile_settings.cfg`;

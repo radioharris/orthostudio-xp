@@ -39,7 +39,7 @@ from orthostudio.sources.osm import (
     OsmWay,
     SnapshotStore,
 )
-from orthostudio.vectors.rule import VECTORS as OSXP_VECTORS
+from orthostudio.vectors.rule import VECTORS_ANGULAR
 
 TILE = TileRef(43, 5)
 
@@ -116,7 +116,8 @@ def triangle(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 def test_the_graph_wires_the_stages(tmp_path: Path, triangle: Path) -> None:
     g = _graph(tmp_path)
-    assert g.vectors.rule is OSXP_VECTORS and g.vectors.kind == "subprocess"
+    # angular road ends, the default: the rule at version 12 (``rounded_road_ends``)
+    assert g.vectors.rule is VECTORS_ANGULAR and g.vectors.kind == "subprocess"
     assert g.mesh.rule is OSXP_MESH and g.mesh.kind == "subprocess"
     assert g.masks.rule is OSXP_MASKS
     # the vector stage reads the raw elevation; --dem vectors: the mesh reads the smoothed

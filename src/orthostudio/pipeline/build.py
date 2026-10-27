@@ -168,7 +168,7 @@ from orthostudio.textures.ter import TerKind, TerParams
 from orthostudio.tilefiles import OSXP_PARAMETERS, masks_index, tile_cfg_text, tile_defaults
 from orthostudio.vectors.layers import build_layers
 from orthostudio.vectors.rule import VECTORS as OSXP_VECTORS
-from orthostudio.vectors.rule import VectorsJob, vectors_job
+from orthostudio.vectors.rule import VectorsJob, vectors_job, vectors_rule
 from orthostudio.vectors.rule import VectorsParams as OsxpVectorsParams
 
 __all__ = [
@@ -2202,7 +2202,9 @@ def declare(
             osm_input = _vectors_osm_input(spec, cfg, osm_ref, planning=planning)
         vectors = reg.node(
             f"{name}/vectors",
-            OSXP_VECTORS,
+            # round or angular road ends: the rule's version says which, so that a tile 1.1.0
+            # traced (12, angular) and one 1.2.0 traced (13, round) are both found as they are
+            vectors_rule(bool(cfg.get("rounded_road_ends", False))),
             OsxpVectorsParams.subset_of({**cfg, "tile": name}),
             {
                 "osm": osm_input,

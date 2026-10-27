@@ -277,9 +277,11 @@ All four builders turn ways into tile-local polygons the same way: coordinates m
 
 `improved_buffer(g, w, s, l)` (`:1021-1062`) grows by `w + s`, shrinks by `s` and simplifies
 by `l`, all in metres, in the `scalx`-scaled frame, with `join_style=2`, `mitre_limit=1.5`
-and `quad_segs=8`, which is what Ortho4XP 1.30's `resolution=1` draws under shapely 1.8
-(`vectors-water-roads.md` section 7, difference 9): the outline it produces *is* the shape of
-the reference mesh, not an artefact to smooth away. It is already ported in `orthostudio.vectors.roads.improved_buffer` and
+and `quad_segs=1`, Ortho4XP 1.40's angular ends, or `quad_segs=8`, which is what Ortho4XP
+1.30's `resolution=1` draws under shapely 1.8, when the tile asks for round road ends
+(`rounded_road_ends`, `vectors-water-roads.md` 3.7 and section 7, difference 9): the outline it
+produces *is* the shape of the reference mesh, not an artefact to smooth away. Only the taxiway
+bands, buffered lines, change with it; the other surfaces buffer polygons. It is already ported in `orthostudio.vectors.roads.improved_buffer` and
 is called, not re-written.
 
 Three consequences of Ortho4XP's exact spelling, kept:

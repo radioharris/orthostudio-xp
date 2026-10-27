@@ -178,7 +178,8 @@ road_area = improved_buffer(banked.difference(improved_buffer(apt_area, lane_wid
 `buffer(bw + sw, join_style=2, mitre_limit=1.5, resolution=1)`, `buffer(-sw, ...)`,
 `simplify(sl)` when non-zero, `x` unscaled. Growing then shrinking is what closes the small
 holes between nearby roads. **Keep** exactly, arguments included (`2` m of separation,
-`0.5` m of simplification), but for `resolution=1`, which is `quad_segs=8` here (section 7,
+`0.5` m of simplification), `resolution=1` included: `quad_segs=1`, the angular ends of Ortho4XP
+1.40, unless `rounded_road_ends` asks for the round ends of Ortho4XP 1.30 (3.7; section 7,
 difference 9).
 
 The airport area subtracted is the `treated_area` of `include_airports` (runways, taxiways,
@@ -235,6 +236,31 @@ probably at interchanges, where one outline holds roads at two heights.
 0 leaves the key of `orthostudio.vectors` as it was (`VectorsParams.canonical` drops the field),
 so no tile built before is built again; any other length is in the key, and a value the page
 does not offer is refused (`CFG_VALUE_INVALID`).
+
+### 3.7 Round or angular ends (OrthoStudio XP's own, angular by default)
+
+`rounded_road_ends` (`expert.rounded_road_ends`, off by default) draws the road bands of 3.3 and
+the taxiway bands (`airports-geometry.md`) with `quad_segs=8`, the round ends and corners of
+Ortho4XP 1.30 (difference 9); off, `quad_segs=1`, the angular ones of Ortho4XP 1.40 and of
+OrthoStudio XP up to 1.1.0 (`improved_buffer(..., rounded=...)`). The other bands buffer polygons,
+whose mitred corners `quad_segs` does not touch.
+
+Why an option, and off: round ends take the bumps out of the ground across the roads at a
+crossroad (KSME, 2026-10-24), and OrthoStudio XP 1.2.0 drew them always; but every dead end of a
+dense network gets one, and the one buffer of the whole levelled network grows faster than the
+network. Measured on 1.2.0 against 1.1.0, the same tile, its OSM and relief, the tracing alone on
+the Mac: Atlanta (`+33-085`) at the main roads 18.3 s and 2.5 GB against 16.5 s and 2.3 GB; a
+country tile (`+45+002`) at the service roads 71 s and 5.9 GB against 50 s and 4.2 GB; Atlanta at
+the service roads with two million points to level 25 min 38 s and 23.9 GB against 11 min 46 s and 14.5 GB,
+which three tiles of a batch at once took past a user's 64 GB. Nobody reported the bumps of the
+angular ends, which Ortho4XP 1.40 draws too.
+
+The shape is the rule's version, never a field of the key: angular ends are `orthostudio.vectors`
+at version 12 (`VECTORS_ANGULAR`), what 1.1.0 ran, and round ends at 13 (`VECTORS`), what 1.2.0
+ran; the tile's setting picks the rule (`vectors_rule`) and the rule that runs tells the builders
+(`LayerRequest.rounded_road_ends`). Nothing else of the tracing changed between 1.1.0 and 1.2.0,
+and the parameters of the key are the same, so a tile 1.1.0 traced is found as it is with the box
+off, and one 1.2.0 traced with the box on; each is traced again only with the other shape.
 
 ## 4. Rules of the patch builder (`:639-968`)
 
@@ -402,6 +428,8 @@ and one `weighted_normals` each).
    271 064 with `quad_segs=1`, the same area. Against `quad_segs=1` on 200 tiles (the 72 witness
    tiles and 128 drawn at random): all built, 59 identical, triangles -1.2 % to +1.1 %, and the
    ground away from the roads as close to the relief (median gap 1.312 m, then 1.313 m).
+   Since 2026-10-27 it is an option, off by default (3.7): at the service roads of a dense city
+   the round ends doubled the tracing's time and memory.
 10. **Dry rainwater basins are not water** (2.1). OpenStreetMap maps rainwater basins as
    `natural=water` + `water=basin` (retention, detention, infiltration), most marked
    `intermittent=yes` because they are dry grass most of the year; Ortho4XP draws them as water,

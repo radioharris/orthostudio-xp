@@ -240,6 +240,7 @@ def build_layers(request: object) -> LayerBuild:
     airport_params = _airport_params(
         int(params.apt_smoothing_pix),
         flatten_helipads=bool(params.flatten_helipads),
+        rounded_ends=bool(getattr(request, "rounded_road_ends", False)),
     )
 
     # -- airports, steps 1 to 9 of include_airports (:196-213) -----------------------------
@@ -349,6 +350,7 @@ def build_layers(request: object) -> LayerBuild:
                     lane_width=float(params.lane_width),
                     max_levelled_segs=int(params.max_levelled_segs),
                     road_smoothing=float(params.road_smoothing),
+                    rounded_ends=bool(getattr(request, "rounded_road_ends", False)),
                 ),
                 airports=stage.layers.airport_areas(),
                 on_event=on_event,
@@ -446,17 +448,21 @@ def build_layers(request: object) -> LayerBuild:
     )
 
 
-def _airport_params(smoothing_pix: int, *, flatten_helipads: bool = True) -> AirportParams:
+def _airport_params(
+    smoothing_pix: int, *, flatten_helipads: bool = True, rounded_ends: bool = True
+) -> AirportParams:
     """The airport constants of this run: the smoothing width and whether helipads are flat.
 
     A sweep of ``O4_Airport_Utils.py`` for ``tile.<attribute>`` finds ``dem``, ``lat``,
     ``lon`` and ``apt_smoothing_pix``, and only the last is configuration
     (``docs/specs/airports-integration.md`` 5). Every other number of the chain is hard-coded
     in Ortho4XP and lives in the dataclasses of :mod:`orthostudio.airports_vec.stage`;
-    ``flatten_helipads`` is OrthoStudio XP's own (idea #8).
+    ``flatten_helipads`` is OrthoStudio XP's own (idea #8), and ``rounded_ends``, the taxiway
+    bands' ends round or angular, follows the rule that runs (``VECTORS_ANGULAR``).
     """
     encode = replace(DEFAULT_AIRPORT_PARAMS.encode, flatten_helipads=flatten_helipads)
-    return replace(DEFAULT_AIRPORT_PARAMS, smoothing_pix=smoothing_pix, encode=encode)
+    areas = replace(DEFAULT_AIRPORT_PARAMS.areas, rounded_ends=rounded_ends)
+    return replace(DEFAULT_AIRPORT_PARAMS, smoothing_pix=smoothing_pix, encode=encode, areas=areas)
 
 
 def _required(store: OsmData | None, source: OsmSource, layer: str) -> OsmData:
