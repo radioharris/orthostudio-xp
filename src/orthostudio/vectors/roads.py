@@ -149,6 +149,8 @@ def improved_buffer(
     separation_width: float,
     simplify_length: float,
     scalx: float,
+    *,
+    rounded: bool = True,
 ) -> BaseGeometry:
     """Buffer in metres, grown then shrunk so small holes stay closed (``:1021-1069``).
 
@@ -157,13 +159,17 @@ def improved_buffer(
     join: it draws 8 segments a quadrant, the rounded ends and corners of Ortho4XP 1.30's bands.
     shapely 2 honours the 1 and gives angular bands that bend the roads laid on them (KSME,
     2026-10-24), so ``quad_segs=8`` here: the bands of Ortho4XP 1.30, point for point.
+    ``rounded=False`` asks for 1, the angular bands of Ortho4XP 1.40 and of OrthoStudio XP up to
+    1.1.0: the dead ends of a dense road network then cost a fraction of the time and memory
+    (``rounded_road_ends``).
     """
     bw = buffer_width * M_TO_LAT
     sw = separation_width * M_TO_LAT
     sl = simplify_length * M_TO_LAT
+    quad_segs = 8 if rounded else 1
     scaled = affinity.affine_transform(geom, [scalx, 0, 0, 1, 0, 0])
-    out = scaled.buffer(bw + sw, join_style=2, mitre_limit=1.5, quad_segs=8)
-    out = out.buffer(-1 * sw, join_style=2, mitre_limit=1.5, quad_segs=8)
+    out = scaled.buffer(bw + sw, join_style=2, mitre_limit=1.5, quad_segs=quad_segs)
+    out = out.buffer(-1 * sw, join_style=2, mitre_limit=1.5, quad_segs=quad_segs)
     if sl:
         out = out.simplify(sl)
     return affinity.affine_transform(out, [1 / scalx, 0, 0, 1, 0, 0])
@@ -217,7 +223,7 @@ def smooth_along(
 @dataclass(frozen=True, slots=True)
 class RoadParams:
     """The four Ortho4XP settings of the road stage (``O4_Config_Utils.py:122-142``), and
-    OrthoStudio XP's ``road_smoothing``."""
+    OrthoStudio XP's ``road_smoothing`` and ``rounded_ends``."""
 
     road_level: int = 1
     road_banking_limit: float = 0.5
@@ -226,6 +232,9 @@ class RoadParams:
     road_smoothing: float = 0.0
     """Metres the altitude of a levelled road is averaged over along its outline; 0, Ortho4XP's
     way, takes each point's own (:data:`ROAD_SMOOTHING_CHOICES`)."""
+    rounded_ends: bool = True
+    """The road bands' ends drawn round (:func:`improved_buffer`); off, angular. The tracing rule
+    that runs says which (``vectors.rule.VECTORS_ANGULAR``)."""
 
 
 DEFAULT_ROAD_PARAMS = RoadParams()
@@ -361,7 +370,12 @@ def build_road_layers(
         improved_buffer(apt.area, params.lane_width + APT_BUFFER_EXTRA_M, 0, 0, scalx)
     )
     road_area = improved_buffer(
-        network, params.lane_width, BUFFER_SEPARATION_M, BUFFER_SIMPLIFY_M, scalx
+        network,
+        params.lane_width,
+        BUFFER_SEPARATION_M,
+        BUFFER_SIMPLIFY_M,
+        scalx,
+        rounded=params.rounded_ends,
     )
 
     def alt_vec_shift(way: NDArray[np.floating]) -> NDArray[np.float64]:

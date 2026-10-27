@@ -97,6 +97,7 @@ OSXP_PARAMETERS: dict[str, TileParameter] = {
     "decal": TileParameter(str, DEFAULT_DECAL),
     "flatten_helipads": TileParameter(bool, True),
     "road_smoothing": TileParameter(int, 0),
+    "rounded_road_ends": TileParameter(bool, False),
     "own_relief_first": TileParameter(bool, False),
     "photo_brightness": TileParameter(float, 0.0),
     "photo_contrast": TileParameter(float, 0.0),
@@ -108,7 +109,8 @@ OSXP_PARAMETERS: dict[str, TileParameter] = {
 }
 """Settings of OrthoStudio XP's own, read and written like a tile variable but absent from
 Ortho4XP: the decals on the sea (2026-09-17), the colours of the photo (2026-09-18), which decal
-the ground takes (2026-09-26) and the smoothing of the levelled roads (2026-10-26). They are not
+the ground takes (2026-09-26), the smoothing of the levelled roads (2026-10-26) and their rounded
+ends (2026-10-27). They are not
 part of the 44, so ``tile_cfg_text`` does not write them; ``--set`` and the page's overrides accept
 them beside the 44. Where a tile's map data may come from joined them on 2026-09-23: the settings
 existed, the page showed them, and nothing carried them to a build, so the folder source was never

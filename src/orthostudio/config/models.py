@@ -306,6 +306,16 @@ class Expert(BaseModel):
         "X-Plane's roads no longer bump over the small waves of the relief. 0 keeps each point's "
         "own height, as Ortho4XP does. A tile already built takes it at its next build.",
     )
+    rounded_road_ends: bool = _field(
+        False,
+        "expert",
+        None,
+        "",
+        hint="The bands of the flattened roads get rounded ends, as Ortho4XP 1.30 draws them, "
+        "so that the ground does not bump across the roads at crossroads. Off, they are angular, "
+        "as in Ortho4XP 1.40; on, a big city at the service roads takes twice the time and "
+        "memory to trace.",
+    )
     water_simplification: float = _field(0.0, "expert", "water_simplification", "m", ge=0)
     masks_use_dem_too: bool = _field(False, "expert", "masks_use_DEM_too", "")
     masks_custom_extent: str = _field("", "expert", "masks_custom_extent", "")

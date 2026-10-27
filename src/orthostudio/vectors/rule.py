@@ -222,6 +222,9 @@ class LayerRequest:
     which guards a tile against a coastline that would make it all sea (``vectors-coastline.md``
     section 9). ``None`` without X-Plane's scenery: the coastline is taken as it is."""
     cancel: threading.Event | None = None
+    rounded_road_ends: bool = False
+    """The road and taxiway bands' ends drawn round, as by :data:`VECTORS`; angular, as by
+    :data:`VECTORS_ANGULAR`. The rule that runs says which (:func:`run_vectors`)."""
     progress: Callable[[float, str], None] | None = None
     """Where each family says it has started. This step said nothing at all, from beginning to
     end: a user on Linux watched his build sit at 28 % of the Data stage for eight minutes and
@@ -374,6 +377,7 @@ def run_vectors(ctx: RunContext) -> AssembledVectors:
         global_scenery=_optional(dict(ctx.inputs), "global_scenery"),
         cancel=job.cancel,
         progress=job.progress,
+        rounded_road_ends=ctx.rule.version == VECTORS.version,
     )
     build = _resolve_builder(job)(request)
     say(0.80, "putting the shapes together")
@@ -492,4 +496,17 @@ def osxp_vectors(ctx: RunContext) -> None:
 
 
 VECTORS: Rule = osxp_vectors
-"""``orthostudio.vectors@13``."""
+"""``orthostudio.vectors@13``: the road and taxiway bands with round ends
+(``rounded_road_ends``)."""
+
+VECTORS_ANGULAR: Rule = replace(osxp_vectors, version=12)
+"""``orthostudio.vectors@12``, the same rule with the angular band ends of Ortho4XP 1.40, the
+default since 2026-10-27: they are what 1.1.0 drew at version 12, and nothing else of the tracing
+changed between them, so a tile 1.1.0 traced is found as it is. Round ends doubled the tracing's
+time and memory at the service roads of a dense city (Atlanta, ``vectors-water-roads.md`` 3.7).
+Which of the two a tile takes is its setting (:func:`vectors_rule`), never a field of the key."""
+
+
+def vectors_rule(rounded_road_ends: bool) -> Rule:
+    """The tracing rule of a tile: round band ends (:data:`VECTORS`) or angular ones."""
+    return VECTORS if rounded_road_ends else VECTORS_ANGULAR

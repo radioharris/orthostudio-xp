@@ -147,6 +147,14 @@ roads* (Settings, for experts, Roads) averages the height of each flattened road
 moves the roads little; strong smooths longer waves too, but begins to flatten real slopes. Off
 by default, as in Ortho4XP; a tile takes it at its next build, which makes its terrain again.
 
+**Rounded road ends.** The flattened roads become bands with angular ends, as in Ortho4XP 1.40.
+*Rounded road ends* (Settings, for experts, Roads) gives them the round ends of Ortho4XP 1.30,
+which take out the bumps across a road where two roads meet. It costs nothing at the main roads;
+in a big city at the service roads, where nearly every house has its driveway, it doubles the time
+and memory the tracing takes (Atlanta: 25 min 38 s and 23.9 GB against 11 min 46 s and 14.5 GB). Off by
+default, as in 1.1.0: a tile built with 1.1.0 keeps its terrain; one built with 1.2.0, which drew
+them round, keeps it with the box ticked and makes it again angular otherwise.
+
 **An image piece that does not arrive.** Out of tens of thousands of requests, a few can stall while
 the others flow. Once the rest of the tile's imagery is done, OrthoStudio XP asks for them again
 after a pause of 5 s, then 15 s, then 45 s, each time through another Bing server, and for at most

@@ -638,6 +638,16 @@
      "type": "integer",
      "unit": "m"
     },
+    "rounded_road_ends": {
+     "default": false,
+     "description": "The bands of the flattened roads get rounded ends, as Ortho4XP 1.30 draws them, so that the ground does not bump across the roads at crossroads. Off, they are angular, as in Ortho4XP 1.40; on, a big city at the service roads takes twice the time and memory to trace.",
+     "hint": "The bands of the flattened roads get rounded ends, as Ortho4XP 1.30 draws them, so that the ground does not bump across the roads at crossroads. Off, they are angular, as in Ortho4XP 1.40; on, a big city at the service roads takes twice the time and memory to trace.",
+     "level": "expert",
+     "ortho4xp": null,
+     "title": "Rounded Road Ends",
+     "type": "boolean",
+     "unit": ""
+    },
     "water_simplification": {
      "default": 0.0,
      "description": "In case the OSM data for water areas would become too large, this parameter (in meter) can be used for node simplification.",

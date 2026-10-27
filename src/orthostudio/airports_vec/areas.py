@@ -53,6 +53,9 @@ class AreaParams:
     """A taxiway is 30 m wide whatever OSM says: no ``width`` tag is read here (``:787``)."""
     taxiway_separation: float = 3.0
     taxiway_simplify: float = 0.5
+    rounded_ends: bool = True
+    """The taxiway bands' ends drawn round, as Ortho4XP 1.30 draws them; off, angular, as Ortho4XP
+    1.40 and OrthoStudio XP 1.1.0 draw them (``rounded_road_ends``, ``improved_buffer``)."""
 
 
 DEFAULT_AREA_PARAMS = AreaParams()
@@ -165,6 +168,7 @@ def build_areas(
                 params.taxiway_separation,
                 params.taxiway_simplify,
                 scalx,
+                rounded=params.rounded_ends,
             )
         )
     return AreaResult(

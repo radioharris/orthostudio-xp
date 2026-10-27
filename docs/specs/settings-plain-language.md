@@ -123,6 +123,7 @@ Findings that change what the page may say (details in section 6):
 | 35 | `expert.lane_width` | `lane_width` | 4 m | Folded | Half-width of the flattened strip |
 | 36 | `expert.max_levelled_segs` | `max_levelled_segs` | 200 000 | Folded | Road points flattened per layer |
 | 36b | `expert.road_smoothing` | – | 0 (off) | Folded (Roads group, under *Flatten the ground under roads*) | Smooth the roads |
+| 36c | `expert.rounded_road_ends` | – | off | Folded (Roads group, under *Smooth the roads*) | Rounded road ends |
 | 37 | `expert.water_simplification` | `water_simplification` | 0 m | Folded | Simplify lake and river outlines |
 | 38 | `expert.masks_use_dem_too` | `masks_use_DEM_too` | false | Folded (with a relief file); not offered on the page, and refused by a build since 2026-09-14 (4.12) | Use the relief for the coast fade |
 | 39 | `expert.masks_custom_extent` | `masks_custom_extent` | `""` | Removed (broken) | — |
@@ -1039,6 +1040,20 @@ and read 50 or more as 5; OrthoStudio XP refuses those, and until 1.0 it stopped
 - **Recommendation. Folded**, off: it is a remedy for a relief whose waves show under the roads.
 - **Expert label.** EN *Smooth the roads* (Off · Light, over 100 m · Strong, over 250 m) · FR
   *Lisser les routes* (Non · Léger, sur 100 m · Fort, sur 250 m).
+
+### 4.10c `expert.rounded_road_ends` (OrthoStudio XP only)
+
+`–` · off · on or off.
+
+- **Does.** Draws the bands of the flattened roads with round ends, as Ortho4XP 1.30 draws them;
+  off, angular, as Ortho4XP 1.40 and OrthoStudio XP 1.1.0 draw them (`vectors-water-roads.md` 3.7).
+- **In X-Plane.** Round ends take out the bumps across a road where two roads meet (KSME,
+  `+37-085`, 2026-10-24). They cost nothing at the main roads, and at the service roads of a dense
+  city twice the time and memory of the tracing: Atlanta's took 14.5 GB angular, 23.9 GB round.
+  Nobody reported the bumps of the angular ends. A tile traced by 1.1.0 keeps its terrain with the
+  box off, one traced by 1.2.0 with the box on.
+- **Recommendation. Folded**, off: on for a tile whose crossroads matter more than its build time.
+- **Expert label.** EN *Rounded road ends* · FR *Bouts de route arrondis*.
 
 ### 4.11 `expert.water_simplification`
 

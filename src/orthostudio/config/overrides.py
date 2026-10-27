@@ -65,6 +65,7 @@ _SAME: tuple[tuple[str, str], ...] = (
     ("decal_on_sea", "decal_on_sea"),
     ("flatten_helipads", "flatten_helipads"),
     ("road_smoothing", "road_smoothing"),
+    ("rounded_road_ends", "rounded_road_ends"),
     ("decal", "decal"),
     ("ovl_exclude_pol", "ovl_exclude_pol"),
     ("ovl_exclude_net", "ovl_exclude_net"),

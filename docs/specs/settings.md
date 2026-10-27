@@ -46,8 +46,8 @@ The plan of the rewrite announced 8 / 14 / 20. Counting the leaves of the models
 |---|---|---|---|
 | essential | 8 | 18 | 8 groups, `region` excepted, `overlays`, `photo_look`, `data_dir` and `simbrief_user` added; `airports` has 3 leaves, `coast_transition` 2, `relief` 5 (`own_first` since idea 9) |
 | advanced | 14 | 14 | |
-| expert | 20 | 31 | the plan's expert list named 19 parameters under the heading "20"; twelve of OrthoStudio XP's own were added: `osm_folder`, `osm_library`, `osm_library_token`, `decal_on_sea`, `decal`, `photo_brightness`, `photo_contrast`, `photo_saturation`, `patches_dir`, `check_updates`, `flatten_helipads`, `road_smoothing` |
-| total | 42 | 63 | |
+| expert | 20 | 32 | the plan's expert list named 19 parameters under the heading "20"; thirteen of OrthoStudio XP's own were added: `osm_folder`, `osm_library`, `osm_library_token`, `decal_on_sea`, `decal`, `photo_brightness`, `photo_contrast`, `photo_saturation`, `patches_dir`, `check_updates`, `flatten_helipads`, `road_smoothing`, `rounded_road_ends` |
+| total | 42 | 64 | |
 
 The 19 expert parameters that carry an Ortho4XP variable plus the 14 advanced plus the 11 Ortho4XP
 variables behind the essential level (section 2) make 44 = the 58 `cfg_vars` minus the 14 that
@@ -126,6 +126,7 @@ the sources with their maximum zoom level.
 | `lane_width` | float `> 0` | m | 4 | `lane_width` | With (in meters) to be used for buffering that part of the road network that requires levelling. |
 | `max_levelled_segs` | int `>= 0` | segments | 200000 | `max_levelled_segs` | This limits the total number of roads segments included for mesh levelling [...] |
 | `road_smoothing` | int in `{0, 100, 250}` | m | 0 | – | OrthoStudio XP's own (2026-10-26): the altitude of each levelled road is averaged along its outline over this length, so that X-Plane's draped roads no longer bump over the small waves of the relief (`vectors-water-roads.md` 3.6). 0 keeps each point's own altitude, as Ortho4XP does, and stays out of the key of `orthostudio.vectors`: no tile built before is built again. Any other value reaches the rule as `VectorsParams.road_smoothing`, in its key. |
+| `rounded_road_ends` | bool | – | false | – | OrthoStudio XP's own (2026-10-27): the bands of the levelled roads get round ends, as Ortho4XP 1.30 draws them, so that the ground does not bump across the roads at a crossroad (`vectors-water-roads.md` 3.7). Off, angular as in Ortho4XP 1.40 and OrthoStudio XP 1.1.0: at the service roads of a dense city round ends double the tracing's time and memory. It picks the version of `orthostudio.vectors` rather than entering its key: 12 off, what 1.1.0 ran, 13 on, what 1.2.0 ran, so the tiles each traced are found as they are. |
 | `water_simplification` | float `>= 0` | m | 0 | `water_simplification` | In case the OSM data for water areas would become too large, this parameter (in meter) can be used for node simplification. |
 | `masks_use_dem_too` | bool | - | false | `masks_use_DEM_too` | If you have acces to high resolutions DEMs [...] |
 | `masks_custom_extent` | str | - | `""` | `masks_custom_extent` | Yet another tentative to draw masks with maximizing the use of the good imagery part. [...] |
@@ -229,7 +230,7 @@ fields (`tests/test_config_schema.py`).
 `to_build_overrides(settings) -> dict[str, object]`: the Ortho4XP tile variables (names of
 `tilefiles.TILE_PARAMETERS`), the two overlay settings, and OrthoStudio XP's own keys of
 `tilefiles.OSXP_PARAMETERS` but `photo_zones`, which comes from the zones (`osm_folder`,
-`osm_library`, `osm_library_token`, `decal_on_sea`, `decal`, `flatten_helipads`, `road_smoothing`, and `photo_brightness`,
+`osm_library`, `osm_library_token`, `decal_on_sea`, `decal`, `flatten_helipads`, `road_smoothing`, `rounded_road_ends`, and `photo_brightness`,
 `photo_contrast`, `photo_saturation` from `photo_look`), typed as `BuildSpec.config` expects them
 (`pipeline/build.py`, `BuildSpec.tile_config`):
 
