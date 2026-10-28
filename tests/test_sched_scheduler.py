@@ -314,17 +314,22 @@ def test_a_node_takes_the_ram_its_inputs_say(store: Store) -> None:
 def test_a_node_waiting_for_memory_is_not_overtaken(store: Store) -> None:
     """Two tracings of 400 MB run; a big city's (700 MB), first in line, does not fit beside one
     of them, and a country tile's (300 MB) would: it waits behind the city, which starts as soon
-    as both are done, the country tile beside it. Overtaken each time, a city ready at 3 min was
-    traced last, at 26 min, on 16 GB (a campaign of 12 tiles, 2026-10-28)."""
+    as both are done, the country tile beside it; a step of another kind that fits still
+    starts. Overtaken each time, a city ready at 3 min was traced last, at 26 min, on 16 GB (a
+    campaign of 12 tiles, 2026-10-28)."""
     sched = _sched(store, cpu_workers=4, ram_budget_mb=1000)
     sched.add(_node("a", SRC, ram_mb=400, seconds=0.3, tag="overtake-a"))
     sched.add(_node("b", SRC, ram_mb=400, seconds=0.6, tag="overtake-b"))
     sched.add(_node("city", SRC, ram_mb=700, seconds=0.1, tag="overtake-city"))
     sched.add(_node("country", SRC, ram_mb=300, seconds=0.1, tag="overtake-country"))
+    # a step of another kind still starts beside them: held back too, no mesh, so no images,
+    # started before the batch's last tracing on a budget of 8 GB
+    sched.add(_node("mesh", SRC, kind="io", ram_mb=100, seconds=0.05, tag="overtake-mesh"))
     refs, events = _run(sched, list(sched.nodes))
-    assert len(refs) == 4
+    assert len(refs) == 5
     order = [e.node_id for e in events if isinstance(e, Started)]
     assert order.index("city") < order.index("country"), order
+    assert order.index("mesh") < order.index("city"), order
 
 
 def test_oversized_node_is_admitted_alone(store: Store) -> None:

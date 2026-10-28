@@ -135,12 +135,14 @@ budget the larger of that and its `ram_mb` (`_ram_of`, settled once in `_Rec.ram
 it ends). The tracing reads the road points its OSM step counted, the masks the water of their
 meshes (`pipeline-build.md` 8.6).
 
-**A node waiting for memory is not overtaken** (`_admit`): once a ready node, best priority first,
-is held back by the RAM budget, no node after it that takes memory starts in that round; what the
-running nodes give back goes to it, and the others follow beside it once it has started. Smaller
-nodes that fitted took that room each time: a big city's tracing, ready at 3 min, started last at
-26 min on 16 GB, its neighbours' images waiting for its mesh (2026-10-28). A node of no memory
-still starts, and so do the hits.
+**A node waiting for memory is not overtaken by its own kind** (`_admit`): once a ready node, best
+priority first, is held back by the RAM budget, no node after it on the same lane or kind that takes
+memory starts in that round; what that kind gives back goes to it, and the others follow beside it
+once it has started. Smaller tracings that fitted took that room each time: a big city's, ready at
+3 min, started last at 26 min on 16 GB, its neighbours' images waiting for its mesh (2026-10-28).
+The other lanes and kinds still start when they fit: held back as well, no mesh, so no masks nor
+images, started before the batch's last tracing on a budget of 8 GB. A node of no memory still
+starts, and so do the hits.
 
 **A process of its own** (`orthostudio.sched.apart.run_p0_rule_apart(ctx, bind=None)`, a node's
 `run`): the rule's P0 function runs in a `spawn` process started for this node alone and gone when

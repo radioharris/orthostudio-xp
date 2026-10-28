@@ -494,27 +494,30 @@ class Scheduler:
     def _admit(self) -> None:
         """Dispatch, hit or park every ready node, best priority first, until nothing moves.
 
-        Once a node waits for memory, none after it that takes memory starts: what the nodes
-        running give back goes to it. Smaller nodes that fitted took that room each time, and a
-        big city's tracing, ready at 3 min, started last at 26 min on a computer of 16 GB, its
-        neighbours' images waiting for its mesh (a campaign of 12 tiles, 2026-10-28)."""
+        Once a node waits for memory, no node after it on the same lane or kind that takes memory
+        starts: what its own kind gives back goes to it. Smaller tracings that fitted took that
+        room each time, and a big city's, ready at 3 min, started last at 26 min on a computer of
+        16 GB, its neighbours' images waiting for its mesh (a campaign of 12 tiles, 2026-10-28).
+        The other kinds still start beside it when they fit: held back as well, no mesh, so no
+        masks nor images, started before the batch's last tracing on a budget of 8 GB."""
         if self._cancel.is_set():
             return
         while True:
             parked: list[tuple[float, int, str]] = []
             moved = False
-            behind_memory = False
+            waiting: set[str] = set()  # the lanes and kinds where a node waits for memory
             while self._ready:
                 item = heapq.heappop(self._ready)
                 rec = self._recs[item[2]]
                 if rec.state != "ready":
                     continue
-                started = self._try_start(rec, behind_memory=behind_memory)
+                started = self._try_start(rec, behind_memory=self._pool(rec.node) in waiting)
                 if started is True:
                     moved = True
                 else:
                     parked.append(item)
-                    behind_memory = behind_memory or started == "memory"
+                    if started == "memory":
+                        waiting.add(self._pool(rec.node))
             for item in parked:
                 heapq.heappush(self._ready, item)
             if not moved or not self._ready:
@@ -522,8 +525,8 @@ class Scheduler:
 
     def _try_start(self, rec: _Rec, *, behind_memory: bool = False) -> bool | Literal["memory"]:
         """Hit, join an in-flight twin, or dispatch when a slot and the RAM allow it; ``"memory"``
-        when the RAM held it back, or a node before it waits for memory (``behind_memory``) and
-        this one takes some."""
+        when the RAM held it back, or a node before it on its lane or kind waits for memory
+        (``behind_memory``) and this one takes some."""
         if rec.key is None:
             inputs: dict[str, ArtifactRef | None] = {}
             for name, dep in rec.node.inputs.items():
