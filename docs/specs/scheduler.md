@@ -129,6 +129,11 @@ always available for an admitted node.
 Workers ignore `SIGINT` (the parent handles Ctrl-C) and open their own `Store` on the same
 root (one sqlite connection per process, as `pipeline/textures.py` does).
 
+**Memory read from the inputs** (`Node.ram_from`): a node whose peak grows with what it is given
+reads it from its inputs once they are built, just before it starts, and takes from the RAM
+budget the larger of that and its `ram_mb` (`_ram_of`, settled once in `_Rec.ram`, given back when
+it ends). The tracing reads the road points its OSM step counted (`pipeline-build.md` 8.6).
+
 **A process of its own** (`orthostudio.sched.apart.run_p0_rule_apart(ctx, bind=None)`, a node's
 `run`): the rule's P0 function runs in a `spawn` process started for this node alone and gone when
 it ends, so all the memory it took goes back to the system, and its Python work leaves the engine's

@@ -14,7 +14,7 @@ import os
 import sqlite3
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -286,6 +286,29 @@ def test_ram_budget(store: Store, budget: int | None, expected: int) -> None:
     refs, events = _run(sched, list(sched.nodes))
     assert len(refs) == 4
     assert _max_admitted(events) == expected
+
+
+def test_a_node_takes_the_ram_its_inputs_say(store: Store) -> None:
+    """``ram_from`` reads the inputs once they are built: the node takes the larger of it and its
+    ``ram_mb``. Four nodes declaring 100 MB each read 600 MB from what they were given, so only
+    one runs at a time within 1 000 MB; a tracing's roads are known once its OSM step is done."""
+    sched = _sched(store, cpu_workers=4, ram_budget_mb=1000)
+    seen: list[set[str]] = []
+
+    def ram_from(inputs: Mapping[str, ArtifactRef | None]) -> int:
+        seen.append({name for name, ref in inputs.items() if ref is not None})
+        return 600
+
+    src = _node("src", SRC, seconds=0.01, tag="ram-from-src")
+    sched.add(src)
+    for i in range(4):
+        node = _node(f"m{i}", MID, ram_mb=100, seconds=0.1, tag=f"ram-from-{i}", a=src)
+        node.ram_from = ram_from
+        sched.add(node)
+    refs, events = _run(sched, list(sched.nodes))
+    assert len(refs) == 5
+    assert _max_admitted([e for e in events if getattr(e, "node_id", "src") != "src"]) == 1
+    assert seen == [{"a"}] * 4  # asked once each, with the input built
 
 
 def test_oversized_node_is_admitted_alone(store: Store) -> None:

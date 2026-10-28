@@ -34,6 +34,7 @@ from orthostudio.pipeline.build import (
     TileTexturesParams,
     declare,
     make_scheduler,
+    road_points,
     source_ref,
     stored_neighbour_mesh,
     texture_jobs_from_json,
@@ -798,22 +799,61 @@ def test_a_folder_of_ones_own_rides_over_the_relief_and_marks_the_file_it_takes(
     )  # the Global Scenery DSFs are still read
 
 
+def _osm_counts(tmp_path: Path, counts: dict[str, int]) -> ArtifactRef:
+    folder = tmp_path / "osm-counts"
+    folder.mkdir()
+    index = {"counts": {layer: {"nodes": n, "ways": n // 10} for layer, n in counts.items()}}
+    (folder / "snapshot.json").write_text(json.dumps(index), encoding="utf-8")
+    return ArtifactRef("0" * 64, "0" * 64, folder, "orthostudio.osm", "dir", 0)
+
+
+ATLANTA = {"big_roads": 176_616, "small_roads": 2_312_997, "water": 588_745, "airports": 18_803}
+
+
+def test_the_road_points_of_the_tiles_level_are_counted(tmp_path: Path) -> None:
+    """Atlanta's OSM counts (2026-10-28): the road layers its level reads, nothing else."""
+    osm = _osm_counts(tmp_path, ATLANTA)
+    assert road_points(osm, 4) == 2_489_613
+    assert road_points(osm, 1) == 176_616
+    assert road_points(osm, 0) == 0
+    bare = tmp_path / "bare"
+    bare.mkdir()
+    assert road_points(ArtifactRef("1" * 64, "1" * 64, bare, "x", "dir", 0), 4) is None
+    assert road_points(None, 4) is None
+
+
 @pytest.mark.parametrize(
-    ("config", "ram_mb"),
+    ("config", "counts", "ram_mb"),
     [
-        ({}, 1700),  # road level 1, angular ends, the default limit: Atlanta took 1.7 GB
-        ({"road_level": 0}, 1200),  # no roads: 1.0 GB, below the 1.2 every tracing declared
-        ({"road_level": 4, "rounded_road_ends": True}, 6400),
-        ({"road_level": 4}, 3600),
-        ({"road_level": 3, "max_levelled_segs": 2_000_000}, 4000),
-        ({"road_level": 5, "rounded_road_ends": True, "max_levelled_segs": 2_000_000}, 6800),
+        # a user's settings, service roads, round ends, 2 000 000 points: Atlanta took 6.6 GB
+        (
+            {"road_level": 4, "rounded_road_ends": True, "max_levelled_segs": 2_000_000},
+            ATLANTA,
+            7000,
+        ),
+        # the same settings on a country tile, 379 047 points: it took 1.7 GB
+        (
+            {"road_level": 4, "rounded_road_ends": True, "max_levelled_segs": 2_000_000},
+            {"big_roads": 40_000, "small_roads": 339_047},
+            2800,
+        ),
+        ({}, ATLANTA, 1900),  # the defaults: level 1, angular ends: Atlanta took 1.7 GB
+        ({"road_level": 0}, ATLANTA, 1700),  # no roads: 1.0 GB
+        # an estimate, before the OSM data: 2 500 000 points, as many as Atlanta's
+        ({"road_level": 4, "rounded_road_ends": True, "max_levelled_segs": 2_000_000}, None, 7100),
     ],
 )
 def test_a_tracing_reserves_what_its_roads_take(
-    tmp_path: Path, env: BuildEnv, config: dict[str, object], ram_mb: int
+    tmp_path: Path,
+    env: BuildEnv,
+    config: dict[str, object],
+    counts: dict[str, int] | None,
+    ram_mb: int,
 ) -> None:
-    """``TRACING_RAM_MB``: Atlanta's peak at the tile's road level, road ends and limit. With
-    1.2 GB for every tracing, three cities at the service roads could start together on a
-    computer of 16 GB, some 19 GB (found in review, 2026-10-28)."""
+    """``TRACING_RAM``, from the tile's road points, read once its OSM data is in. Atlanta's
+    6.6 GB for every tile kept a batch of country tiles to one tracing at a time on 16 GB (found by
+    a campaign, 2026-10-28)."""
     (g,) = _declare([_spec(tmp_path, config=config)], _sched(env), env)
-    assert g.vectors.ram_mb == ram_mb
+    assert g.vectors.ram_mb == 1200 and g.vectors.ram_from is not None
+    osm = _osm_counts(tmp_path, counts) if counts is not None else None
+    assert g.vectors.ram_from({"osm": osm}) == ram_mb

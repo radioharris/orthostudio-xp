@@ -103,6 +103,7 @@ from orthostudio.pipeline.native import (
     COASTLINE_RULE,
     OSM_RULE,
     OSM_TIMEOUT_S,
+    SNAPSHOT_JSON,
     CoastlineParams,
     OsmJob,
     OsmOutcome,
@@ -2118,28 +2119,64 @@ count is the same on both). Set near the Windows peak rather than at the Mac's h
 owner's choice: a reservation only makes other steps wait, and a machine of 16 GB or more has
 the room."""
 
-TRACING_RAM_MB: dict[tuple[bool, bool], tuple[int, ...]] = {
-    # (limit raised, round ends): road level 0 to 5
-    (False, False): (1200, 1700, 1900, 2800, 3600, 3700),
-    (False, True): (1200, 1500, 2400, 2800, 6400, 6300),
-    (True, False): (1200, 1800, 1900, 4000, 6200, 6900),
-    (True, True): (1200, 1500, 1900, 4200, 6600, 6800),
+TRACING_RAM: dict[tuple[bool, bool], tuple[int, int]] = {
+    # (round ends, limit raised): MB without roads, MB per million road points
+    (False, False): (1553, 1040),
+    (True, False): (1741, 1850),
+    (False, True): (1318, 2210),
+    (True, True): (1854, 1930),
 }
-"""What a tile's tracing declares, by its road level and road ends, and whether the limit of road
-points is raised past ``roads.ROAD_SQUARES_FROM``: the peak of Atlanta's tracing (``+33-085``, the
-densest tile known), in its own process, rounded up to 100 MB. Measured on 2026-10-28 on a Mac
-(the footprint macOS counts), at the default limit and at 2 000 000: level 1 1.5 to 1.7 GB, level
-3 2.7 to 4.1, levels 4 and 5 3.6 with angular ends at the default limit, 6.2 to 6.9 otherwise;
-without roads 1.0, below the 1.2 GB every tracing declared before. With those 1.2 GB, three
-tracings of a city at the service roads could start together on a computer of 16 GB, some 19 GB
-(found in review). A tile with fewer roads reserves more than it takes: the reservation only makes
-other steps wait."""
+"""A tile's tracing at its peak, from the road points of its OSM data (:func:`road_points`): the
+smallest line over every tracing measured on 2026-10-28 on a Mac (the footprint macOS counts, in the
+tracing's own process), Atlanta (``+33-085``) at every road level with both road ends, at the
+default limit of road points and at 2 000 000, and twelve tiles around it at the service roads
+(the country of +33-083 1.7 GB for 379 047 points, Atlanta 6.0 to 6.6 GB for 2 489 613). The
+limit counts as raised past ``roads.ROAD_SQUARES_FROM``, where a large network is cut into
+squares. With 1.2 GB for every tracing, three cities at the service roads could start together on
+16 GB, some 19 GB; with Atlanta's 6.6 GB for every tile (a table by road level), a batch of them
+was traced one tile at a time there, while a country tile took a quarter of it (found by a
+campaign of 12 tiles, 2026-10-28)."""
+
+TRACING_RAM_MARGIN = 1.05
+"""Over the line: the same tile measured 6.0 GB beside other tracings and 6.6 GB alone."""
+
+UNKNOWN_ROAD_POINTS = 2_500_000
+"""The road points taken when a tile's OSM data does not say: Atlanta's at the service roads."""
 
 
-def tracing_ram(level: int, rounded: bool, max_levelled_segs: int) -> dict[str, int]:
-    """``ram_mb=`` for a tile's tracing (:data:`TRACING_RAM_MB`)."""
-    table = TRACING_RAM_MB[max_levelled_segs > ROAD_SQUARES_FROM, rounded]
-    return {"ram_mb": table[min(max(level, 0), len(table) - 1)]}
+def road_points(osm: ArtifactRef | None, road_level: int) -> int | None:
+    """The points of the road layers ``road_level`` reads (``layers_for``), from the counts of the
+    OSM step's ``snapshot.json``; ``None`` when there is no such count to read."""
+    if osm is None:
+        return None
+    path = Path(osm.path) / SNAPSHOT_JSON
+    names = [s.name for s in layers_for(road_level) if s.name.endswith("roads")]
+    try:
+        counts = json.loads(path.read_text(encoding="utf-8"))["counts"]
+        return sum(int(counts[name]["nodes"]) for name in names if name in counts)
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+
+
+def tracing_ram_mb(points: int, rounded: bool, raised: bool) -> int:
+    """MB a tracing of ``points`` road points reserves (:data:`TRACING_RAM`), rounded up to 100,
+    never under its rule's 1.2 GB."""
+    base, per_million = TRACING_RAM[rounded, raised]
+    mb = (base + per_million * points / 1e6) * TRACING_RAM_MARGIN
+    return max(OSXP_VECTORS.ram_mb, math.ceil(mb / 100) * 100)
+
+
+def tracing_ram_from(
+    road_level: int, rounded: bool, max_levelled_segs: int
+) -> Callable[[Mapping[str, ArtifactRef | None]], int]:
+    """The tracing node's ``ram_from``: read once its OSM input is built, before it starts."""
+    raised = max_levelled_segs > ROAD_SQUARES_FROM
+
+    def ram_from(inputs: Mapping[str, ArtifactRef | None]) -> int:
+        points = road_points(inputs.get("osm"), road_level)
+        return tracing_ram_mb(UNKNOWN_ROAD_POINTS if points is None else points, rounded, raised)
+
+    return ram_from
 
 
 MESH_STRUCTURES_MB = 600
@@ -2317,9 +2354,6 @@ def declare(
             osm_input = _vectors_osm_input(spec, cfg, osm_ref, planning=planning)
         rounded = bool(cfg.get("rounded_road_ends", False))
         vectors_params = OsxpVectorsParams.subset_of({**cfg, "tile": name})
-        tracing_mb = tracing_ram(
-            vectors_params.road_level, rounded, vectors_params.max_levelled_segs
-        )["ram_mb"]
         vectors = reg.node(
             f"{name}/vectors",
             # round or angular road ends: the rule's version says which, so that a tile 1.1.0
@@ -2347,11 +2381,12 @@ def declare(
             kind="subprocess",
             lane=TRACING_LANE,
             run=_vectors_run(env, spec),
-            # what its road level takes, or a raster of one's own when that takes more
-            ram_mb=max(
-                tracing_mb,
-                relief_ram(OSXP_VECTORS, relief_mb, RELIEF_RAM["vectors"]).get("ram_mb", 0),
+            # what its roads take, read from its OSM data before it starts, or a raster of
+            # one's own when that takes more
+            ram_from=tracing_ram_from(
+                vectors_params.road_level, rounded, vectors_params.max_levelled_segs
             ),
+            **relief_ram(OSXP_VECTORS, relief_mb, RELIEF_RAM["vectors"]),
         )
         coast = _coastline_node(reg, spec, osm_input)
         mesh = reg.node(

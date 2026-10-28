@@ -236,6 +236,11 @@ class Node:
     """A limit of its own, counted instead of its kind's slots (``Scheduler(lanes=...)``): the
     OSM downloads share the Overpass mirrors' quota, not the network slot of the imagery. Only
     for a kind that runs in a thread (not ``cpu``)."""
+    ram_from: Callable[[Mapping[str, ArtifactRef | None]], int] | None = None
+    """The peak RAM read from the inputs, when it grows with them: asked once they are built,
+    just before the node starts, and the larger of it and ``ram_mb`` is what the node takes from
+    the budget. A tracing's roads are known only once the tile's OSM step is done: Atlanta's took
+    6.0 GB and a country tile beside it 1.7 (2026-10-28)."""
 
     def __post_init__(self) -> None:
         if not isinstance(self.id, str) or not self.id:

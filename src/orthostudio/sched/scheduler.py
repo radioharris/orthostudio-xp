@@ -82,6 +82,9 @@ class _Rec:
     ref: ArtifactRef | None = None
     workdir: Path | None = None
     resolved: dict[str, ArtifactRef | None] | None = None
+    ram: int | None = None
+    """What the node takes from the RAM budget: its ``ram_mb``, or what ``ram_from`` reads from
+    the inputs when that is more, settled once the inputs are resolved."""
     idle: bool = False
     """The run gave its slot back while it waits (``NodeContext.idle``): another node of the
     same kind may start, and this one is not counted until it resumes."""
@@ -439,7 +442,7 @@ class Scheduler:
             rec.idle = False  # the slot was already given back while it waited
         else:
             self._running[self._pool(rec.node)] -= 1
-        self._ram_in_flight -= rec.node.ram_mb or 0
+        self._ram_in_flight -= rec.ram or 0
         self._busy_s += outcome.wall_s
         assert rec.key is not None
         self._inflight_keys.pop(rec.key, None)
@@ -545,7 +548,9 @@ class Scheduler:
             return True
         if self._running[self._pool(rec.node)] >= self._limit(rec.node):
             return False
-        ram = rec.node.ram_mb or 0
+        if rec.ram is None:
+            rec.ram = _ram_of(rec.node, rec.resolved)
+        ram = rec.ram
         if (
             self.ram_budget_mb is not None
             and self._ram_in_flight + ram > self.ram_budget_mb
@@ -566,7 +571,7 @@ class Scheduler:
         rec.started_at = time.perf_counter()
         rec.last_fraction = 0.0
         self._running[self._pool(node)] += 1
-        self._ram_in_flight += node.ram_mb or 0
+        self._ram_in_flight += rec.ram or 0
         self._inflight_keys[key] = node.id
         rec.workdir = self.workdir / _workdir_name(node.id)
         shutil.rmtree(rec.workdir, ignore_errors=True)
@@ -720,7 +725,7 @@ class Scheduler:
             if not rec.terminal:
                 if rec.state == "running":
                     self._running[self._pool(rec.node)] -= 1
-                    self._ram_in_flight -= rec.node.ram_mb or 0
+                    self._ram_in_flight -= rec.ram or 0
                     assert rec.key is not None
                     self._inflight_keys.pop(rec.key, None)
                 self._fail(rec, cancelled)
@@ -777,6 +782,14 @@ class Scheduler:
 
 
 # -- helpers -----------------------------------------------------------------------------------
+
+
+def _ram_of(node: Node, inputs: Mapping[str, ArtifactRef | None]) -> int:
+    """What ``node`` takes from the RAM budget once its ``inputs`` are resolved."""
+    declared = node.ram_mb or 0
+    if node.ram_from is None:
+        return declared
+    return max(declared, int(node.ram_from(inputs)))
 
 
 def _input_refs(store: Store, inputs: Mapping[str, ArtifactRef | None]) -> list[InputRef]:

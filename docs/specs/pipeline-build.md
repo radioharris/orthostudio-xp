@@ -60,7 +60,7 @@ id gets a `#2` suffix.
 | Node | Rule (version) | Kind, RAM | Params (consumed subset) | Inputs | Artefact |
 |---|---|---|---|---|---|
 | dem | `orthostudio.dem@1` | subprocess with X-Plane's relief (the default), net on the `relief` lane when it downloads one; 0.6 GB | `DemParams` (spec `dem.md` 9) + `tile` | the Global Scenery DSFs of the 3x3 block when the relief is X-Plane's (decision 0007) | dir `Data<tile>.alt`, `dem.npy`, `meta.json` |
-| vectors | `orthostudio.vectors@1` | subprocess on the `tracing` lane, in a process of its own (8.6); 1.2 to 6.9 GB by its roads (8.6) | `VectorsParams` (spec `vectors-assembly.md`) + `tile` | `osm` (8.5), `dem`, `patches` (the tile's folder of hand-made patches, absent without one: 8.5), `airports` (absent) | dir `Data<tile>.{node,poly,alt}`, `dem.json`, `airports.json`, `airports.npz`, `airports.wkb.json` |
+| vectors | `orthostudio.vectors@1` | subprocess on the `tracing` lane, in a process of its own (8.6); by its roads, 1.2 GB at least (8.6) | `VectorsParams` (spec `vectors-assembly.md`) + `tile` | `osm` (8.5), `dem`, `patches` (the tile's folder of hand-made patches, absent without one: 8.5), `airports` (absent) | dir `Data<tile>.{node,poly,alt}`, `dem.json`, `airports.json`, `airports.npz`, `airports.wkb.json` |
 | coastline | `orthostudio.coastline@1` | io, 0.2 GB | `tile` | `osm` (8.4) | file `coastline.npz` |
 | mesh | `orthostudio.mesh@1` | subprocess, 0.9 GB | `MeshParams` (spec `mesh-build.md` 9) + `tile` | `vectors`, `dem` (8.2), `coastline` | dir `Data<tile>.mesh`, `mesh.npz` |
 | masks | `orthostudio.masks@1` | subprocess, `300 + 800 x workers` MB | `MasksParams` (spec `masks-build.md`) + `tile` | `mesh`, `nb_n`..`nb_nw` | dir `<y>_<x>.png`, `index.json` |
@@ -752,29 +752,35 @@ error the node fails with. A process the system ends (`SIGKILL`) or one that run
 fails the node with `SYS_OUT_OF_MEMORY`: that node and what needs it fail, the engine goes on.
 The tiles are the same, byte for byte, and so are the keys: nothing is built again.
 
-**A tracing reserves what its roads take** (`TRACING_RAM_MB`, `tracing_ram`): the peak of
-Atlanta's tracing (`+33-085`, the densest tile known) at the tile's road level, road ends and
-limit of road points (the default, or raised past 200 000), rounded up to 100 MB, never below
-the 1.2 GB every tracing declared before; a raster of one's own that takes more wins
-(`relief_ram`). Measured on 2026-10-28 in the tracing's own process (the footprint macOS counts):
+**A tracing reserves what its roads take** (`TRACING_RAM`, `tracing_ram_from`, through the
+scheduler's `Node.ram_from`, `scheduler.md` 2.3): once the tile's OSM step is done and before the
+tracing starts, the road points of the layers its road level reads (`road_points`: the `nodes`
+counts of `big_roads` and `small_roads` in the step's `snapshot.json`), and from them a line by
+road ends and limit of road points (the default, or raised past 200 000), 5 % over it, rounded up
+to 100 MB, never below the rule's 1.2 GB; a raster of one's own that takes more wins
+(`relief_ram`). An estimate, which has no OSM data yet, takes 2 500 000 points (Atlanta's at the
+service roads).
 
-| road level | angular, default limit | round, default limit | angular, 2 000 000 | round, 2 000 000 |
-|---|---|---|---|---|
-| 0 | 1.0 GB | 1.0 GB | 1.0 GB | 1.0 GB |
-| 1 | 1.7 | 1.5 | 1.7 | 1.4 |
-| 2 | 1.9 | 2.3 | 1.8 | 1.9 |
-| 3 | 2.8 | 2.7 | 3.9 | 4.1 |
-| 4 | 3.6 | 6.3 | 6.2 | 6.6 |
-| 5 | 3.6 | 6.2 | 6.9 | 6.7 |
+| road ends, limit | without roads | per million road points |
+|---|---|---|
+| angular, default | 1 553 MB | 1 040 MB |
+| round, default | 1 741 | 1 850 |
+| angular, raised | 1 318 | 2 210 |
+| round, raised | 1 854 | 1 930 |
 
-The peak is the assembly of the shapes, or the one buffer of the road bands at the default limit;
-the processes of the road squares (`vectors-water-roads.md` 3.8) take 0.1 to 1.1 GB each and are
-done before it. With 1.2 GB for every tracing, three cities at the service roads could start
-together on a computer of 16 GB, some 19 GB (found in review, 2026-10-28). A tile with fewer roads
-reserves more than it takes, which only makes other steps wait: on 16 GB (a budget of 9.8 GB),
-three tracings run at once at levels 1 to 3 with the default limit, two at levels 4 and 5 with
-angular ends or at level 3 with a raised limit, one at levels 4 and 5 with round ends or a raised
-limit; fewer while images (3 GB) or meshes (0.9 GB) hold their part.
+Each line is the lowest over every tracing measured on 2026-10-28 on a Mac, in the tracing's own
+process (the footprint macOS counts): Atlanta (`+33-085`) at every road level (176 616 points at
+level 1, 2 489 613 at level 4), with both road ends, at the default limit and at 2 000 000, and the
+twelve tiles of the block +33..+35 / -086..-083 at the service roads with round ends and
+2 000 000 (from 1.7 GB for 379 047 points to Atlanta's 6.0 GB, 6.6 alone). The peak is the
+assembly of the shapes, or the one buffer of the road bands at the default limit; the processes of
+the road squares (`vectors-water-roads.md` 3.8) take 0.1 to 1.1 GB each and are done before it.
+
+Every tracing declared 1.2 GB until then, so three cities at the service roads could start
+together on a computer of 16 GB, some 19 GB (found in review, 2026-10-28). The table by road level
+that came first reserved Atlanta's 6.6 GB for every tile at those settings: on the Shadow (16 GB)
+a batch of twelve was traced one tile at a time, while its country tiles took a quarter of that.
+From its roads, a country tile of 379 047 points reserves 2.8 GB and Atlanta 7.0.
 
 **The tracings have a lane of their own** (`TRACING_LANE`, as wide as the subprocess slots, 3 at
 most). On the slots they shared with the relief, the meshes and the masks, every slot that came

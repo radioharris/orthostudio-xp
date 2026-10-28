@@ -162,11 +162,10 @@ speed while tracings run. Until 1.2.1 it ran inside the app: a row of 23 dense t
 roads ran out of 64 GB and went through once the app was started again, and the images came at 60 %
 of the line while tracings ran. A tracing that runs out of memory stops its tile, and the tiles
 that need it, with a message that says so; the rest of the batch goes on. A tracing waits for the
-memory its roads take, measured on Atlanta: 1.7 GB at the main roads, up to 3.6 GB at the service
-roads with angular ends, and 6.2 to 6.9 GB with round ends or a raised limit of road points. On a
-computer of 16 GB, three such cities are traced at once up to the minor roads, two at the service
-roads with angular ends, one with round ends; until 1.2.1 every tracing counted 1.2 GB, and three
-could start together whatever they took.
+memory its roads take, counted in the tile's map data once it is downloaded: a country tile at the
+service roads with round ends reserves 2.8 GB, Atlanta 7.0. On a computer of 16 GB, three country
+tiles are traced at once, a big city beside one of them; until 1.2.1 every tracing counted 1.2 GB,
+and three big cities could start together whatever they took.
 
 The tracings also have places of their own, so a tile is meshed as soon as it is traced, and its
 images start as soon as it and its neighbours are meshed, while the other tiles are still being
