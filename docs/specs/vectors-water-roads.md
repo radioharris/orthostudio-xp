@@ -180,7 +180,7 @@ road_area = improved_buffer(banked.difference(improved_buffer(apt_area, lane_wid
 holes between nearby roads. **Keep** exactly, arguments included (`2` m of separation,
 `0.5` m of simplification), `resolution=1` included: `quad_segs=1`, the angular ends of Ortho4XP
 1.40, unless `rounded_road_ends` asks for the round ends of Ortho4XP 1.30 (3.7; section 7,
-difference 9).
+difference 9). A large network, once its limit is raised, is buffered in squares (3.8).
 
 The airport area subtracted is the `treated_area` of `include_airports` (runways, taxiways,
 aprons and patches), buffered by `lane_width + 2` metres: a road inside an airport is already
@@ -262,6 +262,43 @@ ran; the tile's setting picks the rule (`vectors_rule`) and the rule that runs t
 and the parameters of the key are the same, so a tile 1.1.0 traced is found as it is with the box
 off, and one 1.2.0 traced with the box on; each is traced again only with the other shape.
 
+### 3.8 A large network in squares (OrthoStudio XP's own, past a raised limit)
+
+The one `improved_buffer` of 3.3 grows about as the square of the network: on Atlanta (`+33-085`),
+traced with a user's settings (two million points to level, round ends), the road bands took 23 of the
+25 minutes of the tracing and close to 20 GB, and three such tiles of a batch at once took a
+user's 64 GB (2026-10-28). `road_bands` then buffers the network in squares
+(`improved_buffer_in_squares`):
+
+* a grid of `ROAD_SQUARES` x `ROAD_SQUARES` (8 x 8) over the scaled network; a point of the bands
+  depends only on the lines within `bw + 2 sw` of it (grown by `bw + sw`, shrunk by `sw`), so each
+  square takes the lines within that and 2 m more (`clip_by_rect`), grows, shrinks and simplifies
+  them on its own, and keeps what falls in the square; the squares at the edge of the grid reach
+  that far past the network, so no band is cut there;
+* the squares run on `square_workers()` processes (spawned, `leave_with_parent`): the engine's
+  CPU tasks, the cores less two, shared by the tracings that may run at once, the cores less one,
+  3 at most; 4 on a 14-core Mac, 1 on 4 cores, where they run one after the other in the tracing's
+  own process;
+* the pieces are glued (`union_all`) in the order of the grid, so the outline is the same on any
+  number of processes.
+
+Unsimplified, the glued bands are the one buffer's (no area apart, the same polygons and holes:
+`tests/test_road_squares.py`). Each square simplifies its own outline, by 0.5 m, so the outline
+differs from the one buffer's by about that, as far from the exact bands as the one buffer's is:
+on Atlanta, within 0.5 m but at a few points, 2.1 m at most, the area 1e-5 apart.
+
+When: `max_levelled_segs` above `ROAD_SQUARES_FROM` (200 000, its default), and a network of more
+segments than that (points less lines, after the airport difference). Measured on Atlanta, the
+bands alone: main roads (281 780 points) 9.8 s and 1.2 GB in one piece, 2.0 s in squares; minor
+roads (1 071 208) 189 s and 8.3 GB against 16 s and 0.8 GB a process; service roads (1 763 316)
+about 23 min against 87 s on 4 processes, 2.1 GB the largest. A smaller network stays in one
+piece, a second or two, which the processes would cost again.
+
+The default limit never cuts, so the key of every tile built with it stays as it was; a raised
+limit adds `road_squares: 8` to the key (`VectorsParams.canonical`), so a tile traced in one piece
+under it is traced again, in squares. A default limit still lets a network past 200 000 segments
+through, the budget being per layer (3.2): those stay in one piece.
+
 ## 4. Rules of the patch builder (`:639-968`)
 
 The terrain step says each phase as it starts, so a long one is never silent: "flattening the
@@ -338,6 +375,7 @@ build_road_layers(osm_data, tile, dem, params=RoadParams(), airports=None, *, on
     -> RoadResult(layers, seeds, area, counts)
 AirportAreas(array, area)          # the wave-2 injection point (A2)
 weighted_normals / shift_way / refine_way / improved_buffer / length_in_meters / smooth_along
+road_bands(network, params, scalx)  # improved_buffer, or improved_buffer_in_squares past a raised limit (3.8)
 
 # patches.py
 build_patch_layers(directory, tile, dem=None, *, on_event=None)

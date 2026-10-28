@@ -169,6 +169,14 @@ traced. Until 1.2.1 every tile was traced before any was meshed, and the images 
 whole batch's terrain: on 25 tiles at the service roads, the first images started after 3 min 13 s
 instead of 20 min 24 s, and the terrain was done after 8 min instead of 23.
 
+**Big cities in pieces.** With the limit of road points raised above its 200 000 (Settings, for
+experts, Roads), a big city at the service roads has a network too large to trace in one piece: the
+roads of Atlanta, with two million points, took 23 minutes and close to 20 GB. Past 200 000
+segments, the network is then cut into 64 squares, traced side by side on a few cores and put
+together again: 1 min 27 s, and 2.1 GB for each of the four programs. The outlines of the flattened
+roads move by half a metre, 2 m at a few points. At the default limit nothing changes, and no tile
+is built again.
+
 The images of each tile are downloaded and converted in a program of their own too, so the rest of
 the work never holds the line back: while the terrain was built, the images of that batch came at
 two thirds of a slow line, and now at its full speed, without asking for any of them twice. On a

@@ -53,7 +53,9 @@ experimental.
   100 or 250 m, so that X-Plane's roads no longer bump over the small waves of the relief, on
   whichever relief you build with. Off by default, as in Ortho4XP. The road bands can also get the
   rounded ends of Ortho4XP 1.30, which take the bumps out of crossroads; off by default, since in
-  a big city at high road levels they double the time and memory of the tracing.
+  a big city at high road levels they double the time and memory of the tracing. With the limit
+  of road points raised, a big city's roads are traced in pieces on several cores: Atlanta at the
+  service roads in a minute and a half instead of 23, in a tenth of the memory.
 - **The grain of the ground.** One of X-Plane 12's decals over the photos, the one you choose;
   turning it on, off or to another writes a tile's terrain files again, and nothing else.
 - **The squares of a flight plan.** Your last SimBrief plan, or a plan file from Little Navmap

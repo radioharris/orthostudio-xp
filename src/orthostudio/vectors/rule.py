@@ -49,7 +49,7 @@ from orthostudio.vectors.assemble import (
     VectorLayers,
     assemble_vectors,
 )
-from orthostudio.vectors.roads import ROAD_SMOOTHING_CHOICES
+from orthostudio.vectors.roads import ROAD_SMOOTHING_CHOICES, ROAD_SQUARES, ROAD_SQUARES_FROM
 
 __all__ = [
     "DEM_JSON",
@@ -137,6 +137,11 @@ class VectorsParams(RuleParams):
         doc = super().canonical()
         if not self.road_smoothing:  # off: the key of every tile built before
             doc.pop("road_smoothing", None)
+        if self.max_levelled_segs > ROAD_SQUARES_FROM:
+            # a large network is then buffered in squares (``roads.road_bands``), whose outline
+            # differs from the one piece's by half a metre: the key says so, and the default
+            # limit, which never cuts, leaves it as it was
+            doc["road_squares"] = ROAD_SQUARES
         return doc
 
     apt_smoothing_pix: int = 8

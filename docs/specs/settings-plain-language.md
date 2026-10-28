@@ -1020,6 +1020,11 @@ and read 50 or more as 5; OrthoStudio XP refuses those, and until 1.0 it stopped
   arbitrary (Ortho4XP `O4_Vector_Map.py:240-241`, `O4_OSM_Utils.py:595-629`; OrthoStudio XP
   `vectors/roads.py:215-240`).
 - **In X-Plane.** On very dense networks some roads are not flattened.
+- **Above 200 000.** A network of more than 200 000 segments is then traced in 64 squares on
+  several processes: a big city at the service roads in a minute and a half instead of 23, and a
+  tenth of the memory; the road outlines move by half a metre, 2 m at a few points. The key
+  changes with it, so the tiles built under a raised limit are traced again
+  (`vectors-water-roads.md` 3.8). At 200 000 nothing changes.
 - **Recommendation. Folded.**
 - **Expert label.** EN *Maximum road points flattened per layer* · FR *Nombre maximal de points
   de route aplanis par couche*.
