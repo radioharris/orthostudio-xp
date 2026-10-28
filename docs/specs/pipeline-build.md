@@ -60,7 +60,7 @@ id gets a `#2` suffix.
 | Node | Rule (version) | Kind, RAM | Params (consumed subset) | Inputs | Artefact |
 |---|---|---|---|---|---|
 | dem | `orthostudio.dem@1` | subprocess with X-Plane's relief (the default), net on the `relief` lane when it downloads one; 0.6 GB | `DemParams` (spec `dem.md` 9) + `tile` | the Global Scenery DSFs of the 3x3 block when the relief is X-Plane's (decision 0007) | dir `Data<tile>.alt`, `dem.npy`, `meta.json` |
-| vectors | `orthostudio.vectors@1` | subprocess on the `tracing` lane, in a process of its own (8.6); 1.2 GB | `VectorsParams` (spec `vectors-assembly.md`) + `tile` | `osm` (8.5), `dem`, `patches` (the tile's folder of hand-made patches, absent without one: 8.5), `airports` (absent) | dir `Data<tile>.{node,poly,alt}`, `dem.json`, `airports.json`, `airports.npz`, `airports.wkb.json` |
+| vectors | `orthostudio.vectors@1` | subprocess on the `tracing` lane, in a process of its own (8.6); 1.2 to 6.9 GB by its roads (8.6) | `VectorsParams` (spec `vectors-assembly.md`) + `tile` | `osm` (8.5), `dem`, `patches` (the tile's folder of hand-made patches, absent without one: 8.5), `airports` (absent) | dir `Data<tile>.{node,poly,alt}`, `dem.json`, `airports.json`, `airports.npz`, `airports.wkb.json` |
 | coastline | `orthostudio.coastline@1` | io, 0.2 GB | `tile` | `osm` (8.4) | file `coastline.npz` |
 | mesh | `orthostudio.mesh@1` | subprocess, 0.9 GB | `MeshParams` (spec `mesh-build.md` 9) + `tile` | `vectors`, `dem` (8.2), `coastline` | dir `Data<tile>.mesh`, `mesh.npz` |
 | masks | `orthostudio.masks@1` | subprocess, `300 + 800 x workers` MB | `MasksParams` (spec `masks-build.md`) + `tile` | `mesh`, `nb_n`..`nb_nw` | dir `<y>_<x>.png`, `index.json` |
@@ -730,7 +730,7 @@ recently used `orthostudio.mesh` artefact of the store that holds the neighbour.
 
 `orthostudio.dem` is declared `net` on the `relief` lane when it downloads its relief and
 `subprocess` when it reads X-Plane 12's own, the default (0.6 GB either way), `orthostudio.osm`
-`net` (0.3 GB), `orthostudio.coastline` `io` (0.2 GB), `orthostudio.vectors` `subprocess` (1.2 GB),
+`net` (0.3 GB), `orthostudio.coastline` `io` (0.2 GB), `orthostudio.vectors` `subprocess` (by its roads, below),
 `orthostudio.mesh` `subprocess` (0.9 GB: the Python side plus the Triangle4XP child) and
 `orthostudio.masks` `subprocess` (its own process pool inside). `cpu` is deliberately not used for
 them: the `cpu` pool is a `spawn` process pool that receives the node's `run` callable by pickle, and
@@ -751,6 +751,30 @@ progress and no token. What it logs reaches the engine's log; its traceback is c
 error the node fails with. A process the system ends (`SIGKILL`) or one that runs out of memory
 fails the node with `SYS_OUT_OF_MEMORY`: that node and what needs it fail, the engine goes on.
 The tiles are the same, byte for byte, and so are the keys: nothing is built again.
+
+**A tracing reserves what its roads take** (`TRACING_RAM_MB`, `tracing_ram`): the peak of
+Atlanta's tracing (`+33-085`, the densest tile known) at the tile's road level, road ends and
+limit of road points (the default, or raised past 200 000), rounded up to 100 MB, never below
+the 1.2 GB every tracing declared before; a raster of one's own that takes more wins
+(`relief_ram`). Measured on 2026-10-28 in the tracing's own process (the footprint macOS counts):
+
+| road level | angular, default limit | round, default limit | angular, 2 000 000 | round, 2 000 000 |
+|---|---|---|---|---|
+| 0 | 1.0 GB | 1.0 GB | 1.0 GB | 1.0 GB |
+| 1 | 1.7 | 1.5 | 1.7 | 1.4 |
+| 2 | 1.9 | 2.3 | 1.8 | 1.9 |
+| 3 | 2.8 | 2.7 | 3.9 | 4.1 |
+| 4 | 3.6 | 6.3 | 6.2 | 6.6 |
+| 5 | 3.6 | 6.2 | 6.9 | 6.7 |
+
+The peak is the assembly of the shapes, or the one buffer of the road bands at the default limit;
+the processes of the road squares (`vectors-water-roads.md` 3.8) take 0.1 to 1.1 GB each and are
+done before it. With 1.2 GB for every tracing, three cities at the service roads could start
+together on a computer of 16 GB, some 19 GB (found in review, 2026-10-28). A tile with fewer roads
+reserves more than it takes, which only makes other steps wait: on 16 GB (a budget of 9.8 GB),
+three tracings run at once at levels 1 to 3 with the default limit, two at levels 4 and 5 with
+angular ends or at level 3 with a raised limit, one at levels 4 and 5 with round ends or a raised
+limit; fewer while images (3 GB) or meshes (0.9 GB) hold their part.
 
 **The tracings have a lane of their own** (`TRACING_LANE`, as wide as the subprocess slots, 3 at
 most). On the slots they shared with the relief, the meshes and the masks, every slot that came

@@ -168,6 +168,7 @@ from orthostudio.sched.costs import cost_name, timed_fraction
 from orthostudio.sources.osm import SnapshotStore, layers_for
 from orthostudio.textures.ter import TerKind, TerParams
 from orthostudio.tilefiles import OSXP_PARAMETERS, masks_index, tile_cfg_text, tile_defaults
+from orthostudio.vectors.roads import ROAD_SQUARES_FROM
 from orthostudio.vectors.rule import VECTORS as OSXP_VECTORS
 from orthostudio.vectors.rule import VectorsParams as OsxpVectorsParams
 from orthostudio.vectors.rule import apart_job, vectors_rule
@@ -2117,6 +2118,30 @@ count is the same on both). Set near the Windows peak rather than at the Mac's h
 owner's choice: a reservation only makes other steps wait, and a machine of 16 GB or more has
 the room."""
 
+TRACING_RAM_MB: dict[tuple[bool, bool], tuple[int, ...]] = {
+    # (limit raised, round ends): road level 0 to 5
+    (False, False): (1200, 1700, 1900, 2800, 3600, 3700),
+    (False, True): (1200, 1500, 2400, 2800, 6400, 6300),
+    (True, False): (1200, 1800, 1900, 4000, 6200, 6900),
+    (True, True): (1200, 1500, 1900, 4200, 6600, 6800),
+}
+"""What a tile's tracing declares, by its road level and road ends, and whether the limit of road
+points is raised past ``roads.ROAD_SQUARES_FROM``: the peak of Atlanta's tracing (``+33-085``, the
+densest tile known), in its own process, rounded up to 100 MB. Measured on 2026-10-28 on a Mac
+(the footprint macOS counts), at the default limit and at 2 000 000: level 1 1.5 to 1.7 GB, level
+3 2.7 to 4.1, levels 4 and 5 3.6 with angular ends at the default limit, 6.2 to 6.9 otherwise;
+without roads 1.0, below the 1.2 GB every tracing declared before. With those 1.2 GB, three
+tracings of a city at the service roads could start together on a computer of 16 GB, some 19 GB
+(found in review). A tile with fewer roads reserves more than it takes: the reservation only makes
+other steps wait."""
+
+
+def tracing_ram(level: int, rounded: bool, max_levelled_segs: int) -> dict[str, int]:
+    """``ram_mb=`` for a tile's tracing (:data:`TRACING_RAM_MB`)."""
+    table = TRACING_RAM_MB[max_levelled_segs > ROAD_SQUARES_FROM, rounded]
+    return {"ram_mb": table[min(max(level, 0), len(table) - 1)]}
+
+
 MESH_STRUCTURES_MB = 600
 """What Triangle4XP holds besides the raster: the mesh, about 0.3 to 0.4 GB at 3 million
 triangles (``docs/specs/mesh-build.md``)."""
@@ -2290,12 +2315,17 @@ def declare(
             )
         else:
             osm_input = _vectors_osm_input(spec, cfg, osm_ref, planning=planning)
+        rounded = bool(cfg.get("rounded_road_ends", False))
+        vectors_params = OsxpVectorsParams.subset_of({**cfg, "tile": name})
+        tracing_mb = tracing_ram(
+            vectors_params.road_level, rounded, vectors_params.max_levelled_segs
+        )["ram_mb"]
         vectors = reg.node(
             f"{name}/vectors",
             # round or angular road ends: the rule's version says which, so that a tile 1.1.0
             # traced (12, angular) and one 1.2.0 traced (13, round) are both found as they are
-            vectors_rule(bool(cfg.get("rounded_road_ends", False))),
-            OsxpVectorsParams.subset_of({**cfg, "tile": name}),
+            vectors_rule(rounded),
+            vectors_params,
             {
                 "osm": osm_input,
                 "dem": dem,
@@ -2317,7 +2347,11 @@ def declare(
             kind="subprocess",
             lane=TRACING_LANE,
             run=_vectors_run(env, spec),
-            **relief_ram(OSXP_VECTORS, relief_mb, RELIEF_RAM["vectors"]),
+            # what its road level takes, or a raster of one's own when that takes more
+            ram_mb=max(
+                tracing_mb,
+                relief_ram(OSXP_VECTORS, relief_mb, RELIEF_RAM["vectors"]).get("ram_mb", 0),
+            ),
         )
         coast = _coastline_node(reg, spec, osm_input)
         mesh = reg.node(

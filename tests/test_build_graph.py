@@ -796,3 +796,24 @@ def test_a_folder_of_ones_own_rides_over_the_relief_and_marks_the_file_it_takes(
     assert any(
         value is ref for value in xp_inputs.values()
     )  # the Global Scenery DSFs are still read
+
+
+@pytest.mark.parametrize(
+    ("config", "ram_mb"),
+    [
+        ({}, 1700),  # road level 1, angular ends, the default limit: Atlanta took 1.7 GB
+        ({"road_level": 0}, 1200),  # no roads: 1.0 GB, below the 1.2 every tracing declared
+        ({"road_level": 4, "rounded_road_ends": True}, 6400),
+        ({"road_level": 4}, 3600),
+        ({"road_level": 3, "max_levelled_segs": 2_000_000}, 4000),
+        ({"road_level": 5, "rounded_road_ends": True, "max_levelled_segs": 2_000_000}, 6800),
+    ],
+)
+def test_a_tracing_reserves_what_its_roads_take(
+    tmp_path: Path, env: BuildEnv, config: dict[str, object], ram_mb: int
+) -> None:
+    """``TRACING_RAM_MB``: Atlanta's peak at the tile's road level, road ends and limit. With
+    1.2 GB for every tracing, three cities at the service roads could start together on a
+    computer of 16 GB, some 19 GB (found in review, 2026-10-28)."""
+    (g,) = _declare([_spec(tmp_path, config=config)], _sched(env), env)
+    assert g.vectors.ram_mb == ram_mb
