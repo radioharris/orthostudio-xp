@@ -32,6 +32,7 @@ class ApartParams(RuleParams):
     mode: str = "write"
     tile: str = "+45+005"
     pid_file: str = ""
+    saved_file: str = ""
 
 
 _LINK: ProcessLink | None = None
@@ -75,6 +76,12 @@ def _apart_fn(ctx: RunContext) -> None:
         while _LINK is not None and not _LINK.cancel.is_set():
             time.sleep(0.05)
         raise OsxpError("SYS_CANCELLED", context={"node": "t/vectors"})
+    if params.mode == "save":  # once asked to stop, saves what it has for 4 s, as images do
+        while _LINK is not None and not _LINK.cancel.is_set():
+            time.sleep(0.05)
+        time.sleep(4.0)
+        Path(params.saved_file).write_text("kept")
+        raise OsxpError("SYS_CANCELLED", context={"node": "t/textures"})
     ctx.out.write_text(f"pid={os.getpid()}")
 
 
@@ -248,3 +255,27 @@ def test_a_process_asked_to_stop_stops_by_itself(store: Store, tmp_path: Path) -
     canceller.join()
     assert not refs and time.monotonic() - t0 < 20
     assert not _apart_children()
+
+
+@pytest.mark.parametrize("grace", [None, 30.0])
+def test_a_process_given_more_time_finishes_its_save(
+    store: Store, tmp_path: Path, grace: float | None
+) -> None:
+    """The images save the pieces they received once cancelled, which the next build does not ask
+    again: given their own time they finish it; a tracing, with nothing to keep, is ended after
+    ``CANCEL_GRACE_S``."""
+    pid_file, saved = tmp_path / "pid", tmp_path / "saved"
+
+    def run(ctx: NodeContext) -> ArtifactRef:
+        if grace is None:
+            return run_p0_rule_apart(ctx, _bind)
+        return run_p0_rule_apart(ctx, _bind, cancel_grace_s=grace)
+
+    sched = Scheduler(store, cpu_in_threads=True, subprocess_slots=1)
+    params = ApartParams(mode="save", pid_file=str(pid_file), saved_file=str(saved))
+    sched.add(Node("t/textures", APART, params, {}, kind="subprocess", run=run))
+    canceller = _cancel_once_started(sched, pid_file)
+    refs = asyncio.run(sched.run(["t/textures"]))
+    canceller.join()
+    assert not refs and not _apart_children()
+    assert saved.exists() == (grace is not None)

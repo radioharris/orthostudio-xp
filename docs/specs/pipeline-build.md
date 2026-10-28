@@ -771,6 +771,8 @@ the process the build environment it reads (`_ApartEnv`: the store and the image
 folders, the sources, the pool and network settings; its own `Store` opened there) and the node's
 context through the `ProcessLink` (progress, the slot lent during the spaced retries, the bytes
 received and written for Works' report, the cancel, which sets the token `build_textures` polls).
+Cancelled, the process is given `TEXTURES_CANCEL_GRACE_S` (60 s), not a tracing's 3 s, to finish
+the textures it is encoding and save the pieces received, which the next build does not ask again.
 The engine's own Python work (the meshes' side of it, the OSM data) had held the interpreter the
 download runs in: on 25 tiles at the service roads and 0.3 MB/s, the first tile's images came at
 24 useful pieces a second with 347 hedges, in 254 s, while the terrain was built (2026-10-28). In

@@ -1669,6 +1669,14 @@ def _textures_apart(fields: _ApartEnv, node_id: str, link: ProcessLink) -> Itera
         env.close()
 
 
+TEXTURES_CANCEL_GRACE_S = 60.0
+"""How long the images' process may take to stop once the build is cancelled: it finishes the
+textures it is encoding and saves the pieces of images it received, which the next build does not
+ask again. In the engine's process (1.2.1) the build waited for that without a limit; the 3 s a
+tracing is given (``sched.apart.CANCEL_GRACE_S``) could cut the save short on a slow disk (found
+in review, 2026-10-28)."""
+
+
 def _textures_run(env: BuildEnv) -> Callable[[NodeContext], Any]:
     """The images of a tile, downloaded and encoded in a process of its own
     (``orthostudio.sched.apart``): the engine's own Python work (the meshes' side of it, the OSM
@@ -1686,7 +1694,11 @@ def _textures_run(env: BuildEnv) -> Callable[[NodeContext], Any]:
     )
 
     def run(ctx: NodeContext) -> ArtifactRef:
-        return run_p0_rule_apart(ctx, partial(_textures_apart, fields, ctx.node_id))
+        return run_p0_rule_apart(
+            ctx,
+            partial(_textures_apart, fields, ctx.node_id),
+            cancel_grace_s=TEXTURES_CANCEL_GRACE_S,
+        )
 
     return run
 

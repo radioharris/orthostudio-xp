@@ -14,7 +14,8 @@ it. The process only runs the rule's function on the paths it is given, and tell
 through a :class:`ProcessLink` what the node's context would have been told: its progress, the
 slot it lends while it waits, the bytes it wrote and received; it logs into the engine's log.
 Cancelling asks the process to stop (``ProcessLink.cancel``) and ends it after
-:data:`CANCEL_GRACE_S`; what it wrote stays in the build directory, which the failed build removes.
+:data:`CANCEL_GRACE_S`, or the time its caller gives (the textures save the pieces of images they
+received); what it wrote stays in the build directory, which the failed build removes.
 """
 
 from __future__ import annotations
@@ -82,7 +83,8 @@ EXIT_GRACE_S = 10.0
 """How long a process that said it was done may take to end before it is ended."""
 
 CANCEL_GRACE_S = 3.0
-"""How long a process asked to stop may take to stop by itself before it is ended."""
+"""How long a process asked to stop may take to stop by itself before it is ended, unless its
+caller gives another time (``run_p0_rule_apart``'s ``cancel_grace_s``)."""
 
 
 class _ProcessTracebackError(Exception):
@@ -97,14 +99,19 @@ class _ProcessTracebackError(Exception):
         return self.text
 
 
-def run_p0_rule_apart(ctx: NodeContext, bind: Bind | None = None) -> ArtifactRef:
-    """``run_p0_rule``, with the rule's function run in a process started for it alone."""
+def run_p0_rule_apart(
+    ctx: NodeContext, bind: Bind | None = None, *, cancel_grace_s: float = CANCEL_GRACE_S
+) -> ArtifactRef:
+    """``run_p0_rule``, with the rule's function run in a process started for it alone; asked to
+    stop, the process is given ``cancel_grace_s`` to stop by itself before it is ended."""
     with ctx.begin() as build:
-        _run_in_process(ctx, run_context(ctx, build), bind)
+        _run_in_process(ctx, run_context(ctx, build), bind, cancel_grace_s)
         return ctx.commit(build)
 
 
-def _run_in_process(ctx: NodeContext, run_ctx: RunContext, bind: Bind | None) -> None:
+def _run_in_process(
+    ctx: NodeContext, run_ctx: RunContext, bind: Bind | None, cancel_grace_s: float
+) -> None:
     mp = get_context("spawn")
     messages: Any = mp.Queue()
     cancel = mp.Event()
@@ -119,7 +126,7 @@ def _run_in_process(ctx: NodeContext, run_ctx: RunContext, bind: Bind | None) ->
     proc.start()
     end: tuple[Any, ...] | None = None
     try:
-        end = _wait(ctx, proc, messages, cancel)
+        end = _wait(ctx, proc, messages, cancel, cancel_grace_s)
     finally:
         if end is not None:  # it said its last word and is ending by itself
             proc.join(EXIT_GRACE_S)
@@ -138,14 +145,16 @@ def _run_in_process(ctx: NodeContext, run_ctx: RunContext, bind: Bind | None) ->
     raise _ended_error(ctx, proc.exitcode)
 
 
-def _wait(ctx: NodeContext, proc: Any, messages: Any, cancel: Any) -> tuple[Any, ...]:
+def _wait(
+    ctx: NodeContext, proc: Any, messages: Any, cancel: Any, grace_s: float
+) -> tuple[Any, ...]:
     """Relay what the process says until it says it is done or failed, or ends without a word;
-    a cancel is passed on, and given :data:`CANCEL_GRACE_S` to be obeyed."""
+    a cancel is passed on, and given ``grace_s`` to be obeyed."""
     stop_by: float | None = None
     while True:
         if stop_by is None and ctx.cancel_event.is_set():
             cancel.set()
-            stop_by = time.monotonic() + CANCEL_GRACE_S
+            stop_by = time.monotonic() + grace_s
         if stop_by is not None and time.monotonic() >= stop_by:
             raise OsxpError("SYS_CANCELLED", context={"node": ctx.node_id})
         # read before the queue: what a process said before it ended is in the queue by then

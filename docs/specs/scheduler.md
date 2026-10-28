@@ -144,7 +144,8 @@ context. An error comes back by its `to_dict()` with the process's traceback cha
 `MemoryError`, or a process ended by `SIGKILL` (the system's answer to memory running out), is
 `SYS_OUT_OF_MEMORY`; a process that ends without a word is `SYS_INTERNAL_ERROR` with its exit code.
 Cancelling sets `ProcessLink.cancel`, gives the process `CANCEL_GRACE_S` (3 s) to stop by itself,
-then ends it (`terminate`), the engine raising `SYS_CANCELLED`. The process is not a daemon, so
+or the `cancel_grace_s` its caller passes (the textures: 60 s to save what they received), then
+ends it (`terminate`), the engine raising `SYS_CANCELLED`. The process is not a daemon, so
 that a rule may start processes of its own (the textures' encoding pool); the engine ends it
 whatever happens, and it leaves by itself when the engine is gone. The rule and its params are
 pickled: the function must be found by its module and name. The vector stage and the textures run
