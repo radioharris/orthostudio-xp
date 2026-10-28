@@ -306,6 +306,28 @@ def test_hedge_beats_a_straggler(server: LocalServer) -> None:
     assert len(server.hits("/slow/1")) == 2
 
 
+def test_a_line_slower_than_the_hedge_delay_is_not_doubled(server: LocalServer) -> None:
+    """On a slow line every answer takes longer than ``hedge_after_s``: with a fixed delay nearly
+    every image was asked twice (6 046 of 6 144 at 0.3 MB/s, 2026-10-28). Read against the
+    group's own pace, only the first answers, before that pace is known, can be doubled."""
+    fetcher = Fetcher(hedge_after_s=0.15, max_in_flight=8, start_in_flight=8, timeout_s=10.0)
+    reqs = [FetchRequest(f"k{i}", server.url("delay/300"), host_group="p") for i in range(80)]
+    results = run(fetch(fetcher, reqs))
+    assert all(r.status == 200 and r.error is None for r in results)
+    assert fetcher.stats().hedges <= fetch_mod.HEDGE_SAMPLES, fetcher.stats().hedges
+
+
+def test_the_hedge_delay_follows_the_groups_pace() -> None:
+    group = fetch_mod._Group("p", 8, 8)
+    assert group.hedge_after(1.0) == 1.0  # nothing known yet
+    for i in range(fetch_mod.HEDGE_SAMPLES):
+        group.answer_times.append(2.0 + i / 100)
+    assert 4.3 < group.hedge_after(1.0) <= 4.38  # a slow line: well past most of its answers
+    group.answer_times.clear()
+    group.answer_times.extend([0.1] * 50)
+    assert group.hedge_after(1.0) == 1.0  # a fast line: the floor, as before
+
+
 class HandedOver:
     """A session that answers 200 at once, and keeps when each request was handed to it."""
 

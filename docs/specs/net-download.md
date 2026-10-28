@@ -188,6 +188,20 @@ set the estimate alone.
   wins and the other copy is cancelled (libcurl removes the easy handle: `RST_STREAM` on HTTP/2,
   a closed connection on HTTP/1.1). If the first copy to finish failed, the other is awaited.
   Both failing = the attempt failed.
+- **The delay follows the line's pace (2026-10-28).** A transfer is doubled once it has waited
+  `hedge_after_s`, or twice the time 95 % of its group's last 200 answers took when that is longer
+  (`_Group.hedge_after`; until 20 answers are in, `hedge_after_s` alone). An answer's time counts
+  from its attempt's start, as the delay does, so a copy that won does not make the line look
+  faster than it is; the answers are kept across a decrease of the window. A fixed delay doubled
+  nearly every image on a slow line, where every answer takes longer than it, and the copies loaded
+  the line further: on 25 tiles at 0.3 MB/s, 6 046 of a tile's 6 144 images were asked twice and
+  18 useful pieces a second came of 36. On a line where every answer takes longer than the delay
+  (the local server at 0.3 MB/s, 32 in flight, a delay of 0.7 s, 1 500 images), the fixed delay
+  asked 1 233 copies and got 19.8 useful pieces a second in 76 s; the pace's delay, 25 copies (the
+  first answers, before the pace is known) and 35.3 in 42 s. At the 95th percentile alone, 420
+  copies were still asked: on a full line a copy never comes sooner, it only adds to the load,
+  while a request really stuck takes 5 to 30 s, far beyond twice its peers. On a fast line the
+  delay stays `hedge_after_s`, as before.
 - Hedges do not consume a window slot (they are 0.05-0.1 % of requests: 58 of 50 000 above
   0.5 s at 128, s. 2) but are capped at `max(1, window // 2)` in flight per group, so a dead
   network cannot double the load. No hedge starts while its group is paused (R2): it is a second

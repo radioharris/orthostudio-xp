@@ -181,6 +181,12 @@ after a pause of 5 s, then 15 s, then 45 s, each time through another Bing serve
 then not installed, and *Retry the missing ones* fetches just those pieces. The final report counts
 the pieces asked for again and those recovered.
 
+While the imagery flows, a piece much later than the others is asked for a second time at once,
+and the first answer wins. "Much later" is measured against the line itself: twice the time most
+pieces took, and at least a second. Until 1.2.1 it was a second for every line, and on a slow line,
+where every piece takes longer than that, nearly every piece was asked for twice and the line
+carried half of what it could (a source at 0.3 MB/s, 2026-10-28).
+
 **What a build really wrote and downloaded.** The final report in Works says, for each step and
 in total, how much the build wrote on your disk and how much it downloaded: measured as it ran,
 not estimated. A step taken from the data folder counts nothing, and neither does a link to what

@@ -120,6 +120,14 @@ LATENCY_RECENT = 100
 LATENCY_CHECK_EVERY = 25
 LATENCY_FLOOR_S = 0.2
 LATENCY_RATIO = 2.0
+HEDGE_QUANTILE = 0.95
+HEDGE_MARGIN = 2.0
+"""A transfer is doubled only once it has waited twice as long as 95 % of its group's recent
+answers took (:meth:`_Group.hedge_after`), and never before ``hedge_after_s``."""
+HEDGE_SAMPLES = 20
+"""Answers a group needs before its own pace counts; until then ``hedge_after_s`` alone."""
+HEDGE_RING = 200
+"""The recent answers the pace is read from."""
 TIMEOUT_DECREASE = 0.75
 PAUSE_BASE_S = 5.0
 PAUSE_MAX_S = 30.0
@@ -196,6 +204,7 @@ class _Group:
     """AIMD state of one ``host_group`` (spec R2)."""
 
     __slots__ = (
+        "answer_times",
         "completions_since_decrease",
         "delayed",
         "hedges_in_flight",
@@ -239,6 +248,7 @@ class _Group:
         self.next_pause_s = PAUSE_BASE_S
         self.last_decrease_at = -1e9
         self.latencies: deque[float] = deque(maxlen=LATENCY_RING)
+        self.answer_times: deque[float] = deque(maxlen=HEDGE_RING)
         self.successes_since_change = 0
         self.completions_since_decrease = 1 << 30
         self.ready: deque[_Pending] = deque()
@@ -288,6 +298,22 @@ class _Group:
         self.last_pause_at = now
         self.paused_until = max(self.paused_until, now + length)
         return self.paused_until
+
+    def hedge_after(self, floor: float) -> float:
+        """How long a transfer goes without an answer before it is doubled (spec R3): ``floor``
+        (``hedge_after_s``), or twice the time 95 % of the group's last answers took, when longer.
+
+        A fixed delay doubled nearly every image on a slow line, where every answer takes longer
+        than it: 6 046 of 6 144 at 0.3 MB/s, and the copies slowed the line further, so that the
+        next answers were later still (2026-10-28). Read against the line's own pace, a request
+        stuck on its way is still doubled, and the others, merely queued behind each other, are
+        not. The time of an answer is counted from its attempt's start, as this delay is, so a copy
+        that won does not make the line look faster than it is; and unlike :attr:`latencies`, the
+        answers are kept across a decrease of the window."""
+        if len(self.answer_times) < HEDGE_SAMPLES:
+            return floor
+        ranked = sorted(self.answer_times)
+        return max(floor, HEDGE_MARGIN * ranked[int(HEDGE_QUANTILE * (len(ranked) - 1))])
 
     def throttled(self, now: float) -> bool:
         return now < self.paused_until or now - self.last_decrease_at < THROTTLED_MEMORY_S
@@ -679,9 +705,14 @@ class Fetcher:
         else:
             self._retries += 1
         try:
+            begun = _now()
             outcome = await self._attempt(pending, group, session)
             now = _now()
             group.record(outcome, now)
+            if outcome.kind == "ok":
+                # from the attempt's start, as the hedge's delay counts: a copy that won answered
+                # sooner than the request waited
+                group.answer_times.append(now - begun)
             pending.last = outcome
             if outcome.kind == "pushback" and not self._cancelled:
                 # A 429 obeyed is not a failure of the request: it is re-queued at the tail
@@ -771,7 +802,7 @@ class Fetcher:
         tasks: set[asyncio.Task[_Outcome]] = {primary}
         hedge_started = False
         try:
-            done, _ = await asyncio.wait(tasks, timeout=self.hedge_after_s)
+            done, _ = await asyncio.wait(tasks, timeout=group.hedge_after(self.hedge_after_s))
             if primary in done:
                 return primary.result()
             hedge_cap = max(1, self._admission(group) // 2)
