@@ -10,9 +10,11 @@ while tracings ran (25 tiles at the service roads, 0.3 MB/s, 2026-10-27). In a p
 all its memory goes back to the system when it ends, and the downloads keep the interpreter.
 
 The engine keeps everything else: it opens the build (``NodeContext.begin``), commits and counts
-it. The process only runs the rule's function on the paths it is given, says how far it is
-through the node's progress, and logs into the engine's log. Cancelling ends the process; what it
-wrote stays in the build directory, which the failed build removes.
+it. The process only runs the rule's function on the paths it is given, and tells the engine
+through a :class:`ProcessLink` what the node's context would have been told: its progress, the
+slot it lends while it waits, the bytes it wrote and received; it logs into the engine's log.
+Cancelling asks the process to stop (``ProcessLink.cancel``) and ends it after
+:data:`CANCEL_GRACE_S`; what it wrote stays in the build directory, which the failed build removes.
 """
 
 from __future__ import annotations
@@ -22,6 +24,7 @@ import logging
 import logging.handlers
 import queue
 import signal
+import time
 import traceback
 from collections.abc import Callable
 from contextlib import AbstractContextManager
@@ -36,20 +39,50 @@ from orthostudio.parentwatch import leave_with_parent
 from orthostudio.sched.node import NodeContext, run_context
 from orthostudio.sched.workers import error_from_dict
 
-__all__ = ["Bind", "run_p0_rule_apart"]
+__all__ = ["Bind", "ProcessLink", "run_p0_rule_apart"]
 
 log = logging.getLogger("orthostudio.sched.apart")
 
-ProgressFn = Callable[[float, str], None]
-Bind = Callable[[ProgressFn], AbstractContextManager[object]]
-"""Entered in the process around the rule's function, given the node's progress: what the rule
-reads from its context there (``vectors_job``). Pickled by reference: a module-level callable."""
+
+class ProcessLink:
+    """The process's side of the node's context: what it says goes to the engine's
+    ``NodeContext`` (``progress``, ``set_idle``, ``wrote``, ``fetched``), and ``cancel`` is set
+    when the engine asks it to stop."""
+
+    def __init__(self, messages: Any, cancel: Any) -> None:
+        self._messages = messages
+        self.cancel = cancel
+
+    def _say(self, *item: object) -> None:
+        with contextlib.suppress(Exception):
+            self._messages.put(item)
+
+    def progress(self, fraction: float, message: str) -> None:
+        self._say("progress", float(fraction), str(message))
+
+    def idle(self, idle: bool) -> None:
+        self._say("idle", bool(idle))
+
+    def wrote(self, nbytes: int) -> None:
+        self._say("wrote", int(nbytes))
+
+    def fetched(self, nbytes: int) -> None:
+        self._say("fetched", int(nbytes))
+
+
+Bind = Callable[[ProcessLink], AbstractContextManager[object]]
+"""Entered in the process around the rule's function, given its link to the engine: what the rule
+reads from its context there (``vectors_job``, the build environment of the textures). Pickled:
+a module-level callable, or a ``functools.partial`` of one over picklable values."""
 
 POLL_S = 0.2
 """How often the engine looks at the cancellation while it waits for the process."""
 
 EXIT_GRACE_S = 10.0
 """How long a process that said it was done may take to end before it is ended."""
+
+CANCEL_GRACE_S = 3.0
+"""How long a process asked to stop may take to stop by itself before it is ended."""
 
 
 class _ProcessTracebackError(Exception):
@@ -74,17 +107,19 @@ def run_p0_rule_apart(ctx: NodeContext, bind: Bind | None = None) -> ArtifactRef
 def _run_in_process(ctx: NodeContext, run_ctx: RunContext, bind: Bind | None) -> None:
     mp = get_context("spawn")
     messages: Any = mp.Queue()
+    cancel = mp.Event()
     level = logging.getLogger(ROOT_LOGGER).getEffectiveLevel()
+    # not a daemon: a rule may start processes of its own (the textures' encoding pool); the
+    # engine ends it below whatever happens, and it leaves by itself if the engine is gone
     proc = mp.Process(
         target=_main,
-        args=(run_ctx, bind, messages, level),
+        args=(run_ctx, bind, messages, cancel, level),
         name=f"osxp-{ctx.node_id}",
-        daemon=True,
     )
     proc.start()
     end: tuple[Any, ...] | None = None
     try:
-        end = _wait(ctx, proc, messages)
+        end = _wait(ctx, proc, messages, cancel)
     finally:
         if end is not None:  # it said its last word and is ending by itself
             proc.join(EXIT_GRACE_S)
@@ -95,16 +130,23 @@ def _run_in_process(ctx: NodeContext, run_ctx: RunContext, bind: Bind | None) ->
             messages.close()
     if end[0] == "done":
         return
+    if ctx.cancel_event.is_set():
+        raise OsxpError("SYS_CANCELLED", context={"node": ctx.node_id})
     if end[0] == "failed":
         _, doc, text = end
         raise error_from_dict(doc) from _ProcessTracebackError(text)
     raise _ended_error(ctx, proc.exitcode)
 
 
-def _wait(ctx: NodeContext, proc: Any, messages: Any) -> tuple[Any, ...]:
-    """Relay what the process says until it says it is done or failed, or ends without a word."""
+def _wait(ctx: NodeContext, proc: Any, messages: Any, cancel: Any) -> tuple[Any, ...]:
+    """Relay what the process says until it says it is done or failed, or ends without a word;
+    a cancel is passed on, and given :data:`CANCEL_GRACE_S` to be obeyed."""
+    stop_by: float | None = None
     while True:
-        if ctx.cancel_event.is_set():
+        if stop_by is None and ctx.cancel_event.is_set():
+            cancel.set()
+            stop_by = time.monotonic() + CANCEL_GRACE_S
+        if stop_by is not None and time.monotonic() >= stop_by:
             raise OsxpError("SYS_CANCELLED", context={"node": ctx.node_id})
         # read before the queue: what a process said before it ended is in the queue by then
         alive = proc.is_alive()
@@ -118,6 +160,12 @@ def _wait(ctx: NodeContext, proc: Any, messages: Any) -> tuple[Any, ...]:
             logging.getLogger(item.name).handle(item)
         elif item[0] == "progress":
             ctx.progress(item[1], item[2])
+        elif item[0] == "idle":
+            ctx.set_idle(item[1])
+        elif item[0] == "wrote":
+            ctx.wrote(item[1])
+        elif item[0] == "fetched":
+            ctx.fetched(item[1])
         else:
             return tuple(item)
 
@@ -146,7 +194,7 @@ def _out_of_memory(ctx: NodeContext | RunContext) -> OsxpError:
 # -- the process's side --------------------------------------------------------------------------
 
 
-def _main(run_ctx: RunContext, bind: Bind | None, messages: Any, level: int) -> None:
+def _main(run_ctx: RunContext, bind: Bind | None, messages: Any, cancel: Any, level: int) -> None:
     """The process: run the rule's function, then say ``done`` or ``failed``."""
     with contextlib.suppress(Exception):
         signal.signal(signal.SIGINT, signal.SIG_IGN)
@@ -156,12 +204,9 @@ def _main(run_ctx: RunContext, bind: Bind | None, messages: Any, level: int) -> 
     root.handlers[:] = [logging.handlers.QueueHandler(messages)]
     root.setLevel(level)
 
-    def progress(fraction: float, message: str) -> None:
-        with contextlib.suppress(Exception):
-            messages.put(("progress", float(fraction), str(message)))
-
+    link = ProcessLink(messages, cancel)
     try:
-        with bind(progress) if bind is not None else contextlib.nullcontext():
+        with bind(link) if bind is not None else contextlib.nullcontext():
             run_ctx.rule.fn(run_ctx)
     except MemoryError:
         messages.put(("failed", _out_of_memory(run_ctx).to_dict(), traceback.format_exc()))

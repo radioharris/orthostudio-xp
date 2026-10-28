@@ -765,6 +765,21 @@ images downloaded during the terrain came at two thirds of the line (24 useful p
 against 36), the engine's own Python work (the meshes' side of it among others) holding its
 interpreter. The time-left estimate queues the tracings on that lane too (`api/progress.py`).
 
+**The images of a tile run in a process of their own too** (`_textures_run`): the download and
+the encoding of the textures node, through `run_p0_rule_apart` with `_textures_apart`, which gives
+the process the build environment it reads (`_ApartEnv`: the store and the image cache by their
+folders, the sources, the pool and network settings; its own `Store` opened there) and the node's
+context through the `ProcessLink` (progress, the slot lent during the spaced retries, the bytes
+received and written for Works' report, the cancel, which sets the token `build_textures` polls).
+The engine's own Python work (the meshes' side of it, the OSM data) had held the interpreter the
+download runs in: on 25 tiles at the service roads and 0.3 MB/s, the first tile's images came at
+24 useful pieces a second with 347 hedges, in 254 s, while the terrain was built (2026-10-28). In
+their own process they came at 36, the whole line, with no hedge, in 171 s, the time the same tile
+takes alone. At full speed it costs about half a second a tile, the process starting: four ZL16
+tiles from a local server took 62 s and 63 s on average, the images at the same 3 600 to 7 200 a
+second, and from Bing the two versions differed less than Bing does from one tile to the next; the
+tiles were the same to the byte in every run.
+
 The masks node's `ram_mb` is `300 + 800 x workers` MB, and **the same `workers` is given to the
 rule**: `_masks_run` binds `MasksJob(workers=masks_workers(env), cancel=...)`, the rule passes it to
 `build_masks`, and `worker_count` honours it, so the declared budget describes the pool that starts.

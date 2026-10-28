@@ -169,6 +169,11 @@ traced. Until 1.2.1 every tile was traced before any was meshed, and the images 
 whole batch's terrain: on 25 tiles at the service roads, the first images started after 3 min 13 s
 instead of 20 min 24 s, and the terrain was done after 8 min instead of 23.
 
+The images of each tile are downloaded and converted in a program of their own too, so the rest of
+the work never holds the line back: while the terrain was built, the images of that batch came at
+two thirds of a slow line, and now at its full speed, without asking for any of them twice. On a
+fast line nothing changes but half a second a tile, the time that program takes to start.
+
 **An image piece that does not arrive.** Out of tens of thousands of requests, a few can stall while
 the others flow. Once the rest of the tile's imagery is done, OrthoStudio XP asks for them again
 after a pause of 5 s, then 15 s, then 45 s, each time through another Bing server, and for at most

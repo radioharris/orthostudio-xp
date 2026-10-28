@@ -14,7 +14,7 @@ import signal
 import sys
 import threading
 import time
-from collections.abc import Callable, Iterator
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -23,7 +23,7 @@ from orthostudio.errors import OsxpError
 from orthostudio.graph import Rule, RuleParams, RunContext, Store
 from orthostudio.model import ArtifactRef
 from orthostudio.sched import Done, Event, Failed, Node, NodeContext, Progress, Scheduler
-from orthostudio.sched.apart import run_p0_rule_apart
+from orthostudio.sched.apart import ProcessLink, run_p0_rule_apart
 
 # --- a fake rule (module level: the process finds it by reference) ------------------------------
 
@@ -34,17 +34,17 @@ class ApartParams(RuleParams):
     pid_file: str = ""
 
 
-_PROGRESS: Callable[[float, str], None] | None = None
+_LINK: ProcessLink | None = None
 
 
 @contextlib.contextmanager
-def _bind(progress: Callable[[float, str], None]) -> Iterator[None]:
-    global _PROGRESS
-    _PROGRESS = progress
+def _bind(link: ProcessLink) -> Iterator[None]:
+    global _LINK
+    _LINK = link
     try:
         yield
     finally:
-        _PROGRESS = None
+        _LINK = None
 
 
 def _apart_fn(ctx: RunContext) -> None:
@@ -52,8 +52,12 @@ def _apart_fn(ctx: RunContext) -> None:
     assert isinstance(params, ApartParams)
     if params.pid_file:
         Path(params.pid_file).write_text(str(os.getpid()))
-    if _PROGRESS is not None:
-        _PROGRESS(0.5, "half way")
+    if _LINK is not None:
+        _LINK.progress(0.5, "half way")
+        _LINK.idle(True)
+        _LINK.idle(False)
+        _LINK.wrote(1000)
+        _LINK.fetched(2000)
     logging.getLogger("orthostudio.test_apart").warning("traced in %d", os.getpid())
     if params.mode == "fail":
         raise OsxpError("MESH_TRIANGULATION_FAILED", context={"tile": params.tile, "reason": "x"})
@@ -67,6 +71,10 @@ def _apart_fn(ctx: RunContext) -> None:
         os.kill(os.getpid(), signal.SIGKILL)
     if params.mode == "sleep":
         time.sleep(60)
+    if params.mode == "obey":  # stops by itself once asked
+        while _LINK is not None and not _LINK.cancel.is_set():
+            time.sleep(0.05)
+        raise OsxpError("SYS_CANCELLED", context={"node": "t/vectors"})
     ctx.out.write_text(f"pid={os.getpid()}")
 
 
@@ -207,3 +215,36 @@ def test_the_tracing_rules_go_to_their_process_by_reference() -> None:
         again = pickle.loads(pickle.dumps(rule))
         assert again == rule and again.fn is rule.fn
     assert pickle.loads(pickle.dumps(apart_job)) is apart_job
+
+
+def test_what_it_tells_the_node_reaches_the_engines_context(store: Store) -> None:
+    """The textures lend their slot while they wait and count the bytes for Works' report."""
+    _, _, events = _run(store)
+    done = [e for e in events if isinstance(e, Done)]
+    assert done and done[0].downloaded == 2000
+    assert done[0].written >= 1000  # what it said it wrote, and what the engine committed
+
+
+def _cancel_once_started(sched: Scheduler, pid_file: Path) -> threading.Thread:
+    def cancel() -> None:
+        end = time.monotonic() + 60
+        while not pid_file.exists() and time.monotonic() < end:
+            time.sleep(0.05)
+        sched.cancel()
+
+    thread = threading.Thread(target=cancel)
+    thread.start()
+    return thread
+
+
+def test_a_process_asked_to_stop_stops_by_itself(store: Store, tmp_path: Path) -> None:
+    pid_file = tmp_path / "pid"
+    sched = Scheduler(store, cpu_in_threads=True, subprocess_slots=1)
+    params = ApartParams(mode="obey", pid_file=str(pid_file))
+    sched.add(Node("t/vectors", APART, params, {}, kind="subprocess", run=run_apart))
+    canceller = _cancel_once_started(sched, pid_file)
+    t0 = time.monotonic()
+    refs = asyncio.run(sched.run(["t/vectors"]))
+    canceller.join()
+    assert not refs and time.monotonic() - t0 < 20
+    assert not _apart_children()

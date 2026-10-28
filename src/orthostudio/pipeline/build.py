@@ -30,7 +30,7 @@ from collections import Counter, deque
 from collections.abc import Callable, Collection, Iterable, Iterator, Mapping, Sequence
 from contextvars import ContextVar
 from dataclasses import dataclass, field
-from functools import lru_cache
+from functools import lru_cache, partial
 from pathlib import Path
 from typing import Any, ClassVar, Literal, cast
 
@@ -163,6 +163,7 @@ from orthostudio.sched import (
     run_p0_rule,
     run_p0_rule_apart,
 )
+from orthostudio.sched.apart import ProcessLink
 from orthostudio.sched.costs import cost_name, timed_fraction
 from orthostudio.sources.osm import SnapshotStore, layers_for
 from orthostudio.textures.ter import TerKind, TerParams
@@ -1610,6 +1611,86 @@ def _env_run(env: BuildEnv) -> Callable[[NodeContext], Any]:
     return run
 
 
+@dataclass(frozen=True, slots=True)
+class _ApartEnv:
+    """What the textures read of the build environment, taken to the process they run in: the
+    store and the image cache by their folders, the sources, the pool and network settings."""
+
+    store_root: Path
+    fsync: bool
+    chunks_root: Path
+    workdir: Path
+    registry: dict[str, Provider]
+    workers: int
+    max_in_flight: int | None
+    hedge_after_s: float
+
+
+@dataclass(slots=True)
+class _ApartNode:
+    """The engine's ``NodeContext`` as the textures see it in their process: what they tell it
+    goes through the process's ``ProcessLink``."""
+
+    node_id: str
+    cancel_event: threading.Event
+    progress: Callable[[float, str], None]
+    set_idle: Callable[[bool], None]
+    wrote: Callable[[int], None]
+    fetched: Callable[[int], None]
+
+
+@contextlib.contextmanager
+def _textures_apart(fields: _ApartEnv, node_id: str, link: ProcessLink) -> Iterator[None]:
+    """The build environment of the textures in their own process (``_textures_run``), its
+    store opened there and closed after; the engine's cancel sets the token they poll."""
+    env = BuildEnv(
+        store=Store(fields.store_root, fsync=fields.fsync),
+        store_root=fields.store_root,
+        chunks_root=fields.chunks_root,
+        workdir=fields.workdir,
+        global_scenery=None,
+        dsftool=None,
+        registry=fields.registry,
+        workers=fields.workers,
+        library_path=None,
+        max_in_flight=fields.max_in_flight,
+        hedge_after_s=fields.hedge_after_s,
+        own_store=True,
+    )
+    stop = threading.Event()
+    threading.Thread(
+        target=lambda: link.cancel.wait() and stop.set(), name="osxp-cancel", daemon=True
+    ).start()
+    node = _ApartNode(node_id, stop, link.progress, link.idle, link.wrote, link.fetched)
+    try:
+        with _active_env(env, cast(Any, node)):
+            yield
+    finally:
+        env.close()
+
+
+def _textures_run(env: BuildEnv) -> Callable[[NodeContext], Any]:
+    """The images of a tile, downloaded and encoded in a process of its own
+    (``orthostudio.sched.apart``): the engine's own Python work (the meshes' side of it, the OSM
+    data) held the interpreter the download runs in, and the images of a batch came at two thirds
+    of the line while the terrain was built (25 tiles at 0.3 MB/s, 2026-10-28)."""
+    fields = _ApartEnv(
+        store_root=env.store_root,
+        fsync=env.store.fsync,
+        chunks_root=env.chunks_root,
+        workdir=env.workdir,
+        registry=env.registry,
+        workers=env.workers,
+        max_in_flight=env.max_in_flight,
+        hedge_after_s=env.hedge_after_s,
+    )
+
+    def run(ctx: NodeContext) -> ArtifactRef:
+        return run_p0_rule_apart(ctx, partial(_textures_apart, fields, ctx.node_id))
+
+    return run
+
+
 def _masks_run(env: BuildEnv) -> Callable[[NodeContext], Any]:
     """Bind the masks job: the pool size the node budgeted for, and the cancellation token.
 
@@ -2350,7 +2431,7 @@ def declare(
             {"dsf": dsf, "masks": masks},
             kind="net",
             ram_mb=max(500, TEXTURE_RAM_MB * env.workers),
-            run=_env_run(env),
+            run=_textures_run(env),
         )
         out_dir = str(Path(spec.out_dir).expanduser().resolve())
         _refuse_pack_dir_conflict(pack_dirs, spec, out_dir, dsf, textures)

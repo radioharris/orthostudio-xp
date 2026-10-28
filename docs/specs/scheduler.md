@@ -132,17 +132,23 @@ root (one sqlite connection per process, as `pipeline/textures.py` does).
 **A process of its own** (`orthostudio.sched.apart.run_p0_rule_apart(ctx, bind=None)`, a node's
 `run`): the rule's P0 function runs in a `spawn` process started for this node alone and gone when
 it ends, so all the memory it took goes back to the system, and its Python work leaves the engine's
-interpreter to the threads of the other nodes (the downloads). The engine keeps the write protocol:
-it opens the build, hands the process a `RunContext` on the build's `out` and `scratch`, and commits
-after the process said `done`. The process sends its progress and its log records through one
-`multiprocessing.Queue` (log records at the `orthostudio` logger's level, handled by the engine's
-logger of the same name); `bind(progress)`, a module-level callable, is entered around the function
-there, for what the rule reads from its context. An error comes back by its `to_dict()` with the
-process's traceback chained under it; `MemoryError`, or a process ended by `SIGKILL` (the system's
-answer to memory running out), is `SYS_OUT_OF_MEMORY`; a process that ends without a word is
-`SYS_INTERNAL_ERROR` with its exit code. Cancelling ends the process at once (`terminate`), the
-engine raising `SYS_CANCELLED`. The rule and its params are pickled: the function must be found
-by its module and name. The vector stage runs so (`pipeline-build.md` 8.6).
+interpreter to the threads of the other nodes. The engine keeps the write protocol: it opens the
+build, hands the process a `RunContext` on the build's `out` and `scratch`, and commits after the
+process said `done`. What the process would have told the node's context it tells a
+`ProcessLink` (`progress`, `idle`, `wrote`, `fetched`), which the engine passes on to the
+`NodeContext` (`progress`, `set_idle`, `wrote`, `fetched`); those messages and the process's log
+records come through one `multiprocessing.Queue` (log records at the `orthostudio` logger's level,
+handled by the engine's logger of the same name). `bind(link)`, a module-level callable or a
+`functools.partial` of one, is entered around the function there, for what the rule reads from its
+context. An error comes back by its `to_dict()` with the process's traceback chained under it;
+`MemoryError`, or a process ended by `SIGKILL` (the system's answer to memory running out), is
+`SYS_OUT_OF_MEMORY`; a process that ends without a word is `SYS_INTERNAL_ERROR` with its exit code.
+Cancelling sets `ProcessLink.cancel`, gives the process `CANCEL_GRACE_S` (3 s) to stop by itself,
+then ends it (`terminate`), the engine raising `SYS_CANCELLED`. The process is not a daemon, so
+that a rule may start processes of its own (the textures' encoding pool); the engine ends it
+whatever happens, and it leaves by itself when the engine is gone. The rule and its params are
+pickled: the function must be found by its module and name. The vector stage and the textures run
+so (`pipeline-build.md` 8.6).
 
 ### 2.4 Priority: remaining critical path
 

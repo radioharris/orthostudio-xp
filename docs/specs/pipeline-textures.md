@@ -126,6 +126,10 @@ so a long plan (ZL17: 800 containers of about 4 MB) shows progress and can be ca
 
 ## 4. Fetching
 
+In a build, `build_textures` runs in a process of its own for each tile's textures node, its
+encoding pool started from there (`pipeline-build.md` 8.6): the engine's other work no longer holds
+the interpreter the fetcher runs in.
+
 - One `Fetcher` per run (one HTTP/2 session for all textures), `host_group` = provider code,
   requests in texture order (the 256 tiles of a texture, then the next) so that containers
   complete early and the encoding overlaps the download.

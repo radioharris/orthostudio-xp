@@ -287,11 +287,11 @@ def vectors_job(job: VectorsJob) -> Iterator[VectorsJob]:
         _JOB.reset(token)
 
 
-def apart_job(progress: Callable[[float, str], None]) -> contextlib.AbstractContextManager[object]:
+def apart_job(link: Any) -> contextlib.AbstractContextManager[object]:
     """The job of a tracing run in a process of its own (``orthostudio.sched.apart``): the layer
-    builders of :data:`LAYER_BUILDER` and the node's progress, and no token, since the engine
-    cancels it by ending the process."""
-    return vectors_job(VectorsJob(progress=progress))
+    builders of :data:`LAYER_BUILDER`, the node's progress and the engine's cancel, through the
+    process's ``ProcessLink``."""
+    return vectors_job(VectorsJob(progress=link.progress, cancel=link.cancel))
 
 
 def current_vectors_job() -> VectorsJob | None:

@@ -87,7 +87,14 @@ def env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> BuildEnv:
     triangle = tmp_path / "Triangle4XP"
     triangle.write_bytes(b"")
     monkeypatch.setenv("OSXP_TRIANGLE4XP", str(triangle))
-    for name in ("_dem_run", "_vectors_run", "_mesh_run", "_masks_run", "_env_run"):
+    for name in (
+        "_dem_run",
+        "_vectors_run",
+        "_mesh_run",
+        "_masks_run",
+        "_env_run",
+        "_textures_run",
+    ):
         monkeypatch.setattr(buildmod, name, _stand_in)
     monkeypatch.setattr(buildmod, "TILE_DSF", dataclasses.replace(buildmod.TILE_DSF, fn=_dsf))
     gs = tmp_path / "Global Scenery"

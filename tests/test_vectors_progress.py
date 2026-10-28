@@ -114,7 +114,9 @@ def test_the_node_hands_it_the_pages_own_progress() -> None:
     from orthostudio.vectors import rule
 
     assert "run_p0_rule_apart(ctx, apart_job)" in inspect.getsource(build._vectors_run)
-    assert "VectorsJob(progress=progress)" in inspect.getsource(rule.apart_job)
+    assert "VectorsJob(progress=link.progress, cancel=link.cancel)" in inspect.getsource(
+        rule.apart_job
+    )
 
 
 def _unused(_x: Any) -> None:
