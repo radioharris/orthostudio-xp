@@ -659,7 +659,9 @@ def test_process_pool_runs_progress_and_errors(store: Store) -> None:
     refs, ev = _run(sched, list(sched.nodes))
     assert set(refs) == {"p0", "p1", "p2", "io"}
     pids = {int(refs[f"p{i}"].path.read_bytes().split(b"pid=")[1]) for i in range(3)}
-    assert os.getpid() not in pids and len(pids) <= 2
+    # a process for each node, so that what one took goes back to the system when it ends (a DSF
+    # of 5 million triangles stayed at 6.3 GB in the worker for every tile after it, 2026-10-28)
+    assert os.getpid() not in pids and len(pids) == 3
     assert int(refs["io"].path.read_bytes().split(b"pid=")[1]) == os.getpid()
     progress = [e for e in ev if isinstance(e, Progress) and e.node_id.startswith("p")]
     assert {e.fraction for e in progress} == {0.0, 0.5}

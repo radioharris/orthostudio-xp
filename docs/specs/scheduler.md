@@ -126,7 +126,10 @@ pool is sized to
 `subprocess_slots + net_slots + io_slots + the lanes' limits (+ cpu_workers in thread mode)` so a thread is
 always available for an admitted node.
 
-Workers ignore `SIGINT` (the parent handles Ctrl-C) and open their own `Store` on the same
+A worker of the `cpu` pool runs one node and ends (`max_tasks_per_child=1`), so what a node took
+goes back to the system when it ends: in one worker for the batch, a DSF of 8.9 million triangles
+left 6.3 GB with it for every DSF after (2026-10-28). Workers ignore `SIGINT` (the parent handles
+Ctrl-C) and open their own `Store` on the same
 root (one sqlite connection per process, as `pipeline/textures.py` does).
 
 **Memory read from the inputs** (`Node.ram_from`): a node whose peak grows with what it is given

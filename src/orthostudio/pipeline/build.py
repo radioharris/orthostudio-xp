@@ -139,7 +139,6 @@ from orthostudio.pipeline.pack import (
     pack_is_intact,
     write_manifest,
 )
-from orthostudio.pipeline.rule import TEXTURE_RAM_MB
 from orthostudio.pipeline.textures import (
     ProgressSnapshot,
     TextureOutcome,
@@ -1679,6 +1678,62 @@ tracing is given (``sched.apart.CANCEL_GRACE_S``) could cut the save short on a 
 in review, 2026-10-28)."""
 
 
+PHOTOS_BASE_MB = 350
+"""The images' own process: the downloads, the pieces received, the textures in flight; 0.12 to
+0.32 GB measured on twelve tiles at ZL14 (2026-10-28)."""
+
+PHOTOS_ENCODER_MB = 550
+"""One encoder of the images at its peak: 0.43 to 0.53 GB measured on the same tiles."""
+
+PHOTOS_BUDGET_SHARE = 4
+"""The images' encoders take at most a quarter of the RAM budget: beside them a big city's
+tracing and a mesh still fit on a computer of 16 GB."""
+
+
+def photos_workers(env: BuildEnv) -> int:
+    """The encoders a tile's images start: the batch's workers, as many as a quarter of the RAM
+    budget holds, one at least. The images reserved 400 MB for each of the batch's workers, 4.8 GB
+    on 14 cores, and took 0.6 to 1.5 GB with EOX at ZL14, one to four encoders busy: on a budget
+    of 8 GB they waited 8 minutes for every other step to end, ready to start (2026-10-28). Fewer
+    encoders on a small computer encode more slowly only where the line brings images faster
+    than they encode."""
+    if env.workers <= 0:
+        return env.workers  # encoded in the images' own process
+    budget = ram_budget_mb()
+    if budget is None:
+        return env.workers
+    fits = (budget // PHOTOS_BUDGET_SHARE - PHOTOS_BASE_MB) // PHOTOS_ENCODER_MB
+    return max(1, min(env.workers, fits))
+
+
+def _photos_ram_mb(env: BuildEnv) -> int:
+    """What a tile's images reserve: their process and the encoders :func:`photos_workers`
+    gives them (one, in their own process, without a pool)."""
+    return PHOTOS_BASE_MB + PHOTOS_ENCODER_MB * max(1, photos_workers(env))
+
+
+DSF_BASE_MB = 600
+DSF_MB_PER_MILLION_TRIANGLES = 610
+"""A tile's DSF at its peak, from its mesh's triangles (``stats.json``, ``n_triangles``): the line
+through the middle of 36 DSFs measured on 2026-10-28 on a Mac, each in a process of its own,
+twelve tiles at ZL17, ZL18 and ZL19 (565 MB + 609 MB a million triangles, within 10 %, 5 % on
+average): 3.2 GB for 4.8 million triangles, 5.7 to 6.3 GB for Atlanta's 8.9 million. The level
+changes little. Every DSF reserved 3 GB, below what each of those twelve took."""
+
+
+def dsf_ram_from(inputs: Mapping[str, ArtifactRef | None]) -> int:
+    """The DSF node's ``ram_from``: :data:`DSF_MB_PER_MILLION_TRIANGLES` a million triangles of
+    its mesh, rounded up to 100 MB; the 3 GB every DSF declared when the mesh does not say."""
+    mesh = inputs.get("mesh")
+    try:
+        stats = json.loads((Path(mesh.path) / "stats.json").read_text(encoding="utf-8"))
+        triangles = int(stats["n_triangles"])
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return TILE_DSF.ram_mb
+    mb = DSF_BASE_MB + DSF_MB_PER_MILLION_TRIANGLES * triangles / 1e6
+    return math.ceil(mb / 100) * 100
+
+
 def _textures_run(env: BuildEnv) -> Callable[[NodeContext], Any]:
     """The images of a tile, downloaded and encoded in a process of its own
     (``orthostudio.sched.apart``): the engine's own Python work (the meshes' side of it, the OSM
@@ -1690,7 +1745,7 @@ def _textures_run(env: BuildEnv) -> Callable[[NodeContext], Any]:
         chunks_root=env.chunks_root,
         workdir=env.workdir,
         registry=env.registry,
-        workers=env.workers,
+        workers=photos_workers(env),
         max_in_flight=env.max_in_flight,
         hedge_after_s=env.hedge_after_s,
     )
@@ -2569,6 +2624,9 @@ def declare(
                 "vectors": vectors if needs_apt else None,
             },
             kind="cpu",
+            # what its mesh's triangles take, read from the mesh before it starts
+            ram_mb=DSF_BASE_MB,
+            ram_from=dsf_ram_from,
         )
         encoder, encoder_version = resolve_encoder(spec.encoder)
         tex_params = TileTexturesParams.subset_of(
@@ -2586,7 +2644,8 @@ def declare(
             tex_params,
             {"dsf": dsf, "masks": masks},
             kind="net",
-            ram_mb=max(500, TEXTURE_RAM_MB * env.workers),
+            # the encoders it starts, and the same number in its reservation
+            ram_mb=_photos_ram_mb(env),
             run=_textures_run(env),
         )
         out_dir = str(Path(spec.out_dir).expanduser().resolve())
@@ -2797,6 +2856,18 @@ at 8 min 34 s and the first images at 10 min 58 s (2026-10-28). Apart, a tile's 
 its tracing is done, and its images once its neighbours' meshes are."""
 
 
+RAM_BUDGET_SHARE = 0.6
+"""The share of the computer's memory the steps of a batch may reserve together; the rest is
+for the system, the app and X-Plane."""
+
+
+def ram_budget_mb() -> int | None:
+    """The scheduler's RAM budget (:data:`RAM_BUDGET_SHARE` of the memory), ``None`` when the
+    platform does not say how much memory it has."""
+    mem = physical_memory_mb()
+    return None if mem is None else int(mem * RAM_BUDGET_SHARE)
+
+
 def make_scheduler(
     store: Store,
     env: BuildEnv,
@@ -2805,8 +2876,7 @@ def make_scheduler(
     cpu_in_threads: bool = False,
 ) -> Scheduler:
     """The batch scheduler with the pool sizes of spec section 4."""
-    mem = physical_memory_mb()
-    if mem is None:
+    if physical_memory_mb() is None:
         log.warning(
             "this platform does not report its physical memory: the scheduler runs without a "
             "RAM budget, so the ram_mb of the mask and mesh nodes is not enforced"
@@ -2817,7 +2887,7 @@ def make_scheduler(
         subprocess_slots=default_subprocess_slots(),
         net_slots=1,
         io_slots=2,
-        ram_budget_mb=None if mem is None else int(mem * 0.6),
+        ram_budget_mb=ram_budget_mb(),
         workdir=env.workdir / "sched",
         cpu_in_threads=cpu_in_threads,
         lanes={OVERPASS_LANE: 1, RELIEF_LANE: 1, TRACING_LANE: default_subprocess_slots()},

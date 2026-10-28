@@ -944,3 +944,46 @@ def test_the_masks_reserve_a_worker_for_each_cell_with_water(tmp_path: Path, env
     inputs["mesh"] = mesh
     assert masks.ram_from(inputs) == 300 + 250 * 1
     assert _masks_ram_mb(env, masks.params) == 300 + 250 * 2  # the whole pool
+
+
+@pytest.mark.parametrize(
+    ("triangles", "ram_mb"),
+    [(4_840_000, 3600), (8_900_000, 6100), (None, 3000)],  # Atlanta took 5.7 to 6.3 GB
+)
+def test_a_dsf_reserves_what_its_mesh_takes(
+    tmp_path: Path, env: BuildEnv, triangles: int | None, ram_mb: int
+) -> None:
+    """Every DSF reserved 3 GB; twelve tiles of 4.8 to 8.9 million triangles took 3.2 to 6.3
+    (2026-10-28): the reservation follows the mesh's triangles, read before the DSF starts."""
+    (g,) = _declare([_spec(tmp_path)], _sched(env), env)
+    mesh = tmp_path / "mesh-dsf"
+    mesh.mkdir()
+    if triangles is not None:
+        (mesh / "stats.json").write_text(json.dumps({"n_triangles": triangles}), encoding="utf-8")
+    ref = ArtifactRef("c" * 64, "c" * 64, mesh, "orthostudio.mesh", "dir", 0)
+    assert g.dsf.ram_from is not None
+    assert g.dsf.ram_from({"mesh": ref}) == ram_mb
+
+
+@pytest.mark.parametrize(
+    ("memory_mb", "workers", "encoders"),
+    [(8192, 12, 1), (16384, 6, 3), (49152, 12, 12), (49152, 2, 2)],
+)
+def test_the_images_start_as_many_encoders_as_their_reservation(
+    tmp_path: Path,
+    env: BuildEnv,
+    monkeypatch: pytest.MonkeyPatch,
+    memory_mb: int,
+    workers: int,
+    encoders: int,
+) -> None:
+    """A quarter of the RAM budget at most, 550 MB an encoder and 350 for the process: the images
+    reserved 400 MB for each of the batch's workers, 4.8 GB on 14 cores, and took 0.6 to 1.5 GB
+    at ZL14 (2026-10-28)."""
+    from orthostudio.pipeline import build as buildmod
+
+    monkeypatch.setattr(buildmod, "physical_memory_mb", lambda: memory_mb)
+    env.workers = workers
+    assert buildmod.photos_workers(env) == encoders
+    (g,) = _declare([_spec(tmp_path)], _sched(env), env)
+    assert g.textures.ram_mb == 350 + 550 * encoders

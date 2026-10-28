@@ -166,7 +166,9 @@ memory its roads take, counted in the tile's map data once it is downloaded: a c
 service roads with round ends reserves 1.8 GB, Atlanta 6.4, about what they take. A big city
 waiting for that memory is not overtaken by the smaller tiles: it starts as soon as the room is
 there, and they follow beside it. The water masks reserve memory for the squares of photo where
-there is sea or a large lake to mask, a little for a lake, nothing more inland. Until 1.2.1 every tracing counted 1.2 GB, and three big cities could start
+there is sea or a large lake to mask, a little for a lake, nothing more inland. A DSF
+reserves what its mesh takes, about 0.6 GB a million triangles, and the images start as many
+encoders as the memory holds: one on a computer of 8 GB, three on 16, twelve on a large Mac. Until 1.2.1 every tracing counted 1.2 GB, and three big cities could start
 together whatever they took.
 
 The tracings also have places of their own, so a tile is meshed as soon as it is traced, and its

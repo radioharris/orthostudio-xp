@@ -329,11 +329,14 @@ class Scheduler:
             ctx = get_context("spawn")
             self._mp_cancel = ctx.Event()
             self._mp_queue = ctx.Queue()
+            # a process for each node: what one took (a DSF of 5 million triangles, 6.3 GB) goes
+            # back to the system when it ends, instead of staying with the worker for the next
             self._procs = ProcessPoolExecutor(
                 max_workers=self.slots["cpu"],
                 mp_context=ctx,
                 initializer=cpu_init,
                 initargs=(self._mp_cancel, self._mp_queue),
+                max_tasks_per_child=1,
             )
             self._drainer = threading.Thread(
                 target=self._drain_progress, name="osxp-sched-progress", daemon=True

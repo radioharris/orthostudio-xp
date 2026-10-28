@@ -786,6 +786,24 @@ above it a country tile 2.8 GB for the 1.7 it took: on the Shadow (16 GB) a batc
 traced one tile at a time under the table. From the line, a country tile of 379 047 points
 reserves 1.8 GB and Atlanta 6.4.
 
+**A DSF reserves what its mesh's triangles take** (`dsf_ram_from`, through `Node.ram_from`):
+600 MB and 610 MB a million triangles of the mesh (`stats.json`, `n_triangles`), rounded up to
+100 MB; the rule's 3 GB when the mesh does not say. The line goes through the middle of 36 DSFs
+measured on 2026-10-28 on a Mac, each in a process of its own, twelve tiles at ZL17, ZL18 and
+ZL19 (within 10 %, 5 % on average): 3.2 GB for 4.8 million triangles, 5.7 to 6.3 GB for Atlanta's
+8.9 million; the level changes little. Every DSF reserved 3 GB, below what each of those tiles
+took. Each runs in a process of its own (`scheduler.md` 2.3, `max_tasks_per_child=1`): in one
+worker for the batch, Atlanta's 6.3 GB stayed with it for every DSF after.
+
+**The images start as many encoders as their reservation pays for** (`photos_workers`,
+`_photos_ram_mb`): the batch's workers, as many as a quarter of the RAM budget holds at 550 MB an
+encoder beside 350 MB for the images' process, one at least; the same number is the images'
+`workers`. Measured on twelve tiles at ZL14 (2026-10-28): the process 0.12 to 0.32 GB, an
+encoder 0.43 to 0.53 GB, one to four of them busy with EOX. They reserved 400 MB for each of the
+batch's workers, 4.8 GB on 14 cores: on a budget of 8 GB they waited 8 minutes, ready, for every
+other step to end. On 8 GB they now start one encoder, on 16 GB three, on 48 GB with 14 cores
+twelve: a small computer encodes more slowly where the line brings images faster than that.
+
 **The tracings have a lane of their own** (`TRACING_LANE`, as wide as the subprocess slots, 3 at
 most). On the slots they shared with the relief, the meshes and the masks, every slot that came
 free went to a tracing, since a tracing's path to the images is the longest: no mesh started
