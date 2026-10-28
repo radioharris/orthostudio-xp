@@ -163,9 +163,11 @@ roads ran out of 64 GB and went through once the app was started again, and the 
 of the line while tracings ran. A tracing that runs out of memory stops its tile, and the tiles
 that need it, with a message that says so; the rest of the batch goes on. A tracing waits for the
 memory its roads take, counted in the tile's map data once it is downloaded: a country tile at the
-service roads with round ends reserves 2.8 GB, Atlanta 7.0. On a computer of 16 GB, three country
-tiles are traced at once, a big city beside one of them; until 1.2.1 every tracing counted 1.2 GB,
-and three big cities could start together whatever they took.
+service roads with round ends reserves 1.8 GB, Atlanta 6.4, about what they take. A big city
+waiting for that memory is not overtaken by the smaller tiles: it starts as soon as the room is
+there, and they follow beside it. The water masks reserve their memory only for a tile with sea or
+a large lake nearby. Until 1.2.1 every tracing counted 1.2 GB, and three big cities could start
+together whatever they took.
 
 The tracings also have places of their own, so a tile is meshed as soon as it is traced, and its
 images start as soon as it and its neighbours are meshed, while the other tiles are still being

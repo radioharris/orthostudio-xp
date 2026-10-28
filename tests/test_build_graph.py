@@ -32,6 +32,7 @@ from orthostudio.pipeline.build import (
     OverlayParams,
     TileDsfParams,
     TileTexturesParams,
+    _masks_ram_mb,
     declare,
     make_scheduler,
     road_points,
@@ -825,22 +826,22 @@ def test_the_road_points_of_the_tiles_level_are_counted(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     ("config", "counts", "ram_mb"),
     [
-        # a user's settings, service roads, round ends, 2 000 000 points: Atlanta took 6.6 GB
+        # a user's settings, service roads, round ends, 2 000 000 points: Atlanta took 6.0 to 6.8
         (
             {"road_level": 4, "rounded_road_ends": True, "max_levelled_segs": 2_000_000},
             ATLANTA,
-            7000,
+            6400,
         ),
-        # the same settings on a country tile, 379 047 points: it took 1.7 GB
+        # the same settings on a country tile, 379 047 points: it took 1.6 to 1.7 GB
         (
             {"road_level": 4, "rounded_road_ends": True, "max_levelled_segs": 2_000_000},
             {"big_roads": 40_000, "small_roads": 339_047},
-            2800,
+            1800,
         ),
-        ({}, ATLANTA, 1900),  # the defaults: level 1, angular ends: Atlanta took 1.7 GB
-        ({"road_level": 0}, ATLANTA, 1700),  # no roads: 1.0 GB
+        ({}, ATLANTA, 1600),  # the defaults: level 1, angular ends: Atlanta took 1.7 GB
+        ({"road_level": 0}, ATLANTA, 1500),  # no roads: 1.0 GB
         # an estimate, before the OSM data: 2 500 000 points, as many as Atlanta's
-        ({"road_level": 4, "rounded_road_ends": True, "max_levelled_segs": 2_000_000}, None, 7100),
+        ({"road_level": 4, "rounded_road_ends": True, "max_levelled_segs": 2_000_000}, None, 6400),
     ],
 )
 def test_a_tracing_reserves_what_its_roads_take(
@@ -850,10 +851,52 @@ def test_a_tracing_reserves_what_its_roads_take(
     counts: dict[str, int] | None,
     ram_mb: int,
 ) -> None:
-    """``TRACING_RAM``, from the tile's road points, read once its OSM data is in. Atlanta's
-    6.6 GB for every tile kept a batch of country tiles to one tracing at a time on 16 GB (found by
-    a campaign, 2026-10-28)."""
+    """``TRACING_RAM``, from the tile's road points, read once its OSM data is in: the line
+    through the middle of what the tracings took. Atlanta's 6.6 GB for every tile kept a batch of
+    country tiles to one tracing at a time on 16 GB (found by a campaign, 2026-10-28)."""
     (g,) = _declare([_spec(tmp_path, config=config)], _sched(env), env)
     assert g.vectors.ram_mb == 1200 and g.vectors.ram_from is not None
     osm = _osm_counts(tmp_path, counts) if counts is not None else None
     assert g.vectors.ram_from({"osm": osm}) == ram_mb
+
+
+def _mesh_stats(tmp_path: Path, name: str, water_bits: dict[str, int] | None) -> ArtifactRef:
+    folder = tmp_path / f"mesh-{name}"
+    folder.mkdir()
+    if water_bits is not None:
+        stats = {"format": "osxp-mesh-stats-1", "water_bits_counts": water_bits}
+        (folder / "stats.json").write_text(json.dumps(stats), encoding="utf-8")
+    digest = ("a" if name == "tile" else "b") * 64
+    return ArtifactRef(digest, digest, folder, "orthostudio.mesh", "dir", 0)
+
+
+@pytest.mark.parametrize(
+    ("neighbour_bits", "inland", "pool"),
+    [
+        ({"1": 300_000}, False, False),  # lakes and rivers only, inland: no pool (+33-086)
+        ({"1": 182_715, "4": 161_146}, False, True),  # water the masks draw (+33-083)
+        (None, False, True),  # a mesh that does not say: as before
+        ({"1": 300_000}, True, True),  # masks for inland water too
+    ],
+)
+def test_the_masks_reserve_their_pool_only_where_there_is_water_to_draw(
+    tmp_path: Path,
+    env: BuildEnv,
+    neighbour_bits: dict[str, int] | None,
+    inland: bool,
+    pool: bool,
+) -> None:
+    """Every masks node reserved its pool, 5.1 GB on 8 threads, and inland the masks took a second
+    and no pool: on 16 GB no tile's masks, so no images, started beside a big city's tracing (a
+    campaign of 12 tiles, 2026-10-28)."""
+    config = {"use_masks_for_inland": inland}
+    (g,) = _declare([_spec(tmp_path, config=config)], _sched(env), env)
+    masks = g.masks
+    assert masks.ram_mb == 300 and masks.ram_from is not None
+    inputs = {name: None for name in masks.inputs}
+    inputs["mesh"] = _mesh_stats(tmp_path, "tile", {"1": 100_000})
+    inputs[next(n for n in masks.inputs if n not in ("mesh", "dem", "custom_extent"))] = (
+        _mesh_stats(tmp_path, "nb", neighbour_bits)
+    )
+    expected = _masks_ram_mb(env) if pool else 300
+    assert masks.ram_from(inputs) == expected

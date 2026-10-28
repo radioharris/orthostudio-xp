@@ -492,28 +492,38 @@ class Scheduler:
     # -- admission ---------------------------------------------------------------------------
 
     def _admit(self) -> None:
-        """Dispatch, hit or park every ready node, best priority first, until nothing moves."""
+        """Dispatch, hit or park every ready node, best priority first, until nothing moves.
+
+        Once a node waits for memory, none after it that takes memory starts: what the nodes
+        running give back goes to it. Smaller nodes that fitted took that room each time, and a
+        big city's tracing, ready at 3 min, started last at 26 min on a computer of 16 GB, its
+        neighbours' images waiting for its mesh (a campaign of 12 tiles, 2026-10-28)."""
         if self._cancel.is_set():
             return
         while True:
             parked: list[tuple[float, int, str]] = []
             moved = False
+            behind_memory = False
             while self._ready:
                 item = heapq.heappop(self._ready)
                 rec = self._recs[item[2]]
                 if rec.state != "ready":
                     continue
-                if self._try_start(rec):
+                started = self._try_start(rec, behind_memory=behind_memory)
+                if started is True:
                     moved = True
                 else:
                     parked.append(item)
+                    behind_memory = behind_memory or started == "memory"
             for item in parked:
                 heapq.heappush(self._ready, item)
             if not moved or not self._ready:
                 return
 
-    def _try_start(self, rec: _Rec) -> bool:
-        """Hit, join an in-flight twin, or dispatch when a slot and the RAM allow it."""
+    def _try_start(self, rec: _Rec, *, behind_memory: bool = False) -> bool | Literal["memory"]:
+        """Hit, join an in-flight twin, or dispatch when a slot and the RAM allow it; ``"memory"``
+        when the RAM held it back, or a node before it waits for memory (``behind_memory``) and
+        this one takes some."""
         if rec.key is None:
             inputs: dict[str, ArtifactRef | None] = {}
             for name, dep in rec.node.inputs.items():
@@ -551,12 +561,11 @@ class Scheduler:
         if rec.ram is None:
             rec.ram = _ram_of(rec.node, rec.resolved)
         ram = rec.ram
-        if (
-            self.ram_budget_mb is not None
-            and self._ram_in_flight + ram > self.ram_budget_mb
-            and self._ram_in_flight > 0
-        ):
-            return False
+        if self.ram_budget_mb is not None and ram > 0:
+            if behind_memory:
+                return "memory"
+            if self._ram_in_flight + ram > self.ram_budget_mb and self._ram_in_flight > 0:
+                return "memory"
         self._dispatch(rec)
         return True
 

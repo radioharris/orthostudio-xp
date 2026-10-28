@@ -132,7 +132,15 @@ root (one sqlite connection per process, as `pipeline/textures.py` does).
 **Memory read from the inputs** (`Node.ram_from`): a node whose peak grows with what it is given
 reads it from its inputs once they are built, just before it starts, and takes from the RAM
 budget the larger of that and its `ram_mb` (`_ram_of`, settled once in `_Rec.ram`, given back when
-it ends). The tracing reads the road points its OSM step counted (`pipeline-build.md` 8.6).
+it ends). The tracing reads the road points its OSM step counted, the masks the water of their
+meshes (`pipeline-build.md` 8.6).
+
+**A node waiting for memory is not overtaken** (`_admit`): once a ready node, best priority first,
+is held back by the RAM budget, no node after it that takes memory starts in that round; what the
+running nodes give back goes to it, and the others follow beside it once it has started. Smaller
+nodes that fitted took that room each time: a big city's tracing, ready at 3 min, started last at
+26 min on 16 GB, its neighbours' images waiting for its mesh (2026-10-28). A node of no memory
+still starts, and so do the hits.
 
 **A process of its own** (`orthostudio.sched.apart.run_p0_rule_apart(ctx, bind=None)`, a node's
 `run`): the rule's P0 function runs in a `spawn` process started for this node alone and gone when

@@ -756,31 +756,35 @@ The tiles are the same, byte for byte, and so are the keys: nothing is built aga
 scheduler's `Node.ram_from`, `scheduler.md` 2.3): once the tile's OSM step is done and before the
 tracing starts, the road points of the layers its road level reads (`road_points`: the `nodes`
 counts of `big_roads` and `small_roads` in the step's `snapshot.json`), and from them a line by
-road ends and limit of road points (the default, or raised past 200 000), 5 % over it, rounded up
-to 100 MB, never below the rule's 1.2 GB; a raster of one's own that takes more wins
-(`relief_ram`). An estimate, which has no OSM data yet, takes 2 500 000 points (Atlanta's at the
-service roads).
+road ends and limit of road points (the default, or raised past 200 000), rounded up to 100 MB,
+never below the rule's 1.2 GB; a raster of one's own that takes more wins (`relief_ram`). An
+estimate, which has no OSM data yet, takes 2 500 000 points (Atlanta's at the service roads).
 
-| road ends, limit | without roads | per million road points |
-|---|---|---|
-| angular, default | 1 553 MB | 1 040 MB |
-| round, default | 1 741 | 1 850 |
-| angular, raised | 1 318 | 2 210 |
-| round, raised | 1 854 | 1 930 |
+| road ends, limit | without roads | per million road points | from |
+|---|---|---|---|
+| angular, default | 1 430 MB | 900 MB | Atlanta, levels 0 to 5 |
+| round, default | 1 131 | 1 994 | Atlanta, levels 0 to 5 |
+| angular, raised | 1 202 | 2 139 | Atlanta, levels 0 to 5 at 2 000 000 |
+| round, raised | 908 | 2 166 | the same, and 12 tiles three times each |
 
-Each line is the lowest over every tracing measured on 2026-10-28 on a Mac, in the tracing's own
-process (the footprint macOS counts): Atlanta (`+33-085`) at every road level (176 616 points at
-level 1, 2 489 613 at level 4), with both road ends, at the default limit and at 2 000 000, and the
-twelve tiles of the block +33..+35 / -086..-083 at the service roads with round ends and
-2 000 000 (from 1.7 GB for 379 047 points to Atlanta's 6.0 GB, 6.6 alone). The peak is the
-assembly of the shapes, or the one buffer of the road bands at the default limit; the processes of
-the road squares (`vectors-water-roads.md` 3.8) take 0.1 to 1.1 GB each and are done before it.
+Each line goes through the middle of the tracings measured on 2026-10-28 on a Mac, in the
+tracing's own process (the footprint macOS counts): Atlanta (`+33-085`, 176 616 road points at
+level 1, 2 489 613 at level 4) at every road level with both road ends, at the default limit and
+at 2 000 000, and the twelve tiles of the block +33..+35 / -086..-083 at the service roads with
+round ends and 2 000 000, beside other tracings twice and alone once (from 1.6 GB for 379 047
+points to Atlanta's 6.0 to 6.8). Within 7 to 11 % of what they took on average, 24 % under at
+worst: the budget leaves 40 % of the memory out of every reservation. The peak is the assembly of
+the shapes, or the one buffer of the road bands at the default limit; the processes of the road
+squares (`vectors-water-roads.md` 3.8) take 0.1 to 1.1 GB each and are done before it. What is
+left between tiles of the same points is the relief: only the roads leaning past
+`road_banking_limit` are levelled, which the tracing knows once it has read them.
 
 Every tracing declared 1.2 GB until then, so three cities at the service roads could start
-together on a computer of 16 GB, some 19 GB (found in review, 2026-10-28). The table by road level
-that came first reserved Atlanta's 6.6 GB for every tile at those settings: on the Shadow (16 GB)
-a batch of twelve was traced one tile at a time, while its country tiles took a quarter of that.
-From its roads, a country tile of 379 047 points reserves 2.8 GB and Atlanta 7.0.
+together on a computer of 16 GB, some 19 GB (found in review, 2026-10-28). A table by road level
+then reserved Atlanta's 6.6 GB for every tile at those settings, and a line over every peak 5 %
+above it a country tile 2.8 GB for the 1.7 it took: on the Shadow (16 GB) a batch of twelve was
+traced one tile at a time under the table. From the line, a country tile of 379 047 points
+reserves 1.8 GB and Atlanta 6.4.
 
 **The tracings have a lane of their own** (`TRACING_LANE`, as wide as the subprocess slots, 3 at
 most). On the slots they shared with the relief, the meshes and the masks, every slot that came
@@ -812,7 +816,12 @@ tiles from a local server took 62 s and 63 s on average, the images at the same 
 second, and from Bing the two versions differed less than Bing does from one tile to the next; the
 tiles were the same to the byte in every run.
 
-The masks node's `ram_mb` is `300 + 800 x workers` MB, and **the same `workers` is given to the
+The masks node's `ram_mb` is `300 + 800 x workers` MB **when its tile or a neighbour has water the
+masks draw** (`masks_ram_from`: the `water_bits_counts` of each mesh's `stats.json`, the sea and the
+water marked like it, every water triangle with `use_masks_for_inland`), and 300 MB otherwise:
+inland, the masks took a second and started no pool, and their 5.1 GB on 8 threads kept every
+tile's masks, so its images, from starting beside a big city's tracing on 16 GB (2026-10-28). A
+mesh that does not say reserves the pool. **The same `workers` is given to the
 rule**: `_masks_run` binds `MasksJob(workers=masks_workers(env), cancel=...)`, the rule passes it to
 `build_masks`, and `worker_count` honours it, so the declared budget describes the pool that starts.
 `masks_workers(env)` is `$OSXP_MASKS_WORKERS` when it is a positive integer, else

@@ -1887,10 +1887,52 @@ def neighbour_meshes(store: Store) -> dict[str, ArtifactRef]:
     return {name: ref for name, (_used, ref) in best.items()}
 
 
+MASKS_BASE_MB = 300
+"""The masks node's own memory, without its pool: the water triangles of the tile and its
+neighbours, read from their meshes."""
+
+
 def _masks_ram_mb(env: BuildEnv) -> int:
     """RAM of the native masks node: it runs its own process pool inside (spec 8.6)."""
     workers = masks_workers(env)
-    return 300 + 800 * workers
+    return MASKS_BASE_MB + 800 * workers
+
+
+def masks_water_triangles(mesh: ArtifactRef | None, use_masks_for_inland: bool) -> int | None:
+    """The triangles of a mesh the masks draw (``masks.water.water_triangles``: sea and the water
+    marked like it, every water triangle with ``use_masks_for_inland``), from its ``stats.json``;
+    ``None`` when it does not say."""
+    if mesh is None:
+        return 0
+    try:
+        stats = json.loads((Path(mesh.path) / "stats.json").read_text(encoding="utf-8"))
+        counts = {int(bits): int(n) for bits, n in stats["water_bits_counts"].items()}
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return None
+    return sum(
+        n for bits, n in counts.items() if (bits != 0 if use_masks_for_inland else bits >= 2)
+    )
+
+
+def masks_ram_from(
+    env: BuildEnv, use_masks_for_inland: bool
+) -> Callable[[Mapping[str, ArtifactRef | None]], int]:
+    """The masks node's ``ram_from``: its pool's memory only when the tile or a neighbour has water
+    the masks draw. Every masks node reserved its pool, 5.1 GB on 8 threads and 6.7 on 14, and on
+    a tile inland the masks took a second and no pool: on 16 GB no tile's masks, so no images,
+    started while a big city was traced (a campaign of 12 tiles, 2026-10-28)."""
+    full = _masks_ram_mb(env)
+
+    def ram_from(inputs: Mapping[str, ArtifactRef | None]) -> int:
+        for name, ref in inputs.items():
+            if name in ("dem", "custom_extent"):
+                continue
+            water = masks_water_triangles(ref, use_masks_for_inland)
+            if water is None or water > 0:
+                return full
+        return MASKS_BASE_MB
+
+    return ram_from
 
 
 def masks_workers(env: BuildEnv) -> int:
@@ -2121,24 +2163,21 @@ the room."""
 
 TRACING_RAM: dict[tuple[bool, bool], tuple[int, int]] = {
     # (round ends, limit raised): MB without roads, MB per million road points
-    (False, False): (1553, 1040),
-    (True, False): (1741, 1850),
-    (False, True): (1318, 2210),
-    (True, True): (1854, 1930),
+    (False, False): (1430, 900),
+    (True, False): (1131, 1994),
+    (False, True): (1202, 2139),
+    (True, True): (908, 2166),
 }
 """A tile's tracing at its peak, from the road points of its OSM data (:func:`road_points`): the
-smallest line over every tracing measured on 2026-10-28 on a Mac (the footprint macOS counts, in the
-tracing's own process), Atlanta (``+33-085``) at every road level with both road ends, at the
-default limit of road points and at 2 000 000, and twelve tiles around it at the service roads
-(the country of +33-083 1.7 GB for 379 047 points, Atlanta 6.0 to 6.6 GB for 2 489 613). The
-limit counts as raised past ``roads.ROAD_SQUARES_FROM``, where a large network is cut into
-squares. With 1.2 GB for every tracing, three cities at the service roads could start together on
-16 GB, some 19 GB; with Atlanta's 6.6 GB for every tile (a table by road level), a batch of them
-was traced one tile at a time there, while a country tile took a quarter of it (found by a
-campaign of 12 tiles, 2026-10-28)."""
-
-TRACING_RAM_MARGIN = 1.05
-"""Over the line: the same tile measured 6.0 GB beside other tracings and 6.6 GB alone."""
+line through the middle of the tracings measured on 2026-10-28 on a Mac (the footprint macOS
+counts, in the tracing's own process), Atlanta (``+33-085``) at every road level with both road
+ends, at the default limit of road points and at 2 000 000, and twelve tiles around it at the
+service roads, round ends, 2 000 000, three times each (beside other tracings twice, alone once).
+Within 9 % of what they took on average, 20 % under at worst: the budget leaves 40 % of the memory
+out of every reservation. The line over every peak, 5 % above, reserved a country tile of 379 047
+points 2.8 GB for the 1.7 it took; Atlanta's 6.6 GB for every tile (a table by road level) traced
+a batch one tile at a time on 16 GB. The limit counts as raised past
+``roads.ROAD_SQUARES_FROM``, where a large network is cut into squares."""
 
 UNKNOWN_ROAD_POINTS = 2_500_000
 """The road points taken when a tile's OSM data does not say: Atlanta's at the service roads."""
@@ -2162,7 +2201,7 @@ def tracing_ram_mb(points: int, rounded: bool, raised: bool) -> int:
     """MB a tracing of ``points`` road points reserves (:data:`TRACING_RAM`), rounded up to 100,
     never under its rule's 1.2 GB."""
     base, per_million = TRACING_RAM[rounded, raised]
-    mb = (base + per_million * points / 1e6) * TRACING_RAM_MARGIN
+    mb = base + per_million * points / 1e6
     return max(OSXP_VECTORS.ram_mb, math.ceil(mb / 100) * 100)
 
 
@@ -2437,13 +2476,16 @@ def declare(
             neighbours[input_name] = (
                 node_nb if node_nb is not None else (stored_meshes or {}).get(nb.name)
             )
+        masks_params = OsxpMasksParams.subset_of({**cfg, "tile": name})
         masks = reg.node(
             f"{name}/masks",
             OSXP_MASKS,
-            OsxpMasksParams.subset_of({**cfg, "tile": name}),
+            masks_params,
             {"mesh": mesh, **neighbours, "dem": None, "custom_extent": None},
             kind="subprocess",
-            ram_mb=_masks_ram_mb(env),
+            # its pool's memory only once its meshes say there is water to draw
+            ram_mb=MASKS_BASE_MB,
+            ram_from=masks_ram_from(env, masks_params.use_masks_for_inland),
             run=_masks_run(env),
         )
         xp12: Node | None = None
