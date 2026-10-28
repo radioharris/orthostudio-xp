@@ -17,7 +17,8 @@ elevation files (`essential.relief.folder`), the photo colours (`essential.photo
 `expert.photo_brightness`, `expert.photo_contrast`, `expert.photo_saturation`), the five
 downloaded reliefs (values of `essential.relief.source`, 2.9), the folder of hand-made mesh patches
 (`expert.patches_dir`), the prepared map data (`expert.osm_folder`, `expert.osm_library`,
-`expert.osm_library_token`) and the daily check for a newer version (`expert.check_updates`).
+`expert.osm_library_token`), the memory for building (`expert.build_memory`) and the daily check
+for a newer version (`expert.check_updates`).
 
 Why: the user flies X-Plane, has used Ortho4XP and finds its settings incomprehensible ("sand,
 land, lakes, radius... nobody understands them"). The page still shows Ortho4XP's names and

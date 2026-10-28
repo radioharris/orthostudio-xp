@@ -356,7 +356,14 @@ GB each plus the masks' own pool, and X-Plane 12's relief, read from its DSFs; a
 until 2026-09-15, which gave a 4-core Windows virtual machine one slot, so that a batch's stages ran one
 after the other there while a 14-core Mac ran three), `net_slots = 1` (one
 Bing pipeline at a time: the provider's `max_in_flight` is the politeness limit, not the number of
-tiles), `io_slots = 2`, `ram_budget_mb = 60 %` of the physical memory, the `relief` lane of one
+tiles), `io_slots = 2`, `ram_budget_mb` the share of the physical memory "Memory for building"
+gives (`expert.build_memory`, `MEMORY_SHARES`: high 80 %, medium 70 % by default, low 60 %, the
+share of every computer up to 1.2.1; `--memory` on the command line), below which the batch keeps
+to the room the computer has now (`ram_room_mb`: the memory free now, plus what the batch's own
+processes hold, less a tenth of the memory for the system; `machine.available_memory_mb`,
+`machine.children_memory_mb`): what X-Plane, the browser or the engine itself hold (5.3 GB
+measured during the OSM downloads, reserved by no step) is not taken twice, and a build started
+beside them takes less, the `relief` lane of one
 (`RELIEF_LANE`): a downloaded relief (Copernicus, USGS, Canada's lidar...), one tile at a time
 beside the imagery's slot, where until 0.1.19 the batch's reliefs ran one after the other before
 any image and held it while their files were read (a user's first tile, ready at 4:01, had its
@@ -773,7 +780,7 @@ level 1, 2 489 613 at level 4) at every road level with both road ends, at the d
 at 2 000 000, and the twelve tiles of the block +33..+35 / -086..-083 at the service roads with
 round ends and 2 000 000, beside other tracings twice and alone once (from 1.6 GB for 379 047
 points to Atlanta's 6.0 to 6.8). Within 7 to 11 % of what they took on average, 24 % under at
-worst: the budget leaves 40 % of the memory out of every reservation. The peak is the assembly of
+worst: the memory kept free covers it (`ram_room_mb`). The peak is the assembly of
 the shapes, or the one buffer of the road bands at the default limit; the processes of the road
 squares (`vectors-water-roads.md` 3.8) take 0.1 to 1.1 GB each and are done before it. What is
 left between tiles of the same points is the relief: only the roads leaning past
@@ -785,6 +792,13 @@ then reserved Atlanta's 6.6 GB for every tile at those settings, and a line over
 above it a country tile 2.8 GB for the 1.7 it took: on the Shadow (16 GB) a batch of twelve was
 traced one tile at a time under the table. From the line, a country tile of 379 047 points
 reserves 1.8 GB and Atlanta 6.4.
+
+On Windows a tracing reserves 78 % of the line (`TRACING_WINDOWS_SHARE`): the same twelve tiles
+traced on a Windows computer of 16 GB, three batches, took 71 to 84 % of it in private bytes (what
+Task Manager shows), 78 % on average, each tile within 1 % from one batch to the next; Atlanta
+4.75 GB, where the line gives 6.3. At the Mac's figure, Atlanta held every other tracing back for
+8 minutes there with half the memory free. Atlanta then reserves 5.0 GB, the country tile 1.4.
+Measured at these settings only (round ends, 2 000 000 points); Linux keeps the Mac's line.
 
 **A DSF reserves what its mesh's triangles take** (`dsf_ram_from`, through `Node.ram_from`):
 600 MB and 610 MB a million triangles of the mesh (`stats.json`, `n_triangles`), rounded up to

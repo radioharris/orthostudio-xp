@@ -163,13 +163,23 @@ roads ran out of 64 GB and went through once the app was started again, and the 
 of the line while tracings ran. A tracing that runs out of memory stops its tile, and the tiles
 that need it, with a message that says so; the rest of the batch goes on. A tracing waits for the
 memory its roads take, counted in the tile's map data once it is downloaded: a country tile at the
-service roads with round ends reserves 1.8 GB, Atlanta 6.4, about what they take. A big city
+service roads with round ends reserves 1.8 GB, Atlanta 6.4, about what they take on a Mac; on
+Windows, where the same tracings take about a fifth less, 1.4 and 5.0. A big city
 waiting for that memory is not overtaken by the smaller tiles: it starts as soon as the room is
 there, and they follow beside it. The water masks reserve memory for the squares of photo where
 there is sea or a large lake to mask, a little for a lake, nothing more inland. A DSF
 reserves what its mesh takes, about 0.6 GB a million triangles, and the images start as many
-encoders as the memory holds: one on a computer of 8 GB, three on 16, twelve on a large Mac. Until 1.2.1 every tracing counted 1.2 GB, and three big cities could start
-together whatever they took.
+encoders as the memory holds: one on a computer of 8 GB, four on 16, twelve on a large Mac. Until
+1.2.1 every tracing counted 1.2 GB, and three big cities could start together whatever they took.
+
+**How much memory a build takes.** "Memory for building" (Settings, For experts, This app) lets a
+build reserve 80, 70 (the default) or 60 % of the computer's memory; the rest is room for X-Plane
+opened during the build. Below that, a build takes only what is free when a step starts: what
+X-Plane, the browser or the app itself already hold is left to them, and a tenth of the memory is
+always left to the system. High may build faster on a computer of 16 GB or less: a big city and
+the next tile then trace side by side. X-Plane opened during such a build may stutter until the
+steps already started end, since a step keeps the memory it took. Until 1.2.1 a build reserved
+60 % of the memory whatever the other apps held.
 
 The tracings also have places of their own, so a tile is meshed as soon as it is traced, and its
 images start as soon as it and its neighbours are meshed, while the other tiles are still being

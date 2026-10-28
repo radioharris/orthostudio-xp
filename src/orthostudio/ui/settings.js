@@ -450,7 +450,7 @@ export const EXPERT_GROUPS = [
   // Where the map data of a tile comes from, before the public servers are asked (osm-prepared.md).
   { id: "mapdata", title: () => t("settings.x.group_mapdata"), fields: ["expert.osm_folder", "expert.osm_library", "expert.osm_library_token"] },
   // Nothing to do with the tiles: what the app itself does, which is why it has a group of its own.
-  { id: "app", title: () => t("settings.x.group_app"), fields: ["expert.check_updates"] },
+  { id: "app", title: () => t("settings.x.group_app"), fields: ["expert.build_memory", "expert.check_updates"] },
 ];
 
 /** Settings OrthoStudio XP no longer offers (the study's "Removed / automatic"): shown only when a saved
@@ -459,6 +459,7 @@ export const RETIRED = ["advanced.ratio_bathy", "advanced.imprint_masks_to_dds",
 
 const FIELD_TEXT = {
   "expert.check_updates": [() => t("settings.x.check_updates"), () => t("settings.x.check_updates_hint")],
+  "expert.build_memory": [() => t("settings.x.build_memory"), () => t("settings.x.build_memory_hint")],
   [THREE_STEPS]: [() => t("settings.x.three_steps"), () => t("settings.x.three_steps_hint")],
   "essential.airports.zoom_level": [() => t("settings.x.airports_zl"), () => t("settings.x.airports_zl_hint")],
   "essential.airports.extent_km": [() => t("settings.x.airports_extent"), () => t("settings.x.airports_extent_hint")],
@@ -517,6 +518,11 @@ const OPTION_TEXT = {
     3: () => t("settings.x.road_3"),
     4: () => t("settings.x.road_4"),
     5: () => t("settings.x.road_5"),
+  },
+  "expert.build_memory": {
+    high: () => t("settings.x.memory_high"),
+    medium: () => t("settings.x.memory_medium"),
+    low: () => t("settings.x.memory_low"),
   },
   "expert.road_smoothing": {
     0: () => t("settings.x.smooth_0"),

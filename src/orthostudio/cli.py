@@ -166,10 +166,11 @@ def _build_specs(
     osm_refresh: str = "",
     relief: str | None = None,
     zones: Path | None = None,
+    memory: str = "medium",
 ) -> list:
     from orthostudio.install import custom_scenery_dir
     from orthostudio.model import TileRef
-    from orthostudio.pipeline.build import BuildSpec, resolve_global_scenery
+    from orthostudio.pipeline.build import MEMORY_SHARES, BuildSpec, resolve_global_scenery
     from orthostudio.pipeline.home import (
         default_chunks_root,
         default_patches_dir,
@@ -185,6 +186,8 @@ def _build_specs(
             message="No tile given.",
             remedy="Give at least one --tile +43+005.",
         )
+    if memory not in MEMORY_SHARES:
+        raise typer.BadParameter(f"one of {', '.join(MEMORY_SHARES)}", param_hint="--memory")
     # The names first: a typo is reported as such, not as an X-Plane that was not found.
     tile_refs = [TileRef(*parse_tile(tile)) for tile in tiles]
     # the relief, the map data and the work folder go there whatever --out, --store and --chunks say
@@ -264,6 +267,7 @@ def _build_specs(
             dem=dem,
             osm_fetch=osm_fetch,
             osm_refresh=osm_refresh,
+            build_memory=memory,
         )
         if choice is not None:
             spec.relief = choice
@@ -439,6 +443,11 @@ _OSM_OPT = typer.Option(
 _OSM_REFRESH_OPT = typer.Option(
     "--osm-refresh", help="label forcing a fresh OSM download (any string; it enters the key)"
 )
+_MEMORY_OPT = typer.Option(
+    "--memory",
+    help="share of this computer's memory the build may take: high (80 %), medium (70 %) or low "
+    "(60 %), never more than what is free",
+)
 _RELIEF_OPT = typer.Option(
     "--relief",
     help="relief of the elevation stage: xplane (X-Plane 12's own, read from its Global "
@@ -472,6 +481,7 @@ def build(
     osm_refresh: Annotated[str, _OSM_REFRESH_OPT] = "",
     relief: Annotated[str | None, _RELIEF_OPT] = None,
     zones: Annotated[Path | None, _ZONES_OPT] = None,
+    memory: Annotated[str, _MEMORY_OPT] = "medium",
     json_output: Annotated[bool, _JSON_FLAG] = False,
     dry_run: Annotated[bool, typer.Option("--dry-run", help="estimate only (= osxp plan)")] = False,
     online: Annotated[
@@ -490,7 +500,7 @@ def build(
             workers=workers, sets=sets or [], overlay=overlay,
             xp12_rasters=xp12_rasters, creation_agent=creation_agent, link=link,
             encoder=encoder, patches=patches, dem=dem, osm_fetch=osm_fetch,
-            osm_refresh=osm_refresh, relief=relief, zones=zones,
+            osm_refresh=osm_refresh, relief=relief, zones=zones, memory=memory,
         )  # fmt: skip
         if dry_run:
             _plan(specs, online=online, json_output=json_output, xplane=xplane)

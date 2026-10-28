@@ -403,6 +403,18 @@ class Expert(BaseModel):
             "address, as the imagery servers do. Nothing is downloaded or installed."
         ),
     )
+    build_memory: Literal["high", "medium", "low"] = _field(
+        "medium",
+        "expert",
+        None,
+        "",
+        hint=(
+            "How much of this computer's memory a build may take: high 80 %, medium 70 %, low "
+            "60 %, never more than what is free at that moment, a tenth always left to the "
+            "system. High may build faster on a computer of 16 GB or less, and X-Plane opened "
+            "during the build may then stutter until the steps already started end."
+        ),
+    )
 
 
 # -- root ----------------------------------------------------------------------------------

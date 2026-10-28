@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 from pathlib import Path
 
 import numpy as np
@@ -825,24 +826,33 @@ def test_the_road_points_of_the_tiles_level_are_counted(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
-    ("config", "counts", "ram_mb"),
+    ("config", "counts", "ram_mb", "windows_mb"),
     [
         # a user's settings, service roads, round ends, 2 000 000 points: Atlanta took 6.0 to 6.8
+        # on a Mac, 4.75 GB on Windows
         (
             {"road_level": 4, "rounded_road_ends": True, "max_levelled_segs": 2_000_000},
             ATLANTA,
             6400,
+            5000,
         ),
-        # the same settings on a country tile, 379 047 points: it took 1.6 to 1.7 GB
+        # the same settings on a country tile, 379 047 points: it took 1.6 to 1.7 GB, 1.4 on
+        # Windows
         (
             {"road_level": 4, "rounded_road_ends": True, "max_levelled_segs": 2_000_000},
             {"big_roads": 40_000, "small_roads": 339_047},
             1800,
+            1400,
         ),
-        ({}, ATLANTA, 1600),  # the defaults: level 1, angular ends: Atlanta took 1.7 GB
-        ({"road_level": 0}, ATLANTA, 1500),  # no roads: 1.0 GB
+        ({}, ATLANTA, 1600, 1300),  # the defaults: level 1, angular ends: Atlanta took 1.7 GB
+        ({"road_level": 0}, ATLANTA, 1500, 1200),  # no roads: 1.0 GB
         # an estimate, before the OSM data: 2 500 000 points, as many as Atlanta's
-        ({"road_level": 4, "rounded_road_ends": True, "max_levelled_segs": 2_000_000}, None, 6400),
+        (
+            {"road_level": 4, "rounded_road_ends": True, "max_levelled_segs": 2_000_000},
+            None,
+            6400,
+            5000,
+        ),
     ],
 )
 def test_a_tracing_reserves_what_its_roads_take(
@@ -851,14 +861,28 @@ def test_a_tracing_reserves_what_its_roads_take(
     config: dict[str, object],
     counts: dict[str, int] | None,
     ram_mb: int,
+    windows_mb: int,
 ) -> None:
     """``TRACING_RAM``, from the tile's road points, read once its OSM data is in: the line
-    through the middle of what the tracings took. Atlanta's 6.6 GB for every tile kept a batch of
-    country tiles to one tracing at a time on 16 GB (found by a campaign, 2026-10-28)."""
+    through the middle of what the tracings took, 22 % less on Windows. Atlanta's 6.6 GB for every
+    tile kept a batch of country tiles to one tracing at a time on 16 GB; the Mac's figure on
+    Windows held every other tracing back for 8 minutes beside Atlanta (found by campaigns,
+    2026-10-28)."""
     (g,) = _declare([_spec(tmp_path, config=config)], _sched(env), env)
     assert g.vectors.ram_mb == 1200 and g.vectors.ram_from is not None
     osm = _osm_counts(tmp_path, counts) if counts is not None else None
-    assert g.vectors.ram_from({"osm": osm}) == ram_mb
+    assert g.vectors.ram_from({"osm": osm}) == (windows_mb if os.name == "nt" else ram_mb)
+
+
+def test_a_tracing_on_windows_reserves_what_windows_takes() -> None:
+    """The twelve tiles traced on Windows took 78 % of the Mac's line on average: Atlanta 4.75 GB
+    where a Mac reserves 6.4, a country tile 1.4 for 1.8 (2026-10-28)."""
+    from orthostudio.pipeline.build import tracing_ram_mb
+
+    assert tracing_ram_mb(2_489_613, True, True, windows=False) == 6400
+    assert tracing_ram_mb(2_489_613, True, True, windows=True) == 5000
+    assert tracing_ram_mb(379_047, True, True, windows=True) == 1400
+    assert tracing_ram_mb(0, False, False, windows=True) == 1200  # never under the rule's
 
 
 def _mesh_stats(tmp_path: Path, name: str, water_bits: dict[str, int] | None) -> ArtifactRef:
@@ -965,25 +989,63 @@ def test_a_dsf_reserves_what_its_mesh_takes(
     assert g.dsf.ram_from({"mesh": ref}) == ram_mb
 
 
+@pytest.mark.parametrize(("setting", "budget"), [("high", 13107), ("medium", 11468), ("low", 9830)])
+def test_the_memory_for_building_sets_the_batchs_share(
+    tmp_path: Path, env: BuildEnv, monkeypatch: pytest.MonkeyPatch, setting: str, budget: int
+) -> None:
+    """``expert.build_memory``: 80, 70 or 60 % of a computer of 16 GB, below which the scheduler
+    keeps to the memory free now. 60 % for every computer up to 1.2.1."""
+    from orthostudio.pipeline import build as buildmod
+
+    monkeypatch.setattr(buildmod, "physical_memory_mb", lambda: 16384)
+    spec = _spec(tmp_path, build_memory=setting)
+    env.memory_share = buildmod.MEMORY_SHARES[spec.build_memory]
+    sched = make_scheduler(env.store, env, cpu_workers=1, cpu_in_threads=True)
+    assert sched.ram_budget_mb == budget
+    assert sched.ram_room_mb is buildmod.ram_room_mb
+
+
+def test_the_room_is_what_is_free_and_what_the_batch_holds(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The memory free now, plus what the batch's processes hold (their reservations count it),
+    less a tenth of the memory for the system; nothing when the system does not say."""
+    from orthostudio.pipeline import build as buildmod
+
+    monkeypatch.setattr(buildmod, "physical_memory_mb", lambda: 16384)
+    monkeypatch.setattr(buildmod, "available_memory_mb", lambda: 6000)
+    monkeypatch.setattr(buildmod, "children_memory_mb", lambda: 4000)
+    assert buildmod.ram_room_mb() == 6000 + 4000 - 1638
+    monkeypatch.setattr(buildmod, "children_memory_mb", lambda: None)
+    assert buildmod.ram_room_mb() is None
+
+
 @pytest.mark.parametrize(
-    ("memory_mb", "workers", "encoders"),
-    [(8192, 12, 1), (16384, 6, 3), (49152, 12, 12), (49152, 2, 2)],
+    ("memory_mb", "share", "workers", "encoders"),
+    [
+        (8192, 0.7, 12, 1),
+        (16384, 0.6, 6, 3),
+        (16384, 0.7, 6, 4),
+        (16384, 0.8, 6, 5),
+        (49152, 0.7, 12, 12),
+        (49152, 0.7, 2, 2),
+    ],
 )
 def test_the_images_start_as_many_encoders_as_their_reservation(
     tmp_path: Path,
     env: BuildEnv,
     monkeypatch: pytest.MonkeyPatch,
     memory_mb: int,
+    share: float,
     workers: int,
     encoders: int,
 ) -> None:
     """A quarter of the RAM budget at most, 550 MB an encoder and 350 for the process: the images
     reserved 400 MB for each of the batch's workers, 4.8 GB on 14 cores, and took 0.6 to 1.5 GB
-    at ZL14 (2026-10-28)."""
+    at ZL14 (2026-10-28). The budget is the setting's share of the memory."""
     from orthostudio.pipeline import build as buildmod
 
     monkeypatch.setattr(buildmod, "physical_memory_mb", lambda: memory_mb)
     env.workers = workers
+    env.memory_share = share
     assert buildmod.photos_workers(env) == encoders
     (g,) = _declare([_spec(tmp_path)], _sched(env), env)
     assert g.textures.ram_mb == 350 + 550 * encoders

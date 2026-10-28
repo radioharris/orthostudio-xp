@@ -25,7 +25,8 @@ experimental.
   happened and what to do, and a button to fetch again only what is missing. Builds queue up, up to
   500 tiles each, and a long one does not grow in memory from tile to tile: each tile's tracing
   runs in a program of its own, which gives its memory back when it is done, and starts only when
-  the memory its roads take is free.
+  the memory its roads take is free. "Memory for building" sets how much of the computer a build
+  may take (80, 70 or 60 %), never more than what the other apps leave free.
 - **Settings in plain words.** Questions about what you want to see in X-Plane, three presets, and
   every Ortho4XP setting under "For experts" with a plain label.
 - **A Library.** Every tile on the computer, its size, whether X-Plane shows it and what it was

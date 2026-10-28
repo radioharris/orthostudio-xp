@@ -106,6 +106,7 @@ class Scheduler:
         net_slots: int = 2,
         io_slots: int = 4,
         ram_budget_mb: int | None = None,
+        ram_room_mb: Callable[[], int | None] | None = None,
         fail_fast: bool = False,
         workdir: Path | None = None,
         stats_interval_s: float = 1.0,
@@ -125,6 +126,12 @@ class Scheduler:
         self.lanes: dict[str, int] = {name: max(1, n) for name, n in (lanes or {}).items()}
         """Limits of their own for the nodes that name them (``Node.lane``), beside the slots."""
         self.ram_budget_mb = ram_budget_mb
+        self.ram_room_mb = ram_room_mb
+        """What the running nodes and the next may reserve together now, read once a pass of
+        :meth:`_admit` meets a node that takes memory: below ``ram_budget_mb`` when the computer's
+        memory is taken by others. ``None`` from it keeps the budget alone."""
+        self._room: int | None = None
+        self._room_read = False
         self.fail_fast = fail_fast
         self.workdir = Path(workdir) if workdir is not None else store.root / ".work"
         self.stats_interval_s = stats_interval_s
@@ -509,6 +516,7 @@ class Scheduler:
             parked: list[tuple[float, int, str]] = []
             moved = False
             waiting: set[str] = set()  # the lanes and kinds where a node waits for memory
+            self._room_read = False
             while self._ready:
                 item = heapq.heappop(self._ready)
                 rec = self._recs[item[2]]
@@ -570,10 +578,22 @@ class Scheduler:
         if self.ram_budget_mb is not None and ram > 0:
             if behind_memory:
                 return "memory"
-            if self._ram_in_flight + ram > self.ram_budget_mb and self._ram_in_flight > 0:
+            if self._ram_in_flight + ram > self._budget() and self._ram_in_flight > 0:
                 return "memory"
         self._dispatch(rec)
         return True
+
+    def _budget(self) -> int:
+        """``ram_budget_mb``, or the room the computer has now when it is less (``ram_room_mb``,
+        read once a pass: a node the pass starts holds nothing yet and counts by its
+        reservation, so the room read stays right for the rest of the pass)."""
+        assert self.ram_budget_mb is not None
+        if self.ram_room_mb is None:
+            return self.ram_budget_mb
+        if not self._room_read:
+            self._room_read = True
+            self._room = self.ram_room_mb()
+        return self.ram_budget_mb if self._room is None else min(self.ram_budget_mb, self._room)
 
     def _dispatch(self, rec: _Rec) -> None:
         assert self._loop is not None and self._threads is not None

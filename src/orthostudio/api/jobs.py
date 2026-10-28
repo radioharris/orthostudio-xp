@@ -1276,6 +1276,7 @@ _SPEC_JSON_FIELDS = (
     "encoder",
     "link",
     "library_path",
+    "build_memory",
 )
 
 

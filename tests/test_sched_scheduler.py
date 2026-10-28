@@ -311,6 +311,29 @@ def test_a_node_takes_the_ram_its_inputs_say(store: Store) -> None:
     assert seen == [{"a"}] * 4  # asked once each, with the input built
 
 
+@pytest.mark.parametrize(("room", "expected"), [(700, 1), (None, 3), (5000, 3)])
+def test_the_memory_free_now_holds_nodes_back_below_the_budget(
+    store: Store, room: int | None, expected: int
+) -> None:
+    """Below its share of the memory, the scheduler keeps to what the computer has free now
+    (``ram_room_mb``): with other apps holding memory, room for one node of 600 MB where the
+    budget holds three. A computer that does not say, or more room than the budget, leaves the
+    budget alone."""
+    reads: list[int] = []
+
+    def room_mb() -> int | None:
+        reads.append(1)
+        return room
+
+    sched = _sched(store, cpu_workers=4, ram_budget_mb=2000, ram_room_mb=room_mb)
+    for i in range(3):
+        sched.add(_node(f"n{i}", SRC, ram_mb=600, seconds=0.2, tag=f"room-{room}-{i}"))
+    refs, events = _run(sched, list(sched.nodes))
+    assert len(refs) == 3
+    assert _max_admitted(events) == expected
+    assert reads  # read when a node that takes memory meets the budget
+
+
 def test_a_node_waiting_for_memory_is_not_overtaken(store: Store) -> None:
     """Two tracings of 400 MB run; a big city's (700 MB), first in line, does not fit beside one
     of them, and a country tile's (300 MB) would: it waits behind the city, which starts as soon

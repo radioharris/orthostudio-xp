@@ -38,6 +38,7 @@ NodeContext: node_id, rule, params, key, recipe, inputs: dict[str, ArtifactRef |
 
 Scheduler(store, *, cpu_workers: int | None = None, subprocess_slots: int = 1,
           net_slots: int = 2, io_slots: int = 4, ram_budget_mb: int | None = None,
+          ram_room_mb: Callable[[], int | None] | None = None,
           fail_fast: bool = False, workdir: Path | None = None, stats_interval_s: float = 1.0,
           lanes: Mapping[str, int] | None = None)
   add(node) -> Node          registers the node and every node reachable through its inputs
@@ -119,9 +120,14 @@ is added.
 
 `cpu_in_threads=True` runs `cpu` nodes in threads (tests and debugging: no spawn, plain
 tracebacks); `cpu_workers` is at least 1. A node is **admitted** when a slot of its kind (or
-its lane) is free and `Σ ram_mb of running nodes + node.ram_mb <= ram_budget_mb`. A node
-alone larger than the budget is admitted when nothing is running (refusing would deadlock the
-build; the plan already warned). `ram_budget_mb=None` disables the memory check. The thread
+its lane) is free and `Σ ram_mb of running nodes + node.ram_mb <= ram_budget_mb`, or the room
+`ram_room_mb()` gives when it is less: what the computer has free now plus what the batch's own
+processes hold, which their reservations already count (`pipeline-build.md` 4). It is read once a
+pass of `_admit`, when a node that takes memory meets the budget, and `None` from it keeps the
+budget alone; since the loop admits at least once a second, a node held back by memory other apps
+took starts once they give it back. A node alone larger than the budget is admitted when nothing
+is running (refusing would deadlock the build; the plan already warned). `ram_budget_mb=None`
+disables the memory check. The thread
 pool is sized to
 `subprocess_slots + net_slots + io_slots + the lanes' limits (+ cpu_workers in thread mode)` so a thread is
 always available for an admitted node.
@@ -268,7 +274,7 @@ record their start/end instants in a shared log.
 | S1 | overlap of kinds | 3 cpu + 2 subprocess + 2 io nodes of 0.2 s each finish in < 0.5 s total |
 | S2 | cpu limit | 8 cpu nodes, `cpu_workers=3`: max concurrent cpu = 3 |
 | S3 | subprocess / net limits | never more than `subprocess_slots` / `net_slots` in flight |
-| S4 | RAM budget | 4 nodes of 600 MB, budget 1000: max concurrent = 1; budget 1300: 2; oversized node admitted alone |
+| S4 | RAM budget | 4 nodes of 600 MB, budget 1000: max concurrent = 1; budget 1300: 2; oversized node admitted alone; 3 nodes of 600 MB, budget 2000, room 700: 1 at a time, no room said or room 5000: 3 |
 | S5 | critical path | chain of 3 added after a lone node starts first with `cpu_workers=1` |
 | S6 | hit / miss | second run of the same graph: every node `Done(hit=True)`, no `run` called |
 | S7 | early cutoff | upstream param change with identical bytes rebuilds only the upstream |

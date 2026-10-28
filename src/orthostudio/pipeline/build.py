@@ -68,7 +68,12 @@ from orthostudio.imagery.grid import TextureId
 from orthostudio.imagery.providers import Provider, load_registry
 from orthostudio.install import Library, detect_xplane, global_scenery_dir
 from orthostudio.install import packs as install_packs
-from orthostudio.machine import _windows_memory_mb, physical_memory_mb  # noqa: F401
+from orthostudio.machine import (  # noqa: F401
+    _windows_memory_mb,
+    available_memory_mb,
+    children_memory_mb,
+    physical_memory_mb,
+)
 from orthostudio.masks.build import MAX_WORKERS as MASKS_MAX_WORKERS
 from orthostudio.masks.build import env_workers as masks_env_workers
 from orthostudio.masks.rule import MASKS as OSXP_MASKS
@@ -337,6 +342,12 @@ def _pack_decals(cfg: Mapping[str, Any]) -> tuple[str, bool]:
     return decal, bool(cfg.get("decal_on_sea"))
 
 
+MEMORY_SHARES: dict[str, float] = {"high": 0.8, "medium": 0.7, "low": 0.6}
+"""The share of the computer's memory the steps of a batch may reserve together, by the setting
+``expert.build_memory`` ("Memory for building"): the rest is left for X-Plane opened during the
+batch, the system and the other apps. 0.6 for every computer up to 1.2.1."""
+
+
 @dataclass(slots=True)
 class BuildSpec:
     """One tile to build (spec section 1). Paths are resolved by :class:`BuildEnv`."""
@@ -389,6 +400,9 @@ class BuildSpec:
     registry_path: Path | None = None
     max_in_flight: int | None = None
     hedge_after_s: float = 1.0
+    build_memory: str = "medium"
+    """``expert.build_memory``, a key of :data:`MEMORY_SHARES`: how much of the computer's memory
+    the batch may take."""
 
     @property
     def level(self) -> str:
@@ -440,6 +454,7 @@ _BATCH_FIELDS = (
     "registry_path",
     "max_in_flight",
     "hedge_after_s",
+    "build_memory",
 )
 """Spec fields resolved once per batch: they must agree across the specs (else ValueError)."""
 
@@ -480,6 +495,8 @@ class BuildEnv:
     library_path: Path | None
     max_in_flight: int | None = None
     hedge_after_s: float = 1.0
+    memory_share: float = MEMORY_SHARES["medium"]
+    """The batch's share of the computer's memory (:data:`MEMORY_SHARES`)."""
     prepared: Any = None
     """The prepared sources of this batch (``sources.chain.Chain``), asked before Overpass."""
     own_store: bool = False
@@ -523,6 +540,7 @@ class BuildEnv:
             library_path=first.library_path,
             max_in_flight=first.max_in_flight,
             hedge_after_s=first.hedge_after_s,
+            memory_share=MEMORY_SHARES[first.build_memory],
             prepared=_prepared_chain(first, workdir),
             own_store=store is None,
         )
@@ -1699,7 +1717,7 @@ def photos_workers(env: BuildEnv) -> int:
     than they encode."""
     if env.workers <= 0:
         return env.workers  # encoded in the images' own process
-    budget = ram_budget_mb()
+    budget = ram_budget_mb(env.memory_share)
     if budget is None:
         return env.workers
     fits = (budget // PHOTOS_BUDGET_SHARE - PHOTOS_BASE_MB) // PHOTOS_ENCODER_MB
@@ -2261,11 +2279,18 @@ line through the middle of the tracings measured on 2026-10-28 on a Mac (the foo
 counts, in the tracing's own process), Atlanta (``+33-085``) at every road level with both road
 ends, at the default limit of road points and at 2 000 000, and twelve tiles around it at the
 service roads, round ends, 2 000 000, three times each (beside other tracings twice, alone once).
-Within 9 % of what they took on average, 20 % under at worst: the budget leaves 40 % of the memory
-out of every reservation. The line over every peak, 5 % above, reserved a country tile of 379 047
+Within 9 % of what they took on average, 20 % under at worst: the memory left free covers it
+(:func:`ram_room_mb`). The line over every peak, 5 % above, reserved a country tile of 379 047
 points 2.8 GB for the 1.7 it took; Atlanta's 6.6 GB for every tile (a table by road level) traced
 a batch one tile at a time on 16 GB. The limit counts as raised past
 ``roads.ROAD_SQUARES_FROM``, where a large network is cut into squares."""
+
+TRACING_WINDOWS_SHARE = 0.78
+"""What a tracing takes on Windows of what :data:`TRACING_RAM` reserves on a Mac: the same twelve
+tiles traced on a Windows computer of 16 GB took 71 to 84 % of it, 78 % on average, in private
+bytes (what Task Manager shows), Atlanta 4.75 GB for 6.3; each tile within 1 % from one batch to
+the next (2026-10-28). Reserved at the Mac's figure, Atlanta held back every other tracing there
+for 8 minutes with half the memory free."""
 
 UNKNOWN_ROAD_POINTS = 2_500_000
 """The road points taken when a tile's OSM data does not say: Atlanta's at the service roads."""
@@ -2285,11 +2310,14 @@ def road_points(osm: ArtifactRef | None, road_level: int) -> int | None:
         return None
 
 
-def tracing_ram_mb(points: int, rounded: bool, raised: bool) -> int:
-    """MB a tracing of ``points`` road points reserves (:data:`TRACING_RAM`), rounded up to 100,
-    never under its rule's 1.2 GB."""
+def tracing_ram_mb(points: int, rounded: bool, raised: bool, *, windows: bool | None = None) -> int:
+    """MB a tracing of ``points`` road points reserves (:data:`TRACING_RAM`, times
+    :data:`TRACING_WINDOWS_SHARE` on Windows), rounded up to 100, never under its rule's 1.2 GB.
+    ``windows`` is this computer's system unless said."""
+    if windows is None:
+        windows = os.name == "nt"
     base, per_million = TRACING_RAM[rounded, raised]
-    mb = base + per_million * points / 1e6
+    mb = (base + per_million * points / 1e6) * (TRACING_WINDOWS_SHARE if windows else 1.0)
     return max(OSXP_VECTORS.ram_mb, math.ceil(mb / 100) * 100)
 
 
@@ -2856,16 +2884,27 @@ at 8 min 34 s and the first images at 10 min 58 s (2026-10-28). Apart, a tile's 
 its tracing is done, and its images once its neighbours' meshes are."""
 
 
-RAM_BUDGET_SHARE = 0.6
-"""The share of the computer's memory the steps of a batch may reserve together; the rest is
-for the system, the app and X-Plane."""
+MEMORY_KEEP_FREE_SHARE = 0.1
+"""The share of the computer's memory a batch never takes, whatever is free: the system's own."""
 
 
-def ram_budget_mb() -> int | None:
-    """The scheduler's RAM budget (:data:`RAM_BUDGET_SHARE` of the memory), ``None`` when the
-    platform does not say how much memory it has."""
+def ram_budget_mb(share: float = MEMORY_SHARES["medium"]) -> int | None:
+    """The scheduler's RAM budget, ``share`` of the memory (:data:`MEMORY_SHARES`), ``None`` when
+    the platform does not say how much memory it has."""
     mem = physical_memory_mb()
-    return None if mem is None else int(mem * RAM_BUDGET_SHARE)
+    return None if mem is None else int(mem * share)
+
+
+def ram_room_mb() -> int | None:
+    """What the steps of the batch may reserve together now, below their share: the memory free
+    now, plus what the batch's own processes hold (their reservations count it already), less
+    :data:`MEMORY_KEEP_FREE_SHARE` of the memory. What the other apps hold, X-Plane's or the
+    browser's, and the engine's own memory (5.3 GB measured during the OSM downloads, reserved by
+    no step) are not free, so they are left out. ``None`` when the system does not say."""
+    free, held, mem = available_memory_mb(), children_memory_mb(), physical_memory_mb()
+    if free is None or held is None or mem is None:
+        return None
+    return free + held - int(mem * MEMORY_KEEP_FREE_SHARE)
 
 
 def make_scheduler(
@@ -2887,7 +2926,8 @@ def make_scheduler(
         subprocess_slots=default_subprocess_slots(),
         net_slots=1,
         io_slots=2,
-        ram_budget_mb=ram_budget_mb(),
+        ram_budget_mb=ram_budget_mb(env.memory_share),
+        ram_room_mb=ram_room_mb,
         workdir=env.workdir / "sched",
         cpu_in_threads=cpu_in_threads,
         lanes={OVERPASS_LANE: 1, RELIEF_LANE: 1, TRACING_LANE: default_subprocess_slots()},
