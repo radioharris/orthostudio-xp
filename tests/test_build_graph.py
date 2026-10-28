@@ -1021,10 +1021,11 @@ def test_the_room_is_what_is_free_and_what_the_batch_holds(monkeypatch: pytest.M
 @pytest.mark.parametrize(
     ("memory_mb", "share", "workers", "encoders"),
     [
-        (8192, 0.7, 12, 1),
-        (16384, 0.6, 6, 3),
-        (16384, 0.7, 6, 4),
-        (16384, 0.8, 6, 5),
+        (4096, 0.7, 12, 1),
+        (8192, 0.7, 12, 2),
+        (16384, 0.6, 8, 5),
+        (16384, 0.7, 8, 6),
+        (16384, 0.8, 8, 7),
         (49152, 0.7, 12, 12),
         (49152, 0.7, 2, 2),
     ],
@@ -1038,9 +1039,10 @@ def test_the_images_start_as_many_encoders_as_their_reservation(
     workers: int,
     encoders: int,
 ) -> None:
-    """A quarter of the RAM budget at most, 550 MB an encoder and 350 for the process: the images
+    """A third of the RAM budget at most, 550 MB an encoder and 350 for the process: the images
     reserved 400 MB for each of the batch's workers, 4.8 GB on 14 cores, and took 0.6 to 1.5 GB
-    at ZL14 (2026-10-28). The budget is the setting's share of the memory."""
+    at ZL14 (2026-10-28); a quarter left one encoder on 8 GB, a fifth slower a tile. The budget is
+    the setting's share of the memory."""
     from orthostudio.pipeline import build as buildmod
 
     monkeypatch.setattr(buildmod, "physical_memory_mb", lambda: memory_mb)

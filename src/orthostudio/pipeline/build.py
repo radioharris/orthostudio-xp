@@ -1703,18 +1703,20 @@ PHOTOS_BASE_MB = 350
 PHOTOS_ENCODER_MB = 550
 """One encoder of the images at its peak: 0.43 to 0.53 GB measured on the same tiles."""
 
-PHOTOS_BUDGET_SHARE = 4
-"""The images' encoders take at most a quarter of the RAM budget: beside them a big city's
-tracing and a mesh still fit on a computer of 16 GB."""
+PHOTOS_BUDGET_SHARE = 3
+"""The images' encoders take at most a third of the RAM budget: beside them a big city's tracing
+and a mesh still fit on a computer of 16 GB. A quarter gave one encoder on 8 GB, whose images then
+took a fifth longer a tile than with twelve at ZL14 (182, 123 and 53 s for 144, 108 and 42,
+2026-10-28); a third gives two, 1.45 GB, what the images took at most with twelve to use."""
 
 
 def photos_workers(env: BuildEnv) -> int:
-    """The encoders a tile's images start: the batch's workers, as many as a quarter of the RAM
-    budget holds, one at least. The images reserved 400 MB for each of the batch's workers, 4.8 GB
-    on 14 cores, and took 0.6 to 1.5 GB with EOX at ZL14, one to four encoders busy: on a budget
-    of 8 GB they waited 8 minutes for every other step to end, ready to start (2026-10-28). Fewer
-    encoders on a small computer encode more slowly only where the line brings images faster
-    than they encode."""
+    """The encoders a tile's images start: the batch's workers, as many as a third of the RAM
+    budget holds (:data:`PHOTOS_BUDGET_SHARE`), one at least. The images reserved 400 MB for each
+    of the batch's workers, 4.8 GB on 14 cores, and took 0.6 to 1.5 GB with EOX at ZL14, one to
+    four encoders busy: on a budget of 8 GB they waited 8 minutes for every other step to end,
+    ready to start (2026-10-28). Fewer encoders on a small computer encode more slowly only where
+    the line brings images faster than they encode."""
     if env.workers <= 0:
         return env.workers  # encoded in the images' own process
     budget = ram_budget_mb(env.memory_share)

@@ -810,13 +810,15 @@ took. Each runs in a process of its own (`scheduler.md` 2.3, `max_tasks_per_chil
 worker for the batch, Atlanta's 6.3 GB stayed with it for every DSF after.
 
 **The images start as many encoders as their reservation pays for** (`photos_workers`,
-`_photos_ram_mb`): the batch's workers, as many as a quarter of the RAM budget holds at 550 MB an
+`_photos_ram_mb`): the batch's workers, as many as a third of the RAM budget holds at 550 MB an
 encoder beside 350 MB for the images' process, one at least; the same number is the images'
 `workers`. Measured on twelve tiles at ZL14 (2026-10-28): the process 0.12 to 0.32 GB, an
 encoder 0.43 to 0.53 GB, one to four of them busy with EOX. They reserved 400 MB for each of the
 batch's workers, 4.8 GB on 14 cores: on a budget of 8 GB they waited 8 minutes, ready, for every
-other step to end. On 8 GB they now start one encoder, on 16 GB three, on 48 GB with 14 cores
-twelve: a small computer encodes more slowly where the line brings images faster than that.
+other step to end. At "Memory for building" medium they now start two encoders on 8 GB, six on
+16 GB, twelve on 48 GB with 14 cores. A quarter of the budget gave one on 8 GB, whose images took
+a fifth longer a tile than with twelve at ZL14 (182, 123 and 53 s for 144, 108 and 42); two are
+1.45 GB, what the images took at most with twelve to use.
 
 **The tracings have a lane of their own** (`TRACING_LANE`, as wide as the subprocess slots, 3 at
 most). On the slots they shared with the relief, the meshes and the masks, every slot that came

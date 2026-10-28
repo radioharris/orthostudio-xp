@@ -169,7 +169,7 @@ waiting for that memory is not overtaken by the smaller tiles: it starts as soon
 there, and they follow beside it. The water masks reserve memory for the squares of photo where
 there is sea or a large lake to mask, a little for a lake, nothing more inland. A DSF
 reserves what its mesh takes, about 0.6 GB a million triangles, and the images start as many
-encoders as the memory holds: one on a computer of 8 GB, four on 16, twelve on a large Mac. Until
+encoders as the memory holds: two on a computer of 8 GB, six on 16, twelve on a large Mac. Until
 1.2.1 every tracing counted 1.2 GB, and three big cities could start together whatever they took.
 
 **How much memory a build takes.** "Memory for building" (Settings, For experts, This app) lets a

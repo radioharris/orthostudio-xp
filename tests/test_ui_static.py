@@ -5579,7 +5579,7 @@ def test_the_page_says_when_a_newer_version_is_out() -> None:
             assert tables[lang][key], f"{lang} is missing {key}"
     # and it can be turned off, in a group of its own: it has nothing to do with the tiles
     code = (UI / "settings.js").read_text(encoding="utf-8")
-    assert 'fields: ["expert.check_updates"]' in code
+    assert 'fields: ["expert.build_memory", "expert.check_updates"]' in code
     assert '"expert.check_updates": [() => t("settings.x.check_updates")' in code
     # the setting says that GitHub sees the address, rather than leaving it to be found out
     assert "GitHub" in tables["en"]["settings.x.check_updates_hint"]
