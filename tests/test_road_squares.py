@@ -159,3 +159,6 @@ def test_the_key_changes_only_with_a_raised_limit() -> None:
     # a tile traced in one piece under a raised limit, before the squares, is traced again
     before = artifact_key(VECTORS.name, VECTORS.version, plain, inputs)
     assert key_for(VECTORS, raised, inputs) != before
+    # without roads nothing is buffered: the raised limit keeps the key it had
+    no_roads = VectorsParams(tile="+33-085", max_levelled_segs=2_000_000, road_level=0)
+    assert "road_squares" not in no_roads.canonical()

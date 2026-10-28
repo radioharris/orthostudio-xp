@@ -296,7 +296,7 @@ piece, a second or two, which the processes would cost again.
 
 The default limit never cuts, so the key of every tile built with it stays as it was; a raised
 limit adds `road_squares: 8` to the key (`VectorsParams.canonical`), so a tile traced in one piece
-under it is traced again, in squares. A default limit still lets a network past 200 000 segments
+under it is traced again, in squares; at `road_level` 0, without roads, it adds nothing. A default limit still lets a network past 200 000 segments
 through, the budget being per layer (3.2): those stay in one piece.
 
 ## 4. Rules of the patch builder (`:639-968`)

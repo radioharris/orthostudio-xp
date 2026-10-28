@@ -137,10 +137,10 @@ class VectorsParams(RuleParams):
         doc = super().canonical()
         if not self.road_smoothing:  # off: the key of every tile built before
             doc.pop("road_smoothing", None)
-        if self.max_levelled_segs > ROAD_SQUARES_FROM:
+        if self.road_level and self.max_levelled_segs > ROAD_SQUARES_FROM:
             # a large network is then buffered in squares (``roads.road_bands``), whose outline
             # differs from the one piece's by half a metre: the key says so, and the default
-            # limit, which never cuts, leaves it as it was
+            # limit, which never cuts, leaves it as it was, as does the level without roads
             doc["road_squares"] = ROAD_SQUARES
         return doc
 
