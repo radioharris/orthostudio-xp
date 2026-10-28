@@ -317,6 +317,24 @@ def test_a_line_slower_than_the_hedge_delay_is_not_doubled(server: LocalServer) 
     assert fetcher.stats().hedges <= fetch_mod.HEDGE_SAMPLES, fetcher.stats().hedges
 
 
+def test_stuck_requests_do_not_raise_the_hedge_delay(server: LocalServer) -> None:
+    """One request in eight stuck on its way, as on a dead connection, each answered by its copy.
+    Timed from the stuck request's start, every such answer came after the delay: past 5 % of
+    them the delay doubled at each turn of the ring, until a stuck request waited out its whole
+    stall (found in review, 2026-10-28). The copy's own time is the line's pace."""
+    fetcher = Fetcher(hedge_after_s=0.1, max_in_flight=8, start_in_flight=8, timeout_s=10.0)
+    reqs = [
+        FetchRequest(f"k{i}", server.url(f"slow/{i}" if i % 8 == 0 else "delay/5"), host_group="p")
+        for i in range(400)
+    ]
+    t0 = time.monotonic()
+    results = run(fetch(fetcher, reqs))
+    wall = time.monotonic() - t0
+    assert all(r.status == 200 and r.error is None for r in results)
+    assert fetcher.stats().hedges == 50
+    assert wall < 5.0, wall  # each stall of 5 s waited out: some 30 s
+
+
 def test_the_hedge_delay_follows_the_groups_pace() -> None:
     group = fetch_mod._Group("p", 8, 8)
     assert group.hedge_after(1.0) == 1.0  # nothing known yet

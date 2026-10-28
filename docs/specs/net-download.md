@@ -190,9 +190,14 @@ set the estimate alone.
   Both failing = the attempt failed.
 - **The delay follows the line's pace (2026-10-28).** A transfer is doubled once it has waited
   `hedge_after_s`, or twice the time 95 % of its group's last 200 answers took when that is longer
-  (`_Group.hedge_after`; until 20 answers are in, `hedge_after_s` alone). An answer's time counts
-  from its attempt's start, as the delay does, so a copy that won does not make the line look
-  faster than it is; the answers are kept across a decrease of the window. A fixed delay doubled
+  (`_Group.hedge_after`; until 20 answers are in, `hedge_after_s` alone). An answer's time is that
+  of the transfer that gave it, from its own start; the answers are kept across a decrease of the
+  window. Counted from the attempt's start (until review, 2026-10-28), a request stuck on a dead
+  connection and answered by its copy came after the delay, and past 5 % of such answers the delay
+  doubled at each turn of the ring: one request in eight stuck for 5 s, 1 000 images from the local
+  server, the delay rose from 0.1 s to 10 s and the images took 37 s instead of 2.4
+  (`test_stuck_requests_do_not_raise_the_hedge_delay` asks 400). On the full line below, the
+  transfer's own time asks 27 copies for 35.3 useful pieces a second. A fixed delay doubled
   nearly every image on a slow line, where every answer takes longer than it, and the copies loaded
   the line further: on 25 tiles at 0.3 MB/s, 6 046 of a tile's 6 144 images were asked twice and
   18 useful pieces a second came of 36. On a line where every answer takes longer than the delay

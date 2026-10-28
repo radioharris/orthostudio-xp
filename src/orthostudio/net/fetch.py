@@ -307,9 +307,12 @@ class _Group:
         than it: 6 046 of 6 144 at 0.3 MB/s, and the copies slowed the line further, so that the
         next answers were later still (2026-10-28). Read against the line's own pace, a request
         stuck on its way is still doubled, and the others, merely queued behind each other, are
-        not. The time of an answer is counted from its attempt's start, as this delay is, so a copy
-        that won does not make the line look faster than it is; and unlike :attr:`latencies`, the
-        answers are kept across a decrease of the window."""
+        not. The time of an answer is that of the transfer that gave it, from its own start: counted
+        from the attempt's start, a stuck request answered by its copy came after the delay, and
+        past 5 % of such answers the delay doubled at each turn of the ring, up to 10 s, which a
+        stuck request then waited out (one in eight stuck, 1 000 images: 37 s instead of 2, found
+        in review, 2026-10-28). Unlike :attr:`latencies`, the answers are kept across a decrease of
+        the window."""
         if len(self.answer_times) < HEDGE_SAMPLES:
             return floor
         ranked = sorted(self.answer_times)
@@ -705,14 +708,13 @@ class Fetcher:
         else:
             self._retries += 1
         try:
-            begun = _now()
             outcome = await self._attempt(pending, group, session)
             now = _now()
             group.record(outcome, now)
             if outcome.kind == "ok":
-                # from the attempt's start, as the hedge's delay counts: a copy that won answered
-                # sooner than the request waited
-                group.answer_times.append(now - begun)
+                # the time of the transfer that answered, from its own start: a request stuck on
+                # a dead connection and answered by its copy is not the line's pace
+                group.answer_times.append(outcome.latency)
             pending.last = outcome
             if outcome.kind == "pushback" and not self._cancelled:
                 # A 429 obeyed is not a failure of the request: it is re-queued at the tail
