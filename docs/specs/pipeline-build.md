@@ -816,12 +816,17 @@ tiles from a local server took 62 s and 63 s on average, the images at the same 
 second, and from Bing the two versions differed less than Bing does from one tile to the next; the
 tiles were the same to the byte in every run.
 
-The masks node's `ram_mb` is `300 + 800 x workers` MB **when its tile or a neighbour has water the
-masks draw** (`masks_ram_from`: the `water_bits_counts` of each mesh's `stats.json`, the sea and the
-water marked like it, every water triangle with `use_masks_for_inland`), and 300 MB otherwise:
-inland, the masks took a second and started no pool, and their 5.1 GB on 8 threads kept every
-tile's masks, so its images, from starting beside a big city's tracing on 16 GB (2026-10-28). A
-mesh that does not say reserves the pool. **The same `workers` is given to the
+The masks node reserves **a worker for each cell with water to draw** (`masks_ram_from`): 300 MB,
+and for each cell, as many as the pool has (`masks_workers`, the cap of `worker_count`), what one
+worker of the profile takes (`masks_worker_mb`: `sand` 250 MB, `rocks` 710, `3steps` 990, the
+distance masks 970; `masks-build.md` 6.2). The cells are counted before it starts, from the
+`water_tris.npz` of the tile and its neighbours (`masks.water.mask_cell_count`, the cutting the
+masks use themselves), read only when their `stats.json` has water the masks draw (`water_bits_counts`:
+the sea and the water marked like it, every water triangle with `use_masks_for_inland`); a mesh
+that does not say reserves the whole pool. Every masks node reserved `300 + 800 x workers`: 5.1 GB
+on 8 threads and 6.7 on 14, for masks that took a second, inland with no cell, around a lake with
+two to twelve; on 16 GB no tile's masks, so no images, started beside a big city's tracing
+(2026-10-28). **The same `workers` is given to the
 rule**: `_masks_run` binds `MasksJob(workers=masks_workers(env), cancel=...)`, the rule passes it to
 `build_masks`, and `worker_count` honours it, so the declared budget describes the pool that starts.
 `masks_workers(env)` is `$OSXP_MASKS_WORKERS` when it is a positive integer, else

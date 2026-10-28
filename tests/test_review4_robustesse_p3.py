@@ -297,16 +297,17 @@ def test_the_masks_node_budgets_for_the_worker_count_the_rule_uses(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """FINDING M1, FIXED (test amended): ``_masks_ram_mb`` budgets
-    ``300 + 800 x masks_workers(env)`` and the node now *passes that number* to the rule
+    ``300 + a worker's profile x masks_workers(env)`` (250 MB for ``sand``, 2026-10-28) and the
+    node now *passes that number* to the rule
     (``MasksJob.workers``), which passes it to ``build_masks``. The default of
     ``worker_count`` is capped at ``MAX_WORKERS`` too, so even an unbound rule cannot start
     one process per core."""
     monkeypatch.delenv("OSXP_MASKS_WORKERS", raising=False)
     env = BuildEnv.create([_spec(tmp_path)])
     env.workers = 2
-    declared = buildmod._masks_ram_mb(env)
+    declared = buildmod._masks_ram_mb(env, masks_rule.MasksParams())
     budgeted_workers = buildmod.masks_workers(env)
-    assert budgeted_workers == 2 and declared == 300 + 800 * 2
+    assert budgeted_workers == 2 and declared == 300 + 250 * 2
     with masks_rule.masks_job(masks_rule.MasksJob(workers=budgeted_workers)):
         job = masks_rule.current_masks_job()
         assert job is not None
@@ -636,21 +637,22 @@ def test_three_masks_nodes_may_run_at_once_each_with_its_own_process_pool(
     """FINDING M1 (the batch half), FIXED (test amended): ``orthostudio.masks`` still takes ONE
     ``subprocess`` slot and starts a pool of its own, but the pool is the one the node
     budgeted for, so what a batch can really use is what the scheduler was told
-    (``slots x (300 + 800 x workers)`` MB) and its RAM budget can do its job."""
+    (``slots x (300 + a worker's profile x workers)`` MB, 250 for ``sand`` since 2026-10-28)
+    and its RAM budget can do its job."""
     monkeypatch.delenv("OSXP_MASKS_WORKERS", raising=False)
     from orthostudio.masks.water import mask_cells
 
     slots = buildmod.default_subprocess_slots()
     cpus = os.cpu_count() or 4
     env = BuildEnv.create([_spec(tmp_path)])
-    budgeted = slots * buildmod._masks_ram_mb(env)
+    budgeted = slots * buildmod._masks_ram_mb(env, masks_rule.MasksParams())
     # a coastal tile at mask_zl 16: 13 x 17 cells of the mask grid, so the cap is cpu_count
     rng = mask_cells(TILE, 16)
     cells = ((rng.til_x_max - rng.til_x_min) // 16 + 1) * (
         (rng.til_y_max - rng.til_y_min) // 16 + 1
     )
     real_workers = worker_count(cells, buildmod.masks_workers(env))
-    real = slots * (300 + 800 * real_workers)
+    real = slots * (300 + buildmod.masks_worker_mb(masks_rule.MasksParams()) * real_workers)
     assert real_workers == min(cells, cpus, 8, env.workers)
     assert real == budgeted  # the budget now describes the pool that starts
     print(f"slots={slots} cells@zl16={cells} workers={real_workers} {budgeted=} MB {real=} MB")

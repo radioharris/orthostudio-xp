@@ -15,7 +15,7 @@ does, so the attribution is bit for bit the same.
 from __future__ import annotations
 
 import math
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from itertools import pairwise
 from pathlib import Path
@@ -215,7 +215,6 @@ def water_triangles(
     drawn with the same fill, so the image does not depend on it.
     """
     rng = mask_cells(tile, mask_zl)
-    step = TEXTURE_TILES
     sea_cells: list[NDArray[np.int64]] = []
     sea_tris: list[NDArray[np.float64]] = []
     inland_cells: list[NDArray[np.int64]] = []
@@ -226,47 +225,16 @@ def water_triangles(
         tris, bits, bary_lon, bary_lat = _water_of(mesh, precomputed)
         if tris.shape[0] == 0:
             continue
-        sea_sel = bits >= 2 if not use_masks_for_inland else bits != 0
         inland_sel = bits == INLAND_BIT
-        til_x, til_y = _orthogrid_vec(bary_lat, bary_lon, mask_zl)
-        in_range = (
-            (til_x >= rng.til_x_min - step)
-            & (til_x <= rng.til_x_max + step)
-            & (til_y >= rng.til_y_min - step)
-            & (til_y <= rng.til_y_max + step)
+        keep, per_tri, cells, til_x, til_y, in_range = _sea_cells(
+            bits, bary_lon, bary_lat, rng, mask_zl, use_masks_for_inland
         )
         px, py = _pix_vec(mesh.vertices[:, 1], mesh.vertices[:, 0], mask_zl)
         corners = np.stack((px[tris], py[tris]), axis=-1)  # (n, 3, 2)
 
-        keep = np.flatnonzero(sea_sel & in_range)
         if keep.size:
-            fine_x, fine_y = _orthogrid_vec(bary_lat[keep], bary_lon[keep], mask_zl + 2)
-            qa = (fine_x // step) % 4
-            qb = (fine_y // step) % 4
-            cx, cy = til_x[keep], til_y[keep]
-            dx = np.zeros((keep.size, 4), dtype=np.int64)
-            dy = np.zeros((keep.size, 4), dtype=np.int64)
-            use = np.zeros((keep.size, 4), dtype=bool)
-            use[:, 0] = True
-            left, right = qa == 0, qa == 3
-            top, bottom = qb == 0, qb == 3
-            dx[:, 1] = np.where(left, -step, step)
-            use[:, 1] = left | right
-            dy[:, 2] = np.where(top, -step, step)
-            use[:, 2] = top | bottom
-            dx[:, 3] = dx[:, 1]
-            dy[:, 3] = dy[:, 2]
-            use[:, 3] = use[:, 1] & use[:, 2]
-            flat = use.ravel()
-            cells = np.stack(
-                (
-                    (cx[:, None] + dx).ravel()[flat],
-                    (cy[:, None] + dy).ravel()[flat],
-                ),
-                axis=1,
-            )
             sea_cells.append(cells)
-            sea_tris.append(np.repeat(corners[keep], use.sum(axis=1), axis=0))
+            sea_tris.append(np.repeat(corners[keep], per_tri, axis=0))
 
         # Ortho4XP only runs its second, inland-only pass when use_masks_for_inland is off.
         keep = (
@@ -286,6 +254,95 @@ def water_triangles(
         cell: WaterTriangles(sea=sea, inland=inland_by_cell.get(cell, empty))
         for cell, sea in sea_by_cell.items()
     }
+
+
+def _sea_cells(
+    bits: NDArray[np.int64],
+    bary_lon: NDArray[np.float64],
+    bary_lat: NDArray[np.float64],
+    rng: MaskRange,
+    mask_zl: int,
+    use_masks_for_inland: bool,
+) -> tuple[
+    NDArray[np.int64],
+    NDArray[np.int64],
+    NDArray[np.int64],
+    NDArray[np.int64],
+    NDArray[np.int64],
+    NDArray[np.bool_],
+]:
+    """Of a mesh's water triangles: the ones drawn as sea within the tile's range widened by one
+    cell, how many cells each falls in, those cells (a triangle in an outer quarter of its cell
+    goes into the neighbouring ones whose margin it falls in, ``O4_Mask_Utils.py:494-582``), and
+    every triangle's cell and whether it is in range."""
+    step = TEXTURE_TILES
+    sea_sel = bits >= 2 if not use_masks_for_inland else bits != 0
+    til_x, til_y = _orthogrid_vec(bary_lat, bary_lon, mask_zl)
+    in_range = (
+        (til_x >= rng.til_x_min - step)
+        & (til_x <= rng.til_x_max + step)
+        & (til_y >= rng.til_y_min - step)
+        & (til_y <= rng.til_y_max + step)
+    )
+    keep = np.flatnonzero(sea_sel & in_range)
+    if not keep.size:
+        return (
+            keep,
+            np.zeros(0, dtype=np.int64),
+            np.zeros((0, 2), dtype=np.int64),
+            til_x,
+            til_y,
+            in_range,
+        )
+    fine_x, fine_y = _orthogrid_vec(bary_lat[keep], bary_lon[keep], mask_zl + 2)
+    qa = (fine_x // step) % 4
+    qb = (fine_y // step) % 4
+    cx, cy = til_x[keep], til_y[keep]
+    dx = np.zeros((keep.size, 4), dtype=np.int64)
+    dy = np.zeros((keep.size, 4), dtype=np.int64)
+    use = np.zeros((keep.size, 4), dtype=bool)
+    use[:, 0] = True
+    left, right = qa == 0, qa == 3
+    top, bottom = qb == 0, qb == 3
+    dx[:, 1] = np.where(left, -step, step)
+    use[:, 1] = left | right
+    dy[:, 2] = np.where(top, -step, step)
+    use[:, 2] = top | bottom
+    dx[:, 3] = dx[:, 1]
+    dy[:, 3] = dy[:, 2]
+    use[:, 3] = use[:, 1] & use[:, 2]
+    flat = use.ravel()
+    cells = np.stack(((cx[:, None] + dx).ravel()[flat], (cy[:, None] + dy).ravel()[flat]), axis=1)
+    return keep, use.sum(axis=1), cells, til_x, til_y, in_range
+
+
+def mask_cell_count(
+    water_tris: Iterable[MeshWaterTris],
+    tile: TileRef,
+    mask_zl: int,
+    *,
+    use_masks_for_inland: bool = False,
+) -> int:
+    """How many cells of ``tile``'s masks have water to draw, the jobs of ``build_masks``, from the
+    ``water_tris.npz`` of the tile and its neighbours alone: no mesh is read. The masks' pool
+    starts one worker a cell, as many as it has (``worker_count``)."""
+    rng = mask_cells(tile, mask_zl)
+    found: set[tuple[int, int]] = set()
+    for wt in water_tris:
+        if wt.water_bits.shape[0] == 0:
+            continue
+        _, _, cells, _, _, _ = _sea_cells(
+            wt.water_bits.astype(np.int64),
+            wt.bary[:, 0],
+            wt.bary[:, 1],
+            rng,
+            mask_zl,
+            use_masks_for_inland,
+        )
+        for til_x, til_y in np.unique(cells, axis=0).tolist():
+            if rng.contains(til_x, til_y):
+                found.add((til_x, til_y))
+    return len(found)
 
 
 def _water_of(

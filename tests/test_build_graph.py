@@ -35,6 +35,7 @@ from orthostudio.pipeline.build import (
     _masks_ram_mb,
     declare,
     make_scheduler,
+    masks_workers,
     road_points,
     source_ref,
     stored_neighbour_mesh,
@@ -898,5 +899,48 @@ def test_the_masks_reserve_their_pool_only_where_there_is_water_to_draw(
     inputs[next(n for n in masks.inputs if n not in ("mesh", "dem", "custom_extent"))] = (
         _mesh_stats(tmp_path, "nb", neighbour_bits)
     )
-    expected = _masks_ram_mb(env) if pool else 300
+    expected = _masks_ram_mb(env, masks.params) if pool else 300
     assert masks.ram_from(inputs) == expected
+
+
+@pytest.mark.parametrize(
+    ("config", "worker_mb"),
+    [
+        ({}, 250),  # sand, the default: 242 MB a worker (masks-build.md 6.2)
+        ({"masking_mode": "rocks"}, 710),
+        ({"masking_mode": "3steps"}, 990),
+        ({"distance_masks_too": True}, 970),
+    ],
+)
+def test_the_masks_pool_is_reserved_by_its_profile(
+    tmp_path: Path, env: BuildEnv, config: dict[str, object], worker_mb: int
+) -> None:
+    """Every profile counted 800 MB a worker: three times what ``sand`` takes, less than
+    ``3steps``."""
+    (g,) = _declare([_spec(tmp_path, config=config)], _sched(env), env)
+    assert _masks_ram_mb(env, g.masks.params) == 300 + worker_mb * masks_workers(env)
+
+
+def test_the_masks_reserve_a_worker_for_each_cell_with_water(tmp_path: Path, env: BuildEnv) -> None:
+    """A lake within one cell starts one worker, not the whole pool: the cells are counted from
+    the meshes' ``water_tris.npz`` before the masks start (+34-084: 5 cells, 2 masks drawn)."""
+    from orthostudio.imagery.grid import tile_to_wgs84
+    from orthostudio.masks.water import WATER_TRIS_FORMAT
+
+    (g,) = _declare([_spec(tmp_path)], _sched(env), env)
+    masks = g.masks
+    assert masks_workers(env) == 2
+    mesh = _mesh_stats(tmp_path, "tile", {"1": 100, "4": 1})
+    # the middle quarters of cell (8432, 6000) of +43+005 at ZL 14: no neighbour cell's margin
+    lat, lon = tile_to_wgs84(4 * 8432 + 24, 4 * 6000 + 24, 16)
+    np.savez(
+        mesh.path / "water_tris.npz",
+        format=np.array(WATER_TRIS_FORMAT),
+        corners=np.zeros((1, 3), dtype=np.int32),
+        water_bits=np.array([4], dtype=np.uint8),
+        bary=np.array([[lon, lat]]),
+    )
+    inputs = {name: None for name in masks.inputs}
+    inputs["mesh"] = mesh
+    assert masks.ram_from(inputs) == 300 + 250 * 1
+    assert _masks_ram_mb(env, masks.params) == 300 + 250 * 2  # the whole pool

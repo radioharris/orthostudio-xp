@@ -72,9 +72,9 @@ from orthostudio.machine import _windows_memory_mb, physical_memory_mb  # noqa: 
 from orthostudio.masks.build import MAX_WORKERS as MASKS_MAX_WORKERS
 from orthostudio.masks.build import env_workers as masks_env_workers
 from orthostudio.masks.rule import MASKS as OSXP_MASKS
-from orthostudio.masks.rule import MasksJob, masks_job
+from orthostudio.masks.rule import MasksJob, masks_job, read_water_tris_artifact
 from orthostudio.masks.rule import MasksParams as OsxpMasksParams
-from orthostudio.masks.water import NEIGHBOUR_OFFSETS
+from orthostudio.masks.water import NEIGHBOUR_OFFSETS, mask_cell_count
 from orthostudio.mesh.build import mesh_file_name
 from orthostudio.mesh.mesh_file import as_written, read_mesh, read_mesh_npz
 from orthostudio.mesh.rule import OSXP_MESH, MeshJob, mesh_job
@@ -1892,10 +1892,24 @@ MASKS_BASE_MB = 300
 neighbours, read from their meshes."""
 
 
-def _masks_ram_mb(env: BuildEnv) -> int:
-    """RAM of the native masks node: it runs its own process pool inside (spec 8.6)."""
-    workers = masks_workers(env)
-    return MASKS_BASE_MB + 800 * workers
+MASKS_WORKER_MB = {"sand": 250, "rocks": 710, "3steps": 990}
+"""One masks worker at its peak, one cell in flight, by masking profile (``masks-build.md`` 6.2,
+measured: 242, 703 and 981 MB). Every profile counted 800 MB, three times what ``sand``, the
+default, takes, and less than ``3steps`` does."""
+
+MASKS_DISTANCE_MB = 970
+"""One worker making the distance masks too (``distance_masks_too``): 962 MB measured."""
+
+
+def masks_worker_mb(params: OsxpMasksParams) -> int:
+    """What one masks worker takes for ``params``' profile; an unknown one counts the heaviest."""
+    mb = MASKS_WORKER_MB.get(params.masking_mode, max(MASKS_WORKER_MB.values()))
+    return max(mb, MASKS_DISTANCE_MB) if params.distance_masks_too else mb
+
+
+def _masks_ram_mb(env: BuildEnv, params: OsxpMasksParams) -> int:
+    """RAM of the native masks node with its whole pool, which it runs inside (spec 8.6)."""
+    return MASKS_BASE_MB + masks_worker_mb(params) * masks_workers(env)
 
 
 def masks_water_triangles(mesh: ArtifactRef | None, use_masks_for_inland: bool) -> int | None:
@@ -1915,22 +1929,41 @@ def masks_water_triangles(mesh: ArtifactRef | None, use_masks_for_inland: bool) 
 
 
 def masks_ram_from(
-    env: BuildEnv, use_masks_for_inland: bool
+    env: BuildEnv, params: OsxpMasksParams
 ) -> Callable[[Mapping[str, ArtifactRef | None]], int]:
-    """The masks node's ``ram_from``: its pool's memory only when the tile or a neighbour has water
-    the masks draw. Every masks node reserved its pool, 5.1 GB on 8 threads and 6.7 on 14, and on
-    a tile inland the masks took a second and no pool: on 16 GB no tile's masks, so no images,
+    """The masks node's ``ram_from``: a worker for each cell with water to draw, as many as the
+    pool has (``worker_count``), each at its profile's memory. The cells are counted from the
+    ``water_tris.npz`` of the tile and its neighbours (``masks.water.mask_cell_count``), read only
+    when their ``stats.json`` says there is such water. Every masks node reserved its whole pool,
+    800 MB a worker: 5.1 GB on 8 threads and 6.7 on 14, for masks that took a second, inland with
+    no cell and around a lake with two to twelve; on 16 GB no tile's masks, so no images,
     started while a big city was traced (a campaign of 12 tiles, 2026-10-28)."""
-    full = _masks_ram_mb(env)
+    tile = TileRef.parse(params.tile)
+    worker_mb = masks_worker_mb(params)
+    full = _masks_ram_mb(env, params)
 
     def ram_from(inputs: Mapping[str, ArtifactRef | None]) -> int:
-        for name, ref in inputs.items():
-            if name in ("dem", "custom_extent"):
-                continue
-            water = masks_water_triangles(ref, use_masks_for_inland)
-            if water is None or water > 0:
-                return full
-        return MASKS_BASE_MB
+        meshes = [
+            ref
+            for name, ref in inputs.items()
+            if name not in ("dem", "custom_extent") and ref is not None
+        ]
+        waters = [masks_water_triangles(ref, params.use_masks_for_inland) for ref in meshes]
+        if all(water == 0 for water in waters):
+            return MASKS_BASE_MB
+        try:
+            tris = [read_water_tris_artifact(Path(ref.path)) for ref in meshes]
+        except (OSError, ValueError, KeyError):
+            return full
+        if any(t is None for t in tris):
+            return full
+        cells = mask_cell_count(
+            [t for t in tris if t is not None],
+            tile,
+            params.mask_zl,
+            use_masks_for_inland=params.use_masks_for_inland,
+        )
+        return MASKS_BASE_MB + worker_mb * min(masks_workers(env), cells)
 
     return ram_from
 
@@ -2485,7 +2518,7 @@ def declare(
             kind="subprocess",
             # its pool's memory only once its meshes say there is water to draw
             ram_mb=MASKS_BASE_MB,
-            ram_from=masks_ram_from(env, masks_params.use_masks_for_inland),
+            ram_from=masks_ram_from(env, masks_params),
             run=_masks_run(env),
         )
         xp12: Node | None = None

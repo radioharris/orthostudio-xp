@@ -165,8 +165,8 @@ that need it, with a message that says so; the rest of the batch goes on. A trac
 memory its roads take, counted in the tile's map data once it is downloaded: a country tile at the
 service roads with round ends reserves 1.8 GB, Atlanta 6.4, about what they take. A big city
 waiting for that memory is not overtaken by the smaller tiles: it starts as soon as the room is
-there, and they follow beside it. The water masks reserve their memory only for a tile with sea or
-a large lake nearby. Until 1.2.1 every tracing counted 1.2 GB, and three big cities could start
+there, and they follow beside it. The water masks reserve memory for the squares of photo where
+there is sea or a large lake to mask, a little for a lake, nothing more inland. Until 1.2.1 every tracing counted 1.2 GB, and three big cities could start
 together whatever they took.
 
 The tracings also have places of their own, so a tile is meshed as soon as it is traced, and its
