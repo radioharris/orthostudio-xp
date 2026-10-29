@@ -384,8 +384,12 @@ export function createPlanMap(ctx) {
     return p ? p.name || p.code : code;
   }
 
+  /** The highest level a zone of ``provider`` may take; a zone "as the tiles" takes the tiles'
+   * source's. It offered every level up to ZL19 over EOX tiles, which stop at ZL14, and the build
+   * then refused the zone (2026-10-29). */
   function maxZlFor(provider) {
-    const p = provider ? providerByCode(provider) : null;
+    const code = provider || ctx.planProvider?.() || null;
+    const p = code ? providerByCode(code) : null;
     return p && Number.isInteger(p.max_zl) ? Math.min(ZONE_ZL_OFFERED, p.max_zl) : ZONE_ZL_OFFERED;
   }
 
@@ -887,7 +891,8 @@ export function createPlanMap(ctx) {
   function clampZl(zl, provider) {
     const max = maxZlFor(provider);
     if (!usableZl(zl) || zl <= max) return zl; // an unusable level waits for the user's choice
-    ctx.toast(t("zones.zl_clamped", { provider: providerLabel(provider), level: detailName(max) }));
+    const source = provider || ctx.planProvider?.() || "";
+    ctx.toast(t("zones.zl_clamped", { provider: providerLabel(source), level: detailName(max) }));
     return max;
   }
 

@@ -294,7 +294,10 @@ adds nothing. These are approximations; step 3 gives the engine's numbers.
 - **Detail level of new zones** (default 18, sized at the map centre, levels above the chosen
   source's maximum disabled) and **Imagery source of new zones** ("Same as the tiles" = `null`,
   or a registry code). Choosing a source that cannot reach the level lowers the level and says
-  so in a toast.
+  so in a toast. "Same as the tiles" takes the maximum of the tiles' source chosen in step 1:
+  over EOX tiles, ZL15 to ZL19 are disabled, since the build refuses a zone above its source's
+  maximum; choosing such tiles lowers the level with the list. Back to a source that reaches
+  higher, the level stays where it was and every level is offered again.
 - **Add detail: rectangle** and **Add detail: free shape** (7.0.2): no gesture is needed. A
   banner over the map says what to do next and holds the buttons *Point at the map centre*
   (keyboard use, with a crosshair at the centre), *Remove the last point*, *Finish* (free shape,
