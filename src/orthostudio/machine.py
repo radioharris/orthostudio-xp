@@ -15,6 +15,7 @@ import contextlib
 import ctypes
 import os
 import sys
+from collections.abc import Callable, Mapping
 from pathlib import Path
 
 __all__ = ["available_memory_mb", "children_memory_mb", "physical_memory_mb", "process_memory_mb"]
@@ -192,10 +193,48 @@ def process_memory_mb(pid: int) -> int | None:
     return None
 
 
+def _windows_started(pid: int) -> int | None:
+    """When process ``pid`` started (``GetProcessTimes``), ``None`` when it cannot be read."""
+    kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
+    handle = kernel32.OpenProcess(0x1000, False, pid)  # QUERY_LIMITED_INFORMATION
+    if not handle:
+        return None
+    try:
+        times = [ctypes.c_ulonglong() for _ in range(4)]  # creation, exit, kernel, user
+        if kernel32.GetProcessTimes(handle, *(ctypes.byref(t) for t in times)):
+            return times[0].value
+        return None
+    finally:
+        kernel32.CloseHandle(handle)
+
+
+def _descendants(
+    pid: int,
+    parents: Mapping[int, list[int]],
+    started: Callable[[int], int | None] | None = None,
+) -> list[int]:
+    """The processes under ``pid`` in ``parents`` (a parent's children by its number), theirs
+    too. With ``started``, a child that started before its parent is left out: Windows keeps the
+    number of a parent that ended, which a later process may take, where macOS and Linux give its
+    children to another. explorer.exe's parent ends at logon; the engine given its number counted
+    X-Plane and every app started from the Start menu as the batch's own (review, 2026-10-29)."""
+    found: list[int] = []
+    todo = [pid]
+    while todo:
+        parent = todo.pop()
+        kids = [p for p in parents.get(parent, []) if p != pid and p not in found]
+        if started is not None:
+            born = started(parent)
+            kids = [p for p in kids if born is not None and (started(p) or -1) >= born]
+        found += kids
+        todo += kids
+    return found
+
+
 def _children(pid: int) -> list[int]:
     """The processes ``pid`` started, and theirs, down to the last."""
-    found: list[int] = []
     if sys.platform == "darwin":
+        found: list[int] = []
         libproc = ctypes.CDLL("/usr/lib/libproc.dylib")
         todo = [pid]
         while todo:
@@ -221,18 +260,13 @@ def _children(pid: int) -> list[int]:
                 more = kernel32.Process32NextW(ctypes.c_void_p(snap), ctypes.byref(entry))
         finally:
             kernel32.CloseHandle(ctypes.c_void_p(snap))
-    else:
-        for stat in Path("/proc").glob("[0-9]*/stat"):
-            with contextlib.suppress(OSError, ValueError, IndexError):
-                # the name between parentheses may hold spaces: the parent comes after it
-                fields = stat.read_text().rsplit(")", 1)[1].split()
-                parents.setdefault(int(fields[1]), []).append(int(stat.parent.name))
-    todo = [pid]
-    while todo:
-        kids = [p for p in parents.get(todo.pop(), []) if p != pid and p not in found]
-        found += kids
-        todo += kids
-    return found
+        return _descendants(pid, parents, _windows_started)
+    for stat in Path("/proc").glob("[0-9]*/stat"):
+        with contextlib.suppress(OSError, ValueError, IndexError):
+            # the name between parentheses may hold spaces: the parent comes after it
+            fields = stat.read_text().rsplit(")", 1)[1].split()
+            parents.setdefault(int(fields[1]), []).append(int(stat.parent.name))
+    return _descendants(pid, parents)
 
 
 def children_memory_mb(pid: int | None = None) -> int | None:

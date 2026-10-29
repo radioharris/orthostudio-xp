@@ -29,6 +29,23 @@ sys.stdin.read()
 """
 
 
+def test_a_child_older_than_its_parent_is_not_counted() -> None:
+    """Windows keeps the number of a parent that ended, which a later process may take:
+    explorer.exe's parent ends at logon, and the engine given its number counted X-Plane and every
+    app started from the Start menu as the batch's own (review, 2026-10-29)."""
+    from orthostudio.machine import _descendants
+
+    engine = 100
+    parents = {
+        engine: [200, 300],  # 200 its tracing; 300 explorer.exe, from before the engine
+        200: [210],  # the tracing's own child
+        300: [310],  # X-Plane, started from explorer
+    }
+    started = {engine: 50, 200: 60, 210: 61, 300: 10, 310: 40}
+    assert sorted(_descendants(engine, parents, started.get)) == [200, 210]
+    assert sorted(_descendants(engine, parents)) == [200, 210, 300, 310]  # macOS, Linux
+
+
 def test_the_memory_free_now_is_read_on_this_computer() -> None:
     free, total = available_memory_mb(), physical_memory_mb()
     assert free is not None and total is not None

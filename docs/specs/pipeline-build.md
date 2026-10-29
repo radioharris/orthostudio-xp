@@ -361,7 +361,10 @@ gives (`expert.build_memory`, `MEMORY_SHARES`: high 80 %, medium 70 % by default
 share of every computer up to 1.2.1; `--memory` on the command line), below which the batch keeps
 to the room the computer has now (`ram_room_mb`: the memory free now, plus what the batch's own
 processes hold, less a tenth of the memory for the system; `machine.available_memory_mb`,
-`machine.children_memory_mb`): what X-Plane, the browser or the engine itself hold (5.3 GB
+`machine.children_memory_mb`, which on Windows leaves out a process started before its parent:
+Windows keeps the number of a parent that ended, which a later process may take, and the engine
+given the number of explorer.exe's parent, ended at logon, counted X-Plane and every app started
+from the Start menu as its own): what X-Plane, the browser or the engine itself hold (5.3 GB
 measured during the OSM downloads, reserved by no step) is not taken twice, and a build started
 beside them takes less, the `relief` lane of one
 (`RELIEF_LANE`): a downloaded relief (Copernicus, USGS, Canada's lidar...), one tile at a time
