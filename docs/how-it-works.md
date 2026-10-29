@@ -187,6 +187,20 @@ traced. Until 1.2.1 every tile was traced before any was meshed, and the images 
 whole batch's terrain: on 25 tiles at the service roads, the first images started after 3 min 13 s
 instead of 20 min 24 s, and the terrain was done after 8 min instead of 23.
 
+**Why a tile's images wait for Coast, even with no water.** In Works, a tile's Imagery stays
+"waiting" until its Coast step is done, and Coast waits for the tile's eight neighbours to be
+meshed. The images need the tile's DSF, which says which images there are and which carry a water
+mask; the DSF needs the masks; and the masks read the water of the neighbours, since a lake or a
+coast can cross the edge of a square. Until the neighbours are meshed, OrthoStudio XP cannot know
+that there is no water: with none, Coast then takes a second, and what the tile really waited for
+is its neighbours' tracing and mesh. A tile at the edge of the batch waits only for the neighbours
+being built with it.
+
+**Two tiles downloading at once.** The images go one tile after the other, but a tile whose
+images only wait for a few pieces to be asked again (below) lends the line to the next tile
+meanwhile, so that it does not stay idle: Works may then show two tiles' Imagery under way, the
+first at its last percent. It finishes as soon as its pieces arrive.
+
 **Big cities in pieces.** With the limit of road points raised above its 200 000 (Settings, for
 experts, Roads), a big city at the service roads has a network too large to trace in one piece: the
 roads of Atlanta, with two million points, took 23 minutes and close to 20 GB. Past 200 000
