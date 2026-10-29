@@ -386,7 +386,9 @@ cross: stop it first.
 EOX's Sentinel-2 mosaic, the whole world too but at ZL14 at most, light for flying high; EOX
 refuses images when asked too fast, and OrthoStudio XP then waits, slows down and asks again. It
 serves about 60 images a second and refuses the rest (measured 2026-10-29), so OrthoStudio XP asks
-for 50 at most, about 0.5 MB/s: much slower than Bing, whatever your line. The
+for 50 at most, about 0.5 MB/s: much slower than Bing, whatever your line. Above ZL14 EOX only
+enlarges its images, so the airports of an EOX tile are not made sharper than ZL14, whatever the
+airports' level in Settings: at ZL18 each would cost minutes for not one more detail. The
 other sources are a country's (the Netherlands, Spain, Luxembourg, Japan, the United States): the
 list puts first those that cover the tiles you chose, and a source that misses a tile says so,
 since its server has no image there. *My sources…* adds a source OrthoStudio XP does not ship,

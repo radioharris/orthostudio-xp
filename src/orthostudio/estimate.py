@@ -441,9 +441,10 @@ def _airport_zones(
     extent = 1000 * params.cover_extent
     dx, dy = extent * m_to_lon(tile.lat), extent * M_TO_LAT
     zones = []
+    zl, provider = params.airport_zl(nodes.spec.provider), nodes.spec.provider
     for west, south, east, north in boxes:
         w, s, e, n = west - dx, south - dy, east + dx, north + dy
-        zones.append([[s, w, s, e, n, e, n, w], params.cover_zl, nodes.spec.provider])
+        zones.append([[s, w, s, e, n, e, n, w], zl, provider])
     return zones, source
 
 

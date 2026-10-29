@@ -36,7 +36,7 @@ class DsfParams(RuleParams):          # frozen pydantic, subset_of(cfg) works
     imprint_masks_to_dds: bool = True ; use_masks_for_inland: bool = False
     mesh_zl: int = 19 ; mask_zl: int = 14 ; default_zl: int = 16 ; default_website: str = "BI"
     zone_list: list[Zone] = [] ; cover_airports_with_highres: str = "False"
-    cover_zl: int = 18 ; cover_extent: float = 1.0
+    cover_zl: int = 18 ; cover_zl_caps: dict[str, int] = {} ; cover_extent: float = 1.0
     overlay_lod: float = 25000.0 ; use_test_texture: bool = False
 
 @dataclass TextureJob: texture: TextureId ; kinds: frozenset[TerKind]

@@ -174,7 +174,11 @@ Every mesh cell `(til_x, til_y)` maps to `(til_x_text, til_y_text, zl, provider)
    corner, `gtile_to_wgs84` of `+16` for the south-east corner, `:147-164`), clamped to
    `[0, 1]`, and the rectangle `[round((1 - ymax) * 4095) : round((1 - ymin) * 4095) + 1,
    round(xmin * 4095) : round(xmax * 4095) + 1]` of a boolean 4096² array is set. A cell whose
-   pixel is set gets `zl = max(zl, cover_zl)` (`:217-218`).
+   pixel is set gets `zl = max(zl, cover_zl)` (`:217-218`), `cover_zl` no higher than the
+   `max_zl` of the cell's source (`cover_zl_caps`, filled by the build for the tile's sources
+   that stop below it, absent from the key when none does): EOX stops at ZL14 and serves its
+   ZL14 image enlarged above, and an EOX tile's airports raised to ZL18 were 16 128 pieces each
+   for not one more detail (2026-10-29). Ortho4XP raises them to `cover_zl` whatever the source.
 4. The texture of the cell at its `zl` is `16 * (int(til / 2 ** (mesh_zl - zl)) // 16)` for
    both indices (`:219-224`).
 5. `"Existing"` (`:231-257`): every `textures/*.dds` of the existing build (name

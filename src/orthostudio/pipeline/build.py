@@ -1741,6 +1741,25 @@ average): 3.2 GB for 4.8 million triangles, 5.7 to 6.3 GB for Atlanta's 8.9 mill
 changes little. Every DSF reserved 3 GB, below what each of those twelve took."""
 
 
+def cover_zl_caps(cfg: Mapping[str, Any], registry: Mapping[str, Provider]) -> dict[str, int]:
+    """The sources of a tile, its own and its zones', that stop below the level its airports are
+    raised to, with the level they stop at (``DsfParams.cover_zl_caps``); none when its airports
+    are not raised."""
+    if str(cfg.get("cover_airports_with_highres")) not in ("True", "ICAO"):
+        return {}
+    cover = int(cfg.get("cover_zl", 18))
+    codes = {str(cfg.get("default_website") or "")}
+    for entry in cfg.get("zone_list") or []:
+        with contextlib.suppress(TypeError, ValueError):
+            _coords, _zl, provider = entry
+            codes.add(str(provider or cfg.get("default_website") or ""))
+    return {
+        code: source.max_zl
+        for code in sorted(codes)
+        if (source := registry.get(code)) is not None and source.max_zl < cover
+    }
+
+
 def dsf_ram_from(inputs: Mapping[str, ArtifactRef | None]) -> int:
     """The DSF node's ``ram_from``: :data:`DSF_MB_PER_MILLION_TRIANGLES` a million triangles of
     its mesh, rounded up to 100 MB; the 3 GB every DSF declared when the mesh does not say."""
@@ -2677,7 +2696,13 @@ def declare(
                     run=_env_run(env),
                 )
         dsf_params = TileDsfParams.subset_of(
-            {**cfg, **NO_DECALS, "tile": name, "creation_agent": spec.creation_agent}
+            {
+                **cfg,
+                **NO_DECALS,
+                "tile": name,
+                "creation_agent": spec.creation_agent,
+                "cover_zl_caps": cover_zl_caps(cfg, env.registry),
+            }
         )
         needs_apt = dsf_params.cover_airports_with_highres in ("True", "ICAO")
         dsf = reg.node(

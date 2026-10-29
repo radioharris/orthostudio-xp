@@ -9,7 +9,7 @@ canonical dump enters the artefact key.
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import Field
 
@@ -49,6 +49,11 @@ class DsfParams(RuleParams):
     cover_airports_with_highres: str = "False"
     """``False`` / ``True`` / ``ICAO`` / ``Existing`` (a string in Ortho4XP, kept as such)."""
     cover_zl: int = 18
+    cover_zl_caps: dict[str, int] = Field(default_factory=dict)
+    """The highest level of each source of the tile that stops below ``cover_zl``: its airports
+    are raised to that level, no further. EOX stops at ZL14, and above it serves its ZL14 image
+    enlarged: the airports of an EOX tile at ZL18 were 16 128 pieces more for each, and minutes,
+    for not one more detail (2026-10-29). Empty, it leaves the key of every tile as it was."""
     cover_extent: float = 1.0
     overlay_lod: float = 25000.0
     use_test_texture: bool = False
@@ -66,6 +71,16 @@ class DsfParams(RuleParams):
             terrain_casts_shadows=self.terrain_casts_shadows,
             use_test_texture=self.use_test_texture,
         )
+
+    def canonical(self) -> dict[str, Any]:
+        doc = super().canonical()
+        if not self.cover_zl_caps:  # no source of the tile stops below its airports' level
+            doc.pop("cover_zl_caps", None)
+        return doc
+
+    def airport_zl(self, provider: str) -> int:
+        """The level the airports of ``provider``'s cells are raised to."""
+        return min(self.cover_zl, self.cover_zl_caps.get(provider, self.cover_zl))
 
     @property
     def quad_capacity(self) -> int:

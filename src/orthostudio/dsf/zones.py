@@ -334,7 +334,7 @@ def texture_map(
             claimed.add(chosen)
             zl, provider = values[chosen]
             if apt_arr is not None and apt_arr[y, x]:
-                zl = max(zl, params.cover_zl)
+                zl = max(zl, params.airport_zl(provider))
             factor = 2 ** (mesh_zl - zl)
             tex_x[row, col] = 16 * (int(til_x / factor) // 16)
             tex_y[row, col] = 16 * (int(til_y / factor) // 16)
