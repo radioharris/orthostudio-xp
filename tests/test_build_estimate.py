@@ -15,11 +15,14 @@ from orthostudio.airports import AirportIndex
 from orthostudio.airports_vec.artefact import write_airports
 from orthostudio.airports_vec.model import Airport as VectorAirport
 from orthostudio.airports_vec.model import AirportSet
+from orthostudio.dem.raster import cell_has_land
+from orthostudio.dem.sources import cells_of_block, elevation_path
 from orthostudio.dsf.zones import M_TO_LAT, m_to_lon
 from orthostudio.estimate import (
     BC1_BYTES,
     DEFAULT_KB_PER_REQUEST,
     DEFAULT_REQ_PER_S,
+    RELIEF_CELL_MB,
     RUNWAY_MARGIN_M,
     ProbeResult,
     _airport_zones,
@@ -184,6 +187,45 @@ def test_probe_result_and_network_time(tmp_path: Path, env: BuildEnv) -> None:
     clarity = ProbeResult(requests=20, seconds=0.3, bytes=1, errors=0, in_flight=192,
                           server_req_per_s=522.0)  # fmt: skip
     assert clarity.throughput == 522.0
+
+
+@pytest.mark.parametrize(("provider", "zl", "kb"), [("BI", 16, 14.2), ("EOX", 14, 9.5)])
+def test_a_piece_counts_what_its_source_and_level_weigh(
+    tmp_path: Path, env: BuildEnv, provider: str, zl: int, kb: float
+) -> None:
+    """Every piece counted 13 kB, the Bing ZL14 mean: Bing builds at ZL16 downloaded 6 to 11 %
+    more than the Plan said, EOX's pieces weigh 9.5 kB (2026-10-29)."""
+    spec = dataclasses.replace(_spec(tmp_path, zl=zl), provider=provider)
+    (t,) = estimate([spec], env=env).tiles
+    assert t.requests and t.download_mb == pytest.approx(t.requests * kb / 1000)
+
+
+@pytest.mark.parametrize(("source", "block"), [("COP30", True), ("NED1/3", False), ("XP12", False)])
+def test_the_relief_cells_to_download_are_counted_once(
+    tmp_path: Path, env: BuildEnv, monkeypatch: pytest.MonkeyPatch, source: str, block: bool
+) -> None:
+    """A build of three tiles on Copernicus downloaded 0.47 GB of relief the Plan did not count
+    (2026-10-29): the cells missing from the elevation folder count, Copernicus' 3x3 block, the
+    USGS's own cell, X-Plane's relief nothing; a cell two levels of a tile read counts once."""
+    folder = tmp_path / "elevation"
+    monkeypatch.setenv("OSXP_ELEVATION_DIR", str(folder))
+    specs = [
+        dataclasses.replace(_spec(tmp_path, zl=zl), config={"custom_dem": source})
+        for zl in (14, 15)
+    ]
+    cells = cells_of_block(T.lat, T.lon) if block else [(T.lat, T.lon)]
+    land = [c for c in cells if cell_has_land(*c)]
+    size = RELIEF_CELL_MB.get(source, 0.0)
+    tiles = estimate(specs, env=env).tiles
+    assert sum(t.relief_mb for t in tiles) == pytest.approx(size * len(land))
+    assert tiles[0].download_mb == pytest.approx(tiles[0].requests * 13 / 1000 + tiles[0].relief_mb)
+    if size:  # one cell already in the folder is not downloaded again
+        there = elevation_path(source, folder, *land[0])
+        there.parent.mkdir(parents=True)
+        there.write_bytes(b"cell")
+        assert sum(t.relief_mb for t in estimate(specs, env=env).tiles) == pytest.approx(
+            size * (len(land) - 1)
+        )
 
 
 def test_two_specs_share_the_scheduler_plan(tmp_path: Path, env: BuildEnv) -> None:

@@ -20,6 +20,13 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from orthostudio.dem.raster import cell_has_land
+from orthostudio.dem.sources import (
+    GLOBAL_SOURCES,
+    cells_of_block,
+    default_elevation_dir,
+    elevation_path,
+)
 from orthostudio.dsf.params import DsfParams
 from orthostudio.dsf.zones import M_TO_LAT, airport_covers, m_to_lon
 from orthostudio.errors import OsxpError
@@ -65,7 +72,19 @@ BC1_BYTES = 11_184_952
 """DXT1 4096² with 13 mips (``docs/benchmarks/baseline-ortho4xp.md``)."""
 BC3_BYTES = 22_369_776
 DEFAULT_KB_PER_REQUEST = 13.0
-"""Mean Bing ZL14 body of the reference tile (57 MB / 4 352)."""
+"""Mean Bing ZL14 body of the reference tile (57 MB / 4 352): a piece of a source and level
+:data:`KB_PER_PIECE` does not hold."""
+KB_PER_PIECE: dict[tuple[str, int], float] = {("BI", 16): 14.2, ("BI", 18): 11.7, ("EOX", 14): 9.5}
+"""Mean body of an image piece by source and level, the pieces this app stored (2026-10-29):
+Bing ZL16 14.2 kB over 7 629 images, Bing ZL18 11.7 over 2 797, EOX ZL14 9.5 over 132. The Plan
+counted 13 kB for every piece, without a probe: Bing builds at ZL16 with their airports at ZL18
+downloaded 6 to 11 % more than it said."""
+RELIEF_CELL_MB: dict[str, float] = {"COP30": 43.5, "NED1/3": 476.0}
+"""Mean file of one relief cell a build downloads, by source (2026-10-29): Copernicus 43.5 MB over
+46 cells (around Atlanta 46.0, the Rhône valley and Languedoc 38.9, a coastal one 6.1), the USGS at
+1/3" 476 MB (one cell, +33-085). The Plan counted none: a
+build of three tiles on Copernicus downloaded 0.47 GB of relief besides its images. X-Plane 12's
+relief is on the disk already; the other sources are not counted."""
 DEFAULT_REQ_PER_S = 400.0
 """Conservative sustained throughput without a probe (``net-download.md`` measured 1 000+)."""
 OTHER_ARTEFACTS_GB = 0.25
@@ -184,6 +203,8 @@ class TileEstimate:
     """What the steps to run write besides the images (`_other_gb`)."""
     textures_prepare: int = 0
     """The textures the build prepares: ``textures_total`` but those it takes as they are."""
+    relief_mb: float = 0.0
+    """MB of relief cells the build downloads (`_relief_mb`), included in ``download_mb``."""
     textures_kept: int = 0
     """The textures the build takes as they are from the store (`_textures_kept`): all of them
     when the textures step is in the store. The page said every image of a tile was to prepare and
@@ -226,6 +247,7 @@ class TileEstimate:
             },
             "requests": self.requests,
             "download_mb": round(self.download_mb, 1),
+            "relief_mb": round(self.relief_mb, 1),
             "dds_gb": round(self.dds_gb, 3),
             "other_gb": round(self.other_gb, 3),
             "compute_s": round(self.compute_s, 1),
@@ -312,18 +334,50 @@ def probe_network(
 # -- estimate ------------------------------------------------------------------------------------
 
 
-def _requests_for(store: ChunkStore, textures: Sequence[TextureId]) -> int:
-    total = 0
+def _kb_per_piece(t: TextureId) -> float:
+    return KB_PER_PIECE.get((t.provider, t.zl), DEFAULT_KB_PER_REQUEST)
+
+
+def _requests_for(store: ChunkStore, textures: Sequence[TextureId]) -> tuple[int, float]:
+    """The pieces to download for ``textures``, and their kB by each one's source and level."""
+    total, kb = 0, 0.0
     for t in textures:
         try:
             container = store.read(t)
         except OsxpError:
             container = None
-        if container is None:
-            total += 256
-        else:
-            total += len(container.indices(ChunkStatus.ERROR))
-    return total
+        n = 256 if container is None else len(container.indices(ChunkStatus.ERROR))
+        total += n
+        kb += n * _kb_per_piece(t)
+    return total, kb
+
+
+def _relief_mb(
+    g: TileNodes, entries: dict[str, PlanEntry], counted: set[tuple[str, int, int]]
+) -> float:
+    """MB of the relief cells the tile's relief step downloads (:data:`RELIEF_CELL_MB`): those of
+    its sources missing from the elevation folder, the 3x3 block for a source assembled from it,
+    the tile's own cell for the USGS, sea cells and the cells another tile of the build counted
+    left out. None when the relief step is in the store."""
+    dem = g.dem
+    entry = entries.get(dem.id) if dem is not None else None
+    if dem is None or (entry is not None and entry.status == "hit"):
+        return 0.0
+    lat, lon = g.spec.tile.lat, g.spec.tile.lon
+    folder = default_elevation_dir()
+    mb = 0.0
+    for source in str(getattr(dem.params, "custom_dem", "") or "").split(";"):
+        size = RELIEF_CELL_MB.get(source)
+        if size is None:
+            continue
+        cells = cells_of_block(lat, lon) if source in GLOBAL_SOURCES else [(lat, lon)]
+        for lat0, lon0 in cells:
+            if (source, lat0, lon0) in counted or not cell_has_land(lat0, lon0):
+                continue
+            counted.add((source, lat0, lon0))
+            if not elevation_path(source, folder, lat0, lon0).exists():
+                mb += size
+    return mb
 
 
 def _airport_zones(
@@ -571,6 +625,7 @@ def estimate(
     )  # where a build would look, a source of the user's under its address too
 
     tiles: list[TileEstimate] = []
+    relief_counted: set[tuple[str, int, int]] = set()  # a cell two tiles read is downloaded once
     first_probe_texture: tuple[Provider, TextureId] | None = None
     for g in graphs:
         spec = g.spec
@@ -620,9 +675,11 @@ def estimate(
         # deleted them, 2026-10-23). Every container of every image was read, all of them kept:
         # Build again of eighteen tiles took 16 s to ask its question, from a hard disk, to
         # download nothing (2026-10-16); a kept one is only looked for.
-        requests = _requests_for(chunks, fresh) + 256 * sum(
-            1 for t in textures if texture_name(t) in kept and not chunks.has(t)
-        )
+        requests, photos_kb = _requests_for(chunks, fresh)
+        for t in textures:
+            if texture_name(t) in kept and not chunks.has(t):
+                requests += 256
+                photos_kb += 256 * _kb_per_piece(t)
         if requests and first_probe_texture is None:
             for t in fresh:
                 c = chunks.read(t) if chunks.has(t) else None
@@ -646,7 +703,8 @@ def estimate(
                 textures_exact=exact,
                 textures_masked=masked,
                 requests=requests,
-                download_mb=0.0,
+                download_mb=photos_kb / 1000.0,
+                relief_mb=_relief_mb(g, entries, relief_counted),
                 dds_gb=dds_bytes / 1e9 if textures_build else 0.0,
                 compute_s=compute,
                 network_s=0.0,
@@ -661,12 +719,18 @@ def estimate(
     if probe is None and online and first_probe_texture is not None:
         provider, texture = first_probe_texture
         probe = probe_network(provider, texture)
-    kb = probe.kb_per_request if probe is not None and probe.bytes else DEFAULT_KB_PER_REQUEST
+    measured = probe is not None and probe.bytes > 0
+    kb = probe.kb_per_request if probe is not None and measured else DEFAULT_KB_PER_REQUEST
     probed = probe is not None and probe.throughput > 0
     req_per_s = probe.throughput if probed and probe is not None else DEFAULT_REQ_PER_S
     for te in tiles:
-        te.download_mb = te.requests * kb / 1000.0
+        if measured:  # the probe's pieces, else each one's source and level (KB_PER_PIECE)
+            te.download_mb = te.requests * kb / 1000.0
+        mb_per_s = req_per_s * kb / 1000.0
         te.network_s = te.requests / req_per_s if req_per_s > 0 else 0.0
+        if mb_per_s > 0:
+            te.network_s += te.relief_mb / mb_per_s
+        te.download_mb += te.relief_mb
     try:
         free = shutil.disk_usage(env.store_root).free / 1e9
     except OSError:
