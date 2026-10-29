@@ -66,9 +66,12 @@ max_zl = 14
 # one machine obtained is not a ceiling a server tolerates from everyone, so the rate is his
 # observed 90 and the fetcher approaches it: it starts at a quarter, climbs while the server
 # answers and falls when it does not. The window is no longer what protects the server, the
-# rate is, so the ceiling of connections is the measured one again.
+# rate is, so the ceiling of connections is the measured one again. Then 50 (2026-10-29): from
+# here EOX served everything at 30, 45 and 60 a second, 58 of 75 asked, and only 12.5 of 90, the
+# rest refused 403 for the excess. Approaching 90, the fetcher crossed that limit, was refused and
+# halved, and settled near 30 a second; under it, it never is.
 max_in_flight = 32
-server_req_per_s = 90
+server_req_per_s = 50
 # It now says no by answering 403 at once (2026-10-25): 956 of 2 048 requests at 67 req/s, then
 # 36 659 of 37 888 at 80, the same images coming back one by one a moment later. Taken as a 429:
 # the download pauses, slows down and asks again, where it climbed on and gave the images up.

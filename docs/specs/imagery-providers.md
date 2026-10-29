@@ -175,6 +175,14 @@ Taken as an answer, the 403 neither lowered the rate, which climbed on, nor was 
 the build failed with its retry; `pushback_status = [403]` makes it a 429: the download pauses,
 halves and asks again.
 
+**EOX's ceiling is 50 since 2026-10-29.** Asked at a fixed pace from here, distinct ZL14 images,
+32 in flight, a minute a step: everything served at 30, 45 and 60 a second (0.58 MB/s, half the
+answers within 0.05 s), 58 a second of 75 asked, the rest refused 403, and only 12.5 a second of
+90, 86 % refused: past its limit EOX refuses more than the excess. Approaching 90, the fetcher
+crossed that limit, was refused, halved and climbed again, and settled near 30 a second (0.3 MB/s);
+at 50 it stays under it, 1.7 times as fast. An address EOX holds to less still gets the 403s, and
+the fetcher still halves on them.
+
 The time left of a build
 and the Plan's estimate never count faster downloads (`api.md` 5.6, `estimate.ProbeResult`):
 counted from its requests in flight alone, Esri Clarity was expected three times faster than a
