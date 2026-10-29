@@ -2028,16 +2028,19 @@ def masks_ram_from(
             return MASKS_BASE_MB
         try:
             tris = [read_water_tris_artifact(Path(ref.path)) for ref in meshes]
-        except (OSError, ValueError, KeyError):
+            if any(t is None for t in tris):
+                return full
+            cells = mask_cell_count(
+                [t for t in tris if t is not None],
+                tile,
+                params.mask_zl,
+                use_masks_for_inland=params.use_masks_for_inland,
+            )
+        except Exception:
+            # read while the scheduler picks what to start: a damaged file raised there stopped
+            # the whole batch (a truncated npz raises BadZipFile or EOFError); the masks step,
+            # which reads it too, now fails alone, its tile's
             return full
-        if any(t is None for t in tris):
-            return full
-        cells = mask_cell_count(
-            [t for t in tris if t is not None],
-            tile,
-            params.mask_zl,
-            use_masks_for_inland=params.use_masks_for_inland,
-        )
         return MASKS_BASE_MB + worker_mb * min(masks_workers(env), cells)
 
     return ram_from

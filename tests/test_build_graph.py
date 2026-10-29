@@ -970,6 +970,33 @@ def test_the_masks_reserve_a_worker_for_each_cell_with_water(tmp_path: Path, env
     assert _masks_ram_mb(env, masks.params) == 300 + 250 * 2  # the whole pool
 
 
+@pytest.mark.parametrize("damage", ["cut", "not a zip"])
+def test_a_damaged_water_file_reserves_the_whole_pool(
+    tmp_path: Path, env: BuildEnv, damage: str
+) -> None:
+    """The cells are counted while the scheduler picks what to start: a damaged
+    ``water_tris.npz`` raised there and stopped the whole batch, where the masks step that reads
+    it too fails alone (review, 2026-10-29)."""
+    from orthostudio.masks.water import WATER_TRIS_FORMAT
+
+    (g,) = _declare([_spec(tmp_path)], _sched(env), env)
+    masks = g.masks
+    mesh = _mesh_stats(tmp_path, "tile", {"4": 1})
+    npz = mesh.path / "water_tris.npz"
+    np.savez(
+        npz,
+        format=np.array(WATER_TRIS_FORMAT),
+        corners=np.zeros((1, 3), dtype=np.int32),
+        water_bits=np.array([4], dtype=np.uint8),
+        bary=np.array([[5.5, 43.5]]),
+    )
+    data = npz.read_bytes()
+    npz.write_bytes(data[: len(data) // 2] if damage == "cut" else b"\x00" * 64)
+    inputs = {name: None for name in masks.inputs}
+    inputs["mesh"] = mesh
+    assert masks.ram_from(inputs) == _masks_ram_mb(env, masks.params)
+
+
 @pytest.mark.parametrize(
     ("triangles", "ram_mb"),
     [(4_840_000, 3600), (8_900_000, 6100), (None, 3000)],  # Atlanta took 5.7 to 6.3 GB

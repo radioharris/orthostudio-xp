@@ -857,7 +857,9 @@ distance masks 970; `masks-build.md` 6.2). The cells are counted before it start
 `water_tris.npz` of the tile and its neighbours (`masks.water.mask_cell_count`, the cutting the
 masks use themselves), read only when their `stats.json` has water the masks draw (`water_bits_counts`:
 the sea and the water marked like it, every water triangle with `use_masks_for_inland`); a mesh
-that does not say reserves the whole pool. Every masks node reserved `300 + 800 x workers`: 5.1 GB
+that does not say, or a `water_tris.npz` that cannot be read, reserves the whole pool: they are
+read while the scheduler picks what to start, where a damaged file stopped the whole batch, and the
+masks step that reads it too now fails alone (review, 2026-10-29). Every masks node reserved `300 + 800 x workers`: 5.1 GB
 on 8 threads and 6.7 on 14, for masks that took a second, inland with no cell, around a lake with
 two to twelve; on 16 GB no tile's masks, so no images, started beside a big city's tracing
 (2026-10-28). **The same `workers` is given to the
