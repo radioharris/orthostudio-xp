@@ -1016,6 +1016,35 @@ def test_a_dsf_reserves_what_its_mesh_takes(
     assert g.dsf.ram_from({"mesh": ref}) == ram_mb
 
 
+@pytest.mark.parametrize(
+    ("nodes", "alt_mib", "limit", "ram_mb"),
+    [
+        (3_030_000, 0, 5, 1500),  # a mountain tile's many roads: 7.1 million triangles
+        (630_000, 10, 3, 700),  # few roads: the limit of triangles sets them, 3.2 million
+        (3_030_000, 64, 5, 1600),  # and a raster: 2.2 times it
+        (None, 0, 3, 700),  # the tracing does not say: the limit alone
+    ],
+)
+def test_a_mesh_reserves_its_triangles_and_its_raster(
+    tmp_path: Path, env: BuildEnv, nodes: int | None, alt_mib: int, limit: int, ram_mb: int
+) -> None:
+    """Every mesh reserved 0.9 GB; a dense mesh took 1.8 GB, the USGS at 1/3" 1.5 GB and a relief
+    of one's own of 6 GB 14.5 GB (2026-10-29): the reservation follows the triangles the mesh will
+    make and the raster it reads, both known once the tracing is built."""
+    spec = _spec(tmp_path, config={"limit_tris": limit})
+    (g,) = _declare([spec], _sched(env), env)
+    vectors = tmp_path / "vectors-mesh"
+    vectors.mkdir()
+    if nodes is not None:
+        (vectors / "stats.json").write_text(json.dumps({"nodes": nodes}), encoding="utf-8")
+    if alt_mib:
+        with (vectors / "Data+43+005.alt").open("wb") as f:
+            f.truncate(alt_mib * 2**20)
+    ref = ArtifactRef("d" * 64, "d" * 64, vectors, "orthostudio.vectors", "dir", 0)
+    assert g.mesh.ram_mb == 900 and g.mesh.ram_from is not None  # the rule's, a floor
+    assert g.mesh.ram_from({"vectors": ref, "dem": ref, "coastline": None}) == ram_mb
+
+
 @pytest.mark.parametrize(("setting", "budget"), [("high", 13107), ("medium", 11468), ("low", 9830)])
 def test_the_memory_for_building_sets_the_batchs_share(
     tmp_path: Path, env: BuildEnv, monkeypatch: pytest.MonkeyPatch, setting: str, budget: int

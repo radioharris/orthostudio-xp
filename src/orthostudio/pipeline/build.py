@@ -80,7 +80,7 @@ from orthostudio.masks.rule import MASKS as OSXP_MASKS
 from orthostudio.masks.rule import MasksJob, masks_job, read_water_tris_artifact
 from orthostudio.masks.rule import MasksParams as OsxpMasksParams
 from orthostudio.masks.water import NEIGHBOUR_OFFSETS, mask_cell_count
-from orthostudio.mesh.build import mesh_file_name
+from orthostudio.mesh.build import mesh_file_name, steiner_budget
 from orthostudio.mesh.mesh_file import as_written, read_mesh, read_mesh_npz
 from orthostudio.mesh.rule import OSXP_MESH, MeshJob, mesh_job
 from orthostudio.mesh.rule import MeshParams as OsxpMeshParams
@@ -2254,12 +2254,12 @@ than Copernicus gave another user two reliefs out of one folder (2026-10-05).
 alone it is a folder or Canada's lidar with nothing for the square, which is how they are meant to
 be, and a build that said nothing before says nothing now."""
 
-RELIEF_RAM = {"dem": 1.3, "dem_overlay": 2.4, "vectors": 2.1, "mesh": 2.0}
+RELIEF_RAM = {"dem": 1.3, "dem_overlay": 2.4, "vectors": 2.1}
 """Peak memory of a node, per MB of the raster one's own files give its tile. Measured on a lidar
 square of 27 468 points a side (3.0 GB of floats, 2026-10-02): the relief 3.8 GB, 7.0 GB when a
 folder's file is laid into the relief under it (the composite of 28 011 points a side beside the
-file), the vectors 6.2 GB (the mapped raster and its copy smoothed over the airports), Triangle4XP
-6.0 to 6.3 GB (the heights and their curvature, and the mesh)."""
+file), the vectors 6.2 GB (the mapped raster and its copy smoothed over the airports). The mesh
+weighs the raster it reads itself (:func:`mesh_ram_from`)."""
 
 RELIEF_SOURCE_RAM = {"NED1/3": 1200, "ANADEM": 800}
 """What the relief node declares for a source whose step takes more than the rule's 600 MB.
@@ -2339,9 +2339,41 @@ def tracing_ram_from(
     return ram_from
 
 
-MESH_STRUCTURES_MB = 600
-"""What Triangle4XP holds besides the raster: the mesh, about 0.3 to 0.4 GB at 3 million
-triangles (``docs/specs/mesh-build.md``)."""
+MESH_MB_PER_MILLION_TRIANGLES = 200
+MESH_RASTER_FACTOR = 2.2
+"""Triangle4XP at its peak: 200 MB a million triangles of the mesh it will make, and 2.2 times the
+raster it reads (the heights and their curvature). Above all of eleven meshes measured on
+2026-10-29 on a Mac, each tile alone, by 4 to 15 % for the dense ones, the USGS and the large file,
+up to 48 % where the limit of triangles sets them: 0.4 to 1.8 GB on Copernicus (2.5 to 9 million
+triangles), 1.5 GB on the USGS at 1/3" (a raster of 446 MB), 13.5 and 14.5 GB on a relief of one's
+own of 6 GB. Every mesh reserved 0.9 GB, twice the raster and 0.6 GB with a large file of one's
+own: below what the denser meshes, the USGS and the large file took."""
+
+
+def mesh_ram_from(limit_tris: float) -> Callable[[Mapping[str, ArtifactRef | None]], int]:
+    """The mesh node's ``ram_from``, read once the tracing is built: the triangles it will make,
+    twice its input nodes (the tracing's ``stats.json``) and the Steiner points Triangle4XP may
+    add (:func:`orthostudio.mesh.build.steiner_budget`), and the raster it reads (its ``.alt``).
+    Rounded up to 100 MB. An unreadable file counts nothing: the node keeps its rule's 0.9 GB."""
+
+    def ram_from(inputs: Mapping[str, ArtifactRef | None]) -> int:
+        # read while the scheduler picks what to start: a damaged file must not stop the batch
+        try:
+            vectors = inputs.get("vectors")
+            stats = json.loads((Path(vectors.path) / "stats.json").read_text(encoding="utf-8"))
+            nodes = int(stats["nodes"])
+        except Exception:
+            nodes = 0
+        try:
+            dem = inputs.get("dem")
+            raster_mb = sum(p.stat().st_size for p in Path(dem.path).glob("*.alt")) / 2**20
+        except Exception:
+            raster_mb = 0.0
+        triangles = 2 * (nodes + steiner_budget(limit_tris, nodes))
+        mb = MESH_MB_PER_MILLION_TRIANGLES * triangles / 1e6 + MESH_RASTER_FACTOR * raster_mb
+        return math.ceil(mb / 100) * 100
+
+    return ram_from
 
 
 def own_relief_mb(custom_dem: str, tile: TileRef) -> tuple[float, bool]:
@@ -2549,10 +2581,11 @@ def declare(
             **relief_ram(OSXP_VECTORS, relief_mb, RELIEF_RAM["vectors"]),
         )
         coast = _coastline_node(reg, spec, osm_input)
+        mesh_params = OsxpMeshParams.subset_of({**cfg, "tile": name})
         mesh = reg.node(
             f"{name}/mesh",
             OSXP_MESH,
-            OsxpMeshParams.subset_of({**cfg, "tile": name}),
+            mesh_params,
             {
                 "vectors": vectors,
                 # ``--dem vectors`` (the default) is the vector stage's own raster, smoothed
@@ -2563,7 +2596,8 @@ def declare(
             },
             kind="subprocess",
             run=_mesh_run(env),
-            **relief_ram(OSXP_MESH, relief_mb, RELIEF_RAM["mesh"], MESH_STRUCTURES_MB),
+            # its triangles and the raster it reads, once the tracing has said its nodes
+            ram_from=mesh_ram_from(mesh_params.limit_tris),
         )
         osm_nodes.append(osm)
         vectors_nodes.append(vectors)

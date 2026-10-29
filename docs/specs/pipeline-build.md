@@ -62,7 +62,7 @@ id gets a `#2` suffix.
 | dem | `orthostudio.dem@1` | subprocess with X-Plane's relief (the default), net on the `relief` lane when it downloads one; 0.6 GB | `DemParams` (spec `dem.md` 9) + `tile` | the Global Scenery DSFs of the 3x3 block when the relief is X-Plane's (decision 0007) | dir `Data<tile>.alt`, `dem.npy`, `meta.json` |
 | vectors | `orthostudio.vectors@1` | subprocess on the `tracing` lane, in a process of its own (8.6); by its roads, 1.2 GB at least (8.6) | `VectorsParams` (spec `vectors-assembly.md`) + `tile` | `osm` (8.5), `dem`, `patches` (the tile's folder of hand-made patches, absent without one: 8.5), `airports` (absent) | dir `Data<tile>.{node,poly,alt}`, `dem.json`, `airports.json`, `airports.npz`, `airports.wkb.json` |
 | coastline | `orthostudio.coastline@1` | io, 0.2 GB | `tile` | `osm` (8.4) | file `coastline.npz` |
-| mesh | `orthostudio.mesh@1` | subprocess, 0.9 GB | `MeshParams` (spec `mesh-build.md` 9) + `tile` | `vectors`, `dem` (8.2), `coastline` | dir `Data<tile>.mesh`, `mesh.npz` |
+| mesh | `orthostudio.mesh@1` | subprocess, 0.2 GB a million triangles it will make and 2.2 times the raster it reads, 0.9 GB at least (8.6) | `MeshParams` (spec `mesh-build.md` 9) + `tile` | `vectors`, `dem` (8.2), `coastline` | dir `Data<tile>.mesh`, `mesh.npz` |
 | masks | `orthostudio.masks@1` | subprocess, 300 MB and a worker of its profile for each cell with water to draw, as many as the pool has (8.6) | `MasksParams` (spec `masks-build.md`) + `tile` | `mesh`, `nb_n`..`nb_nw` | dir `<y>_<x>.png`, `index.json` |
 | xp12 | `xp12.rasters@1` | io, 0.2 GB | `tile` | `source` = the Global Scenery DSF (7z) of the tile, by content digest | dir `demn.bin`, `dems.bin` (bathy already clamped) |
 | dsf | `tile.dsf@3` | cpu, in a process of its own, 0.6 GB and 0.61 GB a million triangles of its mesh, 3 GB when the mesh does not say (8.6) | `TileDsfParams` = `DsfParams` (spec `dsf-encoding.md` 2, minus `sea_texture_blur`, see 7) + `tile` + `creation_agent` | `mesh`, `masks`, `rasters` (None = no DEMS, explicit choice only), `vectors` (None unless `cover_airports_with_highres` is `True` or `ICAO`) | dir `<tile>.dsf`, `terrain/*.ter`, `textures.json`, `stats.json` |
@@ -741,7 +741,7 @@ recently used `orthostudio.mesh` artefact of the store that holds the neighbour.
 `orthostudio.dem` is declared `net` on the `relief` lane when it downloads its relief and
 `subprocess` when it reads X-Plane 12's own, the default (0.6 GB either way), `orthostudio.osm`
 `net` (0.3 GB), `orthostudio.coastline` `io` (0.2 GB), `orthostudio.vectors` `subprocess` (by its roads, below),
-`orthostudio.mesh` `subprocess` (0.9 GB: the Python side plus the Triangle4XP child) and
+`orthostudio.mesh` `subprocess` (the Python side plus the Triangle4XP child: by its triangles and its raster, below) and
 `orthostudio.masks` `subprocess` (its own process pool inside). `cpu` is deliberately not used for
 them: the `cpu` pool is a `spawn` process pool that receives the node's `run` callable by pickle, and
 the stage rules need a bound job (`dem_job`, `masks_job`, the build environment) or spawn their own
@@ -812,6 +812,18 @@ ZL19 (within 10 %, 5 % on average): 3.2 GB for 4.8 million triangles, 5.7 to 6.3
 took. Each runs in a process of its own (`scheduler.md` 2.3, `max_tasks_per_child=1`): in one
 worker for the batch, Atlanta's 6.3 GB stayed with it for every DSF after.
 
+**A mesh reserves what its triangles and its raster take** (`mesh_ram_from`, through
+`Node.ram_from`, read once the tracing is built): 200 MB a million triangles and 2.2 times the
+raster it reads (its input's `.alt`), rounded up to 100 MB, never under the rule's 0.9 GB. Its
+triangles are twice its input nodes (the tracing's `stats.json`, `nodes`) and the Steiner points
+Triangle4XP may add (`steiner_budget`, `mesh-build.md` 9): above the triangles made by 2 to 27 %.
+Eleven meshes measured on 2026-10-29 on a Mac, each tile alone, all took less than this reserves,
+4 to 15 % less the dense ones, the USGS and the large file, up to 48 % where the limit of triangles
+sets them rather than the roads: 0.4 to 1.8 GB on Copernicus (2.5 to 9 million triangles), 1.5 GB on the USGS at 1/3"
+(a raster of 446 MB), 13.5 and 14.5 GB on a relief of one's own of 6 GB. Every mesh reserved
+0.9 GB, twice the raster and 0.6 GB with a large file of one's own: below what the denser meshes,
+the USGS and the large file took. An unreadable file counts nothing there, as for the masks.
+
 **The images start as many encoders as their reservation pays for** (`photos_workers`,
 `_photos_ram_mb`): the batch's workers, as many as a third of the RAM budget holds at 550 MB an
 encoder beside 350 MB for the images' process, one at least; the same number is the images'
@@ -873,13 +885,13 @@ rule**: `_masks_run` binds `MasksJob(workers=masks_workers(env), cancel=...)`, t
 and `0`, a negative value or junk mean *unset*. The rule's own decorator declares 1100 MB, the honest
 cost of a node built without `declare()` (base + one worker).
 
-A relief of one's own is ten times the rasters the rules declare their memory for, so the relief,
-vectors and mesh nodes of its tile declare their own (`relief_ram`, from `RELIEF_RAM` and the
-file's header read at declaration, `own_relief_mb`), when that is more than the rule's: per MB of
-the raster, 1.3 for the relief (2.4 when a folder's file is laid into the relief under it), 2.1 for
-the vectors (the mapped raster and its copy smoothed over the airports) and 2.0 for the mesh plus
-`MESH_STRUCTURES_MB`. Measured on a 4 m square of 27 468 points a side (3.0 GB of floats): 3.8,
-7.0, 6.2 and 6.0 to 6.3 GB. Two such nodes then do not start together on a machine that cannot hold
+A relief of one's own is ten times the rasters the rules declare their memory for, so the relief
+and vectors nodes of its tile declare their own (`relief_ram`, from `RELIEF_RAM` and the file's
+header read at declaration, `own_relief_mb`), when that is more than the rule's: per MB of the
+raster, 1.3 for the relief (2.4 when a folder's file is laid into the relief under it) and 2.1 for
+the vectors (the mapped raster and its copy smoothed over the airports). Measured on a 4 m square
+of 27 468 points a side (3.0 GB of floats): 3.8, 7.0 and 6.2 GB. The mesh weighs the raster it
+reads itself (above). Two such nodes then do not start together on a machine that cannot hold
 both; one larger than the whole budget still runs alone, as any node does. Only a raster larger than
 0.1.19 read is weighed so (`raster.readable_before`): every build that ran before is scheduled as
 it was.
