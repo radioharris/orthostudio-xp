@@ -988,7 +988,7 @@ const STRINGS = {
     "settings.q.relief_usgs1_note": "la même finesse que Copernicus, mais une autre mesure : États-Unis, Canada, Mexique et Alaska. Au Canada il a été interpolé depuis les courbes de niveau des anciennes cartes, donc il peut marcher en terrasses là où Copernicus est lisse ; aux États-Unis, préférez le 1/3 de seconde ci-dessus. Environ 50 Mo par carré d'un degré, gardés ensuite. Ailleurs, la tuile est refusée plutôt que construite plate.",
     "settings.q.relief_canada": "Le relief lidar du Canada (HRDEM), Copernicus ailleurs",
     "settings.q.relief_anadem": "Le relief d'Amérique du Sud (ANADEM), Copernicus ailleurs",
-    "settings.q.relief_anadem_note": "le sol nu sous la forêt : Copernicus voit la cime des arbres, et en Amazonie il place le sol 17 m trop haut (mesuré sur 262 000 points). ANADEM retire cette végétation, du Venezuela à la Terre de Feu ; ailleurs Copernicus prend le relais, sans trou ni marche. Environ 33 Mo gardés par carré, lus en une dizaine de secondes.",
+    "settings.q.relief_anadem_note": "le sol nu sous la forêt : Copernicus voit la cime des arbres, et en Amazonie il place le sol 17 m trop haut (mesuré sur 262\u202f000 points). ANADEM retire cette végétation, du Venezuela à la Terre de Feu ; ailleurs Copernicus prend le relais, sans trou ni marche. Environ 33 Mo gardés par carré, lus en une dizaine de secondes.",
     "settings.q.relief_canada_note": "mesuré au laser, le sol nu sous les arbres : là où le Canada a été survolé, la forme du terrain est juste, là où Copernicus voit la cime des arbres. La couverture est partielle : le relief Copernicus prend le relais partout ailleurs, sans trou ni marche. Jusqu'à 50 Mo téléchargés et 26 Mo gardés par carré entièrement couvert, et rien du tout là où le lidar n'est jamais passé.",
     "settings.q.relief_file": "Mon propre fichier d'altitudes (GeoTIFF ou HGT)",
     "settings.q.relief_file_note": "par exemple un modèle numérique de terrain national détaillé",
@@ -1155,7 +1155,7 @@ const STRINGS = {
     "settings.x.lane_width": "Demi-largeur de la bande aplanie",
     "settings.x.lane_width_hint": "Trop étroite, les routes larges penchent encore sur les bords.",
     "settings.x.max_segs": "Points de route aplanis au plus, par couche",
-    "settings.x.max_segs_hint": "Sur les réseaux très denses, les routes au-delà de ce nombre ne sont pas aplanies. Au-dessus de 200 000, les grandes villes sont préparées par morceaux : bien plus vite, et avec bien moins de mémoire.",
+    "settings.x.max_segs_hint": "Sur les réseaux très denses, les routes au-delà de ce nombre ne sont pas aplanies. Au-dessus de 200\u202f000, les grandes villes sont préparées par morceaux : bien plus vite, et avec bien moins de mémoire.",
     "settings.x.shadows": "Le relief projette des ombres",
     "settings.x.shadows_hint": "Désactivé : les collines de la tuile ne projettent plus d'ombres ; elles en reçoivent toujours.",
     "settings.x.normals": "Ombrage des pentes par le soleil",
@@ -2497,7 +2497,7 @@ const CODES = {
           : LOOKS_LIKE_A_PATH.test(String(c.source || ""))
             ? ["Pas de relief pour cette tuile dans vos propres fichiers : {reason}. OrthoStudio XP ne construit pas une tuile plate.", "Ajoutez le fichier de ce carré, ou choisissez un autre relief dans Réglages ; un dossier posé par-dessus un relief laisse celui-ci répondre là où il n'a rien."]
             : ["Pas de relief pour cette tuile : OrthoStudio XP ne construit pas une tuile plate.", "Installez cette région des décors X-Plane 12 (installeur X-Plane), ou fournissez un fichier d'altitudes dans Réglages."]),
-    DEM_VOIDS_FILLED_WITH_ZERO: ["Des vides du relief ont été mis à 0 m.", "Si ce n'est pas la mer : à partir de 10 000 trous sur une tuile, aucun réglage ne les bouche, prenez un fichier sans trous ou un autre relief ; en dessous, choisissez « Boucher les petits trous avec les altitudes voisines »."],
+    DEM_VOIDS_FILLED_WITH_ZERO: ["Des vides du relief ont été mis à 0 m.", "Si ce n'est pas la mer : à partir de 10\u202f000 trous sur une tuile, aucun réglage ne les bouche, prenez un fichier sans trous ou un autre relief ; en dessous, choisissez « Boucher les petits trous avec les altitudes voisines »."],
     MESH_TRIANGLE_BUDGET_REACHED: ["Le maillage a atteint la limite de triangles.", "Augmentez limit_tris ou curvature_tol dans Avancé."],
     ZONE_INVALID: ["Une zone est inutilisable : rien n'est enregistré ni construit tant qu'elle n'est pas corrigée.", "Corrigez ou supprimez cette zone à l'étape 2 (ou dans le fichier des zones), puis recommencez."],
     ZONE_CONFLICT: ["Les zones ont été modifiées ailleurs (autre fenêtre ou fichier) : rien n'a été enregistré.", "La liste a été rechargée ; refaites votre dernière modification."],
