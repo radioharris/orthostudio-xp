@@ -194,7 +194,8 @@ mask; the DSF needs the masks; and the masks read the water of the neighbours, s
 coast can cross the edge of a square. Until the neighbours are meshed, OrthoStudio XP cannot know
 that there is no water: with none, Coast then takes a second, and what the tile really waited for
 is its neighbours' tracing and mesh. A tile at the edge of the batch waits only for the neighbours
-being built with it.
+being built with it. Coast runs one tile at a time beside the meshes, so a tile's images do not
+wait for the rest of the batch to be meshed.
 
 **Two tiles downloading at once.** The images go one tile after the other, but a tile whose
 images only wait for a few pieces to be asked again (below) lends the line to the next tile

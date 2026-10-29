@@ -400,6 +400,7 @@ class Job:
             "overpass": 1,
             "relief": 1,
             "tracing": default_subprocess_slots(),
+            "coast": 1,
             "net": 1,
             "io": 2,
             "subprocess": default_subprocess_slots(),

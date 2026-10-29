@@ -42,7 +42,8 @@ expected cost is zero, and with its full weight a retry whose first second is si
   its group's speed, because the textures still queued share the line of the one that runs;
 * the remaining seconds then queue the way the scheduler runs them: in lanes of its slots --
   one network slot, so the textures nodes of a batch run one after the other, a downloaded
-  relief and the tracings on lanes of their own (:data:`RELIEF_LANE`, :data:`TRACING_LANE`) --
+  relief, the tracings and the masks on lanes of their own (:data:`RELIEF_LANE`,
+  :data:`TRACING_LANE`, :data:`COAST_LANE`) --
   and along each tile's chain, elevation to install; the main graph ends with the slowest lane
   or chain. Before it, phase 0 downloads one tile at a time, then the main graph is declared
   (:data:`DECLARE_S`).
@@ -168,6 +169,10 @@ TRACING_LANE: str | None = "tracing"
 """``pipeline.build.TRACING_LANE``: the tracings (``vectors`` rows), on slots of their own beside
 the meshes and masks. ``None`` queues them on the subprocess slots with those, as 1.2.1 and the
 engines before it ran them."""
+COAST_LANE: str | None = "coast"
+"""``pipeline.build.COAST_LANE``: the masks (``masks`` rows), one tile at a time beside the
+meshes. ``None`` queues them on the subprocess slots with those, as 1.2.2 and the engines before
+it ran them."""
 CHAIN_ROLES = frozenset({"dem", "vectors", "mesh", "masks", "dsf", "textures", "pack", "install"})
 DECLARE_S = 0.3
 """Declaring the main graph (0.2 s for one tile)."""
@@ -775,7 +780,10 @@ def estimate(
         kind = n.kind or ROLE_KIND.get(n.role, "cpu")
         downloaded = RELIEF_LANE is not None and n.role == "dem" and kind == "net"
         traced = TRACING_LANE is not None and n.role == "vectors"
-        lane = RELIEF_LANE if downloaded else TRACING_LANE if traced else kind
+        coast = COAST_LANE is not None and n.role == "masks"
+        lane = (
+            RELIEF_LANE if downloaded else TRACING_LANE if traced else COAST_LANE if coast else kind
+        )
         lanes.setdefault(lane, []).append(left)
         if n.role in CHAIN_ROLES:
             parts = n.node.split("/")

@@ -63,7 +63,7 @@ id gets a `#2` suffix.
 | vectors | `orthostudio.vectors@1` | subprocess on the `tracing` lane, in a process of its own (8.6); by its roads, 1.2 GB at least (8.6) | `VectorsParams` (spec `vectors-assembly.md`) + `tile` | `osm` (8.5), `dem`, `patches` (the tile's folder of hand-made patches, absent without one: 8.5), `airports` (absent) | dir `Data<tile>.{node,poly,alt}`, `dem.json`, `airports.json`, `airports.npz`, `airports.wkb.json` |
 | coastline | `orthostudio.coastline@1` | io, 0.2 GB | `tile` | `osm` (8.4) | file `coastline.npz` |
 | mesh | `orthostudio.mesh@1` | subprocess, 0.2 GB a million triangles it will make and 2.2 times the raster it reads, 0.9 GB at least (8.6) | `MeshParams` (spec `mesh-build.md` 9) + `tile` | `vectors`, `dem` (8.2), `coastline` | dir `Data<tile>.mesh`, `mesh.npz` |
-| masks | `orthostudio.masks@1` | subprocess, 300 MB and a worker of its profile for each cell with water to draw, as many as the pool has (8.6) | `MasksParams` (spec `masks-build.md`) + `tile` | `mesh`, `nb_n`..`nb_nw` | dir `<y>_<x>.png`, `index.json` |
+| masks | `orthostudio.masks@1` | subprocess on the `coast` lane, one tile at a time (8.6); 300 MB and a worker of its profile for each cell with water to draw, as many as the pool has (8.6) | `MasksParams` (spec `masks-build.md`) + `tile` | `mesh`, `nb_n`..`nb_nw` | dir `<y>_<x>.png`, `index.json` |
 | xp12 | `xp12.rasters@1` | io, 0.2 GB | `tile` | `source` = the Global Scenery DSF (7z) of the tile, by content digest | dir `demn.bin`, `dems.bin` (bathy already clamped) |
 | dsf | `tile.dsf@3` | cpu, in a process of its own, 0.6 GB and 0.61 GB a million triangles of its mesh, 3 GB when the mesh does not say (8.6) | `TileDsfParams` = `DsfParams` (spec `dsf-encoding.md` 2, minus `sea_texture_blur`, see 7) + `tile` + `creation_agent` | `mesh`, `masks`, `rasters` (None = no DEMS, explicit choice only), `vectors` (None unless `cover_airports_with_highres` is `True` or `ICAO`) | dir `<tile>.dsf`, `terrain/*.ter`, `textures.json`, `stats.json` |
 | textures | `tile.textures@1` | net (+ its own encoding pool), 0.35 GB and 0.55 GB an encoder, as many encoders as a third of the RAM budget holds (8.6) | `TileTexturesParams`: encoder and version, `mip_mode`, `refine_passes`, `sea_texture_blur`, `clean_halo`, `parent_levels`, `TerParams` fields | `dsf`, `masks` | dir `textures/*.dds` (hard links to the `texture.dds` artefacts), `textures/water_transition.png` when needed, `terrain/*.ter`, `manifest.json` |
@@ -848,6 +848,16 @@ tracings' summed time unchanged (1 299 s against 1 315 s) and the engine's peak 
 images downloaded during the terrain came at two thirds of the line (24 useful pieces a second
 against 36), the engine's own Python work (the meshes' side of it among others) holding its
 interpreter. The time-left estimate queues the tracings on that lane too (`api/progress.py`).
+
+**The masks have a lane of their own** (`COAST_LANE`, one tile at a time). On the subprocess
+slots they shared with the meshes, every slot that came free went to a mesh, whose path to the
+images is the longer: no tile's masks, so no DSF nor images, started before the batch's last
+mesh. On 27 EOX tiles (2026-10-29), +33-085 and its neighbours had their meshes at 64 s, its
+masks started at 104 s with the batch's last mesh, the first images at 110 s. On their lane, a
+tile's masks start once it and its neighbours are meshed. One at a time, since a tile's masks
+already run a pool of up to eight processes; they took 0.2 to 3 s on 36 tiles inland and 1 to
+18 s on twelve of Brittany with the sea, against 34 s on average for those tiles' meshes. The
+time-left estimate queues them on that lane too.
 
 **The images of a tile run in a process of their own too** (`_textures_run`): the download and
 the encoding of the textures node, through `run_p0_rule_apart` with `_textures_apart`, which gives

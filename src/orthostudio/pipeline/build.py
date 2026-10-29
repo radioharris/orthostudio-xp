@@ -2657,6 +2657,7 @@ def declare(
             masks_params,
             {"mesh": mesh, **neighbours, "dem": None, "custom_extent": None},
             kind="subprocess",
+            lane=COAST_LANE,
             # its pool's memory only once its meshes say there is water to draw
             ram_mb=MASKS_BASE_MB,
             ram_from=masks_ram_from(env, masks_params),
@@ -2919,8 +2920,9 @@ class BuildReport:
 
 
 def default_subprocess_slots() -> int:
-    """How many relief, mesh, masks and overlay nodes run at once, and how many tracings beside
-    them (:data:`TRACING_LANE`): the cores less one, 3 at most. It was a quarter of the cores: 3
+    """How many relief, mesh and overlay nodes run at once, and how many tracings beside them
+    (:data:`TRACING_LANE`): the cores less one, 3 at most. The masks have a lane of their own
+    (:data:`COAST_LANE`). It was a quarter of the cores: 3
     on a 14-core Mac, but 1 on a 4-core Windows virtual machine, where these stages of a batch
     ran one after the other and a user saw every tile's data before any terrain (2026-09-15).
     The RAM budget still holds back what memory cannot."""
@@ -2946,6 +2948,14 @@ longest, so no mesh started before the batch's last tracing and no tile's images
 25 tiles at the service roads, four neighbours were traced at 3 min 26 s, the first mesh started
 at 8 min 34 s and the first images at 10 min 58 s (2026-10-28). Apart, a tile's mesh starts once
 its tracing is done, and its images once its neighbours' meshes are."""
+
+COAST_LANE = "coast"
+"""The lane of the masks (``Node.lane``, the Coast step), one tile at a time, apart from the
+subprocess slots. On those slots every slot that came free went to a mesh, whose path to the
+images is the longer, so no tile's masks, and no images, started before the batch's last mesh: on
+27 EOX tiles, +33-085 and its neighbours had their meshes at 64 s, its masks started at 104 s with
+the batch's last mesh and the first images at 110 s (2026-10-29). One at a time: a tile's masks
+already run a pool of up to eight processes (:func:`masks_workers`), for 0.2 to 18 s."""
 
 
 MEMORY_KEEP_FREE_SHARE = 0.1
@@ -2994,7 +3004,12 @@ def make_scheduler(
         ram_room_mb=ram_room_mb,
         workdir=env.workdir / "sched",
         cpu_in_threads=cpu_in_threads,
-        lanes={OVERPASS_LANE: 1, RELIEF_LANE: 1, TRACING_LANE: default_subprocess_slots()},
+        lanes={
+            OVERPASS_LANE: 1,
+            RELIEF_LANE: 1,
+            TRACING_LANE: default_subprocess_slots(),
+            COAST_LANE: 1,
+        },
     )
 
 

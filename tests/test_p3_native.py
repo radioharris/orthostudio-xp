@@ -295,11 +295,14 @@ def test_a_build_downloads_each_tile_in_its_own_graph(tmp_path: Path) -> None:
     assert g.vectors.inputs["osm"] is g.osm
     assert g.coastline is not None and g.coastline.inputs == {"osm": g.osm}
     assert next(iter(g.by_role)) == "osm" and g.osm in g.all()
-    assert sched.lanes == {OVERPASS_LANE: 1, "relief": 1, "tracing": sched.slots["subprocess"]}
+    tracing = sched.slots["subprocess"]
+    assert sched.lanes == {OVERPASS_LANE: 1, "relief": 1, "tracing": tracing, "coast": 1}
     assert sched.slots["net"] == 1
-    # the tracings on a lane of their own, so that the meshes never wait behind them
+    # the tracings and the masks on lanes of their own, so that the meshes never wait behind the
+    # tracings and the masks never behind the meshes
     assert (g.vectors.kind, g.vectors.lane) == ("subprocess", "tracing")
-    assert g.mesh.lane is None and g.masks.lane is None
+    assert (g.masks.kind, g.masks.lane) == ("subprocess", "coast")
+    assert g.mesh.lane is None
 
     with native.osm_job(native.OsmJob(fetch=lambda t, ss: {s.name: _snapshot(s.name) for s in ss})):
         outcomes = run_osm_phase([spec], env)
