@@ -171,8 +171,8 @@ the meshes and masks. ``None`` queues them on the subprocess slots with those, a
 engines before it ran them."""
 COAST_LANE: str | None = "coast"
 """``pipeline.build.COAST_LANE``: the masks (``masks`` rows), one tile at a time beside the
-meshes. ``None`` queues them on the subprocess slots with those, as 1.2.2 and the engines before
-it ran them."""
+meshes. ``None`` queues them on the subprocess slots with those, as 1.2.2rc2 and the engines
+before it ran them."""
 CHAIN_ROLES = frozenset({"dem", "vectors", "mesh", "masks", "dsf", "textures", "pack", "install"})
 DECLARE_S = 0.3
 """Declaring the main graph (0.2 s for one tile)."""

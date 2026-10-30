@@ -135,6 +135,14 @@ core, downloads over HTTP/2 with up to 128 requests in flight, compresses textur
 and files every result under what produced it: it finds by itself the steps whose inputs did not
 change, and does not run them again.
 
+**Twelve tiles at once, 1.3.0 against 1.2.1.** Around Atlanta, with the roads flattened down to
+the service roads and Bing at ZL16, the terrain of the twelve tiles was done in 8.8 min instead of
+38.0 on the same Mac, which held 19.4 GB of memory at most instead of 41.6, and a Windows PC of
+16 GB built them in 31.6 min where 1.2.1 ran out of memory. Along the coast of Brittany: 3.8 min
+instead of 8.3 on the Mac, 11.6 instead of 25.7 on the PC. Measured on 29 and 30 October 2026;
+every step and the conditions:
+[docs/benchmarks/build-times-1.3.md](docs/benchmarks/build-times-1.3.md).
+
 ## Compared with Ortho4XP
 
 A measured comparison, made in September 2026 on the same Mac against Ortho4XP's code of March

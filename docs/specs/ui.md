@@ -22,7 +22,7 @@ Overpass).
 |---|---|
 | `index.html` | shell: navigation, four `<section>` screens, status bar, `<template>`s |
 | `styles.css` | design tokens (light and dark, detail-level colours), layout, components |
-| `i18n.js` | the dictionary (`en`, `fr`), `t()`, number/duration/size formatters |
+| `i18n.js` | the dictionary (`en`, `fr`), `t()`, number/duration/size formatters; a number written into a French string takes the narrow no-break space (U+202F) the formatters use, so it never breaks across two lines |
 | `app.js` | state, API client (real or mock), rendering functions, SSE handling |
 | `map.js` | the Plan's map: base layer (aerial or street), tile grid, airports, zone drawing, zone list, sizes, zones persistence |
 | `geo.js` | geometry without DOM (tiles, textures, polygons, the `osxp-zones-1` checks); run by the tests |

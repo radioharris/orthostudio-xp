@@ -70,7 +70,7 @@ def _run(tmp_path: Path, lane: str | None) -> tuple[float, float]:
 
 
 def test_on_shared_slots_no_masks_start_before_the_last_mesh(tmp_path: Path) -> None:
-    """What 1.2.2 did: every slot that came free went to a mesh, whose path is longer, so the
+    """What 1.2.2rc2 did: every slot that came free went to a mesh, whose path is longer, so the
     first masks waited for the last mesh to start."""
     first_masks, last_mesh_start = _run(tmp_path, None)
     assert first_masks >= last_mesh_start
