@@ -127,6 +127,12 @@ def _custom_dem(relief: Any) -> str:
         # Canada's lidar covers the part of the country that has been flown: it is laid *over*
         # Copernicus, which answers everywhere else (``dem/hrdem.py``, same user, same day).
         return "COP30;HRDEM"
+    if relief.source == "vf30":
+        # viewfinderpanoramas, its 1" archives where the site has them and its 3" ones elsewhere
+        # (``dem/sources.py``); offered only with ``relief.private_sources`` (2026-10-30)
+        return "View"
+    if relief.source == "vf90":
+        return "View3"  # its 3" archives everywhere
     return ""
 
 
