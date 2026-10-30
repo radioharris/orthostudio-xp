@@ -1096,8 +1096,9 @@ brought the top of the screen back, since removing the focused answer made the b
 half-drawn page). Nothing is saved before *Save*; *Undo
 my changes* goes back to the saved settings, *Default values* to the schema's defaults
 (Ortho4XP's, and OrthoStudio XP's own `overlays`), the X-Plane folder, the data folder, the SimBrief
-name and the places the map data comes from (a folder of one's own, a library's address and key)
-kept, since they are this computer's and its pilot's and no look of the tiles (the defaults emptied
+name, the places the map data comes from (a folder of one's own, a library's address and key)
+and the switch `relief.private_sources` set by hand (it turned off, and viewfinderpanoramas left
+the relief question, 2026-10-30) kept, since they are this computer's and its pilot's and no look of the tiles (the defaults emptied
 a library's key, and a build from source, which carries none, went to the public servers,
 2026-10-02); a draft that differs from the saved settings says
 "Changes not saved yet". For as long as it differs, the Settings tab carries a dot (its tooltip says

@@ -64,11 +64,14 @@ export function schemaDefaults(schema) {
  * look of the tiles, and the defaults sending the downloads back to the computer's own disk would
  * surprise (2026-09-15); the SimBrief name is the pilot's own (2026-09-19). So are the places the
  * map data comes from, a folder of one's own and a library with its key: the defaults emptied them,
- * and a build from source, which carries no library, went to the public servers (2026-10-02). */
+ * and a build from source, which carries no library, went to the public servers (2026-10-02). So is
+ * the switch set by hand in config.toml that offers viewfinderpanoramas on this computer: the
+ * defaults turned it off, and the two reliefs left the page (2026-10-30). */
 export const COMPUTER_FOLDERS = [
   "essential.xplane_dir",
   "essential.data_dir",
   "essential.simbrief_user",
+  "essential.relief.private_sources",
   "expert.osm_folder",
   "expert.osm_library",
   "expert.osm_library_token",

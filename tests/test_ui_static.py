@@ -3990,7 +3990,11 @@ def test_the_data_folder_is_asked_beside_x_plane_and_its_refusals_are_explained(
     assert "defaultsKeepingFolders(state.schema, state.settingsDraft)" in app_js
     schema = _mock_json("settings_schema")
     draft = {
-        "essential": {"xplane_dir": "D:\\X-Plane 12", "data_dir": "E:\\OrthoStudio"},
+        "essential": {
+            "xplane_dir": "D:\\X-Plane 12",
+            "data_dir": "E:\\OrthoStudio",
+            "relief": {"source": "vf90", "private_sources": True},
+        },
         "expert": {
             "osm_folder": "E:\\OSM",
             "osm_library": "https://maps.example",
@@ -4005,6 +4009,9 @@ def test_the_data_folder_is_asked_beside_x_plane_and_its_refusals_are_explained(
     assert back["expert"]["osm_folder"] == "E:\\OSM"
     assert back["expert"]["osm_library"] == "https://maps.example"
     assert back["expert"]["osm_library_token"] == "k"
+    # the switch set by hand stays, the relief chosen goes back to the default one
+    assert back["essential"]["relief"]["private_sources"] is True
+    assert back["essential"]["relief"]["source"] == "auto"
 
     whys = json.dumps(sorted(_DATA_DIR_REFUSALS))
     script = f"""
