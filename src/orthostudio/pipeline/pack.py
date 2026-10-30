@@ -668,7 +668,8 @@ def relief_read(store: Store, key: str | None) -> dict[str, Any]:
     that is how a lidar relief chosen where the lidar never flew shows for what it is. And
     ``relief_own``, what became of each file of one's own found for the square (``Dem.own``):
     the Library names the file, or says why it was not used (2026-10-05). A relief made before
-    has no such record, and the key is then left out.
+    has no such record, and the key is then left out. And ``relief_arcsec``, for viewfinderpanoramas
+    chosen at 30 m, the grid its own square was read at, 1" or 3" (2026-10-30).
     """
     if key is None:
         return {}
@@ -691,6 +692,8 @@ def relief_read(store: Store, key: str | None) -> dict[str, Any]:
                     }
                     if isinstance(meta.get("own"), list):
                         facts["relief_own"] = [dict(x) for x in meta["own"] if isinstance(x, dict)]
+                    if meta.get("view_arcsec") in (1, 3):
+                        facts["relief_arcsec"] = int(meta["view_arcsec"])
                     return facts
                 todo.append(ref.key)
     return {}

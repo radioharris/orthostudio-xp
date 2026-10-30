@@ -229,6 +229,9 @@ def test_viewfinderpanoramas_at_30_m_says_where_its_90_m_answered(tmp_path: Path
         return [e for e in events if e.code == "DEM_VIEW_COARSER"]
 
     assert said("View") == []
+    read = Dem.build(TileRef(46, 5), opts, custom_dem="View")
+    assert read.view_arcsec == 1 and read.meta()["view_arcsec"] == 1
+    assert "view_arcsec" not in Dem.build(TileRef(46, 5), opts).meta()  # Ortho4XP's own default
     # the square's 1" archive does not hold it, its 3" one does
     own = tmp_path / "+40+000" / "N46E005.hgt"
     own.unlink()
@@ -245,6 +248,7 @@ def test_viewfinderpanoramas_at_30_m_says_where_its_90_m_answered(tmp_path: Path
     opts = replace(opts, download=site)
     (told,) = said("View")
     assert told.context == {"cell": "N46E005"} and own.stat().st_size == len(cell)
+    assert Dem.build(TileRef(46, 5), opts, custom_dem="View").meta()["view_arcsec"] == 3
     assert said("") == []
 
 
