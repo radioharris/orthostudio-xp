@@ -155,12 +155,78 @@ and memory the tracing takes (Atlanta: 25 min 38 s and 23.9 GB against 11 min 46
 default, as in 1.1.0: a tile built with 1.1.0 keeps its terrain; one built with 1.2.0, which drew
 them round, keeps it with the box ticked and makes it again angular otherwise.
 
+**Each tracing in a program of its own.** The tracing of a tile runs in a program started for that
+tile alone, beside the one that builds and downloads, and closed when the tracing is done. All the
+memory it took goes back to the computer then, and the images of the batch keep downloading at full
+speed while tracings run. Until 1.2.1 it ran inside the app: a row of 23 dense tiles at the service
+roads ran out of 64 GB and went through once the app was started again, and the images came at 60 %
+of the line while tracings ran. A tracing that runs out of memory stops its tile, and the tiles
+that need it, with a message that says so; the rest of the batch goes on. A tracing waits for the
+memory its roads take, counted in the tile's map data once it is downloaded: a country tile at the
+service roads with round ends reserves 1.8 GB, Atlanta 6.4, about what they take on a Mac; on
+Windows, where the same tracings take about a fifth less, 1.4 and 5.0. A big city
+waiting for that memory is not overtaken by the smaller tiles: it starts as soon as the room is
+there, and they follow beside it. The water masks reserve memory for the squares of photo where
+there is sea or a large lake to mask, a little for a lake, nothing more inland. A DSF
+reserves what its mesh takes, about 0.6 GB a million triangles, and the images start as many
+encoders as the memory holds: two on a computer of 8 GB, six on 16, twelve on a large Mac. Until
+1.2.1 every tracing counted 1.2 GB, and three big cities could start together whatever they took.
+
+**How much memory a build takes.** "Memory for building" (Settings, For experts, This app) lets a
+build reserve 80, 70 (the default) or 60 % of the computer's memory; the rest is room for X-Plane
+opened during the build. Below that, a build takes only what is free when a step starts: what
+X-Plane, the browser or the app itself already hold is left to them, and a tenth of the memory is
+always left to the system. High may build faster on a computer of 16 GB or less: a big city and
+the next tile then trace side by side. X-Plane opened during such a build may stutter until the
+steps already started end, since a step keeps the memory it took. Until 1.2.1 a build reserved
+60 % of the memory whatever the other apps held.
+
+The tracings also have places of their own, so a tile is meshed as soon as it is traced, and its
+images start as soon as it and its neighbours are meshed, while the other tiles are still being
+traced. Until 1.2.1 every tile was traced before any was meshed, and the images waited for the
+whole batch's terrain: on 25 tiles at the service roads, the first images started after 3 min 13 s
+instead of 20 min 24 s, and the terrain was done after 8 min instead of 23.
+
+**Why a tile's images wait for Coast, even with no water.** In Works, a tile's Imagery stays
+"waiting" until its Coast step is done, and Coast waits for the tile's eight neighbours to be
+meshed. The images need the tile's DSF, which says which images there are and which carry a water
+mask; the DSF needs the masks; and the masks read the water of the neighbours, since a lake or a
+coast can cross the edge of a square. Until the neighbours are meshed, OrthoStudio XP cannot know
+that there is no water: with none, Coast then takes a second, and what the tile really waited for
+is its neighbours' tracing and mesh. A tile at the edge of the batch waits only for the neighbours
+being built with it. Coast runs one tile at a time beside the meshes, so a tile's images do not
+wait for the rest of the batch to be meshed.
+
+**Two tiles downloading at once.** The images go one tile after the other, but a tile whose
+images only wait for a few pieces to be asked again (below) lends the line to the next tile
+meanwhile, so that it does not stay idle: Works may then show two tiles' Imagery under way, the
+first at its last percent. It finishes as soon as its pieces arrive.
+
+**Big cities in pieces.** With the limit of road points raised above its 200 000 (Settings, for
+experts, Roads), a big city at the service roads has a network too large to trace in one piece: the
+roads of Atlanta, with two million points, took 23 minutes and close to 20 GB. Past 200 000
+segments, the network is then cut into 64 squares, traced side by side on a few cores and put
+together again: 1 min 27 s, and 2.1 GB for each of the four programs. The outlines of the flattened
+roads move by half a metre, 2 m at a few points. At the default limit nothing changes, and no tile
+is built again.
+
+The images of each tile are downloaded and converted in a program of their own too, so the rest of
+the work never holds the line back: while the terrain was built, the images of that batch came at
+two thirds of a slow line, and now at its full speed, without asking for any of them twice. On a
+fast line nothing changes but half a second a tile, the time that program takes to start.
+
 **An image piece that does not arrive.** Out of tens of thousands of requests, a few can stall while
 the others flow. Once the rest of the tile's imagery is done, OrthoStudio XP asks for them again
 after a pause of 5 s, then 15 s, then 45 s, each time through another Bing server, and for at most
 3 minutes per tile. Only a piece still missing after that leaves its texture incomplete: the tile is
 then not installed, and *Retry the missing ones* fetches just those pieces. The final report counts
 the pieces asked for again and those recovered.
+
+While the imagery flows, a piece much later than the others is asked for a second time at once,
+and the first answer wins. "Much later" is measured against the line itself: twice the time most
+pieces took, and at least a second. Until 1.2.1 it was a second for every line, and on a slow line,
+where every piece takes longer than that, nearly every piece was asked for twice and the line
+carried half of what it could (a source at 0.3 MB/s, 2026-10-28).
 
 **What a build really wrote and downloaded.** The final report in Works says, for each step and
 in total, how much the build wrote on your disk and how much it downloaded: measured as it ran,
@@ -319,7 +385,11 @@ cross: stop it first.
 
 **Imagery sources.** Bing Maps and Esri cover the whole world and come first in every list, then
 EOX's Sentinel-2 mosaic, the whole world too but at ZL14 at most, light for flying high; EOX
-refuses images when asked too fast, and OrthoStudio XP then waits, slows down and asks again. The
+refuses images when asked too fast, and OrthoStudio XP then waits, slows down and asks again. It
+serves about 60 images a second and refuses the rest (measured 2026-10-29), so OrthoStudio XP asks
+for 50 at most, about 0.5 MB/s: much slower than Bing, whatever your line. Above ZL14 EOX only
+enlarges its images, so the airports of an EOX tile are not made sharper than ZL14, whatever the
+airports' level in Settings: at ZL18 each would cost minutes for not one more detail. The
 other sources are a country's (the Netherlands, Spain, Luxembourg, Japan, the United States): the
 list puts first those that cover the tiles you chose, and a source that misses a tile says so,
 since its server has no image there. *My sources…* adds a source OrthoStudio XP does not ship,
@@ -835,7 +905,7 @@ downloads its image pieces again.
 
 ## 6. Flying without tiles: OrthoStudio XP Live
 
-From 1.3, in beta, OrthoStudio XP has a second way to get ortho in X-Plane: OrthoStudio XP Live
+From 1.4, in beta, OrthoStudio XP has a second way to get ortho in X-Plane: OrthoStudio XP Live
 downloads the imagery while you fly, as AutoOrtho and XPME do, with no tile to build first, but
 with no virtual disk between X-Plane and its textures: it builds them beside X-Plane as ordinary
 files, so X-Plane waits only on its loading screen at a flight's start, never in flight. At its

@@ -236,3 +236,24 @@ def test_relief_copernicus_is_a_command_line_choice_too(home: Path, tmp_path: Pa
     # the United States and Canada, 2026-09-18)
     (usgs,) = specs("usgs")
     assert usgs.config["custom_dem"] == "NED1/3" and usgs.relief == default_relief()
+
+
+def test_the_memory_for_building_is_a_command_line_choice(home: Path, tmp_path: Path) -> None:
+    """``--memory`` is the page's "Memory for building": medium unless said, and a name it does
+    not know is refused before anything is built."""
+    import typer
+
+    from orthostudio.cli import _build_specs
+
+    def specs(memory: str):
+        return _build_specs(
+            tiles=["+43+005"], provider="BI", zl=14, out=tmp_path / "out", install=False,
+            xplane=None, global_scenery=None, store=None, chunks=None, workers=None,
+            sets=[], overlay=False, xp12_rasters=False, creation_agent="osxp",
+            link=True, encoder="auto", memory=memory,
+        )  # fmt: skip
+
+    assert specs("high")[0].build_memory == "high"
+    assert specs("medium")[0].build_memory == "medium"
+    with pytest.raises(typer.BadParameter):
+        specs("all")

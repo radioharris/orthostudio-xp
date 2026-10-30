@@ -30,7 +30,7 @@ from collections import Counter, deque
 from collections.abc import Callable, Collection, Iterable, Iterator, Mapping, Sequence
 from contextvars import ContextVar
 from dataclasses import dataclass, field
-from functools import lru_cache
+from functools import lru_cache, partial
 from pathlib import Path
 from typing import Any, ClassVar, Literal, cast
 
@@ -68,14 +68,19 @@ from orthostudio.imagery.grid import TextureId
 from orthostudio.imagery.providers import Provider, load_registry
 from orthostudio.install import Library, detect_xplane, global_scenery_dir
 from orthostudio.install import packs as install_packs
-from orthostudio.machine import _windows_memory_mb, physical_memory_mb  # noqa: F401
+from orthostudio.machine import (  # noqa: F401
+    _windows_memory_mb,
+    available_memory_mb,
+    children_memory_mb,
+    physical_memory_mb,
+)
 from orthostudio.masks.build import MAX_WORKERS as MASKS_MAX_WORKERS
 from orthostudio.masks.build import env_workers as masks_env_workers
 from orthostudio.masks.rule import MASKS as OSXP_MASKS
-from orthostudio.masks.rule import MasksJob, masks_job
+from orthostudio.masks.rule import MasksJob, masks_job, read_water_tris_artifact
 from orthostudio.masks.rule import MasksParams as OsxpMasksParams
-from orthostudio.masks.water import NEIGHBOUR_OFFSETS
-from orthostudio.mesh.build import mesh_file_name
+from orthostudio.masks.water import NEIGHBOUR_OFFSETS, mask_cell_count
+from orthostudio.mesh.build import mesh_file_name, steiner_budget
 from orthostudio.mesh.mesh_file import as_written, read_mesh, read_mesh_npz
 from orthostudio.mesh.rule import OSXP_MESH, MeshJob, mesh_job
 from orthostudio.mesh.rule import MeshParams as OsxpMeshParams
@@ -103,6 +108,7 @@ from orthostudio.pipeline.native import (
     COASTLINE_RULE,
     OSM_RULE,
     OSM_TIMEOUT_S,
+    SNAPSHOT_JSON,
     CoastlineParams,
     OsmJob,
     OsmOutcome,
@@ -138,7 +144,6 @@ from orthostudio.pipeline.pack import (
     pack_is_intact,
     write_manifest,
 )
-from orthostudio.pipeline.rule import TEXTURE_RAM_MB
 from orthostudio.pipeline.textures import (
     ProgressSnapshot,
     TextureOutcome,
@@ -161,15 +166,17 @@ from orthostudio.sched import (
     Scheduler,
     Started,
     run_p0_rule,
+    run_p0_rule_apart,
 )
+from orthostudio.sched.apart import ProcessLink
 from orthostudio.sched.costs import cost_name, timed_fraction
 from orthostudio.sources.osm import SnapshotStore, layers_for
 from orthostudio.textures.ter import TerKind, TerParams
 from orthostudio.tilefiles import OSXP_PARAMETERS, masks_index, tile_cfg_text, tile_defaults
-from orthostudio.vectors.layers import build_layers
+from orthostudio.vectors.roads import ROAD_SQUARES_FROM
 from orthostudio.vectors.rule import VECTORS as OSXP_VECTORS
-from orthostudio.vectors.rule import VectorsJob, vectors_job, vectors_rule
 from orthostudio.vectors.rule import VectorsParams as OsxpVectorsParams
+from orthostudio.vectors.rule import apart_job, vectors_rule
 
 __all__ = [
     "OVERLAY_SETTINGS",
@@ -335,6 +342,12 @@ def _pack_decals(cfg: Mapping[str, Any]) -> tuple[str, bool]:
     return decal, bool(cfg.get("decal_on_sea"))
 
 
+MEMORY_SHARES: dict[str, float] = {"high": 0.8, "medium": 0.7, "low": 0.6}
+"""The share of the computer's memory the steps of a batch may reserve together, by the setting
+``expert.build_memory`` ("Memory for building"): the rest is left for X-Plane opened during the
+batch, the system and the other apps. 0.6 for every computer up to 1.2.1."""
+
+
 @dataclass(slots=True)
 class BuildSpec:
     """One tile to build (spec section 1). Paths are resolved by :class:`BuildEnv`."""
@@ -387,6 +400,9 @@ class BuildSpec:
     registry_path: Path | None = None
     max_in_flight: int | None = None
     hedge_after_s: float = 1.0
+    build_memory: str = "medium"
+    """``expert.build_memory``, a key of :data:`MEMORY_SHARES`: how much of the computer's memory
+    the batch may take."""
 
     @property
     def level(self) -> str:
@@ -438,6 +454,7 @@ _BATCH_FIELDS = (
     "registry_path",
     "max_in_flight",
     "hedge_after_s",
+    "build_memory",
 )
 """Spec fields resolved once per batch: they must agree across the specs (else ValueError)."""
 
@@ -478,6 +495,8 @@ class BuildEnv:
     library_path: Path | None
     max_in_flight: int | None = None
     hedge_after_s: float = 1.0
+    memory_share: float = MEMORY_SHARES["medium"]
+    """The batch's share of the computer's memory (:data:`MEMORY_SHARES`)."""
     prepared: Any = None
     """The prepared sources of this batch (``sources.chain.Chain``), asked before Overpass."""
     own_store: bool = False
@@ -521,6 +540,7 @@ class BuildEnv:
             library_path=first.library_path,
             max_in_flight=first.max_in_flight,
             hedge_after_s=first.hedge_after_s,
+            memory_share=MEMORY_SHARES[first.build_memory],
             prepared=_prepared_chain(first, workdir),
             own_store=store is None,
         )
@@ -1610,6 +1630,175 @@ def _env_run(env: BuildEnv) -> Callable[[NodeContext], Any]:
     return run
 
 
+@dataclass(frozen=True, slots=True)
+class _ApartEnv:
+    """What the textures read of the build environment, taken to the process they run in: the
+    store and the image cache by their folders, the sources, the pool and network settings."""
+
+    store_root: Path
+    fsync: bool
+    chunks_root: Path
+    workdir: Path
+    registry: dict[str, Provider]
+    workers: int
+    max_in_flight: int | None
+    hedge_after_s: float
+
+
+@dataclass(slots=True)
+class _ApartNode:
+    """The engine's ``NodeContext`` as the textures see it in their process: what they tell it
+    goes through the process's ``ProcessLink``."""
+
+    node_id: str
+    cancel_event: threading.Event
+    progress: Callable[[float, str], None]
+    set_idle: Callable[[bool], None]
+    wrote: Callable[[int], None]
+    fetched: Callable[[int], None]
+
+
+@contextlib.contextmanager
+def _textures_apart(fields: _ApartEnv, node_id: str, link: ProcessLink) -> Iterator[None]:
+    """The build environment of the textures in their own process (``_textures_run``), its
+    store opened there and closed after; the engine's cancel sets the token they poll."""
+    env = BuildEnv(
+        store=Store(fields.store_root, fsync=fields.fsync),
+        store_root=fields.store_root,
+        chunks_root=fields.chunks_root,
+        workdir=fields.workdir,
+        global_scenery=None,
+        dsftool=None,
+        registry=fields.registry,
+        workers=fields.workers,
+        library_path=None,
+        max_in_flight=fields.max_in_flight,
+        hedge_after_s=fields.hedge_after_s,
+        own_store=True,
+    )
+    stop = threading.Event()
+    threading.Thread(
+        target=lambda: link.cancel.wait() and stop.set(), name="osxp-cancel", daemon=True
+    ).start()
+    node = _ApartNode(node_id, stop, link.progress, link.idle, link.wrote, link.fetched)
+    try:
+        with _active_env(env, cast(Any, node)):
+            yield
+    finally:
+        env.close()
+
+
+TEXTURES_CANCEL_GRACE_S = 60.0
+"""How long the images' process may take to stop once the build is cancelled: it finishes the
+textures it is encoding and saves the pieces of images it received, which the next build does not
+ask again. In the engine's process (1.2.1) the build waited for that without a limit; the 3 s a
+tracing is given (``sched.apart.CANCEL_GRACE_S``) could cut the save short on a slow disk (found
+in review, 2026-10-28)."""
+
+
+PHOTOS_BASE_MB = 350
+"""The images' own process: the downloads, the pieces received, the textures in flight; 0.12 to
+0.32 GB measured on twelve tiles at ZL14 (2026-10-28)."""
+
+PHOTOS_ENCODER_MB = 550
+"""One encoder of the images at its peak: 0.43 to 0.53 GB measured on the same tiles."""
+
+PHOTOS_BUDGET_SHARE = 3
+"""The images' encoders take at most a third of the RAM budget: beside them a big city's tracing
+and a mesh still fit on a computer of 16 GB. A quarter gave one encoder on 8 GB, whose images then
+took a fifth longer a tile than with twelve at ZL14 (182, 123 and 53 s for 144, 108 and 42,
+2026-10-28); a third gives two, 1.45 GB, what the images took at most with twelve to use."""
+
+
+def photos_workers(env: BuildEnv) -> int:
+    """The encoders a tile's images start: the batch's workers, as many as a third of the RAM
+    budget holds (:data:`PHOTOS_BUDGET_SHARE`), one at least. The images reserved 400 MB for each
+    of the batch's workers, 4.8 GB on 14 cores, and took 0.6 to 1.5 GB with EOX at ZL14, one to
+    four encoders busy: on a budget of 8 GB they waited 8 minutes for every other step to end,
+    ready to start (2026-10-28). Fewer encoders on a small computer encode more slowly only where
+    the line brings images faster than they encode."""
+    if env.workers <= 0:
+        return env.workers  # encoded in the images' own process
+    budget = ram_budget_mb(env.memory_share)
+    if budget is None:
+        return env.workers
+    fits = (budget // PHOTOS_BUDGET_SHARE - PHOTOS_BASE_MB) // PHOTOS_ENCODER_MB
+    return max(1, min(env.workers, fits))
+
+
+def _photos_ram_mb(env: BuildEnv) -> int:
+    """What a tile's images reserve: their process and the encoders :func:`photos_workers`
+    gives them (one, in their own process, without a pool)."""
+    return PHOTOS_BASE_MB + PHOTOS_ENCODER_MB * max(1, photos_workers(env))
+
+
+DSF_BASE_MB = 600
+DSF_MB_PER_MILLION_TRIANGLES = 610
+"""A tile's DSF at its peak, from its mesh's triangles (``stats.json``, ``n_triangles``): the line
+through the middle of 36 DSFs measured on 2026-10-28 on a Mac, each in a process of its own,
+twelve tiles at ZL17, ZL18 and ZL19 (565 MB + 609 MB a million triangles, within 10 %, 5 % on
+average): 3.2 GB for 4.8 million triangles, 5.7 to 6.3 GB for Atlanta's 8.9 million. The level
+changes little. Every DSF reserved 3 GB, below what each of those twelve took."""
+
+
+def cover_zl_caps(cfg: Mapping[str, Any], registry: Mapping[str, Provider]) -> dict[str, int]:
+    """The sources of a tile, its own and its zones', that stop below the level its airports are
+    raised to, with the level they stop at (``DsfParams.cover_zl_caps``); none when its airports
+    are not raised."""
+    if str(cfg.get("cover_airports_with_highres")) not in ("True", "ICAO"):
+        return {}
+    cover = int(cfg.get("cover_zl", 18))
+    codes = {str(cfg.get("default_website") or "")}
+    for entry in cfg.get("zone_list") or []:
+        with contextlib.suppress(TypeError, ValueError):
+            _coords, _zl, provider = entry
+            codes.add(str(provider or cfg.get("default_website") or ""))
+    return {
+        code: source.max_zl
+        for code in sorted(codes)
+        if (source := registry.get(code)) is not None and source.max_zl < cover
+    }
+
+
+def dsf_ram_from(inputs: Mapping[str, ArtifactRef | None]) -> int:
+    """The DSF node's ``ram_from``: :data:`DSF_MB_PER_MILLION_TRIANGLES` a million triangles of
+    its mesh, rounded up to 100 MB; the 3 GB every DSF declared when the mesh does not say."""
+    mesh = inputs.get("mesh")
+    try:
+        stats = json.loads((Path(mesh.path) / "stats.json").read_text(encoding="utf-8"))
+        triangles = int(stats["n_triangles"])
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return TILE_DSF.ram_mb
+    mb = DSF_BASE_MB + DSF_MB_PER_MILLION_TRIANGLES * triangles / 1e6
+    return math.ceil(mb / 100) * 100
+
+
+def _textures_run(env: BuildEnv) -> Callable[[NodeContext], Any]:
+    """The images of a tile, downloaded and encoded in a process of its own
+    (``orthostudio.sched.apart``): the engine's own Python work (the meshes' side of it, the OSM
+    data) held the interpreter the download runs in, and the images of a batch came at two thirds
+    of the line while the terrain was built (25 tiles at 0.3 MB/s, 2026-10-28)."""
+    fields = _ApartEnv(
+        store_root=env.store_root,
+        fsync=env.store.fsync,
+        chunks_root=env.chunks_root,
+        workdir=env.workdir,
+        registry=env.registry,
+        workers=photos_workers(env),
+        max_in_flight=env.max_in_flight,
+        hedge_after_s=env.hedge_after_s,
+    )
+
+    def run(ctx: NodeContext) -> ArtifactRef:
+        return run_p0_rule_apart(
+            ctx,
+            partial(_textures_apart, fields, ctx.node_id),
+            cancel_grace_s=TEXTURES_CANCEL_GRACE_S,
+        )
+
+    return run
+
+
 def _masks_run(env: BuildEnv) -> Callable[[NodeContext], Any]:
     """Bind the masks job: the pool size the node budgeted for, and the cancellation token.
 
@@ -1792,10 +1981,88 @@ def neighbour_meshes(store: Store) -> dict[str, ArtifactRef]:
     return {name: ref for name, (_used, ref) in best.items()}
 
 
-def _masks_ram_mb(env: BuildEnv) -> int:
-    """RAM of the native masks node: it runs its own process pool inside (spec 8.6)."""
-    workers = masks_workers(env)
-    return 300 + 800 * workers
+MASKS_BASE_MB = 300
+"""The masks node's own memory, without its pool: the water triangles of the tile and its
+neighbours, read from their meshes."""
+
+
+MASKS_WORKER_MB = {"sand": 250, "rocks": 710, "3steps": 990}
+"""One masks worker at its peak, one cell in flight, by masking profile (``masks-build.md`` 6.2,
+measured: 242, 703 and 981 MB). Every profile counted 800 MB, three times what ``sand``, the
+default, takes, and less than ``3steps`` does."""
+
+MASKS_DISTANCE_MB = 970
+"""One worker making the distance masks too (``distance_masks_too``): 962 MB measured."""
+
+
+def masks_worker_mb(params: OsxpMasksParams) -> int:
+    """What one masks worker takes for ``params``' profile; an unknown one counts the heaviest."""
+    mb = MASKS_WORKER_MB.get(params.masking_mode, max(MASKS_WORKER_MB.values()))
+    return max(mb, MASKS_DISTANCE_MB) if params.distance_masks_too else mb
+
+
+def _masks_ram_mb(env: BuildEnv, params: OsxpMasksParams) -> int:
+    """RAM of the native masks node with its whole pool, which it runs inside (spec 8.6)."""
+    return MASKS_BASE_MB + masks_worker_mb(params) * masks_workers(env)
+
+
+def masks_water_triangles(mesh: ArtifactRef | None, use_masks_for_inland: bool) -> int | None:
+    """The triangles of a mesh the masks draw (``masks.water.water_triangles``: sea and the water
+    marked like it, every water triangle with ``use_masks_for_inland``), from its ``stats.json``;
+    ``None`` when it does not say."""
+    if mesh is None:
+        return 0
+    try:
+        stats = json.loads((Path(mesh.path) / "stats.json").read_text(encoding="utf-8"))
+        counts = {int(bits): int(n) for bits, n in stats["water_bits_counts"].items()}
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return None
+    return sum(
+        n for bits, n in counts.items() if (bits != 0 if use_masks_for_inland else bits >= 2)
+    )
+
+
+def masks_ram_from(
+    env: BuildEnv, params: OsxpMasksParams
+) -> Callable[[Mapping[str, ArtifactRef | None]], int]:
+    """The masks node's ``ram_from``: a worker for each cell with water to draw, as many as the
+    pool has (``worker_count``), each at its profile's memory. The cells are counted from the
+    ``water_tris.npz`` of the tile and its neighbours (``masks.water.mask_cell_count``), read only
+    when their ``stats.json`` says there is such water. Every masks node reserved its whole pool,
+    800 MB a worker: 5.1 GB on 8 threads and 6.7 on 14, for masks that took a second, inland with
+    no cell and around a lake with two to twelve; on 16 GB no tile's masks, so no images,
+    started while a big city was traced (a campaign of 12 tiles, 2026-10-28)."""
+    tile = TileRef.parse(params.tile)
+    worker_mb = masks_worker_mb(params)
+    full = _masks_ram_mb(env, params)
+
+    def ram_from(inputs: Mapping[str, ArtifactRef | None]) -> int:
+        meshes = [
+            ref
+            for name, ref in inputs.items()
+            if name not in ("dem", "custom_extent") and ref is not None
+        ]
+        waters = [masks_water_triangles(ref, params.use_masks_for_inland) for ref in meshes]
+        if all(water == 0 for water in waters):
+            return MASKS_BASE_MB
+        try:
+            tris = [read_water_tris_artifact(Path(ref.path)) for ref in meshes]
+            if any(t is None for t in tris):
+                return full
+            cells = mask_cell_count(
+                [t for t in tris if t is not None],
+                tile,
+                params.mask_zl,
+                use_masks_for_inland=params.use_masks_for_inland,
+            )
+        except Exception:
+            # read while the scheduler picks what to start: a damaged file raised there stopped
+            # the whole batch (a truncated npz raises BadZipFile or EOFError); the masks step,
+            # which reads it too, now fails alone, its tile's
+            return full
+        return MASKS_BASE_MB + worker_mb * min(masks_workers(env), cells)
+
+    return ram_from
 
 
 def masks_workers(env: BuildEnv) -> int:
@@ -1872,16 +2139,13 @@ def _vectors_osm_input(
 
 
 def _vectors_run(env: BuildEnv, spec: BuildSpec) -> Callable[[NodeContext], Any]:
-    """Bind the layer builders and the cancellation token for ``orthostudio.vectors@1``."""
+    """The tracing of a tile, in a process of its own (``orthostudio.sched.apart``): its memory
+    goes back to the system when it ends, and the downloads of the batch keep the engine's
+    interpreter. The process reports through the node's progress (``apart_job``)."""
 
     def run(ctx: NodeContext) -> ArtifactRef:
-        job = VectorsJob(
-            build_layers=build_layers,
-            cancel=cast(Any, ctx.cancel_event),
-            progress=ctx.progress,
-        )
-        with _active_env(env, ctx), vectors_job(job):
-            return run_p0_rule(ctx)
+        with _active_env(env, ctx):
+            return run_p0_rule_apart(ctx, apart_job)
 
     return run
 
@@ -2009,12 +2273,12 @@ than Copernicus gave another user two reliefs out of one folder (2026-10-05).
 alone it is a folder or Canada's lidar with nothing for the square, which is how they are meant to
 be, and a build that said nothing before says nothing now."""
 
-RELIEF_RAM = {"dem": 1.3, "dem_overlay": 2.4, "vectors": 2.1, "mesh": 2.0}
+RELIEF_RAM = {"dem": 1.3, "dem_overlay": 2.4, "vectors": 2.1}
 """Peak memory of a node, per MB of the raster one's own files give its tile. Measured on a lidar
 square of 27 468 points a side (3.0 GB of floats, 2026-10-02): the relief 3.8 GB, 7.0 GB when a
 folder's file is laid into the relief under it (the composite of 28 011 points a side beside the
-file), the vectors 6.2 GB (the mapped raster and its copy smoothed over the airports), Triangle4XP
-6.0 to 6.3 GB (the heights and their curvature, and the mesh)."""
+file), the vectors 6.2 GB (the mapped raster and its copy smoothed over the airports). The mesh
+weighs the raster it reads itself (:func:`mesh_ram_from`)."""
 
 RELIEF_SOURCE_RAM = {"NED1/3": 1200, "ANADEM": 800}
 """What the relief node declares for a source whose step takes more than the rule's 600 MB.
@@ -2027,9 +2291,108 @@ count is the same on both). Set near the Windows peak rather than at the Mac's h
 owner's choice: a reservation only makes other steps wait, and a machine of 16 GB or more has
 the room."""
 
-MESH_STRUCTURES_MB = 600
-"""What Triangle4XP holds besides the raster: the mesh, about 0.3 to 0.4 GB at 3 million
-triangles (``docs/specs/mesh-build.md``)."""
+TRACING_RAM: dict[tuple[bool, bool], tuple[int, int]] = {
+    # (round ends, limit raised): MB without roads, MB per million road points
+    (False, False): (1430, 900),
+    (True, False): (1131, 1994),
+    (False, True): (1202, 2139),
+    (True, True): (908, 2166),
+}
+"""A tile's tracing at its peak, from the road points of its OSM data (:func:`road_points`): the
+line through the middle of the tracings measured on 2026-10-28 on a Mac (the footprint macOS
+counts, in the tracing's own process), Atlanta (``+33-085``) at every road level with both road
+ends, at the default limit of road points and at 2 000 000, and twelve tiles around it at the
+service roads, round ends, 2 000 000, three times each (beside other tracings twice, alone once).
+Within 9 % of what they took on average, 20 % under at worst: the memory left free covers it
+(:func:`ram_room_mb`). The line over every peak, 5 % above, reserved a country tile of 379 047
+points 2.8 GB for the 1.7 it took; Atlanta's 6.6 GB for every tile (a table by road level) traced
+a batch one tile at a time on 16 GB. The limit counts as raised past
+``roads.ROAD_SQUARES_FROM``, where a large network is cut into squares."""
+
+TRACING_WINDOWS_SHARE = 0.78
+"""What a tracing takes on Windows of what :data:`TRACING_RAM` reserves on a Mac: the same twelve
+tiles traced on a Windows computer of 16 GB took 71 to 84 % of it, 78 % on average, in private
+bytes (what Task Manager shows), Atlanta 4.75 GB for 6.3; each tile within 1 % from one batch to
+the next (2026-10-28). Reserved at the Mac's figure, Atlanta held back every other tracing there
+for 8 minutes with half the memory free."""
+
+UNKNOWN_ROAD_POINTS = 2_500_000
+"""The road points taken when a tile's OSM data does not say: Atlanta's at the service roads."""
+
+
+def road_points(osm: ArtifactRef | None, road_level: int) -> int | None:
+    """The points of the road layers ``road_level`` reads (``layers_for``), from the counts of the
+    OSM step's ``snapshot.json``; ``None`` when there is no such count to read."""
+    if osm is None:
+        return None
+    path = Path(osm.path) / SNAPSHOT_JSON
+    names = [s.name for s in layers_for(road_level) if s.name.endswith("roads")]
+    try:
+        counts = json.loads(path.read_text(encoding="utf-8"))["counts"]
+        return sum(int(counts[name]["nodes"]) for name in names if name in counts)
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+
+
+def tracing_ram_mb(points: int, rounded: bool, raised: bool, *, windows: bool | None = None) -> int:
+    """MB a tracing of ``points`` road points reserves (:data:`TRACING_RAM`, times
+    :data:`TRACING_WINDOWS_SHARE` on Windows), rounded up to 100, never under its rule's 1.2 GB.
+    ``windows`` is this computer's system unless said."""
+    if windows is None:
+        windows = os.name == "nt"
+    base, per_million = TRACING_RAM[rounded, raised]
+    mb = (base + per_million * points / 1e6) * (TRACING_WINDOWS_SHARE if windows else 1.0)
+    return max(OSXP_VECTORS.ram_mb, math.ceil(mb / 100) * 100)
+
+
+def tracing_ram_from(
+    road_level: int, rounded: bool, max_levelled_segs: int
+) -> Callable[[Mapping[str, ArtifactRef | None]], int]:
+    """The tracing node's ``ram_from``: read once its OSM input is built, before it starts."""
+    raised = max_levelled_segs > ROAD_SQUARES_FROM
+
+    def ram_from(inputs: Mapping[str, ArtifactRef | None]) -> int:
+        points = road_points(inputs.get("osm"), road_level)
+        return tracing_ram_mb(UNKNOWN_ROAD_POINTS if points is None else points, rounded, raised)
+
+    return ram_from
+
+
+MESH_MB_PER_MILLION_TRIANGLES = 200
+MESH_RASTER_FACTOR = 2.2
+"""Triangle4XP at its peak: 200 MB a million triangles of the mesh it will make, and 2.2 times the
+raster it reads (the heights and their curvature). Above all of eleven meshes measured on
+2026-10-29 on a Mac, each tile alone, by 4 to 15 % for the dense ones, the USGS and the large file,
+up to 48 % where the limit of triangles sets them: 0.4 to 1.8 GB on Copernicus (2.5 to 9 million
+triangles), 1.5 GB on the USGS at 1/3" (a raster of 446 MB), 13.5 and 14.5 GB on a relief of one's
+own of 6 GB. Every mesh reserved 0.9 GB, twice the raster and 0.6 GB with a large file of one's
+own: below what the denser meshes, the USGS and the large file took."""
+
+
+def mesh_ram_from(limit_tris: float) -> Callable[[Mapping[str, ArtifactRef | None]], int]:
+    """The mesh node's ``ram_from``, read once the tracing is built: the triangles it will make,
+    twice its input nodes (the tracing's ``stats.json``) and the Steiner points Triangle4XP may
+    add (:func:`orthostudio.mesh.build.steiner_budget`), and the raster it reads (its ``.alt``).
+    Rounded up to 100 MB. An unreadable file counts nothing: the node keeps its rule's 0.9 GB."""
+
+    def ram_from(inputs: Mapping[str, ArtifactRef | None]) -> int:
+        # read while the scheduler picks what to start: a damaged file must not stop the batch
+        try:
+            vectors = inputs.get("vectors")
+            stats = json.loads((Path(vectors.path) / "stats.json").read_text(encoding="utf-8"))
+            nodes = int(stats["nodes"])
+        except Exception:
+            nodes = 0
+        try:
+            dem = inputs.get("dem")
+            raster_mb = sum(p.stat().st_size for p in Path(dem.path).glob("*.alt")) / 2**20
+        except Exception:
+            raster_mb = 0.0
+        triangles = 2 * (nodes + steiner_budget(limit_tris, nodes))
+        mb = MESH_MB_PER_MILLION_TRIANGLES * triangles / 1e6 + MESH_RASTER_FACTOR * raster_mb
+        return math.ceil(mb / 100) * 100
+
+    return ram_from
 
 
 def own_relief_mb(custom_dem: str, tile: TileRef) -> tuple[float, bool]:
@@ -2200,12 +2563,14 @@ def declare(
             )
         else:
             osm_input = _vectors_osm_input(spec, cfg, osm_ref, planning=planning)
+        rounded = bool(cfg.get("rounded_road_ends", False))
+        vectors_params = OsxpVectorsParams.subset_of({**cfg, "tile": name})
         vectors = reg.node(
             f"{name}/vectors",
             # round or angular road ends: the rule's version says which, so that a tile 1.1.0
             # traced (12, angular) and one 1.2.0 traced (13, round) are both found as they are
-            vectors_rule(bool(cfg.get("rounded_road_ends", False))),
-            OsxpVectorsParams.subset_of({**cfg, "tile": name}),
+            vectors_rule(rounded),
+            vectors_params,
             {
                 "osm": osm_input,
                 "dem": dem,
@@ -2220,21 +2585,26 @@ def declare(
                 # agree with (``vectors-coastline.md`` section 9; Tehran and Manaus, 2026-10).
                 "global_scenery": global_source(spec.tile),
             },
-            # Not "cpu": a cpu node is shipped to a spawned worker process, and neither this
-            # node's run closure (it binds the build env) nor the decorated rule function
-            # pickles -- every real build failed with a PicklingError before the first layer was
-            # read (found by the review-6 fix pass; the tests ran the scheduler with
-            # cpu_in_threads). It runs in the scheduler's thread pool, in a subprocess slot;
-            # numpy, shapely and Triangle-free noding release the GIL enough.
+            # Not "cpu": a cpu node is shipped to a pool's worker process, and this node's run
+            # closure binds the build env -- every real build failed with a PicklingError before
+            # the first layer was read (found by the review-6 fix pass). Its run starts a process
+            # of its own for the tracing (``_vectors_run``), on a slot of the tracings' lane.
             kind="subprocess",
+            lane=TRACING_LANE,
             run=_vectors_run(env, spec),
+            # what its roads take, read from its OSM data before it starts, or a raster of
+            # one's own when that takes more
+            ram_from=tracing_ram_from(
+                vectors_params.road_level, rounded, vectors_params.max_levelled_segs
+            ),
             **relief_ram(OSXP_VECTORS, relief_mb, RELIEF_RAM["vectors"]),
         )
         coast = _coastline_node(reg, spec, osm_input)
+        mesh_params = OsxpMeshParams.subset_of({**cfg, "tile": name})
         mesh = reg.node(
             f"{name}/mesh",
             OSXP_MESH,
-            OsxpMeshParams.subset_of({**cfg, "tile": name}),
+            mesh_params,
             {
                 "vectors": vectors,
                 # ``--dem vectors`` (the default) is the vector stage's own raster, smoothed
@@ -2245,7 +2615,8 @@ def declare(
             },
             kind="subprocess",
             run=_mesh_run(env),
-            **relief_ram(OSXP_MESH, relief_mb, RELIEF_RAM["mesh"], MESH_STRUCTURES_MB),
+            # its triangles and the raster it reads, once the tracing has said its nodes
+            ram_from=mesh_ram_from(mesh_params.limit_tris),
         )
         osm_nodes.append(osm)
         vectors_nodes.append(vectors)
@@ -2279,13 +2650,17 @@ def declare(
             neighbours[input_name] = (
                 node_nb if node_nb is not None else (stored_meshes or {}).get(nb.name)
             )
+        masks_params = OsxpMasksParams.subset_of({**cfg, "tile": name})
         masks = reg.node(
             f"{name}/masks",
             OSXP_MASKS,
-            OsxpMasksParams.subset_of({**cfg, "tile": name}),
+            masks_params,
             {"mesh": mesh, **neighbours, "dem": None, "custom_extent": None},
             kind="subprocess",
-            ram_mb=_masks_ram_mb(env),
+            lane=COAST_LANE,
+            # its pool's memory only once its meshes say there is water to draw
+            ram_mb=MASKS_BASE_MB,
+            ram_from=masks_ram_from(env, masks_params),
             run=_masks_run(env),
         )
         xp12: Node | None = None
@@ -2322,7 +2697,13 @@ def declare(
                     run=_env_run(env),
                 )
         dsf_params = TileDsfParams.subset_of(
-            {**cfg, **NO_DECALS, "tile": name, "creation_agent": spec.creation_agent}
+            {
+                **cfg,
+                **NO_DECALS,
+                "tile": name,
+                "creation_agent": spec.creation_agent,
+                "cover_zl_caps": cover_zl_caps(cfg, env.registry),
+            }
         )
         needs_apt = dsf_params.cover_airports_with_highres in ("True", "ICAO")
         dsf = reg.node(
@@ -2336,6 +2717,9 @@ def declare(
                 "vectors": vectors if needs_apt else None,
             },
             kind="cpu",
+            # what its mesh's triangles take, read from the mesh before it starts
+            ram_mb=DSF_BASE_MB,
+            ram_from=dsf_ram_from,
         )
         encoder, encoder_version = resolve_encoder(spec.encoder)
         tex_params = TileTexturesParams.subset_of(
@@ -2353,8 +2737,9 @@ def declare(
             tex_params,
             {"dsf": dsf, "masks": masks},
             kind="net",
-            ram_mb=max(500, TEXTURE_RAM_MB * env.workers),
-            run=_env_run(env),
+            # the encoders it starts, and the same number in its reservation
+            ram_mb=_photos_ram_mb(env),
+            run=_textures_run(env),
         )
         out_dir = str(Path(spec.out_dir).expanduser().resolve())
         _refuse_pack_dir_conflict(pack_dirs, spec, out_dir, dsf, textures)
@@ -2535,10 +2920,12 @@ class BuildReport:
 
 
 def default_subprocess_slots() -> int:
-    """How many relief, vector, mesh, masks and overlay nodes run at once: the cores less one, 3
-    at most. It was a quarter of the cores: 3 on a 14-core Mac, but 1 on a 4-core Windows virtual
-    machine, where these stages of a batch ran one after the other and a user saw every tile's
-    data before any terrain (2026-09-15). The RAM budget still holds back what memory cannot."""
+    """How many relief, mesh and overlay nodes run at once, and how many tracings beside them
+    (:data:`TRACING_LANE`): the cores less one, 3 at most. The masks have a lane of their own
+    (:data:`COAST_LANE`). It was a quarter of the cores: 3
+    on a 14-core Mac, but 1 on a 4-core Windows virtual machine, where these stages of a batch
+    ran one after the other and a user saw every tile's data before any terrain (2026-09-15).
+    The RAM budget still holds back what memory cannot."""
     return min(3, max(1, (os.cpu_count() or 4) - 1))
 
 
@@ -2554,6 +2941,45 @@ held it while their files were read: a user's first tile, ready at 4:01, had its
 8:51 behind the batch's last three USGS reliefs, about 400 MB each (a build of 2026-09-26).
 X-Plane 12's relief, read from its own DSFs, takes a subprocess slot and no lane."""
 
+TRACING_LANE = "tracing"
+"""The lane of the tracings (``Node.lane``), as wide as the subprocess slots and apart from them.
+On the same slots, every slot that came free went to a tracing, whose path to the images is the
+longest, so no mesh started before the batch's last tracing and no tile's images before that: on
+25 tiles at the service roads, four neighbours were traced at 3 min 26 s, the first mesh started
+at 8 min 34 s and the first images at 10 min 58 s (2026-10-28). Apart, a tile's mesh starts once
+its tracing is done, and its images once its neighbours' meshes are."""
+
+COAST_LANE = "coast"
+"""The lane of the masks (``Node.lane``, the Coast step), one tile at a time, apart from the
+subprocess slots. On those slots every slot that came free went to a mesh, whose path to the
+images is the longer, so no tile's masks, and no images, started before the batch's last mesh: on
+27 EOX tiles, +33-085 and its neighbours had their meshes at 64 s, its masks started at 104 s with
+the batch's last mesh and the first images at 110 s (2026-10-29). One at a time: a tile's masks
+already run a pool of up to eight processes (:func:`masks_workers`), for 0.2 to 18 s."""
+
+
+MEMORY_KEEP_FREE_SHARE = 0.1
+"""The share of the computer's memory a batch never takes, whatever is free: the system's own."""
+
+
+def ram_budget_mb(share: float = MEMORY_SHARES["medium"]) -> int | None:
+    """The scheduler's RAM budget, ``share`` of the memory (:data:`MEMORY_SHARES`), ``None`` when
+    the platform does not say how much memory it has."""
+    mem = physical_memory_mb()
+    return None if mem is None else int(mem * share)
+
+
+def ram_room_mb() -> int | None:
+    """What the steps of the batch may reserve together now, below their share: the memory free
+    now, plus what the batch's own processes hold (their reservations count it already), less
+    :data:`MEMORY_KEEP_FREE_SHARE` of the memory. What the other apps hold, X-Plane's or the
+    browser's, and the engine's own memory (5.3 GB measured during the OSM downloads, reserved by
+    no step) are not free, so they are left out. ``None`` when the system does not say."""
+    free, held, mem = available_memory_mb(), children_memory_mb(), physical_memory_mb()
+    if free is None or held is None or mem is None:
+        return None
+    return free + held - int(mem * MEMORY_KEEP_FREE_SHARE)
+
 
 def make_scheduler(
     store: Store,
@@ -2563,8 +2989,7 @@ def make_scheduler(
     cpu_in_threads: bool = False,
 ) -> Scheduler:
     """The batch scheduler with the pool sizes of spec section 4."""
-    mem = physical_memory_mb()
-    if mem is None:
+    if physical_memory_mb() is None:
         log.warning(
             "this platform does not report its physical memory: the scheduler runs without a "
             "RAM budget, so the ram_mb of the mask and mesh nodes is not enforced"
@@ -2575,10 +3000,16 @@ def make_scheduler(
         subprocess_slots=default_subprocess_slots(),
         net_slots=1,
         io_slots=2,
-        ram_budget_mb=None if mem is None else int(mem * 0.6),
+        ram_budget_mb=ram_budget_mb(env.memory_share),
+        ram_room_mb=ram_room_mb,
         workdir=env.workdir / "sched",
         cpu_in_threads=cpu_in_threads,
-        lanes={OVERPASS_LANE: 1, RELIEF_LANE: 1},
+        lanes={
+            OVERPASS_LANE: 1,
+            RELIEF_LANE: 1,
+            TRACING_LANE: default_subprocess_slots(),
+            COAST_LANE: 1,
+        },
     )
 
 

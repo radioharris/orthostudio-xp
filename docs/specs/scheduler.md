@@ -38,6 +38,7 @@ NodeContext: node_id, rule, params, key, recipe, inputs: dict[str, ArtifactRef |
 
 Scheduler(store, *, cpu_workers: int | None = None, subprocess_slots: int = 1,
           net_slots: int = 2, io_slots: int = 4, ram_budget_mb: int | None = None,
+          ram_room_mb: Callable[[], int | None] | None = None,
           fail_fast: bool = False, workdir: Path | None = None, stats_interval_s: float = 1.0,
           lanes: Mapping[str, int] | None = None)
   add(node) -> Node          registers the node and every node reachable through its inputs
@@ -101,7 +102,7 @@ there). Works' final report shows both per step (a user, 2026-10-16).
 | kind | executes in | limit | typical rule |
 |---|---|---|---|
 | `cpu` | `ProcessPoolExecutor` (`spawn`), `cpu_workers` = `os.cpu_count() - 2` (min 1) | `cpu_workers` | DSF encoding (`tile.dsf`, the one `cpu` node of a build: the stages' run callables do not pickle, `pipeline-build.md` 8.6) |
-| `subprocess` | thread of the shared pool, the node spawns and owns its child process | `subprocess_slots` | Triangle4XP (mesh), DSFTool (overlay); also the vector and masks stages (the masks with a process pool of their own) and X-Plane 12's relief, run in a thread on a subprocess slot (`pipeline-build.md` 4) |
+| `subprocess` | thread of the shared pool, the node spawns and owns its child process | `subprocess_slots` | Triangle4XP (mesh), DSFTool (overlay), the vector stage (a Python process of its own, below, on the `tracing` lane); also the masks stage (with a process pool of its own, on the `coast` lane) and X-Plane 12's relief, run in a thread on a subprocess slot (`pipeline-build.md` 4) |
 | `net` | thread of the shared pool; the node drives its own `Fetcher` | `net_slots` | chunk downloads (the textures node, with an encoding pool of its own; each slot is one network pipeline of 64-128 requests); the OSM and relief downloads are `net` too, on lanes of their own (below) |
 | `io` | thread of the shared pool | `io_slots` | linking, copying, `.ter` writing, install |
 
@@ -112,20 +113,68 @@ against that lane's limit (`Scheduler(lanes={"overpass": 1})`) instead of its ki
 OSM downloads of a build share the Overpass mirrors' quota, not the imagery's network pipeline:
 on one `net` slot with the images, a tile's download waited for another tile's images
 (`pipeline-build.md` 4). A downloaded relief has the `relief` lane for the same reason, since
-0.1.19. A lane keeps the RAM budget of every node. A lane the scheduler has no limit for is
-refused when the node is added.
+0.1.19. The tracings have one too (`tracing`, as wide as the subprocess slots), so that the
+meshes and masks no longer wait for the batch's last tracing (`pipeline-build.md` 8.6), and so do
+the masks (`coast`, one at a time), so that they no longer wait for the batch's last mesh. A lane
+keeps the RAM budget of every node. A lane the scheduler has no limit for is refused when the node
+is added.
 
 `cpu_in_threads=True` runs `cpu` nodes in threads (tests and debugging: no spawn, plain
 tracebacks); `cpu_workers` is at least 1. A node is **admitted** when a slot of its kind (or
-its lane) is free and `Σ ram_mb of running nodes + node.ram_mb <= ram_budget_mb`. A node
-alone larger than the budget is admitted when nothing is running (refusing would deadlock the
-build; the plan already warned). `ram_budget_mb=None` disables the memory check. The thread
+its lane) is free and `Σ ram_mb of running nodes + node.ram_mb <= ram_budget_mb`, or the room
+`ram_room_mb()` gives when it is less: what the computer has free now plus what the batch's own
+processes hold, which their reservations already count (`pipeline-build.md` 4). It is read once a
+pass of `_admit`, when a node that takes memory meets the budget, and `None` from it keeps the
+budget alone; since the loop admits at least once a second, a node held back by memory other apps
+took starts once they give it back. A node alone larger than the budget is admitted when nothing
+is running (refusing would deadlock the build; the plan already warned). `ram_budget_mb=None`
+disables the memory check. The thread
 pool is sized to
 `subprocess_slots + net_slots + io_slots + the lanes' limits (+ cpu_workers in thread mode)` so a thread is
 always available for an admitted node.
 
-Workers ignore `SIGINT` (the parent handles Ctrl-C) and open their own `Store` on the same
+A worker of the `cpu` pool runs one node and ends (`max_tasks_per_child=1`), so what a node took
+goes back to the system when it ends: in one worker for the batch, a DSF of 8.9 million triangles
+left 6.3 GB with it for every DSF after (2026-10-28). Workers ignore `SIGINT` (the parent handles
+Ctrl-C) and open their own `Store` on the same
 root (one sqlite connection per process, as `pipeline/textures.py` does).
+
+**Memory read from the inputs** (`Node.ram_from`): a node whose peak grows with what it is given
+reads it from its inputs once they are built, just before it starts, and takes from the RAM
+budget the larger of that and its `ram_mb` (`_ram_of`, settled once in `_Rec.ram`, given back when
+it ends). The tracing reads the road points its OSM step counted, the masks the water of their
+meshes (`pipeline-build.md` 8.6).
+
+**A node waiting for memory is not overtaken by its own kind** (`_admit`): once a ready node, best
+priority first, is held back by the RAM budget, no node after it on the same lane or kind that takes
+memory starts in that round; what that kind gives back goes to it, and the others follow beside it
+once it has started. Smaller tracings that fitted took that room each time: a big city's, ready at
+3 min, started last at 26 min on 16 GB, its neighbours' images waiting for its mesh (2026-10-28).
+The other lanes and kinds still start when they fit: held back as well, no mesh, so no masks nor
+images, started before the batch's last tracing on a budget of 8 GB. A node of no memory still
+starts, and so do the hits.
+
+**A process of its own** (`orthostudio.sched.apart.run_p0_rule_apart(ctx, bind=None)`, a node's
+`run`): the rule's P0 function runs in a `spawn` process started for this node alone and gone when
+it ends, so all the memory it took goes back to the system, and its Python work leaves the engine's
+interpreter to the threads of the other nodes. The engine keeps the write protocol: it opens the
+build, hands the process a `RunContext` on the build's `out` and `scratch`, and commits after the
+process said `done`. What the process would have told the node's context it tells a
+`ProcessLink` (`progress`, `idle`, `wrote`, `fetched`), which the engine passes on to the
+`NodeContext` (`progress`, `set_idle`, `wrote`, `fetched`); those messages and the process's log
+records come through one `multiprocessing.Queue` (log records at the `orthostudio` logger's level,
+handled by the engine's logger of the same name). `bind(link)`, a module-level callable or a
+`functools.partial` of one, is entered around the function there, for what the rule reads from its
+context. An error comes back by its `to_dict()` with the process's traceback chained under it;
+`MemoryError`, or a process ended by `SIGKILL` (the system's answer to memory running out), is
+`SYS_OUT_OF_MEMORY`; a process that ends without a word is `SYS_INTERNAL_ERROR` with its exit code.
+Cancelling sets `ProcessLink.cancel`, gives the process `CANCEL_GRACE_S` (3 s) to stop by itself,
+or the `cancel_grace_s` its caller passes (the textures: 60 s to save what they received), then
+ends it (`terminate`), the engine raising `SYS_CANCELLED`. The process is not a daemon, so
+that a rule may start processes of its own (the textures' encoding pool); the engine ends it
+whatever happens, and it leaves by itself when the engine is gone. The rule and its params are
+pickled: the function must be found by its module and name. The vector stage and the textures run
+so (`pipeline-build.md` 8.6).
 
 ### 2.4 Priority: remaining critical path
 
@@ -226,7 +275,7 @@ record their start/end instants in a shared log.
 | S1 | overlap of kinds | 3 cpu + 2 subprocess + 2 io nodes of 0.2 s each finish in < 0.5 s total |
 | S2 | cpu limit | 8 cpu nodes, `cpu_workers=3`: max concurrent cpu = 3 |
 | S3 | subprocess / net limits | never more than `subprocess_slots` / `net_slots` in flight |
-| S4 | RAM budget | 4 nodes of 600 MB, budget 1000: max concurrent = 1; budget 1300: 2; oversized node admitted alone |
+| S4 | RAM budget | 4 nodes of 600 MB, budget 1000: max concurrent = 1; budget 1300: 2; oversized node admitted alone; 3 nodes of 600 MB, budget 2000, room 700: 1 at a time, no room said or room 5000: 3 |
 | S5 | critical path | chain of 3 added after a lone node starts first with `cpu_workers=1` |
 | S6 | hit / miss | second run of the same graph: every node `Done(hit=True)`, no `run` called |
 | S7 | early cutoff | upstream param change with identical bytes rebuilds only the upstream |

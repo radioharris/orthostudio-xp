@@ -2,7 +2,8 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Worker processes leave when the process that started them is gone.
 
-The engine's pools (the scheduler's CPU workers, the textures' encoders, the masks' cells) are
+The engine's pools (the scheduler's CPU workers, the textures' encoders, the masks' cells, the
+road squares of a tracing) are
 ``ProcessPoolExecutor`` workers, which wait for their next task on a queue. When the engine itself
 ends normally it shuts them down; when it is killed or crashes, nothing tells them, and they wait
 forever: the engine killed during a build left 11 of them behind, idle, holding about 7.3 GB of

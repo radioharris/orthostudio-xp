@@ -14,7 +14,7 @@ import os
 import sqlite3
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -286,6 +286,73 @@ def test_ram_budget(store: Store, budget: int | None, expected: int) -> None:
     refs, events = _run(sched, list(sched.nodes))
     assert len(refs) == 4
     assert _max_admitted(events) == expected
+
+
+def test_a_node_takes_the_ram_its_inputs_say(store: Store) -> None:
+    """``ram_from`` reads the inputs once they are built: the node takes the larger of it and its
+    ``ram_mb``. Four nodes declaring 100 MB each read 600 MB from what they were given, so only
+    one runs at a time within 1 000 MB; a tracing's roads are known once its OSM step is done."""
+    sched = _sched(store, cpu_workers=4, ram_budget_mb=1000)
+    seen: list[set[str]] = []
+
+    def ram_from(inputs: Mapping[str, ArtifactRef | None]) -> int:
+        seen.append({name for name, ref in inputs.items() if ref is not None})
+        return 600
+
+    src = _node("src", SRC, seconds=0.01, tag="ram-from-src")
+    sched.add(src)
+    for i in range(4):
+        node = _node(f"m{i}", MID, ram_mb=100, seconds=0.1, tag=f"ram-from-{i}", a=src)
+        node.ram_from = ram_from
+        sched.add(node)
+    refs, events = _run(sched, list(sched.nodes))
+    assert len(refs) == 5
+    assert _max_admitted([e for e in events if getattr(e, "node_id", "src") != "src"]) == 1
+    assert seen == [{"a"}] * 4  # asked once each, with the input built
+
+
+@pytest.mark.parametrize(("room", "expected"), [(700, 1), (None, 3), (5000, 3)])
+def test_the_memory_free_now_holds_nodes_back_below_the_budget(
+    store: Store, room: int | None, expected: int
+) -> None:
+    """Below its share of the memory, the scheduler keeps to what the computer has free now
+    (``ram_room_mb``): with other apps holding memory, room for one node of 600 MB where the
+    budget holds three. A computer that does not say, or more room than the budget, leaves the
+    budget alone."""
+    reads: list[int] = []
+
+    def room_mb() -> int | None:
+        reads.append(1)
+        return room
+
+    sched = _sched(store, cpu_workers=4, ram_budget_mb=2000, ram_room_mb=room_mb)
+    for i in range(3):
+        sched.add(_node(f"n{i}", SRC, ram_mb=600, seconds=0.2, tag=f"room-{room}-{i}"))
+    refs, events = _run(sched, list(sched.nodes))
+    assert len(refs) == 3
+    assert _max_admitted(events) == expected
+    assert reads  # read when a node that takes memory meets the budget
+
+
+def test_a_node_waiting_for_memory_is_not_overtaken(store: Store) -> None:
+    """Two tracings of 400 MB run; a big city's (700 MB), first in line, does not fit beside one
+    of them, and a country tile's (300 MB) would: it waits behind the city, which starts as soon
+    as both are done, the country tile beside it; a step of another kind that fits still
+    starts. Overtaken each time, a city ready at 3 min was traced last, at 26 min, on 16 GB (a
+    campaign of 12 tiles, 2026-10-28)."""
+    sched = _sched(store, cpu_workers=4, ram_budget_mb=1000)
+    sched.add(_node("a", SRC, ram_mb=400, seconds=0.3, tag="overtake-a"))
+    sched.add(_node("b", SRC, ram_mb=400, seconds=0.6, tag="overtake-b"))
+    sched.add(_node("city", SRC, ram_mb=700, seconds=0.1, tag="overtake-city"))
+    sched.add(_node("country", SRC, ram_mb=300, seconds=0.1, tag="overtake-country"))
+    # a step of another kind still starts beside them: held back too, no mesh, so no images,
+    # started before the batch's last tracing on a budget of 8 GB
+    sched.add(_node("mesh", SRC, kind="io", ram_mb=100, seconds=0.05, tag="overtake-mesh"))
+    refs, events = _run(sched, list(sched.nodes))
+    assert len(refs) == 5
+    order = [e.node_id for e in events if isinstance(e, Started)]
+    assert order.index("city") < order.index("country"), order
+    assert order.index("mesh") < order.index("city"), order
 
 
 def test_oversized_node_is_admitted_alone(store: Store) -> None:
@@ -615,7 +682,9 @@ def test_process_pool_runs_progress_and_errors(store: Store) -> None:
     refs, ev = _run(sched, list(sched.nodes))
     assert set(refs) == {"p0", "p1", "p2", "io"}
     pids = {int(refs[f"p{i}"].path.read_bytes().split(b"pid=")[1]) for i in range(3)}
-    assert os.getpid() not in pids and len(pids) <= 2
+    # a process for each node, so that what one took goes back to the system when it ends (a DSF
+    # of 5 million triangles stayed at 6.3 GB in the worker for every tile after it, 2026-10-28)
+    assert os.getpid() not in pids and len(pids) == 3
     assert int(refs["io"].path.read_bytes().split(b"pid=")[1]) == os.getpid()
     progress = [e for e in ev if isinstance(e, Progress) and e.node_id.startswith("p")]
     assert {e.fraction for e in progress} == {0.0, 0.5}

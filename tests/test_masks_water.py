@@ -209,3 +209,26 @@ def test_read_water_tris_round_trip(tmp_path) -> None:  # type: ignore[no-untype
     np.savez(path, format="nope", corners=wt.corners, water_bits=wt.water_bits, bary=wt.bary)
     with pytest.raises(ValueError, match="osxp-water-tris-1"):
         read_water_tris(path)
+
+
+@pytest.mark.parametrize("inland", [False, True])
+def test_the_cells_counted_without_the_mesh_are_the_masks_jobs(inland: bool) -> None:
+    """``mask_cell_count`` reads the ``water_tris.npz`` alone, before the masks start, to reserve
+    a worker for each cell they will draw: the cells ``water_triangles`` hands ``build_masks``
+    within the tile's range, outer quarters, inland water and a neighbour's triangles included."""
+    from orthostudio.masks.water import mask_cell_count, mask_cells
+
+    west = TILE.neighbour(0, -1)
+    points = [_cell_centre(8432, 6000, q, q) for q in range(4)]
+    points += [_cell_centre(8448, 6016, 1, 2), _cell_centre(8416, 6000, 0, 1)]
+    here = _mesh(points, [2, 4, 1, 5, 2, 6])
+    there = _mesh([_cell_centre(8416, 6000, 0, 1)], [2])
+    meshes = {TILE: here, west: there}
+    by_cell = water_triangles(meshes, TILE, ZL, use_masks_for_inland=inland)
+    rng = mask_cells(TILE, ZL)
+    jobs = {cell for cell in by_cell if rng.contains(*cell)}
+    counted = mask_cell_count(
+        [_water_tris_npz(m) for m in meshes.values()], TILE, ZL, use_masks_for_inland=inland
+    )
+    assert counted == len(jobs) > 0
+    assert mask_cell_count([_water_tris_npz(_mesh([(43.5, 5.5)], [1]))], TILE, ZL) == 0

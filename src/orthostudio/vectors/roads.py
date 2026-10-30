@@ -17,6 +17,11 @@ left to the DEM.
 those polygons along their outline over 100 or 250 m: the relief's small waves stay out of the
 levelled roads, which X-Plane's draped roads followed as bumps (KSME, 2026-10-26).
 
+A network of more than :data:`ROAD_SQUARES_FROM` segments, once its limit is raised past that, is
+buffered square by square on several processes (:func:`improved_buffer_in_squares`): the one
+buffer of the whole network grows about as the square of its size, 23 minutes and 20 GB for
+Atlanta at the service roads (2026-10-28).
+
 The airport areas Ortho4XP computes in ``include_airports`` enter here as an *injected* input
 (arbitration A2): wave 1 has no airport builder, so ``airports=None`` builds a tile as if it
 had no aerodrome, and wave 2 will fill :class:`AirportAreas` in.
@@ -31,16 +36,22 @@ Nothing here touches the network.
 
 from __future__ import annotations
 
+import logging
+import os
 from collections.abc import Sequence
+from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass, field
+from multiprocessing import get_context
 
 import numpy as np
+import shapely
 from numpy.typing import NDArray
 from shapely import affinity, geometry
 from shapely.geometry.base import BaseGeometry
 
 from orthostudio.errors import OsxpError
 from orthostudio.model import TileRef
+from orthostudio.parentwatch import leave_with_parent
 from orthostudio.vectors.geom import polygons_of
 from orthostudio.vectors.noding import Layer
 from orthostudio.vectors.osmdata import OsmData, SkipHandler
@@ -57,11 +68,14 @@ from orthostudio.vectors.water import (
 )
 
 __all__ = [
+    "ROAD_SQUARES",
+    "ROAD_SQUARES_FROM",
     "AirportAreas",
     "RoadParams",
     "RoadResult",
     "build_road_layers",
     "improved_buffer",
+    "improved_buffer_in_squares",
     "length_in_meters",
     "refine_way",
     "shift_way",
@@ -95,6 +109,17 @@ plane real slopes; 50 m changed almost nothing and 500 m planed too much (measur
 SMOOTH_STEP_M = 2.0
 """Spacing of the samples :func:`smooth_along` averages, fine against the 100 m segments of a
 refined outline and the 30 m of the relief."""
+
+ROAD_SQUARES_FROM = 200_000
+"""The segments of a network past which it is buffered in squares, when ``max_levelled_segs`` is
+raised past them too. Atlanta measured at the main roads, 281 780 points: 9.8 s in one piece,
+2.0 s in squares; at the minor roads, 1 071 208 points: 189 s and 8.3 GB against 16 s and 0.8 GB
+a process (2026-10-28). The default limit never cuts, so no tile built with it changes."""
+
+ROAD_SQUARES = 8
+"""Squares a side of the grid over the network: 64 pieces of a few seconds each."""
+
+_LOG = logging.getLogger(__name__)
 
 
 # -- metric helpers (``O4_Vector_Utils.py``, module-level ``scalx`` made explicit) --------------
@@ -168,11 +193,107 @@ def improved_buffer(
     sl = simplify_length * M_TO_LAT
     quad_segs = 8 if rounded else 1
     scaled = affinity.affine_transform(geom, [scalx, 0, 0, 1, 0, 0])
+    out = _grow_shrink(scaled, bw, sw, sl, quad_segs)
+    return affinity.affine_transform(out, [1 / scalx, 0, 0, 1, 0, 0])
+
+
+def _grow_shrink(
+    scaled: BaseGeometry, bw: float, sw: float, sl: float, quad_segs: int
+) -> BaseGeometry:
+    """The body of :func:`improved_buffer`, in degrees, ``x`` already scaled."""
     out = scaled.buffer(bw + sw, join_style=2, mitre_limit=1.5, quad_segs=quad_segs)
     out = out.buffer(-1 * sw, join_style=2, mitre_limit=1.5, quad_segs=quad_segs)
     if sl:
         out = out.simplify(sl)
+    return out
+
+
+_Square = tuple[BaseGeometry, tuple[float, float, float, float], float, float, float, int]
+
+
+def _square_bands(square: _Square) -> BaseGeometry:
+    """The bands of one square, in a worker: its lines grown, shrunk and simplified, cut back to
+    the square."""
+    part, cell, bw, sw, sl, quad_segs = square
+    return shapely.clip_by_rect(_grow_shrink(part, bw, sw, sl, quad_segs), *cell)
+
+
+def square_workers() -> int:
+    """The processes one tracing buffers its squares on: the engine's CPU tasks (the cores less
+    two) shared by the tracings that may run at once (``pipeline.build.default_subprocess_slots``,
+    the cores less one, 3 at most): 4 on a 14-core Mac, 1 on 4 cores."""
+    cores = os.cpu_count() or 4
+    return max(1, max(1, cores - 2) // min(3, max(1, cores - 1)))
+
+
+def improved_buffer_in_squares(
+    geom: BaseGeometry,
+    buffer_width: float,
+    separation_width: float,
+    simplify_length: float,
+    scalx: float,
+    *,
+    rounded: bool = True,
+    squares: int = ROAD_SQUARES,
+    workers: int | None = None,
+) -> BaseGeometry:
+    """:func:`improved_buffer` of a large network of lines, cut into ``squares`` x ``squares``.
+
+    A point of the bands depends only on the lines within ``bw + 2 sw`` of it (grown by
+    ``bw + sw``, then shrunk by ``sw``): each square takes the lines within that and 2 m more of
+    it, buffers them on its own, and keeps what falls in the square; the squares at the edge
+    reach that far past the network, so none of its bands is cut. The pieces are glued in the
+    order of the grid, whatever the number of processes. Against the one buffer, on Atlanta at
+    the service roads, the outlines agree within 0.5 m but at a few points, 2.1 m at most: each
+    square simplifies its own outline (2026-10-28).
+    """
+    bw = buffer_width * M_TO_LAT
+    sw = separation_width * M_TO_LAT
+    sl = simplify_length * M_TO_LAT
+    quad_segs = 8 if rounded else 1
+    scaled = affinity.affine_transform(geom, [scalx, 0, 0, 1, 0, 0])
+    margin = bw + 2 * sw + 2 * M_TO_LAT
+    x0, y0, x1, y1 = scaled.bounds
+    xs = np.linspace(x0, x1, squares + 1)
+    ys = np.linspace(y0, y1, squares + 1)
+    xs[0], ys[0], xs[-1], ys[-1] = x0 - margin, y0 - margin, x1 + margin, y1 + margin
+    work: list[_Square] = []
+    for i in range(squares):
+        for j in range(squares):
+            cell = (float(xs[i]), float(ys[j]), float(xs[i + 1]), float(ys[j + 1]))
+            part = shapely.clip_by_rect(
+                scaled, cell[0] - margin, cell[1] - margin, cell[2] + margin, cell[3] + margin
+            )
+            if not part.is_empty:
+                work.append((part, cell, bw, sw, sl, quad_segs))
+    count = square_workers() if workers is None else max(1, workers)
+    if count == 1:
+        pieces = [_square_bands(square) for square in work]
+    else:
+        with ProcessPoolExecutor(
+            max_workers=count, mp_context=get_context("spawn"), initializer=leave_with_parent
+        ) as pool:
+            pieces = list(pool.map(_square_bands, work))
+    out = shapely.union_all(pieces)
     return affinity.affine_transform(out, [1 / scalx, 0, 0, 1, 0, 0])
+
+
+def road_bands(network: BaseGeometry, params: RoadParams, scalx: float) -> BaseGeometry:
+    """The road area of 3.3: in squares when ``max_levelled_segs`` is raised past
+    :data:`ROAD_SQUARES_FROM` and the network has more segments than that, else in one piece."""
+    segments = int(shapely.get_num_coordinates(network) - shapely.get_num_geometries(network))
+    args = (network, params.lane_width, BUFFER_SEPARATION_M, BUFFER_SIMPLIFY_M, scalx)
+    if params.max_levelled_segs <= ROAD_SQUARES_FROM or segments <= ROAD_SQUARES_FROM:
+        return improved_buffer(*args, rounded=params.rounded_ends)
+    workers = square_workers()
+    _LOG.info(
+        "roads: %d segments buffered in %d x %d squares on %d processes",
+        segments,
+        ROAD_SQUARES,
+        ROAD_SQUARES,
+        workers,
+    )
+    return improved_buffer_in_squares(*args, rounded=params.rounded_ends, workers=workers)
 
 
 def smooth_along(
@@ -369,14 +490,7 @@ def build_road_layers(
     network = network.difference(
         improved_buffer(apt.area, params.lane_width + APT_BUFFER_EXTRA_M, 0, 0, scalx)
     )
-    road_area = improved_buffer(
-        network,
-        params.lane_width,
-        BUFFER_SEPARATION_M,
-        BUFFER_SIMPLIFY_M,
-        scalx,
-        rounded=params.rounded_ends,
-    )
+    road_area = road_bands(network, params, scalx)
 
     def alt_vec_shift(way: NDArray[np.floating]) -> NDArray[np.float64]:
         """``:251-252``: the altitude ``lane_width`` metres to the left, i.e. on the road."""

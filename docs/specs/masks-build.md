@@ -215,9 +215,12 @@ only bit-exact reproduction (section 4).
 | `sand` + `_dist` | 962 MB | 439 MB |
 
 The rule declares `ram_mb = 1100`: the base plus the cost of **one** cell of the heaviest
-profile. The real cost is `300 + 800 x workers` MB, and it is the *pipeline* that knows the
-worker count, so `pipeline/build.py:_masks_ram_mb` computes that number for the node it
-declares and hands the very same count to the rule through `MasksJob` (section 6.5). A caller
+profile. The real cost is `300 MB + a worker of the profile x the workers that start` (250 MB
+for `sand`, 710 `rocks`, 990 `3steps`, 970 with the distance masks), one worker for each cell
+with water to draw up to the pool's size, and it is the *pipeline* that knows the worker count
+and counts the cells beforehand (`pipeline-build.md` 8.6, `water.mask_cell_count`); it hands
+the very same pool size to the rule through `MasksJob` (section 6.5). Until 2026-10-28 every
+profile counted 800 MB a worker and every node its whole pool. A caller
 that builds the node without `declare()` gets the one-worker figure, which is the honest
 minimum.
 

@@ -33,7 +33,7 @@ consumed subset contains it, and everything below them whose input bytes changed
                         :
                  +43+005/dem       (orthostudio.dem, subprocess; net, lane relief, when downloaded)
                         |
-                 +43+005/vectors   (orthostudio.vectors, subprocess) <- OSM layers
+                 +43+005/vectors   (orthostudio.vectors, subprocess, lane tracing) <- OSM layers
                         |          +43+005/coastline (orthostudio.coastline, io) <- OSM layers
                         |                 |
                  +43+005/mesh      (orthostudio.mesh, subprocess)
@@ -60,13 +60,13 @@ id gets a `#2` suffix.
 | Node | Rule (version) | Kind, RAM | Params (consumed subset) | Inputs | Artefact |
 |---|---|---|---|---|---|
 | dem | `orthostudio.dem@1` | subprocess with X-Plane's relief (the default), net on the `relief` lane when it downloads one; 0.6 GB | `DemParams` (spec `dem.md` 9) + `tile` | the Global Scenery DSFs of the 3x3 block when the relief is X-Plane's (decision 0007) | dir `Data<tile>.alt`, `dem.npy`, `meta.json` |
-| vectors | `orthostudio.vectors@1` | subprocess, 1.2 GB | `VectorsParams` (spec `vectors-assembly.md`) + `tile` | `osm` (8.5), `dem`, `patches` (the tile's folder of hand-made patches, absent without one: 8.5), `airports` (absent) | dir `Data<tile>.{node,poly,alt}`, `dem.json`, `airports.json`, `airports.npz`, `airports.wkb.json` |
+| vectors | `orthostudio.vectors@1` | subprocess on the `tracing` lane, in a process of its own (8.6); by its roads, 1.2 GB at least (8.6) | `VectorsParams` (spec `vectors-assembly.md`) + `tile` | `osm` (8.5), `dem`, `patches` (the tile's folder of hand-made patches, absent without one: 8.5), `airports` (absent) | dir `Data<tile>.{node,poly,alt}`, `dem.json`, `airports.json`, `airports.npz`, `airports.wkb.json` |
 | coastline | `orthostudio.coastline@1` | io, 0.2 GB | `tile` | `osm` (8.4) | file `coastline.npz` |
-| mesh | `orthostudio.mesh@1` | subprocess, 0.9 GB | `MeshParams` (spec `mesh-build.md` 9) + `tile` | `vectors`, `dem` (8.2), `coastline` | dir `Data<tile>.mesh`, `mesh.npz` |
-| masks | `orthostudio.masks@1` | subprocess, `300 + 800 x workers` MB | `MasksParams` (spec `masks-build.md`) + `tile` | `mesh`, `nb_n`..`nb_nw` | dir `<y>_<x>.png`, `index.json` |
+| mesh | `orthostudio.mesh@1` | subprocess, 0.2 GB a million triangles it will make and 2.2 times the raster it reads, 0.9 GB at least (8.6) | `MeshParams` (spec `mesh-build.md` 9) + `tile` | `vectors`, `dem` (8.2), `coastline` | dir `Data<tile>.mesh`, `mesh.npz` |
+| masks | `orthostudio.masks@1` | subprocess on the `coast` lane, one tile at a time (8.6); 300 MB and a worker of its profile for each cell with water to draw, as many as the pool has (8.6) | `MasksParams` (spec `masks-build.md`) + `tile` | `mesh`, `nb_n`..`nb_nw` | dir `<y>_<x>.png`, `index.json` |
 | xp12 | `xp12.rasters@1` | io, 0.2 GB | `tile` | `source` = the Global Scenery DSF (7z) of the tile, by content digest | dir `demn.bin`, `dems.bin` (bathy already clamped) |
-| dsf | `tile.dsf@3` | cpu, 3 GB | `TileDsfParams` = `DsfParams` (spec `dsf-encoding.md` 2, minus `sea_texture_blur`, see 7) + `tile` + `creation_agent` | `mesh`, `masks`, `rasters` (None = no DEMS, explicit choice only), `vectors` (None unless `cover_airports_with_highres` is `True` or `ICAO`) | dir `<tile>.dsf`, `terrain/*.ter`, `textures.json`, `stats.json` |
-| textures | `tile.textures@1` | net (+ its own encoding pool), `max(0.5, 0.4 x workers)` GB (`TEXTURE_RAM_MB` = 400 MB a texture) | `TileTexturesParams`: encoder and version, `mip_mode`, `refine_passes`, `sea_texture_blur`, `clean_halo`, `parent_levels`, `TerParams` fields | `dsf`, `masks` | dir `textures/*.dds` (hard links to the `texture.dds` artefacts), `textures/water_transition.png` when needed, `terrain/*.ter`, `manifest.json` |
+| dsf | `tile.dsf@3` | cpu, in a process of its own, 0.6 GB and 0.61 GB a million triangles of its mesh, 3 GB when the mesh does not say (8.6) | `TileDsfParams` = `DsfParams` (spec `dsf-encoding.md` 2, minus `sea_texture_blur`, see 7) + `tile` + `creation_agent` | `mesh`, `masks`, `rasters` (None = no DEMS, explicit choice only), `vectors` (None unless `cover_airports_with_highres` is `True` or `ICAO`) | dir `<tile>.dsf`, `terrain/*.ter`, `textures.json`, `stats.json` |
+| textures | `tile.textures@1` | net (+ its own encoding pool), 0.35 GB and 0.55 GB an encoder, as many encoders as a third of the RAM budget holds (8.6) | `TileTexturesParams`: encoder and version, `mip_mode`, `refine_passes`, `sea_texture_blur`, `clean_halo`, `parent_levels`, `TerParams` fields | `dsf`, `masks` | dir `textures/*.dds` (hard links to the `texture.dds` artefacts), `textures/water_transition.png` when needed, `terrain/*.ter`, `manifest.json` |
 | overlay | `tile.overlay@2` | subprocess, 0.3 GB | `OverlayParams` = `OverlayExclusions` + `tile`; values from `config` / the spec fields, else the OrthoStudio XP defaults (`overlay_settings`) | `source` = the Global Scenery DSF, by digest | file: the overlay DSF |
 | pack | `tile.pack@2` | io | `PackParams`: `tile`, `provider`, `zl`, `out_dir`, `link`, `tile_cfg` (the text of `tile_settings.cfg`, in the format of Ortho4XP's `Ortho4XP_<tile>.cfg`: the 44 tile variables the build consumed), `decal` and `decal_on_sea` (the decal the pack writes in the terrain files, and on the sea too; left out of the key when off) | `dsf`, `textures`, `overlay` (None with `--no-overlay`) | file `orthostudio.toml` (the manifest, also written in the pack) |
 | install | `tile.install@2` | io | `InstallParams`: `tile`, `custom_scenery`, `link` | `pack` | file `install.json` (receipt) |
@@ -356,7 +356,17 @@ GB each plus the masks' own pool, and X-Plane 12's relief, read from its DSFs; a
 until 2026-09-15, which gave a 4-core Windows virtual machine one slot, so that a batch's stages ran one
 after the other there while a 14-core Mac ran three), `net_slots = 1` (one
 Bing pipeline at a time: the provider's `max_in_flight` is the politeness limit, not the number of
-tiles), `io_slots = 2`, `ram_budget_mb = 60 %` of the physical memory, the `relief` lane of one
+tiles), `io_slots = 2`, `ram_budget_mb` the share of the physical memory "Memory for building"
+gives (`expert.build_memory`, `MEMORY_SHARES`: high 80 %, medium 70 % by default, low 60 %, the
+share of every computer up to 1.2.1; `--memory` on the command line), below which the batch keeps
+to the room the computer has now (`ram_room_mb`: the memory free now, plus what the batch's own
+processes hold, less a tenth of the memory for the system; `machine.available_memory_mb`,
+`machine.children_memory_mb`, which on Windows leaves out a process started before its parent:
+Windows keeps the number of a parent that ended, which a later process may take, and the engine
+given the number of explorer.exe's parent, ended at logon, counted X-Plane and every app started
+from the Start menu as its own): what X-Plane, the browser or the engine itself hold (5.3 GB
+measured during the OSM downloads, reserved by no step) is not taken twice, and a build started
+beside them takes less, the `relief` lane of one
 (`RELIEF_LANE`): a downloaded relief (Copernicus, USGS, Canada's lidar...), one tile at a time
 beside the imagery's slot, where until 0.1.19 the batch's reliefs ran one after the other before
 any image and held it while their files were read (a user's first tile, ready at 4:01, had its
@@ -431,7 +441,8 @@ For each spec, without building anything:
 | `nodes` | `Scheduler.plan(targets)`: `hit` / `build` / `unknown` and the EWMA seconds of each node (spec `scheduler.md` 2.8) |
 | `textures.total`, `textures.exact` | when the DSF node is a hit, the `textures.json` of that artefact (exact: 100 % sea cells produce no texture), or of the DSF an earlier version of its rule made of the same params and inputs when the store holds it (`_earlier_build`: an update that changes only how the DSF is written names the same textures); when the steps before the DSF are still to make, so that no earlier DSF can match their inputs, the DSF of the tile's last build with the same params (`_last_made`, `Store.last_made`: the newest artefact of the rule made of the same params, whatever its inputs), `exact = false` and a note; else every texture covering the tile (`textures_covering`), plus those of its zones (`textures.zones`, `map-zones.md` 5) and of the airports the build makes sharper (`textures.airports`, below), `exact = false` |
 | `textures.masked` | from the same list: textures with a sea kind (DXT5, 22.4 MB) versus DXT1 (11.2 MB); unknown without the DSF: all DXT1 plus a note |
-| `requests`, `download_mb` | per texture to prepare (none when the textures step is a hit, and not those `_textures_kept` takes as they are: Build again of eighteen tiles read every container of every image, all kept, 16 s from a hard disk to download nothing, 2026-10-16), the container of the chunk store: absent = 256 requests, present = its `ERROR` entries; a texture taken as it is still needs its pieces for its key, so one whose container is absent counts 256 (`ChunkStore.has` alone, no read: a user had deleted the downloaded images, 2026-10-23); MB = requests x mean body size (the probe's, else 13 kB, the Bing ZL14 mean) |
+| `requests`, `download_mb` | per texture to prepare (none when the textures step is a hit, and not those `_textures_kept` takes as they are: Build again of eighteen tiles read every container of every image, all kept, 16 s from a hard disk to download nothing, 2026-10-16), the container of the chunk store: absent = 256 requests, present = its `ERROR` entries; a texture taken as it is still needs its pieces for its key, so one whose container is absent counts 256 (`ChunkStore.has` alone, no read: a user had deleted the downloaded images, 2026-10-23); MB = requests x mean body size: the probe's, else each piece's source and level (`KB_PER_PIECE`, measured on the pieces stored 2026-10-29: Bing ZL16 14.2 kB, Bing ZL18 11.7, EOX ZL14 9.5), else 13 kB, the Bing ZL14 mean; 13 kB for every piece undercounted Bing builds at ZL16 by 6 to 11 % |
+| `relief_mb` | the relief cells the relief step downloads, counted in `download_mb` and in the network time: for each source of `custom_dem` with a measured cell (`RELIEF_CELL_MB`: Copernicus 43.5 MB over 46 cells, the USGS at 1/3" 476 MB), its cells missing from the elevation folder, the 3x3 block for a source assembled from it, the tile's own cell for the USGS, sea cells and those another tile of the batch counted left out; none when the relief step is in the store. X-Plane 12's relief is on the disk; the other sources are not counted. A build of three tiles on Copernicus downloaded 0.47 GB of relief the Plan left out; 11 cells missing x 43.5 MB counts 0.48 (2026-10-29) |
 | `probe` | `--online` only: 20 chunks of the first incomplete texture through `Fetcher` (20 in flight, one round, polite, not stored); gives the line's latency (`seconds` of the round), `kb_per_request`, and `throughput = min(2000, max(20 / seconds, max_in_flight / seconds))` req/s, and no more than the provider's `server_req_per_s` when it has one (`ProbeResult.throughput`): the fetcher keeps `max_in_flight` (128 for Bing) transfers open, so a 0.1 s latency sustains ~1 300 req/s (measured 1 300-1 500 on this line, section 6 runs) |
 | `network_s` | `requests / throughput` (probe) or `requests / 400` (no probe: a conservative sustained rate, `net-download.md` measured 1 000+) |
 | `compute_s` | the sum of the `build` and `unknown` node estimates plus the textures to prepare (`textures.total` but those kept) x the per-texture cost (`sched.cost.tile.textures/texture`, learnt by `build_tiles` as `wall / textures`, default 0.5 s) divided by `workers` |
@@ -730,15 +741,154 @@ recently used `orthostudio.mesh` artefact of the store that holds the neighbour.
 
 `orthostudio.dem` is declared `net` on the `relief` lane when it downloads its relief and
 `subprocess` when it reads X-Plane 12's own, the default (0.6 GB either way), `orthostudio.osm`
-`net` (0.3 GB), `orthostudio.coastline` `io` (0.2 GB), `orthostudio.vectors` `subprocess` (1.2 GB),
-`orthostudio.mesh` `subprocess` (0.9 GB: the Python side plus the Triangle4XP child) and
+`net` (0.3 GB), `orthostudio.coastline` `io` (0.2 GB), `orthostudio.vectors` `subprocess` (by its roads, below),
+`orthostudio.mesh` `subprocess` (the Python side plus the Triangle4XP child: by its triangles and its raster, below) and
 `orthostudio.masks` `subprocess` (its own process pool inside). `cpu` is deliberately not used for
 them: the `cpu` pool is a `spawn` process pool that receives the node's `run` callable by pickle, and
 the stage rules need a bound job (`dem_job`, `masks_job`, the build environment) or spawn their own
 pool. The vector node found that the hard way: declared `cpu`, every real build failed with a
 `PicklingError` before its first layer was read.
 
-The masks node's `ram_mb` is `300 + 800 x workers` MB, and **the same `workers` is given to the
+**The tracing runs in a process of its own** (`run_p0_rule_apart`, `scheduler.md` 2.3), started
+for one tile and gone when it ends, still on a `subprocess` slot with the same `ram_mb`. It ran in a
+thread of the engine's process until 2026-10-27, and two things came of it. What a dense tile's
+tracing took of the memory stayed with the engine: a user's row of 23 tiles at
+the service roads ran out of 64 GB, and went through once the engine was started again (2026-10).
+And its Python work held the interpreter the downloads run in: on 25 tiles at the service roads
+and 0.3 MB/s, images came at 22 pieces a second while tracings ran, 36 without them.
+The rule's function is pickled by reference (`vectors.rule.osxp_vectors`, a function under its own
+name beside `VECTORS`); the process binds `apart_job`, which gives the layer builders the node's
+progress and no token. What it logs reaches the engine's log; its traceback is chained under the
+error the node fails with. A process the system ends (`SIGKILL`) or one that runs out of memory
+fails the node with `SYS_OUT_OF_MEMORY`: that node and what needs it fail, the engine goes on.
+The tiles are the same, byte for byte, and so are the keys: nothing is built again.
+
+**A tracing reserves what its roads take** (`TRACING_RAM`, `tracing_ram_from`, through the
+scheduler's `Node.ram_from`, `scheduler.md` 2.3): once the tile's OSM step is done and before the
+tracing starts, the road points of the layers its road level reads (`road_points`: the `nodes`
+counts of `big_roads` and `small_roads` in the step's `snapshot.json`), and from them a line by
+road ends and limit of road points (the default, or raised past 200 000), rounded up to 100 MB,
+never below the rule's 1.2 GB; a raster of one's own that takes more wins (`relief_ram`). An
+estimate, which has no OSM data yet, takes 2 500 000 points (Atlanta's at the service roads).
+
+| road ends, limit | without roads | per million road points | from |
+|---|---|---|---|
+| angular, default | 1 430 MB | 900 MB | Atlanta, levels 0 to 5 |
+| round, default | 1 131 | 1 994 | Atlanta, levels 0 to 5 |
+| angular, raised | 1 202 | 2 139 | Atlanta, levels 0 to 5 at 2 000 000 |
+| round, raised | 908 | 2 166 | the same, and 12 tiles three times each |
+
+Each line goes through the middle of the tracings measured on 2026-10-28 on a Mac, in the
+tracing's own process (the footprint macOS counts): Atlanta (`+33-085`, 176 616 road points at
+level 1, 2 489 613 at level 4) at every road level with both road ends, at the default limit and
+at 2 000 000, and the twelve tiles of the block +33..+35 / -086..-083 at the service roads with
+round ends and 2 000 000, beside other tracings twice and alone once (from 1.6 GB for 379 047
+points to Atlanta's 6.0 to 6.8). Within 7 to 11 % of what they took on average, 24 % under at
+worst: the memory kept free covers it (`ram_room_mb`). The peak is the assembly of
+the shapes, or the one buffer of the road bands at the default limit; the processes of the road
+squares (`vectors-water-roads.md` 3.8) take 0.1 to 1.1 GB each and are done before it. What is
+left between tiles of the same points is the relief: only the roads leaning past
+`road_banking_limit` are levelled, which the tracing knows once it has read them.
+
+Every tracing declared 1.2 GB until then, so three cities at the service roads could start
+together on a computer of 16 GB, some 19 GB (found in review, 2026-10-28). A table by road level
+then reserved Atlanta's 6.6 GB for every tile at those settings, and a line over every peak 5 %
+above it a country tile 2.8 GB for the 1.7 it took: on the Shadow (16 GB) a batch of twelve was
+traced one tile at a time under the table. From the line, a country tile of 379 047 points
+reserves 1.8 GB and Atlanta 6.4.
+
+On Windows a tracing reserves 78 % of the line (`TRACING_WINDOWS_SHARE`): the same twelve tiles
+traced on a Windows computer of 16 GB, three batches, took 71 to 84 % of it in private bytes (what
+Task Manager shows), 78 % on average, each tile within 1 % from one batch to the next; Atlanta
+4.75 GB, where the line gives 6.3. At the Mac's figure, Atlanta held every other tracing back for
+8 minutes there with half the memory free. Atlanta then reserves 5.0 GB, the country tile 1.4.
+Measured at these settings only (round ends, 2 000 000 points); Linux keeps the Mac's line.
+
+**A DSF reserves what its mesh's triangles take** (`dsf_ram_from`, through `Node.ram_from`):
+600 MB and 610 MB a million triangles of the mesh (`stats.json`, `n_triangles`), rounded up to
+100 MB; the rule's 3 GB when the mesh does not say. The line goes through the middle of 36 DSFs
+measured on 2026-10-28 on a Mac, each in a process of its own, twelve tiles at ZL17, ZL18 and
+ZL19 (within 10 %, 5 % on average): 3.2 GB for 4.8 million triangles, 5.7 to 6.3 GB for Atlanta's
+8.9 million; the level changes little. Every DSF reserved 3 GB, below what each of those tiles
+took. Each runs in a process of its own (`scheduler.md` 2.3, `max_tasks_per_child=1`): in one
+worker for the batch, Atlanta's 6.3 GB stayed with it for every DSF after.
+
+**A mesh reserves what its triangles and its raster take** (`mesh_ram_from`, through
+`Node.ram_from`, read once the tracing is built): 200 MB a million triangles and 2.2 times the
+raster it reads (its input's `.alt`), rounded up to 100 MB, never under the rule's 0.9 GB. Its
+triangles are twice its input nodes (the tracing's `stats.json`, `nodes`) and the Steiner points
+Triangle4XP may add (`steiner_budget`, `mesh-build.md` 9): above the triangles made by 2 to 27 %.
+Eleven meshes measured on 2026-10-29 on a Mac, each tile alone, all took less than this reserves,
+4 to 15 % less the dense ones, the USGS and the large file, up to 48 % where the limit of triangles
+sets them rather than the roads: 0.4 to 1.8 GB on Copernicus (2.5 to 9 million triangles), 1.5 GB on the USGS at 1/3"
+(a raster of 446 MB), 13.5 and 14.5 GB on a relief of one's own of 6 GB. Every mesh reserved
+0.9 GB, twice the raster and 0.6 GB with a large file of one's own: below what the denser meshes,
+the USGS and the large file took. An unreadable file counts nothing there, as for the masks.
+
+**The images start as many encoders as their reservation pays for** (`photos_workers`,
+`_photos_ram_mb`): the batch's workers, as many as a third of the RAM budget holds at 550 MB an
+encoder beside 350 MB for the images' process, one at least; the same number is the images'
+`workers`. Measured on twelve tiles at ZL14 (2026-10-28): the process 0.12 to 0.32 GB, an
+encoder 0.43 to 0.53 GB, one to four of them busy with EOX. They reserved 400 MB for each of the
+batch's workers, 4.8 GB on 14 cores: on a budget of 8 GB they waited 8 minutes, ready, for every
+other step to end. At "Memory for building" medium they now start two encoders on 8 GB, six on
+16 GB, twelve on 48 GB with 14 cores. A quarter of the budget gave one on 8 GB, whose images took
+a fifth longer a tile than with twelve at ZL14 (182, 123 and 53 s for 144, 108 and 42); two are
+1.45 GB, what the images took at most with twelve to use.
+
+**The tracings have a lane of their own** (`TRACING_LANE`, as wide as the subprocess slots, 3 at
+most). On the slots they shared with the relief, the meshes and the masks, every slot that came
+free went to a tracing, since a tracing's path to the images is the longest: no mesh started
+before the batch's last tracing, so no tile had its neighbours' meshes, its masks, its DSF nor its
+images before that. On 25 tiles at the service roads and 0.3 MB/s (2026-10-28): four neighbours
+traced at 3 min 26 s, the first mesh at 8 min 34 s, the first images at 10 min 58 s, the terrain
+done at 11 min 02 s. On their own lane, a tile's mesh starts as soon as its tracing is done: the
+first mesh at 1 min 35 s, the first images at 3 min 13 s, the terrain done at 8 min 07 s, the
+tracings' summed time unchanged (1 299 s against 1 315 s) and the engine's peak 0.4 GB higher. The
+images downloaded during the terrain came at two thirds of the line (24 useful pieces a second
+against 36), the engine's own Python work (the meshes' side of it among others) holding its
+interpreter. The time-left estimate queues the tracings on that lane too (`api/progress.py`).
+
+**The masks have a lane of their own** (`COAST_LANE`, one tile at a time). On the subprocess
+slots they shared with the meshes, every slot that came free went to a mesh, whose path to the
+images is the longer: no tile's masks, so no DSF nor images, started before the batch's last
+mesh. On 27 EOX tiles (2026-10-29), +33-085 and its neighbours had their meshes at 64 s, its
+masks started at 104 s with the batch's last mesh, the first images at 110 s. On their lane, a
+tile's masks start once it and its neighbours are meshed. One at a time, since a tile's masks
+already run a pool of up to eight processes; they took 0.2 to 3 s on 36 tiles inland and 1 to
+18 s on twelve of Brittany with the sea, against 34 s on average for those tiles' meshes. The
+time-left estimate queues them on that lane too.
+
+**The images of a tile run in a process of their own too** (`_textures_run`): the download and
+the encoding of the textures node, through `run_p0_rule_apart` with `_textures_apart`, which gives
+the process the build environment it reads (`_ApartEnv`: the store and the image cache by their
+folders, the sources, the pool and network settings; its own `Store` opened there) and the node's
+context through the `ProcessLink` (progress, the slot lent during the spaced retries, the bytes
+received and written for Works' report, the cancel, which sets the token `build_textures` polls).
+Cancelled, the process is given `TEXTURES_CANCEL_GRACE_S` (60 s), not a tracing's 3 s, to finish
+the textures it is encoding and save the pieces received, which the next build does not ask again.
+The engine's own Python work (the meshes' side of it, the OSM data) had held the interpreter the
+download runs in: on 25 tiles at the service roads and 0.3 MB/s, the first tile's images came at
+24 useful pieces a second with 347 hedges, in 254 s, while the terrain was built (2026-10-28). In
+their own process they came at 36, the whole line, with no hedge, in 171 s, the time the same tile
+takes alone. At full speed it costs about half a second a tile, the process starting: four ZL16
+tiles from a local server took 62 s and 63 s on average, the images at the same 3 600 to 7 200 a
+second, and from Bing the two versions differed less than Bing does from one tile to the next; the
+tiles were the same to the byte in every run.
+
+The masks node reserves **a worker for each cell with water to draw** (`masks_ram_from`): 300 MB,
+and for each cell, as many as the pool has (`masks_workers`, the cap of `worker_count`), what one
+worker of the profile takes (`masks_worker_mb`: `sand` 250 MB, `rocks` 710, `3steps` 990, the
+distance masks 970; `masks-build.md` 6.2). The cells are counted before it starts, from the
+`water_tris.npz` of the tile and its neighbours (`masks.water.mask_cell_count`, the cutting the
+masks use themselves), read only when their `stats.json` has water the masks draw (`water_bits_counts`:
+the sea and the water marked like it, every water triangle with `use_masks_for_inland`); a mesh
+that does not say, or a `water_tris.npz` that cannot be read, reserves the whole pool: they are
+read while the scheduler picks what to start, where a damaged file stopped the whole batch, and the
+masks step that reads it too now fails alone (review, 2026-10-29). Every masks node reserved `300 + 800 x workers`: 5.1 GB
+on 8 threads and 6.7 on 14, for masks that took a second, inland with no cell, around a lake with
+two to twelve; on 16 GB no tile's masks, so no images, started beside a big city's tracing
+(2026-10-28). **The same `workers` is given to the
 rule**: `_masks_run` binds `MasksJob(workers=masks_workers(env), cancel=...)`, the rule passes it to
 `build_masks`, and `worker_count` honours it, so the declared budget describes the pool that starts.
 `masks_workers(env)` is `$OSXP_MASKS_WORKERS` when it is a positive integer, else
@@ -746,21 +896,23 @@ rule**: `_masks_run` binds `MasksJob(workers=masks_workers(env), cancel=...)`, t
 and `0`, a negative value or junk mean *unset*. The rule's own decorator declares 1100 MB, the honest
 cost of a node built without `declare()` (base + one worker).
 
-A relief of one's own is ten times the rasters the rules declare their memory for, so the relief,
-vectors and mesh nodes of its tile declare their own (`relief_ram`, from `RELIEF_RAM` and the
-file's header read at declaration, `own_relief_mb`), when that is more than the rule's: per MB of
-the raster, 1.3 for the relief (2.4 when a folder's file is laid into the relief under it), 2.1 for
-the vectors (the mapped raster and its copy smoothed over the airports) and 2.0 for the mesh plus
-`MESH_STRUCTURES_MB`. Measured on a 4 m square of 27 468 points a side (3.0 GB of floats): 3.8,
-7.0, 6.2 and 6.0 to 6.3 GB. Two such nodes then do not start together on a machine that cannot hold
+A relief of one's own is ten times the rasters the rules declare their memory for, so the relief
+and vectors nodes of its tile declare their own (`relief_ram`, from `RELIEF_RAM` and the file's
+header read at declaration, `own_relief_mb`), when that is more than the rule's: per MB of the
+raster, 1.3 for the relief (2.4 when a folder's file is laid into the relief under it) and 2.1 for
+the vectors (the mapped raster and its copy smoothed over the airports). Measured on a 4 m square
+of 27 468 points a side (3.0 GB of floats): 3.8, 7.0 and 6.2 GB. The mesh weighs the raster it
+reads itself (above). Two such nodes then do not start together on a machine that cannot hold
 both; one larger than the whole budget still runs alone, as any node does. Only a raster larger than
 0.1.19 read is weighed so (`raster.readable_before`): every build that ran before is scheduled as
 it was.
 
 Cancellation reaches every stage: `orthostudio.osm` (token and timeout to the Overpass client),
 `orthostudio.dem` (`EnsureOptions.cancel`, polled between the nine cells of the block),
-`orthostudio.mesh` (the sidecar is polled and killed), `orthostudio.masks` (raises between cells
-and cancels the pending ones), `orthostudio.coastline` (a single small read). Every one of them
+`orthostudio.mesh` (the sidecar is polled and killed), `orthostudio.vectors` (its process is ended
+at once: what it wrote is in the build directory, which goes with the failed build),
+`orthostudio.masks` (raises between cells and cancels the pending ones), `orthostudio.coastline` (a
+single small read). Every one of them
 *raises* `SYS_CANCELLED` rather than returning early, so the store commits nothing.
 
 The elevation cells are read from and downloaded into `$OSXP_ELEVATION_DIR` /

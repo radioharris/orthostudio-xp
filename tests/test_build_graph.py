@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 from pathlib import Path
 
 import numpy as np
@@ -32,8 +33,11 @@ from orthostudio.pipeline.build import (
     OverlayParams,
     TileDsfParams,
     TileTexturesParams,
+    _masks_ram_mb,
     declare,
     make_scheduler,
+    masks_workers,
+    road_points,
     source_ref,
     stored_neighbour_mesh,
     texture_jobs_from_json,
@@ -796,3 +800,310 @@ def test_a_folder_of_ones_own_rides_over_the_relief_and_marks_the_file_it_takes(
     assert any(
         value is ref for value in xp_inputs.values()
     )  # the Global Scenery DSFs are still read
+
+
+def _osm_counts(tmp_path: Path, counts: dict[str, int]) -> ArtifactRef:
+    folder = tmp_path / "osm-counts"
+    folder.mkdir()
+    index = {"counts": {layer: {"nodes": n, "ways": n // 10} for layer, n in counts.items()}}
+    (folder / "snapshot.json").write_text(json.dumps(index), encoding="utf-8")
+    return ArtifactRef("0" * 64, "0" * 64, folder, "orthostudio.osm", "dir", 0)
+
+
+ATLANTA = {"big_roads": 176_616, "small_roads": 2_312_997, "water": 588_745, "airports": 18_803}
+
+
+def test_the_road_points_of_the_tiles_level_are_counted(tmp_path: Path) -> None:
+    """Atlanta's OSM counts (2026-10-28): the road layers its level reads, nothing else."""
+    osm = _osm_counts(tmp_path, ATLANTA)
+    assert road_points(osm, 4) == 2_489_613
+    assert road_points(osm, 1) == 176_616
+    assert road_points(osm, 0) == 0
+    bare = tmp_path / "bare"
+    bare.mkdir()
+    assert road_points(ArtifactRef("1" * 64, "1" * 64, bare, "x", "dir", 0), 4) is None
+    assert road_points(None, 4) is None
+
+
+@pytest.mark.parametrize(
+    ("config", "counts", "ram_mb", "windows_mb"),
+    [
+        # a user's settings, service roads, round ends, 2 000 000 points: Atlanta took 6.0 to 6.8
+        # on a Mac, 4.75 GB on Windows
+        (
+            {"road_level": 4, "rounded_road_ends": True, "max_levelled_segs": 2_000_000},
+            ATLANTA,
+            6400,
+            5000,
+        ),
+        # the same settings on a country tile, 379 047 points: it took 1.6 to 1.7 GB, 1.4 on
+        # Windows
+        (
+            {"road_level": 4, "rounded_road_ends": True, "max_levelled_segs": 2_000_000},
+            {"big_roads": 40_000, "small_roads": 339_047},
+            1800,
+            1400,
+        ),
+        ({}, ATLANTA, 1600, 1300),  # the defaults: level 1, angular ends: Atlanta took 1.7 GB
+        ({"road_level": 0}, ATLANTA, 1500, 1200),  # no roads: 1.0 GB
+        # an estimate, before the OSM data: 2 500 000 points, as many as Atlanta's
+        (
+            {"road_level": 4, "rounded_road_ends": True, "max_levelled_segs": 2_000_000},
+            None,
+            6400,
+            5000,
+        ),
+    ],
+)
+def test_a_tracing_reserves_what_its_roads_take(
+    tmp_path: Path,
+    env: BuildEnv,
+    config: dict[str, object],
+    counts: dict[str, int] | None,
+    ram_mb: int,
+    windows_mb: int,
+) -> None:
+    """``TRACING_RAM``, from the tile's road points, read once its OSM data is in: the line
+    through the middle of what the tracings took, 22 % less on Windows. Atlanta's 6.6 GB for every
+    tile kept a batch of country tiles to one tracing at a time on 16 GB; the Mac's figure on
+    Windows held every other tracing back for 8 minutes beside Atlanta (found by campaigns,
+    2026-10-28)."""
+    (g,) = _declare([_spec(tmp_path, config=config)], _sched(env), env)
+    assert g.vectors.ram_mb == 1200 and g.vectors.ram_from is not None
+    osm = _osm_counts(tmp_path, counts) if counts is not None else None
+    assert g.vectors.ram_from({"osm": osm}) == (windows_mb if os.name == "nt" else ram_mb)
+
+
+def test_a_tracing_on_windows_reserves_what_windows_takes() -> None:
+    """The twelve tiles traced on Windows took 78 % of the Mac's line on average: Atlanta 4.75 GB
+    where a Mac reserves 6.4, a country tile 1.4 for 1.8 (2026-10-28)."""
+    from orthostudio.pipeline.build import tracing_ram_mb
+
+    assert tracing_ram_mb(2_489_613, True, True, windows=False) == 6400
+    assert tracing_ram_mb(2_489_613, True, True, windows=True) == 5000
+    assert tracing_ram_mb(379_047, True, True, windows=True) == 1400
+    assert tracing_ram_mb(0, False, False, windows=True) == 1200  # never under the rule's
+
+
+def _mesh_stats(tmp_path: Path, name: str, water_bits: dict[str, int] | None) -> ArtifactRef:
+    folder = tmp_path / f"mesh-{name}"
+    folder.mkdir()
+    if water_bits is not None:
+        stats = {"format": "osxp-mesh-stats-1", "water_bits_counts": water_bits}
+        (folder / "stats.json").write_text(json.dumps(stats), encoding="utf-8")
+    digest = ("a" if name == "tile" else "b") * 64
+    return ArtifactRef(digest, digest, folder, "orthostudio.mesh", "dir", 0)
+
+
+@pytest.mark.parametrize(
+    ("neighbour_bits", "inland", "pool"),
+    [
+        ({"1": 300_000}, False, False),  # lakes and rivers only, inland: no pool (+33-086)
+        ({"1": 182_715, "4": 161_146}, False, True),  # water the masks draw (+33-083)
+        (None, False, True),  # a mesh that does not say: as before
+        ({"1": 300_000}, True, True),  # masks for inland water too
+    ],
+)
+def test_the_masks_reserve_their_pool_only_where_there_is_water_to_draw(
+    tmp_path: Path,
+    env: BuildEnv,
+    neighbour_bits: dict[str, int] | None,
+    inland: bool,
+    pool: bool,
+) -> None:
+    """Every masks node reserved its pool, 5.1 GB on 8 threads, and inland the masks took a second
+    and no pool: on 16 GB no tile's masks, so no images, started beside a big city's tracing (a
+    campaign of 12 tiles, 2026-10-28)."""
+    config = {"use_masks_for_inland": inland}
+    (g,) = _declare([_spec(tmp_path, config=config)], _sched(env), env)
+    masks = g.masks
+    assert masks.ram_mb == 300 and masks.ram_from is not None
+    inputs = {name: None for name in masks.inputs}
+    inputs["mesh"] = _mesh_stats(tmp_path, "tile", {"1": 100_000})
+    inputs[next(n for n in masks.inputs if n not in ("mesh", "dem", "custom_extent"))] = (
+        _mesh_stats(tmp_path, "nb", neighbour_bits)
+    )
+    expected = _masks_ram_mb(env, masks.params) if pool else 300
+    assert masks.ram_from(inputs) == expected
+
+
+@pytest.mark.parametrize(
+    ("config", "worker_mb"),
+    [
+        ({}, 250),  # sand, the default: 242 MB a worker (masks-build.md 6.2)
+        ({"masking_mode": "rocks"}, 710),
+        ({"masking_mode": "3steps"}, 990),
+        ({"distance_masks_too": True}, 970),
+    ],
+)
+def test_the_masks_pool_is_reserved_by_its_profile(
+    tmp_path: Path, env: BuildEnv, config: dict[str, object], worker_mb: int
+) -> None:
+    """Every profile counted 800 MB a worker: three times what ``sand`` takes, less than
+    ``3steps``."""
+    (g,) = _declare([_spec(tmp_path, config=config)], _sched(env), env)
+    assert _masks_ram_mb(env, g.masks.params) == 300 + worker_mb * masks_workers(env)
+
+
+def test_the_masks_reserve_a_worker_for_each_cell_with_water(tmp_path: Path, env: BuildEnv) -> None:
+    """A lake within one cell starts one worker, not the whole pool: the cells are counted from
+    the meshes' ``water_tris.npz`` before the masks start (+34-084: 5 cells, 2 masks drawn)."""
+    from orthostudio.imagery.grid import tile_to_wgs84
+    from orthostudio.masks.water import WATER_TRIS_FORMAT
+
+    (g,) = _declare([_spec(tmp_path)], _sched(env), env)
+    masks = g.masks
+    assert masks_workers(env) == 2
+    mesh = _mesh_stats(tmp_path, "tile", {"1": 100, "4": 1})
+    # the middle quarters of cell (8432, 6000) of +43+005 at ZL 14: no neighbour cell's margin
+    lat, lon = tile_to_wgs84(4 * 8432 + 24, 4 * 6000 + 24, 16)
+    np.savez(
+        mesh.path / "water_tris.npz",
+        format=np.array(WATER_TRIS_FORMAT),
+        corners=np.zeros((1, 3), dtype=np.int32),
+        water_bits=np.array([4], dtype=np.uint8),
+        bary=np.array([[lon, lat]]),
+    )
+    inputs = {name: None for name in masks.inputs}
+    inputs["mesh"] = mesh
+    assert masks.ram_from(inputs) == 300 + 250 * 1
+    assert _masks_ram_mb(env, masks.params) == 300 + 250 * 2  # the whole pool
+
+
+@pytest.mark.parametrize("damage", ["cut", "not a zip"])
+def test_a_damaged_water_file_reserves_the_whole_pool(
+    tmp_path: Path, env: BuildEnv, damage: str
+) -> None:
+    """The cells are counted while the scheduler picks what to start: a damaged
+    ``water_tris.npz`` raised there and stopped the whole batch, where the masks step that reads
+    it too fails alone (review, 2026-10-29)."""
+    from orthostudio.masks.water import WATER_TRIS_FORMAT
+
+    (g,) = _declare([_spec(tmp_path)], _sched(env), env)
+    masks = g.masks
+    mesh = _mesh_stats(tmp_path, "tile", {"4": 1})
+    npz = mesh.path / "water_tris.npz"
+    np.savez(
+        npz,
+        format=np.array(WATER_TRIS_FORMAT),
+        corners=np.zeros((1, 3), dtype=np.int32),
+        water_bits=np.array([4], dtype=np.uint8),
+        bary=np.array([[5.5, 43.5]]),
+    )
+    data = npz.read_bytes()
+    npz.write_bytes(data[: len(data) // 2] if damage == "cut" else b"\x00" * 64)
+    inputs = {name: None for name in masks.inputs}
+    inputs["mesh"] = mesh
+    assert masks.ram_from(inputs) == _masks_ram_mb(env, masks.params)
+
+
+@pytest.mark.parametrize(
+    ("triangles", "ram_mb"),
+    [(4_840_000, 3600), (8_900_000, 6100), (None, 3000)],  # Atlanta took 5.7 to 6.3 GB
+)
+def test_a_dsf_reserves_what_its_mesh_takes(
+    tmp_path: Path, env: BuildEnv, triangles: int | None, ram_mb: int
+) -> None:
+    """Every DSF reserved 3 GB; twelve tiles of 4.8 to 8.9 million triangles took 3.2 to 6.3
+    (2026-10-28): the reservation follows the mesh's triangles, read before the DSF starts."""
+    (g,) = _declare([_spec(tmp_path)], _sched(env), env)
+    mesh = tmp_path / "mesh-dsf"
+    mesh.mkdir()
+    if triangles is not None:
+        (mesh / "stats.json").write_text(json.dumps({"n_triangles": triangles}), encoding="utf-8")
+    ref = ArtifactRef("c" * 64, "c" * 64, mesh, "orthostudio.mesh", "dir", 0)
+    assert g.dsf.ram_from is not None
+    assert g.dsf.ram_from({"mesh": ref}) == ram_mb
+
+
+@pytest.mark.parametrize(
+    ("nodes", "alt_mib", "limit", "ram_mb"),
+    [
+        (3_030_000, 0, 5, 1500),  # a mountain tile's many roads: 7.1 million triangles
+        (630_000, 10, 3, 700),  # few roads: the limit of triangles sets them, 3.2 million
+        (3_030_000, 64, 5, 1600),  # and a raster: 2.2 times it
+        (None, 0, 3, 700),  # the tracing does not say: the limit alone
+    ],
+)
+def test_a_mesh_reserves_its_triangles_and_its_raster(
+    tmp_path: Path, env: BuildEnv, nodes: int | None, alt_mib: int, limit: int, ram_mb: int
+) -> None:
+    """Every mesh reserved 0.9 GB; a dense mesh took 1.8 GB, the USGS at 1/3" 1.5 GB and a relief
+    of one's own of 6 GB 14.5 GB (2026-10-29): the reservation follows the triangles the mesh will
+    make and the raster it reads, both known once the tracing is built."""
+    spec = _spec(tmp_path, config={"limit_tris": limit})
+    (g,) = _declare([spec], _sched(env), env)
+    vectors = tmp_path / "vectors-mesh"
+    vectors.mkdir()
+    if nodes is not None:
+        (vectors / "stats.json").write_text(json.dumps({"nodes": nodes}), encoding="utf-8")
+    if alt_mib:
+        with (vectors / "Data+43+005.alt").open("wb") as f:
+            f.truncate(alt_mib * 2**20)
+    ref = ArtifactRef("d" * 64, "d" * 64, vectors, "orthostudio.vectors", "dir", 0)
+    assert g.mesh.ram_mb == 900 and g.mesh.ram_from is not None  # the rule's, a floor
+    assert g.mesh.ram_from({"vectors": ref, "dem": ref, "coastline": None}) == ram_mb
+
+
+@pytest.mark.parametrize(("setting", "budget"), [("high", 13107), ("medium", 11468), ("low", 9830)])
+def test_the_memory_for_building_sets_the_batchs_share(
+    tmp_path: Path, env: BuildEnv, monkeypatch: pytest.MonkeyPatch, setting: str, budget: int
+) -> None:
+    """``expert.build_memory``: 80, 70 or 60 % of a computer of 16 GB, below which the scheduler
+    keeps to the memory free now. 60 % for every computer up to 1.2.1."""
+    from orthostudio.pipeline import build as buildmod
+
+    monkeypatch.setattr(buildmod, "physical_memory_mb", lambda: 16384)
+    spec = _spec(tmp_path, build_memory=setting)
+    env.memory_share = buildmod.MEMORY_SHARES[spec.build_memory]
+    sched = make_scheduler(env.store, env, cpu_workers=1, cpu_in_threads=True)
+    assert sched.ram_budget_mb == budget
+    assert sched.ram_room_mb is buildmod.ram_room_mb
+
+
+def test_the_room_is_what_is_free_and_what_the_batch_holds(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The memory free now, plus what the batch's processes hold (their reservations count it),
+    less a tenth of the memory for the system; nothing when the system does not say."""
+    from orthostudio.pipeline import build as buildmod
+
+    monkeypatch.setattr(buildmod, "physical_memory_mb", lambda: 16384)
+    monkeypatch.setattr(buildmod, "available_memory_mb", lambda: 6000)
+    monkeypatch.setattr(buildmod, "children_memory_mb", lambda: 4000)
+    assert buildmod.ram_room_mb() == 6000 + 4000 - 1638
+    monkeypatch.setattr(buildmod, "children_memory_mb", lambda: None)
+    assert buildmod.ram_room_mb() is None
+
+
+@pytest.mark.parametrize(
+    ("memory_mb", "share", "workers", "encoders"),
+    [
+        (4096, 0.7, 12, 1),
+        (8192, 0.7, 12, 2),
+        (16384, 0.6, 8, 5),
+        (16384, 0.7, 8, 6),
+        (16384, 0.8, 8, 7),
+        (49152, 0.7, 12, 12),
+        (49152, 0.7, 2, 2),
+    ],
+)
+def test_the_images_start_as_many_encoders_as_their_reservation(
+    tmp_path: Path,
+    env: BuildEnv,
+    monkeypatch: pytest.MonkeyPatch,
+    memory_mb: int,
+    share: float,
+    workers: int,
+    encoders: int,
+) -> None:
+    """A third of the RAM budget at most, 550 MB an encoder and 350 for the process: the images
+    reserved 400 MB for each of the batch's workers, 4.8 GB on 14 cores, and took 0.6 to 1.5 GB
+    at ZL14 (2026-10-28); a quarter left one encoder on 8 GB, a fifth slower a tile. The budget is
+    the setting's share of the memory."""
+    from orthostudio.pipeline import build as buildmod
+
+    monkeypatch.setattr(buildmod, "physical_memory_mb", lambda: memory_mb)
+    env.workers = workers
+    env.memory_share = share
+    assert buildmod.photos_workers(env) == encoders
+    (g,) = _declare([_spec(tmp_path)], _sched(env), env)
+    assert g.textures.ram_mb == 350 + 550 * encoders

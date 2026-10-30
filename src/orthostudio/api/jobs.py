@@ -387,6 +387,8 @@ class Job:
         self._slots: dict[str, int] = {
             "overpass": 1,
             "relief": 1,
+            "tracing": default_subprocess_slots(),
+            "coast": 1,
             "net": 1,
             "io": 2,
             "subprocess": default_subprocess_slots(),
@@ -1263,6 +1265,7 @@ _SPEC_JSON_FIELDS = (
     "encoder",
     "link",
     "library_path",
+    "build_memory",
 )
 
 

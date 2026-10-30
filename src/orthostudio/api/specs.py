@@ -374,6 +374,7 @@ def make_specs(
                 install=install,
                 overlay=overlay,
                 xp12_rasters=req.xp12_rasters,
+                build_memory=getattr(settings.expert, "build_memory", "medium"),
                 **where,
             )
         )

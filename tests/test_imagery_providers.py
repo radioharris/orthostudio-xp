@@ -81,7 +81,7 @@ MEASURED_IN_FLIGHT = {
 
 MEASURED_SERVER_RATES = {
     "Arc@": 522,
-    "EOX": 90,
+    "EOX": 50,
     "Lux": 130,
     "NL": 181,
     "PDOK": 181,
@@ -97,9 +97,10 @@ MEASURED_SERVER_RATES = {
 EOX is the exception, and the reason it is worth pinning these at all. We measured 224 from here
 on 2026-09-22 with no error; a user's builds kept failing on it, from an address where the server
 stops answering around 90 (2026-09-24). A throughput one machine obtained is not a ceiling a
-server tolerates from everyone, so EOX carries his 90 and not our 224, and the fetcher approaches
-whatever is declared instead of holding it, at a cost of 1.1 % on a full tile. The others have not
-been checked against a second address.
+server tolerates from everyone, so EOX carried his 90 and not our 224, and the fetcher approaches
+whatever is declared instead of holding it, at a cost of 1.1 % on a full tile. On 2026-10-29 EOX
+served all of 60 a second from here, 58 of 75 and 12.5 of 90, refusing the rest: its 50 keeps under
+that limit. The others have not been checked against a second address.
 """
 
 

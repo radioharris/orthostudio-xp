@@ -5589,7 +5589,7 @@ def test_the_page_says_when_a_newer_version_is_out() -> None:
             assert tables[lang][key], f"{lang} is missing {key}"
     # and it can be turned off, in a group of its own: it has nothing to do with the tiles
     code = (UI / "settings.js").read_text(encoding="utf-8")
-    assert 'fields: ["expert.check_updates"]' in code
+    assert 'fields: ["expert.build_memory", "expert.check_updates"]' in code
     assert '"expert.check_updates": [() => t("settings.x.check_updates")' in code
     # the setting says that GitHub sees the address, rather than leaving it to be found out
     assert "GitHub" in tables["en"]["settings.x.check_updates_hint"]
@@ -8727,3 +8727,19 @@ def test_the_line_under_the_report_speaks_only_of_tiles_x_plane_does_not_show() 
     assert "libraryTiles(state.library).filter((e) => e.installed)" in body
     assert "!shown.has(folderKey(tile.pack_dir, platform))" in body
     assert "const notInstalled = !job.install && rep.failed === 0 && outside.length" in body
+
+
+def test_a_zone_as_the_tiles_offers_no_level_above_the_tiles_source() -> None:
+    """A new zone "as the tiles" was offered every level up to ZL19 over EOX tiles, which stop at
+    ZL14, and the build then refused the zone (2026-10-29): its highest level is the
+    tiles' source's, and the level lowered to it names that source."""
+    code = (UI / "map.js").read_text(encoding="utf-8")
+
+    def body(name: str) -> str:  # a function nested in createPlanMap, two spaces in
+        match = re.search(rf"\n  (?:async )?function {name}\(.*?\n  \}}\n", code, re.S)
+        assert match is not None, name
+        return match.group(0)
+
+    assert "const code = provider || ctx.planProvider?.() || null;" in body("maxZlFor")
+    assert 'const source = provider || ctx.planProvider?.() || "";' in body("clampZl")
+    assert "renderToolOptions();" in code.split("planChanged() {", 1)[1][:200]

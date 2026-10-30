@@ -46,8 +46,8 @@ The plan of the rewrite announced 8 / 14 / 20. Counting the leaves of the models
 |---|---|---|---|
 | essential | 8 | 18 | 8 groups, `region` excepted, `overlays`, `photo_look`, `data_dir` and `simbrief_user` added; `airports` has 3 leaves, `coast_transition` 2, `relief` 5 (`own_first` since idea 9) |
 | advanced | 14 | 14 | |
-| expert | 20 | 32 | the plan's expert list named 19 parameters under the heading "20"; thirteen of OrthoStudio XP's own were added: `osm_folder`, `osm_library`, `osm_library_token`, `decal_on_sea`, `decal`, `photo_brightness`, `photo_contrast`, `photo_saturation`, `patches_dir`, `check_updates`, `flatten_helipads`, `road_smoothing`, `rounded_road_ends` |
-| total | 42 | 64 | |
+| expert | 20 | 33 | the plan's expert list named 19 parameters under the heading "20"; fourteen of OrthoStudio XP's own were added: `osm_folder`, `osm_library`, `osm_library_token`, `decal_on_sea`, `decal`, `photo_brightness`, `photo_contrast`, `photo_saturation`, `patches_dir`, `check_updates`, `flatten_helipads`, `road_smoothing`, `rounded_road_ends`, `build_memory` |
+| total | 42 | 65 | |
 
 The 19 expert parameters that carry an Ortho4XP variable plus the 14 advanced plus the 11 Ortho4XP
 variables behind the essential level (section 2) make 44 = the 58 `cfg_vars` minus the 14 that
@@ -143,6 +143,7 @@ the sources with their maximum zoom level.
 | `decal` | one of 67 names | - | `maquify_2_green_key.dcl` | none | OrthoStudio XP's own: which of X-Plane 12's decals the terrain files name when decals are on (`orthostudio/decals.py`: the list of the setdecal tool, less the five names X-Plane 12.4.4 no longer exports). The pack writes it, so another choice, or turning decals on or off, assembles the pack again and builds nothing else (`pipeline-build.md` 2.3). |
 | `ovl_exclude_pol` | list of int or str | - | `[0]` | `ovl_exclude_pol` | Indices of polygon types which one would like to left aside in the extraction of overlays. [...] |
 | `ovl_exclude_net` | list of int or str | - | `[]` | `ovl_exclude_net` | Indices of road types which one would like to left aside in the extraction of overlays. [...] |
+| `build_memory` | `high` \| `medium` \| `low` | - | `medium` | – | OrthoStudio XP's own ("Memory for building"): the share of the computer's memory a build may reserve, 80, 70 or 60 % (`pipeline-build.md` 4), never more than what is free when a step starts, a tenth always left to the system. Not a tile setting: no key changes. Every computer reserved 60 % up to 1.2.1. |
 | `check_updates` | bool | - | `true` | – | OrthoStudio XP's own: asks GitHub once a day which version is the latest, and says at the top of the page when it is newer than this one (`GET /api/update`). GitHub then sees the computer's address, as the imagery servers do; nothing is downloaded or installed. |
 
 Where a hint is abbreviated with "[...]" above, the code carries the full text.

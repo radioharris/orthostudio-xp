@@ -82,6 +82,9 @@ class _Rec:
     ref: ArtifactRef | None = None
     workdir: Path | None = None
     resolved: dict[str, ArtifactRef | None] | None = None
+    ram: int | None = None
+    """What the node takes from the RAM budget: its ``ram_mb``, or what ``ram_from`` reads from
+    the inputs when that is more, settled once the inputs are resolved."""
     idle: bool = False
     """The run gave its slot back while it waits (``NodeContext.idle``): another node of the
     same kind may start, and this one is not counted until it resumes."""
@@ -103,6 +106,7 @@ class Scheduler:
         net_slots: int = 2,
         io_slots: int = 4,
         ram_budget_mb: int | None = None,
+        ram_room_mb: Callable[[], int | None] | None = None,
         fail_fast: bool = False,
         workdir: Path | None = None,
         stats_interval_s: float = 1.0,
@@ -122,6 +126,12 @@ class Scheduler:
         self.lanes: dict[str, int] = {name: max(1, n) for name, n in (lanes or {}).items()}
         """Limits of their own for the nodes that name them (``Node.lane``), beside the slots."""
         self.ram_budget_mb = ram_budget_mb
+        self.ram_room_mb = ram_room_mb
+        """What the running nodes and the next may reserve together now, read once a pass of
+        :meth:`_admit` meets a node that takes memory: below ``ram_budget_mb`` when the computer's
+        memory is taken by others. ``None`` from it keeps the budget alone."""
+        self._room: int | None = None
+        self._room_read = False
         self.fail_fast = fail_fast
         self.workdir = Path(workdir) if workdir is not None else store.root / ".work"
         self.stats_interval_s = stats_interval_s
@@ -326,11 +336,14 @@ class Scheduler:
             ctx = get_context("spawn")
             self._mp_cancel = ctx.Event()
             self._mp_queue = ctx.Queue()
+            # a process for each node: what one took (a DSF of 5 million triangles, 6.3 GB) goes
+            # back to the system when it ends, instead of staying with the worker for the next
             self._procs = ProcessPoolExecutor(
                 max_workers=self.slots["cpu"],
                 mp_context=ctx,
                 initializer=cpu_init,
                 initargs=(self._mp_cancel, self._mp_queue),
+                max_tasks_per_child=1,
             )
             self._drainer = threading.Thread(
                 target=self._drain_progress, name="osxp-sched-progress", daemon=True
@@ -439,7 +452,7 @@ class Scheduler:
             rec.idle = False  # the slot was already given back while it waited
         else:
             self._running[self._pool(rec.node)] -= 1
-        self._ram_in_flight -= rec.node.ram_mb or 0
+        self._ram_in_flight -= rec.ram or 0
         self._busy_s += outcome.wall_s
         assert rec.key is not None
         self._inflight_keys.pop(rec.key, None)
@@ -489,28 +502,42 @@ class Scheduler:
     # -- admission ---------------------------------------------------------------------------
 
     def _admit(self) -> None:
-        """Dispatch, hit or park every ready node, best priority first, until nothing moves."""
+        """Dispatch, hit or park every ready node, best priority first, until nothing moves.
+
+        Once a node waits for memory, no node after it on the same lane or kind that takes memory
+        starts: what its own kind gives back goes to it. Smaller tracings that fitted took that
+        room each time, and a big city's, ready at 3 min, started last at 26 min on a computer of
+        16 GB, its neighbours' images waiting for its mesh (a campaign of 12 tiles, 2026-10-28).
+        The other kinds still start beside it when they fit: held back as well, no mesh, so no
+        masks nor images, started before the batch's last tracing on a budget of 8 GB."""
         if self._cancel.is_set():
             return
         while True:
             parked: list[tuple[float, int, str]] = []
             moved = False
+            waiting: set[str] = set()  # the lanes and kinds where a node waits for memory
+            self._room_read = False
             while self._ready:
                 item = heapq.heappop(self._ready)
                 rec = self._recs[item[2]]
                 if rec.state != "ready":
                     continue
-                if self._try_start(rec):
+                started = self._try_start(rec, behind_memory=self._pool(rec.node) in waiting)
+                if started is True:
                     moved = True
                 else:
                     parked.append(item)
+                    if started == "memory":
+                        waiting.add(self._pool(rec.node))
             for item in parked:
                 heapq.heappush(self._ready, item)
             if not moved or not self._ready:
                 return
 
-    def _try_start(self, rec: _Rec) -> bool:
-        """Hit, join an in-flight twin, or dispatch when a slot and the RAM allow it."""
+    def _try_start(self, rec: _Rec, *, behind_memory: bool = False) -> bool | Literal["memory"]:
+        """Hit, join an in-flight twin, or dispatch when a slot and the RAM allow it; ``"memory"``
+        when the RAM held it back, or a node before it on its lane or kind waits for memory
+        (``behind_memory``) and this one takes some."""
         if rec.key is None:
             inputs: dict[str, ArtifactRef | None] = {}
             for name, dep in rec.node.inputs.items():
@@ -545,15 +572,28 @@ class Scheduler:
             return True
         if self._running[self._pool(rec.node)] >= self._limit(rec.node):
             return False
-        ram = rec.node.ram_mb or 0
-        if (
-            self.ram_budget_mb is not None
-            and self._ram_in_flight + ram > self.ram_budget_mb
-            and self._ram_in_flight > 0
-        ):
-            return False
+        if rec.ram is None:
+            rec.ram = _ram_of(rec.node, rec.resolved)
+        ram = rec.ram
+        if self.ram_budget_mb is not None and ram > 0:
+            if behind_memory:
+                return "memory"
+            if self._ram_in_flight + ram > self._budget() and self._ram_in_flight > 0:
+                return "memory"
         self._dispatch(rec)
         return True
+
+    def _budget(self) -> int:
+        """``ram_budget_mb``, or the room the computer has now when it is less (``ram_room_mb``,
+        read once a pass: a node the pass starts holds nothing yet and counts by its
+        reservation, so the room read stays right for the rest of the pass)."""
+        assert self.ram_budget_mb is not None
+        if self.ram_room_mb is None:
+            return self.ram_budget_mb
+        if not self._room_read:
+            self._room_read = True
+            self._room = self.ram_room_mb()
+        return self.ram_budget_mb if self._room is None else min(self.ram_budget_mb, self._room)
 
     def _dispatch(self, rec: _Rec) -> None:
         assert self._loop is not None and self._threads is not None
@@ -566,7 +606,7 @@ class Scheduler:
         rec.started_at = time.perf_counter()
         rec.last_fraction = 0.0
         self._running[self._pool(node)] += 1
-        self._ram_in_flight += node.ram_mb or 0
+        self._ram_in_flight += rec.ram or 0
         self._inflight_keys[key] = node.id
         rec.workdir = self.workdir / _workdir_name(node.id)
         shutil.rmtree(rec.workdir, ignore_errors=True)
@@ -720,7 +760,7 @@ class Scheduler:
             if not rec.terminal:
                 if rec.state == "running":
                     self._running[self._pool(rec.node)] -= 1
-                    self._ram_in_flight -= rec.node.ram_mb or 0
+                    self._ram_in_flight -= rec.ram or 0
                     assert rec.key is not None
                     self._inflight_keys.pop(rec.key, None)
                 self._fail(rec, cancelled)
@@ -777,6 +817,14 @@ class Scheduler:
 
 
 # -- helpers -----------------------------------------------------------------------------------
+
+
+def _ram_of(node: Node, inputs: Mapping[str, ArtifactRef | None]) -> int:
+    """What ``node`` takes from the RAM budget once its ``inputs`` are resolved."""
+    declared = node.ram_mb or 0
+    if node.ram_from is None:
+        return declared
+    return max(declared, int(node.ram_from(inputs)))
 
 
 def _input_refs(store: Store, inputs: Mapping[str, ArtifactRef | None]) -> list[InputRef]:

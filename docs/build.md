@@ -18,7 +18,10 @@ the disk is in [how-it-works.md](how-it-works.md). To fly without building tiles
   click. Squares of open sea are left out and said, as there is nothing to build there.
 - **Works, as it happens.** A bar for every step of every tile, the time left, errors that say what
   happened and what to do, and a button to fetch again only what is missing. Builds queue up, up to
-  500 tiles each.
+  500 tiles each, and a long one does not grow in memory from tile to tile: each tile's tracing
+  runs in a program of its own, which gives its memory back when it is done, and starts only when
+  the memory its roads take is free. "Memory for building" sets how much of the computer a build
+  may take (80, 70 or 60 %), never more than what the other apps leave free.
 - **Settings in plain words.** Questions about what you want to see in X-Plane, three presets, and
   every Ortho4XP setting under "For experts" with a plain label.
 - **A Library.** Every tile on the computer, its size, whether X-Plane shows it and what it was
@@ -47,7 +50,9 @@ the disk is in [how-it-works.md](how-it-works.md). To fly without building tiles
   100 or 250 m, so that X-Plane's roads no longer bump over the small waves of the relief, on
   whichever relief you build with. Off by default, as in Ortho4XP. The road bands can also get the
   rounded ends of Ortho4XP 1.30, which take the bumps out of crossroads; off by default, since in
-  a big city at high road levels they double the time and memory of the tracing.
+  a big city at high road levels they double the time and memory of the tracing. With the limit
+  of road points raised, a big city's roads are traced in pieces on several cores: Atlanta at the
+  service roads in a minute and a half instead of 23, in a tenth of the memory.
 - **The grain of the ground.** One of X-Plane 12's decals over the photos, the one you choose;
   turning it on, off or to another writes a tile's terrain files again, and nothing else.
 - **The squares of a flight plan.** Your last SimBrief plan, or a plan file from Little Navmap
@@ -143,6 +148,15 @@ build that was not stopped. OrthoStudio XP runs the steps of all the tiles as a 
 core, downloads over HTTP/2 with up to 128 requests in flight, compresses textures in-process,
 and files every result under what produced it: it finds by itself the steps whose inputs did not
 change, and does not run them again.
+
+**Twelve tiles at once, 1.3.0 against 1.2.1.** Around Atlanta, Bing at ZL16 and Copernicus
+relief, with heavy settings (For experts: roads flattened down to the service roads with rounded
+ends, 2 000 000 road points, a denser mesh with `curvature_tol` 1 and `limit_tris` 5), the terrain
+of the twelve tiles was done in 8.8 min instead of 38.0 on the same Mac, which held 19.4 GB of
+memory at most instead of 41.6, and a Windows PC of 16 GB built them in 31.6 min where 1.2.1 ran
+out of memory. Along the coast of Brittany: 3.8 min instead of 8.3 on the Mac, 11.6 instead of
+25.7 on the PC. Measured on 29 and 30 October 2026; every step and the conditions:
+[benchmarks/build-times-1.3.md](benchmarks/build-times-1.3.md).
 
 ## Compared with Ortho4XP
 
