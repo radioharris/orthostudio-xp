@@ -5640,6 +5640,9 @@ def test_the_library_says_what_each_tile_was_built_with() -> None:
                                     relief_asked: ["HRDEM"]}),
             own: m.reliefSentence({relief: "XP12", relief_laid: ["/Users/me/lidar"],
                                    relief_asked: ["/Users/me/lidar"]}),
+            view30: m.reliefSentence({relief: "View", relief_laid: [], relief_arcsec: 1}),
+            view90: m.reliefSentence({relief: "View", relief_laid: [], relief_arcsec: 3}),
+            viewBefore: m.reliefSentence({relief: "View", relief_laid: []}),
           };
         })()""",
     )
@@ -5657,6 +5660,10 @@ def test_the_library_says_what_each_tile_was_built_with() -> None:
     assert got["unknown"] == 0
     assert got["laid"] == "Copernicus, with Canada's lidar over it"
     assert got["own"] == "X-Plane 12, with your own files over it"
+    # viewfinderpanoramas at 30 m says the grid its square was read at; a relief made before, no
+    assert got["view30"] == "viewfinderpanoramas, 30 m"
+    assert got["view90"] == "viewfinderpanoramas, 90 m (the site has no 30 m over this square)"
+    assert got["viewBefore"] == "viewfinderpanoramas"
 
     app_js = (UI / "app.js").read_text(encoding="utf-8")
     row = _function_body(app_js, "libraryRow")

@@ -244,7 +244,9 @@ nor replaced. Its local file is reused whenever it exists; it is assembled from 
 with `View`'s geometry, its 1201 posts brought to 3601 as every 3" cell (section 6). The relief
 `vf30` is `View` itself; where the square's own cell comes at 3" (the site has no 1" for it), the
 tile says `DEM_VIEW_COARSER` in Works, as the relief's last line (`pipeline/build.py`
-`RELIEF_SAID`). The empty `custom_dem` of Ortho4XP's default relief reads the same files and says
+`RELIEF_SAID`). Either way the relief writes the grid of that cell, 1 or 3, as `view_arcsec` in its
+`meta.json`, and the Library's *Relief* line says *30 m* or *90 m* (`pipeline-build.md`, the pack's
+facts); the key does not change, so a relief made before says nothing of it. The empty `custom_dem` of Ortho4XP's default relief reads the same files and says
 nothing. The Plan does not count their download (`estimate.py` counts Copernicus and the USGS at
 1/3" alone).
 

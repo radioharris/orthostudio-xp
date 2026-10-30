@@ -111,6 +111,20 @@ def test_what_became_of_his_own_file_comes_with_the_relief(tmp_path: Path) -> No
     }
 
 
+def test_viewfinderpanoramas_at_30_m_says_the_grid_its_square_was_read_at(tmp_path: Path) -> None:
+    """The relief notes 1" or 3" for the tile's own square (``view_arcsec``), and the Library says
+    30 or 90 m (2026-10-30); a relief made before, or any other relief, gives no such fact."""
+    read_at_3 = _store(tmp_path, {"source": "View", "laid_over": [], "view_arcsec": 3})
+    assert relief_read(read_at_3, "dsf") == {  # type: ignore[arg-type]
+        "relief": "View",
+        "relief_laid": [],
+        "relief_arcsec": 3,
+    }
+    (tmp_path / "before").mkdir()
+    before = _store(tmp_path / "before", {"source": "View", "laid_over": []})
+    assert "relief_arcsec" not in relief_read(before, "dsf")  # type: ignore[arg-type]
+
+
 def test_no_relief_to_read_is_no_fact_rather_than_an_error(tmp_path: Path) -> None:
     assert relief_read(FakeStore(), "dsf") == {}  # type: ignore[arg-type]
     assert relief_read(FakeStore(), None) == {}  # type: ignore[arg-type]
