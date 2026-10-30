@@ -27,6 +27,9 @@ if sys.argv[1] == "parent":
     sys.stdout.flush()
 sys.stdin.read()
 """
+# The interpreter itself: a virtual environment's python.exe on Windows is a launcher that runs it
+# as its child, and the launcher holds next to nothing of the 200 MB (the ci on Windows, 2026-10-30)
+PYTHON = getattr(sys, "_base_executable", sys.executable)
 
 
 def test_a_child_older_than_its_parent_is_not_counted() -> None:
@@ -57,7 +60,7 @@ def test_the_memory_of_the_children_and_theirs_is_counted() -> None:
     before = children_memory_mb()
     assert before is not None
     proc = subprocess.Popen(
-        [sys.executable, "-c", HOLD, "parent", HOLD],
+        [PYTHON, "-c", HOLD, "parent", HOLD],
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         text=True,
