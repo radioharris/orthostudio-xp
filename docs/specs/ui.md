@@ -1165,7 +1165,9 @@ map data and of the imagery. A reuse of the page keeps showing it; `NOTICE` says
    lakes and rivers (10 / 25 / 50 %); relief, seven answers since 2026-09-20 (`settings.js`
    `questionChoices`): X-Plane 12's own, Copernicus at 1", the USGS 3DEP at 1/3" (United States),
    the USGS at 1" (North America), Canada's lidar (HRDEM) or South America's ANADEM with Copernicus
-   elsewhere, or my own file, then the file's path, warned while empty, and its holes; under it, a
+   elsewhere, or my own file, then the file's path, warned while empty, and its holes;
+   viewfinderpanoramas at 30 m and at 90 m come before *my own file* only where `config.toml` sets
+   `relief.private_sources` (or holds one of them already), never otherwise (2026-10-30); under it, a
    folder of one's own elevation files (2.5, *Your own elevation files*). A value set by hand that
    no choice offers (a width of 80 m, lakes at 40 %, the airport mode `existing`, the `3steps`
    profile) is shown as one more choice, never hidden.

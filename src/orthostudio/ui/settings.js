@@ -157,7 +157,7 @@ export const QUESTION_PATHS = {
   water: ["essential.water_rendering"],
   lakes: ["advanced.ratio_water_pct"],
   colours: ["essential.photo_look", "expert.photo_brightness", "expert.photo_contrast", "expert.photo_saturation"],
-  relief: ["essential.relief.source", "essential.relief.file", "essential.relief.fill_nodata"],
+  relief: ["essential.relief.source", "essential.relief.file", "essential.relief.fill_nodata", "essential.relief.private_sources"],
   own: ["essential.relief.folder", "essential.relief.own_first"],
   overlays: ["essential.overlays"],
   xplane: ["essential.xplane_dir"],
@@ -306,6 +306,13 @@ export function questionChoices(id, settings, { providers = [], ownScenery = [] 
         { value: "usgs1", label: t("settings.q.relief_usgs1"), note: t("settings.q.relief_usgs1_note") },
         { value: "canada", label: t("settings.q.relief_canada"), note: t("settings.q.relief_canada_note") },
         { value: "south_america", label: t("settings.q.relief_anadem"), note: t("settings.q.relief_anadem_note") },
+        // viewfinderpanoramas, offered only where config.toml says relief.private_sources = true
+        ...(value("essential.relief.private_sources") || ["vf30", "vf90"].includes(value("essential.relief.source"))
+          ? [
+              { value: "vf30", label: t("settings.q.relief_vf30"), note: t("settings.q.relief_vf30_note") },
+              { value: "vf90", label: t("settings.q.relief_vf90"), note: t("settings.q.relief_vf90_note") },
+            ]
+          : []),
         { value: "file", label: t("settings.q.relief_file"), note: t("settings.q.relief_file_note") },
       ];
     case "holes":
@@ -412,6 +419,8 @@ export function settingsSummary(settings) {
   else if (relief === "usgs1") parts.push(t("plan.s.relief_usgs1"));
   else if (relief === "canada") parts.push(t("plan.s.relief_canada"));
   else if (relief === "south_america") parts.push(t("plan.s.relief_anadem"));
+  else if (relief === "vf30") parts.push(t("plan.s.relief_vf30"));
+  else if (relief === "vf90") parts.push(t("plan.s.relief_vf90"));
   else parts.push(t("plan.s.relief_auto"));
   if (relief !== "file" && String(e.relief?.folder || "").trim()) parts.push(t("plan.s.relief_own"));
   if (e.overlays === "none") parts.push(t("plan.s.overlays_none"));

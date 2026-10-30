@@ -58,18 +58,30 @@ __all__ = [
     "generic_tif",
     "hem_latlon",
     "round_latlon",
+    "view3_urls",
     "view_url",
     "view_urls",
 ]
 
-Source = Literal["View", "SRTM", "ALOS", "NED1", "NED1/3", "COP30", "HRDEM", "ANADEM"]
+Source = Literal["View", "View3", "SRTM", "ALOS", "NED1", "NED1/3", "COP30", "HRDEM", "ANADEM"]
 
-SOURCES: tuple[Source, ...] = ("View", "SRTM", "ALOS", "NED1", "NED1/3", "COP30", "HRDEM", "ANADEM")
+SOURCES: tuple[Source, ...] = (
+    "View",
+    "View3",
+    "SRTM",
+    "ALOS",
+    "NED1",
+    "NED1/3",
+    "COP30",
+    "HRDEM",
+    "ANADEM",
+)
 """The five elevation sources of Ortho4XP (``O4_DEM_Utils.py:20-31``, short names), plus the two
 OrthoStudio XP added for users who asked: ``COP30``, the Copernicus DEM GLO-30 (2026-09-17), and
-``HRDEM``, Canada's lidar mosaic (2026-09-18, ``dem/hrdem.py``)."""
+``HRDEM``, Canada's lidar mosaic (2026-09-18, ``dem/hrdem.py``). ``View3`` is viewfinderpanoramas
+at 3" alone, where ``View`` takes its 1" archives first (2026-10-30)."""
 
-GLOBAL_SOURCES: tuple[Source, ...] = ("View", "SRTM", "ALOS", "COP30")
+GLOBAL_SOURCES: tuple[Source, ...] = ("View", "View3", "SRTM", "ALOS", "COP30")
 """Sources assembled from the 3x3 block of neighbouring cells (``O4_DEM_Utils.py:33``)."""
 
 MANUAL_SOURCES: tuple[Source, ...] = ("SRTM", "ALOS")
@@ -167,6 +179,7 @@ def base_file_name(elevation_dir: Path, lat: int, lon: int) -> Path:
 
 _SUFFIX: dict[str, str] = {
     "View": ".hgt",
+    "View3": "_VIEW3.hgt",  # its own name: ``View`` keeps a 1" file where the site has one
     "COP30": "_COP30.tif",
     "SRTM": "_SRTMv3.hgt",
     "ALOS": "_ALOS3W30.tif",
@@ -337,6 +350,11 @@ def view_urls(lat: int, lon: int) -> tuple[list[str], int]:
         urls.append(computed)
     resol = 1 if "/dem1/" in urls[0] else 3
     return urls, resol
+
+
+def view3_urls(lat: int, lon: int) -> list[str]:
+    """The 3" archives of :func:`view_urls` alone, for ``View3``."""
+    return [url for url in view_urls(lat, lon)[0] if "/dem1/" not in url]
 
 
 def view_url(lat: int, lon: int) -> tuple[str, int]:
@@ -850,6 +868,8 @@ def ensure_elevation(source: str, lat: int, lon: int, opts: EnsureOptions) -> En
     """
     if source == "View":
         return _ensure_view(lat, lon, opts)
+    if source == "View3":
+        return _ensure_view3(lat, lon, opts)
     if source == "COP30":
         return _ensure_cop30(lat, lon, opts)
     if source in MANUAL_SOURCES:
@@ -894,6 +914,33 @@ def _ensure_view(lat: int, lon: int, opts: EnsureOptions) -> EnsureResult:
         opts.memo.record(url)
         detail = got.error or f"HTTP {got.status}"
     return _view_fallback(lat, lon, path, first, opts, detail)
+
+
+def _ensure_view3(lat: int, lon: int, opts: EnsureOptions) -> EnsureResult:
+    """One cell of viewfinderpanoramas at 3", in a file of its own (``_VIEW3.hgt``)."""
+    path = _local("View3", lat, lon, opts)
+    urls = view3_urls(lat, lon)
+    if path.is_file():
+        return EnsureResult(lat, lon, CellState.LOCAL, path, urls[0])
+    detail = "the archive is in the negative memo"
+    for url in urls:
+        if opts.memo.is_missing(url):
+            continue
+        opts.check_cancelled()
+        got = opts.download(url)
+        if got.ok:
+            extract_view_zip(got.body, opts.elevation_dir, "View3")
+            if path.is_file():
+                return EnsureResult(lat, lon, CellState.DOWNLOADED, path, url)
+            detail = "the archive did not hold this cell"
+            continue
+        if not got.final:
+            return EnsureResult(
+                lat, lon, CellState.MISSING, None, url, got.error or f"HTTP {got.status}"
+            )
+        opts.memo.record(url)
+        detail = got.error or f"HTTP {got.status}"
+    return EnsureResult(lat, lon, CellState.MISSING, None, urls[0], detail)
 
 
 def cop30_name(lat: int, lon: int) -> str:
@@ -1066,8 +1113,9 @@ def manual_download_error(source: str, lat: int, lon: int, elevation_dir: Path) 
 # -- zip extraction -------------------------------------------------------------------------
 
 
-def extract_view_zip(content: bytes, elevation_dir: Path) -> list[Path]:
-    """Write the ``.hgt`` members of a viewfinderpanoramas archive (``:736-767``).
+def extract_view_zip(content: bytes, elevation_dir: Path, source: str = "View") -> list[Path]:
+    """Write the ``.hgt`` members of a viewfinderpanoramas archive (``:736-767``), under the
+    names of ``source`` (``View``, or ``View3`` for a 3" archive asked alone).
 
     A member whose basename does not parse as ``[NS]dd[EW]ddd`` is skipped, and an existing
     file is kept unless it is at most as large as the archived member (a 1" file must not be
@@ -1082,7 +1130,7 @@ def extract_view_zip(content: bytes, elevation_dir: Path) -> list[Path]:
                 continue
             lat0 = int(m.group(2)) * (-1 if m.group(1) in "Ss" else 1)
             lon0 = int(m.group(4)) * (-1 if m.group(3) in "Ww" else 1)
-            out = elevation_path("View", elevation_dir, lat0, lon0)
+            out = elevation_path(source, elevation_dir, lat0, lon0)
             if out.exists() and out.stat().st_size > info.file_size:
                 continue
             with zf.open(info, "r") as src:
@@ -1110,6 +1158,8 @@ def iter_urls(source: str, cells: Iterable[tuple[int, int]]) -> list[str]:
     for lat, lon in cells:
         if source == "View":
             urls.extend(view_urls(lat, lon)[0])
+        elif source == "View3":
+            urls.extend(view3_urls(lat, lon))
         elif source in ("NED1", "NED1/3"):
             urls.append(ned_url(source, lat, lon))
     return urls

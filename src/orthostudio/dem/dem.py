@@ -35,6 +35,7 @@ from orthostudio.dem.raster import (
     read_elevation_from_file,
 )
 from orthostudio.dem.sources import (
+    FULL_HGT_SIZE,
     MANUAL_SOURCES,
     OWN_SUFFIXES,
     SOURCES,
@@ -195,6 +196,14 @@ class Dem:
         dem = cls._load_one(tile, sources[0], opts, record)
         assert dem is not None  # the base is never optional: it raises rather than answer None
         dem.events = events
+        if custom_dem.partition(";")[0] == "View":
+            # viewfinderpanoramas chosen at 30 m: where the site has no 1" archive for the
+            # square, its 3" file answers, and Works says so (2026-10-30)
+            own = [c for c in dem.cells if (c.lat, c.lon) == (tile.lat, tile.lon)]
+            if own and own[0].path is not None and own[0].path.stat().st_size < FULL_HGT_SIZE:
+                record(
+                    OsxpError("DEM_VIEW_COARSER", context={"cell": hem_latlon(tile.lat, tile.lon)})
+                )
         if fill_nodata == "zero":
             count = nodata_to_zero(dem.alt_dem, dem.nodata)
             dem.nodata = NODATA

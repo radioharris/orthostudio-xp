@@ -236,6 +236,18 @@ satisfies it.
 overwrite a 1" version by downloading the whole archive of a nearby 3" one"). Members whose
 name does not parse are skipped. **Keep**, including the `S`/`W` detection by substring.
 
+**`View3`, its 3" archives alone (OrthoStudio XP, 2026-10-30).** The relief `vf90`, offered only
+with `relief.private_sources` (`settings.md`), asks the 3" archives of `view_urls` and never a 1"
+one (`view3_urls`), and files each cell under a name of its own, `N46E006_VIEW3.hgt`
+(`extract_view_zip(..., "View3")`): the 1" file `View` keeps for the same square is neither read
+nor replaced. Its local file is reused whenever it exists; it is assembled from the 3x3 block
+with `View`'s geometry, its 1201 posts brought to 3601 as every 3" cell (section 6). The relief
+`vf30` is `View` itself; where the square's own cell comes at 3" (the site has no 1" for it), the
+tile says `DEM_VIEW_COARSER` in Works, as the relief's last line (`pipeline/build.py`
+`RELIEF_SAID`). The empty `custom_dem` of Ortho4XP's default relief reads the same files and says
+nothing. The Plan does not count their download (`estimate.py` counts Copernicus and the USGS at
+1/3" alone).
+
 ### 3.2 `SRTM` and `ALOS`
 
 `O4_DEM_Utils.py:768-778`: since OpenTopography closed its public bucket, Ortho4XP prints a

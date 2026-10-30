@@ -3664,6 +3664,29 @@ def test_every_setting_is_offered_somewhere() -> None:
         assert label != path and hint, path
 
 
+def test_viewfinderpanoramas_is_offered_only_where_config_toml_turns_it_on() -> None:
+    """``relief.private_sources``, set by hand and never shown, adds viewfinderpanoramas at 30 m
+    and at 90 m to the relief question, before one's own file; a saved choice of either stays
+    offered, so the question never loses the answer it holds (2026-10-30)."""
+    doc = _mock_json("settings")
+
+    def offered(relief: dict[str, object]) -> list[str]:
+        settings = {
+            **doc,
+            "essential": {**doc["essential"], "relief": {**doc["essential"]["relief"], **relief}},
+        }
+        got = _node_json(
+            "settings.js", f"m.questionChoices('relief', {json.dumps(settings)}, {{}})"
+        )
+        return [c["value"] for c in got]
+
+    plain = offered({})
+    assert "vf30" not in plain and "vf90" not in plain
+    turned_on = offered({"private_sources": True})
+    assert turned_on[-3:] == ["vf30", "vf90", "file"]
+    assert offered({"source": "vf90"})[-3:] == ["vf30", "vf90", "file"]
+
+
 def test_a_pack_that_brings_its_own_scenery_answers_the_overlay_question() -> None:
     """A user with simHeaven X-World kept our overlays too and had everything twice
     (2026-09-20). When the engine finds such a pack in X-Plane, the recommended answer is the

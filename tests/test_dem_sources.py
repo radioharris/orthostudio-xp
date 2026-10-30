@@ -33,6 +33,7 @@ from orthostudio.dem.sources import (
     ned_url,
     no_download,
     round_latlon,
+    view3_urls,
     view_url,
     view_urls,
 )
@@ -317,6 +318,25 @@ def test_a_cell_comes_from_its_1sec_block(tmp_path: Path) -> None:
     assert got.state is CellState.DOWNLOADED
     assert got.url == f"{V}/dem1/L32.zip"
     assert calls == [f"{V}/dem1/L32.zip"]
+
+
+def test_view3_asks_the_3sec_archives_alone_and_files_them_apart(tmp_path: Path) -> None:
+    """viewfinderpanoramas at 90 m (``View3``) never asks a 1" archive, and its cell has a name
+    of its own: a 1" file ``View`` keeps for the same square is neither read nor replaced."""
+    assert view3_urls(46, 6) == [f"{V}/dem3/L32.zip"]
+    assert view3_urls(60, -2) == [f"{V}/dem3/SHL.zip", f"{V}/dem3/P30.zip"]
+    one_sec = elevation_path("View", tmp_path, 46, 6)
+    one_sec.parent.mkdir(parents=True)
+    one_sec.write_bytes(b"1" * 64)
+    calls: list[str] = []
+    opts = _opts(tmp_path, _view_site(f"{V}/dem3/L32.zip", calls), memo=NegativeMemo())
+    got = ensure_elevation("View3", 46, 6, opts)
+    assert got.state is CellState.DOWNLOADED and calls == [f"{V}/dem3/L32.zip"]
+    assert got.path == elevation_path("View3", tmp_path, 46, 6)
+    assert got.path is not None and got.path.name == "N46E006_VIEW3.hgt"
+    assert one_sec.read_bytes() == b"1" * 64
+    again = ensure_elevation("View3", 46, 6, opts)
+    assert again.state is CellState.LOCAL and len(calls) == 1
 
 
 def test_a_404_on_the_1sec_block_goes_on_to_the_3sec_one_and_is_remembered(tmp_path: Path) -> None:
