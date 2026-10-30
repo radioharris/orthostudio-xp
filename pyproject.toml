@@ -72,7 +72,9 @@ select = ["E", "F", "W", "I", "UP", "B", "SIM", "N", "RUF"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q"
+# worksteal: an idle worker takes the tests still waiting on another, so the few long ones no longer
+# finish alone (the whole suite 75-88 s instead of 113-152 s on 14 cores, 2026-10-30)
+addopts = "-q --dist worksteal"
 markers = [
   "xplane: reads the local X-Plane 12 install, read only (skipped without it)",
   "network: talks to real servers (local only)",
