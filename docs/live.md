@@ -169,9 +169,9 @@ aircraft, and comes to it when a flight starts (about 60 km across); drag it awa
 to look elsewhere, and "Follow the aircraft" brings it back. The next flight is followed again by
 itself. Prepare brings the map to the departure, as close as a flight's start.
 
-**The Settings tab**: the mesh's regions, the roads, forests and buildings, what the zoom does, the
-flight plan, Live's disk space (with what the textures and the imagery take, and a button to delete
-either), what the app opens on, and Live's folder. They apply with Save, at the next start.
+**The Settings tab**: the mesh's regions, the roads, forests and buildings, the flight plan, Live's
+disk space (with what the textures and the imagery take, and a button to delete either), what the
+app opens on, and Live's folder. They apply with Save, at the next start.
 
 ![Live's Settings tab: the regions of the mesh with Install and Delete, the roads, forests and buildings, the zoom, the flight plan, the disk space and Live's folder](images/live/settings.png)
 
@@ -199,9 +199,10 @@ shows; the zoom sets the sharpest version there is, the one seen up close.
 Downloads, estimated around Lyon at 250 kt: with ZL16 and 18, about 1 GB at the start and 7 GB an
 hour; with ZL17 and 19, about 1.4 GB and 13 GB.
 
-To see where X-Plane really shows the 8192 px: "Test: show the 8192 px textures in pink" (Settings,
-Zoom) builds that level washed with pink. Untick it after, and delete the textures: they are built
-again, their sharpest photos downloaded again.
+To see where X-Plane really shows the 8192 px: `tint_8192 = true` in `live.toml`, in OrthoStudio
+XP's own folder (`~/.orthostudio`), builds that level washed with pink from the next start. Set it
+back to `false` after, and delete the textures: they are built again, their sharpest photos
+downloaded again.
 
 ## The season
 

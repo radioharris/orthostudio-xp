@@ -265,9 +265,6 @@ export const STRINGS = {
     "source.low_zoom": "It stops at zoom {zl}: up close, the ortho is blurrier.",
     "source.refused": "{provider} refuses your connection (access denied): stop Live and choose another source meanwhile.",
 
-    "zoom.title": "Zoom",
-    "zoom.help":
-      "X-Plane picks by itself, by distance, which version of each texture to show: the zoom sets the sharpest one. A higher zoom is sharper near the ground only, around you; a lower one is blurrier within 38 km, the ground under the aircraft at cruise too.",
     "zoom.max": "Zoom",
     "zoom.max_help": "Away from airports. The package's zoom is 16.",
     "zoom.choice_standard": "16/18 · standard",
@@ -279,7 +276,6 @@ export const STRINGS = {
     "zoom.airports_help": "Around airports, where the package's zoom is 18.",
     "zoom.lower": "ZL{zl}: less sharp up close, {times} times less to download",
     "zoom.same": "ZL{zl}: the package's",
-    "zoom.where": "It is chosen on Live's screen, right of the photo source: away from airports (Zoom) and around them (Airports).",
     "zoom.running": "It changes once Live is stopped.",
     "zoom.higher": "ZL{zl}: sharper up close, more to download around you (8192 px textures)",
     "zoom.change":
@@ -353,14 +349,6 @@ export const STRINGS = {
     "season.change":
       "The season is chosen when a flight starts and stays until the next one. When it changes, Live builds the textures again as you fly: the far ones from the photos it keeps, the sharpest ones (4096 and 8192 px) downloaded again, as on a first flight there, since Live does not keep their photos. That start takes as long as a first one.",
 
-    "start.title": "When a flight starts",
-    "start.plain":
-      "X-Plane waits on its loading screen for the textures around the aircraft; then Live builds them ahead of you.",
-    "start.sharp":
-      "X-Plane waits on its loading screen for the textures around the aircraft, 8192 px within 15 km. In flight, Live makes the 8192 px within 15 km of you and of your path ahead, before X-Plane reads it at 12 km. Farther, a texture shows its 4096 px there, never anything blank.",
-    "start.tint": "Test: show the 8192 px textures in pink",
-    "start.tint_help":
-      "Only their 8192 px version is tinted: where the ground turns pink in X-Plane, X-Plane shows the 8192 px. After the test, untick it and delete the textures (Disk space, the photos kept): they are built again normally.",
     "state.tint_on":
       "Test on: the 8192 px textures are pink where X-Plane shows them; on the map, green (ZL17) away from airports, violet (ZL19) around them.",
     "state.tint_next":
@@ -671,9 +659,6 @@ export const STRINGS = {
     "source.low_zoom": "Elle s'arrête au zoom {zl} : de près, l'ortho est plus floue.",
     "source.refused": "{provider} refuse votre connexion (accès refusé) : arrêtez Live et choisissez une autre source en attendant.",
 
-    "zoom.title": "Zoom",
-    "zoom.help":
-      "X-Plane choisit seul, selon la distance, quelle version de chaque texture montrer : le zoom règle la plus nette. Un zoom plus haut n'est plus net que près du sol, autour de vous ; un zoom plus bas est plus flou à moins de 38 km, le sol sous l'avion en croisière aussi.",
     "zoom.max": "Zoom",
     "zoom.max_help": "Loin des aéroports. Le zoom du package est 16.",
     "zoom.choice_standard": "16/18 · standard",
@@ -685,7 +670,6 @@ export const STRINGS = {
     "zoom.airports_help": "Autour des aéroports, où le zoom du package est 18.",
     "zoom.lower": "ZL{zl} : moins net de près, {times} fois moins à télécharger",
     "zoom.same": "ZL{zl} : celui du package",
-    "zoom.where": "Il se choisit sur l'écran de Live, à droite de la source des photos : loin des aéroports (Zoom) et autour d'eux (Aéroports).",
     "zoom.running": "Il se change quand Live est arrêté.",
     "zoom.higher":
       "ZL{zl} : plus net de près, plus à télécharger autour de vous (textures 8192 px)",
@@ -762,14 +746,6 @@ export const STRINGS = {
     "season.change":
       "La saison est choisie au démarrage d'un vol et reste jusqu'au suivant. Quand elle change, Live refait les textures au fil du vol : les lointaines à partir des photos qu'il garde, les plus nettes (4096 et 8192 px) retéléchargées, comme au premier vol à cet endroit, car Live ne garde pas leurs photos. Ce démarrage-là prend autant de temps qu'un premier.",
 
-    "start.title": "Au démarrage d'un vol",
-    "start.plain":
-      "X-Plane attend sur son écran de chargement les textures autour de l'avion ; ensuite, Live les construit devant vous.",
-    "start.sharp":
-      "X-Plane attend sur son écran de chargement les textures autour de l'avion, en 8192 px à moins de 15 km. En vol, Live fait le 8192 px à moins de 15 km de vous et de votre route, avant qu'X-Plane le lise à 12 km. Plus loin, une texture y montre son 4096 px, jamais rien de vide.",
-    "start.tint": "Test : montrer les textures 8192 px en rose",
-    "start.tint_help":
-      "Seule leur version 8192 px est teintée : là où le sol rosit dans X-Plane, X-Plane affiche le 8192 px. Après le test, décochez et supprimez les textures (Place sur le disque, en gardant les photos) : elles sont refaites normalement.",
     "state.tint_on":
       "Test en cours : les textures 8192 px sont roses là où X-Plane les affiche ; sur la carte, vertes (ZL17) hors des aéroports, violettes (ZL19) autour.",
     "state.tint_next":

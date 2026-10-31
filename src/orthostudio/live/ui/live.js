@@ -850,7 +850,7 @@ function drawZooms() {
 /** A zoom chosen on Live's screen, before Start, as the photos: saved at once, the next start lays
  * the textures out for it. */
 async function chooseZoom() {
-  drawStart();
+  drawMemory();
   drawZooms();
   $("source-error").hidden = true;
   $("zoom-disk").hidden = true;
@@ -873,19 +873,9 @@ async function chooseZoom() {
     $("source-error").textContent = error.message;
     $("source-error").hidden = false;
     if (saved) renderZooms(`${saved.max_zoom}/${saved.max_zoom_airports}`);
-    drawStart();
+    drawMemory();
     drawZooms();
   }
-}
-
-/** What a start does: with a zoom above the package's, the 8192 px around the aircraft too, and
- * the pink test of them. Nothing to choose: every file has its size from the start. */
-function drawStart() {
-  const [zoom, airports] = zoomsChosen();
-  const sharp = zoom > ZOOMS.max_zoom[0] || airports > ZOOMS.max_zoom_airports[0];
-  $("start-options").hidden = !sharp;
-  $("start-plain").hidden = sharp;
-  drawMemory();
 }
 
 /** Whether zooms above the package's (8192 px textures) are chosen on a computer with less memory
@@ -1068,7 +1058,6 @@ function fillSettings(settings) {
   renderZooms(`${settings.max_zoom}/${settings.max_zoom_airports}`);
   fillDecal(decalList, settings.decal);
   $("set-disk").value = String(settings.disk_gb);
-  $("set-tint").checked = Boolean(settings.tint_8192);
   $("set-folder").value = settings.folder || "";
   $("set-simbrief").value = settings.simbrief_user || "";
   for (const input of document.querySelectorAll('input[name="app_home"]')) {
@@ -1081,7 +1070,7 @@ function fillSettings(settings) {
     input.checked = input.value === (settings.own_tiles || "first");
   }
   drawSimbrief();
-  drawStart();
+  drawMemory();
   drawZooms();
   fillSeason(settings);
   if (providers.length) renderProviders(settings.provider);
@@ -1092,7 +1081,6 @@ function fillSettings(settings) {
 function formSettings() {
   return {
     disk_gb: Number($("set-disk").value),
-    tint_8192: $("set-tint").checked,
     folder: $("set-folder").value.trim(),
     simbrief_user: $("set-simbrief").value.trim(),
     app_home: document.querySelector('input[name="app_home"]:checked')?.value || saved?.app_home || "ask",
@@ -1737,7 +1725,7 @@ function boot() {
   $("lang-select").value = language();
   applyStatic(document);
   renderZooms();
-  drawStart();
+  drawMemory();
   trackStatusbarHeight();
   measureMapTop();
   window.addEventListener("resize", measureMapTop); // the frame sends one when it shows the page

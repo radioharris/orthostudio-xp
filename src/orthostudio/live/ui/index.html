@@ -331,24 +331,8 @@
         <p class="question-help" data-i18n="own_tiles.restart"></p>
       </fieldset>
 
-      <fieldset class="question" id="q-zoom">
-        <legend class="question-title" data-i18n="zoom.title">Zoom</legend>
-        <p class="question-help" data-i18n="zoom.help"></p>
-        <!-- the two zooms themselves on Live's screen, beside the photos -->
-        <p class="question-help" data-i18n="zoom.where"></p>
-        <p class="question-help" data-i18n="zoom.change"></p>
-        <fieldset class="sub-question" id="q-start">
-          <legend class="sub-question-title" data-i18n="start.title">When a flight starts</legend>
-          <p class="question-help" id="start-plain" data-i18n="start.plain" hidden></p>
-          <div id="start-options">
-            <p class="question-help" data-i18n="start.sharp"></p>
-            <!-- a test: the 8192 px level pink, to see where X-Plane shows it -->
-            <label class="switch live-tint"><input type="checkbox" id="set-tint" name="tint_8192">
-              <span data-i18n="start.tint">Test: show the 8192 px textures in pink</span></label>
-            <p class="question-help" data-i18n="start.tint_help"></p>
-          </div>
-        </fieldset>
-      </fieldset>
+      <!-- no Zoom card: the zooms, their hover and their warnings are on Live's screen, and the
+           pink test of the 8192 px is live.toml's tint_8192 alone (the user, 2026-10-31) -->
 
       <!-- the photos' colours: a season per start, never one in flight (orthostudio.live.look) -->
       <fieldset class="question" id="q-plan">

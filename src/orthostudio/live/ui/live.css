@@ -176,7 +176,6 @@
 }
 
 /* the test of the 8192 px, under the start choices */
-.live-tint { margin-top: var(--gap); }
 
 /* the foot holds OrthoStudio XP's text size and zoom alone: on its right, as in its page */
 .live-statusbar { justify-content: flex-end; }
