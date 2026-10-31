@@ -168,20 +168,25 @@
           </div>
           <p class="error-inline" id="departure-error" role="alert" hidden></p>
         </div>
-        <!-- Live's buttons, X-Plane's on their line, right of From scratch (the user, 2026-10-09):
-             Live first, then X-Plane -->
+        <!-- Live's buttons, X-Plane's on their line (the user, 2026-10-09): Live first, then
+             X-Plane, the trash at the end -->
         <div class="actions">
           <button type="button" class="btn btn-primary" id="start-btn" data-i18n="action.start" hidden>Start Live</button>
-          <label class="live-check" id="fresh-row" data-i18n-title="action.fresh_title" hidden>
-            <input type="checkbox" id="fresh">
-            <span data-i18n="action.fresh">From scratch</span>
-          </label>
           <button type="button" class="btn btn-danger" id="stop-btn" data-i18n="action.stop" hidden>Stop</button>
           <button type="button" class="btn" id="xplane-btn" data-i18n="action.xplane" disabled>Start X-Plane</button>
           <button type="button" class="btn" id="leave-btn" data-i18n="action.leave" hidden>Leave it installed</button>
           <button type="button" class="btn btn-accent" id="uninstall-btn" data-i18n="action.uninstall" hidden>Take the pack out of X-Plane</button>
+          <!-- what Live keeps deleted from here too, Settings' Delete… dialog (the user, 2026-10-31:
+               in place of a From scratch box, which a Prepare starting Live did not read), at the
+               row's end as OrthoStudio XP's trashes are (.btn-trash) -->
+          <button type="button" class="btn btn-icon btn-danger btn-trash" id="delete-here" data-i18n-title="action.delete"
+                  title="Delete what Live keeps…" hidden>
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M4 7h16M9 7V4.5h6V7M6.5 7l1 12.5h9l1-12.5M10 10.5v6M14 10.5v6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <span class="sr-only" data-i18n="action.delete">Delete what Live keeps…</span>
+          </button>
         </div>
-        <p class="question-help" id="action-help"></p>
       </section>
       <!-- the flight: X-Plane's state beside the title, the aircraft's three figures in boxes,
            then the rest -->

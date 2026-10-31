@@ -108,7 +108,7 @@ def stream_sources(xp: Path) -> list[Path]:
     return [Path(named)] if named else default_sources(xp)
 
 
-def options_for(settings: LiveSettings, *, fresh: bool) -> session.Options:
+def options_for(settings: LiveSettings) -> session.Options:
     named = os.environ.get(SOURCE_ENV)
     return session.Options(
         source=Path(named) if named else None,
@@ -125,7 +125,6 @@ def options_for(settings: LiveSettings, *, fresh: bool) -> session.Options:
         looks=settings.seasons.looks(),
         decal=settings.decal,
         own_tiles=settings.own_tiles,
-        fresh=fresh,
     )
 
 
@@ -412,7 +411,7 @@ class LiveControl:
 
     # --- what the page asks ------------------------------------------------------------------
 
-    def start(self, *, fresh: bool = False, departure: str | None = None) -> bool:
+    def start(self, *, departure: str | None = None) -> bool:
         """Start streaming, building round ``departure`` straight away where given (an airport's
         ICAO code, as ``--from``); False when a stream is already on its way (or on its way
         out)."""
@@ -423,7 +422,7 @@ class LiveControl:
             self._stop.clear()
             self._leave.clear()
             self._departure = None
-        options = options_for(self._settings(), fresh=fresh)
+        options = options_for(self._settings())
         if departure:
             options.start = departure
         self._starting_with = options

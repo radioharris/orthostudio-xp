@@ -231,7 +231,7 @@ function drawState(status) {
   drawZooms();
   $("start-btn").hidden = !idle;
   $("start-btn").disabled = Boolean(blocking(checks));
-  $("fresh-row").hidden = !idle;
+  $("delete-here").hidden = !idle;
   $("stop-btn").hidden = !["starting", "streaming"].includes(state);
   // X-Plane sees the pack and loads the plugin only if they are there when it starts
   $("xplane-btn").disabled = !(state === "streaming" && !checks.xplane_running);
@@ -240,11 +240,6 @@ function drawState(status) {
   $("uninstall-btn").hidden = !(idle && checks.installed && !checks.xplane_running);
   // a departure prepared: Live started for it when idle, told of it while it streams
   $("departure-btn").disabled = !(state === "streaming" || (idle && !blocking(checks)));
-  // From scratch's cost, when ticked; when to start X-Plane is said by its button, grey until
-  // Live is ready, and by the line under the state (the user: no sentence saying it again)
-  const help = idle && $("fresh").checked ? t("action.fresh_help") : "";
-  $("action-help").textContent = help;
-  $("action-help").hidden = !help;
 }
 
 /** While Live runs, the sources whose server refuses this computer (Downloader.refusing), in
@@ -1752,7 +1747,7 @@ function boot() {
   });
   $("quit-btn").addEventListener("click", quitLive);
   $("start-btn").addEventListener("click", async () => {
-    if (await askedWhileBuilding()) act("start", { fresh: $("fresh").checked });
+    if (await askedWhileBuilding()) act("start");
   });
   $("departure-btn").addEventListener("click", prepareDeparture);
   $("departure").addEventListener("keydown", (event) => {
@@ -1776,7 +1771,6 @@ function boot() {
   $("set-zooms").addEventListener("change", chooseZoom);
   $("leave-btn").addEventListener("click", () => act("leave"));
   $("uninstall-btn").addEventListener("click", () => act("uninstall"));
-  $("fresh").addEventListener("change", () => last && drawState(last));
   $("set-provider").addEventListener("change", chooseProvider);
   $("set-simbrief").addEventListener("input", drawSimbrief);
   $("simbrief-osxp").addEventListener("click", () => {
@@ -1785,6 +1779,7 @@ function boot() {
   });
   $("folder-choose").addEventListener("click", chooseFolder);
   $("delete-btn").addEventListener("click", openDelete);
+  $("delete-here").addEventListener("click", openDelete);
   $("delete-dialog").addEventListener("close", deleteClosed);
   $("settings-form").addEventListener("submit", saveSettings);
   bindSeason();

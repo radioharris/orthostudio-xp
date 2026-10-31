@@ -7,7 +7,7 @@ can include as it is the day Live comes into its window (``app.include_router``)
   the page asks every second, which also says it is open; ``POST /api/live/presence`` says only
   that (the welcome page);
 - ``GET  /api/live/log?after=N``: the log's lines after the N-th;
-- ``POST /api/live/start`` ``{"fresh": bool}``: start streaming (409 while a stream is on);
+- ``POST /api/live/start``: start streaming (409 while a stream is on);
 - ``POST /api/live/stop``: stop it; the pack comes out once X-Plane has quit;
 - ``POST /api/live/leave``: stop waiting for X-Plane: the pack stays installed;
 - ``POST /api/live/quit`` ``{"force": bool}``: the window goes, for the app's update or removal
@@ -56,10 +56,6 @@ class LanguageBody(BaseModel):
 class HomeBody(BaseModel):
     home: Literal["live", "build"]
     remember: bool = True
-
-
-class StartBody(BaseModel):
-    fresh: bool = False
 
 
 class DeleteBody(BaseModel):
@@ -113,8 +109,8 @@ def live_router(
         return control.log_after(after)
 
     @router.post("/start", status_code=202)
-    def start(body: StartBody | None = None) -> dict[str, Any]:
-        if not control.start(fresh=body.fresh if body else False):
+    def start() -> dict[str, Any]:
+        if not control.start():
             raise HTTPException(409, "a stream is already on its way, or on its way out")
         return {"state": control.state}
 

@@ -67,8 +67,8 @@ def test_a_wrong_value_costs_itself_only(home: Path) -> None:
 
 def test_the_test_of_the_8192_px_is_off_until_ticked(home: Path) -> None:
     assert LiveSettings().tint_8192 is False
-    assert not control_module.options_for(LiveSettings(), fresh=False).tint_8192
-    assert control_module.options_for(LiveSettings(tint_8192=True), fresh=False).tint_8192
+    assert not control_module.options_for(LiveSettings()).tint_8192
+    assert control_module.options_for(LiveSettings(tint_8192=True)).tint_8192
 
 
 def test_one_disk_space_shared_and_the_two_of_before(home: Path) -> None:
@@ -306,14 +306,15 @@ def test_start_stream_stop(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(control_module, "xplane_running", lambda: False)
     stream = FakeStream()
     c = control_for(stream)
-    assert c.start(fresh=True)
+    assert c.start()
     assert not c.start()  # one stream at a time
     wait_for(lambda: c.state == STREAMING)
     status = c.status()
     assert status["stream"] == REPORT
     assert status["api"] == control_module.API
     assert stream.options is not None
-    assert stream.options.fresh and stream.options.disk_budget_gb == 33  # the window's, halved
+    assert not stream.options.fresh  # the window never starts from scratch: its trash deletes first
+    assert stream.options.disk_budget_gb == 33  # the window's, halved
     assert stream.options.cache_budget_gb == 33
     assert stream.options.camera_reach_km == 0.0  # sharp that much farther for external views
     assert status["log_file"] is None  # no LogLive.txt for this window
@@ -602,7 +603,7 @@ async def test_the_page_and_its_api(home: Path, monkeypatch: pytest.MonkeyPatch)
         assert html.index('id="set-provider"') < html.index('id="screen-settings"')
         status = (await client.get("/api/live/status")).json()
         assert status["state"] == IDLE and status["checks"]["plugin"] == "ready"
-        assert (await client.post("/api/live/start", json={"fresh": False})).status_code == 202
+        assert (await client.post("/api/live/start")).status_code == 202
         assert (await client.post("/api/live/start", json={})).status_code == 409
         wait_for(lambda: c.state == STREAMING)
         assert (await client.post("/api/live/stop")).status_code == 202
@@ -1423,7 +1424,7 @@ def test_the_overlays_setting(home: Path) -> None:
     assert LiveSettings().overlays == "auto"
     save_settings(LiveSettings(overlays="off"))
     assert load_settings().overlays == "off"
-    assert control_module.options_for(load_settings(), fresh=False).overlays == "off"
+    assert control_module.options_for(load_settings()).overlays == "off"
     settings_file().write_text('[stream]\noverlays = "everywhere"\n')
     assert load_settings().overlays == "auto"
 
@@ -1447,7 +1448,7 @@ def test_the_plugin_speaks_the_window_s_language(
     c.set_language("fr")  # the window's selector, while it streams
     assert stream.language() == "fr"  # the plugin's next answer says it
     assert load_settings().language == "fr"  # kept for the next starts
-    assert control_module.options_for(load_settings(), fresh=False).language == "fr"
+    assert control_module.options_for(load_settings()).language == "fr"
     with pytest.raises(ValueError):
         c.set_language("de")
     c.stop()

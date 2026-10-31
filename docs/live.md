@@ -114,8 +114,8 @@ slow disk).
    loading screen at once, and the map goes there. With your SimBrief name, the box already holds your last plan's
    departure ("Last SimBrief plan"); a newer plan made on simbrief.com is offered with "Load it".
    Prepare starts Live if it is not running yet: skip the next step then.
-2. **Start Live.** The "From scratch" box beside it forgets every texture built and all imagery
-   downloaded, as the very first time.
+2. **Start Live.** To start as the very first time, the trash at the end of the buttons deletes
+   the textures built, the photos downloaded, or both, after asking, as Settings' Delete does.
 3. **Start X-Plane** (the button beside Live's), choose your flight and click Start Flight. X-Plane
    waits on its loading screen until the ground around your departure is built: a few seconds
    where you have flown before, a minute or two the first time in a new area. Live's window and a
@@ -143,7 +143,7 @@ and on the right:
 - **The state**: Ready, Starting, X-Plane waiting with a countdown, Following the aircraft, with
   what to do next. Under it the photo source and its zoom on one line (chosen before Start,
   locked while Live runs, what each choice does in its hover), the departure to prepare, and Live's
-  buttons: Start Live (with its From scratch box), Start X-Plane, Stop.
+  buttons: Start Live, Start X-Plane, Stop, and a trash at their end to delete what Live keeps.
 - **Flight**: whether X-Plane sends its position; the altitude, the ground speed and the position;
   how far X-Plane's image is sharp (from your screen's width and field of view), the SimBrief plan
   while the aircraft follows it, the camera when it is away from the aircraft, and the departure.
@@ -252,7 +252,8 @@ offers, Esri's Firefly (the same photos as Esri, softer colours) and NAIP (the U
 Google, Yandex and Apple are not offered: their terms forbid taking their photos outside their own
 applications. A country's source has nothing past its border: there, and wherever it has no
 imagery, Live takes Bing Maps. The source's credit and licence are at the foot of the map.
-Textures already built keep their photos: "From scratch" builds them all again with a new source.
+Textures already built keep their photos: deleting them (the trash after Live's buttons, the photos
+kept) builds them all again with a new source.
 
 **Your own tiles first, or Live everywhere.** Where you built a tile with OrthoStudio XP (or
 imported one from Ortho4XP, or installed another ortho scenery above Live's), Settings, "Your own
