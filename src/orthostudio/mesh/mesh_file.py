@@ -13,6 +13,7 @@ consumer in OrthoStudio XP (masks, DSF) is a port of an Ortho4XP consumer of ``r
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -219,29 +220,64 @@ def write_mesh_text(path: str | Path, mesh: MeshData) -> None:
     tmp.replace(path)
 
 
+_SPLIT = 134217729.0  # 2**27 + 1: Veltkamp's split of a double into two halves of 26 bits
+
+
+def _as_printed(values: NDArray[Any], places: int) -> NDArray[np.float64]:
+    """Each of ``values`` as ``"%.<places>f"`` prints it and :func:`parse_numbers` reads it back:
+    its exact value rounded to ``places`` decimals, ties to even, then the double nearest that
+    decimal, both ways correctly rounded. Worked on whole arrays instead of through the text.
+
+    ``N``, the value times ``10**places`` rounded to an integer, is exact: the product is
+    ``p + e`` to the bit (Dekker's two-product, no fused multiply-add) and ``p - rint(p)`` and
+    the halves' bounds are exact doubles, so each tie is seen as the text sees it.
+    ``N / 10**places`` is then the parse: one correctly rounded division of two exact numbers.
+    From a value whose spacing is wider than a decimal step (8 for 15 places) the text gives the
+    value back as it is. A value that rounds to zero keeps its sign, as ``"-0.000..."`` is read
+    as -0.0."""
+    v = np.asarray(values, dtype=np.float64)
+    scale = 10.0**places  # exact up to 10**22
+    limit = 2.0 ** (math.floor(math.log2(10.0**-places)) + 53)  # N exact below it
+    p = v * scale
+    c = _SPLIT * v
+    vh = c - (c - v)
+    vl = v - vh
+    c = _SPLIT * scale
+    sh = c - (c - scale)
+    sl = scale - sh
+    e = ((vh * sh - p) + vh * sl + vl * sh) + vl * sl  # v * scale == p + e exactly
+    r = np.rint(p)
+    a = p - r
+    up, down = 0.5 - a, -0.5 - a  # where p + e is half way to the next integer
+    odd = np.fmod(r, 2.0) != 0
+    n = np.where((e > up) | ((e == up) & odd), r + 1.0, r)
+    n = np.where((e < down) | ((e == down) & odd), r - 1.0, n)
+    out = n / scale
+    out = np.where(out == 0.0, np.copysign(0.0, v), out)
+    return np.where(np.abs(v) < limit, out, v)
+
+
 def as_written(mesh: MeshData) -> MeshData:
     """``mesh`` as :func:`read_mesh` reads it back from the text :func:`write_mesh_text` makes of
-    it, without the file: its numbers formatted and parsed by that very code, a chunk at a time.
+    it, without the file: each number as ``"%.15f"`` (the coordinates, the altitude in units of
+    100 km) or ``"%.2f"`` (the normals) prints it and the reader parses it back
+    (:func:`_as_printed`), a chunk of rows at a time as the text was.
 
-    The text rounds the coordinates to 15 decimals (the altitude in units of 100 km) and the
-    normals to 2, where the npz holds Triangle4XP's full precision: a DSF made from the npz as it
-    is differs from Ortho4XP's on a few bytes, and the DSF reads this instead. A compacted cache
-    keeps the npz alone, the text being the same mesh a second time (272 GB of a user's 1.1 TB)."""
+    The text rounds where the npz holds Triangle4XP's full precision: a DSF made from the npz as
+    it is differs from Ortho4XP's on a few bytes, and the DSF reads this instead. A compacted
+    cache keeps the npz alone, the text being the same mesh a second time (272 GB of a user's
+    1.1 TB). Formatted and parsed through the text, it took 1.32 s of a dense square's 3.43 s of
+    DSF (+42+075, 1.76 M triangles, 2026-10-31); the tests check this against that code bit for
+    bit."""
     n = mesh.n_vertices
     scaled = mesh.vertices.copy()
     scaled[:, 2] /= Z_SCALE
     vertices = np.empty((n, 3), dtype=np.float64)
     normals = np.empty((n, 2), dtype=np.float32)
-    for start in range(0, n, _WRITE_CHUNK):
-        rows = scaled[start : start + _WRITE_CHUNK]
-        text = _lines(rows.tolist(), "%.15f %.15f %.15f 0\n").encode("ascii")
-        vertices[start : start + len(rows)] = _parse_block(
-            text, np.float64, len(rows), 4, "vertices"
-        )[:, :3]
-        text = _lines(mesh.normals[start : start + _WRITE_CHUNK].tolist(), "%.2f %.2f 0\n")
-        normals[start : start + len(rows)] = _parse_block(
-            text.encode("ascii"), np.float64, len(rows), 3, "normals"
-        )[:, :2].astype(np.float32)
+    for start in range(0, n, _WRITE_CHUNK):  # the peak the DSF's memory table was measured at
+        rows = slice(start, start + _WRITE_CHUNK)
+        vertices[rows] = _as_printed(scaled[rows, :3], 15)
+        normals[rows] = _as_printed(mesh.normals[rows, :2], 2).astype(np.float32)
     vertices[:, 2] *= Z_SCALE  # read_mesh_file:864
     return MeshData(
         vertices=vertices,

@@ -184,6 +184,33 @@ def test_the_npz_read_as_written_is_the_text_read_back(tmp_path: Path) -> None:
     assert _same(as_written(written), written)  # and once rounded, stays
 
 
+def test_the_npz_read_as_written_holds_where_the_text_rounds_most(tmp_path: Path) -> None:
+    """``as_written`` computes the text's rounding on whole arrays (2026-10-31): bit for bit with
+    the text where it bites, each value of its kind over several write chunks. Longitudes and
+    latitudes within 8 degrees of Greenwich and of the equator, both signs; the exact ties of 15
+    decimals (odd multiples of 2^-16, the only doubles whose value times 10^15 ends in .5) and
+    near ties (odd multiples of 2^-20); values round 8, where the text stops rounding; tiny ones
+    of both signs, which the text turns into -0.0 or 0.0; altitudes from the Dead Sea to Everest;
+    and normals' ties of 2 decimals."""
+    rng = np.random.default_rng(31)
+    n = 140_000
+    sign = rng.choice([-1.0, 1.0], n)
+    columns = {
+        "near the meridian and the equator": sign * rng.uniform(0, 8, n),
+        "ties of 15 decimals": (2 * rng.integers(-(2**20), 2**20, n) + 1) / 65536.0,
+        "near ties": (2 * rng.integers(-(2**22), 2**22, n) + 1) / 1048576.0,
+        "round 8": sign * rng.uniform(7.9, 8.1, n),
+        "tiny": sign * 10.0 ** rng.uniform(-30, -14, n),
+    }
+    z = rng.uniform(-430.0, 8849.0, n)
+    ties = ((2 * rng.integers(-4, 4, (n, 2)) + 1) / 8.0).astype(np.float32)
+    for name, values in columns.items():
+        vertices = np.column_stack([values, np.roll(values, 1), z])
+        for normals in (ties, rng.uniform(-1, 1, (n, 2)).astype(np.float32)):
+            mesh = _mesh(vertices, normals)
+            assert _same(as_written(mesh), _through_text(tmp_path, mesh)), name
+
+
 def test_the_npz_read_as_written_holds_at_the_edges(tmp_path: Path) -> None:
     """Numbers on a rounding boundary of 15 or of 2 decimals, both signs of zero, the ends of the
     globe, the deepest and highest ground, the tiniest and NaN, an empty mesh, a single point, and
