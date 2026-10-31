@@ -666,10 +666,10 @@ def test_a_departure_prepared_before_x_plane_loads_it(
     c = control_for(stream)
     assert c.prepare_departure("  ") == ("empty", "no departure given")
     assert c.prepare_departure("lfxx")[0] == "unknown"
-    assert c.prepare_departure(" lfmn ") is None  # idle: Live starts, building there
+    assert c.prepare_departure(" lfmn ") == (43.6584, 7.2159)  # idle: Live starts, building there
     wait_for(lambda: c.state == STREAMING)
     assert stream.options.start == "LFMN"
-    assert c.prepare_departure("LFMN") is None  # streaming: the loop takes it, once
+    assert c.prepare_departure("LFMN") == (43.6584, 7.2159)  # streaming: the loop takes it, once
     assert stream.departure() == (43.6584, 7.2159, "LFMN")
     assert stream.departure() is None
     c.stop()
@@ -737,6 +737,7 @@ async def test_the_window_prepares_a_departure(home: Path, monkeypatch: pytest.M
         assert unknown.status_code == 404 and "LFXX" in unknown.json()["detail"]
         ok = await client.post("/api/live/prepare", json={"departure": "LFMN"})
         assert ok.status_code == 202
+        assert ok.json()["at"] == [43.6584, 7.2159]  # the window's map brought there
     wait_for(lambda: c.state == STREAMING)
     assert stream.options.start == "LFMN"
     c.stop()

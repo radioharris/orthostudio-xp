@@ -579,6 +579,7 @@ def test_a_flight_while_osxp_builds_is_asked_about_never_refused() -> None:
     assert start.index("await askedWhileBuilding()") < start.index('act("start"')
     prepare = js[js.index("async function prepareDeparture() {") :]
     assert prepare.index("await askedWhileBuilding()") < prepare.index('api("prepare"')
+    assert prepare.index('api("prepare"') < prepare.index("liveMap?.showDeparture(prepared.at)")
     assert 'api("osxp-build")' in js
     page = (UI_DIR / "index.html").read_text(encoding="utf-8")
     assert '<dialog id="build-running"' in page

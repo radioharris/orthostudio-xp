@@ -1385,7 +1385,8 @@ async function prepareDeparture() {
   const departure = $("departure").value.trim();
   $("departure-error").hidden = true;
   try {
-    await api("prepare", { method: "POST", body: { departure } });
+    const prepared = await api("prepare", { method: "POST", body: { departure } });
+    liveMap?.showDeparture(prepared.at); // the map on it: the pilot sees where Live builds
   } catch (error) {
     $("departure-error").hidden = false;
     $("departure-error").textContent =

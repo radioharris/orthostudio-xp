@@ -111,7 +111,7 @@ slow disk).
 
 1. **Prepare my departure** (optional): type the airport (or `lat,lon`) and click Prepare. Live
    builds the ground around it now, before X-Plane loads the flight: X-Plane then passes its
-   loading screen at once. With your SimBrief name, the box already holds your last plan's
+   loading screen at once, and the map goes there. With your SimBrief name, the box already holds your last plan's
    departure ("Last SimBrief plan"); a newer plan made on simbrief.com is offered with "Load it".
    Prepare starts Live if it is not running yet: skip the next step then.
 2. **Start Live.** The "From scratch" box beside it forgets every texture built and all imagery
@@ -163,9 +163,9 @@ ZL19 violet (about 20 cm a pixel), ZL18 blue (40 cm), ZL17 green (85 cm), ZL16 a
 orange, grey blurrier. Zoomed out, the regions installed are shaded. Point at a texture and a bar
 over the map says what it is: its photos, its tile, its pixels, its disk, when Live last had it in
 reach ("Details" hides the bar). Your own tiles are framed, as on the Plan. The map follows the
-aircraft, and comes closer on it when a flight starts (about 30 km across); drag it away in flight
+aircraft, and comes to it when a flight starts (about 60 km across); drag it away in flight
 to look elsewhere, and "Follow the aircraft" brings it back. The next flight is followed again by
-itself.
+itself. Prepare brings the map to the departure, as close as a flight's start.
 
 **The Settings tab**: the mesh's regions, the roads, forests and buildings, what the zoom does, the
 flight plan, Live's disk space (with what the textures and the imagery take, and a button to delete

@@ -917,7 +917,8 @@ settings, is [live.md](live.md).
 For a flight:
 
 1. In Live's tab, choose the imagery source and the zoom; optionally, type the departure and click
-   Prepare, which builds the ground there before X-Plane loads the flight. Then click Start Live.
+   Prepare, which builds the ground there before X-Plane loads the flight and brings the map
+   there. Then click Start Live.
 2. Start X-Plane (Live's Start X-Plane button), choose the flight and click Start Flight. X-Plane
    waits on its loading screen until the ortho around the aircraft is built: at once after a
    Prepare, a few seconds where you have flown before, a minute or two the first time in a new

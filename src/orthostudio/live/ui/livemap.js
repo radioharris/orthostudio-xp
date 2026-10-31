@@ -26,9 +26,9 @@ export const PHOTO_COLOURS = {
 };
 const REGION_COLOUR = "#5a8dd6";
 const REGIONS_MAX_ZOOM = 6; // closer, the view is inside a region: its shade would only tint it
-// a flight's start: about 30 km across round the aircraft, its sharp textures one by one (the user,
-// 2026-10-09: closer than 9)
-const START_ZOOM = 11;
+// a flight's start: about 60 km across round the aircraft, where it is in its region (the user,
+// 2026-10-09: closer than 9; 2026-10-31: wider than 11)
+const START_ZOOM = 10;
 const ROUTE_COLOUR = "#e0572f"; // OrthoStudio XP's own route colour
 const BUILT_EVERY_MS = 3000; // while Live streams: the engine answers "same" while nothing changed
 const OWN_EVERY_MS = 30000; // the user's own tiles asked for again this often (the engine: 30 s)
@@ -72,11 +72,20 @@ export function textureInfo(x) {
 }
 
 /** The aircraft, pointing along its heading, as X-Plane's. */
+// the aircraft seen from above, nose up: an airliner with swept wings, its two engines and its tail
+// (the user, 2026-10-31: the old one too small, and ugly)
+const PLANE_PX = 48;
+const PLANE_PATH = "M32 3C34.2 3 35.2 6 35.2 9L35.2 24L60 38.5L60 42L35.2 36.5L35 49L44 55.5L44 58.5"
+  + "L34.2 56.5L33 61L31 61L29.8 56.5L20 58.5L20 55.5L29 49L28.8 36.5L4 42L4 38.5L28.8 24L28.8 9"
+  + "C28.8 6 29.8 3 32 3Z";
+
 function planeIcon(heading) {
-  const svg = `<svg viewBox="0 0 24 24" width="26" height="26" style="transform: rotate(${Math.round(heading)}deg)">`
-    + '<path d="M12 2l1.4 7 7.6 4.2v1.9l-7.6-2.3-.5 5.6 2.5 1.9V22l-3.4-.9-3.4.9v-1.7l2.5-1.9-.5-5.6-7.6 2.3v-1.9L10.6 9z" '
-    + 'fill="#ffffff" stroke="#1d1c1a" stroke-width="1.2" stroke-linejoin="round"/></svg>';
-  return L.divIcon({ className: "live-plane", html: svg, iconSize: [26, 26], iconAnchor: [13, 13] });
+  const svg = `<svg viewBox="0 0 64 64" width="${PLANE_PX}" height="${PLANE_PX}" style="transform: rotate(${Math.round(heading)}deg)">`
+    + '<g fill="#ffffff" stroke="#1d1c1a" stroke-width="1.6" stroke-linejoin="round">'
+    + '<ellipse cx="19" cy="31" rx="2.4" ry="4.4"/><ellipse cx="45" cy="31" rx="2.4" ry="4.4"/>'
+    + `<path d="${PLANE_PATH}"/></g></svg>`;
+  const half = PLANE_PX / 2;
+  return L.divIcon({ className: "live-plane", html: svg, iconSize: [PLANE_PX, PLANE_PX], iconAnchor: [half, half] });
 }
 
 export function createLiveMap(el, { api, info = null, ownKinds = null }) {
@@ -396,6 +405,18 @@ export function createLiveMap(el, { api, info = null, ownKinds = null }) {
       if (points?.length) map.fitBounds(L.latLngBounds(points), { padding: [24, 24] });
     },
     regionsChanged: drawRegions,
+    /**
+     * A departure prepared: the map on it, as close as at a flight's start unless closer already;
+     * an aircraft followed no longer, as after a drag (the user, 2026-10-31).
+     */
+    showDeparture(at) {
+      if (!at) return;
+      if (plane && follow) {
+        follow = false;
+        el.dispatchEvent(new CustomEvent("live-map-follow", { detail: false }));
+      }
+      map.setView(at, Math.max(map.getZoom(), START_ZOOM), { animate: false });
+    },
     /** The bar over the map, shown or hidden (the header's box). */
     setDetails(on) {
       if (info) info.hidden = !on;

@@ -39,7 +39,7 @@ from fastapi import APIRouter, Body, HTTPException, Response
 from pydantic import BaseModel, Field, ValidationError
 
 from orthostudio.live import session
-from orthostudio.live.control import LiveControl
+from orthostudio.live.control import LiveControl, Refusal
 from orthostudio.live.pack import FolderError, check_folder
 from orthostudio.live.settings import (
     LiveSettings,
@@ -127,12 +127,13 @@ def live_router(
 
     @router.post("/prepare", status_code=202)
     def prepare(body: PrepareBody) -> dict[str, Any]:
-        """The ortho round a departure built before X-Plane loads it (404: X-Plane knows no
-        such airport; 409: Live is starting or stopping)."""
-        refused = control.prepare_departure(body.departure)
-        if refused is not None:
-            raise HTTPException(409 if refused[0] == "busy" else 404, refused[1])
-        return {"state": control.state}
+        """The ortho round a departure built before X-Plane loads it, and where it is (``at``:
+        [lat, lon]), the window's map brought there (404: X-Plane knows no such airport; 409:
+        Live is starting or stopping)."""
+        got = control.prepare_departure(body.departure)
+        if isinstance(got, Refusal):
+            raise HTTPException(409 if got.why == "busy" else 404, got.what)
+        return {"state": control.state, "at": list(got)}
 
     @router.post("/stop", status_code=202)
     def stop() -> dict[str, Any]:

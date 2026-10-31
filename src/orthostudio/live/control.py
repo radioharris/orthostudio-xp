@@ -29,7 +29,7 @@ import traceback
 from collections import deque
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 from orthostudio.decals import DECALS
 from orthostudio.live import aoregions, osxpregions, session, supported
@@ -69,6 +69,14 @@ STOPPING, LEAVING, DELETING = "stopping", "leaving", "deleting"
 SUGGEST_S = 300.0  # the departure of the pilot's last SimBrief plan, asked at most this often
 FRESH_S = 30.0  # as often, while the window looks for a new plan (the pilot back from simbrief.com)
 NOW_S = 5.0  # as often, asked by the button of the window's plan line: at once, but no faster
+
+
+class Refusal(NamedTuple):
+    """A departure the window's "Prepare" cannot take: why ("empty", "unknown" or "busy") and what
+    to say."""
+
+    why: str
+    what: str
 
 
 def resolve_departure(text: str) -> tuple[float, float]:
@@ -425,26 +433,26 @@ class LiveControl:
         self._thread.start()
         return True
 
-    def prepare_departure(self, text: str) -> tuple[str, str] | None:
+    def prepare_departure(self, text: str) -> tuple[float, float] | Refusal:
         """The window's "Prepare": the ortho round ``text`` (an airport's ICAO code, or lat,lon)
         built before X-Plane loads that flight, which then passes its loading screen at once;
-        Live started for it where it does not run. None, or (why: "empty", "unknown" or "busy",
-        what to say)."""
+        Live started for it where it does not run. Where it is (lat, lon), which the window's map
+        is brought to, or a Refusal (why: "empty", "unknown" or "busy", what to say)."""
         text = " ".join(text.split()).upper()
         if not text:
-            return "empty", "no departure given"
+            return Refusal("empty", "no departure given")
         try:
             lat, lon = self._resolve(text)
         except ValueError as e:
-            return "unknown", str(e)
+            return Refusal("unknown", str(e))
         with self._lock:
             state = self._state
             if state == STREAMING:
                 self._departure = (lat, lon, text)
-                return None
+                return lat, lon
         if state == IDLE and self.start(departure=text):
-            return None
-        return "busy", "Live is starting or stopping: prepare it in a moment"
+            return lat, lon
+        return Refusal("busy", "Live is starting or stopping: prepare it in a moment")
 
     def _take_departure(self) -> tuple[float, float, str] | None:
         """The departure the window asked for since the stream last looked, once."""
