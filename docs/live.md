@@ -283,7 +283,7 @@ X-Plane keeps them in the same file as its ground. Live brings them back as "ove
 own roads, forests and buildings cut out of X-Plane 12's scenery for every square of its mesh
 (18,232 squares; the 1,042 others, the far north, the Caspian Sea and a few islands, have no
 X-Plane scenery at all), except where simHeaven X-World brings its own, on your own tiles, and
-where another overlay pack is on (AutoOrtho's, Ortho4XP's). Global Forests needs nothing. "Never"
+where another overlay pack is on (AutoOrtho's, Ortho4XP's). Global Forests needs nothing. "No"
 leaves the overlays out.
 
 ## The mesh, by region
@@ -300,7 +300,7 @@ OrthoStudio XP's server, a few files at a time, checks each one and unpacks it a
 whole; the bar shows the download, and the line under it the gigabytes downloaded and the pace in
 megabytes a second over the last few seconds. **Stop** stops it, and **Install** again goes on where it
 stopped, a file cut off included. A region is used from the next start, never half installed. Its
-roads, forests and buildings come with it, unless "Roads, forests and buildings" says "Never".
+roads, forests and buildings come with it, unless "Roads, forests and buildings" says "No".
 Once installed, a region shows its size on the disk and **Delete** (click twice). When a region
 is made again on the server, the panel says an update is available and how much it downloads,
 and offers **Update**: only
