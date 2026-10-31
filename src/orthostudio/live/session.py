@@ -97,6 +97,25 @@ class Options:
     own_tiles: str = "first"  # the pilot's own tiles first, or "under" Live's pack while it runs
 
 
+class StartClock:
+    """How long each step of a start took, said in one line once Live streams: where a slow start's
+    seconds go (the user, 2026-10-31: « 10 secondes AU MOINS »)."""
+
+    def __init__(self, now: Callable[[], float] = time.monotonic) -> None:
+        self.now = now
+        self.at = now()
+        self.steps: list[tuple[str, float]] = []
+
+    def done(self, step: str) -> None:
+        now = self.now()
+        self.steps.append((step, now - self.at))
+        self.at = now
+
+    def line(self) -> str:
+        total = sum(s for _, s in self.steps)
+        return f"start in {total:.2f} s: " + ", ".join(f"{n} {s:.2f}" for n, s in self.steps)
+
+
 @dataclass
 class Prepared:
     """What :func:`prepare` set up, for :func:`follow` and :func:`finish`."""
@@ -109,6 +128,7 @@ class Prepared:
     # {(lat, lon): pack}: squares whose ground X-Plane takes from the user's own tiles
     covered: dict = field(default_factory=dict)
     sources: list = field(default_factory=list)  # the regions the pack is made of
+    clock: StartClock = field(default_factory=StartClock)  # the start's steps, timed
 
 
 def xplane_dir(explicit: Path | None) -> Path:
@@ -251,6 +271,7 @@ def prepare(options: Options, log: Log) -> Prepared:
 
     # where a start's wait begins, in the log: the window's Start or Prepare
     log("starting" + (f" for a departure from {options.start}" if options.start else ""))
+    clock = StartClock()
     xp_dir = xplane_dir(options.xplane)
     pack_dir = options.pack or default_pack_dir()
     link = xp_dir / "Custom Scenery" / LINK_NAME
@@ -295,6 +316,7 @@ def prepare(options: Options, log: Log) -> Prepared:
             + "in the Live window (Settings, first question) or with "
             "`python -m orthostudio.live regions install <region>`"
         )
+    clock.done("checks")
     fix = None
     if options.start:
         try:
@@ -302,6 +324,7 @@ def prepare(options: Options, log: Log) -> Prepared:
         except SystemExit as e:  # an airport X-Plane does not know
             raise RefusedError(str(e)) from e
         fix = Fix(lat, lon)
+        clock.done("departure")
     zooms = Zooms(options.max_zoom, options.max_zoom_airports)
     from orthostudio.live import machine
 
@@ -330,8 +353,11 @@ def prepare(options: Options, log: Log) -> Prepared:
             threading.Thread(target=remove_aside, args=(pack_dir,), daemon=True).start()
         if options.fresh:
             reset(pack_dir, log)
+    clock.done("region")
     covered = own_ground(xp_dir, pack_dir, options, xplane_running(), log)
+    clock.done("own tiles")
     _overlays(xp_dir, pack_dir, sources, covered, options.overlays, xplane_running(), log)
+    clock.done("overlays")
     gate = None
     # X-Plane loads plugins at start-up: if it is running, only one already there counts
     if not options.no_plugin and (
@@ -351,12 +377,14 @@ def prepare(options: Options, log: Log) -> Prepared:
             "X-Plane plugin installed: while a flight loads, X-Plane waits until the ortho "
             "around the start is built"
         )
+    clock.done("plugin")
     finest = finest_quality(xp_dir, options.quality)
     log(
         f"X-Plane texture quality: a 4096 px texture read up to {4096 >> finest} px; "
         f"sharp up to {options.camera_reach_km:.0f} km farther for external views"
     )
-    return Prepared(xp_dir, pack_dir, gate, fix, finest, covered, list(sources))
+    clock.done("texture quality")
+    return Prepared(xp_dir, pack_dir, gate, fix, finest, covered, list(sources), clock)
 
 
 def own_ground(
@@ -498,9 +526,11 @@ def follow(
     from orthostudio.live.streamer import DATAREFS, Streamer, run
     from orthostudio.live.xpudp import XPlaneUDP
 
+    clock = prepared.clock
     computer = machine.share(options.workers)
     for line in computer.notes(options.max_zoom, options.max_zoom_airports):
         log(line)
+    clock.done("computer")
     season_for = None
     if options.season == "auto":
         from orthostudio.live.look import SEASONS
@@ -519,12 +549,14 @@ def follow(
     else:
         season, why = options.season, "chosen in Live's settings"
     log(f"season: {season} ({why})")
+    clock.done("season")
     try:
         xp = XPlaneUDP([d for _, d in DATAREFS], port=options.port)
         try:
             path = default_cache_path()
             path.parent.mkdir(parents=True, exist_ok=True)
             cache = ChunkCache(path)
+            clock.done("photos")
             try:
                 streamer = Streamer(
                     prepared.pack,
@@ -554,12 +586,14 @@ def follow(
                     },
                     region_lists=aoregions.lists_dir(live_root()),
                 )
+                clock.done("textures")
                 if streamer.region_note:
                     log(streamer.region_note)
                 log(
                     f"streaming into {prepared.pack} ({len(streamer.index)} textures): "
                     f"start X-Plane, {stop_hint}"
                 )
+                log(f"  {clock.line()}")
                 if options.tint_8192:
                     log("test: the 8192 px textures are built pink, where X-Plane shows them")
                 if attach is not None:

@@ -118,3 +118,14 @@ def test_an_xplane_folder_live_cannot_write_in(
         assert logfile.log_path() == live / NAME
     finally:
         xplane.chmod(0o755)
+
+
+def test_a_start_says_where_its_seconds_went() -> None:
+    """Each step of a start timed, said in one line once Live streams (the user, 2026-10-31)."""
+    from orthostudio.live.session import StartClock
+
+    ticks = iter([10.0, 10.5, 13.25, 14.0])
+    clock = StartClock(now=lambda: next(ticks))
+    for step in ("checks", "overlays", "textures"):
+        clock.done(step)
+    assert clock.line() == "start in 4.00 s: checks 0.50, overlays 2.75, textures 0.75"
