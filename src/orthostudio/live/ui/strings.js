@@ -60,7 +60,7 @@ export const STRINGS = {
     "building.go": "Go on anyway",
     "action.delete": "Delete what Live keeps…",
 
-    "departure.title": "Prepare my departure",
+    "departure.title": "Prepare my departure before starting the flight",
     "departure.placeholder": "ICAO, e.g. LFMN",
     "departure.prepare": "Prepare",
     "departure.help": "Built before X-Plane loads the flight: no wait on its loading screen.",
@@ -465,7 +465,7 @@ export const STRINGS = {
     "building.go": "Continuer quand même",
     "action.delete": "Supprimer ce que Live garde…",
 
-    "departure.title": "Préparer mon départ",
+    "departure.title": "Préparer mon départ avant de lancer le vol",
     "departure.placeholder": "OACI, ex. LFMN",
     "departure.prepare": "Préparer",
     "departure.help": "Construit avant que X-Plane charge le vol : pas d'attente sur son écran de chargement.",

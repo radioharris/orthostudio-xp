@@ -77,8 +77,9 @@ What the figures say:
 
 - **The start.** X-Plane's own opening takes about 25 s with each. After it, Live had the ground
   ready about twice as fast as XPME and five times as fast as AutoOrtho, and X-Plane flew 4 s after
-  the first image, where it stayed frozen 41 to 77 s with the others. With "Prepare my departure"
-  (below), Live builds the start before X-Plane loads it, and X-Plane waits for nothing.
+  the first image, where it stayed frozen 41 to 77 s with the others. With "Prepare my departure
+  before starting the flight" (below), Live builds the start before X-Plane loads it, and X-Plane
+  waits for nothing.
 - **In flight**, the frame rate is the same with all three: none of them slows X-Plane down. When
   X-Plane loads the scenery of a new area, it takes half as long with Live, whose files are already
   on the disk.
@@ -109,11 +110,12 @@ slow disk).
 
 ## A flight, step by step
 
-1. **Prepare my departure** (optional): type the airport (or `lat,lon`) and click Prepare. Live
-   builds the ground around it now, before X-Plane loads the flight: X-Plane then passes its
-   loading screen at once, and the map goes there. With your SimBrief name, the box already holds your last plan's
-   departure ("Last SimBrief plan"); a newer plan made on simbrief.com is offered with "Load it".
-   Prepare starts Live if it is not running yet: skip the next step then.
+1. **Prepare my departure before starting the flight** (optional): type the airport (or `lat,lon`)
+   and click Prepare. Live builds the ground around it now, before X-Plane loads the flight:
+   X-Plane then passes its loading screen at once, and the map goes there. With your SimBrief name,
+   the box already holds your last plan's departure ("Last SimBrief plan"); a newer plan made on
+   simbrief.com is offered with "Load it". Prepare starts Live if it is not running yet: skip the
+   next step then.
 2. **Start Live.** To start as the very first time, the trash at the end of the buttons deletes
    the textures built, the photos downloaded, or both, after asking, as Settings' Delete does.
 3. **Start X-Plane** (the button beside Live's), choose your flight and click Start Flight. X-Plane
