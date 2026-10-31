@@ -301,6 +301,48 @@ def test_a_regions_textures_are_read_from_its_list_at_the_next_start(
     assert again.others == first.others
 
 
+def test_a_start_works_out_where_textures_are_only_for_the_squares_it_makes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The world's 3,712,375 textures worked out at every start took 5.4 s of it (the user's Mac,
+    2026-10-31): a region's list keeps them by the square of their centre, and a square's are
+    worked out the first time the streamer asks for it, then kept."""
+    import math
+
+    import orthostudio.live.names as names_module
+    from orthostudio.live.names import SquareTextures
+
+    pack = region(tmp_path)
+    sources, lists = sources_of_pack(pack), tmp_path / "lists"
+    first = RegionTextures(sources, lists=lists)  # listed, its list kept
+    every = [e for e in first.entries() if (math.floor(e[1]), math.floor(e[2])) == HERE]
+    worked_out: list[str] = []
+    real = names_module.parse_texture_name
+
+    def counted(name: str):
+        worked_out.append(name)
+        return real(name)
+
+    monkeypatch.setattr(names_module, "parse_texture_name", counted)
+    again = RegionTextures(sources, lists=lists)
+    assert worked_out == [] and len(again) == len(ROW) and again.zooms == {16}
+    squares = SquareTextures(again)
+    here = squares.get(HERE)
+    assert here == every and len(worked_out) == len(here)
+    assert squares.get(HERE) is here and len(worked_out) == len(here)  # kept, not worked out again
+    assert squares.get((10, 10)) == ()
+
+
+def test_a_texture_in_two_regions_counts_once_and_takes_the_first_s_files(tmp_path: Path) -> None:
+    a = make_source(tmp_path / "a", tile=HERE, textures=ROW[:6])
+    b = make_source(tmp_path / "b", tile=HERE, textures=ROW[4:8])
+    both = RegionTextures([a, b], lists=tmp_path / "lists")
+    assert len(both) == 8
+    source = {e[0]: e[5] for e in both.entries()}
+    assert source[f"{ROW[4]}.dds"] == 0 and source[f"{ROW[7]}.dds"] == 1
+    assert {e[4] for e in both.entries()} == {1 | 2}  # its plain and water overlay .ter
+
+
 def test_a_region_changed_is_listed_again(tmp_path: Path) -> None:
     pack = region(tmp_path, textures=ROW[:3])
     sources, lists = sources_of_pack(pack), tmp_path / "lists"
@@ -520,7 +562,8 @@ def test_a_region_that_names_its_terrain_files(tmp_path: Path) -> None:
         "19024_33744_BI16.ter\n19024_33744_BI16_sea_overlay.ter\n", encoding="ascii"
     )
     one = one_region(source, None)
-    assert one.kinds == {"19024_33744_BI16.dds": 1 | 4}  # land, and a sea overlay: its mask
+    # land, and a sea overlay: its mask; by the square of its centre, 59.99899 5.40527
+    assert one.squares == {"59,5": {"19024_33744_BI16.dds": 1 | 4}} and one.zooms == [16]
     assert folder_now(source) is not None
     # as the bake wrote them (the files of Europe's region, 2026-10-19)
     assert made_ter("19024_33744_BI16.ter") == (

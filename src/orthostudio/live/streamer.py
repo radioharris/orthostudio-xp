@@ -48,7 +48,7 @@ import queue
 import threading
 import time
 from collections import Counter, defaultdict, deque
-from collections.abc import Callable, Collection, Iterator
+from collections.abc import Callable, Collection, Iterable, Iterator
 from concurrent.futures import Future, ProcessPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -61,7 +61,7 @@ from .geo import bearing_deg, haversine_m, parse_texture_name
 from .look import DEFAULT_LOOKS, Look
 from .mapdata import route_points, shown
 from .meshmap import REGION_NAMES, REGION_NAMES_FR, region_of
-from .names import KEEP, RING, Entry, Names, RegionTextures, squares_round
+from .names import KEEP, RING, Entry, Names, RegionTextures, SquareTextures, squares_round
 from .pack import MARKER, load_built
 from .region import (
     NEUTRAL_LEVEL,
@@ -315,11 +315,16 @@ class _Job:
 
 class TextureIndex:
     """The region's textures by the 1-degree tile of their centre: (name, lat, lon, zoom, kinds,
-    source), the last two the files its region has for it (``orthostudio.live.names``). From
-    names, those two are 0."""
+    source), the last two the files its region has for it (``orthostudio.live.names``). From the
+    regions' lists (``region``), a tile's worked out the first time it is asked for
+    (``names.SquareTextures``); from names, all at once, those two 0."""
 
-    def __init__(self, textures):
-        self.by_tile: dict[tuple[int, int], list[Entry]] = defaultdict(list)
+    def __init__(self, textures: Iterable = (), region: RegionTextures | None = None):
+        if region is not None:
+            self.by_tile: SquareTextures | defaultdict = SquareTextures(region)
+            self.zooms, self._count = set(region.zooms), len(region)
+            return
+        self.by_tile = defaultdict(list)
         for item in textures:
             if isinstance(item, str):
                 tex = parse_texture_name(item)
@@ -328,9 +333,11 @@ class TextureIndex:
                 lat, lon = tex.center
                 item = (item, lat, lon, tex.zoom, 0, 0)
             self.by_tile[(math.floor(item[1]), math.floor(item[2]))].append(item)
+        self.zooms = {entry[3] for textures in self.by_tile.values() for entry in textures}
+        self._count = sum(len(v) for v in self.by_tile.values())
 
     def __len__(self) -> int:
-        return sum(len(v) for v in self.by_tile.values())
+        return self._count
 
     def around(self, lat: float, lon: float, km: float) -> Iterator[Entry]:
         dlat = km / KM_PER_DEG + 1
@@ -482,17 +489,19 @@ class Streamer:
                 + (f"{listed} listed from {folders}" if listed else "read from their lists")
                 + (f" (a list could not be kept: {unkept})" if unkept else "")
             )
-        self.index = TextureIndex(
-            region.entries()
+        self.index = (
+            TextureIndex(region=region)
             if region is not None
-            else (e.name for e in os.scandir(pack_dir / "textures") if e.name.endswith(".dds"))
+            else TextureIndex(
+                e.name for e in os.scandir(pack_dir / "textures") if e.name.endswith(".dds")
+            )
         )
         others = region.others if region is not None else None  # the rest of it freed
         # the zoom set: each texture's file is laid out for it (region.relayout), smaller below the
         # mesh's zoom, 8192 px one zoom above
         self.zooms = Zooms(max_zoom, max_zoom_airports)
         self._tops: dict[str, int] = {}  # each texture's file size, once known (top_of)
-        zooms = {entry[3] for textures in self.index.by_tile.values() for entry in textures}
+        zooms = self.index.zooms
         self.reads_8192 = {  # the zooms whose 8192 px level X-Plane reads, at its texture quality
             z for z in zooms if finest_readable(self.zooms.top(z), finest_quality) == MIN_LEVEL
         }

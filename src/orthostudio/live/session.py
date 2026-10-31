@@ -239,7 +239,7 @@ def keep_region_lists(xplane: Path | None, log: Log) -> None:
         if one.listed:
             state = f"its list not kept: {one.keep_error}" if one.keep_error else "its list kept"
             took = time.monotonic() - t0
-            log(f"{source.name}: {len(one.kinds)} textures listed in {took:.1f} s, {state}")
+            log(f"{source.name}: {one.count} textures listed in {took:.1f} s, {state}")
 
 
 def reset(pack: Path, log: Log) -> None:

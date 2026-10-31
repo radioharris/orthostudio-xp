@@ -639,4 +639,4 @@ class Installer:
             self.log(f"  its textures not listed: {e}")
             return
         kept = f"their list not kept: {one.keep_error}" if one.keep_error else "their list kept"
-        self.log(f"  its {len(one.kinds)} textures listed in {time.monotonic() - t0:.1f} s, {kept}")
+        self.log(f"  its {one.count} textures listed in {time.monotonic() - t0:.1f} s, {kept}")
