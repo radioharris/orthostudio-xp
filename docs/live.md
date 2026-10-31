@@ -103,7 +103,9 @@ How the flights are made and measured: [specs/live/flights.md](specs/live/flight
 2. **Choose the photos and the zoom**, at the top of Live's tab: the photo source (Bing Maps by
    default), the zoom away from airports and the zoom around them (ZL16 and ZL18 by default).
 3. **Optionally, your SimBrief name** (Settings, Flight plan): Live then follows your plan in
-   flight, and offers your last plan's departure to prepare.
+   flight, and offers your last plan's departure to prepare. Only that name goes to simbrief.com:
+   at each flight's start, and while Live's window is open (as it opens, when you come back to it,
+   and every two minutes).
 
 The first start then prepares the region for X-Plane, once, in a few seconds (up to a minute on a
 slow disk).

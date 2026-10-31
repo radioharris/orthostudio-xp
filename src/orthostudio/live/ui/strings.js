@@ -172,15 +172,14 @@ export const STRINGS = {
     "regions.go": "Go to the regions",
     "regions.help": "The sceneries Live lays its photos on.",
     "regions.ours_source":
-      "OrthoStudio XP's mesh, made with the relief of viewfinderpanoramas.org (Jonathan de Ferranti). It covers all the land of the world but Antarctica.",
+      "Every land of the world but Antarctica. Relief: viewfinderpanoramas.org (Jonathan de Ferranti).",
     "regions.ours_none": "None of OrthoStudio XP's regions is installed.",
     "regions.where": "Installed in: {places}",
     "decal.title": "Ground grain up close (decals)",
-    "decal.help":
-      "X-Plane 12's decals: a fine grain drawn over the photo seen from very low, which softens its blur. On the land only. grass_and_stony_dirt_1 puts long grass on the green and stony dirt elsewhere; maquify_2_green_key is Ortho4XP's.",
+    "decal.help": "A fine grain on the ground seen up close, which softens the photos' blur.",
     "decal.none": "None",
     "decal.default": "{name} (Live's choice)",
-    "decal.restart": "From the next start: the squares flown already take it then.",
+    "decal.restart": "From the next start.",
     "regions.size": "{gb} GB",
     "regions.loading": "Asking for the list of regions…",
     "regions.error": "The list of regions did not come: {error}",
@@ -204,21 +203,17 @@ export const STRINGS = {
     "region.asi": "Asia",
     "region.aus_pac": "Australia and the Pacific",
     "own_tiles.title": "Your own tiles",
-    "own_tiles.help":
-      "Where you built tiles with OrthoStudio XP, or have another ortho scenery, X-Plane can show yours or Live's.",
+    "own_tiles.help": "Where you have your own ortho tiles: which ones X-Plane shows.",
     "own_tiles.first": "Yours first (recommended)",
     "own_tiles.first_note":
-      "X-Plane shows your tiles and Live fills the rest. At their edges the ground can show a small step: your tiles stand on X-Plane's relief, Live's on its own mesh.",
+      "X-Plane shows your tiles, Live the rest. A small step in the ground may show at their edges.",
     "own_tiles.under": "Live everywhere",
-    "own_tiles.under_note":
-      "Live's photos and mesh over your tiles too, with no step. Your tiles are hidden while Live runs and come back when it stops.",
+    "own_tiles.under_note": "Live everywhere, no step. Your tiles come back when Live stops.",
     "own_tiles.restart": "From the next start.",
     "overlays.title": "Roads, forests and buildings",
-    "overlays.help":
-      "Where Live shows its photos, X-Plane no longer draws its own roads, trees and buildings. Each region brings them back with it (its \"overlays\").",
-    "overlays.auto": "Yes, where simHeaven X-World does not put its own (recommended)",
-    "overlays.auto_note":
-      "Below your other sceneries: Global Forests hides their forests where it has its own. Not on your own tiles, which have theirs.",
+    "overlays.help": "The roads, trees and buildings X-Plane does not draw on Live's photos.",
+    "overlays.auto": "Yes (recommended)",
+    "overlays.auto_note": "Not where simHeaven or your own tiles already have theirs.",
     "overlays.off": "Never",
     "overlays.off_note": "The photo alone, or what your other sceneries add.",
     "checks.streamers": "No other program streaming ortho is running (XPME, AutoOrtho)",
@@ -285,8 +280,7 @@ export const STRINGS = {
     "zoom.memory":
       "This computer has {ram} GB of memory, and the 8192 px textures of 16/19 and 17/19 need {need} GB: X-Plane may stutter or run out of memory. 16/18, the package's, suits it better.",
     "home.title": "When the app starts",
-    "home.help":
-      "What the app shows first: Live, or OrthoStudio XP, to build tiles. Build | Live, at the top of the window, goes from one to the other.",
+    "home.help": "What the app opens first.",
     "home.ask": "Ask me",
     "home.live": "Live",
     "home.build": "OrthoStudio XP, to build tiles",
@@ -309,21 +303,18 @@ export const STRINGS = {
     "welcome.leaving": "OrthoStudio XP opens…",
 
     "plan.title": "Flight plan",
-    "plan.help":
-      "Live prepares the route ahead. With your last SimBrief plan, it follows the route, turns and approach included, while you fly it; without, it looks 2 minutes straight ahead.",
+    "plan.help": "With your SimBrief plan, Live prepares your route; without, what is straight ahead.",
     "plan.name": "SimBrief name or pilot ID",
-    "plan.privacy":
-      "Only this name goes to simbrief.com: when a flight starts, and while the Live window is open (when it opens, when you come back to it, and every two minutes), to offer your departure and tell you when your plan changes. Empty: nothing is asked.",
+    "plan.privacy": "Only this name is sent to simbrief.com. Empty: nothing is asked.",
     "plan.take": "Take OrthoStudio XP's: {name}",
 
     "state.season": "Season: {season}.",
     "state.season_auto": "Season: the date of the flight in X-Plane.",
     "season.title": "Season",
     "season.help":
-      "The photos are mostly taken in summer. Live can give them the colours of another season, as measured on satellite photos of the same places through the year: what is green turns olive in winter, a little yellower and paler in spring and autumn (no snow). The light of the season is X-Plane's own. Your own scenery keeps its colours.",
+      "Gives the photos, mostly taken in summer, the colours of another season. Your own scenery keeps its own.",
     "season.auto": "Follow the date of the flight in X-Plane",
-    "season.auto_help":
-      "The season of the date chosen in X-Plane, read when you click Start Flight: spring from 20 March, summer from 21 June, autumn from 23 September, winter from 21 December; the other way round south of the equator, and summer between the tropics.",
+    "season.auto_help": "The season of the flight's date in X-Plane, by hemisphere.",
     "season.fixed": "Otherwise, always",
     "season.spring": "Spring",
     "season.summer": "Summer",
@@ -342,12 +333,12 @@ export const STRINGS = {
     "season.v_vegetation_help":
       "Only what is green in the photo: greener to the left, yellow and russet to the right. Fields, roofs, roads and water stay as they are.",
     "season.before": "As delivered",
-    "season.preview_note": "A place you flew over, from the photos Live keeps.",
+    "season.preview_note": "A place you have flown over.",
     "season.preview_none": "The preview appears once you have flown with Live: it shows the photos Live keeps.",
     "season.place": "Another place",
     "season.default": "Live's values for this season",
     "season.change":
-      "The season is chosen when a flight starts and stays until the next one. When it changes, Live builds the textures again as you fly: the far ones from the photos it keeps, the sharpest ones (4096 and 8192 px) downloaded again, as on a first flight there, since Live does not keep their photos. That start takes as long as a first one.",
+      "Changing the season downloads the sharpest photos again: the next flight starts like a first one.",
 
     "state.tint_on":
       "Test on: the 8192 px textures are pink where X-Plane shows them; on the map, green (ZL17) away from airports, violet (ZL19) around them.",
@@ -356,7 +347,7 @@ export const STRINGS = {
 
     "disk.title": "Disk space",
     "disk.help":
-      "The space Live may take on the disk: half for the ortho made for X-Plane, half for the downloaded photos, kept to make it again without downloading them twice. Beyond it, what is farthest and oldest goes, and Live makes it again if you fly back there.",
+      "The space Live may take. Beyond it, it deletes the oldest and makes it again if you come back.",
     "disk.space": "Space for Live",
     "disk.raised": "At least {gb} GB with these zooms: the space is set to {gb} GB.",
     "disk.now": "Now: {gb} GB ({textures} GB of ortho, {imagery} GB of photos).",
@@ -374,7 +365,7 @@ export const STRINGS = {
 
     "folder.title": "Live's folder",
     "folder.help":
-      "Where Live keeps its textures and its downloaded photos: on the computer's own disk, or on a disk of the same kind (APFS on a Mac, NTFS on Windows, ext4 on Linux). Not on a disk in Mac OS Extended, exFAT or FAT32.",
+      "Where Live keeps its files: the computer's disk, or a disk in APFS (Mac), NTFS (Windows) or ext4 (Linux).",
     "folder.now": "Now: {path}",
     "reveal.mac": "Show in Finder",
     "reveal.win": "Show in File Explorer",
@@ -382,8 +373,7 @@ export const STRINGS = {
     "folder.other": "Another folder",
     "folder.choose": "Choose…",
     "folder.prompt": "Choose the folder where OrthoStudio XP Live keeps its textures and its photos",
-    "folder.moved":
-      "In another folder, Live sets the region up again, in a few seconds; what the old one holds stays there.",
+    "folder.moved": "A new folder is set up in a few seconds; the old one keeps what it holds.",
 
     "country.Spain": "Spain",
     "country.Netherlands": "Netherlands",
@@ -565,15 +555,14 @@ export const STRINGS = {
     "regions.go": "Aller aux régions",
     "regions.help": "Les scènes sur lesquelles Live pose ses photos.",
     "regions.ours_source":
-      "Le mesh d'OrthoStudio XP, fait avec le relief de viewfinderpanoramas.org (Jonathan de Ferranti). Il couvre toutes les terres du monde, sauf l'Antarctique.",
+      "Toutes les terres du monde, sauf l'Antarctique. Relief : viewfinderpanoramas.org (Jonathan de Ferranti).",
     "regions.ours_none": "Aucune région d'OrthoStudio XP n'est installée.",
     "regions.where": "Installées dans : {places}",
     "decal.title": "Grain du sol à très basse hauteur (decals)",
-    "decal.help":
-      "Les decals d'X-Plane 12 : un grain fin posé sur la photo vue de très bas, qui atténue son flou. Sur la terre seulement. grass_and_stony_dirt_1 met de l'herbe folle sur le vert et de la terre caillouteuse ailleurs ; maquify_2_green_key est celui d'Ortho4XP.",
+    "decal.help": "Un grain fin sur le sol vu de très près, qui adoucit le flou des photos.",
     "decal.none": "Aucun",
     "decal.default": "{name} (le choix de Live)",
-    "decal.restart": "Au prochain démarrage : les carrés déjà survolés le prennent alors.",
+    "decal.restart": "Au prochain démarrage.",
     "regions.size": "{gb} Go",
     "regions.loading": "Liste des régions demandée…",
     "regions.error": "La liste des régions n'est pas arrivée : {error}",
@@ -597,21 +586,17 @@ export const STRINGS = {
     "region.asi": "Asie",
     "region.aus_pac": "Australie et Pacifique",
     "own_tiles.title": "Vos propres tuiles",
-    "own_tiles.help":
-      "Là où vous avez construit des tuiles avec OrthoStudio XP, ou avez une autre scène ortho, X-Plane peut montrer les vôtres ou celles de Live.",
+    "own_tiles.help": "Là où vous avez vos propres tuiles ortho : lesquelles X-Plane montre.",
     "own_tiles.first": "Les vôtres d'abord (recommandé)",
     "own_tiles.first_note":
-      "X-Plane montre vos tuiles et Live complète le reste. À leurs bords, le sol peut faire une petite marche : vos tuiles reposent sur le relief de X-Plane, celles de Live sur son propre maillage.",
+      "X-Plane montre vos tuiles, Live le reste. Une petite marche du sol peut se voir à leurs bords.",
     "own_tiles.under": "Live partout",
-    "own_tiles.under_note":
-      "Les photos et le maillage de Live aussi sur vos tuiles, sans marche. Vos tuiles sont cachées tant que Live tourne et reviennent quand il s'arrête.",
+    "own_tiles.under_note": "Live partout, sans marche. Vos tuiles reviennent quand Live s'arrête.",
     "own_tiles.restart": "Au prochain démarrage.",
     "overlays.title": "Routes, forêts et bâtiments",
-    "overlays.help":
-      "Là où Live affiche ses photos, X-Plane ne dessine plus ses propres routes, arbres et bâtiments. Chaque région les ramène avec elle (ses « overlays »).",
-    "overlays.auto": "Oui, là où simHeaven X-World ne met pas les siens (recommandé)",
-    "overlays.auto_note":
-      "Rangés sous vos autres scènes : Global Forests efface leurs forêts là où il a les siennes. Pas sur vos propres tuiles, qui ont les leurs.",
+    "overlays.help": "Les routes, arbres et bâtiments que X-Plane ne dessine pas sur les photos de Live.",
+    "overlays.auto": "Oui (recommandé)",
+    "overlays.auto_note": "Pas là où simHeaven ou vos propres tuiles ont déjà les leurs.",
     "overlays.off": "Jamais",
     "overlays.off_note": "La photo seule, ou ce qu'ajoutent vos autres scènes.",
     "checks.streamers": "Aucun autre logiciel qui streame des orthos n'est lancé (XPME, AutoOrtho)",
@@ -680,8 +665,7 @@ export const STRINGS = {
     "zoom.memory":
       "Cet ordinateur a {ram} Go de mémoire, et les textures de 8192 px de 16/19 et 17/19 en demandent {need} : X-Plane risque de saccader ou d'en manquer. 16/18, celui du package, lui convient mieux.",
     "home.title": "Au lancement de l'application",
-    "home.help":
-      "Ce que l'application montre d'abord : Live, ou OrthoStudio XP pour construire des tuiles. Construire | Live, en haut de la fenêtre, passe de l'un à l'autre.",
+    "home.help": "Ce que l'application ouvre en premier.",
     "home.ask": "Me demander",
     "home.live": "Live",
     "home.build": "OrthoStudio XP, pour construire des tuiles",
@@ -706,21 +690,18 @@ export const STRINGS = {
     "welcome.leaving": "OrthoStudio XP s'ouvre…",
 
     "plan.title": "Plan de vol",
-    "plan.help":
-      "Live prépare la route devant vous. Avec votre dernier plan SimBrief, il suit la route, virages et approche compris, tant que vous la volez ; sans, il regarde 2 minutes tout droit devant.",
+    "plan.help": "Avec votre plan SimBrief, Live prépare votre route ; sans, ce qui est droit devant.",
     "plan.name": "Nom SimBrief ou ID pilote",
-    "plan.privacy":
-      "Seul ce nom est envoyé à simbrief.com : au départ de chaque vol, et tant que la fenêtre de Live est ouverte (à son ouverture, quand vous y revenez, et toutes les deux minutes), pour proposer votre départ et vous dire quand votre plan change. Vide : rien n'est demandé.",
+    "plan.privacy": "Seul ce nom est envoyé à simbrief.com. Vide : rien n'est demandé.",
     "plan.take": "Reprendre celui d'OrthoStudio XP : {name}",
 
     "state.season": "Saison : {season}.",
     "state.season_auto": "Saison : la date du vol dans X-Plane.",
     "season.title": "Saison",
     "season.help":
-      "Les photos sont surtout prises en été. Live peut leur donner les couleurs d'une autre saison, telles que mesurées sur des photos satellite des mêmes endroits au fil de l'année : ce qui est vert devient olive en hiver, un peu plus jaune et plus pâle au printemps et en automne (sans neige). La lumière de la saison est celle de X-Plane. Vos propres scènes gardent leurs couleurs.",
+      "Donne aux photos, prises surtout en été, les couleurs d'une autre saison. Vos propres scènes gardent les leurs.",
     "season.auto": "Suivre la date du vol dans X-Plane",
-    "season.auto_help":
-      "La saison de la date choisie dans X-Plane, lue au clic sur Start Flight : le printemps dès le 20 mars, l'été dès le 21 juin, l'automne dès le 23 septembre, l'hiver dès le 21 décembre ; à l'inverse au sud de l'équateur, et l'été entre les tropiques.",
+    "season.auto_help": "La saison de la date du vol dans X-Plane, selon l'hémisphère.",
     "season.fixed": "Sinon, toujours",
     "season.spring": "Printemps",
     "season.summer": "Été",
@@ -739,12 +720,12 @@ export const STRINGS = {
     "season.v_vegetation_help":
       "Seulement ce qui est vert sur la photo : plus vert à gauche, jauni et roux à droite. Les champs, les toits, les routes et l'eau restent tels quels.",
     "season.before": "Telle que livrée",
-    "season.preview_note": "Un endroit que vous avez survolé, parmi les photos que Live garde.",
+    "season.preview_note": "Un endroit que vous avez déjà survolé.",
     "season.preview_none": "L'aperçu apparaît une fois que vous avez volé avec Live : il montre les photos que Live garde.",
     "season.place": "Un autre endroit",
     "season.default": "Valeurs de Live pour cette saison",
     "season.change":
-      "La saison est choisie au démarrage d'un vol et reste jusqu'au suivant. Quand elle change, Live refait les textures au fil du vol : les lointaines à partir des photos qu'il garde, les plus nettes (4096 et 8192 px) retéléchargées, comme au premier vol à cet endroit, car Live ne garde pas leurs photos. Ce démarrage-là prend autant de temps qu'un premier.",
+      "Changer de saison retélécharge les photos les plus nettes : le vol suivant démarre comme un premier vol.",
 
     "state.tint_on":
       "Test en cours : les textures 8192 px sont roses là où X-Plane les affiche ; sur la carte, vertes (ZL17) hors des aéroports, violettes (ZL19) autour.",
@@ -753,7 +734,7 @@ export const STRINGS = {
 
     "disk.title": "Place sur le disque",
     "disk.help":
-      "La place que Live peut prendre sur le disque : moitié pour l'ortho préparée pour X-Plane, moitié pour les photos téléchargées, gardées pour la refaire sans les retélécharger. Au-delà, ce qui est le plus loin et le plus ancien s'en va, et Live le refait si vous y revenez.",
+      "La place que Live peut prendre. Au-delà, il efface le plus ancien et le refait si vous y revenez.",
     "disk.space": "Place pour Live",
     "disk.raised": "Au moins {gb} Go avec ces zooms : l'espace est réglé à {gb} Go.",
     "disk.now": "En ce moment : {gb} Go ({textures} Go d'ortho, {imagery} Go de photos).",
@@ -771,7 +752,7 @@ export const STRINGS = {
 
     "folder.title": "Dossier de Live",
     "folder.help":
-      "Où Live garde ses textures et les photos téléchargées : sur le disque de l'ordinateur, ou sur un disque du même format (APFS sur Mac, NTFS sur Windows, ext4 sur Linux). Pas sur un disque en Mac OS étendu, exFAT ou FAT32.",
+      "Où Live range ses fichiers : le disque de l'ordinateur, ou un disque en APFS (Mac), NTFS (Windows) ou ext4 (Linux).",
     "folder.now": "En ce moment : {path}",
     "reveal.mac": "Afficher dans le Finder",
     "reveal.win": "Afficher dans l'Explorateur de fichiers",
@@ -779,8 +760,7 @@ export const STRINGS = {
     "folder.other": "Un autre dossier",
     "folder.choose": "Choisir…",
     "folder.prompt": "Choisissez le dossier où OrthoStudio XP Live garde ses textures et ses photos",
-    "folder.moved":
-      "Dans un autre dossier, Live prépare la région à nouveau, en quelques secondes ; ce que l'ancien contient y reste.",
+    "folder.moved": "Un nouveau dossier se prépare en quelques secondes ; l'ancien garde ce qu'il contient.",
 
     "country.Spain": "Espagne",
     "country.Netherlands": "Pays-Bas",
