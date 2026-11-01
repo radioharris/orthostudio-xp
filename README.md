@@ -25,10 +25,9 @@ care of the rest; X-Plane shows your tiles first.
 
 ## Getting started
 
-Requirements: X-Plane 12, and macOS 14 or later on Apple Silicon (macOS 15 or later on an Intel
-Mac), Windows 10 or 11 (64-bit) or a
-64-bit Linux. Download the installer of your system from the releases of this repository; each has
-Python inside.
+Requirements: X-Plane 12 (12.4.4 or later to fly with Live), and macOS 14 or later on Apple
+Silicon (macOS 15 or later on an Intel Mac), Windows 10 or 11 (64-bit) or a 64-bit Linux.
+Download the installer of your system from the releases of this repository; each has Python inside.
 
 - **macOS**: open `OrthoStudio-XP-<version>-macos-arm64.dmg` on Apple Silicon, or
   `OrthoStudio-XP-<version>-macos-x86_64.dmg` on an Intel Mac, and drag *OrthoStudio XP* to
