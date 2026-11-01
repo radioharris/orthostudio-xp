@@ -7,9 +7,12 @@ Spec: ``docs/specs/dem.md`` sections 8 and 9 (acceptance A6, A7).
 
 from __future__ import annotations
 
+import io
 import json
 import os
 import time
+import zipfile
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -17,7 +20,13 @@ import pytest
 
 from orthostudio.dem.dem import Dem, alt_file_name, expected_alt_size, resolve_source
 from orthostudio.dem.raster import NODATA
-from orthostudio.dem.sources import EnsureOptions, NegativeMemo, elevation_path, no_download
+from orthostudio.dem.sources import (
+    Download,
+    EnsureOptions,
+    NegativeMemo,
+    elevation_path,
+    no_download,
+)
 from orthostudio.errors import OsxpError
 from orthostudio.model import TileRef
 
@@ -206,6 +215,41 @@ def test_too_many_voids_fall_back_to_zero(tmp_path: Path) -> None:
     assert not (dem.alt_dem == NODATA).any()
     assert (dem.alt_dem == 0).sum() >= 200 * 200
     assert any(e.code == "DEM_VOIDS_FILLED_WITH_ZERO" for e in events)
+
+
+def test_viewfinderpanoramas_at_30_m_says_where_its_90_m_answered(tmp_path: Path) -> None:
+    """vf30 (``custom_dem = View``) reads the 1" file where the site has one and its 3" file
+    elsewhere: a tile whose own square came at 3" says so, once; the empty ``custom_dem`` of
+    Ortho4XP's default relief, which reads the same files, says nothing (2026-10-30)."""
+    opts = _block(tmp_path)
+
+    def said(custom_dem: str) -> list[OsxpError]:
+        events: list[OsxpError] = []
+        Dem.build(TileRef(46, 5), opts, custom_dem=custom_dem, on_event=events.append)
+        return [e for e in events if e.code == "DEM_VIEW_COARSER"]
+
+    assert said("View") == []
+    read = Dem.build(TileRef(46, 5), opts, custom_dem="View")
+    assert read.view_arcsec == 1 and read.meta()["view_arcsec"] == 1
+    assert "view_arcsec" not in Dem.build(TileRef(46, 5), opts).meta()  # Ortho4XP's own default
+    # the square's 1" archive does not hold it, its 3" one does
+    own = tmp_path / "+40+000" / "N46E005.hgt"
+    own.unlink()
+    cell = np.full((1201, 1201), 250, np.int16).astype(">i2").tobytes()
+    blob = io.BytesIO()
+    with zipfile.ZipFile(blob, "w") as zf:
+        zf.writestr("L31/N46E005.hgt", cell)
+
+    def site(url: str) -> Download:
+        if "/dem3/" in url:
+            return Download(url, body=blob.getvalue(), status=200)
+        return Download(url, status=404)
+
+    opts = replace(opts, download=site)
+    (told,) = said("View")
+    assert told.context == {"cell": "N46E005"} and own.stat().st_size == len(cell)
+    assert Dem.build(TileRef(46, 5), opts, custom_dem="View").meta()["view_arcsec"] == 3
+    assert said("") == []
 
 
 def test_build_of_a_non_assembled_source_without_a_file_is_an_error(tmp_path: Path) -> None:

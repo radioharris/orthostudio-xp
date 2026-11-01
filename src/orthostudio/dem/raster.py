@@ -94,6 +94,7 @@ def _alos_geometry() -> Geometry:
 
 GEOMETRY: dict[str, Geometry] = {
     "View": _view_geometry(),
+    "View3": _view_geometry(),
     "SRTM": _view_geometry(),
     "ALOS": _alos_geometry(),
     "COP30": _alos_geometry(),

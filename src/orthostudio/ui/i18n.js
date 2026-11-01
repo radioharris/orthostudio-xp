@@ -106,6 +106,8 @@ const STRINGS = {
     "plan.s.relief_anadem": "relief ANADEM (Amérique du Sud)",
     "plan.s.relief_canada": "relief lidar du Canada",
     "plan.s.relief_file": "relief de votre fichier",
+    "plan.s.relief_vf30": "relief viewfinderpanoramas 30 m",
+    "plan.s.relief_vf90": "relief viewfinderpanoramas 90 m",
     "plan.s.relief_own": "vos fichiers par-dessus",
     "plan.s.overlays_xplane": "routes, forêts et bâtiments d'X-Plane",
     "plan.s.overlays_none": "aucun overlay d'OrthoStudio XP",
@@ -440,6 +442,8 @@ const STRINGS = {
     "works.relief_anadem": "relief ANADEM",
     "works.relief_canada": "relief lidar du Canada",
     "works.relief_file": "fichier de relief",
+    "works.relief_vf30": "relief viewfinderpanoramas 30 m",
+    "works.relief_vf90": "relief viewfinderpanoramas 90 m",
     "works.relief_own": "vos fichiers",
     "works.relief_gap_one": "rien sur 1 carré, le relief de dessous",
     "works.relief_gap": "rien sur {n} carrés, le relief de dessous",
@@ -577,6 +581,8 @@ const STRINGS = {
     "library.built_colours_plain": "telles que livrées",
     "library.built_colours_set": "luminosité {brightness}, contraste {contrast}, saturation {saturation}",
     "library.built_relief_laid": "{base}, avec {over} par-dessus",
+    "library.built_relief_view30": "viewfinderpanoramas, 30 m",
+    "library.built_relief_view90": "viewfinderpanoramas, 90 m (le site n'a pas de 30 m sur ce carré)",
     "library.built_relief_missing": "{base} : {asked} demandé, rien sur ce carré",
     "library.built_relief_coarser": "Votre fichier {file} n'a pas servi : {own_m} m entre deux points, contre {base_m} m pour {base}.",
     "library.built_relief_unreadable": "Votre fichier {file} n'a pas servi : il n'a pas pu être lu.",
@@ -592,6 +598,7 @@ const STRINGS = {
     "relief.name.HRDEM": "le lidar canadien",
     "relief.name.ANADEM": "ANADEM",
     "relief.name.View": "viewfinderpanoramas",
+    "relief.name.View3": "viewfinderpanoramas 90 m",
     "relief.name.SRTM": "SRTM",
     "relief.name.ALOS": "ALOS",
     "relief.name.own": "vos fichiers",
@@ -995,6 +1002,10 @@ const STRINGS = {
     "settings.q.relief_canada_note": "mesuré au laser, le sol nu sous les arbres : là où le Canada a été survolé, la forme du terrain est juste, là où Copernicus voit la cime des arbres. La couverture est partielle : le relief Copernicus prend le relais partout ailleurs, sans trou ni marche. Jusqu'à 50 Mo téléchargés et 26 Mo gardés par carré entièrement couvert, et rien du tout là où le lidar n'est jamais passé.",
     "settings.q.relief_file": "Mon propre fichier d'altitudes (GeoTIFF ou HGT)",
     "settings.q.relief_file_note": "par exemple un modèle numérique de terrain national détaillé",
+    "settings.q.relief_vf30": "Le relief viewfinderpanoramas à 30 m (1 seconde d'arc)",
+    "settings.q.relief_vf30_note": "réservé à cet ordinateur ; là où le site n'a pas de 30 m, son 90 m répond sur le carré, et Works le dit",
+    "settings.q.relief_vf90": "Le relief viewfinderpanoramas à 90 m (3 secondes d'arc)",
+    "settings.q.relief_vf90_note": "réservé à cet ordinateur ; le même partout, plus grossier",
     "settings.q.relief_path": "Quel fichier ?",
     "settings.q.relief_path_help": "Le chemin complet du fichier sur cet ordinateur. Il doit couvrir toute la tuile : au-delà de son bord, les altitudes sont étirées. Écrivez {latlon} à la place du nom du carré pour un fichier par tuile, par exemple /mes-reliefs/{latlon}.hgt.",
     "settings.q.relief_path_missing": "Indiquez le chemin du fichier, ou choisissez le relief d'X-Plane 12 : le moteur refuse un fichier vide.",
@@ -1297,6 +1308,8 @@ const STRINGS = {
     "plan.s.relief_anadem": "ANADEM relief (South America)",
     "plan.s.relief_canada": "Canadian lidar relief",
     "plan.s.relief_file": "relief from your file",
+    "plan.s.relief_vf30": "viewfinderpanoramas relief, 30 m",
+    "plan.s.relief_vf90": "viewfinderpanoramas relief, 90 m",
     "plan.s.relief_own": "your own files over it",
     "plan.s.overlays_xplane": "X-Plane's roads, forests and buildings",
     "plan.s.overlays_none": "no overlays from OrthoStudio XP",
@@ -1631,6 +1644,8 @@ const STRINGS = {
     "works.relief_anadem": "ANADEM relief",
     "works.relief_canada": "Canadian lidar relief",
     "works.relief_file": "own relief file",
+    "works.relief_vf30": "viewfinderpanoramas relief, 30 m",
+    "works.relief_vf90": "viewfinderpanoramas relief, 90 m",
     "works.relief_own": "your own files",
     "works.relief_gap_one": "none on 1 square, the relief under it",
     "works.relief_gap": "none on {n} squares, the relief under it",
@@ -1768,6 +1783,8 @@ const STRINGS = {
     "library.built_colours_plain": "as delivered",
     "library.built_colours_set": "brightness {brightness}, contrast {contrast}, saturation {saturation}",
     "library.built_relief_laid": "{base}, with {over} over it",
+    "library.built_relief_view30": "viewfinderpanoramas, 30 m",
+    "library.built_relief_view90": "viewfinderpanoramas, 90 m (the site has no 30 m over this square)",
     "library.built_relief_missing": "{base}: {asked} asked, none on this square",
     "library.built_relief_coarser": "Your file {file} was not used: {own_m} m between points, where {base} has {base_m} m.",
     "library.built_relief_unreadable": "Your file {file} was not used: it could not be read.",
@@ -1783,6 +1800,7 @@ const STRINGS = {
     "relief.name.HRDEM": "Canada's lidar",
     "relief.name.ANADEM": "ANADEM",
     "relief.name.View": "viewfinderpanoramas",
+    "relief.name.View3": "viewfinderpanoramas 90 m",
     "relief.name.SRTM": "SRTM",
     "relief.name.ALOS": "ALOS",
     "relief.name.own": "your own files",
@@ -2186,6 +2204,10 @@ const STRINGS = {
     "settings.q.relief_canada_note": "measured by laser, the bare ground under the trees: where Canada has been flown the shape of the terrain is right, where Copernicus sees the treetops. Coverage is partial: the Copernicus relief takes over everywhere else, with no hole and no step. Up to 50 MB downloaded and 26 MB kept for a square that is covered throughout, and nothing at all where the lidar never flew.",
     "settings.q.relief_file": "My own elevation file (GeoTIFF or HGT)",
     "settings.q.relief_file_note": "for example a detailed national elevation model",
+    "settings.q.relief_vf30": "The viewfinderpanoramas relief at 30 m (1 arc-second)",
+    "settings.q.relief_vf30_note": "on this computer only; where the site has no 30 m, its 90 m answers for the square, and Works says so",
+    "settings.q.relief_vf90": "The viewfinderpanoramas relief at 90 m (3 arc-seconds)",
+    "settings.q.relief_vf90_note": "on this computer only; the same everywhere, coarser",
     "settings.q.relief_path": "Which file?",
     "settings.q.relief_path_help": "The full path of the file on this computer. It must cover the whole tile: beyond its edge the heights are stretched. Write {latlon} where the name of the square goes for one file per tile, as in /my-relief/{latlon}.hgt.",
     "settings.q.relief_path_missing": "Type the path of the file, or choose X-Plane 12's relief: the engine refuses an empty file.",
@@ -2415,15 +2437,15 @@ const DATA_DIR_WHY = {
 /** The relief sources OrthoStudio XP downloads: a tile refused with one of them says which, and
  * what the service answered, rather than sending the user to the X-Plane installer (a user in
  * Alberta read "install this region", which he had, 2026-09-19). */
-const DOWNLOADED_RELIEF = new Set(["COP30", "HRDEM", "View", "SRTM", "ALOS"]);
+const DOWNLOADED_RELIEF = new Set(["COP30", "HRDEM", "View", "View3", "SRTM", "ALOS"]);
 
 /** A source that is a file or a folder of the user's own, rather than one of the names above. */
 const LOOKS_LIKE_A_PATH = /[\\/]/;
 
 /** Their names as Settings says them, not as the engine files them. */
 const RELIEF_WORDS = {
-  fr: { COP30: "Copernicus", HRDEM: "lidar canadien", View: "viewfinderpanoramas" },
-  en: { COP30: "Copernicus", HRDEM: "Canadian lidar", View: "viewfinderpanoramas" },
+  fr: { COP30: "Copernicus", HRDEM: "lidar canadien", View: "viewfinderpanoramas", View3: "viewfinderpanoramas 90 m" },
+  en: { COP30: "Copernicus", HRDEM: "Canadian lidar", View: "viewfinderpanoramas", View3: "viewfinderpanoramas 90 m" },
 };
 const reliefWord = (lang, source) => RELIEF_WORDS[lang][String(source || "")] || String(source || "");
 
@@ -2536,6 +2558,7 @@ const CODES = {
     DEM_FILE_TOO_LARGE: ["Le fichier d'altitudes {path} compte {points_m} millions de points : le lire demande {need_gb} Go de mémoire, plus de la moitié des {ram_gb} Go de cet ordinateur.", "Construisez cette tuile sur un ordinateur qui a plus de mémoire, ou avec une copie moins fine du fichier."],
     DEM_OVERLAY_NOT_REFINED: ["Votre fichier pour le carré {cell} ({own}, {own_m} m entre deux points) a été posé sur la grille de {base_m} m de {source} : à sa propre résolution, le relief de ce carré demanderait {need_gb} Go de mémoire, plus de la moitié des {ram_gb} Go de cet ordinateur.", "Indiquez ce fichier lui-même dans « Mon propre fichier d'altitudes », dans Réglages, qui le lit à sa propre résolution, ou construisez cette tuile sur un ordinateur qui a plus de mémoire."],
     DEM_OVERLAY_COARSER: ["Votre fichier pour le carré {cell} ({own}) a {own_m} m entre deux points, là où {source} a {base_m} m : le plus fin des deux est utilisé, donc {source} répond sur ce carré.", "Rien à faire. Si vous voulez que votre fichier réponde ici, mettez dans le dossier un fichier au moins aussi fin que le relief choisi, ou choisissez un relief plus grossier."],
+    DEM_VIEW_COARSER: ["viewfinderpanoramas n'a pas de relief à 30 m sur le carré {cell} : son 90 m y est utilisé.", "Rien à faire : viewfinderpanoramas n'a du 30 m que sur une partie du monde."],
     DEM_NEIGHBOUR_UNAVAILABLE: ["Les données d'altitude du carré voisin {cell} sont indisponibles ; le bord de la tuile utilise ses propres données.", "Fournissez le relief du carré voisin pour éviter une marche possible au bord."],
     DEM_SOURCE_MANUAL_DOWNLOAD: ["La source d'altitude {source} demande un téléchargement manuel ; {expected_name} est absent.", "Téléchargez le fichier à la main dans le dossier du relief, ou passez à Viewfinderpanoramas."],
     DEM_RASTER_LIBRARY_MISSING: ["Le raster {path} demande la bibliothèque raster optionnelle, qui n'est pas installée.", "Convertissez le relief en .hgt, ou en GeoTIFF non compressé."],

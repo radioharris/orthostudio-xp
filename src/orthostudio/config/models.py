@@ -112,9 +112,9 @@ class Relief(BaseModel):
 
     model_config = _FROZEN
 
-    source: Literal["auto", "file", "copernicus", "usgs", "usgs1", "canada", "south_america"] = (
-        _field("auto", "essential", "custom_dem", "")
-    )
+    source: Literal[
+        "auto", "file", "copernicus", "usgs", "usgs1", "canada", "south_america", "vf30", "vf90"
+    ] = _field("auto", "essential", "custom_dem", "")
     file: str = _field("", "essential", "custom_dem", "")
     folder: str = _field(
         "",
@@ -143,6 +143,17 @@ class Relief(BaseModel):
         ),
     )
     fill_nodata: Literal["nearest", "zero"] = _field("nearest", "essential", "fill_nodata", "")
+    private_sources: bool = _field(
+        False,
+        "essential",
+        None,
+        "",
+        hint=(
+            "Offers viewfinderpanoramas at 30 m (vf30) and at 90 m (vf90) among the reliefs. Set "
+            "by hand in config.toml and never shown in the page, so that the relief question "
+            "offers them on that computer alone (2026-10-30)."
+        ),
+    )
 
     @model_validator(mode="after")
     def _check_file(self) -> Relief:

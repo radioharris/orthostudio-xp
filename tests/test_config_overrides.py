@@ -98,6 +98,11 @@ def test_conversions_and_mappings(tmp_path: Path) -> None:
     assert to_build_overrides(cop)["custom_dem"] == "COP30"
     usgs = Settings(essential=Essential(relief=Relief(source="usgs")))
     assert to_build_overrides(usgs)["custom_dem"] == "NED1/3"
+    # viewfinderpanoramas, for whoever turned relief.private_sources on: 1" first, or 3" alone
+    vf30 = Settings(essential=Essential(relief=Relief(source="vf30")))
+    assert to_build_overrides(vf30)["custom_dem"] == "View"
+    vf90 = Settings(essential=Essential(relief=Relief(source="vf90")))
+    assert to_build_overrides(vf90)["custom_dem"] == "View3"
     for mode, ortho4xp_value in (("off", "False"), ("on", "True"), ("existing", "Existing")):
         s2 = Settings(essential=Essential(airports=AirportCoverage(mode=mode)))  # type: ignore[arg-type]
         assert to_build_overrides(s2)["cover_airports_with_highres"] == ortho4xp_value

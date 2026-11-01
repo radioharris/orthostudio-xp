@@ -931,7 +931,7 @@ an osxp build of the same tile are two rows.
 | Imagery | the source's code and the detail level's name, the zoom level as secondary text ("BI · Standard ZL16"); tooltip: the source's name from `GET /api/providers` and the detail level at the tile's latitude; an em dash when neither is known |
 | In X-Plane | *yes* / *no* pill (`installed`) |
 | Size | `size_bytes` (`fmtBytes`), an em dash when `null`. The header's tooltip (dotted underline) says that, for a tile built by OrthoStudio XP, most of it is the very files OrthoStudio XP's cache keeps, counted in this column and not again under Store in the status bar (`cacheBytes`, since API level 33) |
-| Built by | *OrthoStudio XP* / *Ortho4XP*; for the first, a click unfolds what the tile was built with (`builtLines`), its *Relief* line naming the file of one's own the tile stands on or saying why it was not used (`reliefSentence`, `relief_own`), the whole path in the line's tooltip |
+| Built by | *OrthoStudio XP* / *Ortho4XP*; for the first, a click unfolds what the tile was built with (`builtLines`), its *Relief* line naming the file of one's own the tile stands on or saying why it was not used (`reliefSentence`, `relief_own`), the whole path in the line's tooltip; for viewfinderpanoramas at 30 m it says *30 m*, or *90 m* where the site has no 30 m for the square (`relief_arcsec`, a relief made from 2026-10-30 on; one made before says *viewfinderpanoramas* alone) |
 | (actions) | three columns, so that the buttons line up from row to row: the folder icon (2.5, *The file manager*), the X-Plane button, then *Delete…* or *Remove from the list* |
 
 **Actions** (`{name}` is the row's `name`, else the last component of its path; every change
@@ -1097,8 +1097,9 @@ brought the top of the screen back, since removing the focused answer made the b
 half-drawn page). Nothing is saved before *Save*; *Undo
 my changes* goes back to the saved settings, *Default values* to the schema's defaults
 (Ortho4XP's, and OrthoStudio XP's own `overlays`), the X-Plane folder, the data folder, the SimBrief
-name and the places the map data comes from (a folder of one's own, a library's address and key)
-kept, since they are this computer's and its pilot's and no look of the tiles (the defaults emptied
+name, the places the map data comes from (a folder of one's own, a library's address and key)
+and the switch `relief.private_sources` set by hand (it turned off, and viewfinderpanoramas left
+the relief question, 2026-10-30) kept, since they are this computer's and its pilot's and no look of the tiles (the defaults emptied
 a library's key, and a build from source, which carries none, went to the public servers,
 2026-10-02); a draft that differs from the saved settings says
 "Changes not saved yet". For as long as it differs, the Settings tab carries a dot (its tooltip says
@@ -1166,7 +1167,9 @@ map data and of the imagery. A reuse of the page keeps showing it; `NOTICE` says
    lakes and rivers (10 / 25 / 50 %); relief, seven answers since 2026-09-20 (`settings.js`
    `questionChoices`): X-Plane 12's own, Copernicus at 1", the USGS 3DEP at 1/3" (United States),
    the USGS at 1" (North America), Canada's lidar (HRDEM) or South America's ANADEM with Copernicus
-   elsewhere, or my own file, then the file's path, warned while empty, and its holes; under it, a
+   elsewhere, or my own file, then the file's path, warned while empty, and its holes;
+   viewfinderpanoramas at 30 m and at 90 m come before *my own file* only where `config.toml` sets
+   `relief.private_sources` (or holds one of them already), never otherwise (2026-10-30); under it, a
    folder of one's own elevation files (2.5, *Your own elevation files*). A value set by hand that
    no choice offers (a width of 80 m, lakes at 40 %, the airport mode `existing`, the `3steps`
    profile) is shown as one more choice, never hidden.

@@ -389,6 +389,13 @@ _SPECS: tuple[ErrorSpec, ...] = (
         "choose a coarser relief, if you want your own file to answer here.",
     ),
     _spec(
+        "DEM_VIEW_COARSER",
+        _D,
+        _C,
+        "viewfinderpanoramas has no 30 m relief over cell {cell}: its 90 m is used there.",
+        "Nothing to do: viewfinderpanoramas has 30 m over part of the world only.",
+    ),
+    _spec(
         "DEM_NEIGHBOUR_UNAVAILABLE",
         _D,
         _C,

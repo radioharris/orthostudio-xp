@@ -35,6 +35,7 @@ from orthostudio.dem.raster import (
     read_elevation_from_file,
 )
 from orthostudio.dem.sources import (
+    FULL_HGT_SIZE,
     MANUAL_SOURCES,
     OWN_SUFFIXES,
     SOURCES,
@@ -154,6 +155,10 @@ class Dem:
     overlays: tuple[Dem, ...] = ()
     laid_over: tuple[str, ...] = ()
     """The overlays of a composite written into :attr:`alt_dem`, in the order they were laid."""
+    view_arcsec: int | None = None
+    """viewfinderpanoramas chosen at 30 m (``custom_dem = View``): 1 when the tile's own square was
+    read from a 1" file, 3 when the site has only its 3" one there. The Library says which
+    (2026-10-30); ``None`` for every other relief."""
     own: tuple[dict[str, object], ...] = ()
     """The files of one's own found for this square among the overlays (a folder's file, or a
     file named as one), and what became of each: ``{"file", "used"}``, and for one not used
@@ -195,6 +200,16 @@ class Dem:
         dem = cls._load_one(tile, sources[0], opts, record)
         assert dem is not None  # the base is never optional: it raises rather than answer None
         dem.events = events
+        if custom_dem.partition(";")[0] == "View":
+            # viewfinderpanoramas chosen at 30 m: where the site has no 1" archive for the
+            # square, its 3" file answers; Works and the Library say so (2026-10-30)
+            own = [c for c in dem.cells if (c.lat, c.lon) == (tile.lat, tile.lon)]
+            if own and own[0].path is not None:
+                dem.view_arcsec = 1 if own[0].path.stat().st_size >= FULL_HGT_SIZE else 3
+            if dem.view_arcsec == 3:
+                record(
+                    OsxpError("DEM_VIEW_COARSER", context={"cell": hem_latlon(tile.lat, tile.lon)})
+                )
         if fill_nodata == "zero":
             count = nodata_to_zero(dem.alt_dem, dem.nodata)
             dem.nodata = NODATA
@@ -452,6 +467,7 @@ class Dem:
             "alt_layout": ALT_FILE_FORMAT,
             "laid_over": list(self.laid_over),
             "own": [dict(o) for o in self.own],
+            **({"view_arcsec": self.view_arcsec} if self.view_arcsec is not None else {}),
             "cells": [
                 {
                     "cell": c.cell,

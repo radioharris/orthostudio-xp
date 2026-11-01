@@ -330,8 +330,9 @@ Deterministic (no timestamps): the manifest is the pack artefact, and its digest
 install receipt. `osxp why <pack dir>` reads it and explains every artefact (`Store.explain`).
 The upstream keys (`dem`, `vectors`, `coastline`, `mesh`, `masks`, `xp12`) come from the store's
 provenance edges of the DSF artefact (`Store.why`), not from the graph: the manifest can be rebuilt
-from the store alone. The relief the tile stands on (`built.relief`, `relief_laid`, `relief_own`)
-is read the same way (`relief_read`), from the first input named `dem` built by the relief stage
+from the store alone. The relief the tile stands on (`built.relief`, `relief_laid`, `relief_own`,
+and for viewfinderpanoramas chosen at 30 m `relief_arcsec`, the grid its square was read at, 1" or
+3", from the relief's `view_arcsec`, 2026-10-30) is read the same way (`relief_read`), from the first input named `dem` built by the relief stage
 (`orthostudio.dem`): the mesh takes the tracing under that name too (`--dem vectors`, the
 default), and reading it found no relief, so every tile built without sharper airports, whose DSF
 takes no tracing of its own, said "—" for its relief until 2026-10-05.

@@ -3674,6 +3674,29 @@ def test_every_setting_is_offered_somewhere() -> None:
         assert label != path and hint, path
 
 
+def test_viewfinderpanoramas_is_offered_only_where_config_toml_turns_it_on() -> None:
+    """``relief.private_sources``, set by hand and never shown, adds viewfinderpanoramas at 30 m
+    and at 90 m to the relief question, before one's own file; a saved choice of either stays
+    offered, so the question never loses the answer it holds (2026-10-30)."""
+    doc = _mock_json("settings")
+
+    def offered(relief: dict[str, object]) -> list[str]:
+        settings = {
+            **doc,
+            "essential": {**doc["essential"], "relief": {**doc["essential"]["relief"], **relief}},
+        }
+        got = _node_json(
+            "settings.js", f"m.questionChoices('relief', {json.dumps(settings)}, {{}})"
+        )
+        return [c["value"] for c in got]
+
+    plain = offered({})
+    assert "vf30" not in plain and "vf90" not in plain
+    turned_on = offered({"private_sources": True})
+    assert turned_on[-3:] == ["vf30", "vf90", "file"]
+    assert offered({"source": "vf90"})[-3:] == ["vf30", "vf90", "file"]
+
+
 def test_a_pack_that_brings_its_own_scenery_answers_the_overlay_question() -> None:
     """A user with simHeaven X-World kept our overlays too and had everything twice
     (2026-09-20). When the engine finds such a pack in X-Plane, the recommended answer is the
@@ -3977,7 +4000,11 @@ def test_the_data_folder_is_asked_beside_x_plane_and_its_refusals_are_explained(
     assert "defaultsKeepingFolders(state.schema, state.settingsDraft)" in app_js
     schema = _mock_json("settings_schema")
     draft = {
-        "essential": {"xplane_dir": "D:\\X-Plane 12", "data_dir": "E:\\OrthoStudio"},
+        "essential": {
+            "xplane_dir": "D:\\X-Plane 12",
+            "data_dir": "E:\\OrthoStudio",
+            "relief": {"source": "vf90", "private_sources": True},
+        },
         "expert": {
             "osm_folder": "E:\\OSM",
             "osm_library": "https://maps.example",
@@ -3992,6 +4019,9 @@ def test_the_data_folder_is_asked_beside_x_plane_and_its_refusals_are_explained(
     assert back["expert"]["osm_folder"] == "E:\\OSM"
     assert back["expert"]["osm_library"] == "https://maps.example"
     assert back["expert"]["osm_library_token"] == "k"
+    # the switch set by hand stays, the relief chosen goes back to the default one
+    assert back["essential"]["relief"]["private_sources"] is True
+    assert back["essential"]["relief"]["source"] == "auto"
 
     whys = json.dumps(sorted(_DATA_DIR_REFUSALS))
     script = f"""
@@ -5620,6 +5650,9 @@ def test_the_library_says_what_each_tile_was_built_with() -> None:
                                     relief_asked: ["HRDEM"]}),
             own: m.reliefSentence({relief: "XP12", relief_laid: ["/Users/me/lidar"],
                                    relief_asked: ["/Users/me/lidar"]}),
+            view30: m.reliefSentence({relief: "View", relief_laid: [], relief_arcsec: 1}),
+            view90: m.reliefSentence({relief: "View", relief_laid: [], relief_arcsec: 3}),
+            viewBefore: m.reliefSentence({relief: "View", relief_laid: []}),
           };
         })()""",
     )
@@ -5637,6 +5670,10 @@ def test_the_library_says_what_each_tile_was_built_with() -> None:
     assert got["unknown"] == 0
     assert got["laid"] == "Copernicus, with Canada's lidar over it"
     assert got["own"] == "X-Plane 12, with your own files over it"
+    # viewfinderpanoramas at 30 m says the grid its square was read at; a relief made before, no
+    assert got["view30"] == "viewfinderpanoramas, 30 m"
+    assert got["view90"] == "viewfinderpanoramas, 90 m (the site has no 30 m over this square)"
+    assert got["viewBefore"] == "viewfinderpanoramas"
 
     app_js = (UI / "app.js").read_text(encoding="utf-8")
     row = _function_body(app_js, "libraryRow")

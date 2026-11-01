@@ -4594,6 +4594,8 @@ function reliefWords(relief) {
   if (relief === "usgs1") return t("works.relief_usgs1");
   if (relief === "canada") return t("works.relief_canada");
   if (relief === "south_america") return t("works.relief_anadem");
+  if (relief === "vf30") return t("works.relief_vf30");
+  if (relief === "vf90") return t("works.relief_vf90");
   if (relief === "file") return t("works.relief_file");
   if (relief === "xplane") return t("works.relief_xplane");
   return "";  // an older engine says nothing, and the line keeps its other parts
@@ -5835,6 +5837,9 @@ export function reliefSentence(facts) {
   if (ownRelief(facts?.relief)) {
     const words = ownFileWords(facts.relief);
     base = words.charAt(0).toUpperCase() + words.slice(1);
+  } else if (facts?.relief === "View" && [1, 3].includes(facts.relief_arcsec)) {
+    // viewfinderpanoramas at 30 m, and the grid its square was really read at (2026-10-30)
+    base = facts.relief_arcsec === 1 ? t("library.built_relief_view30") : t("library.built_relief_view90");
   } else if (facts?.relief) {
     base = reliefName(facts.relief);
   }

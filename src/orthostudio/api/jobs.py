@@ -291,15 +291,23 @@ def _expected_nodes(spec: BuildSpec) -> list[tuple[str, str]]:
 # -- job ------------------------------------------------------------------------------------------
 
 
-_RELIEF_NAMES = {"COP30": "copernicus", "NED1/3": "usgs", "NED1": "usgs1", "XP12": "xplane"}
+_RELIEF_NAMES = {
+    "COP30": "copernicus",
+    "NED1/3": "usgs",
+    "NED1": "usgs1",
+    "XP12": "xplane",
+    "View": "vf30",
+    "View3": "vf90",
+}
 
 
 def _relief_of(spec: Any) -> str:
     """Where the tiles of ``spec`` take their heights: ``xplane`` (X-Plane 12's own relief, or
     ``view`` in the test suite), ``copernicus`` (``COP30``), ``usgs`` (``NED1/3``), ``usgs1``
-    (``NED1``), ``canada`` (``COP30;HRDEM``), ``south_america`` (``COP30;ANADEM``), or ``file``
-    (the user's own). The USGS at 1" was missing from 0.1.9 to 0.1.18: Works called it the
-    user's own relief file, which the page had its words for all along (``works.relief_usgs1``).
+    (``NED1``), ``canada`` (``COP30;HRDEM``), ``south_america`` (``COP30;ANADEM``), ``vf30``
+    (``View``) and ``vf90`` (``View3``), or ``file`` (the user's own). The USGS at 1" was missing
+    from 0.1.9 to 0.1.18: Works called it the user's own relief file, which the page had its words
+    for all along (``works.relief_usgs1``).
 
     The base is what comes before the first ``;``: a folder of one's own laid over a source must
     not make the line read *own relief file* when the relief is the source (a user chose the USGS
