@@ -845,6 +845,17 @@ def test_the_foot_of_the_page_is_osxp_s_text_size_and_zoom() -> None:
             assert live_text == osxp_text, (lang, key)
 
 
+def test_the_decal_list_follows_a_change_of_language() -> None:
+    # it was filled only with the settings: its none and Live's choice stayed in the language before
+    js = (UI_DIR / "live.js").read_text()
+    again = js[js.index("function languageChanged() {") :]
+    again = again[: again.index("\n}")]
+    assert 'fillDecal(decalList, $("set-decal").value)' in again  # the choice on screen kept
+    fill = js[js.index("function fillDecal(") :]
+    fill = fill[: fill.index("\n}")]
+    assert "JSON.stringify([language(), decals])" in fill  # drawn again in the new language
+
+
 @pytest.mark.skipif(NODE is None, reason="needs node")
 def test_the_page_says_everything_in_both_languages() -> None:
     keys = _strings()

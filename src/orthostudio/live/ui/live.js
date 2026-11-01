@@ -1694,6 +1694,7 @@ function languageChanged() {
   textSizeRefresh?.();
   renderZooms();
   renderProviders($("set-provider").value);
+  if ($("set-decal").options.length) fillDecal(decalList, $("set-decal").value); // its none, Live's
   if (seasonLooks) drawSeason();
   drawSearch();
   drawDeparture();
