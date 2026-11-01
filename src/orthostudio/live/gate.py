@@ -7,13 +7,14 @@ OrthoStudio XP Live's X-Plane plugin (``native/xplane_plugin/live_gate.c``, put 
 X-Plane reads the scenery. It sends one line per datagram over UDP on 127.0.0.1:GATE_PORT:
 
 - ``LIVE1 LOAD lat lon``: a flight is loading there (PLANE_LOADED); no answer is expected.
-- ``LIVE1 HOLD lat lon why day=N``: X-Plane waits for the answer. ``why`` is ``flight`` at
-  message 115, where a new flight starts loading, and ``aircraft`` at the aircraft's sounds or
-  livery, which a livery changed in flight also sends. ``day`` is the flight's date, its day of
-  the year from 0 (``sim/time/local_date_days``), kept as :attr:`Gate.held_day` for the photos'
-  season: a flight started otherwise than by a click on Start Flight (X-Plane's web API, a
-  situation) saves no date in Freeflight.prf (2026-10-13). The gate sends ``LIVE1 GO n`` once
-  every texture X-Plane will read there is built. Otherwise it sends, for instance,
+- ``LIVE1 HOLD lat lon why day=N``: X-Plane waits for the answer. ``why`` is ``aircraft``: the
+  aircraft's sounds or livery, which a livery changed in flight also sends (a new location chosen
+  in flight loads no aircraft: Live pauses X-Plane itself there, ``orthostudio.live.pause``).
+  ``day`` is the flight's date, its day of the year from 0 (``sim/time/local_date_days``), kept
+  as :attr:`Gate.held_day` for the photos' season: a flight started otherwise than by a click on
+  Start Flight (X-Plane's web API, a situation) saves no date in Freeflight.prf (2026-10-13).
+  The gate sends ``LIVE1 GO n`` once every texture X-Plane will read there is built. Otherwise
+  it sends, for instance,
   ``LIVE1 WAIT n=12 p=450 s=23 mbs=15.2 lang=en at=LFMN runway 04R``:
   - n is how many textures are left;
   - p is the progress in thousandths, counted from the first moment the start was known;

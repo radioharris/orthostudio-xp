@@ -599,20 +599,34 @@ def follow(
                 if attach is not None:
                     attach(streamer)
                 rescan = own_ground_watch(prepared, options, streamer, log)
-                run(
-                    streamer,
-                    xp,
-                    prepared.fix,
-                    should_stop=should_stop,
-                    gate=prepared.gate,
-                    start_name=options.start,
-                    log=log,
-                    report=report,
-                    language=language or (lambda: options.language),
-                    departure=departure or (lambda: None),
-                    season_for=season_for,
-                    between=rescan,
-                )
+                # a new location chosen in flight loads no aircraft, which the plugin would hold:
+                # Live pauses X-Plane itself then (orthostudio.live.pause)
+                pauser = None
+                if prepared.gate is not None:
+                    from orthostudio.live.pause import Pauser
+                    from orthostudio.live.scenery import xplane_pid
+
+                    pauser = Pauser(prepared.gate.prefs, xplane_pid, log)
+                    pauser.start()
+                try:
+                    run(
+                        streamer,
+                        xp,
+                        prepared.fix,
+                        should_stop=should_stop,
+                        gate=prepared.gate,
+                        start_name=options.start,
+                        log=log,
+                        report=report,
+                        language=language or (lambda: options.language),
+                        departure=departure or (lambda: None),
+                        season_for=season_for,
+                        between=rescan,
+                        pauser=pauser,
+                    )
+                finally:
+                    if pauser is not None:
+                        pauser.stop()  # X-Plane never left paused by a Live that stops
             finally:
                 if attach is not None:
                     attach(None)

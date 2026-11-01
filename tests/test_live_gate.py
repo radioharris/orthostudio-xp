@@ -30,6 +30,7 @@ from orthostudio.live.cache import ChunkCache
 from orthostudio.live.filesystem import folder_link, is_folder_link
 from orthostudio.live.gate import Gate, read_last_start, start_position
 from orthostudio.live.geo import parse_texture_name
+from orthostudio.live.pause import last_start
 from orthostudio.live.region import Zooms, setup_region
 from orthostudio.live.streamer import Fix, Streamer, run
 
@@ -379,9 +380,11 @@ class PluginTest(unittest.TestCase):
         self.assertTrue(is_folder_link(root / "Custom Scenery" / "z_osxp_live"))
         self.assertFalse(any("Live is not running" in line for line in logged))
 
-    def test_a_new_flight_with_the_same_aircraft(self):
-        """No aircraft loads, so no PLANE_LOADED, FMOD_BANK_LOADED or LIVERY_LOADED: the plugin
-        waits at message 115 (1) instead, but only once a first flight has loaded."""
+    def test_message_115_holds_nothing(self):
+        """Message 115 is XPLM_MSG_WEATHER_DELIVERED (SDK 4.4.0): X-Plane 12.4.4 sends it as a
+        flight's weather is delivered, at every change of weather too, 12.4.3 not at all. The
+        plugin holds X-Plane at none of it, a first flight or later: a new location chosen in
+        flight, which loads no aircraft, is held by Live's pause (orthostudio.live.pause)."""
         holds = []
 
         def streamer(sock):
@@ -394,16 +397,13 @@ class PluginTest(unittest.TestCase):
 
         with live_port(self.port) as sock:
             threading.Thread(target=streamer, args=(sock,), daemon=True).start()
-            took, _ = self.xplane(
-                46.2381, 6.1089, "115:1"
-            )  # at the first flight: the aircraft messages come next
+            took, _ = self.xplane(46.2381, 6.1089, "115:1")
             self.assertLess(took["115:1"], 0.3)
-            self.assertEqual(holds, [])
-            took, logged = self.xplane(46.2381, 6.1089, "102:0", "115:0", "115:1")
+            took, _ = self.xplane(46.2381, 6.1089, "102:0", "115:0", "115:1")
             let_go(sock)
-        self.assertGreater(took["115:1"], 0.4)  # held until the third answer
-        self.assertLess(took["115:0"], 0.3)  # leaving a flight for the menus: nothing to wait for
-        self.assertIn("waits at the start of a new flight", logged[0])
+        self.assertLess(took["115:1"], 0.3)
+        self.assertLess(took["115:0"], 0.3)
+        self.assertEqual(holds, [])
 
     def test_waits_until_the_streamer_says_go(self):
         heard = []
@@ -560,6 +560,7 @@ class FlightStartTest(unittest.TestCase):
             log=self.log.append,
         )
         self.stop = threading.Event()
+        self.pauser = FakePauser()
         self.lat, self.lon = parse_texture_name(f"{NAMES[0]}.dds").center
         patch = mock.patch.object(streamer_module, "PLAN_EVERY_S", 0.2)
         patch.start()
@@ -1426,6 +1427,20 @@ class ScriptedXPlane:
 
 
 @unittest.skipIf(Image is None, "needs numpy, Pillow and ispc_texcomp")
+class FakePauser:
+    """What run() reads of orthostudio.live.pause.Pauser, and its resume() noted."""
+
+    def __init__(self):
+        self.flying = False
+        self.paused_for = None
+        self.paused_since = 0.0
+        self.resumed = False
+
+    def resume(self):
+        self.paused_for = None
+        self.resumed = True
+
+
 class RunTest(unittest.TestCase):
     """run() with the gate: a click in X-Plane, the plugin holding it, the aircraft arriving."""
 
@@ -1457,6 +1472,7 @@ class RunTest(unittest.TestCase):
             log=log,
         )
         self.stop = threading.Event()
+        self.pauser = FakePauser()
         self.lat, self.lon = parse_texture_name(f"{NAMES[0]}.dds").center
         patch = mock.patch.object(streamer_module, "PLAN_EVERY_S", 0.2)
         patch.start()
@@ -1470,6 +1486,7 @@ class RunTest(unittest.TestCase):
                 gate=self.gate,
                 should_stop=self.stop.is_set,
                 log=log,
+                pauser=self.pauser,
             ),
         )
         self.thread.start()
@@ -1601,23 +1618,27 @@ class RunTest(unittest.TestCase):
         time.sleep(1.0)
         self.assertEqual(self.xp.commands[before:], [])  # no reload for the new flight
 
-    def test_a_new_flight_before_the_click_is_seen(self):
-        """X-Plane's message 115 can come before the streamer has seen Freeflight.prf change: a
-        flight's start is held all the same, where X-Plane already says it starts."""
+    def test_a_new_location_in_flight_paused_until_built(self):
+        """A new location chosen in flight loads no aircraft, so the plugin holds nothing: Live's
+        pause keeps X-Plane (orthostudio.live.pause), for the start X-Plane wrote at the click,
+        until everything X-Plane will read there is built, then lets it go."""
         home = parse_texture_name(f"{NAMES[1]}.dds").center
         self.xp.position = (home[0] - 2.0, home[1])  # flying 220 km south
-        self.assertTrue(
-            self.wait_for(
-                lambda: self.streamer.last_fix is not None and not self.streamer.read_early
-            )
-        )
-        before = len(self.xp.commands)
-        answers = self.hold(self.lat, self.lon, why="flight")  # no click written yet
-        self.assertTrue(answers[0].startswith("LIVE1 WAIT"), answers)
-        self.assertEqual(answers[-1], "LIVE1 GO 0")
-        self.xp.position = (self.lat, self.lon)
-        time.sleep(1.0)
-        self.assertEqual(self.xp.commands[before:], [])
+        self.assertTrue(self.wait_for(lambda: self.pauser.flying))
+        self.click()  # X-Plane writes the new start...
+        self.pauser.paused_since = time.time()  # ... and Live pauses it at once
+        self.pauser.paused_for = last_start(self.prefs)
+        self.assertTrue(self.wait_for(lambda: self.pauser.resumed))
+        self.assertEqual(self.streamer.built, {f"{n}.dds": 1 for n in NAMES})
+        said = [m for m in self.log if m.startswith("  X-Plane goes on after ")]
+        self.assertTrue(said and said[0].endswith("is built"), self.log)
+
+    def test_a_paused_start_never_read_lets_xplane_go(self):
+        """X-Plane paused for a start Live cannot read: never kept for nothing."""
+        self.pauser.paused_since = time.time() - streamer_module.PAUSE_UNREAD_S - 1
+        self.pauser.paused_for = '_last_start {"runway_start":{"airport_id":"ZZZZ","runway":"01"}}'
+        self.assertTrue(self.wait_for(lambda: self.pauser.resumed))
+        self.assertTrue(any("was not read" in m for m in self.log), self.log)
 
     def test_a_busy_loop_still_holds_xplane(self):
         """The loop planning a new start for 2 s (3 s at LGAV under a start's load, 2026-09-29):
@@ -1635,9 +1656,9 @@ class RunTest(unittest.TestCase):
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as p:
             p.connect(("127.0.0.1", self.port))
             p.settimeout(1.0)  # the plugin's second
-            p.send(f"LIVE1 HOLD {self.lat:.6f} {self.lon:.6f} flight".encode())
+            p.send(f"LIVE1 HOLD {self.lat:.6f} {self.lon:.6f} aircraft".encode())
             self.assertTrue(p.recv(100).startswith(b"LIVE1 WAIT"))
-        answers = self.hold(self.lat, self.lon, why="flight")
+        answers = self.hold(self.lat, self.lon)
         self.assertEqual(answers[-1], "LIVE1 GO 0")
         self.assertEqual(self.streamer.built, {f"{n}.dds": 1 for n in NAMES})
         self.assertTrue(any(m.startswith("  Live was busy ") for m in self.log))

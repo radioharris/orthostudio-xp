@@ -14,10 +14,14 @@
  * - At the radio's FMOD_BANK_LOADED and at LIVERY_LOADED, it waits for the streamer to say that
  *   every texture X-Plane will read there is built. It asks every ASK_EVERY_S over UDP on
  *   127.0.0.1:LIVE_PORT, with the flight's date, which sets the photos' season.
- * - A new flight with the same aircraft loads no aircraft, so none of these messages come. There,
- *   the plugin waits at message 115 (1), which is undocumented and came first in the loading of the
- *   first flight. It does so only once a flight has been loaded: at the first flight it would hold
- *   the aircraft's loading too, which can go on while the streamer builds.
+ * - A new flight with the same aircraft loads no aircraft, so none of these messages come: X-Plane
+ *   12.4.3 calls no plugin at all between the click on Fly and the scenery's reading. Live pauses
+ *   X-Plane itself there (orthostudio/live/pause.py) and shows its own loading window. Message 115,
+ *   which the plugin once held at, is XPLM_MSG_WEATHER_DELIVERED (SDK 4.4.0): 12.4.4 sends it as a
+ *   flight's weather is delivered, before its scenery, but at every change of weather too.
+ * - On Windows, as X-Plane starts, it asks Windows not to "ghost" X-Plane's windows: while Live
+ *   keeps X-Plane paused, a click on it would grey it as "Not Responding" and offer to close it
+ *   (DisableProcessWindowsGhosting, which only the process itself can ask, 2026-11-01).
  *
  * Every message X-Plane sends is noted in Log.txt ("OrthoStudio XP Live: message 115 (1)"). X-Plane's
  * main thread writes Log.txt, so the notes fall in order among X-Plane's own lines, such as
@@ -98,7 +102,6 @@ extern void XPLMEnableFeature(const char *inFeature, int inEnable);
 #define XPLM_MSG_LIVERY_LOADED 108
 #define XPLM_MSG_FMOD_BANK_LOADED 112
 #define XPLM_RADIO_BANK 1
-#define XPLM_MSG_115 115 /* undocumented: (1) as a flight starts loading, (0) when leaving a flight for the menus */
 
 /* Settable at build time (-D...), which the tests use. */
 #ifndef LIVE_PORT
@@ -369,12 +372,11 @@ static void show(const struct state *st) {
 static void hold(const char *at) {
     char line[96];
     struct state st = {-1, 0, 0, 0, 0.0, ""};
-    const char *why = strcmp(at, "the start of a new flight") == 0 ? "flight" : "aircraft";
     double lat, lon, start, answered = 0, t;
     int told = 0, r;
     if (sock == NO_SOCKET || !position(&lat, &lon)) return;
     /* the date too: the streamer gives the photos its season (a start's, never in flight) */
-    snprintf(line, sizeof line, "LIVE1 HOLD %.6f %.6f %s day=%d", lat, lon, why,
+    snprintf(line, sizeof line, "LIVE1 HOLD %.6f %.6f aircraft day=%d", lat, lon,
              day_ref ? XPLMGetDatai(day_ref) : -1);
     snprintf(st.where, sizeof st.where, "%.3f %.3f", lat, lon);
     start = now();
@@ -549,6 +551,7 @@ PLUGIN_API int XPluginStart(char *outName, char *outSig, char *outDesc) {
         WSADATA wsa;
         winsock = WSAStartup(MAKEWORD(2, 2), &wsa) == 0;
     }
+    DisableProcessWindowsGhosting(); /* paused by Live, X-Plane is not greyed nor offered to close */
 #endif
     take_out_if_alone();
     return 1;
@@ -590,6 +593,4 @@ PLUGIN_API void XPluginReceiveMessage(XPLMPluginID inFrom, int inMsg, void *inPa
         hold("the radio sounds");
     else if (inMsg == XPLM_MSG_LIVERY_LOADED && param == 0)
         hold("the livery");
-    else if (inMsg == XPLM_MSG_115 && param == 1 && flights > 0)
-        hold("the start of a new flight");
 }

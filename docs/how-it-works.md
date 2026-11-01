@@ -924,8 +924,8 @@ For a flight:
    Prepare, a few seconds where you have flown before, a minute or two the first time in a new
    area.
 3. Fly. Live builds the textures ahead of the aircraft, and X-Plane never waits for it in flight.
-   A new location chosen in flight from the Flight Configuration screen waits like a start, from
-   X-Plane 12.4.4 on: Live needs that version.
+   A new location chosen in flight from the Flight Configuration screen waits like a start: Live
+   pauses X-Plane there, with its own loading window, until the ground is built.
 4. Quit X-Plane, then click Stop: Live takes its scenery and its small plugin out of X-Plane.
 
 Live lays its photos on AutoOrtho's mesh, which it installs by region from its Settings tab (Europe,

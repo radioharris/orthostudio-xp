@@ -96,8 +96,6 @@ How the flights are made and measured: [specs/live/flights.md](specs/live/flight
 
 ## Getting started
 
-Live needs X-Plane 12.4.4 or later (see [Limits](#limits)).
-
 1. **Install the mesh of where you fly.** Live lays its photos on a mesh, the ground's shape, in six
    regions: Europe, North America, South America, Africa, Asia, Australia and the Pacific. Settings,
    first question, Install (see [The mesh, by region](#the-mesh-by-region)). A region AutoOrtho's
@@ -130,8 +128,11 @@ slow disk).
    waiting, it has not crashed.
    ![Live preparing a departure from Munich: its state says it builds the ortho around EDDM, with a bar, the textures left, the seconds gone by and the download rate](images/live/departure.png)
 
-4. **Fly**, anywhere. Another flight started from X-Plane's menu waits the same way, and so does a
-   new location chosen in flight from the Flight Configuration screen.
+4. **Fly**, anywhere. Another flight started from X-Plane's menu waits the same way. A new location
+   chosen in flight from the Flight Configuration screen waits too: X-Plane stays paused on that
+   screen, with Live's own loading window over it, the same as the plugin's, and goes on by itself
+   once the ground there is built. On a Mac the pointer over X-Plane may turn into the spinning
+   wheel meanwhile; on Windows X-Plane is not greyed.
 5. **Quit X-Plane, then Stop.** Live takes its scenery and its small plugin out of X-Plane. Stopped
    while X-Plane still runs, Live waits for X-Plane to quit first ("Leave it installed" stops
    waiting).
@@ -360,7 +361,11 @@ airport finds them sharp.
 and takes it out when it stops. It holds X-Plane on its loading screen as long as the ortho keeps
 arriving, and lets it go when everything there is built, when nothing has downloaded for a minute
 (no internet, or a source refusing every request: `LogLive.txt` says why), or when you click Stop.
-It never holds X-Plane in flight, and does nothing when Live is not running. In flight it shows
+It never holds X-Plane in flight, and does nothing when Live is not running. A new location chosen
+in flight loads no aircraft, so the plugin hears nothing to hold X-Plane at: Live pauses X-Plane
+itself, the instant X-Plane writes the new start in its preferences, and lets it go once everything
+there is built, or at once if Live stops. On Windows the plugin asks Windows not to grey X-Plane as
+« Not Responding » meanwhile. In flight it shows
 Live's notices in a small panel (no mesh under the aircraft), and measures X-Plane's frames: Live
 logs a frame of 100 ms or more as a stutter, with what it was doing then. While X-Plane flies, Live
 builds at most four textures at once, at a low priority: X-Plane's threads always go first.
@@ -435,10 +440,8 @@ To switch Live off, put `enabled = false` in `live.toml`, in OrthoStudio XP's ow
 
 - Only where AutoOrtho has a mesh: the six regions cover the land of the planet, a few islands
   excepted.
-- X-Plane 12.4.4 or later. With an older X-Plane, a flight started from the main menu waits as it
-  should, but a new location chosen in flight from the Flight Configuration screen does not: X-Plane
-  loads it before Live has built it and shows error windows about missing terrain images. X-Plane
-  12.4.4 is the first version that tells Live's plugin at that moment.
+- On Linux, a new location chosen in flight waits too, but without Live's loading window over
+  X-Plane: `LogLive.txt` says the wait.
 - Flown with X-Plane 12 on a Mac and on Windows; not yet on Linux.
 - External views add nothing: X-Plane takes the textures for the aircraft alone, so a camera taken
   far shows the ground there as sharp as the aircraft's distance allows, a little blurry. Live

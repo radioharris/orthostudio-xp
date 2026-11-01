@@ -114,6 +114,7 @@ WRITES_EVERY_S = 300.0  # what Live wrote, by kind, in the log this often (write
 # whose ZL13 is other imagery; a record of before has their far textures built again
 PHOTO_FLOOR_RULE = "13-or-source"
 STALL_S = 60.0  # pieces awaited this long and none arriving: no internet, X-Plane is let go
+PAUSE_UNREAD_S = 10.0  # X-Plane paused for a new start in flight that Live cannot read: let go
 # A piece of a texture X-Plane waits for (urgency <= 0), awaited this long: the texture is built
 # without it, from the zoom below, as a piece that failed, and built again later with it. At a
 # start at LSGG, one piece Bing never sent held X-Plane 20 s, the downloader's four tries.
@@ -1984,6 +1985,7 @@ def run(
     departure: Callable[[], tuple[float, float, str] | None] = lambda: None,
     season_for: Callable[..., tuple[str, str]] | None = None,
     between: Callable[[], None] = lambda: None,
+    pauser=None,
 ) -> None:
     """Follow X-Plane over UDP until Ctrl-C (or ``should_stop``), planning every two seconds.
 
@@ -1995,8 +1997,16 @@ def run(
     ``season_for(lat, day=None)``: the season of a start at that latitude and why, when it follows
     X-Plane's date (``day``: the flight's, as the plugin gives it while X-Plane loads it; else the
     one X-Plane saved); None: the season chosen stays. ``between``: asked every BETWEEN_S whether
-    anything changed between two flights (``session.own_ground_watch``)."""
+    anything changed between two flights (``session.own_ground_watch``). ``pauser``
+    (``orthostudio.live.pause.Pauser``) pauses X-Plane at a new location chosen in flight, which
+    the plugin cannot hold: kept paused, with Live's own loading window over it, as the plugin's
+    HOLD is held."""
+    from .gate import place_in
+    from .pause import start_key, start_name
+    from .pause_window import PauseWindow, lines
     from .scenery import xplane_pid, xplane_started_at
+
+    pause_window: PauseWindow | None = None
 
     fields = [name for name, _ in DATAREFS]
     values: dict[str, float] = {}
@@ -2079,6 +2089,10 @@ def run(
             mbs = rate.mbs(now, getattr(streamer.downloader, "bytes", 0))
             # X-Plane flying, no start pending: the encoders leave it its cores (submit_ready)
             streamer.flying = "lat" in values and now - last_packet < FRESH_S and arrival is None
+            if (
+                pauser is not None
+            ):  # its pause is for a flight X-Plane flies, the loads are the plugin's
+                pauser.flying = "lat" in values and now - last_packet < FRESH_S
             wanted = departure()  # the window's Prepare: a start before X-Plane loads it
             if wanted is not None:
                 expect(*wanted, "from")
@@ -2106,11 +2120,7 @@ def run(
                         note = plugin_note(notice, lang) if notice else None
                         gate.note(addr, note, notice, lang=lang)
                         continue
-                    if (
-                        running
-                        and why != "flight"
-                        and not (arrival is not None and arrival.certain(now))
-                    ):
+                    if running and not (arrival is not None and arrival.certain(now)):
                         if kind == "HOLD":  # a livery changed in flight: nothing loads
                             gate.answer(addr, True, 0, lang=language())
                         continue
@@ -2187,6 +2197,58 @@ def run(
                                 "  X-Plane waits on its loading screen: the files of its squares "
                                 f"around {arrival.name} are being made"
                             )
+            if pauser is not None and pauser.paused_for is not None:
+                # X-Plane paused at a new location chosen in flight: its start is the click read in
+                # Freeflight.prf just above (gate.new_start), held as the plugin's HOLD is: until
+                # everything X-Plane will read there is built, or nothing downloads any more
+                lang = language()
+                key = start_key(pauser.paused_for)
+                took = now - pauser.paused_since
+                if pause_window is None:
+                    pause_window = PauseWindow(xplane["pid"] or xplane_pid())
+                if arrival is not None and arrival.how == "click" and key and key in arrival.name:
+                    left, work = streamer.urgent_work()
+                    done = arrival.progress(work)
+                    arrival.held = arrival.loading = True
+                    building = streamer.urgent_building()
+                    stalled = left > 0 and streamer.stalled_s() > STALL_S
+                    ready = left == 0 and streamer.squares_ready(arrival.lat, arrival.lon)
+                    pause_window.show(
+                        *lines(
+                            place_in(arrival.name, lang), left, building, mbs, took, left > 0, lang
+                        ),
+                        done,
+                    )
+                    if ready or stalled:
+                        pauser.resume()
+                        pause_window.hide()
+                        if stalled:
+                            arrival.stalled = True
+                            log(
+                                f"  nothing downloaded for {STALL_S:.0f} s: X-Plane goes on with "
+                                f"{left} textures to build around {arrival.name} "
+                                f"({why_nothing_comes(streamer.downloader)})"
+                            )
+                        else:
+                            arrival.released = True
+                            log(
+                                f"  X-Plane goes on after {took:.0f} s: everything it reads "
+                                f"around {arrival.name} is built"
+                            )
+                    elif now - last_wait >= 5:
+                        last_wait = now
+                        log(
+                            f"  X-Plane waits, paused: {left} textures to build around "
+                            f"{arrival.name}, {left - building} of them waiting for their photos "
+                            f"({done:.0%}, {took:.0f} s, {mbs:.1f} MB/s)"
+                        )
+                elif took > PAUSE_UNREAD_S:  # the click never read: never X-Plane kept for nothing
+                    pauser.resume()
+                    pause_window.hide()
+                    log(f"  X-Plane goes on: its new start was not read in {PAUSE_UNREAD_S:.0f} s")
+                else:  # the click not planned yet: its name as X-Plane wrote it, the files to come
+                    where = place_in(start_name(pauser.paused_for), lang)
+                    pause_window.show(*lines(where, 0, 0, mbs, took, False, lang), 0.0)
             if (
                 arrival is not None
                 and arrival.ready_at is None
