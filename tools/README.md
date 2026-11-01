@@ -10,3 +10,7 @@ installers, Python inside (`docs/specs/packaging.md`), and the macOS app that ru
 keeps (ANADEM against Copernicus, a folder of one's own against either).
 `witness/`: builds the witness tiles (`witness/tiles.txt`) with a checkout, up to their DSF, and compares two
 such builds tile by tile: what a change touches, before it is released (`docs/testing/witness-tiles.md`).
+`8k-test/`: copies of built tiles with their 4K photos glued four by four into 8K textures, beside 4K
+copies rewritten the same way, to measure what fewer, larger textures change in X-Plane; not part of
+the app, it runs with an installed OrthoStudio XP's own Python and DSFTool, a launcher per system
+(`8k-test/README.txt`).
