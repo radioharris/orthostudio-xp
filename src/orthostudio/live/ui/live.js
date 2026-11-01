@@ -1152,7 +1152,10 @@ async function deleteClosed() {
   if ($("delete-dialog").returnValue !== "delete") return;
   const textures = $("delete-textures").checked && !$("delete-textures").disabled;
   const imagery = $("delete-imagery").checked;
-  if (textures || imagery) await act("delete", { textures, imagery });
+  if (!textures && !imagery) return;
+  await act("delete", { textures, imagery });
+  // the map without them at once, not at the next change of tab (the user, 2026-11-01)
+  liveMap?.builtChanged();
 }
 
 // --- the log -----------------------------------------------------------------------------------

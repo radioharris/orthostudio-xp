@@ -571,6 +571,18 @@ def test_a_build_while_live_streams_is_asked_about_never_refused() -> None:
     assert '<dialog id="build-question"' in page
 
 
+def test_the_map_drops_the_deleted_textures_at_once() -> None:
+    """After Delete, the map asks for Live's textures anew: they stayed drawn until the next
+    change of tab (the user, 2026-11-01)."""
+    from orthostudio.live.web import UI_DIR
+
+    js = (UI_DIR / "live.js").read_text(encoding="utf-8")
+    closed = js[js.index("async function deleteClosed() {") :]
+    closed = closed[: closed.index("\n}\n")]
+    assert closed.index('act("delete"') < closed.index("liveMap?.builtChanged()")
+    assert "builtChanged() {" in (UI_DIR / "livemap.js").read_text(encoding="utf-8")
+
+
 def test_a_flight_while_osxp_builds_is_asked_about_never_refused() -> None:
     from orthostudio.live.web import UI_DIR
 

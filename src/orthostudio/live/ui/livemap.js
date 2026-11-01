@@ -434,6 +434,10 @@ export function createLiveMap(el, { api, info = null, ownKinds = null }) {
     invalidate() {
       map.invalidateSize();
     },
+    /** Live's textures deleted: asked anew at once (a hidden map asks when shown). */
+    builtChanged() {
+      drawBuilt();
+    },
     /** Its screen shown again: Leaflet measures its box, and the textures are asked anew. */
     shown() {
       map.invalidateSize();
