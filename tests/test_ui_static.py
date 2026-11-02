@@ -3899,7 +3899,7 @@ def test_step_3_says_when_x_plane_is_not_found() -> None:
         'm.xplaneNotice({xplane: {path: "C:\\\\X-Plane 12", detected: true}}, null), '
         "m.xplaneNotice(null, null)]",
     )
-    assert got[0].startswith("X-Plane 12 was not found on this computer.")
+    assert got[0].startswith("X-Plane 12 not found on this computer:")
     assert "E:\\X-Plane 12" in got[1] and got[2] is None and got[3] is None
     tables = _node_json(
         "i18n.js",
@@ -6522,7 +6522,7 @@ def test_the_legend_says_what_the_view_is_worth_in_a_builds_terms() -> None:
         '[[18, 46, 14, "EOX"], [14, 46, 14, "EOX"], [18, 46, null, ""]]'
         ".map(([z, lat, cap, name]) => m.viewLabel(z, lat, cap, name))",
     )
-    assert over[0] == "ZL18, enlarged. EOX goes no further than ZL14, about 7 m per pixel"
+    assert over[0] == "ZL18 enlarged: EOX stops at ZL14, about 7 m per pixel"
     assert over[1] == "Low, about 7 m per pixel \u00b7 ZL14", "at the ceiling nothing is enlarged"
     assert over[2] == "Very sharp, about 40 cm per pixel \u00b7 ZL18", "no ceiling, nothing to warn"
 
@@ -6668,8 +6668,8 @@ def test_the_map_says_when_its_source_refuses_this_computer() -> None:
     assert 'await ctx.api("GET", url);' in ask
     assert "return tileRefused(err?.status, err?.detail);" in ask
     tables = _i18n_tables()
-    assert tables["fr"]["map.base_refused"].startswith("{provider} refuse votre connexion (accès")
-    assert tables["en"]["map.base_refused"].startswith("{provider} refuses your connection (access")
+    assert tables["fr"]["map.base_refused"].startswith("{provider} refuse votre connexion")
+    assert tables["en"]["map.base_refused"].startswith("{provider} refuses your connection")
     # the line never runs under the legend: at the bottom right, as wide as its words up to what
     # the legend, at most 45 % at the bottom left, leaves
     rules = dict(_css_rules((UI / "styles.css").read_text(encoding="utf-8")))
@@ -7970,7 +7970,7 @@ def test_the_tiles_picked_are_built_again_as_the_plan_would_build_them() -> None
     ]
     assert got["q"]["go"] is True
     assert got["short"]["go"] is True
-    assert got["short"]["body"][-1].startswith("The disk may run short: about 4.5 GB to write")
+    assert got["short"]["body"][-1].startswith("Space is tight: 4.5 GB to write")
     # after an update that changes a stage, the same words: the figures are what the store says
     # ("up to" did not go, 2026-10-16)
     assert got["most"]["body"][1] == got["q"]["body"][1]
@@ -8020,10 +8020,7 @@ def test_answers_not_saved_are_said_until_they_are_saved() -> None:
         const draft = m.rebuildQuestion(reqs, [plan], 0, true);
         process.stdout.write(JSON.stringify({ saved, draft }));"""
     )
-    said = (
-        "Your changes in Settings are not saved: a build uses the settings saved before. Save "
-        "them in Settings first if they are meant for it."
-    )
+    said = "Settings not saved: the build takes the previous ones."
     assert said not in got["saved"]["body"]
     assert got["draft"]["body"][-1] == said
     assert got["draft"]["go"] is True  # said, not refused: the pilot may mean the saved ones

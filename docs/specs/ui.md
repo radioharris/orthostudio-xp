@@ -207,8 +207,7 @@ else centimetres by 10 from 50 cm and by 5 below), then the zoom level as second
    `app.js`: the chips and the map show one selection, `state.tiles`); below zoom 5 a toast
    asks to zoom in a little. A tile in a build, under way or waiting, is not chosen (user
    request, 2026-09-14: it would be built a second time once that build ended): a toast says
-   "+46+006 is already in a build, under way or waiting: you can choose it again once that build
-   ends." (`tilesInBuilds` over the jobs the page knows).
+   "+46+006 is already in a build: choose it once that build is done." (`tilesInBuilds` over the jobs the page knows).
 
 #### Step 1 · Choose the tiles
 
@@ -218,8 +217,7 @@ the detail level and the other build settings come from this profile." Choosing 
 current (`POST /api/profiles/current`) and gives step 1 its source and detail level
 (`planTakesProfile`), which can still be changed for this build alone; a plain *Save* in Settings
 leaves them as the pilot set them (section 2.4). While Settings hold changes not saved the list
-waits, greyed, and its line says why: "Your changes in Settings are not saved: save or undo them to
-switch profiles." Step 3's sentence names it: "Build settings, profile "Mountains": …". With one
+waits, greyed, and its line says why: "Settings not saved: save or undo first." Step 3's sentence names it: "Build settings, profile "Mountains": …". With one
 profile, nothing of this shows.
 
 A Save in Settings still never changes step 1's source and level, the build being prepared (a user,
@@ -297,7 +295,7 @@ the build would go (a campaign, 2026-10-24). Then:
   - latitude / longitude → tile `floor(lat)`, `floor(lon)` formatted `%+03d%+04d`.
 
   The tiles of a build under way or waiting are left out of what these add, and step 3's message
-  line says so: "Already in a build, under way or waiting, so left out: +46+006."
+  line says so: "Already in a build, left out: +46+006."
 
 The request to `/api/plan` and `/api/jobs` always carries the explicit `tiles: [...]` list
 (never `{icao, radius_km}`), so what the user sees is what is built.
@@ -328,7 +326,7 @@ adds nothing. These are approximations; step 3 gives the engine's numbers.
   - rectangle: "Click two opposite corners of the rectangle. Esc to cancel", then "Now click
     the opposite corner"; a dashed rectangle follows the pointer; two corners apart make a
     4-vertex zone (south-west, south-east, north-east, north-west);
-  - free shape: "Click to add points, double-click to finish, Esc to cancel (n point(s))";
+  - free shape: "Click: a point · Double-click: finish · Esc: cancel (n point(s))";
     a dashed line joins the last point, the pointer and the first point. Finishing refuses
     fewer than 3 points and a ring that crosses or touches itself (`polygonIsSimple`), so the
     engine's validity check (`shapely`) is not the first to see it. At most 2000 points.
@@ -380,7 +378,7 @@ adds nothing. These are approximations; step 3 gives the engine's numbers.
 - **Delete the zones in the list** (user request, 2026-09-13): a small trash above the list, on the
   line of the priority sentence, shown when the list has rows and loaded. It asks first ("Delete
   the zones in the list?", their number, how many zones outside the selected tiles stay when some
-  do, "Tiles already built do not change: their sharper areas stay until they are built again";
+  do, "Built tiles keep their sharp zones until built again";
   *Keep them* has the focus, Esc keeps them), then deletes the zones the list shows, their marks
   and the selection if it was one of them, moves the focus to the zones step and says "Zones
   deleted: N." The zones left out stay: the trash never deletes what cannot be seen (2026-09-22).
@@ -434,10 +432,9 @@ adds nothing. These are approximations; step 3 gives the engine's numbers.
   engine's refusal was a list error, which a user took for a limit of the program (64 then,
   2026-09-22).
 - *X-Plane 12* (`app.js` `xplaneNotice`), shown only when `GET /api/status` knows no X-Plane
-  folder: "X-Plane 12 was not found on this computer. OrthoStudio XP needs its folder: it takes
-  the relief, roads, forests and buildings from it, and adds the tiles to it.", or, when Settings
-  holds a folder that is not one any more, "The X-Plane 12 folder chosen in Settings was not found:
-  <path>." with the same reason; its button *Choose the X-Plane 12 folder* opens Settings with the
+  folder: "X-Plane 12 not found on this computer: OrthoStudio XP needs it for the relief, the roads
+  and the install.", or, when Settings holds a folder that is not one any more, "The X-Plane 12
+  folder in Settings is missing: <path>. OrthoStudio XP needs it."; its button *Choose the X-Plane 12 folder* opens Settings with the
   focus in the folder field of *Where is X-Plane 12 installed?*. Without it the engine refuses any
   estimate or build (`api.md` 2.2). User report, 2026-09-14: the Windows app in a virtual machine,
   X-Plane on the Mac around it, answered *Estimate* with "XP_GLOBAL_SCENERY_NOT_FOUND: Global
@@ -466,8 +463,8 @@ adds nothing. These are approximations; step 3 gives the engine's numbers.
   - *Compute: your computer* (it said *your Mac* on Windows and Linux too until 1.1.0) — images to prepare (`compute.textures`), images already prepared (`compute.cached`: taken from the cache as they are), seconds. They were every image of the tiles and the steps in the store, 309 to prepare and 7 prepared for a tile whose 309 images all came back in a second (2026-10-23);
   - *Disk* — the engine's verdict (`app.js` `diskVerdict`): space needed is `disk.needed_gb` (images
     and downloads), then `free_gb` labelled "OK" in green when `disk.ok`, else "may run short" in
-    amber after an amber line "The disk may run short: about X to write, Y free. If it fills up,
-    the build stops cleanly, and started again it carries on from where it stopped." (7.0.4);
+    amber after an amber line "Space is tight: X to write, Y free. If the disk fills up, the build
+    stops; started again, it resumes where it was." (7.0.4);
     `disk.ok` is the engine's rule, free > 2 × needed (`orthostudio.estimate.Estimate.disk_ok`),
     applied by the page itself only to an answer without it (`dds_gb` standing for a missing
     `needed_gb`). It is a warning, never a refusal: the figure is an estimate, and a disk that fills
@@ -498,9 +495,8 @@ adds nothing. These are approximations; step 3 gives the engine's numbers.
 `install: true|false` and `queue: true`. Both are active as soon as tiles are chosen, with no
 estimate to ask for first. They are disabled, the reason under them, only when no tile is chosen
 ("Choose tiles first (step 1).") or when the estimate was refused ("The estimate was refused: see
-step 3."). A disk that may run short leaves them active, the line under them in amber: "The disk
-may run short: about 8.3 GB to write, 6.1 GB free. You can build: if it fills up, the build stops
-cleanly." Otherwise the line under them,
+step 3."). A disk that may run short leaves them active, the line under them in amber: "Space is
+tight: 8.3 GB to write, 6.1 GB free. If the disk fills up, the build stops cleanly." Otherwise the line under them,
 10 px below, sums the estimate up: "About 1.88 GB to download (5 – 9 min) and 8.31 GB on disk."
 A click while the estimate of a change is under way waits for it, and starts nothing the estimate
 refused; both buttons stay disabled until the engine answered, so that a
@@ -510,8 +506,8 @@ tiles again with its own): the map shows the tiles of the build in their own sty
 - Nothing else runs (`queue_position` 0): Works shows the new job.
 - **A build under way or waiting** (user request, 2026-09-14): this one waits for its turn. Step 4
   says it before the click, under the buttons: "A build is under way: this one will wait for its
-  turn." After it, the Plan stays, where more tiles can be chosen and queued; a toast says "Build
-  queued behind N other(s): it starts as soon as the one before it ends.", and the map dashes its
+  turn." After it, the Plan stays, where more tiles can be chosen and queued; a toast says "Queued
+  behind N other(s): starts as soon as the one before ends.", and the map dashes its
   tiles.
 - `409 SYS_TILE_IN_BUILD` (a tile queued from another window meanwhile): step 3's message line
   names the tiles, "Take them out of the selection, or wait for that build to end.", and the job
@@ -526,8 +522,8 @@ one of the chosen tiles (possibly none), invalid zones included, so that the eng
 zone marked with a problem elsewhere does not refuse it (the engine, when a request carries no
 `zones`, likewise ignores a problem of a saved zone that touches none of the tiles). When the zones
 could not be loaded (network or `5xx`), the estimate and *Build* load them again first; if that
-fails too nothing is sent and step 3 says so ("Nothing was sent: the zones of step 2 could not be
-loaded..."), since an empty list would build without the saved zones and leaving `zones` out would
+fails too nothing is sent and step 3 says so ("Step 2's zones did not load, nothing was sent:
+..."), since an empty list would build without the saved zones and leaving `zones` out would
 build zones the page never showed.
 
 ### 2.2 Works
@@ -1152,8 +1148,8 @@ the relief question, 2026-10-30) kept, since they are this computer's and its pi
 a library's key, and a build from source, which carries none, went to the public servers,
 2026-10-02); a draft that differs from the saved settings says
 "Changes not saved yet". For as long as it differs, the Settings tab carries a dot (its tooltip says
-the same), step 3 of the Plan says "Your changes in Settings are not saved: a build uses the
-settings saved before. Save them in Settings first if they are meant for it.", and so does the
+the same), step 3 of the Plan says "Settings not saved: the build takes the previous ones.", and so
+does the
 Library's *Build again…* question (`app.js` `renderUnsaved`); Save or *Undo my changes* clears the
 three. A message given on leaving Settings went by in three seconds, and a user built a tile with
 Copernicus alone, the folder of his lidar never saved (2026-10-15). The action bar sticks to the bottom, and a save the engine refuses says
@@ -1378,8 +1374,7 @@ level.
 Past the source's own ceiling the map keeps zooming and Leaflet enlarges the last tiles it
 downloaded (`maxNativeZoom`): the pixels grow, the detail does not, and a user zoomed to ZL18 on
 EOX, which stops at ZL14 (2026-09-25). The line must not then promise a sharpness no build can
-deliver, so it reads *This view: ZL18, enlarged. EOX goes no further than ZL14, about 7 m per
-pixel*. `nativeCeiling` is that ceiling, `min(19, max_zl)`, and the layer and the legend read the
+deliver, so it reads *This view: ZL18 enlarged: EOX stops at ZL14, about 7 m per pixel*. `nativeCeiling` is that ceiling, `min(19, max_zl)`, and the layer and the legend read the
 same one, so the warning cannot land on a different zoom from the one the imagery stops improving
 at. The street map and the mock are not the source's imagery: no ceiling is given, and nothing is
 called enlarged.
@@ -1420,8 +1415,7 @@ and nowhere else, so it is the same at every zoom and in every window (`imageryN
 3. when not one image came, one tile of the view is asked again through the page's `api()`
    (`tileRefusal`), which reads what an `<img>` cannot: if the engine's answer is its 502
    carrying `NET_FORBIDDEN`, what it makes of a 403 from the source (`tileRefused`), line 2
-   becomes "{provider} refuses your connection (access denied): choose another source
-   meanwhile." Esri's network answered "Access Denied" to a user's address for two days, the day
+   becomes "{provider} refuses your connection: choose another source meanwhile." Esri's network answered "Access Denied" to a user's address for two days, the day
    after he had built 37 tiles at ZL17 from it in an afternoon, and the map said only that no
    imagery came (2026-10-07). It is said only while that view of that source is still the one
    on screen; any other answer leaves line 2 as it is.
