@@ -18,7 +18,7 @@ from httpx import ASGITransport, AsyncClient
 
 from orthostudio.api.zones_api import zones_router
 from orthostudio.dsf.params import DsfParams
-from orthostudio.dsf.zones import texture_map
+from orthostudio.dsf.zones import lowest_zl, texture_map
 from orthostudio.model import TileRef
 from orthostudio.zone_cells import zone_cells
 from orthostudio.zones import parse_zones_document, zones_for_tile
@@ -62,6 +62,23 @@ def test_the_cells_are_the_builds_own() -> None:
     # b, around a, takes everything but a's cells: one polygon with a hole where a is
     (b_rings,) = got["b"]["area"]
     assert len(b_rings) == 2
+
+
+def test_the_lowest_level_is_the_builds_own() -> None:
+    """A tile's masks come down to its coarsest texture (``BuildSpec.tile_config``, a user at ZL15
+    with the masks at 16, 2026-11-02): that level must be the one the DSF is written with."""
+    low = {"id": "e", "name": "low", "zl": 14, "polygon": _ring(6.30, 46.30, 6.40, 46.40)}
+    whole = {"id": "f", "name": "whole", "zl": 17, "polygon": _ring(6.0, 46.0, 7.0, 47.0)}
+    seen = set()
+    for zones in (ZONES, [*ZONES, low], [whole], [low, whole], [whole, low]):
+        doc = parse_zones_document({"format": "osxp-zones-1", "zones": zones})
+        for tile in (TileRef(46, 6), TileRef(46, 7)):
+            entries = zones_for_tile(doc.zones, tile, "BI", mesh_zl=19)
+            params = DsfParams(default_zl=16, default_website="BI", mesh_zl=19, zone_list=entries)
+            lowest = lowest_zl(tile, entries, 16, 19)
+            assert lowest == int(texture_map(tile, params).zl.min()), (tile, zones)
+            seen.add(lowest)
+    assert seen == {14, 16, 17}, "a coarser zone, the tile's own level, a zone over it all"
 
 
 @pytest.mark.anyio

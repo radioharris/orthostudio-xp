@@ -375,6 +375,37 @@ def test_unknown_tile_parameter(tmp_path: Path) -> None:
     assert cfg["default_website"] == "BI" and cfg["default_zl"] == 14 and cfg["masks_width"] == 200
 
 
+def _box(south: float, west: float, north: float, east: float, zl: int) -> list[object]:
+    """A ``zone_list`` entry (``[lat0, lon0, lat1, lon1, ...], zl, provider``) over a box."""
+    ring = [south, west, south, east, north, east, north, west, south, west]
+    return [ring, zl, "BI"]
+
+
+def test_the_masks_are_never_finer_than_the_coarsest_texture(tmp_path: Path, env: BuildEnv) -> None:
+    """A texture coarser than the masks' grid gets no mask, and its water showed X-Plane's own
+    up to a sharp shore: a user built at ZL15 with the masks at 16 (2026-11-02). A tile's masks
+    now come down to its coarsest texture, and never go up."""
+
+    def mask_zl(zl: int, setting: int, zones: list[list[object]] | None = None) -> int:
+        config: dict[str, object] = {"mask_zl": setting}
+        if zones:
+            config["zone_list"] = zones
+        return int(_spec(tmp_path, zl=zl, config=config).tile_config()["mask_zl"])
+
+    assert mask_zl(15, 16) == 15
+    assert mask_zl(16, 16) == 16 and mask_zl(18, 16) == 16 and mask_zl(16, 14) == 14
+    assert mask_zl(12, 14) == 12  # the coarsest level the Plan offers
+    # a zone coarser than the tile brings the masks down; one over the whole tile leaves no
+    # texture at the tile's own level
+    assert mask_zl(16, 16, [_box(43.5, 5.5, 43.6, 5.6, 14)]) == 14
+    assert mask_zl(15, 16, [_box(43, 5, 44, 6, 17)]) == 16
+    assert mask_zl(15, 16, [_box(43.5, 5.5, 43.6, 5.6, 17)]) == 15
+    # the masks, the DSF and the textures all read the tile's level
+    (g,) = _declare([_spec(tmp_path, zl=15, config={"mask_zl": 16})], _sched(env), env)
+    for node in (g.masks, g.dsf, g.textures):
+        assert node.params.mask_zl == 15, node.id  # type: ignore[attr-defined]
+
+
 # -- synthetic run of the DSF and pack nodes ------------------------------------------------------
 
 

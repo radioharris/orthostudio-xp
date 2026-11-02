@@ -896,17 +896,20 @@ and read 50 or more as 5; OrthoStudio XP refuses those, and until 1.0 it stopped
   pixel at 14 and 1.7 m at 16 (45°). A texture at a higher level uses a crop of it scaled up:
   1024 px stretched to 4096 at ZL16, 256 px at ZL18 (Ortho4XP `O4_Mask_Utils.py:22-60, 658`;
   OrthoStudio XP `textures/imprint.py:95-131`). A texture below `mask_zl` never gets a mask: its sea
-  is plain X-Plane water from the coastline, and nothing says so (Ortho4XP
-  `O4_Mask_Utils.py:24, 39`; OrthoStudio XP
-  `dsf/encode.py:215-216`, `pipeline/textures.py:816-817`).
+  is plain X-Plane water from the coastline (Ortho4XP `O4_Mask_Utils.py:24, 39`; OrthoStudio XP
+  `dsf/encode.py` `_MaskDecision`, `pipeline/textures.py`). So OrthoStudio XP builds each tile's
+  masks at the setting or at the tile's coarsest texture level, whichever is lower
+  (`BuildSpec.tile_config`, `dsf/zones.py lowest_zl`): a user built at ZL15 with the masks at 16
+  and every shore of the tile was sharp (2026-11-02). The setting is the finest the masks go;
+  the tile's `tile_settings.cfg` records the level they were built at.
 - **In X-Plane.** 15 or 16: a coast fade that follows rocks, quays and coves more closely,
-  mostly on ZL17 and ZL18 textures (Q12). Set above the lowest zoom level used on a coast: that
-  coast loses the photo over its water.
+  mostly on ZL17 and ZL18 textures (Q12). On a tile built at a coarser level, the fade of that
+  level.
 - **Cost.** About 4 times (15) or 16 times (16) more mask cells to compute (7 masks and about
   1 s at 14 on `+43+005`; estimate). No change in texture size while masks are imprinted: the
   alpha channel is 4096² either way.
-- **Recommendation. Folded, guarded:** never above the lowest zoom level used where there is
-  sea.
+- **Recommendation. Folded, guarded:** 14 unless the coasts are built at ZL16 or more; a value
+  above a tile's level costs nothing there, the tile's masks come down to it.
 - **Picture (for experts).** The alpha channel of one ZL18 coastal texture made from a
   `mask_zl` 14 mask (a 256 px crop stretched 16 times) next to one made at 16, both from
   `orthostudio.textures.imprint.mask_for_texture`.
