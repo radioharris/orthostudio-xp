@@ -2002,7 +2002,8 @@ def run(
     the plugin cannot hold: kept paused, with Live's own loading window over it, as the plugin's
     HOLD is held."""
     from .gate import place_in
-    from .pause import start_key, start_name
+    from .pause import start_key
+    from .pause import start_name as prefs_start_name  # start_name: the --from start's
     from .pause_window import PauseWindow, lines
     from .scenery import xplane_pid, xplane_started_at
 
@@ -2247,7 +2248,7 @@ def run(
                     pause_window.hide()
                     log(f"  X-Plane goes on: its new start was not read in {PAUSE_UNREAD_S:.0f} s")
                 else:  # the click not planned yet: its name as X-Plane wrote it, the files to come
-                    where = place_in(start_name(pauser.paused_for), lang)
+                    where = place_in(prefs_start_name(pauser.paused_for), lang)
                     pause_window.show(*lines(where, 0, 0, mbs, took, False, lang), 0.0)
             if (
                 arrival is not None

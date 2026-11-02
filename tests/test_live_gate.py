@@ -1457,6 +1457,15 @@ class RunTest(unittest.TestCase):
         self.xp = ScriptedXPlane()
         self.log = []
         self.built_when_said = {}  # message -> how many textures were built when it was logged
+        self.pauser = FakePauser()
+        self.lat, self.lon = parse_texture_name(f"{NAMES[0]}.dds").center
+        patch = mock.patch.object(streamer_module, "PLAN_EVERY_S", 0.2)
+        patch.start()
+        self.addCleanup(patch.stop)
+        self.run_live()
+
+    def run_live(self, **more):
+        """run() in its thread, with a streamer of its own (run() closes it at the end)."""
 
         def log(message):
             self.log.append(message)
@@ -1472,11 +1481,6 @@ class RunTest(unittest.TestCase):
             log=log,
         )
         self.stop = threading.Event()
-        self.pauser = FakePauser()
-        self.lat, self.lon = parse_texture_name(f"{NAMES[0]}.dds").center
-        patch = mock.patch.object(streamer_module, "PLAN_EVERY_S", 0.2)
-        patch.start()
-        self.addCleanup(patch.stop)
         self.thread = threading.Thread(
             target=run,
             daemon=True,
@@ -1487,6 +1491,7 @@ class RunTest(unittest.TestCase):
                 should_stop=self.stop.is_set,
                 log=log,
                 pauser=self.pauser,
+                **more,
             ),
         )
         self.thread.start()
@@ -1555,6 +1560,18 @@ class RunTest(unittest.TestCase):
         self.assertEqual(self.xp.commands, [])  # X-Plane read everything once built: no reload
         self.assertFalse(self.streamer.read_early)
         self.assertTrue(any("X-Plane goes on" in m for m in self.log))
+
+    def test_a_start_prepared_by_its_name(self):
+        """The Live window's Prepare (--from) with the start's name: built at once, and the plugin
+        told that name while X-Plane waits (Live stopped at Prepare with the pause's own
+        start_name in place of the name, 2026-11-02)."""
+        self.stop.set()
+        self.thread.join(30)
+        self.run_live(start=Fix(self.lat, self.lon), start_name="EHAM")
+        self.assertTrue(self.wait_for(lambda: any("building around EHAM" in m for m in self.log)))
+        answers = self.hold(self.lat, self.lon)
+        self.assertEqual(answers[-1], "LIVE1 GO 0")
+        self.assertTrue(all(a.endswith(" at=EHAM") for a in answers[:-1]), answers)
 
     def test_held_until_its_squares_files_are_made(self):
         """Everything built, X-Plane still waits for the files of its squares: the .ter files and
