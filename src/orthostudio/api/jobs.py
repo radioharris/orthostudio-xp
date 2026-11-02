@@ -1034,6 +1034,8 @@ class Job:
                 # (a user missed it during a build, 2026-09-17)
                 "relief": _relief_of(self.specs[0]) if self.specs else None,
                 "relief_own": bool(self.specs) and _own_files_of(self.specs[0]),
+                # the settings profile it was built with, named by Works (a build again keeps it)
+                "profile": (self.request or {}).get("profile"),
                 "ok": self.status == "done",
             }
 

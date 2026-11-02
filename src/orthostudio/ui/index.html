@@ -104,6 +104,13 @@
           </div>
           <p class="plan-step-size" id="selection-size" aria-live="polite"></p>
           <div class="field-row field-stack">
+            <!-- The settings profile the build takes, from the second one on: its source and level
+                 come with it (app.js renderPlanProfile). -->
+            <div class="field" id="plan-profile" hidden>
+              <label for="plan-profile-select" data-i18n="plan.profile">Settings profile</label>
+              <select id="plan-profile-select"></select>
+              <small class="help" id="plan-profile-help"></small>
+            </div>
             <div class="field">
               <label for="provider-select" data-i18n="plan.provider">Imagery source</label>
               <select id="provider-select"></select>
@@ -488,6 +495,9 @@
       <p class="lead" data-i18n="settings.lead">Answer in plain words what you want to see in X-Plane. The recommended answer is marked.</p>
     </div>
     <form id="settings-form" class="settings-form" novalidate>
+      <!-- The settings profiles, from the second one on: which one Save writes into, rename,
+           delete (app.js renderSettingsProfile). -->
+      <div class="settings-profile" id="settings-profile" hidden></div>
       <div class="settings-search">
         <input type="search" id="settings-search" class="settings-search-input" spellcheck="false" autocomplete="off"
                data-i18n-placeholder="settings.search_ph" data-i18n-aria-label="settings.search" placeholder="Search: rivers, water, min_area…" aria-label="Search the settings">
@@ -507,10 +517,20 @@
         <div id="settings-expert-fields"></div>
       </details>
       <div class="actions settings-actions">
-        <button type="submit" class="btn btn-primary" data-i18n="settings.save">Save</button>
-        <button type="button" class="btn" id="settings-reset" data-i18n="settings.reset">Undo my changes</button>
-        <button type="button" class="btn" id="settings-defaults" data-i18n="settings.defaults">Default values</button>
-        <span class="help settings-status" id="settings-status" aria-live="polite"></span>
+        <!-- Save names the profile it writes into once there are two (app.js renderSaveButtons). -->
+        <button type="submit" class="btn btn-primary settings-main" id="settings-save" data-i18n="settings.save">Save</button>
+        <button type="button" class="btn settings-main" id="settings-save-new" data-i18n="settings.save_new">Save as a new profile…</button>
+        <button type="button" class="btn settings-main" id="settings-reset" data-i18n="settings.reset">Undo my changes</button>
+        <button type="button" class="btn settings-main" id="settings-defaults" data-i18n="settings.defaults">Default values</button>
+        <span class="help settings-status settings-main" id="settings-status" aria-live="polite"></span>
+        <!-- Save as a new profile: the same bar asks for its name (app.js openNewProfile). -->
+        <div class="settings-new" id="settings-new" hidden>
+          <label class="settings-new-label" for="settings-new-name" data-i18n="settings.new_name">Name of the new profile</label>
+          <input type="text" id="settings-new-name" class="settings-new-input" maxlength="40" autocomplete="off" spellcheck="false">
+          <button type="button" class="btn btn-primary" id="settings-new-create" data-i18n="settings.new_create">Create the profile</button>
+          <button type="button" class="btn" id="settings-new-cancel" data-i18n="settings.new_cancel">Cancel</button>
+          <p class="help settings-new-help" id="settings-new-help"></p>
+        </div>
         <p class="error-inline" id="settings-error" role="alert" hidden></p>
       </div>
     </form>

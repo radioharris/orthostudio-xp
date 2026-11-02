@@ -30,7 +30,7 @@ import { TEXTURE_MB, ZONES_FORMAT, normalizeZone, parseTile, tileName, validateZ
 import { OLD_STORAGE_KEY, STORAGE_KEY, defaultLevels, excluding, groupsOf, levelOf, newFlightPlan, readSaved, restoredPlan, squaresOf, toSaved, withPlan, withoutPlan } from "./flightplan.js";
 import { createPlanMap, detailLabel, detailName } from "./map.js";
 import { colourPreview } from "./preview.js";
-import { defaultsKeepingFolders, refusedValueText, renderSettingsView, sameValue, settingsSummary } from "./settings.js";
+import { defaultsKeepingFolders, profileNameProblem, refusedValueText, renderSettingsView, sameValue, settingsSummary } from "./settings.js";
 import { bindFind, bindFindKeys, findForget } from "./find.js";
 import { bindZoom } from "./zoom.js";
 import { countryName, sourceAddressProblem, sourceGroups, sourceGroupTitle, sourceLabel, tilesNotCovered } from "./sources.js";
@@ -85,6 +85,23 @@ export function isOn(value) {
  * name says exFAT or FAT32 is refused, as on such a disk.
  */
 const MOCK_FAIL = PARAMS.get("fail");
+/** `?mock=1&profiles=2` starts the demo with two settings profiles; none otherwise, as on a
+ * computer where no second set of settings was ever kept. */
+const MOCK_PROFILES = Number(PARAMS.get("profiles")) || 0;
+/** What every profile shares (orthostudio.config.profiles.COMPUTER_SETTINGS; a test keeps the two
+ * equal). */
+export const COMPUTER_SETTINGS = [
+  "essential.xplane_dir",
+  "essential.data_dir",
+  "essential.simbrief_user",
+  "essential.relief.private_sources",
+  "expert.osm_folder",
+  "expert.osm_library",
+  "expert.osm_library_token",
+  "expert.patches_dir",
+  "expert.check_updates",
+  "expert.build_memory",
+];
 /** `?mock=1&speed=10` runs the mock builds ten times faster (the tests use it); 1 by default. */
 const MOCK_SPEED = Math.min(100, Math.max(0.1, Number(PARAMS.get("speed")) || 1));
 const STATIC = "static/";
@@ -224,6 +241,18 @@ const state = {
   patches: null,
   /** The same for the folder Settings shows, saved or not. */
   settingsPatches: null,
+  /** GET /api/profiles: `{current, profiles, computer}`, or null (an engine before them). */
+  profiles: null,
+  /** Why the profiles could not be read, said at the top of Settings. */
+  profilesError: null,
+  /** A rename or a deletion asked at the top of Settings: `{mode, value}`, or null. */
+  profileEdit: null,
+  /** What refused the last rename or deletion, said under the profile's line. */
+  profileError: null,
+  /** A profile is being made current, renamed, deleted or created: its buttons wait. */
+  profileBusy: false,
+  /** Save as a new profile asks for its name in Save's bar. */
+  newProfile: false,
   busy: false,
   jobsClearing: false,
 };
@@ -567,6 +596,105 @@ async function mockCheckCoverage(body) {
   throw new ApiError(422, { error: { code: "CFG_PROVIDER_OUT_OF_COVERAGE", severity: "blocking", action: "stop", message: `Imagery source ${code} covers ${p.extent} only, not tile(s) ${missing.join(" ")}.`, remedy: "Choose a source that covers these tiles: Bing Maps and Esri cover the whole world.", context: { provider: code, extent: p.extent, tiles: missing.join(" ") } } });
 }
 
+/** The mock's settings profiles: `{current, list: [{name, settings}]}` (`?profiles=2`: two). */
+async function mockProfiles() {
+  if (!mock.profiles) {
+    mock.profiles = { current: null, list: [] };
+    if (MOCK_PROFILES >= 2) {
+      const main = await mockFile("settings");
+      const alps = structuredClone(main);
+      Object.assign(alps.essential, { provider: "Arc", zoom_level: 17 });
+      alps.essential.airports.mode = "on";
+      mock.profiles = { current: t("profiles.first_name"), list: [{ name: t("profiles.first_name"), settings: main }, { name: "VFR Alpes", settings: alps }] };
+    }
+  }
+  return mock.profiles;
+}
+
+/** `settings` holding a profile's settings, what belongs to the computer kept (the engine's
+ * `with_build_part`). */
+function mockWithProfile(settings, profile) {
+  const out = structuredClone(profile);
+  for (const path of COMPUTER_SETTINGS) {
+    const keys = path.split(".");
+    const from = keys.slice(0, -1).reduce((o, k) => o?.[k], settings);
+    const to = keys.slice(0, -1).reduce((o, k) => (o[k] = o[k] || {}), out);
+    to[keys[keys.length - 1]] = from?.[keys[keys.length - 1]] ?? null;
+  }
+  return out;
+}
+
+function mockProfileError(status, code, name, message) {
+  return new ApiError(status, { error: { code, severity: "blocking", action: "stop", message, remedy: "Give the profile another name.", context: { name } } });
+}
+
+/** `/api/profiles` and its four actions, as the engine answers them. */
+async function mockProfilesRoute(p, method, body) {
+  const kept = await mockProfiles();
+  const answer = (settings) => ({ ...(settings ? { settings: structuredClone(settings) } : {}), current: kept.current, profiles: kept.list.map((x) => x.name), computer: [...COMPUTER_SETTINGS] });
+  const saved = await mockFile("settings");
+  const at = (name) => kept.list.findIndex((x) => x.name.toLowerCase() === String(name || "").trim().toLowerCase());
+  const named = (name, others) => {
+    const text = String(name || "").trim();
+    if (!text || text.length > 40) throw mockProfileError(422, "CFG_PROFILE_NAME", text, "A profile's name is 1 to 40 characters, without a line break.");
+    if (others.some((n) => n.toLowerCase() === text.toLowerCase())) throw mockProfileError(409, "CFG_PROFILE_TAKEN", text, `A profile is already called '${text}'.`);
+    return text;
+  };
+  const known = (name) => {
+    const i = at(name);
+    if (i < 0) throw mockProfileError(404, "CFG_PROFILE_UNKNOWN", String(name), `There is no profile called '${name}'.`);
+    return i;
+  };
+  const take = (settings) => {
+    mock.cache.set("settings", structuredClone(settings));
+    mock.settingsSaved = true;
+  };
+  const leave = () => {
+    const here = kept.list.find((x) => x.name === kept.current);
+    if (here) here.settings = structuredClone(saved);
+  };
+  if (p === "/api/profiles" && method === "GET") return answer(null);
+  if (p === "/api/profiles" && method === "POST") {
+    const first = kept.list.length ? null : named(body.first_name || "Main", []);
+    const name = named(body.name, first ? [first] : kept.list.map((x) => x.name));
+    if (first) kept.list.push({ name: first, settings: structuredClone(saved) });
+    else leave();
+    kept.list.push({ name, settings: structuredClone(body.settings) });
+    kept.current = name;
+    take(body.settings);
+    return answer(body.settings);
+  }
+  if (p === "/api/profiles/current" && method === "POST") {
+    const i = known(body.name);
+    leave();
+    const next = mockWithProfile(saved, kept.list[i].settings);
+    kept.current = kept.list[i].name;
+    take(next);
+    return { ...answer(next), problems: [] };
+  }
+  if (p === "/api/profiles/rename" && method === "POST") {
+    const i = known(body.name);
+    const old = kept.list[i].name;
+    const name = named(body.new_name, kept.list.filter((_, j) => j !== i).map((x) => x.name));
+    kept.list[i].name = name;
+    if (kept.current === old) kept.current = name;
+    return answer(null);
+  }
+  if (p === "/api/profiles/delete" && method === "POST") {
+    const i = known(body.name);
+    if (kept.list.length <= 1) throw mockProfileError(409, "CFG_PROFILE_LAST", kept.list[i].name, "The last profile cannot be deleted: the settings are always those of a profile.");
+    const [gone] = kept.list.splice(i, 1);
+    let shown = saved;
+    if (gone.name === kept.current) {
+      shown = mockWithProfile(saved, kept.list[0].settings);
+      kept.current = kept.list[0].name;
+      take(shown);
+    }
+    return { ...answer(shown), problems: [] };
+  }
+  throw mockError(404, "SYS_NOT_FOUND", `No route ${method} ${p}.`, "");
+}
+
 function mockError(status, code, message, remedy) {
   return new ApiError(status, { error: { code, severity: "blocking", action: "stop", message, remedy, context: {} } });
 }
@@ -765,7 +893,7 @@ export function jobLevel(job) {
 /** GET /api/jobs of a mock job: the engine's `Job.summary()`. */
 function mockJobSummary(run) {
   const d = run.doc;
-  return { id: d.id, status: d.status, created_at: d.created_at, started_at: d.started_at, finished_at: d.finished_at, install: d.install, tiles: d.tiles.map((x) => x.tile), provider: d.provider, zl: d.zl, levels: mockLevels(d.tiles), ok: d.status === "done" };
+  return { id: d.id, status: d.status, created_at: d.created_at, started_at: d.started_at, finished_at: d.finished_at, install: d.install, tiles: d.tiles.map((x) => x.tile), provider: d.provider, zl: d.zl, levels: mockLevels(d.tiles), profile: d.profile ?? null, ok: d.status === "done" };
 }
 
 /** The engine's `levels` of a mock job: how many of its tiles at each level. */
@@ -1021,6 +1149,8 @@ async function mockStartJob(body, reuse = new Set(), queued = false) {
   const provider = body.provider || template.provider;
   const zl = Number(body.zoom_level ?? template.zl);
   const install = Boolean(body.install);
+  // like the engine: the profile current when the build is asked, kept by a build again
+  const profile = body.profile ?? mock.profiles?.current ?? null;
   const now = Date.now();
   const doc = {
     id: mockJobId(mock.nextId++),
@@ -1031,7 +1161,8 @@ async function mockStartJob(body, reuse = new Set(), queued = false) {
     install,
     provider,
     zl,
-    request: { ...template.request, tiles: [...(body.tiles || [])], provider, zoom_level: zl, zones: body.zones || [], install },
+    request: { ...template.request, tiles: [...(body.tiles || [])], provider, zoom_level: zl, zones: body.zones || [], install, ...(profile ? { profile } : {}) },
+    profile,
     tiles: (body.tiles || []).map((name) => ({ tile: name, provider, zl, install, nodes: mockTileNodes(template, name, `${provider}${zl}`, install, script) })),
     stats: null,
     last_seq: 0,
@@ -1213,6 +1344,7 @@ export async function mockApi(method, path, body, options = {}) {
     if (reset) settings.essential.provider = reset;
     return { removed: code, settings_provider: reset };
   }
+  if (p === "/api/profiles" || p.startsWith("/api/profiles/")) return mockProfilesRoute(p, method, body);
   if (p === "/api/settings/schema") return mockFile("settings_schema");
   if (p === "/api/settings") {
     if (method === "PUT") {
@@ -1228,6 +1360,9 @@ export async function mockApi(method, path, body, options = {}) {
       if (saved.essential) saved.essential.data_dir = wanted;
       mock.cache.set("settings", saved);
       mock.settingsSaved = true;
+      // like the engine: what is saved is the current profile's
+      const kept = mock.profiles?.list.find((x) => x.name === mock.profiles.current);
+      if (kept) kept.settings = structuredClone(saved);
       return structuredClone(saved);
     }
     const settings = await mockFile("settings");
@@ -2385,7 +2520,7 @@ function routeFromHash() {
 // ------------------------------------------------------------------ status bar
 
 /** The engine API this page needs (orthostudio.api.app.API_LEVEL); a test keeps the two equal. */
-const PAGE_API_LEVEL = 42;
+const PAGE_API_LEVEL = 43;
 
 async function loadStatus() {
   try {
@@ -4582,7 +4717,8 @@ function updateJobView(v, job) {
     chosen && gap ? `${chosen} (${gap})` : chosen,
     job.relief_own ? t("works.relief_own") : "",
   ].filter(Boolean).join(" + ");
-  const parts = [`${job.provider || ""} ${jobLevel(job)}`, relief, job.install ? t("works.install") : t("works.no_install")];
+  const profile = job.profile ? t("works.profile", { name: job.profile }) : "";
+  const parts = [`${job.provider || ""} ${jobLevel(job)}`, profile, relief, job.install ? t("works.install") : t("works.no_install")];
   setText(v.meta, parts.filter(Boolean).join(" · "));
   const waiting = job.status === "queued";
   v.stop.hidden = !active;
@@ -7112,6 +7248,7 @@ function setDraft(next) {
 }
 
 function renderSettings(message, kind) {
+  renderProfiles();
   if (!state.schema || !state.settingsDraft) return;
   loadSettingsPatches();
   renderSettingsView(
@@ -7163,12 +7300,16 @@ function renderUnsaved() {
     else tab.removeAttribute("title");
   }
   $("plan-unsaved").hidden = !dirty;
+  // a profile cannot be left with changes not saved: its lists wait, and say why
+  renderProfiles();
 }
 
 /** The Plan says in a few words what the build will use, and where to change it. */
 function renderPlanSettings() {
   const parts = settingsSummary(state.settings);
-  $("plan-settings-summary").textContent = parts.length ? t("plan.settings_summary", { list: parts.join(" · ") }) : "";
+  const profile = profilesShown() ? state.profiles.current : null;
+  const list = parts.join(" · ");
+  $("plan-settings-summary").textContent = !parts.length ? "" : profile ? t("plan.settings_summary_profile", { name: profile, list }) : t("plan.settings_summary", { list });
   renderPlanXplane();
   renderUnsaved();
 }
@@ -7308,27 +7449,38 @@ async function saveSettings(ev) {
     state.settings = await api("PUT", "/api/settings", state.settingsDraft);
     setDraft(structuredClone(state.settings));
     planChanged();  // the cost again: it was worked out with the settings of before
-    // The X-Plane folder may have changed: the Settings line, step 3 and the status bar follow it,
-    // and step 3 no longer shows a refusal made with the settings of before.
-    await loadStatus();
-    showPlanError(null);
-    renderSettings(t("settings.saved"));
-    setTimeout(() => {
-      if (state.screen === "settings" && sameValue(state.settingsDraft, state.settings)) $("settings-status").textContent = "";
-    }, 3000);
+    await settingsSaved(t("settings.saved"));
     renderProviders();  // the list of sources, never the one the Plan shows
-    renderPlanSettings();
-    loadPatches(); // the folder of patches may be another one now
   } catch (e) {
-    err.hidden = false;
-    // the page's words for the code and its remedy: which folder, and what to do (a user on a
-    // computer without X-Plane read only "XP_DIR_NOT_FOUND: The X-Plane 12 folder was not found")
-    const d = errorDetail(e);
-    // a number out of its range: the field's name and the values it takes, not the setting's key
-    const refused = d?.code === "CFG_VALUE_INVALID" ? refusedValueText(d.context, state.schema) : null;
-    const detail = refused || (d?.code ? codeWords(d).filter(Boolean).join(" ") : errorMessage(e));
-    err.textContent = t("settings.invalid", { detail });
+    showSettingsError(e);
   }
+}
+
+/** What follows any save of the settings, Save's or a new profile's. */
+async function settingsSaved(message) {
+  // The X-Plane folder may have changed: the Settings line, step 3 and the status bar follow it,
+  // and step 3 no longer shows a refusal made with the settings of before.
+  await loadStatus();
+  showPlanError(null);
+  renderSettings(message);
+  setTimeout(() => {
+    if (state.screen === "settings" && sameValue(state.settingsDraft, state.settings)) $("settings-status").textContent = "";
+  }, 3000);
+  renderPlanSettings();
+  loadPatches(); // the folder of patches may be another one now
+}
+
+/** A save refused, in the bar of Save. */
+function showSettingsError(e) {
+  const err = $("settings-error");
+  err.hidden = false;
+  // the page's words for the code and its remedy: which folder, and what to do (a user on a
+  // computer without X-Plane read only "XP_DIR_NOT_FOUND: The X-Plane 12 folder was not found")
+  const d = errorDetail(e);
+  // a number out of its range: the field's name and the values it takes, not the setting's key
+  const refused = d?.code === "CFG_VALUE_INVALID" ? refusedValueText(d.context, state.schema) : null;
+  const detail = refused || (d?.code ? codeWords(d).filter(Boolean).join(" ") : errorMessage(e));
+  err.textContent = t("settings.invalid", { detail });
 }
 
 function resetSettings() {
@@ -7342,6 +7494,315 @@ function defaultSettings() {
   if (!state.schema) return;
   setDraft(defaultsKeepingFolders(state.schema, state.settingsDraft));
   renderSettings();
+}
+
+// ------------------------------------------------------------------ Settings: the profiles
+
+/** The names of the settings profiles. A computer has none until a second set of settings is kept,
+ * and the page then shows no list: nothing changes for those who never make one (a user asked to
+ * keep settings by name and choose them for each build, 2026-11-02). */
+function profileNames() {
+  return Array.isArray(state.profiles?.profiles) ? state.profiles.profiles : [];
+}
+
+/** The lists of profiles show from the second one on. */
+function profilesShown() {
+  return profileNames().length > 1;
+}
+
+async function loadProfiles() {
+  try {
+    state.profiles = await api("GET", "/api/profiles");
+    state.profilesError = null;
+  } catch (e) {
+    state.profiles = null;
+    // an engine from before the profiles has no route, which its banner says; a file it cannot
+    // read is said at the top of Settings
+    state.profilesError = e instanceof ApiError && e.status === 404 ? null : profileErrorText(e);
+  }
+}
+
+/** An error about the profiles in the page's words, without its code. */
+function profileErrorText(e) {
+  const d = errorDetail(e);
+  return d?.code ? codeWords(d).filter(Boolean).join(" ") : errorMessage(e);
+}
+
+/** What a change of the profiles gives back: the list, and the settings saved, which the draft
+ * then shows. */
+function profilesAnswered(answer) {
+  state.profiles = { current: answer.current, profiles: answer.profiles, computer: answer.computer };
+  state.profilesError = null;
+  if (answer.settings) {
+    state.settings = answer.settings;
+    setDraft(structuredClone(answer.settings));
+  }
+}
+
+/** Another profile chosen: step 1's source and detail level are its own, since its list stands
+ * above them there and says so. A plain Save leaves them as the pilot set them (saveSettings). */
+function planTakesProfile() {
+  const essential = state.settings?.essential || {};
+  if (essential.zoom_level) state.planZl = Number(essential.zoom_level);
+  renderProviders(essential.provider || "BI");
+  planChanged();
+}
+
+function renderProfiles() {
+  renderSettingsProfile();
+  renderSaveButtons();
+  renderPlanProfile();
+}
+
+/** The top of Settings, from the second profile on: the profile Save writes into, with Rename and
+ * Delete beside it; a rename or a deletion is asked on that same line. With changes not saved, the
+ * list waits: changing profile then would lose them without a word. */
+function renderSettingsProfile() {
+  const box = $("settings-profile");
+  const names = profileNames();
+  const current = state.profiles?.current || "";
+  const edit = state.profileEdit;
+  const dirty = settingsUnsaved();
+  const busy = state.profileBusy;
+  const shown = profilesShown() || Boolean(state.profilesError);
+  const drawn = JSON.stringify([shown, names, current, edit?.mode || "", dirty, busy, state.profileError, state.profilesError, language()]);
+  if (box.dataset.drawn === drawn) return;
+  box.dataset.drawn = drawn;
+  box.hidden = !shown;
+  const focused = box.contains(document.activeElement) ? document.activeElement.id : null;
+  clear(box);
+  if (!shown) return;
+  if (state.profilesError) {
+    box.append(h("p", { class: "error-inline" }, t("settings.profile_unread", { detail: state.profilesError })));
+    return;
+  }
+  let row;
+  if (edit?.mode === "rename") {
+    const input = h("input", { type: "text", id: "settings-profile-name", maxlength: "40", autocomplete: "off", spellcheck: "false", "aria-invalid": state.profileError ? "true" : null });
+    input.value = edit.value ?? current;
+    input.addEventListener("input", () => {
+      edit.value = input.value;
+    });
+    input.addEventListener("keydown", (ev) => {
+      // Enter in a field of the form would save the settings: here it renames
+      if (ev.key === "Enter") {
+        ev.preventDefault();
+        renameProfile(input.value);
+      } else if (ev.key === "Escape") {
+        ev.preventDefault();
+        closeProfileEdit();
+      }
+    });
+    row = h("div", { class: "settings-profile-row" },
+      h("label", { class: "settings-profile-label", for: "settings-profile-name" }, t("settings.profile_new_name")),
+      input,
+      h("button", { type: "button", class: "btn btn-primary", id: "settings-profile-rename-ok", disabled: busy, onclick: () => renameProfile(input.value) }, t("settings.profile_rename")),
+      h("button", { type: "button", class: "btn", onclick: closeProfileEdit }, t("settings.profile_cancel")));
+    queueMicrotask(() => {
+      if (focused !== "settings-profile-name") input.select();
+      input.focus();
+    });
+  } else if (edit?.mode === "delete") {
+    row = h("div", { class: "settings-profile-row" },
+      h("p", { class: "settings-profile-ask", role: "alert" }, t("settings.profile_delete_ask", { name: current })),
+      h("button", { type: "button", class: "btn btn-danger", id: "settings-profile-delete-ok", disabled: busy, onclick: deleteProfile }, t("settings.profile_delete")),
+      h("button", { type: "button", class: "btn", id: "settings-profile-keep", onclick: closeProfileEdit }, t("settings.profile_keep")));
+    queueMicrotask(() => $("settings-profile-keep")?.focus());
+  } else {
+    const select = h("select", { id: "settings-profile-select", disabled: dirty || busy, "aria-describedby": "settings-profile-help" },
+      names.map((name) => h("option", { value: name }, name)));
+    select.value = current;
+    select.addEventListener("change", () => switchProfile(select.value));
+    row = h("div", { class: "settings-profile-row" },
+      h("label", { class: "settings-profile-label", for: "settings-profile-select" }, t("settings.profile")),
+      select,
+      h("button", { type: "button", class: "btn", id: "settings-profile-rename", disabled: busy, onclick: () => openProfileEdit("rename") }, t("settings.profile_rename")),
+      h("button", { type: "button", class: "btn", id: "settings-profile-delete", disabled: dirty || busy, onclick: () => openProfileEdit("delete") }, t("settings.profile_delete")));
+    if (focused) queueMicrotask(() => $(focused)?.focus());
+  }
+  box.append(row);
+  if (!edit) {
+    box.append(h("p", { class: `help${dirty ? " is-warn" : ""}`, id: "settings-profile-help" }, dirty ? t("settings.profile_unsaved") : t("settings.profile_help")));
+  }
+  if (state.profileError) box.append(h("p", { class: "error-inline", role: "alert" }, state.profileError));
+}
+
+function openProfileEdit(mode) {
+  state.profileEdit = { mode, value: null };
+  state.profileError = null;
+  renderSettingsProfile();
+}
+
+function closeProfileEdit() {
+  state.profileEdit = null;
+  state.profileError = null;
+  renderSettingsProfile();
+  $("settings-profile-select")?.focus();
+}
+
+/** Save names the profile it writes into once there are two; Save as a new profile asks for the
+ * name in the same bar. */
+function renderSaveButtons() {
+  const name = profilesShown() ? state.profiles?.current : null;
+  setText($("settings-save"), name ? t("settings.save_in", { name }) : t("settings.save"));
+  const open = state.newProfile;
+  for (const el of document.querySelectorAll("#settings-form .settings-main")) el.hidden = open;
+  $("settings-new").hidden = !open;
+  if (!open) return;
+  // the profile left: its own name, or the one it takes now when it had none
+  const left = state.profiles?.current || t("profiles.first_name");
+  setText($("settings-new-help"), profileNames().length ? t("settings.new_help", { name: left }) : t("settings.new_help_first", { name: left }));
+  $("settings-new-create").disabled = state.profileBusy;
+}
+
+function openNewProfile() {
+  state.newProfile = true;
+  $("settings-error").hidden = true;
+  const input = $("settings-new-name");
+  input.value = "";
+  input.removeAttribute("aria-invalid");
+  renderSaveButtons();
+  input.focus();
+}
+
+function closeNewProfile() {
+  state.newProfile = false;
+  $("settings-error").hidden = true;
+  renderSaveButtons();
+  $("settings-save-new").focus();
+}
+
+/** Save as a new profile: the answers on screen, checked as Save checks them, saved under a name
+ * of their own, which becomes current; the profile left keeps what it held. */
+async function createProfile() {
+  const input = $("settings-new-name");
+  const err = $("settings-error");
+  const first = t("profiles.first_name");
+  const problem = profileNameProblem(input.value, profileNames().length ? profileNames() : [first]);
+  if (problem) {
+    err.textContent = problem;
+    err.hidden = false;
+    input.setAttribute("aria-invalid", "true");
+    input.focus();
+    return;
+  }
+  err.hidden = true;
+  input.removeAttribute("aria-invalid");
+  state.profileBusy = true;
+  renderSaveButtons();
+  try {
+    const name = input.value.trim();
+    profilesAnswered(await api("POST", "/api/profiles", { name, settings: state.settingsDraft, first_name: first }));
+    state.newProfile = false;
+    state.profileEdit = null;
+    planTakesProfile();
+    await settingsSaved(t("settings.new_done", { name: state.profiles.current }));
+    toast(t("settings.new_done", { name: state.profiles.current }));
+  } catch (e) {
+    if (["CFG_PROFILE_NAME", "CFG_PROFILE_TAKEN"].includes(errorDetail(e)?.code)) input.setAttribute("aria-invalid", "true");
+    showSettingsError(e);
+  } finally {
+    state.profileBusy = false;
+    renderProfiles();
+  }
+}
+
+/** Another profile made current, from Settings or from the Plan: its settings are saved as the
+ * settings, and step 1 takes its source and detail level. */
+async function switchProfile(name) {
+  if (!name || name === state.profiles?.current || settingsUnsaved()) {
+    renderProfiles(); // the list back on the profile in use
+    return;
+  }
+  state.profileBusy = true;
+  state.profileError = null;
+  renderProfiles();
+  try {
+    profilesAnswered(await api("POST", "/api/profiles/current", { name }));
+    planTakesProfile();
+    renderSettings(t("settings.profile_switched", { name: state.profiles.current }));
+    renderPlanSettings();
+  } catch (e) {
+    toast(profileErrorText(e), "fail");
+    await loadProfiles();
+  } finally {
+    state.profileBusy = false;
+    renderProfiles();
+  }
+}
+
+async function renameProfile(value) {
+  const current = state.profiles?.current;
+  const problem = profileNameProblem(value, profileNames().filter((n) => n !== current));
+  if (problem) {
+    state.profileError = problem;
+    renderSettingsProfile();
+    return;
+  }
+  if (value.trim() === current) {
+    closeProfileEdit();
+    return;
+  }
+  state.profileBusy = true;
+  state.profileError = null;
+  renderProfiles();
+  try {
+    profilesAnswered(await api("POST", "/api/profiles/rename", { name: current, new_name: value.trim() }));
+    state.profileEdit = null;
+    renderSettings(t("settings.profile_renamed", { name: state.profiles.current }));
+    renderPlanSettings();
+    queueMicrotask(() => $("settings-profile-select")?.focus());
+  } catch (e) {
+    state.profileError = profileErrorText(e);
+  } finally {
+    state.profileBusy = false;
+    renderProfiles();
+  }
+}
+
+/** The current profile deleted: the first of the others becomes current, its settings with it.
+ * Tiles already built are not touched. */
+async function deleteProfile() {
+  const name = state.profiles?.current;
+  state.profileBusy = true;
+  state.profileError = null;
+  renderProfiles();
+  try {
+    profilesAnswered(await api("POST", "/api/profiles/delete", { name }));
+    state.profileEdit = null;
+    planTakesProfile();
+    const message = t("settings.profile_deleted_now", { name, current: state.profiles.current });
+    renderSettings(message);
+    renderPlanSettings();
+    toast(message);
+  } catch (e) {
+    state.profileError = profileErrorText(e);
+  } finally {
+    state.profileBusy = false;
+    renderProfiles();
+  }
+}
+
+/** Step 1, from the second profile on: the profile the build takes, above the source and the
+ * detail level, which come with it. */
+function renderPlanProfile() {
+  const field = $("plan-profile");
+  const shown = profilesShown();
+  field.hidden = !shown;
+  if (!shown) return;
+  const select = $("plan-profile-select");
+  const names = profileNames();
+  const listed = JSON.stringify(names);
+  if (select.dataset.names !== listed) {
+    clear(select).append(...names.map((name) => h("option", { value: name }, name)));
+    select.dataset.names = listed;
+  }
+  select.value = state.profiles.current;
+  const dirty = settingsUnsaved();
+  select.disabled = dirty || state.profileBusy;
+  const help = $("plan-profile-help");
+  setText(help, dirty ? t("plan.profile_unsaved") : t("plan.profile_help"));
+  help.classList.toggle("is-warn", dirty);
 }
 
 // ------------------------------------------------------------------ theme + language
@@ -7656,6 +8117,20 @@ async function boot() {
     });
   }
   $("settings-form").addEventListener("submit", saveSettings);
+  $("settings-save-new").addEventListener("click", openNewProfile);
+  $("settings-new-create").addEventListener("click", createProfile);
+  $("settings-new-cancel").addEventListener("click", closeNewProfile);
+  $("settings-new-name").addEventListener("keydown", (ev) => {
+    // Enter in a field of the form would save the settings: here it creates the profile
+    if (ev.key === "Enter") {
+      ev.preventDefault();
+      createProfile();
+    } else if (ev.key === "Escape") {
+      ev.preventDefault();
+      closeNewProfile();
+    }
+  });
+  $("plan-profile-select").addEventListener("change", (ev) => switchProfile(ev.target.value));
   $("settings-reset").addEventListener("click", resetSettings);
   $("settings-defaults").addEventListener("click", defaultSettings);
   $("plan-settings-change").addEventListener("click", () => showScreen("settings"));
@@ -7734,9 +8209,10 @@ async function boot() {
   const schema = api("GET", "/api/settings/schema").then((s) => {
     state.schema = s;
   });
+  const profiles = loadProfiles();
   // The Plan's source and detail level, and Settings, as soon as what they show is known,
   // whatever the rest takes.
-  const early = Promise.allSettled([providers, settings, schema]).then(() => {
+  const early = Promise.allSettled([providers, settings, schema, profiles]).then(() => {
     renderProviders(state.settings?.essential?.provider || "BI");
     renderPlanSettings();
     if (state.screen === "settings") renderSettings();

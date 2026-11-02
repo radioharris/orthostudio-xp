@@ -3929,8 +3929,11 @@ def test_step_3_says_when_x_plane_is_not_found() -> None:
     assert "onclick: () => openSettingsFor(err)" in _function_body(app_js, "errorCard")
     assert 'focusSettingsField("q-xplane-dir");' in _function_body(app_js, "chooseXplaneFolder")
     assert "$(id)" in _function_body(app_js, "focusSettingsField")
-    save = _function_body(app_js, "saveSettings")
-    order = ("await loadStatus();", "showPlanError(null);", 'renderSettings(t("settings.saved"));')
+    # what follows a save, Save's or a new profile's
+    assert 'await settingsSaved(t("settings.saved"));' in _function_body(app_js, "saveSettings")
+    assert 'await settingsSaved(t("settings.new_done"' in _function_body(app_js, "createProfile")
+    save = _function_body(app_js, "settingsSaved")
+    order = ("await loadStatus();", "showPlanError(null);", "renderSettings(message);")
     assert [save.index(line) for line in order] == sorted(save.index(line) for line in order)
     # "empty = the detected folder" is no hint when none was detected
     questions = (UI / "settings.js").read_text(encoding="utf-8")
@@ -4265,7 +4268,8 @@ def test_the_data_folder_can_be_found_and_its_refusal_read() -> None:
     assert "height: 18px;" in rules[".status-home .status-reveal"]  # the bar keeps its height
     html = (UI / INDEX_FILE).read_text(encoding="utf-8")
     actions = html[html.index('<div class="actions settings-actions">') :]
-    assert actions.index('id="settings-error"') < actions.index("</div>")  # in the Save bar
+    assert actions.index('id="settings-error"') < actions.index("</form>")  # in the Save bar
+    assert actions.index('id="settings-error"') > actions.index('id="settings-new"')
     assert "flex-basis: 100%;" in rules[".settings-actions .error-inline"]
     words = _node_json(
         "i18n.js",
@@ -4373,7 +4377,7 @@ def test_the_screen_shows_before_the_engine_answers() -> None:
     boot = _function_body(app_js, "boot")
     wait = boot.index("await Promise.allSettled([")
     assert boot.index("routeFromHash();") < wait < boot.rindex("routeFromHash();")
-    first = boot.index("const early = Promise.allSettled([providers, settings, schema])")
+    first = boot.index("const early = Promise.allSettled([providers, settings, schema, profiles])")
     early = boot[first:wait]
     assert 'renderProviders(state.settings?.essential?.provider || "BI");' in early
     assert 'if (state.screen === "settings") renderSettings();' in early
@@ -6085,7 +6089,7 @@ def test_the_patches_are_named_before_anything_is_built() -> None:
     assert "renderTilesPatched();" in _function_body(app_js, "renderTiles")
     # read when the page opens, when the Plan shows (a patch dropped in meanwhile), after a save
     assert 'api("GET", "/api/patches")' in _function_body(app_js, "loadPatches")
-    for name in ("boot", "showScreen", "saveSettings"):
+    for name in ("boot", "showScreen", "settingsSaved"):
         assert "loadPatches();" in _function_body(app_js, name), name
     # Settings asks about the folder it shows, and only when it changes
     ask = _function_body(app_js, "loadSettingsPatches")
