@@ -300,3 +300,49 @@ at the top with *Open Settings*. What is on disk is left as it is until the user
   `auto`.
 - `cover_airports_with_highres` values are lower-case words; the build receives the Ortho4XP
   capitalised strings.
+
+## 7. Profiles (`profiles.py`)
+
+A user asked to keep settings under a name and choose them for each build (2026-11-02). A profile is
+a named set of the **build settings**: every setting but `COMPUTER_SETTINGS`, what belongs to the
+computer and its pilot (`essential.xplane_dir`, `data_dir`, `simbrief_user`,
+`relief.private_sources`; `expert.osm_folder`, `osm_library`, `osm_library_token`, `patches_dir`,
+`check_updates`, `build_memory`). A profile changing those would send the tiles to another disk, or a
+build to the public servers, because a look was chosen; and the library's key stays out of a file a
+user may pass around. The page's *Default values* keeps the first seven (`settings.js`
+`COMPUTER_FOLDERS`, section 4.2 of `ui.md`).
+
+**Files.** `config.toml` keeps holding what every build and the command line read: the current
+profile's settings with the computer's own. `profiles.json` beside it (`default_profiles_path`)
+holds `{"format": 1, "current": name, "profiles": [{"name", "settings"}]}` in the order the profiles
+were made, each `settings` a build part (`build_part`). The current profile's entry is what was last
+saved into it or left with it: `PUT /api/settings` writes the saved settings into it (`remember`),
+and leaving it does the same first. Written atomically, the previous file kept as
+`profiles.json.bak`. No file means one profile, unnamed: nothing is written and the page shows no
+list until a second profile is kept. A file that cannot be read raises `CFG_LINE_INVALID`; a current
+name it does not hold falls back on its first profile.
+
+**Operations** (pure functions, the API reads and writes the files around them):
+
+| Function | What it does |
+|---|---|
+| `create(profiles, name, saved, new, first_name)` | the settings on disk (`saved`) stay with the current profile, named `first_name` when there was none (the page's word, *Main*/*Principal*); `new` is kept under `name`, made current |
+| `switch(profiles, name, settings)` | the current profile keeps `settings`; the result is `settings` with `name`'s build part in place (`with_build_part`), to be saved |
+| `rename(profiles, name, new_name)` | the current name follows |
+| `delete(profiles, name, settings)` | the current profile deleted, the first of the others becomes current and its settings are to be saved; the last profile cannot go |
+| `replace_provider(profiles, code, by)` | a source the user removes leaves every profile for Bing Maps, as it leaves the settings |
+
+`with_build_part(base, part)`: the defaults, then the profile's build settings, then `base`'s
+computer settings. A setting the profile does not hold (kept by a version before it existed) takes
+its default, not the current profile's: that version built as its default does. A value this version
+cannot read is left at its default and named, as in `config.toml` (section 5).
+
+**Names**: 1 to `MAX_NAME` (40) characters once trimmed, no control character, unique whatever the
+case (`check_name`); at most `MAX_PROFILES` (50).
+
+**Errors** (API answers outside the registry, as `SYS_BUSY`; context `{name}`): `CFG_PROFILE_NAME`
+(422, a name refused, or 50 profiles already), `CFG_PROFILE_TAKEN` (409), `CFG_PROFILE_UNKNOWN` (404,
+renamed or deleted in another window), `CFG_PROFILE_LAST` (409).
+
+**A build** records the current profile's name in its request (`profile`), and its summary carries
+it, which Works writes; *Build again* keeps it, with the settings the build had.

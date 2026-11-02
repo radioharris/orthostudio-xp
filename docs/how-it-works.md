@@ -418,6 +418,30 @@ of a tile never built left them out: 54 photos announced, 114 built (2026-10-15)
 Answers count once saved: until then the Settings tab carries a dot, and the Plan and the Library's
 *Build again…* say that a build uses the settings saved before.
 
+**Settings profiles.** Settings can be kept under a name, to build some tiles one way and others
+another: sharp and with every airfield for the mountains you fly low over, light for the plains you
+cross. Change the answers you want, then press *Save as a new profile…* beside *Save*: the bar asks
+for a name, and *Create the profile* keeps the answers under it. The settings saved until then stay
+in a profile of their own, called *Main* the first time. From then on:
+
+- the top of Settings shows the profile in use, with *Rename* and *Delete*; *Save* says which
+  profile it writes into (*Save in "Mountains"*);
+- step 1 of the Plan shows the list above the imagery source: choosing a profile there gives the
+  build its source, its detail level and all its other settings, which you can still change for that
+  build alone;
+- Works says, beside a build's source and level, which profile it used. *Build again* in Works makes
+  the same build again, with the settings it had then; to build a tile with another profile, choose
+  it again in the Plan.
+
+Each profile keeps the look of the tiles: the questions, the presets' answers, the photo colours and
+every expert setting. What belongs to the computer is the same for all of them: the X-Plane folder,
+the data folder, SimBrief, the map data's folder and library, the patches folder, the update check
+and the memory a build may take. While answers are not saved, the lists wait: changing profile
+then would lose them, so save them or undo them first. Deleting a profile deletes only its settings,
+never a tile; deleting the one in use makes another current, and the last one cannot be deleted. A
+computer that never keeps a second profile sees nothing of this but the *Save as a new profile…*
+button.
+
 **Where X-Plane is.** OrthoStudio XP works with the X-Plane 12 installed on the same computer: it
 takes the relief, roads, forests and buildings from X-Plane's own scenery, and adds the tiles to its
 Custom Scenery. X-Plane's scenery is in `Global Scenery/X-Plane 12 Global Scenery`, except the

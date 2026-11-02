@@ -212,6 +212,16 @@ else centimetres by 10 from 50 cm and by 5 below), then the zoom level as second
 
 #### Step 1 · Choose the tiles
 
+**The settings profile** (a user, 2026-11-02; `settings.md` 7): from the second profile on, its list
+stands first among step 1's fields, above the imagery source, "Settings profile", with "The source,
+the detail level and the other build settings come from this profile." Choosing one makes it
+current (`POST /api/profiles/current`) and gives step 1 its source and detail level
+(`planTakesProfile`), which can still be changed for this build alone; a plain *Save* in Settings
+leaves them as the pilot set them (section 2.4). While Settings hold changes not saved the list
+waits, greyed, and its line says why: "Your changes in Settings are not saved: save or undo them to
+switch profiles." Step 3's sentence names it: "Build settings, profile "Mountains": …". With one
+profile, nothing of this shows.
+
 The chips of the selection (removable), "N tile(s) selected", and the approximate size of the
 selection before any estimate (7.0.4): "About 3.2 GB of imagery, including 705 MB of extra
 detail". On the line of the count, shown when tiles are selected, a small trash, *Unselect all
@@ -545,7 +555,10 @@ finished or not, so the status pills stay in one column.
 
 The selected job (default: the running one, else the newest) shows, from top to bottom:
 
-- **Header**: the job, its status, *Stop* while it runs (`POST /api/jobs/{id}/cancel`). A job
+- **Header**: the job, its status, *Stop* while it runs (`POST /api/jobs/{id}/cancel`). Its line
+  names the source and level, then the settings profile the build took (`profile`, *profile
+  "Mountains"*, from the second profile on: a build asked without profiles names none), the relief
+  and the install. A job
   waiting in the queue says *waiting*, its button reads *Remove from the queue* (the same request:
   it never starts, "Build removed from the queue."), and a line under the bar says "Waiting: this
   build starts as soon as the one before it ends."; no time left is shown until it starts. The
@@ -1072,6 +1085,32 @@ bar's count is `library_count`, which counts tiles, not rows.
 In plain words (user request, 2026-09-13: "sand, land, lakes, radius... nobody understands them";
 what each setting really does, and the wording of every question: `settings-plain-language.md`,
 for the settings it studied on 2026-09-13; its status names those added since).
+
+**Profiles** (a user asked to keep settings by name and choose them for each build, 2026-11-02;
+`settings.md` 7). Created after the answers, never before: one changes the answers first, then may
+decide to keep them. Save's bar holds *Save as a new profile…* beside *Save*; pressed, the same bar
+asks "Name of the new profile" with its field, *Create the profile* and *Cancel*, and under them
+"Your answers go into this new profile. "Main" stays as it was." (the first time: "The settings
+saved until now stay in a profile "Main"."). Enter creates, Escape cancels (the field is inside the
+form, whose Enter is Save). An empty name or one already taken, whatever the case, is said in the
+bar before anything is sent (`settings.js` `profileNameProblem`); the engine checks again
+(`CFG_PROFILE_*`). Created, the profile is current, step 1 takes its source and level, and a toast
+says "Profile "Mountains" created."
+
+From the second profile on, the top of the screen, above the search, shows "Profile", the list, and
+*Rename* and *Delete* on one line, with under it "Your changes are saved in this profile. What
+belongs to this computer (folders, X-Plane, map data, SimBrief, memory, updates) is the same for
+every profile."; *Save* reads *Save in "Mountains"*. Choosing another profile shows its settings
+(`POST /api/profiles/current`). *Rename* puts a field with the name on that line, with *Rename* and
+*Cancel*; *Delete* asks on the same line, "Delete the profile "Mountains"? Tiles already built stay
+as they are.", *Delete* in red and *Keep*, which has the focus; the profile deleted is always the
+one shown, the first of the others becomes current with its settings, and a toast names both. The
+last profile is never deleted (the list is gone by then). While the draft differs from the saved
+settings, the list and *Delete* wait, greyed, and the line under them says "Save or undo your
+changes to switch profiles." in orange: switching then would lose them without a word. A profiles
+file the engine cannot read is said there in red, the settings working as before. The line is
+drawn again only when what it shows changes (`renderSettingsProfile`), so a name being typed keeps
+its caret.
 
 **A number says its range first.** Every number of the generated fields starts its explanation,
 in bold, with what it may take and what it is unless changed: *From 0 to 30°, 10° by default.*,
@@ -1801,7 +1840,7 @@ one. The switch is read from the query and from a query written after the route 
 which silently showed the real engine before), and `mock`, `mock=true`, `mock=yes` and `mock=on`
 all mean `mock=1` (`pageParams`, `isOn`; a user, 2026-09-18). An option written after the route is
 kept as the route changes (`HASH_OPTIONS`), so moving to another screen and reloading stays in the
-mock rather than landing on the real engine. Airports are filtered client-side from `mock/airports.json`. This is the development
+mock rather than landing on the real engine. Airports are filtered client-side from `mock/airports.json`. `profiles=2` starts with two settings profiles, *Main* (the mock's settings) and *VFR Alpes* (Esri, ZL17, every airfield sharper); without it there is none, and the five profile routes answer as the engine does (`mockProfilesRoute`). This is the development
 and visual-test harness: it must exercise every rendering path, and the mock files must satisfy
 the interface contract so that they double as fixtures for the API chantier.
 

@@ -1335,6 +1335,22 @@ th[aria-sort="descending"] .th-sort::after { content: " \25BC"; font-size: 0.8em
    question, a user saving from the data folder's question never saw it (2026-09-22). */
 .settings-actions .error-inline { flex-basis: 100%; margin: 0; }
 .settings-status.is-fail { color: var(--fail); }
+/* The settings profiles: the one Save writes into, at the top of Settings, its two buttons on its
+   line; a rename or a deletion asked on that same line. */
+.settings-profile { margin: 0 0 var(--section-gap); }
+.settings-profile-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+/* Title 3, as the presets' */
+.settings-profile-label { font-size: var(--fs-title-3); font-weight: 600; line-height: 1.25; color: var(--fg); }
+.settings-profile-row select, .settings-profile-row input[type="text"] { width: 240px; max-width: 100%; }
+.settings-profile-ask { margin: 0; color: var(--warn); }
+.settings-profile .help { margin: var(--help-gap) 0 0; }
+.settings-profile .help.is-warn { color: var(--warn); }
+/* Save as a new profile: its name asked in the bar of Save, across the whole bar */
+.settings-new { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; flex-basis: 100%; }
+.settings-new-label { font-weight: 600; }
+/* narrower than a field's whole column, on the line of its label and buttons */
+.settings-new input.settings-new-input { width: 240px; max-width: 100%; }
+.settings-new-help { flex-basis: 100%; margin: 0; }
 .settings-credits { margin: var(--block-gap) 0 0; }
 .plan-settings { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: var(--gap); }
 .plan-settings .help { margin: 0; flex: 1 1 240px; }

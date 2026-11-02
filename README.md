@@ -29,6 +29,10 @@ experimental.
   may take (80, 70 or 60 %), never more than what the other apps leave free.
 - **Settings in plain words.** Questions about what you want to see in X-Plane, three presets, and
   every Ortho4XP setting under "For experts" with a plain label.
+- **Settings profiles.** Keep a set of settings under a name ("Save as a new profile…"), then choose
+  it in the Plan for each build: its source, detail level and every other setting come with it.
+  Folders, X-Plane, the map data and SimBrief stay the same for every profile; Works names the
+  profile each build used.
 - **A Library.** Every tile on the computer, its size, whether X-Plane shows it and what it was
   built with, searched, sorted and opened in its folder. Take a tile out of X-Plane and back,
   delete it, file it on any disk and bring it back into the workshop
