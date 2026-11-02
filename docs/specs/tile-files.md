@@ -126,7 +126,9 @@ texture `(til_x, til_y, zl)` with `zl >= mask_zl` maps to the mask texture
 `m_til = (int(til / factor) // 16) * 16` with `factor = 2 ** (zl - mask_zl)`, and to the
 sub-window `(rx, ry) = int((til - factor * m_til) / 16)` of side `4096 // factor` pixels at
 offset `(rx * 4096 / factor, ry * 4096 / factor)`. A texture with `zl < mask_zl` never gets a
-mask. `_dist.png` files and the `Combined_imagery/` sub-directory are other products and are
+mask, and its water shows no photo: OrthoStudio XP builds a tile's masks at the lower of
+`mask_zl` and the tile's coarsest texture level (`BuildSpec.tile_config`), and its
+`tile_settings.cfg` holds that level. `_dist.png` files and the `Combined_imagery/` sub-directory are other products and are
 not indexed.
 
 Decision: **keep**. `masks_index` returns a lookup `(m_til_x, m_til_y) -> Path | None` over the

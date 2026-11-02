@@ -300,6 +300,22 @@ def _pixel_metres(tile: TileRef) -> int:
     return round(around / 360.0 / (IMAGE_SIDE - 1))
 
 
+def lowest_zl(
+    tile: TileRef, zone_list: Iterable[Sequence[object]], default_zl: int, mesh_zl: int
+) -> int:
+    """The lowest level among the textures of the tile, as :func:`texture_map` gives them.
+
+    The airports' and the existing textures only ever raise a cell, so the zones alone decide
+    it: the tile's own level unless the zones take every cell, else the lowest zone holding one.
+    """
+    zones = list(zone_list)
+    if not zones:
+        return int(default_zl)
+    zone_im, values = _zone_image(tile, zones, default_zl, "")
+    touched = cells_touched(zone_im, *cell_edges(tile, mesh_zl))
+    return min(values[int(v)][0] for v in np.unique(touched))
+
+
 def texture_map(
     tile: TileRef,
     params: DsfParams,

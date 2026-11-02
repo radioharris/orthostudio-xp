@@ -51,6 +51,7 @@ from orthostudio.dem.sources import (
 from orthostudio.dem.xplane import XP12_INPUTS, XP12_SOURCE
 from orthostudio.dsf import DsfParams, Xp12Rasters, airport_covers, build_dsf
 from orthostudio.dsf.xp12 import global_scenery_dsf, rasters_from_dsf, read_global_scenery_dsf
+from orthostudio.dsf.zones import lowest_zl
 from orthostudio.errors import OsxpError, wrap
 from orthostudio.graph import (
     ResolvedInput,
@@ -438,6 +439,15 @@ class BuildSpec:
             explicit = getattr(self, name)
             if explicit is not None:
                 values[name] = _check_overlay_setting(name, explicit)
+        # The coast fades on the masks' grid, and a texture coarser than it gets no mask: its
+        # water showed X-Plane's own up to a sharp shore (a user built at ZL15 with the masks at
+        # 16, 2026-11-02). A tile's masks are never finer than its coarsest texture.
+        values["mask_zl"] = min(
+            int(values["mask_zl"]),
+            lowest_zl(
+                self.tile, values["zone_list"], int(values["default_zl"]), int(values["mesh_zl"])
+            ),
+        )
         return values
 
 
