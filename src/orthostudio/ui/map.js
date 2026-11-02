@@ -2449,7 +2449,7 @@ export function createPlanMap(ctx) {
     box.classList.toggle("is-folded", !zs.legendOpen);
     if (!zs.legendOpen) {
       // Folded away to see the map under it: one button brings it back.
-      clear(box).append(h("button", { type: "button", class: "btn btn-small legend-unfold", "data-keep": "fold", "aria-expanded": "false", onclick: () => setLegendOpen(true) }, t("map.legend_show")));
+      clear(box).append(h("button", { type: "button", class: "btn legend-unfold", "data-keep": "fold", "aria-expanded": "false", onclick: () => setLegendOpen(true) }, t("map.legend_show")));
       refocus();
       return;
     }
@@ -2693,7 +2693,7 @@ export function createPlanMap(ctx) {
       box.append(
         h("p", null, t("zones.file_unreadable")),
         h("ul", null, zs.fileProblems.map((text) => h("li", null, text))),
-        h("button", { type: "button", class: "btn btn-small", onclick: () => {
+        h("button", { type: "button", class: "btn", onclick: () => {
           zs.fileUnreadable = false;
           zs.loaded = true;
           renderAll();
@@ -2817,7 +2817,7 @@ export function createPlanMap(ctx) {
     }) : null;
 
     const button = (part, text, title, onclick, off) =>
-      h("button", { type: "button", class: "btn btn-small btn-icon", "aria-label": title, title, disabled: disabled || off, dataset: key(part), onclick }, text);
+      h("button", { type: "button", class: "btn btn-icon", "aria-label": title, title, disabled: disabled || off, dataset: key(part), onclick }, text);
     const up = button("up", "↑", t("zones.move_up", { name: label }), () => moveZone(z.id, -1), index === 0);
     const down = button("down", "↓", t("zones.move_down", { name: label }), () => moveZone(z.id, 1), index === count - 1);
     const del = button("delete", "×", t("zones.delete", { name: label }), () => removeZone(z.id), false);
@@ -2836,7 +2836,7 @@ export function createPlanMap(ctx) {
       // and each one is a download.
       notes.append(h("span", { class: "zone-hint" }, t("zones.outside")));
       notes.append(h("button", {
-        type: "button", class: "btn btn-small btn-accent", disabled, title: touched.join(" "),
+        type: "button", class: "btn btn-accent", disabled, title: touched.join(" "),
         onclick: () => ctx.chooseTiles(touched),
       }, t("zones.outside_add", { n: touched.length })));
     }

@@ -2630,7 +2630,7 @@ function renderWindowNote() {
     // and nothing said where (a user asked, 2026-09-20)
     t("app.window_browser_only_again"),
     " ",
-    h("button", { class: "btn btn-small", onclick: away }, t("app.window_browser_only_ok")),
+    h("button", { class: "btn", onclick: away }, t("app.window_browser_only_ok")),
   );
   $("main").prepend(note);
 }
@@ -2684,9 +2684,9 @@ function renderUpdateNote() {
     " ",
     // A link, not a button calling window.open: the window hands a clicked target="_blank" link
     // to the system's browser (pywebview, OPEN_EXTERNAL_LINKS_IN_BROWSER), and only a link.
-    h("a", { class: "btn btn-small btn-primary", href: u.url, target: "_blank", rel: "noopener" }, t("app.update_open")),
+    h("a", { class: "btn btn-primary", href: u.url, target: "_blank", rel: "noopener" }, t("app.update_open")),
     " ",
-    h("button", { type: "button", class: "btn btn-small", onclick: later }, t("app.update_later")),
+    h("button", { type: "button", class: "btn", onclick: later }, t("app.update_later")),
   );
   $("main").prepend(note);
   measureMapTop(); // it sits above the map and pushes it down
@@ -2769,19 +2769,19 @@ function renderEngineBanner() {
   if (!state.engineOutdated && !state.engineError && unread.length) {
     banner.append(
       " ",
-      h("button", { class: "btn btn-small", onclick: () => showScreen("settings") }, t("app.settings_unread_open")),
+      h("button", { class: "btn", onclick: () => showScreen("settings") }, t("app.settings_unread_open")),
     );
   }
   if (state.engineError && !state.engineOutdated) {
     banner.append(
       " ",
-      h("button", { class: "btn btn-small", onclick: () => location.reload() }, t("app.engine_error_reload")),
+      h("button", { class: "btn", onclick: () => location.reload() }, t("app.engine_error_reload")),
     );
   }
   if (!state.engineOutdated && !state.engineError && !unread.length && failed.length) {
     banner.append(
       " ",
-      h("button", { class: "btn btn-small", onclick: showChecks }, t("app.checks_failed_show")),
+      h("button", { class: "btn", onclick: showChecks }, t("app.checks_failed_show")),
     );
   }
   measureMapTop(); // the banner sits above the map and pushes it down
@@ -2827,7 +2827,7 @@ function renderStatus() {
   const shown = dataFolderShown(s);
   if (shown) {
     const label = revealLabel(s.platform);
-    place.append(h("button", { type: "button", class: "btn btn-small btn-icon reveal-btn status-reveal", title: label, "aria-label": label, onclick: () => revealPath(shown) }, folderIcon()));
+    place.append(h("button", { type: "button", class: "btn btn-icon reveal-btn status-reveal", title: label, "aria-label": label, onclick: () => revealPath(shown) }, folderIcon()));
   }
 }
 
@@ -3809,7 +3809,7 @@ function renderSourcesList() {
   for (const p of mine) {
     ul.append(h("li", { class: "source-row" },
       h("div", { class: "source-text" }, h("b", null, p.name || p.code), " ", h("code", null, p.code), h("div", { class: "source-url" }, p.url_template || "")),
-      h("button", { type: "button", class: "btn btn-small btn-danger", onclick: () => removeSource(p) }, t("sources.remove"))));
+      h("button", { type: "button", class: "btn btn-danger", onclick: () => removeSource(p) }, t("sources.remove"))));
   }
 }
 
@@ -4195,8 +4195,8 @@ function errorCard(err, { onRetry, tile } = {}) {
   tpl.querySelector(".error-remedy").textContent = remedy;
   const actions = tpl.querySelector(".error-actions");
   const action = uiAction(err);
-  if (action === "retry" && onRetry) actions.append(h("button", { type: "button", class: "btn btn-small", onclick: onRetry }, t("works.retry")));
-  else if (action === "settings") actions.append(h("button", { type: "button", class: "btn btn-small", onclick: () => openSettingsFor(err) }, t("works.settings")));
+  if (action === "retry" && onRetry) actions.append(h("button", { type: "button", class: "btn", onclick: onRetry }, t("works.retry")));
+  else if (action === "settings") actions.append(h("button", { type: "button", class: "btn", onclick: () => openSettingsFor(err) }, t("works.settings")));
   else actions.remove();
   return tpl;
 }
@@ -4639,10 +4639,10 @@ function buildJobView(box, job, previous) {
 
   v.pill = h("span", { class: "job-pill" });
   v.meta = h("span", { class: "help num" });
-  v.stop = h("button", { type: "button", class: "btn btn-small btn-danger", onclick: cancelJob }, t("works.stop"));
+  v.stop = h("button", { type: "button", class: "btn btn-danger", onclick: cancelJob }, t("works.stop"));
   // A build that failed or was stopped offered nothing but a Retry buried in an error card, and
   // only for the handful of codes that carry action "retry" (a user, 2026-09-20).
-  v.again = h("button", { type: "button", class: "btn btn-small", title: t("works.again_help"), onclick: retryJob }, t("works.again"));
+  v.again = h("button", { type: "button", class: "btn", title: t("works.again_help"), onclick: retryJob }, t("works.again"));
   const head = h("div", { class: "job-head" }, h("h2", null, t("works.job", { id: job.id })), v.pill, v.meta, h("span", { class: "spacer" }), v.again, v.stop);
 
   v.progress = h("b");
@@ -5306,7 +5306,7 @@ function renderReport(job) {
     ? h("p", { class: "report-note" },
         t("works.not_installed_yet"),
         " ",
-        h("button", { type: "button", class: "btn btn-small", onclick: () => showScreen("library") }, t("works.open_library")))
+        h("button", { type: "button", class: "btn", onclick: () => showScreen("library") }, t("works.open_library")))
     : null;
   return h("section", { class: "report" },
     h("div", { class: "report-grid" },
@@ -6064,24 +6064,24 @@ export function libraryRow(e, showFolder = false) {
   // An imported tile still in X-Plane whose files are gone keeps its way out of X-Plane: it has no
   // Delete, and is taken off the list only once out of X-Plane.
   if (e.installed && (present || !byOsxp)) {
-    xplaneButton = h("button", { type: "button", class: "btn btn-small", title: inBuild ? t("library.in_build_help") : t("library.remove_help"), disabled: busy || inBuild, onclick: () => libraryAction(e, "uninstall") }, t("library.remove"));
+    xplaneButton = h("button", { type: "button", class: "btn", title: inBuild ? t("library.in_build_help") : t("library.remove_help"), disabled: busy || inBuild, onclick: () => libraryAction(e, "uninstall") }, t("library.remove"));
   } else if (present) {
-    xplaneButton = h("button", { type: "button", class: "btn btn-small btn-primary", title: inBuild ? t("library.in_build_help") : t("library.add_help"), disabled: busy || inBuild, onclick: () => libraryAction(e, "install") }, t("library.add"));
+    xplaneButton = h("button", { type: "button", class: "btn btn-primary", title: inBuild ? t("library.in_build_help") : t("library.add_help"), disabled: busy || inBuild, onclick: () => libraryAction(e, "install") }, t("library.add"));
   } else if (byOsxp) {
     // its folder moved by hand: shown where it went, it is found again (the atelier, step 2,
     // 2026-10-05). A disk away comes back by itself once plugged in; a disk renamed or left for
     // another, its tiles copied there, has only this way back (a review, 2026-10-05)
-    xplaneButton = h("button", { type: "button", class: "btn btn-small btn-primary", title: inBuild ? t("library.in_build_help") : t("library.find_help"), disabled: busy || inBuild, onclick: () => findLibraryTile(e) }, t("library.find"));
+    xplaneButton = h("button", { type: "button", class: "btn btn-primary", title: inBuild ? t("library.in_build_help") : t("library.find_help"), disabled: busy || inBuild, onclick: () => findLibraryTile(e) }, t("library.find"));
   }
   // A tile OrthoStudio XP did not build has no Delete, and had nothing in its place: the reason
   // is said in the lead and in the "Built by" column, and a user still looked for the button
   // (2026-09-20). It is now said where the button would be.
   const deleteButton = byOsxp
-    ? h("button", { type: "button", class: "btn btn-small btn-danger", title: building ? t("library.delete_wait") : t("library.delete_help"), disabled: busy || building, onclick: () => deleteLibraryTile(e) }, t("library.delete"))
+    ? h("button", { type: "button", class: "btn btn-danger", title: building ? t("library.delete_wait") : t("library.delete_help"), disabled: busy || building, onclick: () => deleteLibraryTile(e) }, t("library.delete"))
     // the way back from an import: off the list, and nothing on the disk touched (a user asked
     // for it, 2026-09-21), in place of a "not deletable here" that offered nothing. Not while
     // X-Plane shows the tile: the Library could no longer take it out.
-    : h("button", { type: "button", class: "btn btn-small", title: e.installed ? t("library.forget_installed") : t("library.forget_help"), disabled: busy || Boolean(e.installed), onclick: () => forgetLibraryTile(e) }, t("library.forget"));
+    : h("button", { type: "button", class: "btn", title: e.installed ? t("library.forget_installed") : t("library.forget_help"), disabled: busy || Boolean(e.installed), onclick: () => forgetLibraryTile(e) }, t("library.forget"));
   let missing = null;
   if (!present) {
     const away = Boolean(e.disk_absent);
@@ -6104,7 +6104,7 @@ export function libraryRow(e, showFolder = false) {
   const overlayMark = overlayPill(e, busy || inBuild);
   const label = revealLabel(state.status?.platform);
   const revealButton = present && e.path
-    ? h("button", { type: "button", class: "btn btn-small btn-icon reveal-btn", title: label, "aria-label": `${label}: ${e.tile}`, onclick: () => revealPath(e.path) }, folderIcon())
+    ? h("button", { type: "button", class: "btn btn-icon reveal-btn", title: label, "aria-label": `${label}: ${e.tile}`, onclick: () => revealPath(e.path) }, folderIcon())
     : null;
   // What the tile was built with, one click away and only for a tile OrthoStudio XP built: an
   // imported one's settings are Ortho4XP's, which nothing here can read.
@@ -6194,12 +6194,12 @@ function renderOverlayNotices(rows) {
     const packs = [...new Set(doubles.flatMap((e) => (e.overlay.others || []).map(overlayPackLabel)))].join(", ");
     box.append(h("div", { class: "overlay-notice" },
       h("p", null, t("library.overlays_double", { n: doubles.length, tiles: doubles.map((e) => e.tile).join(" "), packs })),
-      h("button", { type: "button", class: "btn btn-small", onclick: () => setOverlays(doubles.map((e) => e.tile), "others") }, t("library.overlays_leave", { packs }))));
+      h("button", { type: "button", class: "btn", onclick: () => setOverlays(doubles.map((e) => e.tile), "others") }, t("library.overlays_leave", { packs }))));
   }
   if (missing.length) {
     box.append(h("div", { class: "overlay-notice overlay-notice-fail" },
       h("p", null, t("library.overlays_missing", { n: missing.length, tiles: missing.map((e) => e.tile).join(" ") })),
-      h("button", { type: "button", class: "btn btn-small", onclick: () => setOverlays(missing.map((e) => e.tile), "own") }, t("library.overlays_take_back"))));
+      h("button", { type: "button", class: "btn", onclick: () => setOverlays(missing.map((e) => e.tile), "own") }, t("library.overlays_take_back"))));
   }
 }
 
@@ -7361,7 +7361,7 @@ function renderTileColours() {
     box.append(h("div", { class: "colours-own" },
       h("p", { class: "help" }, line),
       own.free
-        ? h("button", { type: "button", class: "btn btn-small btn-accent", onclick: () => {
+        ? h("button", { type: "button", class: "btn btn-accent", onclick: () => {
             const given = planMap.resetColours();
             renderTileColours();
             renderPlanSettings();
@@ -7377,7 +7377,7 @@ function renderTileColours() {
       h("p", { class: "help" }, otherwise.length === 1
         ? t("plan.colours_built_one", { tile: otherwise[0].tile })
         : t("plan.colours_built_many", { n: otherwise.length })),
-      h("button", { type: "button", class: "btn btn-small btn-accent", onclick: () => {
+      h("button", { type: "button", class: "btn btn-accent", onclick: () => {
           planMap.setEachTilePhoto(Object.fromEntries(otherwise.map((e) => [e.tile, e.choice])));
           renderTileColours();
           renderPlanSettings();
