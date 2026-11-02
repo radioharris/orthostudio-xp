@@ -463,6 +463,8 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .tile-colours { display: grid; gap: var(--gap); margin: var(--gap) 0 0; }
 .colours-own { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .colours-own > .help { margin: 0; flex: 1 1 220px; }
+/* step 1 no longer the profile's: said in the warning colour, to be seen (a user, 2026-11-02) */
+.plan-profile-differs > .help { color: var(--warn); }
 .tile-colours .photo-canvas { width: 110px; height: 110px; }
 .tile-colours .photo-words { flex: 1 1 160px; }
 #plan-preview { margin: 8px 0 0; }

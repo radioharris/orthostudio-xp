@@ -222,6 +222,17 @@ waits, greyed, and its line says why: "Your changes in Settings are not saved: s
 switch profiles." Step 3's sentence names it: "Build settings, profile "Mountains": …". With one
 profile, nothing of this shows.
 
+A Save in Settings still never changes step 1's source and level, the build being prepared (a user,
+2026-09-20), even when it changes the current profile's. So when step 1's source or level is no
+longer the profile's, after such a Save or a change made in step 1 itself, a line under the list
+says what the profile holds, in the warning colour, "The profile "Mountains" is set to Bing Maps, ZL18.", with *Use them*
+(`settings.js` `profileDiffers`, the level capped as step 1 caps it by the source's finest; a
+source the list no longer has is not offered). It names only what still differs, "… is set to
+ZL18." once the right source is chosen by hand: naming both, it seemed to stay for nothing (a user,
+2026-11-02). Choosing a profile and *Use them* give step 1 the
+profile's; a source or level chosen in step 1 is for this build only, and choosing a profile again
+replaces it (a user went through both cases, 2026-11-02).
+
 The chips of the selection (removable), "N tile(s) selected", and the approximate size of the
 selection before any estimate (7.0.4): "About 3.2 GB of imagery, including 705 MB of extra
 detail". On the line of the count, shown when tiles are selected, a small trash, *Unselect all

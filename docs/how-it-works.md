@@ -428,7 +428,9 @@ in a profile of their own, called *Main* the first time. From then on:
   profile it writes into (*Save in "Mountains"*);
 - step 1 of the Plan shows the list above the imagery source: choosing a profile there gives the
   build its source, its detail level and all its other settings, which you can still change for that
-  build alone;
+  build alone. Saving in Settings never changes step 1, even the profile's source or level: when
+  step 1 no longer shows the profile's, a line under the list says what the profile holds, and *Use
+  them* takes them;
 - Works says, beside a build's source and level, which profile it used. *Build again* in Works makes
   the same build again, with the settings it had then; to build a tile with another profile, choose
   it again in the Plan.

@@ -30,7 +30,7 @@ import { TEXTURE_MB, ZONES_FORMAT, normalizeZone, parseTile, tileName, validateZ
 import { OLD_STORAGE_KEY, STORAGE_KEY, defaultLevels, excluding, groupsOf, levelOf, newFlightPlan, readSaved, restoredPlan, squaresOf, toSaved, withPlan, withoutPlan } from "./flightplan.js";
 import { createPlanMap, detailLabel, detailName } from "./map.js";
 import { colourPreview } from "./preview.js";
-import { defaultsKeepingFolders, profileNameProblem, refusedValueText, renderSettingsView, sameValue, settingsSummary } from "./settings.js";
+import { defaultsKeepingFolders, profileDiffers, profileDiffersText, profileNameProblem, refusedValueText, renderSettingsView, sameValue, settingsSummary } from "./settings.js";
 import { bindFind, bindFindKeys, findForget } from "./find.js";
 import { bindZoom } from "./zoom.js";
 import { countryName, sourceAddressProblem, sourceGroups, sourceGroupTitle, sourceLabel, tilesNotCovered } from "./sources.js";
@@ -3954,6 +3954,7 @@ function renderZlOptions() {
   sel.value = String(planZl());
   $("zl-help").textContent = t("plan.zl_help", { lat: fmtNum(lat, 1) });
   renderFlightPlan();
+  renderPlanProfile(); // the source or the level may no longer be the profile's
 }
 
 // ------------------------------------------------------------------ Plan: estimate + build
@@ -7803,6 +7804,10 @@ function renderPlanProfile() {
   const help = $("plan-profile-help");
   setText(help, dirty ? t("plan.profile_unsaved") : t("plan.profile_help"));
   help.classList.toggle("is-warn", dirty);
+  // step 1's source or level no longer the profile's: said, with the button that takes them
+  const differs = profileDiffers(state.settings?.essential, { provider: $("provider-select").value, zl: planZl() }, state.providers);
+  $("plan-profile-differs").hidden = !differs;
+  if (differs) setText($("plan-profile-differs-text"), profileDiffersText(state.profiles.current, differs, sourceLabel(differs.source)));
 }
 
 // ------------------------------------------------------------------ theme + language
@@ -8022,6 +8027,7 @@ async function boot() {
   $("zl-select").addEventListener("change", () => {
     // the level of the squares chosen by hand; the flight plan's keep their own two
     state.planZl = Number($("zl-select").value) || planZl();
+    renderPlanProfile();
     selectionChanged();
     renderTilesBuilt();
     planMap?.planChanged();
@@ -8131,6 +8137,10 @@ async function boot() {
     }
   });
   $("plan-profile-select").addEventListener("change", (ev) => switchProfile(ev.target.value));
+  $("plan-profile-take").addEventListener("click", () => {
+    planTakesProfile();
+    $("plan-profile-select").focus();
+  });
   $("settings-reset").addEventListener("click", resetSettings);
   $("settings-defaults").addEventListener("click", defaultSettings);
   $("plan-settings-change").addEventListener("click", () => showScreen("settings"));
