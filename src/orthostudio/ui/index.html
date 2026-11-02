@@ -110,6 +110,12 @@
               <label for="plan-profile-select" data-i18n="plan.profile">Settings profile</label>
               <select id="plan-profile-select"></select>
               <small class="help" id="plan-profile-help"></small>
+              <!-- Step 1's source or level no longer the profile's, after a Save in Settings or a
+                   change here: said, with the button that takes the profile's (renderPlanProfile). -->
+              <div class="colours-own plan-profile-differs" id="plan-profile-differs" hidden>
+                <p class="help" id="plan-profile-differs-text"></p>
+                <button type="button" class="btn btn-small btn-accent" id="plan-profile-take" data-i18n="plan.profile_take">Use them</button>
+              </div>
             </div>
             <div class="field">
               <label for="provider-select" data-i18n="plan.provider">Imagery source</label>

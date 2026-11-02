@@ -88,3 +88,48 @@ def test_the_profile_line_keeps_the_stylesheets_parts() -> None:
     assert "var(--section-gap)" in rules[".settings-profile"]
     assert "var(--fs-title-3)" in rules[".settings-profile-label"]
     assert "width: 240px;" in rules[".settings-new input.settings-new-input"]
+
+
+def test_step_1_says_when_its_source_or_level_is_no_longer_the_profiles() -> None:
+    """A Save in Settings never changes step 1 (a user, 2026-09-20), so after one the Plan could
+    name a profile whose source and level it no longer shows: a line says what the profile holds,
+    with *Use them* (2026-11-02). Its level is capped as step 1 caps it, so that the line goes once
+    the button is pressed."""
+    providers = '[{code: "BI", max_zl: 19}, {code: "Arc", max_zl: 19}, {code: "NL", max_zl: 18}]'
+    cases = [
+        ('"Arc", zoom_level: 18', '"Arc", zl: 17'),
+        ('"BI", zoom_level: 16', '"Arc", zl: 16'),
+        ('"BI", zoom_level: 16', '"BI", zl: 16'),
+        ('"NL", zoom_level: 19', '"NL", zl: 18'),
+        ('"Gone", zoom_level: 16', '"BI", zl: 16'),
+    ]
+    calls = ", ".join(
+        f"m.profileDiffers({{provider: {held}}}, {{provider: {shown}}}, {providers})"
+        for held, shown in cases
+    )
+    got = _node_json("settings.js", f"[{calls}]")
+    assert got[0] == {"source": {"code": "Arc", "max_zl": 19}, "zl": 18,
+                      "sourceDiffers": False, "zlDiffers": True}  # fmt: skip
+    assert got[1]["source"]["code"] == "BI" and got[1]["zl"] == 16
+    # the line names only what still differs: the right source chosen by hand, the level alone
+    words = _node_json(
+        "settings.js",
+        """[[false, true], [true, false], [true, true]].map(([s, z]) => m.profileDiffersText(
+             "Alpes", {zl: 18, sourceDiffers: s, zlDiffers: z}, "Esri"))""",
+    )
+    assert words == ["The profile “Alpes” is set to ZL18.", "The profile “Alpes” is set to Esri.",
+                     "The profile “Alpes” is set to Esri, ZL18."]  # fmt: skip
+    assert got[2] is None and got[3] is None and got[4] is None
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    plan = _function_body(app_js, "renderPlanProfile")
+    assert '$("plan-profile-differs").hidden = !differs;' in plan
+    assert "profileDiffersText(state.profiles.current, differs," in plan
+    # drawn again whenever step 1's source or level changes, and after a save
+    assert "renderPlanProfile();" in _function_body(app_js, "renderZlOptions")
+    assert "renderProfiles();" in _function_body(app_js, "renderUnsaved")
+    assert "planTakesProfile();" in app_js[app_js.index('$("plan-profile-take")') :][:200]
+    html = (UI / INDEX_FILE).read_text(encoding="utf-8")
+    field = html[html.index('id="plan-profile"') : html.index('id="provider-select"')]
+    assert 'id="plan-profile-differs"' in field and 'id="plan-profile-take"' in field
+    rules = dict(_css_rules((UI / "styles.css").read_text(encoding="utf-8")))
+    assert "color: var(--warn);" in rules[".plan-profile-differs > .help"]

@@ -100,6 +100,32 @@ export function profileNameProblem(name, taken) {
   return null;
 }
 
+/** The current profile's source and level when step 1 shows others, or null: `{source, zl,
+ * sourceDiffers, zlDiffers}`, the level capped as step 1 caps it by the source's finest
+ * (`renderZlOptions`); the line names only what still differs, so that choosing the right source
+ * by hand leaves the level alone said (a user saw the line stay, 2026-11-02). A Save in Settings
+ * never changes step 1, which is the build being prepared (a user, 2026-09-20): with profiles, the
+ * Plan names one whose values it may no longer show, and says so with this (2026-11-02). A source
+ * the list no longer has is not offered. */
+export function profileDiffers(essential, plan, providers) {
+  const code = essential?.provider;
+  const source = (providers || []).find((p) => p.code === code);
+  if (!source) return null;
+  const zl = Math.min(Number(essential.zoom_level) || 16, 19, Number(source.max_zl) || 19);
+  const sourceDiffers = plan?.provider !== code;
+  const zlDiffers = Number(plan?.zl) !== zl;
+  if (!sourceDiffers && !zlDiffers) return null;
+  return { source, zl, sourceDiffers, zlDiffers };
+}
+
+/** The words of that line: the source, the level, or both, whichever step 1 does not show. */
+export function profileDiffersText(name, differs, label) {
+  const values = { name, source: label, zl: differs.zl };
+  if (!differs.zlDiffers) return t("plan.profile_differs_source", values);
+  if (!differs.sourceDiffers) return t("plan.profile_differs_level", values);
+  return t("plan.profile_differs", values);
+}
+
 // ---------------------------------------------------------------- presets
 
 /** Sizes: docs/specs/settings-plain-language.md section 5 (a coastal ZL16 tile with 7 main
