@@ -575,9 +575,8 @@ required with `file` (`config/models.py:107-120`).
 - **Cost.** None.
 - **Recommendation. Automatic.** Detected; asked only when detection fails, plus a "Change..."
   button. A saved folder that is no longer valid is treated as "not detected"
-  (`api/specs.py` `resolve_xplane`); step 3 of the Plan names it ("The X-Plane 12 folder chosen in
-  Settings was not found: <path>"), and says "X-Plane 12 was not found on this computer" when none
-  is known, with a button to this question (`ui.md` 2.1).
+  (`api/specs.py` `resolve_xplane`); step 3 of the Plan names it ("The X-Plane 12 folder in Settings
+  is missing: <path>"), and says "X-Plane 12 not found on this computer" when none is known, with a button to this question (`ui.md` 2.1).
 - **Question (only when needed).**
   - EN: *Where is X-Plane 12 installed?* — **The detected folder (recommended)** · Choose another
     folder...

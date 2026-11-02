@@ -246,8 +246,7 @@ zoom levels, textures or DSF files. This overrides any detail below that contrad
    (optional). 3. Check what it will cost (disk, download, time). 4. Build and install.
 2. **No hidden gesture is ever required.** Drawing starts from visible buttons ("Add detail:
    rectangle", "Add detail: free shape"), and a banner over the map says what to do next
-   ("Click two opposite corners", "Click to add points, double-click to finish, Esc to
-   cancel"). The Ortho4XP gestures of section 1 stay as **shortcuts** for experienced users,
+   ("Click two opposite corners", "Click: a point · Double-click: finish · Esc: cancel"). The Ortho4XP gestures of section 1 stay as **shortcuts** for experienced users,
    listed in a small "Shortcuts" help, never needed.
 3. **Plain words first.** The main labels never show ZL, texture, DSF, mesh or mask. A zoom
    level is a named detail level with its meaning at the zone's latitude, for example
