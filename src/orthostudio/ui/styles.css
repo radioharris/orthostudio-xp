@@ -32,7 +32,11 @@
      seldom drawn, is near it), over a photo in either theme. The colour of a tile's frame says
      who built it and its line whether X-Plane has it (a user, 2026-09-26). */
   --map-ortho4xp: #a37bff;
+  /* The ground of a field or a list: the opposite of the one around it, the card's on the page and
+     the page's on a card (below). A button has no ground of its own (a user, 2026-11-02). */
+  --field-bg: var(--bg-2);
   --radius: 4px;
+  --control-h: 30px; /* every button, list and field, on every screen (a user, 2026-11-02) */
   --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
   /* The sizes of the text styles (see "styles" below). */
@@ -237,7 +241,7 @@ a { color: var(--accent); }
 }
 
 .topbar-tools { display: flex; align-items: center; gap: 6px; }
-/* The three of them together, at one height: Quit took its height from .btn-small, which sets a
+/* The three of them together, at one height: Quit took its height from the small button, which set a
    minimum and not a height, so it came out 24px against their 26 and stood 1px inside them. On
    macOS that is invisible, on Windows the line box of its label makes more of it, and a user saw
    the row sitting crooked (2026-09-20). */
@@ -251,9 +255,11 @@ a { color: var(--accent); }
  * next day). The flex centring below does the work instead. */
 .topbar-tools .tool-select, .topbar-tools .tool-btn, .topbar-tools .quit-btn {
   font: inherit; font-size: 12px; padding: 0 6px; margin-block: 0;
-  height: 26px; min-height: 26px; max-height: 26px; align-self: center; vertical-align: middle;
-  background-color: var(--bg-2); color: var(--fg); border: 1px solid var(--line-2); border-radius: var(--radius);
+  height: var(--control-h); min-height: var(--control-h); max-height: var(--control-h); align-self: center; vertical-align: middle;
+  background-color: transparent; color: var(--fg); border: 1px solid var(--line-2); border-radius: var(--radius);
 }
+/* the bar's ground for all three, the list too: they are the bar's, not a field and buttons
+   (a user, 2026-11-02); the bottom bar's the same (.status-select) */
 .topbar-tools .tool-select { padding-right: 22px; background-position: right 7px center; }
 /* Quit's label on its icon, on Windows too: Segoe UI sets its letters lower in their line than
    the Mac's font, and the label stood under the icon (a user, 2026-10-04). The label's box is
@@ -297,10 +303,16 @@ a { color: var(--accent); }
 .field-row .field-wide { flex: 1 1 320px; }
 .field-row .btn { flex: 0 0 auto; }
 
+/* A field or a list stands out from the ground around it (--field-bg, the opposite one), where a
+   button takes that ground and is drawn by its border: both had the card's ground and looked alike
+   (a user, 2026-11-02). The surfaces painted with the card's ground give their fields the page's;
+   a zone's line, the page's ground inside its step, gives them the card's again. */
+.plan-step, .dialog, .question, .find-bar, .library-act { --field-bg: var(--bg); }
+.zone-item { --field-bg: var(--bg-2); }
 input[type="text"], input[type="number"], input[type="search"], select, textarea {
-  font: inherit; color: var(--fg); background: var(--bg-2);
+  font: inherit; color: var(--fg); background: var(--field-bg);
   border: 1px solid var(--line-2); border-radius: var(--radius);
-  height: 28px; padding: 0 8px; min-width: 0; width: 100%;
+  height: var(--control-h); padding: 0 8px; min-width: 0; width: 100%;
 }
 input[type="number"] { font-variant-numeric: tabular-nums; }
 /* A list draws its own arrows: each engine drew its own, Chromium's (Windows, Chrome) a chevron
@@ -318,8 +330,8 @@ input[aria-invalid="true"] { border-color: var(--fail); }
    Mac's arrows covered it ("passes" under For experts, a user, 2026-09-21). The same frame in the
    Plan and in Settings. */
 .with-unit {
-  display: flex; align-items: center; min-width: 0; height: 28px;
-  background: var(--bg-2); border: 1px solid var(--line-2); border-radius: var(--radius);
+  display: flex; align-items: center; min-width: 0; height: var(--control-h);
+  background: var(--field-bg); border: 1px solid var(--line-2); border-radius: var(--radius);
 }
 .with-unit:focus-within { outline: 2px solid var(--focus); outline-offset: 1px; }
 .with-unit input { flex: 1 1 auto; height: 100%; border: 0; background: transparent; }
@@ -356,16 +368,21 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 }
 
 .actions { display: flex; align-items: center; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
-/* A minimum height, not a fixed one: a label that has to wrap stays inside its button. */
+/* A minimum height, not a fixed one: a label that has to wrap stays inside its button. One height
+   for every button and every list and field (--control-h): there were four of each,
+   24 to 30 px, and a small button stood 4 px lower than the list beside it (a user, 2026-11-02). */
 .btn {
-  font: inherit; min-height: 30px; padding: 0 12px; cursor: pointer;
-  background: var(--bg-2); color: var(--fg); border: 1px solid var(--line-2); border-radius: var(--radius);
+  font: inherit; font-size: var(--fs); min-height: var(--control-h); padding: 0 12px; cursor: pointer;
+  background: transparent; color: var(--fg); border: 1px solid var(--line-2); border-radius: var(--radius);
 }
 .btn:hover { background: var(--bg-3); }
 .btn:disabled { opacity: 0.5; cursor: default; }
 .btn-primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); font-weight: 600; }
 .btn-primary:hover { filter: brightness(1.08); background: var(--accent); }
-.btn-small { min-height: 24px; padding: 0 8px; font-size: 12px; }
+/* One text size for every button, the field's and the list's beside it (--fs), wherever it stands:
+   a small button had a smaller one, chosen case by case, and a button took the size of the note it
+   sat in (a user, 2026-11-02). The bottom bar keeps its own; the top bar's tools set theirs. */
+.statusbar .btn { font-size: inherit; }
 .btn-danger { color: var(--fail); border-color: var(--fail); }
 /* An action that undoes something, which must be seen: the quiet, borderless button was
    invisible (a user, 2026-09-18). */
@@ -484,7 +501,10 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .path-row .btn { flex: none; white-space: nowrap; }
 /* Step 1's source: the tiles it does not cover, and the user's own sources (app.js openSources). */
 #provider-coverage { color: var(--fail); }
-.sources-open { align-self: flex-start; margin-top: var(--label-gap); }
+/* a list and its button on one line: the list takes what the button leaves */
+.select-and-button { display: flex; align-items: center; gap: var(--gap); min-width: 0; }
+.select-and-button select { flex: 1 1 auto; min-width: 0; }
+.sources-open { flex: none; }
 .dialog-wide { width: min(620px, calc(100vw - 32px)); }
 .sources-warning { margin: 0 0 var(--block-gap); padding: 6px 10px; border-radius: var(--radius); background: var(--warn-soft); color: var(--warn); border: 1px solid var(--warn); font-size: var(--fs-2); }
 .sources-list { list-style: none; margin: 0 0 var(--block-gap); padding: 0; display: flex; flex-direction: column; gap: 6px; }
@@ -641,7 +661,7 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .plan-step-size:empty { display: none; }
 .plan-step .field-row:first-child, .plan-step .chips { margin-top: 6px; }
 /* Step 1's count and its trash: the height stays when the trash shows or hides. */
-.tile-count-row { display: flex; align-items: center; gap: 8px; min-height: 24px; margin: 2px 0 var(--gap); }
+.tile-count-row { display: flex; align-items: center; gap: 8px; min-height: var(--control-h); margin: 2px 0 var(--gap); }
 .tile-count-row .help { margin: 0; }
 .plan-step .plan-panel { margin-top: var(--block-gap); }
 .plan-steps .costs { grid-template-columns: 1fr; }
@@ -695,10 +715,9 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .zone-item > .zl-swatch { width: 8px; border-radius: 3px; background: var(--zl); }
 .zone-main { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .zone-row { display: flex; align-items: center; gap: 4px; min-width: 0; }
-.zone-row input, .zone-row select { height: 26px; }
 .zone-row .zone-name { flex: 1 1 auto; font-weight: 600; }
 .zone-row select { flex: 1 1 auto; min-width: 0; }
-.btn-icon { width: 26px; padding: 0; flex: none; }
+.btn-icon { width: var(--control-h); padding: 0; flex: none; }
 .zone-notes { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 10px; font-size: var(--fs-3); color: var(--fg-2); }
 .zone-size { font-weight: 600; color: var(--fg); }
 .zone-hint { color: var(--fg-3); }
@@ -938,7 +957,7 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 
 /* ----------------------------------------------------------- works */
 
-.jobs-head { display: flex; align-items: center; gap: 8px; min-height: 24px; margin-bottom: var(--title-gap); }
+.jobs-head { display: flex; align-items: center; gap: 8px; min-height: var(--control-h); margin-bottom: var(--title-gap); }
 .jobs-head .h2 { margin: 0; }
 .job-list { list-style: none; margin: 0; padding: 6px 0 0; display: flex; flex-direction: column; gap: 8px; }
 .job-list li { position: relative; }
@@ -1138,12 +1157,12 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .status-home .status-reveal svg { width: 13px; height: 13px; }
 /* the window's zoom (zoom.js bindZoom), as tall as the folder's button so the bar keeps its height */
 .status-zoom { gap: 2px; }
-.status-zoom .btn-small { min-height: 18px; height: 18px; padding: 0 6px; }
+.status-zoom .btn { min-height: 18px; height: 18px; padding: 0 6px; }
 .status-zoom-level { min-width: 46px; justify-content: center; }
 /* the text's size (app.js bindTextSize), as tall as the zoom's buttons */
 .status-text { gap: 4px; }
 .status-text-mark { font-weight: 600; color: var(--fg-2); }
-.status-select { font: inherit; height: 18px; padding: 0 2px; border: 1px solid var(--line-2); border-radius: var(--radius); background: var(--bg); color: var(--fg); }
+.status-select { font: inherit; height: 18px; padding: 0 2px; border: 1px solid var(--line-2); border-radius: var(--radius); background: transparent; color: var(--fg); }
 .status-item details { position: relative; }
 .status-item summary { cursor: pointer; list-style: none; }
 .status-item summary::-webkit-details-marker { display: none; }
@@ -1182,8 +1201,8 @@ input[aria-invalid="true"] { border-color: var(--fail); }
   border-radius: var(--radius); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
 }
 .find-input {
-  width: 200px; height: 26px; padding: 0 6px; font: inherit; font-size: 12.5px;
-  color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius);
+  width: 200px; height: var(--control-h); padding: 0 6px; font: inherit; font-size: 12.5px;
+  color: var(--fg); background: var(--field-bg); border: 1px solid var(--line); border-radius: var(--radius);
 }
 .find-input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .find-count { min-width: 5.5em; text-align: right; }
@@ -1218,9 +1237,9 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 /* a little air above the table, the Settings field's (a user asked, 2026-09-26) */
 .library-search { margin: 0 0 var(--block-gap); }
 .settings-search-input, .works-search-input, .library-search-input {
-  width: 100%; max-width: 420px; min-height: 30px; padding: 0 8px;
+  width: 100%; max-width: 420px; height: var(--control-h); padding: 0 8px;
   font: inherit; color: var(--fg);
-  background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--field-bg); border: 1px solid var(--line); border-radius: var(--radius);
 }
 .settings-search-input:focus-visible, .works-search-input:focus-visible, .library-search-input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 /* the search and the folder filter side by side, one above the other in a narrow window */
@@ -1229,14 +1248,15 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .library-folder { display: inline-flex; align-items: center; gap: var(--label-gap); min-width: 0; }
 /* the page's label and the search field's height (a review, 2026-10-05) */
 .library-folder > span { font-size: var(--fs-2); font-weight: 600; color: var(--fg-2); }
-.library-folder select { max-width: 320px; min-width: 0; min-height: 30px; }
+.library-folder select { max-width: 320px; min-width: 0; }
 /* the tiles picked to be filed elsewhere, and the filing under way (the atelier, step 3) */
 .library-pick { display: flex; flex-direction: column; gap: var(--gap); margin: var(--section-gap) 0 var(--block-gap); }
 .library-pick-line { display: flex; flex-wrap: wrap; align-items: center; gap: var(--gap) var(--block-gap); }
 /* the actions in three groups, the last apart at the right end; each button says how many tiles
-   it takes (a user, 2026-10-16) */
+   it takes (a user, 2026-10-16). Each group on the card's ground, which its buttons take, or they
+   stood on the page's with nothing to set them apart (a user, 2026-11-02). */
 .library-acts { display: flex; flex-wrap: wrap; align-items: center; gap: var(--gap); }
-.library-act { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 4px 6px; border: 1px solid var(--line); border-radius: var(--radius); }
+.library-act { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 4px 6px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg-2); }
 .library-act-end { margin-left: auto; }
 .library-act-name { padding: 0 2px; font-size: var(--fs-2); font-weight: 600; color: var(--fg-2); }
 .library-act-n:not(:empty) { margin-left: 0.35em; opacity: 0.75; font-variant-numeric: tabular-nums; }
@@ -1354,8 +1374,10 @@ th[aria-sort="descending"] .th-sort::after { content: " \25BC"; font-size: 0.8em
 .settings-new input.settings-new-input { width: 240px; max-width: 100%; }
 .settings-new-help { flex-basis: 100%; margin: 0; }
 .settings-credits { margin: var(--block-gap) 0 0; }
-.plan-settings { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: var(--gap); }
-.plan-settings .help { margin: 0; flex: 1 1 240px; }
+/* the sentence across the whole step, its button under it: beside it, in the Plan's column, the
+   sentence ran down six short lines (a user, 2026-11-02) */
+.plan-settings { display: flex; flex-direction: column; align-items: flex-start; gap: var(--gap); margin-top: var(--gap); }
+.plan-settings .help { margin: 0; }
 /* No X-Plane 12 folder known: said before Estimate, with the way to give it (app.js xplaneNotice). */
 .plan-xplane, .plan-unsaved {
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: var(--gap);
@@ -1405,7 +1427,7 @@ th[aria-sort="descending"] .th-sort::after { content: " \25BC"; font-size: 0.8em
 .flightplan-along { display: flex; align-items: center; gap: 6px; }
 /* a checkbox and its words on one line, inside a question of Settings */
 .check-row { display: flex; align-items: center; gap: 6px; }
-.flightplan-zl { width: auto; max-width: 100%; height: 26px; font-size: var(--fs-2); }
+.flightplan-zl { width: auto; max-width: 100%; font-size: var(--fs-2); }
 .flightplan-note { margin: var(--gap) 0 0; }
 .flightplan-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: var(--gap); }
 /* What went wrong with the airport or the flight plan, right under them, not in step 3. */

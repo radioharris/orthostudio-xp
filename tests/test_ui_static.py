@@ -3152,7 +3152,7 @@ def test_one_finished_build_can_leave_the_list_alone() -> None:
     assert "padding: 6px 0 0; display: flex; flex-direction: column; gap: 8px;" in css
     # the trash above the list is untouched
     html = (UI / INDEX_FILE).read_text(encoding="utf-8")
-    assert 'class="btn btn-small btn-icon btn-danger btn-trash" id="jobs-clear"' in html
+    assert 'class="btn btn-icon btn-danger btn-trash" id="jobs-clear"' in html
 
     # the bin says what goes, and both languages have the words
     tables = _i18n_tables()
@@ -3453,7 +3453,9 @@ def test_the_cost_follows_the_plan_and_build_needs_no_estimate_first() -> None:
         "scroll-margin-bottom: calc(var(--statusbar-h) + 8px); }"
     ) in css
     assert "trackStatusbarHeight();" in _function_body(app_js, "boot")
-    assert "min-height: 30px;" in css and "height: 30px;" not in css.replace("min-height", "")
+    # a minimum height, the one of every control, never a fixed one: a label that wraps stays inside
+    assert "min-height: var(--control-h);" in dict(_css_rules(css))[".btn"]
+    assert "height: 30px;" not in css
 
 
 def test_the_sources_are_grouped_by_what_they_cover_bing_and_esri_first() -> None:
@@ -4668,9 +4670,7 @@ def test_the_legend_lines_up_folds_away_and_keeps_the_keyboard() -> None:
     ]
     assert 'box.classList.toggle("is-folded", !zs.legendOpen);' in legend
     folded = legend[legend.index("if (!zs.legendOpen) {") : legend.index("const fold = ")]
-    assert 'class: "btn btn-small legend-unfold"' in folded, (
-        "an ordinary small button, as on the map"
-    )
+    assert 'class: "btn legend-unfold"' in folded, "an ordinary button, as on the map"
     assert "onclick: () => setLegendOpen(true)" in folded
     assert 'class: "legend-fold"' in legend and "onclick: () => setLegendOpen(false)" in legend
     assert '"aria-expanded": "true"' in legend and '"aria-expanded": "false"' in legend
@@ -5044,15 +5044,16 @@ def test_the_three_tools_at_the_top_right_are_one_height() -> None:
     assert ".quit-btn" in head, "Quit is sized apart from the tools beside it"
     # two classes deep, so it beats `.btn` whatever the order of the file
     assert head.count(".topbar-tools ") == 3
-    for held in ("height: 26px", "min-height: 26px", "max-height: 26px"):
+    for held in (
+        "height: var(--control-h)",
+        "min-height: var(--control-h)",
+        "max-height: var(--control-h)",
+    ):
         assert held in rule, held
     # and no line-height of its own: pinning the line box to the font's exact height left Quit's
     # label standing off its own icon on Windows, where the font is not the Mac's (2026-09-21)
     assert "line-height" not in rule
     assert css.index(".btn {") > start  # and the rule it has to beat really does come later
-    # .btn-small keeps its minimum for the buttons whose label may wrap; only these three are fixed
-    small = css[css.index(".btn-small {") :][: css[css.index(".btn-small {") :].index("}")]
-    assert "min-height" in small and "height: " not in small.replace("min-height", "")
 
 
 def test_quits_label_stands_on_its_icon() -> None:
@@ -5907,7 +5908,6 @@ def _css_rules(css: str) -> list[tuple[str, str]]:
 # The only rules with a size of their own: controls and bars, not text (see the "styles" block).
 OWN_SIZES = {
     ".topbar-tools .tool-select, .topbar-tools .tool-btn, .topbar-tools .quit-btn",
-    ".btn-small",
     ".chip button",
     ".map-notice",
     ".map-legend",
@@ -6178,7 +6178,7 @@ def test_a_list_draws_the_same_arrows_in_every_engine() -> None:
         assert part in lists, part
     # the top bar's list keeps it: its shared rule sets the colour only, not the whole background
     shared = rules[".topbar-tools .tool-select, .topbar-tools .tool-btn, .topbar-tools .quit-btn"]
-    assert "background-color: var(--bg-2);" in shared and "background:" not in shared
+    assert "background-color: transparent;" in shared and "background:" not in shared
     assert "padding-right: 22px;" in rules[".topbar-tools .tool-select"]
     # one arrow per theme, in its --fg-2 (an image cannot read the tokens)
     arrow = r"--select-arrow: url\(\"data:image/svg\+xml,[^\"]*stroke='%23(\w{6})'"
@@ -6374,7 +6374,91 @@ def test_my_sources_is_a_button_that_can_be_seen() -> None:
     (2026-09-21)."""
     html = (UI / "index.html").read_text(encoding="utf-8")
     tag = html[html.index('id="sources-open"') - 120 : html.index('id="sources-open"')]
-    assert "btn-quiet" not in tag and "btn btn-small" in tag
+    assert "btn-quiet" not in tag and 'class="btn sources-open"' in tag
+
+
+def test_every_button_list_and_field_has_one_height() -> None:
+    """There were four heights of buttons and of fields, 24 to 30 px, and *My sources…* stood 4 px
+    lower than its list (a user, 2026-11-02): one token, --control-h, 30 px, for every button,
+    every list and every field, the top bar's included. The status bar's controls, the cards one
+    clicks and the small round crosses keep their own."""
+    css = (UI / "styles.css").read_text(encoding="utf-8")
+    rules = dict(_css_rules(css))
+    assert "--control-h: 30px;" in rules[":root"]
+    fields = 'input[type="text"], input[type="number"], input[type="search"], select, textarea'
+    assert "height: var(--control-h);" in rules[fields]
+    assert "height: var(--control-h);" in rules[".with-unit"]
+    assert "min-height: var(--control-h);" in rules[".btn"]
+    assert "width: var(--control-h);" in rules[".btn-icon"]
+    top = ".topbar-tools .tool-select, .topbar-tools .tool-btn, .topbar-tools .quit-btn"
+    assert "height: var(--control-h);" in rules[top]
+    search = ".settings-search-input, .works-search-input, .library-search-input"
+    assert "height: var(--control-h);" in rules[search]
+    # no button, list or field of the screens has a height of its own any more
+    for selector, body in rules.items():
+        if selector.startswith((".status", ".legend", ".job-forget", ".chip", ".nav")):
+            continue
+        if re.search(r"\b(btn|select|input)\b", selector):
+            assert not re.search(r"(?<![-\w])(min-)?height: (2[0-9]|3[0-4])px", body), selector
+    html = (UI / INDEX_FILE).read_text(encoding="utf-8")
+    line = html[html.index('class="select-and-button"') : html.index('id="provider-coverage"')]
+    assert 'id="provider-select"' in line and 'id="sources-open"' in line
+
+
+def test_a_field_stands_out_from_its_ground_and_a_button_takes_it() -> None:
+    """Buttons and fields had the same ground and looked alike (a user, 2026-11-02). A field or a
+    list takes the ground opposite to the one around it, the card's on the page and the page's on
+    a card; a button has none of its own and is drawn by its border. The surfaces painted with the
+    card's ground say so to their fields, and a zone's line, the page's ground inside its step,
+    says the card's again. The Library's groups of actions are cards, so their buttons are not
+    bare on the page. The top and bottom bars' controls, their lists included, take the bar's
+    ground (the same user, the same day)."""
+    css = (UI / "styles.css").read_text(encoding="utf-8")
+    rules = _css_rules(css)
+    base = dict(rules)
+    assert "--field-bg: var(--bg-2);" in base[":root"]
+    fields = 'input[type="text"], input[type="number"], input[type="search"], select, textarea'
+    for selector in (
+        fields,
+        ".with-unit",
+        ".settings-search-input, .works-search-input, .library-search-input",
+        ".find-input",
+    ):
+        assert "background: var(--field-bg);" in base[selector], selector
+    # the top bar's three tools, its list too, take the bar's ground: they are the bar's; and
+    # the bottom bar's
+    assert "background" not in base[".topbar-tools .tool-select"].replace("background-position", "")
+    assert "background: transparent;" in base[".status-select"]
+    grey = [".plan-step", ".dialog", ".question", ".find-bar"]
+    grey.append(".library-act")
+    assert base[", ".join(grey)].strip() == "--field-bg: var(--bg);"
+    for surface in grey:  # each of them really is painted with the card's ground
+        assert any(sel == surface and "background: var(--bg-2);" in body for sel, body in rules), (
+            surface
+        )
+    zone = [body.strip() for sel, body in rules if sel == ".zone-item"]
+    assert "--field-bg: var(--bg-2);" in zone
+    assert any(sel == ".zone-item" and "background: var(--bg);" in body for sel, body in rules)
+    assert "background: transparent;" in base[".btn"]
+    top = ".topbar-tools .tool-select, .topbar-tools .tool-btn, .topbar-tools .quit-btn"
+    assert "background-color: transparent;" in base[top]
+
+
+def test_every_button_has_the_text_of_a_field() -> None:
+    """A small button had 12 px of text and the others 13.5, chosen case by case, and a button took
+    the size of the note it sat in (a user, 2026-11-02): every button has the text of the field and
+    the list beside it, the page's text style, so the text size still draws it larger. The small
+    button is gone; the bottom bar keeps its own size and the top bar's tools set theirs."""
+    css = (UI / "styles.css").read_text(encoding="utf-8")
+    rules = dict(_css_rules(css))
+    assert "font-size: var(--fs);" in rules[".btn"]
+    assert rules[".statusbar .btn"].strip() == "font-size: inherit;"
+    assert (
+        "font-size: 12px;"
+        in rules[".topbar-tools .tool-select, .topbar-tools .tool-btn, .topbar-tools .quit-btn"]
+    )
+    for name in ("styles.css", INDEX_FILE, "app.js", "map.js", "settings.js"):
+        assert "btn-small" not in (UI / name).read_text(encoding="utf-8"), name
 
 
 def test_shift_and_a_drag_choose_the_squares_of_a_rectangle() -> None:
@@ -7738,7 +7822,7 @@ def test_the_folder_filter_is_wired() -> None:
     css = (UI / "styles.css").read_text(encoding="utf-8")
     for rule in (
         ".library-folder > span { font-size: var(--fs-2); font-weight: 600; color: var(--fg-2); }",
-        ".library-folder select { max-width: 320px; min-width: 0; min-height: 30px; }",
+        ".library-folder select { max-width: 320px; min-width: 0; }",
     ):
         assert rule in css, rule
     tables = _i18n_tables()
@@ -8670,7 +8754,7 @@ def test_the_show_menu_and_the_bar_s_actions_are_wired() -> None:
         "library-delete-picked",
     ]
     assert [bar.index(f'id="{b}"') for b in order] == sorted(bar.index(f'id="{b}"') for b in order)
-    assert 'class="btn btn-small btn-danger" id="library-delete-picked"' in bar
+    assert 'class="btn btn-danger" id="library-delete-picked"' in bar
     assert '<dialog id="library-bulk-dialog"' in html and 'value="go" id="library-bulk-go"' in html
     assert 'value="cancel" autofocus data-i18n="library.bulk_keep"' in html
     app_js = (UI / "app.js").read_text(encoding="utf-8")

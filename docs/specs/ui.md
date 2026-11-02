@@ -72,7 +72,21 @@ the next (`--gap`); the blocks of a card, and the cards, are 12px apart (`--bloc
 a screen 20px (`--section-gap`); cards are padded 12px 14px (`--card-pad`). Controls (buttons,
 fields, pills), the map and the top and status bars keep sizes of their own; a test lists them.
 Every button has a frame: the quiet, frameless ones read as text (*My sources…*, then *Show in
-Finder*, 2026-09-21). Every list draws its own up and down arrows (`--select-arrow`, one SVG per
+Finder*, 2026-09-21). Every button, every list and every field is 30 px high (`--control-h`), on
+every screen and in the top bar: there were four heights of each, 24 to 30 px, and a small button
+stood 4 px lower than the list beside it (a user, 2026-11-02). The status bar's controls, the cards
+one clicks (presets, jobs), the small round crosses, the table headers and the top bar's tabs keep
+their own. Every button has the text of the field and the list beside it (`--fs`, so the text size
+draws it larger too): a small button had 12 px and the others 13.5, chosen case by case, and a
+button took the size of the note it sat in; there is no small button any more. The bottom bar
+keeps its own size, the top bar's tools theirs. A field or a list takes the ground opposite to the
+one around it (`--field-bg`): the card's on the page, the page's on a card; a button has no ground
+of its own and is drawn by its border, so the two no longer look alike (the same user, the same
+day). The surfaces painted with the card's ground (the Plan's steps, Settings' questions, the
+dialogs, the find bar, the Library's groups of actions) give their fields the page's ground; a zone's line, the page's ground inside its step, gives them the card's again.
+The Library's groups of actions are cards for that reason: on the page, their buttons stood bare.
+The top and bottom bars' controls, their lists included, take the bar's ground: they are the
+bar's. Every list draws its own up and down arrows (`--select-arrow`, one SVG per
 theme in its `--fg-2`): Chromium, in Windows' window and in Chrome, drew a chevron almost touching
 the right edge where the Mac's window drew its arrows clear of it (a user put the two side by side,
 2026-09-21). A field's title is text: a click on a label naming a field outside it is left to the
@@ -265,7 +279,8 @@ the build would go (a campaign, 2026-10-24). Then:
   stays. Under the field, in red, the tiles the source does not cover ("Netherlands · PDOK 2020
   does not cover +46+006: it is one country's source (Netherlands). Choose a Whole world source
   for these tiles."), before the estimate refuses them; then the attribution, with the licence after it.
-- **My sources…** (a small button under the field; user request, 2026-09-14: Apple Maps and
+- **My sources…** (a button on the list's line, the list taking what it leaves: under the
+  field's notes until 2026-11-02, when a user asked for it beside the list; user request, 2026-09-14: Apple Maps and
   Google Maps, much used in the USA, which OrthoStudio XP does not ship, `imagery-providers.md`
   4.1): a dialog that says in a yellow box that the user adds the source themselves, that its
   terms of use apply to them, and that OrthoStudio XP does not ship it nor check that they may
@@ -441,7 +456,8 @@ adds nothing. These are approximations; step 3 gives the engine's numbers.
   Scenery is not installed in <not detected>." and nothing on what to do.
 - *Build settings*: one sentence of plain words on what the build will use besides the tiles,
   the source and the level (`settings.js` `settingsSummary`: airports, coast, water, relief,
-  overlays), and a *Change in Settings* button (section 2.4). The Plan takes the source and level
+  overlays), across the whole step, and under it a *Change in Settings* button (section 2.4; beside
+  it, in the Plan's column, the sentence ran down six short lines, 2026-11-02). The Plan takes the source and level
   of the settings when the page opens; after that step 1's are this build's and the settings are
   the next plan's: *Build* writes nothing into the settings (until 2026-09-21 it saved step 1's
   source and level with `PUT /api/settings`). The request carries `provider` and `zoom_level`
@@ -1479,7 +1495,7 @@ at the legend's edge (the same user). A chevron at the end of its first line fol
 button brings it back, and the choice is remembered (`osxp.mapLegend`, open unless folded;
 `aria-expanded` on both). The chevron is one line high on that line (`legend-head`), so its centre
 is the line's: placed by hand in the corner it sat 2 px above it. The *Legend* button is an
-ordinary `btn btn-small`, 24 px and 12 px like the other button set on the map, and the spaces
+ordinary `btn`, like the other buttons set on the map, and the spaces
 are the stylesheet's own (`--title-gap`, `--label-gap`). A redraw, which happens on every zoom, gives the focus back to the control that had it
 (`data-keep`): it went to the first checkbox, whichever had it. With the four marks of the tiles
 it took twelve lines over the map (the same user, 2026-09-26): *Show* and the zones fold away,

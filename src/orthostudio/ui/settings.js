@@ -926,7 +926,7 @@ function renderQuestions(box, view) {
   // A button instead of typing the path (user request, 2026-09-15): the Finder's, the File
   // Explorer's or the Linux file manager's own dialog, opened by the engine on this computer.
   const choose = view.chooseFolder
-    ? h("button", { type: "button", class: "btn btn-small", dataset: { focusKey: "q:xplane-choose" }, onclick: async () => {
+    ? h("button", { type: "button", class: "btn", dataset: { focusKey: "q:xplane-choose" }, onclick: async () => {
         const path = await view.chooseFolder(t("settings.q.xplane_prompt"), folder.value.trim() || xp?.path || null);
         if (!path) return;
         folder.value = path;
@@ -935,7 +935,7 @@ function renderQuestions(box, view) {
       } }, t("settings.q.xplane_choose"))
     : null;
   const showXp = view.reveal && xp && xp.detected && xp.path
-    ? h("button", { type: "button", class: "btn btn-small reveal-btn", dataset: { focusKey: "q:xplane-reveal" }, onclick: () => view.reveal.open(xp.path) }, view.reveal.label)
+    ? h("button", { type: "button", class: "btn reveal-btn", dataset: { focusKey: "q:xplane-reveal" }, onclick: () => view.reveal.open(xp.path) }, view.reveal.label)
     : null;
   // More than one X-Plane 12 on the machine: a user installed a tile into the one he had
   // forgotten, and found nothing in the Custom Scenery of the one he flies (2026-09-17).
@@ -1054,7 +1054,7 @@ function dataQuestion(view) {
   field.addEventListener("input", () => setPath(d, "essential.data_dir", field.value.trim() || null));
   field.addEventListener("change", () => view.changed());
   const choose = view.chooseFolder
-    ? h("button", { type: "button", class: "btn btn-small", dataset: { focusKey: "q:data-choose" }, onclick: async () => {
+    ? h("button", { type: "button", class: "btn", dataset: { focusKey: "q:data-choose" }, onclick: async () => {
         const path = await view.chooseFolder(t("settings.q.data_prompt"), field.value.trim() || view.dataDir?.path || null);
         if (!path) return;
         field.value = path;
@@ -1063,7 +1063,7 @@ function dataQuestion(view) {
       } }, t("settings.q.data_choose"))
     : null;
   const show = view.reveal && now && !now.warn
-    ? h("button", { type: "button", class: "btn btn-small reveal-btn", dataset: { focusKey: "q:data-reveal" }, onclick: () => view.reveal.open(view.dataDir.path) }, view.reveal.label)
+    ? h("button", { type: "button", class: "btn reveal-btn", dataset: { focusKey: "q:data-reveal" }, onclick: () => view.reveal.open(view.dataDir.path) }, view.reveal.label)
     : null;
   return questionBox(view, "data",
     now ? h("p", { class: `question-detected${now.warn ? " is-warn" : ""}` }, now.text, show ? [" ", show] : null) : null,
@@ -1090,7 +1090,7 @@ function ownFolderQuestion(view) {
   field.addEventListener("input", () => setPath(d, "essential.relief.folder", field.value.trim()));
   field.addEventListener("change", () => view.changed());
   const choose = view.chooseFolder
-    ? h("button", { type: "button", class: "btn btn-small", dataset: { focusKey: "q:relief-folder-choose" }, onclick: async () => {
+    ? h("button", { type: "button", class: "btn", dataset: { focusKey: "q:relief-folder-choose" }, onclick: async () => {
         const path = await view.chooseFolder(t("settings.q.own_prompt"), field.value.trim() || null);
         if (!path) return;
         field.value = path;
@@ -1225,7 +1225,7 @@ function expertField(view, path, prop) {
   // The folder field gets the platform's own dialog, like the X-Plane and data folders: a user
   // did not know what to type in it (2026-09-17).
   const choose = path === PATCHES_DIR && view.chooseFolder
-    ? h("button", { type: "button", class: "btn btn-small", dataset: { focusKey: `x:${path}-choose` }, onclick: async () => {
+    ? h("button", { type: "button", class: "btn", dataset: { focusKey: `x:${path}-choose` }, onclick: async () => {
         const picked = await view.chooseFolder(t("settings.x.patches_prompt"), control.value.trim() || null);
         if (!picked) return;
         control.value = picked;
