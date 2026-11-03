@@ -184,6 +184,11 @@ def test_the_file_round_trips_and_an_unreadable_one_is_said(tmp_path: Path) -> N
     with pytest.raises(OsxpError) as info:
         load_profiles(path)
     assert info.value.code == "CFG_LINE_INVALID"
+    # cut short: the line JSON names, where "line 0" said nothing (a campaign, 2026-11-03)
+    path.write_text('{\n "profiles": [\n  {"name": "Main",', encoding="utf-8")
+    with pytest.raises(OsxpError) as info:
+        load_profiles(path)
+    assert info.value.context["line"] == 3
 
 
 # -- the API ---------------------------------------------------------------------------------------

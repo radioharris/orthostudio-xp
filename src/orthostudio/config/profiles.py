@@ -365,8 +365,10 @@ def load_profiles(path: Path) -> Profiles:
             entries.append((name, part))
         current = doc.get("current")
     except (ValueError, TypeError, KeyError, AttributeError) as exc:
+        # the line JSON names, where it knows it: "line 0" of a file cut short said nothing
+        line = exc.lineno if isinstance(exc, json.JSONDecodeError) else 0
         raise OsxpError(
-            "CFG_LINE_INVALID", context={"path": str(path), "line": 0, "reason": str(exc)}
+            "CFG_LINE_INVALID", context={"path": str(path), "line": line, "reason": str(exc)}
         ) from None
     profiles = Profiles(current=None, entries=tuple(entries))
     at = profiles.find(current) if isinstance(current, str) else None
