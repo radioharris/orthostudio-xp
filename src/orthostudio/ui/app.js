@@ -637,7 +637,8 @@ async function mockProfilesRoute(p, method, body) {
   const named = (name, others) => {
     const text = String(name || "").trim();
     if (!text || text.length > 40) throw mockProfileError(422, "CFG_PROFILE_NAME", text, "A profile's name is 1 to 40 characters, without a line break.");
-    if (others.some((n) => n.toLowerCase() === text.toLowerCase())) throw mockProfileError(409, "CFG_PROFILE_TAKEN", text, `A profile is already called '${text}'.`);
+    const held = others.find((n) => n.toLowerCase() === text.toLowerCase());
+    if (held !== undefined) throw mockProfileError(409, "CFG_PROFILE_TAKEN", held, `A profile is already called '${held}'.`);
     return text;
   };
   const known = (name) => {

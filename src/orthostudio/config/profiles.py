@@ -207,13 +207,15 @@ def check_name(name: Any, taken: Iterable[str] = ()) -> str:
             status=422,
             name=text,
         )
-    if text.casefold() in {t.casefold() for t in taken}:
+    # the one that has it, as it is written: « alpes » is taken by « Alpes »
+    held = next((t for t in taken if t.casefold() == text.casefold()), None)
+    if held is not None:
         raise ProfileError(
             "CFG_PROFILE_TAKEN",
-            f"A profile is already called {text!r}.",
+            f"A profile is already called {held!r}.",
             "Give the profile another name.",
             status=409,
-            name=text,
+            name=held,
         )
     return text
 

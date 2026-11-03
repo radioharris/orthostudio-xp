@@ -110,7 +110,8 @@ def test_names_are_one_to_forty_characters_and_unique_whatever_the_case() -> Non
         assert info.value.code == "CFG_PROFILE_NAME" and info.value.status == 422
     with pytest.raises(ProfileError) as info:
         check_name("alpes", ["Principal", "Alpes"])
-    assert info.value.code == "CFG_PROFILE_TAKEN" and info.value.context == {"name": "alpes"}
+    # the one that has it, as it is written (the page quoted the name typed, a campaign 2026-11-03)
+    assert info.value.code == "CFG_PROFILE_TAKEN" and info.value.context == {"name": "Alpes"}
 
 
 # -- what the page asks ----------------------------------------------------------------------------
@@ -240,7 +241,7 @@ async def test_a_user_keeps_two_profiles_and_goes_from_one_to_the_other(
 
         r = await c.post("/api/profiles", json={"name": "alpes", "settings": back})
         assert r.status_code == 409 and r.json()["error"]["code"] == "CFG_PROFILE_TAKEN"
-        assert r.json()["error"]["context"] == {"name": "alpes"}
+        assert r.json()["error"]["context"] == {"name": "Alpes"}  # the one that has it
         assert (await c.get("/api/profiles")).json()["current"] == "Principal", "nothing changed"
         r = await c.post("/api/profiles", json={"name": " ", "settings": back})
         assert r.status_code == 422 and r.json()["error"]["code"] == "CFG_PROFILE_NAME"
