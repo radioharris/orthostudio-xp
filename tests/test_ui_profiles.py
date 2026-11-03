@@ -25,7 +25,7 @@ def test_a_name_is_checked_before_anything_is_sent() -> None:
            m.profileNameProblem(" Alpes ", ["Main"]), m.profileNameProblem(null, [])]""",
     )
     assert got[0] == "Give the profile a name."
-    assert got[1] == "A profile is already called “alpes”."
+    assert got[1] == "A profile is already called “Alpes”."  # the one that has it, as written
     assert got[2] is None and got[3] == got[0]
 
 

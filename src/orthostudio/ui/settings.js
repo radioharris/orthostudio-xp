@@ -90,13 +90,14 @@ export function defaultsKeepingFolders(schema, draft) {
 export const PROFILE_NAME_MAX = 40;
 
 /** Why `name` cannot name a profile, in the page's words, or null: empty, or already one of
- * `taken`, upper and lower case alike. The engine checks it again (``CFG_PROFILE_*``); said here, it
- * is said before anything is sent. */
+ * `taken`, upper and lower case alike, named as it is written (« alpes » is taken by « Alpes »). The
+ * engine checks it again (``CFG_PROFILE_*``); said here, it is said before anything is sent. */
 export function profileNameProblem(name, taken) {
   const text = String(name ?? "").trim();
   if (!text) return t("settings.profile_name_empty");
   const folded = text.toLowerCase();
-  if ((taken || []).some((other) => String(other).toLowerCase() === folded)) return t("settings.profile_name_taken", { name: text });
+  const held = (taken || []).find((other) => String(other).toLowerCase() === folded);
+  if (held !== undefined) return t("settings.profile_name_taken", { name: String(held) });
   return null;
 }
 
