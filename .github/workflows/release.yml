@@ -11,6 +11,11 @@ on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      mac:
+        description: "In a private repository, build the Apple Silicon installer instead of Windows's"
+        type: boolean
+        default: false
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
@@ -61,8 +66,9 @@ jobs:
         #
         # A private repository builds the Windows installer alone: its minutes are counted, macOS's
         # ten times over, and the Mac app of a release candidate is tried from a checkout
-        # (2026-10-03).
-        include: ${{ fromJSON(github.event.repository.private && '[{"os":"windows-latest"}]' || '[{"os":"macos-14"},{"os":"macos-15","machine":"x86_64"},{"os":"windows-latest"},{"os":"ubuntu-22.04"}]') }}
+        # (2026-10-03). A manual run there may ask for the Apple Silicon one instead (`mac`), to
+        # try the installed app before a release (its own Python downloading OpenCV, 2026-11-03).
+        include: ${{ fromJSON(github.event.repository.private && (inputs.mac && '[{"os":"macos-14"}]' || '[{"os":"windows-latest"}]') || '[{"os":"macos-14"},{"os":"macos-15","machine":"x86_64"},{"os":"windows-latest"},{"os":"ubuntu-22.04"}]') }}
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v10.1.0
