@@ -269,7 +269,10 @@ async def test_rename_and_delete_through_the_api(app, home: Path) -> None:  # ty
 
 
 @pytest.mark.anyio
-async def test_a_build_says_its_profile_and_works_keeps_it(app, home: Path) -> None:  # type: ignore[no-untyped-def]
+async def test_a_build_says_its_profile_and_works_keeps_it(  # type: ignore[no-untyped-def]
+    app, home: Path, xplane: Path
+) -> None:
+    # the tests' own X-Plane: without one on the machine, the build was refused (the ci's)
     async with client_for(app) as c:
         plan = {"tiles": ["+43+005"], "zoom_level": 14, "install": False}
         r = await c.post("/api/jobs", json=plan)
