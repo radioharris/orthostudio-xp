@@ -1349,6 +1349,9 @@ export async function mockApi(method, path, body, options = {}) {
   if (p === "/api/settings/schema") return mockFile("settings_schema");
   if (p === "/api/settings") {
     if (method === "PUT") {
+      const named = url.searchParams.get("profile");
+      const now = mock.profiles?.current || "";
+      if (named !== null && mock.profiles?.list.length && named !== now) throw mockProfileError(409, "CFG_PROFILE_CHANGED", now, `The profiles were changed in another window: the one in use is now '${now}'.`);
       const wanted = String(body?.essential?.data_dir || "").trim() || null;
       if (wanted && wanted !== mockDataDir()) {
         if (mockActiveRun()) throw mockError(409, "SYS_BUSY", "A build is running or waiting, and the data folder changes between builds.", "Wait for the builds to finish, or cancel them, then save again.");
@@ -7451,12 +7454,24 @@ async function saveSettings(ev) {
     // saved, built with the source of the settings and was never told; and narrowing that to
     // the settings a save had really changed still moved the plan he had set up under him
     // (a user, 2026-09-20 and the day after).
-    state.settings = await api("PUT", "/api/settings", state.settingsDraft);
+    // The profile this page believes current goes with the answers: another page of the same
+    // engine (starting the app again opens one in the browser) may have made another current, and
+    // Save then wrote these answers into it, its own settings lost without a word (a campaign,
+    // 2026-11-04). The engine refuses with CFG_PROFILE_CHANGED.
+    const profile = state.profiles ? `?profile=${encodeURIComponent(state.profiles.current || "")}` : "";
+    state.settings = await api("PUT", `/api/settings${profile}`, state.settingsDraft);
     setDraft(structuredClone(state.settings));
     planChanged();  // the cost again: it was worked out with the settings of before
     await settingsSaved(t("settings.saved"));
     renderProviders();  // the list of sources, never the one the Plan shows
   } catch (e) {
+    if (errorDetail(e)?.code === "CFG_PROFILE_CHANGED") {
+      // the list and the saved settings as they are now: Save names the profile it would write
+      // into, and Undo my changes goes back to that profile's answers; the answers on screen stay
+      await loadProfiles();
+      state.settings = await api("GET", "/api/settings");
+      renderSettings();
+    }
     showSettingsError(e);
   }
 }

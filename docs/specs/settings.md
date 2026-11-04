@@ -317,7 +317,12 @@ profile's settings with the computer's own. `profiles.json` beside it (`default_
 holds `{"format": 1, "current": name, "profiles": [{"name", "settings"}]}` in the order the profiles
 were made, each `settings` a build part (`build_part`). The current profile's entry is what was last
 saved into it or left with it: `PUT /api/settings` writes the saved settings into it (`remember`),
-and leaving it does the same first. Written atomically, the previous file kept as
+and leaving it does the same first. The page's Save names the profile it writes into
+(`?profile=`, `""` for none): another page of the same engine (starting the app again opens one in
+the browser) may have made another current, renamed or deleted it, and Save then wrote this page's
+answers into a profile it never showed, its own settings lost (a campaign, 2026-11-04).
+`check_current` refuses with `CFG_PROFILE_CHANGED`, nothing written; the page reads the list again,
+its answers kept, and Save names the profile current now. Written atomically, the previous file kept as
 `profiles.json.bak`. No file means one profile, unnamed: nothing is written and the page shows no
 list until a second profile is kept. A file that cannot be read raises `CFG_LINE_INVALID`; a current
 name it does not hold falls back on its first profile.
@@ -342,7 +347,8 @@ case (`check_name`); at most `MAX_PROFILES` (50).
 
 **Errors** (API answers outside the registry, as `SYS_BUSY`; context `{name}`): `CFG_PROFILE_NAME`
 (422, a name refused, or 50 profiles already), `CFG_PROFILE_TAKEN` (409), `CFG_PROFILE_UNKNOWN` (404,
-renamed or deleted in another window), `CFG_PROFILE_LAST` (409).
+renamed or deleted in another window), `CFG_PROFILE_LAST` (409), `CFG_PROFILE_CHANGED` (409, a Save
+naming a profile that is no longer the current one; `{name}` is the current one).
 
 **A build** records the current profile's name in its request (`profile`), and its summary carries
 it, which Works writes; *Build again* keeps it, with the settings the build had.
