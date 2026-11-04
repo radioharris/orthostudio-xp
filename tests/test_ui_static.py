@@ -3327,6 +3327,11 @@ def test_a_tile_in_a_build_cannot_be_chosen_again() -> None:
     assert "sayTilesInBuild({ skipped: added.skipped });" in replace
     for name in ("addTilesFromText", "addTileFromLatLon", "addTilesFromIcao"):
         assert "sayTilesInBuild(addTiles(" in _function_body(app_js, name), name
+    # the box's only Add, clicked after tile names (added as their field is left), said the
+    # coordinates were invalid (2026-11-04)
+    assert '=== "" && $("lon-input").value === "") return;' in _function_body(
+        app_js, "addTileFromLatLon"
+    )
     row = _function_body(app_js, "libraryRow")
     # Add, Remove and Find again (a moved tile in a build waits for the build's end as well)
     assert row.count("disabled: busy || inBuild") == 3 and "disabled: busy || building" in row
