@@ -7,7 +7,7 @@ the profile's name in Works. The name check runs under ``node``."""
 from __future__ import annotations
 
 from orthostudio.config.profiles import COMPUTER_SETTINGS, MAX_NAME
-from test_ui_static import INDEX_FILE, UI, _css_rules, _function_body, _node_json
+from test_ui_static import INDEX_FILE, UI, _css_rules, _function_body, _node_json, _node_mock
 
 
 def test_the_page_shares_the_computers_settings_with_the_engine() -> None:
@@ -133,3 +133,36 @@ def test_step_1_says_when_its_source_or_level_is_no_longer_the_profiles() -> Non
     assert 'id="plan-profile-differs"' in field and 'id="plan-profile-take"' in field
     rules = dict(_css_rules((UI / "styles.css").read_text(encoding="utf-8")))
     assert "color: var(--warn);" in rules[".plan-profile-differs > .help"]
+
+
+def test_save_names_its_profile_and_reads_the_list_again_when_another_is_current() -> None:
+    """Another page of the same engine made another profile current: Save wrote this page's answers
+    into it, its own settings lost without a word (a campaign, 2026-11-04). The page now says
+    which profile it saves into, and on CFG_PROFILE_CHANGED reads the list again so that Save
+    names the one current now; the mock refuses as the engine does."""
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    save = _function_body(app_js, "saveSettings")
+    assert 'encodeURIComponent(state.profiles.current || "")' in save
+    assert 'api("PUT", `/api/settings${profile}`, state.settingsDraft)' in save
+    refused = save[save.index('"CFG_PROFILE_CHANGED"') :]
+    steps = ("await loadProfiles();", 'state.settings = await api("GET", "/api/settings");',
+             "renderSettings();", "showSettingsError(e);")  # fmt: skip
+    assert [refused.index(step) for step in steps] == sorted(refused.index(s) for s in steps)
+    # the answers on screen stay: Undo my changes goes back to the profile current now
+    assert "setDraft" not in refused[: refused.index("showSettingsError(e);")]
+    words = (UI / "i18n.js").read_text(encoding="utf-8")
+    assert words.count("CFG_PROFILE_CHANGED: [") == 2  # the page's words, French and English
+    assert "maintenant « {name} »" in words and "the one in use is now “{name}”" in words
+    got = _node_mock(
+        """
+        const saved = (await call("GET", "/api/settings")).ok;
+        await call("POST", "/api/profiles", {name: "Alpes", settings: saved, first_name: "Main"});
+        const stale = await call("PUT", "/api/settings?profile=Main", saved);
+        const fresh = await call("PUT", "/api/settings?profile=Alpes", saved);
+        const older = await call("PUT", "/api/settings", saved);
+        process.stdout.write(JSON.stringify({stale, fresh: Boolean(fresh.ok),
+                                             older: Boolean(older.ok)}));
+        """
+    )
+    assert got == {"stale": {"status": 409, "code": "CFG_PROFILE_CHANGED"}, "fresh": True,
+                   "older": True}  # fmt: skip

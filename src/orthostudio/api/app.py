@@ -1749,8 +1749,17 @@ def create_app(
             state["airports_tried"] = False
 
     @app.put("/api/settings")
-    async def put_settings(body: dict[str, Any]) -> Any:
+    async def put_settings(body: dict[str, Any], profile: str | None = None) -> Any:
+        """The settings saved, and kept by the current profile. ``profile`` is the one the page's
+        Save names: another being current now, nothing is saved (``check_current``)."""
         async with settings_lock:
+            if profile is not None:
+                try:
+                    config_profiles.check_current(read_profiles(), profile)
+                except ProfileError as err:
+                    return profile_error(err)
+                except (OsxpError, OSError):
+                    pass  # a profiles' file that cannot be read stops no save, as below
             before = settings().essential.xplane_dir
             s = await checked_settings(body)
             if isinstance(s, JSONResponse):

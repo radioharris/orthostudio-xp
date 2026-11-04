@@ -275,6 +275,44 @@ async def test_rename_and_delete_through_the_api(app, home: Path) -> None:  # ty
 
 
 @pytest.mark.anyio
+async def test_a_page_left_behind_by_another_saves_into_no_profile_it_never_showed(
+    app, home: Path
+) -> None:  # type: ignore[no-untyped-def]
+    """Two pages of one engine (the app started again opens one in the browser): the second
+    makes Alpes current, the first, still on Main, saves. Its answers went into Alpes, whose own
+    settings were lost without a word (a campaign, 2026-11-04); now nothing is saved."""
+    async with client_for(app) as c:
+        s = (await c.get("/api/settings")).json()
+        assert (await c.put("/api/settings?profile=", json=s)).status_code == 200, "no profile yet"
+        s["essential"]["zoom_level"] = 18
+        r = await c.post("/api/profiles", json={"name": "Alpes", "settings": s,
+                                                "first_name": "Main"})  # fmt: skip
+        assert r.status_code == 201, r.text
+        page = (await c.post("/api/profiles/current", json={"name": "Main"})).json()["settings"]
+        await c.post("/api/profiles/current", json={"name": "Alpes"})  # the other page
+        kept = (home / "profiles.json").read_text(encoding="utf-8")
+        saved = (home / "config.toml").read_text(encoding="utf-8")
+
+        page["advanced"]["road_level"] = 3
+        r = await c.put("/api/settings?profile=Main", json=page)
+        assert r.status_code == 409 and r.json()["error"]["code"] == "CFG_PROFILE_CHANGED"
+        assert r.json()["error"]["context"] == {"name": "Alpes"}
+        assert (home / "profiles.json").read_text(encoding="utf-8") == kept
+        assert (home / "config.toml").read_text(encoding="utf-8") == saved
+        # renamed in the other page: the name this page holds is gone, nothing saved either
+        await c.post("/api/profiles/rename", json={"name": "Alpes", "new_name": "Alpes VFR"})
+        r = await c.put("/api/settings?profile=Alpes", json=page)
+        assert r.json()["error"] == r.json()["error"] | {"context": {"name": "Alpes VFR"}}
+        # the page reads the list again: Save names Alpes VFR, and goes into it
+        r = await c.put("/api/settings?profile=Alpes%20VFR", json=page)
+        assert r.status_code == 200, r.text
+        got = (await c.post("/api/profiles/current", json={"name": "Main"})).json()["settings"]
+        assert got["advanced"]["road_level"] == 1, "Main kept what it held"
+        # a save that names no profile (an older page) is saved as before
+        assert (await c.put("/api/settings", json=got)).status_code == 200
+
+
+@pytest.mark.anyio
 async def test_a_build_says_its_profile_and_works_keeps_it(  # type: ignore[no-untyped-def]
     app, home: Path, xplane: Path
 ) -> None:

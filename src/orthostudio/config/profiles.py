@@ -236,6 +236,25 @@ def _index(profiles: Profiles, name: Any) -> int:
 # -- what the page asks ------------------------------------------------------------------------
 
 
+def check_current(profiles: Profiles, name: str) -> None:
+    """``name``, the profile a page's Save names (``""`` for none), still the current one.
+
+    Another page of the same engine (starting the app again opens one in the browser) may have made
+    another profile current, renamed or deleted it: Save would then write that page's answers into
+    a profile it never showed, which loses its own settings without a word (a campaign,
+    2026-11-04). ``CFG_PROFILE_CHANGED`` names the one current now."""
+    now = profiles.current or ""
+    if profiles.entries and now != name:
+        raise ProfileError(
+            "CFG_PROFILE_CHANGED",
+            f"The profiles were changed in another window: the one in use is now {now!r}.",
+            "Your answers are still on screen: save them in it, save them as a new profile, or"
+            " undo them.",
+            status=409,
+            name=now,
+        )
+
+
 def remember(profiles: Profiles, settings: Settings) -> Profiles:
     """The current profile holding ``settings``'s build settings, as saved: called at each save,
     and before the current profile is left."""
