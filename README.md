@@ -8,8 +8,7 @@ architecture that builds them faster. It would not exist without Ortho4XP.
 
 **Status: stable since 1.0.** OrthoStudio XP builds and installs tiles end to end on macOS and
 Windows, with their installers. The installers for Intel Macs and for Linux are built and
-checked automatically at every release, and downloaded far less often than the others; Linux is
-experimental.
+checked automatically at every release too.
 
 ![The Plan page: the map of Europe, the tiles already in X-Plane outlined in green over the Alps, three tiles chosen in blue near Paris with a sharper zone drawn over them in orange, and beside it the first of the four steps](docs/images/plan.png)
 
