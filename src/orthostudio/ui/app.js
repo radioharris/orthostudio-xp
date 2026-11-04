@@ -3273,6 +3273,9 @@ function addTilesFromText() {
 function addTileFromLatLon() {
   const lat = Number($("lat-input").value);
   const lon = Number($("lon-input").value);
+  // both empty: the button is the box's only one, clicked after typing tile names, which their
+  // field adds as it is left; "Latitude or longitude invalid" came under the cost (2026-11-04)
+  if ($("lat-input").value === "" && $("lon-input").value === "") return;
   if ($("lat-input").value === "" || $("lon-input").value === "" || Number.isNaN(lat) || Number.isNaN(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) {
     showPlanError(t("plan.latlon_invalid"));
     return;
