@@ -38,7 +38,7 @@ from platformdirs import user_log_dir
 from orthostudio import STARTED_AT, __version__
 from orthostudio.codemark import code_mark
 from orthostudio.home import osxp_home
-from orthostudio.startclock import LAUNCHED_ENV, parts, process_started_at, span
+from orthostudio.startclock import LAUNCHED_ENV, WINDOW_HOLDS_ENV, parts, process_started_at, span
 
 __all__ = [
     "APP_NAME",
@@ -324,6 +324,10 @@ def window_opens(now: float | None = None) -> str:
     return f"its window opens: {said}" if said else "its window opens"
 
 
+_HELD_ENGINES: list[object] = []
+"""The engines this window started (:func:`start_engine`), their pipes open while it lives."""
+
+
 def start_engine(log: Path) -> None:
     """Start the engine in a process of its own, apart from this one, its output in ``log``.
 
@@ -345,6 +349,12 @@ def start_engine(log: Path) -> None:
     It writes at the log's end, whatever else writes there (:func:`append_only`). It is handed the
     time it was started at (:data:`orthostudio.startclock.LAUNCHED_ENV`), from which it counts its
     own start once it listens, Python's included (``api/serve.py``).
+
+    Its standard input is a pipe this process holds open for as long as it lives
+    (:data:`orthostudio.api.presence.WINDOW_HOLDS_ENV`): the engine counts the window as an open
+    page until it ends. Its page alone said so every 30 s, and with the Mac's display off WebKit
+    stopped the page's timers: five minutes later the engine stopped and took the window with it,
+    the app gone from an idle Mac (2026-11-04).
     """
     import subprocess
 
@@ -356,18 +366,25 @@ def start_engine(log: Path) -> None:
             f"{' '.join(ENGINE_ARGS)} (for its own window)\n"
         )
         out.flush()
-        subprocess.Popen(
+        engine = subprocess.Popen(
             [sys.executable, "-m", "orthostudio", *ENGINE_ARGS],
-            stdin=subprocess.DEVNULL,
+            stdin=subprocess.PIPE,
             stdout=out,
             stderr=out,
-            # the log's encoding, not the system's code page (cp1252 on a French Windows); and the
-            # time it is started at, from which it counts its start
-            env={**os.environ, "PYTHONIOENCODING": "utf-8", LAUNCHED_ENV: repr(time.time())},
+            # the log's encoding, not the system's code page (cp1252 on a French Windows); the
+            # time it is started at, from which it counts its start; and that this window holds it
+            env={
+                **os.environ,
+                "PYTHONIOENCODING": "utf-8",
+                LAUNCHED_ENV: repr(time.time()),
+                WINDOW_HOLDS_ENV: "1",
+            },
             start_new_session=True,
             # pythonw has no console, and a console program it starts flashes a window
             creationflags=NO_CONSOLE_WINDOW,
         )
+    # kept, and its pipe with it, for as long as this process lives: let go, the pipe would close
+    _HELD_ENGINES.append(engine)
 
 
 def time_to_close(port: int = ENGINE_PORT) -> Callable[[], bool]:

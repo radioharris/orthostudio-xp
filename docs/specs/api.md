@@ -754,7 +754,15 @@ left out). So is a part of `GET /api/status` (`app._timed`) or a check of the do
 `--quit-when-closed` (what the app runs, `desktop.py`): the engine stops by itself
 (`presence.quit_when_closed`, the same stop as `POST /api/quit`) once no page has said it is open
 (`POST /api/presence`) for 5 min and no build runs or waits. The watch checks every 15 s; a build
-under way, or a check more than three ticks late (the computer slept), starts the wait again. The
+under way, the app's own window holding the engine, or a check more than three ticks late (the
+computer slept), starts the wait again. The window that starts its engine
+(`desktop.start_engine`) hands it a pipe on its standard input and `OSXP_HELD_BY_WINDOW=1`
+(`startclock.WINDOW_HOLDS_ENV`), and holds the pipe open for as long as it lives: the engine counts
+it as an open page until the pipe closes, whatever the way the window's process ended
+(`presence.held_by_window`), then waits its 5 min as for a page. The page's word alone was not
+enough there: with the Mac's display off, WebKit stopped the page's timers after one to six
+minutes, and five minutes later the engine stopped and the window closed with it, an idle app gone
+(three times, 2026-11-04). The
 page says it is open every 30 s and when it shows again (`visibilitychange`); a background tab's
 timers slow down to about once a minute. When it gets no answer twice, 3 s apart, it shows the
 stopped screen, saying that OrthoStudio XP stops by itself after its last page closed. A plain

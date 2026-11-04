@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import os
 import socket
 import threading
 import time
@@ -281,6 +282,14 @@ def serve(
     stopping = threading.Event()
     if quit_when_closed:
         state = app.state.orthostudio
+        if os.environ.get(presence.WINDOW_HOLDS_ENV) == "1":
+            # the app's own window: its pipe on standard input, open for as long as it lives
+            threading.Thread(
+                target=presence.held_by_window,
+                args=(state["presence"], lambda: os.read(0, 1024)),
+                name="held-by-window",
+                daemon=True,
+            ).start()
         threading.Thread(
             target=presence.quit_when_closed,
             args=(state["presence"], lambda: state["jobs"].active() is not None, shutdown),
