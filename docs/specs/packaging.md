@@ -62,7 +62,10 @@ The launcher becomes that process rather than starting it aside, so that the win
 this bundle; a window opened by a process started aside is called Python and carries Python's icon
 (measured, 2026-09-20). The engine is the one put aside, in a process of its own
 (`orthostudio.desktop.start_engine`): closing the window leaves a build running, and the engine
-stops by itself a while after its last page. The engine starts only once the window is on screen,
+stops by itself a while after its last page. The window holds its engine through a pipe on the
+engine's standard input for as long as it lives, and the engine counts it as an open page
+(`api.md` section 6): an app left alone, its display asleep, no longer stops by itself. The engine
+starts only once the window is on screen,
 behind the opening page, so that a system with no window to give is left as it was found and the
 browser opens instead, as every version before 0.1.8 did. The doctor's `window` check says which it
 was, and the page lists it: a system that could have a window and lacks a library is told which
@@ -216,7 +219,8 @@ the engine has no terminal; without the log, uvicorn's output would have nowhere
 
 Opening the app while OrthoStudio XP runs opens the running one's page (`api/serve.py`); *Quit* in
 the page stops it. With `--quit-when-closed`, the app also stops by itself five minutes after the
-last word from a page, unless a build runs or waits (`api/presence.py`): once the page is closed,
+last word from a page, unless a build runs or waits or its own window holds it (`api/presence.py`):
+once the page is closed,
 nothing shows the engine (`pythonw` has no window on Windows), and a user had to end it in the Task
 Manager (2026-09-17).
 
