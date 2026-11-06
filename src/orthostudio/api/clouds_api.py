@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import contextlib
 import re
+import shutil
 import threading
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -61,14 +62,14 @@ _NAME = re.compile(r"^[0-9a-f]{16,128}\.(png|jpg)$")
 class CloudHooks:
     """What the routes ask of the engine: X-Plane's Custom Scenery (``None`` without one), the
     tiles in a build or queued (``tile -> 'running' | 'queued'``), and starting Apply's build of
-    a tile with its clouds (the job's id)."""
+    a tile in its folder with its clouds (the job's id)."""
 
     custom_scenery: Callable[[], Path | None]
     building: Callable[[], Mapping[str, str]]
-    apply: Callable[[TileRef, list[dict[str, Any]]], str]
+    apply: Callable[[TileRef, Path, list[dict[str, Any]]], str]
 
 
-class _Engine:
+class CloudEngine:
     """The tasks and what is read again and again of a tile: its picture."""
 
     def __init__(self, hooks: CloudHooks) -> None:
@@ -86,6 +87,20 @@ class _Engine:
             library_path=default_library_path(),
         )
         return tile_folder(tile, workshop=default_tiles_root(), home=home)
+
+    def owns(self, tile: TileRef, folder: Path) -> bool:
+        """Whether ``folder`` is the tile's folder, the one its clouds are kept for."""
+        return Path(folder).resolve() == self.folder(tile).resolve()
+
+    def forget(self, tile: TileRef) -> None:
+        """A deleted tile's clouds: its tasks stopped, its list and its previews gone."""
+        for t in self.tasks.of(tile.name):
+            self.tasks.stop(t.id)
+        cls.forget(tile)
+        shutil.rmtree(previews_dir(tile), ignore_errors=True)
+        with self._lock:
+            for key in [k for k in self._pictures if k[0] == tile.name]:
+                del self._pictures[key]
 
     def held(self, tile: TileRef) -> tuple[Path, TileClouds | None, Path | None]:
         """The tile's folder, what it holds, and its textures artefact's folder."""
@@ -144,9 +159,9 @@ def _registry() -> dict[str, Provider]:
     return load_registry()
 
 
-def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, Tasks]:
-    """The routes, and the engine's tasks (for Quit to name and stop them)."""
-    engine = _Engine(hooks)
+def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
+    """The routes, and the engine (its tasks for Quit to stop, a deleted tile to forget)."""
+    engine = CloudEngine(hooks)
     router = APIRouter()
 
     def tile_of(name: str) -> TileRef:
@@ -426,12 +441,12 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, Tasks]:
     @router.post("/api/clouds/{name}/apply")
     def apply(name: str, body: Annotated[dict[str, Any] | None, Body()] = None) -> dict[str, Any]:
         tile = tile_of(name)
-        _folder, held, _art = ready_or_refuse(tile)
+        folder, held, _art = ready_or_refuse(tile)
         with cls.update(tile, held) as cl:
             if (body or {}).get("restore"):
                 cls.restore(cl)
             clouds = cls.laid_after(cl, held, tile)
-        return {"job": hooks.apply(tile, clouds)}
+        return {"job": hooks.apply(tile, folder, clouds)}
 
     @router.get("/api/clouds/{name}/files/{file}")
     def files(name: str, file: str) -> FileResponse:
@@ -457,7 +472,7 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, Tasks]:
     def stop(task_id: str) -> dict[str, Any]:
         return {"stopped": engine.tasks.stop(task_id)}
 
-    return router, engine.tasks
+    return router, engine
 
 
 _CLASSES: dict[tuple[str, str], np.ndarray] = {}

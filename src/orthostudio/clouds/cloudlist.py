@@ -165,6 +165,12 @@ def save(cl: CloudList) -> int:
     return cl.version
 
 
+def forget(tile: TileRef) -> None:
+    """The tile's list gone, with the tile."""
+    with _lock(tile):
+        list_path(tile).unlink(missing_ok=True)
+
+
 @contextmanager
 def update(tile: TileRef, held: TileClouds | None = None) -> Iterator[CloudList]:
     """The tile's list to change, written back on leaving, one writer at a time per tile."""

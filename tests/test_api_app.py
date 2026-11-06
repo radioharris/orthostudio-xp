@@ -698,6 +698,29 @@ async def test_library_delete_an_installed_tile(app, home: Path, xplane: Path) -
 
 
 @pytest.mark.anyio
+async def test_library_delete_forgets_the_tiles_clouds(app, home: Path) -> None:  # type: ignore[no-untyped-def]
+    # a deleted tile's list of clouds and their previews go with it
+    from orthostudio.api.clouds_api import previews_dir
+    from orthostudio.clouds import cloudlist
+    from orthostudio.install import Library, default_library_path
+    from orthostudio.model import TileRef
+
+    t = TileRef(43, 5)
+    pack = _osxp_pack(home, "+43+005")
+    with Library(default_library_path()) as lib:
+        lib.register(t, "BI", 16, pack, "osxp", {})
+    with cloudlist.update(t) as cl:
+        cl.add("drawn", [[43.1, 5.1, 43.1, 5.2, 43.2, 5.2, 43.1, 5.1]], 1.0)
+    previews_dir(t).mkdir(parents=True)
+    (previews_dir(t) / "a.png").write_bytes(b"png")
+    async with client_for(app) as c:
+        r = await c.post("/api/library/+43+005/delete")
+        assert r.status_code == 200, r.text
+    assert not pack.exists()
+    assert not cloudlist.list_path(t).exists() and not previews_dir(t).exists()
+
+
+@pytest.mark.anyio
 async def test_library_delete_refuses_what_osxp_did_not_build_and_waits_for_builds(
     home: Path, xplane: Path, tmp_path: Path
 ) -> None:

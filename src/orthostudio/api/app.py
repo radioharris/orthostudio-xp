@@ -1419,7 +1419,7 @@ def create_app(
             )
         # the queued builds first, so that none starts when the running one stops
         cancelled = manager.cancel_all() if active is not None else []
-        cloud_tasks.stop_all()
+        clouds.tasks.stop_all()
         active_id = None if active is None else active.id
         # after the answer has left: the page learns that OrthoStudio XP is stopping
         asyncio.get_running_loop().call_later(0.3, shutdown)
@@ -2016,20 +2016,10 @@ def create_app(
             tile: "running" if tile in running else "queued" for tile in manager.building_tiles()
         }
 
-    def start_apply(tile: TileRef, clouds: list[dict[str, Any]]) -> str:
-        from orthostudio.clouds.tile import tile_folder
-        from orthostudio.pipeline.filing import tile_home
+    def start_apply(tile: TileRef, folder: Path, clouds: list[dict[str, Any]]) -> str:
         from orthostudio.pipeline.pack import COMPUTER_CONFIG_KEYS, read_build_settings
 
-        xp = xplane_dir()
-        cs = custom_scenery_dir(xp) if xp is not None else None
-        home, _gone = tile_home(
-            tile,
-            atelier=default_tiles_root(),
-            custom_scenery=cs,
-            library_path=default_library_path(),
-        )
-        built = read_build_settings(tile_folder(tile, workshop=default_tiles_root(), home=home))
+        built = read_build_settings(folder)
         if built is None:
             raise OsxpError(
                 "CLOUD_TILE_NOT_READY", context={"tile": tile.name, "state": "earlier_version"}
@@ -2052,7 +2042,7 @@ def create_app(
         job = manager.start([spec], request={"kind": "clouds", "tiles": [tile.name]}, queue=True)
         return job.id
 
-    cloud_routes, cloud_tasks = clouds_router(
+    cloud_routes, clouds = clouds_router(
         CloudHooks(
             custom_scenery=lambda: (
                 custom_scenery_dir(xp) if (xp := xplane_dir()) is not None else None
@@ -2676,12 +2666,16 @@ def create_app(
         def run() -> dict[str, Any]:
             xp = xplane_dir(req.xplane_dir)
             entry = pack_to_delete(name, path=req.path, library_path=default_library_path())
-            return delete_receipt(
+            ours = clouds.owns(entry.tile, entry.path)  # asked before its rows go
+            receipt = delete_receipt(
                 entry.path,
                 tile=entry.tile,
                 custom_scenery=None if xp is None else custom_scenery_dir(xp),
                 library_path=default_library_path(),
             )
+            if ours:  # its replaced clouds go with it
+                clouds.forget(entry.tile)
+            return receipt
 
         async with deleting:  # a second delete waits for this one
             if manager.active() is not None:
