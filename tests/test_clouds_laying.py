@@ -26,7 +26,7 @@ from orthostudio.clouds.laying import lay_again, lay_folder, lay_texture, show
 from orthostudio.clouds.tile import (
     TileClouds,
     entry_problem,
-    got_parts_dir,
+    parts_dir,
     patches_of,
     read_stamp,
     read_tile,
@@ -34,7 +34,7 @@ from orthostudio.clouds.tile import (
 )
 from orthostudio.errors import OsxpError
 from orthostudio.graph.digest import digest_bytes
-from orthostudio.home import default_chunks_root, default_tiles_root
+from orthostudio.home import default_tiles_root
 from orthostudio.imagery.grid import TextureId, parse_texture_name, texture_name
 from orthostudio.model import TileRef, pack_dir_name
 from orthostudio.pipeline import build as build_mod
@@ -90,7 +90,7 @@ def _cloud(cid: str, ring: list[float], held: TileClouds, colour: tuple[int, int
     """A cloud's images got from a source showing ``colour`` there, as a check gets them."""
     c: dict[str, Any] = {"id": cid, "source": "EOX", "match": NEUTRAL, "rings": [ring]}
     parts: dict[str, list[Any]] = {}
-    keep = got_parts_dir(default_chunks_root())
+    keep = parts_dir()
     keep.mkdir(parents=True, exist_ok=True)
     for name, patch in patches_of(c, TILE, held.textures, lambda t: t.zl).items():
         t = parse_texture_name(name)
@@ -103,7 +103,7 @@ def _cloud(cid: str, ring: list[float], held: TileClouds, colour: tuple[int, int
 
 
 def _lay(folder: Path, entries: list[dict]) -> list:
-    return lay_folder(TILE, folder, entries, parts=[got_parts_dir(default_chunks_root())])
+    return lay_folder(TILE, folder, entries)
 
 
 def _texture(folder: Path, t: TextureId) -> Path:
@@ -166,8 +166,7 @@ def test_a_texture_is_laid_from_the_build_one_never_over_a_laid_one(folder: Path
     _lay(folder, [blue])
     once = _texture(folder, WEST).read_bytes()
     plain = (folder / "clouds" / f"{texture_name(WEST)}.dds").read_bytes()
-    parts = [got_parts_dir(default_chunks_root())]
-    assert once == lay_texture(plain, texture_name(WEST), TILE, [blue], parts)
+    assert once == lay_texture(plain, texture_name(WEST), TILE, [blue])
     # the same clouds again: the texture is left as it is
     at = os.stat(_texture(folder, WEST)).st_mtime_ns
     _lay(folder, [blue])
@@ -180,12 +179,12 @@ def test_the_tile_shows_the_clouds_every_texture_they_reach_shows(folder: Path) 
     west, across = _cloud("c1", WEST_ONLY, held, RED), _cloud("c2", ACROSS, held, BLUE)
     assert sorted(across["parts"]) == sorted([texture_name(WEST), texture_name(EAST)])
     _lay(folder, [west, across])
-    assert [c["id"] for c in read_tile(folder, [west, across]).applied] == ["c1", "c2"]
+    assert [c["id"] for c in read_tile(folder, [west, across]).held] == ["c1", "c2"]
     # a build put the east texture back as it made it: the cloud across is not whole there
     shutil.copyfile(folder / "clouds" / f"{texture_name(EAST)}.dds", _texture(folder, EAST))
-    assert [c["id"] for c in read_tile(folder, [west, across]).applied] == ["c1"]
+    assert [c["id"] for c in read_tile(folder, [west, across]).held] == ["c1"]
     # clouds last applied that the textures do not name are not held either
-    assert read_tile(folder, [across]).applied == ()
+    assert read_tile(folder, [across]).held == ()
 
 
 def test_a_build_after_lays_again_the_clouds_that_still_stand_whole(
@@ -213,7 +212,7 @@ def test_a_build_after_lays_again_the_clouds_that_still_stand_whole(
     lay_again(TILE, folder, custom_scenery=None)
     laid = cloudlist.load(TILE).laid  # the list told what the tile shows now
     assert [c["id"] for c in laid] == ["c1"]
-    assert [c["id"] for c in read_tile(folder, laid).applied] == ["c1"]
+    assert [c["id"] for c in read_tile(folder, laid).held] == ["c1"]
     assert read_stamp(_texture(folder, EAST)) is None
     assert _texture(folder, WEST).read_bytes() != shown["w"]  # laid with c1 alone
 

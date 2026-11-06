@@ -41,12 +41,12 @@ def main() -> None:
         doc = json.load(r)
     row = next(c for c in doc["clouds"] if c["id"] == a.cloud)
     zl = int(doc["picture"]["level"])
-    held = read_tile(own_folder(tile, custom_scenery=None), cloudlist.load(tile).laid)
-    if held is None or held.held(a.cloud) is None:
+    shown = read_tile(own_folder(tile, custom_scenery=None), cloudlist.load(tile).laid)
+    if shown is None or shown.holding(a.cloud) is None:
         raise SystemExit(f"{a.cloud} is not held by {tile.name}")
-    dsf = held.folder / tile.dsf_relpath
-    before = draw(tile, zl, dsf=dsf, textures=held.plains())
-    laid = {n: held.textures_dir / f"{n}.dds" for n in held.names}
+    dsf = shown.folder / tile.dsf_relpath
+    before = draw(tile, zl, dsf=dsf, textures=shown.plains())
+    laid = {n: shown.texture_path(n) for n in shown.names}
     built = draw(tile, zl, dsf=dsf, textures=laid)
     png = Image.open(previews_dir(tile) / row["preview"]["name"]).convert("RGBA")
     pv = np.asarray(png).astype(np.float32)

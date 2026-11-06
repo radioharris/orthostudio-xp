@@ -6,8 +6,8 @@ Each source's pieces are kept like a build's parent tiles (``ParentCache``), so 
 or check fetched the next reads from the disk. What a source answered is said per piece: a
 ``picture``; ``no_picture`` (none there, a placeholder); ``did_not_answer`` (a timeout, the
 network, a server error); ``refused`` (403, 429, pushback); ``not_a_picture`` (a page instead).
-Only a picture or none is kept: asked again, the others may answer. A build never asks a source:
-it lays frozen parts (``textures/clouds.py``).
+Only a picture or none is kept: asked again, the others may answer (:data:`ASK_AGAIN`). Laying
+never asks a source: it lays frozen parts (``textures/clouds.py``).
 """
 
 from __future__ import annotations
@@ -23,8 +23,9 @@ from orthostudio.imagery.providers import Provider, cache_name, tile_url
 from orthostudio.model import TileRef
 from orthostudio.net import Fetcher, FetchRequest, FetchResult
 from orthostudio.pipeline.parents import ParentCache
+from orthostudio.pipeline.textures import chunk_entry_for
 
-__all__ = ["ANSWERS", "PROPOSABLE", "SourcePieces", "other_sources"]
+__all__ = ["ANSWERS", "ASK_AGAIN", "PROPOSABLE", "SourcePieces", "other_sources"]
 
 ANSWERS = (
     "clear",
@@ -38,7 +39,9 @@ ANSWERS = (
 """What a source can answer under a cloud: what it has there (clear, cloudy), the tile's own photo,
 no picture, or what a piece of it said (``SourcePieces.kind``); each has its words in the page
 (``clouds.answer.<answer>``)."""
-PROPOSABLE = frozenset({"clear", "cloudy", "did_not_answer", "refused"})
+ASK_AGAIN = frozenset({"did_not_answer", "refused", "not_a_picture"})
+"""The answers asking the source again may change: what a piece of it said, not what it has."""
+PROPOSABLE = frozenset({"clear", "cloudy"}) | ASK_AGAIN
 """The answers under which a source may be chosen for a cloud: what it has there, or what asking
 it again may change. The same photo would bring the cloud back; with no picture, nothing to lay."""
 
@@ -129,8 +132,6 @@ class SourcePieces:
         cancel: threading.Event | None,
         progress: Callable[[int, int], None] | None,
     ) -> None:
-        from orthostudio.pipeline.textures import chunk_entry_for  # the textures step imports us
-
         total, done = sum(len(v) for v in wanted.values()), 0
         stop = asyncio.Event()
 

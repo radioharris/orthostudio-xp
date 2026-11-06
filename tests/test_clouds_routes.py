@@ -106,7 +106,7 @@ async def test_what_runs_the_detector_is_asked_first_and_an_untick_is_not(
     app: Any, ready: Path
 ) -> None:
     with cloudlist.update(TILE) as cl:
-        cid = cl.add("drawn", _ring(), 1.0, tick=True, source="EOX")["id"]
+        cid = cl.add("drawn", _ring(), tick=True, source="EOX")["id"]
     async with client_for(app) as c:
         r = await c.post("/api/clouds/+43+005/find")
         err = r.json()["error"]
@@ -128,8 +128,8 @@ def test_a_build_lets_the_list_be_changed_and_nothing_that_reads_the_folder() ->
     assert mode.useful(mode.possible("ready"), counts, False) >= {"restore", "find"}
     assert "apply" not in mode.useful(mode.possible("ready"), counts, False)
     assert "find" not in mode.useful(mode.possible("ready"), counts, True)  # a search runs
-    assert "apply" not in mode.possible("ready", {"getting"})  # a task reads the folder
-    assert mode.possible("ready", {"applying"}) == mode.LIST_EDITS  # Apply writes it
+    assert "apply" not in mode.possible("ready", {"check"})  # a task reads the folder
+    assert mode.possible("ready", {"apply"}) == mode.LIST_EDITS  # Apply writes it
 
 
 @pytest.mark.anyio
@@ -145,7 +145,7 @@ async def test_apply_is_a_task_that_tells_the_list_what_the_tile_shows(
         r = await c.post("/api/clouds/+43+005/apply", json={"restore": True})
         assert r.status_code == 200, r.text
         task = r.json()["task"]
-        assert task["kind"] == "applying" and task["stoppable"] is False
+        assert task["kind"] == "restore" and task["stoppable"] is False
         for _ in range(100):
             a = (await c.get("/api/clouds/+43+005")).json()
             if not a["busy"]:
@@ -157,8 +157,8 @@ async def test_apply_is_a_task_that_tells_the_list_what_the_tile_shows(
 @pytest.mark.anyio
 async def test_a_ready_tiles_rows_offer_what_its_list_allows(app: Any, ready: Path) -> None:
     with cloudlist.update(TILE) as cl:
-        found = cl.add("found", _ring(), 1.0, best="EOX", source="EOX")
-        drawn = cl.add("drawn", _ring(), 1.0)
+        found = cl.add("found", _ring(), best="EOX", source="EOX")
+        drawn = cl.add("drawn", _ring())
     async with client_for(app) as c:
         rows = {r["id"]: r for r in (await c.get("/api/clouds/+43+005")).json()["clouds"]}
     assert rows[found["id"]]["actions"] == ["tick", "choose"]

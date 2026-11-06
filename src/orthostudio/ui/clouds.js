@@ -39,7 +39,6 @@ export function lineWords(line, names = {}) {
   if (!line) return "";
   const params = { ...(line.params || {}) };
   for (const k of ["source", "held"]) if (params[k]) params[k] = names[params[k]] || params[k];
-  if (params.progress != null) params.percent = Math.round(params.progress * 100);
   return t(line.key, params);
 }
 
@@ -69,7 +68,7 @@ export function createCloudMode(ctx) {
     document.querySelector(".plan-flow")?.classList.add("is-clouds");
     $("clouds-panel").hidden = false;
     $("clouds-banner").hidden = false;
-    ctx.planMap.takeInput({}); // the map's clicks choose no square under the clouds
+    ctx.planMap.takeInput(true); // the map's clicks choose no square under the clouds
     ctx.planMap.fitTile(tile);
     render();
     await refresh();
@@ -86,7 +85,7 @@ export function createCloudMode(ctx) {
     $("clouds-panel").hidden = true;
     $("clouds-banner").hidden = true;
     document.querySelector(".plan-flow")?.classList.remove("is-clouds");
-    ctx.planMap.takeInput(null);
+    ctx.planMap.takeInput(false);
   }
 
   function stopPoll() {
@@ -308,7 +307,7 @@ export function createCloudMode(ctx) {
     ].filter(Boolean);
     const trash = can.has("remove")
       ? h("button", { type: "button", class: "btn btn-icon btn-danger btn-trash", "aria-label": `${t("clouds.remove")}: ${label}`, title: t("clouds.remove"), onclick: () => send("DELETE", `/outlines/${c.id}`) },
-        document.getElementById("tpl-trash-icon").content.firstElementChild.cloneNode(true))
+        $("zones-clear").querySelector("svg").cloneNode(true)) // the zones' own trash
       : null;
     // keyed by its cloud: redrawn in place, a row stays its cloud's, its handlers with it
     return h("li", { class: "zone-item cloud-item", "aria-current": String(c.id === cs.current), dataset: { cloud: c.id, state: c.state, focusKey: `cloud-${c.id}` } },

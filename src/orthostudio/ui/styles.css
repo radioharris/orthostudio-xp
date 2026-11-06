@@ -656,12 +656,9 @@ input[aria-invalid="true"] { border-color: var(--fail); }
    lays their outlines and previews over it; the zones' own bar stays away meanwhile. */
 .plan-flow.is-clouds .plan-steps > :not(.clouds-panel) { display: none; }
 .plan-flow.is-clouds #map-banner { display: none; }
-/* The cloud mode's panel is built from the Plan's parts and spaced by its tokens: its main
-   buttons are the build's (.actions-build, the help under them at --help-gap), its count line
-   the tiles' (step 1's .tile-count-row, 8 px). */
-.clouds-progress { display: flex; align-items: center; gap: var(--gap); flex-wrap: wrap; margin-top: var(--gap); }
-.clouds-count { display: flex; align-items: center; gap: var(--gap); flex-wrap: wrap; margin-top: var(--gap); }
-.clouds-count .plan-step-size { margin: 0; flex: 1 1 auto; }
+/* The cloud mode's panel is built from the Plan's parts (.zone-list, .plan-actions) and spaced by
+   its tokens; a task's line and the count are one kind of line. */
+.clouds-progress, .clouds-count { display: flex; align-items: center; gap: var(--gap); flex-wrap: wrap; margin-top: var(--gap); }
 .cloud-name { display: flex; align-items: center; gap: 6px; flex: 1 1 auto; font-weight: 600; cursor: pointer; }
 /* One colour, one meaning: the accent, as the tick, is what will be replaced. The current cloud
    is no colour of its own: its row lighter in a thick frame of the text's colour, its outline

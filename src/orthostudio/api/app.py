@@ -74,7 +74,6 @@ from orthostudio.api.specs import (
 )
 from orthostudio.api.zones_api import zones_router
 from orthostudio.clean import GRACE_S, clean, disk_bytes, pack_disk_bytes
-from orthostudio.clouds.cloudlist import forgetting
 from orthostudio.codemark import code_mark
 from orthostudio.config import profiles as config_profiles
 from orthostudio.config.profiles import ProfileError
@@ -2637,9 +2636,7 @@ def create_app(
             xp = xplane_dir(req.xplane_dir)
             entry = pack_to_delete(name, path=req.path, library_path=default_library_path())
             cs = None if xp is None else custom_scenery_dir(xp)
-            with forgetting(entry.tile, entry.path, custom_scenery=cs) as ours:
-                if ours:  # its replaced clouds go with it
-                    clouds.let_go(entry.tile)
+            with clouds.forgetting(entry.tile, entry.path, custom_scenery=cs):  # its clouds too
                 return delete_receipt(
                     entry.path,
                     tile=entry.tile,

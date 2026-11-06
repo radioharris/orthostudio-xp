@@ -56,14 +56,16 @@ def _entry(cid: str, rings: list[list[float]], source: str = "EOX") -> dict[str,
 
 def _held(*entries: dict[str, Any]) -> TileClouds:
     """The tile showing ``entries`` in its one texture, built as ``PLAIN``."""
-    return TileClouds(Path("/nowhere"), "k", (NAME,), {NAME: Stamp(PLAIN, "x" * 40)}, entries)
+    return TileClouds(
+        Path("/nowhere"), "k", "BI", True, (NAME,), {NAME: Stamp(PLAIN, "x" * 40)}, entries
+    )
 
 
 def _hold(*entries: dict[str, Any]) -> TileClouds:
     """The tile showing ``entries``, applied from the list: their rows in it, ticked."""
     with cls.update(TILE) as cl:
         for e in entries:
-            row = cl.add("found", e["rings"], 1.0, tick=True, source=e["source"])
+            row = cl.add("found", e["rings"], tick=True, source=e["source"])
             cl.clouds[-1] = {**row, "id": e["id"]}
         cl.laid = list(entries)
     return _held(*entries)
@@ -79,9 +81,9 @@ def test_a_tick_and_a_source_are_kept_apart_and_survive_a_restart() -> None:
     with cls.update(TILE) as cl:
         cls.merge_search(cl, [_found(A)], None)
         cid = cl.clouds[0]["id"]
-        cls.pick(cl, cid, source="Arc")
+        cls.pick(cl, cid, "choose", "Arc")
         assert cl.get(cid)["tick"] is True  # choosing a source ticks
-        cls.pick(cl, cid, tick=False)
+        cls.pick(cl, cid, "untick")
     again = cls.load(TILE)
     assert again.get(cid)["tick"] is False and again.get(cid)["source"] == "Arc"
 
@@ -91,7 +93,7 @@ def test_a_search_keeps_ticks_names_and_ids_and_never_gives_one_again() -> None:
     with cls.update(TILE) as cl:
         cls.merge_search(cl, [_found(A), _found(B)], None)
         a, b = cl.clouds
-        cls.pick(cl, a["id"], tick=True)
+        cls.pick(cl, a["id"], "tick")
     with cls.update(TILE) as cl:
         cls.merge_search(
             cl, [_found(_ring(43.41, 5.11, 43.51, 5.31))], None
@@ -117,8 +119,8 @@ def test_an_outline_takes_the_found_clouds_it_covers_and_keeps_a_held_one() -> N
     with cls.update(TILE) as cl:
         cls.merge_search(cl, [_found(B), _found(D)], held)
         b, d = cl.clouds[1:]
-        c = cls.add_outline(cl, _ring(43.59, 5.09, 43.71, 5.31), 3.0, held)  # over B
-        cls.add_outline(cl, _ring(43.85, 5.25, 43.95, 5.40), 1.0, held)  # touches D's corner
+        c = cls.add_outline(cl, _ring(43.59, 5.09, 43.71, 5.31), held)  # over B
+        cls.add_outline(cl, _ring(43.85, 5.25, 43.95, 5.40), held)  # touches D's corner
         ids = [x["id"] for x in cl.clouds]
         assert b["id"] not in ids and d["id"] in ids and "held0001" in ids and c["id"] in ids
         cls.remove_outline(cl, c["id"], held)
@@ -128,10 +130,10 @@ def test_an_outline_takes_the_found_clouds_it_covers_and_keeps_a_held_one() -> N
 def test_a_held_outline_leaves_the_list_only_once_the_tile_no_longer_holds_it() -> None:
     # R3: unticked it comes back at Apply
     with cls.update(TILE) as cl:
-        o = cls.add_outline(cl, A, 3.0, None)
-        cls.pick(cl, o["id"], source="EOX")
+        o = cls.add_outline(cl, A, None)
+        cls.pick(cl, o["id"], "choose", "EOX")
         cl.get(o["id"])["checks"]["EOX"] = {"answer": "clear", "entry": _entry(o["id"], A)}
-        (laid,) = cls.laid_after(cl, None, cls.changes(cl, None, TILE))
+        (laid,) = cls.plan(cl, None, TILE).laid
     held = _held(laid)
     with pytest.raises(OsxpError), cls.update(TILE) as cl:
         cls.remove_outline(cl, o["id"], held)
@@ -148,8 +150,8 @@ def test_a_tick_on_images_got_on_another_photo_gets_them_again() -> None:
         e = _entry(cid, A)
         e["plain"] = {NAME: OTHER}
         cl.get(cid)["checks"]["EOX"] = {"answer": "clear", "entry": e}
-        cls.pick(cl, cid, tick=True)
-        (ch,) = cls.changes(cl, held, TILE)
+        cls.pick(cl, cid, "tick")
+        (ch,) = cls.plan(cl, held, TILE).changes
     assert cls.needs_images(ch)
     assert not cls.needs_images(cls.Change(cid, "replace", "EOX", None, "same_photo"))
 
@@ -161,8 +163,8 @@ def test_a_source_showing_the_tiles_own_photo_cannot_be_chosen() -> None:
         cls.merge_search(cl, [f], None)
         cid = cl.clouds[0]["id"]
         with pytest.raises(OsxpError):
-            cls.pick(cl, cid, source="Arc")
-        cls.pick(cl, cid, source="EOX")
+            cls.pick(cl, cid, "choose", "Arc")
+        cls.pick(cl, cid, "choose", "EOX")
 
 
 def test_the_changes_apply_makes_against_what_the_tile_holds() -> None:
@@ -172,17 +174,17 @@ def test_the_changes_apply_makes_against_what_the_tile_holds() -> None:
         cls.merge_search(cl, [_found(C), _found(D)], held)  # C is the held ones, D new
         assert len(cl.clouds) == 3
         new = cl.clouds[-1]["id"]
-        cls.pick(cl, "held0001", tick=False)
-        cls.pick(cl, "held0002", source="Arc")
-        cls.pick(cl, new, tick=True)
+        cls.pick(cl, "held0001", "untick")
+        cls.pick(cl, "held0002", "choose", "Arc")
+        cls.pick(cl, new, "tick")
         cl.get(new)["checks"]["EOX"] = {"answer": "clear", "entry": _entry(new, D)}
-        got = {ch.cloud: (ch.kind, ch.waiting) for ch in cls.changes(cl, held, TILE)}
+        got = {ch.cloud: (ch.kind, ch.waiting) for ch in cls.plan(cl, held, TILE).changes}
         assert got == {
             "held0001": ("back", None),
             "held0002": ("another", "no_images"),
             new: ("replace", None),
         }
-        laid = [e["id"] for e in cls.laid_after(cl, held, cls.changes(cl, held, TILE))]
+        laid = [e["id"] for e in cls.plan(cl, held, TILE).laid]
         # held0001 comes back; held0002 keeps its ground until Arc's images are in
         assert laid == ["held0002", new]
 
@@ -193,22 +195,22 @@ def test_images_got_on_another_photo_wait_to_be_got_again() -> None:
     with cls.update(TILE) as cl:
         cls.merge_search(cl, [_found(A)], held)
         cid = cl.clouds[0]["id"]
-        cls.pick(cl, cid, tick=True)
+        cls.pick(cl, cid, "tick")
         e = _entry(cid, A)
         e["plain"] = {NAME: OTHER}
         cl.get(cid)["checks"]["EOX"] = {"answer": "clear", "entry": e}
-        (ch,) = cls.changes(cl, held, TILE)
+        (ch,) = cls.plan(cl, held, TILE).changes
         assert ch.entry is None and ch.waiting == "photo_images"
 
 
 def test_discard_and_restore() -> None:
     held = _hold(_entry("held0001", A))
     with cls.update(TILE) as cl:
-        cls.pick(cl, "held0001", tick=False)
+        cls.pick(cl, "held0001", "untick")
         cls.discard(cl, held)
         assert cl.get("held0001")["tick"] is True
-        cls.restore(cl)
-        assert cls.laid_after(cl, held, cls.changes(cl, held, TILE)) == []
+        cls.untick_all(cl)
+        assert cls.plan(cl, held, TILE).laid == []
 
 
 def test_a_broken_list_is_put_aside_at_the_next_write_each_one_kept(home: Path) -> None:
@@ -248,13 +250,13 @@ def test_the_list_is_written_whole(home: Path) -> None:
 
 def test_every_answer_of_a_source_has_its_words_in_both_languages() -> None:
     # one table of what a source can answer (sources.ANSWERS), the page's words for each
-    from orthostudio.clouds.sources import ANSWERS, PROPOSABLE
+    from orthostudio.clouds.sources import ANSWERS, ASK_AGAIN, PROPOSABLE
 
     text = (Path(__file__).parent.parent / "src/orthostudio/ui/i18n.js").read_text("utf-8")
     fr, en = text.split("\n  en: {", 1)
     for answer in ANSWERS:
         assert f'"clouds.answer.{answer}":' in fr and f'"clouds.answer.{answer}":' in en, answer
-    assert set(ANSWERS) >= PROPOSABLE
+    assert set(ANSWERS) >= PROPOSABLE >= ASK_AGAIN
 
 
 def test_a_held_cloud_given_a_source_without_images_keeps_its_ground_and_is_no_change() -> None:
@@ -263,10 +265,10 @@ def test_a_held_cloud_given_a_source_without_images_keeps_its_ground_and_is_no_c
 
     held = _hold(_entry("held0001", A))
     with cls.update(TILE) as cl:
-        cls.pick(cl, "held0001", source="Arc")
-        pending = cls.changes(cl, held, TILE)
-        laid = cls.laid_after(cl, held, pending)
-        counts = mode.summary(cl, held, pending)
+        cls.pick(cl, "held0001", "choose", "Arc")
+        plan = cls.plan(cl, held, TILE)
+        laid = plan.laid
+        counts = mode.summary(cl, held, plan)
     assert [e["source"] for e in laid] == ["EOX"]
     assert counts["changes"] == 0 and counts["waiting"] == 0 and counts["held"] == 1
 
@@ -280,7 +282,7 @@ def test_a_source_whose_images_showed_the_same_photo_cannot_be_chosen() -> None:
         cl.get(cid)["checks"]["Arc"] = {"answer": "same_photo", "fit": 0, "entry": None}
         assert not cls.proposable(cl.get(cid), "Arc") and cls.best_of(cl.get(cid)) == "EOX"
         with pytest.raises(OsxpError):
-            cls.pick(cl, cid, source="Arc")
+            cls.pick(cl, cid, "choose", "Arc")
 
 
 def test_a_list_put_aside_never_takes_the_name_of_another(home: Path) -> None:

@@ -28,14 +28,25 @@ from orthostudio.clouds.opencv import cv2
 from orthostudio.dsf.container import parse_dsf
 from orthostudio.dsf.decode import _read_pool
 from orthostudio.errors import OsxpError
-from orthostudio.imagery.grid import TextureId, parse_texture_name
+from orthostudio.imagery.grid import TextureId, parse_texture_name, tile_to_wgs84
 from orthostudio.masks.profiles import WATER_TRANSITION
 from orthostudio.model import TileRef
+from orthostudio.textures.assemble import TEXTURE
 from orthostudio.textures.bcdecode import decode_blocks
+from orthostudio.textures.clouds import tile_pixels
 from orthostudio.textures.dds import BLOCK_BYTES, HEADER_SIZE, level_size, mip_dims, parse_header
 from orthostudio.textures.ter import ter_kind
 
-__all__ = ["WATER_RGB", "Picture", "draw", "frame", "pixel_metres", "search_level"]
+__all__ = [
+    "WATER_RGB",
+    "Picture",
+    "box_bounds",
+    "draw",
+    "frame",
+    "over_water",
+    "pixel_metres",
+    "search_level",
+]
 
 WATER_RGB = (36, 64, 84)
 """X-Plane's water on the map, one colour: its waves and reflections no picture can hold."""
@@ -55,13 +66,10 @@ def search_level(tile: TileRef) -> int:
 
 
 def frame(tile: TileRef, zl: int) -> tuple[int, int, int, int]:
-    """The tile's box at ``zl`` in global pixels: ``x0, y0, width, height``."""
-    from orthostudio.imagery.grid import wgs84_to_tile
-
-    xw, yn = wgs84_to_tile(tile.lat + 1, tile.lon, zl)
-    xe, ys = wgs84_to_tile(tile.lat, tile.lon + 1, zl)
-    x0, y0 = math.floor(xw * 256), math.floor(yn * 256)
-    return x0, y0, math.ceil(xe * 256) - x0, math.ceil(ys * 256) - y0
+    """The tile's box at ``zl`` in the world's whole pixels: ``x0, y0, width, height``."""
+    west, north, east, south = tile_pixels(tile.lat, tile.lon, zl)
+    x0, y0 = math.floor(west), math.floor(north)
+    return x0, y0, math.ceil(east) - x0, math.ceil(south) - y0
 
 
 def lakes_share(t: float) -> float:
@@ -279,19 +287,16 @@ def draw(
     *,
     dsf: Path,
     textures: Mapping[str, Path],
-    within: tuple[int, int, int, int] | None = None,
 ) -> Picture:
     """The tile at ``zl`` as X-Plane draws it from the DSF ``dsf``, each texture read from its
-    file in ``textures`` (by name). ``within``, a box of the picture's pixels, leaves the rest
-    undrawn and undecoded."""
+    file in ``textures`` (by name)."""
     x0, y0, w, h = frame(tile, zl)
     d = _drawn(dsf, tile)
     photo = np.zeros((h, w, 3), np.uint8)
     share = np.zeros((h, w), np.uint8)
     shows = np.full((h, w), -1, np.int16)
     names: list[str] = []
-    bx0, by0, bx1, by1 = (0, 0, w, h) if within is None else within
-    bx0, by0, bx1, by1 = max(0, bx0), max(0, by0), min(w, bx1), min(h, by1)
+    bx0, by0, bx1, by1 = 0, 0, w, h
     by_texture: dict[str, list[int]] = {}
     for i, (texture, _kind, _share) in enumerate(d.terrains):
         if texture is not None:
@@ -303,7 +308,7 @@ def draw(
             continue
         level = t.zl - zl
         gx, gy = ((t.til_x * 256) >> level) - x0, ((t.til_y * 256) >> level) - y0
-        side = 4096 >> level
+        side = TEXTURE >> level
         cx0, cy0, cx1, cy1 = max(gx, bx0), max(gy, by0), min(gx + side, bx1), min(gy + side, by1)
         if cx1 <= cx0 or cy1 <= cy0:
             continue
@@ -331,6 +336,14 @@ def draw(
         np.copyto(shows[at], np.int16(len(names)), where=here)
         names.append(name)
     return Picture(over_water(photo, share), photo, share, shows, tuple(names), zl, x0, y0)
+
+
+def box_bounds(p: Picture, box: tuple[int, int, int, int]) -> list[float]:
+    """The box ``(x0, y0, x1, y1)`` of the picture's pixels in degrees: ``[south, west, north,
+    east]``, as the page lays an image."""
+    north, west = tile_to_wgs84((p.x0 + box[0]) / 256, (p.y0 + box[1]) / 256, p.zl)
+    south, east = tile_to_wgs84((p.x0 + box[2]) / 256, (p.y0 + box[3]) / 256, p.zl)
+    return [south, west, north, east]
 
 
 def over_water(rgb: np.ndarray, share: np.ndarray) -> np.ndarray:

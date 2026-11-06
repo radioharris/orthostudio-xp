@@ -710,7 +710,7 @@ async def test_library_delete_forgets_the_tiles_clouds(app, home: Path) -> None:
     with Library(default_library_path()) as lib:
         lib.register(t, "BI", 16, pack, "osxp", {})
     with cloudlist.update(t) as cl:
-        cl.add("drawn", [[43.1, 5.1, 43.1, 5.2, 43.2, 5.2, 43.1, 5.1]], 1.0)
+        cl.add("drawn", [[43.1, 5.1, 43.1, 5.2, 43.2, 5.2, 43.1, 5.1]])
     previews_dir(t).mkdir(parents=True)
     (previews_dir(t) / "a.png").write_bytes(b"png")
     async with client_for(app) as c:

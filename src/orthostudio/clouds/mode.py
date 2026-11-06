@@ -1,8 +1,9 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""What the cloud mode shows of a tile: its state, each cloud's row, what Apply would change
-(``clouds.md`` 1.3, 1.5). One function computes it all from the tile's record and the list, so the
-page, the Library and Works say the same; the words are the page's, by key (``ui/i18n.js``).
+"""What the cloud mode shows of a tile: its state, what it allows, each cloud's row, the count of
+what Apply would change and the words of it all (``clouds.md`` 1.3, 1.5), from what the tile's
+folder shows and the list. The tile's answer (``api/clouds_api.py``) and the Library's column are
+made of these alone, so they say the same; the words are the page's, by key (``ui/i18n.js``).
 
 The tile's state, the first that holds: the data folder away; the tile's disk away; being built;
 waiting in the queue; not built (no folder of ours); not whole (a build cut short, or files taken
@@ -16,25 +17,26 @@ replaced at Apply); waiting (ticked, its images not got, with why); found (not t
 
 from __future__ import annotations
 
-from collections.abc import Collection, Mapping, Sequence
+from collections.abc import Collection, Mapping
 from dataclasses import dataclass
 from typing import Any
 
 from orthostudio.clouds.cloudlist import (
+    ApplyPlan,
     Change,
     CloudList,
-    answer_of,
-    laid_after,
     needs_images,
     proposable,
+    reading,
     removable,
     tickable,
 )
-from orthostudio.clouds.tile import TileClouds
+from orthostudio.clouds.tile import TileClouds, held_by_id
 from orthostudio.errors import OsxpError
 
 __all__ = [
     "TileFacts",
+    "asks_images",
     "library_row",
     "possible",
     "require",
@@ -57,7 +59,7 @@ class TileFacts:
     in_build: bool = False
     queued: bool = False
     whole: bool = True
-    held: TileClouds | None = None
+    shown: TileClouds | None = None
     own_source: str | None = None
     registry: frozenset[str] = frozenset()
 
@@ -73,7 +75,7 @@ def tile_state(f: TileFacts) -> str:
         return "in_build"
     if f.queued:
         return "queued"
-    if f.held is None:
+    if f.shown is None:
         return "not_built"
     if not f.whole:
         return "not_whole"
@@ -82,20 +84,26 @@ def tile_state(f: TileFacts) -> str:
     return "ready"
 
 
+def asks_images(ch: Change | None, can: frozenset[str]) -> bool:
+    """Whether a cloud's images are to be asked for now: its change waits for images asking may
+    bring (``cloudlist.needs_images``) and the tile allows getting them (``can``)."""
+    return "check" in can and needs_images(ch)
+
+
 def rows(
     cl: CloudList,
-    held: TileClouds | None,
-    changes: Sequence[Change],
+    shown: TileClouds | None,
+    plan: ApplyPlan,
     possible: frozenset[str],
     tasks: Mapping[str, Mapping[str, Any]],
     previews: Mapping[str, Mapping[str, Any] | None],
 ) -> list[dict[str, Any]]:
     """Every cloud's row, in laying order: its state, the words of its line (``line``: a key and
-    its parameters), what After lays for it (``preview``: :func:`cloudlist.laid_after`'s), the
-    actions it allows, of what the tile allows (``possible``, :func:`possible`). ``changes`` what
-    Apply would change (``cloudlist.changes``), ``tasks`` and ``previews`` by cloud id."""
-    holds = {c["id"]: c for c in (held.applied if held is not None else ())}
-    pending = {ch.cloud: ch for ch in changes}
+    its parameters), what After lays for it (``preview``, of ``plan.laid``), the actions it
+    allows, of what the tile allows (``possible``, :func:`possible`). ``plan`` what Apply would
+    do (``cloudlist.plan``), ``tasks`` and ``previews`` by cloud id."""
+    holds = held_by_id(shown)
+    pending = {ch.cloud: ch for ch in plan.changes}
     out: list[dict[str, Any]] = []
     frozen = not possible & LIST_EDITS  # the list read only: no edit of it allowed now
     for c in cl.clouds:
@@ -125,14 +133,14 @@ def rows(
                 "waiting",
                 {"key": f"clouds.row.waiting.{ch.waiting}", "params": {"source": c["source"]}},
             )
-            actions = ["check"] if "check" in possible and needs_images(ch) else []
+            actions = ["check"] if asks_images(ch, possible) else []
         else:
             row = "found"
             line = None if c.get("best") else {"key": "clouds.row.no_source", "params": {}}
         if not frozen and task is None:
             actions += ["untick"] if c["tick"] else (["tick"] if tickable(c) else [])
             actions += ["choose"]
-            if "remove" in possible and removable(c, held):
+            if "remove" in possible and removable(c, shown):
                 actions.append("remove")
         out.append(
             {
@@ -154,43 +162,43 @@ def rows(
 
 
 def _menu(c: Mapping[str, Any]) -> list[dict[str, Any]]:
-    """Its source and every source tried under the cloud: what each has there
-    (:func:`cloudlist.answer_of`), its fit, whether it may be chosen
+    """Its source and every source tried under the cloud: what each has there and its fit, as
+    its newest reading says (:func:`cloudlist.reading`), whether it may be chosen
     (:func:`cloudlist.proposable`), the best first."""
     screening = c.get("screening") or {}
     own = [c["source"]] if c.get("source") and c["source"] not in screening else []
-    codes = [*screening, *own]
-    items = [
-        {
-            "source": code,
-            "answer": answer_of(c, code),
-            "fit": (screening.get(code) or {}).get("fit", 0),
-            "best": code == c.get("best"),
-            "proposable": proposable(c, code),
-        }
-        for code in codes
-    ]
+    items = []
+    for code in [*screening, *own]:
+        said = reading(c, code)
+        items.append(
+            {
+                "source": code,
+                "answer": said.get("answer"),
+                "fit": int(said.get("fit") or 0),
+                "proposable": proposable(c, code),
+            }
+        )
     order = {"clear": 0, "cloudy": 1}
     return sorted(
         items, key=lambda i: (order.get(i["answer"], 2), -int(i["fit"] or 0), i["source"])
     )
 
 
-def summary(cl: CloudList, held: TileClouds | None, changes: Sequence[Change]) -> dict[str, Any]:
-    """What Apply would change, counted from what it lays (:func:`cloudlist.laid_after`):
+def summary(cl: CloudList, shown: TileClouds | None, plan: ApplyPlan) -> dict[str, Any]:
+    """What Apply would change, counted from what it lays (``plan.laid``):
     ``replace`` (laid, not held), ``another`` (laid with another source than held), ``back``
     (held, not laid), ``waiting`` (ticked, nothing to lay yet: left out); ``held``, the clouds
     the tile holds replaced; ``textures``, how many of its textures show clouds (Restore puts
     them back, whatever the list knows of them)."""
-    holds = {c["id"]: c["source"] for c in (held.applied if held is not None else ())}
-    laid = {e["id"]: e["source"] for e in laid_after(cl, held, changes)}
+    holds = {cid: c["source"] for cid, c in held_by_id(shown).items()}
+    laid = {e["id"]: e["source"] for e in plan.laid}
     counts = {
         "replace": sum(1 for i in laid if i not in holds),
         "another": sum(1 for i, s in laid.items() if i in holds and s != holds[i]),
         "back": sum(1 for i in holds if i not in laid),
         "waiting": sum(1 for c in cl.clouds if c["tick"] and c["id"] not in laid),
         "held": len(holds),
-        "textures": len(held.stamps) if held is not None else 0,
+        "textures": len(shown.stamps) if shown is not None else 0,
     }
     counts["changes"] = counts["replace"] + counts["another"] + counts["back"]
     return counts
@@ -217,7 +225,7 @@ def possible(state: str, tasks: Collection[str] = ()) -> frozenset[str]:
         "queued": LIST_EDITS,
         "own_source_gone": LIST_EDITS | TASKS,
     }.get(state, frozenset())
-    if "applying" in tasks:
+    if WRITES & set(tasks):
         return can & LIST_EDITS
     return can - WRITES if tasks else can
 

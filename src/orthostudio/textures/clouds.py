@@ -29,7 +29,7 @@ from PIL import Image
 
 from orthostudio.clouds.opencv import cv2
 from orthostudio.imagery.grid import TextureId, wgs84_to_tile
-from orthostudio.textures.assemble import decode_tile
+from orthostudio.textures.assemble import CHUNK, TEXTURE, decode_tile
 
 __all__ = [
     "RULE",
@@ -43,12 +43,12 @@ __all__ = [
     "layer",
     "pieces",
     "read_piece",
+    "ring_pixels",
     "tile_box",
+    "tile_pixels",
     "window",
 ]
 
-TEXTURE = 4096
-CHUNK = 256
 FEATHER_PX = 24
 """Half width of the soft edge, as the zones' colours have it: about 40 m at ZL16."""
 REACH_PX = 2 * FEATHER_PX
@@ -78,16 +78,28 @@ class CloudPatch:
     tile: tuple[float, float, float, float]
 
 
+def tile_pixels(tile_lat: int, tile_lon: int, zl: int) -> tuple[float, float, float, float]:
+    """The 1-degree tile ``(tile_lat, tile_lon)`` in the world's pixels at ``zl``: ``west, north,
+    east, south``."""
+    xw, yn = wgs84_to_tile(tile_lat + 1, tile_lon, zl)
+    xe, ys = wgs84_to_tile(tile_lat, tile_lon + 1, zl)
+    return xw * CHUNK, yn * CHUNK, xe * CHUNK, ys * CHUNK
+
+
 def tile_box(tile_lat: int, tile_lon: int, t: TextureId) -> tuple[float, float, float, float]:
     """The 1-degree tile ``(tile_lat, tile_lon)`` in the pixels of the texture ``t``."""
-    xw, yn = wgs84_to_tile(tile_lat + 1, tile_lon, t.zl)
-    xe, ys = wgs84_to_tile(tile_lat, tile_lon + 1, t.zl)
-    return (
-        (xw - t.til_x) * CHUNK,
-        (yn - t.til_y) * CHUNK,
-        (xe - t.til_x) * CHUNK,
-        (ys - t.til_y) * CHUNK,
-    )
+    west, north, east, south = tile_pixels(tile_lat, tile_lon, t.zl)
+    x0, y0 = t.til_x * CHUNK, t.til_y * CHUNK
+    return west - x0, north - y0, east - x0, south - y0
+
+
+def ring_pixels(ring: Sequence[float], zl: int, x0: float, y0: float) -> np.ndarray:
+    """A ring of the zones' format (``[lat0, lon0, ...]``) in the pixels at ``zl`` of an image
+    whose first pixel is the world's ``(x0, y0)``: ``(n, 2)``."""
+    pts = [
+        wgs84_to_tile(float(ring[i]), float(ring[i + 1]), zl) for i in range(0, len(ring) - 1, 2)
+    ]
+    return np.array([(x * CHUNK - x0, y * CHUNK - y0) for x, y in pts], np.float64)
 
 
 def _bounds(p: CloudPatch, grow: int) -> tuple[int, int, int, int]:

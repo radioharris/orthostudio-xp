@@ -49,10 +49,10 @@ The Plan's map, brought over the tile; the Plan's steps make way for the cloud p
   **Discard changes**, and **Restore the original photos** when the tile holds replaced clouds.
 - **A row**, laid out as the Plan's zones: its tick and name, its area, **Show** (the map over
   it), a trash for an outline the tile does not hold; the menu of its sources, each with what it
-  has there and its fit ("Esri World Imagery · clear · fit 93 %"), the best first, those that
-  cannot be chosen greyed (`sources.PROPOSABLE`: the same photo, no picture, not pictures); its
-  line (1.5); **Get its images**
-  when they are not in; **Stop** while a task of it runs.
+  has there and its fit ("Esri World Imagery · clear · fit 93 %"), both from its newest reading
+  (`cloudlist.reading`: its images got, else the search's), the best first, those that cannot be
+  chosen greyed (`sources.PROPOSABLE`: the same photo, no picture); its line (1.5); **Get its
+  images** when they are not in; **Stop** while a task of it runs.
 
 ### 1.4 What the user does
 
@@ -94,8 +94,12 @@ that reads the tile's folder while a build writes it, its picture included (`mod
 **its own source gone**, everything but Apply and Restore; any other state, nothing; no Apply or
 Restore while a task of the tile runs, and nothing but the list's edits while Apply does. Any
 tile of ours can have its clouds replaced, whatever version built it. The actions have one set of names,
-the same for the tile, its rows, the routes and the page: `tick`, `untick`, `choose`, `check`
-(get a cloud's images), `remove`, `discard`, `find`, `outline`, `apply`, `restore`. What runs the
+the same for the tile, its rows, the routes, its tasks and the page: `tick`, `untick`, `choose`,
+`check` (get a cloud's images), `remove`, `discard`, `find`, `outline`, `apply`, `restore`; a task
+is named by the action that starts it. A cloud's images are asked for one way
+(`clouds_api.images_task`): when the tile allows `check` and its change waits for images asking
+may bring (`mode.asks_images`), after a tick, a source chosen or an outline's sources tried, or
+when **Get its images** asks again. What runs the
 cloud detector is asked just before its task starts (a search, an outline, getting images, a
 tick or a source that needs them), refused while the detector is not on this computer and the
 user has not said to download it (`CLOUD_DETECTOR_ASK`, with its size): the page asks, and on
@@ -178,7 +182,7 @@ outline, its area, what each source has under it (`screening`, the search's), it
 its tick, its source, and per source tried its check (its answer, fit and entry); and the clouds
 last laid in the tile (`laid`, entries in laying order). Only `clouds/cloudlist.py` writes it
 (`pick`, `merge_search`, `add_outline`, `remove_outline`, `record_screening`, `record_check`,
-`discard`, `restore`), and `laying.show` its `laid`. The list is the draft: each change is written
+`discard`, `untick_all`), and `laying.show` its `laid`. A cloud's area is its outline's. The list is the draft: each change is written
 as it is made, one writer at a time per tile, and survives closing, quitting and every build. Its
 order is the laying order. Reading it changes nothing: a file that is not a list of this format
 is read as no list, and the next write puts it aside first (`.broken-<n>`, each kept); a passing
@@ -228,7 +232,8 @@ hold it (`cloudlist.removable`).
 
 ### R4. The list is a draft; Apply lays what its question showed
 
-Apply lays the clouds of `laid_after`: each ticked cloud with the newest images that stand, its
+What Apply would do is said once (`cloudlist.plan`: its changes and the clouds it lays), for
+the count, the rows, After and Apply. Apply lays each ticked cloud with the newest images that stand, its
 change's when they are in, else what the tile holds of it (a replaced cloud given another source
 keeps its ground until the new one's images are in); a ticked cloud with neither waits, left out,
 and the question says so. After shows exactly these, each by its preview (R5): what Apply would
@@ -298,7 +303,8 @@ The best source is the clear one with the best fit.
 
 Per piece (`clouds/sources.py`): a picture; none there; it did not answer (a timeout, the network,
 a server error); it refused (403, 429, its pushback); not a picture (a page). Only a picture or
-none is kept: asked again, the others may answer.
+none is kept: asked again, the others may answer (`sources.ASK_AGAIN`), and a cloud waiting on one
+of them offers to ask again.
 
 ### 4.3 Getting a cloud's images
 
@@ -307,8 +313,11 @@ it at, frozen into parts (2.5); Apply's own layer made from them and reduced to 
 (R5); it must cover 90 % of the cloud; the detector says clear or cloudy at the tile's sharpness;
 the colour match is taken on the band around the cloud at the screening's reading, which answers
 too: no picture or the same photo there, and the check says so rather than lay colours it could
-not match. Its result is the cloud's entry (2.2), with the digest of each texture as built it was
-got on, and its preview, kept in the list under that source.
+not match. The search and the check judge by the same rules, each said once in `find.py`: the
+box a source is read on, the band's width, the level it is judged at, what the band leaves out,
+the cloud's core, what pieces that did not come answer. Its result is the cloud's entry (2.2),
+with the digest of each texture as built it was got on, kept in the list under that source; its
+preview is made when After first shows it.
 
 ### 4.4 Laying in a texture
 

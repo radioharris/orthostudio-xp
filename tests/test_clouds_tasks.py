@@ -23,8 +23,8 @@ def _ended(tasks: Tasks, tile: str, within: float = 5.0) -> bool:
 
 def test_a_task_stopped_while_it_waits_for_its_turn_ends_at_once() -> None:
     tasks, go, ran = Tasks(), threading.Event(), []
-    tasks.start("+43+005", "search", lambda t: go.wait(10))
-    waiting = tasks.start("+44+005", "search", lambda t: ran.append(t.id))
+    tasks.start("+43+005", "find", lambda t: go.wait(10))
+    waiting = tasks.start("+44+005", "find", lambda t: ran.append(t.id))
     time.sleep(0.1)
     assert waiting.phase == "waiting"
     tasks.stop(waiting.id)
@@ -39,11 +39,11 @@ def test_a_task_that_fails_says_how_until_the_tiles_next_one() -> None:
     def fails(t: Task) -> None:
         raise OsxpError("CLOUD_DETECTOR_MISSING", context={"reason": "no internet"})
 
-    tasks.start("+43+005", "search", fails)
+    tasks.start("+43+005", "find", fails)
     assert _ended(tasks, "+43+005")
     failed = tasks.failed("+43+005")
     assert failed is not None and failed.view()["error"]["code"] == "CLOUD_DETECTOR_MISSING"
-    tasks.start("+43+005", "search", lambda t: None)
+    tasks.start("+43+005", "find", lambda t: None)
     assert tasks.failed("+43+005") is None
 
 
@@ -53,5 +53,5 @@ def test_a_stopped_task_is_no_failure() -> None:
     def stopped(t: Task) -> None:
         raise OsxpError("SYS_CANCELLED")
 
-    tasks.start("+43+005", "getting", stopped, cloud="a")
+    tasks.start("+43+005", "check", stopped, cloud="a")
     assert _ended(tasks, "+43+005") and tasks.failed("+43+005") is None

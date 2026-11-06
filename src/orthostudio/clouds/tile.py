@@ -26,14 +26,14 @@ from pathlib import Path
 from typing import Any
 
 from orthostudio.graph.digest import digest_bytes, digest_file
-from orthostudio.home import osxp_home
-from orthostudio.imagery.grid import TextureId, parse_texture_name, texture_name, wgs84_to_tile
+from orthostudio.home import default_chunks_root, default_tiles_root, osxp_home
+from orthostudio.imagery.grid import TextureId, parse_texture_name, texture_name
 from orthostudio.install.library import default_library_path
 from orthostudio.model import TileRef
 from orthostudio.pipeline.filing import tile_home
-from orthostudio.pipeline.home import default_chunks_root, default_tiles_root
-from orthostudio.pipeline.pack import MANIFEST_NAME, pack_dir_name, read_manifest
-from orthostudio.textures.clouds import CloudPatch, tile_box, window
+from orthostudio.pipeline.pack import MANIFEST_NAME, PackManifest, pack_dir_name, pack_is_intact
+from orthostudio.textures.assemble import CHUNK
+from orthostudio.textures.clouds import CloudPatch, ring_pixels, tile_box, window
 
 __all__ = [
     "CLOUDS_DIR",
@@ -42,11 +42,17 @@ __all__ = [
     "Stamp",
     "TileClouds",
     "clouds_digest",
+    "entry_patches",
     "entry_problem",
     "find_part",
-    "got_parts_dir",
+    "held_by_id",
+    "is_own_folder",
+    "laid_fields",
     "list_path",
+    "lists_dir",
     "own_folder",
+    "part_path",
+    "parts_dir",
     "patches_of",
     "previews_dir",
     "reaching",
@@ -55,19 +61,41 @@ __all__ = [
     "stamped",
     "stands_not",
     "texture_digest",
-    "tile_folder",
 ]
 
 CLOUDS_DIR = "clouds"
-PART_SUFFIX = ".part"
 
 # -- where the cloud files are ---------------------------------------------------------------
 
 
-def got_parts_dir(chunks_root: Path) -> Path:
+def lists_dir() -> Path:
+    """The users' lists of clouds, one per tile (``$OSXP_HOME/clouds``)."""
+    return osxp_home() / CLOUDS_DIR
+
+
+def list_path(tile: TileRef) -> Path:
+    """The user's list of the tile's clouds (``$OSXP_HOME/clouds/<tile>.json``)."""
+    return lists_dir() / f"{tile.name}.json"
+
+
+def parts_dir() -> Path:
     """The frozen parts of the clouds whose images were got, beside the image pieces
-    (``<data>/clouds/parts``), named by their digest."""
-    return Path(chunks_root).parent / CLOUDS_DIR / "parts"
+    (``<data>/clouds/parts``)."""
+    return default_chunks_root().parent / CLOUDS_DIR / "parts"
+
+
+def part_path(digest: str) -> Path:
+    """The file of the part ``digest``."""
+    return parts_dir() / f"{digest}.part"
+
+
+def find_part(digest: str) -> Path | None:
+    """The file of the part ``digest`` when it is there whole."""
+    path = part_path(digest)
+    try:
+        return path if digest_bytes(path.read_bytes()) == digest else None
+    except OSError:
+        return None
 
 
 def previews_dir(tile: TileRef) -> Path:
@@ -75,38 +103,21 @@ def previews_dir(tile: TileRef) -> Path:
     return default_chunks_root().parent / CLOUDS_DIR / tile.name
 
 
-def list_path(tile: TileRef) -> Path:
-    """The user's list of the tile's clouds (``$OSXP_HOME/clouds/<tile>.json``)."""
-    return osxp_home() / CLOUDS_DIR / f"{tile.name}.json"
-
-
-def tile_folder(tile: TileRef, *, workshop: Path, home: Path | None = None) -> Path:
-    """The folder a build of ``tile`` writes: where it is filed (``filing.tile_home``), else the
-    workshop's."""
-    return Path(home) if home is not None else Path(workshop) / pack_dir_name(tile)
-
-
 def own_folder(tile: TileRef, *, custom_scenery: Path | None) -> Path:
-    """The tile's folder its clouds are laid in: the one the app's next build of it writes."""
+    """The tile's folder its clouds are laid in: the one the app's next build of it writes, where
+    it is filed (``filing.tile_home``), else the workshop's."""
     home, _gone = tile_home(
         tile,
         atelier=default_tiles_root(),
         custom_scenery=custom_scenery,
         library_path=default_library_path(),
     )
-    return tile_folder(tile, workshop=default_tiles_root(), home=home)
+    return Path(home) if home is not None else default_tiles_root() / pack_dir_name(tile)
 
 
-def find_part(digest: str, folders: Iterable[Path]) -> Path | None:
-    """The file of the part ``digest`` in the first of ``folders`` holding it whole."""
-    for folder in folders:
-        path = Path(folder) / f"{digest}{PART_SUFFIX}"
-        try:
-            if digest_bytes(path.read_bytes()) == digest:
-                return path
-        except OSError:
-            continue
-    return None
+def is_own_folder(tile: TileRef, folder: Path, *, custom_scenery: Path | None) -> bool:
+    """Whether ``folder`` is the tile's own (:func:`own_folder`)."""
+    return Path(folder).resolve() == own_folder(tile, custom_scenery=custom_scenery).resolve()
 
 
 # -- a texture's stamp -----------------------------------------------------------------------
@@ -165,9 +176,14 @@ LAID_KEYS = ("id", "source", "match", "rings", "parts", "plain")
 """What of a cloud's entry makes what it lays; the rest is the list's (its kind, its number)."""
 
 
+def laid_fields(e: Mapping[str, Any]) -> dict[str, Any]:
+    """Of the entry ``e``, what lays it (:data:`LAID_KEYS`)."""
+    return {k: e[k] for k in LAID_KEYS}
+
+
 def clouds_digest(entries: Sequence[Mapping[str, Any]]) -> str:
     """The digest of the clouds a texture shows, in their order."""
-    laid = [{k: e[k] for k in LAID_KEYS} for e in entries]
+    laid = [laid_fields(e) for e in entries]
     return digest_bytes(json.dumps(laid, sort_keys=True).encode())[:DIGEST_HEX]
 
 
@@ -176,55 +192,59 @@ def clouds_digest(entries: Sequence[Mapping[str, Any]]) -> str:
 
 @dataclass(frozen=True, slots=True, eq=False)
 class TileClouds:
-    """What the tile's folder shows of its clouds."""
+    """What the tile's folder shows of its clouds, read once (:func:`read_tile`)."""
 
     folder: Path
-    shown: str
+    built: str
     """What the build placed there, one digest (its manifest's): the picture and the previews
     are named by it, so another build makes them again."""
+    provider: str
+    """The tile's own source."""
+    whole: bool
+    """Whether the folder holds the whole pack its manifest names (``pack.pack_is_intact``)."""
     names: tuple[str, ...]
     """Its textures' names."""
     stamps: Mapping[str, Stamp]
     """The textures showing clouds, and what each is made of."""
-    applied: tuple[dict[str, Any], ...] = ()
-    """The clouds it shows replaced, in laying order: of the clouds last applied, those every
+    held: tuple[dict[str, Any], ...] = ()
+    """The clouds it shows replaced, in laying order: of the clouds last laid, those every
     texture they reach shows."""
 
-    def held(self, cloud: str) -> dict[str, Any] | None:
-        return next((c for c in self.applied if c["id"] == cloud), None)
+    def holding(self, cloud: str) -> dict[str, Any] | None:
+        """The cloud ``cloud`` as the tile shows it replaced; ``None`` when it does not."""
+        return next((c for c in self.held if c["id"] == cloud), None)
 
     @property
     def textures(self) -> list[TextureId]:
         return [parse_texture_name(n) for n in self.names]
 
-    @property
-    def textures_dir(self) -> Path:
-        """The textures X-Plane shows."""
-        return self.folder / "textures"
+    def texture_path(self, name: str) -> Path:
+        """The texture ``name`` X-Plane shows."""
+        return self.folder / "textures" / f"{name}.dds"
 
-    @property
-    def plains_dir(self) -> Path:
-        """The textures showing clouds as the build made them."""
-        return self.folder / CLOUDS_DIR
+    def kept_path(self, name: str) -> Path:
+        """Where the texture ``name`` is kept as the build made it while it shows clouds."""
+        return self.folder / CLOUDS_DIR / f"{name}.dds"
 
     def plain_path(self, name: str) -> Path:
         """The texture ``name`` as the build made it: the one kept aside when it shows clouds."""
-        if name in self.stamps:
-            return self.plains_dir / f"{name}.dds"
-        return self.textures_dir / f"{name}.dds"
+        return self.kept_path(name) if name in self.stamps else self.texture_path(name)
 
     def plain(self, name: str) -> str | None:
         """The digest of the texture ``name`` as the build made it; ``None`` when it has none."""
         stamp = self.stamps.get(name)
         if stamp is not None:
             return stamp.plain
-        if name not in self.names:
-            return None
-        return texture_digest(self.textures_dir / f"{name}.dds")
+        return texture_digest(self.texture_path(name)) if name in self.names else None
 
     def plains(self) -> dict[str, Path]:
         """Every texture as the build made it, by name: what X-Plane shows with no cloud."""
         return {n: self.plain_path(n) for n in self.names}
+
+
+def held_by_id(shown: TileClouds | None) -> dict[str, dict[str, Any]]:
+    """The clouds ``shown`` holds replaced, by id; none without a tile."""
+    return {c["id"]: c for c in (shown.held if shown is not None else ())}
 
 
 def reaching(entries: Iterable[Mapping[str, Any]], name: str) -> list[Mapping[str, Any]]:
@@ -244,12 +264,12 @@ def _names(textures: Path) -> tuple[str, ...]:
 
 
 def read_tile(folder: Path, laid: Sequence[Mapping[str, Any]] = ()) -> TileClouds | None:
-    """What ``folder`` shows of the clouds ``laid`` (the list's last applied); ``None`` when it
+    """What ``folder`` shows of the clouds ``laid`` (the list's last laid); ``None`` when it
     holds no tile of ours."""
     folder = Path(folder)
     try:
-        manifest = (folder / MANIFEST_NAME).read_bytes()
-        read_manifest(folder)
+        text = (folder / MANIFEST_NAME).read_bytes()
+        manifest = PackManifest.from_toml(text.decode("utf-8"))
     except (OSError, ValueError, KeyError):
         return None
     names = _names(folder / "textures")
@@ -263,8 +283,15 @@ def read_tile(folder: Path, laid: Sequence[Mapping[str, Any]] = ()) -> TileCloud
             stamps[n] = stamp
     # a texture shows the clouds of the list's that reach it when its stamp names those
     agree = {n for n, s in stamps.items() if s.clouds == clouds_digest(reaching(laid, n))}
-    applied = tuple(dict(e) for e in laid if set(e["parts"]) <= agree)
-    return TileClouds(folder, digest_bytes(manifest)[:32], names, stamps, applied)
+    return TileClouds(
+        folder=folder,
+        built=digest_bytes(text)[:32],
+        provider=manifest.provider,
+        whole=pack_is_intact(folder, manifest, with_overlay=False),
+        names=names,
+        stamps=stamps,
+        held=tuple(dict(e) for e in laid if set(e["parts"]) <= agree),
+    )
 
 
 # -- where a cloud stands --------------------------------------------------------------------
@@ -282,7 +309,10 @@ def patches_of(
     match = (tuple(float(v) for v in gain), tuple(float(v) for v in shift))
     out: dict[str, CloudPatch] = {}
     for t in textures:
-        rings = tuple(_ring_px(r, t) for r in c["rings"])
+        rings = tuple(
+            tuple(ring_pixels(r, t.zl, t.til_x * CHUNK, t.til_y * CHUNK).ravel())
+            for r in c["rings"]
+        )
         box = tile_box(tile.lat, tile.lon, t)
         p = CloudPatch(c["id"], c["source"], source_zl(t), rings, match, box)  # type: ignore[arg-type]
         if window(p) is not None:
@@ -290,24 +320,21 @@ def patches_of(
     return out
 
 
-def _ring_px(ring: Sequence[float], t: TextureId) -> tuple[float, ...]:
-    """A ring of the zones' format (``[lat0, lon0, ...]``) in the pixels of ``t``."""
-    pts: list[float] = []
-    for i in range(0, len(ring) - 1, 2):
-        x, y = wgs84_to_tile(float(ring[i]), float(ring[i + 1]), t.zl)
-        pts += [(x - t.til_x) * 256.0, (y - t.til_y) * 256.0]
-    return tuple(pts)
+def entry_patches(
+    c: Mapping[str, Any], tile: TileRef, textures: Iterable[TextureId]
+) -> dict[str, CloudPatch]:
+    """The cloud entry ``c`` in each of ``textures`` it reaches, its source read at the level
+    its part there was got at (the texture's own where it has none)."""
+    parts = c["parts"]
+    return patches_of(c, tile, textures, lambda t: int(parts.get(texture_name(t), [t.zl])[0]))
 
 
-def stands_not(c: Mapping[str, Any], tile: TileRef, held: TileClouds) -> str | None:
+def stands_not(c: Mapping[str, Any], tile: TileRef, shown: TileClouds) -> str | None:
     """Why the images got for the cloud ``c`` no longer stand on the tile, or ``None``: the
     textures it reaches are others (``level``, ``source``, ``textures``), or one of them is not
     the one they were got on (``images``). The one rule Apply, a build after and the page go by."""
-    parts = c["parts"]
-    zl_of = {name: int(parts[name][0]) for name in parts}
-    reached = patches_of(c, tile, held.textures, lambda t: zl_of.get(texture_name(t), t.zl))
-    why = _moved(set(parts), set(reached))
-    if why is None and any(c["plain"].get(n) != held.plain(n) for n in parts):
+    why = _moved(set(c["parts"]), set(entry_patches(c, tile, shown.textures)))
+    if why is None and any(c["plain"].get(n) != shown.plain(n) for n in c["parts"]):
         why = "images"
     return why
 

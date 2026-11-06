@@ -21,7 +21,7 @@ from __future__ import annotations
 import json
 import math
 import threading
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -32,16 +32,31 @@ from shapely.validation import make_valid
 
 from orthostudio.clouds.model import SHADOW, THICK, THIN, classify
 from orthostudio.clouds.opencv import cv2
-from orthostudio.clouds.picture import WATER_RGB, Picture, pixel_metres
+from orthostudio.clouds.picture import Picture, box_bounds, over_water, pixel_metres
 from orthostudio.clouds.sources import SourcePieces
-from orthostudio.clouds.tile import TileClouds, find_part, got_parts_dir, patches_of
+from orthostudio.clouds.tile import (
+    TileClouds,
+    entry_patches,
+    find_part,
+    laid_fields,
+    part_path,
+    patches_of,
+)
 from orthostudio.errors import OsxpError
 from orthostudio.fsutil import atomic_write_bytes
 from orthostudio.graph.digest import digest_bytes
-from orthostudio.imagery.grid import parse_texture_name, texture_name, tile_to_wgs84, wgs84_to_tile
+from orthostudio.imagery.grid import parse_texture_name, tile_to_wgs84
 from orthostudio.imagery.providers import Provider
 from orthostudio.model import TileRef
-from orthostudio.textures.clouds import RULE, decode_part, encode_part, layer, pieces, read_piece
+from orthostudio.textures.clouds import (
+    RULE,
+    decode_part,
+    encode_part,
+    layer,
+    pieces,
+    read_piece,
+    ring_pixels,
+)
 
 __all__ = ["Area", "Check", "Judgement", "check", "find", "lonlat", "preview", "screen"]
 
@@ -74,10 +89,7 @@ def lonlat(p: Picture, x: float, y: float) -> tuple[float, float]:
 
 def to_pixels(p: Picture, ring: Sequence[float]) -> np.ndarray:
     """A ring of the zones' format (``[lat0, lon0, ...]``) in the picture's pixels."""
-    pts = [
-        wgs84_to_tile(float(ring[i]), float(ring[i + 1]), p.zl) for i in range(0, len(ring) - 1, 2)
-    ]
-    return np.array([(x * 256 - p.x0, y * 256 - p.y0) for x, y in pts], np.float64)
+    return ring_pixels(ring, p.zl, p.x0, p.y0)
 
 
 # -- the search -----------------------------------------------------------------------------------
@@ -91,7 +103,6 @@ class Area:
     box: tuple[int, int, int, int]
     core: np.ndarray
     mask: np.ndarray
-    shadow: bool
 
     def rings(self, p: Picture) -> list[list[float]]:
         """Its outline in the zones' ring format, closed."""
@@ -102,9 +113,6 @@ class Area:
             lon, lat = lonlat(p, x0 + x + 0.5, y0 + y + 0.5)
             ring += [round(lat, 9), round(lon, 9)]
         return [ring]
-
-    def ha(self, p: Picture) -> float:
-        return round(float(self.core.sum()) * pixel_metres(_lat(p), p.zl) ** 2 / 10_000, 1)
 
 
 def _lat(p: Picture) -> float:
@@ -141,7 +149,7 @@ def _one_piece(mask: np.ndarray) -> np.ndarray:
 def find_areas(classes: np.ndarray, metres: float) -> list[Area]:
     """The clouds of ``classes``, largest first, each with the shadow beside it; areas that
     overlap through any chain made one (one hole, one source, one colour match)."""
-    cloud = ((classes == THICK) | (classes == THIN)).astype(np.uint8)
+    cloud = _cloudy(classes).astype(np.uint8)
     grouped = cv2.morphologyEx(cv2.dilate(cloud, _disc(2)), cv2.MORPH_CLOSE, _disc(3))
     count, labels, stats, _ = cv2.connectedComponentsWithStats(grouped, connectivity=8)
     reach = max(1, round(SHADOW_REACH_M / metres))
@@ -182,7 +190,7 @@ def find_areas(classes: np.ndarray, metres: float) -> list[Area]:
         shade = (near | np.isin(shades[by0:by1, bx0:bx1], whole)).astype(np.uint8)
         has_shadow = int(shade.sum()) >= 4
         piece = _one_piece(cv2.dilate(mine | (shade if has_shadow else 0), _disc(MARGIN_PX)))
-        found.append((n, Area(box, core, piece > 0, has_shadow)))
+        found.append((n, Area(box, core, piece > 0)))
     merged = merge_overlapping(found)
     merged.sort(key=lambda a: -a[0])
     return [a for _n, a in merged[:MAX_CLOUDS]]
@@ -230,9 +238,7 @@ def merge_overlapping(found: list[tuple[int, Area]]) -> list[tuple[int, Area]]:
             )
             core[at] |= a.core
             mask[at] |= a.mask
-        out.append(
-            (sum(found[i][0] for i in members), Area(box, core, mask, any(a.shadow for a in areas)))
-        )
+        out.append((sum(found[i][0] for i in members), Area(box, core, mask)))
     return out
 
 
@@ -373,24 +379,65 @@ def _band(inside: np.ndarray, band_px: int, dirty: np.ndarray) -> np.ndarray:
     return (cv2.dilate(u8, _disc(band_px)) > 0) & (cv2.dilate(u8, _disc(1)) == 0) & ~dirty
 
 
+# -- what the search and a check judge a source by, said once ----------------------------------
+
+
+def _band_px(p: Picture) -> int:
+    """The width of the band around a cloud a source's colours are matched on, in the picture's
+    pixels (:data:`BAND_M`)."""
+    return max(2, round(BAND_M / pixel_metres(_lat(p), p.zl)))
+
+
+def _cloud_box(p: Picture, rings: Sequence[Sequence[float]]) -> tuple[int, int, int, int]:
+    """The box a source is read on around a cloud: its outline, the band and a margin; the
+    search's, a check's and the preview's."""
+    return _box(p, rings, _band_px(p) + 4)
+
+
+def _reading_level(p: Picture, provider: Provider) -> int:
+    """The level a source is judged at: one finer than the picture's where it has it."""
+    return min(p.zl + 1, provider.max_zl)
+
+
+def _cloudy(classes: np.ndarray) -> np.ndarray:
+    """Where ``classes`` (the detector's) say cloud, thick or thin."""
+    return (classes == THICK) | (classes == THIN)
+
+
+def _not_ground(classes: np.ndarray, share: np.ndarray) -> np.ndarray:
+    """What the band leaves out: clouds, their shadows, and X-Plane's water alone."""
+    return _cloudy(classes) | (classes == SHADOW) | (share == 0)
+
+
+def _core(inside: np.ndarray, classes: np.ndarray) -> np.ndarray:
+    """Under a cloud, where the detector saw it; the whole outline when it saw nothing there."""
+    seen = inside & (classes != 0)
+    return seen if seen.any() else inside
+
+
+def _lost(sources: SourcePieces, code: str, keys: Iterable[tuple[int, int, int]]) -> str | None:
+    """What a source answered for its pieces ``keys`` when one is neither a picture nor none:
+    ``refused`` when one was, else the first's answer; ``None`` when all came."""
+    lost = [
+        k for k in (sources.kind(code, key) for key in keys) if k not in ("picture", "no_picture")
+    ]
+    return None if not lost else "refused" if "refused" in lost else lost[0]
+
+
 def _source_at(
     sources: SourcePieces, code: str, zl: int, p: Picture, box: tuple[int, int, int, int]
-) -> tuple[np.ndarray, np.ndarray, list[str]]:
+) -> tuple[np.ndarray, np.ndarray]:
     """The source over ``box`` of the picture, read at ``zl`` and reduced to the picture's
-    level; where it has a picture; the kinds of the pieces it did not give."""
+    level; where it has a picture."""
     k = 2 ** (zl - p.zl)
     x0, y0, x1, y1 = box
     gx0, gy0, gx1, gy1 = (p.x0 + x0) * k, (p.y0 + y0) * k, (p.x0 + x1) * k, (p.y0 + y1) * k
     out = np.zeros((gy1 - gy0, gx1 - gx0, 3), np.uint8)
     have = np.zeros(out.shape[:2], np.uint8)
-    lost: list[str] = []
     n = 1 << zl
     for ty in range(gy0 // 256, (gy1 - 1) // 256 + 1):
         for tx in range(gx0 // 256, (gx1 - 1) // 256 + 1):
-            key = (tx % n, ty, zl)
-            if sources.kind(code, key) not in ("picture", "no_picture"):
-                lost.append(sources.kind(code, key))
-            piece = read_piece(sources.body(code, key))
+            piece = read_piece(sources.body(code, (tx % n, ty, zl)))
             if piece.kind != "picture":
                 continue
             ox, oy = tx * 256 - gx0, ty * 256 - gy0
@@ -402,7 +449,7 @@ def _source_at(
     size = (x1 - x0, y1 - y0)
     small = cv2.resize(out, size, interpolation=cv2.INTER_AREA)
     small_have = cv2.resize(have * 255, size, interpolation=cv2.INTER_AREA) >= 128
-    return small, small_have, lost
+    return small, small_have
 
 
 def screen(
@@ -417,10 +464,10 @@ def screen(
     """Every source of ``sources`` judged under each of ``clouds`` (their rings) at the picture's
     level: a source read one level finer when it has one, reduced, as the search's finer reading.
     A source with no picture at that level is read at its own finest."""
-    band_px = max(2, round(BAND_M / pixel_metres(_lat(p), p.zl)))
-    boxes = [_box(p, rings, band_px) for rings in clouds]
-    dirty = (classes == THICK) | (classes == THIN) | (classes == SHADOW) | (p.share == 0)
-    levels = {c: min(p.zl + 1, pr.max_zl) for c, pr in sources.providers.items()}
+    band_px = _band_px(p)
+    boxes = [_cloud_box(p, rings) for rings in clouds]
+    dirty = _not_ground(classes, p.share)
+    levels = {c: _reading_level(p, pr) for c, pr in sources.providers.items()}
     todo = {c: _keys_of(p, boxes, z) for c, z in levels.items()}
     phase("fetching", 0, sum(len(v) for v in todo.values()))
     sources.fetch(todo, cancel=cancel, progress=lambda d, t: phase("fetching", d, t))
@@ -429,10 +476,11 @@ def screen(
         if cancel is not None and cancel.is_set():
             raise OsxpError("SYS_CANCELLED")
         for i, (rings, box) in enumerate(zip(clouds, boxes, strict=True)):
-            src, have, lost = _source_at(sources, code, levels[code], p, box)
-            if lost:
-                out[i][code] = Judgement("refused" if "refused" in lost else lost[0])
+            lost = _lost(sources, code, _keys_of(p, [box], levels[code]))
+            if lost is not None:
+                out[i][code] = Judgement(lost)
                 continue
+            src, have = _source_at(sources, code, levels[code], p, box)
             x0, y0, x1, y1 = box
             seen = (
                 classify(src, have, cancel=cancel, regnety_alone=True)
@@ -440,15 +488,14 @@ def screen(
                 else np.zeros(have.shape, np.uint8)
             )
             inside = _inside(p, rings, box)
-            core = inside & (classes[y0:y1, x0:x1] != 0)
             out[i][code] = judge(
                 p.rgb[y0:y1, x0:x1],
                 src,
                 have,
                 inside,
-                core if core.any() else inside,
+                _core(inside, classes[y0:y1, x0:x1]),
                 _band(inside, band_px, dirty[y0:y1, x0:x1]),
-                (seen == THICK) | (seen == THIN),
+                _cloudy(seen),
             )
         phase("sources", n, len(sources.providers))
     return out
@@ -496,19 +543,17 @@ def check(
     rings: Sequence[Sequence[float]],
     code: str,
     provider: Provider,
-    held: TileClouds,
+    shown: TileClouds,
     sources: SourcePieces,
     *,
-    chunks_root: Path,
-    previews: Path,
     classes: np.ndarray | None = None,
     again: bool = False,
     cancel: threading.Event | None = None,
     phase: Phase = _quiet,
 ) -> Check:
     """Get the images of the cloud ``cid`` (its ``rings``) from the source ``code`` at the tile's
-    sharpness, freeze them into parts, and draw its preview from Apply's own layer."""
-    textures = held.textures
+    sharpness, freeze them into parts, and judge them as the search does."""
+    textures = shown.textures
     c = {
         "id": cid,
         "source": code,
@@ -519,11 +564,10 @@ def check(
     if not reached:
         return Check(Judgement("no_picture"))
     by_name = {n: parse_texture_name(n) for n in reached}
-    band_px = max(2, round(BAND_M / pixel_metres(_lat(p), p.zl)))
-    box = _box(p, rings, band_px + 4)
+    box = _cloud_box(p, rings)
     # the source around the cloud too, at the search's reading of it: its colours are matched
     # to the photo's on the band around the outline, which the layer does not reach
-    band_zl = min(p.zl + 1, provider.max_zl)
+    band_zl = _reading_level(p, provider)
     around = _keys_of(p, [box], band_zl)
     todo = {code: {k for n, pa in reached.items() for k in pieces(pa, by_name[n])}}
     phase("fetching", 0, len(todo[code]) + len(around))
@@ -533,27 +577,21 @@ def check(
         cancel=cancel,
         progress=lambda d, t: phase("fetching", d, t),
     )
-    lost = [
-        sources.kind(code, k)
-        for k in todo[code] | around
-        if sources.kind(code, k) not in ("picture", "no_picture")
-    ]
-    if lost:  # a part frozen with passing holes would lay them for good
-        return Check(Judgement("refused" if "refused" in lost else lost[0]))
+    lost = _lost(sources, code, todo[code] | around)
+    if lost is not None:  # a part frozen with passing holes would lay them for good
+        return Check(Judgement(lost))
     phase("making", 0, len(reached))
     x0, y0, x1, y1 = box
     h, w = y1 - y0, x1 - x0
     lay_rgb = np.zeros((h, w, 3), np.float32)
     lay_a = np.zeros((h, w), np.float32)
-    folder = got_parts_dir(chunks_root)
-    folder.mkdir(parents=True, exist_ok=True)
     entry_parts: dict[str, list[Any]] = {}
     for n, (name, pa) in enumerate(sorted(reached.items()), start=1):
         t = by_name[name]
         got = {k: sources.body(code, k) for k in pieces(pa, t)}
         data = encode_part(got)
         digest = digest_bytes(data)
-        path = folder / f"{digest}.part"
+        path = part_path(digest)
         if not path.exists():
             atomic_write_bytes(path, data)
         entry_parts[name] = [pa.source_zl, digest]
@@ -568,11 +606,11 @@ def check(
     src = np.clip(lay_rgb, 0, 255).astype(np.uint8)
     have = lay_a > 0.5
     cls = classes[y0:y1, x0:x1] if classes is not None else np.zeros((h, w), np.uint8)
-    dirty = (cls == THICK) | (cls == THIN) | (cls == SHADOW) | (p.share[y0:y1, x0:x1] == 0)
+    dirty = _not_ground(cls, p.share[y0:y1, x0:x1])
     seen = classify(src, have, cancel=cancel, regnety_alone=True)
-    core = inside & (cls != 0) if (inside & (cls != 0)).any() else inside
+    core = _core(inside, cls)
     here = p.rgb[y0:y1, x0:x1]
-    band = _band(inside, band_px, dirty)
+    band = _band(inside, _band_px(p), dirty)
     # what it has under the cloud, at the tile's sharpness; its colours, on the band around
     sharp = judge(
         here, src, have, inside, core, np.zeros_like(band), (seen == THICK) | (seen == THIN)
@@ -580,7 +618,7 @@ def check(
     if not sharp.usable:
         return Check(sharp)
     # its colours, matched on the band at the reading the screening judged: there it answers too
-    wide, wide_have, _lost = _source_at(sources, code, band_zl, p, box)
+    wide, wide_have = _source_at(sources, code, band_zl, p, box)
     fitted = judge(here, wide, wide_have, inside, core, band, np.zeros_like(band))
     if not fitted.usable:
         return Check(fitted)
@@ -591,70 +629,47 @@ def check(
         "match": [list(j.match[0]), list(j.match[1])],
         "rings": [list(r) for r in rings],
         "parts": entry_parts,
-        "plain": {n: held.plain(n) for n in reached},
+        "plain": {n: shown.plain(n) for n in reached},
     }
-    preview(p, tile, entry, [folder], previews, held.shown)  # ready for After
     return Check(j, entry)
 
 
 def preview(
-    p: Picture,
-    tile: TileRef,
-    entry: Mapping[str, Any],
-    folders: Sequence[Path],
-    previews: Path,
-    shown: str,
+    p: Picture, tile: TileRef, entry: Mapping[str, Any], previews: Path, built: str
 ) -> tuple[str, list[float]] | None:
     """After's picture of the cloud ``entry`` (a ``clouds.tile`` entry) on ``p``, the picture of
-    what the tile's folder shows (``shown``): the name of its PNG in ``previews`` and its
-    ``[south, west, north, east]``; ``None`` when one of its frozen parts is found nowhere in
-    ``folders``. Named by what it is made of, the folder's picture, the way clouds are laid and
-    the entry, so it is made once and again only when one of them changes."""
-    laid = {k: v for k, v in entry.items() if k not in ("kind", "number")}  # the list's, not laid
-    what = f"{shown}:{p.zl}:{RULE}:{json.dumps(laid, sort_keys=True)}"
+    the tile the build placed (``built``): the name of its PNG in ``previews`` and its
+    ``[south, west, north, east]``; ``None`` when one of its frozen parts is found nowhere.
+    Named by what it is made of, the build, the level, the way clouds are laid and what lays the
+    entry, so it is made once, when it is first shown, and again only when one of them changes."""
+    what = f"{built}:{p.zl}:{RULE}:{json.dumps(laid_fields(entry), sort_keys=True)}"
     out = previews / f"{digest_bytes(what.encode())[:32]}.png"
-    box = _preview_box(p, entry)
-    west, north = lonlat(p, box[0], box[1])
-    east, south = lonlat(p, box[2], box[3])
-    if not out.exists() and not _make_preview(p, tile, entry, folders, box, out):
+    box = _cloud_box(p, entry["rings"])
+    if not out.exists() and not _make_preview(p, tile, entry, box, out):
         return None
-    return out.name, [south, west, north, east]
-
-
-def _preview_box(p: Picture, entry: Mapping[str, Any]) -> tuple[int, int, int, int]:
-    band_px = max(2, round(BAND_M / pixel_metres(_lat(p), p.zl)))
-    return _box(p, entry["rings"], band_px + 4)
+    return out.name, box_bounds(p, box)
 
 
 def _make_preview(
-    p: Picture,
-    tile: TileRef,
-    entry: Mapping[str, Any],
-    folders: Sequence[Path],
-    box: tuple[int, int, int, int],
-    out: Path,
+    p: Picture, tile: TileRef, entry: Mapping[str, Any], box: tuple[int, int, int, int], out: Path
 ) -> bool:
     """The preview written at ``out``: the cloud's layers made from its frozen parts by the
     laying's own function, in its colours, reduced as the textures' mips are, laid where X-Plane
     shows each texture, over water at the share X-Plane gives the photo, cut to the tile."""
     textures = [parse_texture_name(n) for n in entry["parts"]]
-    reached = patches_of(entry, tile, textures, lambda t: int(entry["parts"][texture_name(t)][0]))
     x0, y0, x1, y1 = box
     rgb = np.zeros((y1 - y0, x1 - x0, 3), np.float32)
     alpha = np.zeros((y1 - y0, x1 - x0), np.float32)
-    for name, pa in reached.items():
-        path = find_part(str(entry["parts"][name][1]), folders)
+    for name, pa in entry_patches(entry, tile, textures).items():
+        path = find_part(str(entry["parts"][name][1]))
         if path is None:
             return False
         t = parse_texture_name(name)
         la = layer(pa, t, decode_part(path.read_bytes()))
         if la is not None:
             _lay_reduced(la, t, p, box, name, rgb, alpha)
-    share = p.share[y0:y1, x0:x1].astype(np.float32)[..., None] / 255
-    shown = np.clip(rgb * share + np.asarray(WATER_RGB, np.float32) * (1 - share), 0, 255)
-    rgba = np.dstack(
-        [np.rint(shown).astype(np.uint8), np.rint(np.clip(alpha, 0, 1) * 255).astype(np.uint8)]
-    )
+    shown = over_water(np.clip(rgb, 0, 255), p.share[y0:y1, x0:x1])
+    rgba = np.dstack([shown, np.rint(np.clip(alpha, 0, 1) * 255).astype(np.uint8)])
     good, png = cv2.imencode(".png", cv2.cvtColor(rgba, cv2.COLOR_RGBA2BGRA))
     if not good:
         raise OsxpError(

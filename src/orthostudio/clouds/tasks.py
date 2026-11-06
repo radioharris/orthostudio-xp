@@ -28,9 +28,9 @@ CHECKS_AT_ONCE = 3
 
 @dataclass(eq=False)
 class Task:
-    """One task: of ``tile``, ``kind`` (``search``, ``getting``, ``trying``, ``applying``), for
-    ``cloud`` when it is one cloud's; where it is (``phase``, ``done`` of ``total``); whether
-    Stop ends it (``stoppable``)."""
+    """One task: of ``tile``, ``kind`` (the action that starts it: ``find``, ``check``,
+    ``outline``, ``apply``, ``restore``), for ``cloud`` when it is one cloud's; where it is
+    (``phase``, ``done`` of ``total``); whether Stop ends it (``stoppable``)."""
 
     id: str
     tile: str
@@ -82,7 +82,10 @@ class Tasks:
         *,
         stoppable: bool = True,
     ) -> Task:
-        """Run ``run(task)`` in a thread once its turn comes; the task is forgotten at its end."""
+        """Run ``run(task)`` in a thread once its turn comes (one search at a time for the app,
+        :data:`CHECKS_AT_ONCE` of the others); the task is forgotten at its end. A task of the
+        same tile, kind and cloud already under way is stopped, and the tile's last failure
+        forgotten."""
         with self._lock:
             for t in self._tasks.values():  # one of each for a cloud, one search for a tile
                 if t.tile == tile and t.kind == kind and t.cloud == cloud:
@@ -90,7 +93,7 @@ class Tasks:
             task = Task(secrets.token_hex(6), tile, kind, cloud, stoppable)
             self._tasks[task.id] = task
             self._failed.pop(tile, None)
-        gate = self._search if kind == "search" else self._checks
+        gate = self._search if kind == "find" else self._checks
 
         def body() -> None:
             try:
