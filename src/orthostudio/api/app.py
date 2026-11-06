@@ -160,7 +160,7 @@ __all__ = [
     "sse_message",
 ]
 
-API_LEVEL = 43
+API_LEVEL = 50
 """What this engine's API offers, for the page: 1 = P2b, 2 = zones (``/api/zones``) and the base map
 (``/api/map``), 3 = deleting a tile (``POST /api/library/{name}/delete``) and the sizes of the
 library, 4 = the disk space of the Library (``GET /api/disk``, ``POST /api/clean``), 5 = clearing
@@ -215,7 +215,8 @@ summary (how many of its tiles at each detail level, which Works writes), 40 = `
 the store's files, made one file with them whatever the choices), 41 = the setting
 ``expert.road_smoothing`` (an older engine refuses a settings document that holds it), 42 = the
 setting ``expert.rounded_road_ends`` (likewise), 43 = the settings profiles (``/api/profiles``)
-and ``profile`` in a job's summary. A page
+and ``profile`` in a job's summary, 50 = the replaced clouds (``/api/clouds``, ``clouds.md`` 6); 44
+to 49 were test builds of the clouds (1.4.0 rc), never released, whose routes were other. A page
 served by an engine older than itself (a ``osxp serve`` started before an update: the page's files
 are read from disk at each load, the routes were imported at start) asks the user to restart
 OrthoStudio XP instead of showing "Not Found"."""

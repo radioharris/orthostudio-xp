@@ -293,7 +293,8 @@ export function createCloudMode(ctx) {
     box.checked = c.tick;
     const menu = h("select", { "aria-label": t("clouds.source_of", { name: label }), disabled: !can.has("choose"), onchange: (ev) => choose(c, ev.target.value) },
       c.source ? null : h("option", { value: "", disabled: true }, t("clouds.choose")),
-      ...c.menu.map((m) => h("option", { value: m.source },
+      // the same photo would bring the cloud back; no picture, nothing to lay
+      ...c.menu.map((m) => h("option", { value: m.source, disabled: m.answer === "same_photo" || m.answer === "no_picture" },
         [n[m.source] || m.source, m.answer ? t(`clouds.answer.${m.answer}`) : "", m.fit ? t("clouds.fit", { n: m.fit }) : ""].filter(Boolean).join(" · "))));
     menu.value = c.source || "";
     const task = cs.answer.tasks.find((x) => x.cloud === c.id);

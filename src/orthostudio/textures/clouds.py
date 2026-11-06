@@ -1,6 +1,6 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""A cloud of a texture laid over with the same ground from another source (``clouds.md`` 4).
+"""A cloud of a texture laid over with the same ground from another source (``clouds.md`` 4.4).
 
 One function says what a cloud lays on a texture (:func:`layer`), one lays the layers in order
 (:func:`lay`). The build goes through both, and a cloud's preview is drawn from the same layer:

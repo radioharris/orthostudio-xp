@@ -177,7 +177,7 @@ ACROSS = [_ring(43.60, 5.50, 43.70, 5.75)]
 
 
 def test_a_tile_without_clouds_keeps_the_keys_it_always_had(tile: Tile) -> None:
-    # C032: neither the textures nor the tile's artefact change for a tile with no cloud
+    # 4.5: neither the textures nor the tile's artefact change for a tile with no cloud
     plain = tile.textures()
     again = tile.textures(clouds=[])
     assert plain == again
@@ -222,7 +222,7 @@ def test_clouds_are_laid_in_their_order(tile: Tile) -> None:
 
 
 def test_other_colours_around_a_cloud_undo_it(tile: Tile) -> None:
-    # R6, C059: its colours were matched on the photo with the tile's colours of then
+    # R6: its colours were matched on the photo with the tile's colours of then
     tile.textures()
     c = tile.cloud("k1", INSIDE, RED)
     done = tile.textures([c], photo_brightness=0.2)
@@ -240,7 +240,7 @@ def test_a_cloud_whose_part_is_found_nowhere_is_undone(tile: Tile) -> None:
 
 
 def test_a_cloud_laid_on_other_pieces_than_its_own_is_undone_whole(tile: Tile) -> None:
-    # C11 (the owner's rule): another photo under it, it is reset, in every texture it reaches
+    # R6 (the owner's rule): another photo under it, it is reset, in every texture it reaches
     tile.textures()
     c = tile.cloud("k1", ACROSS, RED)
     store = ChunkStore(tile.chunks, fsync=False)

@@ -629,7 +629,7 @@ def lays_the_same(pack_dir: Path, manifest: PackManifest) -> bool:
 
 BUILD_SETTINGS_NAME = "build_settings.json"
 """The settings the tile's last finished build had, in its own folder: the cloud mode's Apply
-builds the tile again with them, so only its clouds change (``clouds.md`` R4). They name the
+builds the tile again with them, so only its clouds change (``clouds.md`` 2.5). They name the
 textures that build made: a later build that did not write them (another version, another
 program) leaves them standing for nothing."""
 COMPUTER_CONFIG_KEYS = ("osm_folder", "osm_library", "osm_library_token")

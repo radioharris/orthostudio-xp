@@ -116,7 +116,7 @@ def _disc(radius: int) -> np.ndarray:
 
 def _outline(mask: np.ndarray) -> np.ndarray:
     """The outer edge of ``mask``, simplified to a pixel and simple (made one piece where it
-    touches itself): what the preview and the build both take (B8)."""
+    touches itself): what the preview and the build both take (B3)."""
     cs, _ = cv2.findContours(mask.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     contour = max(cs, key=cv2.contourArea)
     pts = cv2.approxPolyDP(contour, 0.75, True).reshape(-1, 2)
@@ -413,7 +413,7 @@ def screen(
 ) -> list[dict[str, Judgement]]:
     """Every source of ``sources`` judged under each of ``clouds`` (their rings) at the picture's
     level: a source read one level finer when it has one, reduced, as the search's finer reading.
-    A source with no picture at that level is read at its own finest (C173)."""
+    A source with no picture at that level is read at its own finest."""
     band_px = max(2, round(BAND_M / pixel_metres(_lat(p), p.zl)))
     boxes = [_box(p, rings, band_px) for rings in clouds]
     dirty = (classes == THICK) | (classes == THIN) | (classes == SHADOW) | (p.share == 0)

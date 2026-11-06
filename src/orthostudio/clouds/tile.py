@@ -1,6 +1,6 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""What a tile holds of its replaced clouds (``clouds.md`` 2).
+"""What a tile holds of its replaced clouds (``clouds.md`` 2.1).
 
 The clouds a tile shows replaced are the clouds its textures were made with. The build that made
 them writes them in the textures artefact's own ``manifest.json`` (``clouds``), beside the list of

@@ -1,6 +1,6 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""The other sources' pieces a search or a check reads (``clouds.md`` 5.1).
+"""The other sources' pieces a search or a check reads (``clouds.md`` 4.2).
 
 Each source's pieces are kept like a build's parent tiles (``ParentCache``), so what one search
 or check fetched the next reads from the disk. What a source answered is said per piece: a

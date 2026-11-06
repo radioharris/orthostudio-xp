@@ -3,7 +3,7 @@
 """The engine's cloud tasks: a search, getting a cloud's images, trying an outline's sources
 (``clouds.md`` R7). Each runs in a thread of its own and ends whether or not a page is open; it
 writes its result into the tile's list at its end, so a page that went away loses nothing. One
-search at a time for the whole app (a search holds gigabytes, B4), a few image gettings at once.
+search at a time for the whole app (a search holds gigabytes, B2), a few image gettings at once.
 Each says its phase and how far it is; Stop ends it at its next step, the list left as it was.
 """
 

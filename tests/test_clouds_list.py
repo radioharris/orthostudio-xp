@@ -70,7 +70,6 @@ def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 def test_a_tick_and_a_source_are_kept_apart_and_survive_a_restart() -> None:
-    # C222, C272, C119
     with cls.update(TILE) as cl:
         cls.merge_search(cl, [_found(A)], None)
         cid = cl.clouds[0]["id"]
@@ -82,7 +81,7 @@ def test_a_tick_and_a_source_are_kept_apart_and_survive_a_restart() -> None:
 
 
 def test_a_search_keeps_ticks_names_and_ids_and_never_gives_one_again() -> None:
-    # C002, C011, C118, R3
+    # R3
     with cls.update(TILE) as cl:
         cls.merge_search(cl, [_found(A), _found(B)], None)
         a, b = cl.clouds
@@ -139,7 +138,7 @@ def test_the_changes_apply_makes_against_what_the_tile_holds() -> None:
 
 
 def test_images_got_on_another_photo_wait_to_be_got_again() -> None:
-    # C11: a cloud's images stand on the pieces they were got on
+    # R6: a cloud's images stand on the pieces they were got on
     held = _held()
     with cls.update(TILE, held) as cl:
         cls.merge_search(cl, [_found(A)], held)
