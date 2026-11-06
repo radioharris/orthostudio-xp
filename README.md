@@ -84,7 +84,8 @@ checked automatically at every release too.
   larger; the window opens where you left it.
 
 How it works, what it keeps on disk and how to clean it:
-[docs/how-it-works.md](docs/how-it-works.md).
+[docs/how-it-works.md](docs/how-it-works.md). Keeping settings as profiles, step by step with
+pictures: [docs/manual.md](docs/manual.md).
 
 | What it will cost | Works |
 |---|---|
