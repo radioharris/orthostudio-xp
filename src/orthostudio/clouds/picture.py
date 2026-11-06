@@ -18,7 +18,7 @@ from __future__ import annotations
 import math
 import struct
 import threading
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -42,6 +42,7 @@ __all__ = [
     "box_bounds",
     "draw",
     "frame",
+    "map_level",
     "over_water",
     "pixel_metres",
     "search_level",
@@ -62,6 +63,12 @@ def pixel_metres(lat: float, zl: int) -> float:
 def search_level(tile: TileRef) -> int:
     """The sharpest level whose pixel is at least :data:`SEARCH_METRES` on ``tile``."""
     return max(z for z in range(8, 20) if pixel_metres(tile.lat + 0.5, z) >= SEARCH_METRES)
+
+
+def map_level(tile: TileRef, textures: Iterable[TextureId]) -> int:
+    """The level the cloud mode's map reads ``tile`` at: the search's (:func:`search_level`), or
+    its textures' own when coarser."""
+    return min(search_level(tile), min(t.zl for t in textures))
 
 
 def frame(tile: TileRef, zl: int) -> tuple[int, int, int, int]:

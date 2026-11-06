@@ -75,7 +75,8 @@ def _shows(folder: Path, entries: list[dict[str, Any]]) -> TileClouds:
     """The folder showing ``entries`` laid in its texture, as Apply leaves it."""
     stamps = {NAME: Stamp(_plain(folder), clouds_digest(entries))} if entries else {}
     held = tuple({**e} for e in entries)
-    return TileClouds(folder, "k", "BI", True, (NAME,), stamps, {NAME: (0, 0, 0)}, held)
+    files = {NAME: (0, 0, 0)}
+    return TileClouds(folder, "k", "BI", True, (NAME,), stamps, files, held, frozenset(stamps))
 
 
 def _entry(folder: Path, cid: str, rings: Any, source: str, how: str = "stands") -> dict[str, Any]:
@@ -190,7 +191,7 @@ def test_every_state_agrees_with_what_apply_and_discard_do(
 
     # Apply lays what the rows say, what the folder's plan keeps
     assert [e["id"] for e in v.laid] == [s.cloud["id"] for s in v.clouds if s.lays is not None]
-    asked = [e for e in v.laid]
+    asked = [[e] for e in v.laid]
     assert [e["id"] for e in plan_folder(TILE, shown, asked).laid] == [e["id"] for e in v.laid]
 
     # the actions, from the row
@@ -228,7 +229,7 @@ def test_a_task_of_a_cloud_takes_its_row_and_the_tile_gives_apply_up(folder: Pat
 
 def test_a_tile_in_a_build_reads_nothing_and_allows_nothing(folder: Path) -> None:
     cl, _shown = _case(folder, True, None, "same", "stands", "held")
-    for st in ("in_build", "queued", "not_built", "not_whole", "disk_away", "data_away"):
+    for st in ("in_build", "queued", "filing", "not_built", "not_whole", "disk_away", "data_away"):
         v = state.view(cl, None, TILE, st)
         assert not v.allowed and v.laid == [] and all(s.row == "frozen" for s in v.clouds)
         assert v.line is not None and _words(v.line["key"]), st
@@ -289,3 +290,71 @@ def test_every_word_the_view_sends_has_its_words(folder: Path) -> None:
         # refused and not_a_picture as did_not_answer; level, source, textures: another build's
         others = ("refused", "not_a_picture", "photo_level", "photo_source", "photo_textures")
         assert why in said or why in others, why
+
+
+def test_what_the_tile_shows_is_counted_from_its_folder(folder: Path) -> None:
+    # a cloud the list does not know (before it knows it again, ``cloudlist.knowing``)
+    shown = _shows(folder, [_entry(folder, "cloud009", A, "EOX")])
+    v = _view(CloudList(TILE.name, []), shown)
+    # held from the folder; Apply would make its texture again without it (the list knows it
+    # first, ``cloudlist.knowing``, before any view of the routes)
+    assert v.counts["held"] == 1 and v.library() == state.library_cell(1, 1)
+    assert v.allows("restore")
+    (line,) = v.texts()["restore_question"]["lines"]
+    assert line["params"]["n"] == 1
+
+
+def test_a_task_shows_in_its_row_even_while_its_tile_is_taken(folder: Path) -> None:
+    # a cloud's images being got when the tile went to a build: seen, and stopped by it
+    cl, _shown = _case(folder, True, None, None, "stands", "ticked")
+    task = {"id": "t1", "kind": "check", "cloud": "cloud001", "stoppable": True}
+    v = state.view(cl, None, TILE, "queued", [task])
+    s = v.cloud("cloud001")
+    assert s.row == "check" and s.actions == {"stop"} and s.page()["line"] is not None
+    apply = {"id": "t2", "kind": "apply", "cloud": None, "stoppable": False}
+    v = state.view(cl, None, TILE, "in_build", [apply])
+    assert v.tasks == [{**apply, "actions": []}]  # Stop does not end an Apply
+
+
+def test_beside_apply_only_ticks_and_sources_change(folder: Path) -> None:
+    # removing an outline or Discard read what the tile shows, which Apply is changing
+    assert state.possible("ready", {"apply"}) == {"tick", "untick", "choose"}
+    cl = CloudList(TILE.name, [])
+    o = _cloud(cl, "outl0001", A, kind="drawn")
+    o["tick"] = True
+    v = _view(cl, _shows(folder, []), [{"id": "t", "kind": "apply", "stoppable": False}])
+    assert "remove" not in v.cloud("outl0001").actions and not v.allows("discard")
+
+
+def test_a_texture_whose_clouds_no_file_says_is_offered_to_apply(folder: Path) -> None:
+    # its sidecar gone: X-Plane shows clouds no row says; After and Apply say it, not "as it is"
+    stamps = {NAME: Stamp(_plain(folder), "c" * 40)}
+    shown = TileClouds(folder, "k", "BI", True, (NAME,), stamps, {NAME: (0, 0, 0)}, (), frozenset())
+    v = _view(CloudList(TILE.name, []), shown)
+    assert (
+        v.remade == {NAME}
+        and v.allows("apply")
+        and v.views(True)["after"] == "clouds.after_pending"
+    )
+    assert v.texts()["count"] == [{"key": "clouds.pending.remade", "params": {"n": 1}}]
+    assert v.texts()["restore"] is not None  # the tile shows clouds: Restore shown
+
+
+def test_the_best_source_is_the_menus_first_clear_one(folder: Path) -> None:
+    cl = CloudList(TILE.name, [])
+    c = _cloud(cl, "cloud001", A)
+    c["screening"] = {"Esri": {"answer": "clear", "fit": 0}, "EOX": {"answer": "clear", "fit": 0}}
+    v = _view(cl, _shows(folder, []))
+    s = v.cloud("cloud001")
+    assert s.source == state.best_of(c) == s.page()["menu"][0]["source"] == "EOX"
+
+
+def test_every_cloud_ticked_or_unticked_at_once_as_each_allows(folder: Path) -> None:
+    cl, shown = _case(folder, False, None, None, "stands", "unticked")
+    v = _view(cl, shown)
+    assert v.allows("tick") and not v.allows("untick")  # Tick all: some may be ticked
+    assert not v.allows("choose") and not v.allows("remove")  # a cloud's alone
+    for c in cl.clouds:
+        c["tick"] = True
+    v = _view(cl, shown)
+    assert v.allows("untick") and not v.allows("tick")

@@ -1079,6 +1079,7 @@ def create_app(
     settings_lock = asyncio.Lock()
     filing_stop = threading.Event()
     filing_progress: dict[str, Any] = {}
+    deleting_now: set[str] = set()  # the tiles being deleted, the cloud mode none of them
 
     def busy_filing() -> JSONResponse:
         return _plain_error(
@@ -1419,8 +1420,7 @@ def create_app(
             )
         # the queued builds first, so that none starts when the running one stops
         cancelled = manager.cancel_all() if active is not None else []
-        clouds.tasks.stop_all()
-        await asyncio.to_thread(clouds.tasks.settle, 30.0)  # an Apply ends what it began
+        await asyncio.to_thread(clouds.tasks.end)  # an Apply ends what it began
         active_id = None if active is None else active.id
         # after the answer has left: the page learns that OrthoStudio XP is stopping
         asyncio.get_running_loop().call_later(0.3, shutdown)
@@ -2003,26 +2003,31 @@ def create_app(
 
         return await asyncio.to_thread(run)
 
-    # the cloud mode: its tasks are the engine's, and Apply one of them
-    def building_now() -> dict[str, str]:
-        active = manager.active()
-        running = (
-            set(active.unfinished_tiles())
-            if active is not None and active.status == "running"
-            else set()
-        )
-        return {
-            tile: "running" if tile in running else "queued" for tile in manager.building_tiles()
+    # the cloud mode: its tasks are the engine's, and Apply one of them. A tile's folder is the
+    # cloud mode's only while nothing else holds it: a build, waiting for one, a filing; each of
+    # them lets its cloud tasks end before it takes the folder (``Tasks.end``)
+    def taken_now() -> dict[str, str]:
+        out = {
+            tile: "in_build" if how == "running" else "queued"
+            for tile, how in manager.building_states().items()
         }
+        filed = filing_progress.get("tile") if filing_lock.locked() else None
+        if filed:
+            out.setdefault(filed, "filing")
+        for tile in list(deleting_now):
+            out.setdefault(tile, "deleting")
+        return out
 
     cloud_routes, clouds = clouds_router(
         CloudHooks(
             custom_scenery=lambda: (
                 custom_scenery_dir(xp) if (xp := xplane_dir()) is not None else None
             ),
-            building=building_now,
+            taken=taken_now,
         )
     )
+    manager.make_way = lambda tiles: clouds.tasks.end(set(tiles))
+    state["clouds"] = clouds  # what runs of the clouds keeps the engine up, as a build does
     app.include_router(cloud_routes)
 
     @app.post("/api/jobs", status_code=201)
@@ -2586,6 +2591,7 @@ def create_app(
                 )
             filing_progress.clear()
             filing_progress.update(tile=entry.tile.name, phase="start", done=0, total=0)
+            await asyncio.to_thread(clouds.tasks.end, {entry.tile.name})  # its folder is moved
 
             def progress(phase: str, done: int, total: int) -> None:
                 filing_progress.update(phase=phase, done=done, total=total)
@@ -2637,13 +2643,17 @@ def create_app(
             xp = xplane_dir(req.xplane_dir)
             entry = pack_to_delete(name, path=req.path, library_path=default_library_path())
             cs = None if xp is None else custom_scenery_dir(xp)
-            with clouds.forgetting(entry.tile, entry.path, custom_scenery=cs):  # its clouds too
-                return delete_receipt(
-                    entry.path,
-                    tile=entry.tile,
-                    custom_scenery=cs,
-                    library_path=default_library_path(),
-                )
+            deleting_now.add(entry.tile.name)  # taken from the cloud mode, said first
+            try:
+                with clouds.forgetting(entry.tile, entry.path, custom_scenery=cs):  # its clouds
+                    return delete_receipt(
+                        entry.path,
+                        tile=entry.tile,
+                        custom_scenery=cs,
+                        library_path=default_library_path(),
+                    )
+            finally:
+                deleting_now.discard(entry.tile.name)
 
         async with deleting:  # a second delete waits for this one
             if manager.active() is not None:

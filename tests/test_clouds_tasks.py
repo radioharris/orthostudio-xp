@@ -1,12 +1,16 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """The engine's cloud tasks (``clouds.md`` R7): one search at a time, a task stopped while it
-waits for its turn ends at once, and one that fails says how until the tile's next task."""
+waits for its turn ends at once, and one that fails says how until the tile's next task; one of
+each kind for a cloud or a tile; none while something else holds the tile's folder, and what
+takes it waits for those under way to end, an Apply ending what it began."""
 
 from __future__ import annotations
 
 import threading
 import time
+
+import pytest
 
 from orthostudio.clouds.tasks import Task, Tasks
 from orthostudio.errors import OsxpError
@@ -57,17 +61,38 @@ def test_a_stopped_task_is_no_failure() -> None:
     assert _ended(tasks, "+43+005") and tasks.failed("+43+005") is None
 
 
-def test_quit_waits_for_an_apply_and_stops_the_others() -> None:
+def test_quit_waits_for_an_apply_and_ends_the_others() -> None:
     tasks = Tasks()
-    go = threading.Event()
     ended: list[str] = []
-    tasks.start(
-        "+43+005", "apply", lambda t: (time.sleep(0.3), ended.append("apply")), stoppable=False
-    )
-    tasks.start("+43+005", "find", lambda t: go.wait(10))
-    tasks.stop_all()
-    assert tasks.settle(5.0) and ended == ["apply"]  # Apply ended what it began
+    tasks.start("+43+005", "apply", lambda t: (time.sleep(0.3), ended.append("apply")))
+    tasks.start("+44+005", "find", lambda t: [(t.say("x"), time.sleep(0.02)) for _ in range(500)])
+    tasks.end()
+    assert ended == ["apply"] and not tasks.of()  # Apply ended what it began, the search stopped
+
+
+def test_a_tile_something_else_holds_starts_no_task_and_waits_for_those_under_way() -> None:
+    taken: dict[str, str] = {}
+    tasks, ended = Tasks(taken=lambda: taken), []
+    tasks.start("+43+005", "apply", lambda t: (time.sleep(0.3), ended.append("apply")))
+    taken["+43+005"] = "in_build"  # a build takes the tile's folder: said first
+    with pytest.raises(OsxpError) as got:
+        tasks.start("+43+005", "check", lambda t: None, cloud="a")
+    assert got.value.code == "CLOUD_TILE_NOT_READY" and got.value.context["state"] == "in_build"
+    tasks.end({"+43+005"})  # then it waits for what runs
+    assert ended == ["apply"] and not tasks.of("+43+005")
+
+
+def test_one_task_of_each_kind_for_a_cloud_and_stop_ends_only_what_it_may() -> None:
+    tasks, go = Tasks(), threading.Event()
+    first = tasks.start("+43+005", "check", lambda t: go.wait(10), cloud="a")
+    with pytest.raises(OsxpError):  # a second is refused: the first is never stopped for it
+        tasks.start("+43+005", "check", lambda t: None, cloud="a")
+    tasks.start("+43+005", "check", lambda t: go.wait(10), cloud="b")  # another cloud's
+    apply = tasks.start("+44+005", "apply", lambda t: go.wait(10))
+    assert not tasks.stop(apply.id) and not apply.stop.is_set()  # Stop does not end an Apply
+    assert tasks.stop(first.id)
     go.set()
+    tasks.end()
 
 
 def test_what_follows_a_task_runs_once_it_ended_and_never_after_a_stop() -> None:
@@ -91,16 +116,47 @@ def test_an_apply_never_waits_behind_another_tiles_reads() -> None:
     tasks, go, ran = Tasks(), threading.Event(), []
     for n in range(4):
         tasks.start(f"+4{n}+005", "check", lambda t: go.wait(10), cloud="a")
-    tasks.start("+50+005", "apply", lambda t: ran.append("apply"), stoppable=False)
+    tasks.start("+50+005", "apply", lambda t: ran.append("apply"))
     assert _ended(tasks, "+50+005", within=2.0) and ran == ["apply"]
     go.set()
 
 
-def test_a_tile_being_deleted_waits_for_its_own_apply_only() -> None:
+def test_a_tile_being_deleted_waits_for_its_own_tasks_only() -> None:
     tasks, go = Tasks(), threading.Event()
-    tasks.start("+43+005", "apply", lambda t: time.sleep(0.2), stoppable=False)
-    tasks.start("+44+005", "apply", lambda t: go.wait(10), stoppable=False)
-    assert tasks.settle(5.0, "+43+005") and not tasks.of("+43+005")
-    assert tasks.of("+44+005")
+    tasks.start("+43+005", "apply", lambda t: time.sleep(0.2))
+    tasks.start("+44+005", "apply", lambda t: go.wait(10))
+    tasks.end({"+43+005"})
+    assert not tasks.of("+43+005") and tasks.of("+44+005")
     go.set()
-    assert tasks.settle(5.0)
+    tasks.end()
+
+
+def test_no_apply_beside_a_task_nor_a_task_beside_apply_decided_where_they_start() -> None:
+    tasks, go = Tasks(), threading.Event()
+    tasks.start("+43+005", "check", lambda t: go.wait(10), cloud="a")
+    with pytest.raises(OsxpError):
+        tasks.start("+43+005", "apply", lambda t: None)
+    go.set()
+    tasks.end()
+    go.clear()
+    tasks.start("+43+005", "apply", lambda t: go.wait(10))
+    with pytest.raises(OsxpError):
+        tasks.start("+43+005", "find", lambda t: None)
+    tasks.start("+44+005", "find", lambda t: None)  # another tile's: its own
+    go.set()
+    tasks.end()
+
+
+def test_a_tile_stays_under_way_while_what_follows_its_task_runs() -> None:
+    # an outline's sources tried, then its tick: a page reading the tile between saw nothing
+    # under way, stopped reading it again, and missed the tick and its images
+    tasks, go, seen = Tasks(), threading.Event(), []
+    tasks.start("+43+005", "outline", lambda t: None, cloud="a",
+                then=lambda: (seen.append(tasks.following("+43+005")), go.wait(10)))  # fmt: skip
+    end = time.monotonic() + 5
+    while not seen and time.monotonic() < end:
+        time.sleep(0.01)
+    assert seen == [True] and not tasks.of("+43+005") and tasks.following("+43+005")
+    go.set()
+    tasks.end({"+43+005"})  # what takes the tile waits for it too
+    assert not tasks.following("+43+005")

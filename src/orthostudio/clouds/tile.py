@@ -10,15 +10,19 @@ and the digest of the clouds it shows. A texture without a stamp is the build's 
 cloud. So what the folder shows is read from the folder alone, whatever stopped a write: a texture
 is whole, old or new, and says which.
 
-The clouds last applied are the list's (``cloudlist.CloudList.laid``); the tile shows those of them
-whose every texture shows them (:func:`read_tile`). A cloud's images stand on the tile as long as
-every texture it reaches is the one they were got on, as built (:func:`stands_not`).
+Beside the textures, the clouds each stamp names are written (:func:`sidecar_path`): the tile shows
+the clouds every texture they reach names, the same in each (:func:`read_tile`); nothing else, not
+the list, says what it shows. A cloud's images stand on the tile as long as every texture it
+reaches is the one they were got on, as built (:func:`stands_not`).
 """
 
 from __future__ import annotations
 
+import contextlib
 import json
+import math
 import os
+import re
 import threading
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
@@ -28,7 +32,8 @@ from typing import Any
 from orthostudio.clouds.layer import CloudPatch, ring_pixels, tile_box, window
 from orthostudio.errors import OsxpError
 from orthostudio.graph.digest import digest_bytes, digest_file
-from orthostudio.home import default_chunks_root, default_tiles_root, osxp_home
+from orthostudio.graph.store import Store
+from orthostudio.home import default_chunks_root, default_store_root, default_tiles_root, osxp_home
 from orthostudio.imagery.grid import TextureId, parse_texture_name, texture_name
 from orthostudio.install.library import default_library_path
 from orthostudio.model import TileRef
@@ -37,12 +42,13 @@ from orthostudio.pipeline.pack import MANIFEST_NAME, PackManifest, pack_dir_name
 from orthostudio.textures.assemble import CHUNK
 
 __all__ = [
-    "CLOUDS_DIR",
     "DIGEST_HEX",
     "LAID_KEYS",
     "Stamp",
     "TileClouds",
+    "beside",
     "clouds_digest",
+    "clouds_dir",
     "entry_patches",
     "entry_problem",
     "file_digest",
@@ -50,27 +56,36 @@ __all__ = [
     "held_by_id",
     "identity",
     "is_own_folder",
+    "kept_files",
     "laid_fields",
+    "leftovers",
     "list_path",
-    "lists_dir",
+    "listed",
     "own_folder",
     "part_path",
     "parts_dir",
     "patches_of",
+    "picture_path",
+    "preview_path",
     "previews_dir",
     "reaching",
     "read_head",
-    "read_stamp",
     "read_tile",
+    "ring_problem",
+    "same_laid",
+    "served_path",
     "sidecar_path",
+    "sidecars",
     "stamped",
     "stands_not",
     "texture_digest",
 ]
 
 CLOUDS_DIR = "clouds"
+TEXTURES_DIR = "textures"
+"""The pack's folder of textures (``pack.write_pack``)."""
 
-# -- where the cloud files are ---------------------------------------------------------------
+# -- where the cloud files are: every path of them, and its inverse ----------------------------
 
 
 def lists_dir() -> Path:
@@ -81,6 +96,11 @@ def lists_dir() -> Path:
 def list_path(tile: TileRef) -> Path:
     """The user's list of the tile's clouds (``$OSXP_HOME/clouds/<tile>.json``)."""
     return lists_dir() / f"{tile.name}.json"
+
+
+def listed() -> set[str]:
+    """The names of the tiles that have a list (:func:`list_path`)."""
+    return {p.stem for p in lists_dir().glob("*.json")}
 
 
 def parts_dir() -> Path:
@@ -108,14 +128,84 @@ def find_part(digest: str) -> Path | None:
         ) from exc
 
 
+def textures_dir(folder: Path) -> Path:
+    """A tile's textures, those X-Plane shows."""
+    return Path(folder) / TEXTURES_DIR
+
+
+def clouds_dir(folder: Path) -> Path:
+    """Beside a tile's textures, what its replaced clouds are made of: each texture as built, kept
+    while it shows clouds (:meth:`TileClouds.kept_path`), and the clouds each shows
+    (:func:`sidecar_path`)."""
+    return Path(folder) / CLOUDS_DIR
+
+
 def sidecar_path(folder: Path, clouds: str) -> Path:
     """Where the clouds a texture stamped ``clouds`` shows are written, beside the textures."""
-    return Path(folder) / CLOUDS_DIR / f"{clouds}.json"
+    return clouds_dir(folder) / f"{clouds}.json"
+
+
+_DIGEST = re.compile(r"[0-9a-f]{40}")
+
+
+def sidecars(folder: Path) -> dict[str, Path]:
+    """The clouds written beside the textures (:func:`sidecar_path`), by their digest; another
+    file there is not one."""
+    d = clouds_dir(folder)
+    found = d.glob("*.json") if d.is_dir() else ()
+    return {p.stem: p for p in found if _DIGEST.fullmatch(p.stem)}
+
+
+def kept_files(folder: Path) -> dict[str, Path]:
+    """The textures kept as built beside them (:meth:`TileClouds.kept_path`), by name."""
+    d = clouds_dir(folder)
+    return {p.stem: p for p in (d.glob("*.dds") if d.is_dir() else ())}
+
+
+_OURS = ".osxp-clouds-"
+
+
+def beside(path: Path, what: str) -> Path:
+    """A file laying makes beside ``path`` for a while, this program's
+    (``<name>.osxp-clouds-<what>-<pid>``, :func:`leftovers`)."""
+    return path.with_name(f"{path.name}{_OURS}{what}-{os.getpid()}")
+
+
+def leftovers(folder: Path) -> list[tuple[Path, int]]:
+    """The files laying made beside a tile's textures (:func:`beside`), each with the id of the
+    program that made it."""
+    out = []
+    for d in (textures_dir(folder), clouds_dir(folder)):
+        for left in d.glob(f"*{_OURS}*") if d.is_dir() else ():
+            pid = left.name.rsplit("-", 1)[-1].split(".", 1)[0]
+            if pid.isdigit():
+                out.append((left, int(pid)))
+    return out
 
 
 def previews_dir(tile: TileRef) -> Path:
-    """The tile's picture and its clouds' previews (``<data>/clouds/<tile>``), made at will."""
+    """The tile's pictures and its clouds' previews (``<data>/clouds/<tile>``), made at will."""
     return default_chunks_root().parent / CLOUDS_DIR / tile.name
+
+
+def picture_path(tile: TileRef, what: str) -> Path:
+    """The picture of the tile drawn from ``what`` (what it is made of, said in a line)."""
+    return previews_dir(tile) / f"{digest_bytes(what.encode())[:32]}.jpg"
+
+
+def preview_path(tile: TileRef, what: str) -> Path:
+    """The preview of a cloud made of ``what``."""
+    return previews_dir(tile) / f"{digest_bytes(what.encode())[:32]}.png"
+
+
+_SERVED = re.compile(r"[0-9a-f]{32}\.(png|jpg)")
+
+
+def served_path(tile: TileRef, name: str) -> Path | None:
+    """The picture or preview of the tile named ``name`` (:func:`picture_path`,
+    :func:`preview_path`); ``None`` when that is no such name, or it is not there."""
+    path = previews_dir(tile) / name
+    return path if _SERVED.fullmatch(name) and path.is_file() else None
 
 
 def own_folder(tile: TileRef, *, custom_scenery: Path | None) -> Path:
@@ -182,11 +272,6 @@ def read_head(path: Path) -> tuple[Stamp | None, Identity]:
     return Stamp(head[_AT + 4 : _AT + 24].hex(), head[_AT + 24 : _END].hex()), known
 
 
-def read_stamp(path: Path) -> Stamp | None:
-    """The stamp of the DDS at ``path``; ``None`` for a texture as built."""
-    return read_head(path)[0]
-
-
 def stamped(header: bytes, stamp: Stamp) -> bytes:
     """The DDS ``header`` (its 128 bytes) with ``stamp`` in it."""
     mark = _STAMP + bytes.fromhex(stamp.plain) + bytes.fromhex(stamp.clouds)
@@ -226,6 +311,11 @@ def laid_fields(e: Mapping[str, Any]) -> dict[str, Any]:
     return {k: e[k] for k in LAID_KEYS}
 
 
+def same_laid(a: Mapping[str, Any] | None, b: Mapping[str, Any] | None) -> bool:
+    """Whether the entries ``a`` and ``b`` lay the same: the same cloud, the same images."""
+    return a is not None and b is not None and laid_fields(a) == laid_fields(b)
+
+
 def clouds_digest(entries: Sequence[Mapping[str, Any]]) -> str:
     """The digest of the clouds a texture shows, in their order."""
     laid = [laid_fields(e) for e in entries]
@@ -256,10 +346,14 @@ class TileClouds:
     held: tuple[dict[str, Any], ...] = ()
     """The clouds it shows replaced: those every texture they reach names beside it
     (:func:`sidecar_path`)."""
-
-    def holding(self, cloud: str) -> dict[str, Any] | None:
-        """The cloud ``cloud`` as the tile shows it replaced; ``None`` when it does not."""
-        return next((c for c in self.held if c["id"] == cloud), None)
+    known: frozenset[str] = frozenset()
+    """The textures showing clouds whose clouds are written beside them, whole: a texture of
+    :attr:`stamps` not here shows clouds no file says (Apply makes it again)."""
+    store_key: str | None = None
+    """The store's artefact of the textures the build placed (its manifest's), the build's own
+    of each when the one kept beside is gone."""
+    tile: str = ""
+    """Its name, its manifest's."""
 
     @property
     def textures(self) -> list[TextureId]:
@@ -267,15 +361,36 @@ class TileClouds:
 
     def texture_path(self, name: str) -> Path:
         """The texture ``name`` X-Plane shows."""
-        return self.folder / "textures" / f"{name}.dds"
+        return textures_dir(self.folder) / f"{name}.dds"
 
     def kept_path(self, name: str) -> Path:
         """Where the texture ``name`` is kept as the build made it while it shows clouds."""
-        return self.folder / CLOUDS_DIR / f"{name}.dds"
+        return clouds_dir(self.folder) / f"{name}.dds"
+
+    def stored_path(self, name: str) -> Path | None:
+        """The texture ``name`` in the store, as the build made it; ``None`` when the store has
+        it no more."""
+        if self.store_key is None:
+            return None
+        with contextlib.suppress(Exception), Store(default_store_root(), sweep=False) as store:
+            info = store.info(self.store_key)
+            if info is not None:
+                return Path(info.path) / TEXTURES_DIR / f"{name}.dds"
+        return None
 
     def plain_path(self, name: str) -> Path:
-        """The texture ``name`` as the build made it: the one kept aside when it shows clouds."""
-        return self.kept_path(name) if name in self.stamps else self.texture_path(name)
+        """The texture ``name`` as the build made it: itself when it shows no cloud, else the one
+        kept beside, else the store's (the kept one taken away), each only when it is that very
+        texture; ``CLOUD_TEXTURE_LOST`` when none is. The one way it is found: for the map's
+        picture, a search, a cloud's images and Apply alike."""
+        stamp = self.stamps.get(name)
+        if stamp is None:
+            return self.texture_path(name)
+        kept = self.kept_path(name)
+        for path in (kept, self.stored_path(name)):
+            if path is not None and path.is_file() and texture_digest(path) == stamp.plain:
+                return path
+        raise OsxpError("CLOUD_TEXTURE_LOST", context={"tile": self.tile, "path": str(kept)})
 
     def plain(self, name: str) -> str | None:
         """The digest of the texture ``name`` as the build made it; ``None`` when it has none."""
@@ -312,17 +427,20 @@ def _names(textures: Path) -> tuple[str, ...]:
 
 def read_tile(folder: Path) -> TileClouds | None:
     """What ``folder`` shows of its clouds, read from it alone; ``None`` when it holds no tile of
-    ours."""
+    ours: no manifest of ours, or its textures or what is kept beside them a link to another
+    folder (a build makes neither one; laying never writes into another folder)."""
     folder = Path(folder)
+    if textures_dir(folder).is_symlink() or clouds_dir(folder).is_symlink():
+        return None
     try:
         text = (folder / MANIFEST_NAME).read_bytes()
         manifest = PackManifest.from_toml(text.decode("utf-8"))
     except (OSError, ValueError, KeyError):
         return None
-    names = _names(folder / "textures")
+    names = _names(textures_dir(folder))
     stamps, files = {}, {}
     for n in names:
-        path = folder / "textures" / f"{n}.dds"
+        path = textures_dir(folder) / f"{n}.dds"
         try:
             stamp, files[n] = read_head(path)
         except OSError as exc:  # never taken for a texture as built: it may show clouds
@@ -332,6 +450,8 @@ def read_tile(folder: Path) -> TileClouds | None:
             ) from exc
         if stamp is not None:
             stamps[n] = stamp
+    held, known = _held(folder, stamps)
+    store = manifest.artefacts.get("textures")
     return TileClouds(
         folder=folder,
         built=digest_bytes(text)[:32],
@@ -340,26 +460,37 @@ def read_tile(folder: Path) -> TileClouds | None:
         names=names,
         stamps=stamps,
         files=files,
-        held=_held(folder, stamps),
+        held=held,
+        known=known,
+        store_key=store.key if store is not None else None,
+        tile=manifest.tile,
     )
 
 
-def _held(folder: Path, stamps: Mapping[str, Stamp]) -> tuple[dict[str, Any], ...]:
-    """The clouds every texture they reach shows: named beside each texture's stamp, the same
-    entry in all of them."""
+def _held(
+    folder: Path, stamps: Mapping[str, Stamp]
+) -> tuple[tuple[dict[str, Any], ...], frozenset[str]]:
+    """The clouds every texture they reach shows, named beside each texture's stamp, the same
+    entry in all of them; and the textures whose clouds are written so, whole (a file that is
+    not a list of whole entries, or not the one its stamp names, says nothing)."""
     seen: dict[str, tuple[dict[str, Any], set[str]]] = {}
+    known = set()
     for name, stamp in stamps.items():
         try:
             entries = json.loads(sidecar_path(folder, stamp.clouds).read_text(encoding="utf-8"))
         except (OSError, ValueError):
             continue  # its clouds unknown: none of them shown whole
-        if not isinstance(entries, list) or clouds_digest(entries) != stamp.clouds:
+        if not isinstance(entries, list) or any(entry_problem(e) is not None for e in entries):
             continue
+        if clouds_digest(entries) != stamp.clouds:
+            continue
+        known.add(name)
         for e in entries:
             entry, where = seen.setdefault(e["id"], (dict(e), set()))
-            if laid_fields(entry) == laid_fields(e):
+            if same_laid(entry, e):
                 where.add(name)
-    return tuple(e for e, where in seen.values() if where == set(e["parts"]))
+    held = tuple(e for e, where in seen.values() if where == set(e["parts"]))
+    return held, frozenset(known)
 
 
 # -- where a cloud stands --------------------------------------------------------------------
@@ -435,25 +566,60 @@ def _moved(then: set[str], now: set[str]) -> str | None:
     return "source" if source else "textures"
 
 
+def _number(v: Any) -> bool:
+    return isinstance(v, int | float) and not isinstance(v, bool) and math.isfinite(v)
+
+
+def ring_problem(rings: Any) -> str | None:
+    """Why ``rings`` are not an outline's rings (the zones' format, ``[lat0, lon0, ...]`` each,
+    three points or more, every one a place on Earth), or ``None``."""
+    if not (isinstance(rings, list) and rings):
+        return "no rings"
+    for r in rings:
+        if not (isinstance(r, list) and len(r) >= 6 and len(r) % 2 == 0):
+            return "a ring is three points or more"
+        if not all(_number(v) for v in r):
+            return "a ring is of numbers"
+        if any(abs(v) > 90 for v in r[0::2]) or any(abs(v) > 180 for v in r[1::2]):
+            return "a ring is of places on Earth"
+    return None
+
+
 def entry_problem(c: Any) -> str | None:
     """Why ``c`` is not a whole cloud to lay, or ``None``: ``{id, source, match, rings, parts:
-    {texture: [level, digest]}, plain: {texture: digest}}``."""
+    {texture: [level, digest]}, plain: {texture: digest}}``, each of its kind."""
     if not isinstance(c, Mapping):
         return "not an object"
     if not (isinstance(c.get("id"), str) and isinstance(c.get("source"), str)):
         return "no id or source"
-    try:
-        gain, shift = c["match"]
-        if len(gain) != 3 or len(shift) != 3:
-            return "a match is three gains and three shifts"
-    except (KeyError, TypeError, ValueError):
-        return "no match"
-    rings = c.get("rings")
-    if not (isinstance(rings, list) and rings and all(isinstance(r, list) for r in rings)):
-        return "no rings"
+    match = c.get("match")
+    if not (
+        isinstance(match, list | tuple)
+        and len(match) == 2
+        and all(isinstance(m, list | tuple) and len(m) == 3 for m in match)
+        and all(_number(v) for m in match for v in m)
+    ):
+        return "a match is three gains and three shifts"
+    rings = ring_problem(c.get("rings"))
+    if rings is not None:
+        return rings
     parts, plain = c.get("parts"), c.get("plain")
     if not (isinstance(parts, Mapping) and parts and isinstance(plain, Mapping)):
         return "no parts"
     if set(parts) != set(plain):
         return "parts and textures apart"
+    for name, part in parts.items():
+        try:
+            parse_texture_name(name)
+        except (ValueError, TypeError):
+            return "a part of no texture"
+        if not (
+            isinstance(part, list | tuple)
+            and len(part) == 2
+            and isinstance(part[0], int)
+            and isinstance(part[1], str)
+        ):
+            return "a part is a level and a digest"
+    if not all(isinstance(v, str) for v in plain.values()):
+        return "a texture is named by its digest"
     return None

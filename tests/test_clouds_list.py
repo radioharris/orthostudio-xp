@@ -56,7 +56,8 @@ def _entry(cid: str, rings: list[list[float]], source: str = "EOX") -> dict[str,
 def _held(*entries: dict[str, Any]) -> TileClouds:
     """The tile showing ``entries`` in its one texture, built as ``PLAIN``."""
     stamps, files = {NAME: Stamp(PLAIN, "x" * 40)}, {NAME: (0, 0, 0)}
-    return TileClouds(Path("/nowhere"), "k", "BI", True, (NAME,), stamps, files, entries)
+    known = frozenset(stamps)
+    return TileClouds(Path("/nowhere"), "k", "BI", True, (NAME,), stamps, files, entries, known)
 
 
 def _hold(*entries: dict[str, Any]) -> TileClouds:
@@ -210,3 +211,27 @@ def test_a_list_put_aside_never_takes_the_name_of_another(home: Path) -> None:
         pass
     assert path.with_name(path.name + ".broken-2").read_text() == "old"
     assert path.with_name(path.name + ".broken-3").read_text() == "{not json"
+
+
+def test_a_file_whose_clouds_are_not_whole_is_no_list(home: Path) -> None:
+    from orthostudio.clouds.tile import list_path
+
+    with cls.update(TILE) as cl:
+        cl.add("found", [[43.1, 5.1, 43.1, 5.2, 43.2, 5.2, 43.1, 5.1]])
+    doc = json.loads(list_path(TILE).read_text())
+    doc["clouds"][0]["checks"] = {"EOX": {"entry": {"id": 1}}}
+    list_path(TILE).write_text(json.dumps(doc))
+    assert cls.load(TILE).clouds == []  # read as none, put aside before a write
+    with cls.update(TILE):
+        pass
+    assert list(list_path(TILE).parent.glob("*.broken-*"))
+
+
+def test_an_outline_is_rings_of_places_around_ground_on_the_tile() -> None:
+    on = [43.1, 5.1, 43.1, 5.2, 43.2, 5.2, 43.1, 5.1]
+    assert cls.outline_problem([on], TILE) is None
+    nan = [43.1, 5.1, float("nan"), 5.2, 43.2, 5.2, 43.1, 5.1]
+    assert cls.outline_problem([nan], TILE) == "a ring is of numbers"
+    away = [10.1, 5.1, 10.1, 5.2, 10.2, 5.2, 10.1, 5.1]
+    assert cls.outline_problem([away], TILE) == "an outline is drawn on the tile"
+    assert cls.outline_problem([[43.1, 5.1, 43.1, 5.1, 43.1, 5.1]], TILE) is not None

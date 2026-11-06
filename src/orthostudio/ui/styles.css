@@ -656,9 +656,14 @@ input[aria-invalid="true"] { border-color: var(--fail); }
    lays their outlines and previews over it; the zones' own bar stays away meanwhile. */
 .plan-flow.is-clouds .plan-steps > :not(.clouds-panel) { display: none; }
 .plan-flow.is-clouds #map-banner { display: none; }
-/* The cloud mode's panel is built from the Plan's parts (.zone-list, .plan-actions) and spaced by
-   its tokens; a task's line and the count are one kind of line. */
+/* The cloud mode's panel is built from the Plan's parts and spaced by its tokens: its main
+   buttons are the build's (.actions-build, the help under them at --help-gap), its count line
+   the tiles' (step 1's .tile-count-row, 8 px). */
 .clouds-progress, .clouds-count { display: flex; align-items: center; gap: var(--gap); flex-wrap: wrap; margin-top: var(--gap); }
+.clouds-count .plan-step-size { margin: 0; flex: 1 1 auto; }
+/* A cloud's task: a spinner before its words, in its row and at its centre on the map. */
+.zone-hint.cloud-trying { display: inline-flex; align-items: center; gap: 6px; }
+.cloud-trying .spinner, .cloud-pending .spinner, .clouds-progress .spinner { flex: none; }
 .cloud-name { display: flex; align-items: center; gap: 6px; flex: 1 1 auto; font-weight: 600; cursor: pointer; }
 /* One colour, one meaning: the accent, as the tick, is what will be replaced. The current cloud
    is no colour of its own: its row lighter in a thick frame of the text's colour, its outline
@@ -666,15 +671,38 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .zone-item > .cloud-swatch { background: transparent; box-shadow: inset 0 0 0 1px var(--line-2); }
 .zone-item > .cloud-swatch.is-on { background: var(--accent); box-shadow: none; }
 .zone-item.cloud-item[aria-current="true"] { border-color: var(--fg-2); box-shadow: inset 0 0 0 1px var(--fg-2); background: color-mix(in srgb, var(--fg) 10%, var(--bg)); }
-.clouds-leave { margin-top: var(--block-gap); }
 .library-clouds { white-space: nowrap; }
 .library-clouds .clouds-words { margin-left: var(--gap); color: var(--fg-2); font-size: var(--fs-2); }
-/* On the map, yellow what stays and the accent what is replaced; the current cloud thicker. The
-   yellow is the same in both themes: the ground under it is. An outline is drawn as a zone is
-   (map.js drawShape), its points and line the zones'. */
+/* On the map, yellow what stays and the accent what is replaced, each line on a dark casing: it
+   reads over snow and clouds as over dark ground. The yellow is the same in both themes: the
+   ground under it is. An outline is drawn as a zone is (map.js drawShape), its points and line
+   the zones'. */
+.leaflet-overlay-pane path.cloud-casing { stroke: rgba(0, 0, 0, 0.55); fill: none; }
+.leaflet-overlay-pane path.cloud-casing.is-current { stroke-width: 6px; }
 .leaflet-overlay-pane path.cloud-outline { stroke: #ffd43b; fill: #ffd43b; }
 .leaflet-overlay-pane path.cloud-outline.is-on { stroke: var(--accent); fill: var(--accent); }
 .leaflet-overlay-pane path.cloud-outline.is-current { stroke-width: 3px; }
+.leaflet-overlay-pane path.cloud-pin { stroke: #ffd43b; fill: #ffd43b; fill-opacity: 0.35; }
+.leaflet-overlay-pane path.cloud-pin.is-on { stroke: var(--accent); fill: var(--accent); }
+.leaflet-overlay-pane path.cloud-outside { fill: #000; }
+/* The cloud views' three texts stacked in one cell, the current one shown: the banner keeps one size. */
+.clouds-view-text { display: grid; }
+.clouds-view-text > span { grid-area: 1 / 1; }
+.clouds-view-text > span:not(.is-current) { visibility: hidden; }
+/* A cloud's task said at its centre on the map, and a found cloud's number in it, discreet: to
+   find it in the list. */
+.cloud-pending-anchor, .cloud-number-anchor { width: 0; height: 0; }
+.cloud-number {
+  position: absolute; transform: translate(-50%, -50%); white-space: nowrap; pointer-events: none;
+  font-size: var(--fs-3); font-weight: 600; color: #fff; opacity: 0.85; text-shadow: 0 0 2px #000, 0 0 3px #000;
+}
+.cloud-pending {
+  position: absolute; transform: translate(-50%, -50%); display: flex; align-items: center; gap: 6px;
+  white-space: nowrap; padding: 3px 8px; border-radius: var(--radius); font-size: var(--fs-2); font-weight: 600;
+  background: var(--bg-2); color: var(--fg); border: 1px solid var(--line-2); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+}
+/* Outlining a cloud: a thin cross to aim, over the map and over what is drawn on it. */
+.plan-map.is-outlining, .plan-map.is-outlining.leaflet-grab, .plan-map.is-outlining .leaflet-interactive { cursor: crosshair; }
 .plan-step { border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg-2); padding: var(--card-pad); min-width: 0; }
 .plan-step:focus { outline: none; }
 .plan-step-title { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }

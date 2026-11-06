@@ -351,26 +351,27 @@ X-Plane, updated, and one it does not show stays out.
 
 **Clouds.** *Clouds…*, on a tile's line in the Library, opens the Plan's map on that tile drawn as
 X-Plane draws it: from its own DSF and textures, the sea and the lakes at the share of the photo
-X-Plane gives them (nothing of the tile is downloaded). *Find clouds* reads it, a second time in
-more detail where it is sharp enough for small clouds, with OmniCloudMask's two networks run by
-OpenCV on this computer (downloaded once, at your word, about 110 MB); each cloud comes with its
-shadow when it falls beside it. Every other source covering the tile is then tried under each
-cloud: whether it has a picture there, the same photo as the tile (ArcGIS sells Bing's in many
-places: never proposed, it would bring the cloud back), clear or cloudy, and how well its ground
-fits the photo around the cloud. Nothing is ticked for you. A tick fetches the source's pieces at
-the tile's own sharpness and freezes them: the map's *After* is made from them by the very code
-*Apply* lays them with, so it is what the texture gets, and laying never asks the source again.
-Your ticks wait in the tile's list until *Apply*, which changes the finished tile alone, in a few
-seconds: in each texture a cloud reaches, only the blocks of pixels under it are made again, at
-every level, every other block staying the build's, byte for byte; the texture as built is kept
-beside it in the tile's `clouds/` folder, the same file on the disk, for *Restore* to put back.
-Inside each cloud the other source's ground takes the colours of the photo around it, with a soft
-edge; where it has no picture, nothing is laid. The clouds are no part of the build: a build of
-the tile, from the Plan, the Library, Works or the command line, places its own textures, then
-lays the clouds again where the texture under each is the one it was chosen on; another source or
-level, new images, other colours there, and the photo stays as built, the cloud still ticked for
-one *Apply* to replace it again. Deleting a tile forgets its clouds. Details:
-`docs/specs/clouds.md`.
+X-Plane gives them (nothing of the tile is downloaded). *Quick search* reads it; *Fine search* reads
+it a second time in more detail where it is sharp enough for small clouds, with OmniCloudMask's two
+networks run by OpenCV on this computer (downloaded once, at your word, about 110 MB); each cloud
+comes with its shadow when it falls beside it. Every other source covering the tile is then tried
+under each cloud: whether it has a picture there, the same photo as the tile (ArcGIS sells Bing's in
+many places: never proposed, it would bring the cloud back), clear or cloudy, and how well its
+ground fits the photo around the cloud. Nothing is ticked for you. A tick fetches the source's
+pieces at the tile's own sharpness and freezes them: the map's *After* shows the tile's textures as
+X-Plane shows them, and where *Apply* will make one again, the clouds made from those frozen pieces
+by the very code *Apply* lays them with, so it is what the texture gets; laying never asks the
+source again. Your ticks wait in the tile's list until *Apply*, which changes the finished tile
+alone, in a few seconds: in each texture a cloud reaches, only the blocks of pixels under it are
+made again, at every level, every other block staying the build's, byte for byte; the texture as
+built is kept beside it in the tile's `clouds/` folder, the same file on the disk, for *Restore* to
+put back. Inside each cloud the other source's ground takes the colours of the photo around it, with
+a soft edge; where it has no picture, nothing is laid. The clouds are no part of the build: a build
+of the tile, from the Plan, the Library, Works or the command line, places its own textures, then,
+before it says it has finished the tile, lays the clouds again where the texture under each is the
+one it was chosen on; another source or level, new images, other colours there, and the photo stays
+as built, the cloud still ticked for one *Apply* to replace it again. Deleting a tile forgets its
+clouds. Details: `docs/specs/clouds.md`.
 
 A tile filed elsewhere that you build again is built in the workshop, beside the cache, then put
 back in its folder in place of the old version: moved there at once on the workshop's disk, copied

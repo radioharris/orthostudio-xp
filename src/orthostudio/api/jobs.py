@@ -1374,6 +1374,9 @@ class JobManager:
         self._queue: deque[Job] = deque()
         self._active: Job | None = None
         self._threads: dict[str, threading.Thread] = {}
+        self.make_way: Callable[[Sequence[str]], None] | None = None
+        """What else works in the folders of a job's tiles, ended before its build begins (the
+        cloud mode's tasks, ``Tasks.end``): it holds those tiles from the job's start."""
         self._load_past()
 
     # -- past jobs ---------------------------------------------------------------------------
@@ -1409,6 +1412,16 @@ class JobManager:
             if self._active is not None:
                 return self._active
             return self._queue[0] if self._queue else None
+
+    def building_states(self) -> dict[str, str]:
+        """The tiles in a build (:meth:`building_tiles`), each ``running`` while the running job
+        builds it, else ``queued``: read at once, under the lock."""
+        with self._lock:
+            active = self._active
+            running = (
+                set(active.unfinished_tiles()) if active and active.status == "running" else set()
+            )
+            return {t: "running" if t in running else "queued" for t in self.building_tiles()}
 
     def building_tiles(self) -> dict[str, str]:
         """The tiles in a build, each with its job's id: those the running job has not finished
@@ -1580,6 +1593,8 @@ class JobManager:
         report: BuildReport | None = None
         status = "failed"
         try:
+            if self.make_way is not None:
+                self.make_way(sorted({spec.tile.name for spec in job.specs}))
             env = _call_env_factory(self.env_factory, job.specs)
             job.prepare(env)
             if job.cancel_requested:

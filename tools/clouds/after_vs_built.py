@@ -1,12 +1,12 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""The base rule measured on one replaced cloud: After as the cloud mode shows it (the tile's
-Before picture with the cloud's preview over it) against the tile as X-Plane shows it (its
-textures, the clouds laid), on the pixels of the preview, inside the cloud, on its soft edge and
-outside (``docs/benchmarks/clouds.md`` B5). The engine runs (``osxp serve``) on the same home; the
-cloud is held.
+"""The base rule measured on one replaced cloud: its preview, After's picture of it while Apply is
+to lay it (the tile's Before picture with the preview over it), against the tile as X-Plane shows
+it once laid (its textures, the clouds laid), on the pixels of the preview, inside the cloud, on
+its soft edge and outside (``docs/benchmarks/clouds.md`` B5). The cloud is held; its preview is
+made here as the cloud mode makes it, in every texture it reaches.
 
-    OSXP_HOME=<home> python tools/clouds/after_vs_built.py +56-131 z9lo5c8m strip.png --port 8696
+    OSXP_HOME=<home> python tools/clouds/after_vs_built.py +56-131 z9lo5c8m strip.png
 
 The strip written is Before, After, the texture as laid, and their difference times four.
 """
@@ -15,15 +15,14 @@ from __future__ import annotations
 
 import argparse
 import json
-import urllib.request
 from pathlib import Path
 
 import numpy as np
 from PIL import Image
 
-from orthostudio.clouds import cloudlist
-from orthostudio.clouds.picture import draw
-from orthostudio.clouds.tile import own_folder, previews_dir, read_tile
+from orthostudio.clouds.find import preview
+from orthostudio.clouds.picture import draw, map_level
+from orthostudio.clouds.tile import held_by_id, own_folder, previews_dir, read_tile
 from orthostudio.imagery.grid import wgs84_to_tile
 from orthostudio.model import TileRef
 
@@ -33,24 +32,23 @@ def main() -> None:
     ap.add_argument("tile")
     ap.add_argument("cloud")
     ap.add_argument("strip", type=Path)
-    ap.add_argument("--port", type=int, default=8642)
     a = ap.parse_args()
     tile = TileRef.parse(a.tile)
-    url = f"http://127.0.0.1:{a.port}/api/clouds/{tile.name.replace('+', '%2B')}"
-    with urllib.request.urlopen(url) as r:
-        doc = json.load(r)
-    row = next(c for c in doc["clouds"] if c["id"] == a.cloud)
-    zl = int(doc["picture"]["level"])
-    shown = read_tile(own_folder(tile, custom_scenery=None), cloudlist.load(tile).laid)
-    if shown is None or shown.holding(a.cloud) is None:
+    shown = read_tile(own_folder(tile, custom_scenery=None))
+    entry = held_by_id(shown).get(a.cloud)
+    if shown is None or entry is None:
         raise SystemExit(f"{a.cloud} is not held by {tile.name}")
+    zl = map_level(tile, shown.textures)
     dsf = shown.folder / tile.dsf_relpath
     before = draw(tile, zl, dsf=dsf, textures=shown.plains())
     laid = {n: shown.texture_path(n) for n in shown.names}
     built = draw(tile, zl, dsf=dsf, textures=laid)
-    png = Image.open(previews_dir(tile) / row["preview"]["name"]).convert("RGBA")
+    got = preview(before, tile, entry, shown.built, sorted(entry["parts"]))
+    if got is None:
+        raise SystemExit(f"a frozen part of {a.cloud} is gone")
+    png = Image.open(previews_dir(tile) / got[0]).convert("RGBA")
     pv = np.asarray(png).astype(np.float32)
-    _s, w, n, _e = row["preview"]["bounds"]
+    _s, w, n, _e = got[1]
     gx, gy = wgs84_to_tile(n, w, zl)
     x0, y0 = round(gx * 256) - before.x0, round(gy * 256) - before.y0
     h, wd = pv.shape[:2]

@@ -11,38 +11,43 @@ A cloud is, the first that holds, and one way only:
 
 - its **source**: the one chosen by the user while it may be chosen there, else the best clear
   one (:func:`source_of`); never kept apart;
-- its **images**: the newest got of that source when they stand on the tile, else those the tile
-  shows of that source;
+- its **images**: the newest got of that source when they can be laid on the tile, else those the
+  tile shows of that source;
 - what **Apply lays** for it: ticked, its images, else what the tile shows of it (it keeps its
-  ground while new images are awaited); unticked, nothing;
-- its **row**: read only, a task of it, held, another source, ready, back, waiting, found
+  ground while new images are awaited); unticked, nothing; which of them can be laid is the
+  folder's plan's to say (:func:`laying.plan_folder`), given them in that order;
+- its **row**: a task of it, read only, held, another source, ready, back, waiting, found
   (:data:`ROWS`), from what the tile holds of it and what Apply lays;
 - its **actions** (:func:`_actions`), of what the tile allows (:data:`TILE_STATES`).
 
-The count, Apply's and Restore's words and what is useful come from the clouds' states alone.
+The count, Apply's and Restore's words and what is useful come from the clouds' states and what
+the folder shows alone.
 """
 
 from __future__ import annotations
 
-from collections.abc import Collection, Mapping, Sequence
+from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
 from orthostudio.clouds.cloudlist import CloudList
-from orthostudio.clouds.laying import plan_folder
+from orthostudio.clouds.laying import FolderPlan, plan_folder
 from orthostudio.clouds.sources import ASK_AGAIN, PROPOSABLE
-from orthostudio.clouds.tile import TileClouds, held_by_id, laid_fields, lays_not
+from orthostudio.clouds.tile import TileClouds, held_by_id, same_laid
 from orthostudio.errors import OsxpError
 from orthostudio.model import TileRef
 
 __all__ = [
+    "DRAFT",
     "LIST_EDITS",
     "TASKS",
     "TILE_STATES",
     "WRITES",
     "CloudState",
     "View",
+    "as_shown",
     "best_of",
+    "library_cell",
     "possible",
     "proposable",
     "reading",
@@ -53,63 +58,76 @@ __all__ = [
 
 # -- the tile ----------------------------------------------------------------------------------
 
-LIST_EDITS = frozenset({"tick", "untick", "choose", "remove", "discard"})
-"""The list's own changes: they wait for the next Apply. The names of every action are the same
-for the tile, its clouds, the routes, its tasks and the page."""
+DRAFT = frozenset({"tick", "untick", "choose"})
+"""A cloud's tick and its source: what the next Apply does, changed even while one runs. The
+names of every action are the same for the tile, its clouds, the routes, its tasks and the
+page."""
+LIST_EDITS = DRAFT | {"remove", "discard"}
+"""The list's own changes: they wait for the next Apply. Removing an outline and Discard are
+read of what the tile shows, which an Apply under way changes: never beside one."""
 TASKS = frozenset({"find", "outline", "check"})
 """What reads the tile's folder (its picture, its textures)."""
 WRITES = frozenset({"apply", "restore"})
-"""What writes the tile's textures."""
+"""What writes the tile's textures: Stop does not end them, they end what they began."""
 
 
 @dataclass(frozen=True, slots=True)
 class TileState:
-    """What a tile's state allows, whether its folder is read in it, whether something is under
-    way (the page reads it again)."""
+    """What a tile's state allows, and whether something is under way (the page reads it
+    again)."""
 
     allows: frozenset[str]
-    reads: bool
     busy: bool
 
 
 TILE_STATES: Mapping[str, TileState] = {
-    "data_away": TileState(frozenset(), False, False),
-    "disk_away": TileState(frozenset(), False, False),
-    "in_build": TileState(frozenset(), False, True),
-    "queued": TileState(frozenset(), False, True),
-    "not_built": TileState(frozenset(), False, False),
-    "not_whole": TileState(frozenset(), False, False),
-    "ready": TileState(LIST_EDITS | TASKS | WRITES, True, False),
+    "data_away": TileState(frozenset(), False),
+    "disk_away": TileState(frozenset(), False),
+    "in_build": TileState(frozenset(), True),
+    "queued": TileState(frozenset(), True),
+    "filing": TileState(frozenset(), True),
+    "deleting": TileState(frozenset(), True),
+    "not_built": TileState(frozenset(), False),
+    "not_whole": TileState(frozenset(), False),
+    "ready": TileState(LIST_EDITS | TASKS | WRITES, False),
 }
 """Every state of a tile, the first that holds in this order (:func:`tile_state`): the data
-folder's disk away; the tile's disk away; being built; waiting in the queue (its folder not read
-while a build writes it or waits to); not built (no folder of ours); not whole (a build cut short,
-files taken from it); ready."""
+folder's disk away; the tile's disk away; something else holding its folder, the cloud mode none
+of it: being built, waiting in the queue, being filed, being deleted (no task of it starts,
+``tasks.Tasks.start``, and what holds it waits for those under way to end); not built (no folder
+of ours); not whole (a build cut short, files taken from it); ready. Its folder is read in the
+last three only, and kept in ``ready`` only."""
 
 
 def tile_state(
-    *, data_away: bool, disk_away: bool, building: str | None, shown: TileClouds | None
-) -> str:
-    """The tile's state (:data:`TILE_STATES`); ``building``: ``running``, ``queued`` or ``None``."""
+    *,
+    data_away: bool,
+    disk_away: bool,
+    taken: str | None,
+    read: Callable[[], TileClouds | None],
+) -> tuple[str, TileClouds | None]:
+    """The tile's state (:data:`TILE_STATES`) and, ready, what its folder shows; ``taken``: the
+    state something else holds its folder in (``in_build``, ``queued``, ``filing``,
+    ``deleting``), else ``None``; ``read``: what its folder shows (``tile.read_tile``), read only
+    when the states before do not hold."""
     if data_away:
-        return "data_away"
+        return "data_away", None
     if disk_away:
-        return "disk_away"
-    if building == "running":
-        return "in_build"
-    if building is not None:
-        return "queued"
+        return "disk_away", None
+    if taken is not None:
+        return taken, None
+    shown = read()
     if shown is None:
-        return "not_built"
-    return "ready" if shown.whole else "not_whole"
+        return "not_built", None
+    return ("ready", shown) if shown.whole else ("not_whole", None)
 
 
 def possible(state: str, tasks: Collection[str] = ()) -> frozenset[str]:
     """What the tile allows in ``state`` while the tasks of the kinds ``tasks`` run: no Apply or
-    Restore beside a task, nothing but the list's edits beside Apply or Restore."""
+    Restore beside a task, nothing but the draft (:data:`DRAFT`) beside Apply or Restore."""
     can = TILE_STATES[state].allows
     if WRITES & set(tasks):
-        return can & LIST_EDITS
+        return can & DRAFT
     return can - WRITES if tasks else can
 
 
@@ -134,12 +152,24 @@ def proposable(c: Mapping[str, Any], code: str, held: Mapping[str, Any] | None =
     return answer is None or answer in PROPOSABLE
 
 
+def _ranked(c: Mapping[str, Any], codes: Iterable[str]) -> list[str]:
+    """``codes`` in the order the sources under ``c`` are offered: the clear first, then the
+    cloudy, then the others, each by its fit, then by its name. The one order: the best is its
+    first clear one, and the menu lists them so."""
+    order = {"clear": 0, "cloudy": 1}
+
+    def key(k: str) -> tuple[int, int, str]:
+        said = reading(c, k)
+        return order.get(said.get("answer"), 2), -int(said.get("fit") or 0), k
+
+    return sorted(codes, key=key)
+
+
 def best_of(c: Mapping[str, Any]) -> str | None:
-    """Of the sources clear under ``c``, the one whose colours fit best."""
+    """Of the sources clear under ``c``, the one whose colours fit best (:func:`_ranked`)."""
     codes = {*(c.get("screening") or {}), *(c.get("checks") or {})}
-    clear = [(int(reading(c, k).get("fit") or 0), k) for k in codes]
-    clear = [(fit, k) for fit, k in clear if reading(c, k).get("answer") == "clear"]
-    return max(clear)[1] if clear else None
+    clear = [k for k in _ranked(c, codes) if reading(c, k).get("answer") == "clear"]
+    return clear[0] if clear else None
 
 
 def source_of(c: Mapping[str, Any], held: Mapping[str, Any] | None = None) -> str | None:
@@ -153,9 +183,10 @@ def source_of(c: Mapping[str, Any], held: Mapping[str, Any] | None = None) -> st
 
 # -- a cloud -----------------------------------------------------------------------------------
 
-ROWS = ("frozen", "check", "outline", "held", "another", "ready", "back", "waiting", "found")
-"""A cloud's row, what Apply does with it (:func:`_row`): the list read only; a task of it
-(getting its images, trying an outline's sources); held (the tile shows it as Apply lays it);
+ROWS = ("check", "outline", "frozen", "held", "another", "ready", "back", "waiting", "found")
+"""A cloud's row, what Apply does with it (:func:`_row`): a task of it (getting its images, trying
+an outline's sources), whatever the tile's state; the list read only; held (the tile shows it as
+Apply lays it);
 another (held, Apply lays other images); ready (not held, Apply lays it); back (held, Apply lays
 nothing: as photographed); waiting (ticked, nothing new laid: it keeps what the tile shows of it);
 found (unticked). Why it waits is said on any row it has one (``why``)."""
@@ -182,8 +213,8 @@ class CloudState:
         """What a click on its outline does."""
         return next((a for a in ("tick", "untick") if a in self.actions), None)
 
-    def page(self, names: Mapping[str, Any] | None = None) -> dict[str, Any]:
-        """Its row as the page shows it."""
+    def page(self, previews: Mapping[str, Any] | None = None) -> dict[str, Any]:
+        """Its row as the page shows it, with its preview in ``previews`` when After needs one."""
         c = self.cloud
         return {
             "id": c["id"],
@@ -197,37 +228,51 @@ class CloudState:
             "line": _line(self),
             "actions": sorted(self.actions),
             "toggle": self.toggle,
+            "tip": f"clouds.tip_{self.toggle}" if self.toggle else None,
             "task": self.task,
-            "preview": (names or {}).get(c["id"]),
+            "preview": (previews or {}).get(c["id"]),
             "menu": _menu(c, self.source, self.held),
         }
 
 
-def _same(a: Mapping[str, Any] | None, b: Mapping[str, Any] | None) -> bool:
-    return a is not None and b is not None and laid_fields(a) == laid_fields(b)
-
-
-def _wanted(
-    c: Mapping[str, Any], shown: TileClouds, tile: TileRef
-) -> tuple[str | None, Mapping[str, Any] | None, Mapping[str, Any] | None, str | None]:
-    """The cloud's source, what the tile holds of it, what Apply would lay for it before the
-    folder is planned, and why it waits: ticked, the newest images got of its source when they
-    stand on the tile, else those the tile shows of that source, else it waits and keeps what the
-    tile shows of it."""
-    held = held_by_id(shown).get(c["id"])
+def _options(
+    c: Mapping[str, Any], held: Mapping[str, Any] | None
+) -> tuple[str | None, list[Mapping[str, Any]], str | None]:
+    """The cloud's source, the images Apply may lay for it, the wanted first, and why it waits
+    before the folder is planned: unticked, none; ticked, the newest images got of its source and
+    those the tile shows of that source, then, while it waits for them, those the tile shows of
+    it (its ground kept)."""
     source = source_of(c, held)
     if not c["tick"]:
-        return source, held, None, None
-    if source is None:
-        return source, held, held, "no_source"
+        return source, [], None
+    if source is None:  # no source: nothing the tile shows of it either (``source_of``)
+        return source, [], "no_source"
     got = (c.get("checks") or {}).get(source) or {}
     shows = held if held is not None and held["source"] == source else None
-    if got.get("entry") is None and shows is None:
-        return source, held, held, got.get("answer") or "no_images"
-    for images in (got.get("entry"), shows):
-        if images is not None and (_same(images, held) or not lays_not(images, tile, shown)):
-            return source, held, images, None
-    return source, held, held, f"photo_{lays_not(got['entry'], tile, shown)}"
+    mine = [e for e in (got.get("entry"), shows) if e is not None]
+    ground = [held] if held is not None and shows is None else []
+    return source, mine + ground, None if mine else got.get("answer") or "no_images"
+
+
+def _why(
+    options: Sequence[Mapping[str, Any]],
+    lays: Mapping[str, Any] | None,
+    source: str | None,
+    wait: str | None,
+    plan: FolderPlan | None,
+) -> str | None:
+    """Why the cloud waits: nothing of it can be laid, or its source has no images of it yet
+    (``wait``), or the images of its source cannot be laid, the tile keeping its ground; each as
+    the folder's plan says (``photo_<why>``)."""
+    if plan is None:
+        return wait
+    if options and lays is None:
+        return f"photo_{plan.dropped[options[0]['id']]}"
+    if wait is not None:
+        return wait
+    if lays is not None and lays["source"] != source:
+        return f"photo_{plan.dropped[lays['id']]}"
+    return None
 
 
 def _row(c: Mapping[str, Any], held: Any, lays: Any, why: str | None) -> str:
@@ -236,7 +281,7 @@ def _row(c: Mapping[str, Any], held: Any, lays: Any, why: str | None) -> str:
         return "ready" if lays is not None else "waiting" if c["tick"] else "found"
     if lays is None:
         return "back"
-    if _same(lays, held):
+    if same_laid(lays, held):
         return "waiting" if why is not None else "held"
     return "another"
 
@@ -251,7 +296,7 @@ def _asks(why: str | None) -> bool:
 
 
 def _actions(
-    c: Mapping[str, Any], source: str | None, held: Any, row: str, why: str | None
+    c: Mapping[str, Any], source: str | None, held: Any, why: str | None
 ) -> frozenset[str]:
     """What the cloud allows, before what the tile allows."""
     out = {"choose", "untick" if c["tick"] else "tick"}
@@ -276,8 +321,7 @@ def _line(s: CloudState) -> dict[str, Any] | None:
     if s.why is not None:  # what it waits for, whatever Apply does meanwhile
         return {"key": f"clouds.row.waiting.{s.why}", "params": src, "tone": "warn"}
     held = s.held["source"] if s.held is not None else None
-    key = {"held": "held", "another": "another", "ready": "ready", "back": "back"}[s.row]
-    return {"key": f"clouds.row.{key}", "params": {**src, "held": held}, "tone": "plain"}
+    return {"key": f"clouds.row.{s.row}", "params": {**src, "held": held}, "tone": "plain"}
 
 
 def _menu(c: Mapping[str, Any], source: str | None, held: Any = None) -> list[dict[str, Any]]:
@@ -286,7 +330,7 @@ def _menu(c: Mapping[str, Any], source: str | None, held: Any = None) -> list[di
     screening = c.get("screening") or {}
     codes = [*screening, *([source] if source and source not in screening else [])]
     items = []
-    for code in codes:
+    for code in _ranked(c, codes):
         said = reading(c, code)
         items.append(
             {
@@ -296,13 +340,12 @@ def _menu(c: Mapping[str, Any], source: str | None, held: Any = None) -> list[di
                 "proposable": proposable(c, code, held),
             }
         )
-    order = {"clear": 0, "cloudy": 1}
-    return sorted(items, key=lambda i: (order.get(i["answer"], 2), -i["fit"], i["source"]))
+    return items
 
 
 # -- the view ----------------------------------------------------------------------------------
 
-COUNTS = ("replace", "another", "back", "waiting", "held", "textures", "changes")
+COUNTS = ("replace", "another", "back", "waiting", "held", "textures", "remade", "changes")
 
 
 @dataclass(frozen=True, slots=True)
@@ -313,7 +356,8 @@ class View:
     state: str
     clouds: list[CloudState]
     laid: list[Mapping[str, Any]]
-    """What Apply lays, in the list's order: what :func:`laying.plan_folder` keeps."""
+    """What Apply lays, in the list's order: what :func:`laying.plan_folder` keeps of
+    :attr:`asked`."""
     allowed: frozenset[str]
     counts: Mapping[str, int]
     searching: bool
@@ -321,7 +365,15 @@ class View:
     """Something under way: a build of the tile, or any task of it (the page reads it again)."""
     search: Mapping[str, Any] | None = None
     tasks: list[Mapping[str, Any]] = field(default_factory=list)
-    """The tile's own tasks: a cloud's is in its row."""
+    """The tile's own tasks, each with what it allows (``actions``): a cloud's is in its row."""
+    remade: frozenset[str] = frozenset()
+    """The textures Apply makes again: After shows every other one as X-Plane does."""
+    asked: list[list[Mapping[str, Any]]] = field(default_factory=list)
+    """What Apply is given, each cloud's images in the order they are wanted: the very plan the
+    view made (``plan_folder``)."""
+    previews: list[tuple[Mapping[str, Any], list[str]]] = field(default_factory=list)
+    """The clouds After shows by a preview, each in the textures of it Apply makes again: in every
+    other texture, After shows what X-Plane does (:func:`as_shown`)."""
 
     def cloud(self, cid: str) -> CloudState:
         for s in self.clouds:
@@ -353,15 +405,20 @@ class View:
         """The words of After and Before; none without a picture."""
         if not picture:
             return {"after": None, "before": None}
-        after = "clouds.after_pending" if self.counts["changes"] else "clouds.after"
+        after = "clouds.after_pending" if self.remade else "clouds.after"
         return {"after": after, "before": "clouds.before"}
 
     def texts(self) -> dict[str, Any]:
-        """The count line, Apply's button, the questions of Apply and Restore."""
-        n, c = self.counts["changes"], self.counts
+        """The count line, Apply's button, the questions of Apply and Restore, and Restore's
+        button while the tile shows replaced clouds; a texture to make again showing clouds no
+        file says (``TileClouds.known``) counted as a change when no cloud's is."""
+        c = self.counts
+        n = c["changes"] or c["remade"]
         line = [
             _k(f"clouds.pending.{k}", n=c[k]) for k in ("replace", "another", "back", "waiting")
         ]
+        if not c["changes"]:
+            line.append(_k("clouds.pending.remade", n=c["remade"]))
         count = [w for w in line if w["params"]["n"] > 0] or [_k("clouds.pending_none")]
         one = "_one" if n == 1 else ""
         told = [w for w in count if w["key"] != "clouds.pending.waiting"]
@@ -369,6 +426,7 @@ class View:
         return {
             "count": count,
             "apply": _k(f"clouds.apply{one}", n=n),
+            "restore": _k("clouds.restore") if c["textures"] else None,
             "apply_question": {
                 "title": _k(f"clouds.apply_title{one}", tile=self.tile, n=n),
                 "lines": [*told, *waits, _k("clouds.apply_text")],
@@ -381,14 +439,33 @@ class View:
             },
         }
 
-    def library(self) -> dict[str, Any]:
+    def library(self) -> dict[str, int]:
         """The Library's Clouds cell."""
-        c = self.counts
-        return {"replaced": c["held"], "to_apply": c["changes"]}
+        return library_cell(self.counts["held"], self.counts["changes"] or self.counts["remade"])
+
+
+def library_cell(replaced: int = 0, to_apply: int = 0) -> dict[str, int]:
+    """The Library's Clouds cell of a tile: the clouds it shows replaced, what Apply changes (the
+    page says them in its own words, every one of them written out for the words' check)."""
+    return {"replaced": replaced, "to_apply": to_apply}
 
 
 def _k(key: str, **params: Any) -> dict[str, Any]:
     return {"key": key, "params": params}
+
+
+def _stops(task: Mapping[str, Any]) -> frozenset[str]:
+    """What a task allows: Stop, when Stop ends it (``Task.stoppable``)."""
+    return frozenset({"stop"}) if task["stoppable"] else frozenset()
+
+
+def as_shown(shown: TileClouds, remade: frozenset[str] | None) -> dict[str, str]:
+    """Of the textures showing clouds, those a picture draws as X-Plane shows them, with the
+    clouds each shows: every one but those Apply makes again (``remade``, After); none for
+    Before (``None``), every texture then drawn as the build made it."""
+    if remade is None:
+        return {}
+    return {n: s.clouds for n, s in shown.stamps.items() if n not in remade}
 
 
 def view(
@@ -397,48 +474,56 @@ def view(
     tile: TileRef,
     state: str,
     tasks: Sequence[Mapping[str, Any]] = (),
+    following: bool = False,
 ) -> View:
     """The tile ``tile`` in ``state``, its list ``cl`` and what its folder shows (``shown``,
-    ``None`` when not read), its tasks (``Task.view``s): its view, decided here alone."""
+    ``None`` when not read), its tasks (``Task.view``s) and whether what follows one runs
+    (``following``: under way too): its view, decided here alone."""
     kinds = {t["kind"] for t in tasks}
     can = possible(state, kinds)
     of_cloud = {t["cloud"]: t for t in tasks if t.get("cloud")}
-    frozen = not can & LIST_EDITS or shown is None
-    wanted: list[tuple[Mapping[str, Any], Any, Any, Any, str | None]] = []
-    for one in cl.clouds:
-        if shown is None:
-            wanted.append((one, source_of(one), None, None, None))
-        else:
-            wanted.append((one, *_wanted(one, shown, tile)))
-    asked = [
-        {**lays, "kind": c["kind"], "number": c["number"]} for c, _s, _h, lays, _w in wanted if lays
-    ]
+    holds = held_by_id(shown)
+    wanted = []
+    for c in cl.clouds:
+        source, options, wait = _options(c, holds.get(c["id"]))
+        listed = [{**e, "kind": c["kind"], "number": c["number"]} for e in options]
+        wanted.append((c, source, holds.get(c["id"]), listed, wait))
+    asked = [w[3] for w in wanted]
     plan = plan_folder(tile, shown, asked) if shown is not None else None
     kept = {e["id"]: e for e in (plan.laid if plan is not None else ())}
-    lost = plan.dropped if plan is not None else {}
     clouds: list[CloudState] = []
+    facts: list[str | None] = []
     actions: frozenset[str]
-    for c, source, held, lays, why in wanted:
-        if lays is not None and c["id"] not in kept:  # its textures made again, its images gone
-            lays, why = None, f"photo_{lost.get(c['id'], 'parts')}"
+    for c, source, held, options, wait in wanted:
+        lays = kept.get(c["id"])
+        why = _why(options, lays, source, wait, plan)
+        fact = _row(c, held, lays, why) if plan is not None else None  # what Apply does
         task = of_cloud.get(c["id"])
-        if frozen:
+        if task is not None:
+            row, actions = task["kind"], _stops(task)
+        elif fact is None:  # the folder not read: the list read only
             row, actions = "frozen", frozenset()
-        elif task is not None:
-            row, actions = task["kind"], frozenset({"stop"})
         else:
-            row = _row(c, held, kept.get(c["id"]), why)
-            actions = _actions(c, source, held, row, why) & can
-        clouds.append(CloudState(c, source, held, kept.get(c["id"]), row, why, actions, task))
-    counts = _counts(clouds, shown)
+            row, actions = fact, _actions(c, source, held, why) & can
+        clouds.append(CloudState(c, source, held, lays, row, why, actions, task))
+        facts.append(fact)
+    remade = plan.remade if plan is not None else frozenset()
+    counts = _counts(clouds, facts, shown, remade)
     searching = "find" in kinds
     idle = {
-        "apply": counts["changes"] == 0,
+        "apply": not remade,
         "restore": counts["textures"] == 0,
-        "discard": not any(s.row in ("another", "ready", "back", "waiting") for s in clouds),
+        "discard": counts["changes"] == 0 and counts["waiting"] == 0,
         "find": searching,
+        "choose": True,  # a cloud's alone
+        "remove": True,
+        # of every cloud: those each allows (Tick all, Untick all, their images)
+        "tick": not any("tick" in s.actions for s in clouds),
+        "untick": not any("untick" in s.actions for s in clouds),
+        "check": not any("check" in s.actions for s in clouds),
     }
     allowed = frozenset(a for a in can if not idle.get(a, False))
+    previews = [(e, sorted(remade & set(e["parts"]))) for e in kept.values()]
     return View(
         tile.name,
         state,
@@ -447,27 +532,36 @@ def view(
         allowed,
         counts,
         searching,
-        TILE_STATES[state].busy or bool(tasks),
+        TILE_STATES[state].busy or bool(tasks) or following,
         cl.search,
-        [t for t in tasks if not t.get("cloud")],
+        [{**t, "actions": sorted(_stops(t))} for t in tasks if not t.get("cloud")],
+        remade,
+        asked,
+        [(e, names) for e, names in previews if names],
     )
 
 
-def _counts(clouds: Sequence[CloudState], shown: TileClouds | None) -> dict[str, int]:
-    """What Apply changes, from each cloud's state: what the tile holds of it against what
-    Apply lays."""
+def _counts(
+    clouds: Sequence[CloudState],
+    facts: Sequence[str | None],
+    shown: TileClouds | None,
+    remade: frozenset[str],
+) -> dict[str, int]:
+    """What Apply changes, from what it does with each cloud (``facts``: its row, a task of it
+    or not): what the tile holds of it against what Apply lays; and what the folder shows, the
+    clouds and the textures, and the textures Apply makes again, from the folder's plan."""
     out = dict.fromkeys(COUNTS, 0)
-    for s in clouds:
-        if s.row == "waiting":
+    for s, fact in zip(clouds, facts, strict=True):
+        if fact == "waiting":
             out["waiting"] += 1
-        if s.held is not None:
-            out["held"] += 1
         if s.lays is not None and s.held is None:
             out["replace"] += 1
-        elif s.lays is not None and not _same(s.lays, s.held):
+        elif s.lays is not None and not same_laid(s.lays, s.held):
             out["another"] += 1
         elif s.lays is None and s.held is not None:
             out["back"] += 1
+    out["held"] = len(shown.held) if shown is not None else 0
     out["textures"] = len(shown.stamps) if shown is not None else 0
+    out["remade"] = len(remade)
     out["changes"] = out["replace"] + out["another"] + out["back"]
     return out

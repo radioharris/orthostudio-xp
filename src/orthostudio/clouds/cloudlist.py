@@ -1,8 +1,10 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""The user's list of a tile's clouds, kept and changed here, decided nowhere here: what was
-found or outlined, what is ticked, the source the user chose (``clouds.md`` 2.4, R3). What each
-cloud is, and what Apply does with it, is ``clouds.state``'s alone.
+"""The user's list of a tile's clouds, kept and changed here (``clouds.md`` 2.4): what was found
+or outlined, what is ticked, the source the user chose. The list's own rules are here: how a
+search's clouds join it (R3), what an outline takes over, what Discard brings back, that it knows
+every cloud the tile shows replaced (:func:`knowing`). What each cloud is, and what Apply does with
+it, is ``clouds.state``'s alone.
 
 ``$OSXP_HOME/clouds/<tile>.json``: every cloud with its id (eight characters, never given again
 on the tile), its number (``Cloud 7``, ``Outline 2``), its outline, what each source has under it
@@ -36,14 +38,16 @@ from orthostudio.clouds.tile import (
     entry_problem,
     held_by_id,
     is_own_folder,
+    laid_fields,
     list_path,
     previews_dir,
+    ring_problem,
 )
 from orthostudio.errors import OsxpError
 from orthostudio.fsutil import atomic_write_text
 from orthostudio.model import TileRef
 
-__all__ = ["CloudList", "forgetting", "load", "pick", "pick_action", "update"]
+__all__ = ["CloudList", "forgetting", "knowing", "load", "pick", "update"]
 
 FORMAT = "osxp-cloud-list-3"
 _ID = string.ascii_lowercase + string.digits
@@ -128,20 +132,49 @@ def load(tile: TileRef) -> CloudList:
 
 
 def _read(tile: TileRef) -> CloudList | None:
-    """The list in the tile's file, ``None`` when there is none or it is not one (a passing read
-    error is raised: a draft is never dropped for it)."""
+    """The list in the tile's file, ``None`` when there is none or it is not one, every cloud of
+    it whole (:func:`_cloud_problem`; a passing read error is raised: a draft is never dropped for
+    it)."""
     try:
         doc = json.loads(list_path(tile).read_text(encoding="utf-8"))
         if not isinstance(doc, dict) or doc.get("format") != FORMAT or doc.get("tile") != tile.name:
             return None
+        clouds = doc["clouds"]
+        if not isinstance(clouds, list) or any(_cloud_problem(c) is not None for c in clouds):
+            return None
+        search = doc.get("search")
+        if search is not None and not isinstance(search, dict):
+            return None
         laid = [e for e in doc.get("laid") or () if entry_problem(e) is None]
-        return CloudList(
-            tile.name, list(doc["clouds"]), int(doc.get("number", 0)), doc.get("search"), laid
-        )
+        return CloudList(tile.name, list(clouds), int(doc.get("number", 0)), search, laid)
     except FileNotFoundError:
         return None
     except (ValueError, KeyError, TypeError):
         return None
+
+
+def _cloud_problem(c: Any) -> str | None:
+    """Why ``c`` is not a cloud of a list (the module's doc), or ``None``: each field of its
+    kind, the images got of each source whole."""
+    if not isinstance(c, dict):
+        return "not an object"
+    if not (isinstance(c.get("id"), str) and c["id"] and c.get("kind") in ("found", "drawn")):
+        return "no id or kind"
+    if not (isinstance(c.get("number"), int) and isinstance(c.get("tick"), bool)):
+        return "no number or tick"
+    if not (c.get("chosen") is None or isinstance(c["chosen"], str)):
+        return "a source is named"
+    rings = ring_problem(c.get("rings"))
+    if rings is not None:
+        return rings
+    for said in ("screening", "checks"):
+        what = c.get(said)
+        if not (isinstance(what, dict) and all(isinstance(v, dict) for v in what.values())):
+            return f"no {said}"
+    for got in c["checks"].values():
+        if got.get("entry") is not None and entry_problem(got["entry"]) is not None:
+            return "images not whole"
+    return None
 
 
 def save(cl: CloudList) -> None:
@@ -155,7 +188,33 @@ def save(cl: CloudList) -> None:
     }
     path = list_path(TileRef.parse(cl.tile))
     path.parent.mkdir(parents=True, exist_ok=True)
-    atomic_write_text(path, json.dumps(doc, indent=1) + "\n")
+    atomic_write_text(path, json.dumps(doc, indent=1) + "\n", fsync=True)
+
+
+def knowing(tile: TileRef, shown: TileClouds | None) -> CloudList:
+    """The tile's list, knowing every cloud the tile shows replaced (``shown``): one it does not
+    (its list put aside, or written on another computer) is added and kept as Apply would have
+    left it: ticked, its source and its images those the tile shows (its check), and among the
+    clouds last laid, which a build lays again."""
+    cl = load(tile)
+    if shown is not None and _adopt(cl, shown):
+        with update(tile) as cl:
+            _adopt(cl, shown)
+    return cl
+
+
+def _adopt(cl: CloudList, shown: TileClouds) -> bool:
+    """The clouds ``shown`` holds that ``cl`` does not know, added (:func:`knowing`); whether
+    one was."""
+    known = {c["id"] for c in cl.clouds}
+    new = [e for e in shown.held if e["id"] not in known]
+    for e in new:
+        c = cl.add("found", [list(r) for r in e["rings"]], tick=True, chosen=e["source"])
+        c["id"] = e["id"]
+        c["checks"] = {e["source"]: {"answer": "clear", "fit": 0, "entry": laid_fields(e)}}
+        laid = {**laid_fields(e), "kind": c["kind"], "number": c["number"]}
+        cl.laid = [x for x in cl.laid if x["id"] != e["id"]] + [laid]
+    return bool(new)
 
 
 def forget(tile: TileRef) -> None:
@@ -196,13 +255,6 @@ def update(tile: TileRef, *, since: int | None = None) -> Iterator[CloudList]:
 
 
 # -- edits -------------------------------------------------------------------------------------
-
-
-def pick_action(tick: bool | None, source: str | None) -> str:
-    """What a pick is: ``choose`` a source, else ``untick`` or ``tick``."""
-    if source is not None:
-        return "choose"
-    return "untick" if tick is False else "tick"
 
 
 def pick(cl: CloudList, cid: str, action: str, source: str | None = None) -> None:
@@ -267,6 +319,21 @@ def merge_search(
 def _kept(c: Mapping[str, Any], holds: Mapping[str, Any]) -> bool:
     """Whether a search or an outline leaves ``c`` as it is: held, outlined, or ticked."""
     return c["id"] in holds or c["kind"] == "drawn" or bool(c["tick"])
+
+
+def outline_problem(rings: Any, tile: TileRef) -> str | None:
+    """Why ``rings`` drawn by hand are no outline on ``tile``, or ``None``: rings of places on
+    Earth, around some ground, on the tile."""
+    why = ring_problem(rings)
+    if why is not None:
+        return why
+    if rings_ha(rings) <= 0:
+        return "an outline needs three points"
+    lat, lon = tile.lat, tile.lon
+    box = Polygon([(lon, lat), (lon + 1, lat), (lon + 1, lat + 1), (lon, lat + 1)])
+    if not _shape(rings).intersects(box):
+        return "an outline is drawn on the tile"
+    return None
 
 
 def add_outline(

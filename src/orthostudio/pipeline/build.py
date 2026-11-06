@@ -3399,13 +3399,17 @@ class _Collector:
         self._env: BuildEnv | None = None
 
     def installs(self, graphs: Iterable[TileNodes], env: BuildEnv) -> None:
-        """Watch the packs of the tiles of ``graphs`` the build installs. A tile filed elsewhere,
-        put in the Trash, then built again comes back to the workshop: its pack, found in the
-        cache, wrote nothing there, and its install, which had never run for that build (a tile
-        filed elsewhere is put back, not installed), read the folder before the end of the build
-        laid it again, and failed with an internal error (found on the owner's Shadow,
-        2026-10-06). The scheduler hands a node's ``Done`` here before it starts what follows."""
-        self._installs.update({g.pack.id: g for g in graphs if g.install is not None})
+        """Watch the packs of the tiles of ``graphs`` built in the workshop (a tile filed
+        elsewhere is put back from it, :func:`_put_back_tile`): a pack found in the cache whose
+        folder lost files is laid again when the pack is done, before anything reads it, its
+        install and its clouds (``_clouds_before_done``). A tile filed elsewhere, put in the
+        Trash, then built again comes back to the workshop: its pack, found in the cache, wrote
+        nothing there, and its install, which had never run for that build (a tile filed
+        elsewhere is put back, not installed), read the folder before the end of the build laid
+        it again, and failed with an internal error (found on the owner's Shadow, 2026-10-06);
+        a tile not installed showed its clouds no more, laid before the end of the build laid its
+        folder again. The scheduler hands a node's ``Done`` here before it starts what follows."""
+        self._installs.update({g.pack.id: g for g in graphs})
         self._env = env
 
     def __call__(self, event: Event) -> None:
@@ -3433,7 +3437,7 @@ class _Collector:
                 _assemble_again(nodes, self._env, self, manifest)
                 self.laid.add(done.node_id)
         except Exception:  # the end of the build lays it again, and says what stops it
-            log.warning("%s could not be laid again before its install", spec.tile.name,
+            log.warning("%s could not be laid again when its pack was done", spec.tile.name,
                         exc_info=True)  # fmt: skip
 
     def outcome(self, role: str, node: Node) -> NodeOutcome:
@@ -3598,6 +3602,11 @@ PUT_BACK_BYTES_PER_S = 100e6
 disk's pace. The step's own bar moves by the bytes."""
 
 
+def _put_back_id(spec: BuildSpec) -> str:
+    """The node id of the step that puts a tile filed elsewhere back in its folder."""
+    return f"{spec.tile.name}/{spec.level}/{PUT_BACK_ROLE}"
+
+
 def _put_back_rows(
     specs: Sequence[BuildSpec], homes: Mapping[str, Path]
 ) -> tuple[tuple[tuple[str, NodeKind, str], ...], tuple[tuple[str, float], ...]]:
@@ -3612,7 +3621,7 @@ def _put_back_rows(
         home = homes.get(spec.tile.name)
         if home is None:
             continue
-        node_id = f"{spec.tile.name}/{spec.level}/{PUT_BACK_ROLE}"
+        node_id = _put_back_id(spec)
         rows.append((node_id, "io", PUT_BACK_ROLE))
         took = 1.0
         if not same_disk(Path(spec.out_dir).expanduser().resolve(), home.parent):
@@ -3642,7 +3651,7 @@ def _put_back_tile(
     one waits in the workshop, its roads parked in it, not drawn twice. Returns what was repaired,
     whether the tile is in X-Plane, and the step's failure."""
     spec = nodes.spec
-    node_id = f"{spec.tile.name}/{spec.level}/{PUT_BACK_ROLE}"
+    node_id = _put_back_id(spec)
     pack_done = collector.done[nodes.pack.id]
     manifest = PackManifest.from_toml(pack_done.ref.path.read_text(encoding="utf-8"))
     here = Path(spec.out_dir).expanduser().resolve() / pack_dir_name(spec.tile)
@@ -3800,6 +3809,33 @@ def _clouds_again(spec: BuildSpec, pack_dir: Path) -> None:
         lay_again(spec.tile, pack_dir, custom_scenery=spec.custom_scenery)
     except Exception:
         log.warning("%s: its replaced clouds were not laid again", spec.tile.name, exc_info=True)
+
+
+def _clouds_before_done(
+    on_event: Callable[[BuildEvent], None] | None,
+    graphs: Iterable[TileNodes],
+    homes: Mapping[str, Path],
+) -> Callable[[BuildEvent], None]:
+    """``on_event`` told every event, each tile's clouds laid again in its folder
+    (:func:`_clouds_again`) just before the event that says the build finished it: its target's,
+    or its put back's for a tile filed elsewhere. A tile the build has finished is one whose
+    folder X-Plane may show, and others may read: it shows its clouds from then."""
+    finishing: dict[str, tuple[BuildSpec, Path]] = {}
+    for g in graphs:
+        name = g.spec.tile.name
+        if name in homes:
+            finishing[_put_back_id(g.spec)] = (g.spec, homes[name])
+        else:
+            out_root = Path(g.spec.out_dir).expanduser().resolve()
+            finishing[g.target.id] = (g.spec, out_root / pack_dir_name(g.spec.tile))
+
+    def told(event: BuildEvent) -> None:
+        if isinstance(event, Done) and event.node_id in finishing:
+            _clouds_again(*finishing[event.node_id])
+        if on_event is not None:
+            on_event(event)
+
+    return told
 
 
 def _let_go(
@@ -3961,7 +3997,7 @@ def build_tiles(
     if on_event is not None:
         for s in every_spec:
             if s.tile.name in away:
-                on_event(Failed(f"{s.tile.name}/{s.level}/{PUT_BACK_ROLE}", away[s.tile.name]))
+                on_event(Failed(_put_back_id(s), away[s.tile.name]))
     # Validate the stage options *before* anything is downloaded or written (finding V1).
     choices = stage_choices(specs)
     # The OSM downloads are nodes of the graph, on a lane of their own (spec 8.3): each tile goes
@@ -3997,8 +4033,9 @@ def build_tiles(
         ),
     )
     targets = [g.target.id for g in graphs]
-    collector = _Collector(on_event)
-    collector.installs(graphs, env)
+    told = _clouds_before_done(on_event, graphs, homes)
+    collector = _Collector(told)
+    collector.installs([g for g in graphs if g.spec.tile.name not in homes], env)
 
     async def main() -> dict[str, ArtifactRef]:
         loop = asyncio.get_running_loop()
@@ -4081,7 +4118,7 @@ def build_tiles(
             )
             by_spec = {id(g.spec): new for g, new in zip(retry, redone, strict=True)}
             graphs = [by_spec.get(id(g.spec), g) for g in graphs]
-            collector.installs(redone, env)
+            collector.installs([g for g in redone if g.spec.tile.name not in homes], env)
             _emit_phase(
                 on_event,
                 Phase(
@@ -4107,7 +4144,7 @@ def build_tiles(
     for spec in every_spec:
         name = spec.tile.name
         if name in away:
-            node = f"{name}/{spec.level}/{PUT_BACK_ROLE}"
+            node = _put_back_id(spec)
             tiles.append(_unbuilt_tile(spec, away[name], None, node=node, role=PUT_BACK_ROLE))
             continue
         if id(spec) in no_osm:
@@ -4126,7 +4163,7 @@ def build_tiles(
                 collector,
                 home,
                 install=asked_install[name],
-                on_event=on_event,
+                on_event=told,
                 stopped=stopped,
             )
             if put is not None:
@@ -4147,8 +4184,6 @@ def build_tiles(
         ok = g.target.id in collector.done and not any(o.status == "failed" for o in outcomes)
         out_root = Path(g.spec.out_dir).expanduser().resolve()
         pack_dir = out_root / pack_dir_name(g.spec.tile) if home is None or not ok else home
-        if g.pack.id in collector.done:
-            _clouds_again(g.spec, pack_dir)
         overlay_path = out_root / OVERLAY_PACK / g.spec.tile.dsf_relpath
         tiles.append(
             TileOutcome(

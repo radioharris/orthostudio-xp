@@ -57,9 +57,10 @@ question's button to the end of the task, read by the page every 0.1 s:
 
 ## B5. After against the texture as laid (Mac, 2026-11-06)
 
-`tools/clouds/after_vs_built.py`: After as the map shows it (Before with the cloud's preview over
-it) against the tile drawn from its textures as laid, what X-Plane shows, at the map's level (12),
-the mean absolute difference per channel (0 to 255), the clouds of B4:
+`tools/clouds/after_vs_built.py`: After as the map shows it while Apply is to lay the cloud
+(Before with its preview over it) against the tile drawn from its textures as laid, what X-Plane
+shows, at the map's level (12), the mean absolute difference per channel (0 to 255), the clouds
+of B4:
 
 | Cloud | Inside | Soft edge | Outside | What the replacement changed inside |
 |---|---|---|---|---|

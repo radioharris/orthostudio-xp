@@ -21,9 +21,9 @@ import pytest
 from PIL import Image
 
 import test_api_fakes as fakes
-from orthostudio.clouds import cloudlist
+from orthostudio.clouds import cloudlist, state
 from orthostudio.clouds.layer import encode_part, pieces
-from orthostudio.clouds.laying import lay_again, lay_folder, lay_texture, show
+from orthostudio.clouds.laying import lay_again, lay_folder, lay_texture, plan_folder, show
 from orthostudio.clouds.tile import (
     TileClouds,
     entry_problem,
@@ -31,7 +31,7 @@ from orthostudio.clouds.tile import (
     part_path,
     parts_dir,
     patches_of,
-    read_stamp,
+    read_head,
     read_tile,
     stands_not,
 )
@@ -76,6 +76,8 @@ def folder(home: Path, textures: dict[str, bytes]) -> Path:
     (pack / "textures").mkdir(parents=True)
     for name, data in textures.items():
         (pack / "textures" / f"{name}.dds").write_bytes(data)
+    (pack / TILE.dsf_relpath).parent.mkdir(parents=True)
+    (pack / TILE.dsf_relpath).write_bytes(b"")  # whole: every file its manifest lists
     files = {"dsf": TILE.dsf_relpath.as_posix(), "dsf_size": 0, "textures": 2, "terrain": 0}
     manifest = PackManifest(TILE.name, "T", 12, {"textures": ArtefactEntry("k", "d", "r@1")}, files)
     write_manifest(pack, TILE, manifest)
@@ -105,11 +107,16 @@ def _cloud(cid: str, ring: list[float], held: TileClouds, colour: tuple[int, int
 
 
 def _lay(folder: Path, entries: list[dict]) -> list:
-    return lay_folder(TILE, folder, entries)
+    """The folder made to show ``entries``, one images each, as a build after lays them."""
+    return lay_folder(TILE, folder, [[e] for e in entries])
 
 
 def _texture(folder: Path, t: TextureId) -> Path:
     return folder / "textures" / f"{texture_name(t)}.dds"
+
+
+def _stamp(path: Path) -> Any:
+    return read_head(path)[0]
 
 
 def _blocks(data: bytes) -> list[np.ndarray]:
@@ -140,7 +147,7 @@ def test_only_the_blocks_a_cloud_reaches_are_made_again_at_every_level(
             .reshape(-1, 2).mean(axis=0).astype(int))  # fmt: skip
     assert np.abs(first[y, x, :3].astype(int) - RED).max() < 12
     assert _texture(folder, EAST).read_bytes() == textures[texture_name(EAST)]
-    assert read_stamp(_texture(folder, EAST)) is None
+    assert _stamp(_texture(folder, EAST)) is None
 
 
 def test_the_build_texture_is_kept_beside_and_restore_puts_it_back_byte_for_byte(
@@ -152,13 +159,13 @@ def test_the_build_texture_is_kept_beside_and_restore_puts_it_back_byte_for_byte
     _lay(folder, [_cloud("c1", WEST_ONLY, held, RED)])
     kept = folder / "clouds" / f"{texture_name(WEST)}.dds"
     assert kept.read_bytes() == before
-    stamp = read_stamp(_texture(folder, WEST))
+    stamp = _stamp(_texture(folder, WEST))
     assert stamp is not None and stamp.plain == digest_bytes(before)[:40]
     other = folder / "clouds" / ("d" * 64 + ".json")  # a file there not the clouds' own
     other.write_text("{}")
     _lay(folder, [])
     assert _texture(folder, WEST).read_bytes() == before
-    assert read_stamp(_texture(folder, WEST)) is None
+    assert _stamp(_texture(folder, WEST)) is None
     assert sorted(p.name for p in (folder / "clouds").iterdir()) == [other.name]  # ours gone
 
 
@@ -219,7 +226,7 @@ def test_a_build_after_lays_again_the_clouds_that_still_stand_whole(
     laid = cloudlist.load(TILE).laid  # the list told what the tile shows now
     assert [c["id"] for c in laid] == ["c1"]
     assert [c["id"] for c in read_tile(folder).held] == ["c1"]
-    assert read_stamp(_texture(folder, EAST)) is None
+    assert _stamp(_texture(folder, EAST)) is None
     assert _texture(folder, WEST).read_bytes() != shown["w"]  # laid with c1 alone
 
 
@@ -229,13 +236,13 @@ def test_a_build_lays_nothing_again_without_clouds_applied_or_in_another_folder(
     held = read_tile(folder)
     assert held is not None
     lay_again(TILE, folder, custom_scenery=None)  # no list: nothing
-    assert read_stamp(_texture(folder, WEST)) is None
+    assert _stamp(_texture(folder, WEST)) is None
     with cloudlist.update(TILE) as cl:
         cl.laid = [_cloud("c1", WEST_ONLY, held, RED)]
     other = tmp_path / "elsewhere" / pack_dir_name(TILE)
     shutil.copytree(folder, other)
     lay_again(TILE, other, custom_scenery=None)  # a command line's own folder: not the tile's
-    assert read_stamp(other / "textures" / f"{texture_name(WEST)}.dds") is None
+    assert _stamp(other / "textures" / f"{texture_name(WEST)}.dds") is None
 
 
 def test_a_build_texture_lost_from_beside_is_said_and_nothing_is_written(folder: Path) -> None:
@@ -288,7 +295,7 @@ def test_apply_is_all_or_nothing_a_texture_xplane_holds_puts_the_others_back(
     across = _cloud("c2", ACROSS, held, BLUE)  # two textures to lay
     _refusing(monkeypatch, at=2)
     with pytest.raises(OsxpError) as got:
-        show(TILE, folder, [across], custom_scenery=None)
+        show(TILE, folder, [[across]], custom_scenery=None)
     assert got.value.code == "XP_PACK_CONFLICT" and "Quit X-Plane" in got.value.remedy
     for name, data in textures.items():  # the first one put back: nothing changed
         assert (folder / "textures" / f"{name}.dds").read_bytes() == data
@@ -314,7 +321,7 @@ def test_a_texture_a_build_replaced_meanwhile_is_not_laid_over(
 
     monkeypatch.setattr(laying, "lay_texture", while_a_build_places_its_own)
     with pytest.raises(OsxpError) as got:
-        show(TILE, folder, [cloud], custom_scenery=None)
+        show(TILE, folder, [[cloud]], custom_scenery=None)
     assert got.value.code == "CLOUD_TILE_NOT_READY" and got.value.context["state"] == "in_build"
     assert _texture(folder, WEST).read_bytes() == other  # the build's, untouched
     assert cloudlist.load(TILE).laid == []
@@ -327,7 +334,7 @@ def test_a_cloud_whose_images_are_gone_is_left_out_and_the_others_laid(folder: P
     part_path(across["parts"][texture_name(EAST)][1]).unlink()
     assert lays_not(across, TILE, held) == "parts" and stands_not(across, TILE, held) is None
     assert [c["id"] for c in _lay(folder, [west, across])] == ["c1"]
-    assert read_stamp(_texture(folder, EAST)) is None
+    assert _stamp(_texture(folder, EAST)) is None
 
 
 def test_a_texture_that_cannot_be_read_is_never_taken_for_the_builds(folder: Path) -> None:
@@ -360,7 +367,7 @@ def test_files_a_laying_cut_short_left_go_once_their_program_is_gone(folder: Pat
 def test_a_build_that_changes_nothing_writes_no_list(folder: Path) -> None:
     held = read_tile(folder)
     assert held is not None
-    show(TILE, folder, [_cloud("c1", WEST_ONLY, held, RED)], custom_scenery=None)
+    show(TILE, folder, [[_cloud("c1", WEST_ONLY, held, RED)]], custom_scenery=None)
     path = cloudlist.list_path(TILE)
     at = path.stat().st_mtime_ns
     lay_again(TILE, folder, custom_scenery=None)  # every texture shows its clouds already
@@ -383,3 +390,251 @@ def test_a_build_texture_linked_from_its_store_leaves_nothing_beside(folder: Pat
     lay_again(TILE, folder, custom_scenery=None)
     assert texture.read_bytes() == laid
     assert not list(folder.glob("*/*.osxp-clouds-*"))  # nothing left beside
+
+
+def test_a_texture_whose_clouds_no_file_says_is_made_again(folder: Path) -> None:
+    # a sidecar gone (another program's sweep, by hand): Apply writes it again, never loops
+    held = read_tile(folder)
+    assert held is not None
+    cloud = _cloud("c1", WEST_ONLY, held, RED)
+    _lay(folder, [cloud])
+    (side,) = (folder / "clouds").glob("*.json")
+    side.unlink()
+    shown = read_tile(folder)
+    assert shown is not None and shown.held == () and texture_name(WEST) not in shown.known
+    assert plan_folder(TILE, shown, [[cloud]]).remade == {texture_name(WEST)}
+    _lay(folder, [cloud])
+    shown = read_tile(folder)
+    assert shown is not None and [c["id"] for c in shown.held] == ["c1"]
+    assert plan_folder(TILE, shown, [[cloud]]).work == []
+
+
+def test_a_sidecar_that_is_not_whole_says_nothing_and_breaks_nothing(folder: Path) -> None:
+    held = read_tile(folder)
+    assert held is not None
+    _lay(folder, [_cloud("c1", WEST_ONLY, held, RED)])
+    (side,) = (folder / "clouds").glob("*.json")
+    side.write_text("[1]")
+    shown = read_tile(folder)
+    assert shown is not None and shown.held == () and shown.known == frozenset()
+
+
+def test_a_link_left_where_a_texture_is_made_is_never_written_through(folder: Path) -> None:
+    # a file left beside by a laying cut short may be a link to the build's own: let go of first
+    from orthostudio.clouds.tile import beside
+
+    held = read_tile(folder)
+    assert held is not None
+    texture = _texture(folder, WEST)
+    built = texture.read_bytes()
+    os.link(texture, beside(texture, "new"))  # the build's own under the name Apply writes
+    _lay(folder, [_cloud("c1", WEST_ONLY, held, RED)])
+    assert (folder / "clouds" / f"{texture_name(WEST)}.dds").read_bytes() == built
+
+
+def test_a_texture_left_torn_keeps_the_build_one_kept_beside(folder: Path) -> None:
+    # a power cut after a rename: the texture no laid one, nor the build's; the kept one stays
+    held = read_tile(folder)
+    assert held is not None
+    _lay(folder, [_cloud("c1", WEST_ONLY, held, RED)])
+    kept = folder / "clouds" / f"{texture_name(WEST)}.dds"
+    texture = _texture(folder, WEST)
+    texture.write_bytes(b"\0" * texture.stat().st_size)
+    _lay(folder, [])
+    assert kept.is_file()
+
+
+def test_what_lies_beside_once_laid_never_fails_the_laying(
+    folder: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Windows: a file let go of while another holds it; it goes at a later laying
+    held = read_tile(folder)
+    assert held is not None
+    cloud = _cloud("c1", WEST_ONLY, held, RED)
+    real = Path.unlink
+
+    def unlink(self: Path, missing_ok: bool = False) -> None:
+        if ".osxp-clouds-before-" in self.name and self.exists():
+            raise PermissionError(13, "in use", str(self))
+        real(self, missing_ok=missing_ok)
+
+    monkeypatch.setattr(Path, "unlink", unlink)
+    show(TILE, folder, [[cloud]], custom_scenery=None)
+    assert [e["id"] for e in cloudlist.load(TILE).laid] == ["c1"]
+
+
+def test_a_folder_not_whole_is_never_laid_in(folder: Path) -> None:
+    held = read_tile(folder)
+    assert held is not None
+    cloud = _cloud("c1", WEST_ONLY, held, RED)
+    _texture(folder, EAST).unlink()  # a file taken from it
+    with pytest.raises(OsxpError) as got:
+        _lay(folder, [cloud])
+    assert got.value.context["state"] == "not_whole"
+    assert _stamp(_texture(folder, WEST)) is None
+
+
+def test_a_folder_whose_clouds_are_a_link_elsewhere_is_not_ours(
+    folder: Path, tmp_path: Path
+) -> None:
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    (folder / "clouds").symlink_to(elsewhere, target_is_directory=True)
+    assert read_tile(folder) is None
+    with pytest.raises(OsxpError):
+        _lay(folder, [])
+
+
+def test_the_build_texture_is_found_one_way_the_store_after_the_one_kept(
+    folder: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # the map's picture and Apply read the same file: the kept one, else the store's
+    held = read_tile(folder)
+    assert held is not None
+    _lay(folder, [_cloud("c1", WEST_ONLY, held, RED)])
+    kept = folder / "clouds" / f"{texture_name(WEST)}.dds"
+    store = tmp_path / "store-copy.dds"
+    shutil.copyfile(kept, store)
+    kept.unlink()
+    monkeypatch.setattr(TileClouds, "stored_path", lambda self, name: store)
+    shown = read_tile(folder)
+    assert shown is not None
+    assert shown.plain_path(texture_name(WEST)) == store == shown.plains()[texture_name(WEST)]
+    _lay(folder, [])  # Restore from the store's
+    assert _stamp(_texture(folder, WEST)) is None
+    assert _texture(folder, WEST).read_bytes() == store.read_bytes()
+
+
+def test_the_tile_shows_its_clouds_before_the_build_says_it_finished_it(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # a job lets go of a tile it finished: laid again before that, never at the job's end
+    from orthostudio.sched.events import Done
+
+    seen: list[str] = []
+    monkeypatch.setattr(build_mod, "_clouds_again", lambda spec, folder: seen.append("laid"))
+    spec = SimpleNamespace(tile=TILE, level="BI_12", out_dir=str(tmp_path))
+    workshop = SimpleNamespace(spec=spec, target=SimpleNamespace(id="+43+005/BI_12/pack"))
+    told = build_mod._clouds_before_done(lambda e: seen.append(e.node_id), [workshop], {})
+    for node in ("+43+005/BI_12/textures", "+43+005/BI_12/pack"):
+        told(Done(node, "k", False, 0.0, None))  # type: ignore[arg-type]
+    assert seen == ["+43+005/BI_12/textures", "laid", "+43+005/BI_12/pack"]
+    seen.clear()
+    filed = build_mod._clouds_before_done(lambda e: seen.append(e.node_id), [workshop],
+                                          {TILE.name: tmp_path})  # fmt: skip
+    filed(Done("+43+005/BI_12/pack", "k", False, 0.0, None))  # type: ignore[arg-type]
+    filed(Done(f"+43+005/BI_12/{build_mod.PUT_BACK_ROLE}", "k", False, 0.0, None))  # type: ignore[arg-type]
+    assert seen == ["+43+005/BI_12/pack", "laid", f"+43+005/BI_12/{build_mod.PUT_BACK_ROLE}"]
+
+
+def test_a_cloud_the_tile_shows_and_its_list_forgot_is_kept_by_the_next_apply(
+    folder: Path,
+) -> None:
+    # its list put aside (not a list), or written on another computer: what X-Plane shows stays
+    held = read_tile(folder)
+    assert held is not None
+    west, across = _cloud("c1", WEST_ONLY, held, RED), _cloud("c2", ACROSS, held, BLUE)
+    show(TILE, folder, [[west]], custom_scenery=None)
+    cloudlist.list_path(TILE).write_text("not a list")
+    shown = read_tile(folder)
+    cl = cloudlist.knowing(TILE, shown)  # the list knows it again, ticked, of its source
+    (c,) = cl.clouds
+    assert c["id"] == "c1" and c["tick"] is True and c["chosen"] == "EOX"
+    assert list(cloudlist.list_path(TILE).parent.glob("*.broken-*"))  # the file put aside
+    with cloudlist.update(TILE) as cl:  # another cloud ticked, its images got
+        n = cl.add("found", [ACROSS], tick=True, chosen="EOX")
+        n["checks"] = {"EOX": {"answer": "clear", "fit": 70, "entry": across}}
+        n["id"] = "c2"
+    v = state.view(cloudlist.load(TILE), shown, TILE, "ready")
+    assert [s.row for s in v.clouds] == ["held", "ready"] and v.counts["held"] == 1
+    show(TILE, folder, v.asked, custom_scenery=None)
+    shown = read_tile(folder)
+    assert shown is not None and sorted(c["id"] for c in shown.held) == ["c1", "c2"]
+
+
+def test_a_texture_unreadable_right_after_its_replace_is_still_put_back(
+    folder: Path, textures: dict[str, bytes], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Windows: an antivirus holds the texture just replaced, then the next one is refused
+    from orthostudio.clouds import laying
+
+    held = read_tile(folder)
+    assert held is not None
+    across = _cloud("c2", ACROSS, held, BLUE)
+    real_replace, real_identity = laying.replace, laying.identity
+    placed = [0]
+    held_once = [False]
+
+    def replace(src: Path, dst: Path) -> None:
+        a_new_one = Path(dst).parent.name == "textures" and ".osxp-clouds-new-" in Path(src).name
+        if a_new_one and placed[0] == 1:  # the second texture: refused
+            raise PermissionError(13, "in use", str(dst))
+        real_replace(src, dst)
+        placed[0] += a_new_one
+
+    def identity(path: Path) -> Any:
+        if placed[0] == 1 and not held_once[0] and Path(path).parent.name == "textures":
+            held_once[0] = True
+            raise PermissionError(13, "held", str(path))
+        return real_identity(path)
+
+    monkeypatch.setattr(laying, "replace", replace)
+    monkeypatch.setattr(laying, "identity", identity)
+    with pytest.raises(OsxpError):
+        show(TILE, folder, [[across]], custom_scenery=None)
+    for name, data in textures.items():  # nothing changed
+        assert (folder / "textures" / f"{name}.dds").read_bytes() == data
+
+
+def test_apply_while_x_plane_shows_the_tile_says_so_in_its_own_words(
+    folder: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from orthostudio.clouds import laying
+
+    def running(*_a: Any) -> None:
+        raise OsxpError("SYS_REBUILD_XP_RUNNING", context={"tile": TILE.name})
+
+    monkeypatch.setattr(laying, "_refuse_rewrite_under_running_xplane", running)
+    with pytest.raises(OsxpError) as got:
+        show(TILE, folder, [], custom_scenery=None)
+    assert got.value.code == "CLOUD_XPLANE_RUNNING" and "apply again" in got.value.remedy
+
+
+def test_a_build_lays_again_a_cloud_its_list_knew_only_from_the_folder(folder: Path) -> None:
+    # its list lost: known again from the folder, laid again by the build after
+    held = read_tile(folder)
+    assert held is not None
+    west = _cloud("c1", WEST_ONLY, held, RED)
+    show(TILE, folder, [[west]], custom_scenery=None)
+    laid = _texture(folder, WEST).read_bytes()
+    cloudlist.list_path(TILE).unlink()
+    cl = cloudlist.knowing(TILE, read_tile(folder))
+    assert [e["id"] for e in cl.laid] == ["c1"] and cl.clouds[0]["checks"]["EOX"]["entry"]
+    kept = folder / "clouds" / f"{texture_name(WEST)}.dds"
+    _texture(folder, WEST).unlink()
+    shutil.copyfile(kept, _texture(folder, WEST))  # the build places its own
+    lay_again(TILE, folder, custom_scenery=None)
+    assert _texture(folder, WEST).read_bytes() == laid
+
+
+def test_a_cached_pack_whose_folder_lost_files_is_laid_again_when_its_pack_is_done(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # a tile not installed too: before its clouds are laid again, not after (they were erased)
+    from orthostudio.sched.events import Done
+
+    laid: list[str] = []
+    monkeypatch.setattr(build_mod, "pack_is_intact", lambda *a, **k: False)
+    monkeypatch.setattr(
+        build_mod, "_assemble_again", lambda nodes, env, col, m: laid.append("pack")
+    )
+    pack = tmp_path / "pack"
+    files = {"dsf": TILE.dsf_relpath.as_posix(), "dsf_size": 0, "textures": 0, "terrain": 0}
+    write_manifest(pack, TILE, PackManifest(TILE.name, "T", 12, {}, files))
+    spec = SimpleNamespace(tile=TILE, out_dir=str(tmp_path), level="T_12")
+    nodes = SimpleNamespace(spec=spec, pack=SimpleNamespace(id="+43+005/T_12/pack"), install=None)
+    collector = build_mod._Collector(lambda e: laid.append("told"))
+    collector.installs([nodes], SimpleNamespace())  # type: ignore[list-item, arg-type]
+    ref = SimpleNamespace(path=pack / "orthostudio.toml")
+    collector(Done("+43+005/T_12/pack", "k", True, 0.0, ref))  # type: ignore[arg-type]
+    assert laid == ["pack", "told"]

@@ -18,19 +18,20 @@ after. What the map shows is what X-Plane shows.
 
 In the **Library**, on the line of a tile built by OrthoStudio XP, press **Clouds…**. The Plan's
 map comes over the tile, drawn as X-Plane draws it, from the tile's own files: nothing is
-downloaded. A tile built by an earlier version is built once again with this one first: the panel
-says so.
+downloaded. Any tile built by OrthoStudio XP can have its clouds replaced, whatever version built
+it.
 
 ### 2. Look for the clouds
 
-Press **Find clouds**. The first time, the app asks to download the tool that finds the clouds:
-about 110 MB, OpenCV included, depending on the system. It is downloaded once and runs on your
-computer: nothing is sent anywhere.
+Press **Quick search**, or **Fine search** to find the small clouds too, in about twice the time
+(it is greyed on a tile built no finer than the quick search reads). The first time, the app asks
+to download the tool that finds the clouds: about 110 MB, OpenCV included, depending on the
+system. It is downloaded once and runs on your computer: nothing is sent anywhere.
 
-The search reads the tile, a second time in more detail where the tile is sharp enough to hold
-small clouds, then tries every other source covering the tile under each cloud: whether it has a
-picture there, whether it is clear, and how well its ground fits the photo around the cloud. On a
-ZL14 tile it takes about a minute. The panel shows where it is; **Stop** ends it.
+The search reads the tile (the fine one a second time in more detail, where the tile is sharp enough
+to hold small clouds), then tries every other source covering the tile under each cloud: whether it
+has a picture there, whether it is clear, and how well its ground fits the photo around the cloud.
+On a ZL14 tile it takes about a minute. The panel shows where it is; **Stop** ends it.
 
 ### 3. Choose what to replace
 
@@ -40,10 +41,16 @@ the same photo as the tile, which would bring the cloud back, or with no picture
 
 - Every cloud comes **unticked**. The tool can take something pale for a cloud, such as light,
   muddy water near a coast: look before you tick. **Show** brings the map to a cloud.
-- **Tick** a cloud, or click its outline on the map: its source's images are fetched at the
+- **Tick** a cloud, or click its outline on the map (its tooltip says what a click does; its row
+  comes to the middle of the list): its source's images are fetched at the
   tile's own sharpness, in a few seconds, and its line says *Replaced by Esri World Imagery after
-  Apply*. Its outline turns to the accent colour.
+  Apply*. Its outline turns to the accent colour. If the tool that finds clouds is not on your
+  computer yet, the app asks first; say no, and the cloud stays ticked, waiting for its images.
 - To take another source, choose it in the cloud's list: it is ticked with it.
+- **Tick all** and **Untick all**, above the list, tick or untick every cloud at once.
+- A spinner says that a cloud's images are being fetched, in its row and at its centre on the
+  map. A found cloud shows its number inside it; one too small to see at the map's zoom has a pin
+  you can click.
 - A source that did not answer or refused for now says so in the line: **Get its images** asks
   it again.
 
@@ -51,8 +58,8 @@ the same photo as the tile, which would bring the cloud back, or with no picture
 
 The banner over the map has two views:
 
-- **After**: what X-Plane shows, the ticked clouds replaced, or what it will show once you press
-  Apply.
+- **After**: what X-Plane shows, read from the tile's own textures, or what it will show once you
+  press Apply: where Apply will change a texture, the clouds it lays there are drawn over it.
 - **Before**: the tile with no cloud replaced.
 
 ### 5. A cloud the search missed: outline it
@@ -71,16 +78,18 @@ how far it is. The rest of the tile stays exactly as built. It is all or nothing
 cannot be replaced, nothing changes and the app says why. On Windows, quit X-Plane first if it
 shows the tile: it holds the textures and they cannot be replaced while it runs.
 
-While the tile is being built, or waits in the queue, its clouds are shown as they are, and
-nothing can be changed: they are back once the build is over.
+While the tile is being built, waits in the queue, or is being filed in the Library, its clouds
+are shown as they are, and nothing can be changed: they are back once that is over. A build of
+the tile waits a moment for a task of its clouds to end first (Apply ends what it began, the
+others stop).
 
 **Discard changes** puts the list back to what the tile holds.
 
 ### 7. Afterwards
 
 The tile keeps its clouds replaced: every build of it after, from the Plan, the Library, Works or
-the command line, lays them again on the same photo once it has placed its textures. The Library
-says how many it has replaced and how many wait.
+the command line, lays them again on the same photo as soon as it has finished the tile, before the
+other tiles of the same build. The Library says how many it has replaced and how many wait.
 
 A cloud is chosen on a photo. Build the tile from another source or at another level, change the
 colours of the tile or of a zone near the cloud, or let its source send new images, and the photo

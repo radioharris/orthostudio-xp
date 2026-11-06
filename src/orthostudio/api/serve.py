@@ -14,6 +14,7 @@ import socket
 import threading
 import time
 import webbrowser
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -292,7 +293,7 @@ def serve(
             ).start()
         threading.Thread(
             target=presence.quit_when_closed,
-            args=(state["presence"], lambda: state["jobs"].active() is not None, shutdown),
+            args=(state["presence"], lambda: _busy(state), shutdown),
             kwargs={"wait": stopping.wait},
             name="quit-when-closed",
             daemon=True,
@@ -306,6 +307,17 @@ def serve(
         manager = app.state.orthostudio["jobs"]
         with contextlib.suppress(Exception):
             manager.close(timeout=5.0)
+        clouds = app.state.orthostudio.get("clouds")
+        if clouds is not None:
+            with contextlib.suppress(Exception):
+                clouds.tasks.end()  # an Apply ends what it began, the others stop
+
+
+def _busy(state: Mapping[str, Any]) -> bool:
+    """Whether the engine works for nobody's page: a build, or a task of the cloud mode (a search,
+    an Apply), which ends whether a page is open or not (``clouds.md`` R7)."""
+    clouds = state.get("clouds")
+    return state["jobs"].active() is not None or bool(clouds is not None and clouds.tasks.of())
 
 
 def check(*, port: int = DEFAULT_PORT, ui_dir: Path | None = None, timeout_s: float = 20.0) -> dict:

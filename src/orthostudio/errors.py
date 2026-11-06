@@ -1252,6 +1252,14 @@ _SPECS: tuple[ErrorSpec, ...] = (
         "Build the tile first, or wait for its build to end.",
     ),
     _spec(
+        "CLOUD_XPLANE_RUNNING",
+        _B,
+        _S,
+        "X-Plane is running and shows tile {tile}: its textures are not replaced while it runs. "
+        "Nothing was changed.",
+        "Quit X-Plane, then apply again.",
+    ),
+    _spec(
         "CLOUD_TEXTURE_LOST",
         _B,
         _S,

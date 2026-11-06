@@ -50,6 +50,7 @@ from orthostudio.clouds.tile import (
     laid_fields,
     part_path,
     patches_of,
+    preview_path,
 )
 from orthostudio.errors import OsxpError
 from orthostudio.fsutil import atomic_write_bytes
@@ -569,7 +570,7 @@ def check(
     reached = patches_of(c, tile, textures, lambda t: min(t.zl, provider.max_zl))
     if not reached:
         return Check(Judgement("no_picture"))
-    plain = {n: shown.plain(n) for n in reached}  # the textures read now, never during a build
+    plain = {n: shown.plain(n) for n in reached}  # the folder no other holds meanwhile (tasks)
     by_name = {n: parse_texture_name(n) for n in reached}
     box = _cloud_box(p, rings)
     # the source around the cloud too, at the search's reading of it: its colours are matched
@@ -599,8 +600,8 @@ def check(
         data = encode_part(got)
         digest = digest_bytes(data)
         path = part_path(digest)
-        if not path.exists():
-            atomic_write_bytes(path, data)
+        if find_part(digest) is None:  # not there whole (a power cut tore it): written again
+            atomic_write_bytes(path, data, fsync=True)
         entry_parts[name] = [pa.source_zl, digest]
         la = layer(pa, t, got)
         if la is not None:
@@ -640,28 +641,36 @@ def check(
 
 
 def preview(
-    p: Picture, tile: TileRef, entry: Mapping[str, Any], previews: Path, built: str
+    p: Picture, tile: TileRef, entry: Mapping[str, Any], built: str, textures: Sequence[str]
 ) -> tuple[str, list[float]] | None:
-    """After's picture of the cloud ``entry`` (a ``clouds.tile`` entry) on ``p``, the picture of
-    the tile the build placed (``built``): the name of its PNG in ``previews`` and its
-    ``[south, west, north, east]``; ``None`` when one of its frozen parts is found nowhere.
-    Named by what it is made of, the build, the level, the way clouds are laid and what lays the
-    entry, so it is made once, when it is first shown, and again only when one of them changes."""
-    what = f"{built}:{p.zl}:{RULE}:{json.dumps(laid_fields(entry), sort_keys=True)}"
-    out = previews / f"{digest_bytes(what.encode())[:32]}.png"
+    """After's picture of the cloud ``entry`` (a ``clouds.tile`` entry) in the ``textures`` of it
+    Apply makes again (``state.View.previews``), on ``p``, a picture of the tile the build placed
+    (``built``): the name of its PNG and its ``[south, west, north, east]``; ``None`` when one of
+    its frozen parts there is found nowhere. Named by what it is made of, the build, the level, the
+    way clouds are laid, what lays the entry and the textures, so it is made once, when it is first
+    shown, and again only when one of them changes."""
+    names = list(textures)
+    laid = json.dumps(laid_fields(entry), sort_keys=True)
+    out = preview_path(tile, f"{built}:{p.zl}:{RULE}:{laid}:{','.join(names)}")
     box = _cloud_box(p, entry["rings"])
-    if not out.exists() and not _make_preview(p, tile, entry, box, out):
+    if not out.exists() and not _make_preview(p, tile, entry, box, out, names):
         return None
     return out.name, box_bounds(p, box)
 
 
 def _make_preview(
-    p: Picture, tile: TileRef, entry: Mapping[str, Any], box: tuple[int, int, int, int], out: Path
+    p: Picture,
+    tile: TileRef,
+    entry: Mapping[str, Any],
+    box: tuple[int, int, int, int],
+    out: Path,
+    names: Sequence[str],
 ) -> bool:
-    """The preview written at ``out``: the cloud's layers made from its frozen parts by the
-    laying's own function, in its colours, reduced as the textures' mips are, laid where X-Plane
-    shows each texture, over water at the share X-Plane gives the photo, cut to the tile."""
-    textures = [parse_texture_name(n) for n in entry["parts"]]
+    """The preview written at ``out``: the cloud's layers in the textures ``names``, made from its
+    frozen parts there by the laying's own function, in its colours, reduced as the textures'
+    mips are, laid where X-Plane shows each texture, over water at the share X-Plane gives the
+    photo, cut to the tile."""
+    textures = [parse_texture_name(n) for n in names]
     x0, y0, x1, y1 = box
     rgb = np.zeros((y1 - y0, x1 - x0, 3), np.float32)
     alpha = np.zeros((y1 - y0, x1 - x0), np.float32)
@@ -682,7 +691,7 @@ def _make_preview(
             context={"type": "PNG", "detail": "a cloud's preview could not be encoded"},
         )
     out.parent.mkdir(parents=True, exist_ok=True)
-    atomic_write_bytes(out, png.tobytes())
+    atomic_write_bytes(out, png.tobytes(), fsync=True)
     return True
 
 
