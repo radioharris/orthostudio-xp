@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import dataclasses
 import json
 import logging
 import os
@@ -35,6 +36,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from orthostudio import __version__, config, update
 from orthostudio.airports import default_index as default_airport_index
 from orthostudio.api.basemap import basemap_router
+from orthostudio.api.clouds_api import CloudHooks, clouds_router
 from orthostudio.api.jobs import Job, JobBusyError, JobManager, TileInBuildError, error_json
 from orthostudio.api.map_api import TileClient, TileFetch, map_router
 from orthostudio.api.models import (
@@ -1417,6 +1419,7 @@ def create_app(
             )
         # the queued builds first, so that none starts when the running one stops
         cancelled = manager.cancel_all() if active is not None else []
+        cloud_tasks.stop_all()
         active_id = None if active is None else active.id
         # after the answer has left: the page learns that OrthoStudio XP is stopping
         asyncio.get_running_loop().call_later(0.3, shutdown)
@@ -1939,9 +1942,11 @@ def create_app(
         a = await asyncio.to_thread(index.get, icao.strip().upper()[:7])
         if a is None:
             return _plain_error(
-                "CFG_LATLON_INVALID", f"Airport {icao} is unknown.", "Check the ICAO code.",
+                "CFG_LATLON_INVALID",
+                f"Airport {icao} is unknown.",
+                "Check the ICAO code.",
                 status=404,
-            )  # fmt: skip
+            )
         return {"icao": a.icao, "name": a.name, "lat": a.lat, "lon": a.lon}
 
     # -- plan, jobs --------------------------------------------------------------------------
@@ -1998,6 +2003,65 @@ def create_app(
             return answer
 
         return await asyncio.to_thread(run)
+
+    # the cloud mode: its tasks are the engine's, its Apply a build of the tile as it was built
+    def building_now() -> dict[str, str]:
+        active = manager.active()
+        running = (
+            set(active.unfinished_tiles())
+            if active is not None and active.status == "running"
+            else set()
+        )
+        return {
+            tile: "running" if tile in running else "queued" for tile in manager.building_tiles()
+        }
+
+    def start_apply(tile: TileRef, clouds: list[dict[str, Any]]) -> str:
+        from orthostudio.clouds.tile import tile_folder
+        from orthostudio.pipeline.filing import tile_home
+        from orthostudio.pipeline.pack import COMPUTER_CONFIG_KEYS, read_build_settings
+
+        xp = xplane_dir()
+        cs = custom_scenery_dir(xp) if xp is not None else None
+        home, _gone = tile_home(
+            tile,
+            atelier=default_tiles_root(),
+            custom_scenery=cs,
+            library_path=default_library_path(),
+        )
+        built = read_build_settings(tile_folder(tile, workshop=default_tiles_root(), home=home))
+        if built is None:
+            raise OsxpError(
+                "CLOUD_TILE_NOT_READY", context={"tile": tile.name, "state": "earlier_version"}
+            )
+        req = JobRequest(
+            tiles=[tile.name],
+            provider=built["provider"],
+            zoom_level=built["zl"],
+            overlay=built["overlay"],
+            xp12_rasters=built["xp12_rasters"],
+            queue=True,
+        )
+        (spec,) = _specs(req, install=False)
+        # the tile's own settings, the computer's keys of now: only its clouds change
+        config = {
+            **built["config"],
+            **{k: v for k, v in spec.config.items() if k in COMPUTER_CONFIG_KEYS},
+        }
+        spec = dataclasses.replace(spec, config=config, clouds=tuple(clouds))
+        job = manager.start([spec], request={"kind": "clouds", "tiles": [tile.name]}, queue=True)
+        return job.id
+
+    cloud_routes, cloud_tasks = clouds_router(
+        CloudHooks(
+            custom_scenery=lambda: (
+                custom_scenery_dir(xp) if (xp := xplane_dir()) is not None else None
+            ),
+            building=building_now,
+            apply=start_apply,
+        )
+    )
+    app.include_router(cloud_routes)
 
     @app.post("/api/jobs", status_code=201)
     async def post_job(req: JobRequest) -> Any:
@@ -2066,9 +2130,11 @@ def create_app(
             return job
         if not manager.cancel(job_id):
             return _plain_error(
-                "SYS_BUSY", f"Job {job_id} is already {job.status}.", "Nothing to cancel.",
+                "SYS_BUSY",
+                f"Job {job_id} is already {job.status}.",
+                "Nothing to cancel.",
                 status=409,
-            )  # fmt: skip
+            )
         return {"job_id": job.id, "status": job.status, "cancel_requested": True}
 
     @app.post("/api/jobs/{job_id}/retry", status_code=201)

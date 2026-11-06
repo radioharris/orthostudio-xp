@@ -145,6 +145,7 @@ from orthostudio.pipeline.pack import (
     pack_dir_name,
     pack_env,
     pack_is_intact,
+    write_build_settings,
     write_manifest,
 )
 from orthostudio.pipeline.textures import (
@@ -3388,8 +3389,11 @@ def _stored_osm(env: BuildEnv, tile: TileRef, road_level: int, refresh: str) -> 
         # Taken again rather than used again: the key would stay the same and so would the
         # failure, whatever the library or OpenStreetMap mended since. No tile was ever built on
         # such a coastline (the vector stage refuses it), so nothing built depends on it.
-        log.info("%s: the map data kept for this tile is set aside, %s; it is asked again",
-                 tile.name, why)  # fmt: skip
+        log.info(
+            "%s: the map data kept for this tile is set aside, %s; it is asked again",
+            tile.name,
+            why,
+        )
         with contextlib.suppress(Exception):
             env.store.delete(key, force=True)
         if not env.store.has(key):
@@ -3439,8 +3443,11 @@ def _kept_coastline_trouble(tile: TileRef, path: Path, digest: str) -> str | Non
         snap = SnapshotStore(path).load(tile, "coastline")
         why = unusable_coastline(tile, {"coastline": snap}) if snap is not None else None
     except Exception as exc:
-        log.info("%s: the kept coastline could not be checked (%s); used as it is",
-                 tile.name, type(exc).__name__)  # fmt: skip
+        log.info(
+            "%s: the kept coastline could not be checked (%s); used as it is",
+            tile.name,
+            type(exc).__name__,
+        )
         return None
     _KEPT_COASTLINES[digest] = why
     return why
@@ -3503,8 +3510,9 @@ class _Collector:
                 _assemble_again(nodes, self._env, self, manifest)
                 self.laid.add(done.node_id)
         except Exception:  # the end of the build lays it again, and says what stops it
-            log.warning("%s could not be laid again before its install", spec.tile.name,
-                        exc_info=True)  # fmt: skip
+            log.warning(
+                "%s could not be laid again before its install", spec.tile.name, exc_info=True
+            )
 
     def outcome(self, role: str, node: Node) -> NodeOutcome:
         rule_name = f"{node.rule.name}@{node.rule.version}"
@@ -3885,8 +3893,11 @@ def _let_go(
     if not folders:
         return
     if install_packs.xplane_running():
-        log.info("X-Plane is running: what %s left beside %s goes at its next build", tile.name,
-                 ", ".join(str(f) for f in folders))  # fmt: skip
+        log.info(
+            "X-Plane is running: what %s left beside %s goes at its next build",
+            tile.name,
+            ", ".join(str(f) for f in folders),
+        )
         return
     cs = None if custom_scenery is None else Path(custom_scenery).expanduser()
     out: list[Path] = []
@@ -4220,6 +4231,20 @@ def build_tiles(
         ok = g.target.id in collector.done and not any(o.status == "failed" for o in outcomes)
         out_root = Path(g.spec.out_dir).expanduser().resolve()
         pack_dir = out_root / pack_dir_name(g.spec.tile) if home is None or not ok else home
+        if ok and pack_dir.is_dir():
+            # how the tile was made, kept with it, for the cloud mode's Apply to build it so again;
+            # a folder that refuses it leaves the build done, said in the log
+            try:
+                write_build_settings(
+                    pack_dir,
+                    provider=g.spec.provider,
+                    zl=g.spec.zl,
+                    config=g.spec.config,
+                    overlay=g.spec.overlay,
+                    xp12_rasters=g.spec.xp12_rasters,
+                )
+            except OSError as exc:
+                log.warning("%s: its build settings could not be written: %s", name, exc)
         overlay_path = out_root / OVERLAY_PACK / g.spec.tile.dsf_relpath
         tiles.append(
             TileOutcome(

@@ -2597,6 +2597,10 @@ const CODES = {
     ZONE_INVALID: ["Une zone est inutilisable : rien n'est enregistré ni construit tant qu'elle n'est pas corrigée.", "Corrigez ou supprimez cette zone à l'étape 2 (ou dans le fichier des zones), puis recommencez."],
     ZONE_CONFLICT: ["Les zones ont été modifiées ailleurs (autre fenêtre ou fichier) : rien n'a été enregistré.", "La liste a été rechargée ; refaites votre dernière modification."],
     ZONE_TOO_MANY: ["Trop de zones touchent une même tuile (254 au plus).", "Fusionnez ou supprimez des zones sur cette tuile."],
+    CLOUD_TILE_NOT_READY: ["Les nuages de cette tuile ne peuvent pas être regardés maintenant.", "Construisez d'abord la tuile avec cette version d'OrthoStudio XP, ou attendez la fin de sa construction."],
+    CLOUD_NOT_BUILT: ["Cette tuile n'a pas de photo construite où chercher des nuages.", "Construisez d'abord la tuile : la recherche la lit comme X-Plane la dessine."],
+    CLOUD_UNKNOWN: ["Ce nuage n'est plus dans la liste des nuages de la tuile.", "Rouvrez les Nuages… de la tuile pour lire sa liste telle qu'elle est ; rien n'a changé."],
+    CLOUD_INVALID: ["Ce nuage ne peut pas servir.", "Entourez-le de nouveau sur la carte ; rien n'a changé."],
     CLOUD_DETECTOR_MISSING: ["Le détecteur de nuages n'a pas pu être préparé.", "Vérifiez la connexion internet et recommencez : l'outil de détection (OpenCV et deux réseaux) se télécharge une fois, quand vous le demandez."],
     // The codes the page had no words for, in the engine's sense (errors.py), filled from the
     // error's context. A code the engine also raises with a sentence or a remedy of its own keeps
@@ -2751,6 +2755,10 @@ const CODES = {
     ZONE_INVALID: ["A zone cannot be used: nothing is saved or built until it is fixed.", "Fix or delete that zone in step 2 (or in the zones file), then try again."],
     ZONE_CONFLICT: ["The zones were changed elsewhere (another window or the file): nothing was saved.", "The list was loaded again; make your last change again."],
     ZONE_TOO_MANY: ["Too many zones touch one tile (254 at most).", "Merge or delete zones on that tile."],
+    CLOUD_TILE_NOT_READY: ["This tile's clouds cannot be looked at now.", "Build the tile with this version of OrthoStudio XP first, or wait for its build to end."],
+    CLOUD_NOT_BUILT: ["This tile has no built photo to look for clouds in.", "Build the tile first: the search reads it as X-Plane draws it."],
+    CLOUD_UNKNOWN: ["This cloud is no longer in the tile's cloud list.", "Open the tile's Clouds… again to read its list as it is now; nothing was changed."],
+    CLOUD_INVALID: ["This cloud cannot be used.", "Outline it again on the map; nothing was changed."],
     CLOUD_DETECTOR_MISSING: ["The cloud detector could not be made ready.", "Check the internet connection and try again: the detection tool (OpenCV and two networks) is downloaded once, when you ask for it."],
   },
 };

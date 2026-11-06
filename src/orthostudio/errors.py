@@ -1245,6 +1245,34 @@ _SPECS: tuple[ErrorSpec, ...] = (
     ),
     # ---------------------------------------------------------------- CLOUD
     _spec(
+        "CLOUD_TILE_NOT_READY",
+        _B,
+        _S,
+        "Tile {tile} cannot have its clouds looked at now ({state}).",
+        "Build the tile with this version of OrthoStudio XP first, or wait for its build to end.",
+    ),
+    _spec(
+        "CLOUD_NOT_BUILT",
+        _B,
+        _S,
+        "Tile {tile} has no built photo to look for clouds in: {reason}.",
+        "Build the tile first: the search reads it as X-Plane draws it.",
+    ),
+    _spec(
+        "CLOUD_UNKNOWN",
+        _B,
+        _S,
+        "Cloud {cloud} is not in the cloud list of tile {tile}.",
+        "Open the tile's Clouds… again to read its list as it is now; nothing was changed.",
+    ),
+    _spec(
+        "CLOUD_INVALID",
+        _B,
+        _S,
+        "Cloud {cloud} of tile {tile} cannot be used: {reason}.",
+        "Outline it again on the map; nothing was changed.",
+    ),
+    _spec(
         "CLOUD_DETECTOR_MISSING",
         _B,
         _S,

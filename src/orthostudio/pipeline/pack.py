@@ -627,6 +627,50 @@ def lays_the_same(pack_dir: Path, manifest: PackManifest) -> bool:
     return same and pack_is_intact(pack_dir, own, with_overlay=False)
 
 
+BUILD_SETTINGS_NAME = "build_settings.json"
+"""The settings the tile's last finished build had, in its own folder: the cloud mode's Apply
+builds the tile again with them, so only its clouds change (``clouds.md`` R4)."""
+COMPUTER_CONFIG_KEYS = ("osm_folder", "osm_library", "osm_library_token")
+"""A build's config keys that belong to the computer, never written in a tile's folder, which a
+user may copy or share: the library's key is among them."""
+
+
+def write_build_settings(
+    pack_dir: Path,
+    *,
+    provider: str,
+    zl: int,
+    config: Mapping[str, Any],
+    overlay: bool,
+    xp12_rasters: bool,
+) -> None:
+    """:data:`BUILD_SETTINGS_NAME` in ``pack_dir``, unless it already says the same."""
+    doc = {
+        "format": "osxp-build-settings-1",
+        "provider": provider,
+        "zl": int(zl),
+        "overlay": bool(overlay),
+        "xp12_rasters": bool(xp12_rasters),
+        "config": {k: v for k, v in config.items() if k not in COMPUTER_CONFIG_KEYS},
+    }
+    text = json.dumps(doc, indent=1, sort_keys=True, ensure_ascii=False, default=str) + "\n"
+    path = Path(pack_dir) / BUILD_SETTINGS_NAME
+    with contextlib.suppress(OSError, UnicodeDecodeError):
+        if path.read_text(encoding="utf-8") == text:
+            return
+    atomic_write_text(path, text)
+
+
+def read_build_settings(pack_dir: Path) -> dict[str, Any] | None:
+    """What :func:`write_build_settings` wrote, or ``None`` (a tile built before it existed)."""
+    try:
+        doc = json.loads((Path(pack_dir) / BUILD_SETTINGS_NAME).read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, ValueError):
+        return None
+    ok = isinstance(doc, dict) and doc.get("format") == "osxp-build-settings-1"
+    return doc if ok and isinstance(doc.get("config"), dict) else None
+
+
 def write_manifest(pack_dir: Path, tile: TileRef, manifest: PackManifest) -> None:
     """``manifest`` written in ``pack_dir``, with the imagery's credit it gives."""
     atomic_write_text(Path(pack_dir) / MANIFEST_NAME, manifest.to_toml())
