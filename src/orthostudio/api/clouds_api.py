@@ -374,7 +374,7 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
         tick, a source chosen, an outline's sources tried, the user's Get its images (``again``:
         its source asked again), or a check that turned the cloud to a source never asked
         (``unasked``, ``CloudState.unasked``). Of several, one refused leaves the others go.
-        Each cloud shows meanwhile what After showed of it ``before`` (the view the user's
+        Each cloud is shown and counted meanwhile as it was ``before`` (the view the user's
         click was made on; else now)."""
         _folder, shown, v = look(tile)
         asked = [s.cloud["id"] for s in v.clouds] if ids is None else list(ids)
@@ -386,7 +386,9 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
         was = before or v
         for cid in offered:
             try:
-                _get_images(tile, shown, v.cloud(cid), again=again, shows=was.cloud(cid).lays)
+                then = was.cloud(cid)
+                seen = {"row": then.row, "lays": then.lays}
+                _get_images(tile, shown, v.cloud(cid), again=again, was=seen)
             except OsxpError:
                 if len(offered) == 1:
                     raise
@@ -397,7 +399,7 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
         s: state.CloudState,
         *,
         again: bool,
-        shows: Mapping[str, Any] | None,
+        was: Mapping[str, Any],
     ) -> None:
         """:func:`get_images` of the cloud ``s``: its task."""
         cid = s.cloud["id"]
@@ -434,7 +436,7 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
             """Its source answered worse there: the next one's images, when never asked."""
             get_images(tile, [cid], {"download": True}, unasked=True)
 
-        engine.tasks.start(tile.name, "check", run, cloud=cid, then=then, shows=shows)
+        engine.tasks.start(tile.name, "check", run, cloud=cid, then=then, was=was)
 
     @router.post("/api/clouds/{name}/find")
     def find_clouds(

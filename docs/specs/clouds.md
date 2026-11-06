@@ -43,8 +43,8 @@ The Plan's map, brought over the tile; the Plan's steps make way for the cloud p
   Apply lays there, in the list's order (R4); in **Before**, the tile with no cloud replaced. The
   ground is laid again only when its files change, the new one shown once loaded: the tile never
   flashes when a cloud is clicked, and a cloud whose images are being got (a source changed) keeps
-  what After showed of it when that began, until the task ends (the engine's: `Task.shows`,
-  `View.previews`; Apply waits for the task). The outlines and the marks are drawn again only when
+  what After showed of it when that began, until the task ends, and is counted as it was then
+  (the engine's: `Task.was`, `View.previews`; Apply waits for the task). The outlines and the marks are drawn again only when
   what they show changes. Around the tile, the map darkened (seen from far, the base
   map is another mosaic than the tile's photos). Every cloud's outline on a dark casing, readable
   over snow: yellow when unticked, the accent when ticked, the current one thicker; its tooltip says
@@ -63,8 +63,8 @@ The Plan's map, brought over the tile; the Plan's steps make way for the cloud p
   it is not ready (1.5), or why it could not be read; each task under way with a spinner, its
   phase, its progress (a search's judging of the
   sources said cloud by cloud) and **Stop**; the count of what Apply changes ("To replace: 1 · Back
-  as photographed: 2") with **Tick all**, **Untick all** and, while a cloud's task runs, **Stop
-  all**; the list, a row per cloud; then three rows of buttons, spaced as the Plan's build buttons
+  as photographed: 2") on a line of its own, and under it **Tick all**, **Untick all** and, while a
+  cloud's task runs, **Stop all** (a count that grew pushed them out of line); the list, a row per cloud; then three rows of buttons, spaced as the Plan's build buttons
   (`actions actions-build`): **Apply (n changes)** and **Discard changes**, once there is a cloud
   or Apply may run; **Quick search** and **Fine search** (4.1; greyed, saying why, on a tile with
   nothing finer to read, the engine's `fine`), and before any cloud, what each search takes;
@@ -78,8 +78,9 @@ The Plan's map, brought over the tile; the Plan's steps make way for the cloud p
   its images got, judged as they are now, else the search's; what a piece said, no answer, a
   refusal, a page, leaves the search's), the best first, those that cannot be chosen greyed
   (`sources.PROPOSABLE`: the same photo, no picture; the source whose images the tile shows of it
-  always may be); its line (1.5), under the menu, none while a task of it runs (its spinner says
-  it; an outline's few words, `clouds.row.task.<phase>`, are on the map); **Get its images** when
+  always may be); its line (1.5), under the menu: none when it is replaced or to be, as its tick
+  and its menu say (held, ready), none while a task of it runs (its spinner says it; an outline's
+  few words, `clouds.row.task.<phase>`, are on the map); **Get its images** when
   asking again may end its wait.
 
 ### 1.4 What the user does
@@ -169,8 +170,9 @@ A cloud is, one way only:
   images** (`check`) when asking again may end its wait; remove an outline the tile does not
   show; Stop while a task of it runs, unless it writes the textures (`actions`).
 
-The count is the rows', what Apply does with each cloud, a task of it under way or not: to
-replace, another source, back as photographed, waiting (`counts`, of `_row`); what the tile shows
+The count is the rows', what Apply does with each cloud, a cloud whose images are being got as it
+was when that began (`Task.was`): to replace, another source, back as photographed, waiting
+(`counts`, of `_row`); what the tile shows
 replaced, the clouds and the
 textures (Restore's question, the Library), is counted from its folder alone, and the textures Apply
 makes again from the folder's plan. A texture showing clouds no file says (2.1) is made again: it is

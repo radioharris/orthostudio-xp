@@ -272,8 +272,9 @@ async def test_a_tile_whose_cloud_gets_its_images_is_busy(
     (row,) = a["clouds"]
     assert a["busy"] is True and a["tasks"] == []  # its task is in its row, the page reads again
     assert row["state"] == "check" and row["task"]["kind"] == "check" and row["actions"] == ["stop"]
-    assert a["texts"]["count"][0]["key"] == "clouds.pending.waiting"  # counted while it runs
-    assert "discard" in a["allowed"]
+    # counted as it was when its images began to be got: no "waiting for its images" for the
+    # seconds they take (a user, 2026-11-07)
+    assert a["texts"]["count"] == [{"key": "clouds.pending_none", "params": {}}]
 
 
 @pytest.mark.anyio

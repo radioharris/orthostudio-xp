@@ -36,14 +36,15 @@ class Task:
     """One task: of ``tile``, ``kind`` (the action that starts it: ``find``, ``check``,
     ``outline``, ``apply``, ``restore``), for ``cloud`` when it is one cloud's; where it is
     (``phase``, ``done`` of ``total``); whether Stop ends it (``stoppable``); what After showed
-    of its cloud when it began (``shows``, the images it laid: shown meanwhile, ``state.view``)."""
+    of its cloud when it began (``was``: its row and the images it laid, shown and counted
+    meanwhile, ``state.view``)."""
 
     id: str
     tile: str
     kind: str
     cloud: str | None = None
     stoppable: bool = True
-    shows: Mapping[str, Any] | None = None
+    was: Mapping[str, Any] | None = None
     phase: str = "waiting"
     done: int = 0
     total: int = 0
@@ -67,7 +68,7 @@ class Task:
             "progress": progress,
             "stoppable": self.stoppable,
             "error": self.error,
-            "shows": self.shows,
+            "was": self.was,
         }
 
 
@@ -94,7 +95,7 @@ class Tasks:
         cloud: str | None = None,
         *,
         then: Callable[[], None] | None = None,
-        shows: Mapping[str, Any] | None = None,
+        was: Mapping[str, Any] | None = None,
     ) -> Task:
         """Run ``run(task)`` in a thread once its turn comes (one search at a time for the app,
         :data:`CHECKS_AT_ONCE` reads of sources, Apply and Restore at once); the task is
@@ -114,7 +115,7 @@ class Tasks:
             same = any(t.kind == kind and t.cloud == cloud for t in mine)
             if same or kind not in possible("ready", under_way):
                 raise OsxpError("CLOUD_NOT_NOW", context={"tile": tile, "action": kind})
-            task = Task(secrets.token_hex(6), tile, kind, cloud, kind not in WRITES, shows)
+            task = Task(secrets.token_hex(6), tile, kind, cloud, kind not in WRITES, was)
             self._tasks[task.id] = task
             self._failed.pop(tile, None)
         gate = self._search if kind == "find" else None if kind in WRITES else self._checks

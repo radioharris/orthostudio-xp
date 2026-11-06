@@ -258,7 +258,7 @@ class CloudState:
             "actions": sorted(self.actions),
             "toggle": self.toggle,
             "tip": f"clouds.tip_{self.toggle}" if self.toggle else None,
-            "task": {k: v for k, v in task.items() if k != "shows"} if task else None,
+            "task": {k: v for k, v in task.items() if k != "was"} if task else None,
             "label": label,
             "numbered": c["kind"] == "found",
             "preview": (previews or {}).get(c["id"]),
@@ -352,6 +352,8 @@ def _line(s: CloudState) -> dict[str, Any] | None:
         return {"key": f"clouds.row.task.{phase}", "params": {}, "tone": "plain"}
     if s.why is not None:  # what it waits for, whatever Apply does meanwhile
         return {"key": f"clouds.row.waiting.{s.why}", "params": src, "tone": "warn"}
+    if s.row in ("ready", "held"):  # its tick and its menu say it (a user, 2026-11-07)
+        return None
     held = s.held["source"] if s.held is not None else None
     return {"key": f"clouds.row.{s.row}", "params": {**src, "held": held}, "tone": "plain"}
 
@@ -403,9 +405,9 @@ class View:
     previews: list[tuple[Mapping[str, Any], list[str]]] = field(default_factory=list)
     """The clouds After shows by a preview, each in the textures of it Apply makes again: in every
     other texture, After shows what X-Plane does (:func:`as_shown`). A cloud whose images are
-    being got keeps what After showed of it when that began (its task's ``shows``): Apply waits
+    being got is shown and counted as it was when that began (its task's ``was``): Apply waits
     for the task, and a source changed showed the photo with its cloud again for the seconds the
-    new images took (a user, 2026-11-06)."""
+    new images took, a tick "waiting for its images" (a user, 2026-11-06 and 07)."""
     fine: bool = False
     """Whether a fine search may be asked: the tile's textures are finer than the map's level,
     which the quick search reads (``picture.fine_level``)."""
@@ -544,8 +546,11 @@ def view(
         task = of_cloud.get(c["id"])
         if task is not None:
             row, actions = task["kind"], _stops(task)
-            if task.get("shows") is not None and lays is None and held is None:
-                previews.append((task["shows"], sorted(task["shows"]["parts"])))
+            was = task.get("was")
+            if was is not None:  # its images being got: as it was when that began
+                fact = was["row"]
+                if was["lays"] is not None and lays is None and held is None:
+                    previews.append((was["lays"], sorted(was["lays"]["parts"])))
         elif fact is None:  # the folder not read: the list read only
             row, actions = "frozen", frozenset()
         else:

@@ -44,8 +44,8 @@ the same photo as the tile, which would bring the cloud back, or with no picture
   muddy water near a coast: look before you tick. The eye beside a cloud brings the map to it.
 - **Tick** a cloud, or click its outline on the map (its tooltip says what a click does; its row
   comes to the middle of the list): its source's images are fetched at the
-  tile's own sharpness, in a few seconds, and its line says *Replaced by Esri World Imagery after
-  Apply*. Its outline turns to the accent colour. If the tool that finds clouds is not on your
+  tile's own sharpness, in a few seconds, and the count above the list says one more to replace.
+  Its outline turns to the accent colour. If the tool that finds clouds is not on your
   computer yet, the app asks first; say no, and the cloud stays ticked, waiting for its images.
 - To take another source, choose it in the cloud's list: it is ticked with it.
 - **Tick all** and **Untick all**, above the list, tick or untick every cloud at once. While

@@ -389,11 +389,15 @@ def test_a_cloud_whose_images_are_got_keeps_what_after_showed_of_it(folder: Path
     assert was is not None
     cl.get("cloud001")["chosen"] = "Esri"  # never asked: its images to get
     assert "cloud001" not in [e["id"] for e, _n in _view(cl, shown).previews]
-    task = {"id": "t", "kind": "check", "cloud": "cloud001", "stoppable": True, "shows": was}
+    seen = {"row": "ready", "lays": was}
+    task = {"id": "t", "kind": "check", "cloud": "cloud001", "stoppable": True, "was": seen}
     v = _view(cl, shown, [{**task, "phase": "fetching"}])
     assert "cloud001" in [e["id"] for e, _n in v.previews]
+    # and counted as it was: no "waiting for its images" for the seconds they take (a user)
+    assert v.counts["replace"] == _view(cl, shown).counts["replace"] + 1
+    assert v.counts["waiting"] == _view(cl, shown).counts["waiting"] - 1
     row = v.cloud("cloud001").page()
-    assert "shows" not in row["task"] and row["label"] == "spinner"  # running: a spinner
+    assert "was" not in row["task"] and row["label"] == "spinner"  # running: a spinner
     # its row says where its task is in a few words, one line (a user, 2026-11-07)
     assert row["line"]["key"] == "clouds.row.task.fetching" and _words(row["line"]["key"])
     waiting = _view(cl, shown, [{**task, "phase": "waiting"}]).cloud("cloud001").page()

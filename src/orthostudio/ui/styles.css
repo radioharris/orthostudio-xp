@@ -660,7 +660,7 @@ input[aria-invalid="true"] { border-color: var(--fail); }
    buttons are the build's (.actions-build, the help under them at --help-gap), its count line
    the tiles' (step 1's .tile-count-row, 8 px). */
 .clouds-progress, .clouds-count { display: flex; align-items: center; gap: var(--gap); flex-wrap: wrap; margin-top: var(--gap); }
-.clouds-count .plan-step-size { margin: 0; flex: 1 1 auto; }
+.clouds-count-line { margin: var(--gap) 0 0; }
 /* A cloud's task: beside its name a spinner around a square that stops it, and at its centre on
    the map a spinner. */
 .cloud-pending .spinner, .clouds-progress .spinner, .zone-row > .spinner { flex: none; }
@@ -672,6 +672,7 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .cloud-stop .spinner { position: absolute; inset: 1px; width: auto; height: auto; }
 .cloud-stop svg { width: 8px; height: 8px; }
 .cloud-stop:hover, .cloud-stop:focus-visible { color: var(--fail); }
+.cloud-show { display: inline-flex; align-items: center; justify-content: center; }
 .cloud-show svg { width: 16px; height: 16px; }
 /* A cloud's line clear of its sources' list above it. */
 .cloud-item .zone-main > .cloud-line { margin-top: 4px; }

@@ -509,8 +509,10 @@ export function createCloudMode(ctx) {
     // what the tile allows is the engine's to say (``state.View.allowed``)
     const can = new Set(a.allowed);
     if (a.clouds.length) {
-      kids.push(h("div", { class: "clouds-count", dataset: key("count") },
-        h("p", { class: "plan-step-size" }, piecesWords(a.texts.count)),
+      // the count on a line of its own, the buttons under it: a count that grew pushed Untick all
+      // under Tick all (a user, 2026-11-07)
+      kids.push(h("p", { class: "plan-step-size clouds-count-line", dataset: key("count") }, piecesWords(a.texts.count)));
+      kids.push(h("div", { class: "clouds-count", dataset: key("count-buttons") },
         h("button", { type: "button", class: "btn", dataset: key("tick-all"), disabled: !can.has("tick"), onclick: () => send("POST", "/picks", { action: "tick" }) }, t("clouds.all")),
         h("button", { type: "button", class: "btn", dataset: key("untick-all"), disabled: !can.has("untick"), onclick: () => send("POST", "/picks", { action: "untick" }) }, t("clouds.none")),
         // while the clouds' tasks run, every one stopped at once (after Tick all, one by one)
