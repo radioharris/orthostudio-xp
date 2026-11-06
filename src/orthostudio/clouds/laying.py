@@ -25,7 +25,7 @@ from orthostudio.imagery.grid import TextureId, parse_texture_name, texture_name
 from orthostudio.model import TileRef
 from orthostudio.textures.clouds import CloudPatch, tile_box, window
 
-__all__ = ["TileClouding", "find_part", "parts_dir", "patches_of"]
+__all__ = ["TileClouding", "find_part", "parts_dir", "patches_of", "standing"]
 
 PART_SUFFIX = ".part"
 
@@ -76,6 +76,33 @@ def _ring_px(ring: Sequence[float], t: TextureId) -> tuple[float, ...]:
     return tuple(pts)
 
 
+def standing(
+    c: Mapping[str, Any],
+    tile: TileRef,
+    textures: Iterable[TextureId],
+    *,
+    tile_colours: Sequence[float],
+    zones: Sequence[Sequence[Any]],
+    chunks: Mapping[str, str] | None = None,
+) -> tuple[str | None, dict[str, CloudPatch]]:
+    """Why the cloud ``c`` no longer stands on the photo the ``textures`` (and their pieces'
+    ``chunks``, when known) make, or ``None``; and its patches in them. The one rule a build lays
+    a cloud by, which the cloud mode judges a cloud's images by too."""
+    parts = c["parts"]
+    zl_of = {name: int(parts[name][0]) for name in parts}
+    reached = patches_of(c, tile, textures, lambda t: zl_of.get(texture_name(t), t.zl))
+    why = _moved(set(parts), set(reached))
+    if (
+        why is None
+        and chunks is not None
+        and any(chunks.get(n) != d for n, d in c["images"].items())
+    ):
+        why = "images"
+    if why is None and colours_near(c["rings"], tile, tile_colours, zones) != c["colours"]:
+        why = "colours"
+    return why, reached
+
+
 class TileClouding:
     """The clouds a textures step is given (``TileTexturesParams.clouds``), in laying order."""
 
@@ -99,13 +126,9 @@ class TileClouding:
         by_name = {texture_name(t): t for t in textures}
         for c in self.given:
             parts = c["parts"]
-            zl_of = {name: int(parts[name][0]) for name in parts}
-            reached = patches_of(
-                c, tile, by_name.values(), lambda t, z=zl_of: z.get(texture_name(t), t.zl)
+            why, reached = standing(
+                c, tile, by_name.values(), tile_colours=tile_colours, zones=zones
             )
-            why = _moved(set(parts), set(reached))
-            if why is None and colours_near(c["rings"], tile, tile_colours, zones) != c["colours"]:
-                why = "colours"
             files = {name: find_part(str(parts[name][1]), self.folders) for name in parts}
             if why is None and None in files.values():
                 why = "parts"

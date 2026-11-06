@@ -521,9 +521,20 @@ def check(
     if not reached:
         return Check(Judgement("no_picture"))
     by_name = {n: parse_texture_name(n) for n in reached}
+    band_px = max(2, round(BAND_M / pixel_metres(_lat(p), p.zl)))
+    box = _box(p, rings, band_px + 4)
+    # the source around the cloud too, at the search's reading of it: its colours are matched
+    # to the photo's on the band around the outline, which the layer does not reach
+    band_zl = min(p.zl + 1, provider.max_zl)
+    around = _keys_of(p, [box], band_zl)
     todo = {code: {k for n, pa in reached.items() for k in pieces(pa, by_name[n])}}
-    phase("fetching", 0, len(todo[code]))
-    sources.fetch(todo, again=again, cancel=cancel, progress=lambda d, t: phase("fetching", d, t))
+    phase("fetching", 0, len(todo[code]) + len(around))
+    sources.fetch(
+        {code: todo[code] | around},
+        again=again,
+        cancel=cancel,
+        progress=lambda d, t: phase("fetching", d, t),
+    )
     lost = [
         sources.kind(code, k)
         for k in todo[code]
@@ -532,10 +543,9 @@ def check(
     if lost:  # a part frozen with passing holes would lay them for good
         return Check(Judgement("refused" if "refused" in lost else lost[0]))
     phase("making", 0, len(reached))
-    band_px = max(2, round(BAND_M / pixel_metres(_lat(p), p.zl)))
-    box = _box(p, rings, band_px + 4)
     x0, y0, x1, y1 = box
     h, w = y1 - y0, x1 - x0
+    laid: list[tuple[Any, Any, str]] = []
     lay_rgb = np.zeros((h, w, 3), np.float32)
     lay_a = np.zeros((h, w), np.float32)
     parts: dict[str, Path] = {}
@@ -553,6 +563,7 @@ def check(
         parts[name], entry_parts[name] = path, [pa.source_zl, digest]
         la = layer(pa, t, got)
         if la is not None:
+            laid.append((la, t, name))
             _lay_reduced(la, t, p, box, name, lay_rgb, lay_a)
         phase("making", n, len(reached))
     inside = _inside(p, rings, box)
@@ -565,19 +576,23 @@ def check(
     dirty = (cls == THICK) | (cls == THIN) | (cls == SHADOW) | (p.share[y0:y1, x0:x1] == 0)
     seen = classify(src, have, cancel=cancel, regnety_alone=True)
     core = inside & (cls != 0) if (inside & (cls != 0)).any() else inside
-    j = judge(
-        p.rgb[y0:y1, x0:x1],
-        src,
-        have,
-        inside,
-        core,
-        _band(inside, band_px, dirty),
-        (seen == THICK) | (seen == THIN),
+    here = p.rgb[y0:y1, x0:x1]
+    band = _band(inside, band_px, dirty)
+    # what it has under the cloud, at the tile's sharpness; its colours, on the band around
+    sharp = judge(
+        here, src, have, inside, core, np.zeros_like(band), (seen == THICK) | (seen == THIN)
     )
-    if not j.usable:
-        return Check(j, coverage=covered)
-    gain, shift = (np.asarray(v, np.float32) for v in j.match)
-    matched = lay_rgb * gain + shift
+    if not sharp.usable:
+        return Check(sharp, coverage=covered)
+    wide, wide_have, _lost = _source_at(sources, code, band_zl, p, box)
+    fitted = judge(here, wide, wide_have, inside, core, band, np.zeros_like(band))
+    j = Judgement(sharp.answer, fitted.fit, fitted.match)
+    # the preview from the layers in their colours, reduced as the textures' mips are: the build
+    # matches the source at the texture's sharpness, before its levels are made
+    matched = np.zeros_like(lay_rgb)
+    lay_a = np.zeros_like(lay_a)
+    for la, t, name in laid:
+        _lay_reduced(la, t, p, box, name, matched, lay_a, j.match)
     share = p.share[y0:y1, x0:x1].astype(np.float32)[..., None] / 255
     shown = np.clip(matched * share + np.asarray(WATER_RGB, np.float32) * (1 - share), 0, 255)
     rgba = np.dstack(
@@ -617,9 +632,11 @@ def _lay_reduced(
     name: str,
     rgb: np.ndarray,
     alpha: np.ndarray,
+    match: Any = None,
 ) -> None:
-    """The layer ``la`` of texture ``t`` reduced to the picture's level and laid in ``rgb`` and
-    ``alpha`` (over ``box`` of the picture) where X-Plane shows that texture."""
+    """The layer ``la`` of texture ``t`` (in its colours with ``match``, clipped as the build
+    clips them) reduced to the picture's level and laid in ``rgb`` and ``alpha`` (over ``box`` of
+    the picture) where X-Plane shows that texture."""
     k = 2 ** (t.zl - p.zl)
     wx0, wy0, wx1, wy1 = la.window
     # the window aligned on the picture's pixels, what it does not cover left transparent
@@ -628,7 +645,11 @@ def _lay_reduced(
     src = np.zeros((ay1 - ay0, ax1 - ax0, 3), np.float32)
     a = np.zeros((ay1 - ay0, ax1 - ax0), np.float32)
     a[wy0 - ay0 : wy1 - ay0, wx0 - ax0 : wx1 - ax0] = la.alpha.astype(np.float32) / 255
-    src[wy0 - ay0 : wy1 - ay0, wx0 - ax0 : wx1 - ax0] = la.source.astype(np.float32)
+    colours = la.source.astype(np.float32)
+    if match is not None:
+        gain, shift = (np.asarray(v, np.float32) for v in match)
+        colours = np.clip(colours * gain + shift, 0, 255)
+    src[wy0 - ay0 : wy1 - ay0, wx0 - ax0 : wx1 - ax0] = colours
     # alpha-weighted, in linear light as the textures' mips are made (``gamma22``)
     ra = _reduce(a, k)
     lin = _reduce(np.power(src / 255.0, 2.2) * a[..., None], k)
