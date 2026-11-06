@@ -309,8 +309,9 @@ export function createCloudMode(ctx) {
         shape.bindTooltip(tipOf(c), { sticky: true, className: "cloud-tip" });
       }
       shape.addTo(layer);
-      if (c.task) {
-        // its images being got, its sources tried: said at its centre, as it runs
+      if (c.task && c.task.phase !== "waiting") {
+        // its images being got, its sources tried: said at its centre while it runs, not while it
+        // waits for its turn (Tick all: two hundred labels hid the map, a user, 2026-11-06)
         const label = h("div", { class: "cloud-pending" }, h("span", { class: "spinner", "aria-hidden": "true" }), lineWords(c.line, names()));
         L.marker(L.latLngBounds(rings.flat()).getCenter(), {
           icon: L.divIcon({ className: "cloud-pending-anchor", html: label, iconSize: [0, 0] }),

@@ -608,11 +608,12 @@ def check(
             _lay_reduced(la, t, p, box, name, lay_rgb, lay_a)
         phase("making", n, len(reached))
     inside = _inside(p, rings, box)
-    covered = float((lay_a[inside] > 0.5).mean()) if inside.any() else 0.0
-    if covered < COVERAGE:
-        return Check(Judgement("no_picture"))
     src = np.clip(lay_rgb, 0, 255).astype(np.uint8)
-    have = lay_a > 0.5
+    # where the source has a picture: its layer there, the soft edge of it too, which is no hole.
+    # Taken over half the layer, every cloud under some 30 ha lost its edge and was said to have
+    # no picture in every source (+56-131, Tick all, a user, 2026-11-06); how much of the cloud
+    # it covers is the judging's to say, as for the search (``judge``)
+    have = lay_a > 0
     cls = classes[y0:y1, x0:x1] if classes is not None else np.zeros((h, w), np.uint8)
     dirty = _not_ground(cls, p.share[y0:y1, x0:x1])
     seen = classify(src, have, cancel=cancel, regnety_alone=True)

@@ -373,14 +373,17 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
         body: Mapping[str, Any] | None,
         *,
         again: bool = False,
+        unasked: bool = False,
     ) -> None:
         """Getting the images of the clouds ``ids`` (of every cloud: ``None``) whose state offers
         it (``check``), the detector asked for first (``body``): the one way it starts, after a
-        tick, a source chosen, an outline's sources tried, or the user's Get its images
-        (``again``: its source asked again). Of several, one refused leaves the others go."""
+        tick, a source chosen, an outline's sources tried, the user's Get its images (``again``:
+        its source asked again), or a check that turned the cloud to a source never asked
+        (``unasked``, ``CloudState.unasked``). Of several, one refused leaves the others go."""
         _folder, shown, v = look(tile)
         asked = [s.cloud["id"] for s in v.clouds] if ids is None else list(ids)
         offered = [i for i in asked if shown is not None and v.allows("check", i)]
+        offered = [i for i in offered if not unasked or v.cloud(i).unasked]
         if offered:
             _detector_said(body, then="check")
         for cid in offered:
@@ -423,7 +426,11 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
             with cls.update(tile, since=since) as cl:
                 cls.record_check(cl, cid, code, rings, got)
 
-        engine.tasks.start(tile.name, "check", run, cloud=cid)
+        def then() -> None:
+            """Its source answered worse there: the next one's images, when never asked."""
+            get_images(tile, [cid], {"download": True}, unasked=True)
+
+        engine.tasks.start(tile.name, "check", run, cloud=cid, then=then)
 
     @router.post("/api/clouds/{name}/find")
     def find_clouds(

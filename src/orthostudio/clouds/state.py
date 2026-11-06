@@ -209,6 +209,13 @@ class CloudState:
     task: Mapping[str, Any] | None = None
 
     @property
+    def unasked(self) -> bool:
+        """Whether its source was never asked for its images (``no_images``): a check that turned
+        it to this source, the one asked answering worse there, asks them in turn; each source so
+        once."""
+        return self.why == "no_images"
+
+    @property
     def toggle(self) -> str | None:
         """What a click on its outline does."""
         return next((a for a in ("tick", "untick") if a in self.actions), None)

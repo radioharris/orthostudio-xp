@@ -392,3 +392,38 @@ def test_a_cloud_task_keeps_the_engine_up_as_a_build_does() -> None:
     running = SimpleNamespace(tasks=SimpleNamespace(of=lambda: ["a search"]))
     assert _busy({"jobs": idle, "clouds": running})
     assert not _busy({"jobs": idle, "clouds": SimpleNamespace(tasks=SimpleNamespace(of=list))})
+
+
+@pytest.mark.anyio
+async def test_a_source_answering_worse_turns_the_cloud_to_the_next_whose_images_come_in_turn(
+    app: Any, ready: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Tick all left clouds waiting: their best source's check answered no picture, the next
+    # source took its place, and nobody asked its images (a user, 2026-11-06)
+    from orthostudio.clouds.find import Check, Judgement
+
+    asked: list[str] = []
+    monkeypatch.setattr(clouds_api, "_tools", lambda task: None)
+
+    def check(*args: Any, **_k: Any) -> Check:
+        asked.append(args[4])
+        return Check(Judgement("no_picture" if args[4] == "EOX" else "did_not_answer"))
+
+    monkeypatch.setattr(clouds_api, "check", check)
+    screening = {"EOX": {"answer": "clear", "fit": 70}, "Arc": {"answer": "clear", "fit": 50}}
+    with cloudlist.update(TILE) as cl:
+        cid = cl.add("found", _ring(), screening=screening)["id"]
+    async with client_for(app) as c:
+        r = await c.post(
+            "/api/clouds/+43+005/picks", json={"id": cid, "action": "tick", "download": True}
+        )
+        assert r.status_code == 200, r.text
+        for _ in range(200):
+            a = (await c.get("/api/clouds/+43+005")).json()
+            if not a["busy"]:
+                break
+            await anyio.sleep(0.05)
+    assert asked == ["EOX", "Arc"]  # each once: Arc not answering, the user asks it again
+    (row,) = a["clouds"]
+    assert row["line"]["key"] == "clouds.row.waiting.no_source"  # none is clear there now
+    assert {m["source"]: m["proposable"] for m in row["menu"]} == {"EOX": False, "Arc": True}

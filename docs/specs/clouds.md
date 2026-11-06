@@ -49,8 +49,8 @@ The Plan's map, brought over the tile; the Plan's steps make way for the cloud p
   its name and what a click does ("Cloud 5 · click to tick it", the engine's `tip`); a found cloud
   large enough shows its number inside it, a cloud too small to see at the map's zoom a pin that
   clicks as its outline. A click on an outline or a pin ticks or unticks it, except while a cloud is
-  being outlined, and brings its row to the middle of the list. While a task of a cloud runs, a
-  label with a spinner at its centre says it.
+  being outlined, and brings its row to the middle of the list. While a task of a cloud runs, not
+  while it waits for its turn, a label with a spinner at its centre says it.
 - **The banner over the map**: the sentence of the view ("What X-Plane shows.", "What X-Plane will
   show after Apply.", "The tile with no cloud replaced.", the three in one place so the banner
   keeps one size), then **After**, **Before**, **Outline a cloud**, **Back to the Plan**.
@@ -160,20 +160,21 @@ which the build's own with the preview of each cloud Apply lays there (`View.pre
 sentence says "after Apply" whenever one is. The list knows every cloud the tile shows replaced
 (2.4). A cloud is ticked one way (`clouds_api.pick`), by the user or once an outline's sources are
 tried, and its images are asked for one way (`clouds_api.get_images`): when its state offers
-`check`, after a tick, a source chosen, an outline's sources tried, or when **Get its images** asks
-again. What runs the cloud detector is asked just before its task starts (a search, an outline,
-getting images), refused while the detector is not on this computer and the user has not said to
-download it (`CLOUD_DETECTOR_ASK`, with its size): the page asks, and on yes sends with `download`
-the action the question says (`then`: `check`, the images of the clouds just ticked, every one with
-Tick all), else the same one again. A tick or a source is kept either way, the cloud waiting for its
-images on no; an outline is kept once the answer is yes, its sources being tried by the detector.
-The answer says when something is under way (`busy`: a task of the tile, or a build of it), for the
-page to read it again, and every word the page shows of the tile, a key and its parameters: the
-tile's line (its state's, else that a search found none or none was made), each row's line with its
-tone, the count, Apply's button and the questions of Apply and Restore. The test of the mode walks
-every combination of tick, chosen source, what the tile shows, the images got and a neighbour in the
-same texture, and checks that the rows, the count, the buttons, Apply and Discard agree
-(`tests/test_clouds_state.py`).
+`check`, after a tick, a source chosen, an outline's sources tried, when **Get its images** asks
+again, or after a check whose source answered worse there and turned the cloud to a source never
+asked (`CloudState.unasked`), each source so once. What runs the cloud detector is asked just before
+its task starts (a search, an outline, getting images), refused while the detector is not on this
+computer and the user has not said to download it (`CLOUD_DETECTOR_ASK`, with its size): the page
+asks, and on yes sends with `download` the action the question says (`then`: `check`, the images of
+the clouds just ticked, every one with Tick all), else the same one again. A tick or a source is
+kept either way, the cloud waiting for its images on no; an outline is kept once the answer is yes,
+its sources being tried by the detector. The answer says when something is under way (`busy`: a task
+of the tile, or a build of it), for the page to read it again, and every word the page shows of the
+tile, a key and its parameters: the tile's line (its state's, else that a search found none or none
+was made), each row's line with its tone, the count, Apply's button and the questions of Apply and
+Restore. The test of the mode walks every combination of tick, chosen source, what the tile shows,
+the images got and a neighbour in the same texture, and checks that the rows, the count, the
+buttons, Apply and Discard agree (`tests/test_clouds_state.py`).
 
 A cloud a build did not lay again is a ticked cloud whose images no longer stand (R6): its line
 says why, "The tile's level changed since its images were got: get them again", and nothing else
@@ -407,11 +408,11 @@ The tile is read as X-Plane draws it (R2) at the sharpest level whose pixel is a
 reads it once more a level finer where the textures are that fine (`find.fine_level`): the finer
 reading finds the small cumulus, the coarser keeps the large pale veils, and the two are merged
 (B1), in about twice the time; on a tile built no finer than the quick search reads, it is not
-offered. The
-detector is OmniCloudMask (DPIRD, MIT), run with OpenCV's DNN (`clouds/model.py`): both its
-networks for the first reading, the first alone for the finer one. A cloud is thick or thin cloud
-of at least 2 ha with its shadow within 600 m, its outline one simple ring (B3); at most 200 per
-tile, the largest first.
+offered. The detector is OmniCloudMask (DPIRD, MIT), run with OpenCV's DNN (`clouds/model.py`): both
+its networks for the first reading, the first alone for the finer one; one answer of the networks at
+a time, shared by every task (`model._RUN`: a network is no object two threads may run). A cloud is
+thick or thin cloud of at least 2 ha with its shadow within 600 m, its outline one simple ring (B3);
+at most 200 per tile, the largest first.
 
 Each other source covering the tile is then judged under every cloud, at one level finer than the
 search's where it has it (`screen`), and only where X-Plane shows the photo (`find._inside`: the
@@ -437,16 +438,17 @@ of them offers to ask again.
 
 ### 4.3 Getting a cloud's images
 
-The check (`find.check`): the source's pieces at the level each texture the cloud reaches reads
-it at, frozen into parts (2.5); Apply's own layer made from them and reduced to the map's level
-(R5); it must cover 90 % of the cloud; the detector says clear or cloudy at the tile's sharpness;
-the colour match is taken on the band around the cloud at the screening's reading, which answers
-too: no picture or the same photo there, and the check says so rather than lay colours it could
-not match. The search and the check judge by the same rules, each said once in `find.py`: the
-box a source is read on, the band's width, the level it is judged at, what the band leaves out,
-the cloud's core, what pieces that did not come answer. Its result is the cloud's entry (2.2),
-with the digest of each texture as built it was got on, kept in the list under that source; its
-preview is made when After first shows it.
+The check (`find.check`): the source's pieces at the level each texture the cloud reaches reads it
+at, frozen into parts (2.5); Apply's own layer made from them and reduced to the map's level (R5);
+it must cover 90 % of the cloud, judged as the search judges it (`judge`), the source having a
+picture wherever its layer lays something, its soft edge too; the detector says clear or cloudy at
+the tile's sharpness; the colour match is taken on the band around the cloud at the screening's
+reading, which answers too: no picture or the same photo there, and the check says so rather than
+lay colours it could not match. The search and the check judge by the same rules, each said once in
+`find.py`: the box a source is read on, the band's width, the level it is judged at, what the band
+leaves out, the cloud's core, what pieces that did not come answer. Its result is the cloud's entry
+(2.2), with the digest of each texture as built it was got on, kept in the list under that source;
+its preview is made when After first shows it.
 
 ### 4.4 Laying in a texture
 

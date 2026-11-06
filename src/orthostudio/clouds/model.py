@@ -140,6 +140,10 @@ def _present(folder: Path, n: Network) -> bool:
 
 _NETS: dict[Path, list[cv2.dnn.Net]] = {}
 _LOCK = threading.Lock()
+_RUN = threading.Lock()
+"""One answer of the networks at a time: a network read once is shared, and is no object two
+threads may run at once (three images got at once by Tick all failed in OpenCV's
+``buf.shape() == m.shape()``, a user, 2026-11-06). OpenCV runs each answer on every core."""
 
 
 def _networks() -> list[cv2.dnn.Net]:
@@ -228,9 +232,10 @@ def classify(
                 norm = np.where(ok, (chans - mean) / np.where(std == 0, 1, std), 0)
                 blob = np.ascontiguousarray(norm[None].astype(np.float32))
                 logits = np.zeros((4, PATCH, PATCH), np.float32)
-                for net in nets:
-                    net.setInput(blob)
-                    logits += net.forward()[0]
+                with _RUN:
+                    for net in nets:
+                        net.setInput(blob)
+                        logits += net.forward()[0]
                 acc[:, :, x : x + PATCH] += logits / len(nets) * ramp
             if progress is not None:
                 progress(j * len(xs) + i + 1, total)

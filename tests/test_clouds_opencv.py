@@ -119,3 +119,37 @@ def test_without_opencv_its_first_use_says_so(no_opencv: Path) -> None:
     with pytest.raises(OsxpError) as err:
         opencv.cv2.dilate  # noqa: B018 - the first use is the attribute
     assert err.value.code == "CLOUD_DETECTOR_MISSING"
+
+
+def test_the_detector_answers_one_image_at_a_time(monkeypatch: pytest.MonkeyPatch) -> None:
+    # its networks are shared: three images got at once (Tick all) ran one network in three
+    # threads, and OpenCV failed (buf.shape() == m.shape(), a user, 2026-11-06)
+    import threading
+    import time
+
+    import numpy as np
+
+    from orthostudio.clouds import model
+
+    running, overlaps = [0], []
+
+    class Net:
+        def setInput(self, blob: object) -> None:  # noqa: N802 (OpenCV's name)
+            running[0] += 1
+            if running[0] > 1:
+                overlaps.append(running[0])
+            time.sleep(0.002)
+
+        def forward(self) -> np.ndarray:
+            time.sleep(0.002)
+            running[0] -= 1
+            return np.zeros((1, 4, model.PATCH, model.PATCH), np.float32)
+
+    monkeypatch.setattr(model, "_networks", lambda: [Net(), Net()])
+    rgb = np.full((model.PATCH, model.PATCH, 3), 128, np.uint8)
+    threads = [threading.Thread(target=model.classify, args=(rgb,)) for _ in range(3)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(30)
+    assert overlaps == []
