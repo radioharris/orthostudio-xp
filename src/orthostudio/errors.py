@@ -1212,6 +1212,13 @@ _SPECS: tuple[ErrorSpec, ...] = (
         "Nothing was changed. Choose the folder named {name}, or the folder it is in.",
     ),
     _spec(
+        "SYS_TILE_BEING_BUILT",
+        _B,
+        _S,
+        "Tile {tile} is being built by another OrthoStudio XP right now (process {pid}).",
+        "Nothing was changed. Wait for that build to finish, then build the tile again.",
+    ),
+    _spec(
         "SYS_TILE_OTHER_BUILD",
         _B,
         _S,

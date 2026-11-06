@@ -159,6 +159,7 @@ from orthostudio.pipeline.textures import (
     write_report,
 )
 from orthostudio.pipeline.textures import TextureJob as PipelineTextureJob
+from orthostudio.pipeline.turns import holding
 from orthostudio.sched import (
     Done,
     Event,
@@ -4020,7 +4021,28 @@ def build_tiles(
     env: BuildEnv | None = None,
     handle_sigint: bool = True,
 ) -> BuildReport:
-    """Build (and optionally install) every spec with one scheduler (spec section 4)."""
+    """Build (and optionally install) every spec with one scheduler (spec section 4), its tiles
+    held from the other programs for the time (``pipeline/turns.py``)."""
+    with holding(s.tile for s in specs):
+        return _build_tiles(
+            specs,
+            on_event=on_event,
+            cpu_workers=cpu_workers,
+            cpu_in_threads=cpu_in_threads,
+            env=env,
+            handle_sigint=handle_sigint,
+        )
+
+
+def _build_tiles(
+    specs: Sequence[BuildSpec],
+    *,
+    on_event: Callable[[BuildEvent], None] | None,
+    cpu_workers: int | None,
+    cpu_in_threads: bool,
+    env: BuildEnv | None,
+    handle_sigint: bool,
+) -> BuildReport:
     t0 = time.perf_counter()
     env = env if env is not None else BuildEnv.create(specs)
     store = env.store
