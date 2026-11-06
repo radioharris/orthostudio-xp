@@ -131,6 +131,8 @@ export function createCloudMode(ctx) {
     asked: 0, shown: 0,
     /** Why the tile could not be read, when no answer came yet: said in the panel. */
     error: null,
+    /** The clicks whose answer the engine has not given yet (:func:`waiting`). */
+    sending: 0,
   };
   const labels = new Map(); // a cloud's number's place, by its outline
 
@@ -203,9 +205,11 @@ export function createCloudMode(ctx) {
    * kept), else the same action again. */
   async function send(method, path, body) {
     try {
-      const res = await api(method, `/api/clouds/${encodeURIComponent(cs.tile)}${path}`, body);
-      await refresh();
-      return res;
+      return await waiting(async () => {
+        const res = await api(method, `/api/clouds/${encodeURIComponent(cs.tile)}${path}`, body);
+        await refresh();
+        return res;
+      });
     } catch (err) {
       const e = err?.detail?.error;
       if (e?.code === "CLOUD_DETECTOR_ASK" && !body?.download) {
@@ -219,6 +223,20 @@ export function createCloudMode(ctx) {
       }
       await refresh();
       return null;
+    }
+  }
+
+  /** A click's work, the engine's answer awaited: a spinner beside the title meanwhile, the one
+   * way every click says it was taken (Tick all on 189 clouds showed nothing for a second, a
+   * source already got nothing at all, a user, 2026-11-07). */
+  async function waiting(work) {
+    cs.sending += 1;
+    render();
+    try {
+      return await work();
+    } finally {
+      cs.sending -= 1;
+      render();
     }
   }
 
@@ -426,8 +444,10 @@ export function createCloudMode(ctx) {
 
   /** Stop the task ``id`` the engine sent. */
   async function stopTask(id) {
-    await api("POST", `/api/clouds/tasks/${id}/stop`).catch((err) => toast(errorMessage(err), "fail"));
-    await refresh();
+    await waiting(async () => {
+      await api("POST", `/api/clouds/tasks/${id}/stop`).catch((err) => toast(errorMessage(err), "fail"));
+      await refresh();
+    });
   }
 
   /** Tick or untick the cloud, as its state says now (``toggle``): a row's checkbox is kept as it
@@ -490,7 +510,8 @@ export function createCloudMode(ctx) {
     const a = cs.answer;
     // beside the title, the source the tile's photo was built from: the one its clouds replace
     const built = a?.provider ? h("span", { class: "clouds-built" }, t("clouds.built_from", { source: names()[a.provider] || a.provider })) : null;
-    const kids = [h("h2", { id: "clouds-title" }, t("clouds.title", { tile: cs.tile || "" }), built)];
+    const sending = cs.sending ? h("span", { class: "spinner clouds-sending", "aria-hidden": "true" }) : null;
+    const kids = [h("h2", { id: "clouds-title" }, t("clouds.title", { tile: cs.tile || "" }), built, sending)];
     if (!a) {
       kids.push(cs.error
         ? h("p", { class: "clouds-warning", role: "status" }, cs.error)

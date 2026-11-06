@@ -682,6 +682,8 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .cloud-item .zone-row > .zone-hint.num { margin-left: auto; margin-right: 6px; } /* clear of Show */
 /* Beside the title, the source the tile's photo was built from, in the help's words' size. */
 .clouds-built { margin-left: var(--gap); font-weight: normal; font-size: var(--fs-2); color: var(--fg-2); }
+/* Beside the title, last, while the engine answers a click: nothing before it moves. */
+.clouds-sending { display: inline-block; margin-left: var(--gap); vertical-align: middle; }
 /* One colour, one meaning: the accent, as the tick, is what will be replaced. The current cloud
    is no colour of its own: its row lighter in a thick frame of the text's colour, its outline
    thicker (three colours, orange, red and blue, said nothing clear, a user, 2026-11-03). */
