@@ -56,13 +56,13 @@ The Plan's map, brought over the tile; the Plan's steps make way for the cloud p
   show after Apply.", "The tile with no cloud replaced.", the three in one place so the banner
   keeps one size), then **After**, **Before**, **Outline a cloud**, **Back to the Plan**.
 - **The panel**: the tile's name; the tile's line when it is not ready (1.5); each task under way
-  with a spinner, its phase, its progress and **Stop**; the count of what Apply changes ("To
-  replace: 1 · Back as photographed: 2") with **Tick all** and **Untick all**; the list, a row per
-  cloud; then, spaced as the Plan's build buttons (`actions actions-build`), **Apply (n
-  changes)**, **Discard changes**, **Restore the original photos** while the tile holds replaced
-  clouds (greyed while it may not run), **Quick search** and **Fine search** (4.1; greyed, saying
-  why, on a tile with nothing finer to read, the engine's `fine`), and before any cloud, what each
-  search takes.
+  with a spinner, its phase, its progress (a search's judging of the sources said cloud by cloud)
+  and **Stop**; the count of what Apply changes ("To replace: 1 · Back as photographed: 2") with
+  **Tick all** and **Untick all**; the list, a row per cloud; then, spaced as the Plan's build
+  buttons (`actions actions-build`), **Apply (n changes)**, **Discard changes**, **Restore the
+  original photos** while the tile holds replaced clouds (greyed while it may not run), **Quick
+  search** and **Fine search** (4.1; greyed, saying why, on a tile with nothing finer to read, the
+  engine's `fine`), and before any cloud, what each search takes.
 - **A row**, laid out as the Plan's zones: its tick and name, its area, **Show** (the map over
   it), a trash for an outline the tile does not hold; the menu of its sources, each with what it
   has there and its fit ("Esri World Imagery · clear · fit 93 %"), both from its newest reading
@@ -544,4 +544,4 @@ words: `docs/specs/errors.md`.
 | `api/clouds_api.py` | the routes (6) |
 | `pipeline/build.py` | `_clouds_again`, the build's one call to the clouds, before it says it finished the tile (`_clouds_before_done`, 2.3) |
 | `api/app.py`, `api/jobs.py` | what holds a tile's folder (`taken`), its cloud tasks ended first (`make_way`, R7) |
-| `ui/clouds.js` | the cloud mode of the page: it shows the view, decides nothing |
+| `ui/clouds.js` | the cloud mode of the page: it shows the view, decides nothing; every control has a key, so a panel drawn again in place never gives a button another's handler |

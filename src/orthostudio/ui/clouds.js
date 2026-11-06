@@ -126,6 +126,11 @@ export function createCloudMode(ctx) {
   const labels = new Map(); // a cloud's number's place, by its outline
 
   const names = () => Object.fromEntries((ctx.providers() || []).map((p) => [p.code, p.name || p.code]));
+  /** A control's key: drawn again in place, an element stays the one it was, its handler with it.
+   * Matched by place alone, a button took another's of the same look: a search's Stop came in as
+   * Tick all's, and ticked every cloud (a user, 2026-11-06). Every control of the panel and the
+   * banner has one; a cloud's row has its cloud's. */
+  const key = (k) => ({ focusKey: `clouds-${k}` });
   const file = (name) => `/api/clouds/${encodeURIComponent(cs.tile)}/files/${name}`;
 
   async function open(tile) {
@@ -455,14 +460,14 @@ export function createCloudMode(ctx) {
     const said = { after: a?.views?.after ? t(a.views.after) : "", before: a?.views?.before ? t(a.views.before) : "", drawing: t("clouds.outlining") };
     const now = drawing ? "drawing" : cs.view;
     // the pressed view says so as the map's banner buttons do (a primary one read white on pale blue)
-    const view = (which, words) => h("button", { type: "button", class: "btn", "aria-pressed": String(cs.view === which), onclick: () => { cs.view = which; render(); } }, words);
+    const view = (which, words) => h("button", { type: "button", class: "btn", dataset: key(`view-${which}`), "aria-pressed": String(cs.view === which), onclick: () => { cs.view = which; render(); } }, words);
     morph(el, h("div", null,
-      h("p", { class: "map-banner-text clouds-view-text" }, ...Object.entries(said).map(([k, words]) => h("span", { class: k === now ? "is-current" : null }, words))),
-      h("div", { class: "map-banner-actions" },
+      h("p", { class: "map-banner-text clouds-view-text", dataset: key("view-text") }, ...Object.entries(said).map(([k, words]) => h("span", { class: k === now ? "is-current" : null }, words))),
+      h("div", { class: "map-banner-actions", dataset: key("banner-actions") },
         view("after", t("clouds.view_after")),
         view("before", t("clouds.view_before")),
-        h("button", { type: "button", class: "btn", disabled: drawing || !a?.allowed.includes("outline"), onclick: outline }, t("clouds.outline")),
-        h("button", { type: "button", class: "btn", onclick: close }, t("clouds.back"))),
+        h("button", { type: "button", class: "btn", dataset: key("outline"), disabled: drawing || !a?.allowed.includes("outline"), onclick: outline }, t("clouds.outline")),
+        h("button", { type: "button", class: "btn", dataset: key("back"), onclick: close }, t("clouds.back"))),
     ));
   }
 
@@ -476,36 +481,36 @@ export function createCloudMode(ctx) {
       morph(el, h("div", null, ...kids));
       return;
     }
-    if (a.line) kids.push(h("p", { class: "clouds-lead" }, lineWords(a.line)));
+    if (a.line) kids.push(h("p", { class: "clouds-lead", dataset: key("lead") }, lineWords(a.line)));
     for (const task of a.tasks) { // the tile's own: a cloud's is in its row
-      kids.push(h("div", { class: "clouds-progress" },
+      kids.push(h("div", { class: "clouds-progress", dataset: key(`task-${task.id}`) },
         h("span", { class: "spinner", "aria-hidden": "true" }),
         h("span", { role: "status" }, `${t(`clouds.task.${task.kind}`)} ${taskWords(task)}`),
-        task.actions.includes("stop") ? h("button", { type: "button", class: "btn", onclick: () => stopTask(task.id) }, t("clouds.stop")) : null));
+        task.actions.includes("stop") ? h("button", { type: "button", class: "btn", dataset: key(`stop-${task.id}`), onclick: () => stopTask(task.id) }, t("clouds.stop")) : null));
     }
     if (a.failed) {  // the tile's last task that failed, until its next one: the engine's words for it
       const e = a.failed.error || {};
       const [message, remedy] = codeText(e.code, e.context) || [e.message || "", e.remedy || ""];
-      kids.push(h("p", { class: "clouds-warning", role: "status" }, `${t(`clouds.task.${a.failed.kind}`)} ${message} ${remedy || ""}`.trim()));
+      kids.push(h("p", { class: "clouds-warning", role: "status", dataset: key("failed") }, `${t(`clouds.task.${a.failed.kind}`)} ${message} ${remedy || ""}`.trim()));
     }
     // what the tile allows is the engine's to say (``state.View.allowed``)
     const can = new Set(a.allowed);
     if (a.clouds.length) {
-      kids.push(h("div", { class: "clouds-count" },
+      kids.push(h("div", { class: "clouds-count", dataset: key("count") },
         h("p", { class: "plan-step-size" }, piecesWords(a.texts.count)),
-        h("button", { type: "button", class: "btn", disabled: !can.has("tick"), onclick: () => send("POST", "/picks", { action: "tick" }) }, t("clouds.all")),
-        h("button", { type: "button", class: "btn", disabled: !can.has("untick"), onclick: () => send("POST", "/picks", { action: "untick" }) }, t("clouds.none"))));
+        h("button", { type: "button", class: "btn", dataset: key("tick-all"), disabled: !can.has("tick"), onclick: () => send("POST", "/picks", { action: "tick" }) }, t("clouds.all")),
+        h("button", { type: "button", class: "btn", dataset: key("untick-all"), disabled: !can.has("untick"), onclick: () => send("POST", "/picks", { action: "untick" }) }, t("clouds.none"))));
     }
-    const list = h("ul", { class: "zone-list clouds-list" });
+    const list = h("ul", { class: "zone-list clouds-list", dataset: key("list") });
     for (const c of a.clouds) list.append(row(c));
     kids.push(list);
     const first = !a.clouds.length; // nothing found yet: the search first, and what it costs
-    kids.push(h("div", { class: "actions actions-build" },
-      first ? null : h("button", { type: "button", class: "btn btn-primary", disabled: !can.has("apply"), onclick: () => apply("apply") }, lineWords(a.texts.apply)),
-      first ? null : h("button", { type: "button", class: "btn", disabled: !can.has("discard"), onclick: () => send("POST", "/discard") }, t("clouds.discard")),
-      a.texts.restore ? h("button", { type: "button", class: "btn", disabled: !can.has("restore"), onclick: () => apply("restore") }, lineWords(a.texts.restore)) : null,
+    kids.push(h("div", { class: "actions actions-build", dataset: key("actions") },
+      first ? null : h("button", { type: "button", class: "btn btn-primary", dataset: key("apply"), disabled: !can.has("apply"), onclick: () => apply("apply") }, lineWords(a.texts.apply)),
+      first ? null : h("button", { type: "button", class: "btn", dataset: key("discard"), disabled: !can.has("discard"), onclick: () => send("POST", "/discard") }, t("clouds.discard")),
+      a.texts.restore ? h("button", { type: "button", class: "btn", dataset: key("restore"), disabled: !can.has("restore"), onclick: () => apply("restore") }, lineWords(a.texts.restore)) : null,
       ...searchButtons(a, can, first)));
-    if (first) kids.push(h("p", { class: "help" }, t("clouds.search_help")));
+    if (first) kids.push(h("p", { class: "help", dataset: key("search-help") }, t("clouds.search_help")));
     const scroll = el.querySelector(".clouds-list")?.scrollTop || 0;
     morph(el, h("div", null, ...kids));
     revealRow(el.querySelector(".clouds-list"), scroll);
@@ -515,10 +520,10 @@ export function createCloudMode(ctx) {
    * finer to read (``fine``, the engine's: built at the search's level or coarser). */
   function searchButtons(a, can, primary) {
     const off = !can.has("find");
-    const quick = h("button", { type: "button", class: primary ? "btn btn-primary" : "btn", disabled: off, onclick: () => send("POST", "/find", { fine: false }) }, t("clouds.search_quick"));
-    const fine = h("button", { type: "button", class: "btn", disabled: off || !a.fine, onclick: () => send("POST", "/find", { fine: true }) }, t("clouds.search_fine"));
+    const quick = h("button", { type: "button", class: primary ? "btn btn-primary" : "btn", dataset: key("quick"), disabled: off, onclick: () => send("POST", "/find", { fine: false }) }, t("clouds.search_quick"));
+    const fine = h("button", { type: "button", class: "btn", dataset: key("fine"), disabled: off || !a.fine, onclick: () => send("POST", "/find", { fine: true }) }, t("clouds.search_fine"));
     // a disabled button shows no tooltip in every browser: the reason on what holds it
-    return [quick, a.fine ? fine : h("span", { class: "clouds-fine-off", title: t("clouds.fine_none") }, fine)];
+    return [quick, a.fine ? fine : h("span", { class: "clouds-fine-off", dataset: key("fine-off"), title: t("clouds.fine_none") }, fine)];
   }
 
   /** The list kept where it was, and the row asked for brought into view: to the middle of the

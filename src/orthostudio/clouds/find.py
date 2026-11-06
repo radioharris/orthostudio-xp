@@ -479,10 +479,16 @@ def screen(
     phase("fetching", 0, sum(len(v) for v in todo.values()))
     sources.fetch(todo, cancel=cancel, progress=lambda d, t: phase("fetching", d, t))
     out: list[dict[str, Judgement]] = [{} for _ in clouds]
-    for n, code in enumerate(sorted(sources.providers), start=1):
-        if cancel is not None and cancel.is_set():
-            raise OsxpError("SYS_CANCELLED")
+    # said cloud by cloud: a source judged under two hundred clouds took minutes, the line left
+    # on the download's 100 % meanwhile (a user, 2026-11-06); a Stop heard at each one
+    total, done = len(sources.providers) * len(clouds), 0
+    phase("sources", 0, total)
+    for code in sorted(sources.providers):
         for i, (rings, box) in enumerate(zip(clouds, boxes, strict=True)):
+            if cancel is not None and cancel.is_set():
+                raise OsxpError("SYS_CANCELLED")
+            done += 1
+            phase("sources", done, total)
             lost = _lost(sources, code, _keys_of(p, [box], levels[code]))
             if lost is not None:
                 out[i][code] = Judgement(lost)
@@ -504,7 +510,6 @@ def screen(
                 _band(inside, band_px, dirty[y0:y1, x0:x1]),
                 _cloudy(seen),
             )
-        phase("sources", n, len(sources.providers))
     return out
 
 

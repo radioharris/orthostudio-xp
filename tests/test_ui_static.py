@@ -8861,3 +8861,15 @@ def test_a_zone_as_the_tiles_offers_no_level_above_the_tiles_source() -> None:
     assert "const code = provider || ctx.planProvider?.() || null;" in body("maxZlFor")
     assert 'const source = provider || ctx.planProvider?.() || "";' in body("clampZl")
     assert "renderToolOptions();" in code.split("planChanged() {", 1)[1][:200]
+
+
+def test_every_control_of_the_cloud_mode_is_redrawn_as_itself() -> None:
+    """The panel is drawn again in place, an element matched to the live one of its kind and
+    place unless it has a key: a search's Stop came in as Tick all's button, its handler with it,
+    and ticked every cloud (a user, 2026-11-06). Every button of the mode has a key, or a name of
+    its own (a cloud's row's, which carries its cloud)."""
+    code = (UI / "clouds.js").read_text(encoding="utf-8")
+    calls = re.findall(r'h\("button", \{[^}]*\}', code)
+    assert calls
+    loose = [c for c in calls if "dataset:" not in c and '"aria-label"' not in c]
+    assert loose == [], loose
