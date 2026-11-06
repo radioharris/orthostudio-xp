@@ -23,11 +23,13 @@ from orthostudio.imagery.chunks import ChunkContainer
 from orthostudio.imagery.grid import TextureId
 from orthostudio.pipeline.parents import read_parents_blob
 from orthostudio.textures.assemble import assemble_texture_detailed, parent_fallback
+from orthostudio.textures.clouds import CloudPatch, lay, layer, read_clouds_input
 from orthostudio.textures.colour import adjust_photo, adjust_photo_inside, photo_unchanged
 from orthostudio.textures.encode import EncoderUnavailableError, encode_dds
 from orthostudio.textures.imprint import imprint, load_mask, mask_crop
 
 __all__ = [
+    "CLOUDS_RULE",
     "RULE_NAME",
     "RULE_VERSION",
     "BuildInfo",
@@ -40,6 +42,8 @@ __all__ = [
 
 RULE_NAME = "texture.dds"
 RULE_VERSION = 1
+CLOUDS_RULE = 1
+"""The way a cloud is laid (``textures/clouds.py``), in the key of a texture holding one only."""
 
 TEXTURE_RAM_MB = 400
 """What one texture holds while it is built, for the scheduler to count on.
@@ -84,6 +88,16 @@ class TextureDdsParams(RuleParams):
     a soft edge so the join does not show."""
     photo_feather_px: int = 24
     """Width of that soft edge, about 40 m at ZL16 in mid-latitudes."""
+    cloud_patches: tuple[CloudPatch, ...] = ()
+    """The clouds laid over the photo in this texture, in laying order, each from its part in
+    the ``clouds`` input (``textures/clouds.py``)."""
+    texture_xy: tuple[int, int] | None = None
+    """The texture's first tile, for its clouds' sources: a texture holding no cloud has none,
+    so identical inputs still share one artefact."""
+    clouds_rule: int = 0
+    opencv: str = ""
+    """The rule and the OpenCV a cloud is laid with: a preview and its texture are made by the
+    same, so either changing makes the texture again."""
 
     def canonical(self) -> dict[str, Any]:
         doc = super().canonical()
@@ -93,6 +107,9 @@ class TextureDdsParams(RuleParams):
         if not self.photo_shapes:  # every texture built before zones had a shape stays a hit
             doc.pop("photo_shapes", None)
             doc.pop("photo_feather_px", None)
+        if not self.cloud_patches:  # a texture without clouds keeps the key it always had
+            for name in ("cloud_patches", "texture_xy", "clouds_rule", "opencv"):
+                doc.pop(name, None)
         return doc
 
 
@@ -122,7 +139,8 @@ def take_build_info(key: str) -> BuildInfo | None:
     name=RULE_NAME,
     version=RULE_VERSION,
     params=TextureDdsParams,
-    inputs=("chunks", "mask", "parents"),
+    inputs=("chunks", "mask", "parents", "clouds"),
+    late_inputs=("clouds",),
     ram_mb=TEXTURE_RAM_MB,
     kind="file",
 )
@@ -162,6 +180,13 @@ def texture_dds(ctx: RunContext) -> None:
             feather_px=params.photo_feather_px,
             source=delivered,
         )
+    clouds_input = ctx.inputs.get("clouds")
+    if params.cloud_patches and clouds_input is not None and clouds_input.present:
+        # over the photo in its colours, under the mask's water, as the preview lays them
+        assert clouds_input.path is not None and params.texture_xy is not None
+        parts = read_clouds_input(clouds_input.path.read_bytes())
+        t = TextureId(*params.texture_xy, params.zl, params.provider)
+        rgb = lay(rgb, (la for p in params.cloud_patches if (la := layer(p, t, parts[p.cloud]))))
     t1 = time.perf_counter()
     mask_input = ctx.inputs["mask"]
     image: np.ndarray
@@ -214,6 +239,8 @@ def dds_node(
     mask_digest: str | None,
     parents_path: Path | None,
     parents_digest: str | None,
+    clouds_path: Path | None = None,
+    clouds_digest: str | None = None,
 ) -> Node:
     """The graph node of one texture; ``chunks_digest`` is ``ChunkContainer.digest()``."""
     inputs: dict[str, Source | None] = {
@@ -221,6 +248,9 @@ def dds_node(
         "mask": Source(mask_digest, mask_path, "mask") if mask_digest is not None else None,
         "parents": Source(parents_digest, parents_path, "parents")
         if parents_digest is not None
+        else None,
+        "clouds": Source(clouds_digest, clouds_path, "clouds")
+        if clouds_digest is not None
         else None,
     }
     return Node(texture_dds, params, inputs)
@@ -232,11 +262,14 @@ def dds_key(
     chunks_digest: str,
     mask_digest: str | None,
     parents_digest: str | None,
+    clouds_digest: str | None = None,
 ) -> str:
     """Key of the artefact without building a node (what the parent process checks)."""
-    key, _recipe = key_for(
-        texture_dds,
-        params,
-        {"chunks": chunks_digest, "mask": mask_digest, "parents": parents_digest},
-    )
+    inputs = {
+        "chunks": chunks_digest,
+        "mask": mask_digest,
+        "parents": parents_digest,
+        "clouds": clouds_digest,
+    }
+    key, _recipe = key_for(texture_dds, params, inputs)
     return key

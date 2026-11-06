@@ -38,6 +38,8 @@ import blake3
 from pydantic import Field
 
 from orthostudio import __version__
+from orthostudio.clouds.laying import TileClouding, parts_dir
+from orthostudio.clouds.tile import read_tile, tile_folder
 from orthostudio.decals import DECALS, DEFAULT_DECAL
 from orthostudio.dem import sources as dem_sources
 from orthostudio.dem.raster import read_elevation_from_file, readable_before
@@ -404,6 +406,10 @@ class BuildSpec:
     build_memory: str = "medium"
     """``expert.build_memory``, a key of :data:`MEMORY_SHARES`: how much of the computer's memory
     the batch may take."""
+    clouds: tuple[dict[str, Any], ...] | None = None
+    """The replaced clouds to lay (``clouds.tile``), in laying order: ``None`` for those the
+    tile holds, which every build keeps (:func:`build_tiles` reads them); others only from the
+    cloud mode's Apply."""
 
     @property
     def level(self) -> str:
@@ -511,6 +517,9 @@ class BuildEnv:
     """The prepared sources of this batch (``sources.chain.Chain``), asked before Overpass."""
     own_store: bool = False
     """Whether :meth:`create` opened ``store``, which :meth:`close` then closes."""
+    cloud_parts: dict[str, tuple[Path, ...]] = field(default_factory=dict)
+    """By tile, the folders of its textures artefact before this build, which keep the frozen
+    parts of the clouds it held (:func:`build_tiles`)."""
 
     @classmethod
     def create(cls, specs: Sequence[BuildSpec], *, store: Store | None = None) -> BuildEnv:
@@ -805,6 +814,8 @@ class TileTexturesParams(RuleParams):
     decal_on_sea: bool = False
     terrain_casts_shadows: bool = True
     use_test_texture: bool = False
+    clouds: list[Any] = Field(default_factory=list)
+    """The replaced clouds the textures lay (``clouds.tile``), in laying order."""
 
     PHOTO_ZONES_RULE: ClassVar[int] = 2
     """Which way the zone colours are applied. 1 coloured the whole texture file whose centre
@@ -821,6 +832,8 @@ class TileTexturesParams(RuleParams):
             doc.pop("photo_zones", None)  # no zone of its own: the key of every tile built before
         else:
             doc["photo_zones_rule"] = self.PHOTO_ZONES_RULE
+        if not self.clouds:
+            doc.pop("clouds", None)  # no cloud replaced: the key of every tile built before
         return doc
 
     def ter_params(self) -> TerParams:
@@ -1118,6 +1131,7 @@ def listed_texture(o: TextureOutcome) -> dict[str, Any]:
         "fmt": o.fmt,
         "key": o.key,
         "digest": o.digest,
+        "chunks": o.chunks,
     }
 
 
@@ -1145,11 +1159,29 @@ def _tile_textures(ctx: RunContext) -> None:
     for job in jobs:
         groups.setdefault((job.texture.provider, job.texture.zl), []).append(job)
     total = len(jobs)
-    done_before = 0
-    outcomes: list[dict[str, Any]] = []
     cancel = node.cancel_event
     stop = cancel if isinstance(cancel, threading.Event) else threading.Event()
-    for (code, zl), group in sorted(groups.items()):
+    clouds = TileClouding(
+        tile,
+        params.clouds,
+        [j.texture for j in jobs],
+        tile_colours=(params.photo_brightness, params.photo_contrast, params.photo_saturation),
+        zones=params.photo_zones,
+        folders=[parts_dir(env.chunks_root), *env.cloud_parts.get(tile.name, ())],
+        out=ctx.out,
+    )
+
+    def run(layers: Mapping[TextureId, tuple[Any, ...]]) -> list[TextureOutcome]:
+        done_before = 0
+        got: list[TextureOutcome] = []
+        for (code, zl), group in sorted(groups.items()):
+            got += _texture_group(code, zl, group, layers, done_before)
+            done_before += len(group)
+        return got
+
+    def _texture_group(
+        code: str, zl: int, group: list[PipelineTextureJob], layers: Any, done_before: int
+    ) -> list[TextureOutcome]:
         provider = env.provider(code)
         n = len(group)
         base = done_before
@@ -1194,6 +1226,7 @@ def _tile_textures(ctx: RunContext) -> None:
             photo_contrast=params.photo_contrast,
             photo_saturation=params.photo_saturation,
             photo_shapes_by_texture=shapes_by_texture,
+            cloud_layers={t: v for t, v in layers.items() if (t.provider, t.zl) == (code, zl)},
             workers=env.workers,
             encoder=params.encoder,
             mip_mode=params.mip_mode,
@@ -1240,12 +1273,19 @@ def _tile_textures(ctx: RunContext) -> None:
                 + "; nothing is committed.",
                 remedy=_missing_textures_remedy(codes, env.logs),
             )
-        outcomes.extend(listed_texture(o) for o in report.outcomes)
-        done_before += n
+        return list(report.outcomes)
+
+    # the clouds decided ahead (level, source, colours, parts), laid, then those whose texture
+    # came of other pieces than the ones they were laid on undone and the textures made again
+    # without them: a cloud is laid whole or not at all (``clouds.md`` R6)
+    outcomes = run(clouds.layers())
+    while clouds.undo_changed(outcomes):
+        outcomes = run(clouds.layers())
     manifest = {
         "format": MANIFEST_FORMAT,
         "tile": tile.name,
-        "textures": sorted(outcomes, key=lambda o: str(o["name"])),
+        "textures": sorted((listed_texture(o) for o in outcomes), key=lambda o: str(o["name"])),
+        **clouds.manifest(),
     }
     (ctx.out / "manifest.json").write_text(
         json.dumps(manifest, indent=1, sort_keys=True) + "\n", encoding="utf-8"
@@ -2741,6 +2781,7 @@ def declare(
                 "tile": name,
                 "encoder": encoder,
                 "encoder_version": encoder_version,
+                "clouds": list(spec.clouds or ()),
             }
         )
         textures = reg.node(
@@ -3560,6 +3601,20 @@ PUT_BACK_ROLE = "put_back"
 the Installation cell, where its words and how far it is go."""
 
 
+def _with_held_clouds(spec: BuildSpec, home: Path | None, env: BuildEnv) -> BuildSpec:
+    """``spec`` with the replaced clouds its tile holds (``clouds.tile``), unless the cloud
+    mode's Apply gave it others, and the folders of their frozen parts noted for its textures
+    step. Every build of a tile goes through here, from the Plan, the Library, Works or the
+    command line: none builds a tile without its clouds."""
+    folder = tile_folder(spec.tile, workshop=Path(spec.out_dir).expanduser(), home=home)
+    held = read_tile(folder, env.store)
+    if held is not None:
+        env.cloud_parts[spec.tile.name] = (env.store.path(held.textures_key) / "clouds" / "parts",)
+    if spec.clouds is not None:
+        return spec
+    return dataclasses.replace(spec, clouds=held.applied if held is not None else ())
+
+
 def _homes(
     specs: Sequence[BuildSpec], env: BuildEnv
 ) -> tuple[dict[str, Path], dict[str, list[Path]], dict[str, OsxpError]]:
@@ -3945,6 +4000,7 @@ def build_tiles(
     every_spec = [
         dataclasses.replace(s, install=False) if s.tile.name in homes else s for s in specs
     ]
+    every_spec = [_with_held_clouds(s, homes.get(s.tile.name), env) for s in every_spec]
     specs = [s for s in every_spec if s.tile.name not in away]
     if on_event is not None:
         for s in every_spec:

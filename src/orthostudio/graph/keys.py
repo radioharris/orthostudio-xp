@@ -54,7 +54,10 @@ def key_for(rule: Rule, params: RuleParams, inputs: Mapping[str, str | None]) ->
         raise TypeError(f"rule {rule.name!r} expects {rule.params.__name__}, got {type(params)}")
     if set(inputs) != set(rule.inputs):
         raise ValueError(f"rule {rule.name!r} inputs are {list(rule.inputs)}, got {sorted(inputs)}")
-    return artifact_key(rule.name, rule.version, params.canonical(), inputs)
+    # an input added to the rule late is out of the key while absent: what was built before it
+    # existed keeps its key (``Rule.late_inputs``)
+    keyed = {n: d for n, d in inputs.items() if d is not None or n not in rule.late_inputs}
+    return artifact_key(rule.name, rule.version, params.canonical(), keyed)
 
 
 def parse_recipe(recipe: str) -> dict[str, Any]:
