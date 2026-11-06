@@ -13,11 +13,13 @@ the time from the learnt costs and, online, from a 20-request probe of the provi
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import sqlite3
 import time
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from orthostudio.dem.raster import cell_has_land
@@ -31,7 +33,7 @@ from orthostudio.dsf.params import DsfParams
 from orthostudio.dsf.zones import M_TO_LAT, airport_covers, m_to_lon
 from orthostudio.errors import OsxpError
 from orthostudio.graph.keys import artifact_key
-from orthostudio.imagery.chunks import ChunkStatus, ChunkStore
+from orthostudio.imagery.chunks import ChunkStatus, ChunkStore, piece_sizes
 from orthostudio.imagery.grid import TextureId, texture_name, texture_tiles, textures_covering
 from orthostudio.imagery.providers import Provider, cache_name, tile_url
 from orthostudio.model import ArtifactRef
@@ -48,6 +50,7 @@ from orthostudio.pipeline.build import (
     stored_osm_refs,
     texture_jobs_from_json,
 )
+from orthostudio.pipeline.parents import PARENTS_DIR
 from orthostudio.sched import PlanEntry
 from orthostudio.zones import zone_list_textures
 
@@ -78,7 +81,13 @@ KB_PER_PIECE: dict[tuple[str, int], float] = {("BI", 16): 14.2, ("BI", 18): 11.7
 """Mean body of an image piece by source and level, the pieces this app stored (2026-10-29):
 Bing ZL16 14.2 kB over 7 629 images, Bing ZL18 11.7 over 2 797, EOX ZL14 9.5 over 132. The Plan
 counted 13 kB for every piece, without a probe: Bing builds at ZL16 with their airports at ZL18
-downloaded 6 to 11 % more than it said."""
+downloaded 6 to 11 % more than it said. What a computer that holds none of them yet goes by
+(:func:`_piece_kb`)."""
+LEARNED_MIN_PIECES = 32
+"""Images of a source and level this computer must hold before their mean weighs its pieces."""
+LEARNED_SAMPLE = 32
+"""Containers read in a folder of a source's cache, spread over their names: a folder of
+thousands of images is weighed from 32 headers."""
 RELIEF_CELL_MB: dict[str, float] = {"COP30": 43.5, "NED1/3": 476.0}
 """Mean file of one relief cell a build downloads, by source (2026-10-29): Copernicus 43.5 MB over
 46 cells (around Atlanta 46.0, the Rhône valley and Languedoc 38.9, a coastal one 6.1), the USGS at
@@ -334,8 +343,47 @@ def probe_network(
 # -- estimate ------------------------------------------------------------------------------------
 
 
-def _kb_per_piece(t: TextureId) -> float:
-    return KB_PER_PIECE.get((t.provider, t.zl), DEFAULT_KB_PER_REQUEST)
+_folder_weights: dict[Path, tuple[int, int, int]] = {}
+"""``folder -> (mtime_ns, images, bytes)``: weighed again once a container is written there."""
+
+
+def _folder_weight(folder: Path) -> tuple[int, int]:
+    """The images of up to :data:`LEARNED_SAMPLE` containers of ``folder``, and their bytes."""
+    try:
+        mtime = folder.stat().st_mtime_ns
+        known = _folder_weights.get(folder)
+        if known is not None and known[0] == mtime:
+            return known[1], known[2]
+        with os.scandir(folder) as it:
+            names = sorted(e.name for e in it if e.name.endswith(".chunks"))
+    except OSError:  # nothing downloaded there, or the data disk away
+        return 0, 0
+    step = max(1, -(-len(names) // LEARNED_SAMPLE))  # rounded up: the sample spans them all
+    sizes = [n for name in names[::step] for n in piece_sizes(folder / name)]
+    _folder_weights[folder] = (mtime, len(sizes), sum(sizes))
+    return len(sizes), sum(sizes)
+
+
+def _piece_kb(chunks_root: Path, folder: str, code: str, zl: int) -> float:
+    """Mean body of a piece of the source ``code`` at ``zl``, in kB: that of the images of it
+    this computer downloaded (at least :data:`LEARNED_MIN_PIECES`), else :data:`KB_PER_PIECE`,
+    else :data:`DEFAULT_KB_PER_REQUEST`. A source's pieces weigh what its pictures at that level
+    do, and no table holds every source and level: USGS and Esri at ZL15 weighed about 22 kB a
+    piece where 13 were counted; one cache held USGS's pieces at 11.8 kB at ZL13 and 31.9 at ZL15
+    (2026-11-04)."""
+    base = Path(chunks_root) / folder
+    images = size = 0
+    for where in (base / str(zl), base / PARENTS_DIR / str(zl)):
+        n, b = _folder_weight(where)
+        images += n
+        size += b
+    if images >= LEARNED_MIN_PIECES:
+        return size / images / 1000.0
+    return KB_PER_PIECE.get((code, zl), DEFAULT_KB_PER_REQUEST)
+
+
+def _kb_per_piece(store: ChunkStore, t: TextureId) -> float:
+    return _piece_kb(store.root, store.folders.get(t.provider, t.provider), t.provider, t.zl)
 
 
 def _requests_for(store: ChunkStore, textures: Sequence[TextureId]) -> tuple[int, float]:
@@ -348,7 +396,8 @@ def _requests_for(store: ChunkStore, textures: Sequence[TextureId]) -> tuple[int
             container = None
         n = 256 if container is None else len(container.indices(ChunkStatus.ERROR))
         total += n
-        kb += n * _kb_per_piece(t)
+        if n:
+            kb += n * _kb_per_piece(store, t)
     return total, kb
 
 
@@ -680,7 +729,7 @@ def estimate(
         for t in textures:
             if texture_name(t) in kept and not chunks.has(t):
                 requests += 256
-                photos_kb += 256 * _kb_per_piece(t)
+                photos_kb += 256 * _kb_per_piece(chunks, t)
         if requests and first_probe_texture is None:
             for t in fresh:
                 c = chunks.read(t) if chunks.has(t) else None
@@ -725,7 +774,7 @@ def estimate(
     probed = probe is not None and probe.throughput > 0
     req_per_s = probe.throughput if probed and probe is not None else DEFAULT_REQ_PER_S
     for te in tiles:
-        if measured:  # the probe's pieces, else each one's source and level (KB_PER_PIECE)
+        if measured:  # the probe's pieces, else each one's source and level (_piece_kb)
             te.download_mb = te.requests * kb / 1000.0
         mb_per_s = req_per_s * kb / 1000.0
         te.network_s = te.requests / req_per_s if req_per_s > 0 else 0.0

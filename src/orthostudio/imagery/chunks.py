@@ -33,6 +33,7 @@ __all__ = [
     "ChunkEntry",
     "ChunkStatus",
     "ChunkStore",
+    "piece_sizes",
 ]
 
 MAGIC = b"OSXPCHK1"
@@ -236,6 +237,23 @@ class ChunkContainer:
         if expected_offset != len(data):
             raise _corrupt(path, f"{len(data) - expected_offset} trailing bytes")
         return cls(entries)
+
+
+def piece_sizes(path: Path) -> list[int]:
+    """The sizes of the images the container ``path`` holds (its ``OK`` entries), from its header
+    alone: what the Plan weighs a source's pieces by. Empty when it is not a whole container."""
+    try:
+        with open(path, "rb") as f:
+            head = f.read(HEADER_SIZE)
+    except OSError:
+        return []
+    if len(head) < HEADER_SIZE or head[:8] != MAGIC:
+        return []
+    return [
+        length
+        for _offset, length, status, _code, _at in _INDEX_ENTRY.iter_unpack(head[_PREAMBLE.size :])
+        if status == ChunkStatus.OK and length
+    ]
 
 
 class ChunkStore:
