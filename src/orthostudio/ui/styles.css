@@ -322,6 +322,9 @@ select {
   appearance: none; -webkit-appearance: none; padding-right: 24px;
   background-image: var(--select-arrow); background-repeat: no-repeat;
   background-position: right 8px center; background-size: 8px 12px;
+  /* WebKit counts the text of the longest choice, cut at the list's edge, in the width of what
+     holds it: a list scrolled its box sideways by 36 px in the Mac's window (2026-11-03) */
+  overflow: hidden;
 }
 input:disabled, select:disabled { opacity: 0.55; }
 input[aria-invalid="true"] { border-color: var(--fail); }
