@@ -41,7 +41,7 @@ title, the source the tile's own photo comes from. A source showing
 the same photo as the tile, which would bring the cloud back, or with no picture there, is greyed.
 
 - Every cloud comes **unticked**. The tool can take something pale for a cloud, such as light,
-  muddy water near a coast: look before you tick. **Show** brings the map to a cloud.
+  muddy water near a coast: look before you tick. The eye beside a cloud brings the map to it.
 - **Tick** a cloud, or click its outline on the map (its tooltip says what a click does; its row
   comes to the middle of the list): its source's images are fetched at the
   tile's own sharpness, in a few seconds, and its line says *Replaced by Esri World Imagery after
@@ -50,8 +50,8 @@ the same photo as the tile, which would bring the cloud back, or with no picture
 - To take another source, choose it in the cloud's list: it is ticked with it.
 - **Tick all** and **Untick all**, above the list, tick or untick every cloud at once. While
   clouds' images are being fetched, **Stop all** beside them stops every one at once.
-- A spinner says that a cloud's images are being fetched, in its row and at its centre on the
-  map. A found cloud shows its number inside it; one too small to see at the map's zoom has a pin
+- A spinner says that a cloud's images are being fetched, beside its name and at its centre on
+  the map; a click on the one beside its name stops it. A found cloud shows its number inside it; one too small to see at the map's zoom has a pin
   you can click.
 - A source that did not answer or refused for now says so in the line, and stays the cloud's
   source: **Get its images** asks it again.

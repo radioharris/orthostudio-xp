@@ -141,6 +141,8 @@ export function createCloudMode(ctx) {
    * banner has one; a cloud's row has its cloud's. */
   const key = (k) => ({ focusKey: `clouds-${k}` });
   const file = (name) => `/api/clouds/${encodeURIComponent(cs.tile)}/files/${name}`;
+  /** An icon of the page's (``index.html``'s templates). */
+  const icon = (id) => $(id).content.firstElementChild.cloneNode(true);
 
   async function open(tile) {
     if (cs.tile && cs.tile !== tile) close();
@@ -589,17 +591,20 @@ export function createCloudMode(ctx) {
       render();
     };
     const buttons = [
-      can.has("check") ? h("button", { type: "button", class: "btn", "aria-label": `${t("clouds.get_images")}: ${label}`, onclick: () => send("POST", "/check", { id: c.id, again: true }) }, t("clouds.get_images")) : null,
-      can.has("stop") ? h("button", { type: "button", class: "btn", "aria-label": `${t("clouds.stop")}: ${label}`, onclick: () => { const now = cloudNow(c.id)?.task; if (now) stopTask(now.id); } }, t("clouds.stop")) : null,
+      can.has("check") ? h("button", { type: "button", class: "btn", dataset: key(`check-${c.id}`), "aria-label": `${t("clouds.get_images")}: ${label}`, onclick: () => send("POST", "/check", { id: c.id, again: true }) }, t("clouds.get_images")) : null,
     ].filter(Boolean);
+    // a task of it: a spinner beside its name, around a square that stops it, in place of its
+    // line and a Stop of its own (a line of words and a row of its own, a user, 2026-11-07)
+    const busy = !task ? null : can.has("stop")
+      ? h("button", { type: "button", class: "cloud-stop", dataset: key(`stop-${c.id}`), title: t("clouds.stop"), "aria-label": `${t("clouds.stop")}: ${label}`, onclick: () => { const now = cloudNow(c.id)?.task; if (now) stopTask(now.id); } },
+        h("span", { class: "spinner", "aria-hidden": "true" }), icon("tpl-stop-icon"))
+      : h("span", { class: "spinner", "aria-hidden": "true" });
     const trash = can.has("remove")
       ? h("button", { type: "button", class: "btn btn-icon btn-danger btn-trash", "aria-label": `${t("clouds.remove")}: ${label}`, title: t("clouds.remove"), onclick: () => send("DELETE", `/outlines/${c.id}`) },
         $("zones-clear").querySelector("svg").cloneNode(true)) // the zones' own trash
       : null;
-    const line = c.line
-      ? h("span", { class: `zone-hint${c.line.tone === "warn" ? " zone-hint-warn" : ""}${task ? " cloud-trying" : ""}`, role: task ? "status" : null },
-        task ? h("span", { class: "spinner", "aria-hidden": "true" }) : null,
-        task ? `${lineWords(c.line, n)}${progressWords(task)}` : lineWords(c.line, n))
+    const line = c.line && !task
+      ? h("span", { class: `zone-hint cloud-line${c.line.tone === "warn" ? " zone-hint-warn" : ""}` }, lineWords(c.line, n))
       : null;
     // keyed by its cloud: redrawn in place, a row stays its cloud's, its handlers with it
     // a click on the row shows its cloud; its checkbox and its name tick it, its menu and its
@@ -612,8 +617,9 @@ export function createCloudMode(ctx) {
       h("div", { class: "zone-main" },
         h("div", { class: "zone-row" },
           h("label", { class: "cloud-name" }, box, " ", label),
+          busy,
           h("span", { class: "zone-hint num" }, areaWords(c.ha)),
-          h("button", { type: "button", class: "btn", "aria-label": `${t("clouds.show")}: ${label}`, onclick: show }, t("clouds.show")),
+          h("button", { type: "button", class: "btn btn-icon cloud-show", dataset: key(`show-${c.id}`), title: t("clouds.show"), "aria-label": `${t("clouds.show")}: ${label}`, onclick: show }, icon("tpl-eye-icon")),
           trash),
         h("div", { class: "zone-row" }, menu),
         line,
