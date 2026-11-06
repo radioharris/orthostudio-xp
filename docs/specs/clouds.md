@@ -23,8 +23,9 @@ number (B1, B2...).
 - **Before / Avant, After / Après**: Before is the tile with no cloud replaced; After what X-Plane
   shows, or will show once the waiting changes are applied.
 - **Replaced / remplacé** (held, in the code): a cloud the tile's textures were made with.
-- **Came back as photographed / revenu tel que photographié** (undone): a held cloud a build did
-  not lay again, the photo under it having changed (R6).
+- **Undone** (in the code): a held cloud a build did not lay again, the photo under it having
+  changed (R6); on the page, a ticked cloud waiting for its images to be got again, its line
+  saying why.
 
 ### 1.2 The Library
 
@@ -89,8 +90,8 @@ the source ticked); **back** (replaced, unticked: it comes back at Apply); **rea
 images in: replaced at Apply, or "EOX now, Esri after Apply"); **waiting** (ticked, its images
 not in, with why: not got yet; the photo under it changed since, its level, source, textures,
 images or colours; or what the source answered, 5.1); **found** (unticked). A held cloud a build
-undid says so under its row until it is applied again or unticked: "Came back as photographed:
-the tile is at another level now".
+undid is a ticked cloud whose images no longer stand (R6): its waiting line says why, "The tile's
+level changed since its images were got: get them again", and nothing else says it.
 
 ## 2. What is kept
 
@@ -198,19 +199,21 @@ textures under the clouds changed are made again; the rest are store hits.
 
 ### R5. What you see is what is laid
 
-One function makes a cloud's layer on a texture (`textures/clouds.py`, `layer`); the build lays
-it, and the preview is the same layer reduced to the map's level, weighted by its alpha in linear
-light, the colour match applied before the reduction (`find._lay_reduced`), laid where X-Plane
-shows that texture, over water at the share X-Plane gives the photo. Measured: B5.
+One function makes a cloud's layer on a texture (`textures/clouds.py`, `layer`), and one gives its
+colours, matched to the photo and clipped to what a pixel holds (`Layer.rgb`); the build lays
+them, and the preview is the same layer in the same colours reduced to the map's level, weighted
+by its alpha in linear light (`find._lay_reduced`), laid where X-Plane shows that texture, over
+water at the share X-Plane gives the photo. Measured: B5.
 
 ### R6. A cloud stands on the photo it was got on
 
-`laying.standing` is the one rule, for the build and the list alike: a cloud stands while the
+`laying.standing` is the one rule, for the build and the list alike, given the photo's colours as
+the tile's description says them: a cloud stands while the
 textures it reaches are those it was laid in (the same level, source and layout), the colours of
 the photo within 1 km of it are the same, and each texture was made of the same pieces of the
 tile (`images`). The build also needs each frozen part. A cloud that no longer stands is not laid,
 whole, and the artefact records why (`undone`); textures that came of other pieces are made again
-without it. In the list it stays ticked, says it came back, and waits for its images to be got
+without it. In the list it stays ticked and waits, its line saying why, for its images to be got
 again on the new photo; one Apply then puts it back.
 
 ### R7. The engine's tasks; one program per tile
@@ -240,7 +243,8 @@ of at least 2 ha with its shadow within 600 m, its outline one simple ring (B3);
 tile, the largest first.
 
 Each other source covering the tile is then judged under every cloud, at one level finer than the
-search's where it has it (`screen`):
+search's where it has it (`screen`), and only where X-Plane shows the photo (`find._inside`: the
+sea X-Plane draws alone is no part of a cloud):
 
 - **no picture**: it covers less than 90 % of the cloud;
 - **the same photo**: its picture under the cloud correlates with the tile's at 0.9 or more
@@ -262,8 +266,10 @@ none is kept: asked again, the others may answer.
 The check (`find.check`): the source's pieces at the level each texture the cloud reaches reads
 it at, frozen into parts (2.3); the build's own layer made from them and reduced to the map's
 level (R5); it must cover 90 % of the cloud; the detector says clear or cloudy at the tile's
-sharpness; the colour match is taken on the band around the cloud at the search's level. Its
-result is the cloud's entry (2.2) and its preview, kept in the list under that source.
+sharpness; the colour match is taken on the band around the cloud at the screening's reading,
+which answers too: no picture or the same photo there, and the check says so rather than lay
+colours it could not match. Its result is the cloud's entry (2.2) and its preview, kept in the
+list under that source.
 
 ### 4.4 Laying in the texture rule
 
@@ -277,7 +283,9 @@ Where the source has no picture nothing is laid: a hole is worse than a cloud.
 
 A texture without clouds has no `clouds` input, and an absent late input stays out of the key
 (`graph/keys.py`, `late_inputs`): only the textures a cloud reaches are made again. A texture with
-clouds has the rule `CLOUDS_RULE` among its parameters.
+clouds, and the tile's textures step given clouds, have the rule `CLOUDS_RULE` among their
+parameters: a new way of laying makes them again, and nothing else (2 = the colours clipped
+before they are blended).
 
 ### 4.6 The originals
 

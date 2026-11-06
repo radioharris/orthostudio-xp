@@ -42,8 +42,9 @@ __all__ = [
 
 RULE_NAME = "texture.dds"
 RULE_VERSION = 1
-CLOUDS_RULE = 1
-"""The way a cloud is laid (``textures/clouds.py``), in the key of a texture holding one only."""
+CLOUDS_RULE = 2
+"""The way a cloud is laid (``textures/clouds.py``), in the key of a texture holding one only:
+2 = its colours clipped before they are blended (``Layer.rgb``), as its preview reduces them."""
 
 TEXTURE_RAM_MB = 400
 """What one texture holds while it is built, for the scheduler to count on.

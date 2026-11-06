@@ -323,7 +323,6 @@ export function createCloudMode(ctx) {
           trash),
         h("div", { class: "zone-row" }, menu),
         c.line ? h("span", { class: `zone-hint${c.state === "waiting" ? " zone-hint-warn" : ""}`, role: task ? "status" : null }, lineWords(c.line, n)) : null,
-        c.note ? h("span", { class: "zone-hint zone-hint-warn" }, lineWords(c.note, n)) : null,
         buttons.length ? h("div", { class: "zone-row" }, ...buttons) : null));
   }
 

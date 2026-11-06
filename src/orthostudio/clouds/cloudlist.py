@@ -36,7 +36,7 @@ from orthostudio.fsutil import atomic_write_text
 from orthostudio.imagery.grid import parse_texture_name
 from orthostudio.model import TileRef
 
-__all__ = ["Change", "CloudList", "changes", "check_holds", "list_path", "load", "update"]
+__all__ = ["Change", "CloudList", "changes", "forgetting", "laid_after", "load", "update"]
 
 FORMAT = "osxp-cloud-list-1"
 _ID = string.ascii_lowercase + string.digits
@@ -300,21 +300,6 @@ def discard(cl: CloudList, held: TileClouds | None) -> None:
 # -- what Apply builds -----------------------------------------------------------------------------
 
 
-def check_holds(entry: Mapping[str, Any], held: TileClouds, tile: TileRef) -> str | None:
-    """Why the images got for a cloud no longer stand on the tile's photo, or ``None``: the
-    build's own rule (``clouds.laying.standing``), so the map lays a check the build lays."""
-    colours = held.colours or {}
-    why, _reached = standing(
-        entry,
-        tile,
-        [parse_texture_name(n) for n in held.chunks],
-        tile_colours=colours.get("tile") or (0.0, 0.0, 0.0),
-        zones=colours.get("zones") or (),
-        chunks=held.chunks,
-    )
-    return why
-
-
 @dataclass(frozen=True, slots=True)
 class Change:
     """One cloud whose tick or source differs from what the tile holds: ``replace``, ``another``
@@ -346,7 +331,7 @@ def changes(cl: CloudList, held: TileClouds | None, tile: TileRef) -> list[Chang
         waiting = None
         if entry is None:
             waiting = got.get("answer") or "no_images"
-        elif held is not None and (why := check_holds(entry, held, tile)) is not None:
+        elif held is not None and (why := _stands_not(entry, held, tile)) is not None:
             waiting, entry = f"photo_{why}", None
         out.append(
             Change(
@@ -354,6 +339,13 @@ def changes(cl: CloudList, held: TileClouds | None, tile: TileRef) -> list[Chang
             )
         )
     return out
+
+
+def _stands_not(entry: Mapping[str, Any], held: TileClouds, tile: TileRef) -> str | None:
+    """Why the images got for a cloud no longer stand on the photo the tile holds: the build's
+    own rule, on what the tile's folder says of its textures."""
+    textures = [parse_texture_name(n) for n in held.chunks]
+    return standing(entry, tile, textures, colours=held.colours, chunks=held.chunks)[0]
 
 
 def laid_after(cl: CloudList, held: TileClouds | None, tile: TileRef) -> list[dict[str, Any]]:

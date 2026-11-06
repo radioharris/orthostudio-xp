@@ -147,7 +147,8 @@ class Tile:
             container = store.read(t)
             assert container is not None
             images[name] = container.digest()
-        c.update(parts=parts, images=images, colours=colours_near(rings, TILE, colours, zones))
+        near = colours_near(rings, TILE, {"tile": colours, "zones": zones})
+        c.update(parts=parts, images=images, colours=near)
         return c
 
     def mean(self, folder: Path, t: TextureId, ring: list[float]) -> np.ndarray:
@@ -184,6 +185,18 @@ def test_a_tile_without_clouds_keeps_the_keys_it_always_had(tile: Tile) -> None:
     listed = {t["name"]: t["key"] for t in tile.manifest(plain)["textures"]}
     assert "clouds" not in tile.manifest(plain)
     assert all(listed.values())
+
+
+def test_the_way_clouds_are_laid_is_in_the_key_of_the_textures_holding_them(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # 4.5: a new way of laying makes the textures with clouds again, and only them
+    plain = TileTexturesParams(tile=TILE.name, encoder="e", encoder_version="1")
+    cloudy = TileTexturesParams(tile=TILE.name, encoder="e", encoder_version="1", clouds=[{}])
+    before = (plain.canonical(), cloudy.canonical())
+    monkeypatch.setattr(build_mod, "CLOUDS_RULE", build_mod.CLOUDS_RULE + 1)
+    assert plain.canonical() == before[0] and "clouds_rule" not in before[0]
+    assert cloudy.canonical() != before[1]
 
 
 def test_a_cloud_is_laid_from_its_frozen_parts_and_recorded_with_the_textures(tile: Tile) -> None:

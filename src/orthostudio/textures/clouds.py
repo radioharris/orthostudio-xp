@@ -260,10 +260,11 @@ class Layer:
     match: Match
 
     def rgb(self, r0: int = 0, r1: int | None = None) -> np.ndarray:
-        """Rows ``r0:r1`` of its colours (``float32``, not clipped), a few at a time: a cloud
-        over a whole texture in ``float32`` is 200 MB, half of what a texture may hold."""
+        """Rows ``r0:r1`` of its colours, in the photo's (``match``) and clipped to what a pixel
+        holds (``float32``), a few at a time: a cloud over a whole texture in ``float32`` is
+        200 MB, half of what a texture may hold. The build lays them, the preview reduces them."""
         gain, shift = (np.asarray(v, np.float32) for v in self.match)
-        return self.source[r0:r1].astype(np.float32) * gain + shift
+        return np.clip(self.source[r0:r1].astype(np.float32) * gain + shift, 0, 255)
 
 
 def _source(

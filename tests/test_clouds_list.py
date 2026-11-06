@@ -48,7 +48,7 @@ def _entry(cid: str, rings: list[list[float]], source: str = "EOX") -> dict[str,
         "rings": rings,
         "parts": {NAME: [12, "d" * 64]},
         "images": {NAME: "chunks-1"},
-        "colours": colours_near(rings, TILE, (0.0, 0.0, 0.0), ()),
+        "colours": colours_near(rings, TILE, None),
     }
 
 
@@ -56,10 +56,9 @@ def _held(*entries: dict[str, Any]) -> TileClouds:
     return TileClouds(
         Path("/nowhere"),
         "k",
-        tuple(entries),
-        {},
-        {NAME: "chunks-1"},
-        {"tile": [0, 0, 0], "zones": []},
+        applied=tuple(entries),
+        chunks={NAME: "chunks-1"},
+        colours={"tile": [0, 0, 0], "zones": []},
     )
 
 

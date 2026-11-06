@@ -76,26 +76,26 @@ def standing(
     tile: TileRef,
     textures: Iterable[TextureId],
     *,
-    tile_colours: Sequence[float],
-    zones: Sequence[Sequence[Any]],
+    colours: Mapping[str, Any] | None,
     chunks: Mapping[str, str] | None = None,
 ) -> tuple[str | None, dict[str, CloudPatch]]:
-    """Why the cloud ``c`` no longer stands on the photo the ``textures`` (and their pieces'
-    ``chunks``, when known) make, or ``None``; and its patches in them. The one rule a build lays
-    a cloud by, which the cloud mode judges a cloud's images by too."""
+    """Why the cloud ``c`` no longer stands on the photo the ``textures`` make in the photo's
+    ``colours`` (and of the pieces ``chunks``, when known), or ``None``; and its patches in them.
+    The one rule a build lays a cloud by, which the cloud mode judges a cloud's images by too."""
     parts = c["parts"]
     zl_of = {name: int(parts[name][0]) for name in parts}
     reached = patches_of(c, tile, textures, lambda t: zl_of.get(texture_name(t), t.zl))
     why = _moved(set(parts), set(reached))
-    if (
-        why is None
-        and chunks is not None
-        and any(chunks.get(n) != d for n, d in c["images"].items())
-    ):
+    if why is None and chunks is not None and _other_pieces(c, chunks):
         why = "images"
-    if why is None and colours_near(c["rings"], tile, tile_colours, zones) != c["colours"]:
+    if why is None and colours_near(c["rings"], tile, colours) != c["colours"]:
         why = "colours"
     return why, reached
+
+
+def _other_pieces(c: Mapping[str, Any], chunks: Mapping[str, str]) -> bool:
+    """Whether a texture of ``c`` is made of other pieces of the tile than it was laid on."""
+    return any(chunks.get(n) != d for n, d in c["images"].items())
 
 
 class TileClouding:
@@ -107,8 +107,7 @@ class TileClouding:
         clouds: Sequence[Mapping[str, Any]],
         textures: Iterable[TextureId],
         *,
-        tile_colours: Sequence[float],
-        zones: Sequence[Sequence[Any]],
+        colours: Mapping[str, Any],
         folders: Sequence[Path],
         out: Path,
     ) -> None:
@@ -121,9 +120,7 @@ class TileClouding:
         by_name = {texture_name(t): t for t in textures}
         for c in self.given:
             parts = c["parts"]
-            why, reached = standing(
-                c, tile, by_name.values(), tile_colours=tile_colours, zones=zones
-            )
+            why, reached = standing(c, tile, by_name.values(), colours=colours)
             files = {name: find_part(str(parts[name][1]), self.folders) for name in parts}
             if why is None and None in files.values():
                 why = "parts"
@@ -145,11 +142,7 @@ class TileClouding:
         laid on (``TextureOutcome.chunks``); whether any was, for the textures to be made
         again without them."""
         chunks = {o.name: o.chunks for o in outcomes}
-        changed = [
-            c["id"]
-            for c in self.given
-            if c["id"] in self.laid and any(chunks.get(n) != d for n, d in c["images"].items())
-        ]
+        changed = [c["id"] for c in self.given if c["id"] in self.laid and _other_pieces(c, chunks)]
         for cid in changed:
             self.undone[cid] = "images"
             del self.laid[cid]

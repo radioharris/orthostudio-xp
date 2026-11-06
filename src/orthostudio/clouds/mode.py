@@ -86,7 +86,6 @@ def rows(
     cloud id, ``previews`` by cloud id: the preview of what After lays (held or new)."""
     holds = {c["id"]: c for c in (held.applied if held is not None else ())}
     pending = {ch.cloud: ch for ch in changes(cl, held, tile)} if held is not None else {}
-    undone = dict(held.undone) if held is not None else {}
     out: list[dict[str, Any]] = []
     frozen = state not in ("ready", "in_build", "queued")
     for c in cl.clouds:
@@ -129,11 +128,6 @@ def rows(
             if c["kind"] == "drawn":
                 actions.append("remove")
         lays = row in ("held", "ready") or (row in ("waiting", "getting") and was is not None)
-        note = (
-            {"key": f"clouds.row.came_back.{undone[cid]}", "params": {}}
-            if cid in undone and c["tick"]
-            else None
-        )
         out.append(
             {
                 "id": cid,
@@ -146,7 +140,6 @@ def rows(
                 "source": c["source"],
                 "state": row,
                 "line": line,
-                "note": note,
                 "actions": actions,
                 "preview": previews.get(cid) if lays else None,
                 "menu": _menu(c),

@@ -91,9 +91,6 @@ class TileClouds:
     textures_key: str
     applied: tuple[dict[str, Any], ...] = ()
     """The clouds its textures show replaced, in laying order (:func:`entry_problem`)."""
-    undone: Mapping[str, str] = field(default_factory=dict)
-    """The clouds the build that made it was given and did not lay, with why (``level``,
-    ``source``, ``textures``, ``colours``, ``images``, ``parts``)."""
     chunks: Mapping[str, str] = field(default_factory=dict)
     """Each texture's name with the digest of the pieces it was made of."""
     colours: Mapping[str, Any] | None = None
@@ -155,7 +152,6 @@ def read_tile(folder: Path) -> TileClouds | None:
         folder=Path(folder),
         textures_key=key,
         applied=applied,
-        undone=dict(clouds.get("undone") or {}),
         chunks={
             str(t["name"]): str(t["chunks"])
             for t in doc.get("textures") or ()
@@ -190,17 +186,17 @@ def entry_problem(c: Any) -> str | None:
 
 
 def colours_near(
-    rings: Sequence[Sequence[float]],
-    tile: TileRef,
-    tile_colours: Sequence[float],
-    zones: Sequence[Sequence[Any]],
+    rings: Sequence[Sequence[float]], tile: TileRef, colours: Mapping[str, Any] | None
 ) -> dict[str, Any]:
     """The colours of the photo around a cloud, as data: the tile's own where some of its reach
     is under no zone, and each zone that reaches it, by its part in that reach inside the tile.
-    ``rings`` and the zones' rings are the zones' ring format (``[lat0, lon0, ...]``), the zones
-    ``[ring, brightness, contrast, saturation]`` as the build applies them. A cloud's preview was
-    matched on the photo with these colours: with others it shows lighter or darker than the
-    photo around it, so another build with others there lays it no more."""
+    ``colours`` are the photo's as a tile's textures say them (``{"tile": [brightness, contrast,
+    saturation], "zones": [[ring, brightness, contrast, saturation], ...]}``, plain when
+    ``None``); ``rings`` and the zones' rings are the zones' ring format (``[lat0, lon0, ...]``).
+    A cloud's preview was matched on the photo with these colours: with others it shows lighter or
+    darker than the photo around it, so another build with others there lays it no more."""
+    tile_colours = (colours or {}).get("tile") or (0.0, 0.0, 0.0)
+    zones = (colours or {}).get("zones") or ()
     cloud = union_all([_shape(r) for r in rings])
     k = math.cos(math.radians(cloud.centroid.y))  # metres alike on both axes there
 

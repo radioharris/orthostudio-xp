@@ -148,6 +148,7 @@ from orthostudio.pipeline.pack import (
     write_build_settings,
     write_manifest,
 )
+from orthostudio.pipeline.rule import CLOUDS_RULE
 from orthostudio.pipeline.textures import (
     ProgressSnapshot,
     TextureOutcome,
@@ -836,6 +837,8 @@ class TileTexturesParams(RuleParams):
             doc["photo_zones_rule"] = self.PHOTO_ZONES_RULE
         if not self.clouds:
             doc.pop("clouds", None)  # no cloud replaced: the key of every tile built before
+        else:  # the way they are laid: a new one makes its textures again
+            doc["clouds_rule"] = CLOUDS_RULE
         return doc
 
     def ter_params(self) -> TerParams:
@@ -1163,12 +1166,16 @@ def _tile_textures(ctx: RunContext) -> None:
     total = len(jobs)
     cancel = node.cancel_event
     stop = cancel if isinstance(cancel, threading.Event) else threading.Event()
+    # the photo's colours as these textures have them: a cloud's are matched among them
+    colours = {
+        "tile": [params.photo_brightness, params.photo_contrast, params.photo_saturation],
+        "zones": params.photo_zones,
+    }
     clouds = TileClouding(
         tile,
         params.clouds,
         [j.texture for j in jobs],
-        tile_colours=(params.photo_brightness, params.photo_contrast, params.photo_saturation),
-        zones=params.photo_zones,
+        colours=colours,
         folders=[got_parts_dir(env.chunks_root), *env.cloud_parts.get(tile.name, ())],
         out=ctx.out,
     )
@@ -1303,11 +1310,7 @@ def _tile_textures(ctx: RunContext) -> None:
         "format": MANIFEST_FORMAT,
         "tile": tile.name,
         "textures": sorted((listed_texture(o) for o in outcomes), key=lambda o: str(o["name"])),
-        # the photo's colours as the textures have them: a cloud's are matched among them
-        "colours": {
-            "tile": [params.photo_brightness, params.photo_contrast, params.photo_saturation],
-            "zones": params.photo_zones,
-        },
+        "colours": colours,
         **clouds.manifest(),
     }
     (ctx.out / "manifest.json").write_text(

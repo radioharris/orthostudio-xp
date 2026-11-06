@@ -348,10 +348,12 @@ def judge(
 def _inside(
     p: Picture, rings: Sequence[Sequence[float]], box: tuple[int, int, int, int]
 ) -> np.ndarray:
+    """The cloud over ``box`` where X-Plane shows the photo: what a source is judged on, its
+    coverage and its colours; the sea X-Plane draws alone is no part of a cloud."""
     x0, y0, x1, y1 = box
     out = np.zeros((y1 - y0, x1 - x0), np.uint8)
     cv2.fillPoly(out, [np.round(to_pixels(p, r) - (x0, y0)).astype(np.int32) for r in rings], 1)
-    return out > 0
+    return (out > 0) & (p.share[y0:y1, x0:x1] > 0)
 
 
 def _box(p: Picture, rings: Sequence[Sequence[float]], pad: int) -> tuple[int, int, int, int]:
@@ -537,7 +539,7 @@ def check(
     )
     lost = [
         sources.kind(code, k)
-        for k in todo[code]
+        for k in todo[code] | around
         if sources.kind(code, k) not in ("picture", "no_picture")
     ]
     if lost:  # a part frozen with passing holes would lay them for good
@@ -582,10 +584,12 @@ def check(
     )
     if not sharp.usable:
         return Check(sharp, coverage=covered)
+    # its colours, matched on the band at the reading the screening judged: there it answers too
     wide, wide_have, _lost = _source_at(sources, code, band_zl, p, box)
     fitted = judge(here, wide, wide_have, inside, core, band, np.zeros_like(band))
+    if not fitted.usable:
+        return Check(fitted, coverage=covered)
     j = Judgement(sharp.answer, fitted.fit, fitted.match)
-    colours = held.colours or {}
     entry = {
         "id": cid,
         "source": code,
@@ -593,9 +597,7 @@ def check(
         "rings": [list(r) for r in rings],
         "parts": entry_parts,
         "images": {n: held.chunks[n] for n in reached},
-        "colours": colours_near(
-            rings, tile, colours.get("tile") or (0.0, 0.0, 0.0), colours.get("zones") or ()
-        ),
+        "colours": colours_near(rings, tile, held.colours),
     }
     preview, bounds = preview_of(p, tile, entry, [folder], previews)
     return Check(j, entry, preview, bounds, covered, parts)
@@ -627,7 +629,7 @@ def preview_of(
         t = parse_texture_name(name)
         la = layer(pa, t, decode_part(path.read_bytes()))
         if la is not None:
-            _lay_reduced(la, t, p, box, name, rgb, alpha, entry["match"])
+            _lay_reduced(la, t, p, box, name, rgb, alpha)
     share = p.share[y0:y1, x0:x1].astype(np.float32)[..., None] / 255
     shown = np.clip(rgb * share + np.asarray(WATER_RGB, np.float32) * (1 - share), 0, 255)
     rgba = np.dstack(
@@ -656,11 +658,10 @@ def _lay_reduced(
     name: str,
     rgb: np.ndarray,
     alpha: np.ndarray,
-    match: Any = None,
 ) -> None:
-    """The layer ``la`` of texture ``t`` (in its colours with ``match``, clipped as the build
-    clips them) reduced to the picture's level and laid in ``rgb`` and ``alpha`` (over ``box`` of
-    the picture) where X-Plane shows that texture."""
+    """The layer ``la`` of texture ``t`` in its colours (``Layer.rgb``, the build's) reduced to
+    the picture's level and laid in ``rgb`` and ``alpha`` (over ``box`` of the picture) where
+    X-Plane shows that texture."""
     k = 2 ** (t.zl - p.zl)
     wx0, wy0, wx1, wy1 = la.window
     # the window aligned on the picture's pixels, what it does not cover left transparent
@@ -669,11 +670,7 @@ def _lay_reduced(
     src = np.zeros((ay1 - ay0, ax1 - ax0, 3), np.float32)
     a = np.zeros((ay1 - ay0, ax1 - ax0), np.float32)
     a[wy0 - ay0 : wy1 - ay0, wx0 - ax0 : wx1 - ax0] = la.alpha.astype(np.float32) / 255
-    colours = la.source.astype(np.float32)
-    if match is not None:
-        gain, shift = (np.asarray(v, np.float32) for v in match)
-        colours = np.clip(colours * gain + shift, 0, 255)
-    src[wy0 - ay0 : wy1 - ay0, wx0 - ax0 : wx1 - ax0] = colours
+    src[wy0 - ay0 : wy1 - ay0, wx0 - ax0 : wx1 - ax0] = la.rgb()
     # alpha-weighted, in linear light as the textures' mips are made (``gamma22``)
     ra = _reduce(a, k)
     lin = _reduce(np.power(src / 255.0, 2.2) * a[..., None], k)
