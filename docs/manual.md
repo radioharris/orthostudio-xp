@@ -47,7 +47,8 @@ the same photo as the tile, which would bring the cloud back, or with no picture
   tile's own sharpness, in a few seconds, and the count above the list says one more to replace.
   Its outline turns to the accent colour. If the tool that finds clouds is not on your
   computer yet, the app asks first; say no, and the cloud stays ticked, waiting for its images.
-- To take another source, choose it in the cloud's list: it is ticked with it.
+- To take another source, choose it in the cloud's list: it is ticked with it, and the map goes to
+  the cloud to show its new images.
 - **Tick all** and **Untick all**, above the list, tick or untick every cloud at once. While
   clouds' images are being fetched, **Stop all** beside them stops every one at once.
 - A spinner says that a cloud's images are being fetched, beside its name, and on the map a label

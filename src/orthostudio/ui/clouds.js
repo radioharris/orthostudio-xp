@@ -615,11 +615,14 @@ export function createCloudMode(ctx) {
     // keyed by its cloud: redrawn in place, a row stays its cloud's, its handlers with it
     // a click on the row shows its cloud; its checkbox and its name tick it, its menu and its
     // buttons do what they say (a user, 2026-11-06); whatever is done on a row makes its cloud
-    // the current one, the one rule for its tick, its source, its images and its Stop (a user,
-    // 2026-11-07: a source changed left another cloud current)
+    // the current one, the one rule for its tick, its source, its images and its Stop, and a
+    // source chosen shows it too, to see its new images (a user, 2026-11-07: a source changed
+    // left another cloud current, the map elsewhere); a tick does not move the map, which jumped
+    // from cloud to cloud as several were ticked in turn
     const pick = (ev) => {
       cs.current = c.id;
-      if (ev.type === "click" && !ev.target.closest("label, input, select, button")) show();
+      const control = ev.target.closest("label, input, select, button");
+      if (ev.type === "click" ? !control : ev.target.matches("select")) show();
     };
     return h("li", { class: "zone-item cloud-item", "aria-current": String(c.id === cs.current), dataset: { cloud: c.id, state: c.state, focusKey: `cloud-${c.id}` }, onclick: pick, onchange: pick },
       h("span", { class: `zl-swatch cloud-swatch${c.tick ? " is-on" : ""}`, "aria-hidden": "true" }),
