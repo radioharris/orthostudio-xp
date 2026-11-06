@@ -1113,6 +1113,10 @@ export function createPlanMap(ctx) {
       skipClick = false;
       return;
     }
+    if (mode) {
+      mode.click?.(ev.latlng, ev.originalEvent || {});
+      return;
+    }
     const oe = ev.originalEvent || {};
     if (oe.detail > 1) return; // the second click of a double-click
     const mod = Boolean(oe.ctrlKey || oe.metaKey);
@@ -1122,12 +1126,16 @@ export function createPlanMap(ctx) {
 
   /** Ctrl+click on macOS opens the context menu instead of clicking (M7). */
   function onContextMenu(ev) {
-    if (!map || !ev.ctrlKey) return;
+    if (!map || !ev.ctrlKey || mode) return;
     ev.preventDefault();
     shortcut(map.mouseEventToLatLng(ev), ev, true, ev.shiftKey);
   }
 
   function onMapDblClick(ev) {
+    if (mode) {
+      mode.dblclick?.(ev);
+      return;
+    }
     if (!zs.draft) return;
     if (ev.originalEvent) ev.originalEvent.preventDefault();
     if (zs.draft.kind === "shape") finishShape();
@@ -1172,9 +1180,12 @@ export function createPlanMap(ctx) {
   let sweep = null;
   let skipClick = false;
   const SWEEP_MOVE_PX = 4;
+  /** A mode of its own laid over the map (the clouds, ``clouds.js``): while it is on, it has the
+   * clicks, double-clicks, keys and the pointer's moves, and the squares and zones are left alone. */
+  let mode = null;
 
   function sweepPress(ev, latlng) {
-    if (zs.draft || !map || map.getZoom() < GRID_MIN_ZOOM) return;
+    if (mode || zs.draft || !map || map.getZoom() < GRID_MIN_ZOOM) return;
     // Started on a square already chosen, the rectangle takes squares out rather than in: sweeping
     // back over them is how a user asked to drop them (2026-09-22).
     const under = tileName(Math.floor(latlng.lat), Math.floor(wrapLon(latlng.lng)));
@@ -1228,6 +1239,11 @@ export function createPlanMap(ctx) {
   }
 
   function onMapMouseMove(ev) {
+    if (mode) {
+      hideTip(); // the mode draws its own things over the squares
+      mode.move?.(ev.latlng);
+      return;
+    }
     if (sweep) {
       sweepTo(ev.latlng, ev.originalEvent || {});
       if (sweep?.started) return;
@@ -1254,6 +1270,10 @@ export function createPlanMap(ctx) {
 
   function onKeyDown(ev) {
     if (ev.defaultPrevented || ev.altKey || !planVisible()) return;
+    if (mode) {
+      mode.key?.(ev);
+      return;
+    }
     const target = ev.target instanceof Element ? ev.target : null;
     if (target && target.closest("input, textarea, select, [contenteditable]")) return;
     const onMapOrZones = !target || target === document.body || Boolean(target.closest("#map-wrap, #zones-panel"));
@@ -1377,6 +1397,7 @@ export function createPlanMap(ctx) {
     m.on("mousemove", onMapMouseMove);
     m.on("mouseout", hideTip);
     m.on("mouseout", () => renderBand(null));
+    m.on("mouseout", () => mode?.move?.(null));
     el.addEventListener("contextmenu", onContextMenu);
     el.addEventListener("mousedown", (ev) => {
       if (!ev.shiftKey || ev.button !== 0) return;
@@ -2411,10 +2432,12 @@ export function createPlanMap(ctx) {
     $("draw-center").disabled = !map || map.getZoom() < ZONE_MIN_ZOOM;
   }
 
+  /** The first visit's tip, on how to choose tiles: not while a zone is drawn, nor while a mode
+   * of its own has the map (the clouds' banner stood over it on a new install, 2026-11-03). */
   function renderHint() {
     const hint = $("map-hint");
     if (!hint) return;
-    hint.hidden = !map || Boolean(zs.draft) || zs.hintDone || ctx.tiles().length > 0;
+    hint.hidden = !map || Boolean(mode) || Boolean(zs.draft) || zs.hintDone || ctx.tiles().length > 0;
   }
 
   function dismissHint() {
@@ -2966,6 +2989,30 @@ export function createPlanMap(ctx) {
     show,
     rerender,
     themeChanged,
+    /** The Leaflet map, null before it exists: a mode of its own draws on it (``clouds.js``). */
+    leaflet: () => map,
+    /**
+     * Give the map's clicks, double-clicks, keys and pointer (``{click, dblclick, key, move}``,
+     * ``move`` given null when the pointer leaves the map) to a mode, or back
+     * with null: choosing squares or picking zones under the clouds' outlines would change the
+     * plan of a build while the user only meant to tick a cloud.
+     */
+    takeInput(handlers) {
+      mode = handlers || null;
+      if (map) {
+        if (mode) map.doubleClickZoom.disable();
+        else map.doubleClickZoom.enable();
+      }
+      renderHint();
+    },
+    /** Bring a whole tile into view (``+46+006``). */
+    fitTile(name) {
+      const m = /^([+-]\d{2})([+-]\d{3})$/.exec(name);
+      if (!map || !m) return;
+      const lat = Number(m[1]);
+      const lon = Number(m[2]);
+      map.fitBounds([[lat, lon], [lat + 1, lon + 1]], { padding: [16, 16] });
+    },
     /** Latitude of the map centre, or null before the map exists. */
     mapLatitude: () => (map ? map.getCenter().lat : null),
     /** The map centre `{lat, lon}`, or null before the map exists. */

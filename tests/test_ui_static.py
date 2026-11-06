@@ -5678,7 +5678,7 @@ def test_the_library_says_what_each_tile_was_built_with() -> None:
     app_js = (UI / "app.js").read_text(encoding="utf-8")
     row = _function_body(app_js, "libraryRow")
     assert "libraryOpen.has(key)" in row  # open parts stay open across the table's redraws
-    assert 'class: "library-built"' in row and "colspan: 9" in row
+    assert 'class: "library-built"' in row and "colspan: 10" in row  # with the clouds
     assert "byOsxp ?" in row  # none for an imported tile
     assert "return detail ? [row, detail] : [row];" in row
     # focus comes back to a row by its place among the tiles, not among the parts under them

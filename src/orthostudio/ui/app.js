@@ -29,6 +29,7 @@ import { PHOTO_LOOKS, photoValues } from "./colour.js";
 import { TEXTURE_MB, ZONES_FORMAT, normalizeZone, parseTile, tileName, validateZonesDocument, zoneTextureKeys } from "./geo.js";
 import { OLD_STORAGE_KEY, STORAGE_KEY, defaultLevels, excluding, groupsOf, levelOf, newFlightPlan, readSaved, restoredPlan, squaresOf, toSaved, withPlan, withoutPlan } from "./flightplan.js";
 import { createPlanMap, detailLabel, detailName } from "./map.js";
+import { createCloudMode } from "./clouds.js";
 import { colourPreview } from "./preview.js";
 import { defaultsKeepingFolders, profileDiffers, profileDiffersText, profileNameProblem, refusedValueText, renderSettingsView, sameValue, settingsSummary } from "./settings.js";
 import { bindFind, bindFindKeys, findForget } from "./find.js";
@@ -260,6 +261,8 @@ const state = {
 /** The map, the zones and the drawing tools of the Plan (map.js); created by boot() so that the
  * zones load with the rest. The tile selection stays in `state.tiles`. */
 let planMap = null;
+/** The Plan's cloud mode (``clouds.js``), opened on a built tile from the Library. */
+let cloudMode = null;
 
 // ------------------------------------------------------------------ DOM helpers
 
@@ -4361,6 +4364,7 @@ function buildingOnMap() {
 function jobsChanged() {
   renderBuildActions();
   planMap?.jobChanged();
+  cloudMode?.jobsChanged();
   if (state.screen === "library" && state.library) renderLibrary();
   if (state.screen === "disk") renderDisk(); // Free space waits for a build, from the last measure
   followBuildUnderWay();
@@ -5406,7 +5410,28 @@ async function loadLibrarySizes() {
   askSizesAgain();
 }
 
+/** The clouds of the tiles, for the Library's column: none when the list does not come. */
+async function loadClouds() {
+  try {
+    const res = await api("GET", "/api/clouds");
+    state.clouds = res?.tiles || {};
+  } catch (_err) {
+    state.clouds = {};
+  }
+  renderLibrary();
+}
+
+/** What the Library's column says of a tile's clouds: those it holds replaced and those waiting
+ * for Apply. */
+export function cloudsWords(c) {
+  const out = [];
+  if (c?.replaced > 0) out.push(t("library.clouds_replaced", { n: fmtInt(c.replaced) }));
+  if (c?.to_apply > 0) out.push(t("library.clouds_to_apply", { n: fmtInt(c.to_apply) }));
+  return out.join(" · ");
+}
+
 async function loadLibrary() {
+  loadClouds();
   try {
     const rows = await api("GET", "/api/library");
     state.library = Array.isArray(rows) ? rows : [];
@@ -6116,7 +6141,7 @@ export function libraryRow(e, showFolder = false) {
   // What the tile was built with, one click away and only for a tile OrthoStudio XP built: an
   // imported one's settings are Ortho4XP's, which nothing here can read.
   const open = libraryOpen.has(key);
-  const detail = byOsxp ? h("tr", { class: "library-built", hidden: !open }, h("td", { colspan: 9 }, builtBlock(e))) : null;
+  const detail = byOsxp ? h("tr", { class: "library-built", hidden: !open }, h("td", { colspan: 10 }, builtBlock(e))) : null;
   let builtCell = t("library.by_ortho4xp");
   if (byOsxp) {
     const chevron = h("span", { class: "built-chevron", "aria-hidden": "true" }, open ? "▾" : "▸");
@@ -6148,10 +6173,20 @@ export function libraryRow(e, showFolder = false) {
     h("td", null, e.installed ? pill(t("app.yes"), "ok") : pill(t("app.no"), "cancelled")),
     h("td", { class: "num" }, fmtBytes(e.size_bytes)),
     h("td", null, builtCell),
+    cloudsCell(e, present && byOsxp),
     h("td", { class: "library-action" }, revealButton),
     h("td", { class: "library-action" }, xplaneButton),
     h("td", { class: "library-action" }, deleteButton));
   return detail ? [row, detail] : [row];
+}
+
+/** A tile's clouds in the Library, for a tile OrthoStudio XP built whose files are here. */
+function cloudsCell(e, possible) {
+  if (!possible) return h("td", { class: "library-clouds" });
+  const words = cloudsWords(state.clouds?.[e.tile]);
+  return h("td", { class: "library-clouds" },
+    h("button", { type: "button", class: "btn", title: t("library.clouds_help"), onclick: () => cloudMode?.open(e.tile) }, t("library.clouds_open")),
+    words ? h("span", { class: "clouds-words" }, words) : null);
 }
 
 /** The names of the overlay packs of other tools, as a user knows them. */
@@ -6261,7 +6296,7 @@ function renderLibrary() {
   note.classList.toggle("is-warn", Boolean(view.note?.warn));
   if (view.note) setText(note, view.note.text);
   if (!rows.length) {
-    body.append(h("tr", null, h("td", { colspan: 9, class: "placeholder" }, t("library.empty"))));
+    body.append(h("tr", null, h("td", { colspan: 10, class: "placeholder" }, t("library.empty"))));
     markWideTables();
     return;
   }
@@ -7931,6 +7966,7 @@ function rerenderAll() {
   renderDisk(); // from the last measure: measuring again takes minutes on a hard disk
   renderSettings();
   planMap?.rerender();
+  cloudMode?.rerender();
 }
 
 // ------------------------------------------------------------------ boot
@@ -8214,6 +8250,21 @@ async function boot() {
       // when the squares change, and when the document arrives after it (a user saw a tile that
       // had lost its mark, 2026-09-18).
       renderLibrary();
+    },
+  });
+  cloudMode = createCloudMode({
+    api,
+    h,
+    clear,
+    toast,
+    errorMessage,
+    planMap,
+    providers: () => state.providers,
+    showPlan: () => showScreen("plan"),
+    // Apply's build, followed as any build the page starts
+    followJob: (jobId) => {
+      loadClouds();
+      watchJob(jobId);
     },
   });
   renderTiles();
