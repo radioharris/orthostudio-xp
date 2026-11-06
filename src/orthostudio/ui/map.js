@@ -938,19 +938,28 @@ export function createPlanMap(ctx) {
 
   // ---------------------------------------------------------------- drawing
 
-  function startDraw(kind) {
+  /** A shape drawn on the map, one way for every shape: a zone's (``kind`` ``rect`` or
+   * ``shape``), or, given ``onShape``, a free shape for another (a cloud's outline): its
+   * polygon goes to ``onShape`` and ``onEnd`` is told when the drawing ends, done or not. */
+  function startDraw(kind, onShape = null, onEnd = null) {
     if (!zs.loaded) {
       ctx.toast(zs.loadError ? t("zones.load_failed", { detail: zs.loadError }) : t("app.loading"), "fail");
       return;
     }
-    zs.draft = { kind, vertices: [] };
+    zs.draft = { kind, vertices: [], onShape, onEnd };
     select(null, "draw");
     renderDraft();
   }
 
-  function cancelDraft() {
+  function endDraft() {
+    const onEnd = zs.draft?.onEnd;
     zs.draft = null;
     renderDraft();
+    onEnd?.();
+  }
+
+  function cancelDraft() {
+    endDraft();
   }
 
   function undoPoint() {
@@ -1034,9 +1043,9 @@ export function createPlanMap(ctx) {
       flashBanner();
       return;
     }
-    zs.draft = null;
-    renderDraft();
-    addZone(polygon);
+    const onShape = d.onShape || addZone;
+    endDraft();
+    onShape(polygon);
   }
 
   // ---------------------------------------------------------------- pointer and keys
@@ -1113,7 +1122,7 @@ export function createPlanMap(ctx) {
       skipClick = false;
       return;
     }
-    if (mode) {
+    if (mode && !zs.draft) {  // a shape being drawn takes the clicks, in a mode too
       mode.click?.(ev.latlng, ev.originalEvent || {});
       return;
     }
@@ -1132,7 +1141,7 @@ export function createPlanMap(ctx) {
   }
 
   function onMapDblClick(ev) {
-    if (mode) {
+    if (mode && !zs.draft) {
       mode.dblclick?.(ev);
       return;
     }
@@ -1239,9 +1248,8 @@ export function createPlanMap(ctx) {
   }
 
   function onMapMouseMove(ev) {
-    if (mode) {
+    if (mode && !zs.draft) {
       hideTip(); // the mode draws its own things over the squares
-      mode.move?.(ev.latlng);
       return;
     }
     if (sweep) {
@@ -1270,7 +1278,7 @@ export function createPlanMap(ctx) {
 
   function onKeyDown(ev) {
     if (ev.defaultPrevented || ev.altKey || !planVisible()) return;
-    if (mode) {
+    if (mode && !zs.draft) {
       mode.key?.(ev);
       return;
     }
@@ -1397,7 +1405,6 @@ export function createPlanMap(ctx) {
     m.on("mousemove", onMapMouseMove);
     m.on("mouseout", hideTip);
     m.on("mouseout", () => renderBand(null));
-    m.on("mouseout", () => mode?.move?.(null));
     el.addEventListener("contextmenu", onContextMenu);
     el.addEventListener("mousedown", (ev) => {
       if (!ev.shiftKey || ev.button !== 0) return;
@@ -2352,7 +2359,7 @@ export function createPlanMap(ctx) {
     if (!map || !layers.textureGrid) return;
     layers.textureGrid.clearLayers();
     gridTooFine = false;
-    if (!zs.draft && !snapKeysHeld) return;
+    if ((!zs.draft || zs.draft.onShape) && !snapKeysHeld) return; // a zone's grid, for a zone
     const zl = zs.nextZl;
     const view = map.getBounds();
     const side = (360 / 2 ** zl) * 16; // degrees of longitude, one texture
@@ -2992,19 +2999,26 @@ export function createPlanMap(ctx) {
     /** The Leaflet map, null before it exists: a mode of its own draws on it (``clouds.js``). */
     leaflet: () => map,
     /**
-     * Give the map's clicks, double-clicks, keys and pointer (``{click, dblclick, key, move}``,
-     * ``move`` given null when the pointer leaves the map) to a mode, or back
-     * with null: choosing squares or picking zones under the clouds' outlines would change the
-     * plan of a build while the user only meant to tick a cloud.
+     * Give the map's clicks, double-clicks and keys (``{click, dblclick, key}``) to a mode, or
+     * back with null: choosing squares or picking zones under the clouds' outlines would change
+     * the plan of a build while the user only meant to tick a cloud. A shape being drawn
+     * (:func:`drawShape`) takes them all the same.
      */
     takeInput(handlers) {
       mode = handlers || null;
-      if (map) {
-        if (mode) map.doubleClickZoom.disable();
-        else map.doubleClickZoom.enable();
-      }
       renderHint();
     },
+    /** Draw a free shape on the map the way a zone is drawn, its polygon (``[[lon, lat], ...]``)
+     * given to ``onShape``; ``onEnd`` told when the drawing ends, done or given up. */
+    drawShape(onShape, onEnd) {
+      startDraw("shape", onShape, onEnd);
+    },
+    /** Give up the shape being drawn, if any. */
+    cancelDraw() {
+      if (zs.draft) cancelDraft();
+    },
+    /** Whether a shape is being drawn. */
+    drafting: () => Boolean(zs.draft),
     /** Bring a whole tile into view (``+46+006``). */
     fitTile(name) {
       const m = /^([+-]\d{2})([+-]\d{3})$/.exec(name);

@@ -40,7 +40,7 @@ The Plan's map, brought over the tile; the Plan's steps make way for the cloud p
 - **On the map**: the tile drawn as X-Plane draws it (R2). In **After**, each ticked cloud's
   preview over it, in the list's order; in **Before**, none. Every cloud's outline: yellow when
   unticked, the accent when ticked, the current one thicker. A click on an outline ticks or
-  unticks it.
+  unticks it, except while a cloud is being outlined.
 - **The banner over the map**: **After**, **Before**, **Outline a cloud**, the sentence of the
   view ("What X-Plane shows.", "What X-Plane will show after Apply.", "The tile with no cloud
   replaced."), **Back to the Plan**.
@@ -64,7 +64,7 @@ The Plan's map, brought over the tile; the Plan's steps make way for the cloud p
 | Untick | The cloud unticked, its source kept; nothing runs |
 | Choose a source | Ticks it with that source; its images got |
 | **Get its images** | Asks the source again (after no answer, a refusal, or a photo that changed) |
-| **Outline a cloud** | Points clicked on the map, a double-click or Enter ends it, Escape gives up. The found clouds it covers that are neither ticked nor held leave: it is them. Its sources are tried and it comes ticked with the best |
+| **Outline a cloud** | Drawn as a zone is, with the Plan's own drawing (`map.js` `drawShape`): points clicked on the map, inside another cloud's outline too, a double-click or Enter ends it, Escape gives up. The found clouds it covers that are neither ticked nor held leave: it is them. Its sources are tried and it comes ticked with the best |
 | Trash of an outline | Removes it from the list; an outline the tile holds has none: unticked, it comes back at Apply, and its trash comes then |
 | **Apply** | Asks first, saying what changes and what waits; builds the tile as built with the list's ticked clouds (R4) |
 | **Discard changes** | The list back to what the tile holds |

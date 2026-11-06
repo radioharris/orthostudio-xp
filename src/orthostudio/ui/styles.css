@@ -672,43 +672,12 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .clouds-leave { margin-top: var(--block-gap); }
 .library-clouds { white-space: nowrap; }
 .library-clouds .clouds-words { margin-left: var(--gap); color: var(--fg-2); font-size: var(--fs-2); }
-/* On the map, yellow what stays and the accent what is replaced, each line on a dark casing: it
-   reads over snow and clouds as over dark ground. The yellow is the same in both themes: the
-   ground under it is. */
-.leaflet-overlay-pane path.cloud-casing { stroke: rgba(0, 0, 0, 0.55); fill: none; }
-.leaflet-overlay-pane path.cloud-casing.is-current { stroke-width: 6px; }
+/* On the map, yellow what stays and the accent what is replaced; the current cloud thicker. The
+   yellow is the same in both themes: the ground under it is. An outline is drawn as a zone is
+   (map.js drawShape), its points and line the zones'. */
 .leaflet-overlay-pane path.cloud-outline { stroke: #ffd43b; fill: #ffd43b; }
 .leaflet-overlay-pane path.cloud-outline.is-on { stroke: var(--accent); fill: var(--accent); }
-.leaflet-overlay-pane path.cloud-draft { stroke: var(--accent); fill: none; }
-.leaflet-overlay-pane path.cloud-draft-band { stroke: var(--accent); stroke-dasharray: 6 5; fill: none; }
-.leaflet-overlay-pane path.cloud-draft-point { stroke: var(--accent); fill: var(--accent); fill-opacity: 1; }
-/* The cloud views' three texts stacked in one cell, the current one shown: the banner keeps one size. */
-.clouds-view-text { display: grid; }
-.clouds-view-text > span { grid-area: 1 / 1; }
-.clouds-view-text > span:not(.is-current) { visibility: hidden; }
-.leaflet-overlay-pane path.cloud-pin { stroke: #ffd43b; fill: #ffd43b; fill-opacity: 0.35; }
-.leaflet-overlay-pane path.cloud-pin.is-on { stroke: var(--accent); fill: var(--accent); }
-.leaflet-overlay-pane path.cloud-outline.is-pending { stroke: var(--accent); fill: var(--accent); }
 .leaflet-overlay-pane path.cloud-outline.is-current { stroke-width: 3px; }
-.leaflet-overlay-pane path.cloud-outside { fill: #000; }
-/* The outline just closed, while its sources are tried: a label at its centre, and its row. */
-.cloud-pending-anchor { width: 0; height: 0; }
-/* A found cloud's number in it, discreet: to find it in the list. */
-.cloud-number-anchor { width: 0; height: 0; }
-.cloud-number {
-  position: absolute; transform: translate(-50%, -50%); white-space: nowrap; pointer-events: none;
-  font-size: var(--fs-3); font-weight: 600; color: #fff; opacity: 0.85; text-shadow: 0 0 2px #000, 0 0 3px #000;
-}
-.cloud-pending {
-  position: absolute; transform: translate(-50%, -50%); display: flex; align-items: center; gap: 6px;
-  white-space: nowrap; padding: 3px 8px; border-radius: var(--radius); font-size: var(--fs-2); font-weight: 600;
-  background: var(--bg-2); color: var(--fg); border: 1px solid var(--line-2); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
-}
-.cloud-trying { gap: 6px; }
-.cloud-trash { display: inline-flex; flex: none; }
-.cloud-pending .spinner, .cloud-trying .spinner { flex: none; }
-/* Outlining a cloud: a thin cross to aim, over the map and over what is drawn on it. */
-.plan-map.is-outlining, .plan-map.is-outlining.leaflet-grab, .plan-map.is-outlining .leaflet-interactive { cursor: crosshair; }
 .plan-step { border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg-2); padding: var(--card-pad); min-width: 0; }
 .plan-step:focus { outline: none; }
 .plan-step-title { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }

@@ -8256,6 +8256,7 @@ async function boot() {
     api,
     h,
     clear,
+    morph: morphChildren,
     toast,
     errorMessage,
     planMap,
