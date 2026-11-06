@@ -63,6 +63,7 @@ DOMAINS: tuple[str, ...] = (
     "NET",
     "SYS",
     "ZONE",
+    "CLOUD",
 )
 
 CODE_PATTERN = re.compile(r"^(" + "|".join(DOMAINS) + r")_[A-Z0-9]+(?:_[A-Z0-9]+)*$")
@@ -1241,6 +1242,15 @@ _SPECS: tuple[ErrorSpec, ...] = (
         "The zones file {path} was saved by another window or program since these zones were "
         "loaded.",
         "Reload the zones to see the saved ones, then make the change again; nothing was written.",
+    ),
+    # ---------------------------------------------------------------- CLOUD
+    _spec(
+        "CLOUD_DETECTOR_MISSING",
+        _B,
+        _S,
+        "The cloud detector could not be made ready: {reason}.",
+        "Check the internet connection and try again; the detection tool (OpenCV and two "
+        "networks) is downloaded once, when you ask for it.",
     ),
 )
 

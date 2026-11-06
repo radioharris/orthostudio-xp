@@ -125,6 +125,10 @@ length, status and type; each `OK` body's signature and trailer again at assembl
 per texture, which Windows does for real, made a hard disk wait at every texture: a user's
 images crawled at 0.6 to 0.8 texture a second, reproduced on a hard disk (2026-09-28).
 
+`piece_sizes(path)` reads the header alone (4 624 bytes) and gives the sizes of the `OK` entries:
+the Plan weighs a source's pieces at a level by the images of it the cache holds
+(`pipeline-build.md` 5, `estimate._piece_kb`), without reading their bodies.
+
 ## 6. No legacy fallback
 
 Until decision 0010 the module could read a texture of Ortho4XP's JPEG cache (`legacy_jpeg_path`,

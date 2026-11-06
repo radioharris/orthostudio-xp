@@ -36,6 +36,7 @@ from orthostudio.imagery.grid import TEXTURE_TILES, TextureId, texture_tiles
 
 __all__ = [
     "BLOB_MAGIC",
+    "PARENTS_DIR",
     "ParentCache",
     "ParentKey",
     "ParentTile",
@@ -51,7 +52,9 @@ ParentKey = tuple[int, int, int]
 BLOB_MAGIC = b"OSXPPRT1"
 _BLOB_HEADER = struct.Struct("<8sIIBI")  # magic, til_x, til_y, zl, count
 _BLOB_ENTRY = struct.Struct("<BIIBI")  # zl, x, y, has_body, length
-_PARENTS_DIR = "_parents"
+PARENTS_DIR = "_parents"
+"""The folder of a source's cache holding the tiles read around its textures: the parents of a
+missing piece."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,7 +83,7 @@ class ParentCache:
         fsync: bool = False,
         on_write: Callable[[int], None] | None = None,
     ) -> None:
-        self.root = Path(chunks_root) / provider / _PARENTS_DIR
+        self.root = Path(chunks_root) / provider / PARENTS_DIR
         self.provider = provider
         self.fsync = fsync
         self._memo: dict[ParentKey, ParentTile] = {}
@@ -93,7 +96,7 @@ class ParentCache:
     def texture_id(self, x: int, y: int, zl: int) -> TextureId:
         """Parent-level container holding tile ``(x, y)`` (provider ``_parents``)."""
         return TextureId(
-            x // TEXTURE_TILES * TEXTURE_TILES, y // TEXTURE_TILES * TEXTURE_TILES, zl, _PARENTS_DIR
+            x // TEXTURE_TILES * TEXTURE_TILES, y // TEXTURE_TILES * TEXTURE_TILES, zl, PARENTS_DIR
         )
 
     def path(self, x: int, y: int, zl: int) -> Path:
