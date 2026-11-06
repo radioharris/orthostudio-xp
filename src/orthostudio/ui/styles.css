@@ -664,7 +664,10 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 /* A cloud's task: a spinner before its words, in its row and at its centre on the map. */
 .zone-hint.cloud-trying { display: inline-flex; align-items: center; gap: 6px; }
 .cloud-trying .spinner, .cloud-pending .spinner, .clouds-progress .spinner { flex: none; }
-.cloud-name { display: flex; align-items: center; gap: 6px; flex: 1 1 auto; font-weight: 600; cursor: pointer; }
+/* A cloud's name as wide as its words: it ticks; the rest of its row shows the cloud, its area
+   pushing the buttons to the right (a click beside the name ticked, a user, 2026-11-06). */
+.cloud-name { display: flex; align-items: center; gap: 6px; flex: 0 1 auto; min-width: 0; font-weight: 600; cursor: pointer; }
+.cloud-item .zone-row > .zone-hint.num { margin-left: auto; }
 /* One colour, one meaning: the accent, as the tick, is what will be replaced. The current cloud
    is no colour of its own: its row lighter in a thick frame of the text's colour, its outline
    thicker (three colours, orange, red and blue, said nothing clear, a user, 2026-11-03). */
