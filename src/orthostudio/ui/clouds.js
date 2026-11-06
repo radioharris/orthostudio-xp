@@ -370,7 +370,16 @@ export function createCloudMode(ctx) {
 
   /** Outline a cloud: drawn the way a zone is, on the Plan's map, its polygon sent as it ends. */
   function outline() {
-    ctx.planMap.drawShape((polygon) => send("POST", "/outlines", { polygon }), render);
+    ctx.planMap.drawShape(async (polygon) => {
+      const res = await send("POST", "/outlines", { polygon });
+      // the outline just drawn is the current cloud, its row framed and brought into view while
+      // its sources are tried (a user, 2026-11-06: it was not found in the list)
+      if (res?.id) {
+        cs.current = res.id;
+        cs.reveal = res.id;
+        render();
+      }
+    }, render);
     render();
   }
 

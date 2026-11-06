@@ -79,7 +79,7 @@ The Plan's map, brought over the tile; the Plan's steps make way for the cloud p
 | Untick | The cloud unticked, its source kept; nothing runs |
 | Choose a source | Ticks it with that source; its images got |
 | **Get its images** | Asks the source again (after no answer, a refusal, or a photo that changed) |
-| **Outline a cloud** | Drawn as a zone is, with the Plan's own drawing (`map.js` `drawShape`): points clicked on the map, inside another cloud's outline too, a double-click or Enter ends it, Escape gives up. The found clouds it covers that are neither ticked nor held leave: it is them. Its sources are tried; once that ends, it is ticked with the best and its images got, as its state allows |
+| **Outline a cloud** | Drawn as a zone is, with the Plan's own drawing (`map.js` `drawShape`): points clicked on the map, inside another cloud's outline too, a double-click or Enter ends it, Escape gives up. The found clouds it covers that are neither ticked nor held leave: it is them. It is the current cloud at once, its row framed and brought into view; its sources are tried; once that ends, it is ticked with the best and its images got, as its state allows |
 | Trash of an outline | Removes it from the list; an outline the tile holds has none: unticked, it comes back at Apply, and its trash comes then |
 | **Apply** | Asks first, saying what changes and what waits; lays the list's ticked clouds in the tile's textures, in a few seconds (R4, 2.3) |
 | **Discard changes** | The list back to what the tile holds |
