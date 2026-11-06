@@ -32,7 +32,14 @@ from orthostudio.install.library import default_library_path
 from orthostudio.model import TileRef
 from orthostudio.pipeline.filing import tile_home
 from orthostudio.pipeline.home import default_chunks_root, default_tiles_root
-from orthostudio.pipeline.pack import CLOUDS_DIR, ORIGINALS, PARTS, cloud_record, pack_dir_name
+from orthostudio.pipeline.pack import (
+    CLOUDS_DIR,
+    ORIGINALS,
+    PARTS,
+    cloud_record,
+    pack_dir_name,
+    pack_identity,
+)
 
 __all__ = [
     "COLOURS_REACH_M",
@@ -89,6 +96,9 @@ class TileClouds:
 
     folder: Path
     textures_key: str
+    shown: str = ""
+    """What the folder shows, one digest (``pack.pack_identity``): the picture and the previews
+    are named by it, so a new DSF or new textures make them again."""
     applied: tuple[dict[str, Any], ...] = ()
     """The clouds its textures show replaced, in laying order (:func:`entry_problem`)."""
     chunks: Mapping[str, str] = field(default_factory=dict)
@@ -151,6 +161,7 @@ def read_tile(folder: Path) -> TileClouds | None:
     return TileClouds(
         folder=Path(folder),
         textures_key=key,
+        shown=pack_identity(folder) or key,
         applied=applied,
         chunks={
             str(t["name"]): str(t["chunks"])

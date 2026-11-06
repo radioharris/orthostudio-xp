@@ -320,9 +320,7 @@ def record_screening(cl: CloudList, cid: str, verdicts: Mapping[str, Any]) -> No
         pick(cl, cid, source=c["best"])
 
 
-def record_check(
-    cl: CloudList, cid: str, code: str, rings: Any, got: Any, preview: str | None
-) -> None:
+def record_check(cl: CloudList, cid: str, code: str, rings: Any, got: Any) -> None:
     """The images got of ``code`` for the cloud ``cid`` (``find.Check``), kept under that source,
     unless the cloud changed outline meanwhile (another search)."""
     c = cl.get(cid)
@@ -332,8 +330,6 @@ def record_check(
         "answer": got.judgement.answer,
         "fit": got.judgement.fit,
         "entry": got.entry,
-        "preview": preview,
-        "bounds": list(got.bounds) if got.bounds else None,
     }
 
 
@@ -410,19 +406,18 @@ def _stands_not(entry: Mapping[str, Any], held: TileClouds, tile: TileRef) -> st
     return standing(entry, tile, textures, colours=held.colours, chunks=held.chunks)[0]
 
 
-def laid_after(cl: CloudList, held: TileClouds | None, tile: TileRef) -> list[dict[str, Any]]:
-    """The clouds Apply builds the tile with, in the list's order: every ticked cloud the tile
-    holds with that source as it holds it, every other ticked one from its images; those whose
-    images are not got are left out (the question said so)."""
+def laid_after(
+    cl: CloudList, held: TileClouds | None, pending: Sequence[Change]
+) -> list[dict[str, Any]]:
+    """The clouds Apply builds the tile with, and After shows, in the list's order: each ticked
+    cloud with the newest images that stand, its change's when they are in, else what the tile
+    holds of it; a cloud with neither waits, left out (the question said so). ``pending``: what
+    :func:`changes` gives."""
     holds = {c["id"]: c for c in (held.applied if held is not None else ())}
-    pending = {ch.cloud: ch for ch in changes(cl, held, tile)}
+    got = {ch.cloud: ch.entry for ch in pending if ch.entry is not None}
     out: list[dict[str, Any]] = []
     for c in cl.clouds:
-        if not c["tick"]:
-            continue
-        ch = pending.get(c["id"])
-        if ch is None and c["id"] in holds:
-            out.append({**holds[c["id"]], "kind": c["kind"], "number": c["number"]})
-        elif ch is not None and ch.entry is not None:
-            out.append({**ch.entry, "kind": c["kind"], "number": c["number"]})
+        entry = got.get(c["id"]) or holds.get(c["id"]) if c["tick"] else None
+        if entry is not None:
+            out.append({**entry, "kind": c["kind"], "number": c["number"]})
     return out

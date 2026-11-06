@@ -34,6 +34,7 @@ from orthostudio.dem.rule import DEM_RULE
 from orthostudio.errors import OsxpError
 from orthostudio.fsutil import atomic_link_or_copy, atomic_write_bytes, atomic_write_text
 from orthostudio.graph import ResolvedInput, Rule, RuleParams, RunContext, Store, rule
+from orthostudio.graph.digest import digest_bytes
 from orthostudio.home import default_store_root, default_tiles_root, disk_absent
 from orthostudio.install import (
     Library,
@@ -700,6 +701,15 @@ ORIGINALS = "originals"
 ``textures/``)."""
 CLOUD_FILES = (PARTS, f"{ORIGINALS}/textures")
 """What of an artefact's ``clouds/`` a tile's folder holds."""
+
+
+def pack_identity(pack_dir: Path) -> str | None:
+    """What the pack in ``pack_dir`` shows, as one digest: its manifest's, which names the DSF and
+    the textures it lays; ``None`` without one."""
+    try:
+        return digest_bytes((Path(pack_dir) / MANIFEST_NAME).read_bytes())
+    except OSError:
+        return None
 
 
 def cloud_record(pack_dir: Path) -> tuple[str, dict[str, Any]] | None:

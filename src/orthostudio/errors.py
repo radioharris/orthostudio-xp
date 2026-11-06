@@ -1280,6 +1280,14 @@ _SPECS: tuple[ErrorSpec, ...] = (
         "Outline it again on the map; nothing was changed.",
     ),
     _spec(
+        "CLOUD_DETECTOR_ASK",
+        _B,
+        _S,
+        "Finding clouds needs the cloud detector, which is not on this computer yet "
+        "(about {mb} MB).",
+        "Download it once: it runs on this computer, nothing is sent anywhere.",
+    ),
+    _spec(
         "CLOUD_DETECTOR_MISSING",
         _B,
         _S,

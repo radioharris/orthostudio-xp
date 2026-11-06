@@ -21,11 +21,23 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from orthostudio.clouds.cloudlist import Change, CloudList, removable
+from orthostudio.clouds.cloudlist import Change, CloudList, needs_images, removable
 from orthostudio.clouds.sources import PROPOSABLE
 from orthostudio.clouds.tile import TileClouds
+from orthostudio.errors import OsxpError
 
-__all__ = ["TILE_STATES", "TileFacts", "library_row", "rows", "summary", "tile_state", "words"]
+__all__ = [
+    "TileFacts",
+    "library_row",
+    "possible",
+    "require",
+    "rows",
+    "summary",
+    "tile_state",
+    "useful",
+    "views",
+    "words",
+]
 
 TILE_STATES = (
     "data_away",
@@ -77,17 +89,18 @@ def rows(
     cl: CloudList,
     held: TileClouds | None,
     changes: Sequence[Change],
-    state: str,
+    possible: frozenset[str],
     tasks: Mapping[str, Mapping[str, Any]],
     previews: Mapping[str, Mapping[str, Any] | None],
 ) -> list[dict[str, Any]]:
     """Every cloud's row, in laying order: its state, the words of its line (``line``: a key and
-    its parameters), what After lays for it (``preview``), the actions it allows. ``changes`` what
+    its parameters), what After lays for it (``preview``: :func:`cloudlist.laid_after`'s), the
+    actions it allows, of what the tile allows (``possible``, :func:`possible`). ``changes`` what
     Apply would change (``cloudlist.changes``), ``tasks`` and ``previews`` by cloud id."""
     holds = {c["id"]: c for c in (held.applied if held is not None else ())}
     pending = {ch.cloud: ch for ch in changes}
     out: list[dict[str, Any]] = []
-    frozen = state not in ("ready", "in_build", "queued")
+    frozen = "pick" not in possible
     for c in cl.clouds:
         cid = c["id"]
         was, ch, task = holds.get(cid), pending.get(cid), tasks.get(cid)
@@ -118,16 +131,17 @@ def rows(
                 "waiting",
                 {"key": f"clouds.row.waiting.{ch.waiting}", "params": {"source": c["source"]}},
             )
-            actions = ["get_images"]
+            actions = ["get_images"] if "check" in possible and needs_images(ch) else []
         else:
             row = "found"
             line = None if c.get("best") else {"key": "clouds.row.no_source", "params": {}}
         if not frozen and task is None:
-            actions += ["untick"] if c["tick"] else ["tick"]
+            actions += (
+                ["untick"] if c["tick"] else (["tick"] if c["source"] or c.get("best") else [])
+            )
             actions += ["choose"]
-            if removable(c, held):
+            if "remove" in possible and removable(c, held):
                 actions.append("remove")
-        lays = row in ("held", "ready") or (row in ("waiting", "getting") and was is not None)
         out.append(
             {
                 "id": cid,
@@ -141,7 +155,7 @@ def rows(
                 "state": row,
                 "line": line,
                 "actions": actions,
-                "preview": previews.get(cid) if lays else None,
+                "preview": previews.get(cid),
                 "menu": _menu(c),
             }
         )
@@ -185,6 +199,53 @@ def summary(changes: Sequence[Change], held: TileClouds | None) -> dict[str, Any
     counts["held"] = len(held.applied) if held is not None else 0
     counts["changes"] = counts["replace"] + counts["another"] + counts["back"]
     return counts
+
+
+LIST_EDITS = frozenset({"pick", "untick", "remove", "discard"})
+"""The list's own changes: they wait for the next Apply, whatever the tile does meanwhile."""
+TASKS = frozenset({"find", "outline", "check"})
+"""What reads the tile's folder (its picture, its textures): not while a build writes it."""
+BUILDS = frozenset({"apply", "restore"})
+NEEDS_DETECTOR = frozenset({"find", "outline", "check", "pick"})
+"""What runs the cloud detector (a tick or a source gets the cloud's images)."""
+
+
+def possible(state: str) -> frozenset[str]:
+    """What the tile allows in ``state`` (``clouds.md`` 1.5): everything when it is ready, the
+    list's edits while a build writes it or waits to, no build while its own source is gone,
+    nothing else. The routes refuse the rest (:func:`require`), the page greys it."""
+    return {
+        "ready": LIST_EDITS | TASKS | BUILDS,
+        "in_build": LIST_EDITS,
+        "queued": LIST_EDITS,
+        "own_source_gone": LIST_EDITS | TASKS,
+    }.get(state, frozenset())
+
+
+def useful(can: frozenset[str], counts: Mapping[str, int]) -> frozenset[str]:
+    """Of ``can``, what would do something: Apply a change, Restore a replaced cloud, Discard a
+    change or a wait."""
+    idle = {
+        "apply": counts["changes"] == 0,
+        "restore": counts["held"] == 0,
+        "discard": counts["changes"] == 0 and counts["waiting"] == 0,
+    }
+    return frozenset(a for a in can if not idle.get(a, False))
+
+
+def require(tile: str, state: str, action: str) -> None:
+    """``CLOUD_TILE_NOT_READY`` unless the tile allows ``action`` in ``state``."""
+    if action not in possible(state):
+        raise OsxpError("CLOUD_TILE_NOT_READY", context={"tile": tile, "state": state})
+
+
+def views(state: str, counts: Mapping[str, int], picture: bool) -> dict[str, Any]:
+    """The words of the map's two views: After (what X-Plane shows, or will once Apply builds the
+    changes) and Before; none without a picture of the tile (the tile's line says why)."""
+    if not picture:
+        return {"after": None, "before": None}
+    after = "clouds.after_pending" if counts["changes"] > 0 else "clouds.after"
+    return {"after": after, "before": "clouds.before"}
 
 
 def words(state: str) -> dict[str, Any] | None:

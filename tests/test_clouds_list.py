@@ -125,7 +125,7 @@ def test_a_held_outline_leaves_the_list_only_once_the_tile_no_longer_holds_it() 
         o = cls.add_outline(cl, A, 3.0, None)
         cls.pick(cl, o["id"], source="EOX")
         cl.get(o["id"])["checks"]["EOX"] = {"answer": "clear", "entry": _entry(o["id"], A)}
-        (laid,) = cls.laid_after(cl, None, TILE)
+        (laid,) = cls.laid_after(cl, None, cls.changes(cl, None, TILE))
     held = _held(laid)
     with pytest.raises(OsxpError), cls.update(TILE, held) as cl:
         cls.remove_outline(cl, o["id"], held)
@@ -177,8 +177,9 @@ def test_the_changes_apply_makes_against_what_the_tile_holds() -> None:
             "held0002": ("another", "no_images"),
             new: ("replace", None),
         }
-        laid = [e["id"] for e in cls.laid_after(cl, held, TILE)]
-        assert laid == [new]  # held0002 waits for its images, held0001 comes back
+        laid = [e["id"] for e in cls.laid_after(cl, held, cls.changes(cl, held, TILE))]
+        # held0001 comes back; held0002 keeps its ground until Arc's images are in
+        assert laid == ["held0002", new]
 
 
 def test_images_got_on_another_photo_wait_to_be_got_again() -> None:
@@ -202,7 +203,7 @@ def test_discard_and_restore() -> None:
         cls.discard(cl, held)
         assert cl.get("held0001")["tick"] is True
         cls.restore(cl)
-        assert cls.laid_after(cl, held, TILE) == []
+        assert cls.laid_after(cl, held, cls.changes(cl, held, TILE)) == []
 
 
 def test_a_broken_list_is_put_aside_and_made_again_from_what_the_tile_holds(home: Path) -> None:

@@ -2041,7 +2041,14 @@ def create_app(
             **{k: v for k, v in spec.config.items() if k in COMPUTER_CONFIG_KEYS},
         }
         spec = dataclasses.replace(spec, config=config, clouds=tuple(clouds))
-        job = manager.start([spec], request={"kind": "clouds", "tiles": [tile.name]}, queue=True)
+        try:
+            job = manager.start(
+                [spec], request={"kind": "clouds", "tiles": [tile.name]}, queue=True
+            )
+        except TileInBuildError:  # a build of it came in between: its changes wait
+            raise OsxpError(
+                "CLOUD_TILE_NOT_READY", context={"tile": tile.name, "state": "in_build"}
+            ) from None
         return job.id
 
     cloud_routes, clouds = clouds_router(

@@ -59,8 +59,9 @@ The Plan's map, brought over the tile; the Plan's steps make way for the cloud p
 
 | Action | What happens |
 |---|---|
-| **Find clouds** | The search (4.1), one at a time for the app; the clouds merged into the list (R3). The first one downloads the detector, its size asked first |
-| Tick, a click on an outline | The cloud ticked with its source (the best when none was chosen); its images got when they are not in |
+| **Find clouds** | The search (4.1), one at a time for the app; the clouds merged into the list (R3) |
+| Tick, a click on an outline | The cloud ticked with its source (the best when none was chosen); its images got when they are not in (`cloudlist.needs_images`) |
+| Untick | The cloud unticked, its source kept; nothing runs |
 | Choose a source | Ticks it with that source; its images got |
 | **Get its images** | Asks the source again (after no answer, a refusal, or a photo that changed) |
 | **Outline a cloud** | Points clicked on the map, a double-click or Enter ends it, Escape gives up. The found clouds it covers that are neither ticked nor held leave: it is them. Its sources are tried and it comes ticked with the best |
@@ -84,6 +85,18 @@ The tile's state, the first that holds (`clouds/mode.py`, `tile_state`):
 | `earlier_version` | its textures do not say what a cloud is chosen on, or no settings of its last build are kept (2.5) | build it again once with this version |
 | `own_source_gone` | its source is no longer in the sources | add it back in Settings to apply |
 | `ready` | | |
+
+What each state allows is one table (`mode.possible`), which the routes refuse by (`mode.require`,
+`CLOUD_TILE_NOT_READY`) and the page greys by (the answer's `allowed`, of which only what would do
+something, `mode.useful`: Apply a change, Restore a replaced cloud, Discard a change or a wait):
+**ready**, everything; **being built** or **in the queue**, the list's edits alone (tick, untick,
+source, trash, Discard: they wait for the next Apply), nothing that reads the tile's folder while
+a build writes it; **its own source gone**, everything but Apply and Restore; any other state,
+nothing. What runs the cloud detector (a search, an outline, a tick or a source, getting images)
+is refused while the detector is not on this computer and the user has not said to download it
+(`CLOUD_DETECTOR_ASK`, with its size): the page asks, and on yes sends the same action again
+with `download`. The answer says when something is under way (`busy`: a task of the tile, or a
+build of it), for the page to read it again.
 
 A cloud's row, the first that holds (`rows`): read only while the tile is not ready, in a build or
 queued; a task of it (getting its images, trying an outline's sources); **held** (replaced with
@@ -142,7 +155,7 @@ parts. The texture rule's input `clouds` (`OSXPCLD3`) carries a texture's patche
 `$OSXP_HOME/clouds/<tile>.json`, format `osxp-cloud-list-1`: every cloud with its id (eight
 characters, never given again on that tile), its number, its kind (`found`, `drawn`), its
 outline, its area, what each source has under it (`screening`, the search's), its best source,
-its tick, its source, and per source tried its check (its answer, fit, entry and preview). Only
+its tick, its source, and per source tried its check (its answer, fit and entry). Only
 `clouds/cloudlist.py` writes it (`pick`, `merge_search`, `add_outline`, `remove_outline`,
 `record_screening`, `record_check`, `discard`, `restore`). The
 list is the draft: each change is written as it is made, one writer at a time per tile, and
@@ -199,9 +212,12 @@ the tile holds, so a list made again from the tile is the same list.
 ### R4. The list is a draft; Apply builds what its question showed
 
 Apply builds the tile with its own settings (2.5), the computer's keys of now, and the clouds of
-`laid_after`: every ticked cloud the tile holds with that source as it holds it, every other
-ticked one from its images; those still waiting are left out, and the question said so. Only the
-textures under the clouds changed are made again; the rest are store hits.
+`laid_after`: each ticked cloud with the newest images that stand, its change's when they are
+in, else what the tile holds of it (a replaced cloud given another source keeps its ground until
+the new one's images are in); a ticked cloud with neither waits, left out, and the question says
+so. After shows exactly these, each by its preview (R5): what Apply would build is what the map
+shows. The list changes only once the build is accepted (Restore unticks every cloud then). Only
+the textures under the clouds changed are made again; the rest are store hits.
 
 ### R5. What you see is what is laid
 
@@ -323,7 +339,7 @@ what the tile holds. The list is untouched; Apply can be pressed again.
 | Route | What |
 |---|---|
 | `GET /api/clouds` | The Library's column: per tile with a list, its state and counts |
-| `GET /api/clouds/{tile}` | The tile's state and line, its picture, every row (1.5), the count, its tasks, the detector's state |
+| `GET /api/clouds/{tile}` | The tile's state and line, what it allows (`allowed`), the words of After and Before (`views`), whether something is under way (`busy`), its picture, every row (1.5) with After's preview of it, the count, its tasks, the detector's state |
 | `POST /api/clouds/{tile}/find` | Starts a search |
 | `POST /api/clouds/{tile}/picks` | `{id, tick?, source?}`: a tick or a source; gets the images when needed |
 | `POST /api/clouds/{tile}/check` | `{id}`: gets the cloud's images again |

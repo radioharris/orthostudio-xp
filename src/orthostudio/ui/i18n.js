@@ -2790,6 +2790,7 @@ const CODES = {
     CLOUD_NOT_BUILT: ["Cette tuile n'a pas de photo construite où chercher des nuages.", "Construisez d'abord la tuile : la recherche la lit comme X-Plane la dessine."],
     CLOUD_UNKNOWN: ["Ce nuage n'est plus dans la liste des nuages de la tuile.", "Rouvrez les Nuages… de la tuile pour lire sa liste telle qu'elle est ; rien n'a changé."],
     CLOUD_INVALID: ["Ce nuage ne peut pas servir.", "Entourez-le de nouveau sur la carte ; rien n'a changé."],
+    CLOUD_DETECTOR_ASK: ["Chercher les nuages demande le détecteur de nuages, pas encore sur cet ordinateur (environ {mb} Mo).", "Téléchargez-le une fois : il tourne sur cet ordinateur, rien n'est envoyé nulle part."],
     CLOUD_DETECTOR_MISSING: ["Le détecteur de nuages n'a pas pu être préparé.", "Vérifiez la connexion internet et recommencez : l'outil de détection (OpenCV et deux réseaux) se télécharge une fois, quand vous le demandez."],
     // The codes the page had no words for, in the engine's sense (errors.py), filled from the
     // error's context. A code the engine also raises with a sentence or a remedy of its own keeps
@@ -2949,6 +2950,7 @@ const CODES = {
     CLOUD_NOT_BUILT: ["This tile has no built photo to look for clouds in.", "Build the tile first: the search reads it as X-Plane draws it."],
     CLOUD_UNKNOWN: ["This cloud is no longer in the tile's cloud list.", "Open the tile's Clouds… again to read its list as it is now; nothing was changed."],
     CLOUD_INVALID: ["This cloud cannot be used.", "Outline it again on the map; nothing was changed."],
+    CLOUD_DETECTOR_ASK: ["Finding clouds needs the cloud detector, which is not on this computer yet (about {mb} MB).", "Download it once: it runs on this computer, nothing is sent anywhere."],
     CLOUD_DETECTOR_MISSING: ["The cloud detector could not be made ready.", "Check the internet connection and try again: the detection tool (OpenCV and two networks) is downloaded once, when you ask for it."],
   },
 };

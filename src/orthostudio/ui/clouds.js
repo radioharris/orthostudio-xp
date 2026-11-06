@@ -101,16 +101,26 @@ export function createCloudMode(ctx) {
     }
     render();
     const a = cs.answer;
-    if (a && (a.tasks?.length || a.state === "in_build" || a.state === "queued")) cs.poll = setTimeout(refresh, POLL_MS);
+    if (a?.busy) cs.poll = setTimeout(refresh, POLL_MS);
   }
 
+  /** An action sent to the engine, the tile read again after it. The engine refuses what runs
+   * the cloud detector before it is downloaded (``CLOUD_DETECTOR_ASK``): the user is asked, and on
+   * yes the same action goes again with ``download``. */
   async function send(method, path, body) {
     try {
       const res = await api(method, `/api/clouds/${encodeURIComponent(cs.tile)}${path}`, body);
       await refresh();
       return res;
     } catch (err) {
-      toast(errorMessage(err), "fail");
+      const e = err?.detail?.error;
+      if (e?.code === "CLOUD_DETECTOR_ASK" && !body?.download) {
+        if (await ask(t("clouds.tool_title"), [t("clouds.tool_text", { mb: e.context?.mb })], t("clouds.tool_go"))) {
+          return send(method, path, { ...(body || {}), download: true });
+        }
+      } else {
+        toast(errorMessage(err), "fail");
+      }
       await refresh();
       return null;
     }
@@ -204,15 +214,6 @@ export function createCloudMode(ctx) {
     });
   }
 
-  async function find() {
-    const a = cs.answer;
-    if (a && !a.detector.ready) {
-      const ok = await ask(t("clouds.tool_title"), [t("clouds.tool_text", { mb: Math.round(a.detector.bytes / 1e6) || 110 })], t("clouds.tool_go"));
-      if (!ok) return;
-    }
-    await send("POST", "/find");
-  }
-
   async function apply(restore = false) {
     const p = cs.answer?.pending || {};
     const title = restore ? t("clouds.restore_title", { tile: cs.tile }) : t(p.changes === 1 ? "clouds.apply_title_one" : "clouds.apply_title", { tile: cs.tile, n: p.changes });
@@ -239,12 +240,12 @@ export function createCloudMode(ctx) {
     const el = $("clouds-banner");
     if (!el) return;
     const a = cs.answer;
-    const pending = a?.pending?.changes > 0;
-    const text = cs.draft ? t("clouds.outlining") : cs.view === "after" ? t(pending ? "clouds.after_pending" : "clouds.after") : t("clouds.before");
+    const key = a?.views?.[cs.view];
+    const text = cs.draft ? t("clouds.outlining") : key ? t(key) : "";
     clear(el).append(
       h("button", { type: "button", class: cs.view === "after" ? "btn btn-primary" : "btn", onclick: () => { cs.view = "after"; render(); } }, t("clouds.view_after")),
       h("button", { type: "button", class: cs.view === "before" ? "btn btn-primary" : "btn", onclick: () => { cs.view = "before"; render(); } }, t("clouds.view_before")),
-      h("button", { type: "button", class: "btn", disabled: !a || a.state !== "ready", onclick: () => { cs.draft = { points: [] }; render(); } }, t("clouds.outline")),
+      h("button", { type: "button", class: "btn", disabled: !a?.allowed.includes("outline"), onclick: () => { cs.draft = { points: [] }; render(); } }, t("clouds.outline")),
       h("span", { class: "clouds-view-text" }, text),
       h("button", { type: "button", class: "btn clouds-leave", onclick: close }, t("clouds.back")),
     );
@@ -267,19 +268,20 @@ export function createCloudMode(ctx) {
       kids.push(h("p", { class: "clouds-progress" }, t(`clouds.task.${task.kind}`) + " " + t(`clouds.phase.${task.phase}`) + pct, " ",
         h("button", { type: "button", class: "btn", onclick: () => api("POST", `/api/clouds/tasks/${task.id}/stop`).then(refresh) }, t("clouds.stop"))));
     }
-    const ready = a.state === "ready";
+    // what the tile allows is the engine's to say (``mode.possible``, ``mode.useful``)
+    const can = new Set(a.allowed);
     const searching = a.tasks.some((x) => x.kind === "search");
-    if (ready && !a.clouds.length && !searching) kids.push(h("p", null, a.search ? t("clouds.none_found") : t("clouds.not_looked")));
+    if (can.has("find") && !a.clouds.length && !searching) kids.push(h("p", null, a.search ? t("clouds.none_found") : t("clouds.not_looked")));
     const list = h("ul", { class: "zone-list" });
     for (const c of a.clouds) list.append(row(c));
     kids.push(list);
     const p = a.pending || {};
     kids.push(h("p", { class: "clouds-count" }, pendingWords(p)));
     kids.push(h("div", { class: "plan-actions" },
-      h("button", { type: "button", class: "btn", disabled: !ready || searching, onclick: find }, t("clouds.find")),
-      h("button", { type: "button", class: "btn btn-primary", disabled: !(p.changes > 0) || !["ready", "in_build", "queued"].includes(a.state), onclick: () => apply(false) }, t(p.changes === 1 ? "clouds.apply_one" : "clouds.apply", { n: p.changes || 0 })),
-      h("button", { type: "button", class: "btn", disabled: !(p.changes > 0 || p.waiting > 0), onclick: () => send("POST", "/discard") }, t("clouds.discard")),
-      p.held > 0 ? h("button", { type: "button", class: "btn", disabled: !ready, onclick: () => apply(true) }, t("clouds.restore")) : null,
+      h("button", { type: "button", class: "btn", disabled: !can.has("find") || searching, onclick: () => send("POST", "/find") }, t("clouds.find")),
+      h("button", { type: "button", class: "btn btn-primary", disabled: !can.has("apply"), onclick: () => apply(false) }, t(p.changes === 1 ? "clouds.apply_one" : "clouds.apply", { n: p.changes || 0 })),
+      h("button", { type: "button", class: "btn", disabled: !can.has("discard"), onclick: () => send("POST", "/discard") }, t("clouds.discard")),
+      can.has("restore") ? h("button", { type: "button", class: "btn", onclick: () => apply(true) }, t("clouds.restore")) : null,
     ));
     clear(el).append(...kids);
   }

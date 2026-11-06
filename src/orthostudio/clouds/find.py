@@ -17,10 +17,11 @@ texture, over water at the share X-Plane gives the photo. So the preview is what
 
 from __future__ import annotations
 
+import json
 import math
 import threading
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -40,9 +41,10 @@ from orthostudio.graph.digest import digest_bytes
 from orthostudio.imagery.grid import parse_texture_name, texture_name, tile_to_wgs84, wgs84_to_tile
 from orthostudio.imagery.providers import Provider
 from orthostudio.model import TileRef
+from orthostudio.pipeline.rule import CLOUDS_RULE
 from orthostudio.textures.clouds import decode_part, encode_part, layer, pieces, read_piece
 
-__all__ = ["Area", "Check", "Judgement", "check", "find", "lonlat", "preview_of", "screen"]
+__all__ = ["Area", "Check", "Judgement", "check", "find", "lonlat", "preview", "screen"]
 
 MIN_CLOUD_HA = 2.0
 SHADOW_REACH_M = 600.0
@@ -474,15 +476,10 @@ def _keys_of(
 @dataclass(frozen=True, slots=True)
 class Check:
     """What getting a cloud's images from one source gave: its judgement at the tile's sharpness,
-    and when usable the cloud as a build lays it (``clouds.tile`` entry) and its preview (an
-    ``RGBA`` PNG file and its ``[south, west, north, east]``)."""
+    and when usable the cloud as a build lays it (a ``clouds.tile`` entry)."""
 
     judgement: Judgement
     entry: dict[str, Any] | None = None
-    preview: Path | None = None
-    bounds: tuple[float, float, float, float] | None = None
-    coverage: float = 0.0
-    parts: dict[str, Path] = field(default_factory=dict)
 
 
 def _reduce(arr: np.ndarray, k: int) -> np.ndarray:
@@ -549,7 +546,6 @@ def check(
     h, w = y1 - y0, x1 - x0
     lay_rgb = np.zeros((h, w, 3), np.float32)
     lay_a = np.zeros((h, w), np.float32)
-    parts: dict[str, Path] = {}
     folder = got_parts_dir(chunks_root)
     folder.mkdir(parents=True, exist_ok=True)
     entry_parts: dict[str, list[Any]] = {}
@@ -561,7 +557,7 @@ def check(
         path = folder / f"{digest}.part"
         if not path.exists():
             atomic_write_bytes(path, data)
-        parts[name], entry_parts[name] = path, [pa.source_zl, digest]
+        entry_parts[name] = [pa.source_zl, digest]
         la = layer(pa, t, got)
         if la is not None:
             _lay_reduced(la, t, p, box, name, lay_rgb, lay_a)
@@ -569,7 +565,7 @@ def check(
     inside = _inside(p, rings, box)
     covered = float((lay_a[inside] > 0.5).mean()) if inside.any() else 0.0
     if covered < COVERAGE:
-        return Check(Judgement("no_picture"), coverage=covered)
+        return Check(Judgement("no_picture"))
     src = np.clip(lay_rgb, 0, 255).astype(np.uint8)
     have = lay_a > 0.5
     cls = classes[y0:y1, x0:x1] if classes is not None else np.zeros((h, w), np.uint8)
@@ -583,12 +579,12 @@ def check(
         here, src, have, inside, core, np.zeros_like(band), (seen == THICK) | (seen == THIN)
     )
     if not sharp.usable:
-        return Check(sharp, coverage=covered)
+        return Check(sharp)
     # its colours, matched on the band at the reading the screening judged: there it answers too
     wide, wide_have, _lost = _source_at(sources, code, band_zl, p, box)
     fitted = judge(here, wide, wide_have, inside, core, band, np.zeros_like(band))
     if not fitted.usable:
-        return Check(fitted, coverage=covered)
+        return Check(fitted)
     j = Judgement(sharp.answer, fitted.fit, fitted.match)
     entry = {
         "id": cid,
@@ -599,33 +595,58 @@ def check(
         "images": {n: held.chunks[n] for n in reached},
         "colours": colours_near(rings, tile, held.colours),
     }
-    preview, bounds = preview_of(p, tile, entry, [folder], previews)
-    return Check(j, entry, preview, bounds, covered, parts)
+    preview(p, tile, entry, [folder], previews, held.shown)  # ready for After
+    return Check(j, entry)
 
 
-def preview_of(
+def preview(
     p: Picture,
     tile: TileRef,
     entry: Mapping[str, Any],
     folders: Sequence[Path],
     previews: Path,
-) -> tuple[Path | None, tuple[float, float, float, float] | None]:
-    """The preview of the cloud ``entry`` (a ``clouds.tile`` entry) on the picture ``p``: its
-    layers made from its frozen parts (found in ``folders``) by the build's own function, in its
-    colours, reduced as the textures' mips are, laid where X-Plane shows each texture, over water
-    at the share X-Plane gives the photo, cut to the tile. A PNG named by its content in
-    ``previews`` and its ``[south, west, north, east]``; ``None`` when a part is found nowhere."""
+    shown: str,
+) -> tuple[str, list[float]] | None:
+    """After's picture of the cloud ``entry`` (a ``clouds.tile`` entry) on ``p``, the picture of
+    what the tile's folder shows (``shown``): the name of its PNG in ``previews`` and its
+    ``[south, west, north, east]``; ``None`` when one of its frozen parts is found nowhere in
+    ``folders``. Named by what it is made of, the folder's picture, the way clouds are laid and
+    the entry, so it is made once and again only when one of them changes."""
+    what = f"{shown}:{p.zl}:{CLOUDS_RULE}:{json.dumps(entry, sort_keys=True)}"
+    out = previews / f"{digest_bytes(what.encode())[:32]}.png"
+    box = _preview_box(p, entry)
+    west, north = lonlat(p, box[0], box[1])
+    east, south = lonlat(p, box[2], box[3])
+    if not out.exists() and not _make_preview(p, tile, entry, folders, box, out):
+        return None
+    return out.name, [south, west, north, east]
+
+
+def _preview_box(p: Picture, entry: Mapping[str, Any]) -> tuple[int, int, int, int]:
+    band_px = max(2, round(BAND_M / pixel_metres(_lat(p), p.zl)))
+    return _box(p, entry["rings"], band_px + 4)
+
+
+def _make_preview(
+    p: Picture,
+    tile: TileRef,
+    entry: Mapping[str, Any],
+    folders: Sequence[Path],
+    box: tuple[int, int, int, int],
+    out: Path,
+) -> bool:
+    """The preview written at ``out``: the cloud's layers made from its frozen parts by the
+    build's own function, in its colours, reduced as the textures' mips are, laid where X-Plane
+    shows each texture, over water at the share X-Plane gives the photo, cut to the tile."""
     textures = [parse_texture_name(n) for n in entry["parts"]]
     reached = patches_of(entry, tile, textures, lambda t: int(entry["parts"][texture_name(t)][0]))
-    band_px = max(2, round(BAND_M / pixel_metres(_lat(p), p.zl)))
-    box = _box(p, entry["rings"], band_px + 4)
     x0, y0, x1, y1 = box
     rgb = np.zeros((y1 - y0, x1 - x0, 3), np.float32)
     alpha = np.zeros((y1 - y0, x1 - x0), np.float32)
     for name, pa in reached.items():
         path = find_part(str(entry["parts"][name][1]), folders)
         if path is None:
-            return None, None
+            return False
         t = parse_texture_name(name)
         la = layer(pa, t, decode_part(path.read_bytes()))
         if la is not None:
@@ -641,13 +662,9 @@ def preview_of(
             "SYS_INTERNAL_ERROR",
             context={"type": "PNG", "detail": "a cloud's preview could not be encoded"},
         )
-    previews.mkdir(parents=True, exist_ok=True)
-    out = previews / f"{digest_bytes(png.tobytes())}.png"
-    if not out.exists():
-        atomic_write_bytes(out, png.tobytes())
-    west, north = lonlat(p, x0, y0)
-    east, south = lonlat(p, x1, y1)
-    return out, (south, west, north, east)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    atomic_write_bytes(out, png.tobytes())
+    return True
 
 
 def _lay_reduced(
