@@ -1301,6 +1301,11 @@ def _tile_textures(ctx: RunContext) -> None:
         "format": MANIFEST_FORMAT,
         "tile": tile.name,
         "textures": sorted((listed_texture(o) for o in outcomes), key=lambda o: str(o["name"])),
+        # the photo's colours as the textures have them: a cloud's are matched among them
+        "colours": {
+            "tile": [params.photo_brightness, params.photo_contrast, params.photo_saturation],
+            "zones": params.photo_zones,
+        },
         **clouds.manifest(),
     }
     (ctx.out / "manifest.json").write_text(
@@ -1374,7 +1379,10 @@ TILE_DSF: Rule = rule(
 )(_tile_dsf)
 TILE_TEXTURES: Rule = rule(
     name="tile.textures",
-    version=1,
+    # 2: its manifest says each texture's pieces (``chunks``) and the photo's colours, what a
+    # replaced cloud is chosen on (``clouds.tile``): a tile built before is taken through the step
+    # once more at its next build, its images all from the store, for its manifest to say them
+    version=2,
     params=TileTexturesParams,
     inputs=("dsf", "masks"),
     ram_mb=3000,

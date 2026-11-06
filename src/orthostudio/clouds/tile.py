@@ -61,6 +61,15 @@ class TileClouds:
     """The clouds the build that made it was given and did not lay, with why."""
     chunks: Mapping[str, str] = field(default_factory=dict)
     """Each texture's name with the digest of the pieces it was made of."""
+    colours: Mapping[str, Any] | None = None
+    """The photo's colours as the textures have them (``tile``: brightness, contrast,
+    saturation; ``zones``); ``None`` for textures an earlier version made, which say neither
+    these nor their pieces: such a tile is built again once before its clouds are looked at."""
+
+    @property
+    def described(self) -> bool:
+        """Whether its textures say what a cloud is chosen on: their pieces and colours."""
+        return self.colours is not None and bool(self.chunks)
 
     def held(self, cloud: str) -> dict[str, Any] | None:
         return next((c for c in self.applied if c["id"] == cloud), None)
@@ -98,6 +107,7 @@ def read_tile(folder: Path, store: Store) -> TileClouds | None:
             for t in doc.get("textures") or ()
             if isinstance(t, dict) and t.get("chunks")
         },
+        colours=doc.get("colours") if isinstance(doc.get("colours"), dict) else None,
     )
 
 
