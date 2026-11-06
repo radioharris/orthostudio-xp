@@ -347,8 +347,9 @@ def _line(s: CloudState) -> dict[str, Any] | None:
         return None
     if s.row == "found":
         return {"key": "clouds.row.no_source", "params": {}, "tone": "plain"}
-    if s.row in ("check", "outline"):
-        return {"key": f"clouds.row.{s.row}", "params": src, "tone": "plain"}
+    if s.row in ("check", "outline"):  # where its task is, in a few words: one line in the row
+        phase = (s.task or {}).get("phase", "waiting")
+        return {"key": f"clouds.row.task.{phase}", "params": {}, "tone": "plain"}
     if s.why is not None:  # what it waits for, whatever Apply does meanwhile
         return {"key": f"clouds.row.waiting.{s.why}", "params": src, "tone": "warn"}
     held = s.held["source"] if s.held is not None else None

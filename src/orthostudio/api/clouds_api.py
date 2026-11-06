@@ -317,6 +317,7 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
         failed = engine.tasks.failed(tile.name)
         return {
             "tile": tile.name,
+            "provider": shown.provider if shown is not None else None,  # its photo's source
             "state": v.state,
             "busy": v.busy,
             "line": v.line,

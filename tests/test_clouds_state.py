@@ -394,5 +394,12 @@ def test_a_cloud_whose_images_are_got_keeps_what_after_showed_of_it(folder: Path
     assert "cloud001" in [e["id"] for e, _n in v.previews]
     row = v.cloud("cloud001").page()
     assert "shows" not in row["task"] and row["label"] == "spinner"  # running: a spinner
+    # its row says where its task is in a few words, one line (a user, 2026-11-07)
+    assert row["line"]["key"] == "clouds.row.task.fetching" and _words(row["line"]["key"])
     waiting = _view(cl, shown, [{**task, "phase": "waiting"}]).cloud("cloud001").page()
     assert waiting["label"] is None and row["numbered"] is True  # waiting its turn: nothing
+
+
+def test_every_phase_of_a_task_has_its_few_words_in_a_row() -> None:
+    phases = set(re.findall(r'"clouds\.phase\.(\w+)":', FR))
+    assert phases and all(_words(f"clouds.row.task.{p}") for p in phases), phases

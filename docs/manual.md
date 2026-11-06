@@ -36,7 +36,8 @@ On a ZL14 tile it takes about a minute. The panel shows where it is; **Stop** en
 ### 3. Choose what to replace
 
 Each cloud found is outlined in yellow on the map and listed in the panel with its size and its
-sources, for instance *Esri World Imagery · clear · fit 93 %*, the best first. A source showing
+sources, for instance *Esri World Imagery · clear · fit 93 %*, the best first. Beside the panel's
+title, the source the tile's own photo comes from. A source showing
 the same photo as the tile, which would bring the cloud back, or with no picture there, is greyed.
 
 - Every cloud comes **unticked**. The tool can take something pale for a cloud, such as light,

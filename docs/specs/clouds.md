@@ -58,16 +58,18 @@ The Plan's map, brought over the tile; the Plan's steps make way for the cloud p
 - **The banner over the map**: the sentence of the view ("What X-Plane shows.", "What X-Plane will
   show after Apply.", "The tile with no cloud replaced.", the three in one place so the banner
   keeps one size), then **After**, **Before**, **Outline a cloud**, **Back to the Plan**.
-- **The panel**: the tile's name; the tile's line when it is not ready (1.5), or why it could not
-  be read; each task under way with a spinner, its phase, its progress (a search's judging of the
+- **The panel**: the tile's name, and beside it the source its photo was built from ("Original
+  photo: Bing", the manifest's `provider`); a spinner while the tile is read; the tile's line when
+  it is not ready (1.5), or why it could not be read; each task under way with a spinner, its
+  phase, its progress (a search's judging of the
   sources said cloud by cloud) and **Stop**; the count of what Apply changes ("To replace: 1 · Back
   as photographed: 2") with **Tick all**, **Untick all** and, while a cloud's task runs, **Stop
-  all**; the list, a row per cloud; then, spaced as the Plan's build buttons (`actions
-  actions-build`), **Apply (n changes)** and **Discard changes** once there is a cloud or Apply may
-  run, **Restore the original photos** while the tile holds replaced clouds (greyed while it may
-  not run), **Quick search** and **Fine search** (4.1; greyed, saying why, on a tile with nothing
-  finer to read, the engine's `fine`), and before any of them, what each search takes. A reading
-  of the tile answered after a later one is left: the page shows the latest.
+  all**; the list, a row per cloud; then three rows of buttons, spaced as the Plan's build buttons
+  (`actions actions-build`): **Apply (n changes)** and **Discard changes**, once there is a cloud
+  or Apply may run; **Quick search** and **Fine search** (4.1; greyed, saying why, on a tile with
+  nothing finer to read, the engine's `fine`), and before any cloud, what each search takes;
+  **Restore the original photos**, while the tile holds replaced clouds (greyed while it may not
+  run). A reading of the tile answered after a later one is left: the page shows the latest.
 - **A row**, laid out as the Plan's zones (a click on it shows its cloud, as **Show** does; its
   checkbox and its name tick it): its tick and name, its area, **Show** (the map over it), a trash
   for an outline the tile does not hold; the menu of its sources, each with what it has there and
@@ -75,7 +77,9 @@ The Plan's map, brought over the tile; the Plan's steps make way for the cloud p
   its images got, judged as they are now, else the search's; what a piece said, no answer, a
   refusal, a page, leaves the search's), the best first, those that cannot be chosen greyed
   (`sources.PROPOSABLE`: the same photo, no picture; the source whose images the tile shows of it
-  always may be); its line (1.5), with a spinner while a task of it runs; **Get its images** when
+  always may be); its line (1.5), with a spinner while a task of it runs, then only where the task
+  is, in a few words and how far ("Downloading the images 11 %", `clouds.row.task.<phase>`: one
+  line in the row, its source in the menu above); **Get its images** when
   asking again may end its wait; **Stop** while a task of it runs.
 
 ### 1.4 What the user does
@@ -532,7 +536,7 @@ words: `docs/specs/errors.md`.
 | Route | What |
 |---|---|
 | `GET /api/clouds` | The Library's column: by row path, the rows it is offered on (1.2), what the tile holds and what waits |
-| `GET /api/clouds/{tile}` | The view (1.5): the tile's state and line, what it allows (`allowed`), the words of After and Before (`views`), whether something is under way (`busy`), its picture (Before) and After's (`after`), whether a fine search reads more (`fine`), every row with its line and tone, its actions, what a click on it does (`toggle`) and its tooltip (`tip`), its task and After's preview of it, the count, Apply's and Restore's buttons and questions (`texts`), the tile's own tasks with their `actions`, its last failure |
+| `GET /api/clouds/{tile}` | The view (1.5): the source its photo was built from (`provider`), the tile's state and line, what it allows (`allowed`), the words of After and Before (`views`), whether something is under way (`busy`), its picture (Before) and After's (`after`), whether a fine search reads more (`fine`), every row with its line and tone, its actions, what a click on it does (`toggle`) and its tooltip (`tip`), its task and After's preview of it, the count, Apply's and Restore's buttons and questions (`texts`), the tile's own tasks with their `actions`, its last failure |
 | `POST /api/clouds/{tile}/find` | `{fine?}`: starts the quick search, or the fine one where it is offered |
 | `POST /api/clouds/{tile}/picks` | `{action, id?, source?}`: `tick`, `untick` or `choose` of a cloud, as its state allows, or without `id` of every cloud that allows it; gets the images when its state asks them |
 | `POST /api/clouds/{tile}/check` | `{id?, again?}`: gets a cloud's images, or of every cloud whose state offers it; `again`, **Get its images**: its pieces kept as no picture asked again |

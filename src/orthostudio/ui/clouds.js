@@ -54,10 +54,14 @@ export function lineWords(line, names = {}) {
   return t(line.key, params);
 }
 
+/** How far a task is, when it says (``Task.view``): `` 11 %``. */
+export function progressWords(task) {
+  return task?.progress != null ? ` ${Math.round(task.progress * 100)} %` : "";
+}
+
 /** Where a task is: its phase, and how far when it says (``Task.view``). */
 export function taskWords(task) {
-  const pct = task.progress != null ? ` ${Math.round(task.progress * 100)} %` : "";
-  return `${t(`clouds.phase.${task.phase}`)}${pct}`;
+  return `${t(`clouds.phase.${task.phase}`)}${progressWords(task)}`;
 }
 
 /** A line of several pieces the engine sent, each a key and its parameters. */
@@ -478,9 +482,13 @@ export function createCloudMode(ctx) {
     const el = $("clouds-panel");
     if (!el) return;
     const a = cs.answer;
-    const kids = [h("h2", { id: "clouds-title" }, t("clouds.title", { tile: cs.tile || "" }))];
+    // beside the title, the source the tile's photo was built from: the one its clouds replace
+    const built = a?.provider ? h("span", { class: "clouds-built" }, t("clouds.built_from", { source: names()[a.provider] || a.provider })) : null;
+    const kids = [h("h2", { id: "clouds-title" }, t("clouds.title", { tile: cs.tile || "" }), built)];
     if (!a) {
-      kids.push(cs.error ? h("p", { class: "clouds-warning", role: "status" }, cs.error) : h("p", null, t("clouds.reading")));
+      kids.push(cs.error
+        ? h("p", { class: "clouds-warning", role: "status" }, cs.error)
+        : h("div", { class: "clouds-progress", role: "status" }, h("span", { class: "spinner", "aria-hidden": "true" }), h("span", null, t("clouds.reading"))));
       morph(el, h("div", null, ...kids));
       return;
     }
@@ -512,12 +520,19 @@ export function createCloudMode(ctx) {
     // nothing found yet: the search first, and what it costs; Apply shown whenever it may be
     // (a texture to make again whose clouds no file says, the list empty)
     const first = !a.clouds.length && !can.has("apply");
-    kids.push(h("div", { class: "actions actions-build", dataset: key("actions") },
-      first ? null : h("button", { type: "button", class: "btn btn-primary", dataset: key("apply"), disabled: !can.has("apply"), onclick: () => apply("apply") }, lineWords(a.texts.apply)),
-      first ? null : h("button", { type: "button", class: "btn", dataset: key("discard"), disabled: !can.has("discard"), onclick: () => send("POST", "/discard") }, t("clouds.discard")),
-      a.texts.restore ? h("button", { type: "button", class: "btn", dataset: key("restore"), disabled: !can.has("restore"), onclick: () => apply("restore") }, lineWords(a.texts.restore)) : null,
-      ...searchButtons(a, can, first)));
+    // three rows: what Apply does with the list, the searches, then Restore apart (a user,
+    // 2026-11-07)
+    if (!first) {
+      kids.push(h("div", { class: "actions actions-build", dataset: key("actions") },
+        h("button", { type: "button", class: "btn btn-primary", dataset: key("apply"), disabled: !can.has("apply"), onclick: () => apply("apply") }, lineWords(a.texts.apply)),
+        h("button", { type: "button", class: "btn", dataset: key("discard"), disabled: !can.has("discard"), onclick: () => send("POST", "/discard") }, t("clouds.discard"))));
+    }
+    kids.push(h("div", { class: "actions actions-build", dataset: key("searches") }, ...searchButtons(a, can, first)));
     if (first) kids.push(h("p", { class: "help", dataset: key("search-help") }, t("clouds.search_help")));
+    if (a.texts.restore) {
+      kids.push(h("div", { class: "actions actions-build", dataset: key("restore-row") },
+        h("button", { type: "button", class: "btn", dataset: key("restore"), disabled: !can.has("restore"), onclick: () => apply("restore") }, lineWords(a.texts.restore))));
+    }
     const scroll = el.querySelector(".clouds-list")?.scrollTop || 0;
     morph(el, h("div", null, ...kids));
     revealRow(el.querySelector(".clouds-list"), scroll);
@@ -584,7 +599,7 @@ export function createCloudMode(ctx) {
     const line = c.line
       ? h("span", { class: `zone-hint${c.line.tone === "warn" ? " zone-hint-warn" : ""}${task ? " cloud-trying" : ""}`, role: task ? "status" : null },
         task ? h("span", { class: "spinner", "aria-hidden": "true" }) : null,
-        task ? `${lineWords(c.line, n)} ${taskWords(task)}` : lineWords(c.line, n))
+        task ? `${lineWords(c.line, n)}${progressWords(task)}` : lineWords(c.line, n))
       : null;
     // keyed by its cloud: redrawn in place, a row stays its cloud's, its handlers with it
     // a click on the row shows its cloud; its checkbox and its name tick it, its menu and its
