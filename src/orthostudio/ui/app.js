@@ -5410,11 +5410,12 @@ async function loadLibrarySizes() {
   askSizesAgain();
 }
 
-/** The clouds of the tiles, for the Library's column: none when the list does not come. */
+/** The Library's Clouds cells, by row path, the engine's (``GET /api/clouds``): none when the
+ * list does not come. */
 async function loadClouds() {
   try {
     const res = await api("GET", "/api/clouds");
-    state.clouds = res?.tiles || {};
+    state.clouds = res?.rows || {};
   } catch (_err) {
     state.clouds = {};
   }
@@ -6173,17 +6174,19 @@ export function libraryRow(e, showFolder = false) {
     h("td", null, e.installed ? pill(t("app.yes"), "ok") : pill(t("app.no"), "cancelled")),
     h("td", { class: "num" }, fmtBytes(e.size_bytes)),
     h("td", null, builtCell),
-    cloudsCell(e, present && byOsxp),
+    cloudsCell(e),
     h("td", { class: "library-action" }, revealButton),
     h("td", { class: "library-action" }, xplaneButton),
     h("td", { class: "library-action" }, deleteButton));
   return detail ? [row, detail] : [row];
 }
 
-/** A tile's clouds in the Library, for a tile OrthoStudio XP built whose files are here. */
-function cloudsCell(e, possible) {
-  if (!possible) return h("td", { class: "library-clouds" });
-  const words = cloudsWords(state.clouds?.[e.tile]);
+/** A row's Clouds cell, on the rows the engine offers it on (a tile OrthoStudio XP built, the
+ * row its own folder). */
+function cloudsCell(e) {
+  const cell = state.clouds?.[e.path];
+  if (!cell) return h("td", { class: "library-clouds" });
+  const words = cloudsWords(cell);
   return h("td", { class: "library-clouds" },
     h("button", { type: "button", class: "btn", title: t("library.clouds_help"), onclick: () => cloudMode?.open(e.tile) }, t("library.clouds_open")),
     words ? h("span", { class: "clouds-words" }, words) : null);

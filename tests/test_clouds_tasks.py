@@ -68,3 +68,39 @@ def test_quit_waits_for_an_apply_and_stops_the_others() -> None:
     tasks.stop_all()
     assert tasks.settle(5.0) and ended == ["apply"]  # Apply ended what it began
     go.set()
+
+
+def test_what_follows_a_task_runs_once_it_ended_and_never_after_a_stop() -> None:
+    tasks, seen = Tasks(), []
+    t = tasks.start("+43+005", "outline", lambda t: None, cloud="a",
+                    then=lambda: seen.append([x.kind for x in tasks.of("+43+005")]))  # fmt: skip
+    assert _ended(tasks, "+43+005")
+    end = time.monotonic() + 2
+    while not seen and time.monotonic() < end:
+        time.sleep(0.02)
+    assert seen == [[]] and t.error is None  # it saw the task ended
+    go = threading.Event()
+    stopped = tasks.start("+43+005", "outline", lambda t: (go.wait(10), t.say("x")),
+                          cloud="b", then=lambda: seen.append(["after a stop"]))  # fmt: skip
+    tasks.stop(stopped.id)
+    go.set()
+    assert _ended(tasks, "+43+005") and seen == [[]]
+
+
+def test_an_apply_never_waits_behind_another_tiles_reads() -> None:
+    tasks, go, ran = Tasks(), threading.Event(), []
+    for n in range(4):
+        tasks.start(f"+4{n}+005", "check", lambda t: go.wait(10), cloud="a")
+    tasks.start("+50+005", "apply", lambda t: ran.append("apply"), stoppable=False)
+    assert _ended(tasks, "+50+005", within=2.0) and ran == ["apply"]
+    go.set()
+
+
+def test_a_tile_being_deleted_waits_for_its_own_apply_only() -> None:
+    tasks, go = Tasks(), threading.Event()
+    tasks.start("+43+005", "apply", lambda t: time.sleep(0.2), stoppable=False)
+    tasks.start("+44+005", "apply", lambda t: go.wait(10), stoppable=False)
+    assert tasks.settle(5.0, "+43+005") and not tasks.of("+43+005")
+    assert tasks.of("+44+005")
+    go.set()
+    assert tasks.settle(5.0)

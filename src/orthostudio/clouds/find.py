@@ -11,7 +11,7 @@ tile's, cloudy or clear, and how well its colours fit the photo around it.
 
 Getting a cloud's images (the *check*) is what Apply lays from: the source's pieces at the level
 each texture the cloud reaches reads it at, frozen into parts, with the digest of each texture as
-built they were got on; Apply's own layer made from them (``textures/clouds.py``), reduced to the
+built they were got on; Apply's own layer made from them (``clouds/layer.py``), reduced to the
 map's level and laid where X-Plane shows that texture, over water at the share X-Plane gives the
 photo. So the preview is what the texture gets.
 """
@@ -30,6 +30,15 @@ import numpy as np
 from shapely.geometry import Polygon
 from shapely.validation import make_valid
 
+from orthostudio.clouds.layer import (
+    RULE,
+    decode_part,
+    encode_part,
+    layer,
+    pieces,
+    read_piece,
+    ring_pixels,
+)
 from orthostudio.clouds.model import SHADOW, THICK, THIN, classify
 from orthostudio.clouds.opencv import cv2
 from orthostudio.clouds.picture import Picture, box_bounds, over_water, pixel_metres
@@ -48,15 +57,6 @@ from orthostudio.graph.digest import digest_bytes
 from orthostudio.imagery.grid import parse_texture_name, tile_to_wgs84
 from orthostudio.imagery.providers import Provider
 from orthostudio.model import TileRef
-from orthostudio.textures.clouds import (
-    RULE,
-    decode_part,
-    encode_part,
-    layer,
-    pieces,
-    read_piece,
-    ring_pixels,
-)
 
 __all__ = ["Area", "Check", "Judgement", "check", "find", "lonlat", "preview", "screen"]
 
@@ -263,6 +263,12 @@ def merge_fine(quick: np.ndarray, qp: Picture, fine: np.ndarray, fp: Picture) ->
     if ch > 0 and cw > 0:
         seen[dy0 : dy0 + ch, dx0 : dx0 + cw] = pooled[sy0 : sy0 + ch, sx0 : sx0 + cw]
     return _OF_RANK[np.maximum(_RANK[quick], seen)]
+
+
+def fine_level(zl: int, textures: Sequence[Any]) -> int | None:
+    """The level of the search's second reading: one finer than ``zl`` where the textures are
+    that fine, for the small cumulus (B1); ``None`` when they are not."""
+    return zl + 1 if max(t.zl for t in textures) > zl else None
 
 
 def find(
@@ -613,9 +619,7 @@ def check(
     here = p.photo[y0:y1, x0:x1]
     band = _band(inside, _band_px(p), dirty)
     # what it has under the cloud, at the tile's sharpness; its colours, on the band around
-    sharp = judge(
-        here, src, have, inside, core, np.zeros_like(band), (seen == THICK) | (seen == THIN)
-    )
+    sharp = judge(here, src, have, inside, core, np.zeros_like(band), _cloudy(seen))
     if not sharp.usable:
         return Check(sharp)
     # its colours, matched on the band at the reading the screening judged: there it answers too
@@ -702,7 +706,9 @@ def _lay_reduced(
     src = np.zeros((ay1 - ay0, ax1 - ax0, 3), np.float32)
     a = np.zeros((ay1 - ay0, ax1 - ax0), np.float32)
     a[wy0 - ay0 : wy1 - ay0, wx0 - ax0 : wx1 - ax0] = la.alpha.astype(np.float32) / 255
-    src[wy0 - ay0 : wy1 - ay0, wx0 - ax0 : wx1 - ax0] = la.rgb()
+    for r0 in range(0, wy1 - wy0, 512):  # its colours a few rows at a time (``Layer.rgb``)
+        r1 = min(wy1 - wy0, r0 + 512)
+        src[wy0 - ay0 + r0 : wy0 - ay0 + r1, wx0 - ax0 : wx1 - ax0] = la.rgb(r0, r1)
     # alpha-weighted, in linear light as the textures' mips are made (``gamma22``)
     ra = _reduce(a, k)
     lin = _reduce(np.power(src / 255.0, 2.2) * a[..., None], k)

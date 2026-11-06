@@ -7,7 +7,7 @@ or check fetched the next reads from the disk. What a source answered is said pe
 ``picture``; ``no_picture`` (none there, a placeholder); ``did_not_answer`` (a timeout, the
 network, a server error); ``refused`` (403, 429, pushback); ``not_a_picture`` (a page instead).
 Only a picture or none is kept: asked again, the others may answer (:data:`ASK_AGAIN`). Laying
-never asks a source: it lays frozen parts (``textures/clouds.py``).
+never asks a source: it lays frozen parts (``clouds/layer.py``).
 """
 
 from __future__ import annotations

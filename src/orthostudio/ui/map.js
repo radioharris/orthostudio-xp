@@ -1119,10 +1119,10 @@ export function createPlanMap(ctx) {
       skipClick = false;
       return;
     }
-    if (taken && !zs.draft) return; // a shape being drawn takes the clicks, the map taken too
+    if (othersMap()) return; // a shape being drawn takes the clicks, the map taken too
     const oe = ev.originalEvent || {};
     if (oe.detail > 1) return; // the second click of a double-click
-    if (zs.draft?.onShape) {  // another's shape (a cloud's outline): a point, no zone gesture
+    if (othersShape()) {  // a point, no zone gesture
       draftPoint(ev.latlng.lng, ev.latlng.lat);
       return;
     }
@@ -1186,6 +1186,10 @@ export function createPlanMap(ctx) {
   /** Whether a mode of its own has the map (the clouds, ``clouds.js``): while it has, the clicks,
    * double-clicks, keys and the pointer's moves choose no square and pick no zone. */
   let taken = false;
+  /** The map another mode's and no shape drawn: nothing of the squares and zones under it. */
+  const othersMap = () => taken && !zs.draft;
+  /** The shape drawn is another's (a cloud's outline, :func:`startDraw`), not a zone. */
+  const othersShape = () => Boolean(zs.draft?.onShape);
 
   function sweepPress(ev, latlng) {
     if (taken || zs.draft || !map || map.getZoom() < GRID_MIN_ZOOM) return;
@@ -1242,7 +1246,7 @@ export function createPlanMap(ctx) {
   }
 
   function onMapMouseMove(ev) {
-    if (taken && !zs.draft) {
+    if (othersMap()) {
       hideTip(); // the mode draws its own things over the squares
       return;
     }
@@ -1257,7 +1261,7 @@ export function createPlanMap(ctx) {
     hideTip(); // drawing a zone: the tip would sit in the way
     const oe = ev.originalEvent || {};
     let cursor = ev.latlng;
-    if (zs.draft.kind === "shape" && !zs.draft.onShape && (oe.ctrlKey || oe.metaKey) && oe.shiftKey) {
+    if (zs.draft.kind === "shape" && !othersShape() && (oe.ctrlKey || oe.metaKey) && oe.shiftKey) {
       const [lon, lat] = snapToTextureCorner(wrapLon(cursor.lng), clampLat(cursor.lat), zs.nextZl);
       cursor = L.latLng(lat, lon);
     }
@@ -1271,8 +1275,7 @@ export function createPlanMap(ctx) {
   }
 
   function onKeyDown(ev) {
-    if (ev.defaultPrevented || ev.altKey || !planVisible()) return;
-    if (taken && !zs.draft) return;
+    if (ev.defaultPrevented || ev.altKey || !planVisible() || othersMap()) return;
     const target = ev.target instanceof Element ? ev.target : null;
     if (target && target.closest("input, textarea, select, [contenteditable]")) return;
     const onMapOrZones = !target || target === document.body || Boolean(target.closest("#map-wrap, #zones-panel"));
@@ -2350,7 +2353,7 @@ export function createPlanMap(ctx) {
     if (!map || !layers.textureGrid) return;
     layers.textureGrid.clearLayers();
     gridTooFine = false;
-    if ((!zs.draft || zs.draft.onShape) && !snapKeysHeld) return; // a zone's grid, for a zone
+    if ((!zs.draft || othersShape()) && !snapKeysHeld) return; // a zone's grid, for a zone
     const zl = zs.nextZl;
     const view = map.getBounds();
     const side = (360 / 2 ** zl) * 16; // degrees of longitude, one texture

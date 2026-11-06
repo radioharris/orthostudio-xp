@@ -7224,7 +7224,7 @@ def test_the_texture_grid_is_drawn_while_a_zone_is_drawn() -> None:
     # point is the one that starts the shape, so at that moment there is no zone in progress and
     # the grid appeared only after the click that needed it (a user, 2026-09-24)
     # a zone's drawing only: a cloud's outline, drawn the same way, has no textures to take
-    assert "if ((!zs.draft || zs.draft.onShape) && !snapKeysHeld) return;" in body
+    assert "if ((!zs.draft || othersShape()) && !snapKeysHeld) return;" in body
     assert "TEXTURE_GRID_MIN_PX" in body, "and only while the squares can be aimed at"
     assert "zs.nextZl" in body, "at the level the zone will take, not the map's"
     assert "map.getBounds()" in body, "the view only, or it is thousands of lines"

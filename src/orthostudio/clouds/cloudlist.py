@@ -1,15 +1,16 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""The user's list of a tile's clouds: what was found or outlined, and what is ticked with which
-source (``clouds.md`` 2.4, R3, R4).
+"""The user's list of a tile's clouds, kept and changed here, decided nowhere here: what was
+found or outlined, what is ticked, the source the user chose (``clouds.md`` 2.4, R3). What each
+cloud is, and what Apply does with it, is ``clouds.state``'s alone.
 
 ``$OSXP_HOME/clouds/<tile>.json``: every cloud with its id (eight characters, never given again
 on the tile), its number (``Cloud 7``, ``Outline 2``), its outline, what each source has under it
-(the search's screening), its tick, its source, and the images got of each source tried (its
-checks). The list is the draft: each tick or source is saved as it is made and survives closing,
-quitting and every build; only Apply changes what X-Plane shows, from the list's ticks against
-what the tile holds (:func:`changes`). Its order is the order clouds are laid in. It keeps the
-clouds last applied too (``laid``), which a build of the tile lays again (``laying.lay_again``).
+(the search's screening), its tick, the source the user chose (``chosen``, ``None`` for the
+best), and the images got of each source tried (its checks). The list is the draft: each change
+is saved as it is made and survives closing, quitting and every build; only Apply changes what
+X-Plane shows. Its order is the order clouds are laid in. It keeps the clouds last laid too
+(``laid``), which a build of the tile lays again (``laying.lay_again``).
 """
 
 from __future__ import annotations
@@ -30,7 +31,6 @@ from shapely.geometry import Polygon
 from shapely.ops import unary_union
 from shapely.validation import make_valid
 
-from orthostudio.clouds.sources import ASK_AGAIN, PROPOSABLE
 from orthostudio.clouds.tile import (
     TileClouds,
     entry_problem,
@@ -38,15 +38,14 @@ from orthostudio.clouds.tile import (
     is_own_folder,
     list_path,
     previews_dir,
-    stands_not,
 )
 from orthostudio.errors import OsxpError
 from orthostudio.fsutil import atomic_write_text
 from orthostudio.model import TileRef
 
-__all__ = ["ApplyPlan", "Change", "CloudList", "forgetting", "load", "plan", "update"]
+__all__ = ["CloudList", "forgetting", "load", "pick", "pick_action", "update"]
 
-FORMAT = "osxp-cloud-list-2"
+FORMAT = "osxp-cloud-list-3"
 _ID = string.ascii_lowercase + string.digits
 _LOCKS: dict[str, threading.Lock] = {}
 _GENERATIONS: dict[str, int] = {}
@@ -89,9 +88,8 @@ class CloudList:
             "rings": rings,
             "ha": rings_ha(rings),
             "tick": False,
-            "source": None,
+            "chosen": None,
             "screening": {},
-            "best": None,
             "checks": {},
             **more,
         }
@@ -200,38 +198,6 @@ def update(tile: TileRef, *, since: int | None = None) -> Iterator[CloudList]:
 # -- edits -------------------------------------------------------------------------------------
 
 
-def reading(c: Mapping[str, Any], code: str) -> Mapping[str, Any]:
-    """What the source ``code`` has under the cloud ``c``, the newest said, its answer and its
-    fit together: its images got, else the search's or the outline's try; empty when it was
-    never asked there."""
-    for said in ((c.get("checks") or {}).get(code), (c.get("screening") or {}).get(code)):
-        if said and said.get("answer"):
-            return said
-    return {}
-
-
-def answer_of(c: Mapping[str, Any], code: str) -> str | None:
-    """What the source ``code`` answered under the cloud ``c`` (:func:`reading`)."""
-    answer = reading(c, code).get("answer")
-    return None if answer is None else str(answer)
-
-
-def proposable(c: Mapping[str, Any], code: str) -> bool:
-    """Whether the source ``code`` may be chosen for ``c`` (``sources.PROPOSABLE``)."""
-    answer = answer_of(c, code)
-    return answer is None or answer in PROPOSABLE
-
-
-def source_of(c: Mapping[str, Any]) -> str | None:
-    """The source ``c`` is replaced with: its own, else its best."""
-    return c.get("source") or c.get("best")
-
-
-def tickable(c: Mapping[str, Any]) -> bool:
-    """Whether ``c`` may be ticked: it has a source to be replaced with (:func:`source_of`)."""
-    return source_of(c) is not None
-
-
 def pick_action(tick: bool | None, source: str | None) -> str:
     """What a pick is: ``choose`` a source, else ``untick`` or ``tick``."""
     if source is not None:
@@ -240,21 +206,12 @@ def pick_action(tick: bool | None, source: str | None) -> str:
 
 
 def pick(cl: CloudList, cid: str, action: str, source: str | None = None) -> None:
-    """One cloud's pick (:func:`pick_action`): ``choose`` gives it ``source`` and ticks it, a
-    source that may not be chosen there (:func:`proposable`) refused; ``tick`` ticks it with
-    its source; ``untick`` unticks it, its source kept."""
+    """One cloud's pick, as the cloud's state allows it (``state.View.allows``): ``choose``
+    makes ``source`` its source and ticks it, ``tick`` ticks it, ``untick`` unticks it."""
     c = cl.get(cid)
     if action == "choose":
-        if source is None or not proposable(c, source):
-            said = None if source is None else answer_of(c, source)
-            raise OsxpError(
-                "CLOUD_INVALID",
-                context={"tile": cl.tile, "cloud": cid, "reason": f"{source} answered {said}"},
-            )
-        c["source"] = source
-    elif action == "tick":
-        c["source"] = source_of(c)
-    c["tick"] = action != "untick" and tickable(c)
+        c["chosen"] = source
+    c["tick"] = action != "untick"
 
 
 def _shape(rings: Sequence[Sequence[float]]) -> Any:
@@ -296,17 +253,11 @@ def merge_search(
         if old is not None:
             loose.remove(old)
             old.update(
-                rings=f["rings"],
-                ha=rings_ha(f["rings"]),
-                screening=f["screening"],
-                best=f["best"],
-                checks={},
+                rings=f["rings"], ha=rings_ha(f["rings"]), screening=f["screening"], checks={}
             )
-            old["source"] = source_of(old)
             kept.append(old)
         else:
-            c = cl.add("found", f["rings"], screening=f["screening"], best=f["best"])
-            c["source"] = source_of(c)
+            c = cl.add("found", f["rings"], screening=f["screening"])
             cl.clouds.remove(c)
             kept.append(c)
     order = {c["id"]: i for i, c in enumerate(cl.clouds)}
@@ -329,20 +280,9 @@ def add_outline(
     return cl.add("drawn", rings)
 
 
-def removable(c: Mapping[str, Any], shown: TileClouds | None) -> bool:
-    """Whether ``c`` may leave the list: an outline the tile does not hold (a cloud leaves the
-    list only when X-Plane no longer shows it replaced; unticked, it comes back at Apply)."""
-    return c["kind"] == "drawn" and c["id"] not in held_by_id(shown)
-
-
-def remove_outline(cl: CloudList, cid: str, shown: TileClouds | None) -> None:
-    c = cl.get(cid)
-    if not removable(c, shown):
-        raise OsxpError(
-            "CLOUD_INVALID",
-            context={"tile": cl.tile, "cloud": cid, "reason": "only an outline not replaced"},
-        )
-    cl.clouds.remove(c)
+def remove_outline(cl: CloudList, cid: str) -> None:
+    """The outline ``cid`` out of the list, as its state allows it (``remove``)."""
+    cl.clouds.remove(cl.get(cid))
 
 
 def screening_of(verdicts: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
@@ -350,25 +290,11 @@ def screening_of(verdicts: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
     return {code: {"answer": j.answer, "fit": j.fit} for code, j in verdicts.items()}
 
 
-def best_of(c: Mapping[str, Any]) -> str | None:
-    """The source proposed for the cloud ``c``: of those clear under it, the one whose colours
-    fit best, each as its newest reading says (:func:`reading`)."""
-    codes = {*(c.get("screening") or {}), *(c.get("checks") or {})}
-    said = [(reading(c, k), k) for k in codes]
-    clear = [(int(r.get("fit") or 0), k) for r, k in said if r.get("answer") == "clear"]
-    return max(clear)[1] if clear else None
-
-
 def record_screening(cl: CloudList, cid: str, verdicts: Mapping[str, Any]) -> None:
-    """An outline's sources tried: their answers, and its best ticked (drawing it is asking to
-    replace it); nothing when it left the list meanwhile."""
+    """An outline's sources tried, kept with it, unless it left the list meanwhile."""
     c = next((x for x in cl.clouds if x["id"] == cid), None)
-    if c is None:
-        return
-    c["screening"] = screening_of(verdicts)
-    c["best"] = best_of(c)
-    if c["best"] is not None:
-        pick(cl, cid, "choose", c["best"])
+    if c is not None:
+        c["screening"] = screening_of(verdicts)
 
 
 def record_check(cl: CloudList, cid: str, code: str, rings: Any, got: Any) -> None:
@@ -396,99 +322,4 @@ def discard(cl: CloudList, shown: TileClouds | None) -> None:
     for c in cl.clouds:
         c["tick"] = c["id"] in holds
         if c["id"] in holds:
-            c["source"] = holds[c["id"]]["source"]
-
-
-# -- what Apply lays -------------------------------------------------------------------------------
-
-
-@dataclass(frozen=True, slots=True)
-class Change:
-    """One cloud whose tick or source differs from what the tile holds: ``replace``, ``another``
-    (source) or ``back`` (as photographed); ``entry`` the cloud as Apply lays it, ``None``
-    for ``back`` or while its images are not got (``waiting``: why)."""
-
-    cloud: str
-    kind: str
-    source: str | None
-    entry: dict[str, Any] | None
-    waiting: str | None = None
-
-
-def _changes(
-    cl: CloudList,
-    shown: TileClouds | None,
-    tile: TileRef,
-    standing: Mapping[str, Mapping[str, Any]],
-) -> list[Change]:
-    """What Apply would change: each ticked cloud with another source than the tile holds, not
-    held at all, or held on images that no longer stand (``standing``: the held that do); and
-    each held cloud unticked."""
-    holds = held_by_id(shown)
-    out: list[Change] = []
-    for c in cl.clouds:
-        was = holds.get(c["id"])
-        if not c["tick"]:
-            if was is not None:
-                out.append(Change(c["id"], "back", None, None))
-            continue
-        if c["id"] in standing and was is not None and was["source"] == c["source"]:
-            continue
-        other = was is not None and was["source"] != c["source"]
-        got = (c.get("checks") or {}).get(c["source"]) or {}
-        # its newest images of that source: got, else those the tile holds of it
-        entry = got.get("entry") or (was if was is not None and not other else None)
-        waiting = None
-        if entry is None:
-            waiting = got.get("answer") or "no_images"
-        elif shown is not None and (why := stands_not(entry, tile, shown)) is not None:
-            waiting, entry = f"photo_{why}", None
-        out.append(Change(c["id"], "another" if other else "replace", c["source"], entry, waiting))
-    return out
-
-
-def needs_images(ch: Change | None) -> bool:
-    """Whether a change waits for images that asking may bring: none got yet, a photo that
-    changed since, or an answer that asking again may change (``sources.ASK_AGAIN``)."""
-    if ch is None or ch.kind == "back" or ch.entry is not None or ch.waiting is None:
-        return False
-    return ch.waiting == "no_images" or ch.waiting.startswith("photo_") or ch.waiting in ASK_AGAIN
-
-
-def _laid_after(
-    cl: CloudList, pending: Sequence[Change], standing: Mapping[str, Mapping[str, Any]]
-) -> list[dict[str, Any]]:
-    """The clouds Apply lays in the tile, and After shows, in the list's order: each ticked
-    cloud with the newest images that stand, its change's when they are in, else what the tile
-    holds of it while that stands (``standing``); a cloud with neither waits, left out (the
-    question said so). ``pending``: what :func:`_changes` gives."""
-    got = {ch.cloud: ch.entry for ch in pending if ch.entry is not None}
-    out: list[dict[str, Any]] = []
-    for c in cl.clouds:
-        entry = got.get(c["id"]) or standing.get(c["id"]) if c["tick"] else None
-        if entry is not None:
-            out.append({**entry, "kind": c["kind"], "number": c["number"]})
-    return out
-
-
-@dataclass(frozen=True, slots=True)
-class ApplyPlan:
-    """What Apply would do, said once for the count, the rows, After and Apply itself: the
-    ``changes`` against what the tile holds, and the clouds it lays (``laid``, in order)."""
-
-    changes: list[Change]
-    laid: list[dict[str, Any]]
-
-    def change_of(self, cid: str) -> Change | None:
-        return next((ch for ch in self.changes if ch.cloud == cid), None)
-
-
-def plan(cl: CloudList, shown: TileClouds | None, tile: TileRef) -> ApplyPlan:
-    """What Apply would do with the list ``cl`` on the tile as ``shown``; nothing without a
-    folder read (not built, or a build writing it)."""
-    if shown is None:
-        return ApplyPlan([], [])
-    held = held_by_id(shown)
-    standing = {i: e for i, e in held.items() if stands_not(e, tile, shown) is None}
-    pending = _changes(cl, shown, tile, standing)
-    return ApplyPlan(pending, _laid_after(cl, pending, standing))
+            c["chosen"] = holds[c["id"]]["source"]

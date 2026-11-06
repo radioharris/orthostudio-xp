@@ -24,16 +24,15 @@ from pathlib import Path
 
 import numpy as np
 
+from orthostudio.clouds.layer import tile_pixels
 from orthostudio.clouds.opencv import cv2
-from orthostudio.dsf.container import parse_dsf
-from orthostudio.dsf.decode import _read_pool
+from orthostudio.dsf.decode import decode_dsf
 from orthostudio.errors import OsxpError
 from orthostudio.imagery.grid import TextureId, parse_texture_name, tile_to_wgs84
 from orthostudio.masks.profiles import WATER_TRANSITION
 from orthostudio.model import TileRef
 from orthostudio.textures.assemble import TEXTURE
 from orthostudio.textures.bcdecode import decode_blocks
-from orthostudio.textures.clouds import tile_pixels
 from orthostudio.textures.dds import BLOCK_BYTES, HEADER_SIZE, level_size, mip_dims, parse_header
 from orthostudio.textures.ter import ter_kind
 
@@ -128,75 +127,27 @@ def _terrain(name: str, border: float) -> tuple[str | None, int, float]:
     return (texture, SEA, 1.0)
 
 
-def _commands(cmds: bytes) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Each triangle's terrain and each corner's pool and index, from the command stream the
-    build writes (``dsf.encode``)."""
-    terrains, pools, index = [], [], []
-    pos, pool, terrain = 0, 0, 0
-    while pos < len(cmds):
-        cmd = cmds[pos]
-        pos += 1
-        if cmd == 1:
-            pool = int.from_bytes(cmds[pos : pos + 2], "little")
-            pos += 2
-        elif cmd == 2:
-            pos += 4
-        elif cmd in (3, 4, 5):
-            size = {3: 1, 4: 2, 5: 4}[cmd]
-            terrain = int.from_bytes(cmds[pos : pos + size], "little")
-            pos += size
-        elif cmd == 18:
-            pos += 9
-        elif cmd == 23:
-            n = cmds[pos]
-            index.append(np.frombuffer(cmds, "<u2", n, pos + 1).astype(np.int64))
-            pools.append(np.full(n, pool, np.int64))
-            terrains.append(np.full(n // 3, terrain, np.int64))
-            pos += 1 + 2 * n
-        elif cmd == 24:
-            n = cmds[pos]
-            pairs = np.frombuffer(cmds, "<u2", 2 * n, pos + 1).reshape(n, 2).astype(np.int64)
-            pools.append(pairs[:, 0])
-            index.append(pairs[:, 1])
-            terrains.append(np.full(n // 3, terrain, np.int64))
-            pos += 1 + 4 * n
-        elif cmd == 25:
-            first, last = (int.from_bytes(cmds[pos + k : pos + k + 2], "little") for k in (0, 2))
-            index.append(np.arange(first, last, dtype=np.int64))
-            pools.append(np.full(last - first, pool, np.int64))
-            terrains.append(np.full((last - first) // 3, terrain, np.int64))
-            pos += 4
-        elif cmd in (32, 33, 34):
-            size = {32: 1, 33: 2, 34: 4}[cmd]
-            pos += size + int.from_bytes(cmds[pos : pos + size], "little")
-        else:
-            raise ValueError(f"DSF command {cmd} is not one the build writes")
-    empty = np.zeros(0, np.int64)
-    return tuple(np.concatenate(a) if a else empty for a in (terrains, pools, index))  # type: ignore[return-value]
-
-
 def _read_dsf(path: Path, tile: TileRef) -> _Drawn:
-    data = path.read_bytes()
-    dsf = parse_dsf(data)
-    tert, geod, cmds = dsf.find("DEFN/TERT"), dsf.find("GEOD"), dsf.find("CMDS")
-    if tert is None or geod is None or cmds is None:
-        raise ValueError("not a mesh DSF")
-    names = [s.decode("ascii", "replace") for s in tert.payload(data).split(b"\0") if s]
-    atoms = geod.children or []
-    pools = [_read_pool(a.payload(data)) for a in atoms if a.name == "POOL"]
-    scales = [
-        np.frombuffer(a.payload(data), "<f4").reshape(-1, 2) for a in atoms if a.name == "SCAL"
-    ]
-    terrain, pool, index = _commands(cmds.payload(data))
-    first = np.concatenate([[0], np.cumsum([len(p) for p in pools])[:-1]]).astype(np.int64)
+    """The DSF's triangles as the app's decoder reads them (``dsf.decode``), sorted by terrain."""
+    dsf = decode_dsf(path.read_bytes())
+    names = dsf.terrains
+    if dsf.patches:
+        corners = np.concatenate([q.corners for q in dsf.patches])
+        terrain = np.concatenate(
+            [np.full(len(q.corners), q.terrain, np.int64) for q in dsf.patches]
+        )
+    else:
+        corners, terrain = np.zeros((0, 3, 2), np.int64), np.zeros(0, np.int64)
+    pool, index = corners[..., 0].reshape(-1), corners[..., 1].reshape(-1)
+    first = np.concatenate([[0], np.cumsum([len(q) for q in dsf.pools])[:-1]]).astype(np.int64)
     at = first[pool] + index
 
     def plane(j: int) -> np.ndarray:
         raw = np.concatenate(
-            [p[:, j] if p.shape[1] > j else np.zeros(len(p), np.uint16) for p in pools]
+            [q[:, j] if q.shape[1] > j else np.zeros(len(q), np.uint16) for q in dsf.pools]
         )
-        scale = np.array([s[j, 0] if len(s) > j else 0.0 for s in scales])
-        offset = np.array([s[j, 1] if len(s) > j else 0.0 for s in scales])
+        scale = np.array([s[j, 0] if len(s) > j else 0.0 for s in dsf.scales])
+        offset = np.array([s[j, 1] if len(s) > j else 0.0 for s in dsf.scales])
         return offset[pool] + raw[at].astype(np.float64) * scale[pool] / 65535
 
     lon, lat = plane(0), plane(1)
@@ -237,7 +188,7 @@ def _drawn(dsf: Path, tile: TileRef) -> _Drawn:
                 _DRAWN.clear()
                 _DRAWN[key] = _read_dsf(dsf, tile)
             return _DRAWN[key]
-    except (OSError, ValueError, IndexError, struct.error) as exc:
+    except (OSError, ValueError, IndexError, NotImplementedError, struct.error) as exc:
         raise OsxpError(
             "CLOUD_NOT_BUILT", context={"tile": tile.name, "reason": f"its DSF: {exc}"}
         ) from exc

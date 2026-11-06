@@ -1,8 +1,8 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""The cloud mode's routes through the app (``clouds.md`` 1.5, 6): what a tile allows is the
-engine's to say, in one table its routes refuse by; what runs the detector is asked first; a bad
-tile name, cloud or outline is refused, never a bare error."""
+"""The cloud mode's routes through the app (``clouds.md`` 1.5, 6): what a tile and its clouds
+allow is the engine's one view's (``clouds/state.py``), and its routes refuse by it; what runs the
+detector is asked first; a bad tile name, cloud or outline is refused, never a bare error."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ import test_api_fakes as fakes
 from orthostudio.api import clouds_api
 from orthostudio.api.app import create_app
 from orthostudio.api.jobs import JobManager
-from orthostudio.clouds import cloudlist, mode
+from orthostudio.clouds import cloudlist, state
 from orthostudio.clouds.picture import Picture
 from orthostudio.home import default_tiles_root
 from orthostudio.model import TileRef
@@ -106,15 +106,22 @@ async def test_what_runs_the_detector_is_asked_first_and_an_untick_is_not(
     app: Any, ready: Path
 ) -> None:
     with cloudlist.update(TILE) as cl:
-        cid = cl.add("drawn", _ring(), tick=True, source="EOX")["id"]
+        cid = cl.add("drawn", _ring(), chosen="EOX")["id"]
     async with client_for(app) as c:
         r = await c.post("/api/clouds/+43+005/find")
         err = r.json()["error"]
         assert err["code"] == "CLOUD_DETECTOR_ASK" and err["context"]["mb"] >= 1
         r = await c.post("/api/clouds/+43+005/picks", json={"id": cid, "tick": True})
-        assert r.json()["error"]["code"] == "CLOUD_DETECTOR_ASK"
+        assert r.json()["error"]["code"] == "CLOUD_DETECTOR_ASK"  # its images: the detector
+        # nothing kept before the user says yes: the page sends the same tick again then
+        assert cloudlist.load(TILE).get(cid)["tick"] is False
+        with cloudlist.update(TILE) as cl:
+            cl.get(cid)["tick"] = True
+        row = (await c.get("/api/clouds/+43+005")).json()["clouds"][0]
+        assert row["state"] == "waiting" and row["line"]["tone"] == "warn"
+        assert "check" in row["actions"] and row["toggle"] == "untick"
         r = await c.post("/api/clouds/+43+005/picks", json={"id": cid, "tick": False})
-        assert r.status_code == 200, r.text
+        assert r.status_code == 200, r.text  # an untick needs no detector
     assert cloudlist.load(TILE).get(cid)["tick"] is False
 
 
@@ -141,47 +148,113 @@ async def test_a_build_allows_nothing_and_its_folder_is_not_read(
 
 
 def test_what_a_build_and_the_tasks_let_be_done() -> None:
-    assert mode.possible("in_build") == mode.possible("queued") == frozenset()
-    assert "apply" not in mode.possible("own_source_gone")
-    assert mode.possible("earlier_version") == frozenset()
-    with pytest.raises(Exception, match="cannot have its clouds looked at"):
-        mode.require("+43+005", "in_build", "find")
-    counts = {"changes": 0, "held": 1, "waiting": 0, "textures": 1}
-    assert mode.useful(mode.possible("ready"), counts, False) >= {"restore", "find"}
-    assert "apply" not in mode.useful(mode.possible("ready"), counts, False)
-    assert "find" not in mode.useful(mode.possible("ready"), counts, True)  # a search runs
-    assert "apply" not in mode.possible("ready", {"check"})  # a task reads the folder
-    assert mode.possible("ready", {"apply"}) == mode.LIST_EDITS  # Apply writes it
+    assert state.possible("in_build") == state.possible("queued") == frozenset()
+    assert "apply" not in state.possible("ready", {"check"})  # a task reads the folder
+    assert state.possible("ready", {"apply"}) == state.LIST_EDITS  # Apply writes it
 
 
 @pytest.mark.anyio
-async def test_apply_is_a_task_that_tells_the_list_what_the_tile_shows(
-    app: Any, ready: Path
-) -> None:
-    gone = {"id": "c1", "source": "EOX", "match": [[1, 1, 1], [0, 0, 0]], "rings": _ring(),
-            "parts": {NAME: [12, "d" * 64]}, "plain": {NAME: "x" * 40}}  # fmt: skip
-    with cloudlist.update(TILE) as cl:
-        cl.laid = [gone]  # what an earlier Apply laid
-    assert cloudlist.load(TILE).laid == [gone]
+async def test_apply_and_restore_with_nothing_to_do_are_refused(app: Any, ready: Path) -> None:
     async with client_for(app) as c:
-        r = await c.post("/api/clouds/+43+005/apply", json={"restore": True})
-        assert r.status_code == 200, r.text
-        task = r.json()["task"]
-        assert task["kind"] == "restore" and task["stoppable"] is False
-        for _ in range(100):
-            a = (await c.get("/api/clouds/+43+005")).json()
-            if not a["busy"]:
-                break
-            await anyio.sleep(0.05)
-    assert a["failed"] is None and cloudlist.load(TILE).laid == []
+        for body in ({}, {"restore": True}):
+            r = await c.post("/api/clouds/+43+005/apply", json=body)
+            assert r.json()["error"]["code"] == "CLOUD_TILE_NOT_READY", body
 
 
 @pytest.mark.anyio
 async def test_a_ready_tiles_rows_offer_what_its_list_allows(app: Any, ready: Path) -> None:
     with cloudlist.update(TILE) as cl:
-        found = cl.add("found", _ring(), best="EOX", source="EOX")
+        found = cl.add("found", _ring(), screening={"EOX": {"answer": "clear", "fit": 70}})
         drawn = cl.add("drawn", _ring())
     async with client_for(app) as c:
         rows = {r["id"]: r for r in (await c.get("/api/clouds/+43+005")).json()["clouds"]}
-    assert rows[found["id"]]["actions"] == ["tick", "choose"]
+        refused = await c.post("/api/clouds/+43+005/picks", json={"id": drawn["id"]})
+        unknown = await c.post("/api/clouds/+43+005/picks", json={"id": "gone0001"})
+    assert (
+        rows[found["id"]]["actions"] == ["choose", "tick"] and rows[found["id"]]["toggle"] == "tick"
+    )
     assert rows[drawn["id"]]["actions"] == ["choose", "remove"]  # no source yet: no tick
+    assert rows[drawn["id"]]["toggle"] is None and rows[found["id"]]["source"] == "EOX"
+    assert refused.json()["error"]["code"] == "CLOUD_INVALID"
+    assert unknown.json()["error"]["code"] == "CLOUD_UNKNOWN"
+
+
+@pytest.mark.anyio
+async def test_an_outline_is_tried_then_ticked_then_its_images_asked(
+    app: Any, ready: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # one path: the outline's sources tried, then its state ticks it and asks its images
+    from orthostudio.clouds.find import Check, Judgement
+
+    asked: list[str] = []
+
+    def check(*args: Any, **_k: Any) -> Check:
+        asked.append(args[4])  # the source
+        return Check(Judgement("no_picture"))
+
+    monkeypatch.setattr(clouds_api, "detector_ready", lambda: True)
+    monkeypatch.setattr(clouds_api, "opencv_ready", lambda: True)
+    monkeypatch.setattr(clouds_api, "_tools", lambda task: None)
+    monkeypatch.setattr(clouds_api, "screen", lambda *a, **k: [{"EOX": Judgement("clear", 70)}])
+    monkeypatch.setattr(clouds_api, "check", check)
+    polygon = [[5.1, 43.1], [5.2, 43.1], [5.2, 43.2], [5.1, 43.2]]
+    async with client_for(app) as c:
+        r = await c.post("/api/clouds/+43+005/outlines", json={"polygon": polygon})
+        assert r.status_code == 200, r.text
+        cid = r.json()["id"]
+        for _ in range(200):
+            a = (await c.get("/api/clouds/+43+005")).json()
+            if not a["busy"] and asked:
+                break
+            await anyio.sleep(0.05)
+    (row,) = a["clouds"]
+    assert row["id"] == cid and row["tick"] is True and asked == ["EOX"]
+    # its one source has no picture this sharp: it may no longer be its source
+    assert row["state"] == "waiting" and row["line"]["key"] == "clouds.row.waiting.no_source"
+    assert row["menu"] == [{"source": "EOX", "answer": "no_picture", "fit": 0, "proposable": False}]
+
+
+@pytest.mark.anyio
+async def test_the_library_cell_is_offered_on_the_tiles_own_folder_only(
+    app: Any, ready: Path, tmp_path: Path
+) -> None:
+    from orthostudio.install.library import Library, default_library_path
+
+    elsewhere = tmp_path / "elsewhere" / "zOrthoStudio_+43+005"
+    elsewhere.mkdir(parents=True)
+    with Library(default_library_path()) as lib:
+        own = lib.register(TILE, "BI", 12, ready, "osxp")
+        lib.register(TILE, "BI", 12, elsewhere, "ortho4xp")
+    async with client_for(app) as c:
+        rows = (await c.get("/api/clouds")).json()["rows"]
+    assert rows == {str(own.path): {"replaced": 0, "to_apply": 0}}
+
+
+@pytest.mark.anyio
+async def test_a_tile_whose_cloud_gets_its_images_is_busy(
+    app: Any, ready: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import threading
+
+    from orthostudio.clouds.find import Check, Judgement
+
+    go = threading.Event()
+
+    def check(*_a: Any, **_k: Any) -> Check:
+        go.wait(10)
+        return Check(Judgement("did_not_answer"))
+
+    monkeypatch.setattr(clouds_api, "detector_ready", lambda: True)
+    monkeypatch.setattr(clouds_api, "opencv_ready", lambda: True)
+    monkeypatch.setattr(clouds_api, "_tools", lambda task: None)
+    monkeypatch.setattr(clouds_api, "check", check)
+    with cloudlist.update(TILE) as cl:
+        cid = cl.add("drawn", _ring(), chosen="EOX")["id"]
+    async with client_for(app) as c:
+        r = await c.post("/api/clouds/+43+005/picks", json={"id": cid, "tick": True})
+        assert r.status_code == 200, r.text
+        a = (await c.get("/api/clouds/+43+005")).json()
+        go.set()
+    (row,) = a["clouds"]
+    assert a["busy"] is True and a["tasks"] == []  # its task is in its row, the page reads again
+    assert row["state"] == "check" and row["task"]["kind"] == "check" and row["actions"] == ["stop"]

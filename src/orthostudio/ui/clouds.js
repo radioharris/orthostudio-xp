@@ -7,7 +7,9 @@
  * draws it, every cloud with its tick and its source, and After laying each ticked cloud's preview
  * over it in its order, Before the tile with no cloud replaced. Each tick or source is sent as it is
  * made and the tile read again: the page keeps no choice of its own. Apply lays its changes in the
- * tile's textures, a task of the engine; nothing else changes what X-Plane shows.
+ * tile's textures, a task of the engine; nothing else changes what X-Plane shows. The page
+ * decides nothing: what a row, a button, a click on an outline does or says is the engine's
+ * (``clouds/state.py``), shown as it comes.
  */
 
 import { codeText, fmtNum, t } from "./i18n.js";
@@ -165,9 +167,10 @@ export function createCloudMode(ctx) {
     }
   }
 
+  /** A click on a cloud's outline: what the engine says it does (``toggle``), else it is shown. */
   function clickCloud(c) {
     cs.current = c.id;
-    if (c.actions.includes("tick") || c.actions.includes("untick")) tick(c, !c.tick);
+    if (c.toggle) toggle(c);
     else render();
   }
 
@@ -184,15 +187,15 @@ export function createCloudMode(ctx) {
     return cs.answer?.clouds.find((x) => x.id === id) || null;
   }
 
-  /** Stop the task the engine says last that ``which`` picks. */
-  async function stopTask(which) {
-    const task = cs.answer?.tasks.find(which);
-    if (task) await api("POST", `/api/clouds/tasks/${task.id}/stop`).catch((err) => toast(errorMessage(err), "fail"));
+  /** Stop the task ``id`` the engine sent. */
+  async function stopTask(id) {
+    await api("POST", `/api/clouds/tasks/${id}/stop`).catch((err) => toast(errorMessage(err), "fail"));
     await refresh();
   }
 
-  function tick(c, on) {
-    return send("POST", "/picks", { id: c.id, tick: on });
+  /** Tick or untick the cloud, as its state says (``toggle``). */
+  function toggle(c) {
+    return send("POST", "/picks", { id: c.id, tick: c.toggle === "tick" });
   }
 
   function choose(c, source) {
@@ -255,12 +258,11 @@ export function createCloudMode(ctx) {
       return;
     }
     if (a.line) kids.push(h("p", { class: "clouds-lead" }, lineWords(a.line)));
-    for (const task of a.tasks) {
-      if (task.cloud) continue; // shown in its row
+    for (const task of a.tasks) { // the tile's own: a cloud's is in its row
       kids.push(h("p", { class: "clouds-progress" }, `${t(`clouds.task.${task.kind}`)} ${taskWords(task)}`, " ",
-        task.stoppable ? h("button", { type: "button", class: "btn", onclick: () => stopTask((x) => !x.cloud && x.kind === task.kind) }, t("clouds.stop")) : null));
+        task.stoppable ? h("button", { type: "button", class: "btn", onclick: () => stopTask(task.id) }, t("clouds.stop")) : null));
     }
-    // what the tile allows is the engine's to say (``mode.possible``, ``mode.useful``)
+    // what the tile allows is the engine's to say (``state.View.allowed``)
     if (a.failed) {  // the tile's last task that failed, until its next one: the engine's words for it
       const e = a.failed.error || {};
       const [message, remedy] = codeText(e.code, e.context) || [e.message || "", e.remedy || ""];
@@ -285,14 +287,14 @@ export function createCloudMode(ctx) {
     const n = names();
     const can = new Set(c.actions);
     const label = cloudName(c);
-    const box = h("input", { type: "checkbox", disabled: !can.has("tick") && !can.has("untick"), onchange: (ev) => tick(c, ev.target.checked) });
+    const box = h("input", { type: "checkbox", disabled: !c.toggle, onchange: () => toggle(c) });
     box.checked = c.tick;
     const menu = h("select", { "aria-label": t("clouds.source_of", { name: label }), disabled: !can.has("choose"), onchange: (ev) => choose(c, ev.target.value) },
       c.source ? null : h("option", { value: "", disabled: true }, t("clouds.choose")),
       ...c.menu.map((m) => h("option", { value: m.source, disabled: !m.proposable },
         [n[m.source] || m.source, m.answer ? t(`clouds.answer.${m.answer}`) : "", m.fit ? t("clouds.fit", { n: m.fit }) : ""].filter(Boolean).join(" · "))));
     menu.value = c.source || "";
-    const task = cs.answer.tasks.find((x) => x.cloud === c.id);
+    const task = c.task;
     const show = () => {
       cs.current = c.id;
       // clear of the banner, which lies over the top of the map
@@ -303,7 +305,7 @@ export function createCloudMode(ctx) {
     };
     const buttons = [
       can.has("check") ? h("button", { type: "button", class: "btn", "aria-label": `${t("clouds.get_images")}: ${label}`, onclick: () => send("POST", "/check", { id: c.id }) }, t("clouds.get_images")) : null,
-      can.has("stop") && task ? h("button", { type: "button", class: "btn", "aria-label": `${t("clouds.stop")}: ${label}`, onclick: () => stopTask((x) => x.cloud === c.id) }, t("clouds.stop")) : null,
+      can.has("stop") && task?.stoppable ? h("button", { type: "button", class: "btn", "aria-label": `${t("clouds.stop")}: ${label}`, onclick: () => stopTask(task.id) }, t("clouds.stop")) : null,
     ].filter(Boolean);
     const trash = can.has("remove")
       ? h("button", { type: "button", class: "btn btn-icon btn-danger btn-trash", "aria-label": `${t("clouds.remove")}: ${label}`, title: t("clouds.remove"), onclick: () => send("DELETE", `/outlines/${c.id}`) },
@@ -319,7 +321,7 @@ export function createCloudMode(ctx) {
           h("button", { type: "button", class: "btn", "aria-label": `${t("clouds.show")}: ${label}`, onclick: show }, t("clouds.show")),
           trash),
         h("div", { class: "zone-row" }, menu),
-        c.line ? h("span", { class: `zone-hint${c.state === "waiting" ? " zone-hint-warn" : ""}`, role: task ? "status" : null }, task ? `${lineWords(c.line, n)} ${taskWords(task)}` : lineWords(c.line, n)) : null,
+        c.line ? h("span", { class: `zone-hint${c.line.tone === "warn" ? " zone-hint-warn" : ""}`, role: task ? "status" : null }, task ? `${lineWords(c.line, n)} ${taskWords(task)}` : lineWords(c.line, n)) : null,
         buttons.length ? h("div", { class: "zone-row" }, ...buttons) : null));
   }
 

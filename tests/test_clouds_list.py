@@ -1,7 +1,8 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""The user's list of a tile's clouds (``clouds.md`` 2.4, R3, R4): picks kept apart from what the
-tile holds, searches merged without losing a tick or a name, what Apply lays."""
+"""The user's list of a tile's clouds (``clouds.md`` 2.4, R3): picks kept, searches and outlines
+merged without losing a tick or a name, the file kept whole. What each cloud is and what Apply
+lays is ``test_clouds_state``'s."""
 
 from __future__ import annotations
 
@@ -38,12 +39,7 @@ D = _ring(43.80, 5.10, 43.90, 5.30)
 
 
 def _found(rings: list[list[float]], best: str = "EOX") -> dict[str, Any]:
-    return {
-        "rings": rings,
-        "ha": 10.0,
-        "screening": {best: {"answer": "clear", "fit": 70}},
-        "best": best,
-    }
+    return {"rings": rings, "screening": {best: {"answer": "clear", "fit": 70}}}
 
 
 def _entry(cid: str, rings: list[list[float]], source: str = "EOX") -> dict[str, Any]:
@@ -67,7 +63,7 @@ def _hold(*entries: dict[str, Any]) -> TileClouds:
     """The tile showing ``entries``, applied from the list: their rows in it, ticked."""
     with cls.update(TILE) as cl:
         for e in entries:
-            row = cl.add("found", e["rings"], tick=True, source=e["source"])
+            row = cl.add("found", e["rings"], tick=True, chosen=e["source"])
             cl.clouds[-1] = {**row, "id": e["id"]}
         cl.laid = list(entries)
     return _held(*entries)
@@ -91,7 +87,7 @@ def test_a_tick_and_a_source_are_kept_apart_and_survive_a_restart() -> None:
         assert cl.get(cid)["tick"] is True  # choosing a source ticks
         cls.pick(cl, cid, "untick")
     again = cls.load(TILE)
-    assert again.get(cid)["tick"] is False and again.get(cid)["source"] == "Arc"
+    assert again.get(cid)["tick"] is False and again.get(cid)["chosen"] == "Arc"
 
 
 def test_a_search_keeps_ticks_names_and_ids_and_never_gives_one_again() -> None:
@@ -129,94 +125,34 @@ def test_an_outline_takes_the_found_clouds_it_covers_and_keeps_a_held_one() -> N
         cls.add_outline(cl, _ring(43.85, 5.25, 43.95, 5.40), held)  # touches D's corner
         ids = [x["id"] for x in cl.clouds]
         assert b["id"] not in ids and d["id"] in ids and "held0001" in ids and c["id"] in ids
-        cls.remove_outline(cl, c["id"], held)
+        cls.remove_outline(cl, c["id"])
         assert c["id"] not in [x["id"] for x in cl.clouds]
 
 
-def test_a_held_outline_leaves_the_list_only_once_the_tile_no_longer_holds_it() -> None:
-    # R3: unticked it comes back at Apply
-    with cls.update(TILE) as cl:
-        o = cls.add_outline(cl, A, None)
-        cls.pick(cl, o["id"], "choose", "EOX")
-        cl.get(o["id"])["checks"]["EOX"] = {"answer": "clear", "entry": _entry(o["id"], A)}
-        (laid,) = cls.plan(cl, _held(), TILE).laid
-    held = _held(laid)
-    with pytest.raises(OsxpError), cls.update(TILE) as cl:
-        cls.remove_outline(cl, o["id"], held)
-    with cls.update(TILE) as cl:
-        cls.remove_outline(cl, o["id"], _held())  # no longer held: it may leave
-
-
-def test_a_tick_on_images_got_on_another_photo_gets_them_again() -> None:
-    # R6: images that no longer stand are images not in
-    held = _held()
-    with cls.update(TILE) as cl:
-        cls.merge_search(cl, [_found(A)], held)
-        cid = cl.clouds[0]["id"]
-        e = _entry(cid, A)
-        e["plain"] = {NAME: OTHER}
-        cl.get(cid)["checks"]["EOX"] = {"answer": "clear", "entry": e}
-        cls.pick(cl, cid, "tick")
-        (ch,) = cls.plan(cl, held, TILE).changes
-    assert cls.needs_images(ch)
-    assert not cls.needs_images(cls.Change(cid, "replace", "EOX", None, "same_photo"))
-
-
-def test_a_source_showing_the_tiles_own_photo_cannot_be_chosen() -> None:
-    with cls.update(TILE) as cl:
-        f = _found(A)
-        f["screening"]["Arc"] = {"answer": "same_photo", "fit": 0}
-        cls.merge_search(cl, [f], None)
-        cid = cl.clouds[0]["id"]
-        with pytest.raises(OsxpError):
-            cls.pick(cl, cid, "choose", "Arc")
-        cls.pick(cl, cid, "choose", "EOX")
-
-
-def test_the_changes_apply_makes_against_what_the_tile_holds() -> None:
-    # R4: replaced, another source, back as photographed, waiting for its images
-    held = _hold(_entry("held0001", A), _entry("held0002", B))
-    with cls.update(TILE) as cl:
-        cls.merge_search(cl, [_found(C), _found(D)], held)  # C is the held ones, D new
-        assert len(cl.clouds) == 3
-        new = cl.clouds[-1]["id"]
-        cls.pick(cl, "held0001", "untick")
-        cls.pick(cl, "held0002", "choose", "Arc")
-        cls.pick(cl, new, "tick")
-        cl.get(new)["checks"]["EOX"] = {"answer": "clear", "entry": _entry(new, D)}
-        got = {ch.cloud: (ch.kind, ch.waiting) for ch in cls.plan(cl, held, TILE).changes}
-        assert got == {
-            "held0001": ("back", None),
-            "held0002": ("another", "no_images"),
-            new: ("replace", None),
-        }
-        laid = [e["id"] for e in cls.plan(cl, held, TILE).laid]
-        # held0001 comes back; held0002 keeps its ground until Arc's images are in
-        assert laid == ["held0002", new]
-
-
-def test_images_got_on_another_photo_wait_to_be_got_again() -> None:
-    # R6: a cloud's images stand on the texture as built they were got on
-    held = _held()
-    with cls.update(TILE) as cl:
-        cls.merge_search(cl, [_found(A)], held)
-        cid = cl.clouds[0]["id"]
-        cls.pick(cl, cid, "tick")
-        e = _entry(cid, A)
-        e["plain"] = {NAME: OTHER}
-        cl.get(cid)["checks"]["EOX"] = {"answer": "clear", "entry": e}
-        (ch,) = cls.plan(cl, held, TILE).changes
-        assert ch.entry is None and ch.waiting == "photo_images"
-
-
-def test_discard_and_restore() -> None:
+def test_discard_brings_every_tick_and_source_back_to_what_the_tile_holds() -> None:
     held = _hold(_entry("held0001", A))
     with cls.update(TILE) as cl:
-        cls.pick(cl, "held0001", "untick")
+        cls.merge_search(cl, [_found(B)], held)
+        new = cl.clouds[-1]["id"]
+        cls.pick(cl, "held0001", "choose", "Arc")
+        cls.pick(cl, new, "tick")
         cls.discard(cl, held)
-        assert cl.get("held0001")["tick"] is True
+        assert cl.get("held0001")["tick"] is True and cl.get("held0001")["chosen"] == "EOX"
+        assert cl.get(new)["tick"] is False
         cls.untick_all(cl)
-        assert cls.plan(cl, held, TILE).laid == []
+        assert not any(c["tick"] for c in cl.clouds)
+
+
+def test_a_check_is_kept_only_while_its_cloud_keeps_its_outline() -> None:
+    from orthostudio.clouds.find import Check, Judgement
+
+    with cls.update(TILE) as cl:
+        cls.merge_search(cl, [_found(A)], None)
+        cid = cl.clouds[0]["id"]
+        cls.record_check(cl, cid, "EOX", B, Check(Judgement("clear", 70), _entry(cid, B)))
+        assert cl.get(cid)["checks"] == {}  # got for another outline: a search moved it
+        cls.record_check(cl, cid, "EOX", A, Check(Judgement("clear", 70), _entry(cid, A)))
+        assert cl.get(cid)["checks"]["EOX"]["entry"]["id"] == cid
 
 
 def test_a_broken_list_is_put_aside_at_the_next_write_each_one_kept(home: Path) -> None:
@@ -250,7 +186,7 @@ def test_the_list_is_written_whole(home: Path) -> None:
     with cls.update(TILE) as cl:
         cls.merge_search(cl, [_found(A)], None)
     doc = json.loads(cls.list_path(TILE).read_text())
-    assert doc["format"] == "osxp-cloud-list-2" and len(doc["clouds"]) == 1
+    assert doc["format"] == "osxp-cloud-list-3" and len(doc["clouds"]) == 1
     assert doc["laid"] == []  # the clouds last laid in the tile: none yet
 
 
@@ -265,32 +201,6 @@ def test_every_answer_of_a_source_has_its_words_in_both_languages() -> None:
     assert set(ANSWERS) >= PROPOSABLE >= ASK_AGAIN
 
 
-def test_a_held_cloud_given_a_source_without_images_keeps_its_ground_and_is_no_change() -> None:
-    # R4: Apply lays the newest images that stand, else what the tile holds; the count says so
-    from orthostudio.clouds import mode
-
-    held = _hold(_entry("held0001", A))
-    with cls.update(TILE) as cl:
-        cls.pick(cl, "held0001", "choose", "Arc")
-        plan = cls.plan(cl, held, TILE)
-        laid = plan.laid
-        counts = mode.summary(cl, held, plan)
-    assert [e["source"] for e in laid] == ["EOX"]
-    assert counts["changes"] == 0 and counts["waiting"] == 0 and counts["held"] == 1
-
-
-def test_a_source_whose_images_showed_the_same_photo_cannot_be_chosen() -> None:
-    # one answer of a source under a cloud: its images got, else its screening
-    with cls.update(TILE) as cl:
-        cls.merge_search(cl, [_found(A)], None)
-        cid = cl.clouds[0]["id"]
-        cl.get(cid)["screening"]["Arc"] = {"answer": "clear", "fit": 90}
-        cl.get(cid)["checks"]["Arc"] = {"answer": "same_photo", "fit": 0, "entry": None}
-        assert not cls.proposable(cl.get(cid), "Arc") and cls.best_of(cl.get(cid)) == "EOX"
-        with pytest.raises(OsxpError):
-            cls.pick(cl, cid, "choose", "Arc")
-
-
 def test_a_list_put_aside_never_takes_the_name_of_another(home: Path) -> None:
     path = cls.list_path(TILE)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -300,16 +210,3 @@ def test_a_list_put_aside_never_takes_the_name_of_another(home: Path) -> None:
         pass
     assert path.with_name(path.name + ".broken-2").read_text() == "old"
     assert path.with_name(path.name + ".broken-3").read_text() == "{not json"
-
-
-def test_a_held_cloud_whose_images_are_gone_waits_for_them_and_apply_lays_it_no_more() -> None:
-    # R6: its frozen parts on this computer are part of what makes it stand
-    other = _entry("held0002", B)
-    other["parts"] = {NAME: [12, "f" * 64]}  # its part found nowhere
-    held = _hold(_entry("held0001", A), other)
-    with cls.update(TILE) as cl:
-        plan = cls.plan(cl, held, TILE)
-    assert [(ch.cloud, ch.kind, ch.waiting) for ch in plan.changes] == [
-        ("held0002", "replace", "photo_parts")
-    ]
-    assert [e["id"] for e in plan.laid] == ["held0001"] and cls.needs_images(plan.changes[0])

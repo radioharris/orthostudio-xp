@@ -1,11 +1,12 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """The engine's cloud tasks: a search, getting a cloud's images, trying an outline's sources,
-Apply (``clouds.md`` R7). Each runs in a thread of its own and ends whether or not a page is open;
-it writes its result at its end, so a page that went away loses nothing. One search at a time for
-the whole app (a search holds gigabytes, B2), a few others at once. Each says its phase and how
-far it is; Stop ends it at its next step, the list left as it was, except Apply, which writes a
-tile's textures one after the other and ends what it began.
+Apply and Restore (``clouds.md`` R7). Each runs in a thread of its own and ends whether or not a
+page is open; it writes its result at its end, so a page that went away loses nothing. One search
+at a time for the whole app (a search holds gigabytes, B2), a few reads of a cloud's sources at
+once, Apply and Restore at once (never behind another tile's reads). Each says its phase and how
+far it is; Stop ends it at its next step, the list left as it was, except Apply and Restore, which
+write a tile's textures and end what they began.
 """
 
 from __future__ import annotations
@@ -82,11 +83,13 @@ class Tasks:
         cloud: str | None = None,
         *,
         stoppable: bool = True,
+        then: Callable[[], None] | None = None,
     ) -> Task:
         """Run ``run(task)`` in a thread once its turn comes (one search at a time for the app,
-        :data:`CHECKS_AT_ONCE` of the others); the task is forgotten at its end. A task of the
-        same tile, kind and cloud already under way is stopped, and the tile's last failure
-        forgotten."""
+        :data:`CHECKS_AT_ONCE` reads of sources, an unstoppable task at once); the task is
+        forgotten at its end, then ``then()`` runs when it ended neither stopped nor failed (what
+        follows it, seeing it ended). A task of the same tile, kind and cloud already under way
+        is stopped, and the tile's last failure forgotten."""
         with self._lock:
             for t in self._tasks.values():  # one of each for a cloud, one search for a tile
                 if t.tile == tile and t.kind == kind and t.cloud == cloud:
@@ -94,18 +97,18 @@ class Tasks:
             task = Task(secrets.token_hex(6), tile, kind, cloud, stoppable)
             self._tasks[task.id] = task
             self._failed.pop(tile, None)
-        gate = self._search if kind == "find" else self._checks
+        gate = self._search if kind == "find" else self._checks if stoppable else None
 
         def body() -> None:
             try:
-                while not gate.acquire(timeout=0.25):  # its turn, or its stop
-                    if task.stop.is_set():
-                        return
-                try:
-                    if not task.stop.is_set():
-                        run(task)
-                finally:
-                    gate.release()
+                if gate is None:
+                    run(task)
+                elif _turn(gate, task):
+                    try:
+                        if not task.stop.is_set():
+                            run(task)
+                    finally:
+                        gate.release()
             except OsxpError as exc:
                 if exc.code != "SYS_CANCELLED":
                     log.warning("%s %s of %s: %s", task.kind, task.cloud or "", tile, exc.message)
@@ -120,6 +123,8 @@ class Tasks:
                     self._tasks.pop(task.id, None)
                     if task.error is not None:
                         self._failed[tile] = task
+            if then is not None and task.error is None and not task.stop.is_set():
+                _follow(then, task)
 
         threading.Thread(target=body, name=f"osxp-clouds-{kind}-{tile}", daemon=True).start()
         return task
@@ -147,13 +152,32 @@ class Tasks:
             t.stop.set()
         return len(tasks)
 
-    def settle(self, timeout: float) -> bool:
-        """Wait until no task Stop does not end runs (an Apply, a few seconds), ``timeout`` at
-        most; whether none does."""
+    def settle(self, timeout: float, tile: str | None = None) -> bool:
+        """Wait until no task Stop does not end runs (an Apply, a few seconds), of ``tile`` or of
+        any, ``timeout`` at most; whether none does."""
         deadline = time.monotonic() + timeout
         while True:
             with self._lock:
-                busy = any(not t.stoppable for t in self._tasks.values())
+                busy = any(not t.stoppable and tile in (None, t.tile) for t in self._tasks.values())
             if not busy or time.monotonic() >= deadline:
                 return not busy
             time.sleep(0.05)
+
+
+def _turn(gate: threading.Semaphore, task: Task) -> bool:
+    """Whether ``task``'s turn came before its stop."""
+    while not gate.acquire(timeout=0.25):
+        if task.stop.is_set():
+            return False
+    return True
+
+
+def _follow(then: Callable[[], None], task: Task) -> None:
+    """What follows ``task``, run once it ended: a list it finds forgotten ends it quietly."""
+    try:
+        then()
+    except OsxpError as exc:
+        if exc.code != "SYS_CANCELLED":
+            log.warning("after %s of %s: %s", task.kind, task.tile, exc.message)
+    except Exception:
+        log.exception("after %s of %s failed", task.kind, task.tile)
