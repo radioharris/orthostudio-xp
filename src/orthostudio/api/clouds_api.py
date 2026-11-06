@@ -379,10 +379,9 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
         asked = [s.cloud["id"] for s in v.clouds] if ids is None else list(ids)
         offered = [i for i in asked if v.allows("check", i)]
         offered = [i for i in offered if not unasked or v.cloud(i).unasked]
-        if offered:
-            _detector_said(
-                body, then={"id": offered[0]} if ids is not None and len(asked) == 1 else {}
-            )
+        if offered:  # on yes, the same asking: of the cloud, or of every one; again or not
+            one = {"id": offered[0]} if ids is not None and len(asked) == 1 else {}
+            _detector_said(body, then={**one, **({"again": True} if again else {})})
         was = before or v
         for cid in offered:
             try:

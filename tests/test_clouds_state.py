@@ -229,7 +229,8 @@ def test_a_task_of_a_cloud_takes_its_row_and_the_tile_gives_apply_up(folder: Pat
 
 def test_a_tile_in_a_build_reads_nothing_and_allows_nothing(folder: Path) -> None:
     cl, _shown = _case(folder, True, None, "same", "stands", "held")
-    for st in ("in_build", "queued", "filing", "not_built", "not_whole", "disk_away", "data_away"):
+    states = ("in_build", "queued", "filing", "not_built", "not_whole", "no_photo", "disk_away")
+    for st in (*states, "data_away"):
         v = state.view(cl, None, TILE, st)
         assert not v.allowed and not v.remade and all(s.row == "frozen" for s in v.clouds)
         assert v.line is not None and _words(v.line["key"]), st

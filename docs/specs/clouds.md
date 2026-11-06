@@ -119,6 +119,7 @@ The tile's state, the first that holds (`state.TILE_STATES`, `tile_state`):
 | `deleting` | it is being deleted | |
 | `not_built` | no folder of ours for the tile | |
 | `not_whole` | its folder is not the pack its manifest names (`pack_is_intact`: a build cut short, files taken from it) | build it again |
+| `no_photo` | its folder holds no texture (the sea alone, which X-Plane draws without a photo; `tile.unready`) | no cloud to replace |
 | `ready` | | |
 
 **Ready** allows everything, any other state nothing. While something else holds the tile's folder
@@ -183,7 +184,8 @@ What runs the cloud detector is asked just before
 its task starts (a search, an outline, getting images), refused while the detector is not on this
 computer and the user has not said to download it (`CLOUD_DETECTOR_ASK`, with its size): the page
 asks, and on yes sends with `download` what the engine says (`then`: the body of `check`, the
-images of the cloud just ticked, of every cloud with Tick all), else the same action again. A tick
+images of the cloud just ticked, of every cloud with Tick all, `again` kept for **Get its images**),
+else the same action again. A tick
 or a source is
 kept either way, the cloud waiting for its images on no; an outline is kept once the answer is yes,
 its sources being tried by the detector. The answer says when something is under way (`busy`: a task

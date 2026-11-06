@@ -93,14 +93,16 @@ TILE_STATES: Mapping[str, TileState] = {
     "deleting": TileState(frozenset(), True),
     "not_built": TileState(frozenset(), False),
     "not_whole": TileState(frozenset(), False),
+    "no_photo": TileState(frozenset(), False),
     "ready": TileState(LIST_EDITS | TASKS | WRITES | {STOP}, False),
 }
 """Every state of a tile, the first that holds in this order (:func:`tile_state`): the data
 folder's disk away; the tile's disk away; something else holding its folder, the cloud mode none
 of it: being built, waiting in the queue, being filed, being deleted (no task of it starts,
 ``tasks.Tasks.start``, and what holds it waits for those under way to end); not built (no folder
-of ours); not whole (a build cut short, files taken from it); ready. Its folder is read in the
-last three only, and kept in ``ready`` only."""
+of ours); not whole (a build cut short, files taken from it); no photo (no texture: the sea
+alone, opening its mode was an internal error, a review, 2026-11-07); ready (``tile.unready``).
+Its folder is read in the last four only, and kept in ``ready`` only."""
 
 
 def tile_state(

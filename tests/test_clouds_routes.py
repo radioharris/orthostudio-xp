@@ -536,3 +536,34 @@ async def test_a_fine_search_is_refused_where_the_tile_has_nothing_finer(
         assert (await c.get("/api/clouds/+43+005")).json()["fine"] is False
         r = await c.post("/api/clouds/+43+005/find", json={"fine": True, "download": True})
     assert r.json()["error"]["code"] == "CLOUD_NOT_NOW"
+
+
+@pytest.mark.anyio
+async def test_a_tile_with_no_photo_says_so_and_allows_nothing(app: Any, ready: Path) -> None:
+    # the sea alone, no texture: opening its cloud mode was an internal error (a review)
+    import json
+
+    (ready / "textures" / f"{NAME}.dds").unlink()
+    manifest = ready / "orthostudio.toml"
+    text = manifest.read_text(encoding="utf-8").replace("textures = 1", "textures = 0")
+    manifest.write_text(text, encoding="utf-8")
+    async with client_for(app) as c:
+        r = await c.get("/api/clouds/+43+005")
+    assert r.status_code == 200, r.text
+    a = r.json()
+    assert a["state"] == "no_photo" and a["allowed"] == [], json.dumps(a)[:300]
+    assert a["line"] == {"key": "clouds.tile.no_photo", "params": {}}
+
+
+@pytest.mark.anyio
+async def test_get_its_images_asks_again_after_the_detectors_question_too(
+    app: Any, ready: Path
+) -> None:
+    # on yes, the page sends what the engine said: Get its images kept its ``again`` (a review)
+    with cloudlist.update(TILE) as cl:
+        cid = cl.add(
+            "found", _ring(), screening={"EOX": {"answer": "clear", "fit": 70}}, tick=True
+        )["id"]
+    async with client_for(app) as c:
+        r = await c.post("/api/clouds/+43+005/check", json={"id": cid, "again": True})
+    assert r.json()["error"]["context"]["then"] == {"id": cid, "again": True}
