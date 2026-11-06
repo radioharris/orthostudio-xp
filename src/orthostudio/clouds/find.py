@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import math
 import threading
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -28,7 +28,7 @@ import numpy as np
 from shapely.geometry import Polygon
 from shapely.validation import make_valid
 
-from orthostudio.clouds.laying import parts_dir, patches_of
+from orthostudio.clouds.laying import find_part, parts_dir, patches_of
 from orthostudio.clouds.model import SHADOW, THICK, THIN, classify
 from orthostudio.clouds.opencv import cv2
 from orthostudio.clouds.picture import WATER_RGB, Picture, pixel_metres
@@ -37,12 +37,12 @@ from orthostudio.clouds.tile import TileClouds, colours_near
 from orthostudio.errors import OsxpError
 from orthostudio.fsutil import atomic_write_bytes
 from orthostudio.graph.digest import digest_bytes
-from orthostudio.imagery.grid import parse_texture_name, tile_to_wgs84, wgs84_to_tile
+from orthostudio.imagery.grid import parse_texture_name, texture_name, tile_to_wgs84, wgs84_to_tile
 from orthostudio.imagery.providers import Provider
 from orthostudio.model import TileRef
-from orthostudio.textures.clouds import encode_part, layer, pieces, read_piece
+from orthostudio.textures.clouds import decode_part, encode_part, layer, pieces, read_piece
 
-__all__ = ["Area", "Check", "Judgement", "check", "find", "lonlat", "screen"]
+__all__ = ["Area", "Check", "Judgement", "check", "find", "lonlat", "preview_of", "screen"]
 
 MIN_CLOUD_HA = 2.0
 SHADOW_REACH_M = 600.0
@@ -545,7 +545,6 @@ def check(
     phase("making", 0, len(reached))
     x0, y0, x1, y1 = box
     h, w = y1 - y0, x1 - x0
-    laid: list[tuple[Any, Any, str]] = []
     lay_rgb = np.zeros((h, w, 3), np.float32)
     lay_a = np.zeros((h, w), np.float32)
     parts: dict[str, Path] = {}
@@ -563,7 +562,6 @@ def check(
         parts[name], entry_parts[name] = path, [pa.source_zl, digest]
         la = layer(pa, t, got)
         if la is not None:
-            laid.append((la, t, name))
             _lay_reduced(la, t, p, box, name, lay_rgb, lay_a)
         phase("making", n, len(reached))
     inside = _inside(p, rings, box)
@@ -587,28 +585,6 @@ def check(
     wide, wide_have, _lost = _source_at(sources, code, band_zl, p, box)
     fitted = judge(here, wide, wide_have, inside, core, band, np.zeros_like(band))
     j = Judgement(sharp.answer, fitted.fit, fitted.match)
-    # the preview from the layers in their colours, reduced as the textures' mips are: the build
-    # matches the source at the texture's sharpness, before its levels are made
-    matched = np.zeros_like(lay_rgb)
-    lay_a = np.zeros_like(lay_a)
-    for la, t, name in laid:
-        _lay_reduced(la, t, p, box, name, matched, lay_a, j.match)
-    share = p.share[y0:y1, x0:x1].astype(np.float32)[..., None] / 255
-    shown = np.clip(matched * share + np.asarray(WATER_RGB, np.float32) * (1 - share), 0, 255)
-    rgba = np.dstack(
-        [np.rint(shown).astype(np.uint8), np.rint(np.clip(lay_a, 0, 1) * 255).astype(np.uint8)]
-    )
-    good, png = cv2.imencode(".png", cv2.cvtColor(rgba, cv2.COLOR_RGBA2BGRA))
-    if not good:
-        raise OsxpError(
-            "SYS_INTERNAL_ERROR",
-            context={"type": "PNG", "detail": "a cloud's preview could not be encoded"},
-        )
-    previews.mkdir(parents=True, exist_ok=True)
-    preview = previews / f"{digest_bytes(png.tobytes())}.png"
-    atomic_write_bytes(preview, png.tobytes())
-    west, north = lonlat(p, x0, y0)
-    east, south = lonlat(p, x1, y1)
     colours = held.colours or {}
     entry = {
         "id": cid,
@@ -621,7 +597,55 @@ def check(
             rings, tile, colours.get("tile") or (0.0, 0.0, 0.0), colours.get("zones") or ()
         ),
     }
-    return Check(j, entry, preview, (south, west, north, east), covered, parts)
+    preview, bounds = preview_of(p, tile, entry, [folder], previews)
+    return Check(j, entry, preview, bounds, covered, parts)
+
+
+def preview_of(
+    p: Picture,
+    tile: TileRef,
+    entry: Mapping[str, Any],
+    folders: Sequence[Path],
+    previews: Path,
+) -> tuple[Path | None, tuple[float, float, float, float] | None]:
+    """The preview of the cloud ``entry`` (a ``clouds.tile`` entry) on the picture ``p``: its
+    layers made from its frozen parts (found in ``folders``) by the build's own function, in its
+    colours, reduced as the textures' mips are, laid where X-Plane shows each texture, over water
+    at the share X-Plane gives the photo, cut to the tile. A PNG named by its content in
+    ``previews`` and its ``[south, west, north, east]``; ``None`` when a part is found nowhere."""
+    textures = [parse_texture_name(n) for n in entry["parts"]]
+    reached = patches_of(entry, tile, textures, lambda t: int(entry["parts"][texture_name(t)][0]))
+    band_px = max(2, round(BAND_M / pixel_metres(_lat(p), p.zl)))
+    box = _box(p, entry["rings"], band_px + 4)
+    x0, y0, x1, y1 = box
+    rgb = np.zeros((y1 - y0, x1 - x0, 3), np.float32)
+    alpha = np.zeros((y1 - y0, x1 - x0), np.float32)
+    for name, pa in reached.items():
+        path = find_part(str(entry["parts"][name][1]), folders)
+        if path is None:
+            return None, None
+        t = parse_texture_name(name)
+        la = layer(pa, t, decode_part(path.read_bytes()))
+        if la is not None:
+            _lay_reduced(la, t, p, box, name, rgb, alpha, entry["match"])
+    share = p.share[y0:y1, x0:x1].astype(np.float32)[..., None] / 255
+    shown = np.clip(rgb * share + np.asarray(WATER_RGB, np.float32) * (1 - share), 0, 255)
+    rgba = np.dstack(
+        [np.rint(shown).astype(np.uint8), np.rint(np.clip(alpha, 0, 1) * 255).astype(np.uint8)]
+    )
+    good, png = cv2.imencode(".png", cv2.cvtColor(rgba, cv2.COLOR_RGBA2BGRA))
+    if not good:
+        raise OsxpError(
+            "SYS_INTERNAL_ERROR",
+            context={"type": "PNG", "detail": "a cloud's preview could not be encoded"},
+        )
+    previews.mkdir(parents=True, exist_ok=True)
+    out = previews / f"{digest_bytes(png.tobytes())}.png"
+    if not out.exists():
+        atomic_write_bytes(out, png.tobytes())
+    west, north = lonlat(p, x0, y0)
+    east, south = lonlat(p, x1, y1)
+    return out, (south, west, north, east)
 
 
 def _lay_reduced(
