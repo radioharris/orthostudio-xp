@@ -18,8 +18,8 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from orthostudio.clouds.laying import parts_dir, patches_of
-from orthostudio.clouds.tile import colours_near
+from orthostudio.clouds.laying import patches_of
+from orthostudio.clouds.tile import artefact_originals, colours_near, got_parts_dir
 from orthostudio.graph import Executor, Node, Source, Store, artifact_key, digest_bytes
 from orthostudio.imagery.chunks import ChunkStore
 from orthostudio.imagery.grid import TextureId, texture_name
@@ -136,7 +136,7 @@ class Tile:
         store = ChunkStore(self.chunks, fsync=False)
         parts: dict[str, list[Any]] = {}
         images: dict[str, str] = {}
-        folder = parts_dir(self.chunks)
+        folder = got_parts_dir(self.chunks)
         folder.mkdir(parents=True, exist_ok=True)
         for name, patch in reached.items():
             t = WEST if name == texture_name(WEST) else EAST
@@ -233,7 +233,7 @@ def test_other_colours_around_a_cloud_undo_it(tile: Tile) -> None:
 def test_a_cloud_whose_part_is_found_nowhere_is_undone(tile: Tile) -> None:
     tile.textures()
     c = tile.cloud("k1", INSIDE, RED)
-    for f in parts_dir(tile.chunks).iterdir():
+    for f in got_parts_dir(tile.chunks).iterdir():
         f.unlink()
     done = tile.textures([c])
     assert tile.manifest(done)["clouds"]["undone"] == {"k1": "parts"}
@@ -271,7 +271,7 @@ def test_a_texture_holding_a_cloud_keeps_its_original_beside_it(tile: Tile) -> N
     c = tile.cloud("k1", INSIDE, RED)
     laid = tile.textures([c])
     name = f"{texture_name(WEST)}.dds"
-    original = laid / "clouds" / "originals" / "textures" / name
+    original = artefact_originals(laid) / "textures" / name
     assert original.read_bytes() == (plain / "textures" / name).read_bytes()
     assert (laid / "textures" / name).read_bytes() != original.read_bytes()
-    assert not (laid / "clouds" / "originals" / "textures" / f"{texture_name(EAST)}.dds").exists()
+    assert not (artefact_originals(laid) / "textures" / f"{texture_name(EAST)}.dds").exists()

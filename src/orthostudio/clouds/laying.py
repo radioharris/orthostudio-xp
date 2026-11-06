@@ -19,20 +19,15 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
-from orthostudio.clouds.tile import colours_near
+from orthostudio.clouds.tile import artefact_parts, colours_near
 from orthostudio.graph.digest import digest_bytes
 from orthostudio.imagery.grid import TextureId, parse_texture_name, texture_name, wgs84_to_tile
 from orthostudio.model import TileRef
 from orthostudio.textures.clouds import CloudPatch, tile_box, window
 
-__all__ = ["TileClouding", "find_part", "parts_dir", "patches_of", "standing"]
+__all__ = ["TileClouding", "find_part", "patches_of", "standing"]
 
 PART_SUFFIX = ".part"
-
-
-def parts_dir(chunks_root: Path) -> Path:
-    """Where the frozen parts are kept beside the image pieces: ``<data>/clouds/parts``."""
-    return Path(chunks_root).parent / "clouds" / "parts"
 
 
 def find_part(digest: str, folders: Iterable[Path]) -> Path | None:
@@ -120,7 +115,7 @@ class TileClouding:
         self.tile = tile
         self.given = list(clouds)
         self.undone: dict[str, str] = {}
-        self.folders = [Path(out) / "clouds" / "parts", *folders]
+        self.folders = [artefact_parts(out), *folders]
         self.out = Path(out)
         self.laid: dict[str, dict[str, tuple[CloudPatch, Path]]] = {}
         by_name = {texture_name(t): t for t in textures}
@@ -164,7 +159,7 @@ class TileClouding:
         """What the artefact's ``manifest.json`` says of its clouds, their parts kept in it."""
         if not self.given:
             return {}
-        keep = self.out / "clouds" / "parts"
+        keep = artefact_parts(self.out)
         keep.mkdir(parents=True, exist_ok=True)
         for laid in self.laid.values():
             for _patch, path in laid.values():

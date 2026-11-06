@@ -8,8 +8,8 @@ the photo shows whole; on the sea the photo shows at its texture's alpha (the se
 X-Plane's own water; on inland water at that alpha times the lakes' share over its water; where
 only X-Plane's water is drawn, no photo at all. So the picture is drawn triangle by triangle from
 the DSF the tile folder holds, each texture read at the level of its file that matches, and each
-texture holding a replaced cloud read from its original (``build.ORIGINALS``): the photo under the
-clouds, as X-Plane shows it once a cloud is unticked. X-Plane's water is one colour here
+texture holding a replaced cloud read from its original (``TileClouds.originals_dir``): the photo
+under the clouds, as X-Plane shows it once a cloud is unticked. X-Plane's water is one colour here
 (:data:`WATER_RGB`); the share of the photo over it is X-Plane's.
 """
 

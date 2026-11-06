@@ -4,9 +4,10 @@
 
 The clouds a tile shows replaced are the clouds its textures were made with. The build that made
 them writes them in the textures artefact's own ``manifest.json`` (``clouds``), beside the list of
-its textures: the two are one artefact, committed together, and the pack's ``orthostudio.toml``,
-written last, names it. So what the tile holds can never disagree with what X-Plane shows: a
-build stopped half way left the folder naming the artefact before it, which says its own clouds.
+its textures, and the pack places that description in the tile's folder with the textures, named
+by their key, before the ``orthostudio.toml`` that names them (``pack.CLOUDS_DIR``). So what the
+tile holds can never disagree with what X-Plane shows, a build stopped half way leaves the folder
+naming the description before, and the tile keeps its clouds whatever the store loses.
 
 A cloud there is whole: its outline, its source, its colours (``match``), and per texture it
 reaches its frozen part (the source's pieces) and the digest of the tile's own pieces it was laid
@@ -16,7 +17,6 @@ tile lays it again from these alone, or undoes it, whole, when the photo under i
 
 from __future__ import annotations
 
-import json
 import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
@@ -27,38 +27,73 @@ from shapely import affinity, normalize, set_precision, to_wkt, union_all
 from shapely.geometry import Polygon, box
 from shapely.validation import make_valid
 
-from orthostudio.graph import Store
+from orthostudio.home import osxp_home
+from orthostudio.install.library import default_library_path
 from orthostudio.model import TileRef
-from orthostudio.pipeline.pack import pack_dir_name, read_manifest
+from orthostudio.pipeline.filing import tile_home
+from orthostudio.pipeline.home import default_chunks_root, default_tiles_root
+from orthostudio.pipeline.pack import CLOUDS_DIR, ORIGINALS, PARTS, cloud_record, pack_dir_name
 
 __all__ = [
     "COLOURS_REACH_M",
     "TileClouds",
-    "Undone",
+    "artefact_originals",
+    "artefact_parts",
     "colours_near",
     "entry_problem",
+    "got_parts_dir",
+    "list_path",
+    "own_folder",
+    "previews_dir",
     "read_tile",
     "tile_folder",
 ]
+
+# -- where the cloud files are (a tile folder holds pack.CLOUD_FILES) ------------------------
+
+
+def artefact_parts(out: Path) -> Path:
+    """The frozen parts a textures artefact keeps."""
+    return Path(out) / CLOUDS_DIR / PARTS
+
+
+def artefact_originals(out: Path) -> Path:
+    """Where a textures step makes the originals: its ``textures/`` comes under it."""
+    return Path(out) / CLOUDS_DIR / ORIGINALS
+
+
+def got_parts_dir(chunks_root: Path) -> Path:
+    """The parts of the clouds whose images were got, beside the image pieces (``<data>/clouds/
+    parts``), until a build keeps them."""
+    return Path(chunks_root).parent / CLOUDS_DIR / PARTS
+
+
+def previews_dir(tile: TileRef) -> Path:
+    """The tile's picture and its clouds' previews (``<data>/clouds/<tile>``), made at will."""
+    return default_chunks_root().parent / CLOUDS_DIR / tile.name
+
+
+def list_path(tile: TileRef) -> Path:
+    """The user's list of the tile's clouds (``$OSXP_HOME/clouds/<tile>.json``)."""
+    return osxp_home() / CLOUDS_DIR / f"{tile.name}.json"
+
 
 COLOURS_REACH_M = 1000.0
 """How far from a cloud the photo's colours count for it: the band its colours were matched on
 (400 m) and a zone's soft edge, with room."""
 
-Undone = Mapping[str, str]
-"""``{cloud id: why}``: ``level``, ``source``, ``textures``, ``colours``, ``images``, ``parts``."""
-
 
 @dataclass(frozen=True, slots=True)
 class TileClouds:
-    """What the textures artefact the tile's folder names says of its clouds."""
+    """What the tile's folder says of its clouds: the description of the textures it lays."""
 
     folder: Path
     textures_key: str
     applied: tuple[dict[str, Any], ...] = ()
     """The clouds its textures show replaced, in laying order (:func:`entry_problem`)."""
     undone: Mapping[str, str] = field(default_factory=dict)
-    """The clouds the build that made it was given and did not lay, with why."""
+    """The clouds the build that made it was given and did not lay, with why (``level``,
+    ``source``, ``textures``, ``colours``, ``images``, ``parts``)."""
     chunks: Mapping[str, str] = field(default_factory=dict)
     """Each texture's name with the digest of the pieces it was made of."""
     colours: Mapping[str, Any] | None = None
@@ -74,6 +109,21 @@ class TileClouds:
     def held(self, cloud: str) -> dict[str, Any] | None:
         return next((c for c in self.applied if c["id"] == cloud), None)
 
+    @property
+    def textures_dir(self) -> Path:
+        """The textures X-Plane shows."""
+        return self.folder / "textures"
+
+    @property
+    def originals_dir(self) -> Path:
+        """The textures holding a cloud as they are without their clouds."""
+        return artefact_originals(self.folder) / "textures"
+
+    @property
+    def parts_dir(self) -> Path:
+        """The frozen parts of the clouds it holds."""
+        return artefact_parts(self.folder)
+
 
 def tile_folder(tile: TileRef, *, workshop: Path, home: Path | None = None) -> Path:
     """The folder a build of ``tile`` writes: where it is filed (``filing.tile_home``), else the
@@ -81,25 +131,29 @@ def tile_folder(tile: TileRef, *, workshop: Path, home: Path | None = None) -> P
     return Path(home) if home is not None else Path(workshop) / pack_dir_name(tile)
 
 
-def read_tile(folder: Path, store: Store) -> TileClouds | None:
+def own_folder(tile: TileRef, *, custom_scenery: Path | None) -> Path:
+    """The tile's folder its clouds are kept for: the one the app's next build of it writes."""
+    home, _gone = tile_home(
+        tile,
+        atelier=default_tiles_root(),
+        custom_scenery=custom_scenery,
+        library_path=default_library_path(),
+    )
+    return tile_folder(tile, workshop=default_tiles_root(), home=home)
+
+
+def read_tile(folder: Path) -> TileClouds | None:
     """What the pack in ``folder`` holds of its clouds; ``None`` when there is no pack of ours
-    there or its textures are not in the store. A textures artefact made before clouds existed
-    holds none."""
-    try:
-        entry = read_manifest(folder).artefacts.get("textures")
-    except Exception:  # no pack, another tool's, or one cut short: nothing held
+    there, or one built before its folder described its textures."""
+    found = cloud_record(folder)
+    if found is None:
         return None
-    if entry is None or not store.has(entry.key):
-        return None
-    try:
-        doc = json.loads((store.path(entry.key) / "manifest.json").read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return None
+    key, doc = found
     clouds = doc.get("clouds") or {}
     applied = tuple(c for c in clouds.get("applied") or () if entry_problem(c) is None)
     return TileClouds(
         folder=Path(folder),
-        textures_key=entry.key,
+        textures_key=key,
         applied=applied,
         undone=dict(clouds.get("undone") or {}),
         chunks={

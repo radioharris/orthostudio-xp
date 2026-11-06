@@ -700,8 +700,8 @@ async def test_library_delete_an_installed_tile(app, home: Path, xplane: Path) -
 @pytest.mark.anyio
 async def test_library_delete_forgets_the_tiles_clouds(app, home: Path) -> None:  # type: ignore[no-untyped-def]
     # a deleted tile's list of clouds and their previews go with it
-    from orthostudio.api.clouds_api import previews_dir
     from orthostudio.clouds import cloudlist
+    from orthostudio.clouds.tile import previews_dir
     from orthostudio.install import Library, default_library_path
     from orthostudio.model import TileRef
 

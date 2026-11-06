@@ -20,15 +20,10 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-from orthostudio.api.clouds_api import previews_dir
 from orthostudio.clouds.picture import draw
-from orthostudio.clouds.tile import read_tile, tile_folder
-from orthostudio.graph import Store
-from orthostudio.home import default_store_root, default_tiles_root
+from orthostudio.clouds.tile import own_folder, previews_dir, read_tile
 from orthostudio.imagery.grid import wgs84_to_tile
-from orthostudio.install.library import default_library_path
 from orthostudio.model import TileRef
-from orthostudio.pipeline.filing import tile_home
 
 
 def main() -> None:
@@ -44,17 +39,12 @@ def main() -> None:
         doc = json.load(r)
     row = next(c for c in doc["clouds"] if c["id"] == a.cloud)
     zl = int(doc["picture"]["level"])
-    home, _gone = tile_home(tile, atelier=default_tiles_root(), custom_scenery=None,
-                            library_path=default_library_path())  # fmt: skip
-    with Store(default_store_root()) as store:
-        held = read_tile(tile_folder(tile, workshop=default_tiles_root(), home=home), store)
-        if held is None or held.held(a.cloud) is None:
-            raise SystemExit(f"{a.cloud} is not held by {tile.name}")
-        art = store.path(held.textures_key)
-        dsf = held.folder / tile.dsf_relpath
-        before = draw(tile, zl, dsf=dsf, textures=art / "textures",
-                      originals=art / "clouds" / "originals" / "textures")  # fmt: skip
-        built = draw(tile, zl, dsf=dsf, textures=art / "textures")
+    held = read_tile(own_folder(tile, custom_scenery=None))
+    if held is None or held.held(a.cloud) is None:
+        raise SystemExit(f"{a.cloud} is not held by {tile.name}")
+    dsf = held.folder / tile.dsf_relpath
+    before = draw(tile, zl, dsf=dsf, textures=held.textures_dir, originals=held.originals_dir)
+    built = draw(tile, zl, dsf=dsf, textures=held.textures_dir)
     png = Image.open(previews_dir(tile) / row["preview"]["name"]).convert("RGBA")
     pv = np.asarray(png).astype(np.float32)
     _s, w, n, _e = row["preview"]["bounds"]

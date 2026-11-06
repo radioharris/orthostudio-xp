@@ -104,11 +104,15 @@ them writes them in the textures artefact's own `manifest.json`, beside the list
 ```
 
 with, per texture, `chunks` (the digest of the tile's own pieces it was made of) and, for the
-tile, `colours` (`{"tile": [b, c, s], "zones": [[ring, b, c, s], ...]}`). The pack's
-`orthostudio.toml`, written last, names that artefact: what the tile holds cannot disagree with
-what X-Plane shows, and a build stopped half way leaves the folder naming the artefact before.
-The `tile.textures` rule is at version 2, so a tile built earlier is described at its next build
-(its textures themselves are store hits).
+tile, `colours` (`{"tile": [b, c, s], "zones": [[ring, b, c, s], ...]}`). The pack places that
+description in the tile's folder as `clouds/<textures key>.json`, with the artefact's
+`clouds/parts/` and `clouds/originals/textures/` (`pack.CLOUD_FILES`), before the
+`orthostudio.toml` that names the textures, and once it is written removes what belongs to no
+textures it names. What the tile holds is read from its folder alone (`tile.read_tile`), for the
+key `orthostudio.toml` names: it cannot disagree with what X-Plane shows, a build stopped half
+way leaves the folder naming the description before, and the tile keeps its clouds whatever the
+store loses (Free space, another data folder). The `tile.textures` rule is at version 2, so a tile
+built earlier is described at its next build (its textures themselves are store hits).
 
 ### 2.2 A cloud entry
 
@@ -126,8 +130,9 @@ cloud; `parts` per texture it reaches, the level the source is read at and the f
 ### 2.3 Frozen parts
 
 A part is the source's pieces a cloud reads in one texture (`OSXPPRT2`, `textures/clouds.py`),
-written when its images are got, in `<data>/clouds/parts/<digest>.part`, and copied into the
-textures artefact's `clouds/parts` by the build that lays it. A build never asks a source: it lays
+written when its images are got, in `<data>/clouds/parts/<digest>.part`, copied into the
+textures artefact's `clouds/parts` by the build that lays it, and from there into the tile's
+folder (2.1), where every later build of the tile finds it. A build never asks a source: it lays
 parts. The texture rule's input `clouds` (`OSXPCLD3`) carries a texture's patches and their parts.
 
 ### 2.4 The list
@@ -139,7 +144,8 @@ its tick, its source, and per source tried its check (its answer, fit, entry and
 list is the draft: each change is written as it is made, one writer at a time per tile, and
 survives closing, quitting and every build. Its order is the laying order. A list that cannot be
 read is moved aside (`.broken`) and made again from what the tile holds, its clouds ticked.
-Deleting the tile deletes its list and its previews.
+Deleting the tile, in the app or with `osxp uninstall --delete`, deletes its list and its
+previews when the folder deleted is the one its clouds are kept for (`cloudlist.forgetting`).
 
 ### 2.5 The tile's build settings
 
@@ -153,7 +159,8 @@ count only while the tile's pack names those textures: a later build that did no
 ### 2.6 Caches
 
 `<data>/clouds/<tile>/`: the tile's picture (a JPEG named by its textures and level) and the
-previews (PNG named by their digest). The sources' pieces are kept as a build's parent tiles
+previews (PNG named by their digest). Every path of the cloud files is in `clouds/tile.py`; the
+folder's layout in `pipeline/pack.py` (`CLOUDS_DIR`, `CLOUD_FILES`). The sources' pieces are kept as a build's parent tiles
 (`ParentCache`, per source). The detector's classes of the tile's last search are kept in memory
 for an outline. Every one of them can be deleted: it is made again.
 
@@ -325,7 +332,7 @@ what the tile holds. The list is untouched; Apply can be pressed again.
 | Module | What |
 |---|---|
 | `textures/clouds.py` | a cloud's patch, its layer, laying, parts and the texture input |
-| `clouds/tile.py` | what a tile holds (2.1) |
+| `clouds/tile.py` | what a tile holds (2.1), the tile's own folder, the paths of the cloud files |
 | `clouds/laying.py` | `standing` (R6) and the build's clouds (`TileClouding`) |
 | `clouds/picture.py` | the tile as X-Plane draws it (R2) |
 | `clouds/find.py` | the search, the judging and the check (4) |

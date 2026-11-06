@@ -720,6 +720,7 @@ def _delete_tile(name: str, xp: Path | None) -> tuple[Path, dict[str, Any]]:
     A tile the library does not know, built without --install, is looked for where its X-Plane link
     leads and in the OrthoStudio XP output folder.
     """
+    from orthostudio.clouds.cloudlist import forgetting
     from orthostudio.install import custom_scenery_dir, is_link, pack_tile
     from orthostudio.model import pack_dir_name
     from orthostudio.pipeline.home import default_tiles_root
@@ -748,7 +749,8 @@ def _delete_tile(name: str, xp: Path | None) -> tuple[Path, dict[str, Any]]:
                 remedy="See the tiles OrthoStudio XP knows with osxp library.",
             ) from None
         pack_dir, tile = pack, found
-    return pack_dir, delete_receipt(pack_dir, tile=tile, custom_scenery=cs)
+    with forgetting(tile, pack_dir, custom_scenery=cs):  # its replaced clouds go with it
+        return pack_dir, delete_receipt(pack_dir, tile=tile, custom_scenery=cs)
 
 
 def _echo_deleted(pack_dir: Path, receipt: dict[str, Any]) -> None:

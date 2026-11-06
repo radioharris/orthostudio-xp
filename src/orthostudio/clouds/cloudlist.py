@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import math
 import secrets
+import shutil
 import string
 import threading
 from collections.abc import Iterator, Mapping, Sequence
@@ -29,10 +30,9 @@ from shapely.ops import unary_union
 from shapely.validation import make_valid
 
 from orthostudio.clouds.laying import standing
-from orthostudio.clouds.tile import TileClouds
+from orthostudio.clouds.tile import TileClouds, list_path, own_folder, previews_dir
 from orthostudio.errors import OsxpError
 from orthostudio.fsutil import atomic_write_text
-from orthostudio.home import osxp_home
 from orthostudio.imagery.grid import parse_texture_name
 from orthostudio.model import TileRef
 
@@ -43,10 +43,6 @@ _ID = string.ascii_lowercase + string.digits
 _LOCKS: dict[str, threading.Lock] = {}
 _DEGREE_M = 111_320.0  # a degree of latitude, in metres
 _GUARD = threading.Lock()
-
-
-def list_path(tile: TileRef) -> Path:
-    return osxp_home() / "clouds" / f"{tile.name}.json"
 
 
 @dataclass
@@ -166,9 +162,20 @@ def save(cl: CloudList) -> int:
 
 
 def forget(tile: TileRef) -> None:
-    """The tile's list gone, with the tile."""
+    """The tile's list and its previews gone, with the tile."""
     with _lock(tile):
         list_path(tile).unlink(missing_ok=True)
+        shutil.rmtree(previews_dir(tile), ignore_errors=True)
+
+
+@contextmanager
+def forgetting(tile: TileRef, folder: Path, *, custom_scenery: Path | None) -> Iterator[bool]:
+    """Around the deletion of ``folder``: whether it is the tile's own folder, its clouds' (asked
+    before the Library forgets it), and once it is deleted, those clouds forgotten."""
+    ours = Path(folder).resolve() == own_folder(tile, custom_scenery=custom_scenery).resolve()
+    yield ours
+    if ours:
+        forget(tile)
 
 
 @contextmanager

@@ -38,8 +38,8 @@ import blake3
 from pydantic import Field
 
 from orthostudio import __version__
-from orthostudio.clouds.laying import TileClouding, parts_dir
-from orthostudio.clouds.tile import read_tile, tile_folder
+from orthostudio.clouds.laying import TileClouding
+from orthostudio.clouds.tile import artefact_originals, got_parts_dir, read_tile, tile_folder
 from orthostudio.decals import DECALS, DEFAULT_DECAL
 from orthostudio.dem import sources as dem_sources
 from orthostudio.dem.raster import read_elevation_from_file, readable_before
@@ -1169,7 +1169,7 @@ def _tile_textures(ctx: RunContext) -> None:
         [j.texture for j in jobs],
         tile_colours=(params.photo_brightness, params.photo_contrast, params.photo_saturation),
         zones=params.photo_zones,
-        folders=[parts_dir(env.chunks_root), *env.cloud_parts.get(tile.name, ())],
+        folders=[got_parts_dir(env.chunks_root), *env.cloud_parts.get(tile.name, ())],
         out=ctx.out,
     )
 
@@ -1298,7 +1298,7 @@ def _tile_textures(ctx: RunContext) -> None:
     # (a store hit when the tile was built before them): the cloud mode's map shows the photo
     # under a replaced cloud from it, as X-Plane shows it once that cloud is unticked
     if clouds.laid:
-        run({}, only=set(clouds.layers()), out=ctx.out / ORIGINALS)
+        run({}, only=set(clouds.layers()), out=artefact_originals(ctx.out))
     manifest = {
         "format": MANIFEST_FORMAT,
         "tile": tile.name,
@@ -1313,11 +1313,6 @@ def _tile_textures(ctx: RunContext) -> None:
     (ctx.out / "manifest.json").write_text(
         json.dumps(manifest, indent=1, sort_keys=True) + "\n", encoding="utf-8"
     )
-
-
-ORIGINALS = Path("clouds") / "originals"
-"""Where a textures artefact keeps the original of each texture holding a cloud (its
-``textures/`` folder): the texture as it is without its clouds."""
 
 
 def _tile_overlay(ctx: RunContext) -> None:
@@ -3645,9 +3640,9 @@ def _with_held_clouds(spec: BuildSpec, home: Path | None, env: BuildEnv) -> Buil
     step. Every build of a tile goes through here, from the Plan, the Library, Works or the
     command line: none builds a tile without its clouds."""
     folder = tile_folder(spec.tile, workshop=Path(spec.out_dir).expanduser(), home=home)
-    held = read_tile(folder, env.store)
+    held = read_tile(folder)
     if held is not None:
-        env.cloud_parts[spec.tile.name] = (env.store.path(held.textures_key) / "clouds" / "parts",)
+        env.cloud_parts[spec.tile.name] = (held.parts_dir,)
     if spec.clouds is not None:
         return spec
     return dataclasses.replace(spec, clouds=held.applied if held is not None else ())

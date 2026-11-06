@@ -556,6 +556,9 @@ the data folder (~/.orthostudio unless Settings name another one)/
       Earth nav data/+40+000/+46+006.dsf
       terrain/*.ter   textures/*.dds   orthostudio.toml   tile_settings.cfg   CREDITS.txt
       build_settings.json
+      clouds/          its replaced clouds: what its textures hold (<key>.json), the clouds'
+                       images got from their sources (parts/), and the textures holding one as
+                       they are without it (originals/), for the cloud mode's Before
                      orthostudio.toml: what the tile was built with (imagery, detail, relief
                      really read, zones, patches), which the Library and the Plan show
                      CREDITS.txt: who the imagery belongs to and what it is given under, so a

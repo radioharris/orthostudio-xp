@@ -28,12 +28,12 @@ import numpy as np
 from shapely.geometry import Polygon
 from shapely.validation import make_valid
 
-from orthostudio.clouds.laying import find_part, parts_dir, patches_of
+from orthostudio.clouds.laying import find_part, patches_of
 from orthostudio.clouds.model import SHADOW, THICK, THIN, classify
 from orthostudio.clouds.opencv import cv2
 from orthostudio.clouds.picture import WATER_RGB, Picture, pixel_metres
 from orthostudio.clouds.sources import SourcePieces
-from orthostudio.clouds.tile import TileClouds, colours_near
+from orthostudio.clouds.tile import TileClouds, colours_near, got_parts_dir
 from orthostudio.errors import OsxpError
 from orthostudio.fsutil import atomic_write_bytes
 from orthostudio.graph.digest import digest_bytes
@@ -548,7 +548,7 @@ def check(
     lay_rgb = np.zeros((h, w, 3), np.float32)
     lay_a = np.zeros((h, w), np.float32)
     parts: dict[str, Path] = {}
-    folder = parts_dir(chunks_root)
+    folder = got_parts_dir(chunks_root)
     folder.mkdir(parents=True, exist_ok=True)
     entry_parts: dict[str, list[Any]] = {}
     for n, (name, pa) in enumerate(sorted(reached.items()), start=1):

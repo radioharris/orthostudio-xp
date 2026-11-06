@@ -75,6 +75,7 @@ from orthostudio.api.specs import (
 )
 from orthostudio.api.zones_api import zones_router
 from orthostudio.clean import GRACE_S, clean, disk_bytes, pack_disk_bytes
+from orthostudio.clouds.cloudlist import forgetting
 from orthostudio.codemark import code_mark
 from orthostudio.config import profiles as config_profiles
 from orthostudio.config.profiles import ProfileError
@@ -2667,16 +2668,16 @@ def create_app(
         def run() -> dict[str, Any]:
             xp = xplane_dir(req.xplane_dir)
             entry = pack_to_delete(name, path=req.path, library_path=default_library_path())
-            ours = clouds.owns(entry.tile, entry.path)  # asked before its rows go
-            receipt = delete_receipt(
-                entry.path,
-                tile=entry.tile,
-                custom_scenery=None if xp is None else custom_scenery_dir(xp),
-                library_path=default_library_path(),
-            )
-            if ours:  # its replaced clouds go with it
-                clouds.forget(entry.tile)
-            return receipt
+            cs = None if xp is None else custom_scenery_dir(xp)
+            with forgetting(entry.tile, entry.path, custom_scenery=cs) as ours:
+                if ours:  # its replaced clouds go with it
+                    clouds.let_go(entry.tile)
+                return delete_receipt(
+                    entry.path,
+                    tile=entry.tile,
+                    custom_scenery=cs,
+                    library_path=default_library_path(),
+                )
 
         async with deleting:  # a second delete waits for this one
             if manager.active() is not None:

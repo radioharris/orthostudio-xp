@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import contextlib
 import re
-import shutil
 import threading
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -29,28 +28,22 @@ from PIL import Image
 from orthostudio.clouds import cloudlist as cls
 from orthostudio.clouds import mode
 from orthostudio.clouds.find import Area, check, find, preview_of, screen
-from orthostudio.clouds.laying import parts_dir
 from orthostudio.clouds.model import detector_bytes, detector_ready, ensure_detector
 from orthostudio.clouds.opencv import ensure_opencv, opencv_bytes, opencv_ready
 from orthostudio.clouds.picture import Picture, draw, search_level
 from orthostudio.clouds.sources import SourcePieces, other_sources
 from orthostudio.clouds.tasks import Task, Tasks
-from orthostudio.clouds.tile import TileClouds, read_tile, tile_folder
+from orthostudio.clouds.tile import TileClouds, got_parts_dir, own_folder, previews_dir, read_tile
 from orthostudio.errors import OsxpError
-from orthostudio.graph import Store
 from orthostudio.graph.digest import digest_bytes
 from orthostudio.home import (
     data_root_missing,
     default_chunks_root,
-    default_store_root,
-    default_tiles_root,
     osxp_home,
 )
 from orthostudio.imagery.grid import tile_to_wgs84
 from orthostudio.imagery.providers import Provider, load_registry
-from orthostudio.install.library import default_library_path
 from orthostudio.model import TileRef
-from orthostudio.pipeline.filing import tile_home
 from orthostudio.pipeline.pack import read_build_settings, read_manifest
 
 __all__ = ["CloudHooks", "clouds_router"]
@@ -80,37 +73,22 @@ class CloudEngine:
         self._lock = threading.Lock()
 
     def folder(self, tile: TileRef) -> Path:
-        home, _gone = tile_home(
-            tile,
-            atelier=default_tiles_root(),
-            custom_scenery=self.hooks.custom_scenery(),
-            library_path=default_library_path(),
-        )
-        return tile_folder(tile, workshop=default_tiles_root(), home=home)
+        return own_folder(tile, custom_scenery=self.hooks.custom_scenery())
 
-    def owns(self, tile: TileRef, folder: Path) -> bool:
-        """Whether ``folder`` is the tile's folder, the one its clouds are kept for."""
-        return Path(folder).resolve() == self.folder(tile).resolve()
-
-    def forget(self, tile: TileRef) -> None:
-        """A deleted tile's clouds: its tasks stopped, its list and its previews gone."""
+    def let_go(self, tile: TileRef) -> None:
+        """A tile about to be deleted: its tasks stopped, what is kept of it in memory dropped."""
         for t in self.tasks.of(tile.name):
             self.tasks.stop(t.id)
-        cls.forget(tile)
-        shutil.rmtree(previews_dir(tile), ignore_errors=True)
         with self._lock:
             for key in [k for k in self._pictures if k[0] == tile.name]:
                 del self._pictures[key]
 
-    def held(self, tile: TileRef) -> tuple[Path, TileClouds | None, Path | None]:
-        """The tile's folder, what it holds, and its textures artefact's folder."""
+    def held(self, tile: TileRef) -> tuple[Path, TileClouds | None]:
+        """The tile's folder and what it holds."""
         folder = self.folder(tile)
-        with Store(default_store_root()) as store:
-            held = read_tile(folder, store)
-            art = store.path(held.textures_key) if held is not None else None
-        return folder, held, art
+        return folder, read_tile(folder)
 
-    def picture(self, tile: TileRef, folder: Path, held: TileClouds, art: Path, zl: int) -> Picture:
+    def picture(self, tile: TileRef, held: TileClouds, zl: int) -> Picture:
         """The tile at ``zl`` as X-Plane shows it once every cloud is unticked: its replaced
         clouds read from their originals (kept the last few, per textures artefact)."""
         key = (tile.name, held.textures_key, zl)
@@ -121,19 +99,15 @@ class CloudEngine:
         p = draw(
             tile,
             zl,
-            dsf=folder / tile.dsf_relpath,
-            textures=art / "textures",
-            originals=art / "clouds" / "originals" / "textures",
+            dsf=held.folder / tile.dsf_relpath,
+            textures=held.textures_dir,
+            originals=held.originals_dir,
         )
         with self._lock:
             if len(self._pictures) > 4:
                 self._pictures.pop(next(iter(self._pictures)))
             self._pictures[key] = p
         return p
-
-
-def previews_dir(tile: TileRef) -> Path:
-    return default_chunks_root().parent / "clouds" / tile.name
 
 
 def _level(tile: TileRef, held: TileClouds) -> int:
@@ -188,7 +162,7 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
         )
 
     def preview_for(
-        tile: TileRef, p: Picture | None, held: TileClouds, art: Path, c: Mapping[str, Any]
+        tile: TileRef, p: Picture | None, held: TileClouds, c: Mapping[str, Any]
     ) -> dict[str, Any] | None:
         """The preview After lays for ``c``: its check's for a cloud not held as it is, else made
         again from the held cloud's frozen parts."""
@@ -204,7 +178,7 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
                     p,
                     tile,
                     entry,
-                    [art / "clouds" / "parts", parts_dir(default_chunks_root())],
+                    [held.parts_dir, got_parts_dir(default_chunks_root())],
                     previews_dir(tile),
                 )
                 known = (
@@ -219,24 +193,17 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
     @router.get("/api/clouds/{name}")
     def tile_mode(name: str) -> dict[str, Any]:
         tile = tile_of(name)
-        folder, held, art = engine.held(tile)
+        folder, held = engine.held(tile)
         state = state_of(tile, folder, held)
         cl = cls.load(tile, held)
         picture = None
         p = None
-        if (
-            held is not None
-            and art is not None
-            and held.described
-            and state not in ("data_away", "disk_away")
-        ):
-            p = engine.picture(tile, folder, held, art, _level(tile, held))
+        if held is not None and held.described and state not in ("data_away", "disk_away"):
+            p = engine.picture(tile, held, _level(tile, held))
             picture = _picture_file(tile, p, held)
         tasks = {t.cloud: t.view() for t in engine.tasks.of(tile.name) if t.cloud}
         previews = (
-            {c["id"]: preview_for(tile, p, held, art, c) for c in cl.clouds}
-            if held is not None and art is not None
-            else {}
+            {c["id"]: preview_for(tile, p, held, c) for c in cl.clouds} if held is not None else {}
         )
         return {
             "tile": tile.name,
@@ -260,19 +227,19 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
         for path in sorted((osxp_home() / "clouds").glob("*.json")):
             with contextlib.suppress(Exception):
                 tile = TileRef.parse(path.stem)
-                folder, held, _art = engine.held(tile)
+                folder, held = engine.held(tile)
                 cl = cls.load(tile, held)
                 out[tile.name] = mode.library_row(
                     state_of(tile, folder, held), mode.summary(cl, held, tile)
                 )
         return {"tiles": out}
 
-    def ready_or_refuse(tile: TileRef) -> tuple[Path, TileClouds, Path]:
-        folder, held, art = engine.held(tile)
+    def ready_or_refuse(tile: TileRef) -> tuple[Path, TileClouds]:
+        folder, held = engine.held(tile)
         state = state_of(tile, folder, held)
-        if state not in ("ready", "in_build", "queued") or held is None or art is None:
+        if state not in ("ready", "in_build", "queued") or held is None:
             raise OsxpError("CLOUD_TILE_NOT_READY", context={"tile": tile.name, "state": state})
-        return folder, held, art
+        return folder, held
 
     def sources_for(tile: TileRef, folder: Path) -> SourcePieces:
         own = read_manifest(folder).provider
@@ -283,19 +250,15 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
         name: str, body: Annotated[dict[str, Any] | None, Body()] = None
     ) -> dict[str, Any]:
         tile = tile_of(name)
-        folder, held, art = ready_or_refuse(tile)
+        folder, held = ready_or_refuse(tile)
 
         def run(task: Task) -> None:
             ensure_opencv(progress=lambda d, t: task.say("tool", d, t))
             ensure_detector(progress=lambda d, t: task.say("tool", d, t))
             zl = _level(tile, held)
-            p = engine.picture(tile, folder, held, art, zl)
+            p = engine.picture(tile, held, zl)
             # once more a level finer where the textures are: the small cumulus (B1)
-            fine = (
-                engine.picture(tile, folder, held, art, zl + 1)
-                if max(_texture_zls(held)) > zl
-                else None
-            )
+            fine = engine.picture(tile, held, zl + 1) if max(_texture_zls(held)) > zl else None
             areas, classes = find(p, fine, cancel=task.stop, phase=task.say)
             rings = [a.rings(p) for a in areas]
             verdicts = screen(
@@ -313,7 +276,7 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
     @router.post("/api/clouds/{name}/picks")
     def picks(name: str, body: Annotated[dict[str, Any], Body()]) -> dict[str, Any]:
         tile = tile_of(name)
-        folder, held, art = ready_or_refuse(tile)
+        folder, held = ready_or_refuse(tile)
         with cls.update(tile, held) as cl:
             cid = str(body["id"])
             cls.pick(cl, cid, tick=body.get("tick"), source=body.get("source"))
@@ -327,14 +290,13 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
             and (was is None or was["source"] != c["source"])
             and got is None
         ):
-            start_getting(tile, folder, held, art, c)
+            start_getting(tile, folder, held, c)
         return {"version": cls.load(tile, held).version}
 
     def start_getting(
         tile: TileRef,
         folder: Path,
         held: TileClouds,
-        art: Path,
         c: Mapping[str, Any],
         again: bool = False,
     ) -> Task:
@@ -343,7 +305,7 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
         def run(task: Task) -> None:
             ensure_opencv(progress=lambda d, t: task.say("tool", d, t))
             ensure_detector(progress=lambda d, t: task.say("tool", d, t))
-            p = engine.picture(tile, folder, held, art, _level(tile, held))
+            p = engine.picture(tile, held, _level(tile, held))
             registry = _registry()
             if code not in registry:
                 raise OsxpError(
@@ -382,21 +344,21 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
     @router.post("/api/clouds/{name}/check")
     def check_again(name: str, body: Annotated[dict[str, Any], Body()]) -> dict[str, Any]:
         tile = tile_of(name)
-        folder, held, art = ready_or_refuse(tile)
+        folder, held = ready_or_refuse(tile)
         c = cls.load(tile, held).get(str(body["id"]))
         if c["source"]:
-            start_getting(tile, folder, held, art, c, again=True)
+            start_getting(tile, folder, held, c, again=True)
         return {"ok": True}
 
     @router.post("/api/clouds/{name}/outlines")
     def outline(name: str, body: Annotated[dict[str, Any], Body()]) -> dict[str, Any]:
         tile = tile_of(name)
-        folder, held, art = ready_or_refuse(tile)
+        folder, held = ready_or_refuse(tile)
         ring: list[float] = []
         polygon = [(float(lon), float(lat)) for lon, lat in body["polygon"]]
         for lon, lat in [*polygon, polygon[0]]:
             ring += [lat, lon]
-        p = engine.picture(tile, folder, held, art, _level(tile, held))
+        p = engine.picture(tile, held, _level(tile, held))
         with cls.update(tile, held) as cl:
             c = dict(cls.add_outline(cl, [ring], cls.rings_ha([ring]), held))
 
@@ -417,7 +379,7 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
                 if best is not None:  # drawing it is asking to replace it
                     cls.pick(cl, c["id"], source=best)
             if best is not None:
-                start_getting(tile, folder, held, art, {**c, "source": best})
+                start_getting(tile, folder, held, {**c, "source": best})
 
         engine.tasks.start(tile.name, "trying", run, cloud=c["id"])
         return {"id": c["id"]}
@@ -425,7 +387,7 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
     @router.delete("/api/clouds/{name}/outlines/{cid}")
     def remove(name: str, cid: str) -> dict[str, Any]:
         tile = tile_of(name)
-        _folder, held, _art = engine.held(tile)
+        _folder, held = engine.held(tile)
         with cls.update(tile, held) as cl:
             cls.remove_outline(cl, cid)
         return {"ok": True}
@@ -433,7 +395,7 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
     @router.post("/api/clouds/{name}/discard")
     def discard(name: str) -> dict[str, Any]:
         tile = tile_of(name)
-        _folder, held, _art = engine.held(tile)
+        _folder, held = engine.held(tile)
         with cls.update(tile, held) as cl:
             cls.discard(cl, held)
         return {"ok": True}
@@ -441,7 +403,7 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
     @router.post("/api/clouds/{name}/apply")
     def apply(name: str, body: Annotated[dict[str, Any] | None, Body()] = None) -> dict[str, Any]:
         tile = tile_of(name)
-        folder, held, _art = ready_or_refuse(tile)
+        folder, held = ready_or_refuse(tile)
         with cls.update(tile, held) as cl:
             if (body or {}).get("restore"):
                 cls.restore(cl)
