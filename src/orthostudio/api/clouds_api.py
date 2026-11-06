@@ -72,6 +72,7 @@ class CloudEngine:
         self.hooks = hooks
         self.tasks = Tasks()
         self._pictures: dict[tuple[str, str, int], Picture] = {}
+        self._drawing: dict[tuple[str, str, int], threading.Lock] = {}
         self._lock = threading.Lock()
 
     def folder(self, tile: TileRef) -> Path:
@@ -95,15 +96,19 @@ class CloudEngine:
         clouds read from their originals (kept the last few, per textures artefact)."""
         key = (tile.name, held.shown, zl)
         with self._lock:
-            hit = self._pictures.get(key)
-        if hit is not None:
-            return hit
-        p = _draw(tile, held, zl)
-        with self._lock:
-            if len(self._pictures) > 4:
-                self._pictures.pop(next(iter(self._pictures)))
-            self._pictures[key] = p
-        return p
+            drawing = self._drawing.setdefault(key, threading.Lock())
+        with drawing:  # two answers asking for it at once: one drawing
+            with self._lock:
+                hit = self._pictures.get(key)
+            if hit is not None:
+                return hit
+            p = _draw(tile, held, zl)
+            with self._lock:
+                if len(self._pictures) > 4:
+                    self._pictures.pop(next(iter(self._pictures)))
+                self._pictures[key] = p
+                self._drawing.pop(key, None)
+            return p
 
 
 def _level(tile: TileRef, held: TileClouds) -> int:
@@ -263,6 +268,7 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
             "pending": counts,
             "search": cl.search,
             "tasks": [t.view() for t in running],
+            "failed": failed.view() if (failed := engine.tasks.failed(tile.name)) else None,
             "detector": {
                 "ready": detector_ready() and opencv_ready(),
                 "bytes": detector_bytes() + opencv_bytes(),
@@ -293,6 +299,7 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
     ) -> dict[str, Any]:
         tile, folder, maybe, _state = opened(name, "find", body)
         held = ready(maybe)
+        since = cls.generation(tile)
 
         def run(task: Task) -> None:
             ensure_opencv(progress=lambda d, t: task.say("tool", d, t))
@@ -307,7 +314,7 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
                 p, rings, classes, sources_for(tile, folder), cancel=task.stop, phase=task.say
             )
             found = [_found(a, r, v, p) for a, r, v in zip(areas, rings, verdicts, strict=True)]
-            with cls.update(tile, held) as cl:
+            with cls.update(tile, held, since=since) as cl:
                 cls.merge_search(cl, found, held, {"level": zl, "found": len(found)})
             _remember(tile, held.textures_key, classes)
 
@@ -336,6 +343,7 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
         again: bool = False,
     ) -> Task:
         code, cid, rings = c["source"], c["id"], c["rings"]
+        since = cls.generation(tile)
 
         def run(task: Task) -> None:
             ensure_opencv(progress=lambda d, t: task.say("tool", d, t))
@@ -363,7 +371,7 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
                 cancel=task.stop,
                 phase=task.say,
             )
-            with cls.update(tile, held) as cl, contextlib.suppress(OsxpError):
+            with cls.update(tile, held, since=since) as cl:
                 cls.record_check(cl, cid, code, rings, got)
 
         return engine.tasks.start(tile.name, "getting", run, cloud=cid)
@@ -385,6 +393,7 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
         p = engine.picture(tile, held, _level(tile, held))
         with cls.update(tile, held) as cl:
             c = dict(cls.add_outline(cl, [ring], cls.rings_ha([ring]), held))
+        since = cls.generation(tile)
 
         def run(task: Task) -> None:
             ensure_opencv(progress=lambda d, t: task.say("tool", d, t))
@@ -395,10 +404,9 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
             (v,) = screen(
                 p, [[ring]], classes, sources_for(tile, folder), cancel=task.stop, phase=task.say
             )
-            best = None
-            with cls.update(tile, held) as cl, contextlib.suppress(OsxpError):
+            with cls.update(tile, held, since=since) as cl:
                 cls.record_screening(cl, c["id"], v)
-                best = cl.get(c["id"])["best"]
+                best = next((x["best"] for x in cl.clouds if x["id"] == c["id"]), None)
             if best is not None:
                 start_getting(tile, folder, held, {**c, "source": best})
 

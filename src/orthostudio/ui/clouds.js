@@ -10,7 +10,7 @@
  * changes; nothing else changes what X-Plane shows.
  */
 
-import { fmtNum, t } from "./i18n.js";
+import { codeText, fmtNum, t } from "./i18n.js";
 
 /** How often a tile is read again while a task of it runs, in ms. */
 const POLL_MS = 1500;
@@ -269,6 +269,11 @@ export function createCloudMode(ctx) {
         h("button", { type: "button", class: "btn", onclick: () => api("POST", `/api/clouds/tasks/${task.id}/stop`).then(refresh) }, t("clouds.stop"))));
     }
     // what the tile allows is the engine's to say (``mode.possible``, ``mode.useful``)
+    if (a.failed) {  // the tile's last task that failed, until its next one: the engine's words for it
+      const e = a.failed.error || {};
+      const [message, remedy] = codeText(e.code, e.context) || [e.message || "", e.remedy || ""];
+      kids.push(h("p", { class: "clouds-warning", role: "status" }, `${t(`clouds.task.${a.failed.kind}`)} ${message} ${remedy || ""}`.trim()));
+    }
     const can = new Set(a.allowed);
     const searching = a.tasks.some((x) => x.kind === "search");
     if (can.has("find") && !a.clouds.length && !searching) kids.push(h("p", null, a.search ? t("clouds.none_found") : t("clouds.not_looked")));

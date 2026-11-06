@@ -17,6 +17,7 @@ import threading
 from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
 
+from orthostudio.errors import OsxpError
 from orthostudio.imagery.chunks import ChunkStatus
 from orthostudio.imagery.providers import Provider, cache_name, tile_url
 from orthostudio.model import TileRef
@@ -104,7 +105,8 @@ class SourcePieces:
         progress: Callable[[int, int], None] | None = None,
     ) -> None:
         """Fetch ``todo`` (``source -> keys``) the disk does not hold; ``again`` asks once more
-        those it holds as no picture (Check again: a source may have one now)."""
+        those it holds as no picture (Check again: a source may have one now). Stopped through
+        ``cancel``, ``SYS_CANCELLED``: what was not fetched is no answer of the source."""
         wanted: dict[str, list[Key]] = {}
         for code, keys in todo.items():
             if code not in self.caches:
@@ -118,6 +120,8 @@ class SourcePieces:
                 wanted[code] = mine
         if wanted:
             asyncio.run(self._fetch(wanted, cancel, progress))
+        if cancel is not None and cancel.is_set():
+            raise OsxpError("SYS_CANCELLED")
 
     async def _fetch(
         self,

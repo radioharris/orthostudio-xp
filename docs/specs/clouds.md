@@ -159,8 +159,10 @@ its tick, its source, and per source tried its check (its answer, fit and entry)
 `clouds/cloudlist.py` writes it (`pick`, `merge_search`, `add_outline`, `remove_outline`,
 `record_screening`, `record_check`, `discard`, `restore`). The
 list is the draft: each change is written as it is made, one writer at a time per tile, and
-survives closing, quitting and every build. Its order is the laying order. A list that cannot be
-read is moved aside (`.broken`) and made again from what the tile holds, its clouds ticked.
+survives closing, quitting and every build. Its order is the laying order. Reading it changes
+nothing: a file that is not a list is read as no list, made again from what the tile holds (its
+clouds ticked), and the next write puts it aside first (`.broken-<n>`, each kept); a passing read
+error is raised, never a draft dropped for it.
 Deleting the tile, in the app or with `osxp uninstall --delete`, deletes its list and its
 previews when the folder deleted is the one its clouds are kept for (`cloudlist.forgetting`).
 
@@ -244,13 +246,19 @@ A search, getting a cloud's images and trying an outline's sources are the engin
 (`clouds/tasks.py`): each runs in a thread of its own, says its phase and progress, writes its
 result into the list at its end, and ends whether a page is open or not. One search at a time for
 the app (a search holds gigabytes, B2), three image gettings at once. **Stop** ends a task at its
-next step; Quit stops them all.
+next step, at once while it waits for its turn; what a stopped fetch did not get is no answer of
+the source (`SourcePieces.fetch` raises `SYS_CANCELLED`). Quit stops them all. A task that fails
+keeps its error, which the tile's answer gives (`failed`) until its next task, for the page to
+say it. A task writes only on the list it began on: forgetting the tile moves the list's
+generation on, and a write begun before writes nothing (`cloudlist.update(since=)`); a result for
+a cloud that left the list meanwhile is dropped.
 
 A tile is built by one program at a time (`pipeline/turns.py`): the build holds each of its tiles
-by a file in the data folder's `building/`, its process's number in it. Another program asked to
-build one of them while that process lives is refused before anything is written,
-`SYS_TILE_BEING_BUILT`; a file left by a program gone counts for nothing. In the app, builds wait
-in their queue.
+by a file in the data folder's `building/`, locked by the system for the time of the build, its
+process's number in it for the message. Another program asked to build one of them meanwhile is
+refused before anything is written, `SYS_TILE_BEING_BUILT`; the system lets go of the lock
+whatever ends the program, so no file stands for a build gone. In the app, builds wait in their
+queue.
 
 ## 4. Finding and laying
 

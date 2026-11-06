@@ -207,12 +207,32 @@ def test_discard_and_restore() -> None:
 
 
 def test_a_broken_list_is_put_aside_and_made_again_from_what_the_tile_holds(home: Path) -> None:
+    # a read changes nothing; the write puts the broken file aside, each one kept
     path = cls.list_path(TILE)
     path.parent.mkdir(parents=True)
     path.write_text("{not json")
-    cl = cls.load(TILE, _held(_entry("held0001", A)))
+    held = _held(_entry("held0001", A))
+    cl = cls.load(TILE, held)
     assert [c["id"] for c in cl.clouds] == ["held0001"] and cl.get("held0001")["tick"]
-    assert path.with_name(path.name + ".broken").read_text() == "{not json"
+    assert path.read_text() == "{not json"  # read only
+    with cls.update(TILE, held):
+        pass
+    path.write_text("[]")
+    with cls.update(TILE, held):
+        pass
+    aside = sorted(p.name for p in path.parent.glob(path.name + ".broken*"))
+    assert aside == [path.name + ".broken-1", path.name + ".broken-2"]
+    assert path.with_name(path.name + ".broken-1").read_text() == "{not json"
+
+
+def test_a_task_begun_before_the_tile_was_forgotten_writes_nothing(home: Path) -> None:
+    with cls.update(TILE) as cl:
+        cls.merge_search(cl, [_found(A)], None)
+    since = cls.generation(TILE)
+    cls.forget(TILE)
+    with pytest.raises(OsxpError) as got, cls.update(TILE, since=since) as cl:
+        cls.merge_search(cl, [_found(B)], None)
+    assert got.value.code == "SYS_CANCELLED" and not cls.list_path(TILE).exists()
 
 
 def test_the_list_is_written_whole(home: Path) -> None:

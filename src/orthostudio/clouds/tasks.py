@@ -38,6 +38,8 @@ class Task:
     done: int = 0
     total: int = 0
     stop: threading.Event = field(default_factory=threading.Event)
+    error: dict[str, Any] | None = None
+    """How it failed (``OsxpError.to_dict``), once it has."""
 
     def say(self, phase: str, done: int = 0, total: int = 0) -> None:
         if self.stop.is_set():
@@ -53,6 +55,7 @@ class Task:
             "cloud": self.cloud,
             "phase": self.phase,
             "progress": progress,
+            "error": self.error,
         }
 
 
@@ -62,6 +65,7 @@ class Tasks:
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._tasks: dict[str, Task] = {}
+        self._failed: dict[str, Task] = {}  # each tile's last failure, until its next task
         self._search = threading.Semaphore(1)
         self._checks = threading.Semaphore(CHECKS_AT_ONCE)
 
@@ -75,21 +79,33 @@ class Tasks:
                     t.stop.set()
             task = Task(secrets.token_hex(6), tile, kind, cloud)
             self._tasks[task.id] = task
+            self._failed.pop(tile, None)
         gate = self._search if kind == "search" else self._checks
 
         def body() -> None:
             try:
-                with gate:
+                while not gate.acquire(timeout=0.25):  # its turn, or its stop
+                    if task.stop.is_set():
+                        return
+                try:
                     if not task.stop.is_set():
                         run(task)
+                finally:
+                    gate.release()
             except OsxpError as exc:
                 if exc.code != "SYS_CANCELLED":
                     log.warning("%s %s of %s: %s", task.kind, task.cloud or "", tile, exc.message)
-            except Exception:
+                    task.error = exc.to_dict()
+            except Exception as exc:
                 log.exception("%s of %s failed", task.kind, tile)
+                task.error = OsxpError(
+                    "SYS_INTERNAL_ERROR", context={"type": type(exc).__name__, "detail": str(exc)}
+                ).to_dict()
             finally:
                 with self._lock:
                     self._tasks.pop(task.id, None)
+                    if task.error is not None:
+                        self._failed[tile] = task
 
         threading.Thread(target=body, name=f"osxp-clouds-{kind}-{tile}", daemon=True).start()
         return task
@@ -97,6 +113,11 @@ class Tasks:
     def of(self, tile: str | None = None) -> list[Task]:
         with self._lock:
             return [t for t in self._tasks.values() if tile is None or t.tile == tile]
+
+    def failed(self, tile: str) -> Task | None:
+        """The tile's last task that failed, until its next one starts."""
+        with self._lock:
+            return self._failed.get(tile)
 
     def stop(self, task_id: str) -> bool:
         with self._lock:

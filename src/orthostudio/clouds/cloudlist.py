@@ -42,6 +42,9 @@ __all__ = ["Change", "CloudList", "changes", "forgetting", "laid_after", "load",
 FORMAT = "osxp-cloud-list-1"
 _ID = string.ascii_lowercase + string.digits
 _LOCKS: dict[str, threading.Lock] = {}
+_GENERATIONS: dict[str, int] = {}
+"""Each tile's list's generation: forgetting the tile moves it on, and a task's write begun on an
+earlier one is dropped (:func:`update`)."""
 _DEGREE_M = 111_320.0  # a degree of latitude, in metres
 _GUARD = threading.Lock()
 
@@ -104,21 +107,17 @@ def _lock(tile: TileRef) -> threading.Lock:
         return _LOCKS.setdefault(tile.name, threading.Lock())
 
 
+def generation(tile: TileRef) -> int:
+    """The tile's list's generation now (:data:`_GENERATIONS`)."""
+    with _GUARD:
+        return _GENERATIONS.get(tile.name, 0)
+
+
 def load(tile: TileRef, held: TileClouds | None = None) -> CloudList:
-    """The tile's list; a new one when it has none, a broken one moved aside and made again.
-    Every cloud the tile holds is in it, ticked with its source (a list lost or a pack brought
-    from another computer)."""
-    path = list_path(tile)
-    try:
-        doc = json.loads(path.read_text(encoding="utf-8"))
-        if doc.get("format") != FORMAT or doc.get("tile") != tile.name:
-            raise ValueError("not this tile's list")
-        cl = CloudList(tile.name, list(doc["clouds"]), int(doc.get("number", 0)), doc.get("search"))
-    except FileNotFoundError:
-        cl = CloudList(tile.name, [])
-    except (OSError, ValueError, KeyError, TypeError):
-        path.replace(path.with_name(path.name + ".broken"))
-        cl = CloudList(tile.name, [])
+    """The tile's list, read and nothing else; a new one when it has none or it cannot be read as
+    a list (:func:`update` puts such a file aside before writing). Every cloud the tile holds is
+    in it, ticked with its source (a list lost or a pack brought from another computer)."""
+    cl = _read(tile) or CloudList(tile.name, [])
     for entry in held.applied if held is not None else ():
         if not any(c["id"] == entry["id"] for c in cl.clouds):
             number = int(entry.get("number") or cl.number + 1)
@@ -140,6 +139,22 @@ def load(tile: TileRef, held: TileClouds | None = None) -> CloudList:
     return cl
 
 
+def _read(tile: TileRef) -> CloudList | None:
+    """The list in the tile's file, ``None`` when there is none or it is not one (a passing read
+    error is raised: a draft is never dropped for it)."""
+    try:
+        doc = json.loads(list_path(tile).read_text(encoding="utf-8"))
+        if not isinstance(doc, dict) or doc.get("format") != FORMAT or doc.get("tile") != tile.name:
+            return None
+        return CloudList(
+            tile.name, list(doc["clouds"]), int(doc.get("number", 0)), doc.get("search")
+        )
+    except FileNotFoundError:
+        return None
+    except (ValueError, KeyError, TypeError):
+        return None
+
+
 def save(cl: CloudList) -> None:
     doc = {
         "format": FORMAT,
@@ -154,8 +169,10 @@ def save(cl: CloudList) -> None:
 
 
 def forget(tile: TileRef) -> None:
-    """The tile's list and its previews gone, with the tile."""
+    """The tile's list and its previews gone, with the tile; a task's write begun before dropped."""
     with _lock(tile):
+        with _GUARD:
+            _GENERATIONS[tile.name] = _GENERATIONS.get(tile.name, 0) + 1
         list_path(tile).unlink(missing_ok=True)
         shutil.rmtree(previews_dir(tile), ignore_errors=True)
 
@@ -171,9 +188,19 @@ def forgetting(tile: TileRef, folder: Path, *, custom_scenery: Path | None) -> I
 
 
 @contextmanager
-def update(tile: TileRef, held: TileClouds | None = None) -> Iterator[CloudList]:
-    """The tile's list to change, written back on leaving, one writer at a time per tile."""
+def update(
+    tile: TileRef, held: TileClouds | None = None, *, since: int | None = None
+) -> Iterator[CloudList]:
+    """The tile's list to change, written back on leaving, one writer at a time per tile; a
+    file that is not a list put aside first (``.broken-<n>``, each kept). ``since``: the
+    generation a task began on; the tile forgotten since, nothing is written."""
     with _lock(tile):
+        if since is not None and since != generation(tile):
+            raise OsxpError("SYS_CANCELLED")
+        path = list_path(tile)
+        if path.exists() and _read(tile) is None:
+            n = sum(1 for _ in path.parent.glob(path.name + ".broken*"))
+            path.replace(path.with_name(f"{path.name}.broken-{n + 1}"))
         cl = load(tile, held)
         yield cl
         save(cl)
@@ -312,8 +339,10 @@ def best_of(screening: Mapping[str, Mapping[str, Any]]) -> str | None:
 
 def record_screening(cl: CloudList, cid: str, verdicts: Mapping[str, Any]) -> None:
     """An outline's sources tried: their answers, and its best ticked (drawing it is asking to
-    replace it)."""
-    c = cl.get(cid)
+    replace it); nothing when it left the list meanwhile."""
+    c = next((x for x in cl.clouds if x["id"] == cid), None)
+    if c is None:
+        return
     c["screening"] = screening_of(verdicts)
     c["best"] = best_of(c["screening"])
     if c["best"] is not None:
@@ -322,9 +351,9 @@ def record_screening(cl: CloudList, cid: str, verdicts: Mapping[str, Any]) -> No
 
 def record_check(cl: CloudList, cid: str, code: str, rings: Any, got: Any) -> None:
     """The images got of ``code`` for the cloud ``cid`` (``find.Check``), kept under that source,
-    unless the cloud changed outline meanwhile (another search)."""
-    c = cl.get(cid)
-    if c["rings"] != rings:
+    unless the cloud left the list or changed outline meanwhile (another search)."""
+    c = next((x for x in cl.clouds if x["id"] == cid), None)
+    if c is None or c["rings"] != rings:
         return
     c.setdefault("checks", {})[code] = {
         "answer": got.judgement.answer,
