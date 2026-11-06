@@ -119,7 +119,7 @@ export function createCloudMode(ctx) {
   const $ = (id) => document.getElementById(id);
   const cs = {
     tile: null, answer: null, view: "after", current: null, poll: null,
-    ground: null, overlays: null, groundKey: null, shapes: null, marks: null,
+    ground: null, overlays: null, groundKey: null, shapes: null, marks: null, lastPreviews: new Map(),
     /** The row to bring into view after the next drawing, and whether to its middle. */
     reveal: null, centre: false,
   };
@@ -148,7 +148,7 @@ export function createCloudMode(ctx) {
     ctx.planMap.cancelDraw();
     ctx.planMap.leaflet()?.off("zoomend", drawMarks);
     for (const layer of [cs.ground, cs.shapes, cs.marks]) layer?.remove();
-    Object.assign(cs, { tile: null, answer: null, ground: null, overlays: null, groundKey: null, shapes: null, marks: null });
+    Object.assign(cs, { tile: null, answer: null, ground: null, overlays: null, groundKey: null, shapes: null, marks: null, lastPreviews: new Map() });
     $("clouds-panel").hidden = true;
     $("clouds-banner").hidden = true;
     document.querySelector(".plan-flow")?.classList.remove("is-clouds");
@@ -226,7 +226,20 @@ export function createCloudMode(ctx) {
     const pictures = [];
     const base = a ? (cs.view === "after" ? a.after : a.picture) : null;
     if (base) pictures.push(base);
-    if (a && cs.view === "after") for (const c of a.clouds) if (c.preview) pictures.push(c.preview);
+    // a cloud whose images are being got keeps its last preview meanwhile (its task, the
+    // engine's): a source changed showed the photo with its cloud again for the seconds the new
+    // images took (a user, 2026-11-06); once the task has ended, After is the engine's again
+    const kept = new Map();
+    if (a && cs.view === "after") {
+      for (const c of a.clouds) {
+        const preview = c.preview || (c.task ? cs.lastPreviews.get(c.id) : null);
+        if (preview) {
+          pictures.push(preview);
+          kept.set(c.id, preview);
+        }
+      }
+      cs.lastPreviews = kept;
+    }
     const key = pictures.map((p) => p.name).join(" ");
     if (key === cs.groundKey) return;
     cs.groundKey = key;

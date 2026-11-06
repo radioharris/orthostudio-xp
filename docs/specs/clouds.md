@@ -39,17 +39,18 @@ tile's textures are read. What the tile holds is counted from its folder (2.1).
 The Plan's map, brought over the tile; the Plan's steps make way for the cloud panel.
 
 - **On the map**: the tile drawn as X-Plane draws it (R2). In **After**, the tile as X-Plane shows
-  it, but the textures Apply makes again: in those, the build's own with the preview of each
-  cloud Apply lays there, in the list's order (R4); in **Before**, the tile with no cloud
-  replaced. The ground is laid again only when its files change, the new one shown once loaded:
-  the tile never flashes when a cloud is clicked. Around the tile, the map darkened (seen from
-  far, the base map is another mosaic than the tile's photos). Every cloud's outline on a dark
-  casing, readable over snow: yellow when unticked, the accent when ticked, the current one
-  thicker; its tooltip says its name and what a click does ("Cloud 5 · click to tick it", the
-  engine's `tip`); a found cloud large enough shows its number inside it, a cloud too small to see
-  at the map's zoom a pin that clicks as its outline. A click on an outline or a pin ticks or
-  unticks it, except while a cloud is being outlined, and brings its row to the middle of the
-  list. While a task of a cloud runs, a label with a spinner at its centre says it.
+  it, but the textures Apply makes again: in those, the build's own with the preview of each cloud
+  Apply lays there, in the list's order (R4); in **Before**, the tile with no cloud replaced. The
+  ground is laid again only when its files change, the new one shown once loaded: the tile never
+  flashes when a cloud is clicked, and a cloud whose images are being got (a source changed) keeps
+  its last preview until the task ends. Around the tile, the map darkened (seen from far, the base
+  map is another mosaic than the tile's photos). Every cloud's outline on a dark casing, readable
+  over snow: yellow when unticked, the accent when ticked, the current one thicker; its tooltip says
+  its name and what a click does ("Cloud 5 · click to tick it", the engine's `tip`); a found cloud
+  large enough shows its number inside it, a cloud too small to see at the map's zoom a pin that
+  clicks as its outline. A click on an outline or a pin ticks or unticks it, except while a cloud is
+  being outlined, and brings its row to the middle of the list. While a task of a cloud runs, a
+  label with a spinner at its centre says it.
 - **The banner over the map**: the sentence of the view ("What X-Plane shows.", "What X-Plane will
   show after Apply.", "The tile with no cloud replaced.", the three in one place so the banner
   keeps one size), then **After**, **Before**, **Outline a cloud**, **Back to the Plan**.
