@@ -28,7 +28,6 @@ import numpy as np
 from PIL import Image
 
 from orthostudio.clouds.opencv import cv2
-from orthostudio.graph.digest import digest_bytes
 from orthostudio.imagery.grid import TextureId, wgs84_to_tile
 from orthostudio.textures.assemble import decode_tile
 
@@ -42,7 +41,6 @@ __all__ = [
     "encode_part",
     "lay",
     "layer",
-    "part_digest",
     "pieces",
     "read_clouds_input",
     "read_piece",
@@ -373,8 +371,3 @@ def lay(rgb: np.ndarray, layers: Iterable[Layer]) -> np.ndarray:
                 np.uint8
             )
     return rgb if out is None else out
-
-
-def part_digest(data: bytes) -> str:
-    """The digest a part is named and checked by."""
-    return digest_bytes(data)

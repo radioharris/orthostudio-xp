@@ -61,7 +61,9 @@ difference per channel (0 to 255):
 | Cloud | Inside | Soft edge | Outside | What the replacement changed inside |
 |---|---|---|---|---|
 | Esri over a glacier, 11 km² | 4.3, 4.1, 4.7 | 3.3, 3.1, 3.5 | 0.02, 0.01, 0.01 | 30.4, 30.7, 35.9 |
-| EOX, 12 km² (the same method in a script, before the tool) | 2.6, 2.2, 2.7 | 3.2, 2.7, 3.0 | 0.02 | |
+| EOX over a valley, 12 km² | 2.6, 2.2, 2.7 | 3.2, 2.7, 3.0 | 0.02, 0.02, 0.02 | 74.6, 67.0, 68.8 |
 
 What is left inside is the textures' BC1 compression on a contrasted ground (snow and rock); the
-means of the two images agree within a level.
+means of the two images agree within a level. Both measured again once the tile's folder held its
+clouds and the colours were clipped before they are blended (`CLOUDS_RULE` 2), the clouds laid
+through Apply from the page: the same figures.

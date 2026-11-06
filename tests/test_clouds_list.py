@@ -240,3 +240,14 @@ def test_the_list_is_written_whole(home: Path) -> None:
         cls.merge_search(cl, [_found(A)], None)
     doc = json.loads(cls.list_path(TILE).read_text())
     assert doc["format"] == "osxp-cloud-list-1" and len(doc["clouds"]) == 1
+
+
+def test_every_answer_of_a_source_has_its_words_in_both_languages() -> None:
+    # one table of what a source can answer (sources.ANSWERS), the page's words for each
+    from orthostudio.clouds.sources import ANSWERS, PROPOSABLE
+
+    text = (Path(__file__).parent.parent / "src/orthostudio/ui/i18n.js").read_text("utf-8")
+    fr, en = text.split("\n  en: {", 1)
+    for answer in ANSWERS:
+        assert f'"clouds.answer.{answer}":' in fr and f'"clouds.answer.{answer}":' in en, answer
+    assert set(ANSWERS) >= PROPOSABLE

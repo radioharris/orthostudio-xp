@@ -39,17 +39,6 @@ __all__ = [
     "words",
 ]
 
-TILE_STATES = (
-    "data_away",
-    "disk_away",
-    "in_build",
-    "queued",
-    "not_built",
-    "earlier_version",
-    "own_source_gone",
-    "ready",
-)
-
 
 @dataclass(frozen=True, slots=True)
 class TileFacts:
@@ -67,7 +56,8 @@ class TileFacts:
 
 
 def tile_state(f: TileFacts) -> str:
-    """The tile's state, the first of :data:`TILE_STATES` that holds."""
+    """The tile's state, the first that holds (module doc): ``data_away``, ``disk_away``,
+    ``in_build``, ``queued``, ``not_built``, ``earlier_version``, ``own_source_gone``, ``ready``."""
     if f.data_away:
         return "data_away"
     if f.disk_away:
