@@ -17,13 +17,13 @@ replaced at Apply); waiting (ticked, its images not got, with why); found (not t
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from orthostudio.clouds.cloudlist import CloudList, changes
+from orthostudio.clouds.cloudlist import Change, CloudList, removable
+from orthostudio.clouds.sources import PROPOSABLE
 from orthostudio.clouds.tile import TileClouds
-from orthostudio.model import TileRef
 
 __all__ = ["TILE_STATES", "TileFacts", "library_row", "rows", "summary", "tile_state", "words"]
 
@@ -76,16 +76,16 @@ def tile_state(f: TileFacts) -> str:
 def rows(
     cl: CloudList,
     held: TileClouds | None,
-    tile: TileRef,
+    changes: Sequence[Change],
     state: str,
     tasks: Mapping[str, Mapping[str, Any]],
     previews: Mapping[str, Mapping[str, Any] | None],
 ) -> list[dict[str, Any]]:
     """Every cloud's row, in laying order: its state, the words of its line (``line``: a key and
-    its parameters), what After lays for it (``preview``), the actions it allows. ``tasks`` by
-    cloud id, ``previews`` by cloud id: the preview of what After lays (held or new)."""
+    its parameters), what After lays for it (``preview``), the actions it allows. ``changes`` what
+    Apply would change (``cloudlist.changes``), ``tasks`` and ``previews`` by cloud id."""
     holds = {c["id"]: c for c in (held.applied if held is not None else ())}
-    pending = {ch.cloud: ch for ch in changes(cl, held, tile)} if held is not None else {}
+    pending = {ch.cloud: ch for ch in changes}
     out: list[dict[str, Any]] = []
     frozen = state not in ("ready", "in_build", "queued")
     for c in cl.clouds:
@@ -125,7 +125,7 @@ def rows(
         if not frozen and task is None:
             actions += ["untick"] if c["tick"] else ["tick"]
             actions += ["choose"]
-            if c["kind"] == "drawn":
+            if removable(c, held):
                 actions.append("remove")
         lays = row in ("held", "ready") or (row in ("waiting", "getting") and was is not None)
         out.append(
@@ -149,7 +149,8 @@ def rows(
 
 
 def _menu(c: Mapping[str, Any]) -> list[dict[str, Any]]:
-    """The sources under a cloud, what each has there and its fit, the best first."""
+    """Its source and every source tried under the cloud: what each has there, its fit, whether
+    it may be chosen (``sources.PROPOSABLE``), the best first."""
     got = c.get("checks") or {}
     items = []
     for code, s in (c.get("screening") or {}).items():
@@ -160,23 +161,26 @@ def _menu(c: Mapping[str, Any]) -> list[dict[str, Any]]:
                 "answer": answer,
                 "fit": s.get("fit", 0),
                 "best": code == c.get("best"),
+                "proposable": answer is None or answer in PROPOSABLE,
             }
         )
     if c.get("source") and not any(i["source"] == c["source"] for i in items):
         # its source, never screened here (a cloud the tile holds, its list lost)
         answer = (got.get(c["source"]) or {}).get("answer")
-        items.append({"source": c["source"], "answer": answer, "fit": 0, "best": False})
+        items.append(
+            {"source": c["source"], "answer": answer, "fit": 0, "best": False, "proposable": True}
+        )
     order = {"clear": 0, "cloudy": 1}
     return sorted(
         items, key=lambda i: (order.get(i["answer"], 2), -int(i["fit"] or 0), i["source"])
     )
 
 
-def summary(cl: CloudList, held: TileClouds | None, tile: TileRef) -> dict[str, Any]:
+def summary(changes: Sequence[Change], held: TileClouds | None) -> dict[str, Any]:
     """What Apply would change, counted: ``replace``, ``another``, ``back``, and those ``waiting``
     for their images; ``held``, the clouds the tile holds replaced."""
     counts = {"replace": 0, "another": 0, "back": 0, "waiting": 0}
-    for ch in changes(cl, held, tile) if held is not None else ():
+    for ch in changes:
         counts["waiting" if ch.entry is None and ch.kind != "back" else ch.kind] += 1
     counts["held"] = len(held.applied) if held is not None else 0
     counts["changes"] = counts["replace"] + counts["another"] + counts["back"]

@@ -23,7 +23,23 @@ from orthostudio.model import TileRef
 from orthostudio.net import Fetcher, FetchRequest, FetchResult
 from orthostudio.pipeline.parents import ParentCache
 
-__all__ = ["SourcePieces", "other_sources"]
+__all__ = ["ANSWERS", "PROPOSABLE", "SourcePieces", "other_sources"]
+
+ANSWERS = (
+    "clear",
+    "cloudy",
+    "same_photo",
+    "no_picture",
+    "did_not_answer",
+    "refused",
+    "not_a_picture",
+)
+"""What a source can answer under a cloud: what it has there (clear, cloudy), the tile's own photo,
+no picture, or what a piece of it said (``SourcePieces.kind``); each has its words in the page
+(``clouds.answer.<answer>``)."""
+PROPOSABLE = frozenset({"clear", "cloudy", "did_not_answer", "refused"})
+"""The answers under which a source may be chosen for a cloud: what it has there, or what asking
+it again may change. The same photo would bring the cloud back; with no picture, nothing to lay."""
 
 Key = tuple[int, int, int]
 """``(x, y, zl)`` of a source's piece."""

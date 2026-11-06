@@ -13,6 +13,7 @@ import pytest
 
 from orthostudio.clouds import cloudlist as cls
 from orthostudio.clouds.tile import TileClouds, colours_near
+from orthostudio.errors import OsxpError
 from orthostudio.model import TileRef
 
 TILE = TileRef(43, 5)
@@ -105,14 +106,58 @@ def test_a_new_cloud_over_a_held_or_ticked_one_is_that_one() -> None:
 
 
 def test_an_outline_takes_the_found_clouds_it_covers_and_keeps_a_held_one() -> None:
+    # R3: covering half of a found cloud or more, it is that cloud; touching one, it is another
     held = _held(_entry("held0001", A))
     with cls.update(TILE, held) as cl:
-        cls.merge_search(cl, [_found(B)], held)
-        c = cls.add_outline(cl, C, 3.0, held)
+        cls.merge_search(cl, [_found(B), _found(D)], held)
+        b, d = cl.clouds[1:]
+        c = cls.add_outline(cl, _ring(43.59, 5.09, 43.71, 5.31), 3.0, held)  # over B
+        cls.add_outline(cl, _ring(43.85, 5.25, 43.95, 5.40), 1.0, held)  # touches D's corner
         ids = [x["id"] for x in cl.clouds]
-        assert "held0001" in ids and c["id"] in ids and len(ids) == 2  # B was covered: it is C now
-        cls.remove_outline(cl, c["id"])
-        assert [x["id"] for x in cl.clouds] == ["held0001"]
+        assert b["id"] not in ids and d["id"] in ids and "held0001" in ids and c["id"] in ids
+        cls.remove_outline(cl, c["id"], held)
+        assert c["id"] not in [x["id"] for x in cl.clouds]
+
+
+def test_a_held_outline_leaves_the_list_only_once_the_tile_no_longer_holds_it() -> None:
+    # R3: unticked it comes back at Apply; a list made again from the tile is the same list
+    with cls.update(TILE) as cl:
+        o = cls.add_outline(cl, A, 3.0, None)
+        cls.pick(cl, o["id"], source="EOX")
+        cl.get(o["id"])["checks"]["EOX"] = {"answer": "clear", "entry": _entry(o["id"], A)}
+        (laid,) = cls.laid_after(cl, None, TILE)
+    held = _held(laid)
+    with pytest.raises(OsxpError), cls.update(TILE, held) as cl:
+        cls.remove_outline(cl, o["id"], held)
+    cls.list_path(TILE).unlink()  # the list lost: made again from what the tile holds
+    again = cls.load(TILE, held).get(o["id"])
+    assert (again["kind"], again["number"], again["tick"]) == ("drawn", o["number"], True)
+
+
+def test_a_tick_on_images_got_on_another_photo_gets_them_again() -> None:
+    # R6: images that no longer stand are images not in
+    held = _held()
+    with cls.update(TILE, held) as cl:
+        cls.merge_search(cl, [_found(A)], held)
+        cid = cl.clouds[0]["id"]
+        e = _entry(cid, A)
+        e["images"] = {NAME: "chunks-0"}
+        cl.get(cid)["checks"]["EOX"] = {"answer": "clear", "entry": e}
+        cls.pick(cl, cid, tick=True)
+        (ch,) = cls.changes(cl, held, TILE)
+    assert cls.needs_images(ch)
+    assert not cls.needs_images(cls.Change(cid, "replace", "EOX", None, "same_photo"))
+
+
+def test_a_source_showing_the_tiles_own_photo_cannot_be_chosen() -> None:
+    with cls.update(TILE) as cl:
+        f = _found(A)
+        f["screening"]["Arc"] = {"answer": "same_photo", "fit": 0}
+        cls.merge_search(cl, [f], None)
+        cid = cl.clouds[0]["id"]
+        with pytest.raises(OsxpError):
+            cls.pick(cl, cid, source="Arc")
+        cls.pick(cl, cid, source="EOX")
 
 
 def test_the_changes_apply_makes_against_what_the_tile_holds() -> None:
@@ -173,4 +218,4 @@ def test_the_list_is_written_whole(home: Path) -> None:
     with cls.update(TILE) as cl:
         cls.merge_search(cl, [_found(A)], None)
     doc = json.loads(cls.list_path(TILE).read_text())
-    assert doc["format"] == "osxp-cloud-list-1" and doc["version"] == 1 and len(doc["clouds"]) == 1
+    assert doc["format"] == "osxp-cloud-list-1" and len(doc["clouds"]) == 1

@@ -1304,8 +1304,6 @@ const STRINGS = {
     "clouds.answer.did_not_answer": "n'a pas répondu",
     "clouds.answer.refused": "refuse pour l'instant",
     "clouds.answer.not_a_picture": "n'envoie pas d'images",
-    "clouds.answer.not_readable": "illisible",
-    "clouds.answer.undefined": "pas encore demandée",
     "clouds.tile.data_away": "Le disque du dossier de données n'est pas branché : la carte, la recherche et Appliquer reviennent avec lui.",
     "clouds.tile.disk_away": "Le disque de cette tuile n'est pas branché.",
     "clouds.tile.in_build": "En construction : les changements faits maintenant attendent le prochain Appliquer.",
@@ -1331,7 +1329,6 @@ const STRINGS = {
     "clouds.row.waiting.did_not_answer": "{source} n'a pas répondu : Récupérer ses images pour redemander",
     "clouds.row.waiting.refused": "{source} refuse pour l'instant : Récupérer ses images pour redemander plus tard",
     "clouds.row.waiting.not_a_picture": "{source} n'envoie pas d'images ici : choisissez une autre source",
-    "clouds.row.waiting.not_readable": "Les images de {source} sont illisibles : choisissez une autre source",
 
     "err.unknown": "Erreur inattendue.",
     "err.conflict": "Conflit : une autre opération est en cours.",
@@ -2634,8 +2631,6 @@ const STRINGS = {
     "clouds.answer.did_not_answer": "did not answer",
     "clouds.answer.refused": "refused for now",
     "clouds.answer.not_a_picture": "does not send pictures",
-    "clouds.answer.not_readable": "cannot be read",
-    "clouds.answer.undefined": "not asked yet",
     "clouds.tile.data_away": "The data folder's disk is not connected: the map, finding and Apply come back with it.",
     "clouds.tile.disk_away": "The disk of this tile is not connected.",
     "clouds.tile.in_build": "Being built: changes you make now wait for the next Apply.",
@@ -2661,7 +2656,6 @@ const STRINGS = {
     "clouds.row.waiting.did_not_answer": "{source} did not answer: Get its images to ask again",
     "clouds.row.waiting.refused": "{source} refused for now: Get its images to ask again later",
     "clouds.row.waiting.not_a_picture": "{source} does not send pictures here: choose another source",
-    "clouds.row.waiting.not_readable": "{source}'s pictures cannot be read: choose another source",
 
     "err.unknown": "Unexpected error.",
     "err.conflict": "Conflict: another operation is running.",

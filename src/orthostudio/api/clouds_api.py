@@ -205,14 +205,14 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
         previews = (
             {c["id"]: preview_for(tile, p, held, c) for c in cl.clouds} if held is not None else {}
         )
+        pending = cls.changes(cl, held, tile) if held is not None else []
         return {
             "tile": tile.name,
-            "version": cl.version,
             "state": state,
             "line": mode.words(state),
             "picture": picture,
-            "clouds": mode.rows(cl, held, tile, state, tasks, previews),
-            "pending": mode.summary(cl, held, tile),
+            "clouds": mode.rows(cl, held, pending, state, tasks, previews),
+            "pending": mode.summary(pending, held),
             "search": cl.search,
             "tasks": [t.view() for t in engine.tasks.of(tile.name)],
             "detector": {
@@ -229,8 +229,9 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
                 tile = TileRef.parse(path.stem)
                 folder, held = engine.held(tile)
                 cl = cls.load(tile, held)
+                pending = cls.changes(cl, held, tile) if held is not None else []
                 out[tile.name] = mode.library_row(
-                    state_of(tile, folder, held), mode.summary(cl, held, tile)
+                    state_of(tile, folder, held), mode.summary(pending, held)
                 )
         return {"tiles": out}
 
@@ -266,8 +267,7 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
             )
             found = [_found(a, r, v, p) for a, r, v in zip(areas, rings, verdicts, strict=True)]
             with cls.update(tile, held) as cl:
-                cls.merge_search(cl, found, held)
-                cl.search = {"level": zl, "found": len(found)}
+                cls.merge_search(cl, found, held, {"level": zl, "found": len(found)})
             _remember(tile, held.textures_key, classes)
 
         task = engine.tasks.start(tile.name, "search", run)
@@ -281,17 +281,10 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
             cid = str(body["id"])
             cls.pick(cl, cid, tick=body.get("tick"), source=body.get("source"))
             c = dict(cl.get(cid))
-        # ticked with a source the tile does not hold it with and no images of it got yet
-        was = held.held(cid)
-        got = ((c.get("checks") or {}).get(c["source"]) or {}).get("entry") if c["source"] else None
-        if (
-            c["tick"]
-            and c["source"]
-            and (was is None or was["source"] != c["source"])
-            and got is None
-        ):
+            change = next((ch for ch in cls.changes(cl, held, tile) if ch.cloud == cid), None)
+        if cls.needs_images(change):
             start_getting(tile, folder, held, c)
-        return {"version": cls.load(tile, held).version}
+        return {"ok": True}
 
     def start_getting(
         tile: TileRef,
@@ -328,16 +321,9 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
                 cancel=task.stop,
                 phase=task.say,
             )
+            preview = got.preview.name if got.preview else None
             with cls.update(tile, held) as cl, contextlib.suppress(OsxpError):
-                c2 = cl.get(cid)
-                if c2["rings"] == rings:
-                    c2.setdefault("checks", {})[code] = {
-                        "answer": got.judgement.answer,
-                        "fit": got.judgement.fit,
-                        "entry": got.entry,
-                        "preview": got.preview.name if got.preview else None,
-                        "bounds": list(got.bounds) if got.bounds else None,
-                    }
+                cls.record_check(cl, cid, code, rings, got, preview)
 
         return engine.tasks.start(tile.name, "getting", run, cloud=cid)
 
@@ -371,13 +357,10 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
             (v,) = screen(
                 p, [[ring]], classes, sources_for(tile, folder), cancel=task.stop, phase=task.say
             )
-            best = _best(v)
+            best = None
             with cls.update(tile, held) as cl, contextlib.suppress(OsxpError):
-                c2 = cl.get(c["id"])
-                c2["screening"] = {k: {"answer": j.answer, "fit": j.fit} for k, j in v.items()}
-                c2["best"] = best
-                if best is not None:  # drawing it is asking to replace it
-                    cls.pick(cl, c["id"], source=best)
+                cls.record_screening(cl, c["id"], v)
+                best = cl.get(c["id"])["best"]
             if best is not None:
                 start_getting(tile, folder, held, {**c, "source": best})
 
@@ -389,7 +372,7 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
         tile = tile_of(name)
         _folder, held = engine.held(tile)
         with cls.update(tile, held) as cl:
-            cls.remove_outline(cl, cid)
+            cls.remove_outline(cl, cid, held)
         return {"ok": True}
 
     @router.post("/api/clouds/{name}/discard")
@@ -456,16 +439,11 @@ def _texture_zls(held: TileClouds) -> list[int]:
     return [parse_texture_name(n).zl for n in held.chunks]
 
 
-def _best(v: Mapping[str, Any]) -> str | None:
-    clear = sorted(((j.fit, code) for code, j in v.items() if j.answer == "clear"), reverse=True)
-    return clear[0][1] if clear else None
-
-
 def _found(a: Area, rings: list[list[float]], v: Mapping[str, Any], p: Picture) -> dict[str, Any]:
     return {
         "rings": rings,
         "ha": a.ha(p),
         "shadow": a.shadow,
-        "screening": {k: {"answer": j.answer, "fit": j.fit} for k, j in v.items()},
-        "best": _best(v),
+        "screening": cls.screening_of(v),
+        "best": cls.best_of(cls.screening_of(v)),
     }

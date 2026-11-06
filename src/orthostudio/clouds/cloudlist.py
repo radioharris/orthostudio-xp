@@ -30,6 +30,7 @@ from shapely.ops import unary_union
 from shapely.validation import make_valid
 
 from orthostudio.clouds.laying import standing
+from orthostudio.clouds.sources import PROPOSABLE
 from orthostudio.clouds.tile import TileClouds, list_path, own_folder, previews_dir
 from orthostudio.errors import OsxpError
 from orthostudio.fsutil import atomic_write_text
@@ -52,7 +53,6 @@ class CloudList:
     tile: str
     clouds: list[dict[str, Any]]
     number: int = 0
-    version: int = 0
     search: dict[str, Any] | None = None
 
     def get(self, cid: str) -> dict[str, Any]:
@@ -113,13 +113,7 @@ def load(tile: TileRef, held: TileClouds | None = None) -> CloudList:
         doc = json.loads(path.read_text(encoding="utf-8"))
         if doc.get("format") != FORMAT or doc.get("tile") != tile.name:
             raise ValueError("not this tile's list")
-        cl = CloudList(
-            tile.name,
-            list(doc["clouds"]),
-            int(doc.get("number", 0)),
-            int(doc.get("version", 0)),
-            doc.get("search"),
-        )
+        cl = CloudList(tile.name, list(doc["clouds"]), int(doc.get("number", 0)), doc.get("search"))
     except FileNotFoundError:
         cl = CloudList(tile.name, [])
     except (OSError, ValueError, KeyError, TypeError):
@@ -127,12 +121,13 @@ def load(tile: TileRef, held: TileClouds | None = None) -> CloudList:
         cl = CloudList(tile.name, [])
     for entry in held.applied if held is not None else ():
         if not any(c["id"] == entry["id"] for c in cl.clouds):
-            cl.number += 1
+            number = int(entry.get("number") or cl.number + 1)
+            cl.number = max(cl.number, number)
             cl.clouds.append(
                 {
                     "id": entry["id"],
                     "kind": entry.get("kind", "found"),
-                    "number": cl.number,
+                    "number": number,
                     "rings": entry["rings"],
                     "ha": rings_ha(entry["rings"]),
                     "tick": True,
@@ -145,12 +140,10 @@ def load(tile: TileRef, held: TileClouds | None = None) -> CloudList:
     return cl
 
 
-def save(cl: CloudList) -> int:
-    cl.version += 1
+def save(cl: CloudList) -> None:
     doc = {
         "format": FORMAT,
         "tile": cl.tile,
-        "version": cl.version,
         "number": cl.number,
         "search": cl.search,
         "clouds": cl.clouds,
@@ -158,7 +151,6 @@ def save(cl: CloudList) -> int:
     path = list_path(TileRef.parse(cl.tile))
     path.parent.mkdir(parents=True, exist_ok=True)
     atomic_write_text(path, json.dumps(doc, indent=1) + "\n")
-    return cl.version
 
 
 def forget(tile: TileRef) -> None:
@@ -191,8 +183,15 @@ def update(tile: TileRef, held: TileClouds | None = None) -> Iterator[CloudList]
 
 
 def pick(cl: CloudList, cid: str, *, tick: bool | None = None, source: str | None = None) -> None:
-    """A tick or a source of one cloud: choosing a source ticks it, unticking keeps it."""
+    """A tick or a source of one cloud: choosing a source ticks it, unticking keeps it; a source
+    whose answer there it is no use asking again cannot be chosen (``sources.PROPOSABLE``)."""
     c = cl.get(cid)
+    said = ((c.get("screening") or {}).get(source) or {}).get("answer") if source else None
+    if said is not None and said not in PROPOSABLE:
+        raise OsxpError(
+            "CLOUD_INVALID",
+            context={"tile": cl.tile, "cloud": cid, "reason": f"{source} answered {said} there"},
+        )
     if source is not None:
         c["source"], c["tick"] = source, True if tick is None else tick
     elif tick is not None:
@@ -211,13 +210,24 @@ def _overlap(a: Sequence[Sequence[float]], b: Sequence[Sequence[float]]) -> bool
     return bool(_shape(a).intersection(_shape(b)).area > 0)
 
 
+def _covers(outline: Sequence[Sequence[float]], cloud: Sequence[Sequence[float]]) -> bool:
+    """Whether ``outline`` holds half of ``cloud`` or more: it is that cloud."""
+    shape = _shape(cloud)
+    return bool(_shape(outline).intersection(shape).area >= 0.5 * shape.area > 0)
+
+
 def merge_search(
-    cl: CloudList, found: Sequence[Mapping[str, Any]], held: TileClouds | None
+    cl: CloudList,
+    found: Sequence[Mapping[str, Any]],
+    held: TileClouds | None,
+    search: Mapping[str, Any] | None = None,
 ) -> None:
     """A search's clouds into the list (R3): what X-Plane shows replaced, an outline and a
     ticked cloud stay as they are, a new cloud over one of them is that one; every other cloud
     found before and found again keeps its id and number and takes the new outline; one not found
-    again leaves; a new one is added."""
+    again leaves; a new one is added. ``search``: what the search was, kept with the list."""
+    if search is not None:
+        cl.search = dict(search)
     holds = {c["id"] for c in (held.applied if held is not None else ())}
     fixed = [c for c in cl.clouds if c["id"] in holds or c["kind"] == "drawn" or c["tick"]]
     loose = [c for c in cl.clouds if c not in fixed]
@@ -267,20 +277,64 @@ def add_outline(
             c["kind"] == "found"
             and not c["tick"]
             and c["id"] not in holds
-            and _overlap(rings, c["rings"])
+            and _covers(rings, c["rings"])
         )
     ]
     return cl.add("drawn", rings, ha)
 
 
-def remove_outline(cl: CloudList, cid: str) -> None:
+def removable(c: Mapping[str, Any], held: TileClouds | None) -> bool:
+    """Whether ``c`` may leave the list: an outline the tile does not hold (a cloud leaves the
+    list only when X-Plane no longer shows it replaced; unticked, it comes back at Apply)."""
+    return c["kind"] == "drawn" and (held is None or held.held(c["id"]) is None)
+
+
+def remove_outline(cl: CloudList, cid: str, held: TileClouds | None) -> None:
     c = cl.get(cid)
-    if c["kind"] != "drawn":
+    if not removable(c, held):
         raise OsxpError(
             "CLOUD_INVALID",
-            context={"tile": cl.tile, "cloud": cid, "reason": "only an outline is removed"},
+            context={"tile": cl.tile, "cloud": cid, "reason": "only an outline not replaced"},
         )
     cl.clouds.remove(c)
+
+
+def screening_of(verdicts: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
+    """What each source answered under a cloud (``find.Judgement``), as the list keeps it."""
+    return {code: {"answer": j.answer, "fit": j.fit} for code, j in verdicts.items()}
+
+
+def best_of(screening: Mapping[str, Mapping[str, Any]]) -> str | None:
+    """The source proposed for a cloud: the clear one whose colours fit best."""
+    clear = [(s.get("fit", 0), code) for code, s in screening.items() if s["answer"] == "clear"]
+    return max(clear)[1] if clear else None
+
+
+def record_screening(cl: CloudList, cid: str, verdicts: Mapping[str, Any]) -> None:
+    """An outline's sources tried: their answers, and its best ticked (drawing it is asking to
+    replace it)."""
+    c = cl.get(cid)
+    c["screening"] = screening_of(verdicts)
+    c["best"] = best_of(c["screening"])
+    if c["best"] is not None:
+        pick(cl, cid, source=c["best"])
+
+
+def record_check(
+    cl: CloudList, cid: str, code: str, rings: Any, got: Any, preview: str | None
+) -> None:
+    """The images got of ``code`` for the cloud ``cid`` (``find.Check``), kept under that source,
+    unless the cloud changed outline meanwhile (another search)."""
+    c = cl.get(cid)
+    if c["rings"] != rings:
+        return
+    c.setdefault("checks", {})[code] = {
+        "answer": got.judgement.answer,
+        "fit": got.judgement.fit,
+        "entry": got.entry,
+        "preview": preview,
+        "bounds": list(got.bounds) if got.bounds else None,
+    }
 
 
 def restore(cl: CloudList) -> None:
@@ -341,6 +395,14 @@ def changes(cl: CloudList, held: TileClouds | None, tile: TileRef) -> list[Chang
     return out
 
 
+def needs_images(ch: Change | None) -> bool:
+    """Whether a change waits for images that asking may bring: none got yet, a photo that
+    changed since, or a source that did not answer or refused for now."""
+    if ch is None or ch.kind == "back" or ch.entry is not None or ch.waiting is None:
+        return False
+    return ch.waiting == "no_images" or ch.waiting.startswith("photo_") or ch.waiting in PROPOSABLE
+
+
 def _stands_not(entry: Mapping[str, Any], held: TileClouds, tile: TileRef) -> str | None:
     """Why the images got for a cloud no longer stand on the photo the tile holds: the build's
     own rule, on what the tile's folder says of its textures."""
@@ -360,7 +422,7 @@ def laid_after(cl: CloudList, held: TileClouds | None, tile: TileRef) -> list[di
             continue
         ch = pending.get(c["id"])
         if ch is None and c["id"] in holds:
-            out.append(holds[c["id"]])
+            out.append({**holds[c["id"]], "kind": c["kind"], "number": c["number"]})
         elif ch is not None and ch.entry is not None:
-            out.append(ch.entry)
+            out.append({**ch.entry, "kind": c["kind"], "number": c["number"]})
     return out

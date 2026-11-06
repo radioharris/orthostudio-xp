@@ -49,9 +49,10 @@ The Plan's map, brought over the tile; the Plan's steps make way for the cloud p
   changes ("To replace: 1 · Back as photographed: 2"); **Find clouds**, **Apply (n changes)**,
   **Discard changes**, and **Restore the original photos** when the tile holds replaced clouds.
 - **A row**, laid out as the Plan's zones: its tick and name, its area, **Show** (the map over
-  it), a trash for an outline; the menu of its sources, each with what it has there and its fit
-  ("Esri World Imagery · clear · fit 93 %"), the best first, those with the same photo or no
-  picture there greyed; its line (1.5); **Get its images**
+  it), a trash for an outline the tile does not hold; the menu of its sources, each with what it
+  has there and its fit ("Esri World Imagery · clear · fit 93 %"), the best first, those that
+  cannot be chosen greyed (`sources.PROPOSABLE`: the same photo, no picture, not pictures); its
+  line (1.5); **Get its images**
   when they are not in; **Stop** while a task of it runs.
 
 ### 1.4 What the user does
@@ -63,7 +64,7 @@ The Plan's map, brought over the tile; the Plan's steps make way for the cloud p
 | Choose a source | Ticks it with that source; its images got |
 | **Get its images** | Asks the source again (after no answer, a refusal, or a photo that changed) |
 | **Outline a cloud** | Points clicked on the map, a double-click or Enter ends it, Escape gives up. The found clouds it covers that are neither ticked nor held leave: it is them. Its sources are tried and it comes ticked with the best |
-| Trash of an outline | Removes it from the list |
+| Trash of an outline | Removes it from the list; an outline the tile holds has none: unticked, it comes back at Apply, and its trash comes then |
 | **Apply** | Asks first, saying what changes and what waits; builds the tile as built with the list's ticked clouds (R4) |
 | **Discard changes** | The list back to what the tile holds |
 | **Restore the original photos** | Asks first; every cloud unticked and the tile built without any |
@@ -141,7 +142,9 @@ parts. The texture rule's input `clouds` (`OSXPCLD3`) carries a texture's patche
 `$OSXP_HOME/clouds/<tile>.json`, format `osxp-cloud-list-1`: every cloud with its id (eight
 characters, never given again on that tile), its number, its kind (`found`, `drawn`), its
 outline, its area, what each source has under it (`screening`, the search's), its best source,
-its tick, its source, and per source tried its check (its answer, fit, entry and preview). The
+its tick, its source, and per source tried its check (its answer, fit, entry and preview). Only
+`clouds/cloudlist.py` writes it (`pick`, `merge_search`, `add_outline`, `remove_outline`,
+`record_screening`, `record_check`, `discard`, `restore`). The
 list is the draft: each change is written as it is made, one writer at a time per tile, and
 survives closing, quitting and every build. Its order is the laying order. A list that cannot be
 read is moved aside (`.broken`) and made again from what the tile holds, its clouds ticked.
@@ -188,7 +191,10 @@ replaced cloud is read from its original (4.6), so Before is the tile with no cl
 A cloud keeps its id and its number for ever; neither is given again on the tile. A search merges
 into the list: a found cloud over one that is held or ticked is that one (it keeps its tick, its
 source, its outline); found clouds over each other are one; an unticked found cloud the new search
-no longer finds leaves. An outline takes the place of the unticked found clouds it covers.
+no longer finds leaves. An outline takes the place of the unticked found clouds it covers, half of
+one or more inside it (`cloudlist._covers`). A cloud leaves the list only when the tile does not
+hold it (`cloudlist.removable`), and every cloud Apply lays carries its kind and number into what
+the tile holds, so a list made again from the tile is the same list.
 
 ### R4. The list is a draft; Apply builds what its question showed
 
