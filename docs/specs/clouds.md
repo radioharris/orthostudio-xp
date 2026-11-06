@@ -50,7 +50,8 @@ The Plan's map, brought over the tile; the Plan's steps make way for the cloud p
   large enough shows its number inside it, a cloud too small to see at the map's zoom a pin that
   clicks as its outline. A click on an outline or a pin ticks or unticks it, except while a cloud is
   being outlined, and brings its row to the middle of the list. While a task of a cloud runs, not
-  while it waits for its turn, a label with a spinner at its centre says it.
+  while it waits for its turn, a spinner at its centre says it, with the words of an outline's
+  sources being tried (a cloud's images say theirs in its row).
 - **The banner over the map**: the sentence of the view ("What X-Plane shows.", "What X-Plane will
   show after Apply.", "The tile with no cloud replaced.", the three in one place so the banner
   keeps one size), then **After**, **Before**, **Outline a cloud**, **Back to the Plan**.

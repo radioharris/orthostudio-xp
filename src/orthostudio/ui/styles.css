@@ -701,6 +701,7 @@ input[aria-invalid="true"] { border-color: var(--fail); }
   white-space: nowrap; padding: 3px 8px; border-radius: var(--radius); font-size: var(--fs-2); font-weight: 600;
   background: var(--bg-2); color: var(--fg); border: 1px solid var(--line-2); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
 }
+.cloud-pending.is-spinner { padding: 3px; border-radius: 50%; }
 /* Outlining a cloud: a thin cross to aim, over the map and over what is drawn on it. */
 .plan-map.is-outlining, .plan-map.is-outlining.leaflet-grab, .plan-map.is-outlining .leaflet-interactive { cursor: crosshair; }
 .plan-step { border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg-2); padding: var(--card-pad); min-width: 0; }

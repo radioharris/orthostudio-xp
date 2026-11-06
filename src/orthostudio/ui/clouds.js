@@ -310,9 +310,11 @@ export function createCloudMode(ctx) {
       }
       shape.addTo(layer);
       if (c.task && c.task.phase !== "waiting") {
-        // its images being got, its sources tried: said at its centre while it runs, not while it
-        // waits for its turn (Tick all: two hundred labels hid the map, a user, 2026-11-06)
-        const label = h("div", { class: "cloud-pending" }, h("span", { class: "spinner", "aria-hidden": "true" }), lineWords(c.line, names()));
+        // at its centre while it runs, not while it waits for its turn: an outline just drawn
+        // says its sources are tried, where the user looks; a cloud's images, a spinner alone,
+        // its words in its row (Tick all: the labels hid the map, a user, 2026-11-06)
+        const words = c.task.kind === "outline" ? lineWords(c.line, names()) : null;
+        const label = h("div", { class: words ? "cloud-pending" : "cloud-pending is-spinner" }, h("span", { class: "spinner", "aria-hidden": "true" }), words);
         L.marker(L.latLngBounds(rings.flat()).getCenter(), {
           icon: L.divIcon({ className: "cloud-pending-anchor", html: label, iconSize: [0, 0] }),
           interactive: false,
