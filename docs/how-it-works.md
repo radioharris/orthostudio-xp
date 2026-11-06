@@ -349,6 +349,27 @@ nothing yet, so everything is made again there). They are built together, in one
 like the Plan's *Build*: a tile X-Plane shows is built again in its own folder and stays in
 X-Plane, updated, and one it does not show stays out.
 
+**Clouds.** *Clouds…*, on a tile's line in the Library, opens the Plan's map on that tile drawn as
+X-Plane draws it: from its own DSF and textures, the sea and the lakes at the share of the photo
+X-Plane gives them (nothing of the tile is downloaded). *Find clouds* reads it, a second time in
+more detail where it is sharp enough for small clouds, with OmniCloudMask's two networks run by
+OpenCV on this computer (downloaded once, at your word, about 110 MB); each cloud comes with its
+shadow when it falls beside it. Every other source covering the tile is then tried under each
+cloud: whether it has a picture there, the same photo as the tile (ArcGIS sells Bing's in many
+places: never proposed, it would bring the cloud back), clear or cloudy, and how well its ground
+fits the photo around the cloud. Nothing is ticked for you. A tick fetches the source's pieces at
+the tile's own sharpness and freezes them: the map's *After* is made from them by the build's own
+code, so it is what the texture gets, and a build never asks the source again. Your ticks wait in
+the tile's list until *Apply*, which builds the tile again with the settings it was built with
+(`build_settings.json` in its folder), its clouds alone changed: only the textures they touch are
+made again, the others are reused, in seconds. Inside each cloud the other source's ground takes
+the colours of the photo around it, with a soft edge; where it has no picture, nothing is laid.
+The clouds a tile holds are written with its textures, so every later build of it, from the Plan,
+the Library, Works or the command line, lays them again, while the photo under each is the one it
+was chosen on: another source or level, new images, other colours near it, and the build puts the
+photo back there and says so, the cloud still ticked for one *Apply* to replace it again.
+Deleting a tile forgets its clouds. Details: `docs/specs/clouds.md`.
+
 A tile filed elsewhere that you build again is built in the workshop, beside the cache, then put
 back in its folder in place of the old version: moved there at once on the workshop's disk, copied
 and read back on another, the old version taken away only once the new one is in place. Built again
@@ -518,6 +539,9 @@ one when the app starts.
   airports.sqlite  X-Plane's airports and the box of their runways, for the Plan's search, its map
                    and its count of the airports made sharper
   update.json      the latest version GitHub named, and when it was asked (once a day at most)
+  clouds/+46+006.json  the clouds of a tile you looked at: found or outlined, ticked, their source
+  models/clouds-detector-1/  the cloud detector (64 MB) and  libs/opencv-<version>/  OpenCV,
+                   downloaded once, when you first look for clouds
 
 the data folder (~/.orthostudio unless Settings name another one)/
   chunks/          image pieces downloaded (raw material)          ≈ 0.75 GB per ZL16 tile
@@ -531,6 +555,7 @@ the data folder (~/.orthostudio unless Settings name another one)/
     zOrthoStudio_+46+006/
       Earth nav data/+40+000/+46+006.dsf
       terrain/*.ter   textures/*.dds   orthostudio.toml   tile_settings.cfg   CREDITS.txt
+      build_settings.json
                      orthostudio.toml: what the tile was built with (imagery, detail, relief
                      really read, zones, patches), which the Library and the Plan show
                      CREDITS.txt: who the imagery belongs to and what it is given under, so a
@@ -539,6 +564,8 @@ the data folder (~/.orthostudio unless Settings name another one)/
   work/            build reports and temporary files
   osm/             the OpenStreetMap data downloaded
   mapcache/        base-map images of the page
+  clouds/+46+006/  a tile's picture and its clouds' previews, for the cloud mode's map
+  clouds/parts/    the clouds' images got from their sources, until a build keeps them
   elevation/  dem/ relief files downloaded when the relief is not X-Plane's, and the ones found missing
 
 X-Plane 12/Custom Scenery/
@@ -595,7 +622,11 @@ plug it back and open OrthoStudio XP again, nothing is lost. Should the cache's 
 *Disk space* and the Plan say so, and emptying the store folder starts it afresh: the tiles are not
 in it.
 
-`tile_settings.cfg` lists the settings the tile was built with. The tiles Ortho4XP built keep their
+`tile_settings.cfg` lists the settings the tile was built with. `build_settings.json` holds every
+one of them, the relief, the colours and the roads too, with the textures that build made: the
+cloud mode's *Apply* builds the tile again from it, and a later build that did not write it (an
+earlier version) leaves the tile to be built once first. It never holds what belongs to the
+computer (the folders, the map data's address and key). The tiles Ortho4XP built keep their
 own folders, `zOrtho4XP_<tile>` and `yOrtho4XP_Overlays`, which OrthoStudio XP never writes into.
 
 **Before building a tile again.** When a square you choose is already built, step 1 of the Plan

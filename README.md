@@ -54,6 +54,13 @@ checked automatically at every release too.
 - **The colours of the photos, seen on the map**: as delivered, toned down, or by your own numbers,
   for everything, one square or one zone. Changing them builds a tile again without downloading
   anything.
+- **Clouds replaced.** *Clouds…* in the Library opens a built tile on the map, drawn as X-Plane
+  draws it. *Find clouds* looks for them and tries every other source covering the tile under
+  each; you tick those to replace, each with the clear source you choose, and the map shows the
+  result before anything changes. *Apply* builds again only the textures under the clouds, with
+  the settings the tile was built with, and every later build of the tile keeps them replaced on
+  the same photo; *Restore the original photos* undoes it. The detection tool (OmniCloudMask's
+  networks and OpenCV, about 110 MB) is not in the installer: it is downloaded once, when you ask.
 - **Roads without bumps.** The ground flattened under the roads can be smoothed along them over
   100 or 250 m, so that X-Plane's roads no longer bump over the small waves of the relief, on
   whichever relief you build with. Off by default, as in Ortho4XP. The road bands can also get the
@@ -84,7 +91,8 @@ checked automatically at every release too.
   larger; the window opens where you left it.
 
 How it works, what it keeps on disk and how to clean it:
-[docs/how-it-works.md](docs/how-it-works.md).
+[docs/how-it-works.md](docs/how-it-works.md). Replacing a tile's clouds and keeping settings as
+profiles, step by step: [docs/manual.md](docs/manual.md).
 
 | What it will cost | Works |
 |---|---|
@@ -327,6 +335,12 @@ without the author's agreement.
 
 DSFTool (Laminar Research's X-Plane Scenery Tools, MIT/X11 licence) extracts the overlays: its
 macOS, Windows and Linux binaries are in `native/dsftool/`, with their checksums.
+
+The cloud detector is the two networks of [OmniCloudMask](https://github.com/DPIRD-DMA/OmniCloudMask)
+(DPIRD-DMA, MIT licence), converted for OpenCV by `tools/clouds/export_detector.py`; its licence
+comes with the app. The networks and [OpenCV](https://opencv.org) (Apache 2.0 licence, its own
+wheel from PyPI with its licences inside) are not in the installer: the app downloads them once, at
+the user's word (about 110 MB), and checks them against their digests.
 
 Map data © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright), under the Open
 Database Licence (ODbL): OrthoStudio XP reads the airports, roads, coastline and water of each
