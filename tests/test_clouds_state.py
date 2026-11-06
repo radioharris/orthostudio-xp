@@ -17,6 +17,7 @@ from orthostudio.clouds import cloudlist as cls
 from orthostudio.clouds import state
 from orthostudio.clouds.cloudlist import CloudList
 from orthostudio.clouds.laying import plan_folder
+from orthostudio.clouds.sources import JUDGED
 from orthostudio.clouds.tile import (
     Stamp,
     TileClouds,
@@ -136,12 +137,12 @@ def _case(folder: Path, tick: bool, chosen: Any, held: Any, images: str, neighbo
     src = state.source_of(c)
     if src is not None and images != "none":
         if images in ("did_not_answer", "no_picture"):
-            c["checks"][src] = {"answer": images, "fit": 0, "entry": None}
+            c["checks"][src] = {"answer": images, "fit": 0, "entry": None, "judged": JUDGED}
         else:
             got = _entry(folder, "cloud001", A, src, images)
-            c["checks"][src] = {"answer": "clear", "fit": 70, "entry": got}
+            c["checks"][src] = {"answer": "clear", "fit": 70, "entry": got, "judged": JUDGED}
     held_n = _entry(folder, "cloud002", B, "EOX")
-    n["checks"]["EOX"] = {"answer": "clear", "fit": 70, "entry": held_n}
+    n["checks"]["EOX"] = {"answer": "clear", "fit": 70, "entry": held_n, "judged": JUDGED}
     n["tick"] = neighbour != "unticked"
     if neighbour != "ticked":
         shown_entries.append(held_n)
@@ -189,10 +190,9 @@ def test_every_state_agrees_with_what_apply_and_discard_do(
     open_rows = any(s.row in ("another", "ready", "back", "waiting") for s in v.clouds)
     assert v.allows("discard") == open_rows
 
-    # Apply lays what the rows say, what the folder's plan keeps
-    assert [e["id"] for e in v.laid] == [s.cloud["id"] for s in v.clouds if s.lays is not None]
-    asked = [[e] for e in v.laid]
-    assert [e["id"] for e in plan_folder(TILE, shown, asked).laid] == [e["id"] for e in v.laid]
+    # Apply, given what the view asks, lays what the rows say
+    laid = plan_folder(TILE, shown, v.asked).laid
+    assert [e["id"] for e in laid] == [s.cloud["id"] for s in v.clouds if s.lays is not None]
 
     # the actions, from the row
     for s in v.clouds:
@@ -204,7 +204,7 @@ def test_every_state_agrees_with_what_apply_and_discard_do(
             assert "check" in s.actions, s.why  # what asking again may end is offered
 
     # after Apply, nothing is left to change; what waits still waits
-    after = _view(cl, _shows(folder, [dict(e) for e in v.laid]))
+    after = _view(cl, _shows(folder, [dict(e) for e in laid]))
     assert after.counts["changes"] == 0, [(s.cloud["id"], s.row, s.why) for s in after.clouds]
     for cid, s in rows.items():
         if s.row == "waiting":
@@ -231,7 +231,7 @@ def test_a_tile_in_a_build_reads_nothing_and_allows_nothing(folder: Path) -> Non
     cl, _shown = _case(folder, True, None, "same", "stands", "held")
     for st in ("in_build", "queued", "filing", "not_built", "not_whole", "disk_away", "data_away"):
         v = state.view(cl, None, TILE, st)
-        assert not v.allowed and v.laid == [] and all(s.row == "frozen" for s in v.clouds)
+        assert not v.allowed and not v.remade and all(s.row == "frozen" for s in v.clouds)
         assert v.line is not None and _words(v.line["key"]), st
     assert state.view(cl, None, TILE, "in_build").busy
 
@@ -241,9 +241,15 @@ def test_a_held_cloud_needs_its_part_only_where_its_texture_is_made_again(folder
     cl = CloudList(TILE.name, [])
     c, n = _cloud(cl, "cloud001", A), _cloud(cl, "cloud002", B)
     gone = _entry(folder, "cloud001", A, "EOX", "part_gone")
-    c["tick"], c["checks"]["EOX"] = True, {"answer": "clear", "fit": 70, "entry": gone}
+    c["tick"], c["checks"]["EOX"] = (
+        True,
+        {"answer": "clear", "fit": 70, "entry": gone, "judged": JUDGED},
+    )
     kept = _entry(folder, "cloud002", B, "EOX")
-    n["tick"], n["checks"]["EOX"] = True, {"answer": "clear", "fit": 70, "entry": kept}
+    n["tick"], n["checks"]["EOX"] = (
+        True,
+        {"answer": "clear", "fit": 70, "entry": kept, "judged": JUDGED},
+    )
     shown = _shows(folder, [gone, kept])
     v = _view(cl, shown)
     assert [s.row for s in v.clouds] == ["held", "held"] and v.counts["changes"] == 0
@@ -251,7 +257,8 @@ def test_a_held_cloud_needs_its_part_only_where_its_texture_is_made_again(folder
     v = _view(cl, shown)
     lost = v.cloud("cloud001")
     assert lost.row == "back" and lost.why == "photo_parts" and "check" in lost.actions
-    assert v.cloud("cloud002").row == "back" and v.laid == [] and v.counts["back"] == 2
+    assert v.cloud("cloud002").row == "back" and v.counts["back"] == 2
+    assert plan_folder(TILE, shown, v.asked).laid == []
 
 
 def test_a_source_that_may_not_be_chosen_is_refused(folder: Path) -> None:
@@ -267,7 +274,10 @@ def test_a_held_outline_may_not_be_removed(folder: Path) -> None:
     cl = CloudList(TILE.name, [])
     o = _cloud(cl, "outl0001", A, kind="drawn")
     e = _entry(folder, "outl0001", A, "EOX")
-    o["tick"], o["checks"]["EOX"] = True, {"answer": "clear", "fit": 70, "entry": e}
+    o["tick"], o["checks"]["EOX"] = (
+        True,
+        {"answer": "clear", "fit": 70, "entry": e, "judged": JUDGED},
+    )
     assert "remove" not in _view(cl, _shows(folder, [e])).cloud("outl0001").actions
     assert "remove" in _view(cl, _shows(folder, [])).cloud("outl0001").actions
 
@@ -358,3 +368,30 @@ def test_every_cloud_ticked_or_unticked_at_once_as_each_allows(folder: Path) -> 
         c["tick"] = True
     v = _view(cl, shown)
     assert v.allows("untick") and not v.allows("tick")
+
+
+def test_images_judged_another_way_are_as_if_never_got(folder: Path) -> None:
+    # a check judged on half the layer said no picture under every small cloud, for good (a
+    # review, 2026-11-06): judged another way, its answer is none, and the cloud asks again
+    cl, shown = _case(folder, True, None, None, "stands", "ticked")
+    c = cl.get("cloud001")
+    c["checks"]["EOX"] = {"answer": "no_picture", "fit": 0, "entry": None}  # no ``judged``
+    s = _view(cl, shown).cloud("cloud001")
+    assert s.source == "EOX" and s.why == "no_images" and "check" in s.actions
+
+
+def test_a_cloud_whose_images_are_got_keeps_what_after_showed_of_it(folder: Path) -> None:
+    # a source changed showed the photo with its cloud for the seconds the new images took (a
+    # user, 2026-11-06): the engine keeps the preview, the page no longer does
+    cl, shown = _case(folder, True, None, None, "stands", "ticked")
+    was = _view(cl, shown).cloud("cloud001").lays
+    assert was is not None
+    cl.get("cloud001")["chosen"] = "Esri"  # never asked: its images to get
+    assert "cloud001" not in [e["id"] for e, _n in _view(cl, shown).previews]
+    task = {"id": "t", "kind": "check", "cloud": "cloud001", "stoppable": True, "shows": was}
+    v = _view(cl, shown, [{**task, "phase": "fetching"}])
+    assert "cloud001" in [e["id"] for e, _n in v.previews]
+    row = v.cloud("cloud001").page()
+    assert "shows" not in row["task"] and row["label"] == "spinner"  # running: a spinner
+    waiting = _view(cl, shown, [{**task, "phase": "waiting"}]).cloud("cloud001").page()
+    assert waiting["label"] is None and row["numbered"] is True  # waiting its turn: nothing

@@ -25,7 +25,7 @@ from orthostudio.net import Fetcher, FetchRequest, FetchResult
 from orthostudio.pipeline.parents import ParentCache
 from orthostudio.pipeline.textures import chunk_entry_for
 
-__all__ = ["ANSWERS", "ASK_AGAIN", "PROPOSABLE", "SourcePieces", "other_sources"]
+__all__ = ["ANSWERS", "ASK_AGAIN", "JUDGED", "PROPOSABLE", "SourcePieces", "other_sources"]
 
 ANSWERS = (
     "clear",
@@ -44,6 +44,10 @@ ASK_AGAIN = frozenset({"did_not_answer", "refused", "not_a_picture"})
 PROPOSABLE = frozenset({"clear", "cloudy"}) | ASK_AGAIN
 """The answers under which a source may be chosen for a cloud: what it has there, or what asking
 it again may change. The same photo would bring the cloud back; with no picture, nothing to lay."""
+JUDGED = 2
+"""The way a cloud's images are judged (``find.check``), kept with each: images judged another way
+are as if never got. Judged on half the layer, every cloud under some 30 ha was said to have no
+picture in every source, and stayed so (``find.check``, 2026-11-06)."""
 
 Key = tuple[int, int, int]
 """``(x, y, zl)`` of a source's piece."""

@@ -1290,6 +1290,13 @@ _SPECS: tuple[ErrorSpec, ...] = (
         "Open the tile's Clouds… again to read its list as it is now; nothing was changed.",
     ),
     _spec(
+        "CLOUD_NOT_NOW",
+        _B,
+        _S,
+        "Tile {tile}: {action} cannot be done now, what the page showed has changed since.",
+        "Look at the tile as it is now, then try again; nothing was changed.",
+    ),
+    _spec(
         "CLOUD_INVALID",
         _B,
         _S,

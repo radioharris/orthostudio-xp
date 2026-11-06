@@ -33,6 +33,7 @@ from shapely.geometry import Polygon
 from shapely.ops import unary_union
 from shapely.validation import make_valid
 
+from orthostudio.clouds.sources import JUDGED
 from orthostudio.clouds.tile import (
     TileClouds,
     entry_problem,
@@ -211,7 +212,8 @@ def _adopt(cl: CloudList, shown: TileClouds) -> bool:
     for e in new:
         c = cl.add("found", [list(r) for r in e["rings"]], tick=True, chosen=e["source"])
         c["id"] = e["id"]
-        c["checks"] = {e["source"]: {"answer": "clear", "fit": 0, "entry": laid_fields(e)}}
+        got = {"answer": "clear", "fit": 0, "entry": laid_fields(e), "judged": JUDGED}
+        c["checks"] = {e["source"]: got}  # its images laid: they were judged fit to lay
         laid = {**laid_fields(e), "kind": c["kind"], "number": c["number"]}
         cl.laid = [x for x in cl.laid if x["id"] != e["id"]] + [laid]
     return bool(new)
@@ -258,8 +260,9 @@ def update(tile: TileRef, *, since: int | None = None) -> Iterator[CloudList]:
 
 
 def pick(cl: CloudList, cid: str, action: str, source: str | None = None) -> None:
-    """One cloud's pick, as the cloud's state allows it (``state.View.allows``): ``choose``
-    makes ``source`` its source and ticks it, ``tick`` ticks it, ``untick`` unticks it."""
+    """One cloud's pick, the one way a cloud is ticked or unticked (its state allowed it, the
+    caller asked ``state.View.allows``): ``choose`` makes ``source`` its source and ticks it,
+    ``tick`` ticks it, ``untick`` unticks it."""
     c = cl.get(cid)
     if action == "choose":
         c["chosen"] = source
@@ -336,20 +339,16 @@ def outline_problem(rings: Any, tile: TileRef) -> str | None:
     return None
 
 
-def add_outline(
-    cl: CloudList, rings: list[list[float]], shown: TileClouds | None
-) -> dict[str, Any]:
-    """A cloud outlined by hand: the found clouds it covers that it does not leave as they are
-    (:func:`_kept`) leave (it is them); it comes ticked once its sources are tried (drawing it is
-    asking to replace)."""
-    holds = held_by_id(shown)
-    cl.clouds = [c for c in cl.clouds if _kept(c, holds) or not _covers(rings, c["rings"])]
+def add_outline(cl: CloudList, rings: list[list[float]]) -> dict[str, Any]:
+    """A cloud outlined by hand, its sources to try (:func:`record_screening`): it comes ticked
+    once they are (drawing it is asking to replace)."""
     return cl.add("drawn", rings)
 
 
 def remove_outline(cl: CloudList, cid: str) -> None:
-    """The outline ``cid`` out of the list, as its state allows it (``remove``)."""
-    cl.clouds.remove(cl.get(cid))
+    """The outline ``cid`` out of the list, as its state allows it (``remove``), or its try
+    stopped; nothing when it left already."""
+    cl.clouds = [c for c in cl.clouds if c["id"] != cid]
 
 
 def screening_of(verdicts: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
@@ -357,11 +356,20 @@ def screening_of(verdicts: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
     return {code: {"answer": j.answer, "fit": j.fit} for code, j in verdicts.items()}
 
 
-def record_screening(cl: CloudList, cid: str, verdicts: Mapping[str, Any]) -> None:
-    """An outline's sources tried, kept with it, unless it left the list meanwhile."""
+def record_screening(
+    cl: CloudList, cid: str, verdicts: Mapping[str, Any], shown: TileClouds | None
+) -> None:
+    """An outline's sources tried, kept with it, unless it left the list meanwhile; the found
+    clouds it covers that it does not leave as they are (:func:`_kept`) leave then: it is them.
+    Its try stopped or failed, it leaves, and they stay (``remove_outline``)."""
     c = next((x for x in cl.clouds if x["id"] == cid), None)
-    if c is not None:
-        c["screening"] = screening_of(verdicts)
+    if c is None:
+        return
+    c["screening"] = screening_of(verdicts)
+    holds = held_by_id(shown)
+    cl.clouds = [
+        x for x in cl.clouds if x is c or _kept(x, holds) or not _covers(c["rings"], x["rings"])
+    ]
 
 
 def record_check(cl: CloudList, cid: str, code: str, rings: Any, got: Any) -> None:
@@ -374,13 +382,8 @@ def record_check(cl: CloudList, cid: str, code: str, rings: Any, got: Any) -> No
         "answer": got.judgement.answer,
         "fit": got.judgement.fit,
         "entry": got.entry,
+        "judged": JUDGED,
     }
-
-
-def untick_all(cl: CloudList) -> None:
-    """Every cloud of the list unticked, its source kept (Restore)."""
-    for c in cl.clouds:
-        c["tick"] = False
 
 
 def discard(cl: CloudList, shown: TileClouds | None) -> None:

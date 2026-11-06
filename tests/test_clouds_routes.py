@@ -123,7 +123,8 @@ async def test_what_runs_the_detector_is_asked_first_and_an_untick_is_not(
         r = await c.post("/api/clouds/+43+005/picks", json={"id": cid, "action": "tick"})
         err = r.json()["error"]
         assert err["code"] == "CLOUD_DETECTOR_ASK"  # its images: the detector
-        assert err["context"]["then"] == "check"  # on yes, its images asked, not the tick again
+        # on yes, its images asked (the body of ``check`` the engine gives), not the tick again
+        assert err["context"]["then"] == {"id": cid}
         # the tick kept either way: on no, the cloud waits for its images, offered to get them
         assert cloudlist.load(TILE).get(cid)["tick"] is True
         row = (await c.get("/api/clouds/+43+005")).json()["clouds"][0]
@@ -167,7 +168,7 @@ async def test_apply_and_restore_with_nothing_to_do_are_refused(app: Any, ready:
     async with client_for(app) as c:
         for body in ({"action": "apply"}, {"action": "restore"}):
             r = await c.post("/api/clouds/+43+005/apply", json=body)
-            assert r.json()["error"]["code"] == "CLOUD_TILE_NOT_READY", body
+            assert r.json()["error"]["code"] == "CLOUD_NOT_NOW", body  # not "build it first"
 
 
 @pytest.mark.anyio
@@ -188,7 +189,7 @@ async def test_a_ready_tiles_rows_offer_what_its_list_allows(app: Any, ready: Pa
     )
     assert rows[drawn["id"]]["actions"] == ["choose", "remove"]  # no source yet: no tick
     assert rows[drawn["id"]]["toggle"] is None and rows[found["id"]]["source"] == "EOX"
-    assert refused.json()["error"]["code"] == "CLOUD_INVALID"
+    assert refused.json()["error"]["code"] == "CLOUD_NOT_NOW"  # a click the page drew before
     assert unknown.json()["error"]["code"] == "CLOUD_UNKNOWN"
 
 
@@ -344,7 +345,7 @@ async def test_yes_to_the_detector_after_a_tick_gets_its_images_and_tick_all_tic
         b = cl.add("drawn", _ring(), chosen="EOX")["id"]
     async with client_for(app) as c:
         r = await c.post("/api/clouds/+43+005/picks", json={"action": "tick"})  # Tick all
-        assert r.json()["error"]["context"]["then"] == "check"
+        assert r.json()["error"]["context"]["then"] == {}  # every cloud's images
         assert all(x["tick"] for x in cloudlist.load(TILE).clouds)  # kept, both
         r = await c.post("/api/clouds/+43+005/check", json={"download": True})  # yes, for all
         assert r.status_code == 200, r.text
@@ -369,6 +370,7 @@ async def test_the_quick_search_reads_one_level_the_fine_one_two(
     monkeypatch.setattr(clouds_api, "opencv_ready", lambda: True)
     monkeypatch.setattr(clouds_api, "_tools", lambda task: None)
     monkeypatch.setattr(clouds_api, "fine_level", lambda zl, textures: zl + 1)
+    monkeypatch.setattr(state, "fine_level", lambda zl, textures: zl + 1)
     monkeypatch.setattr(clouds_api, "find", lambda p, fine, **k: (read.append(fine), ([], None))[1])
     monkeypatch.setattr(clouds_api, "screen", lambda *a, **k: [])
     async with client_for(app) as c:
@@ -389,9 +391,10 @@ def test_a_cloud_task_keeps_the_engine_up_as_a_build_does() -> None:
     from orthostudio.api.serve import _busy
 
     idle = SimpleNamespace(active=lambda: None)
-    running = SimpleNamespace(tasks=SimpleNamespace(of=lambda: ["a search"]))
+    running = SimpleNamespace(tasks=SimpleNamespace(busy=lambda: True))
     assert _busy({"jobs": idle, "clouds": running})
-    assert not _busy({"jobs": idle, "clouds": SimpleNamespace(tasks=SimpleNamespace(of=list))})
+    resting = SimpleNamespace(tasks=SimpleNamespace(busy=lambda: False))
+    assert not _busy({"jobs": idle, "clouds": resting})
 
 
 @pytest.mark.anyio
@@ -423,7 +426,113 @@ async def test_a_source_answering_worse_turns_the_cloud_to_the_next_whose_images
             if not a["busy"]:
                 break
             await anyio.sleep(0.05)
-    assert asked == ["EOX", "Arc"]  # each once: Arc not answering, the user asks it again
+    assert asked == ["EOX", "Arc"]  # each once
     (row,) = a["clouds"]
-    assert row["line"]["key"] == "clouds.row.waiting.no_source"  # none is clear there now
+    # Arc did not answer: what a piece said is not what it has, it stays the cloud's source, and
+    # the line offers to ask it again (a review, 2026-11-06: the cloud passed through every
+    # source on a cut network, and ended on none)
+    assert row["source"] == "Arc" and row["line"]["key"] == "clouds.row.waiting.did_not_answer"
+    assert "check" in row["actions"]
     assert {m["source"]: m["proposable"] for m in row["menu"]} == {"EOX": False, "Arc": True}
+
+
+@pytest.mark.anyio
+async def test_an_outline_whose_try_is_stopped_leaves_the_list_as_it_was(
+    app: Any, ready: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # a review, 2026-11-06: stopped, it stayed with no source, the found cloud it covered gone
+    from orthostudio.errors import OsxpError
+
+    def screen(*_a: Any, **_k: Any) -> Any:
+        raise OsxpError("SYS_CANCELLED")
+
+    monkeypatch.setattr(clouds_api, "detector_ready", lambda: True)
+    monkeypatch.setattr(clouds_api, "opencv_ready", lambda: True)
+    monkeypatch.setattr(clouds_api, "_tools", lambda task: None)
+    monkeypatch.setattr(clouds_api, "screen", screen)
+    with cloudlist.update(TILE) as cl:
+        found = cl.add("found", _ring(), screening={"EOX": {"answer": "clear", "fit": 70}})["id"]
+    polygon = [[5.1, 43.1], [5.2, 43.1], [5.2, 43.2], [5.1, 43.2]]
+    async with client_for(app) as c:
+        r = await c.post("/api/clouds/+43+005/outlines", json={"polygon": polygon})
+        assert r.status_code == 200, r.text
+        for _ in range(200):
+            if not (await c.get("/api/clouds/+43+005")).json()["busy"]:
+                break
+            await anyio.sleep(0.05)
+    assert [x["id"] for x in cloudlist.load(TILE).clouds] == [found]
+
+
+@pytest.mark.anyio
+async def test_stop_all_stops_every_task_of_the_tile(
+    app: Any, ready: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # after Tick all, two hundred tasks were stopped one by one (a review, 2026-11-06)
+    from orthostudio.errors import OsxpError
+
+    def check(*_a: Any, cancel: Any = None, **_k: Any) -> Any:
+        while not cancel.wait(0.02):
+            pass
+        raise OsxpError("SYS_CANCELLED")
+
+    monkeypatch.setattr(clouds_api, "_tools", lambda task: None)
+    monkeypatch.setattr(clouds_api, "check", check)
+    screening = {"EOX": {"answer": "clear", "fit": 70}}
+    with cloudlist.update(TILE) as cl:
+        for _ in range(2):
+            cl.add("found", _ring(), screening=screening)
+    async with client_for(app) as c:
+        r = await c.post("/api/clouds/+43+005/picks", json={"action": "tick", "download": True})
+        assert r.status_code == 200, r.text
+        a = (await c.get("/api/clouds/+43+005")).json()
+        assert "stop" in a["allowed"] and all(x["task"] for x in a["clouds"])
+        r = await c.post("/api/clouds/+43+005/stop")
+        assert r.json()["stopped"] == 2
+        for _ in range(200):
+            a = (await c.get("/api/clouds/+43+005")).json()
+            if not a["busy"]:
+                break
+            await anyio.sleep(0.05)
+    assert "stop" not in a["allowed"] and not any(x["task"] for x in a["clouds"])
+
+
+@pytest.mark.anyio
+async def test_restore_unticks_what_was_ticked_when_it_was_asked(
+    app: Any, ready: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # a cloud ticked while Restore ran was unticked at its end without a word (a review)
+    from orthostudio.clouds.tile import Stamp, stamped
+
+    texture = ready / "textures" / f"{NAME}.dds"
+    data = texture.read_bytes()
+    texture.write_bytes(stamped(data[:128], Stamp("a" * 40, "b" * 40)) + data[128:])
+    screening = {"EOX": {"answer": "clear", "fit": 70}}
+    with cloudlist.update(TILE) as cl:
+        before = cl.add("found", _ring(), screening=screening, tick=True)["id"]
+        meanwhile = cl.add("found", _ring(), screening=screening)["id"]
+
+    def show(*_a: Any, **_k: Any) -> list[Any]:
+        with cloudlist.update(TILE) as cl:
+            cloudlist.pick(cl, meanwhile, "tick")  # the user, while it runs
+        return []
+
+    monkeypatch.setattr(clouds_api, "show", show)
+    async with client_for(app) as c:
+        r = await c.post("/api/clouds/+43+005/apply", json={"action": "restore"})
+        assert r.status_code == 200, r.text
+        for _ in range(200):
+            if not (await c.get("/api/clouds/+43+005")).json()["busy"]:
+                break
+            await anyio.sleep(0.05)
+    ticks = {x["id"]: x["tick"] for x in cloudlist.load(TILE).clouds}
+    assert ticks == {before: False, meanwhile: True}
+
+
+@pytest.mark.anyio
+async def test_a_fine_search_is_refused_where_the_tile_has_nothing_finer(
+    app: Any, ready: Path
+) -> None:
+    async with client_for(app) as c:
+        assert (await c.get("/api/clouds/+43+005")).json()["fine"] is False
+        r = await c.post("/api/clouds/+43+005/find", json={"fine": True, "download": True})
+    assert r.json()["error"]["code"] == "CLOUD_NOT_NOW"

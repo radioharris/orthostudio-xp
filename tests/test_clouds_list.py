@@ -13,6 +13,7 @@ from typing import Any
 import pytest
 
 from orthostudio.clouds import cloudlist as cls
+from orthostudio.clouds.sources import JUDGED
 from orthostudio.clouds.tile import Stamp, TileClouds, part_path
 from orthostudio.errors import OsxpError
 from orthostudio.graph.digest import digest_bytes
@@ -116,18 +117,23 @@ def test_a_new_cloud_over_a_held_or_ticked_one_is_that_one() -> None:
         assert cl.clouds[0]["id"] == "held0001" and len(cl.clouds) == 2
 
 
-def test_an_outline_takes_the_found_clouds_it_covers_and_keeps_a_held_one() -> None:
-    # R3: covering half of a found cloud or more, it is that cloud; touching one, it is another
+def test_an_outline_takes_the_found_clouds_it_covers_once_its_sources_are_tried() -> None:
+    # R3: covering half of a found cloud or more, it is that cloud; touching one, it is another;
+    # its try stopped, it leaves and they stay (a review, 2026-11-06: they had gone already)
     held = _hold(_entry("held0001", A))
     with cls.update(TILE) as cl:
         cls.merge_search(cl, [_found(B), _found(D)], held)
         b, d = cl.clouds[1:]
-        c = cls.add_outline(cl, _ring(43.59, 5.09, 43.71, 5.31), held)  # over B
-        cls.add_outline(cl, _ring(43.85, 5.25, 43.95, 5.40), held)  # touches D's corner
+        c = cls.add_outline(cl, _ring(43.59, 5.09, 43.71, 5.31))  # over B
+        e = cls.add_outline(cl, _ring(43.85, 5.25, 43.95, 5.40))  # touches D's corner
+        assert b in cl.clouds  # its sources not tried yet: B stays
+        cls.remove_outline(cl, c["id"])  # its try stopped
+        assert c not in cl.clouds and b in cl.clouds
+        c = cls.add_outline(cl, _ring(43.59, 5.09, 43.71, 5.31))
+        cls.record_screening(cl, c["id"], {}, held)
+        cls.record_screening(cl, e["id"], {}, held)
         ids = [x["id"] for x in cl.clouds]
         assert b["id"] not in ids and d["id"] in ids and "held0001" in ids and c["id"] in ids
-        cls.remove_outline(cl, c["id"])
-        assert c["id"] not in [x["id"] for x in cl.clouds]
 
 
 def test_discard_brings_every_tick_and_source_back_to_what_the_tile_holds() -> None:
@@ -140,8 +146,6 @@ def test_discard_brings_every_tick_and_source_back_to_what_the_tile_holds() -> N
         cls.discard(cl, held)
         assert cl.get("held0001")["tick"] is True and cl.get("held0001")["chosen"] == "EOX"
         assert cl.get(new)["tick"] is False
-        cls.untick_all(cl)
-        assert not any(c["tick"] for c in cl.clouds)
 
 
 def test_a_check_is_kept_only_while_its_cloud_keeps_its_outline() -> None:
@@ -154,6 +158,7 @@ def test_a_check_is_kept_only_while_its_cloud_keeps_its_outline() -> None:
         assert cl.get(cid)["checks"] == {}  # got for another outline: a search moved it
         cls.record_check(cl, cid, "EOX", A, Check(Judgement("clear", 70), _entry(cid, A)))
         assert cl.get(cid)["checks"]["EOX"]["entry"]["id"] == cid
+        assert cl.get(cid)["checks"]["EOX"]["judged"] == JUDGED  # how they were judged
 
 
 def test_a_broken_list_is_put_aside_at_the_next_write_each_one_kept(home: Path) -> None:

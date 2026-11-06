@@ -41,6 +41,7 @@ __all__ = [
     "Picture",
     "box_bounds",
     "draw",
+    "fine_level",
     "frame",
     "map_level",
     "over_water",
@@ -69,6 +70,12 @@ def map_level(tile: TileRef, textures: Iterable[TextureId]) -> int:
     """The level the cloud mode's map reads ``tile`` at: the search's (:func:`search_level`), or
     its textures' own when coarser."""
     return min(search_level(tile), min(t.zl for t in textures))
+
+
+def fine_level(zl: int, textures: Iterable[TextureId]) -> int | None:
+    """The level of the fine search's second reading: one finer than ``zl`` where the textures
+    are that fine, for the small cumulus (B1); ``None`` when they are not."""
+    return zl + 1 if max(t.zl for t in textures) > zl else None
 
 
 def frame(tile: TileRef, zl: int) -> tuple[int, int, int, int]:

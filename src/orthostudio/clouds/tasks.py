@@ -35,13 +35,15 @@ CHECKS_AT_ONCE = 3
 class Task:
     """One task: of ``tile``, ``kind`` (the action that starts it: ``find``, ``check``,
     ``outline``, ``apply``, ``restore``), for ``cloud`` when it is one cloud's; where it is
-    (``phase``, ``done`` of ``total``); whether Stop ends it (``stoppable``)."""
+    (``phase``, ``done`` of ``total``); whether Stop ends it (``stoppable``); what After showed
+    of its cloud when it began (``shows``, the images it laid: shown meanwhile, ``state.view``)."""
 
     id: str
     tile: str
     kind: str
     cloud: str | None = None
     stoppable: bool = True
+    shows: Mapping[str, Any] | None = None
     phase: str = "waiting"
     done: int = 0
     total: int = 0
@@ -65,6 +67,7 @@ class Task:
             "progress": progress,
             "stoppable": self.stoppable,
             "error": self.error,
+            "shows": self.shows,
         }
 
 
@@ -80,7 +83,8 @@ class Tasks:
         self._checks = threading.Semaphore(CHECKS_AT_ONCE)
         self._taken = taken
         self._following: dict[str, int] = {}
-        """Per tile, the tasks ended whose follow-up runs (``then``): the tile is busy still."""
+        """Per tile, the tasks ended whose follow-up runs (``then``): under way still
+        (:meth:`busy`)."""
 
     def start(
         self,
@@ -90,15 +94,17 @@ class Tasks:
         cloud: str | None = None,
         *,
         then: Callable[[], None] | None = None,
+        shows: Mapping[str, Any] | None = None,
     ) -> Task:
         """Run ``run(task)`` in a thread once its turn comes (one search at a time for the app,
         :data:`CHECKS_AT_ONCE` reads of sources, Apply and Restore at once); the task is
         forgotten at its end, then ``then()`` runs when it ended neither stopped nor failed (what
-        follows it, seeing it ended). Refused (``CLOUD_TILE_NOT_READY``) while something else
-        holds the tile's folder, while what runs of the tile does not allow it (``state.possible``:
-        no Apply beside a task, no task beside Apply), or a task of the same tile, kind and cloud
-        is under way; the tile's last failure forgotten. Decided under the lock :meth:`end` lists
-        the tasks under: a task is refused, or ended by what takes the folder."""
+        follows it, seeing it ended). Refused while something else holds the tile's folder
+        (``CLOUD_TILE_NOT_READY``), while what runs of the tile does not allow it
+        (``state.possible``: no Apply beside a task, no task beside Apply), or a task of the same
+        tile, kind and cloud is under way (``CLOUD_NOT_NOW``: a click the page drew before); the
+        tile's last failure forgotten. Decided under the lock :meth:`end` lists the tasks under: a
+        task is refused, or ended by what takes the folder."""
         with self._lock:
             taken = self._taken().get(tile)
             if taken is not None:
@@ -107,11 +113,8 @@ class Tasks:
             under_way = {t.kind for t in mine}
             same = any(t.kind == kind and t.cloud == cloud for t in mine)
             if same or kind not in possible("ready", under_way):
-                raise OsxpError(
-                    "CLOUD_TILE_NOT_READY",
-                    context={"tile": tile, "state": ", ".join(sorted(under_way)) + " under way"},
-                )
-            task = Task(secrets.token_hex(6), tile, kind, cloud, kind not in WRITES)
+                raise OsxpError("CLOUD_NOT_NOW", context={"tile": tile, "action": kind})
+            task = Task(secrets.token_hex(6), tile, kind, cloud, kind not in WRITES, shows)
             self._tasks[task.id] = task
             self._failed.pop(tile, None)
         gate = self._search if kind == "find" else None if kind in WRITES else self._checks
@@ -161,11 +164,21 @@ class Tasks:
         with self._lock:
             return self._of(tile)
 
-    def following(self, tile: str | None = None) -> bool:
-        """Whether what follows a task of ``tile`` (of any: ``None``) runs: an outline's tick and
-        images, between its end and their own task. The tile is under way meanwhile."""
+    def busy(self, tile: str | None = None) -> bool:
+        """Whether anything of ``tile`` (of any tile: ``None``) is under way: a task, or what
+        follows one (an outline's tick and images, between its end and their own task). The one
+        rule, for the cloud mode's view, :meth:`end` and the engine kept up for its tasks."""
+        tiles = None if tile is None else {tile}
         with self._lock:
-            return any(n for t, n in self._following.items() if tile in (None, t))
+            return bool(self._mine(tiles)) or self._after(tiles)
+
+    def _mine(self, tiles: Collection[str] | None) -> list[Task]:
+        """The tasks of ``tiles`` (of every tile: ``None``), the lock held."""
+        return [t for t in self._tasks.values() if tiles is None or t.tile in tiles]
+
+    def _after(self, tiles: Collection[str] | None) -> bool:
+        """Whether what follows a task of ``tiles`` runs, the lock held."""
+        return any(n for t, n in self._following.items() if tiles is None or t in tiles)
 
     def failed(self, tile: str) -> Task | None:
         """The tile's last task that failed, until its next one starts."""
@@ -188,8 +201,7 @@ class Tasks:
         (``taken``): a task asked meanwhile is refused (:meth:`start`)."""
         while True:
             with self._lock:
-                mine = [t for t in self._tasks.values() if tiles is None or t.tile in tiles]
-                after = any(n for t, n in self._following.items() if tiles is None or t in tiles)
+                mine, after = self._mine(tiles), self._after(tiles)
             if not mine and not after:
                 return
             for t in mine:

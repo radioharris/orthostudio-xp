@@ -7,7 +7,8 @@ its picture, every cloud's row, what Apply would change, its tasks); ``POST .../
 ``POST .../picks`` a tick or a source (getting the cloud's images when it needs them);
 ``POST .../outlines`` and ``DELETE .../outlines/{id}`` a cloud outlined by hand;
 ``POST .../discard``; ``POST .../apply`` (``restore`` to bring back every cloud), a task;
-``GET .../files/{name}`` the picture and the previews; ``POST /api/clouds/tasks/{id}/stop``.
+``GET .../files/{name}`` the picture and the previews; ``POST /api/clouds/tasks/{id}/stop`` and
+``POST .../stop``, every task of the tile Stop ends.
 A task is named by the action that starts it: ``find``, ``check``, ``outline``, ``apply``,
 ``restore``.
 """
@@ -30,12 +31,12 @@ from PIL import Image
 
 from orthostudio.clouds import cloudlist as cls
 from orthostudio.clouds import state
-from orthostudio.clouds.find import check, find, fine_level, preview, screen
+from orthostudio.clouds.find import check, find, preview, screen
 from orthostudio.clouds.layer import RULE
 from orthostudio.clouds.laying import folder_lock, show
 from orthostudio.clouds.model import detector_bytes, detector_ready, ensure_detector
 from orthostudio.clouds.opencv import ensure_opencv, opencv_bytes, opencv_ready
-from orthostudio.clouds.picture import Picture, box_bounds, draw, map_level
+from orthostudio.clouds.picture import Picture, box_bounds, draw, fine_level, map_level
 from orthostudio.clouds.sources import SourcePieces, other_sources
 from orthostudio.clouds.tasks import Task, Tasks
 from orthostudio.clouds.tile import (
@@ -47,6 +48,7 @@ from orthostudio.clouds.tile import (
     picture_path,
     read_tile,
     served_path,
+    unready,
 )
 from orthostudio.errors import OsxpError
 from orthostudio.fsutil import atomic_write_bytes
@@ -83,11 +85,6 @@ class CloudEngine:
     def folder(self, tile: TileRef) -> Path:
         return own_folder(tile, custom_scenery=self.hooks.custom_scenery())
 
-    def picture(self, tile: TileRef, shown: TileClouds, zl: int) -> Picture:
-        """Before: the tile at ``zl`` with no cloud replaced, its textures as the build made
-        them (:meth:`drawn`), which a search and a cloud's images read."""
-        return self.drawn(tile, shown, zl)[1]
-
     def drawn(
         self, tile: TileRef, shown: TileClouds, zl: int, remade: frozenset[str] | None = None
     ) -> tuple[str, Picture]:
@@ -95,7 +92,7 @@ class CloudEngine:
         Apply makes again (``remade``), as the build made them (After's ground); every one as
         built for Before (``None``). With what it is made of, said in a line, which names it:
         the same line, the same picture. The map's level is kept (the last few); a finer one,
-        read once by a search, is not."""
+        read once by a search, is not. Before is what a search and a cloud's images read."""
         key = (tile.name, _what(shown, zl, remade))
         with self._lock:
             drawing = self._drawing.setdefault(key, threading.Lock())
@@ -173,10 +170,10 @@ def _draw(
     textures is written: what it is made of is said of what was read then."""
     with folder_lock(tile):
         now = read_tile(folder)
-        if now is None:
-            raise OsxpError(
-                "CLOUD_TILE_NOT_READY", context={"tile": tile.name, "state": "not_built"}
-            )
+        why = unready(now)
+        if why is not None:
+            raise OsxpError("CLOUD_TILE_NOT_READY", context={"tile": tile.name, "state": why})
+        assert now is not None
         laid = state.as_shown(now, remade)
         textures = {n: now.texture_path(n) if n in laid else now.plain_path(n) for n in now.names}
         p = draw(tile, zl, dsf=folder / tile.dsf_relpath, textures=textures)
@@ -221,10 +218,11 @@ def _ring_of(tile: TileRef, body: Mapping[str, Any] | None) -> list[float]:
     return ring
 
 
-def _detector_said(body: Mapping[str, Any] | None, then: str | None = None) -> None:
+def _detector_said(body: Mapping[str, Any] | None, then: Mapping[str, Any] | None = None) -> None:
     """``CLOUD_DETECTOR_ASK`` while the detector is not on this computer and the user has not
-    said to download it (``download``): the page asks, then sends with ``download`` the action
-    it says (``then``: a cloud's images, ``check``, after a tick kept), else the same one."""
+    said to download it (``download``): the page asks, then sends with ``download`` what the
+    engine says (``then``: the body of ``POST .../check``, the images after a tick kept), else
+    the same action again."""
     if (detector_ready() and opencv_ready()) or (body or {}).get("download"):
         return
     mb = max(1, round((detector_bytes() + opencv_bytes()) / 1e6))
@@ -269,8 +267,8 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
             read=lambda: read_tile(folder),
         )
         tasks = [t.view() for t in engine.tasks.of(tile.name)]
-        after = engine.tasks.following(tile.name)  # what follows a task: under way still
-        view = state.view(cls.knowing(tile, shown), shown, tile, st, tasks, after)
+        under_way = engine.tasks.busy(tile.name)  # what follows a task too
+        view = state.view(cls.knowing(tile, shown), shown, tile, st, tasks, under_way)
         return folder, shown, view
 
     def opened(
@@ -280,26 +278,22 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
         source: str | None = None,
     ) -> tuple[TileRef, Path, TileClouds, state.View]:
         """The tile ``name`` for ``action``, of the cloud ``body`` names when it names one (its
-        ``id``; ``choose``: of ``source``): refused unless its view allows it."""
+        ``id``; ``choose``: of ``source``): refused unless its view allows it, in the words of
+        the tile's state when it is not ready (``CLOUD_TILE_NOT_READY``), else as a click the
+        page drew before (``CLOUD_NOT_NOW``)."""
         tile = _tile_of(name)
         folder, shown, v = look(tile)
-        if body is None:
-            if not v.allows(action):
+        cid = None if body is None else _cloud_of(tile, body)
+        if cid is not None:
+            v.cloud(cid)  # CLOUD_UNKNOWN when it is not in the list
+        if not v.allows(action, cid, source):
+            if v.state != "ready":
                 raise OsxpError(
                     "CLOUD_TILE_NOT_READY", context={"tile": tile.name, "state": v.state}
                 )
-        else:
-            cid = _cloud_of(tile, body)
-            v.cloud(cid)  # CLOUD_UNKNOWN when it is not in the list
-            if not v.allows(action, cid, source):
-                raise OsxpError(
-                    "CLOUD_INVALID",
-                    context={
-                        "tile": tile.name,
-                        "cloud": cid,
-                        "reason": f"{action} not possible now",
-                    },
-                )
+            raise OsxpError(
+                "CLOUD_NOT_NOW", context={"tile": tile.name, "action": action, "cloud": cid}
+            )
         assert shown is not None  # a view allowing anything has its folder read
         return tile, folder, shown, v
 
@@ -309,10 +303,8 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
         _folder, shown, v = look(tile)
         picture = after = None
         previews = {}
-        fine = False
         if shown is not None:
             zl = map_level(tile, shown.textures)
-            fine = fine_level(zl, shown.textures) is not None
             what, p = engine.drawn(tile, shown, zl)
             picture = _picture_file(tile, what, p)
             # After: what X-Plane shows, but the textures Apply makes again, which show the
@@ -333,7 +325,7 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
             "texts": v.texts(),
             "picture": picture,
             "after": after,
-            "fine": fine,
+            "fine": v.fine,
             "clouds": [s.page(previews) for s in v.clouds],
             "tasks": v.tasks,
             "failed": failed.view() if failed else None,
@@ -374,26 +366,39 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
         *,
         again: bool = False,
         unasked: bool = False,
+        before: state.View | None = None,
     ) -> None:
         """Getting the images of the clouds ``ids`` (of every cloud: ``None``) whose state offers
         it (``check``), the detector asked for first (``body``): the one way it starts, after a
         tick, a source chosen, an outline's sources tried, the user's Get its images (``again``:
         its source asked again), or a check that turned the cloud to a source never asked
-        (``unasked``, ``CloudState.unasked``). Of several, one refused leaves the others go."""
+        (``unasked``, ``CloudState.unasked``). Of several, one refused leaves the others go.
+        Each cloud shows meanwhile what After showed of it ``before`` (the view the user's
+        click was made on; else now)."""
         _folder, shown, v = look(tile)
         asked = [s.cloud["id"] for s in v.clouds] if ids is None else list(ids)
-        offered = [i for i in asked if shown is not None and v.allows("check", i)]
+        offered = [i for i in asked if v.allows("check", i)]
         offered = [i for i in offered if not unasked or v.cloud(i).unasked]
         if offered:
-            _detector_said(body, then="check")
+            _detector_said(
+                body, then={"id": offered[0]} if ids is not None and len(asked) == 1 else {}
+            )
+        was = before or v
         for cid in offered:
             try:
-                _get_images(tile, shown, v.cloud(cid), again=again)
+                _get_images(tile, shown, v.cloud(cid), again=again, shows=was.cloud(cid).lays)
             except OsxpError:
                 if len(offered) == 1:
                     raise
 
-    def _get_images(tile: TileRef, shown: Any, s: state.CloudState, *, again: bool) -> None:
+    def _get_images(
+        tile: TileRef,
+        shown: Any,
+        s: state.CloudState,
+        *,
+        again: bool,
+        shows: Mapping[str, Any] | None,
+    ) -> None:
         """:func:`get_images` of the cloud ``s``: its task."""
         cid = s.cloud["id"]
         code, rings = s.source, s.cloud["rings"]
@@ -402,7 +407,7 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
 
         def run(task: Task) -> None:
             _tools(task)
-            p = engine.picture(tile, shown, map_level(tile, shown.textures))
+            _what, p = engine.drawn(tile, shown, map_level(tile, shown.textures))
             registry = load_registry()
             if code not in registry:
                 raise OsxpError(
@@ -415,7 +420,6 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
                 cid,
                 rings,
                 code,
-                registry[code],
                 shown,
                 SourcePieces(default_chunks_root(), {code: registry[code]}),
                 classes=engine.classes(tile, shown),
@@ -430,25 +434,27 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
             """Its source answered worse there: the next one's images, when never asked."""
             get_images(tile, [cid], {"download": True}, unasked=True)
 
-        engine.tasks.start(tile.name, "check", run, cloud=cid, then=then)
+        engine.tasks.start(tile.name, "check", run, cloud=cid, then=then, shows=shows)
 
     @router.post("/api/clouds/{name}/find")
     def find_clouds(
         name: str, body: Annotated[dict[str, Any] | None, Body()] = None
     ) -> dict[str, Any]:
-        tile, _folder, shown, _v = opened(name, "find")
+        tile, _folder, shown, v = opened(name, "find")
+        asked_fine = bool((body or {}).get("fine"))
+        if asked_fine and not v.fine:
+            raise OsxpError("CLOUD_NOT_NOW", context={"tile": tile.name, "action": "fine find"})
         _detector_said(body)  # the search runs it
         since = cls.generation(tile)
-        asked_fine = bool((body or {}).get("fine"))
 
         def run(task: Task) -> None:
             _tools(task)
             zl = map_level(tile, shown.textures)
-            p = engine.picture(tile, shown, zl)
+            _what, p = engine.drawn(tile, shown, zl)
             # the quick search reads the map's level; the fine one a level finer too, where the
             # textures are that fine: it finds the small clouds, in about twice the time (B1)
             finer = fine_level(zl, shown.textures) if asked_fine else None
-            fine = engine.picture(tile, shown, finer) if finer is not None else None
+            fine = engine.drawn(tile, shown, finer)[1] if finer is not None else None
             areas, classes = find(p, fine, cancel=task.stop, phase=task.say)
             rings = [a.rings(p) for a in areas]
             verdicts = screen(
@@ -472,16 +478,17 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
         source: str | None = None,
         body: Mapping[str, Any] | None = None,
         since: int | None = None,
+        before: state.View | None = None,
     ) -> None:
         """A tick, an untick or a source kept, of the clouds ``ids``, then the images got of
-        those whose state asks them: the one way a cloud is ticked, by the user, Tick all, or once
+        those whose state asks them: the one way a cloud is ticked by the user, Tick all, or once
         an outline's sources are tried. Kept whatever is said of the detector: asked for
         (``CLOUD_DETECTOR_ASK``), the page asks, and on yes asks the images (``then``); on no,
-        the cloud waits for them."""
+        the cloud waits for them. ``before``: the view the click was made on."""
         with cls.update(tile, since=since) as cl:
             for cid in ids:
                 cls.pick(cl, cid, action, source)
-        get_images(tile, ids, body)
+        get_images(tile, ids, body, before=before)
 
     @router.post("/api/clouds/{name}/picks")
     def picks(name: str, body: Annotated[dict[str, Any], Body()]) -> dict[str, Any]:
@@ -494,19 +501,21 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
         else:
             tile, _folder, _shown, v = opened(name, action, {"id": cid}, source)
             ids = [cid]
-        pick(tile, ids, action, source, body)
+        pick(tile, ids, action, source, body, before=v)
         return {"ok": True}
 
     @router.post("/api/clouds/{name}/check")
     def check_again(
         name: str, body: Annotated[dict[str, Any] | None, Body()] = None
     ) -> dict[str, Any]:
-        """``{id?}``: the cloud's images got again; without one, those of every cloud whose state
-        offers it."""
+        """``{id?, again?}``: the cloud's images got; without one, those of every cloud whose
+        state offers it. ``again``: the user's Get its images, its source asked again where it
+        said no picture; without, what follows the detector's question after a tick."""
         _action, cid, _source = _body_of(_tile_of(name), {"action": "check", **(body or {})},
                                          {"check"})  # fmt: skip
-        tile, _folder, _shown, _v = opened(name, "check", {"id": cid} if cid else None)
-        get_images(tile, [cid] if cid else None, body, again=True)
+        tile, _folder, _shown, v = opened(name, "check", {"id": cid} if cid else None)
+        again = (body or {}).get("again") is True
+        get_images(tile, [cid] if cid else None, body, again=again, before=v)
         return {"ok": True}
 
     @router.post("/api/clouds/{name}/outlines")
@@ -514,21 +523,27 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
         tile, _folder, shown, _v = opened(name, "outline")
         ring = _ring_of(tile, body)
         _detector_said(body)  # its sources are tried, then its images got
-        p = engine.picture(tile, shown, map_level(tile, shown.textures))
+        _what, p = engine.drawn(tile, shown, map_level(tile, shown.textures))
         with cls.update(tile) as cl:
-            cid = cls.add_outline(cl, [ring], shown)["id"]
+            cid = cls.add_outline(cl, [ring])["id"]
         since = cls.generation(tile)
 
         def run(task: Task) -> None:
-            _tools(task)
-            classes = engine.classes(tile, shown)
-            if classes is None:
-                classes = np.zeros(p.rgb.shape[:2], np.uint8)
-            (verdicts,) = screen(
-                p, [[ring]], classes, sources_for(tile, shown), cancel=task.stop, phase=task.say
-            )
+            try:
+                _tools(task)
+                classes = engine.classes(tile, shown)
+                if classes is None:
+                    classes = np.zeros(p.rgb.shape[:2], np.uint8)
+                (verdicts,) = screen(
+                    p, [[ring]], classes, sources_for(tile, shown), cancel=task.stop,
+                    phase=task.say,
+                )  # fmt: skip
+            except BaseException:  # stopped or failed: the list as it was, without it
+                with contextlib.suppress(OsxpError), cls.update(tile, since=since) as cl:
+                    cls.remove_outline(cl, cid)
+                raise
             with cls.update(tile, since=since) as cl:
-                cls.record_screening(cl, cid, verdicts)
+                cls.record_screening(cl, cid, verdicts, shown)
 
         def then() -> None:
             """Drawing it is asking to replace it: ticked when its state allows it (the detector
@@ -560,6 +575,9 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
         action, _cid, _source = _body_of(_tile_of(name), body, state.WRITES)
         tile, folder, _shown, v = opened(name, action)
         laid = [] if action == "restore" else v.asked
+        # Restore brings every cloud back as photographed: those ticked when it was asked are
+        # unticked once it is done, the draft then empty; one ticked meanwhile stays so
+        ticked = [s.cloud["id"] for s in v.clouds if s.cloud["tick"]] if action == "restore" else []
         since = cls.generation(tile)
 
         def run(task: Task) -> None:
@@ -572,9 +590,13 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
                 laid,
                 custom_scenery=hooks.custom_scenery(),
                 since=since,
-                untick=action == "restore",
                 progress=said,
             )
+            if ticked:
+                with cls.update(tile, since=since) as cl:
+                    for cid in ticked:
+                        if any(c["id"] == cid for c in cl.clouds):
+                            cls.pick(cl, cid, "untick")
 
         task = engine.tasks.start(tile.name, action, run)
         return {"task": task.view()}
@@ -593,5 +615,11 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
     @router.post("/api/clouds/tasks/{task_id}/stop")
     def stop(task_id: str) -> dict[str, Any]:
         return {"stopped": engine.tasks.stop(task_id)}
+
+    @router.post("/api/clouds/{name}/stop")
+    def stop_every(name: str) -> dict[str, Any]:
+        """Stop every task of the tile Stop ends (Stop all, offered while a cloud's runs)."""
+        tile, _folder, _shown, _v = opened(name, "stop")
+        return {"stopped": sum(engine.tasks.stop(t.id) for t in engine.tasks.of(tile.name))}
 
     return router, engine

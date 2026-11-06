@@ -370,8 +370,9 @@ a soft edge; where it has no picture, nothing is laid. The clouds are no part of
 of the tile, from the Plan, the Library, Works or the command line, places its own textures, then,
 before it says it has finished the tile, lays the clouds again where the texture under each is the
 one it was chosen on; another source or level, new images, other colours there, and the photo stays
-as built, the cloud still ticked for one *Apply* to replace it again. Deleting a tile forgets its
-clouds. Details: `docs/specs/clouds.md`.
+as built, the cloud still ticked for one *Apply* to replace it again, or for a later build on the
+first photo to lay it again by itself. Deleting a tile forgets its clouds. Details:
+`docs/specs/clouds.md`.
 
 A tile filed elsewhere that you build again is built in the workshop, beside the cache, then put
 back in its folder in place of the old version: moved there at once on the workshop's disk, copied

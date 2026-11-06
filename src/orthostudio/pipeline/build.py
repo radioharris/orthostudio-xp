@@ -3383,8 +3383,8 @@ def osm_artefact_refs(outcomes: Mapping[TileRef, OsmOutcome]) -> dict[TileRef, A
 
 class _Collector:
     """Records every node's outcome from the events (and forwards them), and lays again the folder
-    of a tile the build installs, found in the cache without it, before its install reads it
-    (:meth:`installs`)."""
+    of a tile built in the workshop whose pack, found in the cache, lost files, before anything
+    reads it (:meth:`watch`)."""
 
     def __init__(self, on_event: Callable[[Event], None] | None) -> None:
         self.on_event = on_event
@@ -3395,13 +3395,13 @@ class _Collector:
         adds what it did to what the first did."""
         self.laid: set[str] = set()
         """The pack nodes whose folder was laid again so."""
-        self._installs: dict[str, TileNodes] = {}
+        self._packs: dict[str, TileNodes] = {}
         self._env: BuildEnv | None = None
 
-    def installs(self, graphs: Iterable[TileNodes], env: BuildEnv) -> None:
-        """Watch the packs of the tiles of ``graphs`` built in the workshop (a tile filed
-        elsewhere is put back from it, :func:`_put_back_tile`): a pack found in the cache whose
-        folder lost files is laid again when the pack is done, before anything reads it, its
+    def watch(self, graphs: Iterable[TileNodes], env: BuildEnv, homes: Mapping[str, Path]) -> None:
+        """Watch the packs of the tiles of ``graphs`` built in the workshop, but those filed
+        elsewhere (``homes``, put back from it, :func:`_put_back_tile`): a pack found in the cache
+        whose folder lost files is laid again when the pack is done, before anything reads it, its
         install and its clouds (``_clouds_before_done``). A tile filed elsewhere, put in the
         Trash, then built again comes back to the workshop: its pack, found in the cache, wrote
         nothing there, and its install, which had never run for that build (a tile filed
@@ -3409,7 +3409,7 @@ class _Collector:
         it again, and failed with an internal error (found on the owner's Shadow, 2026-10-06);
         a tile not installed showed its clouds no more, laid before the end of the build laid its
         folder again. The scheduler hands a node's ``Done`` here before it starts what follows."""
-        self._installs.update({g.pack.id: g for g in graphs})
+        self._packs.update({g.pack.id: g for g in graphs if g.spec.tile.name not in homes})
         self._env = env
 
     def __call__(self, event: Event) -> None:
@@ -3419,7 +3419,7 @@ class _Collector:
             counted[1] += event.downloaded
         if isinstance(event, Done):
             self.done[event.node_id] = event
-            nodes = self._installs.get(event.node_id)
+            nodes = self._packs.get(event.node_id)
             if nodes is not None and event.hit:
                 self._lay(nodes, event)
         elif isinstance(event, Failed):
@@ -3484,7 +3484,7 @@ def _verify_effects(
 ) -> tuple[list[str], bool]:
     """Redo the pack / install effects after a hit whose destination was tampered with, and put
     the tile's row in the library with the build its folder holds. A folder laid again before its
-    install (:meth:`_Collector.installs`) is said repaired too."""
+    install (:meth:`_Collector.watch`) is said repaired too."""
     repaired: list[str] = []
     spec = nodes.spec
     pack_done = collector.done.get(nodes.pack.id)
@@ -4035,7 +4035,7 @@ def build_tiles(
     targets = [g.target.id for g in graphs]
     told = _clouds_before_done(on_event, graphs, homes)
     collector = _Collector(told)
-    collector.installs([g for g in graphs if g.spec.tile.name not in homes], env)
+    collector.watch(graphs, env, homes)
 
     async def main() -> dict[str, ArtifactRef]:
         loop = asyncio.get_running_loop()
@@ -4118,7 +4118,7 @@ def build_tiles(
             )
             by_spec = {id(g.spec): new for g, new in zip(retry, redone, strict=True)}
             graphs = [by_spec.get(id(g.spec), g) for g in graphs]
-            collector.installs([g for g in redone if g.spec.tile.name not in homes], env)
+            collector.watch(redone, env, homes)
             _emit_phase(
                 on_event,
                 Phase(

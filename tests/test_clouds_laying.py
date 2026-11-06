@@ -24,6 +24,7 @@ import test_api_fakes as fakes
 from orthostudio.clouds import cloudlist, state
 from orthostudio.clouds.layer import encode_part, pieces
 from orthostudio.clouds.laying import lay_again, lay_folder, lay_texture, plan_folder, show
+from orthostudio.clouds.sources import JUDGED
 from orthostudio.clouds.tile import (
     TileClouds,
     entry_problem,
@@ -108,7 +109,7 @@ def _cloud(cid: str, ring: list[float], held: TileClouds, colour: tuple[int, int
 
 def _lay(folder: Path, entries: list[dict]) -> list:
     """The folder made to show ``entries``, one images each, as a build after lays them."""
-    return lay_folder(TILE, folder, [[e] for e in entries])
+    return lay_folder(TILE, folder, [[e] for e in entries], custom_scenery=None)
 
 
 def _texture(folder: Path, t: TextureId) -> Path:
@@ -223,11 +224,18 @@ def test_a_build_after_lays_again_the_clouds_that_still_stand_whole(
     after = read_tile(folder)
     assert after is not None and stands_not(across, TILE, after) == "images"
     lay_again(TILE, folder, custom_scenery=None)
-    laid = cloudlist.load(TILE).laid  # the list told what the tile shows now
-    assert [c["id"] for c in laid] == ["c1"]
     assert [c["id"] for c in read_tile(folder).held] == ["c1"]
     assert _stamp(_texture(folder, EAST)) is None
     assert _texture(folder, WEST).read_bytes() != shown["w"]  # laid with c1 alone
+    # the list keeps what Apply laid: the first photo back, the cloud across comes back with it
+    # (a review, 2026-11-06: the build between had told the list, and the next one laid it no more)
+    assert [c["id"] for c in cloudlist.load(TILE).laid] == ["c1", "c2"]
+    for name, data in textures.items():
+        (folder / "textures" / f"{name}.dds").write_bytes(data)
+    lay_again(TILE, folder, custom_scenery=None)
+    assert [c["id"] for c in read_tile(folder).held] == ["c1", "c2"]
+    assert _texture(folder, WEST).read_bytes() == shown["w"]
+    assert _texture(folder, EAST).read_bytes() == shown["e"]
 
 
 def test_a_build_lays_nothing_again_without_clouds_applied_or_in_another_folder(
@@ -543,7 +551,7 @@ def test_a_cloud_the_tile_shows_and_its_list_forgot_is_kept_by_the_next_apply(
     assert list(cloudlist.list_path(TILE).parent.glob("*.broken-*"))  # the file put aside
     with cloudlist.update(TILE) as cl:  # another cloud ticked, its images got
         n = cl.add("found", [ACROSS], tick=True, chosen="EOX")
-        n["checks"] = {"EOX": {"answer": "clear", "fit": 70, "entry": across}}
+        n["checks"] = {"EOX": {"answer": "clear", "fit": 70, "entry": across, "judged": JUDGED}}
         n["id"] = "c2"
     v = state.view(cloudlist.load(TILE), shown, TILE, "ready")
     assert [s.row for s in v.clouds] == ["held", "ready"] and v.counts["held"] == 1
@@ -634,7 +642,7 @@ def test_a_cached_pack_whose_folder_lost_files_is_laid_again_when_its_pack_is_do
     spec = SimpleNamespace(tile=TILE, out_dir=str(tmp_path), level="T_12")
     nodes = SimpleNamespace(spec=spec, pack=SimpleNamespace(id="+43+005/T_12/pack"), install=None)
     collector = build_mod._Collector(lambda e: laid.append("told"))
-    collector.installs([nodes], SimpleNamespace())  # type: ignore[list-item, arg-type]
+    collector.watch([nodes], SimpleNamespace(), {})  # type: ignore[list-item, arg-type]
     ref = SimpleNamespace(path=pack / "orthostudio.toml")
     collector(Done("+43+005/T_12/pack", "k", True, 0.0, ref))  # type: ignore[arg-type]
     assert laid == ["pack", "told"]

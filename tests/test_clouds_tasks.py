@@ -152,11 +152,11 @@ def test_a_tile_stays_under_way_while_what_follows_its_task_runs() -> None:
     # under way, stopped reading it again, and missed the tick and its images
     tasks, go, seen = Tasks(), threading.Event(), []
     tasks.start("+43+005", "outline", lambda t: None, cloud="a",
-                then=lambda: (seen.append(tasks.following("+43+005")), go.wait(10)))  # fmt: skip
+                then=lambda: (seen.append(tasks.busy("+43+005")), go.wait(10)))  # fmt: skip
     end = time.monotonic() + 5
     while not seen and time.monotonic() < end:
         time.sleep(0.01)
-    assert seen == [True] and not tasks.of("+43+005") and tasks.following("+43+005")
+    assert seen == [True] and not tasks.of("+43+005") and tasks.busy("+43+005")
     go.set()
     tasks.end({"+43+005"})  # what takes the tile waits for it too
-    assert not tasks.following("+43+005")
+    assert not tasks.busy("+43+005")

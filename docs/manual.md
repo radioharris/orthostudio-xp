@@ -47,12 +47,13 @@ the same photo as the tile, which would bring the cloud back, or with no picture
   Apply*. Its outline turns to the accent colour. If the tool that finds clouds is not on your
   computer yet, the app asks first; say no, and the cloud stays ticked, waiting for its images.
 - To take another source, choose it in the cloud's list: it is ticked with it.
-- **Tick all** and **Untick all**, above the list, tick or untick every cloud at once.
+- **Tick all** and **Untick all**, above the list, tick or untick every cloud at once. While
+  clouds' images are being fetched, **Stop all** beside them stops every one at once.
 - A spinner says that a cloud's images are being fetched, in its row and at its centre on the
   map. A found cloud shows its number inside it; one too small to see at the map's zoom has a pin
   you can click.
-- A source that did not answer or refused for now says so in the line: **Get its images** asks
-  it again.
+- A source that did not answer or refused for now says so in the line, and stays the cloud's
+  source: **Get its images** asks it again.
 
 ### 4. Before and After
 
@@ -65,9 +66,10 @@ The banner over the map has two views:
 ### 5. A cloud the search missed: outline it
 
 Press **Outline a cloud** in the banner, then click around the cloud on the map, point by point.
-Double-click the last point, or press Enter, to close it; Escape gives up. The outline takes the
-place of the clouds found under it, is tried under the sources at once and comes in the list
-ticked with the best, named *Outline 1*, with a bin to take it out.
+Double-click the last point, or press Enter, to close it; Escape gives up. The outline is tried
+under the sources at once, then takes the place of the clouds found under it and comes in the list
+ticked with the best, named *Outline 1*, with a bin to take it out. Stop it while its sources are
+tried, and it goes: the clouds found under it stay.
 
 ### 6. Apply
 
@@ -95,10 +97,12 @@ A cloud is chosen on a photo. Build the tile from another source or at another l
 colours of the tile or of a zone near the cloud, or let its source send new images, and the photo
 under the cloud is another one. The build then puts the photo back there, as photographed, and
 the cloud's line says why. It stays ticked: get its images again on the new photo, and one
-**Apply** replaces it again.
+**Apply** replaces it again. Go back to the first settings, and the next build lays it again by
+itself.
 
-**Restore the original photos** asks, then puts every texture back as built, in a few seconds;
-your list stays, to tick them again later. Deleting a tile forgets its clouds.
+**Restore the original photos** asks, then puts every texture back as built, in a few seconds,
+and unticks the clouds; your list stays, to tick them again later. Deleting a tile forgets its
+clouds.
 
 ## Settings profiles
 

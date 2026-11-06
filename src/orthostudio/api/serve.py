@@ -317,7 +317,7 @@ def _busy(state: Mapping[str, Any]) -> bool:
     """Whether the engine works for nobody's page: a build, or a task of the cloud mode (a search,
     an Apply), which ends whether a page is open or not (``clouds.md`` R7)."""
     clouds = state.get("clouds")
-    return state["jobs"].active() is not None or bool(clouds is not None and clouds.tasks.of())
+    return state["jobs"].active() is not None or bool(clouds is not None and clouds.tasks.busy())
 
 
 def check(*, port: int = DEFAULT_PORT, ui_dir: Path | None = None, timeout_s: float = 20.0) -> dict:

@@ -3,9 +3,10 @@
 """The clouds laid in a tile's folder, put back, and laid again after a build (``clouds.md`` 2.2,
 2.3). What Apply does is computed one way (:func:`plan_folder`): the cloud mode shows it
 (``state.view``) and Apply runs it (:func:`lay_folder`). What X-Plane shows changes one way
-(:func:`show`), under the tile's lock: the folder made to show the clouds given, then the list
-told which it shows. Apply gives it the clouds of the view, Restore none, a build of the tile the
-clouds last laid (:func:`lay_again`).
+(:func:`lay_folder`), under the tile's lock: Apply and Restore (:func:`show`) give it the clouds
+of the view, or none, then tell the list which it shows (``laid``); a build of the tile gives it
+the clouds Apply last laid (:func:`lay_again`), and leaves the list as it is: those that do not
+stand on its textures are laid again by the next build they stand on.
 
 A texture is laid from the build's own: its first level read, the clouds laid over it by the
 layer the previews are drawn with (``clouds.layer``), its levels made again as the build makes
@@ -59,6 +60,7 @@ from orthostudio.clouds.tile import (
     stamped,
     texture_digest,
     textures_dir,
+    unready,
 )
 from orthostudio.errors import OsxpError
 from orthostudio.fsutil import atomic_write_text, fsync_dir, replace
@@ -244,48 +246,20 @@ def show(
     *,
     custom_scenery: Path | None,
     since: int | None = None,
-    untick: bool = False,
     progress: Callable[[int, int], None] | None = None,
 ) -> list[Mapping[str, Any]]:
-    """The tile's folder made to show ``clouds``, each given as the images it may show, the
-    wanted first (:func:`lay_folder`), then the list told which it shows (``laid``), when that
-    changed; ``untick`` every cloud of the list unticked (Restore). Refused while X-Plane runs
-    and shows the tile, as a build is (``CLOUD_XPLANE_RUNNING``); a write refused leaves the list
-    as it was. ``since``: the list's generation the action began on (``cloudlist.update``).
-    Returns the clouds laid."""
+    """Apply and Restore: the tile's folder made to show ``clouds``, each given as the images it
+    may show, the wanted first (:func:`lay_folder`), then the list told which it shows
+    (``laid``, what a build lays again), when that changed. A write refused leaves the list as it
+    was. ``since``: the list's generation the action began on (``cloudlist.update``). Returns
+    the clouds laid."""
     with folder_lock(tile):
-        return _show(tile, folder, clouds, custom_scenery, since, untick, progress)
-
-
-def _show(
-    tile: TileRef,
-    folder: Path,
-    clouds: Sequence[Sequence[Mapping[str, Any]]],
-    custom_scenery: Path | None,
-    since: int | None = None,
-    untick: bool = False,
-    progress: Callable[[int, int], None] | None = None,
-) -> list[Mapping[str, Any]]:
-    """:func:`show`, under the tile's lock."""
-    _not_under_xplane(tile, folder, custom_scenery)
-    laid = lay_folder(tile, folder, clouds, progress=progress)
-    now = [dict(e) for e in laid]
-    if untick or cloudlist.load(tile).laid != now:
-        with cloudlist.update(tile, since=since) as cl:
-            cl.laid = now
-            if untick:
-                cloudlist.untick_all(cl)
-    return laid
-
-
-def _not_under_xplane(tile: TileRef, folder: Path, custom_scenery: Path | None) -> None:
-    """The build's own rule (``pack._refuse_rewrite_under_running_xplane``), said in Apply's
-    words (``CLOUD_XPLANE_RUNNING``)."""
-    env = cast(PackEnv, SimpleNamespace(custom_scenery=custom_scenery))
-    try:
-        _refuse_rewrite_under_running_xplane(env, tile, Path(folder))
-    except OsxpError as exc:
-        raise OsxpError("CLOUD_XPLANE_RUNNING", context={"tile": tile.name}) from exc
+        laid = lay_folder(tile, folder, clouds, custom_scenery=custom_scenery, progress=progress)
+        now = [dict(e) for e in laid]
+        if cloudlist.load(tile).laid != now:
+            with cloudlist.update(tile, since=since) as cl:
+                cl.laid = now
+        return laid
 
 
 def lay_folder(
@@ -293,20 +267,24 @@ def lay_folder(
     folder: Path,
     clouds: Sequence[Sequence[Mapping[str, Any]]],
     *,
+    custom_scenery: Path | None,
     progress: Callable[[int, int], None] | None = None,
 ) -> list[Mapping[str, Any]]:
     """Make the whole folder show what :func:`plan_folder` says of ``clouds``, each given as the
-    images it may show, the wanted first. All or nothing: every new texture is made first beside its
+    images it may show, the wanted first. Refused while X-Plane runs and shows the tile, as a
+    build is (``CLOUD_XPLANE_RUNNING``). All or nothing: every new texture is made first beside its
     own and written to the disk, then each is put in place, only over the very file read, the one
     before kept until all are; when one cannot be (X-Plane holding it, a build replacing it
     meanwhile), those put in place are put back, a build's own left as it is, and nothing has
     changed. The files no longer needed beside go after, whatever stops that. A folder not whole (a
     build cut short, files taken from it) is never laid in. Called under the tile's lock
     (:func:`folder_lock`). Returns the clouds laid."""
+    _not_under_xplane(tile, folder, custom_scenery)
     shown = read_tile(folder)
-    if shown is None or not shown.whole:
-        state = "not_built" if shown is None else "not_whole"
-        raise OsxpError("CLOUD_TILE_NOT_READY", context={"tile": tile.name, "state": state})
+    why = unready(shown)
+    if why is not None:
+        raise OsxpError("CLOUD_TILE_NOT_READY", context={"tile": tile.name, "state": why})
+    assert shown is not None
     _sweep_leftovers(shown)
     plan = plan_folder(tile, shown, clouds)
     made: list[tuple[str, Path]] = []
@@ -328,6 +306,16 @@ def lay_folder(
     if progress is not None:
         progress(len(plan.work), len(plan.work))
     return plan.laid
+
+
+def _not_under_xplane(tile: TileRef, folder: Path, custom_scenery: Path | None) -> None:
+    """The build's own rule (``pack._refuse_rewrite_under_running_xplane``), said in Apply's
+    words (``CLOUD_XPLANE_RUNNING``)."""
+    env = cast(PackEnv, SimpleNamespace(custom_scenery=custom_scenery))
+    try:
+        _refuse_rewrite_under_running_xplane(env, tile, Path(folder))
+    except OsxpError as exc:
+        raise OsxpError("CLOUD_XPLANE_RUNNING", context={"tile": tile.name}) from exc
 
 
 def _place(src: Path, dest: Path) -> None:
@@ -466,13 +454,17 @@ def _sweep_leftovers(shown: TileClouds) -> None:
 
 
 def lay_again(tile: TileRef, folder: Path, *, custom_scenery: Path | None) -> None:
-    """After a build of ``tile`` in ``folder``, its own: the clouds last laid laid again, those
-    whose images still stand on the textures it placed. Nothing when none was."""
+    """After a build of ``tile`` in ``folder``, its own: the clouds Apply last laid laid again,
+    those whose images stand on the textures it placed; the list left as it is, so the others come
+    back with a build they stand on again (another build's colours tried, then the first ones
+    back). Nothing when Apply laid none."""
     if not cloudlist.load(tile).laid:
         return
     if not is_own_folder(tile, folder, custom_scenery=custom_scenery):
-        return  # a build written elsewhere (a command line's own folder): not the tile's clouds
+        # a build written elsewhere (a command line's own folder): not the tile's clouds
+        log.info("%s: built in %s, not its own folder: its clouds left out", tile.name, folder)
+        return
     with folder_lock(tile):
         laid = cloudlist.load(tile).laid  # read again under the lock: an Apply may have ended
-        again = _show(tile, folder, [[e] for e in laid], custom_scenery)
+        again = lay_folder(tile, folder, [[e] for e in laid], custom_scenery=custom_scenery)
     log.info("%s: %d of its %d replaced clouds laid again", tile.name, len(again), len(laid))

@@ -266,12 +266,6 @@ def merge_fine(quick: np.ndarray, qp: Picture, fine: np.ndarray, fp: Picture) ->
     return _OF_RANK[np.maximum(_RANK[quick], seen)]
 
 
-def fine_level(zl: int, textures: Sequence[Any]) -> int | None:
-    """The level of the search's second reading: one finer than ``zl`` where the textures are
-    that fine, for the small cumulus (B1); ``None`` when they are not."""
-    return zl + 1 if max(t.zl for t in textures) > zl else None
-
-
 def find(
     p: Picture,
     fine: Picture | None = None,
@@ -554,7 +548,6 @@ def check(
     cid: str,
     rings: Sequence[Sequence[float]],
     code: str,
-    provider: Provider,
     shown: TileClouds,
     sources: SourcePieces,
     *,
@@ -563,8 +556,10 @@ def check(
     cancel: threading.Event | None = None,
     phase: Phase = _quiet,
 ) -> Check:
-    """Get the images of the cloud ``cid`` (its ``rings``) from the source ``code`` at the tile's
-    sharpness, freeze them into parts, and judge them as the search does."""
+    """Get the images of the cloud ``cid`` (its ``rings``) from the source ``code`` of
+    ``sources`` at the tile's sharpness, freeze them into parts, and judge them as the search
+    does."""
+    provider = sources.providers[code]
     textures = shown.textures
     c = {
         "id": cid,

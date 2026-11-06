@@ -13,8 +13,8 @@
  *
  * The map is drawn in three layers: the ground (the tile's picture and the previews), kept as it
  * is while the files are the same, so the tile never flashes when a cloud is clicked; the shapes
- * (the outlines, a task's label), drawn again at each answer; the marks (a found cloud's number,
- * a pin on a cloud too small to see), drawn again at each zoom.
+ * (the outlines, a task's label) and the marks (a found cloud's number, a pin on a cloud too small
+ * to see), drawn again when what they show changes, the marks at each zoom too.
  */
 
 import { codeText, fmtNum, t } from "./i18n.js";
@@ -119,9 +119,14 @@ export function createCloudMode(ctx) {
   const $ = (id) => document.getElementById(id);
   const cs = {
     tile: null, answer: null, view: "after", current: null, poll: null,
-    ground: null, overlays: null, groundKey: null, shapes: null, marks: null, lastPreviews: new Map(),
+    ground: null, overlays: null, groundKey: null, shapes: null, shapesKey: null, marks: null,
     /** The row to bring into view after the next drawing, and whether to its middle. */
     reveal: null, centre: false,
+    /** The tile's readings asked, and the one shown: an answer older than it is left (two clicks
+     * close together, the first one's answer coming back last, showed the tile as it was). */
+    asked: 0, shown: 0,
+    /** Why the tile could not be read, when no answer came yet: said in the panel. */
+    error: null,
   };
   const labels = new Map(); // a cloud's number's place, by its outline
 
@@ -135,7 +140,7 @@ export function createCloudMode(ctx) {
 
   async function open(tile) {
     if (cs.tile && cs.tile !== tile) close();
-    Object.assign(cs, { tile, view: "after", current: null, answer: null, reveal: null, centre: false });
+    Object.assign(cs, { tile, view: "after", current: null, answer: null, reveal: null, centre: false, error: null });
     ctx.showPlan();
     document.querySelector(".plan-flow")?.classList.add("is-clouds");
     $("clouds-panel").hidden = false;
@@ -153,7 +158,7 @@ export function createCloudMode(ctx) {
     ctx.planMap.cancelDraw();
     ctx.planMap.leaflet()?.off("zoomend", drawMarks);
     for (const layer of [cs.ground, cs.shapes, cs.marks]) layer?.remove();
-    Object.assign(cs, { tile: null, answer: null, ground: null, overlays: null, groundKey: null, shapes: null, marks: null, lastPreviews: new Map() });
+    Object.assign(cs, { tile: null, answer: null, ground: null, overlays: null, groundKey: null, shapes: null, shapesKey: null, marks: null, error: null });
     $("clouds-panel").hidden = true;
     $("clouds-banner").hidden = true;
     document.querySelector(".plan-flow")?.classList.remove("is-clouds");
@@ -170,12 +175,17 @@ export function createCloudMode(ctx) {
     const tile = cs.tile;
     if (!tile) return;
     stopPoll();
+    const asked = ++cs.asked;
     try {
       const answer = await api("GET", `/api/clouds/${encodeURIComponent(tile)}`);
-      if (cs.tile !== tile) return;
+      if (cs.tile !== tile || asked < cs.shown) return; // a later reading is shown already
+      cs.shown = asked;
       cs.answer = answer;
+      cs.error = null;
     } catch (err) {
-      toast(errorMessage(err), "fail");
+      if (cs.tile !== tile) return;
+      cs.error = errorMessage(err);
+      if (cs.answer) toast(cs.error, "fail");
     }
     render();
     if (cs.answer?.busy) cs.poll = setTimeout(refresh, POLL_MS);
@@ -183,8 +193,8 @@ export function createCloudMode(ctx) {
 
   /** An action sent to the engine, the tile read again after it. The engine refuses what runs
    * the cloud detector before it is downloaded (``CLOUD_DETECTOR_ASK``): the user is asked, and on
-   * yes the action it says goes with ``download`` (``then``: a cloud's images, once its tick is
-   * kept), else the same one again. */
+   * yes what the engine says goes with ``download`` (``then``: the clouds' images, once a tick is
+   * kept), else the same action again. */
   async function send(method, path, body) {
     try {
       const res = await api(method, `/api/clouds/${encodeURIComponent(cs.tile)}${path}`, body);
@@ -195,7 +205,7 @@ export function createCloudMode(ctx) {
       if (e?.code === "CLOUD_DETECTOR_ASK" && !body?.download) {
         await refresh(); // what was kept meanwhile (a tick) shown under the question
         if (await ask(t("clouds.tool_title"), [t("clouds.tool_text", { mb: e.context?.mb })], t("clouds.tool_go"))) {
-          if (e.context?.then === "check") return send("POST", "/check", { ...(body?.id ? { id: body.id } : {}), download: true });
+          if (e.context?.then) return send("POST", "/check", { ...e.context.then, download: true });
           return send(method, path, { ...(body || {}), download: true });
         }
       } else {
@@ -220,31 +230,26 @@ export function createCloudMode(ctx) {
     // a thin cross to aim at the points of an outline, not Leaflet's hand
     map.getContainer().classList.toggle("is-outlining", ctx.planMap.drafting());
     drawGround(map);
+    // the outlines and the marks drawn again only when what they show changed: drawn at every
+    // reading, twice a second while a task ran, the tooltip under the mouse went away and two
+    // hundred clouds weighed on the page (a review, 2026-11-06)
+    const shapes = JSON.stringify([cs.tile, cs.current, ctx.planMap.drafting(), (cs.answer?.clouds || []).map((c) =>
+      [c.id, c.rings, c.tick, c.tip, c.label, c.label === "words" ? lineWords(c.line, names()) : null, c.numbered])]);
+    if (shapes === cs.shapesKey) return;
+    cs.shapesKey = shapes;
     drawShapes(map);
     drawMarks();
   }
 
-  /** The ground: the picture of the view, After's previews over it. Laid again only when its
-   * files change, the new one shown once loaded: the tile never flashes. */
+  /** The ground: the picture of the view, After's previews over it (a cloud whose images are
+   * being got keeps its own meanwhile, the engine's). Laid again only when its files change, the
+   * new one shown once loaded: the tile never flashes. */
   function drawGround(map) {
     const a = cs.answer;
     const pictures = [];
     const base = a ? (cs.view === "after" ? a.after : a.picture) : null;
     if (base) pictures.push(base);
-    // a cloud whose images are being got keeps its last preview meanwhile (its task, the
-    // engine's): a source changed showed the photo with its cloud again for the seconds the new
-    // images took (a user, 2026-11-06); once the task has ended, After is the engine's again
-    const kept = new Map();
-    if (a && cs.view === "after") {
-      for (const c of a.clouds) {
-        const preview = c.preview || (c.task ? cs.lastPreviews.get(c.id) : null);
-        if (preview) {
-          pictures.push(preview);
-          kept.set(c.id, preview);
-        }
-      }
-      cs.lastPreviews = kept;
-    }
+    if (a && cs.view === "after") for (const c of a.clouds) if (c.preview) pictures.push(c.preview);
     const key = pictures.map((p) => p.name).join(" ");
     if (key === cs.groundKey) return;
     cs.groundKey = key;
@@ -277,7 +282,8 @@ export function createCloudMode(ctx) {
   }
 
   /** The tile's surroundings darkened, every cloud's outline on a dark casing (read over snow as
-   * over dark ground), its tooltip saying what a click does, and a task's label at its centre. */
+   * over dark ground), its tooltip saying what a click does, and a task's label at its centre
+   * (``label``, the engine's: a spinner, or its line). */
   function drawShapes(map) {
     cs.shapes?.remove();
     const layer = L.layerGroup();
@@ -314,11 +320,8 @@ export function createCloudMode(ctx) {
         shape.bindTooltip(tipOf(c), { sticky: true, className: "cloud-tip" });
       }
       shape.addTo(layer);
-      if (c.task && c.task.phase !== "waiting") {
-        // at its centre while it runs, not while it waits for its turn: an outline just drawn
-        // says its sources are tried, where the user looks; a cloud's images, a spinner alone,
-        // its words in its row (Tick all: the labels hid the map, a user, 2026-11-06)
-        const words = c.task.kind === "outline" ? lineWords(c.line, names()) : null;
+      if (c.label) {
+        const words = c.label === "words" ? lineWords(c.line, names()) : null;
         const label = h("div", { class: words ? "cloud-pending" : "cloud-pending is-spinner" }, h("span", { class: "spinner", "aria-hidden": "true" }), words);
         L.marker(L.latLngBounds(rings.flat()).getCenter(), {
           icon: L.divIcon({ className: "cloud-pending-anchor", html: label, iconSize: [0, 0] }),
@@ -354,7 +357,7 @@ export function createCloudMode(ctx) {
       const nw = map.latLngToLayerPoint(box.getNorthWest());
       const se = map.latLngToLayerPoint(box.getSouthEast());
       if (Math.max(se.x - nw.x, se.y - nw.y) >= PIN_BELOW_PX) {
-        if (c.kind === "drawn") continue;
+        if (!c.numbered) continue;
         const key = ring.join(",");
         if (!labels.has(key)) labels.set(key, labelPoint(ring));
         L.marker(labels.get(key), {
@@ -477,7 +480,7 @@ export function createCloudMode(ctx) {
     const a = cs.answer;
     const kids = [h("h2", { id: "clouds-title" }, t("clouds.title", { tile: cs.tile || "" }))];
     if (!a) {
-      kids.push(h("p", null, t("clouds.reading")));
+      kids.push(cs.error ? h("p", { class: "clouds-warning", role: "status" }, cs.error) : h("p", null, t("clouds.reading")));
       morph(el, h("div", null, ...kids));
       return;
     }
@@ -499,12 +502,16 @@ export function createCloudMode(ctx) {
       kids.push(h("div", { class: "clouds-count", dataset: key("count") },
         h("p", { class: "plan-step-size" }, piecesWords(a.texts.count)),
         h("button", { type: "button", class: "btn", dataset: key("tick-all"), disabled: !can.has("tick"), onclick: () => send("POST", "/picks", { action: "tick" }) }, t("clouds.all")),
-        h("button", { type: "button", class: "btn", dataset: key("untick-all"), disabled: !can.has("untick"), onclick: () => send("POST", "/picks", { action: "untick" }) }, t("clouds.none"))));
+        h("button", { type: "button", class: "btn", dataset: key("untick-all"), disabled: !can.has("untick"), onclick: () => send("POST", "/picks", { action: "untick" }) }, t("clouds.none")),
+        // while the clouds' tasks run, every one stopped at once (after Tick all, one by one)
+        can.has("stop") ? h("button", { type: "button", class: "btn", dataset: key("stop-all"), onclick: () => send("POST", "/stop") }, t("clouds.stop_all")) : null));
     }
     const list = h("ul", { class: "zone-list clouds-list", dataset: key("list") });
     for (const c of a.clouds) list.append(row(c));
     kids.push(list);
-    const first = !a.clouds.length; // nothing found yet: the search first, and what it costs
+    // nothing found yet: the search first, and what it costs; Apply shown whenever it may be
+    // (a texture to make again whose clouds no file says, the list empty)
+    const first = !a.clouds.length && !can.has("apply");
     kids.push(h("div", { class: "actions actions-build", dataset: key("actions") },
       first ? null : h("button", { type: "button", class: "btn btn-primary", dataset: key("apply"), disabled: !can.has("apply"), onclick: () => apply("apply") }, lineWords(a.texts.apply)),
       first ? null : h("button", { type: "button", class: "btn", dataset: key("discard"), disabled: !can.has("discard"), onclick: () => send("POST", "/discard") }, t("clouds.discard")),
@@ -567,7 +574,7 @@ export function createCloudMode(ctx) {
       render();
     };
     const buttons = [
-      can.has("check") ? h("button", { type: "button", class: "btn", "aria-label": `${t("clouds.get_images")}: ${label}`, onclick: () => send("POST", "/check", { id: c.id }) }, t("clouds.get_images")) : null,
+      can.has("check") ? h("button", { type: "button", class: "btn", "aria-label": `${t("clouds.get_images")}: ${label}`, onclick: () => send("POST", "/check", { id: c.id, again: true }) }, t("clouds.get_images")) : null,
       can.has("stop") ? h("button", { type: "button", class: "btn", "aria-label": `${t("clouds.stop")}: ${label}`, onclick: () => { const now = cloudNow(c.id)?.task; if (now) stopTask(now.id); } }, t("clouds.stop")) : null,
     ].filter(Boolean);
     const trash = can.has("remove")
@@ -602,7 +609,7 @@ export function createCloudMode(ctx) {
     open,
     close,
     tile: () => cs.tile,
-    rerender: () => cs.tile && render(),
+    rerender: () => cs.tile && ((cs.shapesKey = null), render()), // a language changed: every word again
     jobsChanged: () => cs.tile && refresh(),
   };
 }

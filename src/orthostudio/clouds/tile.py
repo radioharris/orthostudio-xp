@@ -81,6 +81,7 @@ __all__ = [
     "stamped",
     "stands_not",
     "texture_digest",
+    "unready",
 ]
 
 CLOUDS_DIR = "clouds"
@@ -467,6 +468,15 @@ def read_tile(folder: Path) -> TileClouds | None:
         store_key=store.key if store is not None else None,
         tile=manifest.tile,
     )
+
+
+def unready(shown: TileClouds | None) -> str | None:
+    """Why a folder read (:func:`read_tile`) is no tile the cloud mode works on: ``not_built``
+    (no tile of ours), ``not_whole`` (a build cut short, files taken from it); ``None`` when it is
+    one. The one rule, for the tile's state (``state.tile_state``), Apply and the map's picture."""
+    if shown is None:
+        return "not_built"
+    return None if shown.whole else "not_whole"
 
 
 def _held(
