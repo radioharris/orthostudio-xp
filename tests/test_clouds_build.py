@@ -263,3 +263,15 @@ def test_a_cloud_laid_in_other_textures_than_its_own_is_undone(tile: Tile) -> No
     c["images"] = {"1488_2096_T13": c["images"][texture_name(WEST)]}
     done = tile.textures([c])
     assert tile.manifest(done)["clouds"]["undone"] == {"k1": "level"}
+
+
+def test_a_texture_holding_a_cloud_keeps_its_original_beside_it(tile: Tile) -> None:
+    # R2: the map shows the photo under a replaced cloud from the texture as built without it
+    plain = tile.textures()
+    c = tile.cloud("k1", INSIDE, RED)
+    laid = tile.textures([c])
+    name = f"{texture_name(WEST)}.dds"
+    original = laid / "clouds" / "originals" / "textures" / name
+    assert original.read_bytes() == (plain / "textures" / name).read_bytes()
+    assert (laid / "textures" / name).read_bytes() != original.read_bytes()
+    assert not (laid / "clouds" / "originals" / "textures" / f"{texture_name(EAST)}.dds").exists()

@@ -1171,16 +1171,27 @@ def _tile_textures(ctx: RunContext) -> None:
         out=ctx.out,
     )
 
-    def run(layers: Mapping[TextureId, tuple[Any, ...]]) -> list[TextureOutcome]:
+    def run(
+        layers: Mapping[TextureId, tuple[Any, ...]],
+        only: Collection[TextureId] | None = None,
+        out: Path = ctx.out,
+    ) -> list[TextureOutcome]:
         done_before = 0
         got: list[TextureOutcome] = []
         for (code, zl), group in sorted(groups.items()):
-            got += _texture_group(code, zl, group, layers, done_before)
+            mine = [j for j in group if only is None or j.texture in only]
+            if mine:
+                got += _texture_group(code, zl, mine, layers, done_before, out)
             done_before += len(group)
         return got
 
     def _texture_group(
-        code: str, zl: int, group: list[PipelineTextureJob], layers: Any, done_before: int
+        code: str,
+        zl: int,
+        group: list[PipelineTextureJob],
+        layers: Any,
+        done_before: int,
+        out: Path,
     ) -> list[TextureOutcome]:
         provider = env.provider(code)
         n = len(group)
@@ -1214,7 +1225,7 @@ def _tile_textures(ctx: RunContext) -> None:
             provider=provider,
             zl=zl,
             jobs=group,
-            out_dir=ctx.out,
+            out_dir=out,
             chunks_root=env.chunks_root,
             store_root=env.store_root,
             mask_lookup=lookup,
@@ -1281,6 +1292,11 @@ def _tile_textures(ctx: RunContext) -> None:
     outcomes = run(clouds.layers())
     while clouds.undo_changed(outcomes):
         outcomes = run(clouds.layers())
+    # every texture holding a cloud beside its original, the same texture without its clouds
+    # (a store hit when the tile was built before them): the cloud mode's map shows the photo
+    # under a replaced cloud from it, as X-Plane shows it once that cloud is unticked
+    if clouds.laid:
+        run({}, only=set(clouds.layers()), out=ctx.out / ORIGINALS)
     manifest = {
         "format": MANIFEST_FORMAT,
         "tile": tile.name,
@@ -1290,6 +1306,11 @@ def _tile_textures(ctx: RunContext) -> None:
     (ctx.out / "manifest.json").write_text(
         json.dumps(manifest, indent=1, sort_keys=True) + "\n", encoding="utf-8"
     )
+
+
+ORIGINALS = Path("clouds") / "originals"
+"""Where a textures artefact keeps the original of each texture holding a cloud (its
+``textures/`` folder): the texture as it is without its clouds."""
 
 
 def _tile_overlay(ctx: RunContext) -> None:
