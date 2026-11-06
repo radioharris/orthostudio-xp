@@ -520,7 +520,7 @@ export function createCloudMode(ctx) {
         h("button", { type: "button", class: "btn", dataset: key("tick-all"), disabled: !can.has("tick"), onclick: () => send("POST", "/picks", { action: "tick" }) }, t("clouds.all")),
         h("button", { type: "button", class: "btn", dataset: key("untick-all"), disabled: !can.has("untick"), onclick: () => send("POST", "/picks", { action: "untick" }) }, t("clouds.none")),
         // while the clouds' tasks run, every one stopped at once (after Tick all, one by one)
-        can.has("stop") ? h("button", { type: "button", class: "btn", dataset: key("stop-all"), onclick: () => send("POST", "/stop") }, t("clouds.stop_all")) : null));
+        can.has("stop") ? h("button", { type: "button", class: "btn", dataset: key("stop-all"), onclick: () => send("POST", "/stop") }, lineWords(a.texts.stop_all)) : null));
     }
     const list = h("ul", { class: "zone-list clouds-list", dataset: key("list") });
     for (const c of a.clouds) list.append(row(c));

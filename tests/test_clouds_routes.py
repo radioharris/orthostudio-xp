@@ -568,3 +568,31 @@ async def test_get_its_images_asks_again_after_the_detectors_question_too(
     async with client_for(app) as c:
         r = await c.post("/api/clouds/+43+005/check", json={"id": cid, "again": True})
     assert r.json()["error"]["context"]["then"] == {"id": cid, "again": True}
+
+
+@pytest.mark.anyio
+async def test_a_picture_already_made_is_not_drawn_again(
+    app: Any, ready: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # drawn again at each start, two pictures took a user's first reading 3.75 s (2026-11-07)
+    drawn: list[Any] = []
+    draw = clouds_api._draw
+    monkeypatch.setattr(clouds_api, "_draw", lambda *a: (drawn.append(a), draw(*a))[1])
+    async with client_for(app) as c:
+        first = (await c.get("/api/clouds/+43+005")).json()
+    assert len(drawn) == 1  # After is Before while nothing is laid: one picture
+    hooks = clouds_api.CloudHooks(custom_scenery=lambda: None, taken=dict)
+    router, _engine = clouds_api.clouds_router(hooks)  # the app started again
+    get = next(r.endpoint for r in router.routes if r.path == "/api/clouds/{name}")
+    again = get("+43+005")
+    assert len(drawn) == 1 and again["picture"] == first["picture"]
+
+
+def test_where_a_picture_lies_is_its_frame_drawn_or_not() -> None:
+    from orthostudio.clouds.picture import box_bounds, frame, frame_bounds
+
+    for zl in (11, 13, 15):
+        x0, y0, w, h = frame(TILE, zl)
+        blank = np.zeros((h, w), np.uint8)
+        p = Picture(np.zeros((h, w, 3), np.uint8), blank, blank, blank, (), zl, x0, y0)
+        assert frame_bounds(TILE, zl) == box_bounds(p, (0, 0, w, h))

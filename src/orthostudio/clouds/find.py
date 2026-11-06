@@ -638,6 +638,9 @@ def check(
         "parts": entry_parts,
         "plain": plain,
     }
+    # its preview made now, in the task, as After will show it: made by the page's reading, a
+    # dozen of them took a reading 6.5 s (a user's 189 clouds, 2026-11-07)
+    preview(p, tile, entry, shown.built, sorted(entry_parts))
     return Check(j, entry)
 
 

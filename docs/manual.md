@@ -50,7 +50,8 @@ the same photo as the tile, which would bring the cloud back, or with no picture
 - To take another source, choose it in the cloud's list: it is ticked with it, and the map goes to
   the cloud to show its new images.
 - **Tick all** and **Untick all**, above the list, tick or untick every cloud at once. While
-  clouds' images are being fetched, **Stop all** beside them stops every one at once.
+  clouds' images are being fetched, **Stop all (3)** beside them, with the number of clouds at
+  work, stops every one at once.
 - A spinner says that a cloud's images are being fetched, beside its name, and on the map a label
   at its centre, "Cloud 5: downloading the images"; a click on the spinner beside its name stops
   it. Ticking a cloud or choosing its source makes it the current one, framed in the list. A found cloud shows its number inside it; one too small to see at the map's zoom has a pin

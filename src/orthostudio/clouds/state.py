@@ -379,7 +379,17 @@ def _menu(c: Mapping[str, Any], source: str | None, held: Any = None) -> list[di
 
 # -- the view ----------------------------------------------------------------------------------
 
-COUNTS = ("replace", "another", "back", "waiting", "held", "textures", "remade", "changes")
+COUNTS = (
+    "replace",
+    "another",
+    "back",
+    "waiting",
+    "held",
+    "textures",
+    "remade",
+    "changes",
+    "working",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -469,6 +479,9 @@ class View:
         return {
             "count": count,
             "apply": _k(f"clouds.apply{one}", n=n),
+            # how many clouds work, a task Stop ends of each: Stop all is never a mystery (a user
+            # saw it with nothing he had started, 2026-11-07)
+            "stop_all": _k("clouds.stop_all", n=c["working"]),
             "restore": _k("clouds.restore") if c["textures"] else None,
             "apply_question": {
                 "title": _k(f"clouds.apply_title{one}", tile=self.tile, n=n),
@@ -557,7 +570,7 @@ def view(
             row, actions = fact, _actions(c, source, held, why) & can
         clouds.append(CloudState(c, source, held, lays, row, why, actions, task))
         facts.append(fact)
-    counts = _counts(facts, shown, remade)
+    counts = _counts(facts, shown, remade, tasks)
     searching = "find" in kinds
     fine = shown is not None and fine_level(map_level(tile, shown.textures), shown.textures)
     idle = {
@@ -573,7 +586,7 @@ def view(
         "check": not any("check" in s.actions for s in clouds),
         # every task Stop ends, while a cloud's runs (after Tick all, one by one was two hundred
         # clicks)
-        STOP: not any(_stops(t) for t in tasks if t.get("cloud")),
+        STOP: counts["working"] == 0,
     }
     allowed = frozenset(a for a in can if not idle.get(a, False))
     return View(
@@ -598,12 +611,17 @@ _COUNTED = {"ready": "replace", "another": "another", "back": "back", "waiting":
 
 
 def _counts(
-    facts: Sequence[str | None], shown: TileClouds | None, remade: frozenset[str]
+    facts: Sequence[str | None],
+    shown: TileClouds | None,
+    remade: frozenset[str],
+    tasks: Sequence[Mapping[str, Any]],
 ) -> dict[str, int]:
     """What Apply changes, the clouds' rows counted (``facts``: what Apply does with each, a task
-    of it or not, :func:`_row`); and what the folder shows, the clouds and the textures, and the
-    textures Apply makes again, from the folder's plan."""
+    of it or not, :func:`_row`); what the folder shows, the clouds and the textures, and the
+    textures Apply makes again, from the folder's plan; and the clouds whose task Stop ends
+    (``working``)."""
     out = dict.fromkeys(COUNTS, 0)
+    out["working"] = sum(1 for t in tasks if t.get("cloud") and _stops(t))
     for fact in facts:
         if fact in _COUNTED:
             out[_COUNTED[fact]] += 1

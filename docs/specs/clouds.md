@@ -64,7 +64,8 @@ The Plan's map, brought over the tile; the Plan's steps make way for the cloud p
   phase, its progress (a search's judging of the
   sources said cloud by cloud) and **Stop**; the count of what Apply changes ("To replace: 1 · Back
   as photographed: 2") on a line of its own, and under it **Tick all**, **Untick all** and, while a
-  cloud's task runs, **Stop all** (a count that grew pushed them out of line); the list, a row per cloud; then three rows of buttons, spaced as the Plan's build buttons
+  cloud's task runs, **Stop all (n)**, n the clouds at work (`counts.working`; a count that grew
+  pushed them out of line); the list, a row per cloud; then three rows of buttons, spaced as the Plan's build buttons
   (`actions actions-build`): **Apply (n changes)** and **Discard changes**, once there is a cloud
   or Apply may run; **Quick search** and **Fine search** (4.1; greyed, saying why, on a tile with
   nothing finer to read, the engine's `fine`), and before any cloud, what each search takes;
@@ -335,7 +336,11 @@ a source: it lays parts. A part found nowhere when a cloud is laid is said (`CLO
 
 `<data>/clouds/<tile>/`: the tile's pictures (JPEGs named by what each is made of: its build, its
 level, the way clouds are laid, the clouds of each texture drawn as X-Plane shows it) and the
-previews (PNG named likewise), each written whole on the disk before its name is given. Every path
+previews (PNG named likewise), each written whole on the disk before its name is given. Each is
+made once, where its pixels are made, and showing it is naming its file: a picture is drawn only
+when its file is not there yet (`CloudEngine.picture_file`; drawn at each start, two took a first
+reading 3.75 s on a user's tile of 189 clouds, 0.07 s since), a cloud's preview is made with its
+images, in their task (`find.check`; made by the readings, a dozen took one 6.5 s). Every path
 of the cloud files is in `clouds/tile.py`, and every reading of them back (`listed`, `sidecars`,
 `kept_files`, `leftovers`, `served_path`). The sources' pieces are kept as a build's parent tiles
 (`ParentCache`, per source). The detector's classes of the tile's last search are kept in memory for
@@ -484,7 +489,7 @@ lay colours it could not match. The search and the check judge by the same rules
 `find.py`: the box a source is read on, the band's width, the level it is judged at, what the band
 leaves out, the cloud's core, what pieces that did not come answer. Its result is the cloud's entry
 (2.2), with the digest of each texture as built it was got on, kept in the list under that source;
-its preview is made when After first shows it.
+its preview is made then, in the task, as After will show it (2.6).
 
 ### 4.4 Laying in a texture
 

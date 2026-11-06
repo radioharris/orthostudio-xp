@@ -402,3 +402,17 @@ def test_a_cloud_whose_images_are_got_keeps_what_after_showed_of_it(folder: Path
     assert row["line"]["key"] == "clouds.phase.fetching" and _words(row["line"]["key"])
     waiting = _view(cl, shown, [{**task, "phase": "waiting"}]).cloud("cloud001").page()
     assert waiting["label"] is False and row["numbered"] is True  # waiting its turn: none
+
+
+def test_stop_all_says_how_many_clouds_work(folder: Path) -> None:
+    # it was seen with nothing the user had started (a user, 2026-11-07): it says its number
+    cl, shown = _case(folder, True, None, None, "stands", "ticked")
+    assert not _view(cl, shown).allows("stop")
+    tasks = [
+        {"id": "a", "kind": "check", "cloud": "cloud001", "stoppable": True, "phase": "waiting"},
+        {"id": "b", "kind": "check", "cloud": "cloud002", "stoppable": True, "phase": "fetching"},
+        {"id": "c", "kind": "find", "cloud": None, "stoppable": True, "phase": "looking"},
+    ]
+    v = _view(cl, shown, tasks)
+    assert v.allows("stop") and v.counts["working"] == 2
+    assert v.texts()["stop_all"] == {"key": "clouds.stop_all", "params": {"n": 2}}

@@ -36,7 +36,7 @@ from orthostudio.clouds.layer import RULE
 from orthostudio.clouds.laying import folder_lock, show
 from orthostudio.clouds.model import detector_bytes, detector_ready, ensure_detector
 from orthostudio.clouds.opencv import ensure_opencv, opencv_bytes, opencv_ready
-from orthostudio.clouds.picture import Picture, box_bounds, draw, fine_level, map_level
+from orthostudio.clouds.picture import Picture, draw, fine_level, frame_bounds, map_level
 from orthostudio.clouds.sources import SourcePieces, other_sources
 from orthostudio.clouds.tasks import Task, Tasks
 from orthostudio.clouds.tile import (
@@ -110,6 +110,24 @@ class CloudEngine:
                     self._pictures[(tile.name, what)] = p
             return what, p
 
+    def picture_file(
+        self, tile: TileRef, shown: TileClouds, zl: int, remade: frozenset[str] | None = None
+    ) -> dict[str, Any]:
+        """A picture of the tile as the page lays it (:meth:`drawn`: Before, ``remade`` for
+        After), a JPEG named by what it is made of: drawn only when that file is not there yet. A
+        picture is made once: drawn again at each start, two of them took a first reading 3.75 s
+        (a user's tile, 2026-11-07)."""
+        path = picture_path(tile, _what(shown, zl, remade))
+        if not path.exists():
+            what, p = self.drawn(tile, shown, zl, remade)
+            path = picture_path(tile, what)
+            if not path.exists():
+                buf = io.BytesIO()
+                Image.fromarray(p.rgb).save(buf, "JPEG", quality=88)
+                path.parent.mkdir(parents=True, exist_ok=True)
+                atomic_write_bytes(path, buf.getvalue(), fsync=True)
+        return {"name": path.name, "bounds": frame_bounds(tile, zl), "level": zl}
+
     def remember(self, tile: TileRef, shown: TileClouds, classes: np.ndarray) -> None:
         """The classes the tile's last search read, for an outline's band to leave others'
         clouds out; one tile's at a time."""
@@ -149,18 +167,6 @@ def _what(shown: TileClouds, zl: int, remade: frozenset[str] | None) -> str:
     (``state.as_shown``)."""
     laid = state.as_shown(shown, remade)
     return f"{shown.built}:{zl}:{RULE}:{json.dumps(sorted(laid.items()))}"
-
-
-def _picture_file(tile: TileRef, what: str, p: Picture) -> dict[str, Any]:
-    """The picture as the page lays it: a JPEG named by what it is made of, written whole."""
-    path = picture_path(tile, what)
-    if not path.exists():
-        buf = io.BytesIO()
-        Image.fromarray(p.rgb).save(buf, "JPEG", quality=88)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        atomic_write_bytes(path, buf.getvalue(), fsync=True)
-    h, w = p.rgb.shape[:2]
-    return {"name": path.name, "bounds": box_bounds(p, (0, 0, w, h)), "level": p.zl}
 
 
 def _draw(
@@ -305,12 +311,13 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
         previews = {}
         if shown is not None:
             zl = map_level(tile, shown.textures)
-            what, p = engine.drawn(tile, shown, zl)
-            picture = _picture_file(tile, what, p)
+            picture = engine.picture_file(tile, shown, zl)
             # After: what X-Plane shows, but the textures Apply makes again, which show the
-            # build's own with the clouds Apply lays in them, each by its preview there
-            after = _picture_file(tile, *engine.drawn(tile, shown, zl, v.remade))
+            # build's own with the clouds Apply lays in them, each by its preview there (made
+            # with its images, ``find.check``)
+            after = engine.picture_file(tile, shown, zl, v.remade)
             for entry, names in v.previews:
+                p = engine.drawn(tile, shown, zl)[1]  # kept in memory: drawn once
                 got = preview(p, tile, entry, shown.built, names)
                 if got is not None:
                     previews[entry["id"]] = {"name": got[0], "bounds": got[1]}

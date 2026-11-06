@@ -43,6 +43,7 @@ __all__ = [
     "draw",
     "fine_level",
     "frame",
+    "frame_bounds",
     "map_level",
     "over_water",
     "pixel_metres",
@@ -308,6 +309,15 @@ def box_bounds(p: Picture, box: tuple[int, int, int, int]) -> list[float]:
     east]``, as the page lays an image."""
     north, west = tile_to_wgs84((p.x0 + box[0]) / 256, (p.y0 + box[1]) / 256, p.zl)
     south, east = tile_to_wgs84((p.x0 + box[2]) / 256, (p.y0 + box[3]) / 256, p.zl)
+    return [south, west, north, east]
+
+
+def frame_bounds(tile: TileRef, zl: int) -> list[float]:
+    """Where every picture of ``tile`` at ``zl`` lies (:func:`frame`), drawn or not: as
+    :func:`box_bounds` says of a drawn one's whole box."""
+    x0, y0, w, h = frame(tile, zl)
+    north, west = tile_to_wgs84(x0 / 256, y0 / 256, zl)
+    south, east = tile_to_wgs84((x0 + w) / 256, (y0 + h) / 256, zl)
     return [south, west, north, east]
 
 
