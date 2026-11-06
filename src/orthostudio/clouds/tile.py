@@ -29,7 +29,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from orthostudio.clouds.layer import CloudPatch, ring_pixels, tile_box, window
+import numpy as np
+
+from orthostudio.clouds.layer import REACH_PX, CloudPatch, ring_pixels, tile_box, window
 from orthostudio.errors import OsxpError
 from orthostudio.graph.digest import digest_bytes, digest_file
 from orthostudio.graph.store import Store
@@ -39,7 +41,7 @@ from orthostudio.install.library import default_library_path
 from orthostudio.model import TileRef
 from orthostudio.pipeline.filing import tile_home
 from orthostudio.pipeline.pack import MANIFEST_NAME, PackManifest, pack_dir_name, pack_is_intact
-from orthostudio.textures.assemble import CHUNK
+from orthostudio.textures.assemble import CHUNK, TEXTURE
 
 __all__ = [
     "DIGEST_HEX",
@@ -507,11 +509,21 @@ def patches_of(
     gain, shift = c["match"]
     match = (tuple(float(v) for v in gain), tuple(float(v) for v in shift))
     out: dict[str, CloudPatch] = {}
+    # its outline in the world's pixels, once a level: converted again for each texture, two
+    # hundred clouds over 156 textures took a second at every reading of the tile, the page's
+    # every half second (-02-049, 2026-11-06); the textures far from its box left at once, wider
+    # than ``window``, which says which it reaches
+    world: dict[int, tuple[list[np.ndarray], np.ndarray, np.ndarray]] = {}
     for t in textures:
-        rings = tuple(
-            tuple(ring_pixels(r, t.zl, t.til_x * CHUNK, t.til_y * CHUNK).ravel())
-            for r in c["rings"]
-        )
+        if t.zl not in world:
+            pts = [ring_pixels(r, t.zl, 0.0, 0.0) for r in c["rings"]]
+            every = np.concatenate(pts)
+            world[t.zl] = (pts, every.min(axis=0), every.max(axis=0))
+        pts, low, high = world[t.zl]
+        corner = np.array([t.til_x * CHUNK, t.til_y * CHUNK], np.float64)
+        if np.any(high - corner < -REACH_PX - 1) or np.any(low - corner > TEXTURE + REACH_PX + 1):
+            continue
+        rings = tuple(tuple((r - corner).ravel()) for r in pts)
         box = tile_box(tile.lat, tile.lon, t)
         p = CloudPatch(c["id"], c["source"], source_zl(t), rings, match, box)  # type: ignore[arg-type]
         if window(p) is not None:
