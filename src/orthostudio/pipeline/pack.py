@@ -91,6 +91,7 @@ __all__ = [
     "pack_env",
     "pack_is_intact",
     "pack_to_delete",
+    "pack_whole",
     "read_manifest",
     "take_back_overlay",
     "uninstall_receipt",
@@ -748,6 +749,20 @@ def _place_clouds(textures_dir: Path, pack_dir: Path, key: str, *, link: bool) -
         atomic_write_bytes(record, data)
         changed += 1
     return changed
+
+
+def pack_whole(pack_dir: Path, manifest: PackManifest, textures_dir: Path | None) -> bool:
+    """:func:`pack_is_intact`, and the clouds of its textures in place (:data:`CLOUDS_DIR`), when
+    the textures ``textures_dir`` (the artefact the manifest names) describe them: what a build
+    whose pack is a store hit checks, to lay it again when it is not."""
+    if not pack_is_intact(pack_dir, manifest):
+        return False
+    entry = manifest.artefacts.get("textures")
+    if entry is None or textures_dir is None or not (textures_dir / "manifest.json").is_file():
+        return True
+    root = Path(pack_dir) / CLOUDS_DIR
+    wanted = [Path(f"{entry.key}.json"), *_cloud_files(textures_dir)]
+    return all((root / rel).is_file() for rel in wanted)
 
 
 def _sweep_clouds(textures_dir: Path, pack_dir: Path, key: str) -> None:

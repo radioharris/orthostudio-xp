@@ -51,10 +51,14 @@ def ready(home: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     of its build kept; its picture a small one."""
     folder = default_tiles_root() / "zOrthoStudio_+43+005"
     folder.mkdir(parents=True)
+    dsf = folder / TILE.dsf_relpath
+    dsf.parent.mkdir(parents=True)
+    dsf.write_bytes(b"XPLNEDSF" + b"\0" * 100)
+    files = {"dsf": TILE.dsf_relpath.as_posix(), "dsf_size": 108, "textures": 0, "terrain": 0}
     write_manifest(
         folder,
         TILE,
-        PackManifest(TILE.name, "BI", 12, {"textures": ArtefactEntry("k1", "d", "r@2")}),
+        PackManifest(TILE.name, "BI", 12, {"textures": ArtefactEntry("k1", "d", "r@2")}, files),
     )
     (folder / CLOUDS_DIR).mkdir()
     doc = {"textures": [{"name": NAME, "chunks": "c"}], "colours": {"tile": [0, 0, 0], "zones": []},
@@ -90,7 +94,9 @@ async def test_what_a_ready_tile_allows_is_the_engines_to_say(app: Any, ready: P
         a = (await c.get("/api/clouds/+43+005")).json()
     assert a["state"] == "ready" and a["busy"] is False
     # nothing to apply, restore or discard yet: those wait for a change
-    assert a["allowed"] == ["check", "find", "outline", "pick", "remove", "untick"]
+    assert a["allowed"] == ["check", "choose", "find", "outline", "remove", "tick", "untick"]
+    assert a["line"] == {"key": "clouds.not_looked", "params": {}}  # no search made yet
+    assert a["texts"]["count"] == [{"key": "clouds.pending_none", "params": {}}]
     assert a["views"] == {"after": "clouds.after", "before": "clouds.before"}
     assert a["picture"]["level"] == 12
 
@@ -128,5 +134,18 @@ def test_a_build_lets_the_list_be_changed_and_nothing_that_reads_the_folder() ->
     with pytest.raises(Exception, match="cannot have its clouds looked at"):
         mode.require("+43+005", "in_build", "find")
     counts = {"changes": 0, "held": 1, "waiting": 0}
-    assert mode.useful(mode.possible("ready"), counts) >= {"restore"}
-    assert "apply" not in mode.useful(mode.possible("ready"), counts)
+    assert mode.useful(mode.possible("ready"), counts, False) >= {"restore", "find"}
+    assert "apply" not in mode.useful(mode.possible("ready"), counts, False)
+    assert "find" not in mode.useful(mode.possible("ready"), counts, True)  # a search runs
+    assert "apply" not in mode.possible("ready", tasks=True)  # a task reads the folder
+
+
+@pytest.mark.anyio
+async def test_a_ready_tiles_rows_offer_what_its_list_allows(app: Any, ready: Path) -> None:
+    with cloudlist.update(TILE) as cl:
+        found = cl.add("found", _ring(), 1.0, best="EOX", source="EOX")
+        drawn = cl.add("drawn", _ring(), 1.0)
+    async with client_for(app) as c:
+        rows = {r["id"]: r for r in (await c.get("/api/clouds/+43+005")).json()["clouds"]}
+    assert rows[found["id"]]["actions"] == ["tick", "choose"]
+    assert rows[drawn["id"]]["actions"] == ["choose", "remove"]  # no source yet: no tick

@@ -148,10 +148,10 @@ class TileClouding:
             del self.laid[cid]
         return bool(changed)
 
-    def manifest(self) -> dict[str, Any]:
-        """What the artefact's ``manifest.json`` says of its clouds, their parts kept in it."""
-        if not self.given:
-            return {}
+    def keep_parts(self) -> None:
+        """The parts of the clouds laid, kept in the artefact (linked, else copied)."""
+        if not self.laid:
+            return
         keep = artefact_parts(self.out)
         keep.mkdir(parents=True, exist_ok=True)
         for laid in self.laid.values():
@@ -162,12 +162,14 @@ class TileClouding:
                         os.link(path, dest)
                     except OSError:
                         shutil.copyfile(path, dest)
-        return {
-            "clouds": {
-                "applied": [dict(c) for c in self.given if c["id"] in self.laid],
-                "undone": dict(self.undone),
-            }
-        }
+
+    def manifest(self) -> dict[str, Any]:
+        """What the artefact's ``manifest.json`` says of its clouds: those laid, in their order,
+        and those given and not laid, with why (the build's account of them)."""
+        if not self.given:
+            return {}
+        applied = [dict(c) for c in self.given if c["id"] in self.laid]
+        return {"clouds": {"applied": applied, "undone": dict(self.undone)}}
 
 
 def _moved(then: set[str], now: set[str]) -> str | None:

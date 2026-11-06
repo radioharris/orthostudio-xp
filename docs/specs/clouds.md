@@ -82,21 +82,29 @@ The tile's state, the first that holds (`clouds/mode.py`, `tile_state`):
 | `in_build` | the tile is being built | changes made now wait for the next Apply |
 | `queued` | it waits in the queue | the same |
 | `not_built` | no folder of ours for the tile | |
+| `not_whole` | its folder is not the pack its manifest names (`pack_is_intact`: a build cut short, files taken from it) | build it again |
 | `earlier_version` | its textures do not say what a cloud is chosen on, or no settings of its last build are kept (2.5) | build it again once with this version |
 | `own_source_gone` | its source is no longer in the sources | add it back in Settings to apply |
 | `ready` | | |
 
 What each state allows is one table (`mode.possible`), which the routes refuse by (`mode.require`,
 `CLOUD_TILE_NOT_READY`) and the page greys by (the answer's `allowed`, of which only what would do
-something, `mode.useful`: Apply a change, Restore a replaced cloud, Discard a change or a wait):
-**ready**, everything; **being built** or **in the queue**, the list's edits alone (tick, untick,
-source, trash, Discard: they wait for the next Apply), nothing that reads the tile's folder while
-a build writes it; **its own source gone**, everything but Apply and Restore; any other state,
-nothing. What runs the cloud detector (a search, an outline, a tick or a source, getting images)
-is refused while the detector is not on this computer and the user has not said to download it
-(`CLOUD_DETECTOR_ASK`, with its size): the page asks, and on yes sends the same action again
-with `download`. The answer says when something is under way (`busy`: a task of the tile, or a
-build of it), for the page to read it again.
+something, `mode.useful`: Apply a change, Restore a replaced cloud, Discard a change or a wait,
+Find when no search runs): **ready**, everything; **being built** or **in the queue**, the
+list's edits alone (tick, untick, choose, remove, Discard: they wait for the next Apply), nothing
+that reads the tile's folder while a build writes it, its picture included (`mode.readable`);
+**its own source gone**, everything but Apply and Restore; any other state, nothing; and no
+Apply or Restore while a task of the tile reads its folder. The actions have one set of names,
+the same for the tile, its rows, the routes and the page: `tick`, `untick`, `choose`, `check`
+(get a cloud's images), `remove`, `discard`, `find`, `outline`, `apply`, `restore`. What runs the
+cloud detector is asked just before its task starts (a search, an outline, getting images, a
+tick or a source that needs them), refused while the detector is not on this computer and the
+user has not said to download it (`CLOUD_DETECTOR_ASK`, with its size): the page asks, and on
+yes sends the same action again with `download`. The answer says when something is under way
+(`busy`: a task of the tile, or a build of it), for the page to read it again, and every word
+the page shows of the tile, a key and its parameters: the tile's line (its state's, else that a
+search found none or none was made), the count, Apply's button and the questions of Apply and
+Restore (`texts`), each said from what Apply would build.
 
 A cloud's row, the first that holds (`rows`): read only while the tile is not ready, in a build or
 queued; a task of it (getting its images, trying an outline's sources); **held** (replaced with
@@ -126,7 +134,8 @@ description in the tile's folder as `clouds/<textures key>.json`, with the artef
 textures it names. What the tile holds is read from its folder alone (`tile.read_tile`), for the
 key `orthostudio.toml` names: it cannot disagree with what X-Plane shows, a build stopped half
 way leaves the folder naming the description before, and the tile keeps its clouds whatever the
-store loses (Free space, another data folder). The `tile.textures` rule is at version 2, so a tile
+store loses (Free space, another data folder). A build whose pack is a store hit lays it again
+when the folder lacks those files (`pack.pack_whole`). The `tile.textures` rule is at version 2, so a tile
 built earlier is described at its next build (its textures themselves are store hits).
 
 ### 2.2 A cloud entry
@@ -218,7 +227,9 @@ Apply builds the tile with its own settings (2.5), the computer's keys of now, a
 in, else what the tile holds of it (a replaced cloud given another source keeps its ground until
 the new one's images are in); a ticked cloud with neither waits, left out, and the question says
 so. After shows exactly these, each by its preview (R5): what Apply would build is what the map
-shows. The list changes only once the build is accepted (Restore unticks every cloud then). Only
+shows. The count is said from them too (`mode.summary`): replaced (laid, not held), another source
+(laid with another than held), back as photographed (held, not laid), waiting (ticked, nothing to
+lay). The list changes only once the build is accepted (Restore unticks every cloud then). Only
 the textures under the clouds changed are made again; the rest are store hits.
 
 ### R5. What you see is what is laid
@@ -257,7 +268,8 @@ A tile is built by one program at a time (`pipeline/turns.py`): the build holds 
 by a file in the data folder's `building/`, locked by the system for the time of the build, its
 process's number in it for the message. Another program asked to build one of them meanwhile is
 refused before anything is written, `SYS_TILE_BEING_BUILT`; the system lets go of the lock
-whatever ends the program, so no file stands for a build gone. In the app, builds wait in their
+whatever ends the program, so no file stands for a build gone; a disk that has no locks (some
+network shares) lets the build go on unheld, and the log says so. In the app, builds wait in their
 queue.
 
 ## 4. Finding and laying

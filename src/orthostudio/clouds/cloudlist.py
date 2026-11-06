@@ -34,7 +34,6 @@ from orthostudio.clouds.sources import PROPOSABLE
 from orthostudio.clouds.tile import TileClouds, list_path, own_folder, previews_dir
 from orthostudio.errors import OsxpError
 from orthostudio.fsutil import atomic_write_text
-from orthostudio.imagery.grid import parse_texture_name
 from orthostudio.model import TileRef
 
 __all__ = ["Change", "CloudList", "changes", "forgetting", "laid_after", "load", "update"]
@@ -199,7 +198,8 @@ def update(
             raise OsxpError("SYS_CANCELLED")
         path = list_path(tile)
         if path.exists() and _read(tile) is None:
-            n = sum(1 for _ in path.parent.glob(path.name + ".broken*"))
+            taken = [p.name.rpartition("-")[2] for p in path.parent.glob(path.name + ".broken-*")]
+            n = max((int(x) for x in taken if x.isdigit()), default=0)
             path.replace(path.with_name(f"{path.name}.broken-{n + 1}"))
         cl = load(tile, held)
         yield cl
@@ -209,12 +209,32 @@ def update(
 # -- edits -------------------------------------------------------------------------------------
 
 
+def answer_of(c: Mapping[str, Any], code: str) -> str | None:
+    """What the source ``code`` has under the cloud ``c``, the newest said: its images got, else
+    the search's or the outline's try; ``None`` when it was never asked there."""
+    for said in ((c.get("checks") or {}).get(code), (c.get("screening") or {}).get(code)):
+        if said and said.get("answer"):
+            return str(said["answer"])
+    return None
+
+
+def proposable(c: Mapping[str, Any], code: str) -> bool:
+    """Whether the source ``code`` may be chosen for ``c`` (``sources.PROPOSABLE``)."""
+    answer = answer_of(c, code)
+    return answer is None or answer in PROPOSABLE
+
+
+def tickable(c: Mapping[str, Any]) -> bool:
+    """Whether ``c`` may be ticked: it has a source to be replaced with, its own or its best."""
+    return bool(c["source"] or c.get("best"))
+
+
 def pick(cl: CloudList, cid: str, *, tick: bool | None = None, source: str | None = None) -> None:
     """A tick or a source of one cloud: choosing a source ticks it, unticking keeps it; a source
-    whose answer there it is no use asking again cannot be chosen (``sources.PROPOSABLE``)."""
+    that may not be chosen there (:func:`proposable`) is refused."""
     c = cl.get(cid)
-    said = ((c.get("screening") or {}).get(source) or {}).get("answer") if source else None
-    if said is not None and said not in PROPOSABLE:
+    if source is not None and not proposable(c, source):
+        said = answer_of(c, source)
         raise OsxpError(
             "CLOUD_INVALID",
             context={"tile": cl.tile, "cloud": cid, "reason": f"{source} answered {said} there"},
@@ -224,7 +244,7 @@ def pick(cl: CloudList, cid: str, *, tick: bool | None = None, source: str | Non
     elif tick is not None:
         if tick and c["source"] is None:
             c["source"] = c.get("best")
-        c["tick"] = bool(tick) and c["source"] is not None
+        c["tick"] = bool(tick) and tickable(c)
 
 
 def _shape(rings: Sequence[Sequence[float]]) -> Any:
@@ -331,9 +351,11 @@ def screening_of(verdicts: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
     return {code: {"answer": j.answer, "fit": j.fit} for code, j in verdicts.items()}
 
 
-def best_of(screening: Mapping[str, Mapping[str, Any]]) -> str | None:
-    """The source proposed for a cloud: the clear one whose colours fit best."""
-    clear = [(s.get("fit", 0), code) for code, s in screening.items() if s["answer"] == "clear"]
+def best_of(c: Mapping[str, Any]) -> str | None:
+    """The source proposed for the cloud ``c``: of those clear under it (:func:`answer_of`), the
+    one whose colours fit best."""
+    screening = c.get("screening") or {}
+    clear = [(s.get("fit", 0), k) for k, s in screening.items() if answer_of(c, k) == "clear"]
     return max(clear)[1] if clear else None
 
 
@@ -344,7 +366,7 @@ def record_screening(cl: CloudList, cid: str, verdicts: Mapping[str, Any]) -> No
     if c is None:
         return
     c["screening"] = screening_of(verdicts)
-    c["best"] = best_of(c["screening"])
+    c["best"] = best_of(c)
     if c["best"] is not None:
         pick(cl, cid, source=c["best"])
 
@@ -431,8 +453,7 @@ def needs_images(ch: Change | None) -> bool:
 def _stands_not(entry: Mapping[str, Any], held: TileClouds, tile: TileRef) -> str | None:
     """Why the images got for a cloud no longer stand on the photo the tile holds: the build's
     own rule, on what the tile's folder says of its textures."""
-    textures = [parse_texture_name(n) for n in held.chunks]
-    return standing(entry, tile, textures, colours=held.colours, chunks=held.chunks)[0]
+    return standing(entry, tile, held.textures, colours=held.colours, chunks=held.chunks)[0]
 
 
 def laid_after(

@@ -49,10 +49,9 @@ export function taskWords(task) {
   return `${t(`clouds.phase.${task.phase}`)}${pct}`;
 }
 
-/** What the count line says of the changes Apply would make, only those it has. */
-export function pendingWords(p) {
-  const parts = ["replace", "another", "back", "waiting"].filter((k) => p?.[k] > 0).map((k) => t(`clouds.pending.${k}`, { n: p[k] }));
-  return parts.length ? parts.join(" · ") : t("clouds.pending_none");
+/** A line of several pieces the engine sent, each a key and its parameters. */
+export function piecesWords(pieces) {
+  return (pieces || []).map((w) => lineWords(w)).join(" · ");
 }
 
 export function createCloudMode(ctx) {
@@ -215,12 +214,9 @@ export function createCloudMode(ctx) {
   }
 
   async function apply(restore = false) {
-    const p = cs.answer?.pending || {};
-    const title = restore ? t("clouds.restore_title", { tile: cs.tile }) : t(p.changes === 1 ? "clouds.apply_title_one" : "clouds.apply_title", { tile: cs.tile, n: p.changes });
-    const lines = restore
-      ? [t("clouds.restore_text", { n: p.held })]
-      : [pendingWords({ ...p, waiting: 0 }), ...(p.waiting ? [t("clouds.apply_waiting", { n: p.waiting })] : []), t("clouds.apply_text")];
-    if (!(await ask(title, lines, restore ? t("clouds.restore_go") : t("clouds.apply_go")))) return;
+    // the question's words are the engine's, from what Apply would build
+    const q = cs.answer?.texts?.[restore ? "restore_question" : "apply_question"];
+    if (!q || !(await ask(lineWords(q.title), q.lines.map((w) => lineWords(w)), lineWords(q.go)))) return;
     const res = await send("POST", "/apply", restore ? { restore: true } : {});
     if (res?.job) {
       toast(t("clouds.applying", { tile: cs.tile }));
@@ -276,16 +272,13 @@ export function createCloudMode(ctx) {
       kids.push(h("p", { class: "clouds-warning", role: "status" }, `${t(`clouds.task.${a.failed.kind}`)} ${message} ${remedy || ""}`.trim()));
     }
     const can = new Set(a.allowed);
-    const searching = a.tasks.some((x) => x.kind === "search");
-    if (can.has("find") && !a.clouds.length && !searching) kids.push(h("p", null, a.search ? t("clouds.none_found") : t("clouds.not_looked")));
     const list = h("ul", { class: "zone-list" });
     for (const c of a.clouds) list.append(row(c));
     kids.push(list);
-    const p = a.pending || {};
-    kids.push(h("p", { class: "clouds-count" }, pendingWords(p)));
+    kids.push(h("p", { class: "clouds-count" }, piecesWords(a.texts.count)));
     kids.push(h("div", { class: "plan-actions" },
-      h("button", { type: "button", class: "btn", disabled: !can.has("find") || searching, onclick: () => send("POST", "/find") }, t("clouds.find")),
-      h("button", { type: "button", class: "btn btn-primary", disabled: !can.has("apply"), onclick: () => apply(false) }, t(p.changes === 1 ? "clouds.apply_one" : "clouds.apply", { n: p.changes || 0 })),
+      h("button", { type: "button", class: "btn", disabled: !can.has("find"), onclick: () => send("POST", "/find") }, t("clouds.find")),
+      h("button", { type: "button", class: "btn btn-primary", disabled: !can.has("apply"), onclick: () => apply(false) }, lineWords(a.texts.apply)),
       h("button", { type: "button", class: "btn", disabled: !can.has("discard"), onclick: () => send("POST", "/discard") }, t("clouds.discard")),
       can.has("restore") ? h("button", { type: "button", class: "btn", onclick: () => apply(true) }, t("clouds.restore")) : null,
     ));
@@ -314,7 +307,7 @@ export function createCloudMode(ctx) {
       render();
     };
     const buttons = [
-      can.has("get_images") ? h("button", { type: "button", class: "btn", "aria-label": `${t("clouds.get_images")}: ${label}`, onclick: () => send("POST", "/check", { id: c.id }) }, t("clouds.get_images")) : null,
+      can.has("check") ? h("button", { type: "button", class: "btn", "aria-label": `${t("clouds.get_images")}: ${label}`, onclick: () => send("POST", "/check", { id: c.id }) }, t("clouds.get_images")) : null,
       can.has("stop") && task ? h("button", { type: "button", class: "btn", "aria-label": `${t("clouds.stop")}: ${label}`, onclick: () => stopTask((x) => x.cloud === c.id) }, t("clouds.stop")) : null,
     ].filter(Boolean);
     const trash = can.has("remove")

@@ -509,7 +509,7 @@ def check(
 ) -> Check:
     """Get the images of the cloud ``cid`` (its ``rings``) from the source ``code`` at the tile's
     sharpness, freeze them into parts, and draw its preview from the build's own layer."""
-    textures = [parse_texture_name(n) for n in held.chunks]
+    textures = held.textures
     c = {
         "id": cid,
         "source": code,
@@ -612,7 +612,8 @@ def preview(
     ``[south, west, north, east]``; ``None`` when one of its frozen parts is found nowhere in
     ``folders``. Named by what it is made of, the folder's picture, the way clouds are laid and
     the entry, so it is made once and again only when one of them changes."""
-    what = f"{shown}:{p.zl}:{CLOUDS_RULE}:{json.dumps(entry, sort_keys=True)}"
+    laid = {k: v for k, v in entry.items() if k not in ("kind", "number")}  # the list's, not laid
+    what = f"{shown}:{p.zl}:{CLOUDS_RULE}:{json.dumps(laid, sort_keys=True)}"
     out = previews / f"{digest_bytes(what.encode())[:32]}.png"
     box = _preview_box(p, entry)
     west, north = lonlat(p, box[0], box[1])

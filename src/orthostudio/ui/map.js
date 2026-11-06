@@ -942,7 +942,7 @@ export function createPlanMap(ctx) {
    * ``shape``), or, given ``onShape``, a free shape for another (a cloud's outline): its
    * polygon goes to ``onShape`` and ``onEnd`` is told when the drawing ends, done or not. */
   function startDraw(kind, onShape = null, onEnd = null) {
-    if (!zs.loaded) {
+    if (!onShape && !zs.loaded) {  // a zone goes into the zones: they must be there
       ctx.toast(zs.loadError ? t("zones.load_failed", { detail: zs.loadError }) : t("app.loading"), "fail");
       return;
     }
@@ -1128,6 +1128,10 @@ export function createPlanMap(ctx) {
     }
     const oe = ev.originalEvent || {};
     if (oe.detail > 1) return; // the second click of a double-click
+    if (zs.draft?.onShape) {  // another's shape (a cloud's outline): a point, no zone gesture
+      draftPoint(ev.latlng.lng, ev.latlng.lat);
+      return;
+    }
     const mod = Boolean(oe.ctrlKey || oe.metaKey);
     if (mod || oe.shiftKey) shortcut(ev.latlng, oe, mod, Boolean(oe.shiftKey));
     else plainClick(ev.latlng);
@@ -1263,7 +1267,7 @@ export function createPlanMap(ctx) {
     hideTip(); // drawing a zone: the tip would sit in the way
     const oe = ev.originalEvent || {};
     let cursor = ev.latlng;
-    if (zs.draft.kind === "shape" && (oe.ctrlKey || oe.metaKey) && oe.shiftKey) {
+    if (zs.draft.kind === "shape" && !zs.draft.onShape && (oe.ctrlKey || oe.metaKey) && oe.shiftKey) {
       const [lon, lat] = snapToTextureCorner(wrapLon(cursor.lng), clampLat(cursor.lat), zs.nextZl);
       cursor = L.latLng(lat, lon);
     }

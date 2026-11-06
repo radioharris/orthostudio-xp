@@ -97,3 +97,16 @@ def test_nothing_is_made_while_the_data_folder_is_away(
     with pytest.raises(OsxpError) as got, turns.holding([TILE]):
         pass
     assert got.value.code == "CFG_DATA_DIR_MISSING" and not away.parent.exists()
+
+
+def test_a_disk_without_locks_lets_the_build_go_on(monkeypatch: pytest.MonkeyPatch) -> None:
+    import errno
+
+    fcntl = pytest.importorskip("fcntl")  # macOS and Linux: Windows locks otherwise
+
+    def no_locks(fd: int, op: int) -> None:
+        raise OSError(errno.ENOLCK, "No locks available")
+
+    monkeypatch.setattr(fcntl, "flock", no_locks)
+    with turns.holding([TILE]):
+        pass

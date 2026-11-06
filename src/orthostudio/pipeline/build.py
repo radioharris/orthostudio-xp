@@ -145,6 +145,7 @@ from orthostudio.pipeline.pack import (
     pack_dir_name,
     pack_env,
     pack_is_intact,
+    pack_whole,
     write_build_settings,
     write_manifest,
 )
@@ -1306,6 +1307,7 @@ def _tile_textures(ctx: RunContext) -> None:
     # under a replaced cloud from it, as X-Plane shows it once that cloud is unticked
     if clouds.laid:
         run({}, only=set(clouds.layers()), out=artefact_originals(ctx.out))
+    clouds.keep_parts()
     manifest = {
         "format": MANIFEST_FORMAT,
         "tile": tile.name,
@@ -3505,7 +3507,7 @@ class _Collector:
         try:
             manifest = PackManifest.from_toml(done.ref.path.read_text(encoding="utf-8"))
             pack_dir = Path(spec.out_dir).expanduser().resolve() / pack_dir_name(spec.tile)
-            if not pack_is_intact(pack_dir, manifest):
+            if not pack_whole(pack_dir, manifest, _textures_of(self._env, manifest)):
                 _assemble_again(nodes, self._env, self, manifest)
                 self.laid.add(done.node_id)
         except Exception:  # the end of the build lays it again, and says what stops it
@@ -3567,7 +3569,7 @@ def _verify_effects(
     pack_dir = out_root / pack_dir_name(spec.tile)
     manifest = PackManifest.from_toml(pack_done.ref.path.read_text(encoding="utf-8"))
     laid = nodes.pack.id in collector.laid
-    if not pack_is_intact(pack_dir, manifest):
+    if not pack_whole(pack_dir, manifest, _textures_of(env, manifest)):
         _assemble_again(nodes, env, collector, manifest)
         laid = True
     if laid:
@@ -3588,6 +3590,12 @@ def _verify_effects(
         installed = True
     _remember_the_tile(spec, pack_dir, manifest, env)
     return repaired, installed
+
+
+def _textures_of(env: BuildEnv, manifest: PackManifest) -> Path | None:
+    """The folder of the textures artefact ``manifest`` names, ``None`` when the store has none."""
+    entry = manifest.artefacts.get("textures")
+    return env.store.path(entry.key) if entry is not None and env.store.has(entry.key) else None
 
 
 def _assemble_again(

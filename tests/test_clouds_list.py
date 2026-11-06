@@ -251,3 +251,40 @@ def test_every_answer_of_a_source_has_its_words_in_both_languages() -> None:
     for answer in ANSWERS:
         assert f'"clouds.answer.{answer}":' in fr and f'"clouds.answer.{answer}":' in en, answer
     assert set(ANSWERS) >= PROPOSABLE
+
+
+def test_a_held_cloud_given_a_source_without_images_keeps_its_ground_and_is_no_change() -> None:
+    # R4: Apply lays the newest images that stand, else what the tile holds; the count says so
+    from orthostudio.clouds import mode
+
+    held = _held(_entry("held0001", A))
+    with cls.update(TILE, held) as cl:
+        cls.pick(cl, "held0001", source="Arc")
+        pending = cls.changes(cl, held, TILE)
+        laid = cls.laid_after(cl, held, pending)
+        counts = mode.summary(cl, held, pending)
+    assert [e["source"] for e in laid] == ["EOX"]
+    assert counts["changes"] == 0 and counts["waiting"] == 0 and counts["held"] == 1
+
+
+def test_a_source_whose_images_showed_the_same_photo_cannot_be_chosen() -> None:
+    # one answer of a source under a cloud: its images got, else its screening
+    with cls.update(TILE) as cl:
+        cls.merge_search(cl, [_found(A)], None)
+        cid = cl.clouds[0]["id"]
+        cl.get(cid)["screening"]["Arc"] = {"answer": "clear", "fit": 90}
+        cl.get(cid)["checks"]["Arc"] = {"answer": "same_photo", "fit": 0, "entry": None}
+        assert not cls.proposable(cl.get(cid), "Arc") and cls.best_of(cl.get(cid)) == "EOX"
+        with pytest.raises(OsxpError):
+            cls.pick(cl, cid, source="Arc")
+
+
+def test_a_list_put_aside_never_takes_the_name_of_another(home: Path) -> None:
+    path = cls.list_path(TILE)
+    path.parent.mkdir(parents=True)
+    path.with_name(path.name + ".broken-2").write_text("old")
+    path.write_text("{not json")
+    with cls.update(TILE):
+        pass
+    assert path.with_name(path.name + ".broken-2").read_text() == "old"
+    assert path.with_name(path.name + ".broken-3").read_text() == "{not json"

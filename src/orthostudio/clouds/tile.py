@@ -28,6 +28,7 @@ from shapely.geometry import Polygon, box
 from shapely.validation import make_valid
 
 from orthostudio.home import osxp_home
+from orthostudio.imagery.grid import TextureId, parse_texture_name
 from orthostudio.install.library import default_library_path
 from orthostudio.model import TileRef
 from orthostudio.pipeline.filing import tile_home
@@ -115,6 +116,11 @@ class TileClouds:
 
     def held(self, cloud: str) -> dict[str, Any] | None:
         return next((c for c in self.applied if c["id"] == cloud), None)
+
+    @property
+    def textures(self) -> list[TextureId]:
+        """Its textures, as their names say them."""
+        return [parse_texture_name(n) for n in self.chunks]
 
     @property
     def textures_dir(self) -> Path:

@@ -12,6 +12,8 @@ gone, nor for another process given its number since.
 from __future__ import annotations
 
 import contextlib
+import errno
+import logging
 import os
 from collections.abc import Iterable, Iterator
 from pathlib import Path
@@ -23,6 +25,8 @@ from orthostudio.model import TileRef
 
 __all__ = ["holding"]
 
+log = logging.getLogger(__name__)
+
 _LOCKED_AT = 1 << 20
 """The byte locked, past the number written: under Windows a locked range cannot be read."""
 
@@ -32,8 +36,14 @@ def _path(tile: TileRef) -> Path:
     return require_data_root() / "building" / f"{tile.name}.lock"
 
 
+_HELD = {errno.EACCES, errno.EAGAIN, errno.EWOULDBLOCK, getattr(errno, "EDEADLOCK", errno.EDEADLK)}
+"""What the system answers when another process holds the lock; any other refusal is a disk
+that has no locks (a network share, say): its builds go on unheld, the log says so."""
+
+
 def _lock(f: IO[str]) -> bool:
-    """Whether this process now holds ``f``'s lock (``False``: another one does)."""
+    """Whether this process now holds ``f``'s lock, or the disk has none (``False``: another
+    process holds it)."""
     try:
         if os.name == "nt":
             import msvcrt
@@ -44,9 +54,21 @@ def _lock(f: IO[str]) -> bool:
             import fcntl
 
             fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except OSError:
-        return False
+    except OSError as exc:
+        if exc.errno in _HELD:
+            return False
+        log.warning("%s: no lock on this disk (%s): the tile is built unheld", f.name, exc)
     return True
+
+
+def _let_go(f: IO[str]) -> None:
+    if os.name == "nt":  # the byte unlocked before the file is closed, as Windows asks
+        import msvcrt
+
+        with contextlib.suppress(OSError):
+            f.seek(_LOCKED_AT)
+            msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 1)  # type: ignore[attr-defined]
+    f.close()
 
 
 def _take(tile: TileRef) -> IO[str]:
@@ -76,4 +98,4 @@ def holding(tiles: Iterable[TileRef]) -> Iterator[None]:
         yield
     finally:
         for f in held:
-            f.close()  # the system lets go of the lock
+            _let_go(f)

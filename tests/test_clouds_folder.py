@@ -10,6 +10,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from orthostudio.clouds.tile import read_tile
 from orthostudio.model import TileRef
 from orthostudio.pipeline.pack import (
@@ -106,3 +108,22 @@ def test_a_folder_built_before_it_described_its_textures_holds_nothing(tmp_path:
     folder.mkdir()
     _name(folder, "k1")
     assert read_tile(folder) is None
+
+
+def test_a_pack_whose_clouds_are_not_in_place_is_laid_again(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # a store hit of the pack lays it again when the folder lacks its textures' description
+    from orthostudio.pipeline import pack
+    from orthostudio.pipeline.pack import pack_whole, read_manifest
+
+    folder = tmp_path / "zOrthoStudio_+43+005"
+    art = _textures(tmp_path / "store", "k1", "aaaa1111")
+    _place_clouds(art, folder, "k1", link=True)
+    _name(folder, "k1")
+    manifest = read_manifest(folder)
+    monkeypatch.setattr(pack, "pack_is_intact", lambda *a, **k: True)  # the rest of it as it is
+    assert pack_whole(folder, manifest, art)
+    (folder / CLOUDS_DIR / "k1.json").unlink()
+    assert not pack_whole(folder, manifest, art)
+    assert pack_whole(folder, manifest, None)  # textures that describe nothing: as before
