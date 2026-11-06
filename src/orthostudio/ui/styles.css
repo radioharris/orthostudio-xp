@@ -670,6 +670,7 @@ input[aria-invalid="true"] { border-color: var(--fail); }
    thicker (three colours, orange, red and blue, said nothing clear, a user, 2026-11-03). */
 .zone-item > .cloud-swatch { background: transparent; box-shadow: inset 0 0 0 1px var(--line-2); }
 .zone-item > .cloud-swatch.is-on { background: var(--accent); box-shadow: none; }
+.zone-item.cloud-item { cursor: pointer; } /* a click shows its cloud */
 .zone-item.cloud-item[aria-current="true"] { border-color: var(--fg-2); box-shadow: inset 0 0 0 1px var(--fg-2); background: color-mix(in srgb, var(--fg) 10%, var(--bg)); }
 .library-clouds { white-space: nowrap; }
 .library-clouds .clouds-words { margin-left: var(--gap); color: var(--fg-2); font-size: var(--fs-2); }

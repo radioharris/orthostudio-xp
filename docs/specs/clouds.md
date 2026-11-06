@@ -63,13 +63,14 @@ The Plan's map, brought over the tile; the Plan's steps make way for the cloud p
   original photos** while the tile holds replaced clouds (greyed while it may not run), **Quick
   search** and **Fine search** (4.1; greyed, saying why, on a tile with nothing finer to read, the
   engine's `fine`), and before any cloud, what each search takes.
-- **A row**, laid out as the Plan's zones: its tick and name, its area, **Show** (the map over
-  it), a trash for an outline the tile does not hold; the menu of its sources, each with what it
-  has there and its fit ("Esri World Imagery · clear · fit 93 %"), both from its newest reading
-  (`state.reading`: its images got, else the search's), the best first, those that cannot be
-  chosen greyed (`sources.PROPOSABLE`: the same photo, no picture; the source whose images the
-  tile shows of it always may be); its line (1.5), with a spinner while a task of it runs; **Get
-  its images** when asking again may end its wait; **Stop** while a task of it runs.
+- **A row**, laid out as the Plan's zones (a click on it shows its cloud, as **Show** does; its
+  checkbox and its name tick it): its tick and name, its area, **Show** (the map over it), a trash
+  for an outline the tile does not hold; the menu of its sources, each with what it has there and
+  its fit ("Esri World Imagery · clear · fit 93 %"), both from its newest reading (`state.reading`:
+  its images got, else the search's), the best first, those that cannot be chosen greyed
+  (`sources.PROPOSABLE`: the same photo, no picture; the source whose images the tile shows of it
+  always may be); its line (1.5), with a spinner while a task of it runs; **Get its images** when
+  asking again may end its wait; **Stop** while a task of it runs.
 
 ### 1.4 What the user does
 

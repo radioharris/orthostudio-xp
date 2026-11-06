@@ -580,7 +580,12 @@ export function createCloudMode(ctx) {
         task ? `${lineWords(c.line, n)} ${taskWords(task)}` : lineWords(c.line, n))
       : null;
     // keyed by its cloud: redrawn in place, a row stays its cloud's, its handlers with it
-    return h("li", { class: "zone-item cloud-item", "aria-current": String(c.id === cs.current), dataset: { cloud: c.id, state: c.state, focusKey: `cloud-${c.id}` } },
+    // a click on the row shows its cloud; its checkbox and its name tick it, its menu and its
+    // buttons do what they say (a user, 2026-11-06)
+    const pick = (ev) => {
+      if (!ev.target.closest("label, input, select, button")) show();
+    };
+    return h("li", { class: "zone-item cloud-item", "aria-current": String(c.id === cs.current), dataset: { cloud: c.id, state: c.state, focusKey: `cloud-${c.id}` }, onclick: pick },
       h("span", { class: `zl-swatch cloud-swatch${c.tick ? " is-on" : ""}`, "aria-hidden": "true" }),
       h("div", { class: "zone-main" },
         h("div", { class: "zone-row" },
