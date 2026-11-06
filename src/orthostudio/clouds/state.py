@@ -239,12 +239,12 @@ class CloudState:
     def page(self, previews: Mapping[str, Any] | None = None) -> dict[str, Any]:
         """Its row as the page shows it, with its preview in ``previews`` when After needs one;
         on the map, a found cloud's number (``numbered``), and at its centre while a task of it
-        runs, not while it waits its turn, a spinner, or its line for an outline's try, where the
-        user just drew (``label``: Tick all's labels hid the map, a user, 2026-11-06)."""
+        runs, not while it waits its turn, a label with a spinner, its name and where its task is
+        (``label``, its line: "Cloud 5: downloading the images"; a few at once, those running:
+        Tick all's labels of every cloud hid the map, a user, 2026-11-06 and 07)."""
         c = self.cloud
         task = self.task
-        running = task is not None and task.get("phase") != "waiting"
-        label = None if not running else "words" if task["kind"] == "outline" else "spinner"
+        label = task is not None and task.get("phase") != "waiting"
         return {
             "id": c["id"],
             "kind": c["kind"],
@@ -347,9 +347,9 @@ def _line(s: CloudState) -> dict[str, Any] | None:
         return None
     if s.row == "found":
         return {"key": "clouds.row.no_source", "params": {}, "tone": "plain"}
-    if s.row in ("check", "outline"):  # where its task is, in a few words: one line in the row
+    if s.row in ("check", "outline"):  # where its task is, the tile's tasks' own words
         phase = (s.task or {}).get("phase", "waiting")
-        return {"key": f"clouds.row.task.{phase}", "params": {}, "tone": "plain"}
+        return {"key": f"clouds.phase.{phase}", "params": {}, "tone": "plain"}
     if s.why is not None:  # what it waits for, whatever Apply does meanwhile
         return {"key": f"clouds.row.waiting.{s.why}", "params": src, "tone": "warn"}
     if s.row in ("ready", "held"):  # its tick and its menu say it (a user, 2026-11-07)

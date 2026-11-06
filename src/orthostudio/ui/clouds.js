@@ -240,7 +240,7 @@ export function createCloudMode(ctx) {
     // reading, twice a second while a task ran, the tooltip under the mouse went away and two
     // hundred clouds weighed on the page (a review, 2026-11-06)
     const shapes = JSON.stringify([cs.tile, cs.current, ctx.planMap.drafting(), (cs.answer?.clouds || []).map((c) =>
-      [c.id, c.rings, c.tick, c.tip, c.label, c.label === "words" ? lineWords(c.line, names()) : null, c.numbered])]);
+      [c.id, c.rings, c.tick, c.tip, c.label ? labelWords(c) : null, c.numbered])]);
     if (shapes === cs.shapesKey) return;
     cs.shapesKey = shapes;
     drawShapes(map);
@@ -327,8 +327,7 @@ export function createCloudMode(ctx) {
       }
       shape.addTo(layer);
       if (c.label) {
-        const words = c.label === "words" ? lineWords(c.line, names()) : null;
-        const label = h("div", { class: words ? "cloud-pending" : "cloud-pending is-spinner" }, h("span", { class: "spinner", "aria-hidden": "true" }), words);
+        const label = h("div", { class: "cloud-pending" }, h("span", { class: "spinner", "aria-hidden": "true" }), labelWords(c));
         L.marker(L.latLngBounds(rings.flat()).getCenter(), {
           icon: L.divIcon({ className: "cloud-pending-anchor", html: label, iconSize: [0, 0] }),
           interactive: false,
@@ -338,6 +337,11 @@ export function createCloudMode(ctx) {
     }
     layer.addTo(map);
     cs.shapes = layer;
+  }
+
+  /** A cloud's label on the map while its task runs: its name and where the task is. */
+  function labelWords(c) {
+    return t("clouds.label", { name: cloudName(c), what: lineWords(c.line, names()) });
   }
 
   /** A cloud's name on the map, with what a click on it does (``tip``, the engine's). */
@@ -575,7 +579,7 @@ export function createCloudMode(ctx) {
     const n = names();
     const can = new Set(c.actions);
     const label = cloudName(c);
-    const box = h("input", { type: "checkbox", disabled: !c.toggle, onchange: () => { cs.current = c.id; toggle(c); } });
+    const box = h("input", { type: "checkbox", disabled: !c.toggle, onchange: () => toggle(c) });
     box.checked = c.tick;
     const menu = h("select", { "aria-label": t("clouds.source_of", { name: label }), disabled: !can.has("choose"), onchange: (ev) => choose(c, ev.target.value) },
       c.source ? null : h("option", { value: "", disabled: true }, t("clouds.choose")),
@@ -610,11 +614,14 @@ export function createCloudMode(ctx) {
       : null;
     // keyed by its cloud: redrawn in place, a row stays its cloud's, its handlers with it
     // a click on the row shows its cloud; its checkbox and its name tick it, its menu and its
-    // buttons do what they say (a user, 2026-11-06)
+    // buttons do what they say (a user, 2026-11-06); whatever is done on a row makes its cloud
+    // the current one, the one rule for its tick, its source, its images and its Stop (a user,
+    // 2026-11-07: a source changed left another cloud current)
     const pick = (ev) => {
-      if (!ev.target.closest("label, input, select, button")) show();
+      cs.current = c.id;
+      if (ev.type === "click" && !ev.target.closest("label, input, select, button")) show();
     };
-    return h("li", { class: "zone-item cloud-item", "aria-current": String(c.id === cs.current), dataset: { cloud: c.id, state: c.state, focusKey: `cloud-${c.id}` }, onclick: pick },
+    return h("li", { class: "zone-item cloud-item", "aria-current": String(c.id === cs.current), dataset: { cloud: c.id, state: c.state, focusKey: `cloud-${c.id}` }, onclick: pick, onchange: pick },
       h("span", { class: `zl-swatch cloud-swatch${c.tick ? " is-on" : ""}`, "aria-hidden": "true" }),
       h("div", { class: "zone-main" },
         h("div", { class: "zone-row" },
