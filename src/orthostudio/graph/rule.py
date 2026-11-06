@@ -102,9 +102,6 @@ class Rule:
     ram_mb: int = 0
     kind: Kind = "file"
     doc: str = field(default="", compare=False)
-    late_inputs: tuple[str, ...] = ()
-    """Inputs added after artefacts of the rule were stored: absent, one is left out of the key,
-    so everything built before it stays a hit. Each is one of :attr:`inputs`."""
 
     def __post_init__(self) -> None:
         if not _NAME.match(self.name):
@@ -122,10 +119,6 @@ class Rule:
                     f"rule {self.name!r}: input name {n!r} must match {_INPUT.pattern}"
                 )
         object.__setattr__(self, "inputs", tuple(sorted(names)))
-        late = tuple(sorted(set(self.late_inputs)))
-        if any(n not in names for n in late):
-            raise InvalidRuleError(f"rule {self.name!r}: late inputs {late} are not all inputs")
-        object.__setattr__(self, "late_inputs", late)
         if self.ram_mb < 0:
             raise InvalidRuleError(f"rule {self.name!r}: ram_mb must be >= 0")
         if self.kind not in ("file", "dir"):
@@ -152,7 +145,6 @@ def rule(
     inputs: Iterable[str] = (),
     ram_mb: int = 0,
     kind: Kind = "file",
-    late_inputs: Iterable[str] = (),
 ) -> Callable[[RuleFn], Rule]:
     """Decorator turning a ``fn(ctx: RunContext) -> None`` into a :class:`Rule`."""
 
@@ -166,7 +158,6 @@ def rule(
             ram_mb=ram_mb,
             kind=kind,
             doc=(fn.__doc__ or "").strip(),
-            late_inputs=tuple(late_inputs),
         )
 
     return wrap

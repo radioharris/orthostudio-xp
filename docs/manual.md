@@ -65,17 +65,18 @@ ticked with the best, named *Outline 1*, with a bin to take it out.
 ### 6. Apply
 
 Nothing changes in X-Plane until you press **Apply (3 changes)**. The app says what will change,
-and what waits (a cloud whose images are not in yet stays out). The tile is built again with the
-settings it was built with, whatever profile is in use now: only its clouds change, and only the
-textures under them are made again, usually in seconds. Works shows the build. If you stop it, or
-it fails, the tile keeps the clouds it had, and you can press **Apply** again.
+and what waits (a cloud whose images are not in yet stays out). Apply does not build the tile: it
+changes only the pixels under the clouds in its textures, in a few seconds, and the panel shows
+how far it is. The rest of the tile stays exactly as built. On Windows, quit X-Plane first if it
+shows the tile: it holds the textures and they cannot be replaced while it runs.
 
 **Discard changes** puts the list back to what the tile holds.
 
 ### 7. Afterwards
 
-The tile keeps its clouds replaced: every build of it after, from the Plan, the Library or Works,
-makes them again on the same photo. The Library says how many it has replaced and how many wait.
+The tile keeps its clouds replaced: every build of it after, from the Plan, the Library, Works or
+the command line, lays them again on the same photo once it has placed its textures. The Library
+says how many it has replaced and how many wait.
 
 A cloud is chosen on a photo. Build the tile from another source or at another level, change the
 colours of the tile or of a zone near the cloud, or let its source send new images, and the photo
@@ -83,11 +84,8 @@ under the cloud is another one. The build then puts the photo back there, as pho
 the cloud's line says why. It stays ticked: get its images again on the new photo, and one
 **Apply** replaces it again.
 
-**Restore the original photos** asks, then builds the tile again with none of its clouds
-replaced; your list stays, to tick them again later. Deleting a tile forgets its clouds.
-
-While the command line builds a tile, the app does not build that tile too: it says so and you
-build it again once the first build is over.
+**Restore the original photos** asks, then puts every texture back as built, in a few seconds;
+your list stays, to tick them again later. Deleting a tile forgets its clouds.
 
 ## Settings profiles
 

@@ -57,9 +57,9 @@ checked automatically at every release too.
 - **Clouds replaced.** *Clouds…* in the Library opens a built tile on the map, drawn as X-Plane
   draws it. *Find clouds* looks for them and tries every other source covering the tile under
   each; you tick those to replace, each with the clear source you choose, and the map shows the
-  result before anything changes. *Apply* builds again only the textures under the clouds, with
-  the settings the tile was built with, and every later build of the tile keeps them replaced on
-  the same photo; *Restore the original photos* undoes it. The detection tool (OmniCloudMask's
+  result before anything changes. *Apply* changes, in a few seconds, only the pixels under the
+  clouds in the finished tile, and every later build of the tile lays them again on the same
+  photo; *Restore the original photos* puts the textures back as built. The detection tool (OmniCloudMask's
   networks and OpenCV, about 110 MB) is not in the installer: it is downloaded once, when you ask.
 - **Roads without bumps.** The ground flattened under the roads can be smoothed along them over
   100 or 250 m, so that X-Plane's roads no longer bump over the small waves of the relief, on

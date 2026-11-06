@@ -34,7 +34,6 @@ from orthostudio.dem.rule import DEM_RULE
 from orthostudio.errors import OsxpError
 from orthostudio.fsutil import atomic_link_or_copy, atomic_write_bytes, atomic_write_text
 from orthostudio.graph import ResolvedInput, Rule, RuleParams, RunContext, Store, rule
-from orthostudio.graph.digest import digest_bytes
 from orthostudio.home import default_store_root, default_tiles_root, disk_absent
 from orthostudio.install import (
     Library,
@@ -91,7 +90,6 @@ __all__ = [
     "pack_env",
     "pack_is_intact",
     "pack_to_delete",
-    "pack_whole",
     "read_manifest",
     "take_back_overlay",
     "uninstall_receipt",
@@ -629,155 +627,6 @@ def lays_the_same(pack_dir: Path, manifest: PackManifest) -> bool:
     return same and pack_is_intact(pack_dir, own, with_overlay=False)
 
 
-BUILD_SETTINGS_NAME = "build_settings.json"
-"""The settings the tile's last finished build had, in its own folder: the cloud mode's Apply
-builds the tile again with them, so only its clouds change (``clouds.md`` 2.5). They name the
-textures that build made: a later build that did not write them (another version, another
-program) leaves them standing for nothing."""
-COMPUTER_CONFIG_KEYS = ("osm_folder", "osm_library", "osm_library_token")
-"""A build's config keys that belong to the computer, never written in a tile's folder, which a
-user may copy or share: the library's key is among them."""
-
-
-def write_build_settings(
-    pack_dir: Path,
-    *,
-    provider: str,
-    zl: int,
-    config: Mapping[str, Any],
-    overlay: bool,
-    xp12_rasters: bool,
-) -> None:
-    """:data:`BUILD_SETTINGS_NAME` in ``pack_dir``, unless it already says the same."""
-    doc = {
-        "format": "osxp-build-settings-1",
-        "textures": _textures_key(pack_dir),
-        "provider": provider,
-        "zl": int(zl),
-        "overlay": bool(overlay),
-        "xp12_rasters": bool(xp12_rasters),
-        "config": {k: v for k, v in config.items() if k not in COMPUTER_CONFIG_KEYS},
-    }
-    text = json.dumps(doc, indent=1, sort_keys=True, ensure_ascii=False, default=str) + "\n"
-    path = Path(pack_dir) / BUILD_SETTINGS_NAME
-    with contextlib.suppress(OSError, UnicodeDecodeError):
-        if path.read_text(encoding="utf-8") == text:
-            return
-    atomic_write_text(path, text)
-
-
-def read_build_settings(pack_dir: Path) -> dict[str, Any] | None:
-    """What :func:`write_build_settings` wrote, or ``None``: a tile built before it existed, or
-    whose textures another build made since."""
-    try:
-        doc = json.loads((Path(pack_dir) / BUILD_SETTINGS_NAME).read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, ValueError):
-        return None
-    key = _textures_key(pack_dir)
-    ok = isinstance(doc, dict) and doc.get("format") == "osxp-build-settings-1"
-    ok = ok and isinstance(doc.get("config"), dict) and key is not None
-    return doc if ok and doc.get("textures") == key else None
-
-
-def _textures_key(pack_dir: Path) -> str | None:
-    """The key of the textures the pack in ``pack_dir`` lays, or ``None``: what the tile's own
-    files in its folder are valid for (its build settings, its clouds)."""
-    try:
-        entry = read_manifest(pack_dir).artefacts.get("textures")
-    except Exception:  # no pack, another tool's, or one cut short
-        return None
-    return entry.key if entry is not None else None
-
-
-CLOUDS_DIR = "clouds"
-"""The tile's replaced clouds in its folder, as its textures artefact has them: the description
-of its textures and of the clouds they hold (``<textures key>.json``, the artefact's
-``manifest.json``), and of its ``clouds/`` the :data:`CLOUD_FILES` (``clouds.md`` 2.1). Placed
-with the textures, before the manifest that names them, so a pack stopped half way still names the
-description before; the store may lose the artefact, the tile keeps its clouds."""
-PARTS = "parts"
-"""``clouds/parts``: the frozen parts of the clouds the textures hold."""
-ORIGINALS = "originals"
-"""``clouds/originals``: the textures holding a cloud made again without their clouds (in its
-``textures/``)."""
-CLOUD_FILES = (PARTS, f"{ORIGINALS}/textures")
-"""What of an artefact's ``clouds/`` a tile's folder holds."""
-
-
-def pack_identity(pack_dir: Path) -> str | None:
-    """What the pack in ``pack_dir`` shows, as one digest: its manifest's, which names the DSF and
-    the textures it lays; ``None`` without one."""
-    try:
-        return digest_bytes((Path(pack_dir) / MANIFEST_NAME).read_bytes())
-    except OSError:
-        return None
-
-
-def cloud_record(pack_dir: Path) -> tuple[str, dict[str, Any]] | None:
-    """The textures key the pack in ``pack_dir`` names and the description of those textures
-    (:data:`CLOUDS_DIR`), or ``None``: a tile built before it existed, or no pack of ours."""
-    key = _textures_key(pack_dir)
-    if key is None:
-        return None
-    try:
-        doc = json.loads((Path(pack_dir) / CLOUDS_DIR / f"{key}.json").read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, ValueError):
-        return None
-    return (key, doc) if isinstance(doc, dict) else None
-
-
-def _cloud_files(textures_dir: Path) -> list[Path]:
-    """The :data:`CLOUD_FILES` of the textures artefact's ``clouds/``, relative to it."""
-    root = Path(textures_dir) / CLOUDS_DIR
-    found = (f for sub in CLOUD_FILES if (root / sub).is_dir() for f in (root / sub).rglob("*"))
-    return sorted(f.relative_to(root) for f in found if f.is_file())
-
-
-def _place_clouds(textures_dir: Path, pack_dir: Path, key: str, *, link: bool) -> int:
-    """Before the manifest: the textures' description and their ``clouds/`` in the pack."""
-    src = Path(textures_dir) / "manifest.json"
-    if not src.is_file():
-        return 0
-    dest = Path(pack_dir) / CLOUDS_DIR
-    changed = 0
-    for rel in _cloud_files(textures_dir):
-        (dest / rel).parent.mkdir(parents=True, exist_ok=True)
-        changed += _place(Path(textures_dir) / CLOUDS_DIR / rel, dest / rel, link=link)
-    record, data = dest / f"{key}.json", src.read_bytes()
-    if not record.is_file() or record.read_bytes() != data:
-        dest.mkdir(parents=True, exist_ok=True)
-        atomic_write_bytes(record, data)
-        changed += 1
-    return changed
-
-
-def pack_whole(pack_dir: Path, manifest: PackManifest, textures_dir: Path | None) -> bool:
-    """:func:`pack_is_intact`, and the clouds of its textures in place (:data:`CLOUDS_DIR`), when
-    the textures ``textures_dir`` (the artefact the manifest names) describe them: what a build
-    whose pack is a store hit checks, to lay it again when it is not."""
-    if not pack_is_intact(pack_dir, manifest):
-        return False
-    entry = manifest.artefacts.get("textures")
-    if entry is None or textures_dir is None or not (textures_dir / "manifest.json").is_file():
-        return True
-    root = Path(pack_dir) / CLOUDS_DIR
-    wanted = [Path(f"{entry.key}.json"), *_cloud_files(textures_dir)]
-    return all((root / rel).is_file() for rel in wanted)
-
-
-def _sweep_clouds(textures_dir: Path, pack_dir: Path, key: str) -> None:
-    """After the manifest: what in the pack's ``clouds/`` the textures it names do not have."""
-    root = Path(pack_dir) / CLOUDS_DIR
-    if not root.is_dir():
-        return
-    keep = {Path(f"{key}.json"), *_cloud_files(textures_dir)}
-    for f in sorted(root.rglob("*"), reverse=True):
-        if f.is_file() and f.relative_to(root) not in keep:
-            f.unlink()
-        elif f.is_dir() and not any(f.iterdir()):
-            f.rmdir()
-
-
 def write_manifest(pack_dir: Path, tile: TileRef, manifest: PackManifest) -> None:
     """``manifest`` written in ``pack_dir``, with the imagery's credit it gives."""
     atomic_write_text(Path(pack_dir) / MANIFEST_NAME, manifest.to_toml())
@@ -898,8 +747,6 @@ def assemble_pack(
         decal=decal,
         decal_on_sea=decal_on_sea,
     )
-    if textures.path is not None and textures.key is not None:
-        _place_clouds(textures.path, files.pack_dir, textures.key, link=link)
     artefacts: dict[str, ArtefactEntry] = {}
     for label, inp in (("dsf", dsf), ("textures", textures), ("overlay", overlay)):
         if inp.key is not None:
@@ -934,8 +781,6 @@ def assemble_pack(
         },
     )
     write_manifest(files.pack_dir, tile, manifest)
-    if textures.path is not None and textures.key is not None:
-        _sweep_clouds(textures.path, files.pack_dir, textures.key)
     return manifest, files
 
 

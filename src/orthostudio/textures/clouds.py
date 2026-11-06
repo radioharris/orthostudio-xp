@@ -3,10 +3,10 @@
 """A cloud of a texture laid over with the same ground from another source (``clouds.md`` 4.4).
 
 One function says what a cloud lays on a texture (:func:`layer`), one lays the layers in order
-(:func:`lay`). The build goes through both, and a cloud's preview is drawn from the same layer:
-what the map shows is what the texture gets. A cloud is laid from its *part*, the source's pieces
-it reads in one texture, frozen when its images were got (:func:`encode_part`): a build never asks
-the source again.
+(:func:`lay`). Apply goes through both (``clouds.laying``), and a cloud's preview is drawn from the
+same layer: what the map shows is what the texture gets. A cloud is laid from its *part*, the
+source's pieces it reads in one texture, frozen when its images were got (:func:`encode_part`):
+laying never asks the source again.
 
 Inside the outline the source's pixels, centre on centre, in the colours its preview showed
 (``match``: a gain and a shift per channel); a source four times or more coarser than the texture
@@ -32,17 +32,16 @@ from orthostudio.imagery.grid import TextureId, wgs84_to_tile
 from orthostudio.textures.assemble import decode_tile
 
 __all__ = [
+    "RULE",
     "CloudPatch",
     "Layer",
     "Match",
     "Piece",
-    "clouds_input",
     "decode_part",
     "encode_part",
     "lay",
     "layer",
     "pieces",
-    "read_clouds_input",
     "read_piece",
     "tile_box",
     "window",
@@ -55,6 +54,8 @@ FEATHER_PX = 24
 REACH_PX = 2 * FEATHER_PX
 """How far the soft edge's blur sees: the outline is drawn this far past the window."""
 SHARPEN_FROM = 4
+RULE = 3
+"""The way a cloud is laid: a preview made another way is made again."""
 
 Match = tuple[tuple[float, float, float], tuple[float, float, float]]
 """``((gain r, g, b), (shift r, g, b))``: the source's colours as its preview showed them."""
@@ -213,37 +214,6 @@ def decode_part(data: bytes) -> dict[PieceKey, bytes | None]:
     return got
 
 
-_CLOUDS = struct.Struct("<8sI")
-_ENTRY = struct.Struct("<HI")
-CLOUDS_MAGIC = b"OSXPCLD3"
-
-
-def clouds_input(parts: Sequence[tuple[str, bytes]]) -> bytes:
-    """A texture's ``clouds`` input: each cloud's id and part, in laying order."""
-    out = [_CLOUDS.pack(CLOUDS_MAGIC, len(parts))]
-    for cloud, part in parts:
-        name = cloud.encode()
-        out += [_ENTRY.pack(len(name), len(part)), name, part]
-    return b"".join(out)
-
-
-def read_clouds_input(data: bytes) -> dict[str, dict[PieceKey, bytes | None]]:
-    """:func:`clouds_input`'s parts back, by cloud; ``ValueError`` for anything else."""
-    try:
-        magic, count = _CLOUDS.unpack_from(data, 0)
-        if magic != CLOUDS_MAGIC:
-            raise ValueError("not a texture's clouds")
-        at, out = _CLOUDS.size, {}
-        for _ in range(count):
-            n, m = _ENTRY.unpack_from(data, at)
-            at += _ENTRY.size
-            out[data[at : at + n].decode()] = decode_part(data[at + n : at + n + m])
-            at += n + m
-    except struct.error as exc:
-        raise ValueError(f"a texture's clouds cut short: {exc}") from None
-    return out
-
-
 # -- the layer ----------------------------------------------------------------------------------
 
 
@@ -260,7 +230,7 @@ class Layer:
     def rgb(self, r0: int = 0, r1: int | None = None) -> np.ndarray:
         """Rows ``r0:r1`` of its colours, in the photo's (``match``) and clipped to what a pixel
         holds (``float32``), a few at a time: a cloud over a whole texture in ``float32`` is
-        200 MB, half of what a texture may hold. The build lays them, the preview reduces them."""
+        200 MB, half of what a texture may hold. Apply lays them, the preview reduces them."""
         gain, shift = (np.asarray(v, np.float32) for v in self.match)
         return np.clip(self.source[r0:r1].astype(np.float32) * gain + shift, 0, 255)
 

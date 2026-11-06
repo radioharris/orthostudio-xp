@@ -43,7 +43,6 @@ from typing import Any
 import numpy as np
 from PIL import Image
 
-from orthostudio.clouds.opencv import OPENCV_VERSION
 from orthostudio.errors import OsxpError, disk_trouble
 from orthostudio.fsutil import atomic_link_or_copy, atomic_write_bytes, atomic_write_text
 from orthostudio.graph import Executor, InputRef, Source, Store, digest_bytes
@@ -68,7 +67,6 @@ from orthostudio.pipeline.parents import (
     resolve_parents,
 )
 from orthostudio.pipeline.rule import (
-    CLOUDS_RULE,
     BuildInfo,
     TextureDdsParams,
     dds_key,
@@ -76,7 +74,6 @@ from orthostudio.pipeline.rule import (
     take_build_info,
 )
 from orthostudio.textures.assemble import GRID, image_body_complete
-from orthostudio.textures.clouds import CloudPatch, clouds_input
 from orthostudio.textures.encode import available_encoders, find_nvcompress
 from orthostudio.textures.imprint import (
     MASK_THRESHOLD,
@@ -316,11 +313,6 @@ class TexturesSpec:
     wrote: Callable[[int], None] | None = None
     """Told what the image pieces kept in the cache add to the disk (``ChunkStore.on_write``):
     the build step's count of what it wrote, Works' report."""
-    cloud_layers: Mapping[TextureId, tuple[tuple[CloudPatch, Path], ...]] = field(
-        default_factory=dict
-    )
-    """The clouds laid in a texture, in laying order, each with the file of its frozen part
-    (``textures/clouds.py``): decided by the build, which gives only those it keeps."""
 
 
 @dataclass(slots=True)
@@ -335,8 +327,6 @@ class TextureOutcome:
     fmt: str | None = None
     key: str | None = None
     digest: str | None = None
-    chunks: str | None = None
-    """The digest of the pieces the texture was made of: a replaced cloud stays on these only."""
     dds_path: str | None = None
     fetched: int = 0
     cached: int = 0
@@ -611,8 +601,6 @@ class WorkerJob:
     mask_digest: str | None
     parents_blob: bytes | None
     parents_digest: str | None
-    clouds_blob: bytes | None
-    clouds_digest: str | None
     store_root: Path
     dest: Path
     link: bool
@@ -655,11 +643,14 @@ def _worker_run(job: WorkerJob) -> WorkerResult:
     """Build (or hit) the DDS of one texture and publish it. Never raises."""
     t0 = time.perf_counter()
     blob_path: Path | None = None
-    clouds_path: Path | None = None
     try:
         store = _worker_store(job.store_root, job.fsync)
-        blob_path = _blob_file(job.tmp_dir, "parents-", job.parents_blob)
-        clouds_path = _blob_file(job.tmp_dir, "clouds-", job.clouds_blob)
+        if job.parents_blob is not None:
+            job.tmp_dir.mkdir(parents=True, exist_ok=True)
+            fd, name = tempfile.mkstemp(prefix="parents-", suffix=".blob", dir=job.tmp_dir)
+            with os.fdopen(fd, "wb") as f:
+                f.write(job.parents_blob)
+            blob_path = Path(name)
         node = dds_node(
             job.params,
             chunks_path=job.chunks_path,
@@ -668,8 +659,6 @@ def _worker_run(job: WorkerJob) -> WorkerResult:
             mask_digest=job.mask_digest,
             parents_path=blob_path,
             parents_digest=job.parents_digest,
-            clouds_path=clouds_path,
-            clouds_digest=job.clouds_digest,
         )
         result = Executor(store).run(node).target
         info = take_build_info(result.key)
@@ -696,20 +685,8 @@ def _worker_run(job: WorkerJob) -> WorkerResult:
             )
         return WorkerResult("", "", "failed", 0, time.perf_counter() - t0, None, err)
     finally:
-        for path in (blob_path, clouds_path):
-            if path is not None:
-                path.unlink(missing_ok=True)
-
-
-def _blob_file(tmp_dir: Path, prefix: str, blob: bytes | None) -> Path | None:
-    """``blob`` written in a file of ``tmp_dir`` for the rule to read; ``None`` for none."""
-    if blob is None:
-        return None
-    tmp_dir.mkdir(parents=True, exist_ok=True)
-    fd, name = tempfile.mkstemp(prefix=prefix, suffix=".blob", dir=tmp_dir)
-    with os.fdopen(fd, "wb") as f:
-        f.write(blob)
-    return Path(name)
+        if blob_path is not None:
+            blob_path.unlink(missing_ok=True)
 
 
 # --- internal state -----------------------------------------------------------------------------
@@ -1841,32 +1818,14 @@ class _Pipeline:
         params = self._params(st)
         chunks_digest = st.chunks_digest
         assert chunks_digest is not None
-        layers = self.spec.cloud_layers.get(t, ())
-        clouds = (
-            clouds_input([(patch.cloud, part.read_bytes()) for patch, part in layers])
-            if layers
-            else None
-        )
-        clouds_digest = digest_bytes(clouds) if clouds is not None else None
-        if layers:
-            params = params.model_copy(
-                update={
-                    "cloud_patches": tuple(patch for patch, _part in layers),
-                    "texture_xy": (t.til_x, t.til_y),
-                    "clouds_rule": CLOUDS_RULE,
-                    "opencv": OPENCV_VERSION,
-                }
-            )
         key = dds_key(
             params,
             chunks_digest=chunks_digest,
             mask_digest=st.mask_digest,
             parents_digest=parents_digest,
-            clouds_digest=clouds_digest,
         )
         assert st.outcome is not None
         st.outcome.key = key
-        st.outcome.chunks = chunks_digest
         dest = self.out_dir / "textures" / texture_dds_name(t)
         if self.store.has(key):
             info = self.store.info(key)
@@ -1875,7 +1834,6 @@ class _Pipeline:
                 InputRef("chunks", chunks_digest),
                 InputRef("mask", st.mask_digest),
                 InputRef("parents", parents_digest),
-                InputRef("clouds", clouds_digest),
             ]
             self.store.touch(key, refs)
             self._spawn(self._publish_hit(st, info.path, info.digest, dest), st)
@@ -1889,8 +1847,6 @@ class _Pipeline:
             mask_digest=st.mask_digest,
             parents_blob=blob,
             parents_digest=parents_digest,
-            clouds_blob=clouds,
-            clouds_digest=clouds_digest,
             store_root=Path(self.spec.store_root),
             dest=dest,
             link=self.spec.link,

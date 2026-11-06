@@ -21,7 +21,7 @@ from pathlib import Path
 import pytest
 
 from orthostudio.graph import Rule, RuleParams, Store
-from orthostudio.graph.store import pid_alive
+from orthostudio.graph.store import _pid_alive
 from orthostudio.model import ArtifactRef
 from orthostudio.sched import Done, Event, Failed, Node, NodeContext, Scheduler, Started
 
@@ -193,9 +193,9 @@ def test_cancel_reaches_a_subprocess_node_and_its_child_dies(store: Store, tmp_p
     assert pid_files, "the failed node's workdir must be kept for inspection (spec 2.6)"
     pid = int(pid_files[0].read_text())
     deadline = time.perf_counter() + 3.0
-    while time.perf_counter() < deadline and pid_alive(pid):  # os.kill(pid, 0) kills on Windows
+    while time.perf_counter() < deadline and _pid_alive(pid):  # os.kill(pid, 0) kills on Windows
         time.sleep(0.05)
-    assert not pid_alive(pid), f"child {pid} survived the cancellation"
+    assert not _pid_alive(pid), f"child {pid} survived the cancellation"
 
 
 def test_cancelled_run_leaves_the_store_consistent_and_a_rerun_completes(store: Store) -> None:

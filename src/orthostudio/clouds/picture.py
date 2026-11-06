@@ -7,9 +7,9 @@ X-Plane draws a tile from its DSF: every triangle takes the texture its terrain 
 the photo shows whole; on the sea the photo shows at its texture's alpha (the sea mask) over
 X-Plane's own water; on inland water at that alpha times the lakes' share over its water; where
 only X-Plane's water is drawn, no photo at all. So the picture is drawn triangle by triangle from
-the DSF the tile folder holds, each texture read at the level of its file that matches, and each
-texture holding a replaced cloud read from its original (``TileClouds.originals_dir``): the photo
-under the clouds, as X-Plane shows it once a cloud is unticked. X-Plane's water is one colour here
+the DSF the tile folder holds, each texture read at the level of its file that matches, as the
+build made it (``TileClouds.plains``): the photo under the clouds, as X-Plane shows it once a cloud
+is unticked. X-Plane's water is one colour here
 (:data:`WATER_RGB`); the share of the photo over it is X-Plane's.
 """
 
@@ -18,6 +18,7 @@ from __future__ import annotations
 import math
 import struct
 import threading
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -277,13 +278,12 @@ def draw(
     zl: int,
     *,
     dsf: Path,
-    textures: Path,
-    originals: Path | None = None,
+    textures: Mapping[str, Path],
     within: tuple[int, int, int, int] | None = None,
 ) -> Picture:
-    """The tile at ``zl`` as X-Plane draws it from the DSF ``dsf``, its textures read from the
-    folder ``textures`` and, for those holding a replaced cloud, from ``originals``. ``within``,
-    a box of the picture's pixels, leaves the rest undrawn and undecoded."""
+    """The tile at ``zl`` as X-Plane draws it from the DSF ``dsf``, each texture read from its
+    file in ``textures`` (by name). ``within``, a box of the picture's pixels, leaves the rest
+    undrawn and undecoded."""
     x0, y0, w, h = frame(tile, zl)
     d = _drawn(dsf, tile)
     photo = np.zeros((h, w, 3), np.uint8)
@@ -298,12 +298,8 @@ def draw(
             by_texture.setdefault(texture, []).append(i)
     for name in sorted(by_texture):
         t: TextureId = parse_texture_name(name)
-        path = (
-            originals / f"{name}.dds"
-            if originals is not None and (originals / f"{name}.dds").is_file()
-            else textures / f"{name}.dds"
-        )
-        if t.zl < zl or not path.is_file():
+        path = textures.get(name)
+        if t.zl < zl or path is None or not path.is_file():
             continue
         level = t.zl - zl
         gx, gy = ((t.til_x * 256) >> level) - x0, ((t.til_y * 256) >> level) - y0

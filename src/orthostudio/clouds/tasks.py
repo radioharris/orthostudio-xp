@@ -1,10 +1,11 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""The engine's cloud tasks: a search, getting a cloud's images, trying an outline's sources
-(``clouds.md`` R7). Each runs in a thread of its own and ends whether or not a page is open; it
-writes its result into the tile's list at its end, so a page that went away loses nothing. One
-search at a time for the whole app (a search holds gigabytes, B2), a few image gettings at once.
-Each says its phase and how far it is; Stop ends it at its next step, the list left as it was.
+"""The engine's cloud tasks: a search, getting a cloud's images, trying an outline's sources,
+Apply (``clouds.md`` R7). Each runs in a thread of its own and ends whether or not a page is open;
+it writes its result at its end, so a page that went away loses nothing. One search at a time for
+the whole app (a search holds gigabytes, B2), a few others at once. Each says its phase and how
+far it is; Stop ends it at its next step, the list left as it was, except Apply, which writes a
+tile's textures one after the other and ends what it began.
 """
 
 from __future__ import annotations
@@ -27,13 +28,15 @@ CHECKS_AT_ONCE = 3
 
 @dataclass(eq=False)
 class Task:
-    """One task: of ``tile``, ``kind`` (``search``, ``getting``, ``trying``), for ``cloud`` when
-    it is one cloud's; where it is (``phase``, ``done`` of ``total``)."""
+    """One task: of ``tile``, ``kind`` (``search``, ``getting``, ``trying``, ``applying``), for
+    ``cloud`` when it is one cloud's; where it is (``phase``, ``done`` of ``total``); whether
+    Stop ends it (``stoppable``)."""
 
     id: str
     tile: str
     kind: str
     cloud: str | None = None
+    stoppable: bool = True
     phase: str = "waiting"
     done: int = 0
     total: int = 0
@@ -42,7 +45,7 @@ class Task:
     """How it failed (``OsxpError.to_dict``), once it has."""
 
     def say(self, phase: str, done: int = 0, total: int = 0) -> None:
-        if self.stop.is_set():
+        if self.stoppable and self.stop.is_set():
             raise OsxpError("SYS_CANCELLED")
         self.phase, self.done, self.total = phase, done, total
 
@@ -55,6 +58,7 @@ class Task:
             "cloud": self.cloud,
             "phase": self.phase,
             "progress": progress,
+            "stoppable": self.stoppable,
             "error": self.error,
         }
 
@@ -70,14 +74,20 @@ class Tasks:
         self._checks = threading.Semaphore(CHECKS_AT_ONCE)
 
     def start(
-        self, tile: str, kind: str, run: Callable[[Task], None], cloud: str | None = None
+        self,
+        tile: str,
+        kind: str,
+        run: Callable[[Task], None],
+        cloud: str | None = None,
+        *,
+        stoppable: bool = True,
     ) -> Task:
         """Run ``run(task)`` in a thread once its turn comes; the task is forgotten at its end."""
         with self._lock:
             for t in self._tasks.values():  # one of each for a cloud, one search for a tile
                 if t.tile == tile and t.kind == kind and t.cloud == cloud:
                     t.stop.set()
-            task = Task(secrets.token_hex(6), tile, kind, cloud)
+            task = Task(secrets.token_hex(6), tile, kind, cloud, stoppable)
             self._tasks[task.id] = task
             self._failed.pop(tile, None)
         gate = self._search if kind == "search" else self._checks

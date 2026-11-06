@@ -66,7 +66,6 @@ __all__ = [
     "Provenance",
     "Store",
     "flush_disk",
-    "pid_alive",
     "send_to_disk",
 ]
 
@@ -1254,7 +1253,7 @@ class Store:
             if mtime > cutoff:
                 continue
             owner = _tmp_owner_pid(p.name)
-            dead = owner is not None and not pid_alive(owner)
+            dead = owner is not None and not _pid_alive(owner)
             expired = hard_cutoff is not None and mtime <= hard_cutoff
             if dead or expired:
                 shutil.rmtree(p, ignore_errors=True)
@@ -1405,7 +1404,7 @@ class Store:
         pids: set[int] = set()
         for p in self._iter_tmp():
             owner = _tmp_owner_pid(p.name)
-            if owner is not None and owner != os.getpid() and pid_alive(owner):
+            if owner is not None and owner != os.getpid() and _pid_alive(owner):
                 pids.add(owner)
         return pids
 
@@ -1711,7 +1710,7 @@ def _tmp_owner_pid(name: str) -> int | None:
     return int(pid_text) if pid_text.isdigit() else None
 
 
-def pid_alive(pid: int) -> bool:
+def _pid_alive(pid: int) -> bool:
     """True when a process with ``pid`` exists (unknown counts as alive: never sweep blindly)."""
     if pid <= 0:
         return False

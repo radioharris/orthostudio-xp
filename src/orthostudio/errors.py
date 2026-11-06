@@ -1212,13 +1212,6 @@ _SPECS: tuple[ErrorSpec, ...] = (
         "Nothing was changed. Choose the folder named {name}, or the folder it is in.",
     ),
     _spec(
-        "SYS_TILE_BEING_BUILT",
-        _B,
-        _S,
-        "Tile {tile} is being built by another OrthoStudio XP right now (process {pid}).",
-        "Nothing was changed. Wait for that build to finish, then build the tile again.",
-    ),
-    _spec(
         "SYS_TILE_OTHER_BUILD",
         _B,
         _S,
@@ -1256,7 +1249,15 @@ _SPECS: tuple[ErrorSpec, ...] = (
         _B,
         _S,
         "Tile {tile} cannot have its clouds looked at now ({state}).",
-        "Build the tile with this version of OrthoStudio XP first, or wait for its build to end.",
+        "Build the tile first, or wait for its build to end.",
+    ),
+    _spec(
+        "CLOUD_TEXTURE_LOST",
+        _B,
+        _S,
+        "Tile {tile}: a file its replaced clouds need is missing ({path}).",
+        "Build the tile again: its textures come back as built, and its clouds with them where "
+        "they still fit.",
     ),
     _spec(
         "CLOUD_NOT_BUILT",

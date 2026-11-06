@@ -6,8 +6,8 @@
  * A view of what the engine says of a tile (``GET /api/clouds/{tile}``): the tile drawn as X-Plane
  * draws it, every cloud with its tick and its source, and After laying each ticked cloud's preview
  * over it in its order, Before the tile with no cloud replaced. Each tick or source is sent as it is
- * made and the tile read again: the page keeps no choice of its own. Apply builds the tile with its
- * changes; nothing else changes what X-Plane shows.
+ * made and the tile read again: the page keeps no choice of its own. Apply lays its changes in the
+ * tile's textures, a task of the engine; nothing else changes what X-Plane shows.
  */
 
 import { codeText, fmtNum, t } from "./i18n.js";
@@ -217,11 +217,7 @@ export function createCloudMode(ctx) {
     // the question's words are the engine's, from what Apply would build
     const q = cs.answer?.texts?.[restore ? "restore_question" : "apply_question"];
     if (!q || !(await ask(lineWords(q.title), q.lines.map((w) => lineWords(w)), lineWords(q.go)))) return;
-    const res = await send("POST", "/apply", restore ? { restore: true } : {});
-    if (res?.job) {
-      toast(t("clouds.applying", { tile: cs.tile }));
-      ctx.followJob?.(res.job);
-    }
+    await send("POST", "/apply", restore ? { restore: true } : {});
   }
 
   // ------------------------------------------------------------------ the panel
@@ -263,7 +259,7 @@ export function createCloudMode(ctx) {
     for (const task of a.tasks) {
       if (task.cloud) continue; // shown in its row
       kids.push(h("p", { class: "clouds-progress" }, `${t(`clouds.task.${task.kind}`)} ${taskWords(task)}`, " ",
-        h("button", { type: "button", class: "btn", onclick: () => stopTask((x) => !x.cloud && x.kind === task.kind) }, t("clouds.stop"))));
+        task.stoppable ? h("button", { type: "button", class: "btn", onclick: () => stopTask((x) => !x.cloud && x.kind === task.kind) }, t("clouds.stop")) : null));
     }
     // what the tile allows is the engine's to say (``mode.possible``, ``mode.useful``)
     if (a.failed) {  // the tile's last task that failed, until its next one: the engine's words for it

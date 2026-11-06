@@ -8,7 +8,8 @@ on the tile), its number (``Cloud 7``, ``Outline 2``), its outline, what each so
 (the search's screening), its tick, its source, and the images got of each source tried (its
 checks). The list is the draft: each tick or source is saved as it is made and survives closing,
 quitting and every build; only Apply changes what X-Plane shows, from the list's ticks against
-what the tile holds (:func:`changes`). Its order is the order clouds are laid in.
+what the tile holds (:func:`changes`). Its order is the order clouds are laid in. It keeps the
+clouds last applied too (``laid``), which a build of the tile lays again (``laying.lay_again``).
 """
 
 from __future__ import annotations
@@ -21,7 +22,7 @@ import string
 import threading
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -29,16 +30,22 @@ from shapely.geometry import Polygon
 from shapely.ops import unary_union
 from shapely.validation import make_valid
 
-from orthostudio.clouds.laying import standing
 from orthostudio.clouds.sources import PROPOSABLE
-from orthostudio.clouds.tile import TileClouds, list_path, own_folder, previews_dir
+from orthostudio.clouds.tile import (
+    TileClouds,
+    entry_problem,
+    list_path,
+    own_folder,
+    previews_dir,
+    stands_not,
+)
 from orthostudio.errors import OsxpError
 from orthostudio.fsutil import atomic_write_text
 from orthostudio.model import TileRef
 
 __all__ = ["Change", "CloudList", "changes", "forgetting", "laid_after", "load", "update"]
 
-FORMAT = "osxp-cloud-list-1"
+FORMAT = "osxp-cloud-list-2"
 _ID = string.ascii_lowercase + string.digits
 _LOCKS: dict[str, threading.Lock] = {}
 _GENERATIONS: dict[str, int] = {}
@@ -50,12 +57,14 @@ _GUARD = threading.Lock()
 
 @dataclass
 class CloudList:
-    """The list as data: ``clouds`` in laying order, each a JSON object (module doc)."""
+    """The list as data: ``clouds`` in laying order, each a JSON object (module doc), and the
+    clouds last applied (``laid``: entries, in laying order)."""
 
     tile: str
     clouds: list[dict[str, Any]]
     number: int = 0
     search: dict[str, Any] | None = None
+    laid: list[dict[str, Any]] = field(default_factory=list)
 
     def get(self, cid: str) -> dict[str, Any]:
         for c in self.clouds:
@@ -112,30 +121,10 @@ def generation(tile: TileRef) -> int:
         return _GENERATIONS.get(tile.name, 0)
 
 
-def load(tile: TileRef, held: TileClouds | None = None) -> CloudList:
+def load(tile: TileRef) -> CloudList:
     """The tile's list, read and nothing else; a new one when it has none or it cannot be read as
-    a list (:func:`update` puts such a file aside before writing). Every cloud the tile holds is
-    in it, ticked with its source (a list lost or a pack brought from another computer)."""
-    cl = _read(tile) or CloudList(tile.name, [])
-    for entry in held.applied if held is not None else ():
-        if not any(c["id"] == entry["id"] for c in cl.clouds):
-            number = int(entry.get("number") or cl.number + 1)
-            cl.number = max(cl.number, number)
-            cl.clouds.append(
-                {
-                    "id": entry["id"],
-                    "kind": entry.get("kind", "found"),
-                    "number": number,
-                    "rings": entry["rings"],
-                    "ha": rings_ha(entry["rings"]),
-                    "tick": True,
-                    "source": entry["source"],
-                    "screening": {},
-                    "best": None,
-                    "checks": {},
-                }
-            )
-    return cl
+    a list (:func:`update` puts such a file aside before writing)."""
+    return _read(tile) or CloudList(tile.name, [])
 
 
 def _read(tile: TileRef) -> CloudList | None:
@@ -145,8 +134,9 @@ def _read(tile: TileRef) -> CloudList | None:
         doc = json.loads(list_path(tile).read_text(encoding="utf-8"))
         if not isinstance(doc, dict) or doc.get("format") != FORMAT or doc.get("tile") != tile.name:
             return None
+        laid = [e for e in doc.get("laid") or () if entry_problem(e) is None]
         return CloudList(
-            tile.name, list(doc["clouds"]), int(doc.get("number", 0)), doc.get("search")
+            tile.name, list(doc["clouds"]), int(doc.get("number", 0)), doc.get("search"), laid
         )
     except FileNotFoundError:
         return None
@@ -161,6 +151,7 @@ def save(cl: CloudList) -> None:
         "number": cl.number,
         "search": cl.search,
         "clouds": cl.clouds,
+        "laid": cl.laid,
     }
     path = list_path(TileRef.parse(cl.tile))
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -187,9 +178,7 @@ def forgetting(tile: TileRef, folder: Path, *, custom_scenery: Path | None) -> I
 
 
 @contextmanager
-def update(
-    tile: TileRef, held: TileClouds | None = None, *, since: int | None = None
-) -> Iterator[CloudList]:
+def update(tile: TileRef, *, since: int | None = None) -> Iterator[CloudList]:
     """The tile's list to change, written back on leaving, one writer at a time per tile; a
     file that is not a list put aside first (``.broken-<n>``, each kept). ``since``: the
     generation a task began on; the tile forgotten since, nothing is written."""
@@ -201,7 +190,7 @@ def update(
             taken = [p.name.rpartition("-")[2] for p in path.parent.glob(path.name + ".broken-*")]
             n = max((int(x) for x in taken if x.isdigit()), default=0)
             path.replace(path.with_name(f"{path.name}.broken-{n + 1}"))
-        cl = load(tile, held)
+        cl = load(tile)
         yield cl
         save(cl)
 
@@ -398,13 +387,13 @@ def discard(cl: CloudList, held: TileClouds | None) -> None:
             c["source"] = holds[c["id"]]
 
 
-# -- what Apply builds -----------------------------------------------------------------------------
+# -- what Apply lays -------------------------------------------------------------------------------
 
 
 @dataclass(frozen=True, slots=True)
 class Change:
     """One cloud whose tick or source differs from what the tile holds: ``replace``, ``another``
-    (source) or ``back`` (as photographed); ``entry`` the cloud as the build lays it, ``None``
+    (source) or ``back`` (as photographed); ``entry`` the cloud as Apply lays it, ``None``
     for ``back`` or while its images are not got (``waiting``: why)."""
 
     cloud: str
@@ -432,7 +421,7 @@ def changes(cl: CloudList, held: TileClouds | None, tile: TileRef) -> list[Chang
         waiting = None
         if entry is None:
             waiting = got.get("answer") or "no_images"
-        elif held is not None and (why := _stands_not(entry, held, tile)) is not None:
+        elif held is not None and (why := stands_not(entry, tile, held)) is not None:
             waiting, entry = f"photo_{why}", None
         out.append(
             Change(
@@ -450,16 +439,10 @@ def needs_images(ch: Change | None) -> bool:
     return ch.waiting == "no_images" or ch.waiting.startswith("photo_") or ch.waiting in PROPOSABLE
 
 
-def _stands_not(entry: Mapping[str, Any], held: TileClouds, tile: TileRef) -> str | None:
-    """Why the images got for a cloud no longer stand on the photo the tile holds: the build's
-    own rule, on what the tile's folder says of its textures."""
-    return standing(entry, tile, held.textures, colours=held.colours, chunks=held.chunks)[0]
-
-
 def laid_after(
     cl: CloudList, held: TileClouds | None, pending: Sequence[Change]
 ) -> list[dict[str, Any]]:
-    """The clouds Apply builds the tile with, and After shows, in the list's order: each ticked
+    """The clouds Apply lays in the tile, and After shows, in the list's order: each ticked
     cloud with the newest images that stand, its change's when they are in, else what the tile
     holds of it; a cloud with neither waits, left out (the question said so). ``pending``: what
     :func:`changes` gives."""

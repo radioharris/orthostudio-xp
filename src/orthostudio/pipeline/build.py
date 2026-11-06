@@ -38,8 +38,6 @@ import blake3
 from pydantic import Field
 
 from orthostudio import __version__
-from orthostudio.clouds.laying import TileClouding
-from orthostudio.clouds.tile import artefact_originals, got_parts_dir, read_tile, tile_folder
 from orthostudio.decals import DECALS, DEFAULT_DECAL
 from orthostudio.dem import sources as dem_sources
 from orthostudio.dem.raster import read_elevation_from_file, readable_before
@@ -145,11 +143,8 @@ from orthostudio.pipeline.pack import (
     pack_dir_name,
     pack_env,
     pack_is_intact,
-    pack_whole,
-    write_build_settings,
     write_manifest,
 )
-from orthostudio.pipeline.rule import CLOUDS_RULE
 from orthostudio.pipeline.textures import (
     ProgressSnapshot,
     TextureOutcome,
@@ -161,7 +156,6 @@ from orthostudio.pipeline.textures import (
     write_report,
 )
 from orthostudio.pipeline.textures import TextureJob as PipelineTextureJob
-from orthostudio.pipeline.turns import holding
 from orthostudio.sched import (
     Done,
     Event,
@@ -410,10 +404,6 @@ class BuildSpec:
     build_memory: str = "medium"
     """``expert.build_memory``, a key of :data:`MEMORY_SHARES`: how much of the computer's memory
     the batch may take."""
-    clouds: tuple[dict[str, Any], ...] | None = None
-    """The replaced clouds to lay (``clouds.tile``), in laying order: ``None`` for those the
-    tile holds, which every build keeps (:func:`build_tiles` reads them); others only from the
-    cloud mode's Apply."""
 
     @property
     def level(self) -> str:
@@ -521,9 +511,6 @@ class BuildEnv:
     """The prepared sources of this batch (``sources.chain.Chain``), asked before Overpass."""
     own_store: bool = False
     """Whether :meth:`create` opened ``store``, which :meth:`close` then closes."""
-    cloud_parts: dict[str, tuple[Path, ...]] = field(default_factory=dict)
-    """By tile, the folders of its textures artefact before this build, which keep the frozen
-    parts of the clouds it held (:func:`build_tiles`)."""
 
     @classmethod
     def create(cls, specs: Sequence[BuildSpec], *, store: Store | None = None) -> BuildEnv:
@@ -818,8 +805,6 @@ class TileTexturesParams(RuleParams):
     decal_on_sea: bool = False
     terrain_casts_shadows: bool = True
     use_test_texture: bool = False
-    clouds: list[Any] = Field(default_factory=list)
-    """The replaced clouds the textures lay (``clouds.tile``), in laying order."""
 
     PHOTO_ZONES_RULE: ClassVar[int] = 2
     """Which way the zone colours are applied. 1 coloured the whole texture file whose centre
@@ -836,10 +821,6 @@ class TileTexturesParams(RuleParams):
             doc.pop("photo_zones", None)  # no zone of its own: the key of every tile built before
         else:
             doc["photo_zones_rule"] = self.PHOTO_ZONES_RULE
-        if not self.clouds:
-            doc.pop("clouds", None)  # no cloud replaced: the key of every tile built before
-        else:  # the way they are laid: a new one makes its textures again
-            doc["clouds_rule"] = CLOUDS_RULE
         return doc
 
     def ter_params(self) -> TerParams:
@@ -1137,7 +1118,6 @@ def listed_texture(o: TextureOutcome) -> dict[str, Any]:
         "fmt": o.fmt,
         "key": o.key,
         "digest": o.digest,
-        "chunks": o.chunks,
     }
 
 
@@ -1165,44 +1145,11 @@ def _tile_textures(ctx: RunContext) -> None:
     for job in jobs:
         groups.setdefault((job.texture.provider, job.texture.zl), []).append(job)
     total = len(jobs)
+    done_before = 0
+    outcomes: list[dict[str, Any]] = []
     cancel = node.cancel_event
     stop = cancel if isinstance(cancel, threading.Event) else threading.Event()
-    # the photo's colours as these textures have them: a cloud's are matched among them
-    colours = {
-        "tile": [params.photo_brightness, params.photo_contrast, params.photo_saturation],
-        "zones": params.photo_zones,
-    }
-    clouds = TileClouding(
-        tile,
-        params.clouds,
-        [j.texture for j in jobs],
-        colours=colours,
-        folders=[got_parts_dir(env.chunks_root), *env.cloud_parts.get(tile.name, ())],
-        out=ctx.out,
-    )
-
-    def run(
-        layers: Mapping[TextureId, tuple[Any, ...]],
-        only: Collection[TextureId] | None = None,
-        out: Path = ctx.out,
-    ) -> list[TextureOutcome]:
-        done_before = 0
-        got: list[TextureOutcome] = []
-        for (code, zl), group in sorted(groups.items()):
-            mine = [j for j in group if only is None or j.texture in only]
-            if mine:
-                got += _texture_group(code, zl, mine, layers, done_before, out)
-            done_before += len(group)
-        return got
-
-    def _texture_group(
-        code: str,
-        zl: int,
-        group: list[PipelineTextureJob],
-        layers: Any,
-        done_before: int,
-        out: Path,
-    ) -> list[TextureOutcome]:
+    for (code, zl), group in sorted(groups.items()):
         provider = env.provider(code)
         n = len(group)
         base = done_before
@@ -1235,7 +1182,7 @@ def _tile_textures(ctx: RunContext) -> None:
             provider=provider,
             zl=zl,
             jobs=group,
-            out_dir=out,
+            out_dir=ctx.out,
             chunks_root=env.chunks_root,
             store_root=env.store_root,
             mask_lookup=lookup,
@@ -1247,7 +1194,6 @@ def _tile_textures(ctx: RunContext) -> None:
             photo_contrast=params.photo_contrast,
             photo_saturation=params.photo_saturation,
             photo_shapes_by_texture=shapes_by_texture,
-            cloud_layers={t: v for t, v in layers.items() if (t.provider, t.zl) == (code, zl)},
             workers=env.workers,
             encoder=params.encoder,
             mip_mode=params.mip_mode,
@@ -1294,26 +1240,12 @@ def _tile_textures(ctx: RunContext) -> None:
                 + "; nothing is committed.",
                 remedy=_missing_textures_remedy(codes, env.logs),
             )
-        return list(report.outcomes)
-
-    # the clouds decided ahead (level, source, colours, parts), laid, then those whose texture
-    # came of other pieces than the ones they were laid on undone and the textures made again
-    # without them: a cloud is laid whole or not at all (``clouds.md`` R6)
-    outcomes = run(clouds.layers())
-    while clouds.undo_changed(outcomes):
-        outcomes = run(clouds.layers())
-    # every texture holding a cloud beside its original, the same texture without its clouds
-    # (a store hit when the tile was built before them): the cloud mode's map shows the photo
-    # under a replaced cloud from it, as X-Plane shows it once that cloud is unticked
-    if clouds.laid:
-        run({}, only=set(clouds.layers()), out=artefact_originals(ctx.out))
-    clouds.keep_parts()
+        outcomes.extend(listed_texture(o) for o in report.outcomes)
+        done_before += n
     manifest = {
         "format": MANIFEST_FORMAT,
         "tile": tile.name,
-        "textures": sorted((listed_texture(o) for o in outcomes), key=lambda o: str(o["name"])),
-        "colours": colours,
-        **clouds.manifest(),
+        "textures": sorted(outcomes, key=lambda o: str(o["name"])),
     }
     (ctx.out / "manifest.json").write_text(
         json.dumps(manifest, indent=1, sort_keys=True) + "\n", encoding="utf-8"
@@ -1381,10 +1313,7 @@ TILE_DSF: Rule = rule(
 )(_tile_dsf)
 TILE_TEXTURES: Rule = rule(
     name="tile.textures",
-    # 2: its manifest says each texture's pieces (``chunks``) and the photo's colours, what a
-    # replaced cloud is chosen on (``clouds.tile``): a tile built before is taken through the step
-    # once more at its next build, its images all from the store, for its manifest to say them
-    version=2,
+    version=1,
     params=TileTexturesParams,
     inputs=("dsf", "masks"),
     ram_mb=3000,
@@ -2812,7 +2741,6 @@ def declare(
                 "tile": name,
                 "encoder": encoder,
                 "encoder_version": encoder_version,
-                "clouds": list(spec.clouds or ()),
             }
         )
         textures = reg.node(
@@ -3390,11 +3318,8 @@ def _stored_osm(env: BuildEnv, tile: TileRef, road_level: int, refresh: str) -> 
         # Taken again rather than used again: the key would stay the same and so would the
         # failure, whatever the library or OpenStreetMap mended since. No tile was ever built on
         # such a coastline (the vector stage refuses it), so nothing built depends on it.
-        log.info(
-            "%s: the map data kept for this tile is set aside, %s; it is asked again",
-            tile.name,
-            why,
-        )
+        log.info("%s: the map data kept for this tile is set aside, %s; it is asked again",
+                 tile.name, why)  # fmt: skip
         with contextlib.suppress(Exception):
             env.store.delete(key, force=True)
         if not env.store.has(key):
@@ -3444,11 +3369,8 @@ def _kept_coastline_trouble(tile: TileRef, path: Path, digest: str) -> str | Non
         snap = SnapshotStore(path).load(tile, "coastline")
         why = unusable_coastline(tile, {"coastline": snap}) if snap is not None else None
     except Exception as exc:
-        log.info(
-            "%s: the kept coastline could not be checked (%s); used as it is",
-            tile.name,
-            type(exc).__name__,
-        )
+        log.info("%s: the kept coastline could not be checked (%s); used as it is",
+                 tile.name, type(exc).__name__)  # fmt: skip
         return None
     _KEPT_COASTLINES[digest] = why
     return why
@@ -3507,13 +3429,12 @@ class _Collector:
         try:
             manifest = PackManifest.from_toml(done.ref.path.read_text(encoding="utf-8"))
             pack_dir = Path(spec.out_dir).expanduser().resolve() / pack_dir_name(spec.tile)
-            if not pack_whole(pack_dir, manifest, _textures_of(self._env, manifest)):
+            if not pack_is_intact(pack_dir, manifest):
                 _assemble_again(nodes, self._env, self, manifest)
                 self.laid.add(done.node_id)
         except Exception:  # the end of the build lays it again, and says what stops it
-            log.warning(
-                "%s could not be laid again before its install", spec.tile.name, exc_info=True
-            )
+            log.warning("%s could not be laid again before its install", spec.tile.name,
+                        exc_info=True)  # fmt: skip
 
     def outcome(self, role: str, node: Node) -> NodeOutcome:
         rule_name = f"{node.rule.name}@{node.rule.version}"
@@ -3569,7 +3490,7 @@ def _verify_effects(
     pack_dir = out_root / pack_dir_name(spec.tile)
     manifest = PackManifest.from_toml(pack_done.ref.path.read_text(encoding="utf-8"))
     laid = nodes.pack.id in collector.laid
-    if not pack_whole(pack_dir, manifest, _textures_of(env, manifest)):
+    if not pack_is_intact(pack_dir, manifest):
         _assemble_again(nodes, env, collector, manifest)
         laid = True
     if laid:
@@ -3590,12 +3511,6 @@ def _verify_effects(
         installed = True
     _remember_the_tile(spec, pack_dir, manifest, env)
     return repaired, installed
-
-
-def _textures_of(env: BuildEnv, manifest: PackManifest) -> Path | None:
-    """The folder of the textures artefact ``manifest`` names, ``None`` when the store has none."""
-    entry = manifest.artefacts.get("textures")
-    return env.store.path(entry.key) if entry is not None and env.store.has(entry.key) else None
 
 
 def _assemble_again(
@@ -3643,20 +3558,6 @@ def _assemble_again(
 PUT_BACK_ROLE = "put_back"
 """The role of the step that puts a tile filed elsewhere back in its folder; the page shows it in
 the Installation cell, where its words and how far it is go."""
-
-
-def _with_held_clouds(spec: BuildSpec, home: Path | None, env: BuildEnv) -> BuildSpec:
-    """``spec`` with the replaced clouds its tile holds (``clouds.tile``), unless the cloud
-    mode's Apply gave it others, and the folders of their frozen parts noted for its textures
-    step. Every build of a tile goes through here, from the Plan, the Library, Works or the
-    command line: none builds a tile without its clouds."""
-    folder = tile_folder(spec.tile, workshop=Path(spec.out_dir).expanduser(), home=home)
-    held = read_tile(folder)
-    if held is not None:
-        env.cloud_parts[spec.tile.name] = (held.parts_dir,)
-    if spec.clouds is not None:
-        return spec
-    return dataclasses.replace(spec, clouds=held.applied if held is not None else ())
 
 
 def _homes(
@@ -3889,6 +3790,18 @@ def _settle_put_back(
     return False
 
 
+def _clouds_again(spec: BuildSpec, pack_dir: Path) -> None:
+    """The clouds replaced in the tile laid again in the textures its build placed, where those
+    are the ones they were chosen on (``clouds.md`` 2.3). The clouds are no part of the build:
+    nothing of them fails it."""
+    try:
+        from orthostudio.clouds.laying import lay_again
+
+        lay_again(spec.tile, pack_dir, custom_scenery=spec.custom_scenery)
+    except Exception:
+        log.warning("%s: its replaced clouds were not laid again", spec.tile.name, exc_info=True)
+
+
 def _let_go(
     tile: TileRef, folders: Sequence[Path], env: BuildEnv, custom_scenery: Path | None
 ) -> None:
@@ -3900,11 +3813,8 @@ def _let_go(
     if not folders:
         return
     if install_packs.xplane_running():
-        log.info(
-            "X-Plane is running: what %s left beside %s goes at its next build",
-            tile.name,
-            ", ".join(str(f) for f in folders),
-        )
+        log.info("X-Plane is running: what %s left beside %s goes at its next build", tile.name,
+                 ", ".join(str(f) for f in folders))  # fmt: skip
         return
     cs = None if custom_scenery is None else Path(custom_scenery).expanduser()
     out: list[Path] = []
@@ -4027,28 +3937,7 @@ def build_tiles(
     env: BuildEnv | None = None,
     handle_sigint: bool = True,
 ) -> BuildReport:
-    """Build (and optionally install) every spec with one scheduler (spec section 4), its tiles
-    held from the other programs for the time (``pipeline/turns.py``)."""
-    with holding(s.tile for s in specs):
-        return _build_tiles(
-            specs,
-            on_event=on_event,
-            cpu_workers=cpu_workers,
-            cpu_in_threads=cpu_in_threads,
-            env=env,
-            handle_sigint=handle_sigint,
-        )
-
-
-def _build_tiles(
-    specs: Sequence[BuildSpec],
-    *,
-    on_event: Callable[[BuildEvent], None] | None,
-    cpu_workers: int | None,
-    cpu_in_threads: bool,
-    env: BuildEnv | None,
-    handle_sigint: bool,
-) -> BuildReport:
+    """Build (and optionally install) every spec with one scheduler (spec section 4)."""
     t0 = time.perf_counter()
     env = env if env is not None else BuildEnv.create(specs)
     store = env.store
@@ -4068,7 +3957,6 @@ def _build_tiles(
     every_spec = [
         dataclasses.replace(s, install=False) if s.tile.name in homes else s for s in specs
     ]
-    every_spec = [_with_held_clouds(s, homes.get(s.tile.name), env) for s in every_spec]
     specs = [s for s in every_spec if s.tile.name not in away]
     if on_event is not None:
         for s in every_spec:
@@ -4259,20 +4147,8 @@ def _build_tiles(
         ok = g.target.id in collector.done and not any(o.status == "failed" for o in outcomes)
         out_root = Path(g.spec.out_dir).expanduser().resolve()
         pack_dir = out_root / pack_dir_name(g.spec.tile) if home is None or not ok else home
-        if ok and pack_dir.is_dir():
-            # how the tile was made, kept with it, for the cloud mode's Apply to build it so again;
-            # a folder that refuses it leaves the build done, said in the log
-            try:
-                write_build_settings(
-                    pack_dir,
-                    provider=g.spec.provider,
-                    zl=g.spec.zl,
-                    config=g.spec.config,
-                    overlay=g.spec.overlay,
-                    xp12_rasters=g.spec.xp12_rasters,
-                )
-            except OSError as exc:
-                log.warning("%s: its build settings could not be written: %s", name, exc)
+        if g.pack.id in collector.done:
+            _clouds_again(g.spec, pack_dir)
         overlay_path = out_root / OVERLAY_PACK / g.spec.tile.dsf_relpath
         tiles.append(
             TileOutcome(

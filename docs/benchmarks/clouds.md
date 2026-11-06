@@ -1,9 +1,9 @@
-# Clouds: what the search and the build measured
+# Clouds: what the search and laying measured
 
 The figures behind the rules of `docs/specs/clouds.md`, which cites them by their number. The Mac
 is the development machine (Apple silicon), the Shadow a Windows cloud computer. B1 to B3 were
 measured on the 1.4.0 test versions (rc), whose detector, search and outline this version keeps;
-B4 and B5 on this version.
+B4 and B5 on this version, the clouds laid in the finished tile's folder.
 
 ## B1. The quick and the finer readings (2026-11-04)
 
@@ -41,29 +41,33 @@ most; the outline made one piece (`find._outline`) 1.01 and 1.10, every one simp
 
 ## B4. The real path on +56-131 (Mac, 2026-11-06)
 
-A clone of a test home, the tile Bing ZL14, the engine `osxp serve` and the page in the app's
-browser; times from the jobs' logs, the search's from the page, read every 3 s:
+A clone of a test home, the tile Bing ZL14 (24 textures of 4096 px, BC1), the engine
+`osxp serve` and the page in the app's browser; Apply's and Restore's times from the click on the
+question's button to the end of the task, read by the page every 0.1 s:
 
-| Step | Time |
+| Step | Time, what changed |
 |---|---|
-| The tile built with this version, everything in the cache | 2 s |
+| The tile built again from the Library, everything in the cache | 3 s; the three textures the test versions had laid clouds in came back identical, byte for byte, to the originals those versions kept |
 | **Find clouds**: 47 clouds; the two readings, then the other sources fetched and judged (Esri, Esri Clarity, EOX, USGS) | about a minute |
-| A tick (Esri, clear, fit 93 %): its images got | under 2.5 s |
-| **Apply** with that cloud: the build, one texture made again with its original | 1.4 s |
-| A build again from the Library, the cloud waiting | 5.5 s |
+| Two ticks (Esri over a glacier, 11 km²; EOX over a valley, 9 km²): their images got | both in within 10 s of the first tick |
+| **Apply** with these two clouds: three textures laid | 1.8 s; the 21 others untouched; in the three, the same size and header but the stamp, 0.4 to 3.3 % of the first level's blocks made again; the textures as built kept beside, the same files (no space taken) |
+| A build again from the Library, the clouds held | the folder found whole, nothing written: the textures the same bytes |
+| One laid texture put back as built by hand, as a build places it; a build again | the cloud reaching it laid again by the build's call: every texture the same bytes as Apply laid them |
+| **Restore** | 0.5 s; the 24 textures the build's, the same files as before Apply |
 
-## B5. After against the texture as built (Mac, 2026-11-06)
+## B5. After against the texture as laid (Mac, 2026-11-06)
 
 `tools/clouds/after_vs_built.py`: After as the map shows it (Before with the cloud's preview over
-it) against the tile drawn from its textures as built, at the map's level (12), the mean absolute
-difference per channel (0 to 255):
+it) against the tile drawn from its textures as laid, what X-Plane shows, at the map's level (12),
+the mean absolute difference per channel (0 to 255), the clouds of B4:
 
 | Cloud | Inside | Soft edge | Outside | What the replacement changed inside |
 |---|---|---|---|---|
-| Esri over a glacier, 11 km² | 4.3, 4.1, 4.7 | 3.3, 3.1, 3.5 | 0.02, 0.01, 0.01 | 30.4, 30.7, 35.9 |
-| EOX over a valley, 12 km² | 2.6, 2.2, 2.7 | 3.2, 2.7, 3.0 | 0.02, 0.02, 0.02 | 74.6, 67.0, 68.8 |
+| Esri over a glacier, 11 km² | 4.3, 4.1, 4.7 | 3.6, 3.4, 3.8 | 0.08, 0.08, 0.08 | 30.4, 30.7, 35.9 |
+| EOX over a valley, 9 km² | 2.6, 2.2, 2.7 | 3.4, 2.9, 3.2 | 0.12, 0.10, 0.12 | 74.6, 67.0, 68.8 |
 
 What is left inside is the textures' BC1 compression on a contrasted ground (snow and rock); the
-means of the two images agree within a level. Both measured again once the tile's folder held its
-clouds and the colours were clipped before they are blended (`CLOUDS_RULE` 2), the clouds laid
-through Apply from the page: the same figures.
+means of the two images agree within a level. Inside, the figures are those the test versions
+gave when the build laid the clouds. On the soft edge and just outside, the levels of the
+blocks a cloud reaches are now made from the texture's first level as built, itself compressed,
+rather than from the photo before compression: a tenth of a level more.

@@ -1,187 +1,274 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""The replaced clouds of one textures step: which are laid, from what, and what the artefact
-records of them (``clouds.md`` R5, R6).
+"""The clouds laid in a tile's folder, put back, and laid again after a build (``clouds.md`` 2.2,
+2.3). What X-Plane shows of a tile's clouds changes one way (:func:`show`): the folder made to show
+the clouds given, of them those whose images stand (:func:`lay_folder`), then the list told which
+it shows (``CloudList.laid``), under the tile's lock. Apply gives it the clouds to show, Restore
+none, and a build of the tile, once it has placed its textures, the clouds last laid
+(:func:`lay_again`).
 
-A cloud is laid on the photo it was chosen on, whole, or not at all. Before anything is fetched
-it is undone when the textures it reaches are not those it was laid in (another level, another
-source, another layout), when the colours of the photo around it changed, or when one of its
-frozen parts is found nowhere. Once the textures are made it is undone when one of them came of
-other pieces than the ones it was laid on, and those textures are made again without it. Every
-other is laid from its frozen parts, which the artefact keeps.
+A texture is laid from the build's own: its first level read, the clouds laid over it by the
+layer the previews are drawn with (``textures.clouds``), its levels made again as the build makes
+them, and of each level only the blocks a cloud reaches encoded again, as the build encodes them;
+every other block is the build's, byte for byte. The build's texture is kept beside, the same file
+(``clouds/<name>.dds``), the laid one stamped with what it is made of (``tile.Stamp``), written
+whole over the build's: a write cut short leaves either.
 """
 
 from __future__ import annotations
 
-import os
-import shutil
-from collections.abc import Callable, Iterable, Mapping, Sequence
+import contextlib
+import logging
+import threading
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
-from orthostudio.clouds.tile import artefact_parts, colours_near
+import numpy as np
+
+from orthostudio.clouds import cloudlist
+from orthostudio.clouds.tile import (
+    DIGEST_HEX,
+    Stamp,
+    TileClouds,
+    clouds_digest,
+    find_part,
+    got_parts_dir,
+    own_folder,
+    patches_of,
+    reaching,
+    read_stamp,
+    read_tile,
+    stamped,
+    stands_not,
+    texture_digest,
+)
+from orthostudio.errors import OsxpError
+from orthostudio.fsutil import atomic_link_or_copy, atomic_write_bytes
 from orthostudio.graph.digest import digest_bytes
-from orthostudio.imagery.grid import TextureId, parse_texture_name, texture_name, wgs84_to_tile
+from orthostudio.imagery.grid import parse_texture_name
 from orthostudio.model import TileRef
-from orthostudio.textures.clouds import CloudPatch, tile_box, window
+from orthostudio.pipeline.home import default_chunks_root
+from orthostudio.textures import dds
+from orthostudio.textures.bcdecode import decode_blocks
+from orthostudio.textures.clouds import decode_part, lay, layer
+from orthostudio.textures.encode import encode_blocks
+from orthostudio.textures.mips import mip_chain
 
-__all__ = ["TileClouding", "find_part", "patches_of", "standing"]
+__all__ = ["folder_lock", "lay_again", "lay_folder", "lay_texture", "show"]
 
-PART_SUFFIX = ".part"
+log = logging.getLogger(__name__)
 
-
-def find_part(digest: str, folders: Iterable[Path]) -> Path | None:
-    """The file of the part ``digest`` in the first of ``folders`` holding it whole."""
-    for folder in folders:
-        path = Path(folder) / f"{digest}{PART_SUFFIX}"
-        try:
-            if digest_bytes(path.read_bytes()) == digest:
-                return path
-        except OSError:
-            continue
-    return None
+_LOCKS: dict[str, threading.RLock] = {}
+_GUARD = threading.Lock()
 
 
-def patches_of(
-    c: Mapping[str, Any],
+def folder_lock(tile: TileRef) -> threading.RLock:
+    """The tile's textures written by one at a time in this program (Apply, Restore, a build's
+    laying again), and read by none meanwhile (the map's picture)."""
+    with _GUARD:
+        return _LOCKS.setdefault(tile.name, threading.RLock())
+
+
+def show(
     tile: TileRef,
-    textures: Iterable[TextureId],
-    source_zl: Callable[[TextureId], int],
-) -> dict[str, CloudPatch]:
-    """The cloud ``c`` (a :mod:`clouds.tile` entry) in each of ``textures`` it reaches, by
-    texture name; ``source_zl`` gives the level its source is read at in a texture."""
-    gain, shift = c["match"]
-    match = (tuple(float(v) for v in gain), tuple(float(v) for v in shift))
-    out: dict[str, CloudPatch] = {}
-    for t in textures:
-        rings = tuple(_ring_px(r, t) for r in c["rings"])
-        box = tile_box(tile.lat, tile.lon, t)
-        p = CloudPatch(c["id"], c["source"], source_zl(t), rings, match, box)  # type: ignore[arg-type]
-        if window(p) is not None:
-            out[texture_name(t)] = p
-    return out
-
-
-def _ring_px(ring: Sequence[float], t: TextureId) -> tuple[float, ...]:
-    """A ring of the zones' format (``[lat0, lon0, ...]``) in the pixels of ``t``."""
-    pts: list[float] = []
-    for i in range(0, len(ring) - 1, 2):
-        x, y = wgs84_to_tile(float(ring[i]), float(ring[i + 1]), t.zl)
-        pts += [(x - t.til_x) * 256.0, (y - t.til_y) * 256.0]
-    return tuple(pts)
-
-
-def standing(
-    c: Mapping[str, Any],
-    tile: TileRef,
-    textures: Iterable[TextureId],
+    folder: Path,
+    entries: Sequence[Mapping[str, Any]],
     *,
-    colours: Mapping[str, Any] | None,
-    chunks: Mapping[str, str] | None = None,
-) -> tuple[str | None, dict[str, CloudPatch]]:
-    """Why the cloud ``c`` no longer stands on the photo the ``textures`` make in the photo's
-    ``colours`` (and of the pieces ``chunks``, when known), or ``None``; and its patches in them.
-    The one rule a build lays a cloud by, which the cloud mode judges a cloud's images by too."""
-    parts = c["parts"]
-    zl_of = {name: int(parts[name][0]) for name in parts}
-    reached = patches_of(c, tile, textures, lambda t: zl_of.get(texture_name(t), t.zl))
-    why = _moved(set(parts), set(reached))
-    if why is None and chunks is not None and _other_pieces(c, chunks):
-        why = "images"
-    if why is None and colours_near(c["rings"], tile, colours) != c["colours"]:
-        why = "colours"
-    return why, reached
+    since: int | None = None,
+    untick: bool = False,
+    progress: Callable[[int, int], None] | None = None,
+) -> list[Mapping[str, Any]]:
+    """The tile's folder made to show the clouds ``entries`` that stand, then the list told which
+    it shows (``laid``); ``untick`` every cloud of the list unticked (Restore). A write refused
+    (X-Plane holding a texture, on Windows) leaves the list as it was. ``since``: the list's
+    generation the action began on (``cloudlist.update``). Returns the clouds laid."""
+    with folder_lock(tile):
+        parts = [got_parts_dir(default_chunks_root())]
+        laid = lay_folder(tile, folder, entries, parts=parts, progress=progress)
+        with cloudlist.update(tile, since=since) as cl:
+            cl.laid = [dict(e) for e in laid]
+            if untick:
+                cloudlist.restore(cl)
+        return laid
 
 
-def _other_pieces(c: Mapping[str, Any], chunks: Mapping[str, str]) -> bool:
-    """Whether a texture of ``c`` is made of other pieces of the tile than it was laid on."""
-    return any(chunks.get(n) != d for n, d in c["images"].items())
+def lay_texture(
+    data: bytes,
+    name: str,
+    tile: TileRef,
+    entries: Sequence[Mapping[str, Any]],
+    parts: Sequence[Path],
+) -> bytes:
+    """The texture ``name`` of ``tile`` as built (its DDS ``data``) with the clouds ``entries``
+    laid in it, in their order, from their frozen parts found in ``parts``; stamped."""
+    header, levels = dds.split_levels(data)
+    t = parse_texture_name(name)
+    first = decode_blocks(bytes(levels[0]), header.width, header.height, header.fmt)
+    layers = []
+    for e in entries:
+        zl, digest = e["parts"][name]
+        patch = patches_of(e, tile, [t], lambda _t, zl=zl: int(zl)).get(name)
+        path = find_part(str(digest), parts)
+        if path is None:
+            raise OsxpError(
+                "CLOUD_TEXTURE_LOST",
+                context={"tile": tile.name, "path": f"{digest}.part"},
+            )
+        la = None if patch is None else layer(patch, t, decode_part(path.read_bytes()))
+        if la is not None:
+            layers.append(la)
+    rgb = lay(np.ascontiguousarray(first[:, :, :3]), layers)
+    image = rgb if header.fmt == "bc1" else np.dstack([rgb, first[:, :, 3]])
+    reached = np.zeros(rgb.shape[:2], bool)
+    for la in layers:
+        x0, y0, x1, y1 = la.window
+        reached[y0:y1, x0:x1] |= la.alpha > 0
+    chain = mip_chain(image, levels=len(levels))  # the build's own, from the first level
+    blocks = _blocks(reached)
+    out = []
+    for k, level in enumerate(levels):
+        if k:
+            blocks = _halved(blocks)
+        out.append(_spliced(bytes(level), chain[k], blocks, header.fmt))
+    sizes = sum(len(b) for b in out)
+    stamp = Stamp(digest_bytes(data)[:DIGEST_HEX], clouds_digest(entries))
+    head = stamped(data[: dds.HEADER_SIZE], stamp)
+    return head + b"".join(out) + data[dds.HEADER_SIZE + sizes :]
 
 
-class TileClouding:
-    """The clouds a textures step is given (``TileTexturesParams.clouds``), in laying order."""
+def _blocks(reached: np.ndarray) -> np.ndarray:
+    """The first level's blocks a cloud reaches."""
+    h, w = reached.shape
+    pad = np.zeros((-(-h // 4) * 4, -(-w // 4) * 4), bool)
+    pad[:h, :w] = reached
+    return pad.reshape(pad.shape[0] // 4, 4, pad.shape[1] // 4, 4).any(axis=(1, 3))
 
-    def __init__(
-        self,
-        tile: TileRef,
-        clouds: Sequence[Mapping[str, Any]],
-        textures: Iterable[TextureId],
-        *,
-        colours: Mapping[str, Any],
-        folders: Sequence[Path],
-        out: Path,
-    ) -> None:
-        self.tile = tile
-        self.given = list(clouds)
-        self.undone: dict[str, str] = {}
-        self.folders = [artefact_parts(out), *folders]
-        self.out = Path(out)
-        self.laid: dict[str, dict[str, tuple[CloudPatch, Path]]] = {}
-        by_name = {texture_name(t): t for t in textures}
-        for c in self.given:
-            parts = c["parts"]
-            why, reached = standing(c, tile, by_name.values(), colours=colours)
-            files = {name: find_part(str(parts[name][1]), self.folders) for name in parts}
-            if why is None and None in files.values():
-                why = "parts"
-            if why is not None:
-                self.undone[c["id"]] = why
-                continue
-            self.laid[c["id"]] = {n: (reached[n], f) for n, f in files.items() if f is not None}
 
-    def layers(self) -> dict[TextureId, tuple[tuple[CloudPatch, Path], ...]]:
-        """What each texture lays, in the clouds' order, of the clouds not undone."""
-        out: dict[TextureId, list[tuple[CloudPatch, Path]]] = {}
-        for c in self.given:
-            for name, laid in self.laid.get(c["id"], {}).items():
-                out.setdefault(parse_texture_name(name), []).append(laid)
-        return {t: tuple(v) for t, v in out.items()}
+def _halved(blocks: np.ndarray) -> np.ndarray:
+    """The next level's blocks a cloud reaches: a block there is two by two blocks here, down
+    to the one block of the smallest levels."""
+    h, w = blocks.shape
+    rows, cols = (-(-h // 2), 2) if h > 1 else (1, 1), (-(-w // 2), 2) if w > 1 else (1, 1)
+    pad = np.zeros((rows[0] * rows[1], cols[0] * cols[1]), bool)
+    pad[:h, :w] = blocks
+    return pad.reshape(rows[0], rows[1], cols[0], cols[1]).any(axis=(1, 3))
 
-    def undo_changed(self, outcomes: Iterable[Any]) -> bool:
-        """Undo every laid cloud one of whose textures came of other pieces than those it was
-        laid on (``TextureOutcome.chunks``); whether any was, for the textures to be made
-        again without them."""
-        chunks = {o.name: o.chunks for o in outcomes}
-        changed = [c["id"] for c in self.given if c["id"] in self.laid and _other_pieces(c, chunks)]
-        for cid in changed:
-            self.undone[cid] = "images"
-            del self.laid[cid]
-        return bool(changed)
 
-    def keep_parts(self) -> None:
-        """The parts of the clouds laid, kept in the artefact (linked, else copied)."""
-        if not self.laid:
+def _spliced(level: bytes, image: np.ndarray, blocks: np.ndarray, fmt: str) -> bytes:
+    """``level`` with the ``blocks`` a cloud reaches encoded again from ``image``."""
+    size = dds.BLOCK_BYTES[fmt]
+    bh, bw = blocks.shape
+    out = np.frombuffer(level, np.uint8).reshape(bh, bw, size).copy()
+    if not blocks.any():
+        return level
+    rows, cols = np.nonzero(blocks)
+    r0, r1, c0, c1 = int(rows.min()), int(rows.max()) + 1, int(cols.min()), int(cols.max()) + 1
+    part = np.ascontiguousarray(image[r0 * 4 : r1 * 4, c0 * 4 : c1 * 4])
+    made = np.frombuffer(encode_blocks(part, fmt), np.uint8).reshape(r1 - r0, c1 - c0, size)
+    here = blocks[r0:r1, c0:c1]
+    out[r0:r1, c0:c1][here] = made[here]
+    return out.tobytes()
+
+
+def lay_folder(
+    tile: TileRef,
+    folder: Path,
+    entries: Sequence[Mapping[str, Any]],
+    *,
+    parts: Sequence[Path],
+    progress: Callable[[int, int], None] | None = None,
+) -> list[Mapping[str, Any]]:
+    """Make every texture of ``folder`` show those of the clouds ``entries`` (in laying order)
+    whose images stand on it (``tile.stands_not``), and no other: each texture they reach laid
+    from the build's own, each other one the build's again. A texture showing these already is
+    left as it is; the build's textures no longer needed aside go. Returns the clouds laid."""
+    with folder_lock(tile):
+        held = read_tile(folder)
+        if held is None:
+            raise OsxpError(
+                "CLOUD_TILE_NOT_READY", context={"tile": tile.name, "state": "not_built"}
+            )
+        laid = [e for e in entries if stands_not(e, tile, held) is None]
+        work = []
+        for name in held.names:
+            mine = reaching(laid, name)
+            want = clouds_digest(mine) if mine else None
+            stamp = held.stamps.get(name)
+            if (stamp.clouds if stamp is not None else None) != want:
+                work.append((name, mine))
+        for n, (name, mine) in enumerate(work):
+            if progress is not None:
+                progress(n, len(work))
+            _lay_one(tile, held, name, mine, parts)
+        _sweep(held)
+        if progress is not None:
+            progress(len(work), len(work))
+        return laid
+
+
+def _lay_one(
+    tile: TileRef,
+    held: TileClouds,
+    name: str,
+    mine: Sequence[Mapping[str, Any]],
+    parts: Sequence[Path],
+) -> None:
+    texture = held.textures_dir / f"{name}.dds"
+    kept = held.plains_dir / f"{name}.dds"
+    stamp = held.stamps.get(name)
+    if stamp is not None and (not kept.is_file() or texture_digest(kept) != stamp.plain):
+        raise OsxpError(
+            "CLOUD_TEXTURE_LOST",
+            context={"tile": tile.name, "path": str(kept)},
+        )
+    try:
+        if not mine:  # the build's own again
+            atomic_link_or_copy(kept, texture)
             return
-        keep = artefact_parts(self.out)
-        keep.mkdir(parents=True, exist_ok=True)
-        for laid in self.laid.values():
-            for _patch, path in laid.values():
-                dest = keep / path.name
-                if not dest.exists():
-                    try:
-                        os.link(path, dest)
-                    except OSError:
-                        shutil.copyfile(path, dest)
+        plain = (kept if stamp is not None else texture).read_bytes()
+        laid = lay_texture(plain, name, tile, mine, parts)
+        if stamp is None:  # the build's own kept aside, the same file, before it is replaced
+            held.plains_dir.mkdir(exist_ok=True)
+            atomic_link_or_copy(texture, kept)
+        atomic_write_bytes(texture, laid)
+    except PermissionError as exc:  # Windows: X-Plane holds the texture
+        raise OsxpError(
+            "XP_PACK_CONFLICT",
+            context={
+                "tile": tile.name,
+                "pack": str(texture),
+                "reason": f"{type(exc).__name__}: {exc}",
+            },
+            message=f"{texture} is in use and cannot be replaced ({exc}).",
+            remedy="Quit X-Plane (or the tool holding the file), then apply again.",
+        ) from exc
 
-    def manifest(self) -> dict[str, Any]:
-        """What the artefact's ``manifest.json`` says of its clouds: those laid, in their order,
-        and those given and not laid, with why (the build's account of them)."""
-        if not self.given:
-            return {}
-        applied = [dict(c) for c in self.given if c["id"] in self.laid]
-        return {"clouds": {"applied": applied, "undone": dict(self.undone)}}
+
+def _sweep(held: TileClouds) -> None:
+    """The build's textures kept aside for textures that show no cloud now go: the texture is
+    that same file."""
+    if not held.plains_dir.is_dir():
+        return
+    for kept in held.plains_dir.glob("*.dds"):
+        texture = held.textures_dir / kept.name
+        try:
+            if not texture.is_file() or read_stamp(texture) is None:
+                kept.unlink()
+        except OSError:
+            log.warning("%s stays", kept, exc_info=True)
+    with contextlib.suppress(OSError):
+        held.plains_dir.rmdir()  # when empty
 
 
-def _moved(then: set[str], now: set[str]) -> str | None:
-    """Why a cloud laid in the textures ``then`` cannot be laid in ``now``, or ``None``."""
-    if then == now:
-        return None
-    if not now:
-        return "textures"
-    zl = {parse_texture_name(n).zl for n in then} != {parse_texture_name(n).zl for n in now}
-    if zl:
-        return "level"
-    source = {parse_texture_name(n).provider for n in then} != {
-        parse_texture_name(n).provider for n in now
-    }
-    return "source" if source else "textures"
+def lay_again(tile: TileRef, folder: Path, *, custom_scenery: Path | None) -> None:
+    """After a build of ``tile`` in ``folder``, its own: the clouds last laid laid again, those
+    whose images still stand on the textures it placed. Nothing when none was."""
+    if not cloudlist.load(tile).laid:
+        return
+    if Path(folder).resolve() != own_folder(tile, custom_scenery=custom_scenery).resolve():
+        return  # a build written elsewhere (a command line's own folder): not the tile's clouds
+    with folder_lock(tile):
+        laid = cloudlist.load(tile).laid  # read again under the lock: an Apply may have ended
+        again = show(tile, folder, laid)
+    log.info("%s: %d of its %d replaced clouds laid again", tile.name, len(again), len(laid))

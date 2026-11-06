@@ -6,8 +6,7 @@ page, the Library and Works say the same; the words are the page's, by key (``ui
 
 The tile's state, the first that holds: the data folder away; the tile's disk away; being built;
 waiting in the queue; not built (no folder of ours); not whole (a build cut short, or files taken
-from it); built by an earlier version (its textures do not say what a cloud is chosen on, or no
-settings of that build kept for Apply); its own source gone from the sources; ready.
+from it); its own source gone from the sources; ready.
 
 A cloud's state, the first that holds: read only (the tile not ready); a task under way for it
 (getting its images, trying an outline's sources); held (replaced, ticked with its source); back
@@ -17,7 +16,7 @@ replaced at Apply); waiting (ticked, its images not got, with why); found (not t
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -57,18 +56,15 @@ class TileFacts:
     disk_away: bool = False
     in_build: bool = False
     queued: bool = False
-    folder: bool = True
     whole: bool = True
     held: TileClouds | None = None
-    settings: bool = True
     own_source: str | None = None
     registry: frozenset[str] = frozenset()
 
 
 def tile_state(f: TileFacts) -> str:
     """The tile's state, the first that holds (module doc): ``data_away``, ``disk_away``,
-    ``in_build``, ``queued``, ``not_built``, ``not_whole``, ``earlier_version``,
-    ``own_source_gone``, ``ready``."""
+    ``in_build``, ``queued``, ``not_built``, ``not_whole``, ``own_source_gone``, ``ready``."""
     if f.data_away:
         return "data_away"
     if f.disk_away:
@@ -77,12 +73,10 @@ def tile_state(f: TileFacts) -> str:
         return "in_build"
     if f.queued:
         return "queued"
-    if not f.folder:
+    if f.held is None:
         return "not_built"
     if not f.whole:
         return "not_whole"
-    if f.held is None or not f.held.described or not f.settings:
-        return "earlier_version"
     if f.own_source is not None and f.own_source not in f.registry:
         return "own_source_gone"
     return "ready"
@@ -186,7 +180,8 @@ def summary(cl: CloudList, held: TileClouds | None, changes: Sequence[Change]) -
     """What Apply would change, counted from what it lays (:func:`cloudlist.laid_after`):
     ``replace`` (laid, not held), ``another`` (laid with another source than held), ``back``
     (held, not laid), ``waiting`` (ticked, nothing to lay yet: left out); ``held``, the clouds
-    the tile holds replaced."""
+    the tile holds replaced; ``textures``, how many of its textures show clouds (Restore puts
+    them back, whatever the list knows of them)."""
     holds = {c["id"]: c["source"] for c in (held.applied if held is not None else ())}
     laid = {e["id"]: e["source"] for e in laid_after(cl, held, changes)}
     counts = {
@@ -195,6 +190,7 @@ def summary(cl: CloudList, held: TileClouds | None, changes: Sequence[Change]) -
         "back": sum(1 for i in holds if i not in laid),
         "waiting": sum(1 for c in cl.clouds if c["tick"] and c["id"] not in laid),
         "held": len(holds),
+        "textures": len(held.stamps) if held is not None else 0,
     }
     counts["changes"] = counts["replace"] + counts["another"] + counts["back"]
     return counts
@@ -205,21 +201,25 @@ LIST_EDITS = frozenset({"tick", "untick", "choose", "remove", "discard"})
 names of every action are the same for the tile, its rows, the routes and the page."""
 TASKS = frozenset({"find", "outline", "check"})
 """What reads the tile's folder (its picture, its textures): not while a build writes it."""
-BUILDS = frozenset({"apply", "restore"})
+WRITES = frozenset({"apply", "restore"})
+"""What writes the tile's textures: never beside a build of it, nor beside a task reading them."""
 
 
-def possible(state: str, tasks: bool = False) -> frozenset[str]:
+def possible(state: str, tasks: Collection[str] = ()) -> frozenset[str]:
     """What the tile allows in ``state`` (``clouds.md`` 1.5): everything when it is ready, the
-    list's edits while a build writes it or waits to, no build while its own source is gone,
-    nothing else; and no build while a task of the tile reads its folder (``tasks``). The routes
-    refuse the rest (:func:`require`), the page greys it."""
+    list's edits while a build writes it or waits to, no Apply while its own source is gone,
+    nothing else; while a task of the tile runs (``tasks``, their kinds), no Apply, and while
+    Apply runs, nothing but the list's edits. The routes refuse the rest (:func:`require`), the
+    page greys it."""
     can = {
-        "ready": LIST_EDITS | TASKS | BUILDS,
+        "ready": LIST_EDITS | TASKS | WRITES,
         "in_build": LIST_EDITS,
         "queued": LIST_EDITS,
         "own_source_gone": LIST_EDITS | TASKS,
     }.get(state, frozenset())
-    return can - BUILDS if tasks else can
+    if "applying" in tasks:
+        return can & LIST_EDITS
+    return can - WRITES if tasks else can
 
 
 def readable(state: str) -> bool:
@@ -233,14 +233,14 @@ def useful(can: frozenset[str], counts: Mapping[str, int], searching: bool) -> f
     change or a wait, Find when no search runs."""
     idle = {
         "apply": counts["changes"] == 0,
-        "restore": counts["held"] == 0,
+        "restore": counts["textures"] == 0,
         "discard": counts["changes"] == 0 and counts["waiting"] == 0,
         "find": searching,
     }
     return frozenset(a for a in can if not idle.get(a, False))
 
 
-def require(tile: str, state: str, action: str, tasks: bool = False) -> None:
+def require(tile: str, state: str, action: str, tasks: Collection[str] = ()) -> None:
     """``CLOUD_TILE_NOT_READY`` unless the tile allows ``action`` now (:func:`possible`)."""
     if action not in possible(state, tasks):
         why = "tasks" if action in possible(state) else state
@@ -248,7 +248,7 @@ def require(tile: str, state: str, action: str, tasks: bool = False) -> None:
 
 
 def views(counts: Mapping[str, int], picture: bool) -> dict[str, Any]:
-    """The words of the map's two views: After (what X-Plane shows, or will once Apply builds the
+    """The words of the map's two views: After (what X-Plane shows, or will once Apply lays the
     changes) and Before; none without a picture of the tile (the tile's line says why)."""
     if not picture:
         return {"after": None, "before": None}
@@ -268,7 +268,7 @@ def words(state: str, cl: CloudList, searching: bool) -> dict[str, Any] | None:
 
 def texts(tile: str, counts: Mapping[str, int]) -> dict[str, Any]:
     """The words of the count line, of Apply's button and of the questions of Apply and Restore,
-    each a key and its parameters: what they say is what Apply would build (:func:`summary`)."""
+    each a key and its parameters: what they say is what Apply would lay (:func:`summary`)."""
     n = counts["changes"]
     line = [
         _k(f"clouds.pending.{k}", n=counts[k]) for k in ("replace", "another", "back", "waiting")

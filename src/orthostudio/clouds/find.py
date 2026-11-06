@@ -9,10 +9,11 @@ the coarser keeps the large pale veils (B1). Each cloud found is an outline with
 other source is judged under it at the search's level: no picture there, the same photo as the
 tile's, cloudy or clear, and how well its colours fit the photo around it.
 
-Getting a cloud's images (the *check*) is what Apply builds from: the source's pieces at the
-level each texture the cloud reaches reads it at, frozen into parts; the build's own layer made
-from them (``textures/clouds.py``), reduced to the map's level and laid where X-Plane shows that
-texture, over water at the share X-Plane gives the photo. So the preview is what the texture gets.
+Getting a cloud's images (the *check*) is what Apply lays from: the source's pieces at the level
+each texture the cloud reaches reads it at, frozen into parts, with the digest of each texture as
+built they were got on; Apply's own layer made from them (``textures/clouds.py``), reduced to the
+map's level and laid where X-Plane shows that texture, over water at the share X-Plane gives the
+photo. So the preview is what the texture gets.
 """
 
 from __future__ import annotations
@@ -29,20 +30,18 @@ import numpy as np
 from shapely.geometry import Polygon
 from shapely.validation import make_valid
 
-from orthostudio.clouds.laying import find_part, patches_of
 from orthostudio.clouds.model import SHADOW, THICK, THIN, classify
 from orthostudio.clouds.opencv import cv2
 from orthostudio.clouds.picture import WATER_RGB, Picture, pixel_metres
 from orthostudio.clouds.sources import SourcePieces
-from orthostudio.clouds.tile import TileClouds, colours_near, got_parts_dir
+from orthostudio.clouds.tile import TileClouds, find_part, got_parts_dir, patches_of
 from orthostudio.errors import OsxpError
 from orthostudio.fsutil import atomic_write_bytes
 from orthostudio.graph.digest import digest_bytes
 from orthostudio.imagery.grid import parse_texture_name, texture_name, tile_to_wgs84, wgs84_to_tile
 from orthostudio.imagery.providers import Provider
 from orthostudio.model import TileRef
-from orthostudio.pipeline.rule import CLOUDS_RULE
-from orthostudio.textures.clouds import decode_part, encode_part, layer, pieces, read_piece
+from orthostudio.textures.clouds import RULE, decode_part, encode_part, layer, pieces, read_piece
 
 __all__ = ["Area", "Check", "Judgement", "check", "find", "lonlat", "preview", "screen"]
 
@@ -118,7 +117,7 @@ def _disc(radius: int) -> np.ndarray:
 
 def _outline(mask: np.ndarray) -> np.ndarray:
     """The outer edge of ``mask``, simplified to a pixel and simple (made one piece where it
-    touches itself): what the preview and the build both take (B3)."""
+    touches itself): what the preview and Apply both take (B3)."""
     cs, _ = cv2.findContours(mask.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     contour = max(cs, key=cv2.contourArea)
     pts = cv2.approxPolyDP(contour, 0.75, True).reshape(-1, 2)
@@ -476,7 +475,7 @@ def _keys_of(
 @dataclass(frozen=True, slots=True)
 class Check:
     """What getting a cloud's images from one source gave: its judgement at the tile's sharpness,
-    and when usable the cloud as a build lays it (a ``clouds.tile`` entry)."""
+    and when usable the cloud as Apply lays it (a ``clouds.tile`` entry)."""
 
     judgement: Judgement
     entry: dict[str, Any] | None = None
@@ -508,7 +507,7 @@ def check(
     phase: Phase = _quiet,
 ) -> Check:
     """Get the images of the cloud ``cid`` (its ``rings``) from the source ``code`` at the tile's
-    sharpness, freeze them into parts, and draw its preview from the build's own layer."""
+    sharpness, freeze them into parts, and draw its preview from Apply's own layer."""
     textures = held.textures
     c = {
         "id": cid,
@@ -592,8 +591,7 @@ def check(
         "match": [list(j.match[0]), list(j.match[1])],
         "rings": [list(r) for r in rings],
         "parts": entry_parts,
-        "images": {n: held.chunks[n] for n in reached},
-        "colours": colours_near(rings, tile, held.colours),
+        "plain": {n: held.plain(n) for n in reached},
     }
     preview(p, tile, entry, [folder], previews, held.shown)  # ready for After
     return Check(j, entry)
@@ -613,7 +611,7 @@ def preview(
     ``folders``. Named by what it is made of, the folder's picture, the way clouds are laid and
     the entry, so it is made once and again only when one of them changes."""
     laid = {k: v for k, v in entry.items() if k not in ("kind", "number")}  # the list's, not laid
-    what = f"{shown}:{p.zl}:{CLOUDS_RULE}:{json.dumps(laid, sort_keys=True)}"
+    what = f"{shown}:{p.zl}:{RULE}:{json.dumps(laid, sort_keys=True)}"
     out = previews / f"{digest_bytes(what.encode())[:32]}.png"
     box = _preview_box(p, entry)
     west, north = lonlat(p, box[0], box[1])
@@ -637,7 +635,7 @@ def _make_preview(
     out: Path,
 ) -> bool:
     """The preview written at ``out``: the cloud's layers made from its frozen parts by the
-    build's own function, in its colours, reduced as the textures' mips are, laid where X-Plane
+    laying's own function, in its colours, reduced as the textures' mips are, laid where X-Plane
     shows each texture, over water at the share X-Plane gives the photo, cut to the tile."""
     textures = [parse_texture_name(n) for n in entry["parts"]]
     reached = patches_of(entry, tile, textures, lambda t: int(entry["parts"][texture_name(t)][0]))
@@ -677,7 +675,7 @@ def _lay_reduced(
     rgb: np.ndarray,
     alpha: np.ndarray,
 ) -> None:
-    """The layer ``la`` of texture ``t`` in its colours (``Layer.rgb``, the build's) reduced to
+    """The layer ``la`` of texture ``t`` in its colours (``Layer.rgb``, Apply's) reduced to
     the picture's level and laid in ``rgb`` and ``alpha`` (over ``box`` of the picture) where
     X-Plane shows that texture."""
     k = 2 ** (t.zl - p.zl)

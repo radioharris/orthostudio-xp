@@ -8262,11 +8262,6 @@ async function boot() {
     planMap,
     providers: () => state.providers,
     showPlan: () => showScreen("plan"),
-    // Apply's build, followed as any build the page starts
-    followJob: (jobId) => {
-      loadClouds();
-      watchJob(jobId);
-    },
   });
   renderTiles();
   renderPlanPanel();

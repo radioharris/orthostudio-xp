@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import dataclasses
 import json
 import logging
 import os
@@ -1944,11 +1943,9 @@ def create_app(
         a = await asyncio.to_thread(index.get, icao.strip().upper()[:7])
         if a is None:
             return _plain_error(
-                "CFG_LATLON_INVALID",
-                f"Airport {icao} is unknown.",
-                "Check the ICAO code.",
+                "CFG_LATLON_INVALID", f"Airport {icao} is unknown.", "Check the ICAO code.",
                 status=404,
-            )
+            )  # fmt: skip
         return {"icao": a.icao, "name": a.name, "lat": a.lat, "lon": a.lon}
 
     # -- plan, jobs --------------------------------------------------------------------------
@@ -2006,7 +2003,7 @@ def create_app(
 
         return await asyncio.to_thread(run)
 
-    # the cloud mode: its tasks are the engine's, its Apply a build of the tile as it was built
+    # the cloud mode: its tasks are the engine's, and Apply one of them
     def building_now() -> dict[str, str]:
         active = manager.active()
         running = (
@@ -2018,46 +2015,12 @@ def create_app(
             tile: "running" if tile in running else "queued" for tile in manager.building_tiles()
         }
 
-    def start_apply(tile: TileRef, folder: Path, clouds: list[dict[str, Any]]) -> str:
-        from orthostudio.pipeline.pack import COMPUTER_CONFIG_KEYS, read_build_settings
-
-        built = read_build_settings(folder)
-        if built is None:
-            raise OsxpError(
-                "CLOUD_TILE_NOT_READY", context={"tile": tile.name, "state": "earlier_version"}
-            )
-        req = JobRequest(
-            tiles=[tile.name],
-            provider=built["provider"],
-            zoom_level=built["zl"],
-            overlay=built["overlay"],
-            xp12_rasters=built["xp12_rasters"],
-            queue=True,
-        )
-        (spec,) = _specs(req, install=False)
-        # the tile's own settings, the computer's keys of now: only its clouds change
-        config = {
-            **built["config"],
-            **{k: v for k, v in spec.config.items() if k in COMPUTER_CONFIG_KEYS},
-        }
-        spec = dataclasses.replace(spec, config=config, clouds=tuple(clouds))
-        try:
-            job = manager.start(
-                [spec], request={"kind": "clouds", "tiles": [tile.name]}, queue=True
-            )
-        except TileInBuildError:  # a build of it came in between: its changes wait
-            raise OsxpError(
-                "CLOUD_TILE_NOT_READY", context={"tile": tile.name, "state": "in_build"}
-            ) from None
-        return job.id
-
     cloud_routes, clouds = clouds_router(
         CloudHooks(
             custom_scenery=lambda: (
                 custom_scenery_dir(xp) if (xp := xplane_dir()) is not None else None
             ),
             building=building_now,
-            apply=start_apply,
         )
     )
     app.include_router(cloud_routes)
@@ -2129,11 +2092,9 @@ def create_app(
             return job
         if not manager.cancel(job_id):
             return _plain_error(
-                "SYS_BUSY",
-                f"Job {job_id} is already {job.status}.",
-                "Nothing to cancel.",
+                "SYS_BUSY", f"Job {job_id} is already {job.status}.", "Nothing to cancel.",
                 status=409,
-            )
+            )  # fmt: skip
         return {"job_id": job.id, "status": job.status, "cancel_requested": True}
 
     @app.post("/api/jobs/{job_id}/retry", status_code=201)

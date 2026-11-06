@@ -1,13 +1,14 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """The base rule measured on one replaced cloud: After as the cloud mode shows it (the tile's
-Before picture with the cloud's preview over it) against the tile as built (its textures), on the
-pixels of the preview, inside the cloud, on its soft edge and outside (``docs/benchmarks/
-clouds.md`` B5). The engine runs (``osxp serve``) on the same home; the cloud is held.
+Before picture with the cloud's preview over it) against the tile as X-Plane shows it (its
+textures, the clouds laid), on the pixels of the preview, inside the cloud, on its soft edge and
+outside (``docs/benchmarks/clouds.md`` B5). The engine runs (``osxp serve``) on the same home; the
+cloud is held.
 
     OSXP_HOME=<home> python tools/clouds/after_vs_built.py +56-131 z9lo5c8m strip.png --port 8696
 
-The strip written is Before, After, the texture as built, and their difference times four.
+The strip written is Before, After, the texture as laid, and their difference times four.
 """
 
 from __future__ import annotations
@@ -20,6 +21,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
+from orthostudio.clouds import cloudlist
 from orthostudio.clouds.picture import draw
 from orthostudio.clouds.tile import own_folder, previews_dir, read_tile
 from orthostudio.imagery.grid import wgs84_to_tile
@@ -39,12 +41,13 @@ def main() -> None:
         doc = json.load(r)
     row = next(c for c in doc["clouds"] if c["id"] == a.cloud)
     zl = int(doc["picture"]["level"])
-    held = read_tile(own_folder(tile, custom_scenery=None))
+    held = read_tile(own_folder(tile, custom_scenery=None), cloudlist.load(tile).laid)
     if held is None or held.held(a.cloud) is None:
         raise SystemExit(f"{a.cloud} is not held by {tile.name}")
     dsf = held.folder / tile.dsf_relpath
-    before = draw(tile, zl, dsf=dsf, textures=held.textures_dir, originals=held.originals_dir)
-    built = draw(tile, zl, dsf=dsf, textures=held.textures_dir)
+    before = draw(tile, zl, dsf=dsf, textures=held.plains())
+    laid = {n: held.textures_dir / f"{n}.dds" for n in held.names}
+    built = draw(tile, zl, dsf=dsf, textures=laid)
     png = Image.open(previews_dir(tile) / row["preview"]["name"]).convert("RGBA")
     pv = np.asarray(png).astype(np.float32)
     _s, w, n, _e = row["preview"]["bounds"]
