@@ -629,7 +629,9 @@ def lays_the_same(pack_dir: Path, manifest: PackManifest) -> bool:
 
 BUILD_SETTINGS_NAME = "build_settings.json"
 """The settings the tile's last finished build had, in its own folder: the cloud mode's Apply
-builds the tile again with them, so only its clouds change (``clouds.md`` R4)."""
+builds the tile again with them, so only its clouds change (``clouds.md`` R4). They name the
+textures that build made: a later build that did not write them (another version, another
+program) leaves them standing for nothing."""
 COMPUTER_CONFIG_KEYS = ("osm_folder", "osm_library", "osm_library_token")
 """A build's config keys that belong to the computer, never written in a tile's folder, which a
 user may copy or share: the library's key is among them."""
@@ -647,6 +649,7 @@ def write_build_settings(
     """:data:`BUILD_SETTINGS_NAME` in ``pack_dir``, unless it already says the same."""
     doc = {
         "format": "osxp-build-settings-1",
+        "textures": _textures_key(pack_dir),
         "provider": provider,
         "zl": int(zl),
         "overlay": bool(overlay),
@@ -662,13 +665,25 @@ def write_build_settings(
 
 
 def read_build_settings(pack_dir: Path) -> dict[str, Any] | None:
-    """What :func:`write_build_settings` wrote, or ``None`` (a tile built before it existed)."""
+    """What :func:`write_build_settings` wrote, or ``None``: a tile built before it existed, or
+    whose textures another build made since."""
     try:
         doc = json.loads((Path(pack_dir) / BUILD_SETTINGS_NAME).read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, ValueError):
         return None
+    key = _textures_key(pack_dir)
     ok = isinstance(doc, dict) and doc.get("format") == "osxp-build-settings-1"
-    return doc if ok and isinstance(doc.get("config"), dict) else None
+    ok = ok and isinstance(doc.get("config"), dict) and key is not None
+    return doc if ok and doc.get("textures") == key else None
+
+
+def _textures_key(pack_dir: Path) -> str | None:
+    """The key of the textures the pack in ``pack_dir`` lays, or ``None``."""
+    try:
+        entry = read_manifest(pack_dir).artefacts.get("textures")
+    except Exception:  # no pack, another tool's, or one cut short
+        return None
+    return entry.key if entry is not None else None
 
 
 def write_manifest(pack_dir: Path, tile: TileRef, manifest: PackManifest) -> None:

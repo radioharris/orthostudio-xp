@@ -14,6 +14,7 @@ what the tile holds (:func:`changes`). Its order is the order clouds are laid in
 from __future__ import annotations
 
 import json
+import math
 import secrets
 import string
 import threading
@@ -40,6 +41,7 @@ __all__ = ["Change", "CloudList", "changes", "check_holds", "list_path", "load",
 FORMAT = "osxp-cloud-list-1"
 _ID = string.ascii_lowercase + string.digits
 _LOCKS: dict[str, threading.Lock] = {}
+_DEGREE_M = 111_320.0  # a degree of latitude, in metres
 _GUARD = threading.Lock()
 
 
@@ -88,6 +90,19 @@ class CloudList:
         return c
 
 
+def rings_ha(rings: Sequence[Sequence[float]]) -> float:
+    """The area inside rings of the zones' format (``[lat0, lon0, ...]``), in hectares."""
+    total = 0.0
+    for r in rings:
+        lat, lon = [float(v) for v in r[0::2]], [float(v) for v in r[1::2]]
+        n = len(lat)
+        if n < 3:
+            continue
+        twice = sum(lon[i] * lat[(i + 1) % n] - lon[(i + 1) % n] * lat[i] for i in range(n))
+        total += abs(twice) / 2 * math.cos(math.radians(sum(lat) / n)) * _DEGREE_M**2
+    return round(total / 10_000, 1)
+
+
 def _lock(tile: TileRef) -> threading.Lock:
     with _GUARD:
         return _LOCKS.setdefault(tile.name, threading.Lock())
@@ -123,7 +138,7 @@ def load(tile: TileRef, held: TileClouds | None = None) -> CloudList:
                     "kind": entry.get("kind", "found"),
                     "number": cl.number,
                     "rings": entry["rings"],
-                    "ha": entry.get("ha", 0.0),
+                    "ha": rings_ha(entry["rings"]),
                     "tick": True,
                     "source": entry["source"],
                     "screening": {},

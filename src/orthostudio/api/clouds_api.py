@@ -27,11 +27,11 @@ from PIL import Image
 
 from orthostudio.clouds import cloudlist as cls
 from orthostudio.clouds import mode
-from orthostudio.clouds.find import Area, check, find, preview_of, screen, to_pixels
+from orthostudio.clouds.find import Area, check, find, preview_of, screen
 from orthostudio.clouds.laying import parts_dir
 from orthostudio.clouds.model import detector_bytes, detector_ready, ensure_detector
 from orthostudio.clouds.opencv import ensure_opencv, opencv_bytes, opencv_ready
-from orthostudio.clouds.picture import Picture, draw, pixel_metres, search_level
+from orthostudio.clouds.picture import Picture, draw, search_level
 from orthostudio.clouds.sources import SourcePieces, other_sources
 from orthostudio.clouds.tasks import Task, Tasks
 from orthostudio.clouds.tile import TileClouds, read_tile, tile_folder
@@ -50,7 +50,7 @@ from orthostudio.imagery.providers import Provider, load_registry
 from orthostudio.install.library import default_library_path
 from orthostudio.model import TileRef
 from orthostudio.pipeline.filing import tile_home
-from orthostudio.pipeline.pack import read_manifest
+from orthostudio.pipeline.pack import read_build_settings, read_manifest
 
 __all__ = ["CloudHooks", "clouds_router"]
 
@@ -166,6 +166,7 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, Tasks]:
                 queued=building == "queued",
                 folder=folder.is_dir(),
                 held=held,
+                settings=read_build_settings(folder) is not None,
                 own_source=own,
                 registry=frozenset(_registry()),
             )
@@ -381,10 +382,8 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, Tasks]:
         for lon, lat in [*polygon, polygon[0]]:
             ring += [lat, lon]
         p = engine.picture(tile, folder, held, art, _level(tile, held))
-        pts = to_pixels(p, ring)
-        ha = round(abs(_area(pts)) * pixel_metres(tile.lat + 0.5, p.zl) ** 2 / 10_000, 1)
         with cls.update(tile, held) as cl:
-            c = dict(cls.add_outline(cl, [ring], ha, held))
+            c = dict(cls.add_outline(cl, [ring], cls.rings_ha([ring]), held))
 
         def run(task: Task) -> None:
             ensure_opencv(progress=lambda d, t: task.say("tool", d, t))
@@ -493,8 +492,3 @@ def _found(a: Area, rings: list[list[float]], v: Mapping[str, Any], p: Picture) 
         "screening": {k: {"answer": j.answer, "fit": j.fit} for k, j in v.items()},
         "best": _best(v),
     }
-
-
-def _area(pts: np.ndarray) -> float:
-    x, y = pts[:, 0], pts[:, 1]
-    return 0.5 * float(np.dot(x, np.roll(y, 1)) - np.dot(y, np.roll(x, 1)))

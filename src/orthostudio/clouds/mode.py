@@ -6,7 +6,8 @@ page, the Library and Works say the same; the words are the page's, by key (``ui
 
 The tile's state, the first that holds: the data folder away; the tile's disk away; being built;
 waiting in the queue; not built (no folder of ours); built by an earlier version (its textures do
-not say what a cloud is chosen on); its own source gone from the sources; ready.
+not say what a cloud is chosen on, or no settings of that build kept for Apply); its own
+source gone from the sources; ready.
 
 A cloud's state, the first that holds: read only (the tile not ready); a task under way for it
 (getting its images, trying an outline's sources); held (replaced, ticked with its source); back
@@ -48,6 +49,7 @@ class TileFacts:
     queued: bool = False
     folder: bool = True
     held: TileClouds | None = None
+    settings: bool = True
     own_source: str | None = None
     registry: frozenset[str] = frozenset()
 
@@ -64,7 +66,7 @@ def tile_state(f: TileFacts) -> str:
         return "queued"
     if not f.folder:
         return "not_built"
-    if f.held is None or not f.held.described:
+    if f.held is None or not f.held.described or not f.settings:
         return "earlier_version"
     if f.own_source is not None and f.own_source not in f.registry:
         return "own_source_gone"
@@ -167,6 +169,10 @@ def _menu(c: Mapping[str, Any]) -> list[dict[str, Any]]:
                 "best": code == c.get("best"),
             }
         )
+    if c.get("source") and not any(i["source"] == c["source"] for i in items):
+        # its source, never screened here (a cloud the tile holds, its list lost)
+        answer = (got.get(c["source"]) or {}).get("answer")
+        items.append({"source": c["source"], "answer": answer, "fit": 0, "best": False})
     order = {"clear": 0, "cloudy": 1}
     return sorted(
         items, key=lambda i: (order.get(i["answer"], 2), -int(i["fit"] or 0), i["source"])
