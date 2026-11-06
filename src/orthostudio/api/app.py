@@ -1420,6 +1420,7 @@ def create_app(
         # the queued builds first, so that none starts when the running one stops
         cancelled = manager.cancel_all() if active is not None else []
         clouds.tasks.stop_all()
+        await asyncio.to_thread(clouds.tasks.settle, 30.0)  # an Apply ends what it began
         active_id = None if active is None else active.id
         # after the answer has left: the page learns that OrthoStudio XP is stopping
         asyncio.get_running_loop().call_later(0.3, shutdown)

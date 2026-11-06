@@ -184,12 +184,18 @@ def _menu(c: Mapping[str, Any]) -> list[dict[str, Any]]:
     )
 
 
+COUNTS = ("replace", "another", "back", "waiting", "held", "textures", "changes")
+"""What :func:`summary` counts."""
+
+
 def summary(cl: CloudList, shown: TileClouds | None, plan: ApplyPlan) -> dict[str, Any]:
     """What Apply would change, counted from what it lays (``plan.laid``):
     ``replace`` (laid, not held), ``another`` (laid with another source than held), ``back``
     (held, not laid), ``waiting`` (ticked, nothing to lay yet: left out); ``held``, the clouds
     the tile holds replaced; ``textures``, how many of its textures show clouds (Restore puts
     them back, whatever the list knows of them)."""
+    if shown is None:  # no folder read: nothing to count against
+        return dict.fromkeys(COUNTS, 0)
     holds = {cid: c["source"] for cid, c in held_by_id(shown).items()}
     laid = {e["id"]: e["source"] for e in plan.laid}
     counts = {
@@ -205,8 +211,8 @@ def summary(cl: CloudList, shown: TileClouds | None, plan: ApplyPlan) -> dict[st
 
 
 LIST_EDITS = frozenset({"tick", "untick", "choose", "remove", "discard"})
-"""The list's own changes: they wait for the next Apply, whatever the tile does meanwhile. The
-names of every action are the same for the tile, its rows, the routes and the page."""
+"""The list's own changes: they wait for the next Apply. The names of every action are the same
+for the tile, its rows, the routes, its tasks and the page."""
 TASKS = frozenset({"find", "outline", "check"})
 """What reads the tile's folder (its picture, its textures): not while a build writes it."""
 WRITES = frozenset({"apply", "restore"})
@@ -214,15 +220,13 @@ WRITES = frozenset({"apply", "restore"})
 
 
 def possible(state: str, tasks: Collection[str] = ()) -> frozenset[str]:
-    """What the tile allows in ``state`` (``clouds.md`` 1.5): everything when it is ready, the
-    list's edits while a build writes it or waits to, no Apply while its own source is gone,
-    nothing else; while a task of the tile runs (``tasks``, their kinds), no Apply, and while
-    Apply runs, nothing but the list's edits. The routes refuse the rest (:func:`require`), the
-    page greys it."""
+    """What the tile allows in ``state`` (``clouds.md`` 1.5): everything when it is ready, no
+    Apply while its own source is gone, nothing else (nothing of its folder is read while a build
+    writes it or waits to); while a task of the tile runs (``tasks``, their kinds), no Apply, and
+    while Apply runs, nothing but the list's edits. The routes refuse the rest (:func:`require`),
+    the page greys it."""
     can = {
         "ready": LIST_EDITS | TASKS | WRITES,
-        "in_build": LIST_EDITS,
-        "queued": LIST_EDITS,
         "own_source_gone": LIST_EDITS | TASKS,
     }.get(state, frozenset())
     if WRITES & set(tasks):

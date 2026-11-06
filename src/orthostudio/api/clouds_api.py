@@ -78,10 +78,9 @@ class CloudEngine:
         """The kinds of the tile's tasks running or waiting."""
         return frozenset(t.kind for t in self.tasks.of(tile.name))
 
-    def shown(self, tile: TileRef) -> tuple[Path, TileClouds | None]:
-        """The tile's folder and what it shows of the clouds last laid."""
-        folder = self.folder(tile)
-        return folder, read_tile(folder, cls.load(tile).laid)
+    def read(self, tile: TileRef, folder: Path) -> TileClouds | None:
+        """What the tile's folder shows of the clouds last laid."""
+        return read_tile(folder, cls.load(tile).laid)
 
     def picture(self, tile: TileRef, shown: TileClouds, zl: int) -> Picture:
         """The tile at ``zl`` as X-Plane shows it once every cloud is unticked: its textures as
@@ -223,8 +222,17 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
     engine = CloudEngine(hooks)
     router = APIRouter()
 
-    def state_of(tile: TileRef, folder: Path, shown: TileClouds | None) -> str:
+    def look(tile: TileRef) -> tuple[Path, TileClouds | None, str]:
+        """The tile's folder, what it shows and its state; its folder not read while a build
+        writes it or waits to (``in_build``, ``queued``)."""
+        folder = engine.folder(tile)
         building = hooks.building().get(tile.name)
+        shown = None if building else engine.read(tile, folder)
+        return folder, shown, state_of(tile, folder, shown, building)
+
+    def state_of(
+        tile: TileRef, folder: Path, shown: TileClouds | None, building: str | None
+    ) -> str:
         return mode.tile_state(
             mode.TileFacts(
                 data_away=data_root_missing() is not None,
@@ -242,8 +250,7 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
         """The tile ``name`` for ``action``, its folder, what it shows and what it allows now:
         refused unless it allows ``action`` (``mode.require``)."""
         tile = _tile_of(name)
-        folder, shown = engine.shown(tile)
-        state = state_of(tile, folder, shown)
+        folder, shown, state = look(tile)
         mode.require(tile.name, state, action, engine.kinds(tile))
         return tile, folder, shown, mode.possible(state, engine.kinds(tile))
 
@@ -254,8 +261,7 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
     @router.get("/api/clouds/{name}")
     def tile_mode(name: str) -> dict[str, Any]:
         tile = _tile_of(name)
-        folder, shown = engine.shown(tile)
-        state = state_of(tile, folder, shown)
+        _folder, shown, state = look(tile)
         cl = cls.load(tile)
         plan = cls.plan(cl, shown, tile)
         counts = mode.summary(cl, shown, plan)
@@ -292,10 +298,10 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
         for path in sorted(lists_dir().glob("*.json")):
             with contextlib.suppress(Exception):
                 tile = TileRef.parse(path.stem)
-                folder, shown = engine.shown(tile)
+                _folder, shown, state = look(tile)
                 cl = cls.load(tile)
                 counts = mode.summary(cl, shown, cls.plan(cl, shown, tile))
-                out[tile.name] = mode.library_row(state_of(tile, folder, shown), counts)
+                out[tile.name] = mode.library_row(state, counts)
         return {"tiles": out}
 
     def sources_for(tile: TileRef, shown: TileClouds) -> SourcePieces:
@@ -307,8 +313,8 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
         """Getting the images of the cloud ``cid``, ready to start, when the tile allows it now
         and its cloud has a source: asked for again (``again``), or its change waits for images
         asking may bring (``mode.asks_images``); ``None`` otherwise. The one way it starts."""
-        folder, maybe = engine.shown(tile)
-        can = mode.possible(state_of(tile, folder, maybe), engine.kinds(tile))
+        _folder, maybe, state = look(tile)
+        can = mode.possible(state, engine.kinds(tile))
         cl = cls.load(tile)
         c = cl.get(cid)
         if maybe is None or not c["source"] or "check" not in can:

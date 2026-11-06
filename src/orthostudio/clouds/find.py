@@ -489,7 +489,7 @@ def screen(
             )
             inside = _inside(p, rings, box)
             out[i][code] = judge(
-                p.rgb[y0:y1, x0:x1],
+                p.photo[y0:y1, x0:x1],
                 src,
                 have,
                 inside,
@@ -563,6 +563,7 @@ def check(
     reached = patches_of(c, tile, textures, lambda t: min(t.zl, provider.max_zl))
     if not reached:
         return Check(Judgement("no_picture"))
+    plain = {n: shown.plain(n) for n in reached}  # the textures read now, never during a build
     by_name = {n: parse_texture_name(n) for n in reached}
     box = _cloud_box(p, rings)
     # the source around the cloud too, at the search's reading of it: its colours are matched
@@ -609,7 +610,7 @@ def check(
     dirty = _not_ground(cls, p.share[y0:y1, x0:x1])
     seen = classify(src, have, cancel=cancel, regnety_alone=True)
     core = _core(inside, cls)
-    here = p.rgb[y0:y1, x0:x1]
+    here = p.photo[y0:y1, x0:x1]
     band = _band(inside, _band_px(p), dirty)
     # what it has under the cloud, at the tile's sharpness; its colours, on the band around
     sharp = judge(
@@ -629,7 +630,7 @@ def check(
         "match": [list(j.match[0]), list(j.match[1])],
         "rings": [list(r) for r in rings],
         "parts": entry_parts,
-        "plain": {n: shown.plain(n) for n in reached},
+        "plain": plain,
     }
     return Check(j, entry)
 

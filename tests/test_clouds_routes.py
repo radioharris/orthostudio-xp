@@ -118,8 +118,30 @@ async def test_what_runs_the_detector_is_asked_first_and_an_untick_is_not(
     assert cloudlist.load(TILE).get(cid)["tick"] is False
 
 
-def test_a_build_lets_the_list_be_changed_and_nothing_that_reads_the_folder() -> None:
-    assert mode.possible("in_build") == mode.possible("queued") == mode.LIST_EDITS
+@pytest.mark.anyio
+async def test_a_build_allows_nothing_and_its_folder_is_not_read(
+    home: Path, ready: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from fastapi import FastAPI
+
+    def read_tile(*_a: Any, **_k: Any) -> None:
+        raise AssertionError("the folder read while a build writes it")
+
+    monkeypatch.setattr(clouds_api, "read_tile", read_tile)
+    building = {TILE.name: "running"}
+    hooks = clouds_api.CloudHooks(custom_scenery=lambda: None, building=lambda: building)
+    router, _engine = clouds_api.clouds_router(hooks)
+    api = FastAPI()
+    api.include_router(router)
+    async with client_for(api) as c:
+        a = (await c.get("/api/clouds/+43+005")).json()
+    assert a["state"] == "in_build" and a["allowed"] == [] and a["busy"] is True
+    assert a["picture"] is None
+    assert a["texts"]["count"] == [{"key": "clouds.pending_none", "params": {}}]
+
+
+def test_what_a_build_and_the_tasks_let_be_done() -> None:
+    assert mode.possible("in_build") == mode.possible("queued") == frozenset()
     assert "apply" not in mode.possible("own_source_gone")
     assert mode.possible("earlier_version") == frozenset()
     with pytest.raises(Exception, match="cannot have its clouds looked at"):

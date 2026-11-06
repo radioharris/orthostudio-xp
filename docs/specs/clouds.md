@@ -78,7 +78,7 @@ The tile's state, the first that holds (`clouds/mode.py`, `tile_state`):
 |---|---|---|
 | `data_away` | the data folder's disk is not connected | the map, finding and Apply come back with it |
 | `disk_away` | the tile folder's disk is not connected | |
-| `in_build` | the tile is being built | changes made now wait for the next Apply |
+| `in_build` | the tile is being built | its clouds are here again once the build is over |
 | `queued` | it waits in the queue | the same |
 | `not_built` | no folder of ours for the tile | |
 | `not_whole` | its folder is not the pack its manifest names (`pack_is_intact`: a build cut short, files taken from it) | build it again |
@@ -88,10 +88,11 @@ The tile's state, the first that holds (`clouds/mode.py`, `tile_state`):
 What each state allows is one table (`mode.possible`), which the routes refuse by (`mode.require`,
 `CLOUD_TILE_NOT_READY`) and the page greys by (the answer's `allowed`, of which only what would do
 something, `mode.useful`: Apply a change, Restore a replaced cloud, Discard a change or a wait,
-Find when no search runs): **ready**, everything; **being built** or **in the queue**, the
-list's edits alone (tick, untick, choose, remove, Discard: they wait for the next Apply), nothing
-that reads the tile's folder while a build writes it, its picture included (`mode.readable`);
-**its own source gone**, everything but Apply and Restore; any other state, nothing; no Apply or
+Find when no search runs): **ready**, everything; **being built** or **in the queue**,
+nothing: the tile's folder is not read at all while a build writes it or waits to (its state is
+told from the build's queue first, `clouds_api.look`), the list shown as it is, read only, and
+nothing counted; **its own source gone**, everything but Apply and Restore; any other state,
+nothing; no Apply or
 Restore while a task of the tile runs, and nothing but the list's edits while Apply does. Any
 tile of ours can have its clouds replaced, whatever version built it. The actions have one set of names,
 the same for the tile, its rows, the routes, its tasks and the page: `tick`, `untick`, `choose`,
@@ -137,7 +138,10 @@ build's own and shows no cloud.
 
 So what the tile shows is read from its folder alone (`tile.read_tile`): a texture says itself
 whether it shows clouds, and which; a write cut short leaves each texture whole, the old or the
-new, and saying which; laying always starts from the build's texture, never over a laid one. The
+new, and saying which; laying always starts from the build's texture, never over a laid one. Each
+texture's stamp is read with the identity of the very file it is in (inode, size, time), and a
+texture that cannot be read is said (`CLOUD_TEXTURE_UNREADABLE`), never taken for the build's.
+The
 tile shows, of the clouds last laid (the list's `laid`, 2.4), those whose every texture's stamp
 names the clouds of `laid` that reach it. The build's own checks are those of any tile
 (`pack_is_intact` counts the textures and the DSF, which keep their names and sizes).
@@ -160,12 +164,20 @@ cloud; `parts` per texture it reaches, the level the source is read at and the f
 
 What X-Plane shows of a tile's clouds changes one way (`laying.show`), under the tile's lock (one
 at a time in the program, and no picture drawn meanwhile): the folder made to show those of the
-clouds given that stand (`laying.lay_folder`), then the list told which it shows (`laid`); a write
-refused leaves the list as it was. Each texture they reach is laid from the build's own; each other
-texture showing clouds gets the build's own back; a texture showing these already is left as it
-is; the build's textures kept aside for textures that show no cloud now go, and `clouds/` with
-them when empty. **Apply** gives it the clouds of R4, **Restore** none (every cloud unticked).
-Apply is a task of the engine (R7), a few seconds, which Stop does not cut: it ends what it began.
+clouds given that stand (`laying.lay_folder`), then the list told which it shows (`laid`), when
+that changed. Each texture they reach is laid from the build's own; each other texture showing
+clouds gets the build's own back; a texture showing these already is left as it is; the build's
+textures kept aside for textures that show no cloud now go, and `clouds/` with them when empty.
+
+All or nothing: every new texture is made first, beside its own (`<name>.dds.osxp-clouds-new-
+<pid>`); then each is put in place in turn, only over the very file read (its identity, 2.1: a
+build that placed its own meanwhile, in the app or on the command line, refuses Apply,
+`CLOUD_TILE_NOT_READY`, and its texture stays), the one before kept beside until all are in
+place. When one cannot be (X-Plane holding it, on Windows: `XP_PACK_CONFLICT`), those already put
+in place are put back: nothing has changed, the list neither. Files a program cut short left
+beside the textures go at a later laying, once an hour old. **Apply** gives it the clouds of R4,
+**Restore** none (every cloud unticked). Apply is a task of the engine (R7), a few seconds, which
+Stop does not cut: it ends what it began, and Quit waits for it.
 
 At the end of a build of the tile, once its pack is in its folder, the build calls the clouds
 once (`build._clouds_again`, `laying.lay_again`): when clouds were laid and the folder is the
@@ -254,10 +266,12 @@ shows that texture, over water at the share X-Plane gives the photo. Measured: B
 
 `tile.stands_not` is the one rule, for Apply, a build after and the list alike: a cloud stands
 while the textures it reaches are those it was got in (the same level, source and layout) and each
-of them, as the build made it, is the one its images were got on (`plain`, its digest). Another
+of them, as the build made it, is the one its images were got on (`plain`, its digest), and its
+frozen parts are on this computer (a data folder changed or emptied takes them away). Another
 build with other colours, another photo, another level there makes another texture: the cloud is
-not laid, whole, on any texture. In the list it stays ticked and waits, its line saying why, for
-its images to be got again on the new photo; one Apply then puts it back.
+not laid, whole, on any texture; the others are. In the list it stays ticked and waits, its line
+saying why, for its images to be got again; one Apply then puts it back. A held cloud that no
+longer stands waits likewise: Apply, or the next build, takes it out.
 
 ### R7. The engine's tasks
 
@@ -295,7 +309,9 @@ sea X-Plane draws alone is no part of a cloud):
   (ArcGIS sells Bing's pictures over much of the world): never proposed;
 - **cloudy** or **clear**: the detector on its picture, clear when at most 10 % is cloud;
 - its **fit**: how its picture correlates with the tile's on a band 400 m wide around the cloud
-  (other clouds left out), and the colour match of that band.
+  (other clouds left out), and the colour match of that band. A source is compared with the
+  photo itself (`Picture.photo`), not with what X-Plane shows of it over water: the photo is what
+  it replaces.
 
 The best source is the clear one with the best fit.
 
@@ -343,18 +359,21 @@ from the registry keeps its held clouds: they lay from their parts.
 
 ### 5.2 A write cut short, a file gone
 
-Each texture is written whole over the one before and says what it is (2.1): a cut leaves the
-tile showing some clouds whole and others not, which the rows say; Apply again ends it. A build
-stopped or failed lays nothing again; its next one does. On Windows, a texture X-Plane holds
-cannot be replaced: Apply says so (`XP_PACK_CONFLICT`, quit X-Plane and apply again). A texture as
-built missing from `clouds/`, or a part found nowhere, is said (`CLOUD_TEXTURE_LOST`): building
-the tile again brings its textures back as built, and its clouds with them where they stand.
+Apply is all or nothing (2.3); only a power cut in the instant its textures are put in place can
+leave some of them new, each whole and saying what it shows: the rows say which clouds the tile
+shows whole, and Apply again ends it. A build stopped or failed lays nothing again; its next one
+does. On Windows, a texture X-Plane holds cannot be replaced: Apply says so and changes nothing
+(`XP_PACK_CONFLICT`: quit X-Plane and apply again). A texture as built missing from `clouds/` is
+said (`CLOUD_TEXTURE_LOST`): building the tile again brings its textures back as built, its
+clouds with them where they stand; then Apply or Restore again. A part found nowhere is no error:
+its cloud waits for its images (R6).
 
 ### 5.3 What else is refused
 
 `CLOUD_TILE_NOT_READY` (the tile is not ready, with its state), `CLOUD_NOT_BUILT`,
 `CLOUD_UNKNOWN` (no such cloud), `CLOUD_INVALID` (an outline only is removed, a polygon too small),
-`CLOUD_DETECTOR_MISSING`, `CLOUD_TEXTURE_LOST` (5.2). Their words: `docs/specs/errors.md`.
+`CLOUD_DETECTOR_MISSING`, `CLOUD_TEXTURE_LOST` (5.2), `CLOUD_TEXTURE_UNREADABLE` (2.1). Their
+words: `docs/specs/errors.md`.
 
 ## 6. The routes
 
@@ -377,6 +396,12 @@ the tile again brings its textures back as built, and its clouds with them where
 - Clouds replaced with the 1.4.0 test versions (rc) are not carried: the next build of such a
   tile brings them back as photographed, and their lists are put aside.
 - Find and Apply act on one tile at a time.
+- A tile installed by copy (`osxp install --copy`, the command line only): X-Plane reads the copy,
+  which Apply does not change; the next install copies the textures again, the clouds in them.
+- A cloud over the sea is laid sharp where the build blurs the sea (`sea_texture_blur`); X-Plane
+  shows the photo there at the sea mask's share only.
+- A build on the command line beside the app is not seen as a build by the cloud mode: Apply's
+  check of each texture's identity (2.3) is what keeps them apart.
 - The frozen parts in `<data>/clouds/parts` of clouds never applied stay until deleted by hand.
 
 ## 8. Code

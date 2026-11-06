@@ -25,6 +25,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from orthostudio.errors import OsxpError
 from orthostudio.graph.digest import digest_bytes, digest_file
 from orthostudio.home import default_chunks_root, default_tiles_root, osxp_home
 from orthostudio.imagery.grid import TextureId, parse_texture_name, texture_name
@@ -44,8 +45,10 @@ __all__ = [
     "clouds_digest",
     "entry_patches",
     "entry_problem",
+    "file_digest",
     "find_part",
     "held_by_id",
+    "identity",
     "is_own_folder",
     "laid_fields",
     "list_path",
@@ -56,6 +59,7 @@ __all__ = [
     "patches_of",
     "previews_dir",
     "reaching",
+    "read_head",
     "read_stamp",
     "read_tile",
     "stamped",
@@ -93,7 +97,7 @@ def find_part(digest: str) -> Path | None:
     """The file of the part ``digest`` when it is there whole."""
     path = part_path(digest)
     try:
-        return path if digest_bytes(path.read_bytes()) == digest else None
+        return path if file_digest(path) == digest else None
     except OSError:
         return None
 
@@ -111,6 +115,7 @@ def own_folder(tile: TileRef, *, custom_scenery: Path | None) -> Path:
         atelier=default_tiles_root(),
         custom_scenery=custom_scenery,
         library_path=default_library_path(),
+        mend=False,  # a read: a put back under way is the build's to finish
     )
     return Path(home) if home is not None else default_tiles_root() / pack_dir_name(tile)
 
@@ -138,13 +143,31 @@ class Stamp:
     clouds: str
 
 
+Identity = tuple[int, int, int]
+"""A file as the system knows it: ``(inode, size, mtime_ns)``; another file placed there has
+another."""
+
+
+def identity(path: Path) -> Identity:
+    st = os.stat(path)
+    return st.st_ino, st.st_size, st.st_mtime_ns
+
+
+def read_head(path: Path) -> tuple[Stamp | None, Identity]:
+    """The stamp of the DDS at ``path`` (``None`` for a texture as built) and the identity of the
+    very file it was read from."""
+    with open(path, "rb") as f:
+        st = os.fstat(f.fileno())
+        head = f.read(_END)
+    known = (st.st_ino, st.st_size, st.st_mtime_ns)
+    if len(head) < _END or head[:4] != b"DDS " or head[_AT : _AT + 4] != _STAMP:
+        return None, known
+    return Stamp(head[_AT + 4 : _AT + 24].hex(), head[_AT + 24 : _END].hex()), known
+
+
 def read_stamp(path: Path) -> Stamp | None:
     """The stamp of the DDS at ``path``; ``None`` for a texture as built."""
-    with open(path, "rb") as f:
-        head = f.read(_END)
-    if len(head) < _END or head[:4] != b"DDS " or head[_AT : _AT + 4] != _STAMP:
-        return None
-    return Stamp(head[_AT + 4 : _AT + 24].hex(), head[_AT + 24 : _END].hex())
+    return read_head(path)[0]
 
 
 def stamped(header: bytes, stamp: Stamp) -> bytes:
@@ -157,19 +180,23 @@ _DIGESTS: dict[tuple[str, int, int, int], str] = {}
 _DIGESTS_LOCK = threading.Lock()
 
 
-def texture_digest(path: Path) -> str:
-    """The digest of the texture at ``path``, read again only when the file changed."""
-    st = os.stat(path)
-    key = (str(path), st.st_ino, st.st_size, st.st_mtime_ns)
+def file_digest(path: Path) -> str:
+    """The digest of the file at ``path``, read again only when the file changed."""
+    key = (str(path), *identity(path))
     with _DIGESTS_LOCK:
         hit = _DIGESTS.get(key)
     if hit is None:
-        hit = digest_file(path)[:DIGEST_HEX]
+        hit = digest_file(path)
         with _DIGESTS_LOCK:
-            if len(_DIGESTS) > 512:
+            if len(_DIGESTS) > 2048:
                 _DIGESTS.clear()
             _DIGESTS[key] = hit
     return hit
+
+
+def texture_digest(path: Path) -> str:
+    """The digest a stamp names a texture by (:func:`file_digest`, shortened)."""
+    return file_digest(path)[:DIGEST_HEX]
 
 
 LAID_KEYS = ("id", "source", "match", "rings", "parts", "plain")
@@ -206,6 +233,8 @@ class TileClouds:
     """Its textures' names."""
     stamps: Mapping[str, Stamp]
     """The textures showing clouds, and what each is made of."""
+    files: Mapping[str, Identity]
+    """Each texture's identity when its stamp was read: Apply replaces only that very file."""
     held: tuple[dict[str, Any], ...] = ()
     """The clouds it shows replaced, in laying order: of the clouds last laid, those every
     texture they reach shows."""
@@ -273,12 +302,16 @@ def read_tile(folder: Path, laid: Sequence[Mapping[str, Any]] = ()) -> TileCloud
     except (OSError, ValueError, KeyError):
         return None
     names = _names(folder / "textures")
-    stamps = {}
+    stamps, files = {}, {}
     for n in names:
+        path = folder / "textures" / f"{n}.dds"
         try:
-            stamp = read_stamp(folder / "textures" / f"{n}.dds")
-        except OSError:
-            continue
+            stamp, files[n] = read_head(path)
+        except OSError as exc:  # never taken for a texture as built: it may show clouds
+            raise OsxpError(
+                "CLOUD_TEXTURE_UNREADABLE",
+                context={"tile": manifest.tile, "path": str(path), "reason": str(exc)},
+            ) from exc
         if stamp is not None:
             stamps[n] = stamp
     # a texture shows the clouds of the list's that reach it when its stamp names those
@@ -290,6 +323,7 @@ def read_tile(folder: Path, laid: Sequence[Mapping[str, Any]] = ()) -> TileCloud
         whole=pack_is_intact(folder, manifest, with_overlay=False),
         names=names,
         stamps=stamps,
+        files=files,
         held=tuple(dict(e) for e in laid if set(e["parts"]) <= agree),
     )
 
@@ -331,11 +365,15 @@ def entry_patches(
 
 def stands_not(c: Mapping[str, Any], tile: TileRef, shown: TileClouds) -> str | None:
     """Why the images got for the cloud ``c`` no longer stand on the tile, or ``None``: the
-    textures it reaches are others (``level``, ``source``, ``textures``), or one of them is not
-    the one they were got on (``images``). The one rule Apply, a build after and the page go by."""
-    why = _moved(set(c["parts"]), set(entry_patches(c, tile, shown.textures)))
-    if why is None and any(c["plain"].get(n) != shown.plain(n) for n in c["parts"]):
+    textures it reaches are others (``level``, ``source``, ``textures``), one of them is not the
+    one they were got on (``images``), or its frozen parts are not on this computer (``parts``).
+    The one rule Apply, a build after and the page go by."""
+    parts = c["parts"]
+    why = _moved(set(parts), set(entry_patches(c, tile, shown.textures)))
+    if why is None and any(c["plain"].get(n) != shown.plain(n) for n in parts):
         why = "images"
+    if why is None and any(find_part(str(parts[n][1])) is None for n in parts):
+        why = "parts"
     return why
 
 

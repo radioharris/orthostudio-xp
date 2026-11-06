@@ -11,15 +11,18 @@ A texture is laid from the build's own: its first level read, the clouds laid ov
 layer the previews are drawn with (``textures.clouds``), its levels made again as the build makes
 them, and of each level only the blocks a cloud reaches encoded again, as the build encodes them;
 every other block is the build's, byte for byte. The build's texture is kept beside, the same file
-(``clouds/<name>.dds``), the laid one stamped with what it is made of (``tile.Stamp``), written
-whole over the build's: a write cut short leaves either.
+(``clouds/<name>.dds``), the laid one stamped with what it is made of (``tile.Stamp``). A laying
+is all or nothing (:func:`lay_folder`), and each file is written whole: a program cut short
+leaves every texture whole, saying what it shows.
 """
 
 from __future__ import annotations
 
 import contextlib
 import logging
+import os
 import threading
+import time
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -35,6 +38,7 @@ from orthostudio.clouds.tile import (
     clouds_digest,
     entry_patches,
     find_part,
+    identity,
     is_own_folder,
     part_path,
     reaching,
@@ -45,7 +49,7 @@ from orthostudio.clouds.tile import (
     texture_digest,
 )
 from orthostudio.errors import OsxpError
-from orthostudio.fsutil import atomic_link_or_copy, atomic_write_bytes
+from orthostudio.fsutil import atomic_link_or_copy, atomic_write_bytes, replace
 from orthostudio.graph.digest import digest_bytes
 from orthostudio.imagery.grid import parse_texture_name
 from orthostudio.model import TileRef
@@ -96,12 +100,14 @@ def _show(
     untick: bool = False,
     progress: Callable[[int, int], None] | None = None,
 ) -> list[Mapping[str, Any]]:
-    """:func:`show`, under the tile's lock."""
+    """:func:`show`, under the tile's lock; the list written only when it changes."""
     laid = lay_folder(tile, folder, entries, progress=progress)
-    with cloudlist.update(tile, since=since) as cl:
-        cl.laid = [dict(e) for e in laid]
-        if untick:
-            cloudlist.untick_all(cl)
+    now = [dict(e) for e in laid]
+    if untick or cloudlist.load(tile).laid != now:
+        with cloudlist.update(tile, since=since) as cl:
+            cl.laid = now
+            if untick:
+                cloudlist.untick_all(cl)
     return laid
 
 
@@ -178,6 +184,13 @@ def _spliced(level: bytes, image: np.ndarray, blocks: np.ndarray, fmt: str) -> b
     return out.tobytes()
 
 
+_OURS = ".osxp-clouds-"
+"""What the files laying makes beside a texture are named with (``<name>.dds.osxp-clouds-new-
+<pid>``, ``...-before-<pid>``); left by a program cut short, they go at a later laying."""
+LEFTOVER_S = 3600.0
+"""How old such a file is before it is taken for one left: no laying lasts that long."""
+
+
 def lay_folder(
     tile: TileRef,
     folder: Path,
@@ -187,12 +200,16 @@ def lay_folder(
 ) -> list[Mapping[str, Any]]:
     """Make every texture of ``folder`` show those of the clouds ``entries`` (in laying order)
     whose images stand on it (``tile.stands_not``), and no other: each texture they reach laid
-    from the build's own, each other one the build's again. A texture showing these already is
-    left as it is; the build's textures no longer needed aside go. Called under the tile's lock
+    from the build's own, each other one the build's again; a texture showing these already is
+    left as it is. All or nothing: every new texture is made first beside its own, then each is
+    put in place, the one before kept until all are; when one cannot be (X-Plane holding it, a
+    build replacing it meanwhile), those put in place are put back and nothing has changed. The
+    build's textures no longer needed aside go. Called under the tile's lock
     (:func:`folder_lock`). Returns the clouds laid."""
     shown = read_tile(folder)
     if shown is None:
         raise OsxpError("CLOUD_TILE_NOT_READY", context={"tile": tile.name, "state": "not_built"})
+    _sweep_leftovers(shown)
     laid = [e for e in entries if stands_not(e, tile, shown) is None]
     work = []
     for name in shown.names:
@@ -201,43 +218,80 @@ def lay_folder(
         stamp = shown.stamps.get(name)
         if (stamp.clouds if stamp is not None else None) != want:
             work.append((name, mine))
-    for n, (name, mine) in enumerate(work):
-        if progress is not None:
-            progress(n, len(work))
-        _lay_one(tile, shown, name, mine)
+    made: list[tuple[str, Path]] = []
+    try:
+        for n, (name, mine) in enumerate(work):
+            if progress is not None:
+                progress(n, len(work))
+            made.append((name, _make(tile, shown, name, mine)))
+        _put_in_place(tile, shown, made)
+    finally:
+        for _name, path in made:
+            path.unlink(missing_ok=True)
     _sweep(shown)
     if progress is not None:
         progress(len(work), len(work))
     return laid
 
 
-def _lay_one(
-    tile: TileRef, shown: TileClouds, name: str, mine: Sequence[Mapping[str, Any]]
-) -> None:
+def _beside(texture: Path, what: str) -> Path:
+    return texture.with_name(f"{texture.name}{_OURS}{what}-{os.getpid()}")
+
+
+def _make(tile: TileRef, shown: TileClouds, name: str, mine: Sequence[Mapping[str, Any]]) -> Path:
+    """The new texture ``name``, made beside it: laid with ``mine``, else the build's own. The
+    build's own is kept aside first when it is in place (the same file)."""
     texture, kept = shown.texture_path(name), shown.kept_path(name)
     stamp = shown.stamps.get(name)
     if stamp is not None and (not kept.is_file() or texture_digest(kept) != stamp.plain):
         raise OsxpError("CLOUD_TEXTURE_LOST", context={"tile": tile.name, "path": str(kept)})
+    new = _beside(texture, "new")
+    if not mine:  # the build's own again
+        atomic_link_or_copy(kept, new)
+        return new
+    data = lay_texture(shown.plain_path(name).read_bytes(), name, tile, mine)
+    if stamp is None:
+        kept.parent.mkdir(exist_ok=True)
+        atomic_link_or_copy(texture, kept)
+    atomic_write_bytes(new, data)
+    return new
+
+
+def _put_in_place(tile: TileRef, shown: TileClouds, made: Sequence[tuple[str, Path]]) -> None:
+    """Each texture of ``made`` replaced by its new one, the very file read only, the ones before
+    kept until all are in place; all put back when one cannot be."""
+    done: list[tuple[Path, Path]] = []
+    texture = shown.folder
     try:
-        if not mine:  # the build's own again
-            atomic_link_or_copy(kept, texture)
-            return
-        laid = lay_texture(shown.plain_path(name).read_bytes(), name, tile, mine)
-        if stamp is None:  # the build's own kept aside, the same file, before it is replaced
-            kept.parent.mkdir(exist_ok=True)
-            atomic_link_or_copy(texture, kept)
-        atomic_write_bytes(texture, laid)
-    except PermissionError as exc:  # Windows: X-Plane holds the texture
-        raise OsxpError(
-            "XP_PACK_CONFLICT",
-            context={
-                "tile": tile.name,
-                "pack": str(texture),
-                "reason": f"{type(exc).__name__}: {exc}",
-            },
-            message=f"{texture} is in use and cannot be replaced ({exc}).",
-            remedy="Quit X-Plane (or the tool holding the file), then apply again.",
-        ) from exc
+        for name, new in made:
+            texture = shown.texture_path(name)
+            if identity(texture) != shown.files[name]:  # a build placed its own meanwhile
+                raise OsxpError(
+                    "CLOUD_TILE_NOT_READY", context={"tile": tile.name, "state": "in_build"}
+                )
+            before = _beside(texture, "before")
+            atomic_link_or_copy(texture, before)
+            try:
+                replace(new, texture)
+            except BaseException:
+                before.unlink(missing_ok=True)
+                raise
+            done.append((texture, before))
+    except BaseException as exc:
+        for texture, before in reversed(done):
+            with contextlib.suppress(OSError):
+                replace(before, texture)
+        if isinstance(exc, PermissionError):  # Windows: X-Plane holds the texture
+            raise OsxpError(
+                "XP_PACK_CONFLICT",
+                context={"tile": tile.name, "pack": str(texture), "reason": str(exc)},
+                message=f"{texture} is in use and cannot be replaced ({exc}).",
+                remedy="Quit X-Plane (or the tool holding the file), then apply again.",
+            ) from exc
+        raise
+    finally:
+        for _texture, before in done:
+            before.unlink(missing_ok=True)
 
 
 def _sweep(shown: TileClouds) -> None:
@@ -255,6 +309,17 @@ def _sweep(shown: TileClouds) -> None:
             log.warning("%s stays", kept, exc_info=True)
     with contextlib.suppress(OSError):
         aside.rmdir()  # when empty
+
+
+def _sweep_leftovers(shown: TileClouds) -> None:
+    """The files a laying cut short left beside the textures (:data:`_OURS`), once they are
+    old enough to be no laying's under way."""
+    now = time.time()
+    for folder in (shown.folder / "textures", shown.folder / CLOUDS_DIR):
+        for left in folder.glob(f"*{_OURS}*") if folder.is_dir() else ():
+            with contextlib.suppress(OSError):
+                if now - left.stat().st_mtime > LEFTOVER_S:
+                    left.unlink()
 
 
 def lay_again(tile: TileRef, folder: Path, *, custom_scenery: Path | None) -> None:

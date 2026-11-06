@@ -1256,8 +1256,16 @@ _SPECS: tuple[ErrorSpec, ...] = (
         _B,
         _S,
         "Tile {tile}: a file its replaced clouds need is missing ({path}).",
-        "Build the tile again: its textures come back as built, and its clouds with them where "
-        "they still fit.",
+        "Build the tile again: its textures come back as built, its clouds with them where they "
+        "still fit; then apply or restore again.",
+    ),
+    _spec(
+        "CLOUD_TEXTURE_UNREADABLE",
+        _B,
+        _S,
+        "Tile {tile}: the texture {path} cannot be read now ({reason}).",
+        "Nothing was changed. Try again in a moment; if it lasts, check that no other program "
+        "holds the file.",
     ),
     _spec(
         "CLOUD_NOT_BUILT",

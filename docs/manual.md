@@ -67,8 +67,12 @@ ticked with the best, named *Outline 1*, with a bin to take it out.
 Nothing changes in X-Plane until you press **Apply (3 changes)**. The app says what will change,
 and what waits (a cloud whose images are not in yet stays out). Apply does not build the tile: it
 changes only the pixels under the clouds in its textures, in a few seconds, and the panel shows
-how far it is. The rest of the tile stays exactly as built. On Windows, quit X-Plane first if it
+how far it is. The rest of the tile stays exactly as built. It is all or nothing: if a texture
+cannot be replaced, nothing changes and the app says why. On Windows, quit X-Plane first if it
 shows the tile: it holds the textures and they cannot be replaced while it runs.
+
+While the tile is being built, or waits in the queue, its clouds are shown as they are, and
+nothing can be changed: they are back once the build is over.
 
 **Discard changes** puts the list back to what the tile holds.
 

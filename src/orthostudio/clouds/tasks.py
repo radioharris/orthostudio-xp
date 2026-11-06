@@ -13,6 +13,7 @@ from __future__ import annotations
 import logging
 import secrets
 import threading
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
@@ -145,3 +146,14 @@ class Tasks:
         for t in tasks:
             t.stop.set()
         return len(tasks)
+
+    def settle(self, timeout: float) -> bool:
+        """Wait until no task Stop does not end runs (an Apply, a few seconds), ``timeout`` at
+        most; whether none does."""
+        deadline = time.monotonic() + timeout
+        while True:
+            with self._lock:
+                busy = any(not t.stoppable for t in self._tasks.values())
+            if not busy or time.monotonic() >= deadline:
+                return not busy
+            time.sleep(0.05)

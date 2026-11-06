@@ -12,14 +12,17 @@ from typing import Any
 import pytest
 
 from orthostudio.clouds import cloudlist as cls
-from orthostudio.clouds.tile import Stamp, TileClouds
+from orthostudio.clouds.tile import Stamp, TileClouds, part_path
 from orthostudio.errors import OsxpError
+from orthostudio.graph.digest import digest_bytes
 from orthostudio.model import TileRef
 
 TILE = TileRef(43, 5)
 NAME = "1488_2096_T12"
 PLAIN, OTHER = "p" * 40, "o" * 40
 """The texture as built the tile shows, and another one."""
+PART_BYTES = b"a cloud's frozen part"
+PART = digest_bytes(PART_BYTES)
 
 
 def _ring(lat0: float, lon0: float, lat1: float, lon1: float) -> list[list[float]]:
@@ -49,16 +52,15 @@ def _entry(cid: str, rings: list[list[float]], source: str = "EOX") -> dict[str,
         "source": source,
         "match": [[1, 1, 1], [0, 0, 0]],
         "rings": rings,
-        "parts": {NAME: [12, "d" * 64]},
+        "parts": {NAME: [12, PART]},
         "plain": {NAME: PLAIN},
     }
 
 
 def _held(*entries: dict[str, Any]) -> TileClouds:
     """The tile showing ``entries`` in its one texture, built as ``PLAIN``."""
-    return TileClouds(
-        Path("/nowhere"), "k", "BI", True, (NAME,), {NAME: Stamp(PLAIN, "x" * 40)}, entries
-    )
+    stamps, files = {NAME: Stamp(PLAIN, "x" * 40)}, {NAME: (0, 0, 0)}
+    return TileClouds(Path("/nowhere"), "k", "BI", True, (NAME,), stamps, files, entries)
 
 
 def _hold(*entries: dict[str, Any]) -> TileClouds:
@@ -73,7 +75,11 @@ def _hold(*entries: dict[str, Any]) -> TileClouds:
 
 @pytest.fixture(autouse=True)
 def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """A home whose data folder holds the clouds' frozen part (:data:`PART`)."""
     monkeypatch.setenv("OSXP_HOME", str(tmp_path))
+    monkeypatch.delenv("OSXP_DATA_DIR", raising=False)
+    part_path(PART).parent.mkdir(parents=True)
+    part_path(PART).write_bytes(PART_BYTES)
     return tmp_path
 
 
@@ -133,7 +139,7 @@ def test_a_held_outline_leaves_the_list_only_once_the_tile_no_longer_holds_it() 
         o = cls.add_outline(cl, A, None)
         cls.pick(cl, o["id"], "choose", "EOX")
         cl.get(o["id"])["checks"]["EOX"] = {"answer": "clear", "entry": _entry(o["id"], A)}
-        (laid,) = cls.plan(cl, None, TILE).laid
+        (laid,) = cls.plan(cl, _held(), TILE).laid
     held = _held(laid)
     with pytest.raises(OsxpError), cls.update(TILE) as cl:
         cls.remove_outline(cl, o["id"], held)
@@ -216,7 +222,7 @@ def test_discard_and_restore() -> None:
 def test_a_broken_list_is_put_aside_at_the_next_write_each_one_kept(home: Path) -> None:
     # a read changes nothing; the write puts the broken file aside, each one kept
     path = cls.list_path(TILE)
-    path.parent.mkdir(parents=True)
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("{not json")
     assert cls.load(TILE).clouds == []
     assert path.read_text() == "{not json"  # read only
@@ -287,10 +293,23 @@ def test_a_source_whose_images_showed_the_same_photo_cannot_be_chosen() -> None:
 
 def test_a_list_put_aside_never_takes_the_name_of_another(home: Path) -> None:
     path = cls.list_path(TILE)
-    path.parent.mkdir(parents=True)
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.with_name(path.name + ".broken-2").write_text("old")
     path.write_text("{not json")
     with cls.update(TILE):
         pass
     assert path.with_name(path.name + ".broken-2").read_text() == "old"
     assert path.with_name(path.name + ".broken-3").read_text() == "{not json"
+
+
+def test_a_held_cloud_whose_images_are_gone_waits_for_them_and_apply_lays_it_no_more() -> None:
+    # R6: its frozen parts on this computer are part of what makes it stand
+    other = _entry("held0002", B)
+    other["parts"] = {NAME: [12, "f" * 64]}  # its part found nowhere
+    held = _hold(_entry("held0001", A), other)
+    with cls.update(TILE) as cl:
+        plan = cls.plan(cl, held, TILE)
+    assert [(ch.cloud, ch.kind, ch.waiting) for ch in plan.changes] == [
+        ("held0002", "replace", "photo_parts")
+    ]
+    assert [e["id"] for e in plan.laid] == ["held0001"] and cls.needs_images(plan.changes[0])

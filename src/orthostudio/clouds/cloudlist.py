@@ -415,9 +415,15 @@ class Change:
     waiting: str | None = None
 
 
-def _changes(cl: CloudList, shown: TileClouds | None, tile: TileRef) -> list[Change]:
-    """What Apply would change: each ticked cloud with another source than the tile holds or not
-    held at all, and each held cloud unticked."""
+def _changes(
+    cl: CloudList,
+    shown: TileClouds | None,
+    tile: TileRef,
+    standing: Mapping[str, Mapping[str, Any]],
+) -> list[Change]:
+    """What Apply would change: each ticked cloud with another source than the tile holds, not
+    held at all, or held on images that no longer stand (``standing``: the held that do); and
+    each held cloud unticked."""
     holds = held_by_id(shown)
     out: list[Change] = []
     for c in cl.clouds:
@@ -426,20 +432,18 @@ def _changes(cl: CloudList, shown: TileClouds | None, tile: TileRef) -> list[Cha
             if was is not None:
                 out.append(Change(c["id"], "back", None, None))
             continue
-        if was is not None and was["source"] == c["source"]:
+        if c["id"] in standing and was is not None and was["source"] == c["source"]:
             continue
+        other = was is not None and was["source"] != c["source"]
         got = (c.get("checks") or {}).get(c["source"]) or {}
-        entry = got.get("entry")
+        # its newest images of that source: got, else those the tile holds of it
+        entry = got.get("entry") or (was if was is not None and not other else None)
         waiting = None
         if entry is None:
             waiting = got.get("answer") or "no_images"
         elif shown is not None and (why := stands_not(entry, tile, shown)) is not None:
             waiting, entry = f"photo_{why}", None
-        out.append(
-            Change(
-                c["id"], "another" if was is not None else "replace", c["source"], entry, waiting
-            )
-        )
+        out.append(Change(c["id"], "another" if other else "replace", c["source"], entry, waiting))
     return out
 
 
@@ -452,17 +456,16 @@ def needs_images(ch: Change | None) -> bool:
 
 
 def _laid_after(
-    cl: CloudList, shown: TileClouds | None, pending: Sequence[Change]
+    cl: CloudList, pending: Sequence[Change], standing: Mapping[str, Mapping[str, Any]]
 ) -> list[dict[str, Any]]:
     """The clouds Apply lays in the tile, and After shows, in the list's order: each ticked
     cloud with the newest images that stand, its change's when they are in, else what the tile
-    holds of it; a cloud with neither waits, left out (the question said so). ``pending``: what
-    :func:`_changes` gives."""
-    holds = held_by_id(shown)
+    holds of it while that stands (``standing``); a cloud with neither waits, left out (the
+    question said so). ``pending``: what :func:`_changes` gives."""
     got = {ch.cloud: ch.entry for ch in pending if ch.entry is not None}
     out: list[dict[str, Any]] = []
     for c in cl.clouds:
-        entry = got.get(c["id"]) or holds.get(c["id"]) if c["tick"] else None
+        entry = got.get(c["id"]) or standing.get(c["id"]) if c["tick"] else None
         if entry is not None:
             out.append({**entry, "kind": c["kind"], "number": c["number"]})
     return out
@@ -481,6 +484,11 @@ class ApplyPlan:
 
 
 def plan(cl: CloudList, shown: TileClouds | None, tile: TileRef) -> ApplyPlan:
-    """What Apply would do with the list ``cl`` on the tile as ``shown``."""
-    pending = _changes(cl, shown, tile)
-    return ApplyPlan(pending, _laid_after(cl, shown, pending))
+    """What Apply would do with the list ``cl`` on the tile as ``shown``; nothing without a
+    folder read (not built, or a build writing it)."""
+    if shown is None:
+        return ApplyPlan([], [])
+    held = held_by_id(shown)
+    standing = {i: e for i, e in held.items() if stands_not(e, tile, shown) is None}
+    pending = _changes(cl, shown, tile, standing)
+    return ApplyPlan(pending, _laid_after(cl, pending, standing))

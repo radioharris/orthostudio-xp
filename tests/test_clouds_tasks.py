@@ -55,3 +55,16 @@ def test_a_stopped_task_is_no_failure() -> None:
 
     tasks.start("+43+005", "check", stopped, cloud="a")
     assert _ended(tasks, "+43+005") and tasks.failed("+43+005") is None
+
+
+def test_quit_waits_for_an_apply_and_stops_the_others() -> None:
+    tasks = Tasks()
+    go = threading.Event()
+    ended: list[str] = []
+    tasks.start(
+        "+43+005", "apply", lambda t: (time.sleep(0.3), ended.append("apply")), stoppable=False
+    )
+    tasks.start("+43+005", "find", lambda t: go.wait(10))
+    tasks.stop_all()
+    assert tasks.settle(5.0) and ended == ["apply"]  # Apply ended what it began
+    go.set()
