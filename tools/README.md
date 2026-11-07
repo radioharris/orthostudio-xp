@@ -14,3 +14,6 @@ such builds tile by tile: what a change touches, before it is released (`docs/te
 copies rewritten the same way, to measure what fewer, larger textures change in X-Plane; not part of
 the app, it runs with an installed OrthoStudio XP's own Python and DSFTool, a launcher per system
 (`8k-test/README.txt`).
+`clouds/`: converts OmniCloudMask's networks for OpenCV (`export_detector.py`, published as the
+release `clouds-detector-1`) and measures the cloud mode's After against the textures as laid
+(`after_vs_built.py`, `docs/benchmarks/clouds.md` B5).

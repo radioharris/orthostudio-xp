@@ -1287,7 +1287,7 @@ _SPECS: tuple[ErrorSpec, ...] = (
         _B,
         _S,
         "Cloud {cloud} is not in the cloud list of tile {tile}.",
-        "Open the tile's Clouds… again to read its list as it is now; nothing was changed.",
+        "Open the tile's clouds again to read its list as it is now; nothing was changed.",
     ),
     _spec(
         "CLOUD_NOT_NOW",

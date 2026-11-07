@@ -6,11 +6,12 @@
 its picture, every cloud's row, what Apply would change, its tasks); ``POST .../find`` a search;
 ``POST .../picks`` a tick or a source (getting the cloud's images when it needs them);
 ``POST .../outlines`` and ``DELETE .../outlines/{id}`` a cloud outlined by hand;
-``POST .../discard``; ``POST .../apply`` (``restore`` to bring back every cloud), a task;
+``POST .../discard``; ``POST .../apply`` (``restore`` to bring back every cloud, ``forget`` then
+to erase the tile's list too), a task;
 ``GET .../files/{name}`` the picture and the previews; ``POST /api/clouds/tasks/{id}/stop`` and
 ``POST .../stop``, every task of the tile Stop ends.
 A task is named by the action that starts it: ``find``, ``check``, ``outline``, ``apply``,
-``restore``.
+``restore``, ``forget``.
 """
 
 from __future__ import annotations

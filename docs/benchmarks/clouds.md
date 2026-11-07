@@ -48,7 +48,7 @@ question's button to the end of the task, read by the page every 0.1 s:
 | Step | Time, what changed |
 |---|---|
 | The tile built again from the Library, everything in the cache | 3 s; the three textures the test versions had laid clouds in came back identical, byte for byte, to the originals those versions kept |
-| **Find clouds**: 47 clouds; the two readings, then the other sources fetched and judged (Esri, Esri Clarity, EOX, USGS) | about a minute |
+| **Fine search**: 47 clouds; the two readings, then the other sources fetched and judged (Esri, Esri Clarity, EOX, USGS) | about a minute |
 | Two ticks (Esri over a glacier, 11 km²; EOX over a valley, 9 km²): their images got | both in within 10 s of the first tick |
 | **Apply** with these two clouds: three textures laid | 1.8 s; the 21 others untouched; in the three, the same size and header but the stamp, 0.4 to 3.3 % of the first level's blocks made again; the textures as built kept beside, the same files (no space taken) |
 | A build again from the Library, the clouds held | the folder found whole, nothing written: the textures the same bytes |
@@ -72,3 +72,28 @@ means of the two images agree within a level. Inside, the figures are those the 
 gave when the build laid the clouds. On the soft edge and just outside, the levels of the
 blocks a cloud reaches are now made from the texture's first level as built, itself compressed,
 rather than from the photo before compression: a tenth of a level more.
+
+## B6. Faster once the mode works (Mac, 2026-11-07)
+
+Measured on the owner's -02-049 (Bing ZL16, 198 clouds) copied into a test home, and on +56-131:
+
+| What | Before | After |
+|---|---|---|
+| Opening the mode, the tile's picture already drawn | 3.75 s | 0.07 s (the picture drawn only when its file is missing, `picture_file`) |
+| The sources judged under every cloud of -02-049 (594 cloud and source pairs) | 94 s, a window at a time | 3.4 s, the windows grouped to the detector's patch (`classify_many`); 18 answers of 594 and 4 best sources of 198 differ, borderline veils, the fits never |
+| Laying ten clouds over seven textures | 4.1 s | 0.7 s (four textures at once, `LAYING_AT_ONCE`, and a BC1 level decoded a palette colour at a time as one word: the same pixels) |
+
+## B7. The memory a laying takes (Mac, 2026-11-07)
+
+47 clouds over 18 textures of 4096 px on +56-131, each run in a process of its own, the most the
+process held above what it held before (`ru_maxrss`), the tile put back as built after each; the
+bytes laid the same in every run:
+
+| Textures at once | Time | Memory, a level decoded whole | Memory, a level decoded by bands (`DECODED_AT_ONCE`) |
+|---|---|---|---|
+| 1 | 6.2 s | +0.78 GB | +0.48 GB |
+| 2 | 3.3 s | +1.37 GB | +0.75 GB |
+| 4 | 1.9 s | +2.55 GB | +1.35 GB |
+
+A level of 4096 px decoded whole took some 350 MB meanwhile for its 64 MB of pixels, 90 MB by
+bands, in the same time.

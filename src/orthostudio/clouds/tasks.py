@@ -35,9 +35,9 @@ CHECKS_AT_ONCE = 3
 @dataclass(eq=False)
 class Task:
     """One task: of ``tile``, ``kind`` (the action that starts it: ``find``, ``check``,
-    ``outline``, ``apply``, ``restore``), for ``cloud`` when it is one cloud's; where it is
-    (``phase``, ``done`` of ``total``); whether Stop ends it (``stoppable``); what After showed
-    of its cloud when it began (``was``: its row and the images it laid, shown and counted
+    ``outline``, ``apply``, ``restore``, ``forget``), for ``cloud`` when it is one cloud's; where
+    it is (``phase``, ``done`` of ``total``); whether Stop ends it (``stoppable``); what After
+    showed of its cloud when it began (``was``: its row and the images it laid, shown and counted
     meanwhile, ``state.view``)."""
 
     id: str
