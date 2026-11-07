@@ -351,5 +351,7 @@ review, 2026-11-07).
 (404, renamed or deleted in another window), `CFG_PROFILE_LAST` (409), `CFG_PROFILE_CHANGED` (409, a
 Save naming a profile that is no longer the current one; `{name}` is the current one).
 
-**A build** records the current profile's name in its request (`profile`), and its summary carries
-it, which Works writes; *Build again* keeps it, with the settings the build had.
+**A build** records the current profile's name in its request (`profile`) from the second profile
+on, none when one alone is left (`Profiles.named`, the one the page's lists name, `named` in `GET
+/api/profiles`), and its summary carries it, which Works writes; *Build again* keeps it, with the
+settings the build had.

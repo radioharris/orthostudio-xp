@@ -125,8 +125,9 @@ class CloudEngine:
         """The tile at ``zl`` as X-Plane draws it, every texture as X-Plane shows it but those
         After draws as the build made them (``bare``, ``state.View.bare``: After's ground); every
         one as built for Before (``None``). With what it is made of, said in a line, which names it:
-        the same line, the same picture. Before at the map's level is kept in memory (the last
-        few); After, read only for its file, and a finer one, read once by a search, are not.
+        the same line, the same picture. Before at the map's level is kept in memory, of two
+        tiles at most, each tile's newest build's; After, read only for its file, and a finer
+        one, read once by a search, are not.
         Before is what a search, a cloud's images and the previews read."""
         key = (tile.name, _what(shown, zl, bare))
         with self._lock:
@@ -742,8 +743,10 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
         action, _cid, _source = _body_of(_tile_of(name), body, state.WRITES)
         tile, folder, _shown, v = opened(name, action)
         laid = v.asked if action == "apply" else []
-        if laid:  # laid with OpenCV, asked for as a search asks for it: without it, Apply said
-            _detector_said(body)  # "check the internet connection" (a review, 2026-11-07)
+        # laid with OpenCV, asked for as a search asks for it: without it, Apply said "check the
+        # internet connection" (a review, 2026-11-07)
+        if laid:
+            _detector_said(body)
         # Restore brings every cloud back as photographed: those ticked when it was asked are
         # unticked once it is done, the draft then empty; one ticked meanwhile stays so
         ticked = [s.cloud["id"] for s in v.clouds if s.cloud["tick"]] if action == "restore" else []

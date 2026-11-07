@@ -34,7 +34,7 @@ def test_the_lists_show_from_the_second_profile_and_wait_for_unsaved_changes() -
     the list stands at the top of Settings and above step 1's source, and waits while changes are
     not saved: changing profile then would lose them without a word."""
     app_js = (UI / "app.js").read_text(encoding="utf-8")
-    assert "return profileNames().length > 1;" in _function_body(app_js, "profilesShown")
+    assert "return Boolean(state.profiles?.named);" in _function_body(app_js, "profilesShown")
     plan = _function_body(app_js, "renderPlanProfile")
     assert (
         "field.hidden = !shown;" in plan and "select.disabled = dirty || state.profileBusy;" in plan

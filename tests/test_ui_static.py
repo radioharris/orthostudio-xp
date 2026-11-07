@@ -3859,7 +3859,7 @@ def test_quit_and_the_file_manager_from_the_page() -> None:
 
     drawn = r'^\.icon-[\w-]+ \{ --icon: url\("data:image/svg\+xml,(.+?)"\); \}$'
     drawings = re.findall(drawn, css, re.M)
-    assert len(drawings) >= 11
+    assert len(drawings) == css.count("--icon: url(") >= 11
     for svg in drawings:
         minidom.parseString(svg)
     labels = _node_json("app.js", '["mac", "win", "lin", undefined].map((p) => m.revealLabel(p))')
@@ -8934,7 +8934,7 @@ def test_a_view_shown_earlier_lets_no_picture_of_the_one_shown_now_go() -> None:
     # After, Before, After quickly: Before's picture, in late, let After's go and the map stayed
     # with no picture until the next change of view (a review, 2026-11-07)
     code = (UI / "clouds.js").read_text(encoding="utf-8")
-    assert "const turn = (cs.groundTurn = (cs.groundTurn || 0) + 1);" in code
+    assert "const turn = ++cs.groundTurn;" in code and "groundTurn: 0," in code
     assert "if (turn !== cs.groundTurn) return;" in code
 
 
