@@ -691,13 +691,25 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .zone-item > .cloud-swatch.is-on { background: var(--accent); box-shadow: none; }
 .zone-item.cloud-item { cursor: pointer; } /* a click shows its cloud */
 .zone-item.cloud-item[aria-current="true"] { border-color: var(--fg-2); box-shadow: inset 0 0 0 1px var(--fg-2); background: color-mix(in srgb, var(--fg) 10%, var(--bg)); }
+/* One width, whatever the column holds: its two icons and "999 remplacé(s)", its longest first
+   words, from the start, while it is read too. Sized by what it held, it grew from 131 to 240 px
+   as the Library opened, and every other column moved, then again at each tile gaining or losing
+   its words (a user, 2026-11-07). */
+.library-table .library-clouds { width: calc(2 * var(--control-h) + 128px); }
 /* Its two icons and its words on one line, as every cell of the row, at the smallest window too
    (its words under its buttons made the row taller, a user, 2026-11-07); close as the row's
-   actions are. */
-.library-clouds > div { display: flex; align-items: center; gap: 4px; white-space: nowrap; }
+   actions are. What it holds never widens it (no width of its own, the cell's whole): longer
+   words, another system's font, end in "…", whole in their tooltip. */
+.library-clouds > div {
+  display: flex; align-items: center; gap: 4px; white-space: nowrap;
+  width: 0; min-width: 100%; overflow: hidden;
+}
 .library-clouds .btn-trash { margin-left: 0; }
 /* a little further from the bin than the two icons from each other (a user, 2026-11-07) */
-.library-clouds .clouds-words { margin-left: 4px; color: var(--fg-2); font-size: var(--fs-2); }
+.library-clouds .clouds-words {
+  margin-left: 4px; color: var(--fg-2); font-size: var(--fs-2);
+  min-width: 0; overflow: hidden; text-overflow: ellipsis;
+}
 /* On the map, yellow what stays and the accent what is replaced, each line on a dark casing: it
    reads over snow and clouds as over dark ground. The yellow is the same in both themes: the
    ground under it is. An outline is drawn as a zone is (map.js drawShape), its points and line
