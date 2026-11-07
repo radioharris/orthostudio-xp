@@ -76,8 +76,9 @@ The Plan's map, brought over the tile; the Plan's steps make way for the cloud p
   it is not ready (1.5), or why it could not be read; each task under way with a spinner, its
   phase, its progress (a search's judging of the
   sources said cloud by cloud) and **Stop**; the count of what Apply changes ("To replace: 1 · Back
-  as photographed: 2") on a line of its own, and under it **Tick all**, **Untick all** and, while a
-  cloud's task runs, **Stop all (n)**, n the clouds at work (`counts.working`; a count that grew
+  as photographed: 2") on a line of its own, and under it **Tick all**, **Untick all** and, while
+  two clouds' tasks or more run, **Stop all (n)**, n the clouds at work (`counts.working`; one at
+  work, its row's spinner stops it: Stop all beside it was a second spinner; a count that grew
   pushed them out of line); the list, a row per cloud; then three rows of buttons, spaced as the Plan's build buttons
   (`actions actions-build`): **Apply (n changes)** and **Discard changes**, once there is a cloud
   or Apply may run; **Quick search** and **Fine search** (4.1; greyed, saying why, on a tile with
@@ -89,7 +90,8 @@ The Plan's map, brought over the tile; the Plan's steps make way for the cloud p
   cloud, and a tick or a source chosen shows it too, the map over what is ticked and its new
   images; Tick all moves nothing): its tick and name, while a
   task of it runs and it is the one cloud at work a spinner beside its name around a square that
-  stops it (`label`), a spinner there too from a click on it until the engine answers, its area, an eye (**Show**: the map over it), a trash
+  stops it, the very same from a click on it to the end of its task (`pending`, then `working`,
+  whatever the task's phase: two spinners came one after the other), its area, an eye (**Show**: the map over it), a trash
   for an outline the tile does not hold; the menu of its sources, each with what it has there and
   its fit ("Esri World Imagery · clear · fit 93 %"), both from its newest reading (`state.reading`:
   its images got, judged as they are now, else the search's; what a piece said, no answer, a
@@ -117,7 +119,7 @@ The Plan's map, brought over the tile; the Plan's steps make way for the cloud p
 | **Restore the original photos** | Asks first; every texture back as built, then the clouds ticked when it was asked unticked (one ticked meanwhile stays so) |
 | **Stop** | Ends the task at its next step, the list as it was (Apply has none: it ends in seconds) |
 | **Forget the clouds**, or the trash in the tile's Clouds cell of the Library (it asks the same question there, runs the same task and waits for it) | Asks first; Restore, then the tile's list, pictures, previews and the frozen parts of its clouds' images no other tile's list stands on erased (`cloudlist.erase`): the tile as the build made it, a search starting from nothing. Its folder made to show none first, or the mode would find them in it and know them again (2.4) |
-| **Stop all** | While a cloud's task runs: every task of the tile Stop ends, stopped (after Tick all, one by one was two hundred clicks) |
+| **Stop all** | While two clouds' tasks or more run: every task of the tile Stop ends, stopped (after Tick all, one by one was two hundred clicks) |
 
 ### 1.5 The states
 
@@ -161,8 +163,8 @@ version built it. The actions have one set of names, the same for the tile, its 
 its tasks and the page: `tick`, `untick`, `choose`, `check` (get a cloud's images), `remove`,
 `discard`, `find`, `outline`, `apply`, `restore`, `forget`, `stop`; a task is named by the action that starts
 it, and the routes take them by these names. Of the tile, `tick`, `untick` and `check` are of every
-cloud whose state allows them (Tick all, Untick all), `stop` of every task Stop ends, offered while a
-cloud's runs (Stop all); `choose` and `remove` are a cloud's alone. A fine search is offered where
+cloud whose state allows them (Tick all, Untick all), `stop` of every task Stop ends, offered while
+two clouds' or more run (Stop all); `choose` and `remove` are a cloud's alone. A fine search is offered where
 the tile's textures are finer than the map's level (`View.fine`), and refused elsewhere.
 
 A cloud is, one way only:

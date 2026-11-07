@@ -681,15 +681,17 @@ export function createCloudMode(ctx) {
     const buttons = [
       can.has("check") ? h("button", { type: "button", class: "btn", dataset: key(`check-${c.id}`), "aria-label": `${t("clouds.get_images")}: ${label}`, onclick: () => send("POST", "/check", { id: c.id, again: true }, `cloud-${c.id}`) }, t("clouds.get_images")) : null,
     ].filter(Boolean);
-    // its task, when it is the one cloud at work (``label``, the engine's): a spinner beside its
-    // name, around a square that stops it, in place of its line and a Stop of its own (a line of
-    // words and a row of its own, a user, 2026-11-07); several at work, Stop all says it
-    // and from a click on it until the engine answers (``pending``): one spinner, on the cloud
-    // clicked, from the click to the end of its task
-    const busy = c.label && can.has("stop")
+    // its task, when it is the one cloud at work (``working``, the engine's): a spinner beside
+    // its name, around a square that stops it, in place of its line and a Stop of its own (a line
+    // of words and a row of its own, a user, 2026-11-07); several at work, Stop all says it;
+    // and from a click on it until the engine answers (``pending``): one spinner, the very same
+    // element from the click to the end of its task, its attributes the same throughout (a
+    // button whose attributes change is drawn anew): a spinner for the click, then another
+    // around the square, came one after the other (a user, 2026-11-07)
+    const busy = c.working || cs.pending.has(`cloud-${c.id}`)
       ? h("button", { type: "button", class: "cloud-stop", dataset: key(`stop-${c.id}`), title: t("clouds.stop"), "aria-label": `${t("clouds.stop")}: ${label}`, onclick: () => { const now = cloudNow(c.id)?.task; if (now) stopTask(now.id, `cloud-${c.id}`); } },
         h("span", { class: "spinner", "aria-hidden": "true" }), icon("tpl-stop-icon"))
-      : c.label || cs.pending.has(`cloud-${c.id}`) ? h("span", { class: "spinner", "aria-hidden": "true" }) : null;
+      : null;
     const trash = can.has("remove")
       ? h("button", { type: "button", class: "btn btn-icon btn-danger btn-trash", "aria-label": `${t("clouds.remove")}: ${label}`, title: t("clouds.remove"), onclick: () => send("DELETE", `/outlines/${c.id}`, undefined, `cloud-${c.id}`) },
         icon("tpl-bin-icon"))

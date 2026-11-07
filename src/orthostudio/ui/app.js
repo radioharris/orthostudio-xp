@@ -2527,7 +2527,7 @@ function routeFromHash() {
 // ------------------------------------------------------------------ status bar
 
 /** The engine API this page needs (orthostudio.api.app.API_LEVEL); a test keeps the two equal. */
-const PAGE_API_LEVEL = 51;
+const PAGE_API_LEVEL = 52;
 
 async function loadStatus() {
   try {

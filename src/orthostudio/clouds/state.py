@@ -247,14 +247,18 @@ class CloudState:
 
     def page(self, previews: Mapping[str, Any] | None = None, alone: bool = True) -> dict[str, Any]:
         """Its row as the page shows it, with its preview in ``previews`` when After needs one;
-        on the map, a found cloud's number (``numbered``); and while a task of it runs and it is
-        the one cloud at work (``alone``), a spinner beside its name that stops it and a label
-        at its centre, its name and where its task is (``label``: "Cloud 5: downloading the
-        images"). Several at work (Tick all), Stop all says it alone, by their number: their
-        labels and spinners came and went all over the map and the list (a user, 2026-11-07)."""
+        on the map, a found cloud's number (``numbered``); and while a task of it is under way
+        and it is the one cloud at work (``alone``), a spinner beside its name that stops it, from
+        its task's start to its end whatever its phase (``working``: two spinners one after the
+        other, the first one going while the task began, a user, 2026-11-07), and once its task
+        runs a label at its centre, its name and where its task is (``label``: "Cloud 5:
+        downloading the images"). Several at work (Tick all), Stop all says it alone, by their
+        number: their labels and spinners came and went all over the map and the list (a user,
+        2026-11-07)."""
         c = self.cloud
         task = self.task
-        label = alone and task is not None and task.get("phase") != "waiting"
+        working = alone and task is not None
+        label = working and task.get("phase") != "waiting"
         return {
             "id": c["id"],
             "kind": c["kind"],
@@ -269,6 +273,7 @@ class CloudState:
             "toggle": self.toggle,
             "tip": f"clouds.tip_{self.toggle}" if self.toggle else None,
             "task": {k: v for k, v in task.items() if k != "was"} if task else None,
+            "working": working,
             "label": label,
             "numbered": c["kind"] == "found",
             "preview": (previews or {}).get(c["id"]),
@@ -617,9 +622,10 @@ def view(
         "tick": not any("tick" in s.actions for s in clouds),
         "untick": not any("untick" in s.actions for s in clouds),
         "check": not any("check" in s.actions for s in clouds),
-        # every task Stop ends, while a cloud's runs (after Tick all, one by one was two hundred
-        # clicks)
-        STOP: counts["working"] == 0,
+        # every task Stop ends, while clouds' run (after Tick all, one by one was two hundred
+        # clicks); one at work, its row's stops it: Stop all beside it was a second spinner (a
+        # user, 2026-11-07)
+        STOP: counts["working"] < 2,
     }
     allowed = frozenset(a for a in can if not idle.get(a, False))
     return View(
