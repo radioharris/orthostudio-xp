@@ -61,7 +61,7 @@ The Plan's map, brought over the tile; the Plan's steps make way for the cloud p
   large enough shows its number inside it, a cloud too small to see at the map's zoom a pin that
   clicks as its outline. A click on an outline or a pin ticks or unticks it, except while a cloud is
   being outlined, and brings its row to the middle of the list. While a task of a cloud runs, not
-  while it waits for its turn, and it is the one cloud at work, a label at its centre says it, a
+  while it waits for its turn, and it is the one cloud at work, a label where its number is says it, over every mark, its number hidden meanwhile (at the middle of its frame, a long curved cloud's label lay outside it), a
   spinner with its name and where its task is ("Cloud 5: downloading the images"); several at work
   (Tick all), no cloud's label nor spinner, **Stop all (n)** says it with its own spinner (their
   labels came and went all over the map): the engine's `label` (`View.rows`), as a found cloud's
