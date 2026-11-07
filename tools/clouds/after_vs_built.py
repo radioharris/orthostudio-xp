@@ -40,7 +40,7 @@ def main() -> None:
         raise SystemExit(f"{a.cloud} is not held by {tile.name}")
     zl = map_level(tile, shown.textures)
     dsf = shown.folder / tile.dsf_relpath
-    before = draw(tile, zl, dsf=dsf, textures=shown.plains())
+    before = draw(tile, zl, dsf=dsf, textures={n: shown.plain_path(n) for n in shown.names})
     laid = {n: shown.texture_path(n) for n in shown.names}
     built = draw(tile, zl, dsf=dsf, textures=laid)
     got = preview(before, tile, entry, shown.built, sorted(entry["parts"]))

@@ -20,7 +20,9 @@ from __future__ import annotations
 import contextlib
 import io
 import json
+import logging
 import threading
+import time
 from collections.abc import Callable, Collection, Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -40,7 +42,7 @@ from orthostudio.clouds.model import detector_bytes, detector_ready, ensure_dete
 from orthostudio.clouds.opencv import ensure_opencv, opencv_ready
 from orthostudio.clouds.picture import Picture, draw, fine_level, frame_bounds, map_level
 from orthostudio.clouds.sources import SourcePieces, other_sources
-from orthostudio.clouds.tasks import Task, Tasks
+from orthostudio.clouds.tasks import Task, Tasks, error_view
 from orthostudio.clouds.tile import (
     TileClouds,
     clouds_dir,
@@ -62,6 +64,25 @@ from orthostudio.model import TileRef
 __all__ = ["CloudHooks", "clouds_router"]
 
 
+log = logging.getLogger(__name__)
+
+# a picture that could not be drawn is asked again this long after: asked again at once, its error
+# came back every second while the mode was open; never, a disk asleep for a moment kept the map
+# away until the tile changed (two reviews, 2026-11-07)
+_AGAIN_S = 30.0
+
+
+class _PictureError(Exception):
+    """A picture drawn aside that failed (:meth:`CloudEngine.aside`), with what it says
+    (``tasks.error_view``): kept as words, as a task's failure is; kept, its error held the frames
+    of the drawing, hundreds of MB, and of every answer that raised it again (two reviews,
+    2026-11-07)."""
+
+    def __init__(self, said: dict[str, Any]) -> None:
+        super().__init__(said["message"])
+        self.said = said
+
+
 @dataclass(frozen=True)
 class CloudHooks:
     """What the routes ask of the engine: X-Plane's Custom Scenery (``None`` without one), and
@@ -72,17 +93,10 @@ class CloudHooks:
     taken: Callable[[], Mapping[str, str]]
 
 
-@dataclass
-class _Aside:
-    """A picture drawn aside (:meth:`CloudEngine.aside`): set when done, with what failed."""
-
-    done: threading.Event
-    error: BaseException | None = None
-
-
 class CloudEngine:
     """The tasks, and what is kept in memory of a tile: its pictures at the map's level, the
-    classes its last search read, the pictures being drawn aside and the last given of each view.
+    classes its last search read, the pictures drawn aside (or failed, until asked again) and the
+    last given of each view.
 
     The mode's answer never draws: a picture it lacks is drawn aside, one at a time, while it
     gives the last one of that view and the page keeps reading. Drawn in the answer, the page
@@ -95,7 +109,9 @@ class CloudEngine:
         self._pictures: dict[tuple[str, str], Picture] = {}
         self._drawing: dict[tuple[str, str], threading.Lock] = {}
         self._classes: dict[tuple[str, str], np.ndarray] = {}
-        self._asked: dict[tuple[str, str], _Aside] = {}
+        # the pictures drawn aside: ``None`` while drawn, when and why once it failed; let go
+        # once drawn
+        self._asked: dict[tuple[str, str], tuple[float, dict[str, Any]] | None] = {}
         self._given: dict[tuple[str, str], tuple[str, dict[str, Any]]] = {}
         self._one = threading.Lock()  # one picture drawn aside at a time: each is hundreds of MB
         self._lock = threading.Lock()
@@ -109,8 +125,9 @@ class CloudEngine:
         """The tile at ``zl`` as X-Plane draws it, every texture as X-Plane shows it but those
         After draws as the build made them (``bare``, ``state.View.bare``: After's ground); every
         one as built for Before (``None``). With what it is made of, said in a line, which names it:
-        the same line, the same picture. The map's level is kept (the last few); a finer one,
-        read once by a search, is not. Before is what a search and a cloud's images read."""
+        the same line, the same picture. Before at the map's level is kept in memory (the last
+        few); After, read only for its file, and a finer one, read once by a search, are not.
+        Before is what a search, a cloud's images and the previews read."""
         key = (tile.name, _what(shown, zl, bare))
         with self._lock:
             drawing = self._drawing.setdefault(key, threading.Lock())
@@ -122,7 +139,10 @@ class CloudEngine:
             what, p = _draw(tile, shown.folder, zl, bare)
             with self._lock:
                 self._drawing.pop(key, None)
-                if zl == map_level(tile, shown.textures):
+                # Before alone: After's is read only for its file; kept, five of them took 1.5 GB
+                # and pushed out Before, which every preview, search and image is made on, drawn
+                # again then (a review, 2026-11-07)
+                if bare is None and zl == map_level(tile, shown.textures):
                     if len(self._pictures) > 4:
                         self._pictures.pop(next(iter(self._pictures)))
                     self._pictures[(tile.name, what)] = p
@@ -139,14 +159,13 @@ class CloudEngine:
     ) -> dict[str, Any] | None:
         """A picture of the tile as the page lays it (:meth:`drawn`: Before, ``bare`` for
         After), a JPEG named by what it is made of; ``None`` while it is not there yet, drawn
-        aside (:meth:`aside`; not while what the tile shows is written, ``ask``). A picture is
-        made once: drawn again at each start, two of them took a first reading 3.75 s (a user's
-        tile, 2026-11-07)."""
+        aside (:meth:`aside`, which raises :class:`_PictureError` once it failed; not while what
+        the tile shows is written, ``ask``). A picture is made once: drawn again at each start,
+        two of them took a first reading 3.75 s (a user's tile, 2026-11-07)."""
         path = picture_path(tile, _what(shown, zl, bare))
         if path.exists():
             return {"name": path.name, "bounds": frame_bounds(tile, zl), "level": zl}
-        if ask:
-            self.aside((tile.name, path.name), lambda: self._write(tile, shown, zl, bare))
+        self.aside((tile.name, path.name), lambda: self._write(tile, shown, zl, bare), ask=ask)
         return None
 
     def ground(
@@ -187,40 +206,43 @@ class CloudEngine:
         what = _what(shown, zl, None)
         with self._lock:
             hit = self._pictures.get((tile.name, what))
-        if hit is None and ask:
-            self.aside((tile.name, f"held {what}"), lambda: self.drawn(tile, shown, zl))
+        if hit is None:
+            self.aside((tile.name, f"held {what}"), lambda: self.drawn(tile, shown, zl), ask=ask)
         return hit
 
-    def aside(self, key: tuple[str, str], work: Callable[[], object]) -> None:
+    def aside(self, key: tuple[str, str], work: Callable[[], object], *, ask: bool) -> None:
         """``work``, a picture of the tile ``key[0]``, done in a thread of its own after those
-        asked before, once while it is asked (:meth:`said` lets it go). A daemon:
-        quitting never waits for a picture."""
+        asked before, once while it is drawn, not while what the tile shows is written (``ask``).
+        One that failed raises :class:`_PictureError`, said by every answer, and is asked again
+        ``_AGAIN_S`` after. A daemon: quitting never waits for a picture."""
         with self._lock:
-            if key in self._asked:
+            failed = self._asked.get(key)
+            if key in self._asked and failed is None:  # being drawn
                 return
-            asked = self._asked[key] = _Aside(threading.Event())
+            if failed is not None and (not ask or time.monotonic() - failed[0] < _AGAIN_S):
+                raise _PictureError(failed[1])
+            if not ask:
+                return
+            self._asked[key] = None
 
         def run() -> None:
+            said: dict[str, Any] | None = None
             try:
                 with self._one:
                     work()
-            except BaseException as exc:  # said by the next answer (``drawing``)
-                asked.error = exc
+            except Exception as exc:  # said by the next answers
+                if not isinstance(exc, OsxpError):
+                    log.exception("a picture of %s", key[0])
+                said = error_view(exc)
             finally:
-                asked.done.set()
+                with self._lock:
+                    if key in self._asked:  # not let go meanwhile (:meth:`let_go`)
+                        if said is None:
+                            del self._asked[key]
+                        else:
+                            self._asked[key] = (time.monotonic(), said)
 
         threading.Thread(target=run, name="cloud-picture", daemon=True).start()
-
-    def said(self, tile: TileRef) -> None:
-        """The pictures of ``tile`` drawn aside and done let go: one that failed raises its
-        error, once, and the next answer asks it again."""
-        with self._lock:
-            done = [(k, a) for k, a in self._asked.items() if k[0] == tile.name and a.done.is_set()]
-            for k, _a in done:
-                del self._asked[k]
-        for _k, a in done:
-            if a.error is not None:
-                raise a.error
 
     def remember(self, tile: TileRef, shown: TileClouds, classes: np.ndarray) -> None:
         """The classes the tile's last search read, for an outline's band to leave others'
@@ -375,7 +397,9 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
         if cid is not None:
             v.cloud(cid)  # CLOUD_UNKNOWN when it is not in the list
         if not v.allows(action, cid, source):
-            if v.state != "ready":
+            # the state's own rule: one allowing all as ready (the tool not here yet) said a
+            # double tick was "build the tile first" (a review, 2026-11-07)
+            if not state.TILE_STATES[v.state].allows:
                 raise OsxpError(
                     "CLOUD_TILE_NOT_READY", context={"tile": tile.name, "state": v.state}
                 )
@@ -389,7 +413,18 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
     def tile_mode(name: str) -> dict[str, Any]:
         tile = _tile_of(name)
         _folder, shown, v = look(tile)
-        engine.said(tile)  # a picture drawn aside that failed
+        broken: dict[str, dict[str, Any]] = {}  # the views whose picture could not be drawn
+
+        def laid(view: str, get: Callable[[], Any]) -> Any:
+            """A picture of ``view``, ``None`` when it could not be drawn: said in the answer,
+            the others laid. Caught for all three at once, After's error took Before away too (a
+            review, 2026-11-07)."""
+            try:
+                return get()
+            except _PictureError as exc:
+                broken.setdefault(view, exc.said)
+                return None
+
         picture = after = before = after_ground = None
         previews = {}
         stand_in: set[str] = set()  # the views whose picture is being drawn aside
@@ -399,18 +434,18 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
         if v.state == "ready":  # drawn with the tool that finds the clouds (``no_tool``)
             assert shown is not None
             zl = map_level(tile, shown.textures)
-            before_pic = engine.picture_file(tile, shown, zl, ask=ask)
-            whole = {"picture": before_pic} if before_pic is not None else None
-            before = engine.ground(tile, "before", shown.built, whole)
+            before_pic = laid("before", lambda: engine.picture_file(tile, shown, zl, ask=ask))
             # After: what X-Plane shows, with the clouds Apply lays each by its preview (made with
             # its images, ``find.check``) over it, but the textures where a cloud goes or changes,
             # which show the build's own under them (``View.bare``); laid whole or not at all
             # (``ground``)
-            after_pic = engine.picture_file(tile, shown, zl, v.bare, ask=ask)
+            after_pic = laid("after", lambda: engine.picture_file(tile, shown, zl, v.bare, ask=ask))
             # the picture in memory a preview, a search and a cloud's images are made on, asked as
             # the mode opens: asked by the first preview, the first tick after a start waited for
             # it 1.2 to 2.1 s (a user, 2026-11-07)
-            p = engine.held(tile, shown, zl, ask=ask)
+            p = laid("after", lambda: engine.held(tile, shown, zl, ask=ask))
+            whole = {"picture": before_pic} if before_pic is not None else None
+            before = engine.ground(tile, "before", shown.built, whole)
             whole = None
             if after_pic is not None and (p is not None or not v.previews):
                 whole = {"picture": after_pic, "previews": {}}
@@ -421,6 +456,7 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
             after_ground = engine.ground(tile, "after", shown.built, whole)
             if ask:  # what is drawn aside meanwhile
                 stand_in = {k for k, w in (("before", before_pic), ("after", whole)) if w is None}
+                stand_in -= broken.keys()
         elif state.TILE_STATES[v.state].busy:  # something else holds its folder: the map stays
             before = engine.ground(tile, "before", None, None)
             after_ground = engine.ground(tile, "after", None, None)
@@ -428,22 +464,30 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
             picture = before["picture"]
         if after_ground is not None:
             after, previews = after_ground["picture"], after_ground["previews"]
-        failed = engine.tasks.failed(tile.name)
+        # a picture that could not be drawn, else the tile's last task that failed: the task's
+        # said, nothing told why the map stayed empty (a review, 2026-11-07)
+        said: dict[str, Any] | None = None
+        if broken:
+            said = {"kind": "picture", "error": next(iter(broken.values()))}
+        elif (failed := engine.tasks.failed(tile.name)) is not None:
+            said = failed.view()
         return {
             "tile": tile.name,
             "provider": shown.provider if shown is not None else None,  # its photo's source
             "state": v.state,
-            "busy": v.busy or bool(stand_in),  # read again until its pictures are there
+            # read again until its pictures are there; one that failed too, asked again
+            # ``_AGAIN_S`` after: not read again, the map stayed empty until a click (a review)
+            "busy": v.busy or bool(stand_in) or bool(broken),
             "line": v.line,
             "allowed": sorted(v.allowed),
-            "views": v.views(picture is not None, stand_in),
+            "views": v.views(picture is not None or after is not None, stand_in),
             "texts": v.texts(),
             "picture": picture,
             "after": after,
             "fine": v.fine,
             "clouds": v.rows(previews),
             "tasks": v.tasks,
-            "failed": failed.view() if failed else None,
+            "failed": said,
         }
 
     @router.get("/api/clouds")
@@ -639,23 +683,22 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
         with cls.update(tile) as cl:
             cid = cls.add_outline(cl, [ring])["id"]
 
+        def forget() -> None:
+            """Stopped, failed or refused: the list as it was, without it."""
+            with contextlib.suppress(OsxpError), cls.update(tile) as cl:
+                cls.remove_outline(cl, cid)
+
         def run(task: Task) -> None:
-            try:
-                _tools(task)
-                # drawn here, not in the answer: a picture to draw again held the click 10 s
-                # on a Windows server (+52+004, 2026-11-07)
-                _what, p = engine.drawn(tile, shown, map_level(tile, shown.textures))
-                classes = engine.classes(tile, shown)
-                if classes is None:
-                    classes = np.zeros(p.rgb.shape[:2], np.uint8)
-                (verdicts,) = screen(
-                    p, [[ring]], classes, sources_for(tile, shown), cancel=task.stop,
-                    phase=task.say,
-                )  # fmt: skip
-            except BaseException:  # stopped or failed: the list as it was, without it
-                with contextlib.suppress(OsxpError), cls.update(tile) as cl:
-                    cls.remove_outline(cl, cid)
-                raise
+            _tools(task)
+            # drawn here, not in the answer: a picture to draw again held the click 10 s on a
+            # Windows server (+52+004, 2026-11-07)
+            _what, p = engine.drawn(tile, shown, map_level(tile, shown.textures))
+            classes = engine.classes(tile, shown)
+            if classes is None:
+                classes = np.zeros(p.rgb.shape[:2], np.uint8)
+            (verdicts,) = screen(
+                p, [[ring]], classes, sources_for(tile, shown), cancel=task.stop, phase=task.say
+            )
             with cls.update(tile) as cl:
                 cls.record_screening(cl, cid, verdicts, shown)
 
@@ -665,7 +708,11 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
             if look(tile)[2].allows("tick", cid):
                 pick(tile, [cid], "tick", body={"download": True})
 
-        engine.tasks.start(tile.name, "outline", run, cloud=cid, then=then)
+        try:
+            engine.tasks.start(tile.name, "outline", run, cloud=cid, then=then, undo=forget)
+        except OsxpError:
+            forget()
+            raise
         return {"id": cid}
 
     @router.delete("/api/clouds/{name}/outlines/{cid}")

@@ -216,8 +216,7 @@ def _adopt(cl: CloudList, shown: TileClouds) -> bool:
         c["id"] = e["id"]
         got = {"answer": "clear", "fit": 0, "entry": laid_fields(e), "judged": JUDGED}
         c["checks"] = {e["source"]: got}  # its images laid: they were judged fit to lay
-        laid = {**laid_fields(e), "kind": c["kind"], "number": c["number"]}
-        cl.laid = [x for x in cl.laid if x["id"] != e["id"]] + [laid]
+        cl.laid = [x for x in cl.laid if x["id"] != e["id"]] + [laid_fields(e)]
     return bool(new)
 
 

@@ -311,9 +311,3 @@ def classify_many(
         if progress is not None:
             progress(n, total)
     return out
-
-
-def patch_count(h: int, w: int) -> int:
-    """How many patches :func:`classify` reads on a picture of ``h`` x ``w``: its progress, ahead
-    of it."""
-    return len(_starts(max(h, PATCH))) * len(_starts(max(w, PATCH)))

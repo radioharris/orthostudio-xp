@@ -22,10 +22,10 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from orthostudio.clouds.state import WRITES, possible
-from orthostudio.errors import OsxpError
+from orthostudio.errors import OsxpError, wrap
 from orthostudio.home import data_root_missing
 
-__all__ = ["Task", "Tasks"]
+__all__ = ["Task", "Tasks", "error_view"]
 
 log = logging.getLogger(__name__)
 
@@ -96,12 +96,15 @@ class Tasks:
         cloud: str | None = None,
         *,
         then: Callable[[], None] | None = None,
+        undo: Callable[[], None] | None = None,
         was: Mapping[str, Any] | None = None,
     ) -> Task:
         """Run ``run(task)`` in a thread once its turn comes (one search at a time for the app,
         :data:`CHECKS_AT_ONCE` reads of sources, Apply and Restore at once); the task is
         forgotten at its end, then ``then()`` runs when it ended neither stopped nor failed (what
-        follows it, seeing it ended). Refused while something else holds the tile's folder
+        follows it, seeing it ended); else ``undo()`` first, what was begun for it, whether it ran
+        or not (an outline stopped while it waited for its turn stayed in the list, a review,
+        2026-11-07). Refused while something else holds the tile's folder
         (``CLOUD_TILE_NOT_READY``), while what runs of the tile does not allow it
         (``state.possible``: no Apply beside a task, no task beside Apply), or a task of the same
         tile, kind and cloud is under way (``CLOUD_NOT_NOW``: a click the page drew before); the
@@ -134,17 +137,15 @@ class Tasks:
             except OsxpError as exc:
                 if exc.code != "SYS_CANCELLED":
                     log.warning("%s %s of %s: %s", task.kind, task.cloud or "", tile, exc.message)
-                    task.error = _said(exc)
+                    task.error = error_view(exc)
             except Exception as exc:
                 log.exception("%s of %s failed", task.kind, tile)
-                task.error = _said(
-                    OsxpError(
-                        "SYS_INTERNAL_ERROR",
-                        context={"type": type(exc).__name__, "detail": str(exc)},
-                    )
-                )
+                task.error = error_view(exc)
             finally:
-                follow = then if task.error is None and not task.stop.is_set() else None
+                ok = task.error is None and not task.stop.is_set()
+                if not ok and undo is not None:  # before it leaves: never seen without it
+                    _follow(undo, task)
+                follow = then if ok else None
                 with self._lock:
                     self._tasks.pop(task.id, None)
                     if task.error is not None:
@@ -214,14 +215,15 @@ class Tasks:
             time.sleep(0.05)
 
 
-def _said(exc: OsxpError) -> dict[str, Any]:
-    """What a task that failed says: the data folder's disk gone meanwhile, when it is, alone, as
-    a build says it (``jobs._lost_data_folder``): a search cut by it said an internal error to
-    report, in English (a campaign, 2026-11-07)."""
+def error_view(exc: BaseException) -> dict[str, Any]:
+    """What a task, or a picture drawn aside, that failed says: the data folder's disk gone
+    meanwhile, when it is, alone, as a build says it (``jobs._lost_data_folder``): a search cut
+    by it said an internal error to report, in English (a campaign, 2026-11-07); else what
+    :func:`errors.wrap` names, a disk's or the store's trouble as such."""
     lost = data_root_missing()
     if lost is not None:
         return OsxpError("CFG_DATA_DIR_MISSING", context={"path": str(lost)}).to_dict()
-    return exc.to_dict()
+    return wrap(exc).to_dict()
 
 
 def _turn(gate: threading.Semaphore, task: Task) -> bool:

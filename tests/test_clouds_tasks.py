@@ -73,7 +73,9 @@ def test_a_task_cut_by_the_data_folders_disk_going_says_that_alone(
     monkeypatch.setattr(tasks_module, "data_root_missing", lambda: None)
     tasks.start("+43+005", "find", cut)
     assert _ended(tasks, "+43+005")
-    assert tasks.failed("+43+005").view()["error"]["code"] == "SYS_INTERNAL_ERROR"
+    # the disk there, the folder refused: said as such (``errors.wrap``), as a picture's is, not
+    # an internal error to report (a review, 2026-11-07)
+    assert tasks.failed("+43+005").view()["error"]["code"] == "SYS_WRITE_FAILED"
 
 
 def test_a_stopped_task_is_no_failure() -> None:

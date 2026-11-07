@@ -280,7 +280,7 @@ laying never writes into another folder. The build's own checks are those of any
 `match` is a gain and a shift per channel, the source's colours brought to the photo around the
 cloud; `parts` per texture it reaches, the level the source is read at and the frozen part (2.5);
 `plain` per texture, the digest of the texture as the build made it that its images were got on
-(R6). What lays it is these fields (`tile.LAID_KEYS`); the list adds its kind and number.
+(R6). What lays it is these fields (`tile.LAID_KEYS`), nothing else.
 
 ### 2.3 Apply, Restore and a build after
 
@@ -385,10 +385,15 @@ one of the build before showed the old tile after Build again. While something e
 tile's folder (built, queued, filed, deleted), the last views stay as they were, and the mode
 opened again keeps its last answer until the next and the map's view (framed on the tile only
 when another tile is opened): the picture went and came back otherwise, and a view zoomed in on a
-cloud went back to the whole tile, its base map loaded again; one that fails is said by the next answer, and asked again by the one after. While
-Apply, Restore or Forget writes the tile (`state.WRITES`), none is asked: the pictures of what the
-tile shows at their end are. Drawn in the answer, a page stood still 10 to 37 s on a Windows server
-at each new state of a tile of 3 M triangles, the first search's progress included (B8). Every path
+cloud went back to the whole tile, its base map loaded again. A picture that fails is said in every
+answer (`failed`, kind `picture`, "The tile's picture:", before the tile's last task that failed),
+the others laid, the tile said busy for the page to read it again, and asked again 30 s after
+(`_AGAIN_S`), its error kept as words as a task's is (`tasks.error_view`): asked again at once,
+its error came back every second; never, a disk asleep for a moment kept the map away until the
+tile changed. While Apply, Restore or Forget writes the tile (`state.WRITES`), none is asked: the
+pictures of what the tile shows at their end are. Drawn in the answer, a page stood still 10 to
+37 s on a Windows server at each new state of a tile of 3 M triangles, the first search's progress
+included (B8). Every path
 of the cloud files is in `clouds/tile.py`, and every reading of them back (`listed`, `sidecars`,
 `kept_files`, `leftovers`, `served_path`). A list or a sidecar is read afresh at each reading but
 checked once while its file stays the same, its inode, size and time (`read_checked`): every one
@@ -421,7 +426,7 @@ textures (B8). Land shows the
 photo whole; the sea shows it at the texture's alpha (the sea mask) over X-Plane's water; inland
 water at that alpha times the lakes' share (`ratio_water`, the DSF's eighth plane, through the
 water transition ramp) over its water; X-Plane's water alone, no photo. For Before each texture
-is read as the build made it (`TileClouds.plains`), so Before is the tile with no cloud replaced;
+is read as the build made it (`TileClouds.plain_path`), so Before is the tile with no cloud replaced;
 for After as X-Plane shows it, but those where a cloud they show goes or changes, read as built
 (R4).
 
@@ -607,8 +612,9 @@ what it shows: the rows say which clouds the tile shows whole, and Apply again e
 stopped or failed lays nothing again; its next one does. While X-Plane runs and shows the tile,
 Apply, Restore and Forget are refused before anything is written, on every system
 (`CLOUD_XPLANE_RUNNING`: quit X-Plane and apply again); a texture another program holds on Windows
-cannot be replaced either (`XP_PACK_CONFLICT`), and nothing changes. A task cut by the data
-folder's disk going says that alone (`CFG_DATA_DIR_MISSING`, `tasks._said`), as a build does. A
+cannot be replaced either (`XP_PACK_CONFLICT`), and nothing changes. A task or a picture cut by
+the data folder's disk going says that alone (`CFG_DATA_DIR_MISSING`, `tasks.error_view`), as a
+build does, and any other disk or store trouble as such (`errors.wrap`), not an internal error. A
 texture as built missing from `clouds/` is taken from the build's store when it is there, one way
 for the map, a search, a cloud's images and Apply (`TileClouds.plain_path`), else said
 (`CLOUD_TEXTURE_LOST`): building the tile again brings its textures back as built, its clouds with
@@ -631,7 +637,7 @@ words: `docs/specs/errors.md`.
 | Route | What |
 |---|---|
 | `GET /api/clouds` | The Library's column: by row path, the rows it is offered on (1.2), what the tile holds and what waits |
-| `GET /api/clouds/{tile}` | The view (1.5): the source its photo was built from (`provider`), the tile's state and line, what it allows (`allowed`), the words of After and Before (`views`; `clouds.drawing` for one whose picture is drawn aside), whether something is under way (`busy`, a picture drawn aside too), its picture (Before) and After's (`after`; the last one of that view laid whole, of the same build, while its next is drawn, 2.6), whether a fine search reads more (`fine`), every row with its line and tone, its actions, what a click on it does (`toggle`) and its tooltip (`tip`), its task and After's preview of it, the count, Apply's and Restore's buttons and questions (`texts`), the tile's own tasks with their `actions`, its last failure |
+| `GET /api/clouds/{tile}` | The view (1.5): the source its photo was built from (`provider`), the tile's state and line, what it allows (`allowed`), the words of After and Before (`views`; `clouds.drawing` for one whose picture is drawn aside), whether something is under way (`busy`, a picture drawn aside, or failed until asked again, too), its picture (Before) and After's (`after`; the last one of that view laid whole, of the same build, while its next is drawn, 2.6), whether a fine search reads more (`fine`), every row with its line and tone, its actions, what a click on it does (`toggle`) and its tooltip (`tip`), its task and After's preview of it, the count, Apply's and Restore's buttons and questions (`texts`), the tile's own tasks with their `actions`, a picture that could not be drawn, else its last failed task (`failed`) |
 | `GET /api/clouds/{tile}/tasks` | `{busy, failed}`: whether something of the tile is under way and its last failure, nothing of it read or drawn: what the Library's bin waits on (API level 51) |
 | `POST /api/clouds/{tile}/find` | `{fine?}`: starts the quick search, or the fine one where it is offered |
 | `POST /api/clouds/{tile}/picks` | `{action, id?, source?}`: `tick`, `untick` or `choose` of a cloud, as its state allows, or without `id` of every cloud that allows it; gets the images when its state asks them |
