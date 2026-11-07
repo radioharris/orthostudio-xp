@@ -720,11 +720,12 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 /* As wide as its two icons, from the start, while it is read too, and where the window lacks room
    for every column: words in it sized it by what it held, from 131 to 240 px as the Library opened,
    every other column moving (a user, 2026-11-07). */
-/* On a wide window, the room Built by left on the right of its words is the Clouds column's, its
-   icons in its middle, between Built by and the actions (a user, 2026-11-07): Built by as narrow
-   as its words, the Clouds column a share of the table, never narrower than its two icons. */
-.library-table th[data-sort="built"] { width: 1%; }
-.library-table .library-clouds { --w: calc(2 * var(--control-h) + 12px + 26px); width: 10%; min-width: var(--w); text-align: center; }
+/* The columns of words and the Clouds column a like share of the table, each wider only where its
+   words need it, the box that picks and the actions as wide as they are: shared by what each held,
+   In X-Plane, a pill under its title, was as wide as Built by, and Imagery twice its words (a user,
+   2026-11-07). The Clouds column never narrower than its two icons, in its middle. */
+.library-table th[data-sort], .library-table th.library-clouds { width: 16.66%; }
+.library-table .library-clouds { --w: calc(2 * var(--control-h) + 12px + 26px); min-width: var(--w); text-align: center; }
 /* every tile's row 2px higher, its badges clear of the row's lines, on the cloud's left in the
    cell's margin; the cloud and its bin as far apart as the row's actions are, as far from Built by's
    words as from the actions: Built by's cell keeps 8 px on its right, the actions' 4 on their left
