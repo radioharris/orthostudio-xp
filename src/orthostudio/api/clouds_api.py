@@ -134,7 +134,7 @@ class CloudEngine:
             drawing = self._drawing.setdefault(key, threading.Lock())
         with drawing:  # two answers asking for it at once: one drawing
             with self._lock:
-                hit = self._pictures.get(key)
+                hit = self._kept(key)
             if hit is not None:
                 return key[1], hit
             what, p = _draw(tile, shown.folder, zl, bare)
@@ -209,9 +209,17 @@ class CloudEngine:
         by every answer of the mode: its file there, it is drawn once in memory meanwhile)."""
         what = _what(shown, zl, None)
         with self._lock:
-            hit = self._pictures.get((tile.name, what))
+            hit = self._kept((tile.name, what))
         if hit is None:
             self.aside((tile.name, f"held {what}"), lambda: self.drawn(tile, shown, zl), ask=ask)
+        return hit
+
+    def _kept(self, key: tuple[str, str]) -> Picture | None:
+        """The picture ``key`` kept in memory, made the last to go (the lock held): the oldest
+        went first, a tile opened again dropped for the one left aside (a review, 2026-11-07)."""
+        hit = self._pictures.pop(key, None)
+        if hit is not None:
+            self._pictures[key] = hit
         return hit
 
     def aside(self, key: tuple[str, str], work: Callable[[], object], *, ask: bool) -> None:
