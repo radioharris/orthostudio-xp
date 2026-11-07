@@ -10,9 +10,9 @@ What came with 1.4.0, step by step, with where to click. The rest of the app is 
 
 Aerial photos are sometimes taken under a few clouds, and a tile built from them shows the clouds
 on the ground in X-Plane. OrthoStudio XP finds them and puts in their place the ground of another
-source that was clear there: Esri, EOX, or a national source such as PDOK in the Netherlands. You
-choose which clouds go and which source takes each one; the tile keeps your choice in every build
-after. What the map shows is what X-Plane shows.
+source that was clear there: Bing, Esri, EOX, or a national source such as PDOK in the
+Netherlands. You choose which clouds go and which source takes each one; the tile keeps your choice
+in every build after. What the map shows is what X-Plane shows.
 
 ### 1. Open the tile's clouds
 
@@ -21,17 +21,21 @@ column. The Plan's map comes over the tile, drawn as X-Plane draws it, from the 
 nothing is downloaded. Any tile built by OrthoStudio XP can have its clouds replaced, whatever
 version built it.
 
+![The Library: the tile +24-102 with its cloud button, the bin and "3 replaced" in its Clouds column](images/manual/clouds-library.png)
+
 ### 2. Look for the clouds
 
 Press **Quick search**, or **Fine search** to find the small clouds too, in about twice the time
 (it is greyed on a tile built no finer than the quick search reads). The first time, the app asks
 to download the tool that finds the clouds: about 110 MB, OpenCV included, depending on the
-system. It is downloaded once and runs on your computer: nothing is sent anywhere.
+system. It is downloaded once and runs on your computer: nothing is sent anywhere. Until then the
+tile is not drawn on the map: the tool draws it too.
 
 The search reads the tile (the fine one a second time in more detail, where the tile is sharp enough
 to hold small clouds), then tries every other source covering the tile under each cloud: whether it
 has a picture there, whether it is clear, and how well its ground fits the photo around the cloud.
-On a ZL14 tile it takes about a minute. The panel shows where it is; **Stop** ends it.
+The quick search takes about half a minute to a minute and a half, the fine one about one and a
+half to two and a half minutes. The panel shows where it is; **Stop** ends it.
 
 ### 3. Choose what to replace
 
@@ -43,11 +47,12 @@ the same photo as the tile, which would bring the cloud back, or with no picture
 - Every cloud comes **unticked**. The tool can take something pale for a cloud, such as light,
   muddy water near a coast: look before you tick. The eye beside a cloud brings the map to it.
 - **Tick** a cloud, or click its outline on the map (its tooltip says what a click does; its row
-  comes to the middle of the list; ticked in the list, the map goes to it): its source's images are fetched at the
-  tile's own sharpness, in a few seconds, and the count above the list says one more to replace.
-  Its outline turns to the accent colour. If the tool that finds clouds is not on your
-  computer yet, the app asks first; say no, and the cloud stays ticked, waiting for its images.
-- To take another source, choose it in the cloud's list: it is ticked with it, and the map goes to
+  comes to the middle of the list; ticked in the list, the map goes to it): its source's images
+  are fetched at the tile's own sharpness, in a few seconds, and the count above the list says one
+  more to replace. Its outline turns to the accent colour. If the tool that finds clouds is not on
+  your computer yet, the app asks first; say no, and the cloud stays ticked, waiting for its
+  images.
+- To take another source, choose it in the cloud's menu: it is ticked with it, and the map goes to
   the cloud to show its new images.
 - **Tick all** and **Untick all**, above the list, tick or untick every cloud at once. Whatever
   you click, a spinner beside the panel's title turns until the app has answered. While
@@ -56,10 +61,13 @@ the same photo as the tile, which would bring the cloud back, or with no picture
 - A spinner says that a cloud's images are being fetched, beside its name, and on the map a label
   at its centre, "Cloud 5: downloading the images"; a click on the spinner beside its name stops
   it. When several clouds work at once (Tick all), only **Stop all (n)** turns, with how many are
-  left. Ticking a cloud or choosing its source makes it the current one, framed in the list. A found cloud shows its number inside it; one too small to see at the map's zoom has a pin
-  you can click.
+  left. Ticking a cloud or choosing its source makes it the current one, framed in the list. A
+  found cloud shows its number inside it; one too small to see at the map's zoom has a pin you can
+  click.
 - A source that did not answer or refused for now says so in the line, and stays the cloud's
   source: **Get its images** asks it again.
+
+![The clouds of +24-102 outlined in yellow on the map, Cloud 1 framed in the list with its sources, the best first](images/manual/clouds-found.jpg)
 
 ### 4. Before and After
 
@@ -69,13 +77,19 @@ The banner over the map has two views:
   press Apply: where Apply will change a texture, the clouds it lays there are drawn over it.
 - **Before**: the tile with no cloud replaced.
 
+![After: three clouds ticked, Cloud 1 replaced by Esri Clarity's clear ground, "What X-Plane will show after Apply", Apply (3 changes)](images/manual/clouds-after.jpg)
+
+![Before: the same place with its cloud, "The tile with no cloud replaced"](images/manual/clouds-before.jpg)
+
+**Back to the Plan** closes the clouds and brings the Plan's steps back.
+
 ### 5. A cloud the search missed: outline it
 
 Press **Outline a cloud** in the banner, then click around the cloud on the map, point by point.
 Double-click the last point, or press Enter, to close it; Escape gives up. The outline is tried
-under the sources at once, then takes the place of the clouds found under it and comes in the list
-ticked with the best, named *Outline 1*, with a bin to take it out. Stop it while its sources are
-tried, and it goes: the clouds found under it stay.
+under the sources at once, then takes the place of the unticked clouds found under it and comes in
+the list ticked with the best, named *Outline 1*, with a bin to take it out. Stop it while its
+sources are tried, and it goes: the clouds found under it stay.
 
 ### 6. Apply
 
@@ -83,8 +97,8 @@ Nothing changes in X-Plane until you press **Apply (3 changes)**. The app says w
 and what waits (a cloud whose images are not in yet stays out). Apply does not build the tile: it
 changes only the pixels under the clouds in its textures, in a few seconds, and the panel shows
 how far it is. The rest of the tile stays exactly as built. It is all or nothing: if a texture
-cannot be replaced, nothing changes and the app says why. On Windows, quit X-Plane first if it
-shows the tile: it holds the textures and they cannot be replaced while it runs.
+cannot be replaced, nothing changes and the app says why. Quit X-Plane first if it shows the tile:
+while it runs, Apply, Restore and Forget are refused and nothing changes.
 
 While the tile is being built, waits in the queue, or is being filed in the Library, its clouds
 are shown as they are, and nothing can be changed: they are back once that is over. A build of
@@ -97,8 +111,8 @@ others stop).
 
 The tile keeps its clouds replaced: every build of it after, from the Plan, the Library, Works or
 the command line, lays them again on the same photo as soon as it has finished the tile, before the
-other tiles of the same build. The Library says how many it has replaced; its tooltip says how many
-wait too.
+other tiles of the same build. The Library says how many it has replaced; its tooltip also says how
+many changes wait for Apply.
 
 A cloud is chosen on a photo. Build the tile from another source or at another level, change the
 colours of the tile or of a zone near the cloud, or let its source send new images, and the photo
@@ -110,8 +124,8 @@ itself.
 **Restore the original photos** asks, then puts every texture back as built, in a few seconds,
 and unticks the clouds; your list stays, to tick them again later. Deleting a tile keeps its list
 of clouds: built again, it gets them back, as all the rest. To start again from nothing, **Forget
-the clouds** beside it, or the bin in the tile's Clouds cell in the Library, puts the original photos
-back and erases the tile's list of clouds with their images.
+the clouds** beside it, or the bin in the tile's Clouds cell in the Library, puts the original
+photos back and erases the tile's list of clouds with their images.
 
 ## Settings profiles
 
@@ -137,8 +151,8 @@ and **Delete** act on the one shown. **Save** says which profile it writes into,
 
 A profile keeps the look of the tiles: every question, the photo colours and the expert settings.
 What belongs to the computer is the same for all of them: the X-Plane folder, the data folder,
-SimBrief, the map data, the update check and the memory a build may take. Deleting a profile
-deletes only its settings, never a tile.
+SimBrief, the map data, the patches folder, the update check and the memory a build may take.
+Deleting a profile deletes only its settings, never a tile.
 
 ### 3. Build with a profile
 

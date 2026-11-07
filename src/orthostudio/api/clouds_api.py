@@ -6,11 +6,12 @@
 its picture, every cloud's row, what Apply would change, its tasks); ``POST .../find`` a search;
 ``POST .../picks`` a tick or a source (getting the cloud's images when it needs them);
 ``POST .../outlines`` and ``DELETE .../outlines/{id}`` a cloud outlined by hand;
-``POST .../discard``; ``POST .../apply`` (``restore`` to bring back every cloud), a task;
+``POST .../discard``; ``POST .../apply`` (``restore`` to bring back every cloud, ``forget`` then
+to erase the tile's list too), a task;
 ``GET .../files/{name}`` the picture and the previews; ``POST /api/clouds/tasks/{id}/stop`` and
 ``POST .../stop``, every task of the tile Stop ends.
 A task is named by the action that starts it: ``find``, ``check``, ``outline``, ``apply``,
-``restore``.
+``restore``, ``forget``.
 """
 
 from __future__ import annotations
@@ -35,7 +36,7 @@ from orthostudio.clouds.find import check, find, preview, screen
 from orthostudio.clouds.layer import RULE
 from orthostudio.clouds.laying import folder_lock, show
 from orthostudio.clouds.model import detector_bytes, detector_ready, ensure_detector
-from orthostudio.clouds.opencv import ensure_opencv, opencv_bytes, opencv_ready
+from orthostudio.clouds.opencv import ensure_opencv, opencv_ready
 from orthostudio.clouds.picture import Picture, draw, fine_level, frame_bounds, map_level
 from orthostudio.clouds.sources import SourcePieces, other_sources
 from orthostudio.clouds.tasks import Task, Tasks
@@ -219,7 +220,9 @@ def _detector_said(body: Mapping[str, Any] | None, then: Mapping[str, Any] | Non
     the same action again."""
     if (detector_ready() and opencv_ready()) or (body or {}).get("download"):
         return
-    mb = max(1, round((detector_bytes() + opencv_bytes()) / 1e6))
+    # what is downloaded, OpenCV in it: added twice, an installed app said 151 MB for 108 (a
+    # review, 2026-11-07)
+    mb = max(1, round(detector_bytes() / 1e6))
     raise OsxpError("CLOUD_DETECTOR_ASK", context={"mb": mb, "then": then})
 
 
@@ -259,6 +262,7 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
             disk_away=disk_absent(folder),  # the build's own rule (``build._homes``)
             taken=hooks.taken().get(tile.name),
             read=lambda: read_tile(folder),
+            tool=opencv_ready(),
         )
         tasks = [t.view() for t in engine.tasks.of(tile.name)]
         under_way = engine.tasks.busy(tile.name)  # what follows a task too
@@ -297,7 +301,8 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
         _folder, shown, v = look(tile)
         picture = after = None
         previews = {}
-        if shown is not None:
+        if v.state == "ready":  # drawn with the tool that finds the clouds (``no_tool``)
+            assert shown is not None
             zl = map_level(tile, shown.textures)
             picture = engine.picture_file(tile, shown, zl)
             # After: what X-Plane shows, but the textures Apply makes again, which show the

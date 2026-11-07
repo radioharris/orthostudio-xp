@@ -142,10 +142,13 @@ In every one:
   checkout and installed with `uv pip install --no-deps --reinstall`: section 5);
 - Triangle4XP, compiled for the system, and DSFTool, in `orthostudio/bin` (section 3);
 - `licences/`: OrthoStudio XP's GPL, Triangle4XP's sources, notice of modifications and build
-  file, as its licence requires with the binary, and DSFTool's notice. The wheels keep theirs in
-  their `.dist-info`.
+  file, as its licence requires with the binary, DSFTool's notice and OmniCloudMask's licence (the
+  cloud detector's networks, downloaded at the user's word). The wheels keep theirs in their
+  `.dist-info`.
 
-Not shipped: pip, the test suites of the dependencies (about 50 MB, most of them scipy's), the
+Not shipped: the cloud detector, OpenCV and its two networks (downloaded once at the user's word,
+from OpenCV's wheel and this repository's release `clouds-detector-1`: `clouds.md` 4.1), pip, the
+test suites of the dependencies (about 50 MB, most of them scipy's), the
 command scripts the packages install (they name the build folder's Python and would run nothing
 once moved), and what `uv sync` records about the checkout in OrthoStudio XP's `.dist-info` (its
 path, its dates). The `.pyc` files are compiled at build time, their recorded paths relative to

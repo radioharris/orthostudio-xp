@@ -95,6 +95,7 @@ TILE_STATES: Mapping[str, TileState] = {
     "not_built": TileState(frozenset(), False),
     "not_whole": TileState(frozenset(), False),
     "no_photo": TileState(frozenset(), False),
+    "no_tool": TileState(LIST_EDITS | TASKS | WRITES | {STOP}, False),
     "ready": TileState(LIST_EDITS | TASKS | WRITES | {STOP}, False),
 }
 """Every state of a tile, the first that holds in this order (:func:`tile_state`): the data
@@ -102,8 +103,11 @@ folder's disk away; the tile's disk away; something else holding its folder, the
 of it: being built, waiting in the queue, being filed, being deleted (no task of it starts,
 ``tasks.Tasks.start``, and what holds it waits for those under way to end); not built (no folder
 of ours); not whole (a build cut short, files taken from it); no photo (no texture: the sea
-alone, opening its mode was an internal error, a review, 2026-11-07); ready (``tile.unready``).
-Its folder is read in the last four only, and kept in ``ready`` only."""
+alone, opening its mode was an internal error, a review, 2026-11-07); the tool that finds the
+clouds not on this computer yet, which draws the tile too: all is allowed as ready, but the tile
+is not drawn, and a search asks for the tool first (``CLOUD_DETECTOR_ASK``; an installed app,
+which has no OpenCV until then, could not open the mode at all, a campaign, 2026-11-07); ready
+(``tile.unready``). Its folder is read in the last five only, and kept in the last two."""
 
 
 def tile_state(
@@ -112,11 +116,13 @@ def tile_state(
     disk_away: bool,
     taken: str | None,
     read: Callable[[], TileClouds | None],
+    tool: bool = True,
 ) -> tuple[str, TileClouds | None]:
-    """The tile's state (:data:`TILE_STATES`) and, ready, what its folder shows; ``taken``: the
-    state something else holds its folder in (``in_build``, ``queued``, ``filing``,
-    ``deleting``), else ``None``; ``read``: what its folder shows (``tile.read_tile``), read only
-    when the states before do not hold."""
+    """The tile's state (:data:`TILE_STATES`) and, ready or without the tool, what its folder
+    shows; ``taken``: the state something else holds its folder in (``in_build``, ``queued``,
+    ``filing``, ``deleting``), else ``None``; ``read``: what its folder shows
+    (``tile.read_tile``), read only when the states before do not hold; ``tool``: whether the
+    tool that finds the clouds and draws the tile is on this computer (``opencv_ready``)."""
     if data_away:
         return "data_away", None
     if disk_away:
@@ -125,7 +131,9 @@ def tile_state(
         return taken, None
     shown = read()
     why = unready(shown)
-    return ("ready", shown) if why is None else (why, None)
+    if why is not None:
+        return why, None
+    return ("ready" if tool else "no_tool"), shown
 
 
 def possible(state: str, tasks: Collection[str] = ()) -> frozenset[str]:

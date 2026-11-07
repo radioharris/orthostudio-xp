@@ -6,9 +6,8 @@ on the rules of [Ortho4XP](https://github.com/oscarpilote/Ortho4XP), which Oscar
 contributors have refined for ten years: it makes the same kind of tiles, with a different
 architecture that builds them faster. It would not exist without Ortho4XP.
 
-**Status: stable since 1.0.** OrthoStudio XP builds and installs tiles end to end on macOS and
-Windows, with their installers. The installers for Intel Macs and for Linux are built and
-checked automatically at every release too.
+**Status: stable since 1.0.** OrthoStudio XP builds and installs tiles end to end on macOS,
+Windows and Linux, with their installers, each built and checked automatically at every release.
 
 ![The Plan page: the map of Europe, the tiles already in X-Plane outlined in green over the Alps, three tiles chosen in blue near Paris with a sharper zone drawn over them in orange, and beside it the first of the four steps](docs/images/plan.png)
 
@@ -54,8 +53,8 @@ checked automatically at every release too.
 - **The colours of the photos, seen on the map**: as delivered, toned down, or by your own numbers,
   for everything, one square or one zone. Changing them builds a tile again without downloading
   anything.
-- **Clouds replaced.** The cloud button in the Library opens a built tile on the map, drawn as X-Plane
-  draws it. *Quick search* (or *Fine search*, for the small ones) looks for them and tries every
+- **Clouds replaced.** The cloud button in the Library opens a built tile on the map, drawn as
+  X-Plane draws it. *Quick search* (or *Fine search*, for the small ones) looks for them and tries every
   other source covering the tile under each; you tick those to replace, each with the clear source
   you choose, and the map shows the result before anything changes. *Apply* changes, in a few
   seconds, only the pixels under the clouds in the finished tile, and every later build of the tile

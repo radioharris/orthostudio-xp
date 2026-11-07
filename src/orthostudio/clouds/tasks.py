@@ -23,6 +23,7 @@ from typing import Any
 
 from orthostudio.clouds.state import WRITES, possible
 from orthostudio.errors import OsxpError
+from orthostudio.home import data_root_missing
 
 __all__ = ["Task", "Tasks"]
 
@@ -34,9 +35,9 @@ CHECKS_AT_ONCE = 3
 @dataclass(eq=False)
 class Task:
     """One task: of ``tile``, ``kind`` (the action that starts it: ``find``, ``check``,
-    ``outline``, ``apply``, ``restore``), for ``cloud`` when it is one cloud's; where it is
-    (``phase``, ``done`` of ``total``); whether Stop ends it (``stoppable``); what After showed
-    of its cloud when it began (``was``: its row and the images it laid, shown and counted
+    ``outline``, ``apply``, ``restore``, ``forget``), for ``cloud`` when it is one cloud's; where
+    it is (``phase``, ``done`` of ``total``); whether Stop ends it (``stoppable``); what After
+    showed of its cloud when it began (``was``: its row and the images it laid, shown and counted
     meanwhile, ``state.view``)."""
 
     id: str
@@ -133,12 +134,15 @@ class Tasks:
             except OsxpError as exc:
                 if exc.code != "SYS_CANCELLED":
                     log.warning("%s %s of %s: %s", task.kind, task.cloud or "", tile, exc.message)
-                    task.error = exc.to_dict()
+                    task.error = _said(exc)
             except Exception as exc:
                 log.exception("%s of %s failed", task.kind, tile)
-                task.error = OsxpError(
-                    "SYS_INTERNAL_ERROR", context={"type": type(exc).__name__, "detail": str(exc)}
-                ).to_dict()
+                task.error = _said(
+                    OsxpError(
+                        "SYS_INTERNAL_ERROR",
+                        context={"type": type(exc).__name__, "detail": str(exc)},
+                    )
+                )
             finally:
                 follow = then if task.error is None and not task.stop.is_set() else None
                 with self._lock:
@@ -208,6 +212,16 @@ class Tasks:
             for t in mine:
                 t.stop.set()
             time.sleep(0.05)
+
+
+def _said(exc: OsxpError) -> dict[str, Any]:
+    """What a task that failed says: the data folder's disk gone meanwhile, when it is, alone, as
+    a build says it (``jobs._lost_data_folder``): a search cut by it said an internal error to
+    report, in English (a campaign, 2026-11-07)."""
+    lost = data_root_missing()
+    if lost is not None:
+        return OsxpError("CFG_DATA_DIR_MISSING", context={"path": str(lost)}).to_dict()
+    return exc.to_dict()
 
 
 def _turn(gate: threading.Semaphore, task: Task) -> bool:

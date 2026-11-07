@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import threading
 import time
+from pathlib import Path
 
 import pytest
 
@@ -49,6 +50,30 @@ def test_a_task_that_fails_says_how_until_the_tiles_next_one() -> None:
     assert failed is not None and failed.view()["error"]["code"] == "CLOUD_DETECTOR_MISSING"
     tasks.start("+43+005", "find", lambda t: None)
     assert tasks.failed("+43+005") is None
+
+
+def test_a_task_cut_by_the_data_folders_disk_going_says_that_alone(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # a search said an internal error to report while the disk was unplugged (a campaign,
+    # 2026-11-07): the build says the data folder alone (jobs._lost_data_folder), and so here
+    from orthostudio.clouds import tasks as tasks_module
+
+    gone = tmp_path / "Logic Projects"
+    monkeypatch.setattr(tasks_module, "data_root_missing", lambda: gone)
+    tasks = Tasks()
+
+    def cut(t: Task) -> None:
+        raise PermissionError(13, "Permission denied", str(gone))
+
+    tasks.start("+43+005", "find", cut)
+    assert _ended(tasks, "+43+005")
+    error = tasks.failed("+43+005").view()["error"]
+    assert error["code"] == "CFG_DATA_DIR_MISSING" and error["context"]["path"] == str(gone)
+    monkeypatch.setattr(tasks_module, "data_root_missing", lambda: None)
+    tasks.start("+43+005", "find", cut)
+    assert _ended(tasks, "+43+005")
+    assert tasks.failed("+43+005").view()["error"]["code"] == "SYS_INTERNAL_ERROR"
 
 
 def test_a_stopped_task_is_no_failure() -> None:
