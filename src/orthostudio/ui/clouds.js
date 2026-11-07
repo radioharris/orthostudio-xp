@@ -145,7 +145,8 @@ export function createCloudMode(ctx) {
   const file = (name) => `/api/clouds/${encodeURIComponent(cs.tile)}/files/${name}`;
 
   async function open(tile) {
-    if (cs.tile && cs.tile !== tile) close();
+    const again = cs.tile === tile; // back from another screen: the mode was left open
+    if (cs.tile && !again) close();
     // its last answer kept (another tile's goes with ``close``): cleared, the tile's picture and
     // outlines went until its answer came back, a blink at each return (a user, 2026-11-07)
     Object.assign(cs, { tile, view: "after", current: null, reveal: null, centre: false, error: null });
@@ -154,7 +155,10 @@ export function createCloudMode(ctx) {
     $("clouds-panel").hidden = false;
     $("clouds-banner").hidden = false;
     ctx.planMap.takeInput(true); // the map's clicks choose no square under the clouds
-    ctx.planMap.fitTile(tile);
+    // the map framed on the tile when it is opened, not when it is opened again: framed at each
+    // return, a view zoomed in on a cloud went back to the whole tile and the base map was loaded
+    // again, a blink (a user, 2026-11-07)
+    if (!again) ctx.planMap.fitTile(tile);
     ctx.planMap.leaflet()?.off("zoomend", drawMarks).on("zoomend", drawMarks); // opened again: one
     render();
     await refresh();

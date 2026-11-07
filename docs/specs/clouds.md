@@ -371,7 +371,9 @@ After's with the previews it had, of the same build of the tile (`CloudEngine.gr
 the tile busy: After's picture alone showed the clouds again 1 to 2 s at the end of an Apply, and
 one of the build before showed the old tile after Build again. While something else holds the
 tile's folder (built, queued, filed, deleted), the last views stay as they were, and the mode
-opened again keeps its last answer until the next: the picture went and came back otherwise; one that fails is said by the next answer, and asked again by the one after. While
+opened again keeps its last answer until the next and the map's view (framed on the tile only
+when another tile is opened): the picture went and came back otherwise, and a view zoomed in on a
+cloud went back to the whole tile, its base map loaded again; one that fails is said by the next answer, and asked again by the one after. While
 Apply, Restore or Forget writes the tile (`state.WRITES`), none is asked: the pictures of what the
 tile shows at their end are. Drawn in the answer, a page stood still 10 to 37 s on a Windows server
 at each new state of a tile of 3 M triangles, the first search's progress included (B8). Every path

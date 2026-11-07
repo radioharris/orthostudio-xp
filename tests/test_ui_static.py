@@ -8920,3 +8920,14 @@ def test_build_again_says_the_plans_warnings_the_replaced_clouds_put_back_among_
         "photographed until their images are got again in the clouds mode." in got
     )
     assert not any("disk" in line.lower() and "full" in line.lower() for line in got)
+
+
+def test_the_cloud_mode_frames_the_map_on_its_tile_only_when_another_is_opened() -> None:
+    # framed at each return from the Library, a view zoomed in on a cloud went back to the whole
+    # tile and the base map was loaded again: the tile blinked (a user, 2026-11-07)
+    code = (UI / "clouds.js").read_text(encoding="utf-8")
+    opening = code[code.index("  async function open(tile) {") :]
+    opening = opening[: opening.index("\n  }\n")]
+    assert "const again = cs.tile === tile;" in opening
+    assert "if (!again) ctx.planMap.fitTile(tile);" in opening
+    assert opening.count("fitTile(") == 1
