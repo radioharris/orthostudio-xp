@@ -369,7 +369,9 @@ answer never draws: a picture it lacks, or the one in memory a preview is made o
 one at a time (`CloudEngine.aside`), while the answer gives the last one of that view laid whole,
 After's with the previews it had, of the same build of the tile (`CloudEngine.ground`), and says
 the tile busy: After's picture alone showed the clouds again 1 to 2 s at the end of an Apply, and
-one of the build before showed the old tile after Build again; one that fails is said by the next answer, and asked again by the one after. While
+one of the build before showed the old tile after Build again. While something else holds the
+tile's folder (built, queued, filed, deleted), the last views stay as they were, and the mode
+opened again keeps its last answer until the next: the picture went and came back otherwise; one that fails is said by the next answer, and asked again by the one after. While
 Apply, Restore or Forget writes the tile (`state.WRITES`), none is asked: the pictures of what the
 tile shows at their end are. Drawn in the answer, a page stood still 10 to 37 s on a Windows server
 at each new state of a tile of 3 M triangles, the first search's progress included (B8). Every path

@@ -688,7 +688,28 @@ def test_a_view_stands_in_whole_and_only_for_its_build() -> None:
     assert engine.ground(TILE, "after", "b1", whole) == whole
     assert engine.ground(TILE, "after", "b1", None) == whole  # its previews with it
     assert engine.ground(TILE, "after", "b2", None) is None  # another build of the tile: none
+    assert engine.ground(TILE, "after", None, None) == whole  # its folder not read now: the last
     assert engine.ground(TILE, "before", "b1", None) is None
+
+
+def test_while_a_build_holds_the_tile_its_map_stays_as_it_was(ready: Path) -> None:
+    # none while a build held the tile took its picture away until its end, a blink when the
+    # mode was opened again (a user, 2026-11-07)
+    import time
+
+    taken: dict[str, str] = {}
+    hooks = clouds_api.CloudHooks(custom_scenery=lambda: None, taken=lambda: taken)
+    router, _engine = clouds_api.clouds_router(hooks)
+    get = next(r.endpoint for r in router.routes if r.path == "/api/clouds/{name}")
+    for _ in range(200):
+        first = get("+43+005")
+        if not first["busy"]:
+            break
+        time.sleep(0.01)
+    taken[TILE.name] = "in_build"
+    held = get("+43+005")
+    assert held["state"] == "in_build" and held["allowed"] == []
+    assert held["picture"] == first["picture"] and held["after"] == first["after"]
 
 
 @pytest.mark.anyio
