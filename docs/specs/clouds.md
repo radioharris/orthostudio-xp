@@ -43,9 +43,10 @@ The Plan's map, brought over the tile; the Plan's steps make way for the cloud p
   it, but the textures Apply makes again: in those, the build's own with the preview of each cloud
   Apply lays there, in the list's order (R4); in **Before**, the tile with no cloud replaced. The
   ground is laid again only when its files change, the new one shown once loaded: the tile never
-  flashes when a cloud is clicked, and a cloud whose images are being got (a source changed) keeps
-  what After showed of it when that began, until the task ends, and is counted as it was then
-  (the engine's: `Task.was`, `View.previews`; Apply waits for the task). The outlines and the marks are drawn again only when
+  flashes when a cloud is clicked, and a cloud whose images are being got (a source changed) is
+  planned as it was when that began, until the task ends: what After shows of it, the count and
+  the words over the map all say it then (the engine's: `Task.was`, `_as_it_was`; Apply waits for
+  the task). The outlines and the marks are drawn again only when
   what they show changes. Around the tile, the map darkened (seen from far, the base
   map is another mosaic than the tile's photos). Every cloud's outline on a dark casing, readable
   over snow: yellow when unticked, the accent when ticked, the current one thicker; its tooltip says

@@ -404,6 +404,30 @@ def test_a_cloud_whose_images_are_got_keeps_what_after_showed_of_it(folder: Path
     assert waiting["label"] is False and row["numbered"] is True  # waiting its turn: none
 
 
+@pytest.mark.parametrize("tick,chosen,held,images,neighbour", CASES)
+def test_a_source_changed_shows_counts_and_says_the_cloud_as_it_was(
+    folder: Path, tick: bool, chosen: Any, held: Any, images: str, neighbour: str
+) -> None:
+    # while the new images are got, the words over the map said After was what X-Plane shows,
+    # the map showing the cloud replaced and the count one to replace (a review, 2026-11-07)
+    cl, shown = _case(folder, tick, chosen, held, images, neighbour)
+    before = _view(cl, shown)
+    s = before.cloud("cloud001")
+    if "choose" not in s.actions:
+        return
+    c = cl.get("cloud001")
+    c["tick"], c["chosen"] = True, "Bing2"  # a source never asked: its images to get
+    was = {"row": s.row, "lays": s.lays}
+    task = {"id": "t", "kind": "check", "cloud": "cloud001", "stoppable": True, "was": was}
+    during = _view(cl, shown, [{**task, "phase": "fetching"}])
+    rows = ("replace", "another", "back", "waiting", "changes", "remade")
+    assert {k: during.counts[k] for k in rows} == {k: before.counts[k] for k in rows}
+    assert during.views(True) == before.views(True)
+    assert during.remade == before.remade
+    shows = [[(e["id"], e["source"], n) for e, n in v.previews] for v in (before, during)]
+    assert shows[0] == shows[1]
+
+
 def test_stop_all_says_how_many_clouds_work(folder: Path) -> None:
     # it was seen with nothing the user had started (a user, 2026-11-07): it says its number
     cl, shown = _case(folder, True, None, None, "stands", "ticked")

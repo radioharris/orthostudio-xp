@@ -559,7 +559,7 @@ def view(
         source, options, wait = _options(c, holds.get(c["id"]))
         listed = [{**e, "kind": c["kind"], "number": c["number"]} for e in options]
         wanted.append((c, source, holds.get(c["id"]), listed, wait))
-    asked = [w[3] for w in wanted]
+    asked = [_as_it_was(w[3], of_cloud.get(w[0]["id"])) for w in wanted]
     plan = plan_folder(tile, shown, asked) if shown is not None else None
     kept = {e["id"]: e for e in (plan.laid if plan is not None else ())}
     clouds: list[CloudState] = []
@@ -569,16 +569,15 @@ def view(
     previews = [(e, sorted(remade & set(e["parts"]))) for e in kept.values()]
     for c, source, held, options, wait in wanted:
         lays = kept.get(c["id"])
-        why = _why(options, lays, source, wait, plan)
-        fact = _row(c, held, lays, why) if plan is not None else None  # what Apply does
         task = of_cloud.get(c["id"])
+        was = task.get("was") if task is not None else None
+        if was is not None:  # its images being got: planned and counted as it was, waiting them
+            why, fact = wait, was["row"]
+        else:
+            why = _why(options, lays, source, wait, plan)
+            fact = _row(c, held, lays, why) if plan is not None else None  # what Apply does
         if task is not None:
             row, actions = task["kind"], _stops(task)
-            was = task.get("was")
-            if was is not None:  # its images being got: as it was when that began
-                fact = was["row"]
-                if was["lays"] is not None and lays is None and held is None:
-                    previews.append((was["lays"], sorted(was["lays"]["parts"])))
         elif fact is None:  # the folder not read: the list read only
             row, actions = "frozen", frozenset()
         else:
@@ -620,6 +619,21 @@ def view(
         [(e, names) for e, names in previews if names],
         bool(fine),
     )
+
+
+def _as_it_was(
+    options: list[Mapping[str, Any]], task: Mapping[str, Any] | None
+) -> list[Mapping[str, Any]]:
+    """What the folder's plan may lay of a cloud (``options``); while its images are being got,
+    what it laid when that began, or nothing (its task's ``was``), so that what After shows of it,
+    the count and the words over the map say the same: a source changed showed the photo with its
+    cloud for the seconds the new images took (a user, 2026-11-06), then the words said After was
+    what X-Plane shows while it showed the cloud replaced (a review, 2026-11-07). Apply waits for
+    the task (:func:`possible`)."""
+    was = task.get("was") if task is not None else None
+    if was is None:
+        return options
+    return [was["lays"]] if was["lays"] is not None else []
 
 
 _COUNTED = {"ready": "replace", "another": "another", "back": "back", "waiting": "waiting"}
