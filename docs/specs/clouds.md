@@ -137,9 +137,12 @@ The tile's state, the first that holds (`state.TILE_STATES`, `tile_state`):
 | `not_built` | no folder of ours for the tile | |
 | `not_whole` | its folder is not the pack its manifest names (`pack_is_intact`: a build cut short, files taken from it) | build it again |
 | `no_photo` | its folder holds no texture (the sea alone, which X-Plane draws without a photo; `tile.unready`) | no cloud to replace |
+| `no_tool` | the tool that finds the clouds, which draws the tile too (OpenCV), is not on this computer yet: an installed app until the user says yes (`opencv_ready`) | the tile is drawn by that tool, downloaded once when you ask: the search offers it first |
 | `ready` | | |
 
-**Ready** allows everything, any other state nothing. While something else holds the tile's folder
+**Ready** and **no_tool** allow everything, any other state nothing; without the tool the tile is
+not drawn, and the first search asks for it (`CLOUD_DETECTOR_ASK`): an installed app could not
+open the mode at all before (a campaign on Windows, 2026-11-07). While something else holds the tile's folder
 (a build, its wait in the queue, a filing, a deletion) it is not read at all: `tile_state` reads the
 folder only once the states before it do not hold, and keeps what it read in `ready` only. The list
 is then shown as it is, read only, and nothing is counted; a task of a cloud still shows in its row,

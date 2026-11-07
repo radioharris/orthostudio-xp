@@ -111,6 +111,24 @@ async def test_a_tile_not_built_allows_nothing(app: Any, home: Path) -> None:
 
 
 @pytest.mark.anyio
+async def test_without_the_tool_the_mode_opens_undrawn_and_a_search_asks_for_it(
+    app: Any, ready: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # an installed app has no OpenCV until the user says yes, and the tile is drawn with it: the
+    # mode said "the cloud detector could not be made ready" and offered nothing (a campaign on
+    # Windows, 2026-11-07)
+    monkeypatch.setattr(clouds_api, "opencv_ready", lambda: False)
+    drawn: list[Any] = []
+    monkeypatch.setattr(clouds_api.CloudEngine, "picture_file", lambda *a, **k: drawn.append(a))
+    async with client_for(app) as c:
+        a = (await c.get("/api/clouds/+43+005")).json()
+        r = await c.post("/api/clouds/+43+005/find")
+    assert a["state"] == "no_tool" and a["picture"] is None and drawn == []
+    assert a["line"]["key"] == "clouds.tile.no_tool" and "find" in a["allowed"]
+    assert r.json()["error"]["code"] == "CLOUD_DETECTOR_ASK"
+
+
+@pytest.mark.anyio
 async def test_the_download_asked_counts_opencv_once(
     app: Any, ready: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

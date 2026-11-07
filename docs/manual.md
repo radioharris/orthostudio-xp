@@ -26,7 +26,8 @@ version built it.
 Press **Quick search**, or **Fine search** to find the small clouds too, in about twice the time
 (it is greyed on a tile built no finer than the quick search reads). The first time, the app asks
 to download the tool that finds the clouds: about 110 MB, OpenCV included, depending on the
-system. It is downloaded once and runs on your computer: nothing is sent anywhere.
+system. It is downloaded once and runs on your computer: nothing is sent anywhere. Until then the
+tile is not drawn on the map: the tool draws it too.
 
 The search reads the tile (the fine one a second time in more detail, where the tile is sharp enough
 to hold small clouds), then tries every other source covering the tile under each cloud: whether it

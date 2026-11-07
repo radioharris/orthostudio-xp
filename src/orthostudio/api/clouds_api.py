@@ -262,6 +262,7 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
             disk_away=disk_absent(folder),  # the build's own rule (``build._homes``)
             taken=hooks.taken().get(tile.name),
             read=lambda: read_tile(folder),
+            tool=opencv_ready(),
         )
         tasks = [t.view() for t in engine.tasks.of(tile.name)]
         under_way = engine.tasks.busy(tile.name)  # what follows a task too
@@ -300,7 +301,8 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
         _folder, shown, v = look(tile)
         picture = after = None
         previews = {}
-        if shown is not None:
+        if v.state == "ready":  # drawn with the tool that finds the clouds (``no_tool``)
+            assert shown is not None
             zl = map_level(tile, shown.textures)
             picture = engine.picture_file(tile, shown, zl)
             # After: what X-Plane shows, but the textures Apply makes again, which show the
