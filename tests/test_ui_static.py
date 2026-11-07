@@ -9039,7 +9039,14 @@ def test_a_clouds_label_stands_where_its_number_is_over_every_mark() -> None:
     code = (UI / "clouds.js").read_text(encoding="utf-8")
     shapes = code[code.index("  function shapesOf(c, drawing) {") :]
     shapes = shapes[: shapes.index("\n  }\n")]
-    assert "L.marker(placeOf(c.rings[0])," in shapes and "zIndexOffset: 1000" in shapes
+    assert "L.marker(placeOf(c.rings[0])," in shapes and "pane: LABEL_PANE," in shapes
+    # over the tooltips too (650), and above them: a cloud's tooltip came over its label (a user,
+    # 2026-11-07); the label stands above its number's place, the tooltip under the pointer
+    assert 'zIndex: 660, pointerEvents: "none"' in code
+    assert 'sticky: true, direction: "bottom", offset: [0, 16]' in code
+    css = (UI / "styles.css").read_text(encoding="utf-8")
+    pending = css[css.index(".cloud-pending {") :]
+    assert "transform: translate(-50%, calc(-100% - 4px));" in pending[: pending.index("}")]
     marks = code[code.index("  function drawMarks() {") :]
     marks = marks[: marks.index("\n  }\n")]
     assert "if (seen && (!c.numbered || c.label)) continue;" in marks

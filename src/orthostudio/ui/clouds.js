@@ -33,6 +33,9 @@ const SHOW_ZOOM = 15;
 const PIN_BELOW_PX = 12;
 /** The pane the ground is laid in: under the outlines, whatever is added first. */
 const GROUND_PANE = "clouds-ground";
+/** The pane a cloud's label is laid in: over the marks and the tooltips (650), which took no
+ * click; in the markers' pane, a cloud's tooltip came over its label (a user, 2026-11-07). */
+const LABEL_PANE = "clouds-labels";
 
 /** ``4 ha`` under a square kilometre, ``1.3 km²`` above. */
 export function areaWords(ha) {
@@ -358,6 +361,7 @@ export function createCloudMode(ctx) {
    * over dark ground), its tooltip saying what a click does, and a task's label where its number is
    * (``label``, the engine's: a spinner, or its line). */
   function drawShapes(map) {
+    if (!map.getPane(LABEL_PANE)) Object.assign(map.createPane(LABEL_PANE).style, { zIndex: 660, pointerEvents: "none" });
     if (!cs.shapes) {
       cs.shapes = L.layerGroup().addTo(map);
       cs.drawn = new Map();
@@ -401,19 +405,21 @@ export function createCloudMode(ctx) {
         L.DomEvent.stop(ev);
         clickCloud(cloudNow(c.id) || c); // the shape outlives the answer it was drawn from
       });
-      shape.bindTooltip(tipOf(c), { sticky: true, className: "cloud-tip" });
+      // under the pointer, its label above where its number is: beside it, the tooltip came over
+      // the label (a user, 2026-11-07)
+      shape.bindTooltip(tipOf(c), { sticky: true, direction: "bottom", offset: [0, 16], className: "cloud-tip" });
     }
     const out = [casing, shape];
     if (c.label) {
-      // where its number is, inside it, over every mark (its number gone meanwhile, ``drawMarks``):
-      // at the middle of its frame, a long curved cloud's label lay outside it, far from its number
-      // (a user, 2026-11-07)
+      // where its number is, inside it, over every mark and tooltip (its number gone meanwhile,
+      // ``drawMarks``): at the middle of its frame, a long curved cloud's label lay outside it,
+      // far from its number (a user, 2026-11-07)
       const label = h("div", { class: "cloud-pending" }, h("span", { class: "spinner", "aria-hidden": "true" }), labelWords(c));
       out.push(L.marker(placeOf(c.rings[0]), {
         icon: L.divIcon({ className: "cloud-pending-anchor", html: label, iconSize: [0, 0] }),
         interactive: false,
         keyboard: false,
-        zIndexOffset: 1000,
+        pane: LABEL_PANE,
       }));
     }
     return out;
@@ -475,7 +481,7 @@ export function createCloudMode(ctx) {
           L.DomEvent.stop(ev);
           clickCloud(cloudNow(c.id) || c); // the pin outlives the answer it was drawn from
         });
-        pin.bindTooltip(tipOf(c), { className: "cloud-tip" });
+        pin.bindTooltip(tipOf(c), { direction: "bottom", offset: [0, 10], className: "cloud-tip" });
       }
       return [pin];
     });
