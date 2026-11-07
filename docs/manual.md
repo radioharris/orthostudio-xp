@@ -16,10 +16,10 @@ after. What the map shows is what X-Plane shows.
 
 ### 1. Open the tile's clouds
 
-In the **Library**, on the line of a tile built by OrthoStudio XP, press **Clouds…**. The Plan's
-map comes over the tile, drawn as X-Plane draws it, from the tile's own files: nothing is
-downloaded. Any tile built by OrthoStudio XP can have its clouds replaced, whatever version built
-it.
+In the **Library**, on the line of a tile built by OrthoStudio XP, press the cloud in its **Clouds**
+column. The Plan's map comes over the tile, drawn as X-Plane draws it, from the tile's own files:
+nothing is downloaded. Any tile built by OrthoStudio XP can have its clouds replaced, whatever
+version built it.
 
 ### 2. Look for the clouds
 
@@ -97,7 +97,8 @@ others stop).
 
 The tile keeps its clouds replaced: every build of it after, from the Plan, the Library, Works or
 the command line, lays them again on the same photo as soon as it has finished the tile, before the
-other tiles of the same build. The Library says how many it has replaced and how many wait.
+other tiles of the same build. The Library says how many it has replaced; its tooltip says how many
+wait too.
 
 A cloud is chosen on a photo. Build the tile from another source or at another level, change the
 colours of the tile or of a zone near the cloud, or let its source send new images, and the photo

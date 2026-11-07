@@ -349,7 +349,7 @@ nothing yet, so everything is made again there). They are built together, in one
 like the Plan's *Build*: a tile X-Plane shows is built again in its own folder and stays in
 X-Plane, updated, and one it does not show stays out.
 
-**Clouds.** *Clouds…*, on a tile's line in the Library, opens the Plan's map on that tile drawn as
+**Clouds.** The cloud button, on a tile's line in the Library, opens the Plan's map on that tile drawn as
 X-Plane draws it: from its own DSF and textures, the sea and the lakes at the share of the photo
 X-Plane gives them (nothing of the tile is downloaded). *Quick search* reads it; *Fine search* reads
 it a second time in more detail where it is sharp enough for small clouds, with OmniCloudMask's two

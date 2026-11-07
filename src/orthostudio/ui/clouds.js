@@ -118,7 +118,7 @@ export function labelPoint(ring, steps = 24) {
 }
 
 export function createCloudMode(ctx) {
-  const { api, h, clear, morph, toast, errorMessage } = ctx;
+  const { api, h, icon, clear, morph, toast, errorMessage } = ctx;
   const L = globalThis.L;
   const $ = (id) => document.getElementById(id);
   const cs = {
@@ -143,8 +143,6 @@ export function createCloudMode(ctx) {
    * banner has one; a cloud's row has its cloud's. */
   const key = (k) => ({ focusKey: `clouds-${k}` });
   const file = (name) => `/api/clouds/${encodeURIComponent(cs.tile)}/files/${name}`;
-  /** An icon of the page's (``index.html``'s templates). */
-  const icon = (id) => $(id).content.firstElementChild.cloneNode(true);
 
   async function open(tile) {
     if (cs.tile && cs.tile !== tile) close();
@@ -631,7 +629,7 @@ export function createCloudMode(ctx) {
       : h("span", { class: "spinner", "aria-hidden": "true" });
     const trash = can.has("remove")
       ? h("button", { type: "button", class: "btn btn-icon btn-danger btn-trash", "aria-label": `${t("clouds.remove")}: ${label}`, title: t("clouds.remove"), onclick: () => send("DELETE", `/outlines/${c.id}`) },
-        $("zones-clear").querySelector("svg").cloneNode(true)) // the zones' own trash
+        icon("tpl-bin-icon"))
       : null;
     const line = c.line && !task
       ? h("span", { class: `zone-hint cloud-line${c.line.tone === "warn" ? " zone-hint-warn" : ""}` }, lineWords(c.line, n))

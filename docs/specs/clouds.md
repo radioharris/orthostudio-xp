@@ -28,9 +28,10 @@ number (B1, B2...).
 
 ### 1.2 The Library
 
-A column **Clouds**: the button **Clouds…**, which opens the cloud mode on the tile, and in a few
-words what the tile holds and what waits: "3 replaced", "2 to apply". The engine says which rows
-have it (`GET /api/clouds`): a tile OrthoStudio XP built, on the row of its own folder, there.
+A column **Clouds**: a cloud button, which opens the cloud mode on the tile, and in a few words
+what the tile holds, "3 replaced", or else what waits, "2 to apply"; its tooltip says both. One
+line at the smallest window, the tile's name whole. The engine says which rows have it
+(`GET /api/clouds`): a tile OrthoStudio XP built, on the row of its own folder, there.
 Its words are read of a tile with a list or clouds laid in its folder (`clouds/`); no other
 tile's textures are read. What the tile holds is counted from its folder (2.1).
 

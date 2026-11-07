@@ -54,7 +54,7 @@ checked automatically at every release too.
 - **The colours of the photos, seen on the map**: as delivered, toned down, or by your own numbers,
   for everything, one square or one zone. Changing them builds a tile again without downloading
   anything.
-- **Clouds replaced.** *Clouds…* in the Library opens a built tile on the map, drawn as X-Plane
+- **Clouds replaced.** The cloud button in the Library opens a built tile on the map, drawn as X-Plane
   draws it. *Quick search* (or *Fine search*, for the small ones) looks for them and tries every
   other source covering the tile under each; you tick those to replace, each with the clear source
   you choose, and the map shows the result before anything changes. *Apply* changes, in a few

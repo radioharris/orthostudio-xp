@@ -692,9 +692,10 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .zone-item > .cloud-swatch.is-on { background: var(--accent); box-shadow: none; }
 .zone-item.cloud-item { cursor: pointer; } /* a click shows its cloud */
 .zone-item.cloud-item[aria-current="true"] { border-color: var(--fg-2); box-shadow: inset 0 0 0 1px var(--fg-2); background: color-mix(in srgb, var(--fg) 10%, var(--bg)); }
-/* Its buttons and its words on one line, as every cell of the row (its words under its buttons
-   made the row taller, a user, 2026-11-07); its forget a bin, not words, to fit a small window. */
-.library-clouds > div { display: flex; align-items: center; gap: var(--gap); white-space: nowrap; }
+/* Its two icons and its words on one line, as every cell of the row, at the smallest window too
+   (its words under its buttons made the row taller, a user, 2026-11-07); close as the row's
+   actions are. */
+.library-clouds > div { display: flex; align-items: center; gap: 4px; white-space: nowrap; }
 .library-clouds .btn-trash { margin-left: 0; }
 .library-clouds .clouds-words { color: var(--fg-2); font-size: var(--fs-2); }
 /* On the map, yellow what stays and the accent what is replaced, each line on a dark casing: it
@@ -797,6 +798,8 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .zone-row .zone-name { flex: 1 1 auto; font-weight: 600; }
 .zone-row select { flex: 1 1 auto; min-width: 0; }
 .btn-icon { width: var(--control-h); padding: 0; flex: none; }
+/* its drawing, the size of the folder's and the bin's, unless a rule of its own sizes it */
+.btn-icon > :where(svg) { width: 15px; height: 15px; display: block; }
 .zone-notes { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 10px; font-size: var(--fs-3); color: var(--fg-2); }
 .zone-size { font-weight: 600; color: var(--fg); }
 .zone-hint { color: var(--fg-3); }
@@ -872,7 +875,8 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .table th { font-weight: 600; color: var(--fg-2); font-size: var(--fs-2); background: var(--bg-3); position: sticky; top: 0; }
 .table th.num, .table td.num { text-align: right; }
 .table tbody tr:last-child td { border-bottom: 0; }
-.table .tile-name { font-family: var(--mono); font-weight: 600; }
+/* A tile's name is never cut: at its hyphen, -02-049 went on two lines (a user, 2026-11-07). */
+.table .tile-name { font-family: var(--mono); font-weight: 600; white-space: nowrap; }
 
 .toolbar { margin-bottom: var(--block-gap); }
 .toolbar > .help { margin: var(--help-gap) 0 0; }

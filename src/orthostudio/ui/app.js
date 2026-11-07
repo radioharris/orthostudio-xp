@@ -2834,7 +2834,7 @@ function renderStatus() {
   const shown = dataFolderShown(s);
   if (shown) {
     const label = revealLabel(s.platform);
-    place.append(h("button", { type: "button", class: "btn btn-icon reveal-btn status-reveal", title: label, "aria-label": label, onclick: () => revealPath(shown) }, folderIcon()));
+    place.append(h("button", { type: "button", class: "btn btn-icon reveal-btn status-reveal", title: label, "aria-label": label, onclick: () => revealPath(shown) }, icon("tpl-folder-icon")));
   }
 }
 
@@ -5428,12 +5428,12 @@ async function loadClouds() {
 }
 
 /** What the Library's column says of a tile's clouds: those it holds replaced and those waiting
- * for Apply. */
+ * for Apply, in this order. */
 export function cloudsWords(c) {
   const out = [];
   if (c?.replaced > 0) out.push(t("library.clouds_replaced", { n: fmtInt(c.replaced) }));
   if (c?.to_apply > 0) out.push(t("library.clouds_to_apply", { n: fmtInt(c.to_apply) }));
-  return out.join(" · ");
+  return out;
 }
 
 async function loadLibrary() {
@@ -6080,9 +6080,9 @@ function builtBlock(e) {
  * few seconds while a build installs its tiles. */
 const libraryOpen = new Set();
 
-/** A small folder, drawn like the page's other icons (the template in index.html). */
-function folderIcon() {
-  return $("tpl-folder-icon").content.firstElementChild.cloneNode(true);
+/** One of the page's icons, the templates in index.html (`tpl-folder-icon`, `tpl-cloud-icon`...). */
+export function icon(id) {
+  return $(id).content.firstElementChild.cloneNode(true);
 }
 
 export function libraryRow(e, showFolder = false) {
@@ -6142,7 +6142,7 @@ export function libraryRow(e, showFolder = false) {
   const overlayMark = overlayPill(e, busy || inBuild);
   const label = revealLabel(state.status?.platform);
   const revealButton = present && e.path
-    ? h("button", { type: "button", class: "btn btn-icon reveal-btn", title: label, "aria-label": `${label}: ${e.tile}`, onclick: () => revealPath(e.path) }, folderIcon())
+    ? h("button", { type: "button", class: "btn btn-icon reveal-btn", title: label, "aria-label": `${label}: ${e.tile}`, onclick: () => revealPath(e.path) }, icon("tpl-folder-icon"))
     : null;
   // What the tile was built with, one click away and only for a tile OrthoStudio XP built: an
   // imported one's settings are Ortho4XP's, which nothing here can read.
@@ -6192,13 +6192,13 @@ function cloudsCell(e) {
   const cell = state.clouds?.[e.path];
   if (!cell) return h("td", { class: "library-clouds" });
   const words = cloudsWords(cell);
+  // one line at the smallest window, the tile's name whole (a user, 2026-11-07): two icons, as the
+  // folder's, and the first of its words, all of them in its tooltip
   return h("td", { class: "library-clouds" }, h("div", null,
-    h("button", { type: "button", class: "btn", title: t("library.clouds_help"), onclick: () => cloudMode?.open(e.tile) }, t("library.clouds_open")),
-    // its clouds forgotten from here, the question asked here; the zones' trash, words in a button
-    // made the row too wide for a small window (a user, 2026-11-07)
-    cell.forget ? h("button", { type: "button", class: "btn btn-icon btn-danger btn-trash", title: t("library.clouds_forget_help"), "aria-label": t("library.clouds_forget"), onclick: () => forgetLibraryClouds(e) },
-      $("zones-clear").querySelector("svg").cloneNode(true)) : null,
-    words ? h("span", { class: "clouds-words" }, words) : null));
+    h("button", { type: "button", class: "btn btn-icon", title: t("library.clouds_help"), "aria-label": `${t("library.clouds_open")} ${e.tile}`, onclick: () => cloudMode?.open(e.tile) }, icon("tpl-cloud-icon")),
+    // its clouds forgotten from here, the question asked here
+    cell.forget ? h("button", { type: "button", class: "btn btn-icon btn-danger btn-trash", title: t("library.clouds_forget_help"), "aria-label": `${t("library.clouds_forget")}: ${e.tile}`, onclick: () => forgetLibraryClouds(e) }, icon("tpl-bin-icon")) : null,
+    words.length ? h("span", { class: "clouds-words", title: words.join(" · ") }, words[0]) : null));
 }
 
 /** The names of the overlay packs of other tools, as a user knows them. */
@@ -8284,6 +8284,7 @@ async function boot() {
   cloudMode = createCloudMode({
     api,
     h,
+    icon,
     clear,
     morph: morphChildren,
     toast,
