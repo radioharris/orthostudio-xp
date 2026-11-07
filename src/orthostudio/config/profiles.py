@@ -32,7 +32,6 @@ from orthostudio.fsutil import atomic_write_text
 __all__ = [
     "COMPUTER_SETTINGS",
     "MAX_NAME",
-    "MAX_PROFILES",
     "PROFILES_FILE",
     "ProfileError",
     "Profiles",
@@ -56,7 +55,6 @@ PROFILES_FILE = "profiles.json"
 FORMAT = 1
 MAX_NAME = 40
 """A name fits on the line of the list, in the Plan's narrow column too."""
-MAX_PROFILES = 50
 
 COMPUTER_SETTINGS: tuple[str, ...] = (
     "essential.xplane_dir",
@@ -103,6 +101,13 @@ class Profiles:
     @property
     def names(self) -> list[str]:
         return [name for name, _ in self.entries]
+
+    @property
+    def named(self) -> str | None:
+        """The current profile's name where there is one to name, from the second profile on, as
+        the page shows them: one alone is no choice (a build's record named "Main" in Works after
+        the others were deleted, a review, 2026-11-07)."""
+        return self.current if len(self.entries) > 1 else None
 
     def find(self, name: str) -> int | None:
         """The index of the profile called ``name``, upper or lower case alike, else ``None``."""
@@ -279,14 +284,6 @@ def create(
         name = check_name(name, [first])
         entries: list[tuple[str, dict[str, Any]]] = [(first, build_part(saved))]
     else:
-        if len(profiles.entries) >= MAX_PROFILES:
-            raise ProfileError(
-                "CFG_PROFILE_NAME",
-                f"There are already {MAX_PROFILES} profiles.",
-                "Delete one you no longer use, then save again.",
-                status=409,
-                name=str(name),
-            )
         name = check_name(name, profiles.names)
         entries = list(remember(profiles, saved).entries)
     entries.append((name, build_part(new)))

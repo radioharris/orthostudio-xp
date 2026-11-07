@@ -307,9 +307,9 @@ A user asked to keep settings under a name and choose them for each build (2026-
 a named set of the **build settings**: every setting but `COMPUTER_SETTINGS`, what belongs to the
 computer and its pilot (`essential.xplane_dir`, `data_dir`, `simbrief_user`,
 `relief.private_sources`; `expert.osm_folder`, `osm_library`, `osm_library_token`, `patches_dir`,
-`check_updates`, `build_memory`). A profile changing those would send the tiles to another disk, or a
-build to the public servers, because a look was chosen; and the library's key stays out of a file a
-user may pass around. The page's *Default values* keeps the first seven (`settings.js`
+`check_updates`, `build_memory`). A profile changing those would send the tiles to another disk, or
+a build to the public servers, because a look was chosen; and the library's key stays out of a file
+a user may pass around. The page's *Default values* keeps the first seven (`settings.js`
 `COMPUTER_FOLDERS`, section 4.2 of `ui.md`).
 
 **Files.** `config.toml` keeps holding what every build and the command line read: the current
@@ -317,12 +317,12 @@ profile's settings with the computer's own. `profiles.json` beside it (`default_
 holds `{"format": 1, "current": name, "profiles": [{"name", "settings"}]}` in the order the profiles
 were made, each `settings` a build part (`build_part`). The current profile's entry is what was last
 saved into it or left with it: `PUT /api/settings` writes the saved settings into it (`remember`),
-and leaving it does the same first. The page's Save names the profile it writes into
-(`?profile=`, `""` for none): another page of the same engine (starting the app again opens one in
-the browser) may have made another current, renamed or deleted it, and Save then wrote this page's
-answers into a profile it never showed, its own settings lost (a campaign, 2026-11-04).
-`check_current` refuses with `CFG_PROFILE_CHANGED`, nothing written; the page reads the list again,
-its answers kept, and Save names the profile current now. Written atomically, the previous file kept as
+and leaving it does the same first. The page's Save names the profile it writes into (`?profile=`,
+`""` for none): another page of the same engine (starting the app again opens one in the browser)
+may have made another current, renamed or deleted it, and Save then wrote this page's answers into a
+profile it never showed, its own settings lost (a campaign, 2026-11-04). `check_current` refuses
+with `CFG_PROFILE_CHANGED`, nothing written; the page reads the list again, its answers kept, and
+Save names the profile current now. Written atomically, the previous file kept as
 `profiles.json.bak`. No file means one profile, unnamed: nothing is written and the page shows no
 list until a second profile is kept. A file that cannot be read raises `CFG_LINE_INVALID`; a current
 name it does not hold falls back on its first profile.
@@ -343,12 +343,13 @@ its default, not the current profile's: that version built as its default does. 
 cannot read is left at its default and named, as in `config.toml` (section 5).
 
 **Names**: 1 to `MAX_NAME` (40) characters once trimmed, no control character, unique whatever the
-case (`check_name`); at most `MAX_PROFILES` (50).
+case (`check_name`); as many profiles as wanted: a limit of 50 said the name rule's words (a
+review, 2026-11-07).
 
 **Errors** (API answers outside the registry, as `SYS_BUSY`; context `{name}`): `CFG_PROFILE_NAME`
-(422, a name refused, or 50 profiles already), `CFG_PROFILE_TAKEN` (409), `CFG_PROFILE_UNKNOWN` (404,
-renamed or deleted in another window), `CFG_PROFILE_LAST` (409), `CFG_PROFILE_CHANGED` (409, a Save
-naming a profile that is no longer the current one; `{name}` is the current one).
+(422, a name refused), `CFG_PROFILE_TAKEN` (409), `CFG_PROFILE_UNKNOWN`
+(404, renamed or deleted in another window), `CFG_PROFILE_LAST` (409), `CFG_PROFILE_CHANGED` (409, a
+Save naming a profile that is no longer the current one; `{name}` is the current one).
 
 **A build** records the current profile's name in its request (`profile`), and its summary carries
 it, which Works writes; *Build again* keeps it, with the settings the build had.

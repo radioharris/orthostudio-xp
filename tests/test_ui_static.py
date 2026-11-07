@@ -3853,6 +3853,15 @@ def test_quit_and_the_file_manager_from_the_page() -> None:
         assert element in html, element
     css = (UI / "styles.css").read_text(encoding="utf-8")
     assert ".icon-folder { --icon:" in css and '<th scope="col" colspan="3">' in html
+    # every icon's drawing well formed: a mask that cannot be read paints nothing (the stop square
+    # had two strokes and never showed, a review, 2026-11-07)
+    from xml.dom import minidom
+
+    drawn = r'^\.icon-[\w-]+ \{ --icon: url\("data:image/svg\+xml,(.+?)"\); \}$'
+    drawings = re.findall(drawn, css, re.M)
+    assert len(drawings) >= 11
+    for svg in drawings:
+        minidom.parseString(svg)
     labels = _node_json("app.js", '["mac", "win", "lin", undefined].map((p) => m.revealLabel(p))')
     assert labels == [
         "Show in Finder",

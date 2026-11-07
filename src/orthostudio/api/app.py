@@ -1798,10 +1798,10 @@ def create_app(
         return config_profiles.load_profiles(profiles_path())
 
     def current_profile() -> str | None:
-        """The name of the current profile, for a build's record; ``None`` when there is none
-        or its file cannot be read (a build is not refused over it)."""
+        """The name of the current profile, for a build's record; ``None`` when there is none to
+        name (``Profiles.named``) or its file cannot be read (a build is not refused over it)."""
         try:
-            return read_profiles().current
+            return read_profiles().named
         except (OsxpError, OSError):
             return None
 
