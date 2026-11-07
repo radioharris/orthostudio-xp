@@ -80,7 +80,7 @@ The banner over the map has two views:
 - **Before**: the tile with no cloud replaced.
 
 When what the tile shows changes, its picture is drawn again; meanwhile the map keeps the last
-one, and the banner and the panel say **Drawing the tile…** (after Build again, the map waits for
+one, and the sentence over the map says **Drawing the tile…** with a spinner (after Build again, the map waits for
 the new one). You can go on clicking. On a large tile, the first
 picture after the app starts can take half a minute.
 

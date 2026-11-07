@@ -553,10 +553,13 @@ export function createCloudMode(ctx) {
     // the three sentences stacked in one cell, the current one seen: the banner keeps one size
     const said = { after: a?.views?.after ? t(a.views.after) : "", before: a?.views?.before ? t(a.views.before) : "", drawing: t("clouds.outlining") };
     const now = drawing ? "drawing" : cs.view;
+    // a view's picture being made (the engine's word): its sentence says it with a spinner, over
+    // the map; said in the panel, its line pushed the list down and back (a user, 2026-11-07)
+    const making = (k) => k !== "drawing" && a?.views?.[k] === "clouds.drawing";
     // the pressed view says so as the map's banner buttons do (a primary one read white on pale blue)
     const view = (which, words) => h("button", { type: "button", class: "btn", dataset: key(`view-${which}`), "aria-pressed": String(cs.view === which), onclick: () => { cs.view = which; render(); } }, words);
     morph(el, h("div", null,
-      h("p", { class: "map-banner-text clouds-view-text", dataset: key("view-text") }, ...Object.entries(said).map(([k, words]) => h("span", { class: k === now ? "is-current" : null }, words))),
+      h("p", { class: "map-banner-text clouds-view-text", dataset: key("view-text") }, ...Object.entries(said).map(([k, words]) => h("span", { class: k === now ? "is-current" : null }, making(k) ? h("span", { class: "spinner", "aria-hidden": "true" }) : null, words))),
       h("div", { class: "map-banner-actions", dataset: key("banner-actions") },
         view("after", t("clouds.view_after")),
         view("before", t("clouds.view_before")),
@@ -585,12 +588,6 @@ export function createCloudMode(ctx) {
         h("span", { class: "spinner", "aria-hidden": "true" }),
         h("span", { role: "status" }, `${t(`clouds.task.${task.kind}`)} ${taskWords(task)}`),
         task.actions.includes("stop") ? h("button", { type: "button", class: "btn", dataset: key(`stop-${task.id}`), onclick: () => stopTask(task.id, `stop-${task.id}`) }, pendingAt(`stop-${task.id}`), t("clouds.stop")) : null));
-    }
-    // the picture of the view shown being made (the engine's word): a tick answered at once and
-    // its picture came a second later, without a sign (a user, 2026-11-07)
-    if (a.views?.[cs.view] === "clouds.drawing") {
-      kids.push(h("div", { class: "clouds-progress", dataset: key("drawing") },
-        h("span", { class: "spinner", "aria-hidden": "true" }), h("span", { role: "status" }, t("clouds.drawing"))));
     }
     if (a.failed) {  // the tile's last task that failed, until its next one: the engine's words for it
       const e = a.failed.error || {};
