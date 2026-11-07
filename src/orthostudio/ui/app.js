@@ -6192,11 +6192,13 @@ function cloudsCell(e) {
   const cell = state.clouds?.[e.path];
   if (!cell) return h("td", { class: "library-clouds" });
   const words = cloudsWords(cell);
-  return h("td", { class: "library-clouds" },
+  return h("td", { class: "library-clouds" }, h("div", null,
     h("button", { type: "button", class: "btn", title: t("library.clouds_help"), onclick: () => cloudMode?.open(e.tile) }, t("library.clouds_open")),
-    // its clouds forgotten from here: the cloud mode opened over the tile asks its own question
-    cell.forget ? h("button", { type: "button", class: "btn btn-danger", title: t("library.clouds_forget_help"), onclick: () => cloudMode?.open(e.tile, "forget") }, t("library.clouds_forget")) : null,
-    words ? h("span", { class: "clouds-words" }, words) : null);
+    // its clouds forgotten from here, the question asked here; the zones' trash, words in a button
+    // made the row too wide for a small window (a user, 2026-11-07)
+    cell.forget ? h("button", { type: "button", class: "btn btn-icon btn-danger btn-trash", title: t("library.clouds_forget_help"), "aria-label": t("library.clouds_forget"), onclick: () => forgetLibraryClouds(e) },
+      $("zones-clear").querySelector("svg").cloneNode(true)) : null,
+    words ? h("span", { class: "clouds-words" }, words) : null));
 }
 
 /** The names of the overlay packs of other tools, as a user knows them. */
@@ -6567,6 +6569,23 @@ async function deleteLibraryTile(e) {
   await runLibraryChange(e, () => api("POST", req.path, req.body), (res) => toast(deletedMessage(res?.tile || e.tile, res?.freed_bytes, res?.warning)));
 }
 
+/** The trash of a row's Clouds cell: asks first, then the cloud mode's Forget, its own task
+ * (`POST /api/clouds/{tile}/apply {action: "forget"}`), waited for: the original photos back in the
+ * tile, its list of clouds erased with their images. A failure is said on the row's card. */
+async function forgetLibraryClouds(e) {
+  const question = { title: t("clouds.forget_title", { tile: e.tile }), body: [t("clouds.forget_text")], go: "delete", words: t("clouds.forget_go") };
+  if (libraryBusy.has(libraryKey(e)) || !(await confirmBulk(question))) return;
+  const path = `/api/clouds/${encodeURIComponent(e.tile)}`;
+  await runLibraryChange(e, async () => {
+    await api("POST", `${path}/apply`, { action: "forget" });
+    for (let answer = await api("GET", path); answer.busy; answer = await api("GET", path)) {
+      await new Promise((go) => setTimeout(go, 300));
+    }
+    const failed = (await api("GET", path)).failed;
+    if (failed?.kind === "forget") throw new ApiError(409, { error: failed.error });
+  });
+}
+
 /** "Remove from the list" (tiles imported from Ortho4XP): the Library forgets the tile, and its
  * files stay where Ortho4XP put them. */
 function forgetLibraryTile(e) {
@@ -6610,7 +6629,7 @@ function confirmBulk(question) {
   $("library-bulk-title").textContent = question.title;
   clear($("library-bulk-text")).append(...question.body.map((line) => h("p", null, line)));
   const go = $("library-bulk-go");
-  go.textContent = question.go === "delete" ? t("library.delete_confirm") : t("library.forget_go");
+  go.textContent = question.words || (question.go === "delete" ? t("library.delete_confirm") : t("library.forget_go"));
   go.classList.toggle("btn-danger", question.go === "delete");
   go.classList.toggle("btn-primary", question.go !== "delete");
   dialog.returnValue = "";
