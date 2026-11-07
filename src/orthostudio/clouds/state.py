@@ -464,12 +464,14 @@ class View:
             return None
         return {"key": "clouds.none_found" if self.search else "clouds.not_looked", "params": {}}
 
-    def views(self, picture: bool) -> dict[str, Any]:
-        """The words of After and Before; none without a picture."""
-        if not picture:
+    def views(self, picture: bool, drawing: Collection[str] = ()) -> dict[str, Any]:
+        """The words of After and Before; none without a picture; those of the views whose
+        picture is being drawn (``drawing``) say so."""
+        if not picture and not drawing:
             return {"after": None, "before": None}
         after = "clouds.after_pending" if self.remade else "clouds.after"
-        return {"after": after, "before": "clouds.before"}
+        said = {"after": after, "before": "clouds.before"}
+        return {k: "clouds.drawing" if k in drawing else w for k, w in said.items()}
 
     @property
     def to_apply(self) -> int:

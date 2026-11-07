@@ -97,3 +97,21 @@ bytes laid the same in every run:
 
 A level of 4096 px decoded whole took some 350 MB meanwhile for its 64 MB of pixels, 90 MB by
 bands, in the same time.
+
+## B8. The mode never stands still for a picture (Windows and Mac, 2026-11-07)
+
++52+004 (Bing ZL14, a DSF of 314 MB, 3 M triangles), built by the installed 1.4.0rc8 on a Windows
+server (AMD EPYC, 8 threads), the same gestures on rc8 as released and with the change, the app
+started again before each; and +56-131 on the Mac (43 MB DSF). A picture of the tile at the map's
+level, ZL12, 14 Mpx:
+
+| What | Before | After |
+|---|---|---|
+| A picture drawn, the DSF already read (Windows) | 10.3 s, 9.5 s of it filling the triangles | 1.0 s (where each texture shows kept with the triangles, `picture._layout`: the same pixels) |
+| The same on the Mac, +56-131 | 1.28 s | 0.34 s |
+| A picture drawn, the DSF not read yet (Windows) | 27 s, 16.6 s of it reading the DSF | the same, drawn aside |
+| Opening the mode with no picture, then a quick search (Windows) | first answer 27.3 s, the page empty and still; search done at 46 s | every answer at once but three of 2.6 to 4.2 s while the DSF is read; the picture at 27 s; search done at 46 s |
+| Apply of one cloud, the answers meanwhile (Windows) | one answer of 10.1 s, the new After 11.9 s after the click | none over 73 ms, the new After 3.2 s after the click, **Drawing the tile…** for 1.2 s of it |
+
+The answers still slow while a DSF is read share the processor with that reading (Python runs one
+thread at a time): once per tile after each start, the first search or picture reading it.
