@@ -134,3 +134,23 @@ and the plan wrote the big cloud's outline once per texture it reaches to digest
 clouds (0.17 s). Now a file is checked once while it stays the same (`tile.read_checked`), and a
 plan writes each cloud once (`clouds_digest(..., said)`): the same digests. What a tick still
 takes is mostly writing the list of 4.9 MB and reading it back.
+
+## B10. Getting the images of a cloud of 1 670 km² (Mac, 2026-11-07)
+
+Cloud 1 of the owner's -02-050: 1 670 km² over 49 textures of 4096 px, EOX,
+its 1 326 pieces already on the disk. In the owner's app it took about 48 s (18 s making its 49
+parts, 23 s judging and its preview). Measured on a copy, getting its images (`find.check`) alone,
+in a process of its own, the most it held (`ru_maxrss`, with the tile's picture):
+
+| What | Time | Memory |
+|---|---|---|
+| Before: each layer's colours in linear light computed for each pixel, one texture at a time | 42.0 s | 3.87 GB |
+| Read in a table of the 256 values (`Layer.linear`), one at a time | 27.6 s | 3.52 GB |
+| The same, two at a time | 17.5 s | 4.21 GB |
+| The same, four at a time (`LAYING_AT_ONCE`) | 12.7 s | 4.91 GB |
+
+Its judgement, its entry and its preview are the very same, byte for byte, in all of them, three
+runs of four at a time included. Where the 42 s went: the layer of each texture reduced to the
+map's level twice (once to judge the source, once for the preview, in the colours matched then),
+31.6 s of them, mostly raising every pixel's colours to the power 2.2 and averaging them; the
+layers made 5.4 s, the detector 3.6 s. Cloud 2 (244 km², 12 textures): 2.7 s.

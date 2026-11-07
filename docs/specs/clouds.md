@@ -429,8 +429,11 @@ and in them only the blocks a cloud reaches.
 One function makes a cloud's layer on a texture (`clouds/layer.py`, `layer`), and one gives its
 colours, matched to the photo and clipped to what a pixel holds (`Layer.rgb`); Apply lays them,
 and the preview is the same layer in the same colours reduced to the map's level, weighted by its
-alpha in linear light as the texture's levels are made (`find._lay_reduced`), laid where X-Plane
-shows that texture, over water at the share X-Plane gives the photo. Measured: B5.
+alpha in linear light as the texture's levels are made (`find._lay_reduced`; its colours in linear
+light read in a table of the source's 256 values, `Layer.linear`, the same numbers), laid where
+X-Plane shows that texture, over water at the share X-Plane gives the photo. A picture's pixel
+shows one texture, so a cloud's textures are reduced as many at once as Apply makes
+(`find._all_reduced`, `laying.LAYING_AT_ONCE`), the same picture in any order. Measured: B5, B10.
 
 ### R6. A cloud stands on the texture it was got on
 

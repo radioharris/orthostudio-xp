@@ -243,8 +243,22 @@ class Layer:
         """Rows ``r0:r1`` of its colours, in the photo's (``match``) and clipped to what a pixel
         holds (``float32``), a few at a time: a cloud over a whole texture in ``float32`` is
         200 MB, half of what a texture may hold. Apply lays them, the preview reduces them."""
-        gain, shift = (np.asarray(v, np.float32) for v in self.match)
-        return np.clip(self.source[r0:r1].astype(np.float32) * gain + shift, 0, 255)
+        return _matched(self.source[r0:r1], self.match)
+
+    def linear(self) -> np.ndarray:
+        """Its colours (:meth:`rgb`) in linear light, ``(rgb / 255) ** 2.2``, as a table of the
+        source's 256 values per channel (``(3, 256)``, ``float32``): the same numbers, read
+        rather than computed for each pixel. Computed for each pixel, a cloud over 49 textures
+        took 31 of the 42 s of getting its images (-02-050, 2026-11-07)."""
+        values = np.arange(256, dtype=np.uint8)[:, None].repeat(3, axis=1)
+        return np.ascontiguousarray(np.power(_matched(values, self.match) / 255.0, 2.2).T)
+
+
+def _matched(source: np.ndarray, match: Match) -> np.ndarray:
+    """``source`` (``uint8``, its last axis the channels) in the photo's colours (``match``),
+    clipped to what a pixel holds (``float32``)."""
+    gain, shift = (np.asarray(v, np.float32) for v in match)
+    return np.clip(source.astype(np.float32) * gain + shift, 0, 255)
 
 
 def _source(
