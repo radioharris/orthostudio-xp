@@ -799,7 +799,7 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .zone-row select { flex: 1 1 auto; min-width: 0; }
 .btn-icon { width: var(--control-h); padding: 0; flex: none; }
 /* its drawing, the size of the folder's and the bin's, unless a rule of its own sizes it */
-.btn-icon > :where(svg) { width: 15px; height: 15px; display: block; }
+.btn-icon > :where(svg) { width: 15px; height: 15px; display: block; margin: auto; }
 .zone-notes { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 10px; font-size: var(--fs-3); color: var(--fg-2); }
 .zone-size { font-weight: 600; color: var(--fg); }
 .zone-hint { color: var(--fg-3); }
