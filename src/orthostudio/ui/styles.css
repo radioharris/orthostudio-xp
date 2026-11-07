@@ -201,6 +201,31 @@ a { color: var(--accent); }
 }
 .skip:focus { left: 8px; }
 
+/* ----------------------------------------------------------------- icons */
+
+/* The page's icons, each drawn here once: its drawing as a mask over the text's colour, painted by
+   its own box. An svg was rounded to the screen's pixels on its own in WebKit, the Mac's and
+   Linux's engine, a pixel off the middle of its box wherever the box stood at a fraction of a
+   pixel; a mask is rounded with its box (a user, 2026-11-07, measured in WebKit and in Chrome,
+   Windows' engine, at 100 to 200 %). Each drawing in the middle of its 24 square, but Quit's, on
+   its label's baseline (.quit-btn); each size even, as its box's inside. The rules after these
+   size them. */
+.icon {
+  display: block; flex: none; width: 16px; height: 16px; background: currentColor;
+  -webkit-mask: var(--icon) center / contain no-repeat; mask: var(--icon) center / contain no-repeat;
+}
+.icon-bin { --icon: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'><path d='M4 7h16M9 7V4.5h6V7M6.5 7l1 12.5h9l1-12.5M10 10.5v6M14 10.5v6'/></svg>"); }
+.icon-folder { --icon: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.6' stroke-linejoin='round'><path d='M3.5 6.25h6l2 2h9v9.5h-17z'/></svg>"); }
+.icon-cloud { --icon: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.6' stroke-linejoin='round'><path d='M7.05 17.5h9.5a3.75 3.75 0 0 0 .5-7.47 5.5 5.5 0 0 0-10.6 1.2A3.15 3.15 0 0 0 7.05 17.5z'/></svg>"); }
+.icon-eye { --icon: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.6' stroke-linejoin='round'><path d='M2.5 12s3.5-6.5 9.5-6.5 9.5 6.5 9.5 6.5-3.5 6.5-9.5 6.5S2.5 12 2.5 12z'/><circle cx='12' cy='12' r='3'/></svg>"); }
+.icon-stop { --icon: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke='none'><rect x='6' y='6' width='12' height='12' rx='2' fill='black'/></svg>"); }
+.icon-theme { --icon: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.5'><circle cx='12' cy='12' r='8'/><path d='M12 4a8 8 0 0 1 0 16z' fill='black' stroke='none'/></svg>"); }
+.icon-quit { --icon: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round'><path d='M12 3.3v8M7.1 6.5a7 7 0 1 0 9.8 0'/></svg>"); }
+.icon-logo { --icon: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.5' stroke-linejoin='round'><path d='M3 5h18v14H3z' stroke-linejoin='miter'/><path d='M3 12h6l3-4 3 6 2-2h4'/></svg>"); }
+.icon-cost-network { --icon: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'><path d='M12 18.5v-4M4 8.5a12 12 0 0 1 16 0M7 12a7 7 0 0 1 10 0M10 15a3 3 0 0 1 4 0'/></svg>"); }
+.icon-cost-compute { --icon: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'><path d='M4 4.5h16v11H4zM9 19.5h6M12 15.5v4'/></svg>"); }
+.icon-cost-disk { --icon: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'><path d='M4 12a8 8 0 1 1 16 0 8 8 0 0 1-16 0zM12 12h.01'/></svg>"); }
+
 /* ---------------------------------------------------------------- topbar */
 
 /* Pinned (a user asked): the screens stay one click away wherever the page is scrolled. Its line
@@ -271,9 +296,9 @@ a { color: var(--accent); }
    round letter does (index.html). The icon's margin inside its box widened the left: the right
    takes as much. */
 .topbar-tools .quit-btn { padding: 0 8px 0 6px; }
-.topbar-tools .quit-btn span { text-box-trim: trim-both; text-box-edge: cap alphabetic; }
+.topbar-tools .quit-btn > [data-i18n] { text-box-trim: trim-both; text-box-edge: cap alphabetic; }
 .tool-btn { width: 28px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
-.tool-btn svg { width: 14px; height: 14px; }
+.tool-btn .icon { width: 14px; height: 14px; }
 
 /* ------------------------------------------------------------------ main */
 
@@ -445,7 +470,7 @@ input[aria-invalid="true"] { border-color: var(--fail); }
   background: var(--bg);
 }
 .cost h3 { display: flex; align-items: center; gap: 6px; }
-.cost h3 svg { width: 16px; height: 16px; color: var(--accent); }
+.cost h3 .icon { color: var(--accent); }
 .cost .sub { color: var(--fg-3); font-weight: 400; font-size: var(--fs-2); }
 .kv { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin: 0; }
 .kv dt { color: var(--fg-2); font-size: var(--fs-2); }
@@ -672,11 +697,10 @@ input[aria-invalid="true"] { border-color: var(--fail); }
   color: var(--fg-2); cursor: pointer;
 }
 .cloud-stop .spinner { position: absolute; inset: 1px; width: auto; height: auto; }
-.cloud-stop svg { width: 8px; height: 8px; }
+.cloud-stop .icon { width: 8px; height: 8px; }
 .cloud-stop:hover, .cloud-stop:focus-visible { color: var(--fail); }
 .cloud-show { display: inline-flex; align-items: center; justify-content: center; }
 .clouds-stop-all { display: inline-flex; align-items: center; gap: 6px; } /* its spinner: at work */
-.cloud-show svg { width: 16px; height: 16px; }
 /* A cloud's line clear of its sources' list above it. */
 .cloud-item .zone-main > .cloud-line { margin-top: 4px; }
 /* A cloud's name as wide as its words: it ticks; the rest of its row shows the cloud, its area
@@ -696,15 +720,21 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 /* As wide as its two icons, from the start, while it is read too, and where the window lacks room
    for every column: words in it sized it by what it held, from 131 to 240 px as the Library opened,
    every other column moving (a user, 2026-11-07). */
-.library-table .library-clouds { --w: calc(2 * var(--control-h) + 4px + 26px); width: var(--w); min-width: var(--w); }
-/* every tile's row 2px higher, its badges clear of the row's lines; on the cloud's left, in the
-   cell's wider margin, the cloud and its bin side by side as two icons are (a user, 2026-11-07) */
-.library-table td.library-clouds { padding-block: 6px; padding-left: 18px; }
-.library-clouds > div { display: flex; align-items: center; gap: 4px; }
+/* On a wide window, the room Built by left on the right of its words is the Clouds column's, its
+   icons in its middle, between Built by and the actions (a user, 2026-11-07): Built by as narrow
+   as its words, the Clouds column a share of the table, never narrower than its two icons. */
+.library-table th[data-sort="built"] { width: 1%; }
+.library-table .library-clouds { --w: calc(2 * var(--control-h) + 12px + 26px); width: 10%; min-width: var(--w); text-align: center; }
+/* every tile's row 2px higher, its badges clear of the row's lines, on the cloud's left in the
+   cell's margin; the cloud and its bin as far apart as the row's actions are, as far from Built by's
+   words as from the actions: Built by's cell keeps 8 px on its right, the actions' 4 on their left
+   (a user, 2026-11-07) */
+.library-table td.library-clouds { padding: 6px 15px 6px 11px; }
+.library-clouds > div { display: flex; align-items: center; justify-content: center; gap: 12px; }
 /* Its counts at the cloud's corners, within the row: replaced in the accent, the colour of what is
    replaced in the cloud mode, above; waiting for Apply in the warning's, below. */
 .library-clouds .clouds-open { position: relative; }
-.library-clouds .clouds-open > svg { width: 18px; height: 18px; }
+.library-clouds .clouds-open > .icon { width: 18px; height: 18px; }
 .clouds-badge {
   position: absolute; left: -11px; min-width: 13px; height: 13px; padding: 0 3px; border-radius: 7px;
   font-size: 9.5px; font-weight: 600; line-height: 13px; text-align: center; pointer-events: none;
@@ -816,11 +846,9 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .zone-row .zone-name { flex: 1 1 auto; font-weight: 600; }
 .zone-row select { flex: 1 1 auto; min-width: 0; }
 .btn-icon { width: var(--control-h); padding: 0; flex: none; }
-/* Its drawing the size of the folder's and the bin's, unless a rule of its own sizes it. Every icon
-   even, as the inside of its box is (28 px), and drawn in the middle of its 24 square: its middle
-   on a whole pixel. At 15 px it stood 7.5 px in, and the box's edge and the icon, each rounded to
-   the screen's pixels on its own, put it a pixel or two off its middle (a user, 2026-11-07). */
-.btn-icon > :where(svg) { width: 16px; height: 16px; display: block; margin: auto; }
+/* Its drawing 16 px, even as the inside of its box is (28 px): at 15 px it stood 7.5 px in, off a
+   whole pixel (a user, 2026-11-07). */
+.btn-icon > .icon { margin: auto; }
 .zone-notes { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 10px; font-size: var(--fs-3); color: var(--fg-2); }
 .zone-size { font-weight: 600; color: var(--fg); }
 .zone-hint { color: var(--fg-3); }
@@ -1258,7 +1286,7 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .status-item .pill { height: 16px; }
 /* the folder's button (app.js renderStatus), as tall as the bar's pills so the bar keeps its height */
 .status-home .status-reveal { min-height: 18px; height: 18px; width: 22px; color: var(--fg-2); }
-.status-home .status-reveal svg { width: 12px; height: 12px; }
+.status-home .status-reveal .icon { width: 12px; height: 12px; }
 /* the window's zoom (zoom.js bindZoom), as tall as the folder's button so the bar keeps its height */
 .status-zoom { gap: 2px; }
 .status-zoom .btn { min-height: 18px; height: 18px; padding: 0 6px; }
@@ -1495,7 +1523,7 @@ th[aria-sort="descending"] .th-sort::after { content: " \25BC"; font-size: 0.8em
 /* ----------------------------------------------------------- quit, file manager */
 
 .quit-btn { display: inline-flex; align-items: center; gap: 4px; margin-left: 4px; }
-.quit-btn svg { width: 14px; height: 14px; }
+.quit-btn .icon { width: 14px; height: 14px; }
 .library-action .reveal-btn { display: inline-flex; align-items: center; justify-content: center; }
 .stopped { position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center; background: color-mix(in srgb, var(--bg) 92%, transparent); }
 .stopped-card { max-width: 440px; padding: 24px 28px; border: 1px solid var(--line-2); border-radius: var(--radius); background: var(--bg-2); text-align: center; }

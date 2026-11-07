@@ -2837,7 +2837,7 @@ function renderStatus() {
   const shown = dataFolderShown(s);
   if (shown) {
     const label = revealLabel(s.platform);
-    place.append(h("button", { type: "button", class: "btn btn-icon reveal-btn status-reveal", title: label, "aria-label": label, onclick: () => revealPath(shown) }, icon("tpl-folder-icon")));
+    place.append(h("button", { type: "button", class: "btn btn-icon reveal-btn status-reveal", title: label, "aria-label": label, onclick: () => revealPath(shown) }, icon("folder")));
   }
 }
 
@@ -4162,20 +4162,8 @@ function renderBuildActions() {
   setText(queue, queue.hidden ? "" : t("step4.queue_note"));
 }
 
-const COST_ICON_PATHS = {
-  network: "M12 18.5v-4M4 8.5a12 12 0 0 1 16 0M7 12a7 7 0 0 1 10 0M10 15a3 3 0 0 1 4 0",
-  compute: "M4 4.5h16v11H4zM9 19.5h6M12 15.5v4",
-  disk: "M4 12a8 8 0 1 1 16 0 8 8 0 0 1-16 0zM12 12h.01",
-};
-
-/** Inline SVG icon (static markup, no user data). */
-function strokeIcon(d) {
-  const markup = `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="${d}"/></svg>`;
-  return document.createRange().createContextualFragment(markup).firstElementChild;
-}
-
 function costIcon(kind) {
-  return strokeIcon(COST_ICON_PATHS[kind]);
+  return icon(`cost-${kind}`);
 }
 
 function kv(rows) {
@@ -6083,9 +6071,9 @@ function builtBlock(e) {
  * few seconds while a build installs its tiles. */
 const libraryOpen = new Set();
 
-/** One of the page's icons, the templates in index.html (`tpl-folder-icon`, `tpl-cloud-icon`...). */
-export function icon(id) {
-  return $(id).content.firstElementChild.cloneNode(true);
+/** One of the page's icons, drawn by styles.css (`.icon-folder`, `.icon-cloud`...). */
+export function icon(name) {
+  return h("span", { class: `icon icon-${name}`, "aria-hidden": "true" });
 }
 
 export function libraryRow(e, showFolder = false) {
@@ -6145,7 +6133,7 @@ export function libraryRow(e, showFolder = false) {
   const overlayMark = overlayPill(e, busy || inBuild);
   const label = revealLabel(state.status?.platform);
   const revealButton = present && e.path
-    ? h("button", { type: "button", class: "btn btn-icon reveal-btn", title: label, "aria-label": `${label}: ${e.tile}`, onclick: () => revealPath(e.path) }, icon("tpl-folder-icon"))
+    ? h("button", { type: "button", class: "btn btn-icon reveal-btn", title: label, "aria-label": `${label}: ${e.tile}`, onclick: () => revealPath(e.path) }, icon("folder"))
     : null;
   // What the tile was built with, one click away and only for a tile OrthoStudio XP built: an
   // imported one's settings are Ortho4XP's, which nothing here can read.
@@ -6202,9 +6190,9 @@ function cloudsCell(e) {
   const badge = (n, kind) => (n > 0 ? h("span", { class: `clouds-badge is-${kind}`, "aria-hidden": "true" }, fmtInt(n)) : null);
   return h("td", { class: "library-clouds" }, h("div", null,
     h("button", { type: "button", class: "btn btn-icon clouds-open", title: [said, t("library.clouds_help")].filter(Boolean).join("\n"), "aria-label": [`${t("library.clouds_open")} ${e.tile}`, said].filter(Boolean).join(": "), onclick: () => cloudMode?.open(e.tile) },
-      icon("tpl-cloud-icon"), badge(cell.replaced, "replaced"), badge(cell.to_apply, "waiting")),
+      icon("cloud"), badge(cell.replaced, "replaced"), badge(cell.to_apply, "waiting")),
     // its clouds forgotten from here, the question asked here
-    cell.forget ? h("button", { type: "button", class: "btn btn-icon btn-danger btn-trash", title: t("library.clouds_forget_help"), "aria-label": `${t("library.clouds_forget")}: ${e.tile}`, onclick: () => forgetLibraryClouds(e) }, icon("tpl-bin-icon")) : null));
+    cell.forget ? h("button", { type: "button", class: "btn btn-icon btn-danger btn-trash", title: t("library.clouds_forget_help"), "aria-label": `${t("library.clouds_forget")}: ${e.tile}`, onclick: () => forgetLibraryClouds(e) }, icon("bin")) : null));
 }
 
 /** The names of the overlay packs of other tools, as a user knows them. */

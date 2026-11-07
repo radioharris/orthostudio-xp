@@ -711,11 +711,11 @@ export function createCloudMode(ctx) {
     // around the square, came one after the other (a user, 2026-11-07)
     const busy = c.working || cs.pending.has(`cloud-${c.id}`)
       ? h("button", { type: "button", class: "cloud-stop", dataset: key(`stop-${c.id}`), title: t("clouds.stop"), "aria-label": `${t("clouds.stop")}: ${label}`, onclick: () => { const now = cloudNow(c.id)?.task; if (now) stopTask(now.id, `cloud-${c.id}`); } },
-        h("span", { class: "spinner", "aria-hidden": "true" }), icon("tpl-stop-icon"))
+        h("span", { class: "spinner", "aria-hidden": "true" }), icon("stop"))
       : null;
     const trash = can.has("remove")
       ? h("button", { type: "button", class: "btn btn-icon btn-danger btn-trash", "aria-label": `${t("clouds.remove")}: ${label}`, title: t("clouds.remove"), onclick: () => send("DELETE", `/outlines/${c.id}`, undefined, `cloud-${c.id}`) },
-        icon("tpl-bin-icon"))
+        icon("bin"))
       : null;
     const line = c.line && !task
       ? h("span", { class: `zone-hint cloud-line${c.line.tone === "warn" ? " zone-hint-warn" : ""}` }, lineWords(c.line, n))
@@ -737,7 +737,7 @@ export function createCloudMode(ctx) {
           h("label", { class: "cloud-name" }, box, " ", label),
           busy,
           h("span", { class: "zone-hint num" }, areaWords(c.ha)),
-          h("button", { type: "button", class: "btn btn-icon cloud-show", dataset: key(`show-${c.id}`), title: t("clouds.show"), "aria-label": `${t("clouds.show")}: ${label}`, onclick: show }, icon("tpl-eye-icon")),
+          h("button", { type: "button", class: "btn btn-icon cloud-show", dataset: key(`show-${c.id}`), title: t("clouds.show"), "aria-label": `${t("clouds.show")}: ${label}`, onclick: show }, icon("eye")),
           trash),
         h("div", { class: "zone-row" }, menu),
         line,
