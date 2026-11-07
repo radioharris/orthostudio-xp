@@ -23,6 +23,10 @@ import { codeText, fmtNum, t } from "./i18n.js";
 /** How often a tile is read again while something of it runs, in ms: a cloud's images in half a
  * second are shown half a second after. */
 const POLL_MS = 500;
+/** How often, for the first seconds after a click (``SOON_FOR_MS``): a tick's images were made
+ * 0.3 s after it and shown 0.5 s later, at the next reading (a user's tile, 2026-11-07). */
+const SOON_MS = 200;
+const SOON_FOR_MS = 3000;
 /** The closest Show brings the map. */
 const SHOW_ZOOM = 15;
 /** A cloud smaller than this on the screen, in px, gets a pin: it could not be seen. */
@@ -138,6 +142,8 @@ export function createCloudMode(ctx) {
     /** What was clicked and waits for the engine's answer, by its key (``cloud-<id>`` for a
      * cloud's, a button's own key), how many times (:func:`waiting`). */
     pending: new Map(),
+    /** Until when the tile is read again every ``SOON_MS`` (the last click and a few seconds). */
+    soonUntil: 0,
   };
   const labels = new Map(); // a cloud's number's place, by its outline
 
@@ -208,7 +214,7 @@ export function createCloudMode(ctx) {
       if (cs.answer) toast(cs.error, "fail");
     }
     render();
-    if (cs.answer?.busy) cs.poll = setTimeout(refresh, POLL_MS);
+    if (cs.answer?.busy) cs.poll = setTimeout(refresh, performance.now() < cs.soonUntil ? SOON_MS : POLL_MS);
   }
 
   /** An action sent to the engine, the tile read again after it. The engine refuses what runs
@@ -244,6 +250,7 @@ export function createCloudMode(ctx) {
    * title and another in the cloud's row could not be told apart, a user, 2026-11-07). */
   async function waiting(at, work) {
     cs.pending.set(at, (cs.pending.get(at) || 0) + 1);
+    cs.soonUntil = performance.now() + SOON_FOR_MS;
     // the request sent first, the spinner drawn after: shown on the same frame, the panel of
     // 200 clouds drawn first held a tick 0.12 to 0.16 s before it left (a user, 2026-11-07)
     const job = work();

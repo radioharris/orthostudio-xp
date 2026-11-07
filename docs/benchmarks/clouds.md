@@ -175,3 +175,18 @@ the largest of the three channels) in the clouds' boxes; outside them both are e
 | Four small new clouds beside applied ones | 4 | 4 / 0 | 0.69 / 0.23 | 7 / 5 |
 
 Closer now where clouds are kept: they show as laid, rather than by their previews.
+
+## B12. From a click to the cloud done on screen (Mac, 2026-11-07)
+
+The copy of -02-050 (200 clouds), a window of the app's kind (WebKit), small clouds ticked one at a
+time whose images are made in about 0.3 s; the page's times against the engine's (when the cloud's
+task ended), eight clicks each way, back to back:
+
+| The tile read again after a click | From the click to the cloud done | After the engine ended |
+|---|---|---|
+| Every 0.5 s | 0.84 to 1.16 s | 0.32 to 0.65 s |
+| Every 0.2 s for 3 s, then 0.5 s | 0.56 to 0.79 s | 0.11 to 0.32 s |
+
+Each reading takes the engine about 0.05 s on that tile. The first tick right after the mode opens
+waits for the tile's picture begun as it opened (1.8 s there), then its images.
+
