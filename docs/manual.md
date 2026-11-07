@@ -57,9 +57,9 @@ the same photo as the tile, which would bring the cloud back, or with no picture
   the cloud to show its new images.
 - **Tick all** and **Untick all**, above the list, tick or untick every cloud at once. Whatever
   you click, a spinner turns on it, in the cloud's line or in the button, until the app has
-  answered; for a cloud, the same spinner goes on while its images are fetched. While
-  clouds' images are being fetched, **Stop all (3)** beside them, with the number of clouds at
-  work, stops every one at once.
+  answered; for a cloud, the same spinner goes on until its images are made, and a click on it
+  stops them. While two clouds' images or more are being fetched, **Stop all (3)** beside them,
+  with the number of clouds at work, stops every one at once.
 - A spinner says that a cloud's images are being fetched, beside its name, and on the map a label
   at its centre, "Cloud 5: downloading the images"; a click on the spinner beside its name stops
   it. When several clouds work at once (Tick all), only **Stop all (n)** turns, with how many are

@@ -8987,7 +8987,13 @@ def test_a_click_spins_on_what_was_clicked_alone() -> None:
         call.count(",") >= 3 for call in re.findall(r"send\(\"[A-Z]+\"[^)]*\)", code)
     )
     row = code[code.index("  function row(c) {") :]
-    assert "cs.pending.has(`cloud-${c.id}`)" in row[: row.index("\n  }\n")]
+    row = row[: row.index("\n  }\n")]
+    # the very same spinner from the click to the end of its task: one element, its attributes
+    # the same (two spinners came one after the other, a user, 2026-11-07)
+    assert "const busy = c.working || cs.pending.has(`cloud-${c.id}`)" in row
+    assert (
+        row.count('class: "cloud-stop"') == 1 and "disabled" not in row.split("const busy")[1][:400]
+    )
     for button in (
         "tick-all",
         "untick-all",
