@@ -370,8 +370,10 @@ for After as X-Plane shows it, but those Apply makes again, read as built (R4).
 
 A cloud keeps its id and its number for ever; neither is given again on the tile. A search merges
 into the list: a found cloud over one that is held or ticked is that one (it keeps its tick, its
-source, its outline); found clouds over each other are one; an unticked found cloud the new search
-no longer finds leaves. An outline takes the place of the unticked found clouds it covers, half of
+source, its outline); found clouds over each other are one, an unticked one found again taking the
+new outline and the new judging of its sources, its images and the source chosen on the old one
+gone (a choice made on an old search's fits stayed: Esri cloudy at 27 % over Esri clear at 86 %);
+an unticked found cloud the new search no longer finds leaves. An outline takes the place of the unticked found clouds it covers, half of
 one or more inside it (`cloudlist._covers`). A cloud leaves the list only when the tile does not
 hold it (`remove`, 1.5).
 

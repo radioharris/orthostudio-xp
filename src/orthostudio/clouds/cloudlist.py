@@ -293,8 +293,11 @@ def merge_search(
 ) -> None:
     """A search's clouds into the list (R3): what X-Plane shows replaced, an outline and a
     ticked cloud stay as they are, a new cloud over one of them is that one; every other cloud
-    found before and found again keeps its id and number and takes the new outline; one not found
-    again leaves; a new one is added. ``search``: what the search was, kept with the list."""
+    found before and found again keeps its id and number and takes the new outline and the new
+    search's judging of its sources, the images got and the source chosen on the old one gone
+    (a source chosen on an old search's fits stayed: Esri cloudy at 27 % over Esri clear at 86 %,
+    a user, 2026-11-07); one not found again leaves; a new one is added. ``search``: what the
+    search was, kept with the list."""
     if search is not None:
         cl.search = dict(search)
     holds = held_by_id(shown)
@@ -308,7 +311,11 @@ def merge_search(
         if old is not None:
             loose.remove(old)
             old.update(
-                rings=f["rings"], ha=rings_ha(f["rings"]), screening=f["screening"], checks={}
+                rings=f["rings"],
+                ha=rings_ha(f["rings"]),
+                screening=f["screening"],
+                checks={},
+                chosen=None,
             )
             kept.append(old)
         else:

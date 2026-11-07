@@ -240,3 +240,18 @@ def test_an_outline_is_rings_of_places_around_ground_on_the_tile() -> None:
     away = [10.1, 5.1, 10.1, 5.2, 10.2, 5.2, 10.1, 5.1]
     assert cls.outline_problem([away], TILE) == "an outline is drawn on the tile"
     assert cls.outline_problem([[43.1, 5.1, 43.1, 5.1, 43.1, 5.1]], TILE) is not None
+
+
+def test_an_unticked_cloud_found_again_takes_the_new_judging_its_old_choice_gone() -> None:
+    # a source chosen on an old search's fits stayed: Esri cloudy at 27 % over Esri clear at 86 %
+    # (a user, 2026-11-07); a ticked one keeps its choice
+    with cls.update(TILE) as cl:
+        cls.merge_search(cl, [_found(A), _found(B)], None)
+        a, b = cl.clouds
+        cls.pick(cl, a["id"], "choose", "Arc")
+        cls.pick(cl, a["id"], "untick")
+        cls.pick(cl, b["id"], "choose", "Arc")  # ticked
+    with cls.update(TILE) as cl:
+        cls.merge_search(cl, [_found(A), _found(B)], None)
+        assert cl.get(a["id"])["chosen"] is None and cl.get(a["id"])["checks"] == {}
+        assert cl.get(b["id"])["chosen"] == "Arc" and cl.get(b["id"])["tick"] is True
