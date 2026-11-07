@@ -530,6 +530,12 @@ export function createCloudMode(ctx) {
         h("span", { role: "status" }, `${t(`clouds.task.${task.kind}`)} ${taskWords(task)}`),
         task.actions.includes("stop") ? h("button", { type: "button", class: "btn", dataset: key(`stop-${task.id}`), onclick: () => stopTask(task.id) }, t("clouds.stop")) : null));
     }
+    // the picture of the view shown being made (the engine's word): a tick answered at once and
+    // its picture came a second later, without a sign (a user, 2026-11-07)
+    if (a.views?.[cs.view] === "clouds.drawing") {
+      kids.push(h("div", { class: "clouds-progress", dataset: key("drawing") },
+        h("span", { class: "spinner", "aria-hidden": "true" }), h("span", { role: "status" }, t("clouds.drawing"))));
+    }
     if (a.failed) {  // the tile's last task that failed, until its next one: the engine's words for it
       const e = a.failed.error || {};
       const [message, remedy] = codeText(e.code, e.context) || [e.message || "", e.remedy || ""];
