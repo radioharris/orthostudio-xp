@@ -28,10 +28,12 @@ number (B1, B2...).
 
 ### 1.2 The Library
 
-A column **Clouds**: a cloud button, which opens the cloud mode on the tile, and in a few words
-what the tile holds, "3 replaced", or else what waits, "2 to apply"; its tooltip says both; and,
-while the tile has clouds, a bin that forgets them (Forget, asked on the spot, 1.4). One line at the
-smallest window, the tile's name whole. The engine says which rows have it
+A column **Clouds**: a cloud button, which opens the cloud mode on the tile, its counts as badges
+at its left corners, what the tile holds replaced above (the accent), what waits for Apply below (the
+warning's colour), said in words in its tooltip ("3 replaced · 2 to apply"); and, while the tile
+has clouds, a bin that forgets them (Forget, asked on the spot, 1.4). One line at the smallest
+window, the tile's name whole; one width, its two icons', from the start, while it is read too:
+its words in the cell sized it by what it held, and every column moved as the Library opened. The engine says which rows have it
 (`GET /api/clouds`): a tile OrthoStudio XP built, on the row of its own folder, there. Until the
 column is first read, its heading turns (1.6 s on a user's Library, its buttons came out of
 nowhere); read again, the cells read before stay meanwhile.

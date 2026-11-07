@@ -17,11 +17,13 @@ in every build after. What the map shows is what X-Plane shows.
 ### 1. Open the tile's clouds
 
 In the **Library**, on the line of a tile built by OrthoStudio XP, press the cloud in its **Clouds**
-column (just after the app starts, a spinner turns in the column's heading while it is read). The Plan's map comes over the tile, drawn as X-Plane draws it, from the tile's own files:
+column (just after the app starts, a spinner turns in the column's heading while it is read). Its
+badges count the tile's clouds: replaced, in blue above, and waiting for **Apply**, in yellow
+below; its tooltip says them in words. The Plan's map comes over the tile, drawn as X-Plane draws it, from the tile's own files:
 nothing is downloaded. Any tile built by OrthoStudio XP can have its clouds replaced, whatever
 version built it.
 
-![The Library: the tile +24-102 with its cloud button, the bin and "3 replaced" in its Clouds column](images/manual/clouds-library.png)
+![The Library: the tile +24-102 with its cloud button, its badge "3" for the replaced clouds, and the bin in its Clouds column](images/manual/clouds-library.png)
 
 ### 2. Look for the clouds
 

@@ -5917,6 +5917,7 @@ OWN_SIZES = {
     ".map-notice",
     ".map-legend",
     ".plan-step-num",
+    ".clouds-badge",  # a number in a mark of its own size, as a step's
     ".map-tip",
     ".statusbar",
     ".find-input",
