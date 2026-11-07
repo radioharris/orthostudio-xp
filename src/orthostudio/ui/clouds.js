@@ -240,9 +240,12 @@ export function createCloudMode(ctx) {
    * source already got nothing at all, a user, 2026-11-07). */
   async function waiting(work) {
     cs.sending += 1;
+    // the request sent first, the spinner drawn after: shown on the same frame, the panel of
+    // 200 clouds drawn first held a tick 0.12 to 0.16 s before it left (a user, 2026-11-07)
+    const job = work();
     render();
     try {
-      return await work();
+      return await job;
     } finally {
       cs.sending -= 1;
       render();
