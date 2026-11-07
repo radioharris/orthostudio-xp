@@ -124,7 +124,7 @@ colours of the tile or of a zone near the cloud, or let its source send new imag
 under the cloud is another one. The build then puts the photo back there, as photographed, and
 the cloud's line says why. It stays ticked: get its images again on the new photo, and one
 **Apply** replaces it again. Go back to the first settings, and the next build lays it again by
-itself.
+itself. The Plan, and the question of **Build again** in the Library, say it before such a build.
 
 **Restore the original photos** asks, then puts every texture back as built, in a few seconds,
 and unticks the clouds; your list stays, to tick them again later. Deleting a tile keeps its list

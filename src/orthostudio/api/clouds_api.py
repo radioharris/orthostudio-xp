@@ -8,7 +8,8 @@ its picture, every cloud's row, what Apply would change, its tasks); ``POST .../
 ``POST .../outlines`` and ``DELETE .../outlines/{id}`` a cloud outlined by hand;
 ``POST .../discard``; ``POST .../apply`` (``restore`` to bring back every cloud, ``forget`` then
 to erase the tile's list too), a task;
-``GET .../files/{name}`` the picture and the previews; ``POST /api/clouds/tasks/{id}/stop`` and
+``GET .../files/{name}`` the picture and the previews; ``GET .../tasks`` what runs of the tile and
+its last failure; ``POST /api/clouds/tasks/{id}/stop`` and
 ``POST .../stop``, every task of the tile Stop ends.
 A task is named by the action that starts it: ``find``, ``check``, ``outline``, ``apply``,
 ``restore``, ``forget``.
@@ -721,6 +722,19 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
                 context={"tile": tile.name, "cloud": file, "reason": "no such file"},
             )
         return FileResponse(path, headers={"Cache-Control": "max-age=31536000, immutable"})
+
+    @router.get("/api/clouds/{name}/tasks")
+    def tile_tasks(name: str) -> dict[str, Any]:
+        """Whether something of the tile is under way (``Tasks.busy``) and its last failure: what
+        the Library's bin waits on, Forget's end. Nothing of the tile is read or drawn: waiting on
+        the mode's answer drew the tile's picture of a mode never opened (a campaign,
+        2026-11-07)."""
+        tile = _tile_of(name)
+        failed = engine.tasks.failed(tile.name)
+        return {
+            "busy": engine.tasks.busy(tile.name),
+            "failed": failed.view() if failed else None,
+        }
 
     @router.post("/api/clouds/tasks/{task_id}/stop")
     def stop(task_id: str) -> dict[str, Any]:
