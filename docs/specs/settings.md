@@ -343,10 +343,11 @@ its default, not the current profile's: that version built as its default does. 
 cannot read is left at its default and named, as in `config.toml` (section 5).
 
 **Names**: 1 to `MAX_NAME` (40) characters once trimmed, no control character, unique whatever the
-case (`check_name`); at most `MAX_PROFILES` (50).
+case (`check_name`); as many profiles as wanted: a limit of 50 said the name rule's words (a
+review, 2026-11-07).
 
 **Errors** (API answers outside the registry, as `SYS_BUSY`; context `{name}`): `CFG_PROFILE_NAME`
-(422, a name refused, or 50 profiles already), `CFG_PROFILE_TAKEN` (409), `CFG_PROFILE_UNKNOWN`
+(422, a name refused), `CFG_PROFILE_TAKEN` (409), `CFG_PROFILE_UNKNOWN`
 (404, renamed or deleted in another window), `CFG_PROFILE_LAST` (409), `CFG_PROFILE_CHANGED` (409, a
 Save naming a profile that is no longer the current one; `{name}` is the current one).
 

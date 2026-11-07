@@ -39,7 +39,7 @@ from orthostudio.clouds.find import check, find, preview, screen
 from orthostudio.clouds.layer import RULE
 from orthostudio.clouds.laying import folder_lock, show
 from orthostudio.clouds.model import detector_bytes, detector_ready, ensure_detector
-from orthostudio.clouds.opencv import ensure_opencv, opencv_ready
+from orthostudio.clouds.opencv import opencv_ready
 from orthostudio.clouds.picture import Picture, draw, fine_level, frame_bounds, map_level
 from orthostudio.clouds.sources import SourcePieces, other_sources
 from orthostudio.clouds.tasks import Task, Tasks, error_view
@@ -330,7 +330,7 @@ def _detector_said(body: Mapping[str, Any] | None, then: Mapping[str, Any] | Non
     said to download it (``download``): the page asks, then sends with ``download`` what the
     engine says (``then``: the body of ``POST .../check``, the images after a tick kept), else
     the same action again."""
-    if (detector_ready() and opencv_ready()) or (body or {}).get("download"):
+    if detector_ready() or (body or {}).get("download"):
         return
     # what is downloaded, OpenCV in it: added twice, an installed app said 151 MB for 108 (a
     # review, 2026-11-07)
@@ -354,8 +354,9 @@ def _body_of(tile: TileRef, body: Mapping[str, Any] | None, actions: Collection[
 
 
 def _tools(task: Task) -> None:
-    """The detector and OpenCV, downloaded once, before a task runs them."""
-    ensure_opencv(progress=lambda d, t: task.say("tool", d, t))
+    """The detector, OpenCV in it, downloaded once before a task runs it, its progress one bar
+    for the whole: OpenCV fetched first on a bar of its own showed two downloads (a review,
+    2026-11-07)."""
     ensure_detector(progress=lambda d, t: task.say("tool", d, t))
 
 

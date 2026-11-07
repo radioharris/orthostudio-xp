@@ -150,6 +150,9 @@ def test_rename_delete_and_the_last_profile() -> None:
         rename(kept, "alpes", "MAIN")
     left, s, _ = delete(kept, "Main", _settings(essential__zoom_level=18))
     assert s is None and left.names == ["alpes"] and left.current == "alpes"
+    # one alone is no choice: none is named, as the page shows none (Works named "Main" after the
+    # others were deleted, a review, 2026-11-07)
+    assert kept.named == "alpes" and left.named is None
     # the current one deleted: the first of the others becomes current, its settings with it
     left, s, _ = delete(kept, "alpes", _settings(essential__zoom_level=18))
     assert left.current == "Main" and s is not None and s.essential.zoom_level == 16
@@ -336,6 +339,13 @@ async def test_a_build_says_its_profile_and_works_keeps_it(  # type: ignore[no-u
         assert {j["id"]: j["profile"] for j in (await c.get("/api/jobs")).json()}[
             job["id"]
         ] == "Alpes"
+        # down to one profile: a build names none, as the page shows none
+        r = await c.post("/api/profiles/delete", json={"name": "Main"})
+        assert r.status_code == 200, r.text
+        r = await c.post("/api/jobs", json={**plan, "queue": True})
+        assert r.status_code == 201, r.text
+        job = (await c.get(f"/api/jobs/{r.json()['job_id']}")).json()
+        assert job["profile"] is None and "profile" not in job["request"]
 
 
 @pytest.mark.anyio
