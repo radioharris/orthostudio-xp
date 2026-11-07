@@ -77,7 +77,8 @@ The Plan's map, brought over the tile; the Plan's steps make way for the cloud p
   run). A reading of the tile answered after a later one is left: the page shows the latest.
 - **A row**, laid out as the Plan's zones (a click on it shows its cloud, as its eye does; its
   checkbox and its name tick it; a tick, a source chosen, Get its images or Stop make it the current
-  cloud, and a source chosen shows it too, the map over its new images): its tick and name, while a
+  cloud, and a tick or a source chosen shows it too, the map over what is ticked and its new
+  images; Tick all moves nothing): its tick and name, while a
   task of it runs and it is the one cloud at work a spinner beside its name around a square that
   stops it (`label`), its area, an eye (**Show**: the map over it), a trash
   for an outline the tile does not hold; the menu of its sources, each with what it has there and
