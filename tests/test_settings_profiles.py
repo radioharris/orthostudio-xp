@@ -213,7 +213,8 @@ async def test_a_user_keeps_two_profiles_and_goes_from_one_to_the_other(
     saves the other's settings, the computer's own kept; Save goes into the current one."""
     async with client_for(app) as c:
         assert (await c.get("/api/profiles")).json() == {
-            "current": None, "profiles": [], "computer": list(COMPUTER_SETTINGS)}  # fmt: skip
+            "current": None, "named": None, "profiles": [],
+            "computer": list(COMPUTER_SETTINGS)}  # fmt: skip
         s = (await c.get("/api/settings")).json()
         s["essential"]["xplane_dir"] = str(xplane)
         s["expert"]["osm_library_token"] = TOKEN
@@ -227,6 +228,7 @@ async def test_a_user_keeps_two_profiles_and_goes_from_one_to_the_other(
         assert r.status_code == 201, r.text
         got = r.json()
         assert got["current"] == "Alpes" and got["profiles"] == ["Principal", "Alpes"]
+        assert got["named"] == "Alpes"  # from the second profile on, the one to name
         assert got["settings"]["essential"]["zoom_level"] == 18
         assert load_settings(home / "config.toml").essential.zoom_level == 18
         assert TOKEN not in (home / "profiles.json").read_text(encoding="utf-8")

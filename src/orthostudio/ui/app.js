@@ -635,9 +635,14 @@ function mockProfileError(status, code, name, message) {
 }
 
 /** `/api/profiles` and its four actions, as the engine answers them. */
+/** The profile to name, as the engine's `Profiles.named`: from the second one on. */
+function mockNamed() {
+  return mock.profiles?.list.length > 1 ? mock.profiles.current : null;
+}
+
 async function mockProfilesRoute(p, method, body) {
   const kept = await mockProfiles();
-  const answer = (settings) => ({ ...(settings ? { settings: structuredClone(settings) } : {}), current: kept.current, profiles: kept.list.map((x) => x.name), computer: [...COMPUTER_SETTINGS] });
+  const answer = (settings) => ({ ...(settings ? { settings: structuredClone(settings) } : {}), current: kept.current, named: mockNamed(), profiles: kept.list.map((x) => x.name), computer: [...COMPUTER_SETTINGS] });
   const saved = await mockFile("settings");
   const at = (name) => kept.list.findIndex((x) => x.name.toLowerCase() === String(name || "").trim().toLowerCase());
   const named = (name, others) => {
@@ -1156,8 +1161,8 @@ async function mockStartJob(body, reuse = new Set(), queued = false) {
   const provider = body.provider || template.provider;
   const zl = Number(body.zoom_level ?? template.zl);
   const install = Boolean(body.install);
-  // like the engine: the profile current when the build is asked, kept by a build again
-  const profile = body.profile ?? mock.profiles?.current ?? null;
+  // like the engine: the profile to name when the build is asked, kept by a build again
+  const profile = body.profile ?? mockNamed();
   const now = Date.now();
   const doc = {
     id: mockJobId(mock.nextId++),
@@ -2530,7 +2535,7 @@ function routeFromHash() {
 // ------------------------------------------------------------------ status bar
 
 /** The engine API this page needs (orthostudio.api.app.API_LEVEL); a test keeps the two equal. */
-const PAGE_API_LEVEL = 52;
+const PAGE_API_LEVEL = 53;
 
 async function loadStatus() {
   try {
@@ -7380,7 +7385,7 @@ function renderUnsaved() {
 /** The Plan says in a few words what the build will use, and where to change it. */
 function renderPlanSettings() {
   const parts = settingsSummary(state.settings);
-  const profile = profilesShown() ? state.profiles.current : null;
+  const profile = state.profiles?.named || null;
   const list = parts.join(" · ");
   $("plan-settings-summary").textContent = !parts.length ? "" : profile ? t("plan.settings_summary_profile", { name: profile, list }) : t("plan.settings_summary", { list });
   renderPlanXplane();
@@ -7590,9 +7595,9 @@ function profileNames() {
   return Array.isArray(state.profiles?.profiles) ? state.profiles.profiles : [];
 }
 
-/** The lists of profiles show from the second one on. */
+/** The lists of profiles show while the engine names one, from the second on (`named`). */
 function profilesShown() {
-  return profileNames().length > 1;
+  return Boolean(state.profiles?.named);
 }
 
 async function loadProfiles() {
@@ -7616,7 +7621,7 @@ function profileErrorText(e) {
 /** What a change of the profiles gives back: the list, and the settings saved, which the draft
  * then shows. */
 function profilesAnswered(answer) {
-  state.profiles = { current: answer.current, profiles: answer.profiles, computer: answer.computer };
+  state.profiles = { current: answer.current, named: answer.named, profiles: answer.profiles, computer: answer.computer };
   state.profilesError = null;
   if (answer.settings) {
     state.settings = answer.settings;
@@ -7728,7 +7733,7 @@ function closeProfileEdit() {
 /** Save names the profile it writes into once there are two; Save as a new profile asks for the
  * name in the same bar. */
 function renderSaveButtons() {
-  const name = profilesShown() ? state.profiles?.current : null;
+  const name = state.profiles?.named || null;
   setText($("settings-save"), name ? t("settings.save_in", { name }) : t("settings.save"));
   const open = state.newProfile;
   for (const el of document.querySelectorAll("#settings-form .settings-main")) el.hidden = open;

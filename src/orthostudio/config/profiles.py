@@ -118,9 +118,11 @@ class Profiles:
         return None
 
     def answer(self) -> dict[str, Any]:
-        """What ``GET /api/profiles`` gives: the names, which is current, what they all share."""
+        """What ``GET /api/profiles`` gives: the names, which is current, the one to name
+        (:attr:`named`: the page's lists show then, a build names it), what they all share."""
         return {
             "current": self.current,
+            "named": self.named,
             "profiles": self.names,
             "computer": list(COMPUTER_SETTINGS),
         }
