@@ -15,7 +15,6 @@ import pytest
 from orthostudio.clouds import cloudlist as cls
 from orthostudio.clouds.sources import JUDGED
 from orthostudio.clouds.tile import Stamp, TileClouds, part_path
-from orthostudio.errors import OsxpError
 from orthostudio.graph.digest import digest_bytes
 from orthostudio.model import TileRef
 
@@ -176,16 +175,6 @@ def test_a_broken_list_is_put_aside_at_the_next_write_each_one_kept(home: Path) 
     aside = sorted(p.name for p in path.parent.glob(path.name + ".broken*"))
     assert aside == [path.name + ".broken-1", path.name + ".broken-2"]
     assert path.with_name(path.name + ".broken-1").read_text() == "{not json"
-
-
-def test_a_task_begun_before_the_tile_was_forgotten_writes_nothing(home: Path) -> None:
-    with cls.update(TILE) as cl:
-        cls.merge_search(cl, [_found(A)], None)
-    since = cls.generation(TILE)
-    cls.forget(TILE)
-    with pytest.raises(OsxpError) as got, cls.update(TILE, since=since) as cl:
-        cls.merge_search(cl, [_found(B)], None)
-    assert got.value.code == "SYS_CANCELLED" and not cls.list_path(TILE).exists()
 
 
 def test_the_list_is_written_whole(home: Path) -> None:

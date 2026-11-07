@@ -19,7 +19,7 @@ import contextlib
 import io
 import json
 import threading
-from collections.abc import Callable, Collection, Iterator, Mapping
+from collections.abc import Callable, Collection, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated, Any
@@ -147,18 +147,6 @@ class CloudEngine:
                 del self._pictures[drawn]
             for read in [k for k in self._classes if k[0] == tile.name]:
                 del self._classes[read]
-
-    @contextlib.contextmanager
-    def forgetting(
-        self, tile: TileRef, folder: Path, *, custom_scenery: Path | None
-    ) -> Iterator[bool]:
-        """Around the deletion of ``folder``: when it is the tile's own, its tasks stopped and
-        what is kept of it dropped first, its list and previews once it is deleted
-        (``cloudlist.forgetting``)."""
-        with cls.forgetting(tile, folder, custom_scenery=custom_scenery) as ours:
-            if ours:
-                self.let_go(tile)
-            yield ours
 
 
 def _what(shown: TileClouds, zl: int, remade: frozenset[str] | None) -> str:
@@ -412,7 +400,6 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
         cid = s.cloud["id"]
         code, rings = s.source, s.cloud["rings"]
         assert code is not None  # a cloud is offered images of its source only
-        since = cls.generation(tile)
 
         def run(task: Task) -> None:
             _tools(task)
@@ -436,7 +423,7 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
                 cancel=task.stop,
                 phase=task.say,
             )
-            with cls.update(tile, since=since) as cl:
+            with cls.update(tile) as cl:
                 cls.record_check(cl, cid, code, rings, got)
 
         def then() -> None:
@@ -454,7 +441,6 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
         if asked_fine and not v.fine:
             raise OsxpError("CLOUD_NOT_NOW", context={"tile": tile.name, "action": "fine find"})
         _detector_said(body)  # the search runs it
-        since = cls.generation(tile)
 
         def run(task: Task) -> None:
             _tools(task)
@@ -473,7 +459,7 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
                 {"rings": r, "screening": cls.screening_of(v)}
                 for r, v in zip(rings, verdicts, strict=True)
             ]
-            with cls.update(tile, since=since) as cl:
+            with cls.update(tile) as cl:
                 cls.merge_search(cl, found, shown, {"level": zl, "found": len(found)})
             engine.remember(tile, shown, classes)
 
@@ -486,7 +472,6 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
         action: str,
         source: str | None = None,
         body: Mapping[str, Any] | None = None,
-        since: int | None = None,
         before: state.View | None = None,
     ) -> None:
         """A tick, an untick or a source kept, of the clouds ``ids``, then the images got of
@@ -494,7 +479,7 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
         an outline's sources are tried. Kept whatever is said of the detector: asked for
         (``CLOUD_DETECTOR_ASK``), the page asks, and on yes asks the images (``then``); on no,
         the cloud waits for them. ``before``: the view the click was made on."""
-        with cls.update(tile, since=since) as cl:
+        with cls.update(tile) as cl:
             for cid in ids:
                 cls.pick(cl, cid, action, source)
         get_images(tile, ids, body, before=before)
@@ -535,7 +520,6 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
         _what, p = engine.drawn(tile, shown, map_level(tile, shown.textures))
         with cls.update(tile) as cl:
             cid = cls.add_outline(cl, [ring])["id"]
-        since = cls.generation(tile)
 
         def run(task: Task) -> None:
             try:
@@ -548,17 +532,17 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
                     phase=task.say,
                 )  # fmt: skip
             except BaseException:  # stopped or failed: the list as it was, without it
-                with contextlib.suppress(OsxpError), cls.update(tile, since=since) as cl:
+                with contextlib.suppress(OsxpError), cls.update(tile) as cl:
                     cls.remove_outline(cl, cid)
                 raise
-            with cls.update(tile, since=since) as cl:
+            with cls.update(tile) as cl:
                 cls.record_screening(cl, cid, verdicts, shown)
 
         def then() -> None:
             """Drawing it is asking to replace it: ticked when its state allows it (the detector
             on this computer: the task got it)."""
             if look(tile)[2].allows("tick", cid):
-                pick(tile, [cid], "tick", body={"download": True}, since=since)
+                pick(tile, [cid], "tick", body={"download": True})
 
         engine.tasks.start(tile.name, "outline", run, cloud=cid, then=then)
         return {"id": cid}
@@ -587,7 +571,6 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
         # Restore brings every cloud back as photographed: those ticked when it was asked are
         # unticked once it is done, the draft then empty; one ticked meanwhile stays so
         ticked = [s.cloud["id"] for s in v.clouds if s.cloud["tick"]] if action == "restore" else []
-        since = cls.generation(tile)
 
         def run(task: Task) -> None:
             def said(done: int, total: int) -> None:
@@ -598,11 +581,10 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
                 folder,
                 laid,
                 custom_scenery=hooks.custom_scenery(),
-                since=since,
                 progress=said,
             )
             if ticked:
-                with cls.update(tile, since=since) as cl:
+                with cls.update(tile) as cl:
                     for cid in ticked:
                         if any(c["id"] == cid for c in cl.clouds):
                             cls.pick(cl, cid, "untick")

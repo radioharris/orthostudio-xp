@@ -330,8 +330,8 @@ quitting and every build. Its order is the laying order. Reading it changes noth
 not a list of this format, or whose clouds are not each whole (`cloudlist._cloud_problem`), is read
 as no list, and the next write puts it aside first (`.broken-<n>`, each kept); a passing read error
 is raised, never a draft dropped for it. Deleting the tile, in the app or with `osxp uninstall
---delete`, deletes its list and its previews when the folder deleted is the one its clouds are laid
-in (`cloudlist.forgetting`).
+--delete`, keeps its list and its previews: built again from the atelier, the tile gets its clouds
+back, as all the rest (its cloud tasks are ended first, `CloudEngine.let_go`).
 
 ### 2.5 Frozen parts
 
@@ -446,9 +446,8 @@ no task of it starts (`Tasks.start`, which asks under the very lock it lists the
 what takes it ends those under way first (`Tasks.end`: stopped, Apply and Restore waited for): a job
 at its start (`JobManager.make_way`), a filing before it moves the folder, Delete before the folder
 goes, Quit for every tile. A task that fails keeps its error, which the tile's answer gives
-(`failed`) until its next task, for the page to say it. A task writes only on the list it began on:
-forgetting the tile moves the list's generation on, and a write begun before writes nothing
-(`cloudlist.update(since=)`); a result for a cloud that left the list meanwhile is dropped.
+(`failed`) until its next task, for the page to say it. A result for a cloud that left the list
+meanwhile is dropped.
 
 ## 4. Finding and laying
 

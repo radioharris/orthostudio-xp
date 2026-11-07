@@ -245,19 +245,18 @@ def show(
     clouds: Sequence[Sequence[Mapping[str, Any]]],
     *,
     custom_scenery: Path | None,
-    since: int | None = None,
     progress: Callable[[int, int], None] | None = None,
 ) -> list[Mapping[str, Any]]:
     """Apply and Restore: the tile's folder made to show ``clouds``, each given as the images it
     may show, the wanted first (:func:`lay_folder`), then the list told which it shows
     (``laid``, what a build lays again), when that changed. A write refused leaves the list as it
-    was. ``since``: the list's generation the action began on (``cloudlist.update``). Returns
+    was. Returns
     the clouds laid."""
     with folder_lock(tile):
         laid = lay_folder(tile, folder, clouds, custom_scenery=custom_scenery, progress=progress)
         now = [dict(e) for e in laid]
         if cloudlist.load(tile).laid != now:
-            with cloudlist.update(tile, since=since) as cl:
+            with cloudlist.update(tile) as cl:
                 cl.laid = now
         return laid
 

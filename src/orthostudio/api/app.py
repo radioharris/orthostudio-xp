@@ -2645,13 +2645,15 @@ def create_app(
             cs = None if xp is None else custom_scenery_dir(xp)
             deleting_now.add(entry.tile.name)  # taken from the cloud mode, said first
             try:
-                with clouds.forgetting(entry.tile, entry.path, custom_scenery=cs):  # its clouds
-                    return delete_receipt(
-                        entry.path,
-                        tile=entry.tile,
-                        custom_scenery=cs,
-                        library_path=default_library_path(),
-                    )
+                # its cloud tasks ended first (an Apply ends what it began); its list of clouds
+                # kept: built again from the atelier, the tile gets them back, as all the rest
+                clouds.let_go(entry.tile)
+                return delete_receipt(
+                    entry.path,
+                    tile=entry.tile,
+                    custom_scenery=cs,
+                    library_path=default_library_path(),
+                )
             finally:
                 deleting_now.discard(entry.tile.name)
 

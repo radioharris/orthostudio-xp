@@ -371,7 +371,8 @@ of the tile, from the Plan, the Library, Works or the command line, places its o
 before it says it has finished the tile, lays the clouds again where the texture under each is the
 one it was chosen on; another source or level, new images, other colours there, and the photo stays
 as built, the cloud still ticked for one *Apply* to replace it again, or for a later build on the
-first photo to lay it again by itself. Deleting a tile forgets its clouds. Details:
+first photo to lay it again by itself. Deleting a tile keeps its list of clouds: built again, it
+gets them back. Details:
 `docs/specs/clouds.md`.
 
 A tile filed elsewhere that you build again is built in the workshop, beside the cache, then put

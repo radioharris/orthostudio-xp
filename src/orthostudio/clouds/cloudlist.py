@@ -20,13 +20,11 @@ from __future__ import annotations
 import json
 import math
 import secrets
-import shutil
 import string
 import threading
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any
 
 from shapely.geometry import Polygon
@@ -38,24 +36,19 @@ from orthostudio.clouds.tile import (
     TileClouds,
     entry_problem,
     held_by_id,
-    is_own_folder,
     laid_fields,
     list_path,
-    previews_dir,
     ring_problem,
 )
 from orthostudio.errors import OsxpError
 from orthostudio.fsutil import atomic_write_text
 from orthostudio.model import TileRef
 
-__all__ = ["CloudList", "forgetting", "knowing", "load", "pick", "update"]
+__all__ = ["CloudList", "knowing", "load", "pick", "update"]
 
 FORMAT = "osxp-cloud-list-3"
 _ID = string.ascii_lowercase + string.digits
 _LOCKS: dict[str, threading.Lock] = {}
-_GENERATIONS: dict[str, int] = {}
-"""Each tile's list's generation: forgetting the tile moves it on, and a task's write begun on an
-earlier one is dropped (:func:`update`)."""
 _DEGREE_M = 111_320.0  # a degree of latitude, in metres
 _GUARD = threading.Lock()
 
@@ -118,12 +111,6 @@ def rings_ha(rings: Sequence[Sequence[float]]) -> float:
 def _lock(tile: TileRef) -> threading.Lock:
     with _GUARD:
         return _LOCKS.setdefault(tile.name, threading.Lock())
-
-
-def generation(tile: TileRef) -> int:
-    """The tile's list's generation now (:data:`_GENERATIONS`)."""
-    with _GUARD:
-        return _GENERATIONS.get(tile.name, 0)
 
 
 def load(tile: TileRef) -> CloudList:
@@ -219,33 +206,11 @@ def _adopt(cl: CloudList, shown: TileClouds) -> bool:
     return bool(new)
 
 
-def forget(tile: TileRef) -> None:
-    """The tile's list and its previews gone, with the tile; a task's write begun before dropped."""
-    with _lock(tile):
-        with _GUARD:
-            _GENERATIONS[tile.name] = _GENERATIONS.get(tile.name, 0) + 1
-        list_path(tile).unlink(missing_ok=True)
-        shutil.rmtree(previews_dir(tile), ignore_errors=True)
-
-
 @contextmanager
-def forgetting(tile: TileRef, folder: Path, *, custom_scenery: Path | None) -> Iterator[bool]:
-    """Around the deletion of ``folder``: whether it is the tile's own folder, its clouds' (asked
-    before the Library forgets it), and once it is deleted, those clouds forgotten."""
-    ours = is_own_folder(tile, folder, custom_scenery=custom_scenery)
-    yield ours
-    if ours:
-        forget(tile)
-
-
-@contextmanager
-def update(tile: TileRef, *, since: int | None = None) -> Iterator[CloudList]:
+def update(tile: TileRef) -> Iterator[CloudList]:
     """The tile's list to change, written back on leaving, one writer at a time per tile; a
-    file that is not a list put aside first (``.broken-<n>``, each kept). ``since``: the
-    generation a task began on; the tile forgotten since, nothing is written."""
+    file that is not a list put aside first (``.broken-<n>``, each kept)."""
     with _lock(tile):
-        if since is not None and since != generation(tile):
-            raise OsxpError("SYS_CANCELLED")
         path = list_path(tile)
         if path.exists() and _read(tile) is None:
             taken = [p.name.rpartition("-")[2] for p in path.parent.glob(path.name + ".broken-*")]
