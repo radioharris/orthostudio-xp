@@ -108,7 +108,9 @@ itself.
 
 **Restore the original photos** asks, then puts every texture back as built, in a few seconds,
 and unticks the clouds; your list stays, to tick them again later. Deleting a tile keeps its list
-of clouds: built again, it gets them back, as all the rest.
+of clouds: built again, it gets them back, as all the rest. To start again from nothing, **Forget
+the clouds** beside it puts the original photos back and erases the tile's list of clouds with
+their images.
 
 ## Settings profiles
 

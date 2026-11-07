@@ -74,7 +74,7 @@ The Plan's map, brought over the tile; the Plan's steps make way for the cloud p
   or Apply may run; **Quick search** and **Fine search** (4.1; greyed, saying why, on a tile with
   nothing finer to read, the engine's `fine`), and before any cloud, what each search takes;
   **Restore the original photos**, while the tile holds replaced clouds (greyed while it may not
-  run). A reading of the tile answered after a later one is left: the page shows the latest.
+  run), and **Forget the clouds** beside it while the tile has any. A reading of the tile answered after a later one is left: the page shows the latest.
 - **A row**, laid out as the Plan's zones (a click on it shows its cloud, as its eye does; its
   checkbox and its name tick it; a tick, a source chosen, Get its images or Stop make it the current
   cloud, and a tick or a source chosen shows it too, the map over what is ticked and its new
@@ -107,6 +107,7 @@ The Plan's map, brought over the tile; the Plan's steps make way for the cloud p
 | **Discard changes** | The list back to what the tile holds |
 | **Restore the original photos** | Asks first; every texture back as built, then the clouds ticked when it was asked unticked (one ticked meanwhile stays so) |
 | **Stop** | Ends the task at its next step, the list as it was (Apply has none: it ends in seconds) |
+| **Forget the clouds** | Asks first; Restore, then the tile's list, pictures, previews and the frozen parts of its clouds' images erased (`cloudlist.erase`): the tile as the build made it, a search starting from nothing. Its folder made to show none first, or the mode would find them in it and know them again (2.4) |
 | **Stop all** | While a cloud's task runs: every task of the tile Stop ends, stopped (after Tick all, one by one was two hundred clicks) |
 
 ### 1.5 The states
@@ -288,7 +289,8 @@ place, nothing fails it: a file beside that cannot be let go of now (Windows) go
 laying, as the files a program cut short left, once the program that made them is gone. **Apply**
 gives it what the view asked, each cloud's images in the order they are wanted (`View.asked`, R4),
 so the folder is planned at Apply as it was for its question; **Restore** none, then the clouds
-ticked when it was asked are unticked (`cloudlist.pick`, the one way). Apply is a task of the
+ticked when it was asked are unticked (`cloudlist.pick`, the one way); **Forget** none, then the
+tile's list, pictures and parts erased (`cloudlist.erase`). Apply is a task of the
 engine (R7), a few seconds a texture, which Stop does not cut: it
 ends what it began, and Quit waits for it.
 
@@ -322,7 +324,7 @@ each cloud is follows from it (1.5). It knows every cloud the tile shows replace
 as Apply would have left it: ticked, its source and its images those the tile shows (its check),
 among the clouds last laid, which a build lays again (`cloudlist.knowing`). It is written whole on
 the disk (`fsync`). Only `clouds/cloudlist.py` writes it (`knowing`, `pick`, `merge_search`,
-`add_outline`, `remove_outline`, `record_screening`, `record_check`, `discard`), and
+`add_outline`, `remove_outline`, `record_screening`, `record_check`, `discard`, `erase`), and
 `laying.show` (Apply, Restore) and `knowing` its `laid`; the list's own rules are there: how a search's clouds join it (R3), what
 an outline takes over, what Discard brings back. A cloud's area is its outline's. The list is the
 draft: each change is written as it is made, one writer at a time per tile, and survives closing,

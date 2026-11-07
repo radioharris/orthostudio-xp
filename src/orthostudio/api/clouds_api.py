@@ -567,7 +567,7 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
         wanted, as its question said) or ``restore`` (none)."""
         action, _cid, _source = _body_of(_tile_of(name), body, state.WRITES)
         tile, folder, _shown, v = opened(name, action)
-        laid = [] if action == "restore" else v.asked
+        laid = v.asked if action == "apply" else []
         # Restore brings every cloud back as photographed: those ticked when it was asked are
         # unticked once it is done, the draft then empty; one ticked meanwhile stays so
         ticked = [s.cloud["id"] for s in v.clouds if s.cloud["tick"]] if action == "restore" else []
@@ -588,6 +588,8 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
                     for cid in ticked:
                         if any(c["id"] == cid for c in cl.clouds):
                             cls.pick(cl, cid, "untick")
+            if action == "forget":  # its folder as the build made it: the rest of it forgotten
+                cls.erase(tile)
 
         task = engine.tasks.start(tile.name, action, run)
         return {"task": task.view()}

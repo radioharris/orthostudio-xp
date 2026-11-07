@@ -596,3 +596,47 @@ def test_where_a_picture_lies_is_its_frame_drawn_or_not() -> None:
         blank = np.zeros((h, w), np.uint8)
         p = Picture(np.zeros((h, w, 3), np.uint8), blank, blank, blank, (), zl, x0, y0)
         assert frame_bounds(TILE, zl) == box_bounds(p, (0, 0, w, h))
+
+
+@pytest.mark.anyio
+async def test_forget_restores_the_tile_then_erases_its_clouds(
+    app: Any, ready: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # no way was there to wipe a tile's clouds and start again: Forget is Restore, then its list,
+    # pictures and parts erased (a user, 2026-11-07)
+    from orthostudio.clouds.tile import Stamp, part_path, previews_dir, stamped
+
+    texture = ready / "textures" / f"{NAME}.dds"
+    data = texture.read_bytes()
+    texture.write_bytes(stamped(data[:128], Stamp("a" * 40, "b" * 40)) + data[128:])
+    part = part_path("p" * 64)
+    part.parent.mkdir(parents=True, exist_ok=True)
+    part.write_bytes(b"a part")
+    with cloudlist.update(TILE) as cl:
+        c = cl.add("found", _ring(), screening={"EOX": {"answer": "clear", "fit": 70}}, tick=True)
+        entry = {
+            "id": c["id"],
+            "source": "EOX",
+            "match": [[1, 1, 1], [0, 0, 0]],
+            "rings": _ring(),
+            "parts": {NAME: [12, "p" * 64]},
+            "plain": {NAME: "a" * 40},
+        }
+        c["checks"] = {"EOX": {"answer": "clear", "fit": 70, "entry": entry}}
+    assert cloudlist.load(TILE).clouds  # a whole list
+    previews_dir(TILE).mkdir(parents=True, exist_ok=True)
+    (previews_dir(TILE) / "a.png").write_bytes(b"png")
+    shown: list[Any] = []
+    monkeypatch.setattr(clouds_api, "show", lambda tile, folder, laid, **k: shown.append(laid))
+    async with client_for(app) as c:
+        assert "forget" in (await c.get("/api/clouds/+43+005")).json()["allowed"]
+        r = await c.post("/api/clouds/+43+005/apply", json={"action": "forget"})
+        assert r.status_code == 200, r.text
+        for _ in range(200):
+            if not (await c.get("/api/clouds/+43+005")).json()["busy"]:
+                break
+            await anyio.sleep(0.05)
+    assert shown == [[]]  # Restore's own laying: nothing
+    # the readings after drew the tile's picture again, as any opening does: the old preview went
+    assert not cloudlist.list_path(TILE).exists() and not (previews_dir(TILE) / "a.png").exists()
+    assert not part.exists()

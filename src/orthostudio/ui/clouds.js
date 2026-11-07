@@ -559,9 +559,10 @@ export function createCloudMode(ctx) {
     }
     kids.push(h("div", { class: "actions actions-build", dataset: key("searches") }, ...searchButtons(a, can, first)));
     if (first) kids.push(h("p", { class: "help", dataset: key("search-help") }, t("clouds.search_help")));
-    if (a.texts.restore) {
+    if (a.texts.restore || can.has("forget")) {
       kids.push(h("div", { class: "actions actions-build", dataset: key("restore-row") },
-        h("button", { type: "button", class: "btn", dataset: key("restore"), disabled: !can.has("restore"), onclick: () => apply("restore") }, lineWords(a.texts.restore))));
+        a.texts.restore ? h("button", { type: "button", class: "btn", dataset: key("restore"), disabled: !can.has("restore"), onclick: () => apply("restore") }, lineWords(a.texts.restore)) : null,
+        h("button", { type: "button", class: "btn btn-danger", dataset: key("forget"), disabled: !can.has("forget"), onclick: () => apply("forget") }, lineWords(a.texts.forget))));
     }
     const scroll = el.querySelector(".clouds-list")?.scrollTop || 0;
     morph(el, h("div", null, ...kids));

@@ -69,8 +69,9 @@ LIST_EDITS = DRAFT | {"remove", "discard"}
 read of what the tile shows, which an Apply under way changes: never beside one."""
 TASKS = frozenset({"find", "outline", "check"})
 """What reads the tile's folder (its picture, its textures)."""
-WRITES = frozenset({"apply", "restore"})
-"""What writes the tile's textures: Stop does not end them, they end what they began."""
+WRITES = frozenset({"apply", "restore", "forget"})
+"""What writes the tile's textures: Stop does not end them, they end what they began. Forget is
+Restore, then the tile's list, pictures and parts erased (``cloudlist.erase``)."""
 STOP = "stop"
 """Stop of every task of the tile Stop ends (Stop all)."""
 
@@ -490,6 +491,7 @@ class View:
             # saw it with nothing he had started, 2026-11-07)
             "stop_all": _k("clouds.stop_all", n=c["working"]),
             "restore": _k("clouds.restore") if c["textures"] else None,
+            "forget": _k("clouds.forget"),
             "apply_question": {
                 "title": _k(f"clouds.apply_title{one}", tile=self.tile, n=n),
                 "lines": [*told, *waits, _k("clouds.apply_text")],
@@ -499,6 +501,11 @@ class View:
                 "title": _k("clouds.restore_title", tile=self.tile),
                 "lines": [_k("clouds.restore_text", n=c["held"])],
                 "go": _k("clouds.restore_go"),
+            },
+            "forget_question": {
+                "title": _k("clouds.forget_title", tile=self.tile),
+                "lines": [_k("clouds.forget_text")],
+                "go": _k("clouds.forget_go"),
             },
         }
 
@@ -583,6 +590,7 @@ def view(
     idle = {
         "apply": not remade,
         "restore": counts["textures"] == 0,
+        "forget": counts["textures"] == 0 and not cl.clouds and not cl.laid,
         "discard": counts["changes"] == 0 and counts["waiting"] == 0,
         "find": searching,
         "choose": True,  # a cloud's alone

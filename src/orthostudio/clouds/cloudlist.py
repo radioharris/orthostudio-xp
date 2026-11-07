@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 import math
 import secrets
+import shutil
 import string
 import threading
 from collections.abc import Iterator, Mapping, Sequence
@@ -38,13 +39,15 @@ from orthostudio.clouds.tile import (
     held_by_id,
     laid_fields,
     list_path,
+    part_path,
+    previews_dir,
     ring_problem,
 )
 from orthostudio.errors import OsxpError
 from orthostudio.fsutil import atomic_write_text
 from orthostudio.model import TileRef
 
-__all__ = ["CloudList", "knowing", "load", "pick", "update"]
+__all__ = ["CloudList", "erase", "knowing", "load", "pick", "update"]
 
 FORMAT = "osxp-cloud-list-3"
 _ID = string.ascii_lowercase + string.digits
@@ -204,6 +207,20 @@ def _adopt(cl: CloudList, shown: TileClouds) -> bool:
         laid = {**laid_fields(e), "kind": c["kind"], "number": c["number"]}
         cl.laid = [x for x in cl.laid if x["id"] != e["id"]] + [laid]
     return bool(new)
+
+
+def erase(tile: TileRef) -> None:
+    """The tile's clouds forgotten, once its folder shows none (Forget its clouds, after its
+    Restore): its list, its pictures and previews, the frozen parts of its clouds' images, each
+    of a texture of this tile alone. A search starts from nothing then."""
+    with _lock(tile):
+        cl = load(tile)
+        entries = [*cl.laid]
+        entries += [g["entry"] for c in cl.clouds for g in c["checks"].values() if g.get("entry")]
+        list_path(tile).unlink(missing_ok=True)
+        shutil.rmtree(previews_dir(tile), ignore_errors=True)
+        for digest in {str(p[1]) for e in entries for p in e["parts"].values()}:
+            part_path(digest).unlink(missing_ok=True)
 
 
 @contextmanager
