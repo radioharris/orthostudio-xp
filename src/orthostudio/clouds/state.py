@@ -418,12 +418,16 @@ class View:
     tasks: list[Mapping[str, Any]] = field(default_factory=list)
     """The tile's own tasks, each with what it allows (``actions``): a cloud's is in its row."""
     remade: frozenset[str] = frozenset()
-    """The textures Apply makes again: After shows every other one as X-Plane does."""
+    """The textures Apply makes again: every other one stays as X-Plane shows it."""
+    bare: frozenset[str] = frozenset()
+    """Of those, the ones After draws as the build made them (``FolderPlan.bare``): After shows
+    every other one as X-Plane does."""
     asked: list[list[Mapping[str, Any]]] = field(default_factory=list)
     """What Apply is given, each cloud's images in the order they are wanted: the very plan the
     view made (``plan_folder``)."""
     previews: list[tuple[Mapping[str, Any], list[str]]] = field(default_factory=list)
-    """The clouds After shows by a preview, each in the textures of it Apply makes again: in every
+    """The clouds After shows by a preview, each in the textures of it Apply makes again but those
+    already showing it, the same images, over the clouds they keep (not :attr:`bare`): in every
     other texture, After shows what X-Plane does (:func:`as_shown`). A cloud whose images are
     being got is shown and counted as it was when that began (its task's ``was``): Apply waits
     for the task, and a source changed showed the photo with its cloud again for the seconds the
@@ -540,13 +544,13 @@ def _stops(task: Mapping[str, Any]) -> frozenset[str]:
     return frozenset({"stop"}) if task["stoppable"] else frozenset()
 
 
-def as_shown(shown: TileClouds, remade: frozenset[str] | None) -> dict[str, str]:
+def as_shown(shown: TileClouds, bare: frozenset[str] | None) -> dict[str, str]:
     """Of the textures showing clouds, those a picture draws as X-Plane shows them, with the
-    clouds each shows: every one but those Apply makes again (``remade``, After); none for
-    Before (``None``), every texture then drawn as the build made it."""
-    if remade is None:
+    clouds each shows: every one but those After draws as built (``bare``, ``View.bare``); none
+    for Before (``None``), every texture then drawn as the build made it."""
+    if bare is None:
         return {}
-    return {n: s.clouds for n, s in shown.stamps.items() if n not in remade}
+    return {n: s.clouds for n, s in shown.stamps.items() if n not in bare}
 
 
 def view(
@@ -576,7 +580,11 @@ def view(
     facts: list[str | None] = []
     actions: frozenset[str]
     remade = plan.remade if plan is not None else frozenset()
-    previews = [(e, sorted(remade & set(e["parts"]))) for e in kept.values()]
+    bare = plan.bare if plan is not None else frozenset()
+    again = {i for i, e in kept.items() if same_laid(holds.get(i), e)}  # shown, laid the same
+    previews = [
+        (e, sorted((bare if i in again else remade) & set(e["parts"]))) for i, e in kept.items()
+    ]
     for c, source, held, options, wait in wanted:
         lays = kept.get(c["id"])
         task = of_cloud.get(c["id"])
@@ -625,6 +633,7 @@ def view(
         cl.search,
         [{**t, "actions": sorted(_stops(t))} for t in tasks if not t.get("cloud")],
         remade,
+        bare,
         asked,
         [(e, names) for e, names in previews if names],
         bool(fine),

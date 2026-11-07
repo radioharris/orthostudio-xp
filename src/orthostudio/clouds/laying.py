@@ -118,6 +118,13 @@ class FolderPlan:
     laid: list[Mapping[str, Any]]
     work: list[tuple[str, list[Mapping[str, Any]]]]
     dropped: dict[str, str]
+    bare: frozenset[str]
+    """Of the textures made again, those showing a cloud that goes or changes, or clouds no file
+    beside them says: the mode's After draws them as the build made them, the clouds they keep
+    over them by their previews. Every other one keeps the clouds it shows, the same images in
+    the same order, and gains some: After draws it as X-Plane shows it, those it gains over it,
+    what Apply makes. Each made again drawn as built, the whole tile was drawn again at each
+    tick near clouds laid, 0.8 s and the page waiting (a user, 2026-11-07)."""
 
     @property
     def remade(self) -> frozenset[str]:
@@ -162,7 +169,15 @@ def plan_folder(
             if any(n in made and find_part(str(p[1])) is None for n, p in e["parts"].items())
         ]
         if not lost:
-            return FolderPlan(keep, work, dropped)
+            bare = set()
+            for name, mine in work:
+                stamp = shown.stamps.get(name)
+                if stamp is None:  # shows no cloud: as built either way
+                    continue
+                again = [e for e in mine if same_laid(held.get(e["id"]), e)]
+                if name not in shown.known or clouds_digest(again, said) != stamp.clouds:
+                    bare.add(name)
+            return FolderPlan(keep, work, dropped, frozenset(bare))
         for e in lost:
             dropped.setdefault(e["id"], "parts")
             keep.remove(e)

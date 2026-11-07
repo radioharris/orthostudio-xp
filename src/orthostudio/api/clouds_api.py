@@ -104,14 +104,14 @@ class CloudEngine:
         return own_folder(tile, custom_scenery=self.hooks.custom_scenery())
 
     def drawn(
-        self, tile: TileRef, shown: TileClouds, zl: int, remade: frozenset[str] | None = None
+        self, tile: TileRef, shown: TileClouds, zl: int, bare: frozenset[str] | None = None
     ) -> tuple[str, Picture]:
         """The tile at ``zl`` as X-Plane draws it, every texture as X-Plane shows it but those
-        Apply makes again (``remade``), as the build made them (After's ground); every one as
-        built for Before (``None``). With what it is made of, said in a line, which names it:
+        After draws as the build made them (``bare``, ``state.View.bare``: After's ground); every
+        one as built for Before (``None``). With what it is made of, said in a line, which names it:
         the same line, the same picture. The map's level is kept (the last few); a finer one,
         read once by a search, is not. Before is what a search and a cloud's images read."""
-        key = (tile.name, _what(shown, zl, remade))
+        key = (tile.name, _what(shown, zl, bare))
         with self._lock:
             drawing = self._drawing.setdefault(key, threading.Lock())
         with drawing:  # two answers asking for it at once: one drawing
@@ -119,7 +119,7 @@ class CloudEngine:
                 hit = self._pictures.get(key)
             if hit is not None:
                 return key[1], hit
-            what, p = _draw(tile, shown.folder, zl, remade)
+            what, p = _draw(tile, shown.folder, zl, bare)
             with self._lock:
                 self._drawing.pop(key, None)
                 if zl == map_level(tile, shown.textures):
@@ -133,20 +133,20 @@ class CloudEngine:
         tile: TileRef,
         shown: TileClouds,
         zl: int,
-        remade: frozenset[str] | None = None,
+        bare: frozenset[str] | None = None,
         *,
         ask: bool = True,
     ) -> dict[str, Any] | None:
-        """A picture of the tile as the page lays it (:meth:`drawn`: Before, ``remade`` for
+        """A picture of the tile as the page lays it (:meth:`drawn`: Before, ``bare`` for
         After), a JPEG named by what it is made of; ``None`` while it is not there yet, drawn
         aside (:meth:`aside`; not while what the tile shows is written, ``ask``). A picture is
         made once: drawn again at each start, two of them took a first reading 3.75 s (a user's
         tile, 2026-11-07)."""
-        path = picture_path(tile, _what(shown, zl, remade))
+        path = picture_path(tile, _what(shown, zl, bare))
         if path.exists():
             return {"name": path.name, "bounds": frame_bounds(tile, zl), "level": zl}
         if ask:
-            self.aside((tile.name, path.name), lambda: self._write(tile, shown, zl, remade))
+            self.aside((tile.name, path.name), lambda: self._write(tile, shown, zl, bare))
         return None
 
     def ground(
@@ -168,9 +168,9 @@ class CloudEngine:
             return kept[1] if kept is not None and built in (None, kept[0]) else None
 
     def _write(
-        self, tile: TileRef, shown: TileClouds, zl: int, remade: frozenset[str] | None
+        self, tile: TileRef, shown: TileClouds, zl: int, bare: frozenset[str] | None
     ) -> None:
-        what, p = self.drawn(tile, shown, zl, remade)
+        what, p = self.drawn(tile, shown, zl, bare)
         path = picture_path(tile, what)
         if not path.exists():
             buf = io.BytesIO()
@@ -241,17 +241,15 @@ class CloudEngine:
                     del kept[key]
 
 
-def _what(shown: TileClouds, zl: int, remade: frozenset[str] | None) -> str:
+def _what(shown: TileClouds, zl: int, bare: frozenset[str] | None) -> str:
     """What a picture of the folder ``shown`` is made of, said in a line: the build, the level,
     the way clouds are laid, the clouds each texture drawn as X-Plane shows it shows
     (``state.as_shown``)."""
-    laid = state.as_shown(shown, remade)
+    laid = state.as_shown(shown, bare)
     return f"{shown.built}:{zl}:{RULE}:{json.dumps(sorted(laid.items()))}"
 
 
-def _draw(
-    tile: TileRef, folder: Path, zl: int, remade: frozenset[str] | None
-) -> tuple[str, Picture]:
+def _draw(tile: TileRef, folder: Path, zl: int, bare: frozenset[str] | None) -> tuple[str, Picture]:
     """The tile at ``zl`` from its folder (:meth:`CloudEngine.drawn`), read while none of its
     textures is written: what it is made of is said of what was read then."""
     with folder_lock(tile):
@@ -260,10 +258,10 @@ def _draw(
         if why is not None:
             raise OsxpError("CLOUD_TILE_NOT_READY", context={"tile": tile.name, "state": why})
         assert now is not None
-        laid = state.as_shown(now, remade)
+        laid = state.as_shown(now, bare)
         textures = {n: now.texture_path(n) if n in laid else now.plain_path(n) for n in now.names}
         p = draw(tile, zl, dsf=folder / tile.dsf_relpath, textures=textures)
-        return _what(now, zl, remade), p
+        return _what(now, zl, bare), p
 
 
 def _tile_of(name: str) -> TileRef:
@@ -403,10 +401,11 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
             before_pic = engine.picture_file(tile, shown, zl, ask=ask)
             whole = {"picture": before_pic} if before_pic is not None else None
             before = engine.ground(tile, "before", shown.built, whole)
-            # After: what X-Plane shows, but the textures Apply makes again, which show the
-            # build's own with the clouds Apply lays in them, each by its preview there (made
-            # with its images, ``find.check``); laid whole or not at all (``ground``)
-            after_pic = engine.picture_file(tile, shown, zl, v.remade, ask=ask)
+            # After: what X-Plane shows, with the clouds Apply lays each by its preview (made with
+            # its images, ``find.check``) over it, but the textures where a cloud goes or changes,
+            # which show the build's own under them (``View.bare``); laid whole or not at all
+            # (``ground``)
+            after_pic = engine.picture_file(tile, shown, zl, v.bare, ask=ask)
             p = engine.held(tile, shown, zl, ask=ask) if v.previews else None  # kept in memory
             whole = None
             if after_pic is not None and (p is not None or not v.previews):
