@@ -2527,7 +2527,7 @@ function routeFromHash() {
 // ------------------------------------------------------------------ status bar
 
 /** The engine API this page needs (orthostudio.api.app.API_LEVEL); a test keeps the two equal. */
-const PAGE_API_LEVEL = 50;
+const PAGE_API_LEVEL = 51;
 
 async function loadStatus() {
   try {
@@ -6578,10 +6578,10 @@ async function forgetLibraryClouds(e) {
   const path = `/api/clouds/${encodeURIComponent(e.tile)}`;
   await runLibraryChange(e, async () => {
     await api("POST", `${path}/apply`, { action: "forget" });
-    for (let answer = await api("GET", path); answer.busy; answer = await api("GET", path)) {
-      await new Promise((go) => setTimeout(go, 300));
-    }
-    const failed = (await api("GET", path)).failed;
+    // what runs of the tile, nothing of it read: the mode's answer drew its picture (R3)
+    let runs = await api("GET", `${path}/tasks`);
+    for (; runs.busy; runs = await api("GET", `${path}/tasks`)) await new Promise((go) => setTimeout(go, 300));
+    const failed = runs.failed;
     if (failed?.kind === "forget") throw new ApiError(409, { error: failed.error });
   });
 }
@@ -7056,6 +7056,9 @@ export function rebuildQuestion(requests, plans, inXplane = 0, unsaved = false) 
   const short = verdicts.some((v) => v.ok === false) || (free !== null && free <= 2 * need);
   const figures = { mb: fmtMB(mb), need: fmtGB(need), free: fmtGB(free) };
   const body = [t("library.rebuild_kept"), t("library.rebuild_costs", figures)];
+  // what the Plan warns of, as the Plan says it (replaced clouds put back, CLOUD_PUT_BACK): the
+  // disk said below in the question's own words
+  for (const p of plans) for (const w of warningEntries(p || {})) if (w.code !== "SYS_DISK_FULL") body.push(codeWords(w)[0]);
   if (inXplane) body.push(t("library.rebuild_back", { n: fmtInt(inXplane) }));
   if (short) body.push(t("plan.disk_short", { need: fmtGB(need), free: fmtGB(free) }));
   if (unsaved) body.push(t("settings.unsaved_build"));

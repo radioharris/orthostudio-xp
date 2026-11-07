@@ -1260,6 +1260,14 @@ _SPECS: tuple[ErrorSpec, ...] = (
         "Quit X-Plane, then apply again.",
     ),
     _spec(
+        "CLOUD_PUT_BACK",
+        _I,
+        _C,
+        "{tiles}: this build makes the photos again, so the clouds you replaced there may show as "
+        "photographed until their images are got again in the clouds mode.",
+        "To keep them, build with the source, level and colours they were replaced with.",
+    ),
+    _spec(
         "CLOUD_TEXTURE_LOST",
         _B,
         _S,

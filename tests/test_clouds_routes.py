@@ -20,6 +20,7 @@ from orthostudio.api.jobs import JobManager
 from orthostudio.clouds import cloudlist, state
 from orthostudio.clouds.picture import Picture
 from orthostudio.clouds.tile import read_tile
+from orthostudio.errors import OsxpError
 from orthostudio.home import default_tiles_root
 from orthostudio.model import TileRef
 from orthostudio.pipeline.pack import ArtefactEntry, PackManifest, write_manifest
@@ -732,6 +733,40 @@ async def test_after_build_again_the_old_tile_is_not_shown_while_its_picture_is_
         go.set()
         b = await _read(c)
     assert b["picture"] is not None and b["picture"] != first["picture"]
+
+
+def test_what_runs_of_a_tile_is_said_without_reading_or_drawing_it(
+    ready: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # the Library's bin waited on the mode's answer, which drew the picture of a mode never
+    # opened (a campaign, 2026-11-07)
+    import threading
+    import time
+
+    drawn: list[Any] = []
+    monkeypatch.setattr(clouds_api, "_draw", lambda *a: drawn.append(a))
+    monkeypatch.setattr(clouds_api, "read_tile", lambda folder: drawn.append(folder))
+    hooks = clouds_api.CloudHooks(custom_scenery=lambda: None, taken=dict)
+    router, engine = clouds_api.clouds_router(hooks)
+    tasks = next(r.endpoint for r in router.routes if r.path == "/api/clouds/{name}/tasks")
+    assert tasks("+43+005") == {"busy": False, "failed": None}
+    go = threading.Event()
+
+    def broken(task: Any) -> None:
+        go.wait(10)
+        raise OsxpError("CLOUD_TEXTURE_LOST", context={"tile": TILE.name, "path": "x"})
+
+    engine.tasks.start(TILE.name, "forget", broken)
+    assert tasks("+43+005")["busy"] is True
+    go.set()
+    for _ in range(200):
+        said = tasks("+43+005")
+        if not said["busy"]:
+            break
+        time.sleep(0.01)
+    assert said["failed"]["kind"] == "forget"
+    assert said["failed"]["error"]["code"] == "CLOUD_TEXTURE_LOST"
+    assert drawn == []  # nothing of the tile read or drawn
 
 
 def test_no_picture_is_asked_while_what_the_tile_shows_is_written(

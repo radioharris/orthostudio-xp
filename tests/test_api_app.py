@@ -402,6 +402,46 @@ async def test_plan_offline_two_lines(app, home: Path, xplane: Path) -> None:  #
 
 
 @pytest.mark.anyio
+async def test_a_plan_says_clouds_may_come_back(app, home: Path, xplane: Path) -> None:  # type: ignore[no-untyped-def]
+    """The Plan said nothing, and the clouds a user had replaced came back as photographed after a
+    build with other colours (a campaign, 2026-11-07): a tile whose list lays clouds again and
+    whose images the build makes another way, or not known before it runs, is said."""
+    from orthostudio.clouds import cloudlist
+    from orthostudio.home import default_tiles_root
+    from orthostudio.model import TileRef, pack_dir_name
+    from orthostudio.pipeline.pack import ArtefactEntry, PackManifest, write_manifest
+
+    tile = TileRef.parse("+43+005")
+    pack = default_tiles_root() / pack_dir_name(tile)
+    pack.mkdir(parents=True)
+    files = {"dsf": tile.dsf_relpath.as_posix(), "dsf_size": 0, "textures": 1, "terrain": 0}
+    entries = {"textures": ArtefactEntry("built-before", "d", "r@1")}
+    write_manifest(pack, tile, PackManifest(tile.name, "BI", 14, entries, files))
+
+    async def warned() -> list[dict]:
+        r = await c.post("/api/plan", json={"tiles": [tile.name], "zoom_level": 14})
+        assert r.status_code == 200, r.text
+        return [w for w in r.json()["warnings"] if isinstance(w, dict)]
+
+    async with client_for(app) as c:
+        assert await warned() == []  # no clouds replaced: nothing to say
+        name = "5952_8384_BI14"
+        with cloudlist.update(tile) as cl:
+            cl.laid = [
+                {
+                    "id": "c1",
+                    "source": "EOX",
+                    "match": [[1, 1, 1], [0, 0, 0]],
+                    "rings": [[43.4, 5.1, 43.4, 5.2, 43.5, 5.2, 43.4, 5.1]],
+                    "parts": {name: [14, "p" * 64]},
+                    "plain": {name: "q" * 40},
+                }
+            ]
+        said = await warned()
+    assert said == [{"code": "CLOUD_PUT_BACK", "severity": "info", "context": {"tiles": "+43+005"}}]
+
+
+@pytest.mark.anyio
 async def test_a_square_of_open_sea_is_left_out_and_said(app, home: Path, xplane: Path) -> None:  # type: ignore[no-untyped-def]
     """A user picked +33+012 off Libya's coast: open sea, which X-Plane has no scenery for, and
     the Plan told him to install a region X-Plane does not have (2026-10-23). A square with no

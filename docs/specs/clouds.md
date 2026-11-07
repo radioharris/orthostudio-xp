@@ -371,7 +371,9 @@ After's with the previews it had, of the same build of the tile (`CloudEngine.gr
 the tile busy: After's picture alone showed the clouds again 1 to 2 s at the end of an Apply, and
 one of the build before showed the old tile after Build again. While something else holds the
 tile's folder (built, queued, filed, deleted), the last views stay as they were, and the mode
-opened again keeps its last answer until the next: the picture went and came back otherwise; one that fails is said by the next answer, and asked again by the one after. While
+opened again keeps its last answer until the next and the map's view (framed on the tile only
+when another tile is opened): the picture went and came back otherwise, and a view zoomed in on a
+cloud went back to the whole tile, its base map loaded again; one that fails is said by the next answer, and asked again by the one after. While
 Apply, Restore or Forget writes the tile (`state.WRITES`), none is asked: the pictures of what the
 tile shows at their end are. Drawn in the answer, a page stood still 10 to 37 s on a Windows server
 at each new state of a tile of 3 M triangles, the first search's progress included (B8). Every path
@@ -389,7 +391,13 @@ an outline. Every one of them can be deleted: it is made again.
 
 Every build of the tile lays its clouds again where they stand (2.3), whatever starts it: the
 Plan, the Library, Works, the command line. A build knows nothing else of them: its keys, its
-cache, its settings and its jobs are those of a tile without clouds.
+cache, its settings and its jobs are those of a tile without clouds. A cloud stands only on the
+images it was chosen on: a build that makes them another way (other colours, another level or
+source) shows it as photographed until its images are got again. The Plan says so before, and the
+question of Build again, which reads the Plan's warnings (`CLOUD_PUT_BACK`): a tile whose list
+lays clouds again and whose textures the build makes under another key than its folder's, or
+under one not known before it runs (`laying.puts_back`). It said nothing, and the clouds came back
+unannounced (a campaign, 2026-11-07).
 
 ### R2. The map is the tile as X-Plane draws it
 
@@ -605,6 +613,7 @@ words: `docs/specs/errors.md`.
 |---|---|
 | `GET /api/clouds` | The Library's column: by row path, the rows it is offered on (1.2), what the tile holds and what waits |
 | `GET /api/clouds/{tile}` | The view (1.5): the source its photo was built from (`provider`), the tile's state and line, what it allows (`allowed`), the words of After and Before (`views`; `clouds.drawing` for one whose picture is drawn aside), whether something is under way (`busy`, a picture drawn aside too), its picture (Before) and After's (`after`; the last one of that view laid whole, of the same build, while its next is drawn, 2.6), whether a fine search reads more (`fine`), every row with its line and tone, its actions, what a click on it does (`toggle`) and its tooltip (`tip`), its task and After's preview of it, the count, Apply's and Restore's buttons and questions (`texts`), the tile's own tasks with their `actions`, its last failure |
+| `GET /api/clouds/{tile}/tasks` | `{busy, failed}`: whether something of the tile is under way and its last failure, nothing of it read or drawn: what the Library's bin waits on (API level 51) |
 | `POST /api/clouds/{tile}/find` | `{fine?}`: starts the quick search, or the fine one where it is offered |
 | `POST /api/clouds/{tile}/picks` | `{action, id?, source?}`: `tick`, `untick` or `choose` of a cloud, as its state allows, or without `id` of every cloud that allows it; gets the images when its state asks them |
 | `POST /api/clouds/{tile}/check` | `{id?, again?}`: gets a cloud's images, or of every cloud whose state offers it; `again`, **Get its images**: its pieces kept as no picture asked again |

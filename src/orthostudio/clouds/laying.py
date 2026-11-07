@@ -52,6 +52,7 @@ from orthostudio.clouds.tile import (
     laid_fields,
     lays_not,
     leftovers,
+    own_folder,
     part_path,
     reaching,
     read_tile,
@@ -69,7 +70,12 @@ from orthostudio.graph.digest import digest_bytes
 from orthostudio.graph.store import _pid_alive, flush_disk
 from orthostudio.imagery.grid import parse_texture_name
 from orthostudio.model import TileRef
-from orthostudio.pipeline.pack import PackEnv, _refuse_rewrite_under_running_xplane
+from orthostudio.pipeline.pack import (
+    MANIFEST_NAME,
+    PackEnv,
+    PackManifest,
+    _refuse_rewrite_under_running_xplane,
+)
 from orthostudio.textures import dds
 from orthostudio.textures.bcdecode import decode_blocks
 from orthostudio.textures.encode import encode_blocks
@@ -82,6 +88,7 @@ __all__ = [
     "lay_folder",
     "lay_texture",
     "plan_folder",
+    "puts_back",
     "show",
 ]
 
@@ -518,3 +525,21 @@ def lay_again(
             tile, folder, [[e] for e in laid], custom_scenery=custom_scenery, progress=progress
         )
     log.info("%s: %d of its %d replaced clouds laid again", tile.name, len(again), len(laid))
+
+
+def puts_back(tile: TileRef, textures_key: str | None, *, custom_scenery: Path | None) -> bool:
+    """Whether a build of ``tile`` whose textures are made under ``textures_key`` (``None``: not
+    known before it runs) may show replaced clouds of it as photographed again: some a build lays
+    again (:func:`lay_again`), and its own folder's textures were made under another key. A cloud
+    is laid again only on the images it was chosen on: a build with other colours, another level
+    or source put them back unsaid (a campaign, 2026-11-07); the Plan says it (``CLOUD_PUT_BACK``).
+    """
+    if not cloudlist.load(tile).laid:
+        return False
+    manifest = own_folder(tile, custom_scenery=custom_scenery) / MANIFEST_NAME
+    try:
+        held = PackManifest.from_toml(manifest.read_text(encoding="utf-8")).artefacts
+    except (OSError, ValueError, KeyError):
+        return False  # no tile of ours there: none of its clouds shown to put back
+    textures = held.get("textures")
+    return textures is None or textures.key != textures_key

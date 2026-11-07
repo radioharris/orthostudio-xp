@@ -253,6 +253,23 @@ def test_a_build_lays_nothing_again_without_clouds_applied_or_in_another_folder(
     assert _stamp(other / "textures" / f"{texture_name(WEST)}.dds") is None
 
 
+def test_a_build_making_the_photos_another_way_is_said_to_put_clouds_back(folder: Path) -> None:
+    # the Plan said nothing, and the replaced clouds came back as photographed after a build with
+    # other colours (a campaign, 2026-11-07): ``CLOUD_PUT_BACK``
+    from orthostudio.clouds.laying import puts_back
+
+    assert not puts_back(TILE, "other", custom_scenery=None)  # no clouds laid: nothing to say
+    held = read_tile(folder)
+    assert held is not None
+    with cloudlist.update(TILE) as cl:
+        cl.laid = [_cloud("c1", WEST_ONLY, held, RED)]
+    assert not puts_back(TILE, "k", custom_scenery=None)  # the same images: laid again
+    assert puts_back(TILE, "other", custom_scenery=None)  # made another way
+    assert puts_back(TILE, None, custom_scenery=None)  # not known before the build runs
+    (folder / "orthostudio.toml").unlink()  # no tile of ours there: none shown
+    assert not puts_back(TILE, "other", custom_scenery=None)
+
+
 def test_a_build_texture_lost_from_beside_is_said_and_nothing_is_written(folder: Path) -> None:
     held = read_tile(folder)
     assert held is not None

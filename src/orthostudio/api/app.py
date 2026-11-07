@@ -74,6 +74,7 @@ from orthostudio.api.specs import (
 )
 from orthostudio.api.zones_api import zones_router
 from orthostudio.clean import GRACE_S, clean, disk_bytes, pack_disk_bytes
+from orthostudio.clouds.laying import puts_back
 from orthostudio.codemark import code_mark
 from orthostudio.config import profiles as config_profiles
 from orthostudio.config.profiles import ProfileError
@@ -159,7 +160,7 @@ __all__ = [
     "sse_message",
 ]
 
-API_LEVEL = 50
+API_LEVEL = 51
 """What this engine's API offers, for the page: 1 = P2b, 2 = zones (``/api/zones``) and the base map
 (``/api/map``), 3 = deleting a tile (``POST /api/library/{name}/delete``) and the sizes of the
 library, 4 = the disk space of the Library (``GET /api/disk``, ``POST /api/clean``), 5 = clearing
@@ -215,7 +216,8 @@ the store's files, made one file with them whatever the choices), 41 = the setti
 ``expert.road_smoothing`` (an older engine refuses a settings document that holds it), 42 = the
 setting ``expert.rounded_road_ends`` (likewise), 43 = the settings profiles (``/api/profiles``)
 and ``profile`` in a job's summary, 50 = the replaced clouds (``/api/clouds``, ``clouds.md`` 6); 44
-to 49 were test builds of the clouds (1.4.0 rc), never released, whose routes were other. A page
+to 49 were test builds of the clouds (1.4.0 rc), never released, whose routes were other, 51 = what
+runs of a tile's clouds (``GET /api/clouds/{tile}/tasks``). A page
 served by an engine older than itself (a ``osxp serve`` started before an update: the page's files
 are read from disk at each load, the routes were imported at start) asks the user to restart
 OrthoStudio XP instead of showing "Not Found"."""
@@ -1991,6 +1993,25 @@ def create_app(
                 if isinstance(env, BuildEnv):
                     env.close()  # each plan opened the store's index and left it open
             answer = plan_answer(est, specs)
+            # its replaced clouds that this build may show as photographed again (``clouds.md`` R1)
+            cs = custom_scenery_dir(xp) if (xp := xplane_dir()) is not None else None
+            back = [
+                te.tile
+                for te in est.tiles
+                if puts_back(
+                    TileRef.parse(te.tile),
+                    next((n.key for n in te.nodes if n.role == "textures"), None),
+                    custom_scenery=cs,
+                )
+            ]
+            if back:
+                answer["warnings"].append(
+                    {
+                        "code": "CLOUD_PUT_BACK",
+                        "severity": "info",
+                        "context": {"tiles": " ".join(back)},
+                    }
+                )
             if sea:  # left out, said as a line of its own (SYS_TILES_OPEN_SEA)
                 answer["warnings"].append(
                     {
