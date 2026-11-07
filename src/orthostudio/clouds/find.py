@@ -39,7 +39,7 @@ from orthostudio.clouds.layer import (
     read_piece,
     ring_pixels,
 )
-from orthostudio.clouds.model import SHADOW, THICK, THIN, classify
+from orthostudio.clouds.model import SHADOW, THICK, THIN, classify, classify_many
 from orthostudio.clouds.opencv import cv2
 from orthostudio.clouds.picture import Picture, box_bounds, over_water, pixel_metres
 from orthostudio.clouds.sources import SourcePieces
@@ -473,28 +473,33 @@ def screen(
     phase("fetching", 0, sum(len(v) for v in todo.values()))
     sources.fetch(todo, cancel=cancel, progress=lambda d, t: phase("fetching", d, t))
     out: list[dict[str, Judgement]] = [{} for _ in clouds]
-    # said cloud by cloud: a source judged under two hundred clouds took minutes, the line left
-    # on the download's 100 % meanwhile (a user, 2026-11-06); a Stop heard at each one
-    total, done = len(sources.providers) * len(clouds), 0
-    phase("sources", 0, total)
-    for code in sorted(sources.providers):
-        for i, (rings, box) in enumerate(zip(clouds, boxes, strict=True)):
-            if cancel is not None and cancel.is_set():
-                raise OsxpError("SYS_CANCELLED")
-            done += 1
-            phase("sources", done, total)
+    # source by source, the clouds' windows read several to a detector's patch
+    # (``classify_many``: 114 s to 3.3 s under a user's 198 clouds); said as the patches are
+    # read, a Stop heard at each one (the line left on the download's 100 % for minutes, a
+    # user, 2026-11-06)
+    codes = sorted(sources.providers)
+    for n, code in enumerate(codes):
+        read: list[tuple[int, np.ndarray, np.ndarray]] = []  # (cloud, its window, shown there)
+        for i, box in enumerate(boxes):
             lost = _lost(sources, code, _keys_of(p, [box], levels[code]))
             if lost is not None:
                 out[i][code] = Judgement(lost)
-                continue
-            src, have = _source_at(sources, code, levels[code], p, box)
-            x0, y0, x1, y1 = box
-            seen = (
-                classify(src, have, cancel=cancel, regnety_alone=True)
-                if have.any()
-                else np.zeros(have.shape, np.uint8)
-            )
-            inside = _inside(p, rings, box)
+            else:
+                read.append((i, *_source_at(sources, code, levels[code], p, box)))
+
+        def said(done: int, total: int, n: int = n) -> None:
+            phase("sources", n * 100 + round(100 * done / max(total, 1)), 100 * len(codes))
+
+        seen = classify_many(
+            [src for _i, src, _have in read],
+            [have for _i, _src, have in read],
+            progress=said,
+            cancel=cancel,
+            regnety_alone=True,
+        )
+        for (i, src, have), cloudy in zip(read, seen, strict=True):
+            x0, y0, x1, y1 = boxes[i]
+            inside = _inside(p, clouds[i], boxes[i])
             out[i][code] = judge(
                 p.photo[y0:y1, x0:x1],
                 src,
@@ -502,7 +507,7 @@ def screen(
                 inside,
                 _core(inside, classes[y0:y1, x0:x1]),
                 _band(inside, band_px, dirty[y0:y1, x0:x1]),
-                _cloudy(seen),
+                _cloudy(cloudy),
             )
     return out
 

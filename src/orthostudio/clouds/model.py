@@ -17,9 +17,10 @@ from __future__ import annotations
 
 import hashlib
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 
@@ -34,6 +35,7 @@ __all__ = [
     "THICK",
     "THIN",
     "classify",
+    "classify_many",
     "detector_bytes",
     "detector_dir",
     "detector_ready",
@@ -169,6 +171,28 @@ def _ramp() -> np.ndarray:
     return side[:, None] * side[None, :]
 
 
+def _normalised(rgb: np.ndarray, ok: np.ndarray) -> np.ndarray:
+    """A patch's pixels as the networks take them, channel by channel, from what it shows
+    (``ok``): centred on their mean and scaled by their deviation, nothing where it shows
+    nothing (OmniCloudMask's no-data). The one way a patch is made ready."""
+    chans = np.moveaxis(rgb.astype(np.float32) + 1.0, 2, 0)
+    mean = np.array([c[ok].mean() for c in chans], np.float32)[:, None, None]
+    std = np.array([c[ok].std() for c in chans], np.float32)[:, None, None]
+    return np.where(ok, (chans - mean) / np.where(std == 0, 1, std), 0).astype(np.float32)
+
+
+def _logits(norm: np.ndarray, nets: list[Any]) -> np.ndarray:
+    """The networks' answer for a patch made ready (:func:`_normalised`), averaged: one answer
+    at a time for the program (:data:`_RUN`)."""
+    blob = np.ascontiguousarray(norm[None])
+    logits = np.zeros((4, PATCH, PATCH), np.float32)
+    with _RUN:
+        for net in nets:
+            net.setInput(blob)
+            logits += net.forward()[0]
+    return logits / len(nets)
+
+
 def _starts(length: int) -> list[int]:
     stride = PATCH - OVERLAP
     out = sorted({min(s, length - PATCH) for s in range(0, length, stride)})
@@ -225,23 +249,68 @@ def classify(
                 raise OsxpError("SYS_CANCELLED")
             ok = valid[y : y + PATCH, x : x + PATCH]
             if ok.any():
-                patch = rgb[y : y + PATCH, x : x + PATCH].astype(np.float32) + 1.0
-                chans = np.moveaxis(patch, 2, 0)
-                mean = np.array([c[ok].mean() for c in chans], np.float32)[:, None, None]
-                std = np.array([c[ok].std() for c in chans], np.float32)[:, None, None]
-                norm = np.where(ok, (chans - mean) / np.where(std == 0, 1, std), 0)
-                blob = np.ascontiguousarray(norm[None].astype(np.float32))
-                logits = np.zeros((4, PATCH, PATCH), np.float32)
-                with _RUN:
-                    for net in nets:
-                        net.setInput(blob)
-                        logits += net.forward()[0]
-                acc[:, :, x : x + PATCH] += logits / len(nets) * ramp
+                norm = _normalised(rgb[y : y + PATCH, x : x + PATCH], ok)
+                acc[:, :, x : x + PATCH] += _logits(norm, nets) * ramp
             if progress is not None:
                 progress(j * len(xs) + i + 1, total)
     out[top : top + PATCH] = acc.argmax(axis=0)
     out[~valid] = CLEAR
     return out[:h0, :w0]
+
+
+def classify_many(
+    images: Sequence[np.ndarray],
+    valids: Sequence[np.ndarray],
+    *,
+    progress: Progress | None = None,
+    cancel: threading.Event | None = None,
+    regnety_alone: bool = False,
+) -> list[np.ndarray]:
+    """:func:`classify` of each of ``images`` (``valids``: where each shows something), those
+    smaller than a patch read several to a patch, side by side, each made ready on its own
+    (:func:`_normalised`); a larger one read alone. Mirrored out to a whole patch, a cloud's
+    window took as long as a patch: the sources judged under a user's 198 clouds took 114 s, 3.3 s
+    so; the detector sees a window's neighbours at its edges instead of its mirror, and 3 % of
+    the verdicts, of clouds at the limit, came out the other way (2026-11-07)."""
+    out: list[np.ndarray] = [np.zeros(im.shape[:2], np.uint8) for im in images]
+    shown = [k for k in range(len(images)) if valids[k].any()]
+    fits = [k for k in shown if max(images[k].shape[:2]) <= PATCH]
+    alone = [k for k in shown if k not in set(fits)]
+    patches: list[list[tuple[int, int, int]]] = []  # each picture's place: (picture, y, x)
+    placed: list[tuple[int, int, int]] = []
+    x = y = shelf = 0
+    for k in sorted(fits, key=lambda k: -images[k].shape[0]):  # shelves, the tallest first
+        h, w = images[k].shape[:2]
+        if x + w > PATCH:  # the next shelf, under the tallest of this one
+            x, y, shelf = 0, y + shelf, 0
+        if y + h > PATCH:  # the next patch
+            patches.append(placed)
+            placed, x, y, shelf = [], 0, 0, 0
+        placed.append((k, y, x))
+        x, shelf = x + w, max(shelf, h)
+    if placed:
+        patches.append(placed)
+    nets = _networks()[:1] if regnety_alone else _networks()
+    total = len(patches) + len(alone)
+    for n, placed in enumerate(patches, start=1):
+        if cancel is not None and cancel.is_set():
+            raise OsxpError("SYS_CANCELLED")
+        norm = np.zeros((3, PATCH, PATCH), np.float32)
+        for k, y, x in placed:
+            h, w = images[k].shape[:2]
+            norm[:, y : y + h, x : x + w] = _normalised(images[k], valids[k])
+        logits = _logits(norm, nets)
+        for k, y, x in placed:
+            h, w = images[k].shape[:2]
+            out[k] = logits[:, y : y + h, x : x + w].argmax(axis=0).astype(np.uint8)
+            out[k][~valids[k]] = CLEAR
+        if progress is not None:
+            progress(n, total)
+    for n, k in enumerate(alone, start=len(patches) + 1):
+        out[k] = classify(images[k], valids[k], cancel=cancel, regnety_alone=regnety_alone)
+        if progress is not None:
+            progress(n, total)
+    return out
 
 
 def patch_count(h: int, w: int) -> int:

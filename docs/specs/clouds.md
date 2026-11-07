@@ -469,7 +469,13 @@ sea X-Plane draws alone is no part of a cloud):
 - **no picture**: it covers less than 90 % of the cloud;
 - **the same photo**: its picture under the cloud correlates with the tile's at 0.9 or more
   (ArcGIS sells Bing's pictures over much of the world): never proposed;
-- **cloudy** or **clear**: the detector on its picture, clear when at most 10 % is cloud;
+- **cloudy** or **clear**: the detector on its picture, clear when at most 10 % is cloud; the
+  clouds' windows of a source read several to a detector's patch, side by side
+  (`model.classify_many`: a window mirrored out to a whole patch took as long as one, 114 s for
+  the sources under a user's 198 clouds, 3.3 s so). The detector sees a window's neighbours at its
+  edges instead of its mirror: 3 % of the verdicts, of clouds at the limit, came out the other
+  way, 4 best sources of 198, the fits never; a cloud's images are judged again, window by window,
+  before anything is laid (4.3);
 - its **fit**: how its picture correlates with the tile's on a band 400 m wide around the cloud
   (other clouds left out), and the colour match of that band. A source is compared with the
   photo itself (`Picture.photo`), not with what X-Plane shows of it over water: the photo is what
