@@ -418,6 +418,7 @@ def tile_home(
     atelier: Path,
     custom_scenery: Path | None,
     library_path: Path | None = None,
+    mend: bool = True,
 ) -> tuple[Path | None, list[Path]]:
     """Where a build of ``tile`` puts the new version, when that is not the workshop (``atelier``,
     its tiles folder): the folder of its build X-Plane takes (``custom_scenery``'s link leads
@@ -426,7 +427,8 @@ def tile_home(
     the tile is built in the workshop as a new one, and those folders are the second item, for
     the Library to let go once it is. A folder on a disk away does count: the build refuses it.
     A folder whose old version a put back cut short left under :data:`OLD_SUFFIX` has it back
-    under its name first."""
+    under its name first, unless ``mend`` is false (a read while a build may be putting it back:
+    the cloud mode's)."""
     here = Path(atelier) / pack_dir_name(tile)
     with Library(library_path) as lib:
         rows = [r for r in lib.list(tile=tile, kind="ortho") if r.built_by == "osxp"]
@@ -435,7 +437,7 @@ def tile_home(
     for r in rows:
         folder = Path(r.path)
         cut = folder.with_name(folder.name + OLD_SUFFIX)
-        if not os.path.lexists(folder) and cut.is_dir():
+        if mend and not os.path.lexists(folder) and cut.is_dir():
             # a put back cut between its two renames: the old version under its name again,
             # before anything takes the folder for gone (a review, 2026-10-05)
             with contextlib.suppress(OSError):

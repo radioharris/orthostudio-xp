@@ -880,9 +880,26 @@ def _doubles(store: Store, built: Iterable[_Built]) -> list[tuple[Path, Path, Pa
                 and a.st_size == s.st_size
                 and a.st_nlink == 1
                 and _stamp(mine, a) not in different
+                and _same_head(mine, theirs)
             ):
                 found.append((pack, mine, theirs, a.st_size))
     return found
+
+
+HEAD = 128
+"""The bytes a copy begins with as its original does: a DDS's header, a DSF's first."""
+
+
+def _same_head(mine: Path, theirs: Path) -> bool:
+    """Whether the two files begin with the same :data:`HEAD` bytes, as a copy does. A texture
+    whose replaced clouds mark its header (``clouds.tile.Stamp``) does not, the same size as the
+    store's: its tile's were said 246 MB taken twice, which freeing gave back nothing of (a user's
+    19 textures, 2026-11-07)."""
+    try:
+        with open(mine, "rb") as a, open(theirs, "rb") as b:
+            return a.read(HEAD) == b.read(HEAD)
+    except OSError:
+        return False
 
 
 def _came(doubles: Iterable[tuple[Path, Path, Path, int]]) -> dict[str, float]:

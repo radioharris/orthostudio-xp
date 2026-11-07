@@ -329,8 +329,8 @@ with `--machine x86_64` after installing Rosetta, for the Intel app; Windows; Ub
 compiled there runs on older glibc) builds and checks its installer. A private repository builds
 the Windows installer alone: its minutes are counted, macOS's ten times over, and the Mac app of a
 release candidate is tried from a checkout (2026-10-03); a run by hand there may ask for the Apple
-Silicon one instead (`mac`), to try the installed app before a release (2026-11-03). On a tag, a
-first job makes the
+Silicon one instead (`mac`), to try the installed app before a release (its own Python downloading
+OpenCV for the clouds, 2026-11-03). On a tag, a first job makes the
 release as a draft (a pre-release when the tag has a suffix, as in `v0.2.0-rc.1`), with
 `docs/releases/<version>.md` as its notes when that file exists (`v0.1.0`:
 `docs/releases/0.1.0.md`), else one line saying the installers are not signed. Each installer goes

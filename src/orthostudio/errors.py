@@ -63,6 +63,7 @@ DOMAINS: tuple[str, ...] = (
     "NET",
     "SYS",
     "ZONE",
+    "CLOUD",
 )
 
 CODE_PATTERN = re.compile(r"^(" + "|".join(DOMAINS) + r")_[A-Z0-9]+(?:_[A-Z0-9]+)*$")
@@ -1241,6 +1242,82 @@ _SPECS: tuple[ErrorSpec, ...] = (
         "The zones file {path} was saved by another window or program since these zones were "
         "loaded.",
         "Reload the zones to see the saved ones, then make the change again; nothing was written.",
+    ),
+    # ---------------------------------------------------------------- CLOUD
+    _spec(
+        "CLOUD_TILE_NOT_READY",
+        _B,
+        _S,
+        "Tile {tile} cannot have its clouds looked at now ({state}).",
+        "Build the tile first, or wait for its build to end.",
+    ),
+    _spec(
+        "CLOUD_XPLANE_RUNNING",
+        _B,
+        _S,
+        "X-Plane is running and shows tile {tile}: its textures are not replaced while it runs. "
+        "Nothing was changed.",
+        "Quit X-Plane, then apply again.",
+    ),
+    _spec(
+        "CLOUD_TEXTURE_LOST",
+        _B,
+        _S,
+        "Tile {tile}: a file its replaced clouds need is missing ({path}).",
+        "Build the tile again: its textures come back as built, its clouds with them where they "
+        "still fit; then apply or restore again.",
+    ),
+    _spec(
+        "CLOUD_TEXTURE_UNREADABLE",
+        _B,
+        _S,
+        "Tile {tile}: the texture {path} cannot be read now ({reason}).",
+        "Nothing was changed. Try again in a moment; if it lasts, check that no other program "
+        "holds the file.",
+    ),
+    _spec(
+        "CLOUD_NOT_BUILT",
+        _B,
+        _S,
+        "Tile {tile} has no built photo to look for clouds in: {reason}.",
+        "Build the tile first: the search reads it as X-Plane draws it.",
+    ),
+    _spec(
+        "CLOUD_UNKNOWN",
+        _B,
+        _S,
+        "Cloud {cloud} is not in the cloud list of tile {tile}.",
+        "Open the tile's Clouds… again to read its list as it is now; nothing was changed.",
+    ),
+    _spec(
+        "CLOUD_NOT_NOW",
+        _B,
+        _S,
+        "Tile {tile}: {action} cannot be done now, what the page showed has changed since.",
+        "Look at the tile as it is now, then try again; nothing was changed.",
+    ),
+    _spec(
+        "CLOUD_INVALID",
+        _B,
+        _S,
+        "Cloud {cloud} of tile {tile} cannot be used: {reason}.",
+        "Outline it again on the map; nothing was changed.",
+    ),
+    _spec(
+        "CLOUD_DETECTOR_ASK",
+        _B,
+        _S,
+        "Finding clouds needs the cloud detector, which is not on this computer yet "
+        "(about {mb} MB).",
+        "Download it once: it runs on this computer, nothing is sent anywhere.",
+    ),
+    _spec(
+        "CLOUD_DETECTOR_MISSING",
+        _B,
+        _S,
+        "The cloud detector could not be made ready: {reason}.",
+        "Check the internet connection and try again; the detection tool (OpenCV and two "
+        "networks) is downloaded once, when you ask for it.",
     ),
 )
 

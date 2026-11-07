@@ -938,19 +938,25 @@ export function createPlanMap(ctx) {
 
   // ---------------------------------------------------------------- drawing
 
-  function startDraw(kind) {
-    if (!zs.loaded) {
+  /** A shape drawn on the map, one way for every shape: a zone's (``kind`` ``rect`` or
+   * ``shape``), or, given ``onShape``, a free shape for another (a cloud's outline): its
+   * polygon goes to ``onShape`` and ``onEnd`` is told when the drawing ends, done or not. */
+  function startDraw(kind, onShape = null, onEnd = null) {
+    if (!onShape && !zs.loaded) {  // a zone goes into the zones: they must be there
       ctx.toast(zs.loadError ? t("zones.load_failed", { detail: zs.loadError }) : t("app.loading"), "fail");
       return;
     }
-    zs.draft = { kind, vertices: [] };
+    zs.draft = { kind, vertices: [], onShape, onEnd };
     select(null, "draw");
     renderDraft();
   }
 
+  /** The shape being drawn ended, done or given up: whoever drew it told (``onEnd``). */
   function cancelDraft() {
+    const onEnd = zs.draft?.onEnd;
     zs.draft = null;
     renderDraft();
+    onEnd?.();
   }
 
   function undoPoint() {
@@ -1034,9 +1040,9 @@ export function createPlanMap(ctx) {
       flashBanner();
       return;
     }
-    zs.draft = null;
-    renderDraft();
-    addZone(polygon);
+    const onShape = d.onShape || addZone;
+    cancelDraft();
+    onShape(polygon);
   }
 
   // ---------------------------------------------------------------- pointer and keys
@@ -1113,8 +1119,13 @@ export function createPlanMap(ctx) {
       skipClick = false;
       return;
     }
+    if (othersMap()) return; // a shape being drawn takes the clicks, the map taken too
     const oe = ev.originalEvent || {};
     if (oe.detail > 1) return; // the second click of a double-click
+    if (othersShape()) {  // a point, no zone gesture
+      draftPoint(ev.latlng.lng, ev.latlng.lat);
+      return;
+    }
     const mod = Boolean(oe.ctrlKey || oe.metaKey);
     if (mod || oe.shiftKey) shortcut(ev.latlng, oe, mod, Boolean(oe.shiftKey));
     else plainClick(ev.latlng);
@@ -1122,7 +1133,7 @@ export function createPlanMap(ctx) {
 
   /** Ctrl+click on macOS opens the context menu instead of clicking (M7). */
   function onContextMenu(ev) {
-    if (!map || !ev.ctrlKey) return;
+    if (!map || !ev.ctrlKey || taken) return;
     ev.preventDefault();
     shortcut(map.mouseEventToLatLng(ev), ev, true, ev.shiftKey);
   }
@@ -1172,9 +1183,16 @@ export function createPlanMap(ctx) {
   let sweep = null;
   let skipClick = false;
   const SWEEP_MOVE_PX = 4;
+  /** Whether a mode of its own has the map (the clouds, ``clouds.js``): while it has, the clicks,
+   * double-clicks, keys and the pointer's moves choose no square and pick no zone. */
+  let taken = false;
+  /** The map another mode's and no shape drawn: nothing of the squares and zones under it. */
+  const othersMap = () => taken && !zs.draft;
+  /** The shape drawn is another's (a cloud's outline, :func:`startDraw`), not a zone. */
+  const othersShape = () => Boolean(zs.draft?.onShape);
 
   function sweepPress(ev, latlng) {
-    if (zs.draft || !map || map.getZoom() < GRID_MIN_ZOOM) return;
+    if (taken || zs.draft || !map || map.getZoom() < GRID_MIN_ZOOM) return;
     // Started on a square already chosen, the rectangle takes squares out rather than in: sweeping
     // back over them is how a user asked to drop them (2026-09-22).
     const under = tileName(Math.floor(latlng.lat), Math.floor(wrapLon(latlng.lng)));
@@ -1228,6 +1246,10 @@ export function createPlanMap(ctx) {
   }
 
   function onMapMouseMove(ev) {
+    if (othersMap()) {
+      hideTip(); // the mode draws its own things over the squares
+      return;
+    }
     if (sweep) {
       sweepTo(ev.latlng, ev.originalEvent || {});
       if (sweep?.started) return;
@@ -1239,7 +1261,7 @@ export function createPlanMap(ctx) {
     hideTip(); // drawing a zone: the tip would sit in the way
     const oe = ev.originalEvent || {};
     let cursor = ev.latlng;
-    if (zs.draft.kind === "shape" && (oe.ctrlKey || oe.metaKey) && oe.shiftKey) {
+    if (zs.draft.kind === "shape" && !othersShape() && (oe.ctrlKey || oe.metaKey) && oe.shiftKey) {
       const [lon, lat] = snapToTextureCorner(wrapLon(cursor.lng), clampLat(cursor.lat), zs.nextZl);
       cursor = L.latLng(lat, lon);
     }
@@ -1253,7 +1275,7 @@ export function createPlanMap(ctx) {
   }
 
   function onKeyDown(ev) {
-    if (ev.defaultPrevented || ev.altKey || !planVisible()) return;
+    if (ev.defaultPrevented || ev.altKey || !planVisible() || othersMap()) return;
     const target = ev.target instanceof Element ? ev.target : null;
     if (target && target.closest("input, textarea, select, [contenteditable]")) return;
     const onMapOrZones = !target || target === document.body || Boolean(target.closest("#map-wrap, #zones-panel"));
@@ -2331,7 +2353,7 @@ export function createPlanMap(ctx) {
     if (!map || !layers.textureGrid) return;
     layers.textureGrid.clearLayers();
     gridTooFine = false;
-    if (!zs.draft && !snapKeysHeld) return;
+    if ((!zs.draft || othersShape()) && !snapKeysHeld) return; // a zone's grid, for a zone
     const zl = zs.nextZl;
     const view = map.getBounds();
     const side = (360 / 2 ** zl) * 16; // degrees of longitude, one texture
@@ -2411,10 +2433,12 @@ export function createPlanMap(ctx) {
     $("draw-center").disabled = !map || map.getZoom() < ZONE_MIN_ZOOM;
   }
 
+  /** The first visit's tip, on how to choose tiles: not while a zone is drawn, nor while a mode
+   * of its own has the map (the clouds' banner stood over it on a new install, 2026-11-03). */
   function renderHint() {
     const hint = $("map-hint");
     if (!hint) return;
-    hint.hidden = !map || Boolean(zs.draft) || zs.hintDone || ctx.tiles().length > 0;
+    hint.hidden = !map || taken || Boolean(zs.draft) || zs.hintDone || ctx.tiles().length > 0;
   }
 
   function dismissHint() {
@@ -2966,6 +2990,35 @@ export function createPlanMap(ctx) {
     show,
     rerender,
     themeChanged,
+    /** The Leaflet map, null before it exists: a mode of its own draws on it (``clouds.js``). */
+    leaflet: () => map,
+    /**
+     * Take the map's clicks, double-clicks and keys away from the squares and zones (``true``), or
+     * give them back: choosing squares or picking zones under the clouds' outlines would change
+     * the plan of a build while the user only meant to tick a cloud. A shape being drawn
+     * (:func:`drawShape`) takes them all the same.
+     */
+    takeInput(on) {
+      taken = Boolean(on);
+      renderHint();
+    },
+    /** Draw a free shape on the map the way a zone is drawn, its polygon (``[[lon, lat], ...]``)
+     * given to ``onShape``; ``onEnd`` told when the drawing ends, done or given up. */
+    drawShape(onShape, onEnd) {
+      startDraw("shape", onShape, onEnd);
+    },
+    /** Give up the shape being drawn, if any. */
+    cancelDraw() {
+      if (zs.draft) cancelDraft();
+    },
+    /** Whether a shape is being drawn. */
+    drafting: () => Boolean(zs.draft),
+    /** Bring a whole tile into view (``+46+006``). */
+    fitTile(name) {
+      const cell = parseTile(name);
+      if (!map || !cell) return;
+      map.fitBounds([[cell.lat, cell.lon], [cell.lat + 1, cell.lon + 1]], { padding: [16, 16] });
+    },
     /** Latitude of the map centre, or null before the map exists. */
     mapLatitude: () => (map ? map.getCenter().lat : null),
     /** The map centre `{lat, lon}`, or null before the map exists. */

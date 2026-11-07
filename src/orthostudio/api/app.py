@@ -35,6 +35,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from orthostudio import __version__, config, update
 from orthostudio.airports import default_index as default_airport_index
 from orthostudio.api.basemap import basemap_router
+from orthostudio.api.clouds_api import CloudHooks, clouds_router
 from orthostudio.api.jobs import Job, JobBusyError, JobManager, TileInBuildError, error_json
 from orthostudio.api.map_api import TileClient, TileFetch, map_router
 from orthostudio.api.models import (
@@ -158,7 +159,7 @@ __all__ = [
     "sse_message",
 ]
 
-API_LEVEL = 43
+API_LEVEL = 50
 """What this engine's API offers, for the page: 1 = P2b, 2 = zones (``/api/zones``) and the base map
 (``/api/map``), 3 = deleting a tile (``POST /api/library/{name}/delete``) and the sizes of the
 library, 4 = the disk space of the Library (``GET /api/disk``, ``POST /api/clean``), 5 = clearing
@@ -213,7 +214,8 @@ summary (how many of its tiles at each detail level, which Works writes), 40 = `
 the store's files, made one file with them whatever the choices), 41 = the setting
 ``expert.road_smoothing`` (an older engine refuses a settings document that holds it), 42 = the
 setting ``expert.rounded_road_ends`` (likewise), 43 = the settings profiles (``/api/profiles``)
-and ``profile`` in a job's summary. A page
+and ``profile`` in a job's summary, 50 = the replaced clouds (``/api/clouds``, ``clouds.md`` 6); 44
+to 49 were test builds of the clouds (1.4.0 rc), never released, whose routes were other. A page
 served by an engine older than itself (a ``osxp serve`` started before an update: the page's files
 are read from disk at each load, the routes were imported at start) asks the user to restart
 OrthoStudio XP instead of showing "Not Found"."""
@@ -1077,6 +1079,7 @@ def create_app(
     settings_lock = asyncio.Lock()
     filing_stop = threading.Event()
     filing_progress: dict[str, Any] = {}
+    deleting_now: set[str] = set()  # the tiles being deleted, the cloud mode none of them
 
     def busy_filing() -> JSONResponse:
         return _plain_error(
@@ -1417,6 +1420,7 @@ def create_app(
             )
         # the queued builds first, so that none starts when the running one stops
         cancelled = manager.cancel_all() if active is not None else []
+        await asyncio.to_thread(clouds.tasks.end)  # an Apply ends what it began
         active_id = None if active is None else active.id
         # after the answer has left: the page learns that OrthoStudio XP is stopping
         asyncio.get_running_loop().call_later(0.3, shutdown)
@@ -1999,6 +2003,33 @@ def create_app(
 
         return await asyncio.to_thread(run)
 
+    # the cloud mode: its tasks are the engine's, and Apply one of them. A tile's folder is the
+    # cloud mode's only while nothing else holds it: a build, waiting for one, a filing; each of
+    # them lets its cloud tasks end before it takes the folder (``Tasks.end``)
+    def taken_now() -> dict[str, str]:
+        out = {
+            tile: "in_build" if how == "running" else "queued"
+            for tile, how in manager.building_states().items()
+        }
+        filed = filing_progress.get("tile") if filing_lock.locked() else None
+        if filed:
+            out.setdefault(filed, "filing")
+        for tile in list(deleting_now):
+            out.setdefault(tile, "deleting")
+        return out
+
+    cloud_routes, clouds = clouds_router(
+        CloudHooks(
+            custom_scenery=lambda: (
+                custom_scenery_dir(xp) if (xp := xplane_dir()) is not None else None
+            ),
+            taken=taken_now,
+        )
+    )
+    manager.make_way = lambda tiles: clouds.tasks.end(set(tiles))
+    state["clouds"] = clouds  # what runs of the clouds keeps the engine up, as a build does
+    app.include_router(cloud_routes)
+
     @app.post("/api/jobs", status_code=201)
     async def post_job(req: JobRequest) -> Any:
         def specs_and_profile() -> tuple[list[Any], str | None]:
@@ -2560,6 +2591,7 @@ def create_app(
                 )
             filing_progress.clear()
             filing_progress.update(tile=entry.tile.name, phase="start", done=0, total=0)
+            await asyncio.to_thread(clouds.tasks.end, {entry.tile.name})  # its folder is moved
 
             def progress(phase: str, done: int, total: int) -> None:
                 filing_progress.update(phase=phase, done=done, total=total)
@@ -2610,12 +2642,20 @@ def create_app(
         def run() -> dict[str, Any]:
             xp = xplane_dir(req.xplane_dir)
             entry = pack_to_delete(name, path=req.path, library_path=default_library_path())
-            return delete_receipt(
-                entry.path,
-                tile=entry.tile,
-                custom_scenery=None if xp is None else custom_scenery_dir(xp),
-                library_path=default_library_path(),
-            )
+            cs = None if xp is None else custom_scenery_dir(xp)
+            deleting_now.add(entry.tile.name)  # taken from the cloud mode, said first
+            try:
+                # its cloud tasks ended first (an Apply ends what it began); its list of clouds
+                # kept: built again from the atelier, the tile gets them back, as all the rest
+                clouds.let_go(entry.tile)
+                return delete_receipt(
+                    entry.path,
+                    tile=entry.tile,
+                    custom_scenery=cs,
+                    library_path=default_library_path(),
+                )
+            finally:
+                deleting_now.discard(entry.tile.name)
 
         async with deleting:  # a second delete waits for this one
             if manager.active() is not None:

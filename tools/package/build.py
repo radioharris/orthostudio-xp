@@ -94,9 +94,11 @@ LICENCE_FILES = (
     ("native/triangle4xp/Triangle4XP.c", "triangle4xp/Triangle4XP.c"),
     ("native/triangle4xp/CMakeLists.txt", "triangle4xp/CMakeLists.txt"),
     ("native/dsftool/README.md", "dsftool/README.md"),
+    ("tools/clouds/LICENSE-OmniCloudMask.txt", "omnicloudmask/LICENSE.txt"),
 )
 """Shipped with every installer: the GPL of OrthoStudio XP and its notice (who holds its copyright),
-and the sources and notice of modifications Triangle4XP's licence requires with its binary."""
+the sources and notice of modifications Triangle4XP's licence requires with its binary, and the
+MIT licence of OmniCloudMask, whose networks the cloud search downloads."""
 
 
 @dataclass(frozen=True, slots=True)

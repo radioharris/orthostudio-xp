@@ -13,7 +13,10 @@ into a new architecture.
 
 Triangle4XP (native/triangle4xp) is Jonathan Shewchuk's Triangle, modified by Oscar Pilote, under
 its own licence, which forbids including it in a commercial product without the author's
-agreement. DSFTool (native/dsftool) is Laminar Research's, under the MIT/X11 licence.
+agreement. DSFTool (native/dsftool) is Laminar Research's, under the MIT/X11 licence. The cloud
+detector, downloaded at the first cloud search, is the two networks of OmniCloudMask
+(https://github.com/DPIRD-DMA/OmniCloudMask), Copyright (c) 2025 DPIRD-DMA, under the MIT licence
+(tools/clouds/LICENSE-OmniCloudMask.txt).
 
 Additional terms (section 7 of the GNU GPL v3)
 

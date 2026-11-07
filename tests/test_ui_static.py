@@ -5678,7 +5678,7 @@ def test_the_library_says_what_each_tile_was_built_with() -> None:
     app_js = (UI / "app.js").read_text(encoding="utf-8")
     row = _function_body(app_js, "libraryRow")
     assert "libraryOpen.has(key)" in row  # open parts stay open across the table's redraws
-    assert 'class: "library-built"' in row and "colspan: 9" in row
+    assert 'class: "library-built"' in row and "colspan: 10" in row  # with the clouds
     assert "byOsxp ?" in row  # none for an imported tile
     assert "return detail ? [row, detail] : [row];" in row
     # focus comes back to a row by its place among the tiles, not among the parts under them
@@ -7223,7 +7223,8 @@ def test_the_texture_grid_is_drawn_while_a_zone_is_drawn() -> None:
     # while a zone is under way, and while the keys that snap to the grid are held: the first
     # point is the one that starts the shape, so at that moment there is no zone in progress and
     # the grid appeared only after the click that needed it (a user, 2026-09-24)
-    assert "if (!zs.draft && !snapKeysHeld) return;" in body
+    # a zone's drawing only: a cloud's outline, drawn the same way, has no textures to take
+    assert "if ((!zs.draft || othersShape()) && !snapKeysHeld) return;" in body
     assert "TEXTURE_GRID_MIN_PX" in body, "and only while the squares can be aimed at"
     assert "zs.nextZl" in body, "at the level the zone will take, not the map's"
     assert "map.getBounds()" in body, "the view only, or it is thousands of lines"
@@ -8860,3 +8861,31 @@ def test_a_zone_as_the_tiles_offers_no_level_above_the_tiles_source() -> None:
     assert "const code = provider || ctx.planProvider?.() || null;" in body("maxZlFor")
     assert 'const source = provider || ctx.planProvider?.() || "";' in body("clampZl")
     assert "renderToolOptions();" in code.split("planChanged() {", 1)[1][:200]
+
+
+def test_every_control_of_the_cloud_mode_is_redrawn_as_itself() -> None:
+    """The panel is drawn again in place, an element matched to the live one of its kind and
+    place unless it has a key: a search's Stop came in as Tick all's button, its handler with it,
+    and ticked every cloud (a user, 2026-11-06). Every button of the mode has a key, or a name of
+    its own (a cloud's row's, which carries its cloud)."""
+    code = (UI / "clouds.js").read_text(encoding="utf-8")
+    calls = re.findall(r'h\("button", \{[^}]*\}', code)
+    assert calls
+    loose = [c for c in calls if "dataset:" not in c and '"aria-label"' not in c]
+    assert loose == [], loose
+
+
+def test_the_step_that_lays_a_tiles_clouds_again_says_so_in_works() -> None:
+    """Whatever the step that finishes a tile, its clouds laid again are said from the engine's
+    line (``build.clouds_again_message``): an Assembly said "putting the tile together" for the
+    12 s they took (a user, 2026-11-07)."""
+    from orthostudio.pipeline import build as build_mod
+
+    line = build_mod.clouds_again_message(3, 19)
+    job = {"status": "running", "install": False, "tiles": []}
+    pack = {"role": "pack", "status": "running", "fraction": 1.0}
+    assembly = {"status": "running", "fraction": 1.0, "message": line,
+                "nodes": {"+46+006/BI16/pack": pack}}  # fmt: skip
+    tile = {"tile": "+46+006", "steps": {"assembly": assembly}}
+    got = _node_json("app.js", f"m.tileActivity({json.dumps(job)}, {json.dumps(tile)})")
+    assert got == [{"step": "assembly", "words": "laying its clouds: 3 of 19 textures"}]

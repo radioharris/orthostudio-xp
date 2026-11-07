@@ -43,12 +43,16 @@ def _bc1_palette(colour_blocks: np.ndarray) -> np.ndarray:
 
 
 def _bc1_pixels(colour_blocks: np.ndarray) -> np.ndarray:
-    """Decode (n, 8) BC1 colour blocks to (n, 16, 4) RGBA pixels in row-major block order."""
+    """Decode (n, 8) BC1 colour blocks to (n, 16, 4) RGBA pixels in row-major block order. Each
+    colour of a block's palette is taken as one 32-bit word: gathered byte by byte, a level of
+    4096 x 4096 took 0.30 s, 0.06 s so, the same pixels (2026-11-07)."""
     palette = _bc1_palette(colour_blocks)
     bits = colour_blocks[:, 4:8].copy().view("<u4")[:, 0]
     shifts = np.arange(0, 32, 2, dtype=np.uint32)
-    idx = (bits[:, None] >> shifts[None, :]) & 3
-    return np.take_along_axis(palette, idx[:, :, None].astype(np.intp), axis=1)
+    idx = ((bits[:, None] >> shifts[None, :]) & 3).astype(np.intp)
+    words = palette.view("<u4")[:, :, 0]  # (n, 4): each colour's RGBA as one word
+    base = (np.arange(len(words), dtype=np.intp) * 4)[:, None]
+    return words.reshape(-1)[base + idx].view(np.uint8).reshape(len(words), 16, 4)
 
 
 def _bc3_alpha(alpha_blocks: np.ndarray) -> np.ndarray:
@@ -75,21 +79,35 @@ def _bc3_alpha(alpha_blocks: np.ndarray) -> np.ndarray:
     return np.take_along_axis(palette, idx, axis=1).astype(np.uint8)
 
 
+DECODED_AT_ONCE = 1 << 16
+"""Blocks decoded at once (:func:`decode_blocks`), a band of rows of them: a level of 4096 pixels
+decoded whole took some 350 MB meanwhile for its 64 MB of pixels, the index of every pixel held
+at once, and four textures laid at once took 2.5 GB (a review, 2026-11-07)."""
+
+
 def decode_blocks(data: bytes | memoryview | np.ndarray, width: int, height: int, fmt: str):
-    """Decode one level of ``fmt`` blocks to an (height, width, 4) uint8 RGBA array."""
+    """Decode one level of ``fmt`` blocks to an (height, width, 4) uint8 RGBA array, a band of
+    block rows at a time (:data:`DECODED_AT_ONCE`)."""
     fmt = check_format(fmt)
     bw, bh = (width + 3) // 4, (height + 3) // 4
     bs = BLOCK_BYTES[fmt]
     raw = np.frombuffer(data, dtype=np.uint8) if not isinstance(data, np.ndarray) else data
     if raw.size != bw * bh * bs:
         raise ValueError(f"expected {bw * bh * bs} bytes of {fmt} data, got {raw.size}")
-    blocks = raw.reshape(bw * bh, bs)
-    if fmt == "bc1":
-        pixels = _bc1_pixels(blocks)
-    else:
-        pixels = _bc1_pixels(blocks[:, 8:16])
-        pixels[:, :, 3] = _bc3_alpha(blocks[:, 0:8])
-    image = pixels.reshape(bh, bw, 4, 4, 4).transpose(0, 2, 1, 3, 4).reshape(bh * 4, bw * 4, 4)
+    blocks = raw.reshape(bh, bw, bs)
+    image = np.empty((bh * 4, bw * 4, 4), dtype=np.uint8)
+    rows = max(1, DECODED_AT_ONCE // bw)
+    for r0 in range(0, bh, rows):
+        band = blocks[r0 : r0 + rows].reshape(-1, bs)
+        n = len(band) // bw
+        if fmt == "bc1":
+            pixels = _bc1_pixels(band)
+        else:
+            pixels = _bc1_pixels(band[:, 8:16])
+            pixels[:, :, 3] = _bc3_alpha(band[:, 0:8])
+        image[r0 * 4 : (r0 + n) * 4] = (
+            pixels.reshape(n, bw, 4, 4, 4).transpose(0, 2, 1, 3, 4).reshape(n * 4, bw * 4, 4)
+        )
     return np.ascontiguousarray(image[:height, :width])
 
 

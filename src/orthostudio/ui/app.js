@@ -29,6 +29,7 @@ import { PHOTO_LOOKS, photoValues } from "./colour.js";
 import { TEXTURE_MB, ZONES_FORMAT, normalizeZone, parseTile, tileName, validateZonesDocument, zoneTextureKeys } from "./geo.js";
 import { OLD_STORAGE_KEY, STORAGE_KEY, defaultLevels, excluding, groupsOf, levelOf, newFlightPlan, readSaved, restoredPlan, squaresOf, toSaved, withPlan, withoutPlan } from "./flightplan.js";
 import { createPlanMap, detailLabel, detailName } from "./map.js";
+import { createCloudMode } from "./clouds.js";
 import { colourPreview } from "./preview.js";
 import { defaultsKeepingFolders, profileDiffers, profileDiffersText, profileNameProblem, refusedValueText, renderSettingsView, sameValue, settingsSummary } from "./settings.js";
 import { bindFind, bindFindKeys, findForget } from "./find.js";
@@ -260,6 +261,8 @@ const state = {
 /** The map, the zones and the drawing tools of the Plan (map.js); created by boot() so that the
  * zones load with the rest. The tile selection stays in `state.tiles`. */
 let planMap = null;
+/** The Plan's cloud mode (``clouds.js``), opened on a built tile from the Library. */
+let cloudMode = null;
 
 // ------------------------------------------------------------------ DOM helpers
 
@@ -2524,7 +2527,7 @@ function routeFromHash() {
 // ------------------------------------------------------------------ status bar
 
 /** The engine API this page needs (orthostudio.api.app.API_LEVEL); a test keeps the two equal. */
-const PAGE_API_LEVEL = 43;
+const PAGE_API_LEVEL = 50;
 
 async function loadStatus() {
   try {
@@ -2831,7 +2834,7 @@ function renderStatus() {
   const shown = dataFolderShown(s);
   if (shown) {
     const label = revealLabel(s.platform);
-    place.append(h("button", { type: "button", class: "btn btn-icon reveal-btn status-reveal", title: label, "aria-label": label, onclick: () => revealPath(shown) }, folderIcon()));
+    place.append(h("button", { type: "button", class: "btn btn-icon reveal-btn status-reveal", title: label, "aria-label": label, onclick: () => revealPath(shown) }, icon("tpl-folder-icon")));
   }
 }
 
@@ -4361,6 +4364,7 @@ function buildingOnMap() {
 function jobsChanged() {
   renderBuildActions();
   planMap?.jobChanged();
+  cloudMode?.jobsChanged();
   if (state.screen === "library" && state.library) renderLibrary();
   if (state.screen === "disk") renderDisk(); // Free space waits for a build, from the last measure
   followBuildUnderWay();
@@ -5018,6 +5022,11 @@ function imageryWait(job, tile) {
  * (`osm_progress_message`, `dem_downloading_message`, `textures_progress_message`). */
 function nodeWords(n, message) {
   const line = String(message || "");
+  // whatever the step, its tile's replaced clouds laid again before it ends (build.py
+  // `_clouds_before_done`): its role's words said "putting the tile together" for the 12 s they
+  // took (a user, 2026-11-07)
+  const clouds = /laying its clouds again: (\d+) of (\d+) textures/.exec(line);
+  if (clouds) return t("works.act_clouds", { done: fmtInt(Number(clouds[1])), total: fmtInt(Number(clouds[2])) });
   switch (n.role) {
     case "osm": {
       const back = /: (\d+) of (\d+) back\b/.exec(line);
@@ -5406,7 +5415,29 @@ async function loadLibrarySizes() {
   askSizesAgain();
 }
 
+/** The Library's Clouds cells, by row path, the engine's (``GET /api/clouds``): none when the
+ * list does not come. */
+async function loadClouds() {
+  try {
+    const res = await api("GET", "/api/clouds");
+    state.clouds = res?.rows || {};
+  } catch (_err) {
+    state.clouds = {};
+  }
+  renderLibrary();
+}
+
+/** What the Library's column says of a tile's clouds: those it holds replaced and those waiting
+ * for Apply, in this order. */
+export function cloudsWords(c) {
+  const out = [];
+  if (c?.replaced > 0) out.push(t("library.clouds_replaced", { n: fmtInt(c.replaced) }));
+  if (c?.to_apply > 0) out.push(t("library.clouds_to_apply", { n: fmtInt(c.to_apply) }));
+  return out;
+}
+
 async function loadLibrary() {
+  loadClouds();
   try {
     const rows = await api("GET", "/api/library");
     state.library = Array.isArray(rows) ? rows : [];
@@ -6049,9 +6080,9 @@ function builtBlock(e) {
  * few seconds while a build installs its tiles. */
 const libraryOpen = new Set();
 
-/** A small folder, drawn like the page's other icons (the template in index.html). */
-function folderIcon() {
-  return $("tpl-folder-icon").content.firstElementChild.cloneNode(true);
+/** One of the page's icons, the templates in index.html (`tpl-folder-icon`, `tpl-cloud-icon`...). */
+export function icon(id) {
+  return $(id).content.firstElementChild.cloneNode(true);
 }
 
 export function libraryRow(e, showFolder = false) {
@@ -6111,12 +6142,12 @@ export function libraryRow(e, showFolder = false) {
   const overlayMark = overlayPill(e, busy || inBuild);
   const label = revealLabel(state.status?.platform);
   const revealButton = present && e.path
-    ? h("button", { type: "button", class: "btn btn-icon reveal-btn", title: label, "aria-label": `${label}: ${e.tile}`, onclick: () => revealPath(e.path) }, folderIcon())
+    ? h("button", { type: "button", class: "btn btn-icon reveal-btn", title: label, "aria-label": `${label}: ${e.tile}`, onclick: () => revealPath(e.path) }, icon("tpl-folder-icon"))
     : null;
   // What the tile was built with, one click away and only for a tile OrthoStudio XP built: an
   // imported one's settings are Ortho4XP's, which nothing here can read.
   const open = libraryOpen.has(key);
-  const detail = byOsxp ? h("tr", { class: "library-built", hidden: !open }, h("td", { colspan: 9 }, builtBlock(e))) : null;
+  const detail = byOsxp ? h("tr", { class: "library-built", hidden: !open }, h("td", { colspan: 10 }, builtBlock(e))) : null;
   let builtCell = t("library.by_ortho4xp");
   if (byOsxp) {
     const chevron = h("span", { class: "built-chevron", "aria-hidden": "true" }, open ? "▾" : "▸");
@@ -6148,10 +6179,26 @@ export function libraryRow(e, showFolder = false) {
     h("td", null, e.installed ? pill(t("app.yes"), "ok") : pill(t("app.no"), "cancelled")),
     h("td", { class: "num" }, fmtBytes(e.size_bytes)),
     h("td", null, builtCell),
+    cloudsCell(e),
     h("td", { class: "library-action" }, revealButton),
     h("td", { class: "library-action" }, xplaneButton),
     h("td", { class: "library-action" }, deleteButton));
   return detail ? [row, detail] : [row];
+}
+
+/** A row's Clouds cell, on the rows the engine offers it on (a tile OrthoStudio XP built, the
+ * row its own folder). */
+function cloudsCell(e) {
+  const cell = state.clouds?.[e.path];
+  if (!cell) return h("td", { class: "library-clouds" });
+  const words = cloudsWords(cell);
+  // one line at the smallest window, the tile's name whole (a user, 2026-11-07): two icons, as the
+  // folder's, and the first of its words, all of them in its tooltip
+  return h("td", { class: "library-clouds" }, h("div", null,
+    h("button", { type: "button", class: "btn btn-icon", title: t("library.clouds_help"), "aria-label": `${t("library.clouds_open")} ${e.tile}`, onclick: () => cloudMode?.open(e.tile) }, icon("tpl-cloud-icon")),
+    // its clouds forgotten from here, the question asked here
+    cell.forget ? h("button", { type: "button", class: "btn btn-icon btn-danger btn-trash", title: t("library.clouds_forget_help"), "aria-label": `${t("library.clouds_forget")}: ${e.tile}`, onclick: () => forgetLibraryClouds(e) }, icon("tpl-bin-icon")) : null,
+    words.length ? h("span", { class: "clouds-words", title: words.join(" · ") }, words[0]) : null));
 }
 
 /** The names of the overlay packs of other tools, as a user knows them. */
@@ -6261,7 +6308,7 @@ function renderLibrary() {
   note.classList.toggle("is-warn", Boolean(view.note?.warn));
   if (view.note) setText(note, view.note.text);
   if (!rows.length) {
-    body.append(h("tr", null, h("td", { colspan: 9, class: "placeholder" }, t("library.empty"))));
+    body.append(h("tr", null, h("td", { colspan: 10, class: "placeholder" }, t("library.empty"))));
     markWideTables();
     return;
   }
@@ -6522,6 +6569,23 @@ async function deleteLibraryTile(e) {
   await runLibraryChange(e, () => api("POST", req.path, req.body), (res) => toast(deletedMessage(res?.tile || e.tile, res?.freed_bytes, res?.warning)));
 }
 
+/** The trash of a row's Clouds cell: asks first, then the cloud mode's Forget, its own task
+ * (`POST /api/clouds/{tile}/apply {action: "forget"}`), waited for: the original photos back in the
+ * tile, its list of clouds erased with their images. A failure is said on the row's card. */
+async function forgetLibraryClouds(e) {
+  const question = { title: t("clouds.forget_title", { tile: e.tile }), body: [t("clouds.forget_text")], go: "delete", words: t("clouds.forget_go") };
+  if (libraryBusy.has(libraryKey(e)) || !(await confirmBulk(question))) return;
+  const path = `/api/clouds/${encodeURIComponent(e.tile)}`;
+  await runLibraryChange(e, async () => {
+    await api("POST", `${path}/apply`, { action: "forget" });
+    for (let answer = await api("GET", path); answer.busy; answer = await api("GET", path)) {
+      await new Promise((go) => setTimeout(go, 300));
+    }
+    const failed = (await api("GET", path)).failed;
+    if (failed?.kind === "forget") throw new ApiError(409, { error: failed.error });
+  });
+}
+
 /** "Remove from the list" (tiles imported from Ortho4XP): the Library forgets the tile, and its
  * files stay where Ortho4XP put them. */
 function forgetLibraryTile(e) {
@@ -6565,7 +6629,7 @@ function confirmBulk(question) {
   $("library-bulk-title").textContent = question.title;
   clear($("library-bulk-text")).append(...question.body.map((line) => h("p", null, line)));
   const go = $("library-bulk-go");
-  go.textContent = question.go === "delete" ? t("library.delete_confirm") : t("library.forget_go");
+  go.textContent = question.words || (question.go === "delete" ? t("library.delete_confirm") : t("library.forget_go"));
   go.classList.toggle("btn-danger", question.go === "delete");
   go.classList.toggle("btn-primary", question.go !== "delete");
   dialog.returnValue = "";
@@ -7931,6 +7995,7 @@ function rerenderAll() {
   renderDisk(); // from the last measure: measuring again takes minutes on a hard disk
   renderSettings();
   planMap?.rerender();
+  cloudMode?.rerender();
 }
 
 // ------------------------------------------------------------------ boot
@@ -8215,6 +8280,18 @@ async function boot() {
       // had lost its mark, 2026-09-18).
       renderLibrary();
     },
+  });
+  cloudMode = createCloudMode({
+    api,
+    h,
+    icon,
+    clear,
+    morph: morphChildren,
+    toast,
+    errorMessage,
+    planMap,
+    providers: () => state.providers,
+    showPlan: () => showScreen("plan"),
   });
   renderTiles();
   renderPlanPanel();

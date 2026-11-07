@@ -3383,8 +3383,8 @@ def osm_artefact_refs(outcomes: Mapping[TileRef, OsmOutcome]) -> dict[TileRef, A
 
 class _Collector:
     """Records every node's outcome from the events (and forwards them), and lays again the folder
-    of a tile the build installs, found in the cache without it, before its install reads it
-    (:meth:`installs`)."""
+    of a tile built in the workshop whose pack, found in the cache, lost files, before anything
+    reads it (:meth:`watch`)."""
 
     def __init__(self, on_event: Callable[[Event], None] | None) -> None:
         self.on_event = on_event
@@ -3395,17 +3395,21 @@ class _Collector:
         adds what it did to what the first did."""
         self.laid: set[str] = set()
         """The pack nodes whose folder was laid again so."""
-        self._installs: dict[str, TileNodes] = {}
+        self._packs: dict[str, TileNodes] = {}
         self._env: BuildEnv | None = None
 
-    def installs(self, graphs: Iterable[TileNodes], env: BuildEnv) -> None:
-        """Watch the packs of the tiles of ``graphs`` the build installs. A tile filed elsewhere,
-        put in the Trash, then built again comes back to the workshop: its pack, found in the
-        cache, wrote nothing there, and its install, which had never run for that build (a tile
-        filed elsewhere is put back, not installed), read the folder before the end of the build
-        laid it again, and failed with an internal error (found on the owner's Shadow,
-        2026-10-06). The scheduler hands a node's ``Done`` here before it starts what follows."""
-        self._installs.update({g.pack.id: g for g in graphs if g.install is not None})
+    def watch(self, graphs: Iterable[TileNodes], env: BuildEnv, homes: Mapping[str, Path]) -> None:
+        """Watch the packs of the tiles of ``graphs`` built in the workshop, but those filed
+        elsewhere (``homes``, put back from it, :func:`_put_back_tile`): a pack found in the cache
+        whose folder lost files is laid again when the pack is done, before anything reads it, its
+        install and its clouds (``_clouds_before_done``). A tile filed elsewhere, put in the
+        Trash, then built again comes back to the workshop: its pack, found in the cache, wrote
+        nothing there, and its install, which had never run for that build (a tile filed
+        elsewhere is put back, not installed), read the folder before the end of the build laid
+        it again, and failed with an internal error (found on the owner's Shadow, 2026-10-06);
+        a tile not installed showed its clouds no more, laid before the end of the build laid its
+        folder again. The scheduler hands a node's ``Done`` here before it starts what follows."""
+        self._packs.update({g.pack.id: g for g in graphs if g.spec.tile.name not in homes})
         self._env = env
 
     def __call__(self, event: Event) -> None:
@@ -3415,7 +3419,7 @@ class _Collector:
             counted[1] += event.downloaded
         if isinstance(event, Done):
             self.done[event.node_id] = event
-            nodes = self._installs.get(event.node_id)
+            nodes = self._packs.get(event.node_id)
             if nodes is not None and event.hit:
                 self._lay(nodes, event)
         elif isinstance(event, Failed):
@@ -3433,7 +3437,7 @@ class _Collector:
                 _assemble_again(nodes, self._env, self, manifest)
                 self.laid.add(done.node_id)
         except Exception:  # the end of the build lays it again, and says what stops it
-            log.warning("%s could not be laid again before its install", spec.tile.name,
+            log.warning("%s could not be laid again when its pack was done", spec.tile.name,
                         exc_info=True)  # fmt: skip
 
     def outcome(self, role: str, node: Node) -> NodeOutcome:
@@ -3480,7 +3484,7 @@ def _verify_effects(
 ) -> tuple[list[str], bool]:
     """Redo the pack / install effects after a hit whose destination was tampered with, and put
     the tile's row in the library with the build its folder holds. A folder laid again before its
-    install (:meth:`_Collector.installs`) is said repaired too."""
+    install (:meth:`_Collector.watch`) is said repaired too."""
     repaired: list[str] = []
     spec = nodes.spec
     pack_done = collector.done.get(nodes.pack.id)
@@ -3598,6 +3602,11 @@ PUT_BACK_BYTES_PER_S = 100e6
 disk's pace. The step's own bar moves by the bytes."""
 
 
+def _put_back_id(spec: BuildSpec) -> str:
+    """The node id of the step that puts a tile filed elsewhere back in its folder."""
+    return f"{spec.tile.name}/{spec.level}/{PUT_BACK_ROLE}"
+
+
 def _put_back_rows(
     specs: Sequence[BuildSpec], homes: Mapping[str, Path]
 ) -> tuple[tuple[tuple[str, NodeKind, str], ...], tuple[tuple[str, float], ...]]:
@@ -3612,7 +3621,7 @@ def _put_back_rows(
         home = homes.get(spec.tile.name)
         if home is None:
             continue
-        node_id = f"{spec.tile.name}/{spec.level}/{PUT_BACK_ROLE}"
+        node_id = _put_back_id(spec)
         rows.append((node_id, "io", PUT_BACK_ROLE))
         took = 1.0
         if not same_disk(Path(spec.out_dir).expanduser().resolve(), home.parent):
@@ -3642,7 +3651,7 @@ def _put_back_tile(
     one waits in the workshop, its roads parked in it, not drawn twice. Returns what was repaired,
     whether the tile is in X-Plane, and the step's failure."""
     spec = nodes.spec
-    node_id = f"{spec.tile.name}/{spec.level}/{PUT_BACK_ROLE}"
+    node_id = _put_back_id(spec)
     pack_done = collector.done[nodes.pack.id]
     manifest = PackManifest.from_toml(pack_done.ref.path.read_text(encoding="utf-8"))
     here = Path(spec.out_dir).expanduser().resolve() / pack_dir_name(spec.tile)
@@ -3788,6 +3797,61 @@ def _settle_put_back(
         return True
     _remember_the_tile(spec, home, manifest, env)
     return False
+
+
+def _clouds_again(
+    spec: BuildSpec, pack_dir: Path, progress: Callable[[int, int], None] | None = None
+) -> None:
+    """The clouds replaced in the tile laid again in the textures its build placed, where those
+    are the ones they were chosen on (``clouds.md`` 2.3), ``progress`` told how many textures of
+    how many are. The clouds are no part of the build: nothing of them fails it."""
+    try:
+        from orthostudio.clouds.laying import lay_again
+
+        lay_again(spec.tile, pack_dir, custom_scenery=spec.custom_scenery, progress=progress)
+    except Exception:
+        log.warning("%s: its replaced clouds were not laid again", spec.tile.name, exc_info=True)
+
+
+def clouds_again_message(done: int, total: int) -> str:
+    """The line of the step that finishes a tile while its clouds are laid again, as Works reads
+    it (``app.js`` ``nodeWords``)."""
+    return f"laying its clouds again: {done} of {total} textures"
+
+
+def _clouds_before_done(
+    on_event: Callable[[BuildEvent], None] | None,
+    graphs: Iterable[TileNodes],
+    homes: Mapping[str, Path],
+) -> Callable[[BuildEvent], None]:
+    """``on_event`` told every event, each tile's clouds laid again in its folder
+    (:func:`_clouds_again`) just before the event that says the build finished it: its target's,
+    or its put back's for a tile filed elsewhere. A tile the build has finished is one whose
+    folder X-Plane may show, and others may read: it shows its clouds from then. Meanwhile that
+    step says so, as any step says what it does (its tooltip in Works): its bar full, it stayed
+    seconds without a word (a user, 2026-11-07)."""
+    finishing: dict[str, tuple[BuildSpec, Path]] = {}
+    for g in graphs:
+        name = g.spec.tile.name
+        if name in homes:
+            finishing[_put_back_id(g.spec)] = (g.spec, homes[name])
+        else:
+            out_root = Path(g.spec.out_dir).expanduser().resolve()
+            finishing[g.target.id] = (g.spec, out_root / pack_dir_name(g.spec.tile))
+
+    def told(event: BuildEvent) -> None:
+        if isinstance(event, Done) and event.node_id in finishing:
+            node = event.node_id
+
+            def said(done: int, total: int) -> None:
+                if total and on_event is not None:
+                    on_event(Progress(node, 1.0, clouds_again_message(done, total)))
+
+            _clouds_again(*finishing[node], said)
+        if on_event is not None:
+            on_event(event)
+
+    return told
 
 
 def _let_go(
@@ -3949,7 +4013,7 @@ def build_tiles(
     if on_event is not None:
         for s in every_spec:
             if s.tile.name in away:
-                on_event(Failed(f"{s.tile.name}/{s.level}/{PUT_BACK_ROLE}", away[s.tile.name]))
+                on_event(Failed(_put_back_id(s), away[s.tile.name]))
     # Validate the stage options *before* anything is downloaded or written (finding V1).
     choices = stage_choices(specs)
     # The OSM downloads are nodes of the graph, on a lane of their own (spec 8.3): each tile goes
@@ -3985,8 +4049,9 @@ def build_tiles(
         ),
     )
     targets = [g.target.id for g in graphs]
-    collector = _Collector(on_event)
-    collector.installs(graphs, env)
+    told = _clouds_before_done(on_event, graphs, homes)
+    collector = _Collector(told)
+    collector.watch(graphs, env, homes)
 
     async def main() -> dict[str, ArtifactRef]:
         loop = asyncio.get_running_loop()
@@ -4069,7 +4134,7 @@ def build_tiles(
             )
             by_spec = {id(g.spec): new for g, new in zip(retry, redone, strict=True)}
             graphs = [by_spec.get(id(g.spec), g) for g in graphs]
-            collector.installs(redone, env)
+            collector.watch(redone, env, homes)
             _emit_phase(
                 on_event,
                 Phase(
@@ -4095,7 +4160,7 @@ def build_tiles(
     for spec in every_spec:
         name = spec.tile.name
         if name in away:
-            node = f"{name}/{spec.level}/{PUT_BACK_ROLE}"
+            node = _put_back_id(spec)
             tiles.append(_unbuilt_tile(spec, away[name], None, node=node, role=PUT_BACK_ROLE))
             continue
         if id(spec) in no_osm:
@@ -4114,7 +4179,7 @@ def build_tiles(
                 collector,
                 home,
                 install=asked_install[name],
-                on_event=on_event,
+                on_event=told,
                 stopped=stopped,
             )
             if put is not None:
