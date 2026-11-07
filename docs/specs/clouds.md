@@ -294,7 +294,9 @@ ends what it began, and Quit waits for it.
 A build of the tile calls the clouds once, just before it says it has finished the tile (the
 event of the tile's target, or of its put back for a tile filed elsewhere,
 `build._clouds_before_done`, `_clouds_again`, `laying.lay_again`): a job lets go of a tile it has
-finished, hours before its own end, and the tile shows its clouds from then. Its folder is whole
+finished, hours before its own end, and the tile shows its clouds from then. Meanwhile that step
+says so as any step says what it does, in its tooltip in Works ("laying its clouds again: 3 of 12
+textures"), its bar full: it stayed seconds without a word. Its folder is whole
 by then: a pack the build finds in its cache over a folder that lost files is laid again when
 the pack is done (`_Collector.watch`), for every tile of the workshop, installed or not, before
 anything reads it, its install and its clouds. When clouds were

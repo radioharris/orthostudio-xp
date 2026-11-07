@@ -3799,14 +3799,16 @@ def _settle_put_back(
     return False
 
 
-def _clouds_again(spec: BuildSpec, pack_dir: Path) -> None:
+def _clouds_again(
+    spec: BuildSpec, pack_dir: Path, progress: Callable[[int, int], None] | None = None
+) -> None:
     """The clouds replaced in the tile laid again in the textures its build placed, where those
-    are the ones they were chosen on (``clouds.md`` 2.3). The clouds are no part of the build:
-    nothing of them fails it."""
+    are the ones they were chosen on (``clouds.md`` 2.3), ``progress`` told how many textures of
+    how many are. The clouds are no part of the build: nothing of them fails it."""
     try:
         from orthostudio.clouds.laying import lay_again
 
-        lay_again(spec.tile, pack_dir, custom_scenery=spec.custom_scenery)
+        lay_again(spec.tile, pack_dir, custom_scenery=spec.custom_scenery, progress=progress)
     except Exception:
         log.warning("%s: its replaced clouds were not laid again", spec.tile.name, exc_info=True)
 
@@ -3819,7 +3821,9 @@ def _clouds_before_done(
     """``on_event`` told every event, each tile's clouds laid again in its folder
     (:func:`_clouds_again`) just before the event that says the build finished it: its target's,
     or its put back's for a tile filed elsewhere. A tile the build has finished is one whose
-    folder X-Plane may show, and others may read: it shows its clouds from then."""
+    folder X-Plane may show, and others may read: it shows its clouds from then. Meanwhile that
+    step says so, as any step says what it does (its tooltip in Works): its bar full, it stayed
+    seconds without a word (a user, 2026-11-07)."""
     finishing: dict[str, tuple[BuildSpec, Path]] = {}
     for g in graphs:
         name = g.spec.tile.name
@@ -3831,7 +3835,14 @@ def _clouds_before_done(
 
     def told(event: BuildEvent) -> None:
         if isinstance(event, Done) and event.node_id in finishing:
-            _clouds_again(*finishing[event.node_id])
+            node = event.node_id
+
+            def said(done: int, total: int) -> None:
+                if total and on_event is not None:
+                    message = f"laying its clouds again: {done} of {total} textures"
+                    on_event(Progress(node, 1.0, message))
+
+            _clouds_again(*finishing[node], said)
         if on_event is not None:
             on_event(event)
 

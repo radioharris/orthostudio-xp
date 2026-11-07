@@ -520,19 +520,32 @@ def test_the_tile_shows_its_clouds_before_the_build_says_it_finished_it(
     from orthostudio.sched.events import Done
 
     seen: list[str] = []
-    monkeypatch.setattr(build_mod, "_clouds_again", lambda spec, folder: seen.append("laid"))
+
+    def again(spec: Any, folder: Path, progress: Any) -> None:
+        progress(1, 2)  # a texture of two laid: the step says so, its bar full
+        seen.append("laid")
+
+    monkeypatch.setattr(build_mod, "_clouds_again", again)
     spec = SimpleNamespace(tile=TILE, level="BI_12", out_dir=str(tmp_path))
     workshop = SimpleNamespace(spec=spec, target=SimpleNamespace(id="+43+005/BI_12/pack"))
-    told = build_mod._clouds_before_done(lambda e: seen.append(e.node_id), [workshop], {})
+    heard: list[Any] = []
+    told = build_mod._clouds_before_done(
+        lambda e: (heard.append(e), seen.append(e.node_id)), [workshop], {}
+    )
     for node in ("+43+005/BI_12/textures", "+43+005/BI_12/pack"):
         told(Done(node, "k", False, 0.0, None))  # type: ignore[arg-type]
-    assert seen == ["+43+005/BI_12/textures", "laid", "+43+005/BI_12/pack"]
+    pack = "+43+005/BI_12/pack"
+    assert seen == ["+43+005/BI_12/textures", pack, "laid", pack]
+    said = heard[1]  # what the pack's step said while its clouds were laid, before its Done
+    assert said.node_id == pack and said.fraction == 1.0 and "1 of 2 textures" in said.message
+    assert isinstance(heard[-1], Done)
     seen.clear()
     filed = build_mod._clouds_before_done(lambda e: seen.append(e.node_id), [workshop],
                                           {TILE.name: tmp_path})  # fmt: skip
     filed(Done("+43+005/BI_12/pack", "k", False, 0.0, None))  # type: ignore[arg-type]
     filed(Done(f"+43+005/BI_12/{build_mod.PUT_BACK_ROLE}", "k", False, 0.0, None))  # type: ignore[arg-type]
-    assert seen == ["+43+005/BI_12/pack", "laid", f"+43+005/BI_12/{build_mod.PUT_BACK_ROLE}"]
+    back = f"+43+005/BI_12/{build_mod.PUT_BACK_ROLE}"
+    assert seen == ["+43+005/BI_12/pack", back, "laid", back]
 
 
 def test_a_cloud_the_tile_shows_and_its_list_forgot_is_kept_by_the_next_apply(

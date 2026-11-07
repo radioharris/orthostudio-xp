@@ -453,11 +453,17 @@ def _sweep_leftovers(shown: TileClouds) -> None:
                 left.unlink(missing_ok=True)
 
 
-def lay_again(tile: TileRef, folder: Path, *, custom_scenery: Path | None) -> None:
+def lay_again(
+    tile: TileRef,
+    folder: Path,
+    *,
+    custom_scenery: Path | None,
+    progress: Callable[[int, int], None] | None = None,
+) -> None:
     """After a build of ``tile`` in ``folder``, its own: the clouds Apply last laid laid again,
     those whose images stand on the textures it placed; the list left as it is, so the others come
     back with a build they stand on again (another build's colours tried, then the first ones
-    back). Nothing when Apply laid none."""
+    back). Nothing when Apply laid none. ``progress``: as :func:`lay_folder` says it."""
     if not cloudlist.load(tile).laid:
         return
     if not is_own_folder(tile, folder, custom_scenery=custom_scenery):
@@ -466,5 +472,7 @@ def lay_again(tile: TileRef, folder: Path, *, custom_scenery: Path | None) -> No
         return
     with folder_lock(tile):
         laid = cloudlist.load(tile).laid  # read again under the lock: an Apply may have ended
-        again = lay_folder(tile, folder, [[e] for e in laid], custom_scenery=custom_scenery)
+        again = lay_folder(
+            tile, folder, [[e] for e in laid], custom_scenery=custom_scenery, progress=progress
+        )
     log.info("%s: %d of its %d replaced clouds laid again", tile.name, len(again), len(laid))
