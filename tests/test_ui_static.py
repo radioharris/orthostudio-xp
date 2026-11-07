@@ -3851,7 +3851,8 @@ def test_quit_and_the_file_manager_from_the_page() -> None:
     html = (UI / INDEX_FILE).read_text(encoding="utf-8")
     for element in ('id="quit-btn"', 'id="quit-confirm"', 'id="stopped"', 'id="disk-reveal"'):
         assert element in html, element
-    assert 'id="tpl-folder-icon"' in html and '<th scope="col" colspan="3">' in html
+    css = (UI / "styles.css").read_text(encoding="utf-8")
+    assert ".icon-folder { --icon:" in css and '<th scope="col" colspan="3">' in html
     labels = _node_json("app.js", '["mac", "win", "lin", undefined].map((p) => m.revealLabel(p))')
     assert labels == [
         "Show in Finder",
@@ -5070,10 +5071,9 @@ def test_quits_label_stands_on_its_icon() -> None:
     the same user saw that at once on his Mac. It sits on the baseline now, as a round letter does,
     its middle 0.5 unit above the box's. Its margin inside its box widened the left: the right
     takes as much."""
-    html = (UI / "index.html").read_text(encoding="utf-8")
-    button = html[html.index('id="quit-btn"') :]
-    button = button[: button.index("</button>")]
-    d = re.search(r'<path d="([^"]+)"', button)
+    css = (UI / "styles.css").read_text(encoding="utf-8")
+    drawn = next(line for line in css.splitlines() if line.startswith(".icon-quit {"))
+    d = re.search(r"<path d='([^']+)'", drawn)
     assert d is not None
     # the stem from its top down, then the ring through both ends of a chord, its centre below
     m = re.fullmatch(
@@ -5087,7 +5087,7 @@ def test_quits_label_stands_on_its_icon() -> None:
     assert abs(top + stem - (centre - 0.2)) < 0.05, (top, stem, centre)
     rules = dict(_css_rules((UI / "styles.css").read_text(encoding="utf-8")))
     assert "padding: 0 8px 0 6px;" in rules[".topbar-tools .quit-btn"]
-    label = rules[".topbar-tools .quit-btn span"]
+    label = rules[".topbar-tools .quit-btn > [data-i18n]"]
     assert "text-box-trim: trim-both;" in label and "text-box-edge: cap alphabetic;" in label
 
 
@@ -8311,13 +8311,11 @@ class El {
   setAttribute(k, v) { this.attrs[k] = String(v); }
   addEventListener() {}
   append(...kids) { this.kids.push(...kids); }
-  cloneNode() { return new El("svg"); }
 }
 globalThis.Node = El;
-const icon = { content: { firstElementChild: new El("svg") } };
 globalThis.document = {
   documentElement: {},
-  getElementById: (id) => (id === "tpl-folder-icon" ? icon : null),
+  getElementById: () => null,
   createElement: (tag) => new El(tag),
   createTextNode: (text) => Object.assign(new El("#text"), { textContent: text }),
 };
