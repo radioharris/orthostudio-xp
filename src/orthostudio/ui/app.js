@@ -4163,8 +4163,8 @@ function renderBuildActions() {
 }
 
 const COST_ICON_PATHS = {
-  network: "M12 20v-4M4 10a12 12 0 0 1 16 0M7 13.5a7 7 0 0 1 10 0M10 16.5a3 3 0 0 1 4 0",
-  compute: "M4 5h16v11H4zM9 20h6M12 16v4",
+  network: "M12 18.5v-4M4 8.5a12 12 0 0 1 16 0M7 12a7 7 0 0 1 10 0M10 15a3 3 0 0 1 4 0",
+  compute: "M4 4.5h16v11H4zM9 19.5h6M12 15.5v4",
   disk: "M4 12a8 8 0 1 1 16 0 8 8 0 0 1-16 0zM12 12h.01",
 };
 
@@ -6194,14 +6194,17 @@ export function libraryRow(e, showFolder = false) {
 function cloudsCell(e) {
   const cell = state.clouds?.[e.path];
   if (!cell) return h("td", { class: "library-clouds" });
-  const words = cloudsWords(cell);
   // one line at the smallest window, the tile's name whole (a user, 2026-11-07): two icons, as the
-  // folder's, and the first of its words, all of them in its tooltip
+  // folder's; its counts on the cloud, what the tile holds replaced above, what waits for Apply
+  // below, said in words in its tooltip. Its words in the cell sized the column by what it held,
+  // and every other column moved as the Library opened (a user, 2026-11-07).
+  const said = cloudsWords(cell).join(" · ");
+  const badge = (n, kind) => (n > 0 ? h("span", { class: `clouds-badge is-${kind}`, "aria-hidden": "true" }, fmtInt(n)) : null);
   return h("td", { class: "library-clouds" }, h("div", null,
-    h("button", { type: "button", class: "btn btn-icon", title: t("library.clouds_help"), "aria-label": `${t("library.clouds_open")} ${e.tile}`, onclick: () => cloudMode?.open(e.tile) }, icon("tpl-cloud-icon")),
+    h("button", { type: "button", class: "btn btn-icon clouds-open", title: [said, t("library.clouds_help")].filter(Boolean).join("\n"), "aria-label": [`${t("library.clouds_open")} ${e.tile}`, said].filter(Boolean).join(": "), onclick: () => cloudMode?.open(e.tile) },
+      icon("tpl-cloud-icon"), badge(cell.replaced, "replaced"), badge(cell.to_apply, "waiting")),
     // its clouds forgotten from here, the question asked here
-    cell.forget ? h("button", { type: "button", class: "btn btn-icon btn-danger btn-trash", title: t("library.clouds_forget_help"), "aria-label": `${t("library.clouds_forget")}: ${e.tile}`, onclick: () => forgetLibraryClouds(e) }, icon("tpl-bin-icon")) : null,
-    words.length ? h("span", { class: "clouds-words", title: words.join(" · ") }, words[0]) : null));
+    cell.forget ? h("button", { type: "button", class: "btn btn-icon btn-danger btn-trash", title: t("library.clouds_forget_help"), "aria-label": `${t("library.clouds_forget")}: ${e.tile}`, onclick: () => forgetLibraryClouds(e) }, icon("tpl-bin-icon")) : null));
 }
 
 /** The names of the overlay packs of other tools, as a user knows them. */

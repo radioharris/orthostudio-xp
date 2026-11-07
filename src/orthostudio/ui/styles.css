@@ -203,7 +203,9 @@ a { color: var(--accent); }
 
 /* ---------------------------------------------------------------- topbar */
 
-/* Pinned (a user asked): the screens stay one click away wherever the page is scrolled. */
+/* Pinned (a user asked): the screens stay one click away wherever the page is scrolled. Its line
+   drawn inside it, not taken from its height: its controls stood half a pixel off a whole one,
+   their icons a pixel off their middle (a user, 2026-11-07). */
 .topbar {
   display: flex;
   align-items: center;
@@ -211,7 +213,7 @@ a { color: var(--accent); }
   padding: 0 var(--pad);
   height: var(--topbar-h);
   background: var(--bg-2);
-  border-bottom: 1px solid var(--line);
+  box-shadow: inset 0 -1px 0 var(--line);
   position: sticky;
   top: 0;
   z-index: 30;
@@ -271,7 +273,7 @@ a { color: var(--accent); }
 .topbar-tools .quit-btn { padding: 0 8px 0 6px; }
 .topbar-tools .quit-btn span { text-box-trim: trim-both; text-box-edge: cap alphabetic; }
 .tool-btn { width: 28px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
-.tool-btn svg { width: 16px; height: 16px; }
+.tool-btn svg { width: 14px; height: 14px; }
 
 /* ------------------------------------------------------------------ main */
 
@@ -691,27 +693,27 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .zone-item > .cloud-swatch.is-on { background: var(--accent); box-shadow: none; }
 .zone-item.cloud-item { cursor: pointer; } /* a click shows its cloud */
 .zone-item.cloud-item[aria-current="true"] { border-color: var(--fg-2); box-shadow: inset 0 0 0 1px var(--fg-2); background: color-mix(in srgb, var(--fg) 10%, var(--bg)); }
-/* One width, whatever the column holds: its two icons and "999 remplacé(s)", its longest first
-   words, from the start, while it is read too. Sized by what it held, it grew from 131 to 240 px
-   as the Library opened, and every other column moved, then again at each tile gaining or losing
-   its words (a user, 2026-11-07). */
-.library-table .library-clouds { width: calc(2 * var(--control-h) + 128px); }
-/* Narrower only where the window lacks room for every column (a long name of one's own source at
-   the smallest window), never below its two icons, empty as full: its heading holds their room.
-   Its contents clipped there, the bin was cut (a user's question, 2026-11-07). */
-.library-table th.library-clouds::after { content: ""; display: block; width: calc(2 * var(--control-h) + 12px); }
-/* Its two icons and its words on one line, as every cell of the row, at the smallest window too
-   (its words under its buttons made the row taller, a user, 2026-11-07); close as the row's
-   actions are. */
-.library-clouds > div { display: flex; align-items: center; gap: 4px; white-space: nowrap; }
+/* As wide as its two icons, from the start, while it is read too, and where the window lacks room
+   for every column: words in it sized it by what it held, from 131 to 240 px as the Library opened,
+   every other column moving (a user, 2026-11-07). */
+.library-table .library-clouds { --w: calc(2 * var(--control-h) + 4px + 26px); width: var(--w); min-width: var(--w); }
+/* every tile's row 2px higher, its badges clear of the row's lines; on the cloud's left, in the
+   cell's wider margin, the cloud and its bin side by side as two icons are (a user, 2026-11-07) */
+.library-table td.library-clouds { padding-block: 6px; padding-left: 18px; }
+.library-clouds > div { display: flex; align-items: center; gap: 4px; }
+/* Its counts at the cloud's corners, within the row: replaced in the accent, the colour of what is
+   replaced in the cloud mode, above; waiting for Apply in the warning's, below. */
+.library-clouds .clouds-open { position: relative; }
+.library-clouds .clouds-open > svg { width: 18px; height: 18px; }
+.clouds-badge {
+  position: absolute; left: -11px; min-width: 13px; height: 13px; padding: 0 3px; border-radius: 7px;
+  font-size: 9.5px; font-weight: 600; line-height: 13px; text-align: center; pointer-events: none;
+  font-variant-numeric: tabular-nums;
+}
+.clouds-badge.is-replaced { top: -5px; background: var(--accent); color: var(--accent-fg); }
+.clouds-badge.is-waiting { bottom: -5px; background: var(--warn-soft); color: var(--warn); box-shadow: inset 0 0 0 1px var(--warn); }
 .library-clouds .btn-trash { margin-left: 0; }
 /* a little further from the bin than the two icons from each other (a user, 2026-11-07) */
-/* the room the icons leave, whatever their length: longer ones, another system's font, end in
-   "…", whole in their tooltip */
-.library-clouds .clouds-words {
-  margin-left: 4px; color: var(--fg-2); font-size: var(--fs-2);
-  width: 0; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis;
-}
 /* On the map, yellow what stays and the accent what is replaced, each line on a dark casing: it
    reads over snow and clouds as over dark ground. The yellow is the same in both themes: the
    ground under it is. An outline is drawn as a zone is (map.js drawShape), its points and line
@@ -793,7 +795,6 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 /* A small trash that empties a list: the zones and the jobs after asking, the tile selection at
    once (nothing is deleted, and the selection is not saved). */
 .btn-trash { margin-left: auto; display: inline-flex; align-items: center; justify-content: center; }
-.btn-trash svg { width: 15px; height: 15px; }
 .btn-trash:hover:not(:disabled) { background: var(--fail-soft); }
 /* A disk that may run short is a warning, never a refusal: the figure is an estimate. */
 .disk-alert {
@@ -815,8 +816,11 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .zone-row .zone-name { flex: 1 1 auto; font-weight: 600; }
 .zone-row select { flex: 1 1 auto; min-width: 0; }
 .btn-icon { width: var(--control-h); padding: 0; flex: none; }
-/* its drawing, the size of the folder's and the bin's, unless a rule of its own sizes it */
-.btn-icon > :where(svg) { width: 15px; height: 15px; display: block; margin: auto; }
+/* Its drawing the size of the folder's and the bin's, unless a rule of its own sizes it. Every icon
+   even, as the inside of its box is (28 px), and drawn in the middle of its 24 square: its middle
+   on a whole pixel. At 15 px it stood 7.5 px in, and the box's edge and the icon, each rounded to
+   the screen's pixels on its own, put it a pixel or two off its middle (a user, 2026-11-07). */
+.btn-icon > :where(svg) { width: 16px; height: 16px; display: block; margin: auto; }
 .zone-notes { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 10px; font-size: var(--fs-3); color: var(--fg-2); }
 .zone-size { font-weight: 600; color: var(--fg); }
 .zone-hint { color: var(--fg-3); }
@@ -1245,7 +1249,7 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .statusbar {
   display: flex; gap: 18px; align-items: center; flex-wrap: wrap;
   padding: 4px var(--pad); min-height: 28px;
-  border-top: 1px solid var(--line); background: var(--bg-2);
+  box-shadow: inset 0 1px 0 var(--line); background: var(--bg-2); /* as the top bar's */
   font-size: 12px; color: var(--fg-2);
   position: sticky; bottom: 0; z-index: 30;
 }
@@ -1254,7 +1258,7 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .status-item .pill { height: 16px; }
 /* the folder's button (app.js renderStatus), as tall as the bar's pills so the bar keeps its height */
 .status-home .status-reveal { min-height: 18px; height: 18px; width: 22px; color: var(--fg-2); }
-.status-home .status-reveal svg { width: 13px; height: 13px; }
+.status-home .status-reveal svg { width: 12px; height: 12px; }
 /* the window's zoom (zoom.js bindZoom), as tall as the folder's button so the bar keeps its height */
 .status-zoom { gap: 2px; }
 .status-zoom .btn { min-height: 18px; height: 18px; padding: 0 6px; }
@@ -1492,7 +1496,6 @@ th[aria-sort="descending"] .th-sort::after { content: " \25BC"; font-size: 0.8em
 
 .quit-btn { display: inline-flex; align-items: center; gap: 4px; margin-left: 4px; }
 .quit-btn svg { width: 14px; height: 14px; }
-.reveal-btn svg { width: 15px; height: 15px; display: block; margin: auto; }
 .library-action .reveal-btn { display: inline-flex; align-items: center; justify-content: center; }
 .stopped { position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center; background: color-mix(in srgb, var(--bg) 92%, transparent); }
 .stopped-card { max-width: 440px; padding: 24px 28px; border: 1px solid var(--line-2); border-radius: var(--radius); background: var(--bg-2); text-align: center; }
