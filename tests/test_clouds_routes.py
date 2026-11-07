@@ -962,6 +962,86 @@ def test_only_before_is_kept_in_memory(ready: Path) -> None:
     assert engine.held(TILE, shown, zl, ask=False) is not None
 
 
+def test_one_before_a_tile_and_two_tiles_are_kept_in_memory(ready: Path) -> None:
+    # five kept, each 100 to 385 MB, took up to 1.9 GB until a tile was deleted (a review,
+    # 2026-11-07): a tile's newest build's alone, and two tiles
+    _router, engine = clouds_api.clouds_router(
+        clouds_api.CloudHooks(custom_scenery=lambda: None, taken=dict)
+    )
+    shown = read_tile(ready)
+    assert shown is not None
+    zl = map_level(TILE, shown.textures)
+    old: Any = object()
+    engine._pictures = {
+        ("+01+001", "a"): old,
+        ("+02+002", "b"): old,
+        (TILE.name, "built before"): old,
+    }
+    engine.drawn(TILE, shown, zl)
+    assert [k[0] for k in engine._pictures] == ["+02+002", TILE.name]
+    assert (TILE.name, "built before") not in engine._pictures
+
+
+def test_the_tools_download_hears_stop(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Stop went unheard by the detector's download: it went on, tried again four times, and held
+    # Quit, a build, Delete and filing meanwhile (a review, 2026-11-07)
+    from orthostudio.clouds.tasks import Task
+
+    got: dict[str, Any] = {}
+    monkeypatch.setattr(clouds_api, "ensure_detector", lambda **k: got.update(k))
+    task = Task("t1", TILE.name, "find", None, True, None)
+    clouds_api._tools(task)
+    assert got["cancel"] is task.stop
+
+
+@pytest.mark.anyio
+async def test_apply_asks_for_the_tool_that_lays_and_fetches_it(
+    app: Any, ready: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # without OpenCV (a new version's, its folder cleaned), Apply failed saying "check the
+    # internet connection" (a review, 2026-11-07): asked for as a search asks, fetched in its task
+    from orthostudio.clouds.sources import JUDGED
+    from orthostudio.clouds.tile import file_digest, part_path
+
+    held = read_tile(ready)
+    assert held is not None
+    loose = part_path("p" * 64)  # its own digest names a part: written, then named so
+    loose.parent.mkdir(parents=True, exist_ok=True)
+    loose.write_bytes(b"a part")
+    digest = file_digest(loose)
+    loose.rename(part_path(digest))
+    with cloudlist.update(TILE) as cl:
+        c = cl.add("found", _ring(), screening={"EOX": {"answer": "clear", "fit": 70}}, tick=True)
+        entry = {
+            "id": c["id"],
+            "source": "EOX",
+            "match": [[1, 1, 1], [0, 0, 0]],
+            "rings": _ring(),
+            "parts": {NAME: [12, digest]},
+            "plain": {NAME: held.plain(NAME)},
+        }
+        c["checks"] = {"EOX": {"answer": "clear", "fit": 70, "entry": entry, "judged": JUDGED}}
+    monkeypatch.setattr(clouds_api, "detector_ready", lambda: False)
+    monkeypatch.setattr(clouds_api, "opencv_ready", lambda: False)
+    fetched: list[str] = []
+    laid: list[int] = []
+    monkeypatch.setattr(clouds_api, "_tools", lambda task: fetched.append(task.kind))
+    monkeypatch.setattr(
+        clouds_api, "show", lambda tile, folder, asked, **k: laid.append(len(asked))
+    )
+    async with client_for(app) as c:
+        r = await c.post("/api/clouds/+43+005/apply", json={"action": "apply"})
+        assert r.json()["error"]["code"] == "CLOUD_DETECTOR_ASK", r.text
+        assert not fetched and not laid
+        r = await c.post("/api/clouds/+43+005/apply", json={"action": "apply", "download": True})
+        assert r.status_code == 200, r.text
+        for _ in range(200):
+            if not (await c.get("/api/clouds/+43+005")).json()["busy"]:
+                break
+            await anyio.sleep(0.05)
+    assert fetched == ["apply"] and laid == [1]
+
+
 @pytest.mark.anyio
 async def test_an_outline_stopped_before_its_turn_leaves(
     app: Any, ready: Path, monkeypatch: pytest.MonkeyPatch

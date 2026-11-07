@@ -8930,6 +8930,14 @@ def test_build_again_says_the_plans_warnings_the_replaced_clouds_put_back_among_
     assert not any("disk" in line.lower() and "full" in line.lower() for line in got)
 
 
+def test_a_view_shown_earlier_lets_no_picture_of_the_one_shown_now_go() -> None:
+    # After, Before, After quickly: Before's picture, in late, let After's go and the map stayed
+    # with no picture until the next change of view (a review, 2026-11-07)
+    code = (UI / "clouds.js").read_text(encoding="utf-8")
+    assert "const turn = (cs.groundTurn = (cs.groundTurn || 0) + 1);" in code
+    assert "if (turn !== cs.groundTurn) return;" in code
+
+
 def test_the_cloud_mode_frames_the_map_on_its_tile_only_when_another_is_opened() -> None:
     # framed at each return from the Library, a view zoomed in on a cloud went back to the whole
     # tile and the base map was loaded again: the tile blinked (a user, 2026-11-07)
