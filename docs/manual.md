@@ -77,6 +77,10 @@ The banner over the map has two views:
   press Apply: where Apply will change a texture, the clouds it lays there are drawn over it.
 - **Before**: the tile with no cloud replaced.
 
+When what the tile shows changes, its picture is drawn again; meanwhile the map keeps the last
+one and the banner says **Drawing the tile…**. You can go on clicking. On a large tile, the first
+picture after the app starts can take half a minute.
+
 ![After: three clouds ticked, Cloud 1 replaced by Esri Clarity's clear ground, "What X-Plane will show after Apply", Apply (3 changes)](images/manual/clouds-after.jpg)
 
 ![Before: the same place with its cloud, "The tile with no cloud replaced"](images/manual/clouds-before.jpg)

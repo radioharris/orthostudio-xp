@@ -47,8 +47,9 @@ The Plan's map, brought over the tile; the Plan's steps make way for the cloud p
   flashes when a cloud is clicked, and a cloud whose images are being got (a source changed) is
   planned as it was when that began, until the task ends: what After shows of it, the count and
   the words over the map all say it then (the engine's: `Task.was`, `_as_it_was`; Apply waits for
-  the task). The outlines and the marks are drawn again only when
-  what they show changes. Around the tile, the map darkened (seen from far, the base
+  the task). A picture not drawn yet is drawn aside: the last one of that view stays meanwhile and
+  the words over the map say **Drawing the tile…** (2.6). The outlines and the marks are drawn
+  again only when what they show changes. Around the tile, the map darkened (seen from far, the base
   map is another mosaic than the tile's photos). Every cloud's outline on a dark casing, readable
   over snow: yellow when unticked, the accent when ticked, the current one thicker; its tooltip says
   its name and what a click does ("Cloud 5 · click to tick it", the engine's `tip`); a found cloud
@@ -210,7 +211,8 @@ else the same action again. A tick
 or a source is
 kept either way, the cloud waiting for its images on no; an outline is kept once the answer is yes,
 its sources being tried by the detector. The answer says when something is under way (`busy`: a task
-of the tile or what follows one, `Tasks.busy`, or a build of it), for the page to read it again, and
+of the tile or what follows one, `Tasks.busy`, a build of it, or a picture drawn aside), for the page
+to read it again, and
 every word the page shows of the
 tile, a key and its parameters: the tile's line (its state's, else that a search found none or none
 was made), each row's line with its tone, the count, Apply's button and the questions of Apply and
@@ -361,7 +363,13 @@ previews (PNG named likewise), each written whole on the disk before its name is
 made once, where its pixels are made, and showing it is naming its file: a picture is drawn only
 when its file is not there yet (`CloudEngine.picture_file`; drawn at each start, two took a first
 reading 3.75 s on a user's tile of 189 clouds, 0.07 s since), a cloud's preview is made with its
-images, in their task (`find.check`; made by the readings, a dozen took one 6.5 s). Every path
+images, in their task (`find.check`; made by the readings, a dozen took one 6.5 s). The mode's
+answer never draws: a picture it lacks, or the one in memory a preview is made on, is drawn aside,
+one at a time (`CloudEngine.aside`), while the answer gives the last one of that view and says the
+tile busy; one that fails is said by the next answer, and asked again by the one after. While
+Apply, Restore or Forget writes the tile (`state.WRITES`), none is asked: the pictures of what the
+tile shows at their end are. Drawn in the answer, a page stood still 10 to 37 s on a Windows server
+at each new state of a tile of 3 M triangles, the first search's progress included (B8). Every path
 of the cloud files is in `clouds/tile.py`, and every reading of them back (`listed`, `sidecars`,
 `kept_files`, `leftovers`, `served_path`). The sources' pieces are kept as a build's parent tiles
 (`ParentCache`, per source). The detector's classes of the tile's last search are kept in memory for
@@ -378,7 +386,10 @@ cache, its settings and its jobs are those of a tile without clouds.
 ### R2. The map is the tile as X-Plane draws it
 
 The picture is drawn from the tile folder's DSF, triangle by triangle, each with the texture its
-terrain names, read at the level of its DDS that matches (`clouds/picture.py`). Land shows the
+terrain names, read at the level of its DDS that matches (`clouds/picture.py`). The DSF is read
+once while its file stays the same, and where each texture shows at the map's level is filled from
+its triangles once, kept with them (`picture._layout`): a picture drawn again reads only the
+textures (B8). Land shows the
 photo whole; the sea shows it at the texture's alpha (the sea mask) over X-Plane's water; inland
 water at that alpha times the lakes' share (`ratio_water`, the DSF's eighth plane, through the
 water transition ramp) over its water; X-Plane's water alone, no photo. For Before each texture
@@ -582,7 +593,7 @@ words: `docs/specs/errors.md`.
 | Route | What |
 |---|---|
 | `GET /api/clouds` | The Library's column: by row path, the rows it is offered on (1.2), what the tile holds and what waits |
-| `GET /api/clouds/{tile}` | The view (1.5): the source its photo was built from (`provider`), the tile's state and line, what it allows (`allowed`), the words of After and Before (`views`), whether something is under way (`busy`), its picture (Before) and After's (`after`), whether a fine search reads more (`fine`), every row with its line and tone, its actions, what a click on it does (`toggle`) and its tooltip (`tip`), its task and After's preview of it, the count, Apply's and Restore's buttons and questions (`texts`), the tile's own tasks with their `actions`, its last failure |
+| `GET /api/clouds/{tile}` | The view (1.5): the source its photo was built from (`provider`), the tile's state and line, what it allows (`allowed`), the words of After and Before (`views`; `clouds.drawing` for one whose picture is drawn aside), whether something is under way (`busy`, a picture drawn aside too), its picture (Before) and After's (`after`; the last one of that view while its next is drawn, 2.6), whether a fine search reads more (`fine`), every row with its line and tone, its actions, what a click on it does (`toggle`) and its tooltip (`tip`), its task and After's preview of it, the count, Apply's and Restore's buttons and questions (`texts`), the tile's own tasks with their `actions`, its last failure |
 | `POST /api/clouds/{tile}/find` | `{fine?}`: starts the quick search, or the fine one where it is offered |
 | `POST /api/clouds/{tile}/picks` | `{action, id?, source?}`: `tick`, `untick` or `choose` of a cloud, as its state allows, or without `id` of every cloud that allows it; gets the images when its state asks them |
 | `POST /api/clouds/{tile}/check` | `{id?, again?}`: gets a cloud's images, or of every cloud whose state offers it; `again`, **Get its images**: its pieces kept as no picture asked again |

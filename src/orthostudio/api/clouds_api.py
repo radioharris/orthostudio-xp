@@ -71,9 +71,22 @@ class CloudHooks:
     taken: Callable[[], Mapping[str, str]]
 
 
+@dataclass
+class _Aside:
+    """A picture drawn aside (:meth:`CloudEngine.aside`): set when done, with what failed."""
+
+    done: threading.Event
+    error: BaseException | None = None
+
+
 class CloudEngine:
     """The tasks, and what is kept in memory of a tile: its pictures at the map's level, the
-    classes its last search read."""
+    classes its last search read, the pictures being drawn aside and the last given of each view.
+
+    The mode's answer never draws: a picture it lacks is drawn aside, one at a time, while it
+    gives the last one of that view and the page keeps reading. Drawn in the answer, the page
+    stood still 10 to 37 s on a Windows server at each new state of a tile of 3 M triangles,
+    the progress of a search included (+52+004, 2026-11-07)."""
 
     def __init__(self, hooks: CloudHooks) -> None:
         self.hooks = hooks
@@ -81,6 +94,9 @@ class CloudEngine:
         self._pictures: dict[tuple[str, str], Picture] = {}
         self._drawing: dict[tuple[str, str], threading.Lock] = {}
         self._classes: dict[tuple[str, str], np.ndarray] = {}
+        self._asked: dict[tuple[str, str], _Aside] = {}
+        self._given: dict[tuple[str, str], dict[str, Any]] = {}
+        self._one = threading.Lock()  # one picture drawn aside at a time: each is hundreds of MB
         self._lock = threading.Lock()
 
     def folder(self, tile: TileRef) -> Path:
@@ -112,22 +128,85 @@ class CloudEngine:
             return what, p
 
     def picture_file(
-        self, tile: TileRef, shown: TileClouds, zl: int, remade: frozenset[str] | None = None
-    ) -> dict[str, Any]:
+        self,
+        tile: TileRef,
+        shown: TileClouds,
+        zl: int,
+        remade: frozenset[str] | None = None,
+        *,
+        ask: bool = True,
+    ) -> tuple[dict[str, Any] | None, bool]:
         """A picture of the tile as the page lays it (:meth:`drawn`: Before, ``remade`` for
-        After), a JPEG named by what it is made of: drawn only when that file is not there yet. A
-        picture is made once: drawn again at each start, two of them took a first reading 3.75 s
-        (a user's tile, 2026-11-07)."""
+        After), a JPEG named by what it is made of, and whether it is that one. A file not there
+        yet is drawn aside (:meth:`aside`; not while what the tile shows is written, ``ask``) and
+        the last given of that view stands in meanwhile (``None`` the first time). A picture is
+        made once: drawn again at each start, two of them took a first reading 3.75 s (a user's
+        tile, 2026-11-07)."""
+        view = "before" if remade is None else "after"
         path = picture_path(tile, _what(shown, zl, remade))
+        if path.exists():
+            got = {"name": path.name, "bounds": frame_bounds(tile, zl), "level": zl}
+            with self._lock:
+                self._given[(tile.name, view)] = got
+            return got, True
+        if ask:
+            self.aside((tile.name, path.name), lambda: self._write(tile, shown, zl, remade))
+        with self._lock:
+            return self._given.get((tile.name, view)), False
+
+    def _write(
+        self, tile: TileRef, shown: TileClouds, zl: int, remade: frozenset[str] | None
+    ) -> None:
+        what, p = self.drawn(tile, shown, zl, remade)
+        path = picture_path(tile, what)
         if not path.exists():
-            what, p = self.drawn(tile, shown, zl, remade)
-            path = picture_path(tile, what)
-            if not path.exists():
-                buf = io.BytesIO()
-                Image.fromarray(p.rgb).save(buf, "JPEG", quality=88)
-                path.parent.mkdir(parents=True, exist_ok=True)
-                atomic_write_bytes(path, buf.getvalue(), fsync=True)
-        return {"name": path.name, "bounds": frame_bounds(tile, zl), "level": zl}
+            buf = io.BytesIO()
+            Image.fromarray(p.rgb).save(buf, "JPEG", quality=88)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            atomic_write_bytes(path, buf.getvalue(), fsync=True)
+
+    def held(
+        self, tile: TileRef, shown: TileClouds, zl: int, *, ask: bool = True
+    ) -> Picture | None:
+        """The picture of the tile as built at ``zl`` kept in memory, the one the clouds'
+        previews are made on; ``None`` while it is drawn aside (asked as :meth:`picture_file`)."""
+        what = _what(shown, zl, None)
+        with self._lock:
+            hit = self._pictures.get((tile.name, what))
+        if hit is None and ask:
+            self.aside((tile.name, f"held {what}"), lambda: self.drawn(tile, shown, zl))
+        return hit
+
+    def aside(self, key: tuple[str, str], work: Callable[[], object]) -> None:
+        """``work``, a picture of the tile ``key[0]``, done in a thread of its own after those
+        asked before, once while it is asked (:meth:`said` lets it go). A daemon:
+        quitting never waits for a picture."""
+        with self._lock:
+            if key in self._asked:
+                return
+            asked = self._asked[key] = _Aside(threading.Event())
+
+        def run() -> None:
+            try:
+                with self._one:
+                    work()
+            except BaseException as exc:  # said by the next answer (``drawing``)
+                asked.error = exc
+            finally:
+                asked.done.set()
+
+        threading.Thread(target=run, name="cloud-picture", daemon=True).start()
+
+    def said(self, tile: TileRef) -> None:
+        """The pictures of ``tile`` drawn aside and done let go: one that failed raises its
+        error, once, and the next answer asks it again."""
+        with self._lock:
+            done = [(k, a) for k, a in self._asked.items() if k[0] == tile.name and a.done.is_set()]
+            for k, _a in done:
+                del self._asked[k]
+        for _k, a in done:
+            if a.error is not None:
+                raise a.error
 
     def remember(self, tile: TileRef, shown: TileClouds, classes: np.ndarray) -> None:
         """The classes the tile's last search read, for an outline's band to leave others'
@@ -144,10 +223,9 @@ class CloudEngine:
         folder goes), what is kept of it in memory dropped."""
         self.tasks.end({tile.name})
         with self._lock:
-            for drawn in [k for k in self._pictures if k[0] == tile.name]:
-                del self._pictures[drawn]
-            for read in [k for k in self._classes if k[0] == tile.name]:
-                del self._classes[read]
+            for kept in (self._pictures, self._classes, self._asked, self._given):
+                for key in [k for k in kept if k[0] == tile.name]:
+                    del kept[key]
 
 
 def _what(shown: TileClouds, zl: int, remade: frozenset[str] | None) -> str:
@@ -299,18 +377,27 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
     def tile_mode(name: str) -> dict[str, Any]:
         tile = _tile_of(name)
         _folder, shown, v = look(tile)
+        engine.said(tile)  # a picture drawn aside that failed
         picture = after = None
         previews = {}
+        stand_in: set[str] = set()  # the views whose picture is being drawn aside
+        # what the tile shows being written, its pictures wait for the end: asked then, a picture
+        # of a state between two drew 27 s for nothing on a Windows server (2026-11-07)
+        ask = not any(t["kind"] in state.WRITES for t in v.tasks)
         if v.state == "ready":  # drawn with the tool that finds the clouds (``no_tool``)
             assert shown is not None
             zl = map_level(tile, shown.textures)
-            picture = engine.picture_file(tile, shown, zl)
+            picture, now = engine.picture_file(tile, shown, zl, ask=ask)
+            if not now and ask:
+                stand_in.add("before")
             # After: what X-Plane shows, but the textures Apply makes again, which show the
             # build's own with the clouds Apply lays in them, each by its preview there (made
             # with its images, ``find.check``)
-            after = engine.picture_file(tile, shown, zl, v.remade)
-            for entry, names in v.previews:
-                p = engine.drawn(tile, shown, zl)[1]  # kept in memory: drawn once
+            after, now = engine.picture_file(tile, shown, zl, v.remade, ask=ask)
+            p = engine.held(tile, shown, zl, ask=ask) if v.previews else None  # kept in memory
+            if (not now or (v.previews and p is None)) and ask:
+                stand_in.add("after")
+            for entry, names in v.previews if p is not None else ():
                 got = preview(p, tile, entry, shown.built, names)
                 if got is not None:
                     previews[entry["id"]] = {"name": got[0], "bounds": got[1]}
@@ -319,10 +406,10 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
             "tile": tile.name,
             "provider": shown.provider if shown is not None else None,  # its photo's source
             "state": v.state,
-            "busy": v.busy,
+            "busy": v.busy or bool(stand_in),  # read again until its pictures are there
             "line": v.line,
             "allowed": sorted(v.allowed),
-            "views": v.views(picture is not None),
+            "views": v.views(picture is not None, stand_in),
             "texts": v.texts(),
             "picture": picture,
             "after": after,
@@ -522,13 +609,15 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
         tile, _folder, shown, _v = opened(name, "outline")
         ring = _ring_of(tile, body)
         _detector_said(body)  # its sources are tried, then its images got
-        _what, p = engine.drawn(tile, shown, map_level(tile, shown.textures))
         with cls.update(tile) as cl:
             cid = cls.add_outline(cl, [ring])["id"]
 
         def run(task: Task) -> None:
             try:
                 _tools(task)
+                # drawn here, not in the answer: a picture to draw again held the click 10 s
+                # on a Windows server (+52+004, 2026-11-07)
+                _what, p = engine.drawn(tile, shown, map_level(tile, shown.textures))
                 classes = engine.classes(tile, shown)
                 if classes is None:
                     classes = np.zeros(p.rgb.shape[:2], np.uint8)

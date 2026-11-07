@@ -19,7 +19,7 @@ import math
 import struct
 import threading
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
@@ -116,13 +116,31 @@ class Picture:
 class _Drawn:
     """A DSF's triangles: corners in pixels of :data:`_CORNERS_ZL` from ``origin`` (``x``, ``y``,
     ``(n, 3)``), sorted by terrain, those of terrain ``i`` at ``starts[i]:starts[i + 1]``; each
-    terrain's texture (``None``: X-Plane's water), kind and share."""
+    terrain's texture (``None``: X-Plane's water), kind and share. With where each texture shows
+    at the map's level once laid out (``laid``, :func:`_layout`): the triangles are filled once,
+    not at each picture."""
 
     x: np.ndarray
     y: np.ndarray
     starts: np.ndarray
     terrains: tuple[tuple[str | None, int, float], ...]
     origin: tuple[int, int]
+    laid: dict[int, _Layout] = field(default_factory=dict)
+
+
+@dataclass(frozen=True, slots=True, eq=False)
+class _Placed:
+    """Where a texture shows on a picture: the box ``(cx0, cy0, cx1, cy1)`` of the picture its
+    square covers, its square's corner ``(gx, gy)`` there, and over the box which of its terrains
+    each pixel shows (``code``: ``j`` for the ``j``-th of ``by_texture``'s, 0 for none)."""
+
+    box: tuple[int, int, int, int]
+    corner: tuple[int, int]
+    code: np.ndarray
+    terrains: tuple[int, ...]
+
+
+_Layout = dict[str, _Placed]
 
 
 def _terrain(name: str, border: float) -> tuple[str | None, int, float]:
@@ -209,6 +227,42 @@ def _drawn(dsf: Path, tile: TileRef) -> _Drawn:
         ) from exc
 
 
+def _layout(d: _Drawn, tile: TileRef, zl: int, *, keep: bool) -> _Layout:
+    """Where each texture of the DSF ``d`` shows on a picture of ``tile`` at ``zl``, in the
+    textures' order: its triangles filled. Kept with the triangles at the map's level (``keep``),
+    the one the mode's pictures are drawn at again at each change of what the tile shows: on a
+    Windows server, 9 of the 10 s a picture of a tile of 3 M triangles took were this filling
+    (+52+004, 2026-11-07)."""
+    hit = d.laid.get(zl)
+    if hit is not None:
+        return hit
+    x0, y0, w, h = frame(tile, zl)
+    by_texture: dict[str, list[int]] = {}
+    for i, (texture, _kind, _share) in enumerate(d.terrains):
+        if texture is not None:
+            by_texture.setdefault(texture, []).append(i)
+    out: _Layout = {}
+    for name in sorted(by_texture):
+        t: TextureId = parse_texture_name(name)
+        if t.zl < zl:
+            continue
+        level = t.zl - zl
+        gx, gy = ((t.til_x * 256) >> level) - x0, ((t.til_y * 256) >> level) - y0
+        side = TEXTURE >> level
+        cx0, cy0, cx1, cy1 = max(gx, 0), max(gy, 0), min(gx + side, w), min(gy + side, h)
+        if cx1 <= cx0 or cy1 <= cy0:
+            continue
+        code = np.zeros((cy1 - cy0, cx1 - cx0), np.uint8)
+        for j, i in enumerate(by_texture[name], start=1):
+            _fill(code, _filled(d, i, zl, (x0 + cx0, y0 + cy0), code.shape), j)
+        if code.any():
+            code.flags.writeable = False  # shared by every picture drawn from it
+            out[name] = _Placed((cx0, cy0, cx1, cy1), (gx, gy), code, tuple(by_texture[name]))
+    if keep:
+        d.laid[zl] = out
+    return out
+
+
 def _filled(
     d: _Drawn, i: int, zl: int, origin: tuple[int, int], shape: tuple[int, int]
 ) -> np.ndarray:
@@ -262,36 +316,21 @@ def draw(
     share = np.zeros((h, w), np.uint8)
     shows = np.full((h, w), -1, np.int16)
     names: list[str] = []
-    bx0, by0, bx1, by1 = 0, 0, w, h
-    by_texture: dict[str, list[int]] = {}
-    for i, (texture, _kind, _share) in enumerate(d.terrains):
-        if texture is not None:
-            by_texture.setdefault(texture, []).append(i)
-    for name in sorted(by_texture):
-        t: TextureId = parse_texture_name(name)
+    kept = bool(textures) and zl == map_level(tile, [parse_texture_name(n) for n in textures])
+    for name, placed in _layout(d, tile, zl, keep=kept).items():
         path = textures.get(name)
-        if t.zl < zl or path is None or not path.is_file():
+        if path is None or not path.is_file():
             continue
-        level = t.zl - zl
-        gx, gy = ((t.til_x * 256) >> level) - x0, ((t.til_y * 256) >> level) - y0
-        side = TEXTURE >> level
-        cx0, cy0, cx1, cy1 = max(gx, bx0), max(gy, by0), min(gx + side, bx1), min(gy + side, by1)
-        if cx1 <= cx0 or cy1 <= cy0:
-            continue
-        code = np.zeros((cy1 - cy0, cx1 - cx0), np.uint8)
-        for j, i in enumerate(by_texture[name], start=1):
-            _fill(code, _filled(d, i, zl, (x0 + cx0, y0 + cy0), code.shape), j)
-        if not code.any():
-            continue
-        read = _level_rows(path, level, (cy0 - gy, cy1 - gy))
+        (cx0, cy0, cx1, cy1), (gx, gy) = placed.box, placed.corner
+        read = _level_rows(path, parse_texture_name(name).zl - zl, (cy0 - gy, cy1 - gy))
         if read is None:
             continue
         px, top = read
         px = px[cy0 - gy - top : cy1 - gy - top, cx0 - gx : cx1 - gx]
-        code = code[: px.shape[0], : px.shape[1]]
+        code = placed.code[: px.shape[0], : px.shape[1]]
         here = code > 0
         cover = np.full(code.shape, 255, np.uint8)
-        for j, i in enumerate(by_texture[name], start=1):
+        for j, i in enumerate(placed.terrains, start=1):
             _texture, kind, lake = d.terrains[i]
             if kind != LAND:  # the photo over water at its alpha, a lake's at its share too
                 on = code == j

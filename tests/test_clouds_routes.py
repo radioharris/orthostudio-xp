@@ -72,6 +72,17 @@ def _ring() -> list[list[float]]:
     return [[43.1, 5.1, 43.1, 5.2, 43.2, 5.2, 43.1, 5.1]]
 
 
+async def _read(c: Any, tile: str = "+43+005") -> dict[str, Any]:
+    """The mode's answer once nothing is under way, its pictures drawn: read again while it says
+    so, as the page does."""
+    for _ in range(400):
+        a = (await c.get(f"/api/clouds/{tile}")).json()
+        if not a.get("busy"):
+            return a
+        await anyio.sleep(0.01)
+    raise AssertionError(f"still busy: {a}")
+
+
 @pytest.mark.anyio
 async def test_a_bad_name_cloud_or_outline_is_refused_in_words(app: Any, ready: Path) -> None:
     async with client_for(app) as c:
@@ -91,7 +102,7 @@ async def test_a_bad_name_cloud_or_outline_is_refused_in_words(app: Any, ready: 
 @pytest.mark.anyio
 async def test_what_a_ready_tile_allows_is_the_engines_to_say(app: Any, ready: Path) -> None:
     async with client_for(app) as c:
-        a = (await c.get("/api/clouds/+43+005")).json()
+        a = await _read(c)
     assert a["state"] == "ready" and a["busy"] is False
     # nothing to apply, restore, discard, tick or untick yet: those wait for a cloud or a change
     assert a["allowed"] == ["find", "outline"]
@@ -327,7 +338,7 @@ async def test_an_outline_of_no_numbers_or_off_the_tile_is_refused(app: Any, rea
 @pytest.mark.anyio
 async def test_after_is_what_x_plane_shows_before_anything_is_laid(app: Any, ready: Path) -> None:
     async with client_for(app) as c:
-        a = (await c.get("/api/clouds/+43+005")).json()
+        a = await _read(c)
     assert a["after"]["name"] == a["picture"]["name"]  # no cloud laid: the build's own
 
 
@@ -613,13 +624,117 @@ async def test_a_picture_already_made_is_not_drawn_again(
     draw = clouds_api._draw
     monkeypatch.setattr(clouds_api, "_draw", lambda *a: (drawn.append(a), draw(*a))[1])
     async with client_for(app) as c:
-        first = (await c.get("/api/clouds/+43+005")).json()
+        first = await _read(c)
     assert len(drawn) == 1  # After is Before while nothing is laid: one picture
     hooks = clouds_api.CloudHooks(custom_scenery=lambda: None, taken=dict)
     router, _engine = clouds_api.clouds_router(hooks)  # the app started again
     get = next(r.endpoint for r in router.routes if r.path == "/api/clouds/{name}")
     again = get("+43+005")
-    assert len(drawn) == 1 and again["picture"] == first["picture"]
+    assert len(drawn) == 1 and again["picture"] == first["picture"] and not again["busy"]
+
+
+@pytest.mark.anyio
+async def test_the_answer_never_waits_for_a_picture(
+    app: Any, ready: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # drawn in the answer, the page stood still 10 to 37 s on a Windows server at each new state
+    # of a tile of 3 M triangles, a search's progress included (+52+004, 2026-11-07)
+    import threading
+    import time
+
+    go = threading.Event()
+    draw = clouds_api._draw
+    monkeypatch.setattr(clouds_api, "_draw", lambda *a: (go.wait(10), draw(*a))[1])
+    async with client_for(app) as c:
+        t = time.monotonic()
+        a = (await c.get("/api/clouds/+43+005")).json()
+        assert time.monotonic() - t < 2 and a["busy"] is True  # the page reads again
+        assert a["picture"] is None and a["after"] is None  # none drawn yet: nothing to show
+        assert a["views"] == {"after": "clouds.drawing", "before": "clouds.drawing"}
+        assert a["allowed"] == ["find", "outline"]  # the tile's actions wait for no picture
+        go.set()
+        b = await _read(c)
+    assert b["picture"] is not None and b["views"]["before"] == "clouds.before"
+
+
+@pytest.mark.anyio
+async def test_the_last_picture_stands_in_while_its_next_is_drawn(
+    app: Any, ready: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import threading
+
+    from orthostudio.clouds.tile import picture_path
+
+    async with client_for(app) as c:
+        first = await _read(c)
+        go = threading.Event()
+        draw = clouds_api._draw
+        monkeypatch.setattr(clouds_api, "_draw", lambda *a: (go.wait(10), draw(*a))[1])
+        made = picture_path(TILE, "x").parent / first["picture"]["name"]
+        made.unlink()  # what the tile shows to draw again
+        a = (await c.get("/api/clouds/+43+005")).json()
+        assert a["busy"] is True and a["picture"] == first["picture"]  # the last one meanwhile
+        assert a["views"]["before"] == "clouds.drawing"
+        go.set()
+        b = await _read(c)
+    assert b["picture"] == first["picture"] and made.exists()
+
+
+def test_no_picture_is_asked_while_what_the_tile_shows_is_written(
+    ready: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # asked during a Restore, a picture of a state between two drew 27 s for nothing on a
+    # Windows server (2026-11-07): the pictures wait for the end of Apply, Restore or Forget
+    import threading
+    import time
+
+    drawn: list[Any] = []
+    draw = clouds_api._draw
+    monkeypatch.setattr(clouds_api, "_draw", lambda *a: (drawn.append(a), draw(*a))[1])
+    hooks = clouds_api.CloudHooks(custom_scenery=lambda: None, taken=dict)
+    router, engine = clouds_api.clouds_router(hooks)
+    get = next(r.endpoint for r in router.routes if r.path == "/api/clouds/{name}")
+    go = threading.Event()
+    engine.tasks.start(TILE.name, "restore", lambda task: go.wait(10))
+    a = get("+43+005")
+    assert a["busy"] and a["picture"] is None and a["views"] == {"after": None, "before": None}
+    time.sleep(0.2)
+    assert drawn == []  # nothing asked
+    go.set()
+    for _ in range(200):
+        if not engine.tasks.busy(TILE.name):
+            break
+        time.sleep(0.01)
+    b = get("+43+005")  # its end: asked now
+    assert b["busy"] and b["views"]["before"] == "clouds.drawing"
+    for _ in range(200):
+        b = get("+43+005")
+        if not b["busy"]:
+            break
+        time.sleep(0.01)
+    assert b["picture"] is not None and len(drawn) == 1
+
+
+@pytest.mark.anyio
+async def test_a_picture_that_could_not_be_drawn_is_said_then_asked_again(
+    app: Any, ready: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from orthostudio.errors import OsxpError
+
+    def broken(*a: Any) -> Any:
+        raise OsxpError("CLOUD_NOT_BUILT", context={"tile": TILE.name, "reason": "its DSF: cut"})
+
+    monkeypatch.setattr(clouds_api, "_draw", broken)
+    async with client_for(app) as c:
+        a = (await c.get("/api/clouds/+43+005")).json()
+        assert a["busy"] is True
+        for _ in range(400):
+            r = await c.get("/api/clouds/+43+005")
+            if r.status_code != 200:
+                break
+            await anyio.sleep(0.01)
+        assert r.json()["error"]["code"] == "CLOUD_NOT_BUILT"  # said once, by the next answer
+        assert (await c.get("/api/clouds/+43+005")).json()["busy"] is True  # asked again
 
 
 def test_where_a_picture_lies_is_its_frame_drawn_or_not() -> None:
