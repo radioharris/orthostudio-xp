@@ -9020,3 +9020,14 @@ def test_the_tile_is_read_again_sooner_for_a_few_seconds_after_a_click() -> None
         in code[code.index("  async function waiting(") :][:400]
     )
     assert "setTimeout(refresh, performance.now() < cs.soonUntil ? SOON_MS : POLL_MS)" in code
+
+
+def test_the_librarys_clouds_heading_turns_until_its_column_is_first_read() -> None:
+    # the Library opened, nothing in Clouds, then its buttons came out of nowhere 1.6 s later (a
+    # user, 2026-11-07): its heading turns until the column is first read
+    html = (UI / "index.html").read_text(encoding="utf-8")
+    code = (UI / "app.js").read_text(encoding="utf-8")
+    assert 'id="library-clouds-reading"' in html and '<span data-i18n="library.clouds">' in html
+    assert "  clouds: null," in code
+    library = code[code.index("function renderLibrary() {") :]
+    assert '$("library-clouds-reading").hidden = state.clouds != null;' in library[:2000]
