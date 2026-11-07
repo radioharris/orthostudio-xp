@@ -154,3 +154,24 @@ runs of four at a time included. Where the 42 s went: the layer of each texture 
 map's level twice (once to judge the source, once for the preview, in the colours matched then),
 31.6 s of them, mostly raising every pixel's colours to the power 2.2 and averaging them; the
 layers made 5.4 s, the detector 3.6 s. Cloud 2 (244 km², 12 textures): 2.7 s.
+
+## B11. A tick near clouds applied (Mac, 2026-11-07)
+
+A copy of the owner's -02-050 (142 textures, its picture 5 827 px a side), clouds applied then
+the tile built again, the owner's gesture: a small cloud ticked on a texture already showing
+clouds replaced. Each texture Apply makes again was drawn as built under the previews, so each
+such tick drew the whole tile again: 0.80 to 0.92 s (water 0.32, the textures read 0.25, laid
+0.21; its JPEG 0.07), then up to 0.5 s before the page read it, 1.4 to 2.1 s from the click to
+the picture. Now a texture keeping the clouds it shows is drawn as X-Plane shows it, with the
+previews of the clouds it gains (`FolderPlan.bare`): the same tick draws nothing, its preview
+alone, 0.3 to 0.4 s from the click.
+
+Both ways against what X-Plane shows after the real Apply, the difference per pixel (0 to 255,
+the largest of the three channels) in the clouds' boxes; outside them both are exact:
+
+| Case | Made again | Drawn as built, before / now | Mean, before / now | 99 %, before / now |
+|---|---|---|---|---|
+| Six new clouds, one applied unticked | 10 | 10 / 4 | 0.60 / 0.60 | 7 / 7 |
+| Four small new clouds beside applied ones | 4 | 4 / 0 | 0.69 / 0.23 | 7 / 5 |
+
+Closer now where clouds are kept: they show as laid, rather than by their previews.

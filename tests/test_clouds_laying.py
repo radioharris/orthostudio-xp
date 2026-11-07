@@ -481,6 +481,32 @@ def test_a_texture_whose_clouds_no_file_says_is_made_again(folder: Path) -> None
     assert plan_folder(TILE, shown, [[cloud]]).work == []
 
 
+def test_after_draws_as_built_only_a_texture_where_a_cloud_goes_or_changes(folder: Path) -> None:
+    # each texture made again drawn as built, the whole tile was drawn again at each tick near
+    # clouds laid, 0.8 s and the page waiting (a user, 2026-11-07)
+    held = read_tile(folder)
+    assert held is not None
+    west = _cloud("c1", WEST_ONLY, held, RED)
+    _lay(folder, [west])
+    shown = read_tile(folder)
+    assert shown is not None
+    w, e = texture_name(WEST), texture_name(EAST)
+    across = _cloud("c2", ACROSS, shown, BLUE)
+    # a cloud gained, laid after or before the one shown: west keeps it, as X-Plane shows it
+    for clouds in ([[west], [across]], [[across], [west]]):
+        plan = plan_folder(TILE, shown, clouds)
+        assert plan.remade == {w, e} and plan.bare == frozenset()
+    # the one shown goes, or comes with other images: west drawn as built
+    assert plan_folder(TILE, shown, [[across]]).bare == {w}
+    assert plan_folder(TILE, shown, [[_cloud("c1", WEST_ONLY, shown, BLUE)], [across]]).bare == {w}
+    # what it shows no file says: drawn as built
+    (side,) = (folder / "clouds").glob("*.json")
+    side.unlink()
+    unknown = read_tile(folder)
+    assert unknown is not None and w not in unknown.known
+    assert plan_folder(TILE, unknown, [[west], [across]]).bare == {w}
+
+
 def test_a_sidecar_that_is_not_whole_says_nothing_and_breaks_nothing(folder: Path) -> None:
     held = read_tile(folder)
     assert held is not None

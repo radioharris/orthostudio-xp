@@ -41,8 +41,9 @@ tile's textures are read. What the tile holds is counted from its folder (2.1).
 The Plan's map, brought over the tile; the Plan's steps make way for the cloud panel.
 
 - **On the map**: the tile drawn as X-Plane draws it (R2). In **After**, the tile as X-Plane shows
-  it, but the textures Apply makes again: in those, the build's own with the preview of each cloud
-  Apply lays there, in the list's order (R4); in **Before**, the tile with no cloud replaced. The
+  it with the preview of each cloud Apply adds over it, but the textures where a cloud they show
+  goes or changes: in those, the build's own with the preview of each cloud Apply lays there, in
+  the list's order (R4); in **Before**, the tile with no cloud replaced. The
   ground is laid again only when its files change, the new one shown once loaded: the tile never
   flashes when a cloud is clicked, and a cloud whose images are being got (a source changed) is
   planned as it was when that began, until the task ends: what After shows of it, the count and
@@ -195,8 +196,9 @@ textures (Restore's question, the Library), is counted from its folder alone, an
 makes again from the folder's plan. A texture showing clouds no file says (2.1) is made again: it is
 a change when no cloud's is ("Textures to make again: 1"), and Apply is offered whenever a texture
 is to be made again. Apply's button and the questions of Apply and Restore are said from them
-(`texts`). After shows what X-Plane shows but the textures Apply makes again (`View.remade`), in
-which the build's own with the preview of each cloud Apply lays there (`View.previews`); its
+(`texts`). After shows what X-Plane shows with the preview of each cloud Apply adds, but the
+textures where a cloud they show goes or changes (`View.bare`), in which the build's own with the
+preview of each cloud Apply lays there (`View.previews`); its
 sentence says "after Apply" whenever one is. The list knows every cloud the tile shows replaced
 (2.4). A cloud is ticked one way (`clouds_api.pick`), by the user or once an outline's sources are
 tried, and its images are asked for one way (`clouds_api.get_images`): when its state offers
@@ -410,7 +412,8 @@ photo whole; the sea shows it at the texture's alpha (the sea mask) over X-Plane
 water at that alpha times the lakes' share (`ratio_water`, the DSF's eighth plane, through the
 water transition ramp) over its water; X-Plane's water alone, no photo. For Before each texture
 is read as the build made it (`TileClouds.plains`), so Before is the tile with no cloud replaced;
-for After as X-Plane shows it, but those Apply makes again, read as built (R4).
+for After as X-Plane shows it, but those where a cloud they show goes or changes, read as built
+(R4).
 
 ### R3. A cloud is one place
 
@@ -430,8 +433,14 @@ with `laying.plan_folder`, the function Apply runs), for the count, the rows, Af
 lays each ticked cloud with its images when they can be laid, else what the tile shows of it (a
 replaced cloud given another source keeps its ground until the new one's images are in); a ticked
 cloud with neither waits, left out, and the question says so. After shows exactly these: the
-textures Apply leaves as they are as X-Plane shows them, and in those it makes again the build's own
-with each cloud's preview (R5): what Apply would lay is what the map shows. The count is the rows':
+textures Apply leaves as they are as X-Plane shows them; those it makes again keeping the clouds
+they show, the same images in the same order (their stamp's digest), as X-Plane shows them with the
+preview of each cloud they gain; those where a cloud they show goes or changes, or that show clouds
+no file says, the build's own with each cloud's preview (`FolderPlan.bare`, R5). What Apply would
+lay is what the map shows: a cloud's preview holds its layer alone, laid as Apply lays it, so over
+the clouds a texture keeps it is what Apply makes from the build's own (B11). Each texture made
+again drawn as built, a tick near clouds applied drew the whole tile again, 0.8 s and the page
+waiting. The count is the rows':
 replaced (laid, not held), another source (laid with another than held), back as photographed (held,
 not laid), waiting (ticked, nothing new to lay). After Apply nothing is left to change; after
 Discard nothing ticked differs from what the tile shows. Only the textures under the clouds change,

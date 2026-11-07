@@ -24,6 +24,7 @@ from orthostudio.clouds.tile import (
     clouds_digest,
     laid_fields,
     part_path,
+    same_laid,
     texture_digest,
 )
 from orthostudio.graph.digest import digest_bytes
@@ -194,6 +195,13 @@ def test_every_state_agrees_with_what_apply_and_discard_do(
     laid = plan_folder(TILE, shown, v.asked).laid
     assert [e["id"] for e in laid] == [s.cloud["id"] for s in v.clouds if s.lays is not None]
 
+    # After: the texture as built only where a cloud it shows goes or changes, else as X-Plane
+    # shows it, with a preview of each cloud it does not show the same
+    same = {h["id"] for h in shown.held if any(same_laid(h, e) for e in laid)}
+    assert v.bare == (v.remade if same != {h["id"] for h in shown.held} else frozenset())
+    previewed = [e["id"] for e in laid if v.remade and (v.bare or e["id"] not in same)]
+    assert [e["id"] for e, _n in v.previews] == previewed
+
     # the actions, from the row
     for s in v.clouds:
         assert ("tick" in s.actions) <= (s.source is not None)
@@ -216,6 +224,19 @@ def test_every_state_agrees_with_what_apply_and_discard_do(
     assert all(s.row not in ("ready", "back", "waiting") for s in back.clouds), [
         (s.cloud["id"], s.row, s.why) for s in back.clouds
     ]
+
+
+def test_a_cloud_ticked_beside_one_applied_keeps_after_as_xplane_shows_it(folder: Path) -> None:
+    # the texture drawn as built, the whole tile was drawn again at each tick near clouds laid,
+    # 0.8 s and the page waiting (a user, 2026-11-07): its preview alone over it now
+    cl, shown = _case(folder, True, None, None, "stands", "held")
+    v = _view(cl, shown)
+    assert v.remade == {NAME} and v.bare == frozenset()
+    assert [(e["id"], n) for e, n in v.previews] == [("cloud001", [NAME])]
+    # the one applied unticked: its texture back as built, the other's preview over it
+    cl, shown = _case(folder, True, None, None, "stands", "unticked")
+    v = _view(cl, shown)
+    assert v.bare == {NAME} and [e["id"] for e, _n in v.previews] == ["cloud001"]
 
 
 def test_a_task_of_a_cloud_takes_its_row_and_the_tile_gives_apply_up(folder: Path) -> None:
