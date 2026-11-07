@@ -697,7 +697,8 @@ input[aria-invalid="true"] { border-color: var(--fail); }
    actions are. */
 .library-clouds > div { display: flex; align-items: center; gap: 4px; white-space: nowrap; }
 .library-clouds .btn-trash { margin-left: 0; }
-.library-clouds .clouds-words { color: var(--fg-2); font-size: var(--fs-2); }
+/* a little further from the bin than the two icons from each other (a user, 2026-11-07) */
+.library-clouds .clouds-words { margin-left: 4px; color: var(--fg-2); font-size: var(--fs-2); }
 /* On the map, yellow what stays and the accent what is replaced, each line on a dark casing: it
    reads over snow and clouds as over dark ground. The yellow is the same in both themes: the
    ground under it is. An outline is drawn as a zone is (map.js drawShape), its points and line
