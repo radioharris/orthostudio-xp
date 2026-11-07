@@ -272,21 +272,23 @@ def lay_folder(
 ) -> list[Mapping[str, Any]]:
     """Make the whole folder show what :func:`plan_folder` says of ``clouds``, each given as the
     images it may show, the wanted first. Refused while X-Plane runs and shows the tile, as a
-    build is (``CLOUD_XPLANE_RUNNING``). All or nothing: every new texture is made first beside its
-    own and written to the disk, then each is put in place, only over the very file read, the one
-    before kept until all are; when one cannot be (X-Plane holding it, a build replacing it
-    meanwhile), those put in place are put back, a build's own left as it is, and nothing has
-    changed. The files no longer needed beside go after, whatever stops that. A folder not whole (a
-    build cut short, files taken from it) is never laid in. Called under the tile's lock
-    (:func:`folder_lock`). Returns the clouds laid."""
-    _not_under_xplane(tile, folder, custom_scenery)
+    build is (``CLOUD_XPLANE_RUNNING``), when a texture is to be written: Forget with nothing
+    laid was refused too (a review, 2026-11-07). All or nothing: every new texture is made first
+    beside its own and written to the disk, then each is put in place, only over the very file
+    read, the one before kept until all are; when one cannot be (X-Plane holding it, a build
+    replacing it meanwhile), those put in place are put back, a build's own left as it is, and
+    nothing has changed. The files no longer needed beside go after, whatever stops that. A folder
+    not whole (a build cut short, files taken from it) is never laid in. Called under the tile's
+    lock (:func:`folder_lock`). Returns the clouds laid."""
     shown = read_tile(folder)
     why = unready(shown)
     if why is not None:
         raise OsxpError("CLOUD_TILE_NOT_READY", context={"tile": tile.name, "state": why})
     assert shown is not None
-    _sweep_leftovers(shown)
     plan = plan_folder(tile, shown, clouds)
+    if plan.work:
+        _not_under_xplane(tile, folder, custom_scenery)
+    _sweep_leftovers(shown)
     made: list[tuple[str, Path]] = []
     try:
         made += _make_all(tile, shown, plan.work, progress)

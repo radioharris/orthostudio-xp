@@ -663,9 +663,15 @@ def test_apply_while_x_plane_shows_the_tile_says_so_in_its_own_words(
         raise OsxpError("SYS_REBUILD_XP_RUNNING", context={"tile": TILE.name})
 
     monkeypatch.setattr(laying, "_refuse_rewrite_under_running_xplane", running)
+    held = read_tile(folder)
+    assert held is not None
+    textures = {p.name: p.read_bytes() for p in (folder / "textures").glob("*.dds")}
     with pytest.raises(OsxpError) as got:
-        show(TILE, folder, [], custom_scenery=None)
+        show(TILE, folder, [[_cloud("c1", WEST_ONLY, held, RED)]], custom_scenery=None)
     assert got.value.code == "CLOUD_XPLANE_RUNNING" and "apply again" in got.value.remedy
+    assert {p.name: p.read_bytes() for p in (folder / "textures").glob("*.dds")} == textures
+    # nothing to write, nothing refused: Forget with no cloud laid was (a review, 2026-11-07)
+    show(TILE, folder, [], custom_scenery=None)
 
 
 def test_a_build_lays_again_a_cloud_its_list_knew_only_from_the_folder(folder: Path) -> None:
