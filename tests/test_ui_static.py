@@ -9031,3 +9031,16 @@ def test_the_librarys_clouds_heading_turns_until_its_column_is_first_read() -> N
     assert "  clouds: null," in code
     library = code[code.index("function renderLibrary() {") :]
     assert '$("library-clouds-reading").hidden = state.clouds != null;' in library[:2000]
+
+
+def test_a_clouds_label_stands_where_its_number_is_over_every_mark() -> None:
+    # at the middle of its frame, a long curved cloud's label lay outside it, far from its number
+    # (a user, 2026-11-07): where its number is, over the marks, its number gone meanwhile
+    code = (UI / "clouds.js").read_text(encoding="utf-8")
+    shapes = code[code.index("  function shapesOf(c, drawing) {") :]
+    shapes = shapes[: shapes.index("\n  }\n")]
+    assert "L.marker(placeOf(c.rings[0])," in shapes and "zIndexOffset: 1000" in shapes
+    marks = code[code.index("  function drawMarks() {") :]
+    marks = marks[: marks.index("\n  }\n")]
+    assert "if (seen && (!c.numbered || c.label)) continue;" in marks
+    assert "L.marker(placeOf(c.rings[0])," in marks  # the number at the very same place

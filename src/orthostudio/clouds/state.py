@@ -251,7 +251,7 @@ class CloudState:
         and it is the one cloud at work (``alone``), a spinner beside its name that stops it, from
         its task's start to its end whatever its phase (``working``: two spinners one after the
         other, the first one going while the task began, a user, 2026-11-07), and once its task
-        runs a label at its centre, its name and where its task is (``label``: "Cloud 5:
+        runs a label where its number is, its name and where its task is (``label``: "Cloud 5:
         downloading the images"). Several at work (Tick all), Stop all says it alone, by their
         number: their labels and spinners came and went all over the map and the list (a user,
         2026-11-07)."""

@@ -355,7 +355,7 @@ export function createCloudMode(ctx) {
   }
 
   /** The tile's surroundings darkened, every cloud's outline on a dark casing (read over snow as
-   * over dark ground), its tooltip saying what a click does, and a task's label at its centre
+   * over dark ground), its tooltip saying what a click does, and a task's label where its number is
    * (``label``, the engine's: a spinner, or its line). */
   function drawShapes(map) {
     if (!cs.shapes) {
@@ -405,14 +405,26 @@ export function createCloudMode(ctx) {
     }
     const out = [casing, shape];
     if (c.label) {
+      // where its number is, inside it, over every mark (its number gone meanwhile, ``drawMarks``):
+      // at the middle of its frame, a long curved cloud's label lay outside it, far from its number
+      // (a user, 2026-11-07)
       const label = h("div", { class: "cloud-pending" }, h("span", { class: "spinner", "aria-hidden": "true" }), labelWords(c));
-      out.push(L.marker(L.latLngBounds(rings.flat()).getCenter(), {
+      out.push(L.marker(placeOf(c.rings[0]), {
         icon: L.divIcon({ className: "cloud-pending-anchor", html: label, iconSize: [0, 0] }),
         interactive: false,
         keyboard: false,
+        zIndexOffset: 1000,
       }));
     }
     return out;
+  }
+
+  /** Where a cloud's number, or its label in its place, stands: inside its outline, far from its
+   * edges (``labelPoint``), computed once a ring. */
+  function placeOf(ring) {
+    const where = ring.join(",");
+    if (!labels.has(where)) labels.set(where, labelPoint(ring));
+    return labels.get(where);
   }
 
   /** A cloud's label on the map while its task runs: its name and where the task is. */
@@ -445,14 +457,13 @@ export function createCloudMode(ctx) {
       const nw = map.latLngToLayerPoint(box.getNorthWest());
       const se = map.latLngToLayerPoint(box.getSouthEast());
       const seen = Math.max(se.x - nw.x, se.y - nw.y) >= PIN_BELOW_PX;
-      if (seen && !c.numbered) continue;
+      if (seen && (!c.numbered || c.label)) continue; // its label, where its number is, names it
       const where = ring.join(",");
-      items.push([c.id, JSON.stringify(seen ? ["number", where, c.number] : ["pin", where, c.tick, c.tip, drawing]), { c, seen, box, where }]);
+      items.push([c.id, JSON.stringify(seen ? ["number", where, c.number] : ["pin", where, c.tick, c.tip, drawing]), { c, seen, box }]);
     }
-    keep(cs.marks, cs.marked, items, ({ c, seen, box, where }) => {
+    keep(cs.marks, cs.marked, items, ({ c, seen, box }) => {
       if (seen) {
-        if (!labels.has(where)) labels.set(where, labelPoint(c.rings[0]));
-        return [L.marker(labels.get(where), {
+        return [L.marker(placeOf(c.rings[0]), {
           icon: L.divIcon({ className: "cloud-number-anchor", html: h("span", { class: "cloud-number" }, String(c.number)), iconSize: [0, 0] }),
           interactive: false,
           keyboard: false,
