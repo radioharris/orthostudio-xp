@@ -371,7 +371,10 @@ Apply, Restore or Forget writes the tile (`state.WRITES`), none is asked: the pi
 tile shows at their end are. Drawn in the answer, a page stood still 10 to 37 s on a Windows server
 at each new state of a tile of 3 M triangles, the first search's progress included (B8). Every path
 of the cloud files is in `clouds/tile.py`, and every reading of them back (`listed`, `sidecars`,
-`kept_files`, `leftovers`, `served_path`). The sources' pieces are kept as a build's parent tiles
+`kept_files`, `leftovers`, `served_path`). A list or a sidecar is read afresh at each reading but
+checked once while its file stays the same, its inode, size and time (`read_checked`): every one
+is written whole beside and moved in. Checked each time, those of 200 clouds took most of every
+reading of the tile and of a tick (B9). The sources' pieces are kept as a build's parent tiles
 (`ParentCache`, per source). The detector's classes of the tile's last search are kept in memory for
 an outline. Every one of them can be deleted: it is made again.
 
