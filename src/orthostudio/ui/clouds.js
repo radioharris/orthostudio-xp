@@ -146,7 +146,9 @@ export function createCloudMode(ctx) {
 
   async function open(tile) {
     if (cs.tile && cs.tile !== tile) close();
-    Object.assign(cs, { tile, view: "after", current: null, answer: null, reveal: null, centre: false, error: null });
+    // its last answer kept (another tile's goes with ``close``): cleared, the tile's picture and
+    // outlines went until its answer came back, a blink at each return (a user, 2026-11-07)
+    Object.assign(cs, { tile, view: "after", current: null, reveal: null, centre: false, error: null });
     ctx.showPlan();
     document.querySelector(".plan-flow")?.classList.add("is-clouds");
     $("clouds-panel").hidden = false;

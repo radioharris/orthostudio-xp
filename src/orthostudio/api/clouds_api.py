@@ -149,20 +149,22 @@ class CloudEngine:
         return None
 
     def ground(
-        self, tile: TileRef, view: str, built: str, whole: dict[str, Any] | None
+        self, tile: TileRef, view: str, built: str | None, whole: dict[str, Any] | None
     ) -> dict[str, Any] | None:
-        """What the page lays for ``view`` (``before``, ``after``) of the tile's build ``built``:
-        its picture, After's with the previews over it. ``whole`` when the answer has all of it,
-        kept; else the last kept of that build stands in, all of it (``None`` without one).
-        After's picture alone, from before Apply, showed its clouds 1 to 2 s at the end of an
-        Apply until its next was drawn; one of the build before showed the old tile for a second
-        after Build again (a user, 2026-11-07)."""
+        """What the page lays for ``view`` (``before``, ``after``) of the tile's build ``built``
+        (``None``: its folder not read now): its picture, After's with the previews over it.
+        ``whole`` when the answer has all of it, kept; else the last kept of that build stands
+        in, all of it, or the last kept whatever its build while the folder is not read
+        (``None`` without one). After's picture alone, from before Apply, showed its clouds 1 to
+        2 s at the end of an Apply until its next was drawn; one of the build before showed the
+        old tile for a second after Build again; none while a build held the tile took the
+        picture away until its end (a user, 2026-11-07)."""
         with self._lock:
             if whole is not None:
-                self._given[(tile.name, view)] = (built, whole)
+                self._given[(tile.name, view)] = (str(built), whole)
                 return whole
             kept = self._given.get((tile.name, view))
-            return kept[1] if kept is not None and kept[0] == built else None
+            return kept[1] if kept is not None and built in (None, kept[0]) else None
 
     def _write(
         self, tile: TileRef, shown: TileClouds, zl: int, remade: frozenset[str] | None
@@ -388,7 +390,7 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
         tile = _tile_of(name)
         _folder, shown, v = look(tile)
         engine.said(tile)  # a picture drawn aside that failed
-        picture = after = None
+        picture = after = before = after_ground = None
         previews = {}
         stand_in: set[str] = set()  # the views whose picture is being drawn aside
         # what the tile shows being written, its pictures wait for the end: asked then, a picture
@@ -415,9 +417,13 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
             after_ground = engine.ground(tile, "after", shown.built, whole)
             if ask:  # what is drawn aside meanwhile
                 stand_in = {k for k, w in (("before", before_pic), ("after", whole)) if w is None}
-            picture = before["picture"] if before is not None else None
-            if after_ground is not None:
-                after, previews = after_ground["picture"], after_ground["previews"]
+        elif state.TILE_STATES[v.state].busy:  # something else holds its folder: the map stays
+            before = engine.ground(tile, "before", None, None)
+            after_ground = engine.ground(tile, "after", None, None)
+        if before is not None:
+            picture = before["picture"]
+        if after_ground is not None:
+            after, previews = after_ground["picture"], after_ground["previews"]
         failed = engine.tasks.failed(tile.name)
         return {
             "tile": tile.name,

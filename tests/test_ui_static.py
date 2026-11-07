@@ -8889,3 +8889,14 @@ def test_the_step_that_lays_a_tiles_clouds_again_says_so_in_works() -> None:
     tile = {"tile": "+46+006", "steps": {"assembly": assembly}}
     got = _node_json("app.js", f"m.tileActivity({json.dumps(job)}, {json.dumps(tile)})")
     assert got == [{"step": "assembly", "words": "laying its clouds: 3 of 19 textures"}]
+
+
+def test_the_cloud_mode_opened_again_keeps_its_last_answer_until_the_next() -> None:
+    # cleared at each opening, the tile's picture and outlines went until its answer came back:
+    # a blink at each return to the mode (a user, 2026-11-07); another tile's goes with close
+    code = (UI / "clouds.js").read_text(encoding="utf-8")
+    opening = code[code.index("  async function open(tile) {") :]
+    opening = opening[: opening.index("\n  }\n")]
+    assert "answer: null" not in opening
+    closing = code[code.index("  function close() {") :]
+    assert "answer: null" in closing[: closing.index("\n  }\n")]
