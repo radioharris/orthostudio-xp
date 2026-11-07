@@ -21,7 +21,7 @@ import pytest
 from PIL import Image
 
 import test_api_fakes as fakes
-from orthostudio.clouds import cloudlist, state
+from orthostudio.clouds import cloudlist, laying, state
 from orthostudio.clouds.layer import encode_part, pieces
 from orthostudio.clouds.laying import lay_again, lay_folder, lay_texture, plan_folder, show
 from orthostudio.clouds.sources import JUDGED
@@ -306,6 +306,30 @@ def test_apply_is_all_or_nothing_a_texture_xplane_holds_puts_the_others_back(
         show(TILE, folder, [[across]], custom_scenery=None)
     assert got.value.code == "XP_PACK_CONFLICT" and "Quit X-Plane" in got.value.remedy
     for name, data in textures.items():  # the first one put back: nothing changed
+        assert (folder / "textures" / f"{name}.dds").read_bytes() == data
+    assert cloudlist.load(TILE).laid == []
+    assert not list((folder / "textures").glob("*.osxp-clouds-*"))  # nothing left beside
+
+
+def test_textures_made_at_once_one_failing_changes_nothing(
+    folder: Path, textures: dict[str, bytes], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # made four at once (a build laid 19 again in 12 s, a user, 2026-11-07): one that fails while
+    # the others are made lets those go, and nothing has changed
+    held = read_tile(folder)
+    assert held is not None
+    across = _cloud("c2", ACROSS, held, BLUE)  # two textures to lay
+    make = laying._make
+
+    def failing(tile: Any, shown: Any, name: str, mine: Any) -> Path:
+        if name == texture_name(EAST):
+            raise OSError("the disk is full")
+        return make(tile, shown, name, mine)
+
+    monkeypatch.setattr(laying, "_make", failing)
+    with pytest.raises(OSError):
+        show(TILE, folder, [[across]], custom_scenery=None)
+    for name, data in textures.items():
         assert (folder / "textures" / f"{name}.dds").read_bytes() == data
     assert cloudlist.load(TILE).laid == []
     assert not list((folder / "textures").glob("*.osxp-clouds-*"))  # nothing left beside

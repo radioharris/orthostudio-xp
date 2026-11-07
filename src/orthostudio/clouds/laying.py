@@ -26,6 +26,7 @@ import os
 import shutil
 import threading
 from collections.abc import Callable, Mapping, Sequence
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
@@ -288,10 +289,7 @@ def lay_folder(
     plan = plan_folder(tile, shown, clouds)
     made: list[tuple[str, Path]] = []
     try:
-        for n, (name, mine) in enumerate(plan.work):
-            if progress is not None:
-                progress(n, len(plan.work))
-            made.append((name, _make(tile, shown, name, mine)))
+        made += _make_all(tile, shown, plan.work, progress)
         if made:  # every new texture on the disk itself, its cache too, before one is in place
             with contextlib.suppress(OSError):  # a disk that has no such flush: fsync was it
                 flush_disk(made[-1][1])
@@ -315,6 +313,41 @@ def _not_under_xplane(tile: TileRef, folder: Path, custom_scenery: Path | None) 
         _refuse_rewrite_under_running_xplane(env, tile, Path(folder))
     except OsxpError as exc:
         raise OsxpError("CLOUD_XPLANE_RUNNING", context={"tile": tile.name}) from exc
+
+
+LAYING_AT_ONCE = 4
+"""Textures made at once (:func:`_make_all`): one by one, a build laid a tile's 19 again in 12 s at
+its end (a user, 2026-11-07). Each holds its first level and its levels in memory meanwhile, some
+300 MB for a texture of 4096 pixels."""
+
+
+def _make_all(
+    tile: TileRef,
+    shown: TileClouds,
+    work: Sequence[tuple[str, Sequence[Mapping[str, Any]]]],
+    progress: Callable[[int, int], None] | None,
+) -> list[tuple[str, Path]]:
+    """:func:`_make` of each texture of ``work``, :data:`LAYING_AT_ONCE` at a time, in the order of
+    ``work``; ``progress`` told how many are made. When one fails, those made are let go of and
+    its error raised: nothing has changed."""
+    made: list[tuple[str, Path]] = []
+    if progress is not None:
+        progress(0, len(work))
+    with ThreadPoolExecutor(max_workers=LAYING_AT_ONCE, thread_name_prefix="osxp-lay") as pool:
+        futures = [pool.submit(_make, tile, shown, name, mine) for name, mine in work]
+        for n, _done in enumerate(as_completed(futures), start=1):
+            if progress is not None:
+                progress(n, len(work))
+    failed = next((f.exception() for f in futures if f.exception() is not None), None)
+    for (name, _mine), f in zip(work, futures, strict=True):
+        if f.exception() is None:
+            made.append((name, f.result()))
+    if failed is not None:
+        for _name, path in made:
+            with contextlib.suppress(OSError):  # left, it goes at a later laying
+                path.unlink(missing_ok=True)
+        raise failed
+    return made
 
 
 def _place(src: Path, dest: Path) -> None:

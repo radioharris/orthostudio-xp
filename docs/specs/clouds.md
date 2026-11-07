@@ -518,7 +518,10 @@ laid first level as the build makes them (`mips.mip_chain`, `gamma22`), and in e
 the blocks whose pixels a cloud reaches are encoded again, as the build encodes them
 (`encode.encode_blocks`); every other block is the build's. A block of one level is two by two
 blocks of the level above, so the blocks a cloud reaches are known level by level. Apply with
-two clouds over three textures of 4096 px: 1.8 s (B4).
+two clouds over three textures of 4096 px: 1.8 s (B4). The textures of a laying are made four at
+once (`laying.LAYING_AT_ONCE`, about 300 MB each meanwhile), and a level is decoded a palette
+colour at a time as one 32-bit word (`bcdecode._bc1_pixels`): ten clouds over seven textures took
+4.1 s, 0.7 s so, the very same bytes; a build laid a user's 19 again in 12 s.
 
 ## 5. Failures
 
