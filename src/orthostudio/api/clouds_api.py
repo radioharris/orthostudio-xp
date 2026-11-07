@@ -95,7 +95,7 @@ class CloudEngine:
         self._drawing: dict[tuple[str, str], threading.Lock] = {}
         self._classes: dict[tuple[str, str], np.ndarray] = {}
         self._asked: dict[tuple[str, str], _Aside] = {}
-        self._given: dict[tuple[str, str], dict[str, Any]] = {}
+        self._given: dict[tuple[str, str], tuple[str, dict[str, Any]]] = {}
         self._one = threading.Lock()  # one picture drawn aside at a time: each is hundreds of MB
         self._lock = threading.Lock()
 
@@ -135,24 +135,34 @@ class CloudEngine:
         remade: frozenset[str] | None = None,
         *,
         ask: bool = True,
-    ) -> tuple[dict[str, Any] | None, bool]:
+    ) -> dict[str, Any] | None:
         """A picture of the tile as the page lays it (:meth:`drawn`: Before, ``remade`` for
-        After), a JPEG named by what it is made of, and whether it is that one. A file not there
-        yet is drawn aside (:meth:`aside`; not while what the tile shows is written, ``ask``) and
-        the last given of that view stands in meanwhile (``None`` the first time). A picture is
+        After), a JPEG named by what it is made of; ``None`` while it is not there yet, drawn
+        aside (:meth:`aside`; not while what the tile shows is written, ``ask``). A picture is
         made once: drawn again at each start, two of them took a first reading 3.75 s (a user's
         tile, 2026-11-07)."""
-        view = "before" if remade is None else "after"
         path = picture_path(tile, _what(shown, zl, remade))
         if path.exists():
-            got = {"name": path.name, "bounds": frame_bounds(tile, zl), "level": zl}
-            with self._lock:
-                self._given[(tile.name, view)] = got
-            return got, True
+            return {"name": path.name, "bounds": frame_bounds(tile, zl), "level": zl}
         if ask:
             self.aside((tile.name, path.name), lambda: self._write(tile, shown, zl, remade))
+        return None
+
+    def ground(
+        self, tile: TileRef, view: str, built: str, whole: dict[str, Any] | None
+    ) -> dict[str, Any] | None:
+        """What the page lays for ``view`` (``before``, ``after``) of the tile's build ``built``:
+        its picture, After's with the previews over it. ``whole`` when the answer has all of it,
+        kept; else the last kept of that build stands in, all of it (``None`` without one).
+        After's picture alone, from before Apply, showed its clouds 1 to 2 s at the end of an
+        Apply until its next was drawn; one of the build before showed the old tile for a second
+        after Build again (a user, 2026-11-07)."""
         with self._lock:
-            return self._given.get((tile.name, view)), False
+            if whole is not None:
+                self._given[(tile.name, view)] = (built, whole)
+                return whole
+            kept = self._given.get((tile.name, view))
+            return kept[1] if kept is not None and kept[0] == built else None
 
     def _write(
         self, tile: TileRef, shown: TileClouds, zl: int, remade: frozenset[str] | None
@@ -387,20 +397,27 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
         if v.state == "ready":  # drawn with the tool that finds the clouds (``no_tool``)
             assert shown is not None
             zl = map_level(tile, shown.textures)
-            picture, now = engine.picture_file(tile, shown, zl, ask=ask)
-            if not now and ask:
-                stand_in.add("before")
+            before_pic = engine.picture_file(tile, shown, zl, ask=ask)
+            whole = {"picture": before_pic} if before_pic is not None else None
+            before = engine.ground(tile, "before", shown.built, whole)
             # After: what X-Plane shows, but the textures Apply makes again, which show the
             # build's own with the clouds Apply lays in them, each by its preview there (made
-            # with its images, ``find.check``)
-            after, now = engine.picture_file(tile, shown, zl, v.remade, ask=ask)
+            # with its images, ``find.check``); laid whole or not at all (``ground``)
+            after_pic = engine.picture_file(tile, shown, zl, v.remade, ask=ask)
             p = engine.held(tile, shown, zl, ask=ask) if v.previews else None  # kept in memory
-            if (not now or (v.previews and p is None)) and ask:
-                stand_in.add("after")
-            for entry, names in v.previews if p is not None else ():
-                got = preview(p, tile, entry, shown.built, names)
-                if got is not None:
-                    previews[entry["id"]] = {"name": got[0], "bounds": got[1]}
+            whole = None
+            if after_pic is not None and (p is not None or not v.previews):
+                whole = {"picture": after_pic, "previews": {}}
+                for entry, names in v.previews:
+                    got = preview(p, tile, entry, shown.built, names)
+                    if got is not None:
+                        whole["previews"][entry["id"]] = {"name": got[0], "bounds": got[1]}
+            after_ground = engine.ground(tile, "after", shown.built, whole)
+            if ask:  # what is drawn aside meanwhile
+                stand_in = {k for k, w in (("before", before_pic), ("after", whole)) if w is None}
+            picture = before["picture"] if before is not None else None
+            if after_ground is not None:
+                after, previews = after_ground["picture"], after_ground["previews"]
         failed = engine.tasks.failed(tile.name)
         return {
             "tile": tile.name,

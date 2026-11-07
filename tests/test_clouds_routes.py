@@ -680,6 +680,39 @@ async def test_the_last_picture_stands_in_while_its_next_is_drawn(
     assert b["picture"] == first["picture"] and made.exists()
 
 
+def test_a_view_stands_in_whole_and_only_for_its_build() -> None:
+    # After's picture alone showed its clouds at the end of an Apply; one of the build before
+    # showed the old tile after Build again (a user, 2026-11-07)
+    engine = clouds_api.CloudEngine(clouds_api.CloudHooks(custom_scenery=lambda: None, taken=dict))
+    whole = {"picture": {"name": "a.jpg"}, "previews": {"c1": {"name": "p.png"}}}
+    assert engine.ground(TILE, "after", "b1", whole) == whole
+    assert engine.ground(TILE, "after", "b1", None) == whole  # its previews with it
+    assert engine.ground(TILE, "after", "b2", None) is None  # another build of the tile: none
+    assert engine.ground(TILE, "before", "b1", None) is None
+
+
+@pytest.mark.anyio
+async def test_after_build_again_the_old_tile_is_not_shown_while_its_picture_is_drawn(
+    app: Any, ready: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import threading
+
+    async with client_for(app) as c:
+        first = await _read(c)
+        go = threading.Event()
+        draw = clouds_api._draw
+        monkeypatch.setattr(clouds_api, "_draw", lambda *a: (go.wait(10), draw(*a))[1])
+        files = {"dsf": TILE.dsf_relpath.as_posix(), "dsf_size": 108, "textures": 1, "terrain": 0}
+        entries = {"textures": ArtefactEntry("k2", "d", "r@2")}  # built again: another build
+        write_manifest(ready, TILE, PackManifest(TILE.name, "BI", 12, entries, files))
+        a = (await c.get("/api/clouds/+43+005")).json()
+        assert a["busy"] is True and a["picture"] is None and a["after"] is None
+        assert a["views"] == {"after": "clouds.drawing", "before": "clouds.drawing"}
+        go.set()
+        b = await _read(c)
+    assert b["picture"] is not None and b["picture"] != first["picture"]
+
+
 def test_no_picture_is_asked_while_what_the_tile_shows_is_written(
     ready: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
