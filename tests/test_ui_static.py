@@ -8941,3 +8941,24 @@ def test_the_cloud_mode_says_a_picture_of_the_view_shown_is_being_made() -> None
     panel = panel[: panel.index("\n  }\n")]
     assert 'a.views?.[cs.view] === "clouds.drawing"' in panel
     assert 'key("drawing")' in panel and 't("clouds.drawing")' in panel
+
+
+def test_a_change_of_one_cloud_draws_its_outline_and_its_mark_alone_again() -> None:
+    # every outline and mark drawn again at each change of one, a click drew 540 shapes twice
+    # and the page took 0.65 s before sending it (a user's tile of 200 clouds, 2026-11-07)
+    code = (UI / "clouds.js").read_text(encoding="utf-8")
+
+    def body(head: str) -> str:
+        part = code[code.index(head) :]
+        return part[: part.index("\n  }\n")]
+
+    assert "shapesKey" not in code
+    kept = body("  function keep(group, kept, items, make) {")
+    assert "if (old?.key === k) continue;" in kept  # the same: left as it is
+    assert "group.removeLayer(l)" in kept and "kept.delete(id)" in kept  # changed or gone
+    assert "keep(cs.shapes, cs.drawn, items," in body("  function drawShapes(map) {")
+    assert "keep(cs.marks, cs.marked, items," in body("  function drawMarks() {")
+    # a shape or a pin kept outlives the answer it was drawn from: a click acts on the cloud now
+    assert code.count("clickCloud(cloudNow(c.id) || c)") == 2 and "clickCloud(c);" not in code
+    assert "forgetShapes()" in body("  function close() {")
+    assert "rerender: () => cs.tile && (forgetShapes(), render())" in code  # every word again

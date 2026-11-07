@@ -50,8 +50,9 @@ The Plan's map, brought over the tile; the Plan's steps make way for the cloud p
   the words over the map all say it then (the engine's: `Task.was`, `_as_it_was`; Apply waits for
   the task). A picture not drawn yet is drawn aside: the last one of that view of the same build
   stays meanwhile, After's with its previews, and the words over the map say **Drawing the
-  tile…** (2.6). The outlines and the marks are drawn
-  again only when what they show changes. Around the tile, the map darkened (seen from far, the base
+  tile…** (2.6). Each cloud's outline and mark are drawn again only when what they show of it
+  changes, every other one left as it is (all of them at each change of one, a click drew 540
+  shapes twice and the page took 0.65 s before sending it, on a tile of 200 clouds). Around the tile, the map darkened (seen from far, the base
   map is another mosaic than the tile's photos). Every cloud's outline on a dark casing, readable
   over snow: yellow when unticked, the accent when ticked, the current one thicker; its tooltip says
   its name and what a click does ("Cloud 5 · click to tick it", the engine's `tip`); a found cloud
