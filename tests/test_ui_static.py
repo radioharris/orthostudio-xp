@@ -8873,3 +8873,19 @@ def test_every_control_of_the_cloud_mode_is_redrawn_as_itself() -> None:
     assert calls
     loose = [c for c in calls if "dataset:" not in c and '"aria-label"' not in c]
     assert loose == [], loose
+
+
+def test_the_step_that_lays_a_tiles_clouds_again_says_so_in_works() -> None:
+    """Whatever the step that finishes a tile, its clouds laid again are said from the engine's
+    line (``build.clouds_again_message``): an Assembly said "putting the tile together" for the
+    12 s they took (a user, 2026-11-07)."""
+    from orthostudio.pipeline import build as build_mod
+
+    line = build_mod.clouds_again_message(3, 19)
+    job = {"status": "running", "install": False, "tiles": []}
+    pack = {"role": "pack", "status": "running", "fraction": 1.0}
+    assembly = {"status": "running", "fraction": 1.0, "message": line,
+                "nodes": {"+46+006/BI16/pack": pack}}  # fmt: skip
+    tile = {"tile": "+46+006", "steps": {"assembly": assembly}}
+    got = _node_json("app.js", f"m.tileActivity({json.dumps(job)}, {json.dumps(tile)})")
+    assert got == [{"step": "assembly", "words": "laying its clouds: 3 of 19 textures"}]

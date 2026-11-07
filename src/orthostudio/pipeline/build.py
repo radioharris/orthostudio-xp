@@ -3813,6 +3813,12 @@ def _clouds_again(
         log.warning("%s: its replaced clouds were not laid again", spec.tile.name, exc_info=True)
 
 
+def clouds_again_message(done: int, total: int) -> str:
+    """The line of the step that finishes a tile while its clouds are laid again, as Works reads
+    it (``app.js`` ``nodeWords``)."""
+    return f"laying its clouds again: {done} of {total} textures"
+
+
 def _clouds_before_done(
     on_event: Callable[[BuildEvent], None] | None,
     graphs: Iterable[TileNodes],
@@ -3839,8 +3845,7 @@ def _clouds_before_done(
 
             def said(done: int, total: int) -> None:
                 if total and on_event is not None:
-                    message = f"laying its clouds again: {done} of {total} textures"
-                    on_event(Progress(node, 1.0, message))
+                    on_event(Progress(node, 1.0, clouds_again_message(done, total)))
 
             _clouds_again(*finishing[node], said)
         if on_event is not None:

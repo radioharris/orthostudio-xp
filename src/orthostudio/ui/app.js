@@ -5022,6 +5022,11 @@ function imageryWait(job, tile) {
  * (`osm_progress_message`, `dem_downloading_message`, `textures_progress_message`). */
 function nodeWords(n, message) {
   const line = String(message || "");
+  // whatever the step, its tile's replaced clouds laid again before it ends (build.py
+  // `_clouds_before_done`): its role's words said "putting the tile together" for the 12 s they
+  // took (a user, 2026-11-07)
+  const clouds = /laying its clouds again: (\d+) of (\d+) textures/.exec(line);
+  if (clouds) return t("works.act_clouds", { done: fmtInt(Number(clouds[1])), total: fmtInt(Number(clouds[2])) });
   switch (n.role) {
     case "osm": {
       const back = /: (\d+) of (\d+) back\b/.exec(line);
