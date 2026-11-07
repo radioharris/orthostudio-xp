@@ -68,9 +68,11 @@ The Plan's map, brought over the tile; the Plan's steps make way for the cloud p
   show after Apply.", "The tile with no cloud replaced.", the three in one place so the banner
   keeps one size), then **After**, **Before**, **Outline a cloud**, **Back to the Plan**.
 - **The panel**: the tile's name, and beside it the source its photo was built from ("Original
-  photo: Bing", the manifest's `provider`) and, while the engine answers a click, any click, a
-  spinner (`waiting`: Tick all on 189 clouds showed nothing for a second); a spinner while the
-  tile is read; the tile's line when
+  photo: Bing", the manifest's `provider`); while the engine answers a click, any click, a
+  spinner on what was clicked, its cloud's row or its button (`waiting`, `pending`: Tick all on
+  189 clouds showed nothing for a second; one beside the title and one in the cloud's row could
+  not be told apart): for a cloud, the same spinner from the click to the end of its task; a
+  spinner while the tile is read; the tile's line when
   it is not ready (1.5), or why it could not be read; each task under way with a spinner, its
   phase, its progress (a search's judging of the
   sources said cloud by cloud) and **Stop**; the count of what Apply changes ("To replace: 1 · Back
@@ -87,7 +89,7 @@ The Plan's map, brought over the tile; the Plan's steps make way for the cloud p
   cloud, and a tick or a source chosen shows it too, the map over what is ticked and its new
   images; Tick all moves nothing): its tick and name, while a
   task of it runs and it is the one cloud at work a spinner beside its name around a square that
-  stops it (`label`), its area, an eye (**Show**: the map over it), a trash
+  stops it (`label`), a spinner there too from a click on it until the engine answers, its area, an eye (**Show**: the map over it), a trash
   for an outline the tile does not hold; the menu of its sources, each with what it has there and
   its fit ("Esri World Imagery · clear · fit 93 %"), both from its newest reading (`state.reading`:
   its images got, judged as they are now, else the search's; what a piece said, no answer, a
