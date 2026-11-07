@@ -634,12 +634,12 @@ function mockProfileError(status, code, name, message) {
   return new ApiError(status, { error: { code, severity: "blocking", action: "stop", message, remedy: "Give the profile another name.", context: { name } } });
 }
 
-/** `/api/profiles` and its four actions, as the engine answers them. */
 /** The profile to name, as the engine's `Profiles.named`: from the second one on. */
 function mockNamed() {
   return mock.profiles?.list.length > 1 ? mock.profiles.current : null;
 }
 
+/** `/api/profiles` and its four actions, as the engine answers them. */
 async function mockProfilesRoute(p, method, body) {
   const kept = await mockProfiles();
   const answer = (settings) => ({ ...(settings ? { settings: structuredClone(settings) } : {}), current: kept.current, named: mockNamed(), profiles: kept.list.map((x) => x.name), computer: [...COMPUTER_SETTINGS] });
