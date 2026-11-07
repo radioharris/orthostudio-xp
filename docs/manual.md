@@ -21,6 +21,8 @@ column. The Plan's map comes over the tile, drawn as X-Plane draws it, from the 
 nothing is downloaded. Any tile built by OrthoStudio XP can have its clouds replaced, whatever
 version built it.
 
+![The Library: the tile +24-102 with its cloud button, the bin and "3 replaced" in its Clouds column](images/manual/clouds-library.png)
+
 ### 2. Look for the clouds
 
 Press **Quick search**, or **Fine search** to find the small clouds too, in about twice the time
@@ -65,6 +67,8 @@ the same photo as the tile, which would bring the cloud back, or with no picture
 - A source that did not answer or refused for now says so in the line, and stays the cloud's
   source: **Get its images** asks it again.
 
+![The clouds of +24-102 outlined in yellow on the map, Cloud 1 framed in the list with its sources, the best first](images/manual/clouds-found.jpg)
+
 ### 4. Before and After
 
 The banner over the map has two views:
@@ -72,6 +76,10 @@ The banner over the map has two views:
 - **After**: what X-Plane shows, read from the tile's own textures, or what it will show once you
   press Apply: where Apply will change a texture, the clouds it lays there are drawn over it.
 - **Before**: the tile with no cloud replaced.
+
+![After: three clouds ticked, Cloud 1 replaced by Esri Clarity's clear ground, "What X-Plane will show after Apply", Apply (3 changes)](images/manual/clouds-after.jpg)
+
+![Before: the same place with its cloud, "The tile with no cloud replaced"](images/manual/clouds-before.jpg)
 
 **Back to the Plan** closes the clouds and brings the Plan's steps back.
 
