@@ -597,7 +597,7 @@ def test_the_build_texture_is_found_one_way_the_store_after_the_one_kept(
     monkeypatch.setattr(TileClouds, "stored_path", lambda self, name: store)
     shown = read_tile(folder)
     assert shown is not None
-    assert shown.plain_path(texture_name(WEST)) == store == shown.plains()[texture_name(WEST)]
+    assert shown.plain_path(texture_name(WEST)) == store
     _lay(folder, [])  # Restore from the store's
     assert _stamp(_texture(folder, WEST)) is None
     assert _texture(folder, WEST).read_bytes() == store.read_bytes()

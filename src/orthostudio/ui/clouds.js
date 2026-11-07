@@ -606,7 +606,7 @@ export function createCloudMode(ctx) {
         h("span", { role: "status" }, `${t(`clouds.task.${task.kind}`)} ${taskWords(task)}`),
         task.actions.includes("stop") ? h("button", { type: "button", class: "btn", dataset: key(`stop-${task.id}`), onclick: () => stopTask(task.id, `stop-${task.id}`) }, pendingAt(`stop-${task.id}`), t("clouds.stop")) : null));
     }
-    if (a.failed) {  // the tile's last task that failed, until its next one: the engine's words for it
+    if (a.failed) {  // a picture that could not be drawn, else the tile's last task that failed: the engine's words for it
       const e = a.failed.error || {};
       const [message, remedy] = codeText(e.code, e.context) || [e.message || "", e.remedy || ""];
       kids.push(h("p", { class: "clouds-warning", role: "status", dataset: key("failed") }, `${t(`clouds.task.${a.failed.kind}`)} ${message} ${remedy || ""}`.trim()));

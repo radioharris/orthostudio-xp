@@ -18,7 +18,7 @@ from orthostudio.api import clouds_api
 from orthostudio.api.app import create_app
 from orthostudio.api.jobs import JobManager
 from orthostudio.clouds import cloudlist, state
-from orthostudio.clouds.picture import Picture
+from orthostudio.clouds.picture import Picture, map_level
 from orthostudio.clouds.tile import read_tile
 from orthostudio.errors import OsxpError
 from orthostudio.home import default_tiles_root
@@ -210,7 +210,13 @@ def test_what_a_build_and_the_tasks_let_be_done() -> None:
 
 
 @pytest.mark.anyio
-async def test_apply_and_restore_with_nothing_to_do_are_refused(app: Any, ready: Path) -> None:
+@pytest.mark.parametrize("tool", [True, False])
+async def test_apply_and_restore_with_nothing_to_do_are_refused(
+    app: Any, ready: Path, monkeypatch: pytest.MonkeyPatch, tool: bool
+) -> None:
+    # the tool not here yet, the tile allows all as ready: a refused click said "build the tile
+    # first" (a review, 2026-11-07)
+    monkeypatch.setattr(clouds_api, "opencv_ready", lambda: tool)
     async with client_for(app) as c:
         for body in ({"action": "apply"}, {"action": "restore"}):
             r = await c.post("/api/clouds/+43+005/apply", json=body)
@@ -490,7 +496,8 @@ async def test_an_outline_whose_try_is_stopped_leaves_the_list_as_it_was(
     # a review, 2026-11-06: stopped, it stayed with no source, the found cloud it covered gone
     from orthostudio.errors import OsxpError
 
-    def screen(*_a: Any, **_k: Any) -> Any:
+    def screen(*_a: Any, cancel: Any, **_k: Any) -> Any:
+        cancel.set()  # Stop clicked meanwhile
         raise OsxpError("SYS_CANCELLED")
 
     monkeypatch.setattr(clouds_api, "detector_ready", lambda: True)
@@ -820,25 +827,70 @@ def test_no_picture_is_asked_while_what_the_tile_shows_is_written(
 
 
 @pytest.mark.anyio
-async def test_a_picture_that_could_not_be_drawn_is_said_then_asked_again(
+async def test_a_picture_that_could_not_be_drawn_is_said_then_asked_again_later(
     app: Any, ready: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from orthostudio.errors import OsxpError
+    # asked again at once, it failed again and its error came back every second while the mode
+    # was open; never again, a disk asleep for a moment kept the map away until the tile changed
+    # (two reviews, 2026-11-07): said in the answer, asked again ``_AGAIN_S`` after
+    drawn: list[Any] = []
+    draw = clouds_api._draw
+    fail = [True]
 
-    def broken(*a: Any) -> Any:
-        raise OsxpError("CLOUD_NOT_BUILT", context={"tile": TILE.name, "reason": "its DSF: cut"})
+    def flaky(*a: Any) -> Any:
+        drawn.append(a)
+        if fail[0]:
+            raise OsxpError("CLOUD_NOT_BUILT", context={"tile": TILE.name, "reason": "cut"})
+        return draw(*a)
 
-    monkeypatch.setattr(clouds_api, "_draw", broken)
+    monkeypatch.setattr(clouds_api, "_draw", flaky)
     async with client_for(app) as c:
-        a = (await c.get("/api/clouds/+43+005")).json()
-        assert a["busy"] is True
-        for _ in range(400):
-            r = await c.get("/api/clouds/+43+005")
-            if r.status_code != 200:
+        for _ in range(400):  # Before's file and the one in memory, in either order (After is
+            # Before while no cloud is laid): both failed, neither said drawn
+            a = (await c.get("/api/clouds/+43+005")).json()
+            if a["failed"] and "clouds.drawing" not in a["views"].values() and len(drawn) == 2:
                 break
             await anyio.sleep(0.01)
-        assert r.json()["error"]["code"] == "CLOUD_NOT_BUILT"  # said once, by the next answer
-        assert (await c.get("/api/clouds/+43+005")).json()["busy"] is True  # asked again
+        assert a["failed"]["kind"] == "picture"
+        assert a["failed"]["error"]["code"] == "CLOUD_NOT_BUILT"
+        for _ in range(3):  # read again for its next try, not asked again meanwhile
+            again = (await c.get("/api/clouds/+43+005")).json()
+            assert again["busy"] is True and again["failed"] == a["failed"]
+            await anyio.sleep(0.05)
+        assert len(drawn) == 2
+        fail[0] = False  # the disk back
+        monkeypatch.setattr(clouds_api, "_AGAIN_S", 0.0)
+        b = await _read(c)
+    assert len(drawn) > 2 and b["picture"] is not None and b["failed"] is None
+
+
+@pytest.mark.anyio
+async def test_a_picture_that_could_not_be_drawn_leaves_the_others_laid(
+    app: Any, ready: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # caught for all three at once, the picture in memory that failed took Before and After away
+    # with it, the map empty when no answer had laid them yet (a review, 2026-11-07)
+    async with client_for(app) as c:
+        first = await _read(c)  # their files made
+    hooks = clouds_api.CloudHooks(custom_scenery=lambda: None, taken=dict)
+    router, engine = clouds_api.clouds_router(hooks)  # the app started again: none in memory
+    get = next(r.endpoint for r in router.routes if r.path == "/api/clouds/{name}")
+
+    def broken(*a: Any) -> Any:
+        raise OsxpError("CLOUD_NOT_BUILT", context={"tile": TILE.name, "reason": "cut"})
+
+    monkeypatch.setattr(clouds_api, "_draw", broken)
+    shown = read_tile(ready)
+    assert shown is not None
+    zl = map_level(TILE, shown.textures)
+    engine.held(TILE, shown, zl)  # its failure known before the first answer
+    with pytest.raises(clouds_api._PictureError):
+        for _ in range(400):
+            engine.held(TILE, shown, zl, ask=False)
+            await anyio.sleep(0.01)
+    a = get("+43+005")
+    assert a["failed"]["kind"] == "picture" and a["failed"]["error"]["code"] == "CLOUD_NOT_BUILT"
+    assert a["picture"] == first["picture"] and a["after"] == first["after"]
 
 
 def test_where_a_picture_lies_is_its_frame_drawn_or_not() -> None:
@@ -893,3 +945,48 @@ async def test_forget_restores_the_tile_then_erases_its_clouds(
     # the readings after drew the tile's picture again, as any opening does: the old preview went
     assert not cloudlist.list_path(TILE).exists() and not (previews_dir(TILE) / "a.png").exists()
     assert not part.exists()
+
+
+def test_only_before_is_kept_in_memory(ready: Path) -> None:
+    # After's pictures kept, five of them took 1.5 GB and pushed Before out, which every preview,
+    # search and cloud's images is made on, drawn again then (a review, 2026-11-07)
+    _router, engine = clouds_api.clouds_router(
+        clouds_api.CloudHooks(custom_scenery=lambda: None, taken=dict)
+    )
+    shown = read_tile(ready)
+    assert shown is not None
+    zl = map_level(TILE, shown.textures)
+    engine.drawn(TILE, shown, zl, frozenset({NAME}))  # After: its file alone is read
+    assert engine.held(TILE, shown, zl, ask=False) is None
+    engine.drawn(TILE, shown, zl)  # Before
+    assert engine.held(TILE, shown, zl, ask=False) is not None
+
+
+@pytest.mark.anyio
+async def test_an_outline_stopped_before_its_turn_leaves(
+    app: Any, ready: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # three reads of sources under way, an outline waiting for its turn stopped stayed in the
+    # list, "no source" and a bin (a review, 2026-11-07): what a task began is undone either way
+    monkeypatch.setattr(clouds_api, "detector_ready", lambda: True)
+    monkeypatch.setattr(clouds_api, "opencv_ready", lambda: True)
+    monkeypatch.setattr(clouds_api, "_tools", lambda task: None)
+    engine = app.state.orthostudio["clouds"]
+    gate = engine.tasks._checks
+    for _ in range(3):
+        gate.acquire()
+    try:
+        async with client_for(app) as c:
+            polygon = {"polygon": [[5.1, 43.1], [5.2, 43.1], [5.2, 43.2]], "download": True}
+            cid = (await c.post("/api/clouds/+43+005/outlines", json=polygon)).json()["id"]
+            assert cid in [x["id"] for x in cloudlist.load(TILE).clouds]  # shown while it waits
+            task = next(t for t in engine.tasks.of(TILE.name) if t.cloud == cid)
+            assert engine.tasks.stop(task.id)
+            for _ in range(200):
+                if not engine.tasks.busy(TILE.name):
+                    break
+                await anyio.sleep(0.02)
+    finally:
+        for _ in range(3):
+            gate.release()
+    assert cid not in [x["id"] for x in cloudlist.load(TILE).clouds]

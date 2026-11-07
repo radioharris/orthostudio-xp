@@ -226,7 +226,7 @@ class CloudState:
     held: Mapping[str, Any] | None
     """What the tile shows of it."""
     lays: Mapping[str, Any] | None
-    """What Apply lays for it, the list's kind and number with it."""
+    """What Apply lays for it."""
     row: str
     why: str | None
     """Why it waits (``waiting``): the key of its line."""
@@ -576,8 +576,7 @@ def view(
     wanted = []
     for c in cl.clouds:
         source, options, wait = _options(c, holds.get(c["id"]))
-        listed = [{**e, "kind": c["kind"], "number": c["number"]} for e in options]
-        wanted.append((c, source, holds.get(c["id"]), listed, wait))
+        wanted.append((c, source, holds.get(c["id"]), options, wait))
     asked = [_as_it_was(w[3], of_cloud.get(w[0]["id"])) for w in wanted]
     plan = plan_folder(tile, shown, asked) if shown is not None else None
     kept = {e["id"]: e for e in (plan.laid if plan is not None else ())}

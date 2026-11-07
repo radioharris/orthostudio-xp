@@ -449,10 +449,6 @@ class TileClouds:
             return stamp.plain
         return texture_digest(self.texture_path(name)) if name in self.names else None
 
-    def plains(self) -> dict[str, Path]:
-        """Every texture as the build made it, by name: what X-Plane shows with no cloud."""
-        return {n: self.plain_path(n) for n in self.names}
-
 
 def held_by_id(shown: TileClouds | None) -> dict[str, dict[str, Any]]:
     """The clouds ``shown`` holds replaced, by id; none without a tile."""
