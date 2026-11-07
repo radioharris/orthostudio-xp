@@ -36,6 +36,7 @@ import numpy as np
 
 from orthostudio.clouds import cloudlist
 from orthostudio.clouds.layer import decode_part, lay, layer
+from orthostudio.clouds.opencv import ensure_opencv
 from orthostudio.clouds.tile import (
     DIGEST_HEX,
     Stamp,
@@ -534,6 +535,10 @@ def lay_again(
         # a build written elsewhere (a command line's own folder): not the tile's clouds
         log.info("%s: built in %s, not its own folder: its clouds left out", tile.name, folder)
         return
+    # the tool that lays them, fetched again when this version's is not there (a new OpenCV, its
+    # folder cleaned): without it, the build put the photos back unsaid (a review, 2026-11-07);
+    # asked for once already, when the clouds were first got
+    ensure_opencv()
     with folder_lock(tile):
         laid = cloudlist.load(tile).laid  # read again under the lock: an Apply may have ended
         again = lay_folder(

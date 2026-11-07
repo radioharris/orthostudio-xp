@@ -141,9 +141,12 @@ class CloudEngine:
                 self._drawing.pop(key, None)
                 # Before alone: After's is read only for its file; kept, five of them took 1.5 GB
                 # and pushed out Before, which every preview, search and image is made on, drawn
-                # again then (a review, 2026-11-07)
+                # again then. One a tile, its newest build's, and two tiles: each is 100 to 385 MB,
+                # five took up to 1.9 GB until the tile was deleted (two reviews, 2026-11-07)
                 if bare is None and zl == map_level(tile, shown.textures):
-                    if len(self._pictures) > 4:
+                    for old in [k for k in self._pictures if k[0] == tile.name]:
+                        del self._pictures[old]
+                    if len(self._pictures) > 1:
                         self._pictures.pop(next(iter(self._pictures)))
                     self._pictures[(tile.name, what)] = p
             return what, p
@@ -355,9 +358,10 @@ def _body_of(tile: TileRef, body: Mapping[str, Any] | None, actions: Collection[
 
 def _tools(task: Task) -> None:
     """The detector, OpenCV in it, downloaded once before a task runs it, its progress one bar
-    for the whole: OpenCV fetched first on a bar of its own showed two downloads (a review,
-    2026-11-07)."""
-    ensure_detector(progress=lambda d, t: task.say("tool", d, t))
+    for the whole: OpenCV fetched first on a bar of its own showed two downloads; Stop heard by
+    the download: it went on, tried again four times, and held Quit, a build, Delete and filing
+    meanwhile (two reviews, 2026-11-07)."""
+    ensure_detector(progress=lambda d, t: task.say("tool", d, t), cancel=task.stop)
 
 
 def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
@@ -738,11 +742,16 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
         action, _cid, _source = _body_of(_tile_of(name), body, state.WRITES)
         tile, folder, _shown, v = opened(name, action)
         laid = v.asked if action == "apply" else []
+        if laid:  # laid with OpenCV, asked for as a search asks for it: without it, Apply said
+            _detector_said(body)  # "check the internet connection" (a review, 2026-11-07)
         # Restore brings every cloud back as photographed: those ticked when it was asked are
         # unticked once it is done, the draft then empty; one ticked meanwhile stays so
         ticked = [s.cloud["id"] for s in v.clouds if s.cloud["tick"]] if action == "restore" else []
 
         def run(task: Task) -> None:
+            if laid:
+                _tools(task)
+
             def said(done: int, total: int) -> None:
                 task.say("laying", done, total)
 

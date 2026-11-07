@@ -338,7 +338,11 @@ export function createCloudMode(ctx) {
     const gone = [...cs.overlays.keys()].filter((name) => !wanted.has(name));
     const fresh = pictures.filter((p) => !cs.overlays.has(p.name));
     let left = fresh.length;
+    // the pictures left go once the view's own are in, and only for the view shown now: Before's,
+    // in late, let After's go after a quick After, Before, After (a review, 2026-11-07)
+    const turn = (cs.groundTurn = (cs.groundTurn || 0) + 1);
     const letGo = () => {
+      if (turn !== cs.groundTurn) return;
       for (const name of gone) {
         if (wanted.has(name) || !cs.overlays.has(name)) continue;
         cs.ground.removeLayer(cs.overlays.get(name));

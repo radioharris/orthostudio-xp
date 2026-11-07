@@ -238,6 +238,23 @@ def test_a_build_after_lays_again_the_clouds_that_still_stand_whole(
     assert _texture(folder, EAST).read_bytes() == shown["e"]
 
 
+def test_a_build_after_fetches_the_tool_that_lays(
+    folder: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # without OpenCV (a new version's, its folder cleaned), the build put the photos back unsaid
+    # (a review, 2026-11-07): fetched again first, asked for once when the clouds were got
+    asked: list[int] = []
+    monkeypatch.setattr("orthostudio.clouds.laying.ensure_opencv", lambda: asked.append(1))
+    held = read_tile(folder)
+    assert held is not None
+    west = _cloud("c1", WEST_ONLY, held, RED)
+    _lay(folder, [west])
+    with cloudlist.update(TILE) as cl:
+        cl.laid = [west]
+    lay_again(TILE, folder, custom_scenery=None)
+    assert asked == [1]
+
+
 def test_a_build_lays_nothing_again_without_clouds_applied_or_in_another_folder(
     folder: Path, tmp_path: Path, textures: dict[str, bytes]
 ) -> None:

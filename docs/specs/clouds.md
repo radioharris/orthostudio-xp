@@ -216,22 +216,23 @@ user or once an outline's sources are tried, and its images are asked for one wa
 (`clouds_api.get_images`): when its state offers `check`, after a tick, a source chosen, an
 outline's sources tried, when **Get its images** asks again, or after a check whose source has no
 clear picture there (no picture, cloudy, the same photo) and turned the cloud to a source never
-asked (`CloudState.unasked`), each source so once. What runs the cloud detector is asked just before
-its task starts (a search, an outline, getting images), refused while the detector is not on this
-computer and the user has not said to download it (`CLOUD_DETECTOR_ASK`, with its size): the page
-asks, and on yes sends with `download` what the engine says (`then`: the body of `check`, the images
-of the cloud just ticked, of every cloud with Tick all, `again` kept for **Get its images**), else
-the same action again. A tick or a source is kept either way, the cloud waiting for its images on
-no; an outline is kept once the answer is yes, its sources being tried by the detector. The answer
-says when something is under way (`busy`: a task of the tile or what follows one, `Tasks.busy`, a
-build of it, or a picture drawn aside), for the page to read it again, every 0.5 s, every 0.2 s for
-the first 3 s after a click (a tick's images made 0.3 s after it were shown 0.5 s later, at the next
-reading: now 0.1 to 0.3 s, a tick done on screen in 0.6 s rather than 1.0 s, B12), and every word
-the page shows of the tile, a key and its parameters: the tile's line (its state's, else that a
-search found none or none was made), each row's line with its tone, the count, Apply's button and
-the questions of Apply and Restore. The test of the mode walks every combination of tick, chosen
-source, what the tile shows, the images got and a neighbour in the same texture, and checks that the
-rows, the count, the buttons, Apply and Discard agree (`tests/test_clouds_state.py`).
+asked (`CloudState.unasked`), each source so once. What runs the cloud detector, or lays clouds with
+OpenCV (an Apply laying any), is asked just before its task starts (a search, an outline, getting
+images, Apply), refused while the detector is not on this computer and the user has not said to
+download it (`CLOUD_DETECTOR_ASK`, with its size): the page asks, and on yes sends with `download`
+what the engine says (`then`: the body of `check`, the images of the cloud just ticked, of every
+cloud with Tick all, `again` kept for **Get its images**), else the same action again. A tick or a
+source is kept either way, the cloud waiting for its images on no; an outline is kept once the
+answer is yes, its sources being tried by the detector. The answer says when something is under way
+(`busy`: a task of the tile or what follows one, `Tasks.busy`, a build of it, or a picture drawn
+aside), for the page to read it again, every 0.5 s, every 0.2 s for the first 3 s after a click (a
+tick's images made 0.3 s after it were shown 0.5 s later, at the next reading: now 0.1 to 0.3 s, a
+tick done on screen in 0.6 s rather than 1.0 s, B12), and every word the page shows of the tile, a
+key and its parameters: the tile's line (its state's, else that a search found none or none was
+made), each row's line with its tone, the count, Apply's button and the questions of Apply and
+Restore. The test of the mode walks every combination of tick, chosen source, what the tile shows,
+the images got and a neighbour in the same texture, and checks that the rows, the count, the
+buttons, Apply and Discard agree (`tests/test_clouds_state.py`).
 
 A cloud a build did not lay again is a ticked cloud whose images no longer stand (R6): its line
 says why, "The tile's level changed since its images were got: get them again", and nothing else
@@ -332,8 +333,10 @@ laid again, those whose images stand on the textures the build placed (R6); the 
 is, so one that does not stand on this build's textures comes back with the next build it stands on
 (other colours tried, then the first ones back). A build of the same settings placed the same
 textures: the same clouds come back, the same bytes. A build written in another folder (a command
-line's) lays nothing, and says so in the log. Nothing of the clouds fails a build: an error there is
-written in the log and the build goes on.
+line's) lays nothing, and says so in the log. OpenCV, which lays them, is fetched again first when
+this version's is not there (a new OpenCV, its folder cleaned): asked for once when the clouds were
+got, without it the build put the photos back unsaid (a review, 2026-11-07). Nothing of the clouds
+fails a build: an error there is written in the log and the build goes on.
 
 ### 2.4 The list
 
@@ -398,7 +401,9 @@ at each reading but checked once while its file stays the same, its inode, size 
 (`read_checked`): every one is written whole beside and moved in. Checked each time, those of 200
 clouds took most of every reading of the tile and of a tick (B9). The sources' pieces are kept as a
 build's parent tiles (`ParentCache`, per source). The detector's classes of the tile's last search
-are kept in memory for an outline. Every one of them can be deleted: it is made again.
+are kept in memory for an outline, and Before at the map's level, the one previews are made on, of
+two tiles at most, each tile's newest build's alone: each is 100 to 385 MB (a review, 2026-11-07).
+Every one of them can be deleted: it is made again.
 
 ## 3. The rules
 
