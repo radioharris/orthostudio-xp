@@ -367,8 +367,9 @@ made once, where its pixels are made, and showing it is naming its file: a pictu
 when its file is not there yet (`CloudEngine.picture_file`; drawn at each start, two took a first
 reading 3.75 s on a user's tile of 189 clouds, 0.07 s since), a cloud's preview is made with its
 images, in their task (`find.check`; made by the readings, a dozen took one 6.5 s). The mode's
-answer never draws: a picture it lacks, or the one in memory a preview is made on, is drawn aside,
-one at a time (`CloudEngine.aside`), while the answer gives the last one of that view laid whole,
+answer never draws: a picture it lacks, or the one in memory a preview is made on (asked as the
+mode opens, its file there or not: asked by the first preview, the first tick after a start waited
+1.2 to 2.1 s), is drawn aside, one at a time (`CloudEngine.aside`), while the answer gives the last one of that view laid whole,
 After's with the previews it had, of the same build of the tile (`CloudEngine.ground`), and says
 the tile busy: After's picture alone showed the clouds again 1 to 2 s at the end of an Apply, and
 one of the build before showed the old tile after Build again. While something else holds the
