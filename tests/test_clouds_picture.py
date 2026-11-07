@@ -117,3 +117,90 @@ def test_another_level_is_filled_each_time_and_not_kept(
     picture.draw(TILE, zl, dsf=Path("dsf"), textures=textures)
     picture.draw(TILE, zl, dsf=Path("dsf"), textures=textures)
     assert len(fills) == 6 and d.laid == {}
+
+
+# -- a cloud's layer reduced to the picture (``find._lay_reduced``) ------------------------------
+
+
+def _layer(seed: int, window: tuple[int, int, int, int]) -> Any:
+    from orthostudio.clouds.layer import Layer
+
+    rng = np.random.default_rng(seed)
+    w, h = window[2] - window[0], window[3] - window[1]
+    source = rng.integers(0, 256, (h, w, 3), dtype=np.uint8)
+    alpha = rng.integers(0, 256, (h, w), dtype=np.uint8)
+    return Layer(window, source, alpha, ((1.3, 0.8, 1.1), (25.0, -30.0, 0.5)))
+
+
+def test_a_layers_table_is_its_colours_in_linear_light() -> None:
+    la = _layer(1, (0, 0, 64, 64))
+    table = la.linear()
+    read = np.stack([table[c][la.source[..., c]] for c in range(3)], axis=-1)
+    assert np.array_equal(read, np.power(la.rgb() / 255.0, 2.2))  # the same numbers, all 256
+
+
+def test_a_layer_reduced_through_its_table_is_the_one_reduced_pixel_by_pixel() -> None:
+    from orthostudio.clouds import find
+
+    # what the reduction computed for each pixel before its table (2026-11-07)
+    def before(la: Any, k: int, ay0: int, ax0: int, h: int, w: int) -> tuple[Any, Any]:
+        wx0, wy0, wx1, wy1 = la.window
+        src = np.zeros((h, w, 3), np.float32)
+        a = np.zeros((h, w), np.float32)
+        a[wy0 - ay0 : wy1 - ay0, wx0 - ax0 : wx1 - ax0] = la.alpha.astype(np.float32) / 255
+        src[wy0 - ay0 : wy1 - ay0, wx0 - ax0 : wx1 - ax0] = la.rgb()
+        ra = find._reduce(a, k)
+        lin = find._reduce(np.power(src / 255.0, 2.2) * a[..., None], k)
+        return ra, np.power(lin / np.maximum(ra[..., None], 1e-6), 1 / 2.2) * 255.0
+
+    t = TextureId(til_x=0, til_y=0, zl=15, provider="T")
+    k, side = 8, 4096 // 8
+    blank = np.zeros((side, side), np.uint8)
+    p = picture.Picture(
+        np.zeros((side, side, 3), np.uint8), blank, blank, blank.astype(np.int16), ("x",), 12, 0, 0
+    )
+    for window in ((5, 3, 1203, 701), (0, 0, 4096, 1100), (1001, 2050, 1009, 2057)):
+        la = _layer(2, window)
+        rgb = np.zeros((side, side, 3), np.float32)
+        alpha = np.zeros((side, side), np.float32)
+        find._lay_reduced(la, t, p, (0, 0, side, side), "x", rgb, alpha)
+        ax0, ay0 = (window[0] // k) * k, (window[1] // k) * k
+        h, w = -(-window[3] // k) * k - ay0, -(-window[2] // k) * k - ax0
+        ra, colour = before(la, k, ay0, ax0, h, w)
+        y, x = ay0 // k, ax0 // k
+        assert np.array_equal(alpha[y : y + ra.shape[0], x : x + ra.shape[1]], ra)
+        on = ra > 0
+        assert np.array_equal(rgb[y : y + ra.shape[0], x : x + ra.shape[1]][on], colour[on])
+
+
+def test_a_clouds_textures_lay_the_same_picture_in_any_order_and_at_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # a picture's pixel shows one texture: one of a zone inside another's square, laid in any
+    # order and four at once, gives the same picture
+    from orthostudio.clouds import find
+
+    big = TextureId(til_x=0, til_y=0, zl=15, provider="T")  # 512 px of the picture
+    small = TextureId(til_x=0, til_y=0, zl=16, provider="T")  # its first 256, a zone
+    shows = np.zeros((512, 512), np.int16)
+    shows[:200, :200] = 1  # where X-Plane shows the zone's texture
+    blank = np.zeros((512, 512), np.uint8)
+    p = picture.Picture(
+        np.zeros((512, 512, 3), np.uint8), blank, blank, shows, ("b", "s"), 12, 0, 0
+    )
+    made = [
+        ("b", big, lambda: _layer(3, (0, 0, 2400, 2400))),
+        ("s", small, lambda: _layer(4, (0, 0, 4096, 4096))),
+    ]
+
+    def laid(order: list[Any], at_once: int) -> tuple[Any, Any]:
+        monkeypatch.setattr(find, "LAYING_AT_ONCE", at_once)
+        rgb = np.zeros((512, 512, 3), np.float32)
+        alpha = np.zeros((512, 512), np.float32)
+        find._all_reduced(p, (0, 0, 512, 512), rgb, alpha, order)
+        return rgb, alpha
+
+    one = laid(made, 1)
+    other = laid(made[::-1], 4)
+    assert np.array_equal(one[0], other[0]) and np.array_equal(one[1], other[1])
+    assert (one[1][:200, :200] > 0).any() and (one[1][220:300, 220:300] > 0).any()  # both laid

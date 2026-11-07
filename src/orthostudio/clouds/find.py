@@ -18,11 +18,14 @@ photo. So the preview is what the texture gets.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import math
 import threading
 from collections.abc import Callable, Iterable, Mapping, Sequence
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -32,6 +35,8 @@ from shapely.validation import make_valid
 
 from orthostudio.clouds.layer import (
     RULE,
+    CloudPatch,
+    Layer,
     decode_part,
     encode_part,
     layer,
@@ -39,6 +44,7 @@ from orthostudio.clouds.layer import (
     read_piece,
     ring_pixels,
 )
+from orthostudio.clouds.laying import LAYING_AT_ONCE
 from orthostudio.clouds.model import SHADOW, THICK, THIN, classify, classify_many
 from orthostudio.clouds.opencv import cv2
 from orthostudio.clouds.picture import Picture, box_bounds, over_water, pixel_metres
@@ -55,7 +61,7 @@ from orthostudio.clouds.tile import (
 from orthostudio.errors import OsxpError
 from orthostudio.fsutil import atomic_write_bytes
 from orthostudio.graph.digest import digest_bytes
-from orthostudio.imagery.grid import parse_texture_name, tile_to_wgs84
+from orthostudio.imagery.grid import TextureId, parse_texture_name, tile_to_wgs84
 from orthostudio.imagery.providers import Provider
 from orthostudio.model import TileRef
 
@@ -599,7 +605,8 @@ def check(
     lay_rgb = np.zeros((h, w, 3), np.float32)
     lay_a = np.zeros((h, w), np.float32)
     entry_parts: dict[str, list[Any]] = {}
-    for n, (name, pa) in enumerate(sorted(reached.items()), start=1):
+    made: list[tuple[str, TextureId, Callable[[], Layer | None]]] = []
+    for name, pa in sorted(reached.items()):
         t = by_name[name]
         got = {k: sources.body(code, k) for k in pieces(pa, t)}
         data = encode_part(got)
@@ -608,10 +615,8 @@ def check(
         if find_part(digest) is None:  # not there whole (a power cut tore it): written again
             atomic_write_bytes(path, data, fsync=True)
         entry_parts[name] = [pa.source_zl, digest]
-        la = layer(pa, t, got)
-        if la is not None:
-            _lay_reduced(la, t, p, box, name, lay_rgb, lay_a)
-        phase("making", n, len(reached))
+        made.append((name, t, partial(layer, pa, t, got)))
+    _all_reduced(p, box, lay_rgb, lay_a, made, lambda n: phase("making", n, len(reached)))
     inside = _inside(p, rings, box)
     src = np.clip(lay_rgb, 0, 255).astype(np.uint8)
     # where the source has a picture: its layer there, the soft edge of it too, which is no hole.
@@ -683,14 +688,14 @@ def _make_preview(
     x0, y0, x1, y1 = box
     rgb = np.zeros((y1 - y0, x1 - x0, 3), np.float32)
     alpha = np.zeros((y1 - y0, x1 - x0), np.float32)
+    made: list[tuple[str, TextureId, Callable[[], Layer | None]]] = []
     for name, pa in entry_patches(entry, tile, textures).items():
         path = find_part(str(entry["parts"][name][1]))
         if path is None:
             return False
         t = parse_texture_name(name)
-        la = layer(pa, t, decode_part(path.read_bytes()))
-        if la is not None:
-            _lay_reduced(la, t, p, box, name, rgb, alpha)
+        made.append((name, t, partial(_layer_of_part, pa, t, path)))
+    _all_reduced(p, box, rgb, alpha, made)
     shown = over_water(np.clip(rgb, 0, 255), p.share[y0:y1, x0:x1])
     rgba = np.dstack([shown, np.rint(np.clip(alpha, 0, 1) * 255).astype(np.uint8)])
     good, png = cv2.imencode(".png", cv2.cvtColor(rgba, cv2.COLOR_RGBA2BGRA))
@@ -704,6 +709,39 @@ def _make_preview(
     return True
 
 
+def _layer_of_part(pa: CloudPatch, t: TextureId, path: Path) -> Layer | None:
+    return layer(pa, t, decode_part(path.read_bytes()))
+
+
+def _all_reduced(
+    p: Picture,
+    box: tuple[int, int, int, int],
+    rgb: np.ndarray,
+    alpha: np.ndarray,
+    made: Sequence[tuple[str, TextureId, Callable[[], Layer | None]]],
+    progress: Callable[[int], None] = lambda _n: None,
+) -> None:
+    """Each texture's layer of a cloud (``made``: its name, its id and what makes it) reduced to
+    the picture and laid in ``rgb`` and ``alpha`` over ``box`` (:func:`_lay_reduced`), as many
+    at once as Apply makes (``LAYING_AT_ONCE``): a picture's pixel shows one texture, so they
+    lay apart and in any order the same picture, laid under a lock. One by one, the 49 of a
+    cloud of 1 670 km² took 27 s of getting its images (-02-050, 2026-11-07)."""
+    lock = threading.Lock()
+
+    def one(name: str, t: TextureId, make: Callable[[], Layer | None]) -> None:
+        la = make()
+        if la is not None:
+            _lay_reduced(la, t, p, box, name, rgb, alpha, lock)
+
+    progress(0)
+    with ThreadPoolExecutor(max_workers=LAYING_AT_ONCE, thread_name_prefix="osxp-reduce") as pool:
+        futures = [pool.submit(one, *m) for m in made]
+        for n, _done in enumerate(as_completed(futures), start=1):
+            progress(n)
+    for f in futures:
+        f.result()  # the first failure raised
+
+
 def _lay_reduced(
     la: Any,
     t: Any,
@@ -712,6 +750,7 @@ def _lay_reduced(
     name: str,
     rgb: np.ndarray,
     alpha: np.ndarray,
+    lock: threading.Lock | None = None,
 ) -> None:
     """The layer ``la`` of texture ``t`` in its colours (``Layer.rgb``, Apply's) reduced to
     the picture's level and laid in ``rgb`` and ``alpha`` (over ``box`` of the picture) where
@@ -721,15 +760,26 @@ def _lay_reduced(
     # the window aligned on the picture's pixels, what it does not cover left transparent
     ax0, ay0 = (wx0 // k) * k, (wy0 // k) * k
     ax1, ay1 = -(-wx1 // k) * k, -(-wy1 // k) * k
-    src = np.zeros((ay1 - ay0, ax1 - ax0, 3), np.float32)
-    a = np.zeros((ay1 - ay0, ax1 - ax0), np.float32)
+    h, w = ay1 - ay0, ax1 - ax0
+    a = np.zeros((h, w), np.float32)
     a[wy0 - ay0 : wy1 - ay0, wx0 - ax0 : wx1 - ax0] = la.alpha.astype(np.float32) / 255
-    for r0 in range(0, wy1 - wy0, 512):  # its colours a few rows at a time (``Layer.rgb``)
-        r1 = min(wy1 - wy0, r0 + 512)
-        src[wy0 - ay0 + r0 : wy0 - ay0 + r1, wx0 - ax0 : wx1 - ax0] = la.rgb(r0, r1)
-    # alpha-weighted, in linear light as the textures' mips are made (``gamma22``)
+    # alpha-weighted, in linear light as the textures' mips are made (``gamma22``): its colours
+    # read in their table (``Layer.linear``), a band of rows at a time, the band a whole number
+    # of the picture's rows
     ra = _reduce(a, k)
-    lin = _reduce(np.power(src / 255.0, 2.2) * a[..., None], k)
+    table = la.linear()
+    lin = np.empty((h // k, w // k, 3), np.float32)
+    band = max(k, 512 // k * k)
+    for b0 in range(0, h, band):
+        b1 = min(h, b0 + band)
+        rows = np.zeros((b1 - b0, w, 3), np.float32)
+        r0, r1 = max(b0, wy0 - ay0), min(b1, wy1 - ay0)  # the window's rows in the band
+        if r1 > r0:
+            source = la.source[r0 - (wy0 - ay0) : r1 - (wy0 - ay0)]
+            for c in range(3):
+                rows[r0 - b0 : r1 - b0, wx0 - ax0 : wx1 - ax0, c] = table[c][source[..., c]]
+        rows *= a[b0:b1, :, None]
+        lin[b0 // k : b1 // k] = _reduce(rows, k)
     colour = np.power(lin / np.maximum(ra[..., None], 1e-6), 1 / 2.2) * 255.0
     # the picture's pixels of this window, and where X-Plane shows this texture there
     px0 = (t.til_x * 256 + ax0) // k - p.x0 - box[0]
@@ -744,6 +794,7 @@ def _lay_reduced(
     here_a = np.where(shows, ra[sy0 : sy0 + ch, sx0 : sx0 + cw], 0)
     sub = (slice(dy0, dy0 + ch), slice(dx0, dx0 + cw))
     # colours where its alpha shows, alpha-weighted mean colour per picture pixel
-    take = here_a > alpha[sub]
-    alpha[sub] = np.maximum(alpha[sub], here_a)
-    np.copyto(rgb[sub], colour[sy0 : sy0 + ch, sx0 : sx0 + cw], where=take[..., None])
+    with lock or contextlib.nullcontext():
+        take = here_a > alpha[sub]
+        alpha[sub] = np.maximum(alpha[sub], here_a)
+        np.copyto(rgb[sub], colour[sy0 : sy0 + ch, sx0 : sx0 + cw], where=take[..., None])
