@@ -35,7 +35,8 @@ The search reads the tile (the fine one a second time in more detail, where the 
 to hold small clouds), then tries every other source covering the tile under each cloud: whether it
 has a picture there, whether it is clear, and how well its ground fits the photo around the cloud.
 The quick search takes about half a minute to a minute and a half, the fine one about one and a
-half to two and a half minutes. The panel shows where it is; **Stop** ends it.
+half to two and a half minutes. The panel shows where it is; **Stop** ends it. It keeps at most
+200 clouds, the largest: a cloud it left out can be outlined by hand (5).
 
 ### 3. Choose what to replace
 
