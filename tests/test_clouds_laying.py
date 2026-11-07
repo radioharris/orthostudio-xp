@@ -396,6 +396,29 @@ def test_files_a_laying_cut_short_left_go_once_their_program_is_gone(folder: Pat
     assert not gone.exists() and mine.exists()  # one of a program under way stays
 
 
+def test_a_sidecar_is_written_beside_as_the_textures_so_one_cut_short_goes(
+    folder: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # its atomic write's own temporary stayed in the tile's clouds/ after a kill (a campaign,
+    # 2026-11-07): written beside as the textures, the sweep knows it (tile.leftovers)
+    from orthostudio.clouds import laying
+
+    written: list[str] = []
+    real = laying._write
+
+    def write(path: Path, data: bytes) -> None:
+        written.append(path.name)
+        real(path, data)
+
+    monkeypatch.setattr(laying, "_write", write)
+    held = read_tile(folder)
+    assert held is not None
+    _lay(folder, [_cloud("c1", WEST_ONLY, held, RED)])
+    sides = [n for n in written if ".json" in n]
+    assert sides and all(".osxp-clouds-side" in n for n in sides)
+    assert not list(folder.glob("clouds/*.osxp-clouds-*"))  # put in place, nothing left
+
+
 def test_a_build_that_changes_nothing_writes_no_list(folder: Path) -> None:
     held = read_tile(folder)
     assert held is not None

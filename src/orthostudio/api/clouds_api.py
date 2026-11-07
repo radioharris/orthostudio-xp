@@ -35,7 +35,7 @@ from orthostudio.clouds.find import check, find, preview, screen
 from orthostudio.clouds.layer import RULE
 from orthostudio.clouds.laying import folder_lock, show
 from orthostudio.clouds.model import detector_bytes, detector_ready, ensure_detector
-from orthostudio.clouds.opencv import ensure_opencv, opencv_bytes, opencv_ready
+from orthostudio.clouds.opencv import ensure_opencv, opencv_ready
 from orthostudio.clouds.picture import Picture, draw, fine_level, frame_bounds, map_level
 from orthostudio.clouds.sources import SourcePieces, other_sources
 from orthostudio.clouds.tasks import Task, Tasks
@@ -219,7 +219,9 @@ def _detector_said(body: Mapping[str, Any] | None, then: Mapping[str, Any] | Non
     the same action again."""
     if (detector_ready() and opencv_ready()) or (body or {}).get("download"):
         return
-    mb = max(1, round((detector_bytes() + opencv_bytes()) / 1e6))
+    # what is downloaded, OpenCV in it: added twice, an installed app said 151 MB for 108 (a
+    # review, 2026-11-07)
+    mb = max(1, round(detector_bytes() / 1e6))
     raise OsxpError("CLOUD_DETECTOR_ASK", context={"mb": mb, "then": then})
 
 

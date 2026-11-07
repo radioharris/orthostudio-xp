@@ -111,6 +111,22 @@ async def test_a_tile_not_built_allows_nothing(app: Any, home: Path) -> None:
 
 
 @pytest.mark.anyio
+async def test_the_download_asked_counts_opencv_once(
+    app: Any, ready: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # an installed app has no OpenCV: it was added twice, 151 MB said for 108 (a review, 2026-11-07)
+    from orthostudio.clouds import model
+
+    monkeypatch.setattr(model, "opencv_bytes", lambda: 50_000_000)
+    monkeypatch.setattr(clouds_api, "opencv_bytes", lambda: 50_000_000, raising=False)
+    monkeypatch.setattr(clouds_api, "opencv_ready", lambda: False)
+    async with client_for(app) as c:
+        err = (await c.post("/api/clouds/+43+005/find")).json()["error"]
+    assert err["code"] == "CLOUD_DETECTOR_ASK"
+    assert err["context"]["mb"] == round(model.detector_bytes() / 1e6)
+
+
+@pytest.mark.anyio
 async def test_what_runs_the_detector_is_asked_first_and_an_untick_is_not(
     app: Any, ready: Path
 ) -> None:

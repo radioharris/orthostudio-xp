@@ -64,7 +64,7 @@ from orthostudio.clouds.tile import (
     unready,
 )
 from orthostudio.errors import OsxpError
-from orthostudio.fsutil import atomic_write_text, fsync_dir, replace
+from orthostudio.fsutil import fsync_dir, replace
 from orthostudio.graph.digest import digest_bytes
 from orthostudio.graph.store import _pid_alive, flush_disk
 from orthostudio.imagery.grid import parse_texture_name
@@ -396,7 +396,13 @@ def _make(tile: TileRef, shown: TileClouds, name: str, mine: Sequence[Mapping[st
         _place(plain, aside)
         replace(aside, kept)
     side = json.dumps([laid_fields(e) for e in mine], sort_keys=True)
-    atomic_write_text(sidecar_path(shown.folder, clouds_digest(mine)), side, fsync=True)
+    # beside, as the textures, so that one cut short goes with them (``tile.leftovers``): an
+    # atomic write's own temporary stayed after a kill (a campaign, 2026-11-07); one per thread,
+    # two textures may show the same clouds
+    side_path = sidecar_path(shown.folder, clouds_digest(mine))
+    fresh = beside(side_path, f"side{threading.get_native_id()}")
+    _write(fresh, side.encode())
+    replace(fresh, side_path)
     _write(new, data)
     return new
 
