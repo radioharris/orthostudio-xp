@@ -8934,13 +8934,16 @@ def test_the_cloud_mode_frames_the_map_on_its_tile_only_when_another_is_opened()
 
 
 def test_the_cloud_mode_says_a_picture_of_the_view_shown_is_being_made() -> None:
-    # a tick answered at once and its picture came a second later, without a sign: the panel says
-    # it as it says a task, while the engine says the view's picture is drawn (a user, 2026-11-07)
+    # a tick answered at once and its picture came a second later, without a sign (a user,
+    # 2026-11-07): the view's sentence over the map says it with a spinner while the engine says
+    # its picture is drawn; said in the panel, its line pushed the list down and back (a user)
     code = (UI / "clouds.js").read_text(encoding="utf-8")
+    banner = code[code.index("  function renderBanner() {") :]
+    banner = banner[: banner.index("\n  }\n")]
+    assert 'a?.views?.[k] === "clouds.drawing"' in banner
+    assert 'making(k) ? h("span", { class: "spinner"' in banner
     panel = code[code.index("  function renderPanel() {") :]
-    panel = panel[: panel.index("\n  }\n")]
-    assert 'a.views?.[cs.view] === "clouds.drawing"' in panel
-    assert 'key("drawing")' in panel and 't("clouds.drawing")' in panel
+    assert "clouds.drawing" not in panel[: panel.index("\n  }\n")]  # nothing moves the list
 
 
 def test_a_change_of_one_cloud_draws_its_outline_and_its_mark_alone_again() -> None:
