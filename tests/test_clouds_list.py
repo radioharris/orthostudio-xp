@@ -244,3 +244,19 @@ def test_an_unticked_cloud_found_again_takes_the_new_judging_its_old_choice_gone
         cls.merge_search(cl, [_found(A), _found(B)], None)
         assert cl.get(a["id"])["chosen"] is None and cl.get(a["id"])["checks"] == {}
         assert cl.get(b["id"])["chosen"] == "Arc" and cl.get(b["id"])["tick"] is True
+
+
+def test_forgetting_a_tile_keeps_the_parts_another_tiles_list_stands_on(home: Path) -> None:
+    # named by their bytes alone, a small cloud across the line of two tiles reads the same parts
+    # from both: forgetting one erased the other's (a review, 2026-11-07)
+    own_bytes = b"this tile's own part"
+    own = digest_bytes(own_bytes)
+    part_path(own).write_bytes(own_bytes)
+    with cls.update(TILE) as cl:
+        cl.laid = [_entry("aaaaaaaa", A), {**_entry("bbbbbbbb", B), "parts": {NAME: [12, own]}}]
+    with cls.update(TileRef(43, 6)) as cl:
+        cl.laid = [_entry("cccccccc", A)]  # its own cloud, on the same part
+    cls.list_path(TILE).with_name("notes.json").write_text("{}")  # no tile's list
+    cls.erase(TILE)
+    assert not cls.list_path(TILE).exists()
+    assert part_path(PART).exists() and not part_path(own).exists()

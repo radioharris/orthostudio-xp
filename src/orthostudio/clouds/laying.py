@@ -317,8 +317,9 @@ def _not_under_xplane(tile: TileRef, folder: Path, custom_scenery: Path | None) 
 
 LAYING_AT_ONCE = 4
 """Textures made at once (:func:`_make_all`): one by one, a build laid a tile's 19 again in 12 s at
-its end (a user, 2026-11-07). Each holds its first level and its levels in memory meanwhile, some
-300 MB for a texture of 4096 pixels."""
+its end (a user, 2026-11-07). Each holds its first level and its levels in memory meanwhile: 47
+clouds over 18 textures of 4096 pixels, one at a time took 6.1 s and 0.48 GB more at most, two
+3.3 s and 0.75 GB, four 1.9 s and 1.35 GB (2026-11-07)."""
 
 
 def _make_all(

@@ -102,8 +102,12 @@ def list_path(tile: TileRef) -> Path:
 
 
 def listed() -> set[str]:
-    """The names of the tiles that have a list (:func:`list_path`)."""
-    return {p.stem for p in lists_dir().glob("*.json")}
+    """The names of the tiles that have a list (:func:`list_path`); no other file there is one."""
+    out = set()
+    for p in lists_dir().glob("*.json"):
+        with contextlib.suppress(ValueError):
+            out.add(TileRef.parse(p.stem).name)
+    return out
 
 
 def parts_dir() -> Path:

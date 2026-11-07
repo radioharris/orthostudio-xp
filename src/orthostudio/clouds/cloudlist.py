@@ -39,6 +39,7 @@ from orthostudio.clouds.tile import (
     held_by_id,
     laid_fields,
     list_path,
+    listed,
     part_path,
     previews_dir,
     ring_problem,
@@ -211,16 +212,24 @@ def _adopt(cl: CloudList, shown: TileClouds) -> bool:
 
 def erase(tile: TileRef) -> None:
     """The tile's clouds forgotten, once its folder shows none (Forget its clouds, after its
-    Restore): its list, its pictures and previews, the frozen parts of its clouds' images, each
-    of a texture of this tile alone. A search starts from nothing then."""
+    Restore): its list, its pictures and previews, the frozen parts its clouds' images stand on
+    but those another tile's list stands on too: named by their bytes alone, a small cloud across
+    the line of two tiles reads the same ones from both (a review, 2026-11-07). A search starts
+    from nothing then."""
     with _lock(tile):
-        cl = load(tile)
-        entries = [*cl.laid]
-        entries += [g["entry"] for c in cl.clouds for g in c["checks"].values() if g.get("entry")]
+        mine = _parts(load(tile))
         list_path(tile).unlink(missing_ok=True)
         shutil.rmtree(previews_dir(tile), ignore_errors=True)
-        for digest in {str(p[1]) for e in entries for p in e["parts"].values()}:
+        for name in listed():
+            mine -= _parts(load(TileRef.parse(name)))
+        for digest in mine:
             part_path(digest).unlink(missing_ok=True)
+
+
+def _parts(cl: CloudList) -> set[str]:
+    """The frozen parts the images of the list ``cl`` stand on, those laid and those got."""
+    got = [g["entry"] for c in cl.clouds for g in c["checks"].values() if g.get("entry")]
+    return {str(p[1]) for e in [*cl.laid, *got] for p in e["parts"].values()}
 
 
 @contextmanager

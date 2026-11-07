@@ -109,7 +109,7 @@ The Plan's map, brought over the tile; the Plan's steps make way for the cloud p
 | **Discard changes** | The list back to what the tile holds |
 | **Restore the original photos** | Asks first; every texture back as built, then the clouds ticked when it was asked unticked (one ticked meanwhile stays so) |
 | **Stop** | Ends the task at its next step, the list as it was (Apply has none: it ends in seconds) |
-| **Forget the clouds**, or the trash in the tile's Clouds cell of the Library (it asks the same question there, runs the same task and waits for it) | Asks first; Restore, then the tile's list, pictures, previews and the frozen parts of its clouds' images erased (`cloudlist.erase`): the tile as the build made it, a search starting from nothing. Its folder made to show none first, or the mode would find them in it and know them again (2.4) |
+| **Forget the clouds**, or the trash in the tile's Clouds cell of the Library (it asks the same question there, runs the same task and waits for it) | Asks first; Restore, then the tile's list, pictures, previews and the frozen parts of its clouds' images no other tile's list stands on erased (`cloudlist.erase`): the tile as the build made it, a search starting from nothing. Its folder made to show none first, or the mode would find them in it and know them again (2.4) |
 | **Stop all** | While a cloud's task runs: every task of the tile Stop ends, stopped (after Tick all, one by one was two hundred clicks) |
 
 ### 1.5 The states
@@ -292,7 +292,9 @@ laying, as the files a program cut short left, once the program that made them i
 gives it what the view asked, each cloud's images in the order they are wanted (`View.asked`, R4),
 so the folder is planned at Apply as it was for its question; **Restore** none, then the clouds
 ticked when it was asked are unticked (`cloudlist.pick`, the one way); **Forget** none, then the
-tile's list, pictures and parts erased (`cloudlist.erase`). Apply is a task of the
+tile's list, pictures and parts erased (`cloudlist.erase`), but the parts another tile's list
+stands on: named by their bytes alone, a small cloud across the line of two tiles reads the same
+ones from both. Apply is a task of the
 engine (R7), a few seconds a texture, which Stop does not cut: it
 ends what it began, and Quit waits for it.
 
@@ -523,9 +525,12 @@ the blocks whose pixels a cloud reaches are encoded again, as the build encodes 
 (`encode.encode_blocks`); every other block is the build's. A block of one level is two by two
 blocks of the level above, so the blocks a cloud reaches are known level by level. Apply with
 two clouds over three textures of 4096 px: 1.8 s (B4). The textures of a laying are made four at
-once (`laying.LAYING_AT_ONCE`, about 300 MB each meanwhile), and a level is decoded a palette
-colour at a time as one 32-bit word (`bcdecode._bc1_pixels`): ten clouds over seven textures took
-4.1 s, 0.7 s so, the very same bytes; a build laid a user's 19 again in 12 s.
+once (`laying.LAYING_AT_ONCE`), and a level is decoded a palette colour at a time as one 32-bit
+word (`bcdecode._bc1_pixels`), a band of block rows at a time (`bcdecode.DECODED_AT_ONCE`):
+ten clouds over seven textures took 4.1 s, 0.7 s so, the very same bytes; a build laid a user's
+19 again in 12 s. Measured on 47 clouds over 18 textures of 4096 px, the memory a laying adds at
+most: one texture at a time 6.1 s and 0.48 GB, two 3.3 s and 0.75 GB, four 1.9 s and 1.35 GB
+(2.55 GB with a level decoded whole, some 350 MB for its 64 MB of pixels).
 
 ## 5. Failures
 
