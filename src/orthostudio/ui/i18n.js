@@ -1239,6 +1239,8 @@ const STRINGS = {
 
     "library.clouds": "Nuages",
     "library.clouds_open": "Nuages…",
+    "library.clouds_forget": "Oublier…",
+    "library.clouds_forget_help": "Remettre les photos d'origine dans cette tuile et effacer sa liste de nuages",
     "library.clouds_help": "Trouver les nuages de cette tuile et les remplacer par le sol dégagé d'une autre source",
     "library.clouds_replaced": "{n} remplacé(s)",
     "library.clouds_to_apply": "{n} à appliquer",
@@ -2582,6 +2584,8 @@ const STRINGS = {
 
     "library.clouds": "Clouds",
     "library.clouds_open": "Clouds…",
+    "library.clouds_forget": "Forget…",
+    "library.clouds_forget_help": "Put the original photos back in this tile and erase its list of clouds",
     "library.clouds_help": "Find this tile's clouds and replace them with another source's clear ground",
     "library.clouds_replaced": "{n} replaced",
     "library.clouds_to_apply": "{n} to apply",

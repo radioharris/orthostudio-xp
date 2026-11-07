@@ -107,7 +107,7 @@ The Plan's map, brought over the tile; the Plan's steps make way for the cloud p
 | **Discard changes** | The list back to what the tile holds |
 | **Restore the original photos** | Asks first; every texture back as built, then the clouds ticked when it was asked unticked (one ticked meanwhile stays so) |
 | **Stop** | Ends the task at its next step, the list as it was (Apply has none: it ends in seconds) |
-| **Forget the clouds** | Asks first; Restore, then the tile's list, pictures, previews and the frozen parts of its clouds' images erased (`cloudlist.erase`): the tile as the build made it, a search starting from nothing. Its folder made to show none first, or the mode would find them in it and know them again (2.4) |
+| **Forget the clouds**, or **Forget…** on the tile's row of the Library (the mode opened over the tile asks the same question) | Asks first; Restore, then the tile's list, pictures, previews and the frozen parts of its clouds' images erased (`cloudlist.erase`): the tile as the build made it, a search starting from nothing. Its folder made to show none first, or the mode would find them in it and know them again (2.4) |
 | **Stop all** | While a cloud's task runs: every task of the tile Stop ends, stopped (after Tick all, one by one was two hundred clicks) |
 
 ### 1.5 The states

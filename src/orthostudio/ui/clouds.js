@@ -146,7 +146,9 @@ export function createCloudMode(ctx) {
   /** An icon of the page's (``index.html``'s templates). */
   const icon = (id) => $(id).content.firstElementChild.cloneNode(true);
 
-  async function open(tile) {
+  /** The cloud mode of ``tile``; ``then``, an action of its own asked at once, as its button
+   * asks it (the Library's Forget… asks its question over the tile). */
+  async function open(tile, then = null) {
     if (cs.tile && cs.tile !== tile) close();
     Object.assign(cs, { tile, view: "after", current: null, answer: null, reveal: null, centre: false, error: null });
     ctx.showPlan();
@@ -158,6 +160,7 @@ export function createCloudMode(ctx) {
     ctx.planMap.leaflet()?.off("zoomend", drawMarks).on("zoomend", drawMarks); // opened again: one
     render();
     await refresh();
+    if (then && cs.tile === tile && cs.answer?.allowed.includes(then)) await apply(then);
   }
 
   function close() {

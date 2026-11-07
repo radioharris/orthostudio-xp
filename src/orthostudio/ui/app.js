@@ -6194,6 +6194,8 @@ function cloudsCell(e) {
   const words = cloudsWords(cell);
   return h("td", { class: "library-clouds" },
     h("button", { type: "button", class: "btn", title: t("library.clouds_help"), onclick: () => cloudMode?.open(e.tile) }, t("library.clouds_open")),
+    // its clouds forgotten from here: the cloud mode opened over the tile asks its own question
+    cell.forget ? h("button", { type: "button", class: "btn btn-danger", title: t("library.clouds_forget_help"), onclick: () => cloudMode?.open(e.tile, "forget") }, t("library.clouds_forget")) : null,
     words ? h("span", { class: "clouds-words" }, words) : null);
 }
 

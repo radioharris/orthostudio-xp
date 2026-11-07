@@ -509,15 +509,16 @@ class View:
             },
         }
 
-    def library(self) -> dict[str, int]:
+    def library(self) -> dict[str, Any]:
         """The Library's Clouds cell."""
-        return library_cell(self.counts["held"], self.to_apply)
+        return library_cell(self.counts["held"], self.to_apply, self.allows("forget"))
 
 
-def library_cell(replaced: int = 0, to_apply: int = 0) -> dict[str, int]:
+def library_cell(replaced: int = 0, to_apply: int = 0, forget: bool = False) -> dict[str, Any]:
     """The Library's Clouds cell of a tile: the clouds it shows replaced, what Apply changes (the
-    page says them in its own words, every one of them written out for the words' check)."""
-    return {"replaced": replaced, "to_apply": to_apply}
+    page says them in its own words, every one of them written out for the words' check), and
+    whether its clouds may be forgotten (``forget``: its row offers it, the cloud mode asks)."""
+    return {"replaced": replaced, "to_apply": to_apply, "forget": forget}
 
 
 def _k(key: str, **params: Any) -> dict[str, Any]:

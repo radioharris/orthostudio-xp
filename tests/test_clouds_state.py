@@ -309,7 +309,7 @@ def test_what_the_tile_shows_is_counted_from_its_folder(folder: Path) -> None:
     v = _view(CloudList(TILE.name, []), shown)
     # held from the folder; Apply would make its texture again without it (the list knows it
     # first, ``cloudlist.knowing``, before any view of the routes)
-    assert v.counts["held"] == 1 and v.library() == state.library_cell(1, 1)
+    assert v.counts["held"] == 1 and v.library() == state.library_cell(1, 1, True)
     assert v.allows("restore")
     (line,) = v.texts()["restore_question"]["lines"]
     assert line["params"]["n"] == 1
