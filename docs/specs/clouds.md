@@ -32,7 +32,9 @@ A column **Clouds**: a cloud button, which opens the cloud mode on the tile, and
 what the tile holds, "3 replaced", or else what waits, "2 to apply"; its tooltip says both; and,
 while the tile has clouds, a bin that forgets them (Forget, asked on the spot, 1.4). One line at the
 smallest window, the tile's name whole. The engine says which rows have it
-(`GET /api/clouds`): a tile OrthoStudio XP built, on the row of its own folder, there.
+(`GET /api/clouds`): a tile OrthoStudio XP built, on the row of its own folder, there. Until the
+column is first read, its heading turns (1.6 s on a user's Library, its buttons came out of
+nowhere); read again, the cells read before stay meanwhile.
 Its words are read of a tile with a list or clouds laid in its folder (`clouds/`); no other
 tile's textures are read. What the tile holds is counted from its folder (2.1).
 

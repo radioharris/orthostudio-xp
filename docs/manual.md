@@ -17,7 +17,7 @@ in every build after. What the map shows is what X-Plane shows.
 ### 1. Open the tile's clouds
 
 In the **Library**, on the line of a tile built by OrthoStudio XP, press the cloud in its **Clouds**
-column. The Plan's map comes over the tile, drawn as X-Plane draws it, from the tile's own files:
+column (just after the app starts, a spinner turns in the column's heading while it is read). The Plan's map comes over the tile, drawn as X-Plane draws it, from the tile's own files:
 nothing is downloaded. Any tile built by OrthoStudio XP can have its clouds replaced, whatever
 version built it.
 

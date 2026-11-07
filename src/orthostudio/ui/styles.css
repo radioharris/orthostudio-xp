@@ -715,6 +715,7 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .clouds-view-text > span { grid-area: 1 / 1; }
 .clouds-view-text > span:not(.is-current) { visibility: hidden; }
 .clouds-view-text .spinner { display: inline-block; margin-right: 6px; vertical-align: -2px; }
+.library-clouds-reading { display: inline-block; width: 11px; height: 11px; margin-left: 6px; vertical-align: -1px; }
 /* A cloud's task said at its centre on the map, and a found cloud's number in it, discreet: to
    find it in the list. */
 .cloud-pending-anchor, .cloud-number-anchor { width: 0; height: 0; }

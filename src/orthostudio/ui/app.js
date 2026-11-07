@@ -200,6 +200,9 @@ const state = {
   /** GET /api/sizes: the store's and the downloaded images' bytes, which the status bar shows when
    * they come (measured apart from the status: no screen waits for them). */
   sizes: null,
+  /** GET /api/clouds: the Library's Clouds cells by row path; ``null`` until first read, its
+   * column's heading turning meanwhile. */
+  clouds: null,
   providers: [],
   settings: null,
   schema: null,
@@ -6286,6 +6289,10 @@ function renderLibrary() {
   const kept = cell ? { key: cell.parentElement.dataset.key, column: cell.cellIndex } : null;
   clear(body);
   $("library-building").hidden = !activeJobs().length;
+  // the Clouds column being read for the first time: its heading turns, its cells come at once (a
+  // user, 2026-11-07: nothing, then the buttons came out of nowhere 1.6 s later); read again, the
+  // cells read before stay meanwhile
+  $("library-clouds-reading").hidden = state.clouds != null;
   const rows = libraryTiles(state.library);
   renderOverlayNotices(rows);
   const sort = state.librarySort || { key: "tile", dir: 1 };
