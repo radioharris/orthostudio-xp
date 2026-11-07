@@ -47,8 +47,9 @@ The Plan's map, brought over the tile; the Plan's steps make way for the cloud p
   flashes when a cloud is clicked, and a cloud whose images are being got (a source changed) is
   planned as it was when that began, until the task ends: what After shows of it, the count and
   the words over the map all say it then (the engine's: `Task.was`, `_as_it_was`; Apply waits for
-  the task). A picture not drawn yet is drawn aside: the last one of that view stays meanwhile and
-  the words over the map say **Drawing the tile…** (2.6). The outlines and the marks are drawn
+  the task). A picture not drawn yet is drawn aside: the last one of that view of the same build
+  stays meanwhile, After's with its previews, and the words over the map say **Drawing the
+  tile…** (2.6). The outlines and the marks are drawn
   again only when what they show changes. Around the tile, the map darkened (seen from far, the base
   map is another mosaic than the tile's photos). Every cloud's outline on a dark casing, readable
   over snow: yellow when unticked, the accent when ticked, the current one thicker; its tooltip says
@@ -365,8 +366,10 @@ when its file is not there yet (`CloudEngine.picture_file`; drawn at each start,
 reading 3.75 s on a user's tile of 189 clouds, 0.07 s since), a cloud's preview is made with its
 images, in their task (`find.check`; made by the readings, a dozen took one 6.5 s). The mode's
 answer never draws: a picture it lacks, or the one in memory a preview is made on, is drawn aside,
-one at a time (`CloudEngine.aside`), while the answer gives the last one of that view and says the
-tile busy; one that fails is said by the next answer, and asked again by the one after. While
+one at a time (`CloudEngine.aside`), while the answer gives the last one of that view laid whole,
+After's with the previews it had, of the same build of the tile (`CloudEngine.ground`), and says
+the tile busy: After's picture alone showed the clouds again 1 to 2 s at the end of an Apply, and
+one of the build before showed the old tile after Build again; one that fails is said by the next answer, and asked again by the one after. While
 Apply, Restore or Forget writes the tile (`state.WRITES`), none is asked: the pictures of what the
 tile shows at their end are. Drawn in the answer, a page stood still 10 to 37 s on a Windows server
 at each new state of a tile of 3 M triangles, the first search's progress included (B8). Every path
@@ -599,7 +602,7 @@ words: `docs/specs/errors.md`.
 | Route | What |
 |---|---|
 | `GET /api/clouds` | The Library's column: by row path, the rows it is offered on (1.2), what the tile holds and what waits |
-| `GET /api/clouds/{tile}` | The view (1.5): the source its photo was built from (`provider`), the tile's state and line, what it allows (`allowed`), the words of After and Before (`views`; `clouds.drawing` for one whose picture is drawn aside), whether something is under way (`busy`, a picture drawn aside too), its picture (Before) and After's (`after`; the last one of that view while its next is drawn, 2.6), whether a fine search reads more (`fine`), every row with its line and tone, its actions, what a click on it does (`toggle`) and its tooltip (`tip`), its task and After's preview of it, the count, Apply's and Restore's buttons and questions (`texts`), the tile's own tasks with their `actions`, its last failure |
+| `GET /api/clouds/{tile}` | The view (1.5): the source its photo was built from (`provider`), the tile's state and line, what it allows (`allowed`), the words of After and Before (`views`; `clouds.drawing` for one whose picture is drawn aside), whether something is under way (`busy`, a picture drawn aside too), its picture (Before) and After's (`after`; the last one of that view laid whole, of the same build, while its next is drawn, 2.6), whether a fine search reads more (`fine`), every row with its line and tone, its actions, what a click on it does (`toggle`) and its tooltip (`tip`), its task and After's preview of it, the count, Apply's and Restore's buttons and questions (`texts`), the tile's own tasks with their `actions`, its last failure |
 | `POST /api/clouds/{tile}/find` | `{fine?}`: starts the quick search, or the fine one where it is offered |
 | `POST /api/clouds/{tile}/picks` | `{action, id?, source?}`: `tick`, `untick` or `choose` of a cloud, as its state allows, or without `id` of every cloud that allows it; gets the images when its state asks them |
 | `POST /api/clouds/{tile}/check` | `{id?, again?}`: gets a cloud's images, or of every cloud whose state offers it; `again`, **Get its images**: its pieces kept as no picture asked again |
