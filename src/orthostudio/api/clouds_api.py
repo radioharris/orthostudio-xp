@@ -182,7 +182,8 @@ class CloudEngine:
         self, tile: TileRef, shown: TileClouds, zl: int, *, ask: bool = True
     ) -> Picture | None:
         """The picture of the tile as built at ``zl`` kept in memory, the one the clouds'
-        previews are made on; ``None`` while it is drawn aside (asked as :meth:`picture_file`)."""
+        previews are made on; ``None`` while it is drawn aside (asked as :meth:`picture_file`,
+        by every answer of the mode: its file there, it is drawn once in memory meanwhile)."""
         what = _what(shown, zl, None)
         with self._lock:
             hit = self._pictures.get((tile.name, what))
@@ -406,7 +407,10 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
             # which show the build's own under them (``View.bare``); laid whole or not at all
             # (``ground``)
             after_pic = engine.picture_file(tile, shown, zl, v.bare, ask=ask)
-            p = engine.held(tile, shown, zl, ask=ask) if v.previews else None  # kept in memory
+            # the picture in memory a preview, a search and a cloud's images are made on, asked as
+            # the mode opens: asked by the first preview, the first tick after a start waited for
+            # it 1.2 to 2.1 s (a user, 2026-11-07)
+            p = engine.held(tile, shown, zl, ask=ask)
             whole = None
             if after_pic is not None and (p is not None or not v.previews):
                 whole = {"picture": after_pic, "previews": {}}

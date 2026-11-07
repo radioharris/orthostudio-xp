@@ -621,6 +621,10 @@ async def test_a_picture_already_made_is_not_drawn_again(
     app: Any, ready: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # drawn again at each start, two pictures took a user's first reading 3.75 s (2026-11-07)
+    import time
+
+    from orthostudio.clouds.tile import picture_path
+
     drawn: list[Any] = []
     draw = clouds_api._draw
     monkeypatch.setattr(clouds_api, "_draw", lambda *a: (drawn.append(a), draw(*a))[1])
@@ -630,8 +634,19 @@ async def test_a_picture_already_made_is_not_drawn_again(
     hooks = clouds_api.CloudHooks(custom_scenery=lambda: None, taken=dict)
     router, _engine = clouds_api.clouds_router(hooks)  # the app started again
     get = next(r.endpoint for r in router.routes if r.path == "/api/clouds/{name}")
+    made = picture_path(TILE, "x").parent / first["picture"]["name"]
+    at = made.stat().st_mtime_ns
     again = get("+43+005")
-    assert len(drawn) == 1 and again["picture"] == first["picture"] and not again["busy"]
+    assert again["picture"] == first["picture"] and not again["busy"]  # the page waits for none
+    # the one in memory the first preview is made on drawn meanwhile, aside: once, its file kept
+    # (asked by the first preview, the first tick after a start waited 1.2 to 2.1 s, a user)
+    for _ in range(500):
+        if len(drawn) == 2:
+            break
+        time.sleep(0.01)
+    get("+43+005")
+    time.sleep(0.1)
+    assert len(drawn) == 2 and made.stat().st_mtime_ns == at
 
 
 @pytest.mark.anyio
