@@ -14,7 +14,8 @@
  * The map is drawn in three layers: the ground (the tile's picture and the previews), kept as it
  * is while the files are the same, so the tile never flashes when a cloud is clicked; the shapes
  * (the outlines, a task's label) and the marks (a found cloud's number, a pin on a cloud too small
- * to see), drawn again when what they show changes, the marks at each zoom too.
+ * to see), each cloud's drawn again only when what it shows of it changes (the marks at each zoom
+ * too), every other one left as it is.
  */
 
 import { codeText, fmtNum, t } from "./i18n.js";
@@ -123,7 +124,10 @@ export function createCloudMode(ctx) {
   const $ = (id) => document.getElementById(id);
   const cs = {
     tile: null, answer: null, view: "after", current: null, poll: null,
-    ground: null, overlays: null, groundKey: null, shapes: null, shapesKey: null, marks: null,
+    ground: null, overlays: null, groundKey: null,
+    /** The outlines and the marks, each cloud's by its id with what it shows (``drawn``,
+     * ``marked``: ``{key, layers}``): one whose key is the same is left as it is. */
+    shapes: null, drawn: null, marks: null, marked: null,
     /** The row to bring into view after the next drawing, and whether to its middle. */
     reveal: null, centre: false,
     /** The tile's readings asked, and the one shown: an answer older than it is left (two clicks
@@ -169,8 +173,9 @@ export function createCloudMode(ctx) {
     stopPoll();
     ctx.planMap.cancelDraw();
     ctx.planMap.leaflet()?.off("zoomend", drawMarks);
-    for (const layer of [cs.ground, cs.shapes, cs.marks]) layer?.remove();
-    Object.assign(cs, { tile: null, answer: null, ground: null, overlays: null, groundKey: null, shapes: null, shapesKey: null, marks: null, error: null });
+    cs.ground?.remove();
+    forgetShapes();
+    Object.assign(cs, { tile: null, answer: null, ground: null, overlays: null, groundKey: null, error: null });
     $("clouds-panel").hidden = true;
     $("clouds-banner").hidden = true;
     document.querySelector(".plan-flow")?.classList.remove("is-clouds");
@@ -258,15 +263,39 @@ export function createCloudMode(ctx) {
     // a thin cross to aim at the points of an outline, not Leaflet's hand
     map.getContainer().classList.toggle("is-outlining", ctx.planMap.drafting());
     drawGround(map);
-    // the outlines and the marks drawn again only when what they show changed: drawn at every
-    // reading, twice a second while a task ran, the tooltip under the mouse went away and two
-    // hundred clouds weighed on the page (a review, 2026-11-06)
-    const shapes = JSON.stringify([cs.tile, cs.current, ctx.planMap.drafting(), (cs.answer?.clouds || []).map((c) =>
-      [c.id, c.rings, c.tick, c.tip, c.label ? labelWords(c) : null, c.numbered])]);
-    if (shapes === cs.shapesKey) return;
-    cs.shapesKey = shapes;
+    // each cloud's outline and mark drawn again only when what it shows of it changed: drawn at
+    // every reading, the tooltip under the mouse went away (a review, 2026-11-06); all of them at
+    // each change of one, a click drew 540 shapes twice and the page took 0.65 s before sending
+    // it (a user's tile of 200 clouds, 2026-11-07)
     drawShapes(map);
     drawMarks();
+  }
+
+  /** Each cloud's layers (``drawn`` or ``marked``) kept while its key is the same, drawn again by
+   * ``make`` when it changed, let go when it left: ``items`` are ``[id, key, cloud]``. */
+  function keep(group, kept, items, make) {
+    const seen = new Set();
+    for (const [id, k, c] of items) {
+      seen.add(id);
+      const old = kept.get(id);
+      if (old?.key === k) continue;
+      for (const l of old?.layers || []) group.removeLayer(l);
+      const layers = make(c);
+      for (const l of layers) group.addLayer(l);
+      kept.set(id, { key: k, layers });
+    }
+    for (const [id, old] of kept) {
+      if (seen.has(id)) continue;
+      for (const l of old.layers) group.removeLayer(l);
+      kept.delete(id);
+    }
+  }
+
+  /** The outlines and the marks let go: drawn again whole by the next drawing (another tile, the
+   * words of another language). */
+  function forgetShapes() {
+    for (const layer of [cs.shapes, cs.marks]) layer?.remove();
+    Object.assign(cs, { shapes: null, drawn: null, marks: null, marked: null });
   }
 
   /** The ground: the picture of the view, After's previews over it (a cloud whose images are
@@ -313,8 +342,18 @@ export function createCloudMode(ctx) {
    * over dark ground), its tooltip saying what a click does, and a task's label at its centre
    * (``label``, the engine's: a spinner, or its line). */
   function drawShapes(map) {
-    cs.shapes?.remove();
-    const layer = L.layerGroup();
+    if (!cs.shapes) {
+      cs.shapes = L.layerGroup().addTo(map);
+      cs.drawn = new Map();
+      outside(cs.shapes);
+    }
+    const drawing = ctx.planMap.drafting();
+    const items = (cs.answer?.clouds || []).map((c) => [c.id, JSON.stringify([c.rings, c.tick, c.tip, c.label ? labelWords(c) : null, c.id === cs.current, drawing]), c]);
+    keep(cs.shapes, cs.drawn, items, (c) => shapesOf(c, drawing));
+  }
+
+  /** The world around the tile darkened. */
+  function outside(layer) {
     const m = /^([+-]\d{2})([+-]\d{3})$/.exec(cs.tile || "");
     if (m) {
       // seen from far, the base map is another, greener mosaic than the photos the tile is
@@ -325,40 +364,39 @@ export function createCloudMode(ctx) {
       const tile = [[lat, lon], [lat + 1, lon], [lat + 1, lon + 1], [lat, lon + 1]];
       L.polygon([world, tile], { className: "cloud-outside", interactive: false, stroke: false, fillOpacity: 0.5 }).addTo(layer);
     }
-    const a = cs.answer;
-    // while a cloud is outlined, the outlines take no click: every point goes to the drawing
-    const drawing = ctx.planMap.drafting();
-    for (const c of a?.clouds || []) {
-      const rings = c.rings.map(latlngs);
-      const current = c.id === cs.current ? " is-current" : "";
-      L.polygon(rings, { className: `cloud-casing${current}`, interactive: false, fill: false, weight: 4 }).addTo(layer);
-      const shape = L.polygon(rings, {
-        className: `cloud-outline${c.tick ? " is-on" : ""}${current}`,
-        weight: 2,
-        fill: true, // nearly clear, so that a click inside the outline picks the cloud
-        fillOpacity: 0.01,
-        dashArray: c.tick ? null : "4 4",
-        interactive: !drawing,
+  }
+
+  /** A cloud's outline on its casing, its tooltip, and its task's label. While a cloud is
+   * outlined (``drawing``), the outlines take no click: every point goes to the drawing. */
+  function shapesOf(c, drawing) {
+    const rings = c.rings.map(latlngs);
+    const current = c.id === cs.current ? " is-current" : "";
+    const casing = L.polygon(rings, { className: `cloud-casing${current}`, interactive: false, fill: false, weight: 4 });
+    const shape = L.polygon(rings, {
+      className: `cloud-outline${c.tick ? " is-on" : ""}${current}`,
+      weight: 2,
+      fill: true, // nearly clear, so that a click inside the outline picks the cloud
+      fillOpacity: 0.01,
+      dashArray: c.tick ? null : "4 4",
+      interactive: !drawing,
+    });
+    if (!drawing) {
+      shape.on("click", (ev) => {
+        L.DomEvent.stop(ev);
+        clickCloud(cloudNow(c.id) || c); // the shape outlives the answer it was drawn from
       });
-      if (!drawing) {
-        shape.on("click", (ev) => {
-          L.DomEvent.stop(ev);
-          clickCloud(c);
-        });
-        shape.bindTooltip(tipOf(c), { sticky: true, className: "cloud-tip" });
-      }
-      shape.addTo(layer);
-      if (c.label) {
-        const label = h("div", { class: "cloud-pending" }, h("span", { class: "spinner", "aria-hidden": "true" }), labelWords(c));
-        L.marker(L.latLngBounds(rings.flat()).getCenter(), {
-          icon: L.divIcon({ className: "cloud-pending-anchor", html: label, iconSize: [0, 0] }),
-          interactive: false,
-          keyboard: false,
-        }).addTo(layer);
-      }
+      shape.bindTooltip(tipOf(c), { sticky: true, className: "cloud-tip" });
     }
-    layer.addTo(map);
-    cs.shapes = layer;
+    const out = [casing, shape];
+    if (c.label) {
+      const label = h("div", { class: "cloud-pending" }, h("span", { class: "spinner", "aria-hidden": "true" }), labelWords(c));
+      out.push(L.marker(L.latLngBounds(rings.flat()).getCenter(), {
+        icon: L.divIcon({ className: "cloud-pending-anchor", html: label, iconSize: [0, 0] }),
+        interactive: false,
+        keyboard: false,
+      }));
+    }
+    return out;
   }
 
   /** A cloud's label on the map while its task runs: its name and where the task is. */
@@ -377,40 +415,43 @@ export function createCloudMode(ctx) {
    * +52+004 could not be found on the map, a user, 2026-11-03). Drawn again at each zoom. */
   function drawMarks() {
     const map = ctx.planMap.leaflet();
-    cs.marks?.remove();
-    cs.marks = null;
     if (!map || !L || !cs.tile || !cs.answer) return;
-    const layer = L.layerGroup();
+    if (!cs.marks) {
+      cs.marks = L.layerGroup().addTo(map);
+      cs.marked = new Map();
+    }
     const drawing = ctx.planMap.drafting();
+    const items = [];
     for (const c of cs.answer.clouds) {
       const ring = c.rings[0];
       if (!ring || ring.length < 6) continue;
       const box = L.latLngBounds(latlngs(ring));
       const nw = map.latLngToLayerPoint(box.getNorthWest());
       const se = map.latLngToLayerPoint(box.getSouthEast());
-      if (Math.max(se.x - nw.x, se.y - nw.y) >= PIN_BELOW_PX) {
-        if (!c.numbered) continue;
-        const key = ring.join(",");
-        if (!labels.has(key)) labels.set(key, labelPoint(ring));
-        L.marker(labels.get(key), {
+      const seen = Math.max(se.x - nw.x, se.y - nw.y) >= PIN_BELOW_PX;
+      if (seen && !c.numbered) continue;
+      const where = ring.join(",");
+      items.push([c.id, JSON.stringify(seen ? ["number", where, c.number] : ["pin", where, c.tick, c.tip, drawing]), { c, seen, box, where }]);
+    }
+    keep(cs.marks, cs.marked, items, ({ c, seen, box, where }) => {
+      if (seen) {
+        if (!labels.has(where)) labels.set(where, labelPoint(c.rings[0]));
+        return [L.marker(labels.get(where), {
           icon: L.divIcon({ className: "cloud-number-anchor", html: h("span", { class: "cloud-number" }, String(c.number)), iconSize: [0, 0] }),
           interactive: false,
           keyboard: false,
-        }).addTo(layer);
-        continue;
+        })];
       }
       const pin = L.circleMarker(box.getCenter(), { radius: 7, weight: 2, className: `cloud-pin${c.tick ? " is-on" : ""}`, interactive: !drawing });
       if (!drawing) {
         pin.on("click", (ev) => {
           L.DomEvent.stop(ev);
-          clickCloud(c);
+          clickCloud(cloudNow(c.id) || c); // the pin outlives the answer it was drawn from
         });
         pin.bindTooltip(tipOf(c), { className: "cloud-tip" });
       }
-      pin.addTo(layer);
-    }
-    layer.addTo(map);
-    cs.marks = layer;
+      return [pin];
+    });
   }
 
   /** A click on a cloud's outline or pin: what the engine says it does (``toggle``); its row framed
@@ -674,7 +715,7 @@ export function createCloudMode(ctx) {
     open,
     close,
     tile: () => cs.tile,
-    rerender: () => cs.tile && ((cs.shapesKey = null), render()), // a language changed: every word again
+    rerender: () => cs.tile && (forgetShapes(), render()), // a language changed: every word again
     jobsChanged: () => cs.tile && refresh(),
   };
 }
