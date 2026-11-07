@@ -732,7 +732,8 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
     @router.post("/api/clouds/{name}/apply")
     def apply(name: str, body: Annotated[dict[str, Any] | None, Body()] = None) -> dict[str, Any]:
         """``{action}``: ``apply`` (what the view asks, each cloud's images in the order they are
-        wanted, as its question said) or ``restore`` (none)."""
+        wanted, as its question said), ``restore`` (none) or ``forget`` (none, then the tile's list
+        and its files erased)."""
         action, _cid, _source = _body_of(_tile_of(name), body, state.WRITES)
         tile, folder, _shown, v = opened(name, action)
         laid = v.asked if action == "apply" else []
@@ -792,7 +793,7 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
 
     @router.post("/api/clouds/{name}/stop")
     def stop_every(name: str) -> dict[str, Any]:
-        """Stop every task of the tile Stop ends (Stop all, offered while a cloud's runs)."""
+        """Stop every task of the tile Stop ends (Stop all, offered from two clouds at work)."""
         tile, _folder, _shown, _v = opened(name, "stop")
         return {"stopped": sum(engine.tasks.stop(t.id) for t in engine.tasks.of(tile.name))}
 

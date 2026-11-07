@@ -269,8 +269,8 @@ def classify_many(
     """:func:`classify` of each of ``images`` (``valids``: where each shows something), those
     smaller than a patch read several to a patch, side by side, each made ready on its own
     (:func:`_normalised`); a larger one read alone. Mirrored out to a whole patch, a cloud's
-    window took as long as a patch: the sources judged under a user's 198 clouds took 114 s, 3.3 s
-    so; the detector sees a window's neighbours at its edges instead of its mirror, and 3 % of
+    window took as long as a patch: the sources judged under a user's 198 clouds took 94 s, 3.4 s
+    so (B6); the detector sees a window's neighbours at its edges instead of its mirror, and 3 % of
     the verdicts, of clouds at the limit, came out the other way (2026-11-07)."""
     out: list[np.ndarray] = [np.zeros(im.shape[:2], np.uint8) for im in images]
     shown = [k for k in range(len(images)) if valids[k].any()]

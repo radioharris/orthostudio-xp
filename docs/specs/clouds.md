@@ -28,17 +28,19 @@ number (B1, B2...).
 
 ### 1.2 The Library
 
-A column **Clouds**: a cloud button, which opens the cloud mode on the tile, its counts as badges
-at its left corners, what the tile holds replaced above (the accent), what waits for Apply below (the
-warning's colour), said in words in its tooltip ("3 replaced · 2 to apply"); and, while the tile
-has clouds, a bin that forgets them (Forget, asked on the spot, 1.4). One line at the smallest
-window, the tile's name whole; one width, its two icons', from the start, while it is read too:
-its words in the cell sized it by what it held, and every column moved as the Library opened. The engine says which rows have it
-(`GET /api/clouds`): a tile OrthoStudio XP built, on the row of its own folder, there. Until the
-column is first read, its heading turns (1.6 s on a user's Library, its buttons came out of
-nowhere); read again, the cells read before stay meanwhile.
-Its words are read of a tile with a list or clouds laid in its folder (`clouds/`); no other
-tile's textures are read. What the tile holds is counted from its folder (2.1).
+A column **Clouds**: a cloud button, which opens the cloud mode on the tile, its counts as badges at
+its left corners, what the tile holds replaced above (the accent), what waits for Apply below (the
+warning's colour), said in words in its tooltip ("3 replaced · 2 to apply"); and, while the tile has
+clouds, a bin that forgets them (Forget, asked on the spot, 1.4). One line at the smallest window,
+the tile's name whole; a like share of the table with Tile, Imagery, In X-Plane, Size and Built by
+(a sixth each), wider only where its words need it, never narrower than its two icons, in its
+middle, from the start and while it is read: its words in the cell sized it by what it held, and
+every column moved as the Library opened. The engine says which rows have it (`GET /api/clouds`): a
+tile OrthoStudio XP built, on the row of its own folder, there. Until the column is first read, its
+heading turns (1.6 s on a user's Library, its buttons came out of nowhere); read again, the cells
+read before stay meanwhile. Its words are read of a tile with a list or clouds laid in its folder
+(`clouds/`); no other tile's textures are read. What the tile holds is counted from its folder
+(2.1).
 
 ### 1.3 The cloud mode
 
@@ -46,64 +48,65 @@ The Plan's map, brought over the tile; the Plan's steps make way for the cloud p
 
 - **On the map**: the tile drawn as X-Plane draws it (R2). In **After**, the tile as X-Plane shows
   it with the preview of each cloud Apply adds over it, but the textures where a cloud they show
-  goes or changes: in those, the build's own with the preview of each cloud Apply lays there, in
-  the list's order (R4); in **Before**, the tile with no cloud replaced. The
-  ground is laid again only when its files change, the new one shown once loaded: the tile never
-  flashes when a cloud is clicked, and a cloud whose images are being got (a source changed) is
-  planned as it was when that began, until the task ends: what After shows of it, the count and
-  the words over the map all say it then (the engine's: `Task.was`, `_as_it_was`; Apply waits for
-  the task). A picture not drawn yet is drawn aside: the last one of that view of the same build
-  stays meanwhile, After's with its previews, and the words over the map say **Drawing the
-  tile…** (2.6). Each cloud's outline and mark are drawn again only when what they show of it
-  changes, every other one left as it is (all of them at each change of one, a click drew 540
-  shapes twice and the page took 0.65 s before sending it, on a tile of 200 clouds). Around the tile, the map darkened (seen from far, the base
-  map is another mosaic than the tile's photos). Every cloud's outline on a dark casing, readable
-  over snow: yellow when unticked, the accent when ticked, the current one thicker; its tooltip says
-  its name and what a click does ("Cloud 5 · click to tick it", the engine's `tip`); a found cloud
-  large enough shows its number inside it, a cloud too small to see at the map's zoom a pin that
-  clicks as its outline. A click on an outline or a pin ticks or unticks it, except while a cloud is
-  being outlined, and brings its row to the middle of the list. While a task of a cloud runs, not
-  while it waits for its turn, and it is the one cloud at work, a label just above where its number is says it, over every mark and tooltip, its number hidden meanwhile, a cloud's tooltip under the pointer (at the middle of its frame, a long curved cloud's label lay outside it; beside the pointer, the tooltip came over it), a
-  spinner with its name and where its task is ("Cloud 5: downloading the images"); several at work
-  (Tick all), no cloud's label nor spinner, **Stop all (n)** says it with its own spinner (their
-  labels came and went all over the map): the engine's `label` (`View.rows`), as a found cloud's
-  number is its `numbered`.
+  goes or changes: in those, the build's own with the preview of each cloud Apply lays there, in the
+  list's order (R4); in **Before**, the tile with no cloud replaced. The ground is laid again only
+  when its files change, the new one shown once loaded: the tile never flashes when a cloud is
+  clicked, and a cloud whose images are being got (a source changed) is planned as it was when that
+  began, until the task ends: what After shows of it, the count and the words over the map all say
+  it then (the engine's: `Task.was`, `_as_it_was`; Apply waits for the task). A picture not drawn
+  yet is drawn aside: the last one of that view of the same build stays meanwhile, After's with its
+  previews, and the words over the map say **Drawing the tile…** (2.6). Each cloud's outline and
+  mark are drawn again only when what they show of it changes, every other one left as it is (all of
+  them at each change of one, a click drew 540 shapes twice and the page took 0.65 s before sending
+  it, on a tile of 200 clouds). Around the tile, the map darkened (seen from far, the base map is
+  another mosaic than the tile's photos). Every cloud's outline on a dark casing, readable over
+  snow: yellow when unticked, the accent when ticked, the current one thicker; its tooltip says its
+  name and what a click does ("Cloud 5 · click to tick it", the engine's `tip`); a found cloud large
+  enough shows its number inside it, a cloud too small to see at the map's zoom a pin that clicks as
+  its outline. A click on an outline or a pin ticks or unticks it, except while a cloud is being
+  outlined, and brings its row to the middle of the list. While a task of a cloud runs, not while it
+  waits for its turn, and it is the one cloud at work, a label just above where its number is says
+  it, over every mark and tooltip, its number hidden meanwhile, a cloud's tooltip under the pointer
+  (at the middle of its frame, a long curved cloud's label lay outside it; beside the pointer, the
+  tooltip came over it), a spinner with its name and where its task is ("Cloud 5: downloading the
+  images"); several at work (Tick all), no cloud's label nor spinner, **Stop all (n)** says it with
+  its own spinner (their labels came and went all over the map): the engine's `label` (`View.rows`),
+  as a found cloud's number is its `numbered`.
 - **The banner over the map**: the sentence of the view ("What X-Plane shows.", "What X-Plane will
   show after Apply.", "The tile with no cloud replaced.", the three in one place so the banner
   keeps one size), then **After**, **Before**, **Outline a cloud**, **Back to the Plan**.
 - **The panel**: the tile's name, and beside it the source its photo was built from ("Original
-  photo: Bing", the manifest's `provider`); while the engine answers a click, any click, a
-  spinner on what was clicked, its cloud's row or its button (`waiting`, `pending`: Tick all on
-  189 clouds showed nothing for a second; one beside the title and one in the cloud's row could
-  not be told apart): for a cloud, the same spinner from the click to the end of its task; a
-  spinner while the tile is read; the tile's line when
-  it is not ready (1.5), or why it could not be read; each task under way with a spinner, its
-  phase, its progress (a search's judging of the
-  sources said cloud by cloud) and **Stop**; the count of what Apply changes ("To replace: 1 · Back
-  as photographed: 2") on a line of its own, and under it **Tick all**, **Untick all** and, while
-  two clouds' tasks or more run, **Stop all (n)**, n the clouds at work (`counts.working`; one at
-  work, its row's spinner stops it: Stop all beside it was a second spinner; a count that grew
-  pushed them out of line); the list, a row per cloud; then three rows of buttons, spaced as the Plan's build buttons
-  (`actions actions-build`): **Apply (n changes)** and **Discard changes**, once there is a cloud
-  or Apply may run; **Quick search** and **Fine search** (4.1; greyed, saying why, on a tile with
-  nothing finer to read, the engine's `fine`), and before any cloud, what each search takes;
-  **Restore the original photos**, while the tile holds replaced clouds (greyed while it may not
-  run), and **Forget the clouds** beside it while the tile has any. A reading of the tile answered after a later one is left: the page shows the latest.
+  photo: Bing", the manifest's `provider`); while the engine answers a click, any click, a spinner
+  on what was clicked, its cloud's row or its button (`waiting`, `pending`: Tick all on 189 clouds
+  showed nothing for a second; one beside the title and one in the cloud's row could not be told
+  apart): for a cloud, the same spinner from the click to the end of its task; a spinner while the
+  tile is read; the tile's line when it is not ready (1.5), or why it could not be read; each task
+  under way with a spinner, its phase, its progress (a search's judging of the sources said cloud by
+  cloud) and **Stop**; the count of what Apply changes ("To replace: 1 · Back as photographed: 2")
+  on a line of its own, and under it **Tick all**, **Untick all** and, while two clouds' tasks or
+  more run, **Stop all (n)**, n the clouds at work (`counts.working`; one at work, its row's spinner
+  stops it: Stop all beside it was a second spinner; a count that grew pushed them out of line); the
+  list, a row per cloud; then three rows of buttons, spaced as the Plan's build buttons (`actions
+  actions-build`): **Apply (n changes)** and **Discard changes**, once there is a cloud or Apply may
+  run; **Quick search** and **Fine search** (4.1; greyed, saying why, on a tile with nothing finer
+  to read, the engine's `fine`), and before any cloud, what each search takes; **Restore the
+  original photos**, while the tile holds replaced clouds (greyed while it may not run), and
+  **Forget the clouds** beside it while the tile has any. A reading of the tile answered after a
+  later one is left: the page shows the latest.
 - **A row**, laid out as the Plan's zones (a click on it shows its cloud, as its eye does; its
   checkbox and its name tick it; a tick, a source chosen, Get its images or Stop make it the current
-  cloud, and a tick or a source chosen shows it too, the map over what is ticked and its new
-  images; Tick all moves nothing): its tick and name, while a
-  task of it runs and it is the one cloud at work a spinner beside its name around a square that
-  stops it, the very same from a click on it to the end of its task (`pending`, then `working`,
-  whatever the task's phase: two spinners came one after the other), its area, an eye (**Show**: the map over it), a trash
-  for an outline the tile does not hold; the menu of its sources, each with what it has there and
-  its fit ("Esri World Imagery · clear · fit 93 %"), both from its newest reading (`state.reading`:
-  its images got, judged as they are now, else the search's; what a piece said, no answer, a
-  refusal, a page, leaves the search's), the best first, those that cannot be chosen greyed
-  (`sources.PROPOSABLE`: the same photo, no picture; the source whose images the tile shows of it
-  always may be); its line (1.5), under the menu: none when it is replaced or to be, as its tick
-  and its menu say (held, ready), none while a task of it runs (its spinner says it; its label on the
-  map); **Get its images** when
+  cloud, and a tick or a source chosen shows it too, the map over what is ticked and its new images;
+  Tick all moves nothing): its tick and name, while a task of it runs and it is the one cloud at
+  work a spinner beside its name around a square that stops it, the very same from a click on it to
+  the end of its task (`pending`, then `working`, whatever the task's phase: two spinners came one
+  after the other), its area, an eye (**Show**: the map over it), a trash for an outline the tile
+  does not hold; the menu of its sources, each with what it has there and its fit ("Esri World
+  Imagery · clear · fit 93 %"), both from its newest reading (`state.reading`: its images got,
+  judged as they are now, else the search's; what a piece said, no answer, a refusal, a page, leaves
+  the search's), the best first, those that cannot be chosen greyed (`sources.PROPOSABLE`: the same
+  photo, no picture; the source whose images the tile shows of it always may be); its line (1.5),
+  under the menu: none when it is replaced or to be, as its tick and its menu say (held, ready),
+  none while a task of it runs (its spinner says it; its label on the map); **Get its images** when
   asking again may end its wait.
 
 ### 1.4 What the user does
@@ -153,23 +156,24 @@ The tile's state, the first that holds (`state.TILE_STATES`, `tile_state`):
 | `ready` | | |
 
 **Ready** and **no_tool** allow everything, any other state nothing; without the tool the tile is
-not drawn, and the first search asks for it (`CLOUD_DETECTOR_ASK`): an installed app could not
-open the mode at all before (a campaign on Windows, 2026-11-07). While something else holds the tile's folder
-(a build, its wait in the queue, a filing, a deletion) it is not read at all: `tile_state` reads the
-folder only once the states before it do not hold, and keeps what it read in `ready` only. The list
-is then shown as it is, read only, and nothing is counted; a task of a cloud still shows in its row,
-with Stop when Stop ends it. No Apply or Restore while a task of the tile runs, nothing but a
-cloud's tick and source while Apply or Restore does (`state.possible`, `state.DRAFT`: removing an
-outline and Discard read what the tile shows, which Apply is changing); of what remains, only what
-would do something is offered (`allowed`): Apply a change, Restore a replaced cloud, Discard a
-change or a wait, Find while no search runs. Any tile of ours can have its clouds replaced, whatever
-version built it. The actions have one set of names, the same for the tile, its rows, the routes,
-its tasks and the page: `tick`, `untick`, `choose`, `check` (get a cloud's images), `remove`,
-`discard`, `find`, `outline`, `apply`, `restore`, `forget`, `stop`; a task is named by the action that starts
-it, and the routes take them by these names. Of the tile, `tick`, `untick` and `check` are of every
-cloud whose state allows them (Tick all, Untick all), `stop` of every task Stop ends, offered while
-two clouds' or more run (Stop all); `choose` and `remove` are a cloud's alone. A fine search is offered where
-the tile's textures are finer than the map's level (`View.fine`), and refused elsewhere.
+not drawn, and the first search asks for it (`CLOUD_DETECTOR_ASK`): an installed app could not open
+the mode at all before (a campaign on Windows, 2026-11-07). While something else holds the tile's
+folder (a build, its wait in the queue, a filing, a deletion) it is not read at all: `tile_state`
+reads the folder only once the states before it do not hold, and keeps what it read in `ready` and
+`no_tool` (the latter without a picture). The list is then shown as it is, read only, and nothing is
+counted; a task of a cloud still shows in its row, with Stop when Stop ends it. No Apply or Restore
+while a task of the tile runs, nothing but a cloud's tick and source while Apply or Restore does
+(`state.possible`, `state.DRAFT`: removing an outline and Discard read what the tile shows, which
+Apply is changing); of what remains, only what would do something is offered (`allowed`): Apply a
+change, Restore a replaced cloud, Discard a change or a wait, Find while no search runs. Any tile of
+ours can have its clouds replaced, whatever version built it. The actions have one set of names, the
+same for the tile, its rows, the routes, its tasks and the page: `tick`, `untick`, `choose`, `check`
+(get a cloud's images), `remove`, `discard`, `find`, `outline`, `apply`, `restore`, `forget`,
+`stop`; a task is named by the action that starts it, and the routes take them by these names. Of
+the tile, `tick`, `untick` and `check` are of every cloud whose state allows them (Tick all, Untick
+all), `stop` of every task Stop ends, offered while two clouds' or more run (Stop all); `choose` and
+`remove` are a cloud's alone. A fine search is offered where the tile's textures are finer than the
+map's level (`View.fine`), and refused elsewhere.
 
 A cloud is, one way only:
 
@@ -199,40 +203,35 @@ A cloud is, one way only:
 
 The count is the rows', what Apply does with each cloud, a cloud whose images are being got as it
 was when that began (`Task.was`): to replace, another source, back as photographed, waiting
-(`counts`, of `_row`); what the tile shows
-replaced, the clouds and the
-textures (Restore's question, the Library), is counted from its folder alone, and the textures Apply
-makes again from the folder's plan. A texture showing clouds no file says (2.1) is made again: it is
-a change when no cloud's is ("Textures to make again: 1"), and Apply is offered whenever a texture
-is to be made again. Apply's button and the questions of Apply and Restore are said from them
-(`texts`). After shows what X-Plane shows with the preview of each cloud Apply adds, but the
-textures where a cloud they show goes or changes (`View.bare`), in which the build's own with the
-preview of each cloud Apply lays there (`View.previews`); its
-sentence says "after Apply" whenever one is. The list knows every cloud the tile shows replaced
-(2.4). A cloud is ticked one way (`clouds_api.pick`), by the user or once an outline's sources are
-tried, and its images are asked for one way (`clouds_api.get_images`): when its state offers
-`check`, after a tick, a source chosen, an outline's sources tried, when **Get its images** asks
-again, or after a check whose source has no clear picture there (no picture, cloudy, the same
-photo) and turned the cloud to a source never asked (`CloudState.unasked`), each source so once.
-What runs the cloud detector is asked just before
+(`counts`, of `_row`); what the tile shows replaced, the clouds and the textures (Restore's
+question, the Library), is counted from its folder alone, and the textures Apply makes again from
+the folder's plan. A texture showing clouds no file says (2.1) is made again: it is a change when no
+cloud's is ("Textures to make again: 1"), and Apply is offered whenever a texture is to be made
+again. Apply's button and the questions of Apply and Restore are said from them (`texts`). After
+shows what X-Plane shows with the preview of each cloud Apply adds, but the textures where a cloud
+they show goes or changes (`View.bare`), in which the build's own with the preview of each cloud
+Apply lays there (`View.previews`); its sentence says "after Apply" whenever one is. The list knows
+every cloud the tile shows replaced (2.4). A cloud is ticked one way (`clouds_api.pick`), by the
+user or once an outline's sources are tried, and its images are asked for one way
+(`clouds_api.get_images`): when its state offers `check`, after a tick, a source chosen, an
+outline's sources tried, when **Get its images** asks again, or after a check whose source has no
+clear picture there (no picture, cloudy, the same photo) and turned the cloud to a source never
+asked (`CloudState.unasked`), each source so once. What runs the cloud detector is asked just before
 its task starts (a search, an outline, getting images), refused while the detector is not on this
 computer and the user has not said to download it (`CLOUD_DETECTOR_ASK`, with its size): the page
-asks, and on yes sends with `download` what the engine says (`then`: the body of `check`, the
-images of the cloud just ticked, of every cloud with Tick all, `again` kept for **Get its images**),
-else the same action again. A tick
-or a source is
-kept either way, the cloud waiting for its images on no; an outline is kept once the answer is yes,
-its sources being tried by the detector. The answer says when something is under way (`busy`: a task
-of the tile or what follows one, `Tasks.busy`, a build of it, or a picture drawn aside), for the page
-to read it again, every 0.5 s, every 0.2 s for the first 3 s after a click (a tick's images made
-0.3 s after it were shown 0.5 s later, at the next reading: now 0.1 to 0.3 s, a tick done on screen
-in 0.6 s rather than 1.0 s, B12), and
-every word the page shows of the
-tile, a key and its parameters: the tile's line (its state's, else that a search found none or none
-was made), each row's line with its tone, the count, Apply's button and the questions of Apply and
-Restore. The test of the mode walks every combination of tick, chosen source, what the tile shows,
-the images got and a neighbour in the same texture, and checks that the rows, the count, the
-buttons, Apply and Discard agree (`tests/test_clouds_state.py`).
+asks, and on yes sends with `download` what the engine says (`then`: the body of `check`, the images
+of the cloud just ticked, of every cloud with Tick all, `again` kept for **Get its images**), else
+the same action again. A tick or a source is kept either way, the cloud waiting for its images on
+no; an outline is kept once the answer is yes, its sources being tried by the detector. The answer
+says when something is under way (`busy`: a task of the tile or what follows one, `Tasks.busy`, a
+build of it, or a picture drawn aside), for the page to read it again, every 0.5 s, every 0.2 s for
+the first 3 s after a click (a tick's images made 0.3 s after it were shown 0.5 s later, at the next
+reading: now 0.1 to 0.3 s, a tick done on screen in 0.6 s rather than 1.0 s, B12), and every word
+the page shows of the tile, a key and its parameters: the tile's line (its state's, else that a
+search found none or none was made), each row's line with its tone, the count, Apply's button and
+the questions of Apply and Restore. The test of the mode walks every combination of tick, chosen
+source, what the tile shows, the images got and a neighbour in the same texture, and checks that the
+rows, the count, the buttons, Apply and Discard agree (`tests/test_clouds_state.py`).
 
 A cloud a build did not lay again is a ticked cloud whose images no longer stand (R6): its line
 says why, "The tile's level changed since its images were got: get them again", and nothing else
@@ -256,19 +255,18 @@ one, else a copy), in the tile folder's `clouds/<name>.dds`. A texture without a
 build's own and shows no cloud.
 
 So what the tile shows is read from its folder alone (`tile.read_tile`): a texture says itself
-whether it shows clouds, and which; a write cut short leaves each texture whole, the old or the
-new, and saying which; laying always starts from the build's texture, never over a laid one. Each
+whether it shows clouds, and which; a write cut short leaves each texture whole, the old or the new,
+and saying which; laying always starts from the build's texture, never over a laid one. Each
 texture's stamp is read with the identity of the very file it is in (inode, size, time), and a
 texture that cannot be read is said (`CLOUD_TEXTURE_UNREADABLE`), never taken for the build's.
-Beside
-the textures, `clouds/<digest>.json` lists the clouds of each digest a stamp names
+Beside the textures, `clouds/<digest>.json` lists the clouds of each digest a stamp names
 (`tile.sidecar_path`), each entry checked whole (`entry_problem`): the tile shows the clouds every
-texture they reach names, the same cloud in each (`TileClouds.held`). A texture whose clouds no
-such file says (it was deleted, or it is not whole) shows clouds no row says: it is no texture of
-`TileClouds.known`, and Apply makes it again. Nothing else, not the list, says what the tile
-shows. A folder whose `textures/` or `clouds/` is a link to another folder is no tile of ours:
-laying never writes into another folder. The build's own checks are those of any tile
-(`pack_is_intact` counts the textures and the DSF, which keep their names and sizes).
+texture they reach names, the same cloud in each (`TileClouds.held`). A texture whose clouds no such
+file says (it was deleted, or it is not whole) shows clouds no row says: it is no texture of
+`TileClouds.known`, and Apply makes it again. Nothing else, not the list, says what the tile shows.
+A folder whose `textures/` or `clouds/` is a link to another folder is no tile of ours: laying never
+writes into another folder. The build's own checks are those of any tile (`pack_is_intact` counts
+the textures and the DSF, which keep their names and sizes).
 
 ### 2.2 A cloud entry
 
@@ -320,47 +318,46 @@ stands on: named by their bytes alone, a small cloud across the line of two tile
 ones from both. Apply is a task of the engine (R7), well under a second a texture (4.4), which Stop
 does not cut: it ends what it began, and Quit waits for it.
 
-A build of the tile calls the clouds once, just before it says it has finished the tile (the
-event of the tile's target, or of its put back for a tile filed elsewhere,
-`build._clouds_before_done`, `_clouds_again`, `laying.lay_again`): a job lets go of a tile it has
-finished, hours before its own end, and the tile shows its clouds from then. Meanwhile that step
-says so as any step says what it does, in its tooltip in Works ("laying its clouds: 3 of 12
-textures", read from the engine's "laying its clouds again: 3 of 12 textures"), its bar full: it
-stayed seconds without a word. Its folder is whole
-by then: a pack the build finds in its cache over a folder that lost files is laid again when
+A build of the tile calls the clouds once, just before it says it has finished the tile (the event
+of the tile's target, or of its put back for a tile filed elsewhere, `build._clouds_before_done`,
+`_clouds_again`, `laying.lay_again`): a job lets go of a tile it has finished, hours before its own
+end, and the tile shows its clouds from then. Meanwhile that step says so as any step says what it
+does, in its tooltip in Works ("laying its clouds: 3 of 12 textures", read from the engine's "laying
+its clouds again: 3 of 12 textures"), its bar full: it stayed seconds without a word. Its folder is
+whole by then: a pack the build finds in its cache over a folder that lost files is laid again when
 the pack is done (`_Collector.watch`), for every tile of the workshop, installed or not, before
-anything reads it, its install and its clouds. When clouds were
-laid and the folder is the tile's own (`tile.own_folder`, not a command line's other output
-folder), the clouds Apply last laid are laid again, those whose images stand on the textures the
-build placed (R6); the list is left as it is, so one that does not stand on this build's textures
-comes back with the next build it stands on (other colours tried, then the first ones back). A
-build of the same settings placed the same textures: the same clouds come back, the same bytes. A
-build written in another folder (a command line's) lays nothing, and says so in the log. Nothing of the clouds fails a build: an error there is written in the log and the
-build goes on.
+anything reads it, its install and its clouds. When clouds were laid and the folder is the tile's
+own (`tile.own_folder`, not a command line's other output folder), the clouds Apply last laid are
+laid again, those whose images stand on the textures the build placed (R6); the list is left as it
+is, so one that does not stand on this build's textures comes back with the next build it stands on
+(other colours tried, then the first ones back). A build of the same settings placed the same
+textures: the same clouds come back, the same bytes. A build written in another folder (a command
+line's) lays nothing, and says so in the log. Nothing of the clouds fails a build: an error there is
+written in the log and the build goes on.
 
 ### 2.4 The list
 
 `$OSXP_HOME/clouds/<tile>.json`, format `osxp-cloud-list-3`: every cloud with its id (eight
 characters, never given again on that tile), its number, its kind (`found`, `drawn`), its outline,
 its area, what each source has under it (`screening`, the search's), its tick, the source the user
-chose (`chosen`, none for the best), and per source tried its check (its answer, fit, entry and
-how it was judged, `judged`); and the clouds Apply last laid in the tile (`laid`, entries in laying
-order). It keeps what the user did; what
-each cloud is follows from it (1.5). It knows every cloud the tile shows replaced: one it does not
-(its list put aside, or written on another computer) is added the first time the tile is looked at
-as Apply would have left it: ticked, its source and its images those the tile shows (its check),
-among the clouds last laid, which a build lays again (`cloudlist.knowing`). It is written whole on
-the disk (`fsync`). Only `clouds/cloudlist.py` writes it (`knowing`, `pick`, `merge_search`,
-`add_outline`, `remove_outline`, `record_screening`, `record_check`, `discard`, `erase`), and
-`laying.show` (Apply, Restore) and `knowing` its `laid`; the list's own rules are there: how a search's clouds join it (R3), what
-an outline takes over, what Discard brings back. A cloud's area is its outline's. The list is the
-draft: each change is written as it is made, one writer at a time per tile, and survives closing,
-quitting and every build. Its order is the laying order. Reading it changes nothing: a file that is
-not a list of this format, or whose clouds are not each whole (`cloudlist._cloud_problem`), is read
-as no list, and the next write puts it aside first (`.broken-<n>`, each kept); a passing read error
-is raised, never a draft dropped for it. Deleting the tile, in the app or with `osxp uninstall
---delete`, keeps its list and its previews: built again from the atelier, the tile gets its clouds
-back, as all the rest (its cloud tasks are ended first, `CloudEngine.let_go`).
+chose (`chosen`, none for the best), and per source tried its check (its answer, fit, entry and how
+it was judged, `judged`); and the clouds Apply last laid in the tile (`laid`, entries in laying
+order). It keeps what the user did; what each cloud is follows from it (1.5). It knows every cloud
+the tile shows replaced: one it does not (its list put aside, or written on another computer) is
+added the first time the tile is looked at as Apply would have left it: ticked, its source and its
+images those the tile shows (its check), among the clouds last laid, which a build lays again
+(`cloudlist.knowing`). It is written whole on the disk (`fsync`). Only `clouds/cloudlist.py` writes
+it (`knowing`, `pick`, `merge_search`, `add_outline`, `remove_outline`, `record_screening`,
+`record_check`, `discard`, `erase`), and `laying.show` (Apply, Restore) and `knowing` its `laid`;
+the list's own rules are there: how a search's clouds join it (R3), what an outline takes over, what
+Discard brings back. A cloud's area is its outline's. The list is the draft: each change is written
+as it is made, one writer at a time per tile, and survives closing, quitting and every build. Its
+order is the laying order. Reading it changes nothing: a file that is not a list of this format, or
+whose clouds are not each whole (`cloudlist._cloud_problem`), is read as no list, and the next write
+puts it aside first (`.broken-<n>`, each kept); a passing read error is raised, never a draft
+dropped for it. Deleting the tile, in the app or with `osxp uninstall --delete`, keeps its list and
+its previews: built again from the atelier, the tile gets its clouds back, as all the rest (its
+cloud tasks are ended first, `CloudEngine.let_go`).
 
 ### 2.5 Frozen parts
 
@@ -373,36 +370,35 @@ a source: it lays parts. A part found nowhere when a cloud is laid is said (`CLO
 
 `<data>/clouds/<tile>/`: the tile's pictures (JPEGs named by what each is made of: its build, its
 level, the way clouds are laid, the clouds of each texture drawn as X-Plane shows it) and the
-previews (PNG named likewise), each written whole on the disk before its name is given. Each is
-made once, where its pixels are made, and showing it is naming its file: a picture is drawn only
-when its file is not there yet (`CloudEngine.picture_file`; drawn at each start, two took a first
-reading 3.75 s on a user's tile of 189 clouds, 0.07 s since), a cloud's preview is made with its
-images, in their task (`find.check`; made by the readings, a dozen took one 6.5 s). The mode's
-answer never draws: a picture it lacks, or the one in memory a preview is made on (asked as the
-mode opens, its file there or not: asked by the first preview, the first tick after a start waited
-1.2 to 2.1 s), is drawn aside, one at a time (`CloudEngine.aside`), while the answer gives the last one of that view laid whole,
-After's with the previews it had, of the same build of the tile (`CloudEngine.ground`), and says
-the tile busy: After's picture alone showed the clouds again 1 to 2 s at the end of an Apply, and
-one of the build before showed the old tile after Build again. While something else holds the
-tile's folder (built, queued, filed, deleted), the last views stay as they were, and the mode
-opened again keeps its last answer until the next and the map's view (framed on the tile only
-when another tile is opened): the picture went and came back otherwise, and a view zoomed in on a
-cloud went back to the whole tile, its base map loaded again. A picture that fails is said in every
-answer (`failed`, kind `picture`, "The tile's picture:", before the tile's last task that failed),
-the others laid, the tile said busy for the page to read it again, and asked again 30 s after
-(`_AGAIN_S`), its error kept as words as a task's is (`tasks.error_view`): asked again at once,
-its error came back every second; never, a disk asleep for a moment kept the map away until the
-tile changed. While Apply, Restore or Forget writes the tile (`state.WRITES`), none is asked: the
-pictures of what the tile shows at their end are. Drawn in the answer, a page stood still 10 to
-37 s on a Windows server at each new state of a tile of 3 M triangles, the first search's progress
-included (B8). Every path
-of the cloud files is in `clouds/tile.py`, and every reading of them back (`listed`, `sidecars`,
-`kept_files`, `leftovers`, `served_path`). A list or a sidecar is read afresh at each reading but
-checked once while its file stays the same, its inode, size and time (`read_checked`): every one
-is written whole beside and moved in. Checked each time, those of 200 clouds took most of every
-reading of the tile and of a tick (B9). The sources' pieces are kept as a build's parent tiles
-(`ParentCache`, per source). The detector's classes of the tile's last search are kept in memory for
-an outline. Every one of them can be deleted: it is made again.
+previews (PNG named likewise), each written whole on the disk before its name is given. Each is made
+once, where its pixels are made, and showing it is naming its file: a picture is drawn only when its
+file is not there yet (`CloudEngine.picture_file`; drawn at each start, two took a first reading
+3.75 s on a user's tile, 0.07 s since, B6), a cloud's preview is made with its images, in their task
+(`find.check`; made by the readings, a dozen took one 6.5 s). The mode's answer never draws: a
+picture it lacks, or the one in memory a preview is made on (asked as the mode opens, its file there
+or not: asked by the first preview, the first tick after a start waited 1.2 to 2.1 s), is drawn
+aside, one at a time (`CloudEngine.aside`), while the answer gives the last one of that view laid
+whole, After's with the previews it had, of the same build of the tile (`CloudEngine.ground`), and
+says the tile busy: After's picture alone showed the clouds again 1 to 2 s at the end of an Apply,
+and one of the build before showed the old tile after Build again. While something else holds the
+tile's folder (built, queued, filed, deleted), the last views stay as they were, and the mode opened
+again keeps its last answer until the next and the map's view (framed on the tile only when another
+tile is opened): the picture went and came back otherwise, and a view zoomed in on a cloud went back
+to the whole tile, its base map loaded again. A picture that fails is said in every answer
+(`failed`, kind `picture`, "The tile's picture:", before the tile's last task that failed), the
+others laid, the tile said busy for the page to read it again, and asked again 30 s after
+(`_AGAIN_S`), its error kept as words as a task's is (`tasks.error_view`): asked again at once, its
+error came back every second; never, a disk asleep for a moment kept the map away until the tile
+changed. While Apply, Restore or Forget writes the tile (`state.WRITES`), none is asked: the
+pictures of what the tile shows at their end are. Drawn in the answer, a page stood still 10 to 37 s
+on a Windows server at each new state of a tile of 3 M triangles, the first search's progress
+included (B8). Every path of the cloud files is in `clouds/tile.py`, and every reading of them back
+(`listed`, `sidecars`, `kept_files`, `leftovers`, `served_path`). A list or a sidecar is read afresh
+at each reading but checked once while its file stays the same, its inode, size and time
+(`read_checked`): every one is written whole beside and moved in. Checked each time, those of 200
+clouds took most of every reading of the tile and of a tick (B9). The sources' pieces are kept as a
+build's parent tiles (`ParentCache`, per source). The detector's classes of the tile's last search
+are kept in memory for an outline. Every one of them can be deleted: it is made again.
 
 ## 3. The rules
 
@@ -421,27 +417,26 @@ unannounced (a campaign, 2026-11-07).
 ### R2. The map is the tile as X-Plane draws it
 
 The picture is drawn from the tile folder's DSF, triangle by triangle, each with the texture its
-terrain names, read at the level of its DDS that matches (`clouds/picture.py`). The DSF is read
-once while its file stays the same, and where each texture shows at the map's level is filled from
-its triangles once, kept with them (`picture._layout`): a picture drawn again reads only the
-textures (B8). Land shows the
-photo whole; the sea shows it at the texture's alpha (the sea mask) over X-Plane's water; inland
-water at that alpha times the lakes' share (`ratio_water`, the DSF's eighth plane, through the
-water transition ramp) over its water; X-Plane's water alone, no photo. For Before each texture
-is read as the build made it (`TileClouds.plain_path`), so Before is the tile with no cloud replaced;
-for After as X-Plane shows it, but those where a cloud they show goes or changes, read as built
-(R4).
+terrain names, read at the level of its DDS that matches (`clouds/picture.py`). The DSF is read once
+while its file stays the same, and where each texture shows at the map's level is filled from its
+triangles once, kept with them (`picture._layout`): a picture drawn again reads only the textures
+(B8). Land shows the photo whole; the sea shows it at the texture's alpha (the sea mask) over
+X-Plane's water; inland water at that alpha times the lakes' share (`ratio_water`, the DSF's eighth
+plane, through the water transition ramp) over its water; X-Plane's water alone, no photo. For
+Before each texture is read as the build made it (`TileClouds.plain_path`), so Before is the tile
+with no cloud replaced; for After as X-Plane shows it, but those where a cloud they show goes or
+changes, read as built (R4).
 
 ### R3. A cloud is one place
 
 A cloud keeps its id and its number for ever; neither is given again on the tile. A search merges
 into the list: a found cloud over one that is held or ticked is that one (it keeps its tick, its
 source, its outline); found clouds over each other are one, an unticked one found again taking the
-new outline and the new judging of its sources, its images and the source chosen on the old one
-gone (a choice made on an old search's fits stayed: Esri cloudy at 27 % over Esri clear at 86 %);
-an unticked found cloud the new search no longer finds leaves. An outline takes the place of the unticked found clouds it covers, half of
-one or more inside it (`cloudlist._covers`). A cloud leaves the list only when the tile does not
-hold it (`remove`, 1.5).
+new outline and the new judging of its sources, its images and the source chosen on the old one gone
+(a choice made on an old search's fits stayed: Esri cloudy at 27 % over Esri clear at 86 %); an
+unticked found cloud the new search no longer finds leaves. An outline takes the place of the
+unticked found clouds it covers, half of one or more inside it (`cloudlist._covers`). A cloud leaves
+the list only when the tile does not hold it (`remove`, 1.5).
 
 ### R4. The list is a draft; Apply lays what its question showed
 
@@ -457,11 +452,10 @@ no file says, the build's own with each cloud's preview (`FolderPlan.bare`, R5).
 lay is what the map shows: a cloud's preview holds its layer alone, laid as Apply lays it, so over
 the clouds a texture keeps it is what Apply makes from the build's own (B11). Each texture made
 again drawn as built, a tick near clouds applied drew the whole tile again, 0.8 s and the page
-waiting. The count is the rows':
-replaced (laid, not held), another source (laid with another than held), back as photographed (held,
-not laid), waiting (ticked, nothing new to lay). After Apply nothing is left to change; after
-Discard nothing ticked differs from what the tile shows. Only the textures under the clouds change,
-and in them only the blocks a cloud reaches.
+waiting. The count is the rows': replaced (laid, not held), another source (laid with another than
+held), back as photographed (held, not laid), waiting (ticked, nothing new to lay). After Apply
+nothing is left to change; after Discard nothing ticked differs from what the tile shows. Only the
+textures under the clouds change, and in them only the blocks a cloud reaches.
 
 ### R5. What you see is what is laid
 
@@ -476,38 +470,36 @@ shows one texture, so a cloud's textures are reduced as many at once as Apply ma
 
 ### R6. A cloud stands on the texture it was got on
 
-`tile.lays_not` is the one rule, for Apply, a build after and the mode alike: a cloud's images
-can be laid while they stand (`tile.stands_not`: the textures they reach are those they were got
-in, the same level, source and layout, and each of them, as the build made it, is the one they
-were got on, `plain`, its digest) and their frozen parts are on this computer (a data folder
-changed or emptied takes them away). A cloud the tile shows needs its parts only where a texture
-of it is made again. Another
-build with other colours, another photo, another level there makes another texture: the cloud is
-not laid, whole, on any texture; the others are. In the list it stays ticked and waits, its line
-saying why, for its images to be got again; one Apply then puts it back. A held cloud that no
+`tile.lays_not` is the one rule, for Apply, a build after and the mode alike: a cloud's images can
+be laid while they stand (`tile.stands_not`: the textures they reach are those they were got in, the
+same level, source and layout, and each of them, as the build made it, is the one they were got on,
+`plain`, its digest) and their frozen parts are on this computer (a data folder changed or emptied
+takes them away). A cloud the tile shows needs its parts only where a texture of it is made again.
+Another build with other colours, another photo, another level there makes another texture: the
+cloud is not laid, whole, on any texture; the others are. In the list it stays ticked and waits, its
+line saying why, for its images to be got again; one Apply then puts it back. A held cloud that no
 longer stands waits likewise: Apply, or the next build, takes it out.
 
 ### R7. The engine's tasks
 
 A search, getting a cloud's images, trying an outline's sources, Apply, Restore and Forget are the
 engine's tasks (`clouds/tasks.py`): each runs in a thread of its own, says its phase and progress,
-writes its result at its end, and ends whether a page is open or not. One search at a time for the app (a
-search holds gigabytes, B2), three reads of sources at once, Apply and Restore at once, never behind
-another tile's reads; one of each kind for a cloud, or for a tile: a second is refused, never the
-first stopped for it. The tasks keep the engine up as a build does: closing the window does not stop
-it while one runs, and stopping it ends them (`serve._busy`, `Tasks.busy`). **Stop** ends a task at
-its next step,
-at once while it waits for its turn; what a stopped fetch did not get is no answer of the source
-(`SourcePieces.fetch` raises `SYS_CANCELLED`); Stop does not end Apply or Restore (`state.WRITES`),
-which end what they began, and the engine offers Stop by each task's `actions`; **Stop all** stops
-every task of the tile Stop ends. A second task of the same tile, kind and cloud, or one what runs
-does not allow, is refused (`CLOUD_NOT_NOW`). While a task of the
-tile runs, no Apply; while Apply runs, nothing but a cloud's tick and source (`state.possible`),
-decided where a task starts too, under its lock (`Tasks.start`): two clicks at once never run both.
-What follows a task (an outline's tick and images) runs once it has ended, as the cloud's state then
+writes its result at its end, and ends whether a page is open or not. One search at a time for the
+app (a search holds gigabytes, B2), three reads of sources at once, Apply and Restore at once, never
+behind another tile's reads; one of each kind for a cloud, or for a tile: a second is refused, never
+the first stopped for it. The tasks keep the engine up as a build does: closing the window does not
+stop it while one runs, and stopping it ends them (`serve._busy`, `Tasks.busy`). **Stop** ends a
+task at its next step, at once while it waits for its turn; what a stopped fetch did not get is no
+answer of the source (`SourcePieces.fetch` raises `SYS_CANCELLED`); Stop does not end Apply or
+Restore (`state.WRITES`), which end what they began, and the engine offers Stop by each task's
+`actions`; **Stop all** stops every task of the tile Stop ends. A second task of the same tile, kind
+and cloud, or one what runs does not allow, is refused (`CLOUD_NOT_NOW`). While a task of the tile
+runs, no Apply; while Apply runs, nothing but a cloud's tick and source (`state.possible`), decided
+where a task starts too, under its lock (`Tasks.start`): two clicks at once never run both. What
+follows a task (an outline's tick and images) runs once it has ended, as the cloud's state then
 allows, never after a Stop or a failure (`Tasks.start(then=)`); the tile stays under way until it
-has run (`Tasks.busy`), so a page reading the tile meanwhile reads it again and sees the tick
-and its images.
+has run (`Tasks.busy`), so a page reading the tile meanwhile reads it again and sees the tick and
+its images.
 
 A tile's folder is never the tasks' and another's at once. While something else holds it (a build,
 from its job's start until it has finished the tile; its wait in the queue; a filing; a deletion),
@@ -544,11 +536,11 @@ sea X-Plane draws alone is no part of a cloud):
   (ArcGIS sells Bing's pictures over much of the world): never proposed;
 - **cloudy** or **clear**: the detector on its picture, clear when at most 10 % is cloud; the
   clouds' windows of a source read several to a detector's patch, side by side
-  (`model.classify_many`: a window mirrored out to a whole patch took as long as one, 114 s for
-  the sources under a user's 198 clouds, 3.3 s so). The detector sees a window's neighbours at its
-  edges instead of its mirror: 3 % of the verdicts, of clouds at the limit, came out the other
-  way, 4 best sources of 198, the fits never; a cloud's images are judged again, window by window,
-  before anything is laid (4.3);
+  (`model.classify_many`: a window mirrored out to a whole patch took as long as one, 94 s for the
+  sources under a user's 198 clouds, 3.4 s so, B6). The detector sees a window's neighbours at its
+  edges instead of its mirror: 3 % of the verdicts, of clouds at the limit, came out the other way,
+  4 best sources of 198, the fits never; a cloud's images are judged again, window by window, before
+  anything is laid (4.3);
 - its **fit**: how its picture correlates with the tile's on a band 400 m wide around the cloud
   (other clouds left out), and the colour match of that band. A source is compared with the
   photo itself (`Picture.photo`), not with what X-Plane shows of it over water: the photo is what
@@ -612,11 +604,11 @@ Apply is all or nothing (2.3), each new texture on the disk before it is put in 
 cut in the instant its textures are put in place can leave some of them new, each whole and saying
 what it shows: the rows say which clouds the tile shows whole, and Apply again ends it. A build
 stopped or failed lays nothing again; its next one does. While X-Plane runs and shows the tile,
-Apply, Restore and Forget are refused before anything is written, on every system
-(`CLOUD_XPLANE_RUNNING`: quit X-Plane and apply again); a texture another program holds on Windows
-cannot be replaced either (`XP_PACK_CONFLICT`), and nothing changes. A task or a picture cut by
-the data folder's disk going says that alone (`CFG_DATA_DIR_MISSING`, `tasks.error_view`), as a
-build does, and any other disk or store trouble as such (`errors.wrap`), not an internal error. A
+Apply, Restore and Forget are refused before anything is written when they would write a texture, on
+every system (`CLOUD_XPLANE_RUNNING`: quit X-Plane and apply again); a texture another program holds
+on Windows cannot be replaced either (`XP_PACK_CONFLICT`), and nothing changes. A task or a picture
+cut by the data folder's disk going says that alone (`CFG_DATA_DIR_MISSING`, `tasks.error_view`), as
+a build does, and any other disk or store trouble as such (`errors.wrap`), not an internal error. A
 texture as built missing from `clouds/` is taken from the build's store when it is there, one way
 for the map, a search, a cloud's images and Apply (`TileClouds.plain_path`), else said
 (`CLOUD_TEXTURE_LOST`): building the tile again brings its textures back as built, its clouds with
@@ -625,14 +617,12 @@ waits for its images (R6).
 
 ### 5.3 What else is refused
 
-`CLOUD_TILE_NOT_READY` (the tile is not ready, with its state), `CLOUD_NOT_NOW` (an action its
-view no longer allows, 1.5), `CLOUD_NOT_BUILT`,
-`CLOUD_XPLANE_RUNNING` (Apply or Restore while X-Plane shows the tile), `CLOUD_UNKNOWN` (no such
-cloud), `CLOUD_INVALID` (an action not of the route, a source not a name, an outline only is
-removed; an outline not of
-places on Earth, around no ground or off the tile, `cloudlist.outline_problem`),
-`CLOUD_DETECTOR_MISSING`, `CLOUD_TEXTURE_LOST` (5.2), `CLOUD_TEXTURE_UNREADABLE` (2.1). Their
-words: `docs/specs/errors.md`.
+`CLOUD_TILE_NOT_READY` (the tile is not ready, with its state), `CLOUD_NOT_NOW` (an action its view
+no longer allows, 1.5), `CLOUD_NOT_BUILT`, `CLOUD_XPLANE_RUNNING` (Apply, Restore or Forget writing
+a texture while X-Plane shows the tile), `CLOUD_UNKNOWN` (no such cloud), `CLOUD_INVALID` (an action
+not of the route, a source not a name, an outline only is removed; an outline not of places on
+Earth, around no ground or off the tile, `cloudlist.outline_problem`), `CLOUD_DETECTOR_MISSING`,
+`CLOUD_TEXTURE_LOST` (5.2), `CLOUD_TEXTURE_UNREADABLE` (2.1). Their words: `docs/specs/errors.md`.
 
 ## 6. The routes
 

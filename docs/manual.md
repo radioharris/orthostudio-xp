@@ -18,12 +18,12 @@ in every build after. What the map shows is what X-Plane shows.
 
 In the **Library**, on the line of a tile built by OrthoStudio XP, press the cloud in its **Clouds**
 column (just after the app starts, a spinner turns in the column's heading while it is read). Its
-badges count the tile's clouds: replaced, in blue above, and waiting for **Apply**, in yellow
-below; its tooltip says them in words. The Plan's map comes over the tile, drawn as X-Plane draws it, from the tile's own files:
-nothing is downloaded. Any tile built by OrthoStudio XP can have its clouds replaced, whatever
-version built it.
+badges count the tile's clouds: replaced, in blue above, and waiting for **Apply**, in amber below;
+its tooltip says them in words. The Plan's map comes over the tile, drawn as X-Plane draws it, from
+the tile's own files: nothing is downloaded. Any tile built by OrthoStudio XP can have its clouds
+replaced, whatever version built it.
 
-![The Library: the tile +24-102 with its cloud button, its badge "3" for the replaced clouds, and the bin in its Clouds column](images/manual/clouds-library.png)
+![The Library: the tile +24-102 with its cloud's badges, 3 replaced and 1 waiting for Apply, and the bin in its Clouds column](images/manual/clouds-library.png)
 
 ### 2. Look for the clouds
 
@@ -63,11 +63,11 @@ the same photo as the tile, which would bring the cloud back, or with no picture
   stops them. While two clouds' images or more are being fetched, **Stop all (3)** beside them,
   with the number of clouds at work, stops every one at once.
 - A spinner says that a cloud's images are being fetched, beside its name, and on the map a label
-  where its number is (the number hidden meanwhile), "Cloud 5: downloading the images"; a click on the spinner beside its name stops
-  it. When several clouds work at once (Tick all), only **Stop all (n)** turns, with how many are
-  left. Ticking a cloud or choosing its source makes it the current one, framed in the list. A
-  found cloud shows its number inside it; one too small to see at the map's zoom has a pin you can
-  click.
+  where its number is (the number hidden meanwhile), "Cloud 5: downloading the images"; a click on
+  the spinner beside its name stops it. When several clouds work at once (Tick all), only **Stop all
+  (n)** turns, with how many are left. Ticking a cloud or choosing its source makes it the current
+  one, framed in the list. A found cloud shows its number inside it; one too small to see at the
+  map's zoom has a pin you can click.
 - A source that did not answer or refused for now says so in the line, and stays the cloud's
   source: **Get its images** asks it again.
 
@@ -82,9 +82,11 @@ The banner over the map has two views:
 - **Before**: the tile with no cloud replaced.
 
 When what the tile shows changes, its picture is drawn again; meanwhile the map keeps the last
-one, and the sentence over the map says **Drawing the tile…** with a spinner (after Build again, the map waits for
-the new one). You can go on clicking. On a large tile, the first
-picture after the app starts can take half a minute.
+one, and the sentence over the map says **Drawing the tile…** with a spinner (after Build again,
+the map waits for the new one). You can go on clicking. On a large tile, a picture never drawn
+before, or After with ticked clouds just after the app starts, can take half a minute. If a
+picture cannot be drawn, the panel says why after "The tile's picture:", and the app tries again
+30 seconds later.
 
 ![After: three clouds ticked, Cloud 1 replaced by Esri Clarity's clear ground, "What X-Plane will show after Apply", Apply (3 changes)](images/manual/clouds-after.jpg)
 
@@ -97,8 +99,9 @@ picture after the app starts can take half a minute.
 Press **Outline a cloud** in the banner, then click around the cloud on the map, point by point.
 Double-click the last point, or press Enter, to close it; Escape gives up. The outline is tried
 under the sources at once, then takes the place of the unticked clouds found under it and comes in
-the list ticked with the best, named *Outline 1*, with a bin to take it out. Stop it while its
-sources are tried, and it goes: the clouds found under it stay.
+the list ticked with the best, named *Outline* with the next number (*Outline 20* after 19 clouds
+found), with a bin to take it out. Stop it while its sources are tried, and it goes: the clouds
+found under it stay.
 
 ### 6. Apply
 
@@ -107,7 +110,8 @@ and what waits (a cloud whose images are not in yet stays out). Apply does not b
 changes only the pixels under the clouds in its textures, in a few seconds, and the panel shows
 how far it is. The rest of the tile stays exactly as built. It is all or nothing: if a texture
 cannot be replaced, nothing changes and the app says why. Quit X-Plane first if it shows the tile:
-while it runs, Apply, Restore and Forget are refused and nothing changes.
+while it runs, Apply, Restore and Forget are refused whenever they would change a texture, and
+nothing changes.
 
 While the tile is being built, waits in the queue, or is being filed in the Library, its clouds
 are shown as they are, and nothing can be changed: they are back once that is over. A build of
@@ -119,9 +123,9 @@ others stop).
 ### 7. Afterwards
 
 The tile keeps its clouds replaced: every build of it after, from the Plan, the Library, Works or
-the command line, lays them again on the same photo as soon as it has finished the tile, before the
-other tiles of the same build. The Library says how many it has replaced; its tooltip also says how
-many changes wait for Apply.
+the command line, lays them again on the same photo as soon as it has finished the tile, without
+waiting for the build's other tiles. In the Library, the cloud's badges say how many it has
+replaced (above) and how many changes wait for Apply (below); its tooltip says both in words.
 
 A cloud is chosen on a photo. Build the tile from another source or at another level, change the
 colours of the tile or of a zone near the cloud, or let its source send new images, and the photo

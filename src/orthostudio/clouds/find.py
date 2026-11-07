@@ -480,7 +480,7 @@ def screen(
     sources.fetch(todo, cancel=cancel, progress=lambda d, t: phase("fetching", d, t))
     out: list[dict[str, Judgement]] = [{} for _ in clouds]
     # source by source, the clouds' windows read several to a detector's patch
-    # (``classify_many``: 114 s to 3.3 s under a user's 198 clouds); said as the patches are
+    # (``classify_many``: 94 s to 3.4 s under a user's 198 clouds, B6); said as the patches are
     # read, a Stop heard at each one (the line left on the download's 100 % for minutes, a
     # user, 2026-11-06)
     codes = sorted(sources.providers)

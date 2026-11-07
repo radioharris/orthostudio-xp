@@ -3,7 +3,7 @@
 The figures behind the rules of `docs/specs/clouds.md`, which cites them by their number. The Mac
 is the development machine (Apple silicon), the Shadow a Windows cloud computer. B1 to B3 were
 measured on the 1.4.0 test versions (rc), whose detector, search and outline this version keeps;
-B4 and B5 on this version, the clouds laid in the finished tile's folder.
+B4 to B12 on this version, the clouds laid in the finished tile's folder.
 
 ## B1. The quick and the finer readings (2026-11-04)
 
