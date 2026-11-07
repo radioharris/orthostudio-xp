@@ -8962,3 +8962,12 @@ def test_a_change_of_one_cloud_draws_its_outline_and_its_mark_alone_again() -> N
     assert code.count("clickCloud(cloudNow(c.id) || c)") == 2 and "clickCloud(c);" not in code
     assert "forgetShapes()" in body("  function close() {")
     assert "rerender: () => cs.tile && (forgetShapes(), render())" in code  # every word again
+
+
+def test_a_click_sends_its_request_before_the_panel_is_drawn() -> None:
+    # the panel of 200 clouds drawn first held a tick 0.12 to 0.16 s before its request left
+    # (a user, 2026-11-07): the spinner is drawn after, on the same frame
+    code = (UI / "clouds.js").read_text(encoding="utf-8")
+    body = code[code.index("  async function waiting(work) {") :]
+    body = body[: body.index("\n  }\n")]
+    assert body.index("const job = work();") < body.index("render();") < body.index("await job")
