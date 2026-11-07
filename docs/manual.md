@@ -56,7 +56,8 @@ the same photo as the tile, which would bring the cloud back, or with no picture
 - To take another source, choose it in the cloud's menu: it is ticked with it, and the map goes to
   the cloud to show its new images.
 - **Tick all** and **Untick all**, above the list, tick or untick every cloud at once. Whatever
-  you click, a spinner beside the panel's title turns until the app has answered. While
+  you click, a spinner turns on it, in the cloud's line or in the button, until the app has
+  answered; for a cloud, the same spinner goes on while its images are fetched. While
   clouds' images are being fetched, **Stop all (3)** beside them, with the number of clouds at
   work, stops every one at once.
 - A spinner says that a cloud's images are being fetched, beside its name, and on the map a label

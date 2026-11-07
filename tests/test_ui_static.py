@@ -8968,6 +8968,34 @@ def test_a_click_sends_its_request_before_the_panel_is_drawn() -> None:
     # the panel of 200 clouds drawn first held a tick 0.12 to 0.16 s before its request left
     # (a user, 2026-11-07): the spinner is drawn after, on the same frame
     code = (UI / "clouds.js").read_text(encoding="utf-8")
-    body = code[code.index("  async function waiting(work) {") :]
+    body = code[code.index("  async function waiting(at, work) {") :]
     body = body[: body.index("\n  }\n")]
     assert body.index("const job = work();") < body.index("render();") < body.index("await job")
+
+
+def test_a_click_spins_on_what_was_clicked_alone() -> None:
+    # a spinner beside the title and another in the cloud's row could not be told apart (a user,
+    # 2026-11-07): one spinner, on the cloud's row or the button clicked, until the answer
+    code = (UI / "clouds.js").read_text(encoding="utf-8")
+    styles = (UI / "styles.css").read_text(encoding="utf-8")
+    assert "clouds-sending" not in code + styles and "cs.sending" not in code
+    title = code[code.index("  function renderPanel() {") :]
+    title = title[: title.index("if (!a) {")]
+    assert "spinner" not in title  # nothing turns beside the title
+    # every click names what it was clicked on: the engine's answer awaited, its spinner there
+    assert re.findall(r"send\([^)]*\)", code) and all(
+        call.count(",") >= 3 for call in re.findall(r"send\(\"[A-Z]+\"[^)]*\)", code)
+    )
+    row = code[code.index("  function row(c) {") :]
+    assert "cs.pending.has(`cloud-${c.id}`)" in row[: row.index("\n  }\n")]
+    for button in (
+        "tick-all",
+        "untick-all",
+        "apply",
+        "discard",
+        "quick",
+        "fine",
+        "restore",
+        "forget",
+    ):
+        assert f'pendingAt("{button}")' in code, button

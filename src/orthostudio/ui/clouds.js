@@ -135,8 +135,9 @@ export function createCloudMode(ctx) {
     asked: 0, shown: 0,
     /** Why the tile could not be read, when no answer came yet: said in the panel. */
     error: null,
-    /** The clicks whose answer the engine has not given yet (:func:`waiting`). */
-    sending: 0,
+    /** What was clicked and waits for the engine's answer, by its key (``cloud-<id>`` for a
+     * cloud's, a button's own key), how many times (:func:`waiting`). */
+    pending: new Map(),
   };
   const labels = new Map(); // a cloud's number's place, by its outline
 
@@ -147,6 +148,8 @@ export function createCloudMode(ctx) {
    * banner has one; a cloud's row has its cloud's. */
   const key = (k) => ({ focusKey: `clouds-${k}` });
   const file = (name) => `/api/clouds/${encodeURIComponent(cs.tile)}/files/${name}`;
+  /** A spinner in the button ``k`` while its click waits for the engine (``pending``). */
+  const pendingAt = (k) => (cs.pending.has(k) ? h("span", { class: "spinner", "aria-hidden": "true" }) : null);
 
   async function open(tile) {
     const again = cs.tile === tile; // back from another screen: the mode was left open
@@ -212,9 +215,9 @@ export function createCloudMode(ctx) {
    * the cloud detector before it is downloaded (``CLOUD_DETECTOR_ASK``): the user is asked, and on
    * yes what the engine says goes with ``download`` (``then``: the clouds' images, once a tick is
    * kept), else the same action again. */
-  async function send(method, path, body) {
+  async function send(method, path, body, at) {
     try {
-      return await waiting(async () => {
+      return await waiting(at, async () => {
         const res = await api(method, `/api/clouds/${encodeURIComponent(cs.tile)}${path}`, body);
         await refresh();
         return res;
@@ -224,8 +227,8 @@ export function createCloudMode(ctx) {
       if (e?.code === "CLOUD_DETECTOR_ASK" && !body?.download) {
         await refresh(); // what was kept meanwhile (a tick) shown under the question
         if (await ask(t("clouds.tool_title"), [t("clouds.tool_text", { mb: e.context?.mb })], t("clouds.tool_go"))) {
-          if (e.context?.then) return send("POST", "/check", { ...e.context.then, download: true });
-          return send(method, path, { ...(body || {}), download: true });
+          if (e.context?.then) return send("POST", "/check", { ...e.context.then, download: true }, at);
+          return send(method, path, { ...(body || {}), download: true }, at);
         }
       } else {
         toast(errorMessage(err), "fail");
@@ -235,11 +238,12 @@ export function createCloudMode(ctx) {
     }
   }
 
-  /** A click's work, the engine's answer awaited: a spinner beside the title meanwhile, the one
-   * way every click says it was taken (Tick all on 189 clouds showed nothing for a second, a
-   * source already got nothing at all, a user, 2026-11-07). */
-  async function waiting(work) {
-    cs.sending += 1;
+  /** A click's work, the engine's answer awaited: a spinner on what was clicked (``at``) meanwhile,
+   * its cloud's row or its button, the one way every click says it was taken (Tick all on 189
+   * clouds showed nothing for a second, a source already got nothing at all; a spinner beside the
+   * title and another in the cloud's row could not be told apart, a user, 2026-11-07). */
+  async function waiting(at, work) {
+    cs.pending.set(at, (cs.pending.get(at) || 0) + 1);
     // the request sent first, the spinner drawn after: shown on the same frame, the panel of
     // 200 clouds drawn first held a tick 0.12 to 0.16 s before it left (a user, 2026-11-07)
     const job = work();
@@ -247,7 +251,9 @@ export function createCloudMode(ctx) {
     try {
       return await job;
     } finally {
-      cs.sending -= 1;
+      const left = cs.pending.get(at) - 1;
+      if (left > 0) cs.pending.set(at, left);
+      else cs.pending.delete(at);
       render();
     }
   }
@@ -471,7 +477,7 @@ export function createCloudMode(ctx) {
   /** Outline a cloud: drawn the way a zone is, on the Plan's map, its polygon sent as it ends. */
   function outline() {
     ctx.planMap.drawShape(async (polygon) => {
-      const res = await send("POST", "/outlines", { polygon });
+      const res = await send("POST", "/outlines", { polygon }, "outline");
       // the outline just drawn is the current cloud, its row framed and brought into view while
       // its sources are tried (a user, 2026-11-06: it was not found in the list)
       if (res?.id) {
@@ -491,8 +497,8 @@ export function createCloudMode(ctx) {
   }
 
   /** Stop the task ``id`` the engine sent. */
-  async function stopTask(id) {
-    await waiting(async () => {
+  async function stopTask(id, at) {
+    await waiting(at, async () => {
       await api("POST", `/api/clouds/tasks/${id}/stop`).catch((err) => toast(errorMessage(err), "fail"));
       await refresh();
     });
@@ -502,12 +508,12 @@ export function createCloudMode(ctx) {
    * is from one answer to the next, its handler with it, and acts on the cloud as it is. */
   function toggle(c) {
     const action = (cloudNow(c.id) || c).toggle;
-    return action ? send("POST", "/picks", { id: c.id, action }) : refresh();
+    return action ? send("POST", "/picks", { id: c.id, action }, `cloud-${c.id}`) : refresh();
   }
 
   function choose(c, source) {
     cs.reveal = c.id; // its row whole in view: what the new source says under it
-    return send("POST", "/picks", { id: c.id, action: "choose", source });
+    return send("POST", "/picks", { id: c.id, action: "choose", source }, `cloud-${c.id}`);
   }
 
   function ask(title, lines, go) {
@@ -527,7 +533,7 @@ export function createCloudMode(ctx) {
     // the question's words are the engine's, from what Apply would build
     const q = cs.answer?.texts?.[`${action}_question`];
     if (!q || !(await ask(lineWords(q.title), q.lines.map((w) => lineWords(w)), lineWords(q.go)))) return;
-    await send("POST", "/apply", { action });
+    await send("POST", "/apply", { action }, action);
   }
 
   // ------------------------------------------------------------------ the panel
@@ -547,7 +553,7 @@ export function createCloudMode(ctx) {
       h("div", { class: "map-banner-actions", dataset: key("banner-actions") },
         view("after", t("clouds.view_after")),
         view("before", t("clouds.view_before")),
-        h("button", { type: "button", class: "btn", dataset: key("outline"), disabled: drawing || !a?.allowed.includes("outline"), onclick: outline }, t("clouds.outline")),
+        h("button", { type: "button", class: "btn", dataset: key("outline"), disabled: drawing || !a?.allowed.includes("outline"), onclick: outline }, pendingAt("outline"), t("clouds.outline")),
         h("button", { type: "button", class: "btn", dataset: key("back"), onclick: close }, t("clouds.back"))),
     ));
   }
@@ -558,8 +564,7 @@ export function createCloudMode(ctx) {
     const a = cs.answer;
     // beside the title, the source the tile's photo was built from: the one its clouds replace
     const built = a?.provider ? h("span", { class: "clouds-built" }, t("clouds.built_from", { source: names()[a.provider] || a.provider })) : null;
-    const sending = cs.sending ? h("span", { class: "spinner clouds-sending", "aria-hidden": "true" }) : null;
-    const kids = [h("h2", { id: "clouds-title" }, t("clouds.title", { tile: cs.tile || "" }), built, sending)];
+    const kids = [h("h2", { id: "clouds-title" }, t("clouds.title", { tile: cs.tile || "" }), built)];
     if (!a) {
       kids.push(cs.error
         ? h("p", { class: "clouds-warning", role: "status" }, cs.error)
@@ -572,7 +577,7 @@ export function createCloudMode(ctx) {
       kids.push(h("div", { class: "clouds-progress", dataset: key(`task-${task.id}`) },
         h("span", { class: "spinner", "aria-hidden": "true" }),
         h("span", { role: "status" }, `${t(`clouds.task.${task.kind}`)} ${taskWords(task)}`),
-        task.actions.includes("stop") ? h("button", { type: "button", class: "btn", dataset: key(`stop-${task.id}`), onclick: () => stopTask(task.id) }, t("clouds.stop")) : null));
+        task.actions.includes("stop") ? h("button", { type: "button", class: "btn", dataset: key(`stop-${task.id}`), onclick: () => stopTask(task.id, `stop-${task.id}`) }, pendingAt(`stop-${task.id}`), t("clouds.stop")) : null));
     }
     // the picture of the view shown being made (the engine's word): a tick answered at once and
     // its picture came a second later, without a sign (a user, 2026-11-07)
@@ -592,10 +597,10 @@ export function createCloudMode(ctx) {
       // under Tick all (a user, 2026-11-07)
       kids.push(h("p", { class: "plan-step-size clouds-count-line", dataset: key("count") }, piecesWords(a.texts.count)));
       kids.push(h("div", { class: "clouds-count", dataset: key("count-buttons") },
-        h("button", { type: "button", class: "btn", dataset: key("tick-all"), disabled: !can.has("tick"), onclick: () => send("POST", "/picks", { action: "tick" }) }, t("clouds.all")),
-        h("button", { type: "button", class: "btn", dataset: key("untick-all"), disabled: !can.has("untick"), onclick: () => send("POST", "/picks", { action: "untick" }) }, t("clouds.none")),
+        h("button", { type: "button", class: "btn", dataset: key("tick-all"), disabled: !can.has("tick"), onclick: () => send("POST", "/picks", { action: "tick" }, "tick-all") }, pendingAt("tick-all"), t("clouds.all")),
+        h("button", { type: "button", class: "btn", dataset: key("untick-all"), disabled: !can.has("untick"), onclick: () => send("POST", "/picks", { action: "untick" }, "untick-all") }, pendingAt("untick-all"), t("clouds.none")),
         // while the clouds' tasks run, every one stopped at once (after Tick all, one by one)
-        can.has("stop") ? h("button", { type: "button", class: "btn clouds-stop-all", dataset: key("stop-all"), onclick: () => send("POST", "/stop") },
+        can.has("stop") ? h("button", { type: "button", class: "btn clouds-stop-all", dataset: key("stop-all"), onclick: () => send("POST", "/stop", undefined, "stop-all") },
           h("span", { class: "spinner", "aria-hidden": "true" }), lineWords(a.texts.stop_all)) : null));
     }
     const list = h("ul", { class: "zone-list clouds-list", dataset: key("list") });
@@ -608,15 +613,15 @@ export function createCloudMode(ctx) {
     // 2026-11-07)
     if (!first) {
       kids.push(h("div", { class: "actions actions-build", dataset: key("actions") },
-        h("button", { type: "button", class: "btn btn-primary", dataset: key("apply"), disabled: !can.has("apply"), onclick: () => apply("apply") }, lineWords(a.texts.apply)),
-        h("button", { type: "button", class: "btn", dataset: key("discard"), disabled: !can.has("discard"), onclick: () => send("POST", "/discard") }, t("clouds.discard"))));
+        h("button", { type: "button", class: "btn btn-primary", dataset: key("apply"), disabled: !can.has("apply"), onclick: () => apply("apply") }, pendingAt("apply"), lineWords(a.texts.apply)),
+        h("button", { type: "button", class: "btn", dataset: key("discard"), disabled: !can.has("discard"), onclick: () => send("POST", "/discard", undefined, "discard") }, pendingAt("discard"), t("clouds.discard"))));
     }
     kids.push(h("div", { class: "actions actions-build", dataset: key("searches") }, ...searchButtons(a, can, first)));
     if (first) kids.push(h("p", { class: "help", dataset: key("search-help") }, t("clouds.search_help")));
     if (a.texts.restore || can.has("forget")) {
       kids.push(h("div", { class: "actions actions-build", dataset: key("restore-row") },
-        a.texts.restore ? h("button", { type: "button", class: "btn", dataset: key("restore"), disabled: !can.has("restore"), onclick: () => apply("restore") }, lineWords(a.texts.restore)) : null,
-        h("button", { type: "button", class: "btn btn-danger", dataset: key("forget"), disabled: !can.has("forget"), onclick: () => apply("forget") }, lineWords(a.texts.forget))));
+        a.texts.restore ? h("button", { type: "button", class: "btn", dataset: key("restore"), disabled: !can.has("restore"), onclick: () => apply("restore") }, pendingAt("restore"), lineWords(a.texts.restore)) : null,
+        h("button", { type: "button", class: "btn btn-danger", dataset: key("forget"), disabled: !can.has("forget"), onclick: () => apply("forget") }, pendingAt("forget"), lineWords(a.texts.forget))));
     }
     const scroll = el.querySelector(".clouds-list")?.scrollTop || 0;
     morph(el, h("div", null, ...kids));
@@ -627,8 +632,8 @@ export function createCloudMode(ctx) {
    * finer to read (``fine``, the engine's: built at the search's level or coarser). */
   function searchButtons(a, can, primary) {
     const off = !can.has("find");
-    const quick = h("button", { type: "button", class: primary ? "btn btn-primary" : "btn", dataset: key("quick"), disabled: off, onclick: () => send("POST", "/find", { fine: false }) }, t("clouds.search_quick"));
-    const fine = h("button", { type: "button", class: "btn", dataset: key("fine"), disabled: off || !a.fine, onclick: () => send("POST", "/find", { fine: true }) }, t("clouds.search_fine"));
+    const quick = h("button", { type: "button", class: primary ? "btn btn-primary" : "btn", dataset: key("quick"), disabled: off, onclick: () => send("POST", "/find", { fine: false }, "quick") }, pendingAt("quick"), t("clouds.search_quick"));
+    const fine = h("button", { type: "button", class: "btn", dataset: key("fine"), disabled: off || !a.fine, onclick: () => send("POST", "/find", { fine: true }, "fine") }, pendingAt("fine"), t("clouds.search_fine"));
     // a disabled button shows no tooltip in every browser: the reason on what holds it
     return [quick, a.fine ? fine : h("span", { class: "clouds-fine-off", dataset: key("fine-off"), title: t("clouds.fine_none") }, fine)];
   }
@@ -674,17 +679,19 @@ export function createCloudMode(ctx) {
       render();
     };
     const buttons = [
-      can.has("check") ? h("button", { type: "button", class: "btn", dataset: key(`check-${c.id}`), "aria-label": `${t("clouds.get_images")}: ${label}`, onclick: () => send("POST", "/check", { id: c.id, again: true }) }, t("clouds.get_images")) : null,
+      can.has("check") ? h("button", { type: "button", class: "btn", dataset: key(`check-${c.id}`), "aria-label": `${t("clouds.get_images")}: ${label}`, onclick: () => send("POST", "/check", { id: c.id, again: true }, `cloud-${c.id}`) }, t("clouds.get_images")) : null,
     ].filter(Boolean);
     // its task, when it is the one cloud at work (``label``, the engine's): a spinner beside its
     // name, around a square that stops it, in place of its line and a Stop of its own (a line of
     // words and a row of its own, a user, 2026-11-07); several at work, Stop all says it
-    const busy = !c.label ? null : can.has("stop")
-      ? h("button", { type: "button", class: "cloud-stop", dataset: key(`stop-${c.id}`), title: t("clouds.stop"), "aria-label": `${t("clouds.stop")}: ${label}`, onclick: () => { const now = cloudNow(c.id)?.task; if (now) stopTask(now.id); } },
+    // and from a click on it until the engine answers (``pending``): one spinner, on the cloud
+    // clicked, from the click to the end of its task
+    const busy = c.label && can.has("stop")
+      ? h("button", { type: "button", class: "cloud-stop", dataset: key(`stop-${c.id}`), title: t("clouds.stop"), "aria-label": `${t("clouds.stop")}: ${label}`, onclick: () => { const now = cloudNow(c.id)?.task; if (now) stopTask(now.id, `cloud-${c.id}`); } },
         h("span", { class: "spinner", "aria-hidden": "true" }), icon("tpl-stop-icon"))
-      : h("span", { class: "spinner", "aria-hidden": "true" });
+      : c.label || cs.pending.has(`cloud-${c.id}`) ? h("span", { class: "spinner", "aria-hidden": "true" }) : null;
     const trash = can.has("remove")
-      ? h("button", { type: "button", class: "btn btn-icon btn-danger btn-trash", "aria-label": `${t("clouds.remove")}: ${label}`, title: t("clouds.remove"), onclick: () => send("DELETE", `/outlines/${c.id}`) },
+      ? h("button", { type: "button", class: "btn btn-icon btn-danger btn-trash", "aria-label": `${t("clouds.remove")}: ${label}`, title: t("clouds.remove"), onclick: () => send("DELETE", `/outlines/${c.id}`, undefined, `cloud-${c.id}`) },
         icon("tpl-bin-icon"))
       : null;
     const line = c.line && !task
