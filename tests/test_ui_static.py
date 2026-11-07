@@ -8931,3 +8931,13 @@ def test_the_cloud_mode_frames_the_map_on_its_tile_only_when_another_is_opened()
     assert "const again = cs.tile === tile;" in opening
     assert "if (!again) ctx.planMap.fitTile(tile);" in opening
     assert opening.count("fitTile(") == 1
+
+
+def test_the_cloud_mode_says_a_picture_of_the_view_shown_is_being_made() -> None:
+    # a tick answered at once and its picture came a second later, without a sign: the panel says
+    # it as it says a task, while the engine says the view's picture is drawn (a user, 2026-11-07)
+    code = (UI / "clouds.js").read_text(encoding="utf-8")
+    panel = code[code.index("  function renderPanel() {") :]
+    panel = panel[: panel.index("\n  }\n")]
+    assert 'a.views?.[cs.view] === "clouds.drawing"' in panel
+    assert 'key("drawing")' in panel and 't("clouds.drawing")' in panel
