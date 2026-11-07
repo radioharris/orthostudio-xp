@@ -42,6 +42,7 @@ from orthostudio.clouds.tile import (
     listed,
     part_path,
     previews_dir,
+    read_checked,
     ring_problem,
 )
 from orthostudio.errors import OsxpError
@@ -128,21 +129,31 @@ def _read(tile: TileRef) -> CloudList | None:
     it whole (:func:`_cloud_problem`; a passing read error is raised: a draft is never dropped for
     it)."""
     try:
-        doc = json.loads(list_path(tile).read_text(encoding="utf-8"))
-        if not isinstance(doc, dict) or doc.get("format") != FORMAT or doc.get("tile") != tile.name:
+        doc, whole = read_checked(list_path(tile), f"list {tile.name}", lambda d: _whole(d, tile))
+        if whole is None:
             return None
-        clouds = doc["clouds"]
-        if not isinstance(clouds, list) or any(_cloud_problem(c) is not None for c in clouds):
-            return None
-        search = doc.get("search")
-        if search is not None and not isinstance(search, dict):
-            return None
-        laid = [e for e in doc.get("laid") or () if entry_problem(e) is None]
-        return CloudList(tile.name, list(clouds), int(doc.get("number", 0)), search, laid)
+        laid = [e for e, good in zip(doc.get("laid") or (), whole, strict=True) if good]
+        return CloudList(
+            tile.name, list(doc["clouds"]), int(doc.get("number", 0)), doc.get("search"), laid
+        )
     except FileNotFoundError:
         return None
     except (ValueError, KeyError, TypeError):
         return None
+
+
+def _whole(doc: Any, tile: TileRef) -> tuple[bool, ...] | None:
+    """Whether the list ``doc`` of ``tile`` is one, every cloud of it whole: ``None`` when not,
+    else which of its clouds last laid are whole (the others are left out)."""
+    if not isinstance(doc, dict) or doc.get("format") != FORMAT or doc.get("tile") != tile.name:
+        return None
+    clouds = doc["clouds"]
+    if not isinstance(clouds, list) or any(_cloud_problem(c) is not None for c in clouds):
+        return None
+    search = doc.get("search")
+    if search is not None and not isinstance(search, dict):
+        return None
+    return tuple(entry_problem(e) is None for e in doc.get("laid") or ())
 
 
 def _cloud_problem(c: Any) -> str | None:

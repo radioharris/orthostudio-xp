@@ -137,11 +137,12 @@ def plan_folder(
                 keep.append(e)
                 break
             dropped.setdefault(e["id"], why)
+    said: dict[int, tuple[Mapping[str, Any], str]] = {}  # each cloud written once for all
     while True:
         work = []
         for name in shown.names:
             mine = reaching(keep, name)
-            want = clouds_digest(mine) if mine else None
+            want = clouds_digest(mine, said) if mine else None
             stamp = shown.stamps.get(name)
             if (stamp.clouds if stamp is not None else None) != want or (
                 stamp is not None and name not in shown.known

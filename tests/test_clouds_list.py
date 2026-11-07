@@ -260,3 +260,47 @@ def test_forgetting_a_tile_keeps_the_parts_another_tiles_list_stands_on(home: Pa
     cls.erase(TILE)
     assert not cls.list_path(TILE).exists()
     assert part_path(PART).exists() and not part_path(own).exists()
+
+
+def test_a_file_of_the_clouds_is_checked_once_while_it_stays_the_same(home: Path) -> None:
+    # checked at each reading, the sidecars and the list of a user's 200 clouds took 0.9 s of
+    # every reading of the tile (-02-050, 2026-11-07)
+    from orthostudio.clouds.tile import read_checked
+
+    path = home / "a.json"
+    path.write_text('{"n": 1}')
+    checked: list[Any] = []
+
+    def check(doc: Any) -> bool:
+        checked.append(doc)
+        return doc["n"] == 1
+
+    doc, ok = read_checked(path, "test", check)
+    doc["n"] = 5  # what is read is the reader's: the next reading reads the file again
+    again, ok_again = read_checked(path, "test", check)
+    assert ok and ok_again and again == {"n": 1} and len(checked) == 1
+    assert read_checked(path, "another check", check)[1] and len(checked) == 2
+    path.write_text('{"n": 22}')  # written again: checked again
+    assert read_checked(path, "test", check) == ({"n": 22}, False) and len(checked) == 3
+
+
+def test_a_list_is_checked_once_and_again_once_written(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from orthostudio.clouds.tile import list_path
+
+    with cls.update(TILE) as cl:
+        cl.add("found", A)
+    checked: list[Any] = []
+    problem = cls._cloud_problem
+    monkeypatch.setattr(cls, "_cloud_problem", lambda c: (checked.append(c), problem(c))[1])
+    first = cls.load(TILE)
+    assert len(first.clouds) == 1 and len(checked) == 1
+    assert cls.load(TILE).clouds == first.clouds and len(checked) == 1  # the same file
+    with cls.update(TILE) as cl:  # read (the same file), then written
+        cl.add("found", D)
+    assert len(cls.load(TILE).clouds) == 2 and len(checked) == 3  # the new file, its two clouds
+    doc = json.loads(list_path(TILE).read_text())
+    doc["clouds"][0]["rings"] = [[1, 2]]
+    list_path(TILE).write_text(json.dumps(doc))
+    assert cls.load(TILE).clouds == []  # a cloud not whole: no list, as before

@@ -115,3 +115,22 @@ level, ZL12, 14 Mpx:
 
 The answers still slow while a DSF is read share the processor with that reading (Python runs one
 thread at a time): once per tile after each start, the first search or picture reading it.
+
+## B9. A tile of 200 clouds (Mac, 2026-11-07)
+
+The owner's -02-050 (Bing ZL16, 142 textures): a quick search found 645 clouds and kept the 200
+largest, all ticked and applied, one of 1 670 km² over 49 textures; its list 4.9 MB, 32 000
+points of outlines, 124 sidecars. Measured on a copy (the tile's files linked, its list and
+pictures copied), in a process of its own, then through a server of its own:
+
+| What | Before | After |
+|---|---|---|
+| A reading of the mode (`GET /api/clouds/{tile}`) | 0.62 s (1.0 to 3.4 s in the owner's log, the page reading meanwhile) | 0.095 s, 0.10 s through the server |
+| A tick or an untick | 1.28 s (1.4 to 1.8 s in the owner's log) | 0.31 s |
+
+Where it went: each reading checked again the 124 sidecars and the list, every number of every
+outline (5 million calls a reading) and each sidecar's digest (0.78 s of 1.13 under a profiler),
+and the plan wrote the big cloud's outline once per texture it reaches to digest each texture's
+clouds (0.17 s). Now a file is checked once while it stays the same (`tile.read_checked`), and a
+plan writes each cloud once (`clouds_digest(..., said)`): the same digests. What a tick still
+takes is mostly writing the list of 4.9 MB and reading it back.

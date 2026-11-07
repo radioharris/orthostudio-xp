@@ -71,6 +71,7 @@ __all__ = [
     "preview_path",
     "previews_dir",
     "reaching",
+    "read_checked",
     "read_head",
     "read_tile",
     "ring_problem",
@@ -323,10 +324,52 @@ def same_laid(a: Mapping[str, Any] | None, b: Mapping[str, Any] | None) -> bool:
     return a is not None and b is not None and laid_fields(a) == laid_fields(b)
 
 
-def clouds_digest(entries: Sequence[Mapping[str, Any]]) -> str:
-    """The digest of the clouds a texture shows, in their order."""
-    laid = [laid_fields(e) for e in entries]
-    return digest_bytes(json.dumps(laid, sort_keys=True).encode())[:DIGEST_HEX]
+def clouds_digest(
+    entries: Sequence[Mapping[str, Any]],
+    said: dict[int, tuple[Mapping[str, Any], str]] | None = None,
+) -> str:
+    """The digest of the clouds a texture shows, in their order: of the JSON of their laid fields
+    (as ``json.dumps`` writes the list). Each cloud's written once in ``said`` (by the entry,
+    kept with it) when given, for the textures of one plan: a cloud over 49 textures was written
+    49 times, 0.17 s of each reading of a tile of 200 clouds (-02-050, 2026-11-07)."""
+    texts = []
+    for e in entries:
+        hit = said.get(id(e)) if said is not None else None
+        if hit is not None and hit[0] is e:
+            texts.append(hit[1])
+            continue
+        text = json.dumps(laid_fields(e), sort_keys=True)
+        if said is not None:
+            said[id(e)] = (e, text)
+        texts.append(text)
+    return digest_bytes(("[" + ", ".join(texts) + "]").encode())[:DIGEST_HEX]
+
+
+_CHECKED: dict[tuple[str, int, int, int, str], Any] = {}
+_CHECKED_LOCK = threading.Lock()
+
+
+def read_checked(path: Path, what: str, check: Callable[[Any], Any]) -> tuple[Any, Any]:
+    """The JSON of the file at ``path``, read afresh, and what ``check`` (named ``what``) says
+    of it, worked out once while the file stays the same: its inode, size and time (every file
+    of the clouds is written whole beside it and moved in, never written in place). Checked at
+    each reading, the 124 sidecars and the list of a user's 200 clouds, a million numbers of
+    outlines, took 0.9 s of every reading of the tile and four of a tick (-02-050, 2026-11-07).
+    ``FileNotFoundError``, any other ``OSError`` and ``ValueError`` are the reading's."""
+    with open(path, "rb") as f:
+        st = os.fstat(f.fileno())
+        data = f.read()
+    doc = json.loads(data)
+    key = (str(path), st.st_ino, st.st_size, st.st_mtime_ns, what)
+    with _CHECKED_LOCK:
+        if key in _CHECKED:
+            return doc, _CHECKED[key]
+    said = check(doc)
+    with _CHECKED_LOCK:
+        if len(_CHECKED) >= 4096:  # a few lists and sidecars a tile: never so many but in a test
+            _CHECKED.clear()
+        _CHECKED[key] = said
+    return doc, said
 
 
 # -- the folder ------------------------------------------------------------------------------
@@ -496,12 +539,14 @@ def _held(
     known = set()
     for name, stamp in stamps.items():
         try:
-            entries = json.loads(sidecar_path(folder, stamp.clouds).read_text(encoding="utf-8"))
+            entries, whole = read_checked(
+                sidecar_path(folder, stamp.clouds),
+                f"clouds {stamp.clouds}",
+                lambda doc, digest=stamp.clouds: _whole_sidecar(doc, digest),
+            )
         except (OSError, ValueError):
             continue  # its clouds unknown: none of them shown whole
-        if not isinstance(entries, list) or any(entry_problem(e) is not None for e in entries):
-            continue
-        if clouds_digest(entries) != stamp.clouds:
+        if not whole:
             continue
         known.add(name)
         for e in entries:
@@ -510,6 +555,13 @@ def _held(
                 where.add(name)
     held = tuple(e for e, where in seen.values() if where == set(e["parts"]))
     return held, frozenset(known)
+
+
+def _whole_sidecar(entries: Any, digest: str) -> bool:
+    """Whether a sidecar's ``entries`` are whole clouds whose digest is the stamp's ``digest``."""
+    if not isinstance(entries, list) or any(entry_problem(e) is not None for e in entries):
+        return False
+    return clouds_digest(entries) == digest
 
 
 # -- where a cloud stands --------------------------------------------------------------------
