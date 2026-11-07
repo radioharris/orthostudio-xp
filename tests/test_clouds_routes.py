@@ -980,6 +980,12 @@ def test_one_before_a_tile_and_two_tiles_are_kept_in_memory(ready: Path) -> None
     engine.drawn(TILE, shown, zl)
     assert [k[0] for k in engine._pictures] == ["+02+002", TILE.name]
     assert (TILE.name, "built before") not in engine._pictures
+    # the tile used last kept: a third one lets the other go, not the one opened first and opened
+    # again (a review, 2026-11-07)
+    engine._pictures = {(TILE.name, clouds_api._what(shown, zl, None)): old, ("+02+002", "b"): old}
+    assert engine.held(TILE, shown, zl, ask=False) is old
+    engine.drawn(TileRef.parse("+44+005"), shown, zl)
+    assert [k[0] for k in engine._pictures] == [TILE.name, "+44+005"]
 
 
 def test_the_tools_download_hears_stop(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -402,8 +402,8 @@ at each reading but checked once while its file stays the same, its inode, size 
 clouds took most of every reading of the tile and of a tick (B9). The sources' pieces are kept as a
 build's parent tiles (`ParentCache`, per source). The detector's classes of the tile's last search
 are kept in memory for an outline, and Before at the map's level, the one previews are made on, of
-two tiles at most, each tile's newest build's alone: each is 100 to 385 MB (a review, 2026-11-07).
-Every one of them can be deleted: it is made again.
+two tiles at most, each tile's newest build's alone, the one used least lately let go first: each is
+100 to 385 MB (a review, 2026-11-07). Every one of them can be deleted: it is made again.
 
 ## 3. The rules
 
