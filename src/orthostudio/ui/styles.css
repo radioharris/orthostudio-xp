@@ -692,11 +692,11 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .zone-item > .cloud-swatch.is-on { background: var(--accent); box-shadow: none; }
 .zone-item.cloud-item { cursor: pointer; } /* a click shows its cloud */
 .zone-item.cloud-item[aria-current="true"] { border-color: var(--fg-2); box-shadow: inset 0 0 0 1px var(--fg-2); background: color-mix(in srgb, var(--fg) 10%, var(--bg)); }
-/* Its buttons side by side, its words under them when the window is small: the row went wider
-   than a small window (a user, 2026-11-07). */
-.library-clouds > div { display: flex; flex-wrap: wrap; align-items: center; gap: 4px var(--gap); }
+/* Its buttons and its words on one line, as every cell of the row (its words under its buttons
+   made the row taller, a user, 2026-11-07); its forget a bin, not words, to fit a small window. */
+.library-clouds > div { display: flex; align-items: center; gap: var(--gap); white-space: nowrap; }
 .library-clouds .btn-trash { margin-left: 0; }
-.library-clouds .clouds-words { color: var(--fg-2); font-size: var(--fs-2); white-space: nowrap; }
+.library-clouds .clouds-words { color: var(--fg-2); font-size: var(--fs-2); }
 /* On the map, yellow what stays and the accent what is replaced, each line on a dark casing: it
    reads over snow and clouds as over dark ground. The yellow is the same in both themes: the
    ground under it is. An outline is drawn as a zone is (map.js drawShape), its points and line
