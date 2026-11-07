@@ -696,19 +696,21 @@ input[aria-invalid="true"] { border-color: var(--fail); }
    as the Library opened, and every other column moved, then again at each tile gaining or losing
    its words (a user, 2026-11-07). */
 .library-table .library-clouds { width: calc(2 * var(--control-h) + 128px); }
+/* Narrower only where the window lacks room for every column (a long name of one's own source at
+   the smallest window), never below its two icons, empty as full: its heading holds their room.
+   Its contents clipped there, the bin was cut (a user's question, 2026-11-07). */
+.library-table th.library-clouds::after { content: ""; display: block; width: calc(2 * var(--control-h) + 12px); }
 /* Its two icons and its words on one line, as every cell of the row, at the smallest window too
    (its words under its buttons made the row taller, a user, 2026-11-07); close as the row's
-   actions are. What it holds never widens it (no width of its own, the cell's whole): longer
-   words, another system's font, end in "…", whole in their tooltip. */
-.library-clouds > div {
-  display: flex; align-items: center; gap: 4px; white-space: nowrap;
-  width: 0; min-width: 100%; overflow: hidden;
-}
+   actions are. */
+.library-clouds > div { display: flex; align-items: center; gap: 4px; white-space: nowrap; }
 .library-clouds .btn-trash { margin-left: 0; }
 /* a little further from the bin than the two icons from each other (a user, 2026-11-07) */
+/* the room the icons leave, whatever their length: longer ones, another system's font, end in
+   "…", whole in their tooltip */
 .library-clouds .clouds-words {
   margin-left: 4px; color: var(--fg-2); font-size: var(--fs-2);
-  min-width: 0; overflow: hidden; text-overflow: ellipsis;
+  width: 0; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis;
 }
 /* On the map, yellow what stays and the accent what is replaced, each line on a dark casing: it
    reads over snow and clouds as over dark ground. The yellow is the same in both themes: the
