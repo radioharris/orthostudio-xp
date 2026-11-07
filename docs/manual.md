@@ -55,7 +55,8 @@ the same photo as the tile, which would bring the cloud back, or with no picture
   work, stops every one at once.
 - A spinner says that a cloud's images are being fetched, beside its name, and on the map a label
   at its centre, "Cloud 5: downloading the images"; a click on the spinner beside its name stops
-  it. Ticking a cloud or choosing its source makes it the current one, framed in the list. A found cloud shows its number inside it; one too small to see at the map's zoom has a pin
+  it. When several clouds work at once (Tick all), only **Stop all (n)** turns, with how many are
+  left. Ticking a cloud or choosing its source makes it the current one, framed in the list. A found cloud shows its number inside it; one too small to see at the map's zoom has a pin
   you can click.
 - A source that did not answer or refused for now says so in the line, and stays the cloud's
   source: **Get its images** asks it again.

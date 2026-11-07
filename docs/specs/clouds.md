@@ -52,9 +52,11 @@ The Plan's map, brought over the tile; the Plan's steps make way for the cloud p
   large enough shows its number inside it, a cloud too small to see at the map's zoom a pin that
   clicks as its outline. A click on an outline or a pin ticks or unticks it, except while a cloud is
   being outlined, and brings its row to the middle of the list. While a task of a cloud runs, not
-  while it waits for its turn, a label at its centre says it, a spinner with its name and where
-  its task is ("Cloud 5: downloading the images"; three at most, the tasks running at once): the
-  engine's `label`, as a found cloud's number is its `numbered`.
+  while it waits for its turn, and it is the one cloud at work, a label at its centre says it, a
+  spinner with its name and where its task is ("Cloud 5: downloading the images"); several at work
+  (Tick all), no cloud's label nor spinner, **Stop all (n)** says it with its own spinner (their
+  labels came and went all over the map): the engine's `label` (`View.rows`), as a found cloud's
+  number is its `numbered`.
 - **The banner over the map**: the sentence of the view ("What X-Plane shows.", "What X-Plane will
   show after Apply.", "The tile with no cloud replaced.", the three in one place so the banner
   keeps one size), then **After**, **Before**, **Outline a cloud**, **Back to the Plan**.
@@ -75,8 +77,9 @@ The Plan's map, brought over the tile; the Plan's steps make way for the cloud p
   run). A reading of the tile answered after a later one is left: the page shows the latest.
 - **A row**, laid out as the Plan's zones (a click on it shows its cloud, as its eye does; its
   checkbox and its name tick it; a tick, a source chosen, Get its images or Stop make it the current
-  cloud, and a source chosen shows it too, the map over its new images): its tick and name, while a task of it runs a spinner beside its
-  name around a square that stops it, its area, an eye (**Show**: the map over it), a trash
+  cloud, and a source chosen shows it too, the map over its new images): its tick and name, while a
+  task of it runs and it is the one cloud at work a spinner beside its name around a square that
+  stops it (`label`), its area, an eye (**Show**: the map over it), a trash
   for an outline the tile does not hold; the menu of its sources, each with what it has there and
   its fit ("Esri World Imagery · clear · fit 93 %"), both from its newest reading (`state.reading`:
   its images got, judged as they are now, else the search's; what a piece said, no answer, a

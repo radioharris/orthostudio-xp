@@ -673,6 +673,7 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .cloud-stop svg { width: 8px; height: 8px; }
 .cloud-stop:hover, .cloud-stop:focus-visible { color: var(--fail); }
 .cloud-show { display: inline-flex; align-items: center; justify-content: center; }
+.clouds-stop-all { display: inline-flex; align-items: center; gap: 6px; } /* its spinner: at work */
 .cloud-show svg { width: 16px; height: 16px; }
 /* A cloud's line clear of its sources' list above it. */
 .cloud-item .zone-main > .cloud-line { margin-top: 4px; }

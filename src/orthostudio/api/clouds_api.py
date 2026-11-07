@@ -334,7 +334,7 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
             "picture": picture,
             "after": after,
             "fine": v.fine,
-            "clouds": [s.page(previews) for s in v.clouds],
+            "clouds": v.rows(previews),
             "tasks": v.tasks,
             "failed": failed.view() if failed else None,
         }

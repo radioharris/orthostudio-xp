@@ -416,3 +416,8 @@ def test_stop_all_says_how_many_clouds_work(folder: Path) -> None:
     v = _view(cl, shown, tasks)
     assert v.allows("stop") and v.counts["working"] == 2
     assert v.texts()["stop_all"] == {"key": "clouds.stop_all", "params": {"n": 2}}
+    # several at work: no cloud's spinner or label, Stop all says it (a user, 2026-11-07); one
+    # at work: its own
+    assert not any(r["label"] for r in v.rows())
+    one = _view(cl, shown, tasks[1:])
+    assert [r["id"] for r in one.rows() if r["label"]] == ["cloud002"]

@@ -541,7 +541,8 @@ export function createCloudMode(ctx) {
         h("button", { type: "button", class: "btn", dataset: key("tick-all"), disabled: !can.has("tick"), onclick: () => send("POST", "/picks", { action: "tick" }) }, t("clouds.all")),
         h("button", { type: "button", class: "btn", dataset: key("untick-all"), disabled: !can.has("untick"), onclick: () => send("POST", "/picks", { action: "untick" }) }, t("clouds.none")),
         // while the clouds' tasks run, every one stopped at once (after Tick all, one by one)
-        can.has("stop") ? h("button", { type: "button", class: "btn", dataset: key("stop-all"), onclick: () => send("POST", "/stop") }, lineWords(a.texts.stop_all)) : null));
+        can.has("stop") ? h("button", { type: "button", class: "btn clouds-stop-all", dataset: key("stop-all"), onclick: () => send("POST", "/stop") },
+          h("span", { class: "spinner", "aria-hidden": "true" }), lineWords(a.texts.stop_all)) : null));
     }
     const list = h("ul", { class: "zone-list clouds-list", dataset: key("list") });
     for (const c of a.clouds) list.append(row(c));
@@ -620,9 +621,10 @@ export function createCloudMode(ctx) {
     const buttons = [
       can.has("check") ? h("button", { type: "button", class: "btn", dataset: key(`check-${c.id}`), "aria-label": `${t("clouds.get_images")}: ${label}`, onclick: () => send("POST", "/check", { id: c.id, again: true }) }, t("clouds.get_images")) : null,
     ].filter(Boolean);
-    // a task of it: a spinner beside its name, around a square that stops it, in place of its
-    // line and a Stop of its own (a line of words and a row of its own, a user, 2026-11-07)
-    const busy = !task ? null : can.has("stop")
+    // its task, when it is the one cloud at work (``label``, the engine's): a spinner beside its
+    // name, around a square that stops it, in place of its line and a Stop of its own (a line of
+    // words and a row of its own, a user, 2026-11-07); several at work, Stop all says it
+    const busy = !c.label ? null : can.has("stop")
       ? h("button", { type: "button", class: "cloud-stop", dataset: key(`stop-${c.id}`), title: t("clouds.stop"), "aria-label": `${t("clouds.stop")}: ${label}`, onclick: () => { const now = cloudNow(c.id)?.task; if (now) stopTask(now.id); } },
         h("span", { class: "spinner", "aria-hidden": "true" }), icon("tpl-stop-icon"))
       : h("span", { class: "spinner", "aria-hidden": "true" });

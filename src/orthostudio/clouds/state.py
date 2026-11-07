@@ -236,15 +236,16 @@ class CloudState:
         """What a click on its outline does."""
         return next((a for a in ("tick", "untick") if a in self.actions), None)
 
-    def page(self, previews: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    def page(self, previews: Mapping[str, Any] | None = None, alone: bool = True) -> dict[str, Any]:
         """Its row as the page shows it, with its preview in ``previews`` when After needs one;
-        on the map, a found cloud's number (``numbered``), and at its centre while a task of it
-        runs, not while it waits its turn, a label with a spinner, its name and where its task is
-        (``label``, its line: "Cloud 5: downloading the images"; a few at once, those running:
-        Tick all's labels of every cloud hid the map, a user, 2026-11-06 and 07)."""
+        on the map, a found cloud's number (``numbered``); and while a task of it runs and it is
+        the one cloud at work (``alone``), a spinner beside its name that stops it and a label
+        at its centre, its name and where its task is (``label``: "Cloud 5: downloading the
+        images"). Several at work (Tick all), Stop all says it alone, by their number: their
+        labels and spinners came and went all over the map and the list (a user, 2026-11-07)."""
         c = self.cloud
         task = self.task
-        label = task is not None and task.get("phase") != "waiting"
+        label = alone and task is not None and task.get("phase") != "waiting"
         return {
             "id": c["id"],
             "kind": c["kind"],
@@ -421,6 +422,12 @@ class View:
     fine: bool = False
     """Whether a fine search may be asked: the tile's textures are finer than the map's level,
     which the quick search reads (``picture.fine_level``)."""
+
+    def rows(self, previews: Mapping[str, Any] | None = None) -> list[dict[str, Any]]:
+        """Every cloud's row as the page shows it (:meth:`CloudState.page`), a cloud's work shown
+        by its own when it is the one at work."""
+        alone = self.counts["working"] == 1
+        return [s.page(previews, alone) for s in self.clouds]
 
     def cloud(self, cid: str) -> CloudState:
         for s in self.clouds:
