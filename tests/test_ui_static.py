@@ -9005,3 +9005,15 @@ def test_a_click_spins_on_what_was_clicked_alone() -> None:
         "forget",
     ):
         assert f'pendingAt("{button}")' in code, button
+
+
+def test_the_tile_is_read_again_sooner_for_a_few_seconds_after_a_click() -> None:
+    # a tick's images were made 0.3 s after it and shown 0.5 s later, at the next reading (a
+    # user's tile, 2026-11-07): every 0.2 s for 3 s after a click, then every 0.5 s
+    code = (UI / "clouds.js").read_text(encoding="utf-8")
+    assert "const SOON_MS = 200;" in code and "const SOON_FOR_MS = 3000;" in code
+    assert (
+        "cs.soonUntil = performance.now() + SOON_FOR_MS;"
+        in code[code.index("  async function waiting(") :][:400]
+    )
+    assert "setTimeout(refresh, performance.now() < cs.soonUntil ? SOON_MS : POLL_MS)" in code

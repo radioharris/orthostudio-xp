@@ -220,7 +220,9 @@ or a source is
 kept either way, the cloud waiting for its images on no; an outline is kept once the answer is yes,
 its sources being tried by the detector. The answer says when something is under way (`busy`: a task
 of the tile or what follows one, `Tasks.busy`, a build of it, or a picture drawn aside), for the page
-to read it again, and
+to read it again, every 0.5 s, every 0.2 s for the first 3 s after a click (a tick's images made
+0.3 s after it were shown 0.5 s later, at the next reading: now 0.1 to 0.3 s, a tick done on screen
+in 0.6 s rather than 1.0 s, B12), and
 every word the page shows of the
 tile, a key and its parameters: the tile's line (its state's, else that a search found none or none
 was made), each row's line with its tone, the count, Apply's button and the questions of Apply and
