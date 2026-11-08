@@ -403,6 +403,7 @@ def test_a_cloud_whose_images_are_gone_is_left_out_and_the_others_laid(folder: P
     assert _stamp(_texture(folder, EAST)) is None
 
 
+@pytest.mark.skipif(os.name == "nt" or os.geteuid() == 0, reason="needs POSIX permissions")
 def test_a_texture_that_cannot_be_read_is_never_taken_for_the_builds(folder: Path) -> None:
     texture = _texture(folder, WEST)
     texture.chmod(0)
