@@ -626,7 +626,10 @@ def back_where_it_was(native: Any, store: Path, *, system: str = sys.platform) -
     the user works on, and was moved and resized at every start (TinkerNZ, 2026-10-03; a user:
     "surtout sous Windows"). macOS keeps a window's frame by name in the app's defaults; Windows'
     is read from :data:`PLACE_FILE`. A place whose title bar lies on no screen any more, the
-    screen it was on unplugged, is left to the system, as on a first start.
+    screen it was on unplugged, is centred; on Windows a first start too, in the middle of the
+    screen the pointer is on (:func:`centred`): left to Windows, it opened 49 to 343 px down and
+    right of the corner, Windows' own cascade though pywebview asks for the middle, past the
+    right edge and under the taskbar of a screen it nearly filled (a Shadow, 2026-11-08).
     """
     if system == "darwin":
         import AppKit
@@ -644,23 +647,34 @@ def back_where_it_was(native: Any, store: Path, *, system: str = sys.platform) -
         # from now on AppKit keeps the frame under that name as the window moves or resizes
         native.setFrameAutosaveName_(PLACE_NAME)
     elif system == "win32":
-        place = saved_place(store)
-        if place is None:
-            return
         from System.Drawing import Rectangle
-        from System.Windows.Forms import FormStartPosition, FormWindowState, Screen
+        from System.Windows.Forms import Cursor, FormStartPosition, FormWindowState, Screen
 
         screens = []
         for screen in Screen.AllScreens:
             area = screen.WorkingArea
             screens.append((area.X, area.Y, area.Width, area.Height))
-        x, y, width, height = place["x"], place["y"], place["width"], place["height"]
-        if not grabbable((x, y, width, TITLE_BAR), screens):
-            return
+        place = saved_place(store)
+        if place is None or not grabbable(
+            (place["x"], place["y"], place["width"], TITLE_BAR), screens
+        ):
+            area = Screen.FromPoint(Cursor.Position).WorkingArea
+            x, y, width, height = centred(
+                (area.X, area.Y, area.Width, area.Height), (native.Width, native.Height)
+            )
+            place = {"x": x, "y": y, "width": width, "height": height, "maximized": False}
         native.StartPosition = FormStartPosition.Manual
-        native.Bounds = Rectangle(x, y, width, height)
+        native.Bounds = Rectangle(place["x"], place["y"], place["width"], place["height"])
         if place["maximized"]:
             native.WindowState = FormWindowState.Maximized
+
+
+def centred(area: tuple[int, int, int, int], size: tuple[int, int]) -> tuple[int, int, int, int]:
+    """A window of ``size`` (width, height) in the middle of ``area`` (x, y, width, height, a
+    screen's working area), brought down to it where it is larger: (x, y, width, height)."""
+    x, y, room_w, room_h = area
+    width, height = min(size[0], room_w), min(size[1], room_h)
+    return x + (room_w - width) // 2, y + (room_h - height) // 2, width, height
 
 
 def keep_where_it_is(native: Any, store: Path, *, system: str = sys.platform) -> None:

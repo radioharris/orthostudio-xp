@@ -731,7 +731,9 @@ input[aria-invalid="true"] { border-color: var(--fail); }
    words as from the actions: Built by's cell keeps 8 px on its right, the actions' 4 on their left
    (a user, 2026-11-07) */
 .library-table td.library-clouds { padding: 6px 15px 6px 11px; }
-.library-clouds > div { display: flex; align-items: center; justify-content: center; gap: 12px; }
+/* two places, the cloud's and its bin's, on every row: a cloud alone stood in the middle, where
+   one with its bin stood to its left, the clouds of a list out of line (a campaign, 2026-11-08) */
+.library-clouds > div { display: grid; grid-template-columns: repeat(2, var(--control-h)); justify-content: center; align-items: center; gap: 12px; }
 /* Its counts at the cloud's corners, within the row: replaced in the accent, the colour of what is
    replaced in the cloud mode, above; waiting for Apply in the warning's, below. */
 .library-clouds .clouds-open { position: relative; }

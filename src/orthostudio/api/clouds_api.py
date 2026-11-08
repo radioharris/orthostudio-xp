@@ -85,12 +85,16 @@ class _PictureError(Exception):
 
 @dataclass(frozen=True)
 class CloudHooks:
-    """What the routes ask of the engine: X-Plane's Custom Scenery (``None`` without one), and
-    the tiles whose folder something else holds, each with the state that says it
-    (``state.TILE_STATES``: built, waiting in the queue, being filed, being deleted)."""
+    """What the routes ask of the engine: X-Plane's Custom Scenery (``None`` without one), the
+    tiles whose folder something else holds, each with the state that says it
+    (``state.TILE_STATES``: built, waiting in the queue, being filed, being deleted), and what the
+    Library knows of a tile's folder read again once Apply, Restore or Forget changed its files
+    (``changed``: its size; the Library showed the one before until it was read twice, a campaign,
+    2026-11-08)."""
 
     custom_scenery: Callable[[], Path | None]
     taken: Callable[[], Mapping[str, str]]
+    changed: Callable[[Path], None]
 
 
 class CloudEngine:
@@ -379,6 +383,15 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
     engine = CloudEngine(hooks)
     router = APIRouter()
 
+    def ground(task: Task, tile: TileRef, shown: TileClouds) -> Picture:
+        """What a search, a cloud's images and an outline's sources begin with: the detector there
+        (:func:`_tools`), then the tile as built at the map's level, said while it is drawn or
+        waited for: a search said "waiting for its turn" the 20 s its tile was drawn as the mode
+        opened, nothing else searching (a Windows server, a campaign, 2026-11-08)."""
+        _tools(task)
+        task.say("drawing")
+        return engine.drawn(tile, shown, map_level(tile, shown.textures))[1]
+
     def look(tile: TileRef) -> tuple[Path, TileClouds | None, state.View]:
         """The tile's folder, what it shows (``None`` in a state its folder is not read in) and
         its view, of its list knowing what the folder shows (``cloudlist.knowing``)."""
@@ -579,8 +592,7 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
         assert code is not None  # a cloud is offered images of its source only
 
         def run(task: Task) -> None:
-            _tools(task)
-            _what, p = engine.drawn(tile, shown, map_level(tile, shown.textures))
+            p = ground(task, tile, shown)
             registry = load_registry()
             if code not in registry:
                 raise OsxpError(
@@ -620,9 +632,8 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
         _detector_said(body)  # the search runs it
 
         def run(task: Task) -> None:
-            _tools(task)
-            zl = map_level(tile, shown.textures)
-            _what, p = engine.drawn(tile, shown, zl)
+            p = ground(task, tile, shown)
+            zl = p.zl
             # the quick search reads the map's level; the fine one a level finer too, where the
             # textures are that fine: it finds the small clouds, in about twice the time (B1)
             finer = fine_level(zl, shown.textures) if asked_fine else None
@@ -703,10 +714,9 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
                 cls.remove_outline(cl, cid)
 
         def run(task: Task) -> None:
-            _tools(task)
             # drawn here, not in the answer: a picture to draw again held the click 10 s on a
             # Windows server (+52+004, 2026-11-07)
-            _what, p = engine.drawn(tile, shown, map_level(tile, shown.textures))
+            p = ground(task, tile, shown)
             classes = engine.classes(tile, shown)
             if classes is None:
                 classes = np.zeros(p.rgb.shape[:2], np.uint8)
@@ -780,6 +790,7 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
                             cls.pick(cl, cid, "untick")
             if action == "forget":  # its folder as the build made it: the rest of it forgotten
                 cls.erase(tile)
+            hooks.changed(folder)
 
         task = engine.tasks.start(tile.name, action, run)
         return {"task": task.view()}

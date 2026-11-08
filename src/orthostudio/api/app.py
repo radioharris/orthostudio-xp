@@ -2047,6 +2047,7 @@ def create_app(
                 custom_scenery_dir(xp) if (xp := xplane_dir()) is not None else None
             ),
             taken=taken_now,
+            changed=lambda folder: _measure_again([folder]),
         )
     )
     manager.make_way = lambda tiles: clouds.tasks.end(set(tiles))

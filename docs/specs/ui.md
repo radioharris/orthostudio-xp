@@ -491,7 +491,10 @@ adds nothing. These are approximations; step 3 gives the engine's numbers.
     up stops a build cleanly (`SYS_DISK_FULL`, nothing done is lost); it refused builds of tiles
     whose images were all in the cache, and a user asked "we block a user on an uncertainty?"
     (2026-10-16). The engine's `SYS_DISK_FULL` warning gets no second card under the line;
-  - *Warnings* — one card per code with message and remedy (the page carries the message
+  - *Warnings* — one card per code with message and remedy, without the code and severity a
+    failure's card shows above them (`errorCard(..., {advice})`: advice before a build has
+    nothing to report, and "CLOUD_PUT_BACK", "INFO" read as a failure, a campaign, 2026-11-08;
+    the code stays for one the page has no words for) (the page carries the message
     and remedy of every warning code it knows in `i18n.js`, `ZONE_INVALID`, `ZONE_TOO_MANY`
     and `ZONE_CONFLICT` included, but a `ZONE_*` card uses the engine's own message and remedy
     when it has them; unknown codes show the code and whatever `message`/`remedy` strings the
@@ -971,7 +974,7 @@ an osxp build of the same tile are two rows.
 | In X-Plane | *yes* / *no* pill (`installed`) |
 | Size | `size_bytes` (`fmtBytes`), an em dash when `null`. The header's tooltip (dotted underline) says that, for a tile built by OrthoStudio XP, most of it is the very files OrthoStudio XP's cache keeps, counted in this column and not again under Store in the status bar (`cacheBytes`, since API level 33) |
 | Built by | *OrthoStudio XP* / *Ortho4XP*; for the first, a click unfolds what the tile was built with (`builtLines`), its *Relief* line naming the file of one's own the tile stands on or saying why it was not used (`reliefSentence`, `relief_own`), the whole path in the line's tooltip; for viewfinderpanoramas at 30 m it says *30 m*, or *90 m* where the site has no 30 m for the square (`relief_arcsec`, a relief made from 2026-10-30 on; one made before says *viewfinderpanoramas* alone) |
-| Clouds | on a tile OrthoStudio XP built (`GET /api/clouds`): the cloud icon, which opens the cloud mode, its counts as badges at its left corners (replaced above, waiting for Apply below, both in words in its tooltip), and the bin that forgets its clouds (asked on the spot) while it has any; one line at the smallest window; a sixth of the table like the five sortable columns, never narrower than its two icons (`clouds.md` 1.2) |
+| Clouds | on a tile OrthoStudio XP built (`GET /api/clouds`): the cloud icon, which opens the cloud mode, its counts as badges at its left corners (replaced above, waiting for Apply below, both in words in its tooltip), and the bin that forgets its clouds (asked on the spot) while it has any, each in a place of its own so the clouds of every row line up; one line at the smallest window; a sixth of the table like the five sortable columns, never narrower than its two icons (`clouds.md` 1.2) |
 | (actions) | three columns, so that the buttons line up from row to row: the folder icon (2.5, *The file manager*), the X-Plane button, then *Delete…* or *Remove from the list* |
 
 **Actions** (`{name}` is the row's `name`, else the last component of its path; every change

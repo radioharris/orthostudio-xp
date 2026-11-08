@@ -489,8 +489,11 @@ longer stands waits likewise: Apply, or the next build, takes it out.
 
 A search, getting a cloud's images, trying an outline's sources, Apply, Restore and Forget are the
 engine's tasks (`clouds/tasks.py`): each runs in a thread of its own, says its phase and progress,
-writes its result at its end, and ends whether a page is open or not. One search at a time for the
-app (a search holds gigabytes, B2), three reads of sources at once, Apply and Restore at once, never
+writes its result at its end, and ends whether a page is open or not. A search, a cloud's images and
+an outline's sources begin alike (`clouds_router.ground`): the detector there, then the tile as
+built at the map's level, said `drawing` while it is drawn or waited for, not left on "waiting for
+its turn" (the 20 s a Windows server drew a tile as its mode opened, a campaign, 2026-11-08). One
+search at a time for the app (a search holds gigabytes, B2), three reads of sources at once, Apply and Restore at once, never
 behind another tile's reads; one of each kind for a cloud, or for a tile: a second is refused, never
 the first stopped for it. The tasks keep the engine up as a build does: closing the window does not
 stop it while one runs, and stopping it ends them (`serve._busy`, `Tasks.busy`). **Stop** ends a
@@ -512,7 +515,10 @@ no task of it starts (`Tasks.start`, which asks under the very lock it lists the
 what takes it ends those under way first (`Tasks.end`: stopped, Apply and Restore waited for): a job
 at its start (`JobManager.make_way`), a filing before it moves the folder, Delete before the folder
 goes, Quit for every tile. A task that fails keeps its error, which the tile's answer gives
-(`failed`) until its next task, for the page to say it. A result for a cloud that left the list
+(`failed`) until its next task, for the page to say it; one cut by the data folder's disk gone
+(`CFG_DATA_DIR_MISSING`) until the disk is back too (`Tasks.failed`). Apply, Restore and Forget
+have the Library read the folder again once its files changed (`CloudHooks.changed`): its size
+stayed the one before until the Library was read twice. A result for a cloud that left the list
 meanwhile is dropped.
 
 ## 4. Finding and laying

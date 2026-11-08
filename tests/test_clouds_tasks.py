@@ -71,6 +71,9 @@ def test_a_task_cut_by_the_data_folders_disk_going_says_that_alone(
     error = tasks.failed("+43+005").view()["error"]
     assert error["code"] == "CFG_DATA_DIR_MISSING" and error["context"]["path"] == str(gone)
     monkeypatch.setattr(tasks_module, "data_root_missing", lambda: None)
+    # the disk back, no more said: it asked to plug in a disk that was there (a campaign,
+    # 2026-11-08)
+    assert tasks.failed("+43+005") is None
     tasks.start("+43+005", "find", cut)
     assert _ended(tasks, "+43+005")
     # the disk there, the folder refused: said as such (``errors.wrap``), as a picture's is, not
