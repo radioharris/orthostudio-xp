@@ -188,9 +188,8 @@ community on Windows, Linux and macOS; OrthoStudio XP's first version came out i
 
 ## Getting started
 
-Requirements: X-Plane 12, and macOS 14 or later on Apple Silicon (macOS 15 or later on an Intel
-Mac), Windows 10 or 11 (64-bit) or a
-64-bit Linux. Download the installer of your system from the releases of this repository; each has
+Requirements: X-Plane 12, and macOS 15 or later (Apple Silicon or Intel), Windows 10 or 11
+(64-bit) or a 64-bit Linux. Download the installer of your system from the releases of this repository; each has
 Python inside.
 
 - **macOS**: open `OrthoStudio-XP-<version>-macos-arm64.dmg` on Apple Silicon, or

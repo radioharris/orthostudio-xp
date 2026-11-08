@@ -189,9 +189,10 @@ processor per release; it is not worth it while the Linux archive is downloaded 
 times a release.
 
 The oldest macOS the app runs on is the highest `macosx_X_Y` of the wheels installed
-(`LSMinimumSystemVersion`, computed and printed at build time): 14.0 on the macOS 14 build
-machine of the release workflow, where numpy and scipy come built on Accelerate; 15.0 on a machine
-whose uv cache holds orjson's macOS 15 wheel.
+(`LSMinimumSystemVersion`, computed and printed at build time): 15.0 on the macOS 15 build
+machines of the release workflow, where orjson's Apple Silicon wheel and pyproj's Intel wheel ask
+for it. GitHub closed its macOS 14 machines on 2026-11-02, and every Apple Silicon Mac can move to
+macOS 15.
 
 ## 3. Where the programs are found (`programs.py`)
 
@@ -331,7 +332,7 @@ checks a person makes before a release (section 7).
 
 ## 7. Release workflow (`.github/workflows/release.yml`)
 
-On a tag `v*`, and by hand: one job per installer (macOS 14 for the Apple Silicon app; macOS 15,
+On a tag `v*`, and by hand: one job per installer (macOS 15 for the Apple Silicon app and,
 with `--machine x86_64` after installing Rosetta, for the Intel app; Windows; Ubuntu 22.04: Triangle4XP
 compiled there runs on older glibc) builds and checks its installer. A private repository builds
 the Windows installer alone: its minutes are counted, macOS's ten times over, and the Mac app of a

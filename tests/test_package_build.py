@@ -218,11 +218,11 @@ def test_only_macos_builds_for_another_machine(monkeypatch: pytest.MonkeyPatch) 
 def test_an_app_whose_wheels_ask_for_a_newer_macos_than_the_readme_is_refused() -> None:
     """Built on macOS 26, the Intel app took pyproj's wheel for macOS 15 (2026-09-17): each app is
     held to the macOS the README gives."""
-    build.check_oldest_macos("arm64", "14.0")
+    build.check_oldest_macos("arm64", "15.0")
     build.check_oldest_macos("x86_64", "15.0")
     build.check_oldest_macos("x86_64", "11.0")
-    with pytest.raises(SystemExit, match=r"build it on macOS 14\.0"):
-        build.check_oldest_macos("arm64", "15.0")
+    with pytest.raises(SystemExit, match=r"build it on macOS 15\.0"):
+        build.check_oldest_macos("arm64", "15.1")
     with pytest.raises(SystemExit, match=r"ask for macOS 15\.1"):
         build.check_oldest_macos("x86_64", "15.1")
 
