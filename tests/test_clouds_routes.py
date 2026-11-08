@@ -1025,6 +1025,42 @@ async def test_forget_restores_the_tile_then_erases_its_clouds(
     assert not part.exists()
 
 
+@pytest.mark.anyio
+async def test_a_restore_that_fails_midway_has_its_folder_measured_again(
+    app: Any, ready: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # what it wrote before a failure, a disk full, left the Library's size the one before until it
+    # was read twice (a review, 2026-11-08)
+    from orthostudio.clouds.tile import Stamp, stamped
+
+    texture = ready / "textures" / f"{NAME}.dds"  # a cloud laid there: Restore offered
+    data = texture.read_bytes()
+    texture.write_bytes(stamped(data[:128], Stamp("a" * 40, "b" * 40)) + data[128:])
+
+    def show(tile: Any, folder: Path, laid: Any, **k: Any) -> None:
+        (folder / "textures" / "laid.dds").write_bytes(b"\0" * 100_000)
+        raise OsxpError("SYS_DISK_FULL", context={"path": str(folder)})
+
+    monkeypatch.setattr(clouds_api, "show", show)
+    with Library(default_library_path()) as lib:
+        lib.register(TILE, "BI", 12, ready, "osxp", {})
+    async with client_for(app) as c:
+        size = await _library_size(c)
+        for _ in range(200):  # its stamp checked after the answer: done before the folder changes
+            if not app_module._PACK_SIZES_MEASURING:
+                break
+            await anyio.sleep(0.02)
+        r = await c.post("/api/clouds/+43+005/apply", json={"action": "restore"})
+        assert r.status_code == 200, r.text
+        for _ in range(200):
+            a = (await c.get("/api/clouds/+43+005")).json()
+            if not a["busy"]:
+                break
+            await anyio.sleep(0.05)
+        assert a["failed"]["error"]["code"] == "SYS_DISK_FULL"
+        assert await _library_size(c) > size
+
+
 def test_only_before_is_kept_in_memory(ready: Path) -> None:
     # After's pictures kept, five of them took 1.5 GB and pushed Before out, which every preview,
     # search and cloud's images is made on, drawn again then (a review, 2026-11-07)

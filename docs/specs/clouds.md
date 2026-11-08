@@ -392,18 +392,20 @@ to the whole tile, its base map loaded again. A picture that fails is said in ev
 others laid, the tile said busy for the page to read it again, and asked again 30 s after
 (`_AGAIN_S`), its error kept as words as a task's is (`tasks.error_view`): asked again at once, its
 error came back every second; never, a disk asleep for a moment kept the map away until the tile
-changed. While Apply, Restore or Forget writes the tile (`state.WRITES`), none is asked: the
-pictures of what the tile shows at their end are. Drawn in the answer, a page stood still 10 to 37 s
-on a Windows server at each new state of a tile of 3 M triangles, the first search's progress
-included (B8). Every path of the cloud files is in `clouds/tile.py`, and every reading of them back
-(`listed`, `sidecars`, `kept_files`, `leftovers`, `served_path`). A list or a sidecar is read afresh
-at each reading but checked once while its file stays the same, its inode, size and time
-(`read_checked`): every one is written whole beside and moved in. Checked each time, those of 200
-clouds took most of every reading of the tile and of a tick (B9). The sources' pieces are kept as a
-build's parent tiles (`ParentCache`, per source). The detector's classes of the tile's last search
-are kept in memory for an outline, and Before at the map's level, the one previews are made on, of
-two tiles at most, each tile's newest build's alone, the one used least lately let go first: each is
-100 to 385 MB (a review, 2026-11-07). Every one of them can be deleted: it is made again.
+changed. One of the data folder's disk gone is asked again as soon as the disk is back, as a task's
+is no more said then (`tasks.standing`, read off the locks: it may ask the disk). While Apply,
+Restore or Forget writes the tile (`state.WRITES`), none is asked: the pictures of what the tile
+shows at their end are. Drawn in the answer, a page stood still 10 to 37 s on a Windows server at
+each new state of a tile of 3 M triangles, the first search's progress included (B8). Every path of
+the cloud files is in `clouds/tile.py`, and every reading of them back (`listed`, `sidecars`,
+`kept_files`, `leftovers`, `served_path`). A list or a sidecar is read afresh at each reading but
+checked once while its file stays the same, its inode, size and time (`read_checked`): every one is
+written whole beside and moved in. Checked each time, those of 200 clouds took most of every reading
+of the tile and of a tick (B9). The sources' pieces are kept as a build's parent tiles
+(`ParentCache`, per source). The detector's classes of the tile's last search are kept in memory for
+an outline, and Before at the map's level, the one previews are made on, of two tiles at most, each
+tile's newest build's alone, the one used least lately let go first: each is 100 to 385 MB (a
+review, 2026-11-07). Every one of them can be deleted: it is made again.
 
 ## 3. The rules
 
@@ -516,9 +518,10 @@ what takes it ends those under way first (`Tasks.end`: stopped, Apply and Restor
 at its start (`JobManager.make_way`), a filing before it moves the folder, Delete before the folder
 goes, Quit for every tile. A task that fails keeps its error, which the tile's answer gives
 (`failed`) until its next task, for the page to say it; one cut by the data folder's disk gone
-(`CFG_DATA_DIR_MISSING`) until the disk is back too (`Tasks.failed`). Apply, Restore and Forget
-have the Library read the folder again once its files changed (`CloudHooks.changed`): its size
-stayed the one before until the Library was read twice. A result for a cloud that left the list
+(`CFG_DATA_DIR_MISSING`) until the disk is back too (`Tasks.failed`, `tasks.standing`). Apply,
+Restore and Forget have the Library read the folder again once its files changed, whether they
+ended or failed (`CloudHooks.changed`): its size stayed the one before until the Library was read
+twice. A result for a cloud that left the list
 meanwhile is dropped.
 
 ## 4. Finding and laying

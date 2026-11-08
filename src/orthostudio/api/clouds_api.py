@@ -88,9 +88,9 @@ class CloudHooks:
     """What the routes ask of the engine: X-Plane's Custom Scenery (``None`` without one), the
     tiles whose folder something else holds, each with the state that says it
     (``state.TILE_STATES``: built, waiting in the queue, being filed, being deleted), and what the
-    Library knows of a tile's folder read again once Apply, Restore or Forget changed its files
-    (``changed``: its size; the Library showed the one before until it was read twice, a campaign,
-    2026-11-08)."""
+    Library knows of a tile's folder read again once Apply, Restore or Forget changed its files,
+    whether it ended or failed (``changed``: its size; the Library showed the one before until it
+    was read twice, a campaign, 2026-11-08)."""
 
     custom_scenery: Callable[[], Path | None]
     taken: Callable[[], Mapping[str, str]]
@@ -784,13 +784,16 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
             def said(done: int, total: int) -> None:
                 task.say("laying", done, total)
 
-            show(
-                tile,
-                folder,
-                laid,
-                custom_scenery=hooks.custom_scenery(),
-                progress=said,
-            )
+            try:
+                show(
+                    tile,
+                    folder,
+                    laid,
+                    custom_scenery=hooks.custom_scenery(),
+                    progress=said,
+                )
+            finally:  # what it wrote before a failure too, a disk full (a review, 2026-11-08)
+                hooks.changed(folder)
             if ticked:
                 with cls.update(tile) as cl:
                     for cid in ticked:
@@ -798,7 +801,6 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
                             cls.pick(cl, cid, "untick")
             if action == "forget":  # its folder as the build made it: the rest of it forgotten
                 cls.erase(tile)
-            hooks.changed(folder)
 
         task = engine.tasks.start(tile.name, action, run)
         return {"task": task.view()}
