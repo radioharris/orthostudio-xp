@@ -4201,7 +4201,7 @@ function errorCard(err, { onRetry, tile, advice = false } = {}) {
   const where = [err.tile || tile, err.step ? STEP_KEYS[err.step]?.() : null].filter(Boolean).join(" · ");
   tpl.querySelector(".error-where").textContent = where;
   const [message, remedy] = codeWords(err);
-  if (advice && message) tpl.querySelector(".error-head").remove();
+  if (advice && codeText(err.code, err.context)) tpl.querySelector(".error-head").remove();
   tpl.querySelector(".error-msg").textContent = message;
   tpl.querySelector(".error-remedy").textContent = remedy;
   const actions = tpl.querySelector(".error-actions");

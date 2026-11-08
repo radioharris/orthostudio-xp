@@ -745,8 +745,6 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 }
 .clouds-badge.is-replaced { top: -5px; background: var(--accent); color: var(--accent-fg); }
 .clouds-badge.is-waiting { bottom: -5px; background: var(--warn-soft); color: var(--warn); box-shadow: inset 0 0 0 1px var(--warn); }
-.library-clouds .btn-trash { margin-left: 0; }
-/* a little further from the bin than the two icons from each other (a user, 2026-11-07) */
 /* On the map, yellow what stays and the accent what is replaced, each line on a dark casing: it
    reads over snow and clouds as over dark ground. The yellow is the same in both themes: the
    ground under it is. An outline is drawn as a zone is (map.js drawShape), its points and line

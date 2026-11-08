@@ -42,7 +42,7 @@ from orthostudio.clouds.model import detector_bytes, detector_ready, ensure_dete
 from orthostudio.clouds.opencv import opencv_ready
 from orthostudio.clouds.picture import Picture, draw, fine_level, frame_bounds, map_level
 from orthostudio.clouds.sources import SourcePieces, other_sources
-from orthostudio.clouds.tasks import Task, Tasks, error_view
+from orthostudio.clouds.tasks import Task, Tasks, error_view, standing
 from orthostudio.clouds.tile import (
     TileClouds,
     clouds_dir,
@@ -230,7 +230,15 @@ class CloudEngine:
         """``work``, a picture of the tile ``key[0]``, done in a thread of its own after those
         asked before, once while it is drawn, not while what the tile shows is written (``ask``).
         One that failed raises :class:`_PictureError`, said by every answer, and is asked again
-        ``_AGAIN_S`` after. A daemon: quitting never waits for a picture."""
+        ``_AGAIN_S`` after, or at once when what it said no longer holds (``tasks.standing``,
+        judged off the lock: it may ask the data folder's disk). A daemon: quitting never waits
+        for a picture."""
+        with self._lock:
+            failed = self._asked.get(key)
+        if failed is not None and not standing(failed[1]):
+            with self._lock:
+                if self._asked.get(key) is failed:
+                    del self._asked[key]  # as a picture never asked
         with self._lock:
             failed = self._asked.get(key)
             if key in self._asked and failed is None:  # being drawn
@@ -383,7 +391,7 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
     engine = CloudEngine(hooks)
     router = APIRouter()
 
-    def ground(task: Task, tile: TileRef, shown: TileClouds) -> Picture:
+    def begin(task: Task, tile: TileRef, shown: TileClouds) -> Picture:
         """What a search, a cloud's images and an outline's sources begin with: the detector there
         (:func:`_tools`), then the tile as built at the map's level, said while it is drawn or
         waited for: a search said "waiting for its turn" the 20 s its tile was drawn as the mode
@@ -592,7 +600,7 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
         assert code is not None  # a cloud is offered images of its source only
 
         def run(task: Task) -> None:
-            p = ground(task, tile, shown)
+            p = begin(task, tile, shown)
             registry = load_registry()
             if code not in registry:
                 raise OsxpError(
@@ -632,7 +640,7 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
         _detector_said(body)  # the search runs it
 
         def run(task: Task) -> None:
-            p = ground(task, tile, shown)
+            p = begin(task, tile, shown)
             zl = p.zl
             # the quick search reads the map's level; the fine one a level finer too, where the
             # textures are that fine: it finds the small clouds, in about twice the time (B1)
@@ -716,7 +724,7 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
         def run(task: Task) -> None:
             # drawn here, not in the answer: a picture to draw again held the click 10 s on a
             # Windows server (+52+004, 2026-11-07)
-            p = ground(task, tile, shown)
+            p = begin(task, tile, shown)
             classes = engine.classes(tile, shown)
             if classes is None:
                 classes = np.zeros(p.rgb.shape[:2], np.uint8)
