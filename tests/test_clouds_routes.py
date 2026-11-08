@@ -23,6 +23,7 @@ from orthostudio.clouds.picture import Picture, map_level
 from orthostudio.clouds.tile import read_tile
 from orthostudio.errors import OsxpError
 from orthostudio.home import default_tiles_root
+from orthostudio.install.library import Library, default_library_path
 from orthostudio.model import TileRef
 from orthostudio.pipeline.pack import ArtefactEntry, PackManifest, write_manifest
 from test_api_fakes import FakeBuild, FakeIndex, client_for
@@ -68,6 +69,14 @@ def ready(home: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     )
     monkeypatch.setattr(clouds_api, "detector_ready", lambda: False)
     return folder
+
+
+async def _library_size(c: Any) -> int:
+    """The tile's size in the Library, as one reading of it says."""
+    rows = (await c.get("/api/library")).json()
+    row = next(r for r in rows if r["tile"] == TILE.name and r["kind"] == "ortho")
+    assert not row["size_pending"]
+    return int(row["size_bytes"])
 
 
 def _ring() -> list[list[float]]:
@@ -878,6 +887,45 @@ async def test_a_picture_that_could_not_be_drawn_is_said_then_asked_again_later(
 
 
 @pytest.mark.anyio
+async def test_a_picture_cut_by_the_disk_going_is_asked_again_once_it_is_back(
+    ready: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # its failure said 30 s after the disk was back, asking to plug in a disk that was there (two
+    # reviews, 2026-11-08): what a task says the same way (``Tasks.failed``)
+    from orthostudio.clouds import tasks as tasks_module
+
+    gone: list[Path | None] = [ready.parent / "unplugged"]
+    monkeypatch.setattr(tasks_module, "data_root_missing", lambda: gone[0])
+    drawn = clouds_api._draw  # the ready tile's small picture
+
+    def cut(*a: Any) -> Any:
+        raise PermissionError(13, "Permission denied", str(gone[0]))
+
+    monkeypatch.setattr(clouds_api, "_draw", cut)
+    engine = clouds_api.CloudEngine(
+        clouds_api.CloudHooks(custom_scenery=lambda: None, taken=dict, changed=lambda folder: None)
+    )
+    shown = read_tile(ready)
+    assert shown is not None
+    zl = map_level(TILE, shown.textures)
+    engine.held(TILE, shown, zl)
+    with pytest.raises(clouds_api._PictureError) as got:
+        for _ in range(400):
+            engine.held(TILE, shown, zl, ask=False)
+            await anyio.sleep(0.01)
+    assert got.value.said["code"] == "CFG_DATA_DIR_MISSING"
+    gone[0] = None  # the disk back
+    monkeypatch.setattr(clouds_api, "_draw", drawn)
+    assert engine.held(TILE, shown, zl, ask=False) is None  # no more said
+    engine.held(TILE, shown, zl)  # and drawn again at once, not 30 s after
+    for _ in range(400):
+        if engine.held(TILE, shown, zl, ask=False) is not None:
+            break
+        await anyio.sleep(0.01)
+    assert engine.held(TILE, shown, zl, ask=False) is not None
+
+
+@pytest.mark.anyio
 async def test_a_picture_that_could_not_be_drawn_leaves_the_others_laid(
     app: Any, ready: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -947,12 +995,20 @@ async def test_forget_restores_the_tile_then_erases_its_clouds(
     previews_dir(TILE).mkdir(parents=True, exist_ok=True)
     (previews_dir(TILE) / "a.png").write_bytes(b"png")
     shown: list[Any] = []
-    monkeypatch.setattr(clouds_api, "show", lambda tile, folder, laid, **k: shown.append(laid))
-    # the Library's size of the folder read again once its files changed: it showed the one before
-    # until it was read twice (a campaign, 2026-11-08)
-    measured: list[Any] = []
-    monkeypatch.setattr(app_module, "_measure_again", measured.append)
+
+    def show(tile: Any, folder: Path, laid: Any, **k: Any) -> None:
+        shown.append(laid)
+        (folder / "textures" / "laid.dds").write_bytes(b"\0" * 100_000)  # the folder changed
+
+    monkeypatch.setattr(clouds_api, "show", show)
+    with Library(default_library_path()) as lib:
+        lib.register(TILE, "BI", 12, ready, "osxp", {})
     async with client_for(app) as c:
+        size = await _library_size(c)  # read and remembered
+        for _ in range(200):  # its stamp checked after the answer: done before the folder changes
+            if not app_module._PACK_SIZES_MEASURING:
+                break
+            await anyio.sleep(0.02)
         assert "forget" in (await c.get("/api/clouds/+43+005")).json()["allowed"]
         r = await c.post("/api/clouds/+43+005/apply", json={"action": "forget"})
         assert r.status_code == 200, r.text
@@ -960,8 +1016,10 @@ async def test_forget_restores_the_tile_then_erases_its_clouds(
             if not (await c.get("/api/clouds/+43+005")).json()["busy"]:
                 break
             await anyio.sleep(0.05)
+        # the Library's size of the folder, at its first reading after: it showed the one
+        # before until it was read twice (a campaign, 2026-11-08)
+        assert await _library_size(c) > size
     assert shown == [[]]  # Restore's own laying: nothing
-    assert measured == [[ready]]
     # the readings after drew the tile's picture again, as any opening does: the old preview went
     assert not cloudlist.list_path(TILE).exists() and not (previews_dir(TILE) / "a.png").exists()
     assert not part.exists()

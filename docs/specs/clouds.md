@@ -490,24 +490,24 @@ longer stands waits likewise: Apply, or the next build, takes it out.
 A search, getting a cloud's images, trying an outline's sources, Apply, Restore and Forget are the
 engine's tasks (`clouds/tasks.py`): each runs in a thread of its own, says its phase and progress,
 writes its result at its end, and ends whether a page is open or not. A search, a cloud's images and
-an outline's sources begin alike (`clouds_router.ground`): the detector there, then the tile as
-built at the map's level, said `drawing` while it is drawn or waited for, not left on "waiting for
-its turn" (the 20 s a Windows server drew a tile as its mode opened, a campaign, 2026-11-08). One
-search at a time for the app (a search holds gigabytes, B2), three reads of sources at once, Apply and Restore at once, never
-behind another tile's reads; one of each kind for a cloud, or for a tile: a second is refused, never
-the first stopped for it. The tasks keep the engine up as a build does: closing the window does not
-stop it while one runs, and stopping it ends them (`serve._busy`, `Tasks.busy`). **Stop** ends a
-task at its next step, at once while it waits for its turn; what a stopped fetch did not get is no
-answer of the source (`SourcePieces.fetch` raises `SYS_CANCELLED`); Stop does not end Apply or
-Restore (`state.WRITES`), which end what they began, and the engine offers Stop by each task's
-`actions`; **Stop all** stops every task of the tile Stop ends. A second task of the same tile, kind
-and cloud, or one what runs does not allow, is refused (`CLOUD_NOT_NOW`). While a task of the tile
-runs, no Apply; while Apply runs, nothing but a cloud's tick and source (`state.possible`), decided
-where a task starts too, under its lock (`Tasks.start`): two clicks at once never run both. What
-follows a task (an outline's tick and images) runs once it has ended, as the cloud's state then
-allows, never after a Stop or a failure (`Tasks.start(then=)`); the tile stays under way until it
-has run (`Tasks.busy`), so a page reading the tile meanwhile reads it again and sees the tick and
-its images.
+an outline's sources begin alike (`clouds_router.begin`): the detector there, then the tile as built
+at the map's level, said `drawing` while it is drawn or waited for, not left on "waiting for its
+turn" (the 20 s a Windows server drew a tile as its mode opened, a campaign, 2026-11-08). One search
+at a time for the app (a search holds gigabytes, B2), three reads of sources at once, Apply and
+Restore at once, never behind another tile's reads; one of each kind for a cloud, or for a tile: a
+second is refused, never the first stopped for it. The tasks keep the engine up as a build does:
+closing the window does not stop it while one runs, and stopping it ends them (`serve._busy`,
+`Tasks.busy`). **Stop** ends a task at its next step, at once while it waits for its turn; what a
+stopped fetch did not get is no answer of the source (`SourcePieces.fetch` raises `SYS_CANCELLED`);
+Stop does not end Apply or Restore (`state.WRITES`), which end what they began, and the engine
+offers Stop by each task's `actions`; **Stop all** stops every task of the tile Stop ends. A second
+task of the same tile, kind and cloud, or one what runs does not allow, is refused
+(`CLOUD_NOT_NOW`). While a task of the tile runs, no Apply; while Apply runs, nothing but a cloud's
+tick and source (`state.possible`), decided where a task starts too, under its lock (`Tasks.start`):
+two clicks at once never run both. What follows a task (an outline's tick and images) runs once it
+has ended, as the cloud's state then allows, never after a Stop or a failure (`Tasks.start(then=)`);
+the tile stays under way until it has run (`Tasks.busy`), so a page reading the tile meanwhile reads
+it again and sees the tick and its images.
 
 A tile's folder is never the tasks' and another's at once. While something else holds it (a build,
 from its job's start until it has finished the tile; its wait in the queue; a filing; a deletion),

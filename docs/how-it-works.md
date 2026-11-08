@@ -504,26 +504,25 @@ where there is no icon to show that it runs, it still stops by itself five minut
 page closed, with no build running or waiting.
 
 The window is drawn by the web view your system already carries, so the page is the same one a
-browser would show. At the right end of the bar at its foot, `− 100 % +` zooms the whole page (Ctrl or ⌘
-with plus, minus and 0 do the same), and `Aa` beside it makes the text alone larger, at
-once. The window opens where you left it, the size it had, and in the middle of the screen the
-first time or when that screen is no longer there. On Linux the page opens in your browser instead: the web view a
-window needs there is built for the distribution's own Python, and OrthoStudio XP carries its own,
-so nothing a user installs would reach it. On Windows the window is drawn by Microsoft's WebView2,
-which must be version 101.0.1210.39 or later: with an older one, as on a cloud PC whose WebView2
-had not been updated since 2022, the page opens in your browser too, and says how to update it
-(Microsoft's installer, run as administrator), which the OrthoStudio XP installer also offers. The
-`window` line of *Checks*, at the foot of the page, says so, and the page says it once at the top. What the
-engine writes as it works goes to `serve.log`: `~/Library/Logs/OrthoStudio XP` on macOS,
-`%LOCALAPPDATA%\OrthoStudio XP\Logs` on Windows, `~/.orthostudio/log` on Linux. It
-holds how long each start took, part by part, with anything the page waited for more than a
-second. It also holds what every stage of a build is doing, a line per tile every ten seconds, and
-the end of each one; `OSXP_LOG_LEVEL=debug` asks for more. The app's launcher also takes a command: running
+browser would show. At the right end of the bar at its foot, `− 100 % +` zooms the whole page (Ctrl
+or ⌘ with plus, minus and 0 do the same), and `Aa` beside it makes the text alone larger, at once.
+The window opens where you left it, the size it had, and in the middle of the screen the first time
+or when that screen is no longer there. On Linux the page opens in your browser instead: the web
+view a window needs there is built for the distribution's own Python, and OrthoStudio XP carries its
+own, so nothing a user installs would reach it. On Windows the window is drawn by Microsoft's
+WebView2, which must be version 101.0.1210.39 or later: with an older one, as on a cloud PC whose
+WebView2 had not been updated since 2022, the page opens in your browser too, and says how to update
+it (Microsoft's installer, run as administrator), which the OrthoStudio XP installer also offers.
+The `window` line of *Checks*, at the foot of the page, says so, and the page says it once at the
+top. What the engine writes as it works goes to `serve.log`: `~/Library/Logs/OrthoStudio XP` on
+macOS, `%LOCALAPPDATA%\OrthoStudio XP\Logs` on Windows, `~/.orthostudio/log` on Linux. It holds how
+long each start took, part by part, with anything the page waited for more than a second. It also
+holds what every stage of a build is doing, a line per tile every ten seconds, and the end of each
+one; `OSXP_LOG_LEVEL=debug` asks for more. The app's launcher also takes a command: running
 `orthostudio-xp build --tile +50+008 --provider BI --zl 16` builds from the command line and writes
-the whole run to that same file. The
-app carries its own Python and its two helper programs, Triangle4XP and DSFTool; removing the app
-leaves your tiles, cache and settings in `~/.orthostudio` (and in the data folder, when you chose
-one).
+the whole run to that same file. The app carries its own Python and its two helper programs,
+Triangle4XP and DSFTool; removing the app leaves your tiles, cache and settings in `~/.orthostudio`
+(and in the data folder, when you chose one).
 
 ## 3. What is on the disk
 

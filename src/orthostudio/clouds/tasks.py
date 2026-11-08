@@ -25,7 +25,7 @@ from orthostudio.clouds.state import WRITES, possible
 from orthostudio.errors import OsxpError, wrap
 from orthostudio.home import data_root_missing
 
-__all__ = ["Task", "Tasks", "error_view"]
+__all__ = ["Task", "Tasks", "error_view", "standing"]
 
 log = logging.getLogger(__name__)
 
@@ -187,16 +187,17 @@ class Tasks:
         return any(n for t, n in self._following.items() if tiles is None or t in tiles)
 
     def failed(self, tile: str) -> Task | None:
-        """The tile's last task that failed, until its next one starts; one cut by the data
-        folder's disk gone (:func:`error_view`) until the disk is back too: said after, it asked
-        to plug in a disk that was there (a campaign, 2026-11-08)."""
+        """The tile's last task that failed, until its next one starts, while what it said holds
+        (:func:`standing`): judged off the lock, which Quit and a build wait on, as it may ask
+        the data folder's disk; let go then, so a disk gone again says nothing of it."""
         with self._lock:
             task = self._failed.get(tile)
-            lost = task is not None and (task.error or {}).get("code") == "CFG_DATA_DIR_MISSING"
-            if lost and data_root_missing() is None:
-                del self._failed[tile]
-                return None
+        if task is None or standing(task.error):
             return task
+        with self._lock:
+            if self._failed.get(tile) is task:
+                del self._failed[tile]
+        return None
 
     def stop(self, task_id: str) -> bool:
         """Stop the task ``task_id`` at its next step, when Stop ends it; whether it does."""
@@ -231,6 +232,15 @@ def error_view(exc: BaseException) -> dict[str, Any]:
     if lost is not None:
         return OsxpError("CFG_DATA_DIR_MISSING", context={"path": str(lost)}).to_dict()
     return wrap(exc).to_dict()
+
+
+def standing(said: Mapping[str, Any] | None) -> bool:
+    """Whether a failure :func:`error_view` said still holds as it is read again: one of the data
+    folder's disk gone, only while it is gone. Said after, it asked to plug in a disk that was
+    there (a campaign, 2026-11-08)."""
+    if said is None:
+        return False
+    return said.get("code") != "CFG_DATA_DIR_MISSING" or data_root_missing() is not None
 
 
 def _turn(gate: threading.Semaphore, task: Task) -> bool:

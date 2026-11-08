@@ -237,7 +237,10 @@ Each row of `GET /api/library` carries, besides the fields of the library (`inst
   it is, and the list reads nothing of the pack for it: on a cold hard disk, 40 packs took 2.5 s
   for their stamps, eight stats a pack, and 4.3 s for their manifests (2026-09-28). The stamps are
   checked after the answer, in a thread of their own, and a pack changed outside the app is read
-  again there: the next list shows it. A pack to read (never read, or registered since) is
+  again there: the next list shows it. Apply, Restore and Forget of the cloud mode change a pack's
+  files without registering it: they have it read again at once (`CloudHooks.changed`,
+  `_measure_again`; its size stayed the one before until the list was read twice, a campaign,
+  2026-11-08). A pack to read (never read, or registered since) is
   measured during the answer for up to `PACK_SIZES_BUDGET_S` (0.5 s: all of them on an SSD) and
   the others in that thread, each once however often the page asks; their rows say
   `size_bytes: null`, `size_pending: true`, and the page asks again 5 s later (`ui.md`), while
