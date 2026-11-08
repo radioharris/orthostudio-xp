@@ -90,8 +90,12 @@ and size as a normal window (`Bounds`, or `RestoreBounds` when it is maximized o
 whether it was maximized. `RestoreBounds` alone follows only what code sets and the moment the
 window leaves its normal state, not a move by hand: 0.1.22rc5 kept the place of each start for
 ever (a Shadow, 2026-10-03). A place whose title
-bar lies on no screen any more, the screen it was on unplugged, opens where the system puts it, as
-on a first start (`grabbable`); one that cannot be read or written is said in `serve.log`.
+bar lies on no screen any more, the screen it was on unplugged, is centred (`grabbable`): by
+`NSWindow.center` on macOS; on Windows, as a first start, in the middle of the working area of the
+screen the pointer is on (`centred`). Left to Windows, a first window opened in Windows' own
+cascade, 49 to 343 px down and right of the corner though pywebview asks for the middle: past the
+right edge and under the taskbar of a screen it nearly filled (a Shadow, 2026-11-08). A place that
+cannot be read or written is said in `serve.log`.
 
 The Windows installer offers the **WebView2 Runtime** to the machines without it: a task of its
 own, ticked, that the user can turn down, shown only when Microsoft's own key says the runtime is

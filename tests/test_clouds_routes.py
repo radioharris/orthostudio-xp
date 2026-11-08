@@ -14,6 +14,7 @@ import numpy as np
 import pytest
 
 import test_api_fakes as fakes
+from orthostudio.api import app as app_module
 from orthostudio.api import clouds_api
 from orthostudio.api.app import create_app
 from orthostudio.api.jobs import JobManager
@@ -192,7 +193,9 @@ async def test_a_build_allows_nothing_and_its_folder_is_not_read(
 
     monkeypatch.setattr(clouds_api, "read_tile", read_tile)
     taken = {TILE.name: "in_build"}
-    hooks = clouds_api.CloudHooks(custom_scenery=lambda: None, taken=lambda: taken)
+    hooks = clouds_api.CloudHooks(
+        custom_scenery=lambda: None, taken=lambda: taken, changed=lambda folder: None
+    )
     router, _engine = clouds_api.clouds_router(hooks)
     api = FastAPI()
     api.include_router(router)
@@ -638,7 +641,9 @@ async def test_a_picture_already_made_is_not_drawn_again(
     async with client_for(app) as c:
         first = await _read(c)
     assert len(drawn) == 1  # After is Before while nothing is laid: one picture
-    hooks = clouds_api.CloudHooks(custom_scenery=lambda: None, taken=dict)
+    hooks = clouds_api.CloudHooks(
+        custom_scenery=lambda: None, taken=dict, changed=lambda folder: None
+    )
     router, _engine = clouds_api.clouds_router(hooks)  # the app started again
     get = next(r.endpoint for r in router.routes if r.path == "/api/clouds/{name}")
     made = picture_path(TILE, "x").parent / first["picture"]["name"]
@@ -706,7 +711,9 @@ async def test_the_last_picture_stands_in_while_its_next_is_drawn(
 def test_a_view_stands_in_whole_and_only_for_its_build() -> None:
     # After's picture alone showed its clouds at the end of an Apply; one of the build before
     # showed the old tile after Build again (a user, 2026-11-07)
-    engine = clouds_api.CloudEngine(clouds_api.CloudHooks(custom_scenery=lambda: None, taken=dict))
+    engine = clouds_api.CloudEngine(
+        clouds_api.CloudHooks(custom_scenery=lambda: None, taken=dict, changed=lambda folder: None)
+    )
     whole = {"picture": {"name": "a.jpg"}, "previews": {"c1": {"name": "p.png"}}}
     assert engine.ground(TILE, "after", "b1", whole) == whole
     assert engine.ground(TILE, "after", "b1", None) == whole  # its previews with it
@@ -721,7 +728,9 @@ def test_while_a_build_holds_the_tile_its_map_stays_as_it_was(ready: Path) -> No
     import time
 
     taken: dict[str, str] = {}
-    hooks = clouds_api.CloudHooks(custom_scenery=lambda: None, taken=lambda: taken)
+    hooks = clouds_api.CloudHooks(
+        custom_scenery=lambda: None, taken=lambda: taken, changed=lambda folder: None
+    )
     router, _engine = clouds_api.clouds_router(hooks)
     get = next(r.endpoint for r in router.routes if r.path == "/api/clouds/{name}")
     for _ in range(200):
@@ -768,7 +777,9 @@ def test_what_runs_of_a_tile_is_said_without_reading_or_drawing_it(
     drawn: list[Any] = []
     monkeypatch.setattr(clouds_api, "_draw", lambda *a: drawn.append(a))
     monkeypatch.setattr(clouds_api, "read_tile", lambda folder: drawn.append(folder))
-    hooks = clouds_api.CloudHooks(custom_scenery=lambda: None, taken=dict)
+    hooks = clouds_api.CloudHooks(
+        custom_scenery=lambda: None, taken=dict, changed=lambda folder: None
+    )
     router, engine = clouds_api.clouds_router(hooks)
     tasks = next(r.endpoint for r in router.routes if r.path == "/api/clouds/{name}/tasks")
     assert tasks("+43+005") == {"busy": False, "failed": None}
@@ -802,7 +813,9 @@ def test_no_picture_is_asked_while_what_the_tile_shows_is_written(
     drawn: list[Any] = []
     draw = clouds_api._draw
     monkeypatch.setattr(clouds_api, "_draw", lambda *a: (drawn.append(a), draw(*a))[1])
-    hooks = clouds_api.CloudHooks(custom_scenery=lambda: None, taken=dict)
+    hooks = clouds_api.CloudHooks(
+        custom_scenery=lambda: None, taken=dict, changed=lambda folder: None
+    )
     router, engine = clouds_api.clouds_router(hooks)
     get = next(r.endpoint for r in router.routes if r.path == "/api/clouds/{name}")
     go = threading.Event()
@@ -872,7 +885,9 @@ async def test_a_picture_that_could_not_be_drawn_leaves_the_others_laid(
     # with it, the map empty when no answer had laid them yet (a review, 2026-11-07)
     async with client_for(app) as c:
         first = await _read(c)  # their files made
-    hooks = clouds_api.CloudHooks(custom_scenery=lambda: None, taken=dict)
+    hooks = clouds_api.CloudHooks(
+        custom_scenery=lambda: None, taken=dict, changed=lambda folder: None
+    )
     router, engine = clouds_api.clouds_router(hooks)  # the app started again: none in memory
     get = next(r.endpoint for r in router.routes if r.path == "/api/clouds/{name}")
 
@@ -933,6 +948,10 @@ async def test_forget_restores_the_tile_then_erases_its_clouds(
     (previews_dir(TILE) / "a.png").write_bytes(b"png")
     shown: list[Any] = []
     monkeypatch.setattr(clouds_api, "show", lambda tile, folder, laid, **k: shown.append(laid))
+    # the Library's size of the folder read again once its files changed: it showed the one before
+    # until it was read twice (a campaign, 2026-11-08)
+    measured: list[Any] = []
+    monkeypatch.setattr(app_module, "_measure_again", measured.append)
     async with client_for(app) as c:
         assert "forget" in (await c.get("/api/clouds/+43+005")).json()["allowed"]
         r = await c.post("/api/clouds/+43+005/apply", json={"action": "forget"})
@@ -942,6 +961,7 @@ async def test_forget_restores_the_tile_then_erases_its_clouds(
                 break
             await anyio.sleep(0.05)
     assert shown == [[]]  # Restore's own laying: nothing
+    assert measured == [[ready]]
     # the readings after drew the tile's picture again, as any opening does: the old preview went
     assert not cloudlist.list_path(TILE).exists() and not (previews_dir(TILE) / "a.png").exists()
     assert not part.exists()
@@ -951,7 +971,7 @@ def test_only_before_is_kept_in_memory(ready: Path) -> None:
     # After's pictures kept, five of them took 1.5 GB and pushed Before out, which every preview,
     # search and cloud's images is made on, drawn again then (a review, 2026-11-07)
     _router, engine = clouds_api.clouds_router(
-        clouds_api.CloudHooks(custom_scenery=lambda: None, taken=dict)
+        clouds_api.CloudHooks(custom_scenery=lambda: None, taken=dict, changed=lambda folder: None)
     )
     shown = read_tile(ready)
     assert shown is not None
@@ -966,7 +986,7 @@ def test_one_before_a_tile_and_two_tiles_are_kept_in_memory(ready: Path) -> None
     # five kept, each 100 to 385 MB, took up to 1.9 GB until a tile was deleted (a review,
     # 2026-11-07): a tile's newest build's alone, and two tiles
     _router, engine = clouds_api.clouds_router(
-        clouds_api.CloudHooks(custom_scenery=lambda: None, taken=dict)
+        clouds_api.CloudHooks(custom_scenery=lambda: None, taken=dict, changed=lambda folder: None)
     )
     shown = read_tile(ready)
     assert shown is not None
@@ -986,6 +1006,42 @@ def test_one_before_a_tile_and_two_tiles_are_kept_in_memory(ready: Path) -> None
     assert engine.held(TILE, shown, zl, ask=False) is old
     engine.drawn(TileRef.parse("+44+005"), shown, zl)
     assert [k[0] for k in engine._pictures] == [TILE.name, "+44+005"]
+
+
+@pytest.mark.anyio
+async def test_a_search_says_its_tile_is_drawn_not_that_it_waits_for_its_turn(
+    app: Any, ready: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # a search said "waiting for its turn" the 20 s its tile was drawn as the mode opened, nothing
+    # else searching (a Windows server, a campaign, 2026-11-08)
+    import threading
+
+    go = threading.Event()
+    real = clouds_api._draw
+
+    def slow(*a: Any) -> Any:
+        go.wait(10)
+        return real(*a)
+
+    monkeypatch.setattr(clouds_api, "_draw", slow)
+    monkeypatch.setattr(clouds_api, "_tools", lambda task: None)
+    async with client_for(app) as c:
+        r = await c.post("/api/clouds/+43+005/find", json={"download": True})
+        assert r.status_code == 200, r.text
+        phases: list[str] = []
+        for _ in range(200):
+            a = (await c.get("/api/clouds/+43+005")).json()
+            phases += [t["phase"] for t in a["tasks"]]
+            if "drawing" in phases:
+                break
+            await anyio.sleep(0.02)
+        await c.post("/api/clouds/+43+005/stop")
+        go.set()
+        for _ in range(200):
+            if not (await c.get("/api/clouds/+43+005")).json()["busy"]:
+                break
+            await anyio.sleep(0.05)
+    assert phases[-1] == "drawing"
 
 
 def test_the_tools_download_hears_stop(monkeypatch: pytest.MonkeyPatch) -> None:

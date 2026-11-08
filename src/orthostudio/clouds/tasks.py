@@ -187,9 +187,16 @@ class Tasks:
         return any(n for t, n in self._following.items() if tiles is None or t in tiles)
 
     def failed(self, tile: str) -> Task | None:
-        """The tile's last task that failed, until its next one starts."""
+        """The tile's last task that failed, until its next one starts; one cut by the data
+        folder's disk gone (:func:`error_view`) until the disk is back too: said after, it asked
+        to plug in a disk that was there (a campaign, 2026-11-08)."""
         with self._lock:
-            return self._failed.get(tile)
+            task = self._failed.get(tile)
+            lost = task is not None and (task.error or {}).get("code") == "CFG_DATA_DIR_MISSING"
+            if lost and data_root_missing() is None:
+                del self._failed[tile]
+                return None
+            return task
 
     def stop(self, task_id: str) -> bool:
         """Stop the task ``task_id`` at its next step, when Stop ends it; whether it does."""

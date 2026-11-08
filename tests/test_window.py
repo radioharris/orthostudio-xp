@@ -479,9 +479,11 @@ def _winforms(monkeypatch: pytest.MonkeyPatch, screens: list[Rect]) -> None:
     forms.FormWindowState = type(  # type: ignore[attr-defined]
         "FormWindowState", (), {"Normal": "Normal", "Maximized": "Maximized"}
     )
+    shown = [type("S", (), {"WorkingArea": a})() for a in screens]
     forms.Screen = type(  # type: ignore[attr-defined]
-        "Screen", (), {"AllScreens": [type("S", (), {"WorkingArea": a})() for a in screens]}
+        "Screen", (), {"AllScreens": shown, "FromPoint": staticmethod(lambda point: shown[0])}
     )
+    forms.Cursor = type("Cursor", (), {"Position": (10, 10)})  # type: ignore[attr-defined]
     drawing = types.ModuleType("System.Drawing")
     drawing.Rectangle = lambda x, y, w, h: (x, y, w, h)  # type: ignore[attr-defined]
     for name, module in (
@@ -499,6 +501,7 @@ class Form:
     def __init__(self) -> None:
         self.StartPosition = "CenterScreen"
         self.Bounds: Any = None
+        self.Width, self.Height = 2880, 1620  # 1440x810 at 200 %
         self.WindowState = "Normal"
         self.RestoreBounds = Rect(-1700, 40, 1500, 900)
 
@@ -539,20 +542,29 @@ def test_windows_keeps_the_place_a_window_was_moved_to_by_hand(
     }  # fmt: skip
 
 
-def test_windows_leaves_a_window_whose_screen_is_gone_to_the_system(
+def test_windows_centres_a_first_window_and_one_whose_screen_is_gone(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    _winforms(monkeypatch, [Rect(0, 0, 2560, 1400)])  # the left screen unplugged
+    """Left to Windows, a first window opened 49 to 343 px down and right of the corner, past the
+    right edge and under the taskbar of a screen it nearly filled, though pywebview asks for the
+    middle (a Shadow, 2026-11-08)."""
+    _winforms(monkeypatch, [Rect(0, 0, 3024, 1820)])  # the left screen unplugged
     (tmp_path / window.PLACE_FILE).write_text(
-        '{"x": -1700, "y": 40, "width": 1500, "height": 900, "maximized": false}'
+        '{"x": -1700, "y": 40, "width": 1500, "height": 900, "maximized": true}'
     )
     opening = Form()
     window.back_where_it_was(opening, tmp_path, system="win32")
-    assert opening.StartPosition == "CenterScreen" and opening.Bounds is None
-    # and a first start, with nothing kept, is the system's as before
-    first = Form()
+    assert opening.StartPosition == "Manual" and opening.Bounds == (72, 100, 2880, 1620)
+    assert opening.WindowState == "Normal"  # maximized on a screen that is not there any more
+    first = Form()  # a first start, with nothing kept
     window.back_where_it_was(first, tmp_path / "none", system="win32")
-    assert first.StartPosition == "CenterScreen"
+    assert first.StartPosition == "Manual" and first.Bounds == (72, 100, 2880, 1620)
+
+
+def test_a_window_is_centred_in_a_working_area_and_brought_down_to_it() -> None:
+    assert window.centred((0, 0, 3024, 1820), (2880, 1620)) == (72, 100, 2880, 1620)
+    assert window.centred((-1920, 40, 1920, 1040), (1440, 920)) == (-1680, 100, 1440, 920)
+    assert window.centred((0, 0, 1024, 728), (1024, 768)) == (0, 0, 1024, 728)  # larger: fitted
 
 
 class NSWindow:

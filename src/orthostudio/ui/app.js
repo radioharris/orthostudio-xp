@@ -4186,7 +4186,11 @@ function warningEntries(plan) {
   return out;
 }
 
-function errorCard(err, { onRetry, tile } = {}) {
+/** A failure, or a warning, in a card: its code and severity above its words, what a report
+ * quotes. `advice`: the Plan's warnings, said before a build, have nothing to report: their words
+ * alone ("CLOUD_PUT_BACK", "INFO" before them read as a failure, a campaign, 2026-11-08), the
+ * code kept for one the page has no words for. */
+function errorCard(err, { onRetry, tile, advice = false } = {}) {
   const tpl = $("tpl-error-card").content.firstElementChild.cloneNode(true);
   const sev = err.severity || "info";
   tpl.classList.add(`sev-card-${sev}`);
@@ -4197,6 +4201,7 @@ function errorCard(err, { onRetry, tile } = {}) {
   const where = [err.tile || tile, err.step ? STEP_KEYS[err.step]?.() : null].filter(Boolean).join(" · ");
   tpl.querySelector(".error-where").textContent = where;
   const [message, remedy] = codeWords(err);
+  if (advice && message) tpl.querySelector(".error-head").remove();
   tpl.querySelector(".error-msg").textContent = message;
   tpl.querySelector(".error-remedy").textContent = remedy;
   const actions = tpl.querySelector(".error-actions");
@@ -4277,7 +4282,7 @@ function renderPlanPanel() {
   const warnings = warningEntries(plan).filter((w) => !(disk.ok === false && w.code === "SYS_DISK_FULL"));
   if (warnings.length) {
     panel.append(h("h3", { class: "section-title" }, t("plan.warnings")));
-    panel.append(h("div", { class: "error-list" }, warnings.map((w) => errorCard({ severity: "degraded", ...w }))));
+    panel.append(h("div", { class: "error-list" }, warnings.map((w) => errorCard({ severity: "degraded", ...w }, { advice: true }))));
   }
 
   const tiles = plan.tiles || [];
