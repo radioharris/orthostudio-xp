@@ -198,11 +198,16 @@ def test_the_file_round_trips_and_an_unreadable_one_is_said(tmp_path: Path) -> N
 
 
 @pytest.fixture
-def app(home: Path):  # type: ignore[no-untyped-def]
+def jobs(home: Path):  # type: ignore[no-untyped-def]
     mgr = JobManager(jobs_dir=home / "jobs", build=FakeBuild(), env_factory=lambda specs: None)
-    yield create_app(env_factory=None, jobs=mgr, airports=FakeIndex(),
-                     settings_path=home / "config.toml")  # fmt: skip
+    yield mgr
     mgr.close()
+
+
+@pytest.fixture
+def app(home: Path, jobs: JobManager):  # type: ignore[no-untyped-def]
+    return create_app(env_factory=None, jobs=jobs, airports=FakeIndex(),
+                      settings_path=home / "config.toml")  # fmt: skip
 
 
 @pytest.mark.anyio
@@ -319,15 +324,17 @@ async def test_a_page_left_behind_by_another_saves_into_no_profile_it_never_show
 
 @pytest.mark.anyio
 async def test_a_build_says_its_profile_and_works_keeps_it(  # type: ignore[no-untyped-def]
-    app, home: Path, xplane: Path
+    app, jobs: JobManager, home: Path, xplane: Path
 ) -> None:
     # the tests' own X-Plane: without one on the machine, the build was refused (the ci's)
+    # each build ends before the next: a tile in a running build is refused another (a slow ci's)
     async with client_for(app) as c:
         plan = {"tiles": ["+43+005"], "zoom_level": 14, "install": False}
         r = await c.post("/api/jobs", json=plan)
         assert r.status_code == 201, r.text
         first = (await c.get(f"/api/jobs/{r.json()['job_id']}")).json()
         assert first["profile"] is None and "profile" not in first["request"]
+        assert jobs.get(first["id"]).wait(10.0)
         s = (await c.get("/api/settings")).json()
         r = await c.post("/api/profiles", json={"name": "Alpes", "settings": s,
                                                 "first_name": "Main"})  # fmt: skip
@@ -341,6 +348,7 @@ async def test_a_build_says_its_profile_and_works_keeps_it(  # type: ignore[no-u
         assert {j["id"]: j["profile"] for j in (await c.get("/api/jobs")).json()}[
             job["id"]
         ] == "Alpes"
+        assert jobs.get(job["id"]).wait(10.0)
         # down to one profile: a build names none, as the page shows none
         r = await c.post("/api/profiles/delete", json={"name": "Main"})
         assert r.status_code == 200, r.text
