@@ -9044,6 +9044,10 @@ def test_the_librarys_clouds_heading_turns_until_its_column_is_first_read() -> N
     html = (UI / "index.html").read_text(encoding="utf-8")
     code = (UI / "app.js").read_text(encoding="utf-8")
     assert 'id="library-clouds-reading"' in html and '<span data-i18n="library.clouds">' in html
+    # in the cells' two places, the title over the cloud (a user, 2026-11-08)
+    assert '<th scope="col" class="library-clouds"><div><span data-i18n="library.clouds">' in html
+    css = (UI / "styles.css").read_text(encoding="utf-8")
+    assert ".library-table th.library-clouds > div > :first-child { justify-self: center; }" in css
     assert "  clouds: null," in code
     library = code[code.index("function renderLibrary() {") :]
     assert '$("library-clouds-reading").hidden = state.clouds != null;' in library[:2000]
