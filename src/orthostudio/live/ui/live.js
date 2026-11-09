@@ -255,7 +255,7 @@ let noticeDrawn = ""; // what the flight's notice says
 function goToRegions() {
   const button = document.createElement("button");
   button.type = "button";
-  button.className = "btn btn-small live-go";
+  button.className = "btn live-go";
   button.textContent = t("regions.go");
   button.addEventListener("click", () => showScreen("settings", "regions"));
   return button;
@@ -509,7 +509,7 @@ function pathLine(line, text, path, platform) {
   line.dataset.path = `${language()}:${path}`;
   const show = document.createElement("button");
   show.type = "button";
-  show.className = "btn btn-small reveal-btn";
+  show.className = "btn reveal-btn";
   show.textContent = revealLabel(platform);
   show.addEventListener("click", () => act("reveal", { path }));
   line.replaceChildren(document.createTextNode(`${text} `), show);
@@ -548,7 +548,7 @@ let removeArmed = null; // the region whose Delete was clicked once: a second cl
 function regionButton(label, onClick, { danger = false, disabled = false } = {}) {
   const button = document.createElement("button");
   button.type = "button";
-  button.className = danger ? "btn btn-small btn-danger" : "btn btn-small";
+  button.className = danger ? "btn btn-danger" : "btn";
   button.textContent = label;
   button.disabled = disabled;
   button.addEventListener("click", onClick);

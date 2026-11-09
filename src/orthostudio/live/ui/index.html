@@ -39,7 +39,7 @@
       <option value="fr">FR</option>
     </select>
     <!-- OrthoStudio XP's Quit, as it is: the same button, the same question (live.js quitLive) -->
-    <button type="button" id="quit-btn" class="btn btn-small quit-btn" data-i18n-title="quit.help" title="Stop OrthoStudio XP Live">
+    <button type="button" id="quit-btn" class="btn quit-btn" data-i18n-title="quit.help" title="Stop OrthoStudio XP Live">
       <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
         <path d="M12 3v8M7.1 6.2a7 7 0 1 0 9.8 0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
       </svg>
@@ -63,7 +63,7 @@
               <span data-i18n="map.details">Details</span></label>
             <label class="live-map-toggle"><input type="checkbox" id="map-follow" checked>
               <span data-i18n="map.follow">Follow the aircraft</span></label>
-            <button type="button" class="btn btn-small" id="map-route" data-i18n="map.route">Show my SimBrief route</button>
+            <button type="button" class="btn" id="map-route" data-i18n="map.route">Show my SimBrief route</button>
           </div>
         </div>
         <div class="live-map-wrap">
@@ -154,7 +154,7 @@
           </div>
           <!-- the plan the box comes from, and a button asking SimBrief at once for a newer one -->
           <p class="question-help" id="departure-plan" hidden><span id="departure-plan-text"></span>
-            <button type="button" class="btn btn-small btn-icon live-refresh" id="departure-check" data-i18n-title="departure.check"
+            <button type="button" class="btn btn-icon live-refresh" id="departure-check" data-i18n-title="departure.check"
                     data-i18n-aria-label="departure.check" title="Look on SimBrief for a newer plan" aria-label="Look on SimBrief for a newer plan">
               <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
                 <path d="M20 12a8 8 0 1 1-2.34-5.66M20 4v5h-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
@@ -164,7 +164,7 @@
                put in the box unasked -->
           <div class="overlay-notice live-departure-update" id="departure-update" role="status" hidden>
             <p id="departure-update-text"></p>
-            <button type="button" class="btn btn-small btn-primary" id="departure-load" data-i18n="departure.load">Load it</button>
+            <button type="button" class="btn btn-primary" id="departure-load" data-i18n="departure.load">Load it</button>
           </div>
           <p class="error-inline" id="departure-error" role="alert" hidden></p>
         </div>
@@ -290,8 +290,8 @@
           </div>
           <p class="question-help" id="season-preview-note" data-i18n="season.preview_note"></p>
           <div class="actions">
-            <button type="button" class="btn btn-small" id="season-place" data-i18n="season.place">Another place</button>
-            <button type="button" class="btn btn-small" id="season-default" data-i18n="season.default">Live's values</button>
+            <button type="button" class="btn" id="season-place" data-i18n="season.place">Another place</button>
+            <button type="button" class="btn" id="season-default" data-i18n="season.default">Live's values</button>
           </div>
           <p class="question-help" data-i18n="season.change"></p>
         </fieldset>
@@ -342,7 +342,7 @@
           <label class="sub-question-title" for="set-simbrief" data-i18n="plan.name">SimBrief name or pilot ID</label>
           <div class="path-row">
             <input type="text" id="set-simbrief" name="simbrief_user" class="question-path" spellcheck="false" autocomplete="off" maxlength="64">
-            <button type="button" class="btn btn-small" id="simbrief-osxp" hidden></button>
+            <button type="button" class="btn" id="simbrief-osxp" hidden></button>
           </div>
           <p class="question-help" data-i18n="plan.privacy"></p>
         </div>
@@ -386,7 +386,7 @@
           <label class="sub-question-title" for="set-folder" data-i18n="folder.other">Another folder</label>
           <div class="path-row">
             <input type="text" id="set-folder" name="folder" class="question-path" spellcheck="false" autocomplete="off">
-            <button type="button" class="btn btn-small" id="folder-choose" data-i18n="folder.choose">Choose…</button>
+            <button type="button" class="btn" id="folder-choose" data-i18n="folder.choose">Choose…</button>
           </div>
         </div>
         <p class="question-help" data-i18n="folder.moved"></p>
@@ -411,9 +411,9 @@
     <select id="text-size" class="status-select num" data-i18n-aria-label="app.text_size"></select>
   </label>
   <span class="status-item status-zoom" id="status-zoom" hidden data-frame-owned>
-    <button type="button" class="btn btn-small status-zoom-step" data-zoom="out">&#8722;</button>
-    <button type="button" class="btn btn-small status-zoom-level num" data-zoom="level">100%</button>
-    <button type="button" class="btn btn-small status-zoom-step" data-zoom="in">+</button>
+    <button type="button" class="btn status-zoom-step" data-zoom="out">&#8722;</button>
+    <button type="button" class="btn status-zoom-level num" data-zoom="level">100%</button>
+    <button type="button" class="btn status-zoom-step" data-zoom="in">+</button>
   </span>
 </footer>
 
@@ -422,9 +422,9 @@
   <input type="search" id="find-input" class="find-input" spellcheck="false" autocomplete="off"
          data-i18n-placeholder="find.placeholder" data-i18n-aria-label="find.label" placeholder="Find on this page" aria-label="Find on this page">
   <span class="help find-count" id="find-count" aria-live="polite"></span>
-  <button type="button" class="btn btn-small" id="find-prev" data-i18n-title="find.previous" title="Previous">&#8593;</button>
-  <button type="button" class="btn btn-small" id="find-next" data-i18n-title="find.next" title="Next">&#8595;</button>
-  <button type="button" class="btn btn-small" id="find-close" data-i18n-title="find.close" title="Close">&#10005;</button>
+  <button type="button" class="btn" id="find-prev" data-i18n-title="find.previous" title="Previous">&#8593;</button>
+  <button type="button" class="btn" id="find-next" data-i18n-title="find.next" title="Next">&#8595;</button>
+  <button type="button" class="btn" id="find-close" data-i18n-title="find.close" title="Close">&#10005;</button>
 </div>
 <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
