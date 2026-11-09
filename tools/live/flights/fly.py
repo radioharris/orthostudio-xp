@@ -794,7 +794,7 @@ def xpme_settings() -> dict:
 def xpme_mounted() -> bool:
     """XPME's service started: the folder it serves X-Plane's textures from mounted (a Mac's
     ``mount``), wherever its settings put it: ``~/XPME-fuse`` by default, on another disk at the
-    user's (2026-10-17: ``/Volumes/Logic Projects/XPME-fuse``)."""
+    pilot's (2026-10-17: a folder on another disk)."""
     if WINDOWS:
         return False
     mounts = subprocess.run(["mount"], capture_output=True, text=True).stdout

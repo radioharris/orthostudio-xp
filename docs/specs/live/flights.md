@@ -269,7 +269,7 @@ comparison the published guide gives. It is started by hand before the series, a
 its app opened, its service started in its window, with its own settings (its imagery, Bing Maps;
 its resolution, Normal: ZL16/18; High is ZL17/19, so `--zooms` is refused). The runner refuses to
 fly without its service (its folder mounted, `~/XPME-fuse` or wherever its settings put it, as
-`/Volumes/Logic Projects/XPME-fuse` at the user's: `fuse-t:/XPME-fuse`; its app's process there) or beside Live or
+a folder on another disk: `fuse-t:/XPME-fuse`; its app's process there) or beside Live or
 AutoOrtho, and, `--cold`, while its cache index (`.xpme-cache-index.sqlite3` in its settings'
 `CacheFolder`) lists pieces: its window's Clear empties it. The sampler counts as the streamer's
 its app's main process and everything under it (its service, `XplaneMapEnhancement`, and its
