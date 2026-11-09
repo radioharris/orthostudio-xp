@@ -1477,3 +1477,11 @@ def test_the_disk_space_is_raised_to_the_floor_of_its_zooms(home: Path) -> None:
     assert LiveSettings(disk_gb=12).disk_gb == 12
     with pytest.raises(ValidationError):
         LiveSettings(disk_gb=0)
+
+
+def test_the_buttons_draw_osxp_s_own_icons() -> None:
+    """OrthoStudio XP's sheet sizes its icons (.icon) and no longer a button's svg: in the Mac
+    app's WebKit the bin and Quit's sign, left as svg, came out 0 px wide (2026-11-09)."""
+    html = (UI_DIR / "index.html").read_text()
+    assert 'class="icon icon-bin"' in html
+    assert 'class="icon icon-quit"' in html
