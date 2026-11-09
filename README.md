@@ -7,10 +7,9 @@ OrthoStudio XP is a new program built on the rules of
 refined for ten years: it makes the same kind of tiles, with a different architecture that builds
 them faster. It would not exist without Ortho4XP.
 
-**Status: building tiles is stable since 1.0; flying with Live is in beta from 1.4.** OrthoStudio XP
-builds and installs tiles end to end on macOS and Windows, with their installers. The installers for
-Intel Macs and for Linux are built and checked automatically at every release, and downloaded far
-less often than the others; Linux is experimental.
+**Status: building tiles is stable since 1.0; flying with Live is in beta from 2.0.** OrthoStudio XP
+builds and installs tiles end to end on macOS, Windows and Linux, with their installers, each built
+and checked automatically at every release.
 
 ## Two ways to fly over photos
 
@@ -25,9 +24,9 @@ care of the rest; X-Plane shows your tiles first.
 
 ## Getting started
 
-Requirements: X-Plane 12, and macOS 14 or later on Apple Silicon (macOS 15 or later on an Intel
-Mac), Windows 10 or 11 (64-bit) or a 64-bit Linux.
-Download the installer of your system from the releases of this repository; each has Python inside.
+Requirements: X-Plane 12, and macOS 15 or later (Apple Silicon or Intel), Windows 10 or 11
+(64-bit) or a 64-bit Linux. Download the installer of your system from the releases of this repository; each has
+Python inside.
 
 - **macOS**: open `OrthoStudio-XP-<version>-macos-arm64.dmg` on Apple Silicon, or
   `OrthoStudio-XP-<version>-macos-x86_64.dmg` on an Intel Mac, and drag *OrthoStudio XP* to
@@ -194,6 +193,13 @@ without the author's agreement.
 
 DSFTool (Laminar Research's X-Plane Scenery Tools, MIT/X11 licence) extracts the overlays: its
 macOS, Windows and Linux binaries are in `native/dsftool/`, with their checksums.
+
+The cloud detector is the two networks of
+[OmniCloudMask](https://github.com/DPIRD-DMA/OmniCloudMask) (DPIRD-DMA, MIT licence), converted for
+OpenCV by `tools/clouds/export_detector.py`; its licence comes with the app. The networks and
+[OpenCV](https://opencv.org) (Apache 2.0 licence, its own wheel from PyPI with its licences inside)
+are not in the installer: the app downloads them once, at the user's word (about 110 MB), and checks
+them against their digests.
 
 Map data © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright), under the Open
 Database Licence (ODbL): OrthoStudio XP reads the airports, roads, coastline and water of each

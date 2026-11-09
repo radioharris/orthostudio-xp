@@ -200,6 +200,33 @@ def test_a_piece_counts_what_its_source_and_level_weigh(
     assert t.requests and t.download_mb == pytest.approx(t.requests * kb / 1000)
 
 
+def _images(sizes: list[int]) -> ChunkContainer:
+    """A container holding images of ``sizes`` bytes, the rest never answered."""
+    entries = [ChunkEntry(ChunkStatus.OK, b"j" * n, "image/jpeg", 0) for n in sizes]
+    return ChunkContainer(entries + [ChunkEntry(ChunkStatus.MISSING)] * (256 - len(entries)))
+
+
+def test_a_piece_weighs_what_this_computer_downloaded_of_its_source_and_level(
+    tmp_path: Path, env: BuildEnv
+) -> None:
+    """No table holds every source and level: USGS and Esri at ZL15 weighed about 22 kB a piece
+    where 13 were counted (2026-11-04). The images of the source at that level the cache holds
+    weigh its pieces, once there are enough of them; a new container is weighed in."""
+    from orthostudio.estimate import LEARNED_MIN_PIECES
+
+    store = ChunkStore(tmp_path / "chunks", fsync=False)
+    far = TextureId(0, 0, 14, "BI")  # an image of another tile, the same source and level
+    store.write(far, _images([30_000] * (LEARNED_MIN_PIECES - 1)))
+    (t,) = estimate([_spec(tmp_path)], env=env).tiles
+    assert t.download_mb == pytest.approx(t.requests * DEFAULT_KB_PER_REQUEST / 1000)
+    store.write(far, _images([30_000] * (LEARNED_MIN_PIECES - 1) + [62_000]))
+    (t,) = estimate([_spec(tmp_path)], env=env).tiles
+    assert t.download_mb == pytest.approx(t.requests * 31 / 1000)
+    # another level of the same source keeps its own weight
+    (t15,) = estimate([_spec(tmp_path, zl=15)], env=env).tiles
+    assert t15.download_mb == pytest.approx(t15.requests * DEFAULT_KB_PER_REQUEST / 1000)
+
+
 @pytest.mark.parametrize(("source", "block"), [("COP30", True), ("NED1/3", False), ("XP12", False)])
 def test_the_relief_cells_to_download_are_counted_once(
     tmp_path: Path, env: BuildEnv, monkeypatch: pytest.MonkeyPatch, source: str, block: bool

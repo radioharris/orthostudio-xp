@@ -769,3 +769,24 @@ def test_11_the_put_back_weighs_what_its_copy_takes(
     monkeypatch.setattr(build_mod, "same_disk", lambda a, b: True)
     _rows, seconds = build_mod._put_back_rows(specs, {T.name: old})
     assert seconds == ((node_id, 1.0),)
+
+
+def test_a_read_of_where_a_tile_is_mends_nothing(
+    home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The cloud mode asks where a tile is while its build may be putting it back: its old
+    version under :data:`OLD_SUFFIX` stays where the put back left it."""
+    from orthostudio.pipeline.filing import tile_home
+
+    _other_disk(monkeypatch)
+    old, _new = _builds(home, tmp_path)
+    cut = old.with_name(NAME + OLD_SUFFIX)
+    os.replace(old, cut)
+    tile_home(
+        T,
+        atelier=tmp_path / "atelier",
+        custom_scenery=None,
+        library_path=default_library_path(),
+        mend=False,
+    )
+    assert cut.is_dir() and not old.exists()

@@ -11,6 +11,11 @@ on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      mac:
+        description: "In a private repository, build the Apple Silicon installer instead of Windows's"
+        type: boolean
+        default: false
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
@@ -54,15 +59,17 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # macOS 14 on Apple Silicon: the wheels chosen there run on macOS 14 and later. The Intel
-        # app on macOS 15 (Apple Silicon too, checked under Rosetta): pyproj's Intel wheels ask for
-        # macOS 15. Ubuntu 22.04: Triangle4XP compiled there runs on the older glibc of the
-        # distributions still in use.
+        # macOS 15 on Apple Silicon, the oldest macOS GitHub still offers (its macOS 14 machines
+        # closed on 2026-11-02): the wheels chosen there ask for macOS 15. The Intel app on macOS 15
+        # too (Apple Silicon as well, checked under Rosetta): pyproj's Intel wheels ask for it.
+        # Ubuntu 22.04: Triangle4XP compiled there runs on the older glibc of the distributions
+        # still in use.
         #
         # A private repository builds the Windows installer alone: its minutes are counted, macOS's
         # ten times over, and the Mac app of a release candidate is tried from a checkout
-        # (2026-10-03).
-        include: ${{ fromJSON(github.event.repository.private && '[{"os":"windows-latest"}]' || '[{"os":"macos-14"},{"os":"macos-15","machine":"x86_64"},{"os":"windows-latest"},{"os":"ubuntu-22.04"}]') }}
+        # (2026-10-03). A manual run there may ask for the Apple Silicon one instead (`mac`), to
+        # try the installed app before a release (its own Python downloading OpenCV, 2026-11-03).
+        include: ${{ fromJSON(github.event.repository.private && (inputs.mac && '[{"os":"macos-15"}]' || '[{"os":"windows-latest"}]') || '[{"os":"macos-15"},{"os":"macos-15","machine":"x86_64"},{"os":"windows-latest"},{"os":"ubuntu-22.04"}]') }}
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v10.1.0

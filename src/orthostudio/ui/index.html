@@ -17,10 +17,7 @@
 
 <header class="topbar" data-frame-owned>
   <div class="brand">
-    <svg class="logo" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-      <path d="M3 5h18v14H3z" fill="none" stroke="currentColor" stroke-width="1.5"/>
-      <path d="M3 12h6l3-4 3 6 2-2h4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
-    </svg>
+    <span class="icon icon-logo logo" aria-hidden="true"></span>
     <span class="brand-name">OrthoStudio XP</span>
     <span class="brand-version num" id="brand-version"></span>
     <span class="mock-badge" id="mock-badge" hidden data-i18n="app.mock">mock mode</span>
@@ -39,16 +36,11 @@
       <option value="fr">FR</option>
     </select>
     <button type="button" id="theme-btn" class="tool-btn" data-i18n-title="app.theme" title="Light / dark theme">
-      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-        <circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="1.5"/>
-        <path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor"/>
-      </svg>
+      <span class="icon icon-theme" aria-hidden="true"></span>
     </button>
-    <button type="button" id="quit-btn" class="btn btn-small quit-btn" data-i18n-title="quit.help" title="Stop OrthoStudio XP" hidden>
+    <button type="button" id="quit-btn" class="btn quit-btn" data-i18n-title="quit.help" title="Stop OrthoStudio XP" hidden>
       <!-- its ring sits on the label's baseline, as a round letter does (styles.css) -->
-      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-        <path d="M12 3.3v8M7.1 6.5a7 7 0 1 0 9.8 0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
-      </svg>
+      <span class="icon icon-quit" aria-hidden="true"></span>
       <span data-i18n="quit.button">Quit</span>
     </button>
   </div>
@@ -70,22 +62,26 @@
           <div class="map-banner" id="map-banner" role="status" hidden>
             <p class="map-banner-text" id="map-banner-text"></p>
             <div class="map-banner-actions">
-              <button type="button" class="btn btn-small" id="draw-center" data-i18n="draw.center">Point at the map centre</button>
-              <button type="button" class="btn btn-small" id="draw-undo" data-i18n="draw.undo">Remove the last point</button>
-              <button type="button" class="btn btn-small btn-primary" id="draw-finish" data-i18n="draw.finish">Finish</button>
-              <button type="button" class="btn btn-small" id="draw-cancel" data-i18n="draw.cancel">Cancel</button>
+              <button type="button" class="btn" id="draw-center" data-i18n="draw.center">Point at the map centre</button>
+              <button type="button" class="btn" id="draw-undo" data-i18n="draw.undo">Remove the last point</button>
+              <button type="button" class="btn btn-primary" id="draw-finish" data-i18n="draw.finish">Finish</button>
+              <button type="button" class="btn" id="draw-cancel" data-i18n="draw.cancel">Cancel</button>
             </div>
           </div>
           <div class="map-hint" id="map-hint" hidden>
             <span data-i18n="map.first_hint">Zoom to the area you want, then click squares to choose tiles.</span>
-            <button type="button" class="btn btn-small" id="map-hint-close" data-i18n="map.hint_ok">Got it</button>
+            <button type="button" class="btn" id="map-hint-close" data-i18n="map.hint_ok">Got it</button>
           </div>
+          <!-- the cloud mode's own bar: its views, outlining a cloud, the way back (clouds.js) -->
+          <div class="map-banner clouds-banner" id="clouds-banner" role="status" hidden></div>
           <p class="map-notice" id="map-notice" role="status" hidden></p>
           <div class="map-legend" id="map-legend"></div>
         </div>
       </div>
 
       <div class="plan-steps">
+        <!-- The clouds of a built tile, in place of the steps while the cloud mode is on (clouds.js) -->
+        <section class="plan-step clouds-panel" id="clouds-panel" hidden aria-labelledby="clouds-title"></section>
         <!-- Step 1 -->
         <section class="plan-step" id="tiles-panel" tabindex="-1" aria-labelledby="step1-title">
           <h2 class="plan-step-title" id="step1-title"><span class="plan-step-num" aria-hidden="true">1</span><span data-i18n="step1.title">Choose the tiles</span></h2>
@@ -95,21 +91,35 @@
           <div class="tiles-patched" id="tiles-patched" aria-live="polite"></div>
           <div class="tile-count-row">
             <p class="help" id="tile-count"></p>
-            <button type="button" class="btn btn-small btn-icon btn-danger btn-trash" id="tiles-clear" data-i18n-title="plan.tiles_clear" title="Unselect all tiles" hidden>
-              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                <path d="M4 7h16M9 7V4.5h6V7M6.5 7l1 12.5h9l1-12.5M10 10.5v6M14 10.5v6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
-              </svg>
+            <button type="button" class="btn btn-icon btn-danger btn-trash" id="tiles-clear" data-i18n-title="plan.tiles_clear" title="Unselect all tiles" hidden>
+              <span class="icon icon-bin" aria-hidden="true"></span>
               <span class="sr-only" data-i18n="plan.tiles_clear">Unselect all tiles</span>
             </button>
           </div>
           <p class="plan-step-size" id="selection-size" aria-live="polite"></p>
           <div class="field-row field-stack">
+            <!-- The settings profile the build takes, from the second one on: its source and level
+                 come with it (app.js renderPlanProfile). -->
+            <div class="field" id="plan-profile" hidden>
+              <label for="plan-profile-select" data-i18n="plan.profile">Settings profile</label>
+              <select id="plan-profile-select"></select>
+              <small class="help" id="plan-profile-help"></small>
+              <!-- Step 1's source or level no longer the profile's, after a Save in Settings or a
+                   change here: said, with the button that takes the profile's (renderPlanProfile). -->
+              <div class="colours-own plan-profile-differs" id="plan-profile-differs" hidden>
+                <p class="help" id="plan-profile-differs-text"></p>
+                <button type="button" class="btn btn-accent" id="plan-profile-take" data-i18n="plan.profile_take">Use them</button>
+              </div>
+            </div>
             <div class="field">
               <label for="provider-select" data-i18n="plan.provider">Imagery source</label>
-              <select id="provider-select"></select>
+              <!-- My sources… beside the list rather than under its notes (a user, 2026-11-02) -->
+              <div class="select-and-button">
+                <select id="provider-select"></select>
+                <button type="button" class="btn sources-open" id="sources-open" data-i18n="sources.open">My sources…</button>
+              </div>
               <small class="help is-fail" id="provider-coverage" role="status" hidden></small>
               <small class="help" id="provider-attribution"></small>
-              <button type="button" class="btn btn-small sources-open" id="sources-open" data-i18n="sources.open">My sources…</button>
             </div>
             <div class="field">
               <label for="zl-select" data-i18n="plan.quality">Detail level</label>
@@ -157,8 +167,8 @@
               </div>
               <p class="help flightplan-note" id="flightplan-note" hidden></p>
               <div class="flightplan-actions">
-                <button type="button" class="btn btn-small" id="flightplan-recenter" data-i18n="flightplan.recenter" data-i18n-title="flightplan.recenter_help" title="Bring the map back to the route">Recenter</button>
-                <button type="button" class="btn btn-small" id="flightplan-delete" data-i18n="flightplan.delete">Delete the flight plan</button>
+                <button type="button" class="btn" id="flightplan-recenter" data-i18n="flightplan.recenter" data-i18n-title="flightplan.recenter_help" title="Bring the map back to the route">Recenter</button>
+                <button type="button" class="btn" id="flightplan-delete" data-i18n="flightplan.delete">Delete the flight plan</button>
               </div>
             </div>
           </div>
@@ -204,24 +214,22 @@
           <p class="help draw-which" id="draw-which"></p>
           <div class="zones-status" id="zones-status" hidden>
             <span id="zones-status-text"></span>
-            <button type="button" class="btn btn-small" id="zones-retry" data-i18n="zones.retry" hidden>Retry</button>
+            <button type="button" class="btn" id="zones-retry" data-i18n="zones.retry" hidden>Retry</button>
           </div>
           <div class="zones-problems" id="zones-problems" hidden></div>
           <p class="plan-step-size" id="zones-total" aria-live="polite"></p>
           <p class="placeholder zones-empty" id="zones-empty" data-i18n="zones.empty" hidden>No zone yet: use one of the buttons above, then click on the map.</p>
           <div class="zone-list-head" id="zone-list-head" hidden>
             <p class="help zones-priority" id="zones-priority" data-i18n="zones.priority" hidden>Where zones overlap, the one higher in the list wins.</p>
-            <button type="button" class="btn btn-small btn-icon btn-danger btn-trash" id="zones-clear" data-i18n-title="zones.clear" title="Delete the zones in the list">
-              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                <path d="M4 7h16M9 7V4.5h6V7M6.5 7l1 12.5h9l1-12.5M10 10.5v6M14 10.5v6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
-              </svg>
+            <button type="button" class="btn btn-icon btn-danger btn-trash" id="zones-clear" data-i18n-title="zones.clear" title="Delete the zones in the list">
+              <span class="icon icon-bin" aria-hidden="true"></span>
               <span class="sr-only" data-i18n="zones.clear">Delete the zones in the list</span>
             </button>
           </div>
           <ol class="zone-list" id="zone-list"></ol>
           <p class="help zones-others" id="zones-others" hidden>
             <span id="zones-others-text"></span>
-            <button type="button" class="btn btn-small" id="zones-others-toggle">Show them</button>
+            <button type="button" class="btn" id="zones-others-toggle">Show them</button>
           </p>
           <details class="more">
             <summary data-i18n="zones.shortcuts">Shortcuts</summary>
@@ -235,7 +243,7 @@
           <div class="plan-step-head">
             <h2 class="plan-step-title" id="step3-title"><span class="plan-step-num" aria-hidden="true">3</span><span data-i18n="step3.title">Check what it will cost</span></h2>
             <div class="actions estimate-actions">
-              <button type="button" class="btn btn-small" id="estimate-btn" data-i18n="plan.estimate_again" hidden>Estimate again</button>
+              <button type="button" class="btn" id="estimate-btn" data-i18n="plan.estimate_again" hidden>Estimate again</button>
               <span class="spinner" id="estimate-spinner" hidden aria-hidden="true"></span>
               <span class="help" id="estimate-status"></span>
             </div>
@@ -243,7 +251,7 @@
           <p class="plan-step-lead" data-i18n="step3.lead">Disk space, download and time, worked out before anything is built.</p>
           <div class="plan-xplane" id="plan-xplane" role="status" hidden>
             <p id="plan-xplane-text"></p>
-            <button type="button" class="btn btn-small" id="plan-xplane-choose" data-i18n="plan.xplane_choose">Choose the X-Plane 12 folder</button>
+            <button type="button" class="btn" id="plan-xplane-choose" data-i18n="plan.xplane_choose">Choose the X-Plane 12 folder</button>
           </div>
           <!-- Answers changed in Settings and not saved: said for as long as it lasts (app.js renderUnsaved). -->
           <div class="plan-unsaved" id="plan-unsaved" role="status" hidden>
@@ -251,7 +259,7 @@
           </div>
           <div class="plan-settings">
             <p class="help" id="plan-settings-summary" aria-live="polite"></p>
-            <button type="button" class="btn btn-small" id="plan-settings-change" data-i18n="plan.settings_change">Change in Settings</button>
+            <button type="button" class="btn" id="plan-settings-change" data-i18n="plan.settings_change">Change in Settings</button>
           </div>
           <div class="plan-error" id="plan-error" role="alert" hidden></div>
           <div id="plan-panel" class="plan-panel">
@@ -283,10 +291,8 @@
       <aside class="col col-jobs">
         <div class="jobs-head">
           <h2 class="h2" id="jobs-title" tabindex="-1" data-i18n="works.jobs">Jobs</h2>
-          <button type="button" class="btn btn-small btn-icon btn-danger btn-trash" id="jobs-clear" data-i18n-title="works.clear" title="Clear the job list" hidden>
-            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-              <path d="M4 7h16M9 7V4.5h6V7M6.5 7l1 12.5h9l1-12.5M10 10.5v6M14 10.5v6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
+          <button type="button" class="btn btn-icon btn-danger btn-trash" id="jobs-clear" data-i18n-title="works.clear" title="Clear the job list" hidden>
+              <span class="icon icon-bin" aria-hidden="true"></span>
             <span class="sr-only" data-i18n="works.clear">Clear the job list</span>
           </button>
         </div>
@@ -359,23 +365,23 @@
         <div class="library-acts">
           <div class="library-act" role="group" aria-labelledby="library-act-xplane">
             <span class="library-act-name" id="library-act-xplane" data-i18n="library.act_xplane">X-Plane</span>
-            <button type="button" class="btn btn-small" id="library-add" data-i18n-title="library.add_picked_help" title="Puts the tiles picked into X-Plane."><span data-i18n="library.act_add">Add</span><span class="library-act-n" id="library-add-n"></span></button>
-            <button type="button" class="btn btn-small" id="library-remove" data-i18n-title="library.remove_picked_help" title="X-Plane stops showing the tiles picked. Their files stay on this computer."><span data-i18n="library.act_remove">Remove</span><span class="library-act-n" id="library-remove-n"></span></button>
+            <button type="button" class="btn" id="library-add" data-i18n-title="library.add_picked_help" title="Puts the tiles picked into X-Plane."><span data-i18n="library.act_add">Add</span><span class="library-act-n" id="library-add-n"></span></button>
+            <button type="button" class="btn" id="library-remove" data-i18n-title="library.remove_picked_help" title="X-Plane stops showing the tiles picked. Their files stay on this computer."><span data-i18n="library.act_remove">Remove</span><span class="library-act-n" id="library-remove-n"></span></button>
           </div>
           <div class="library-act" id="library-act-tiles" role="group" aria-labelledby="library-act-tiles-name">
             <span class="library-act-name" id="library-act-tiles-name" data-i18n="library.act_tiles">Tiles</span>
-            <button type="button" class="btn btn-small" id="library-rebuild" data-i18n-title="library.rebuild_help" title="Build the tiles picked again with today's version and settings, without going through the Plan. What the data folder already holds is reused."><span data-i18n="library.rebuild">Build again…</span><span class="library-act-n" id="library-rebuild-n"></span></button>
-            <button type="button" class="btn btn-small" id="library-file"><span data-i18n="library.file">File elsewhere…</span><span class="library-act-n" id="library-file-n"></span></button>
+            <button type="button" class="btn" id="library-rebuild" data-i18n-title="library.rebuild_help" title="Build the tiles picked again with today's version and settings, without going through the Plan. What the data folder already holds is reused."><span data-i18n="library.rebuild">Build again…</span><span class="library-act-n" id="library-rebuild-n"></span></button>
+            <button type="button" class="btn" id="library-file"><span data-i18n="library.file">File elsewhere…</span><span class="library-act-n" id="library-file-n"></span></button>
           </div>
           <div class="library-act library-act-end" id="library-act-end" role="group" data-i18n-aria-label="library.act_end" aria-label="Off the list">
-            <button type="button" class="btn btn-small" id="library-forget" data-i18n-title="library.forget_picked_help" title="The Ortho4XP tiles picked leave this list, taken out of X-Plane first. Their files stay where Ortho4XP put them."><span data-i18n="library.forget_picked">Remove from the list…</span><span class="library-act-n" id="library-forget-n"></span></button>
-            <button type="button" class="btn btn-small btn-danger" id="library-delete-picked" data-i18n-title="library.delete_picked_help" title="Delete the files of the tiles picked that OrthoStudio XP built (asks first)."><span data-i18n="library.delete">Delete…</span><span class="library-act-n" id="library-delete-picked-n"></span></button>
+            <button type="button" class="btn" id="library-forget" data-i18n-title="library.forget_picked_help" title="The Ortho4XP tiles picked leave this list, taken out of X-Plane first. Their files stay where Ortho4XP put them."><span data-i18n="library.forget_picked">Remove from the list…</span><span class="library-act-n" id="library-forget-n"></span></button>
+            <button type="button" class="btn btn-danger" id="library-delete-picked" data-i18n-title="library.delete_picked_help" title="Delete the files of the tiles picked that OrthoStudio XP built (asks first)."><span data-i18n="library.delete">Delete…</span><span class="library-act-n" id="library-delete-picked-n"></span></button>
           </div>
         </div>
       </div>
       <p class="library-filing" id="library-filing" role="status" aria-live="polite" hidden>
         <span id="library-filing-text"></span>
-        <button type="button" class="btn btn-small" id="library-filing-stop" data-i18n="library.filing_stop">Stop</button>
+        <button type="button" class="btn" id="library-filing-stop" data-i18n="library.filing_stop">Stop</button>
       </p>
       <!-- Under the buttons, above the table: a refusal of File elsewhere showed under the last row,
            out of sight (app.js showLibraryErrors). -->
@@ -391,6 +397,7 @@
             <th scope="col" data-sort="xplane" aria-sort="none"><button type="button" class="th-sort" data-i18n="library.in_xplane" data-i18n-title="library.sort_help" title="Sort by this column">In X-Plane</button></th>
             <th scope="col" class="num" data-sort="size" aria-sort="none" data-i18n-title="library.size_help" title="The space this tile's files take. For a tile built by OrthoStudio XP, most of it is the very files OrthoStudio XP keeps in its data folder: they count here, and not again under Store in the status bar."><button type="button" class="th-sort" data-i18n="library.size">Size</button></th>
             <th scope="col" data-sort="built" aria-sort="none"><button type="button" class="th-sort" data-i18n="library.built_by" data-i18n-title="library.sort_help" title="Sort by this column">Built by</button></th>
+            <th scope="col" class="library-clouds"><div><span data-i18n="library.clouds">Clouds</span><span class="spinner library-clouds-reading" id="library-clouds-reading" aria-hidden="true"></span></div></th>
             <th scope="col" colspan="3"><span class="sr-only" data-i18n="library.actions">Actions</span></th>
           </tr>
         </thead>
@@ -488,6 +495,9 @@
       <p class="lead" data-i18n="settings.lead">Answer in plain words what you want to see in X-Plane. The recommended answer is marked.</p>
     </div>
     <form id="settings-form" class="settings-form" novalidate>
+      <!-- The settings profiles, from the second one on: which one Save writes into, rename,
+           delete (app.js renderSettingsProfile). -->
+      <div class="settings-profile" id="settings-profile" hidden></div>
       <div class="settings-search">
         <input type="search" id="settings-search" class="settings-search-input" spellcheck="false" autocomplete="off"
                data-i18n-placeholder="settings.search_ph" data-i18n-aria-label="settings.search" placeholder="Search: rivers, water, min_area…" aria-label="Search the settings">
@@ -507,10 +517,20 @@
         <div id="settings-expert-fields"></div>
       </details>
       <div class="actions settings-actions">
-        <button type="submit" class="btn btn-primary" data-i18n="settings.save">Save</button>
-        <button type="button" class="btn" id="settings-reset" data-i18n="settings.reset">Undo my changes</button>
-        <button type="button" class="btn" id="settings-defaults" data-i18n="settings.defaults">Default values</button>
-        <span class="help settings-status" id="settings-status" aria-live="polite"></span>
+        <!-- Save names the profile it writes into once there are two (app.js renderSaveButtons). -->
+        <button type="submit" class="btn btn-primary settings-main" id="settings-save" data-i18n="settings.save">Save</button>
+        <button type="button" class="btn settings-main" id="settings-save-new" data-i18n="settings.save_new">Save as a new profile…</button>
+        <button type="button" class="btn settings-main" id="settings-reset" data-i18n="settings.reset">Undo my changes</button>
+        <button type="button" class="btn settings-main" id="settings-defaults" data-i18n="settings.defaults">Default values</button>
+        <span class="help settings-status settings-main" id="settings-status" aria-live="polite"></span>
+        <!-- Save as a new profile: the same bar asks for its name (app.js openNewProfile). -->
+        <div class="settings-new" id="settings-new" hidden>
+          <label class="settings-new-label" for="settings-new-name" data-i18n="settings.new_name">Name of the new profile</label>
+          <input type="text" id="settings-new-name" class="settings-new-input" maxlength="40" autocomplete="off" spellcheck="false">
+          <button type="button" class="btn btn-primary" id="settings-new-create" data-i18n="settings.new_create">Create the profile</button>
+          <button type="button" class="btn" id="settings-new-cancel" data-i18n="settings.new_cancel">Cancel</button>
+          <p class="help settings-new-help" id="settings-new-help"></p>
+        </div>
         <p class="error-inline" id="settings-error" role="alert" hidden></p>
       </div>
     </form>
@@ -531,9 +551,9 @@
   </label>
   <!-- the window's zoom (zoom.js bindZoom): shown in the window alone, once it says it scales -->
   <span class="status-item status-zoom" id="status-zoom" hidden data-frame-owned>
-    <button type="button" class="btn btn-small status-zoom-step" data-zoom="out">&#8722;</button>
-    <button type="button" class="btn btn-small status-zoom-level num" data-zoom="level">100%</button>
-    <button type="button" class="btn btn-small status-zoom-step" data-zoom="in">+</button>
+    <button type="button" class="btn status-zoom-step" data-zoom="out">&#8722;</button>
+    <button type="button" class="btn status-zoom-level num" data-zoom="level">100%</button>
+    <button type="button" class="btn status-zoom-step" data-zoom="in">+</button>
   </span>
 </footer>
 
@@ -541,9 +561,9 @@
   <input type="search" id="find-input" class="find-input" spellcheck="false" autocomplete="off"
          data-i18n-placeholder="find.placeholder" data-i18n-aria-label="find.label" placeholder="Find on this page" aria-label="Find on this page">
   <span class="help find-count" id="find-count" aria-live="polite"></span>
-  <button type="button" class="btn btn-small" id="find-prev" data-i18n-title="find.previous" title="Previous">&#8593;</button>
-  <button type="button" class="btn btn-small" id="find-next" data-i18n-title="find.next" title="Next">&#8595;</button>
-  <button type="button" class="btn btn-small" id="find-close" data-i18n-title="find.close" title="Close">&#10005;</button>
+  <button type="button" class="btn" id="find-prev" data-i18n-title="find.previous" title="Previous">&#8593;</button>
+  <button type="button" class="btn" id="find-next" data-i18n-title="find.next" title="Next">&#8595;</button>
+  <button type="button" class="btn" id="find-close" data-i18n-title="find.close" title="Close">&#10005;</button>
 </div>
 <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
@@ -592,6 +612,18 @@
     <div class="dialog-actions">
       <button type="submit" class="btn" value="cancel" autofocus data-i18n="library.bulk_keep">Keep them</button>
       <button type="submit" class="btn btn-primary" value="go" id="library-bulk-go"></button>
+    </div>
+  </form>
+</dialog>
+
+<!-- The cloud mode's questions, Apply and Restore (clouds.js ask). -->
+<dialog id="clouds-dialog" class="dialog" role="alertdialog" aria-labelledby="clouds-dialog-title" aria-describedby="clouds-dialog-text">
+  <form method="dialog">
+    <h2 class="dialog-title" id="clouds-dialog-title"></h2>
+    <div class="dialog-text" id="clouds-dialog-text"></div>
+    <div class="dialog-actions">
+      <button type="submit" class="btn" value="cancel" autofocus data-i18n="clouds.cancel">Cancel</button>
+      <button type="submit" class="btn btn-primary" value="go" id="clouds-dialog-go"></button>
     </div>
   </form>
 </dialog>
@@ -693,7 +725,6 @@
 </dialog>
 
 <!-- Templates -->
-<template id="tpl-folder-icon"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3.5 7.5h6l2 2h9v9.5h-17z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg></template>
 <template id="tpl-error-card">
   <article class="error-card">
     <header class="error-head">

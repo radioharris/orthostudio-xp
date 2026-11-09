@@ -3162,7 +3162,7 @@ def test_one_finished_build_can_leave_the_list_alone() -> None:
     assert "padding: 6px 0 0; display: flex; flex-direction: column; gap: 8px;" in css
     # the trash above the list is untouched
     html = (UI / INDEX_FILE).read_text(encoding="utf-8")
-    assert 'class="btn btn-small btn-icon btn-danger btn-trash" id="jobs-clear"' in html
+    assert 'class="btn btn-icon btn-danger btn-trash" id="jobs-clear"' in html
 
     # the bin says what goes, and both languages have the words
     tables = _i18n_tables()
@@ -3337,6 +3337,11 @@ def test_a_tile_in_a_build_cannot_be_chosen_again() -> None:
     assert "sayTilesInBuild({ skipped: added.skipped });" in replace
     for name in ("addTilesFromText", "addTileFromLatLon", "addTilesFromIcao"):
         assert "sayTilesInBuild(addTiles(" in _function_body(app_js, name), name
+    # the box's only Add, clicked after tile names (added as their field is left), said the
+    # coordinates were invalid (2026-11-04)
+    assert '=== "" && $("lon-input").value === "") return;' in _function_body(
+        app_js, "addTileFromLatLon"
+    )
     row = _function_body(app_js, "libraryRow")
     # Add, Remove and Find again (a moved tile in a build waits for the build's end as well)
     assert row.count("disabled: busy || inBuild") == 3 and "disabled: busy || building" in row
@@ -3463,7 +3468,9 @@ def test_the_cost_follows_the_plan_and_build_needs_no_estimate_first() -> None:
         "scroll-margin-bottom: calc(var(--statusbar-h) + 8px); }"
     ) in css
     assert "trackStatusbarHeight();" in _function_body(app_js, "boot")
-    assert "min-height: 30px;" in css and "height: 30px;" not in css.replace("min-height", "")
+    # a minimum height, the one of every control, never a fixed one: a label that wraps stays inside
+    assert "min-height: var(--control-h);" in dict(_css_rules(css))[".btn"]
+    assert "height: 30px;" not in css
 
 
 def test_the_sources_are_grouped_by_what_they_cover_bing_and_esri_first() -> None:
@@ -3854,7 +3861,17 @@ def test_quit_and_the_file_manager_from_the_page() -> None:
     html = (UI / INDEX_FILE).read_text(encoding="utf-8")
     for element in ('id="quit-btn"', 'id="quit-confirm"', 'id="stopped"', 'id="disk-reveal"'):
         assert element in html, element
-    assert 'id="tpl-folder-icon"' in html and '<th scope="col" colspan="3">' in html
+    css = (UI / "styles.css").read_text(encoding="utf-8")
+    assert ".icon-folder { --icon:" in css and '<th scope="col" colspan="3">' in html
+    # every icon's drawing well formed: a mask that cannot be read paints nothing (the stop square
+    # had two strokes and never showed, a review, 2026-11-07)
+    from xml.dom import minidom
+
+    drawn = r'^\.icon-[\w-]+ \{ --icon: url\("data:image/svg\+xml,(.+?)"\); \}$'
+    drawings = re.findall(drawn, css, re.M)
+    assert len(drawings) == css.count("--icon: url(") >= 11
+    for svg in drawings:
+        minidom.parseString(svg)
     labels = _node_json("app.js", '["mac", "win", "lin", undefined].map((p) => m.revealLabel(p))')
     assert labels == [
         "Show in Finder",
@@ -3909,7 +3926,7 @@ def test_step_3_says_when_x_plane_is_not_found() -> None:
         'm.xplaneNotice({xplane: {path: "C:\\\\X-Plane 12", detected: true}}, null), '
         "m.xplaneNotice(null, null)]",
     )
-    assert got[0].startswith("X-Plane 12 was not found on this computer.")
+    assert got[0].startswith("X-Plane 12 not found on this computer:")
     assert "E:\\X-Plane 12" in got[1] and got[2] is None and got[3] is None
     tables = _node_json(
         "i18n.js",
@@ -3939,8 +3956,11 @@ def test_step_3_says_when_x_plane_is_not_found() -> None:
     assert "onclick: () => openSettingsFor(err)" in _function_body(app_js, "errorCard")
     assert 'focusSettingsField("q-xplane-dir");' in _function_body(app_js, "chooseXplaneFolder")
     assert "$(id)" in _function_body(app_js, "focusSettingsField")
-    save = _function_body(app_js, "saveSettings")
-    order = ("await loadStatus();", "showPlanError(null);", 'renderSettings(t("settings.saved"));')
+    # what follows a save, Save's or a new profile's
+    assert 'await settingsSaved(t("settings.saved"));' in _function_body(app_js, "saveSettings")
+    assert 'await settingsSaved(t("settings.new_done"' in _function_body(app_js, "createProfile")
+    save = _function_body(app_js, "settingsSaved")
+    order = ("await loadStatus();", "showPlanError(null);", "renderSettings(message);")
     assert [save.index(line) for line in order] == sorted(save.index(line) for line in order)
     # "empty = the detected folder" is no hint when none was detected
     questions = (UI / "settings.js").read_text(encoding="utf-8")
@@ -4275,7 +4295,8 @@ def test_the_data_folder_can_be_found_and_its_refusal_read() -> None:
     assert "height: 18px;" in rules[".status-home .status-reveal"]  # the bar keeps its height
     html = (UI / INDEX_FILE).read_text(encoding="utf-8")
     actions = html[html.index('<div class="actions settings-actions">') :]
-    assert actions.index('id="settings-error"') < actions.index("</div>")  # in the Save bar
+    assert actions.index('id="settings-error"') < actions.index("</form>")  # in the Save bar
+    assert actions.index('id="settings-error"') > actions.index('id="settings-new"')
     assert "flex-basis: 100%;" in rules[".settings-actions .error-inline"]
     words = _node_json(
         "i18n.js",
@@ -4383,7 +4404,7 @@ def test_the_screen_shows_before_the_engine_answers() -> None:
     boot = _function_body(app_js, "boot")
     wait = boot.index("await Promise.allSettled([")
     assert boot.index("routeFromHash();") < wait < boot.rindex("routeFromHash();")
-    first = boot.index("const early = Promise.allSettled([providers, settings, schema])")
+    first = boot.index("const early = Promise.allSettled([providers, settings, schema, profiles])")
     early = boot[first:wait]
     assert 'renderProviders(state.settings?.essential?.provider || "BI");' in early
     assert 'if (state.screen === "settings") renderSettings();' in early
@@ -4674,9 +4695,7 @@ def test_the_legend_lines_up_folds_away_and_keeps_the_keyboard() -> None:
     ]
     assert 'box.classList.toggle("is-folded", !zs.legendOpen);' in legend
     folded = legend[legend.index("if (!zs.legendOpen) {") : legend.index("const fold = ")]
-    assert 'class: "btn btn-small legend-unfold"' in folded, (
-        "an ordinary small button, as on the map"
-    )
+    assert 'class: "btn legend-unfold"' in folded, "an ordinary button, as on the map"
     assert "onclick: () => setLegendOpen(true)" in folded
     assert 'class: "legend-fold"' in legend and "onclick: () => setLegendOpen(false)" in legend
     assert '"aria-expanded": "true"' in legend and '"aria-expanded": "false"' in legend
@@ -5050,15 +5069,16 @@ def test_the_three_tools_at_the_top_right_are_one_height() -> None:
     assert ".quit-btn" in head, "Quit is sized apart from the tools beside it"
     # two classes deep, so it beats `.btn` whatever the order of the file
     assert head.count(".topbar-tools ") == 3
-    for held in ("height: 26px", "min-height: 26px", "max-height: 26px"):
+    for held in (
+        "height: var(--control-h)",
+        "min-height: var(--control-h)",
+        "max-height: var(--control-h)",
+    ):
         assert held in rule, held
     # and no line-height of its own: pinning the line box to the font's exact height left Quit's
     # label standing off its own icon on Windows, where the font is not the Mac's (2026-09-21)
     assert "line-height" not in rule
     assert css.index(".btn {") > start  # and the rule it has to beat really does come later
-    # .btn-small keeps its minimum for the buttons whose label may wrap; only these three are fixed
-    small = css[css.index(".btn-small {") :][: css[css.index(".btn-small {") :].index("}")]
-    assert "min-height" in small and "height: " not in small.replace("min-height", "")
 
 
 def test_quits_label_stands_on_its_icon() -> None:
@@ -5070,10 +5090,9 @@ def test_quits_label_stands_on_its_icon() -> None:
     the same user saw that at once on his Mac. It sits on the baseline now, as a round letter does,
     its middle 0.5 unit above the box's. Its margin inside its box widened the left: the right
     takes as much."""
-    html = (UI / "index.html").read_text(encoding="utf-8")
-    button = html[html.index('id="quit-btn"') :]
-    button = button[: button.index("</button>")]
-    d = re.search(r'<path d="([^"]+)"', button)
+    css = (UI / "styles.css").read_text(encoding="utf-8")
+    drawn = next(line for line in css.splitlines() if line.startswith(".icon-quit {"))
+    d = re.search(r"<path d='([^']+)'", drawn)
     assert d is not None
     # the stem from its top down, then the ring through both ends of a chord, its centre below
     m = re.fullmatch(
@@ -5087,7 +5106,7 @@ def test_quits_label_stands_on_its_icon() -> None:
     assert abs(top + stem - (centre - 0.2)) < 0.05, (top, stem, centre)
     rules = dict(_css_rules((UI / "styles.css").read_text(encoding="utf-8")))
     assert "padding: 0 8px 0 6px;" in rules[".topbar-tools .quit-btn"]
-    label = rules[".topbar-tools .quit-btn span"]
+    label = rules[".topbar-tools .quit-btn > [data-i18n]"]
     assert "text-box-trim: trim-both;" in label and "text-box-edge: cap alphabetic;" in label
 
 
@@ -5678,7 +5697,7 @@ def test_the_library_says_what_each_tile_was_built_with() -> None:
     app_js = (UI / "app.js").read_text(encoding="utf-8")
     row = _function_body(app_js, "libraryRow")
     assert "libraryOpen.has(key)" in row  # open parts stay open across the table's redraws
-    assert 'class: "library-built"' in row and "colspan: 9" in row
+    assert 'class: "library-built"' in row and "colspan: 10" in row  # with the clouds
     assert "byOsxp ?" in row  # none for an imported tile
     assert "return detail ? [row, detail] : [row];" in row
     # focus comes back to a row by its place among the tiles, not among the parts under them
@@ -5913,11 +5932,11 @@ def _css_rules(css: str) -> list[tuple[str, str]]:
 # The only rules with a size of their own: controls and bars, not text (see the "styles" block).
 OWN_SIZES = {
     ".topbar-tools .tool-select, .topbar-tools .tool-btn, .topbar-tools .quit-btn",
-    ".btn-small",
     ".chip button",
     ".map-notice",
     ".map-legend",
     ".plan-step-num",
+    ".clouds-badge",  # a number in a mark of its own size, as a step's
     ".map-tip",
     ".statusbar",
     ".find-input",
@@ -6095,7 +6114,7 @@ def test_the_patches_are_named_before_anything_is_built() -> None:
     assert "renderTilesPatched();" in _function_body(app_js, "renderTiles")
     # read when the page opens, when the Plan shows (a patch dropped in meanwhile), after a save
     assert 'api("GET", "/api/patches")' in _function_body(app_js, "loadPatches")
-    for name in ("boot", "showScreen", "saveSettings"):
+    for name in ("boot", "showScreen", "settingsSaved"):
         assert "loadPatches();" in _function_body(app_js, name), name
     # Settings asks about the folder it shows, and only when it changes
     ask = _function_body(app_js, "loadSettingsPatches")
@@ -6184,7 +6203,7 @@ def test_a_list_draws_the_same_arrows_in_every_engine() -> None:
         assert part in lists, part
     # the top bar's list keeps it: its shared rule sets the colour only, not the whole background
     shared = rules[".topbar-tools .tool-select, .topbar-tools .tool-btn, .topbar-tools .quit-btn"]
-    assert "background-color: var(--bg-2);" in shared and "background:" not in shared
+    assert "background-color: transparent;" in shared and "background:" not in shared
     assert "padding-right: 22px;" in rules[".topbar-tools .tool-select"]
     # one arrow per theme, in its --fg-2 (an image cannot read the tokens)
     arrow = r"--select-arrow: url\(\"data:image/svg\+xml,[^\"]*stroke='%23(\w{6})'"
@@ -6380,7 +6399,91 @@ def test_my_sources_is_a_button_that_can_be_seen() -> None:
     (2026-09-21)."""
     html = (UI / "index.html").read_text(encoding="utf-8")
     tag = html[html.index('id="sources-open"') - 120 : html.index('id="sources-open"')]
-    assert "btn-quiet" not in tag and "btn btn-small" in tag
+    assert "btn-quiet" not in tag and 'class="btn sources-open"' in tag
+
+
+def test_every_button_list_and_field_has_one_height() -> None:
+    """There were four heights of buttons and of fields, 24 to 30 px, and *My sources…* stood 4 px
+    lower than its list (a user, 2026-11-02): one token, --control-h, 30 px, for every button,
+    every list and every field, the top bar's included. The status bar's controls, the cards one
+    clicks and the small round crosses keep their own."""
+    css = (UI / "styles.css").read_text(encoding="utf-8")
+    rules = dict(_css_rules(css))
+    assert "--control-h: 30px;" in rules[":root"]
+    fields = 'input[type="text"], input[type="number"], input[type="search"], select, textarea'
+    assert "height: var(--control-h);" in rules[fields]
+    assert "height: var(--control-h);" in rules[".with-unit"]
+    assert "min-height: var(--control-h);" in rules[".btn"]
+    assert "width: var(--control-h);" in rules[".btn-icon"]
+    top = ".topbar-tools .tool-select, .topbar-tools .tool-btn, .topbar-tools .quit-btn"
+    assert "height: var(--control-h);" in rules[top]
+    search = ".settings-search-input, .works-search-input, .library-search-input"
+    assert "height: var(--control-h);" in rules[search]
+    # no button, list or field of the screens has a height of its own any more
+    for selector, body in rules.items():
+        if selector.startswith((".status", ".legend", ".job-forget", ".chip", ".nav")):
+            continue
+        if re.search(r"\b(btn|select|input)\b", selector):
+            assert not re.search(r"(?<![-\w])(min-)?height: (2[0-9]|3[0-4])px", body), selector
+    html = (UI / INDEX_FILE).read_text(encoding="utf-8")
+    line = html[html.index('class="select-and-button"') : html.index('id="provider-coverage"')]
+    assert 'id="provider-select"' in line and 'id="sources-open"' in line
+
+
+def test_a_field_stands_out_from_its_ground_and_a_button_takes_it() -> None:
+    """Buttons and fields had the same ground and looked alike (a user, 2026-11-02). A field or a
+    list takes the ground opposite to the one around it, the card's on the page and the page's on
+    a card; a button has none of its own and is drawn by its border. The surfaces painted with the
+    card's ground say so to their fields, and a zone's line, the page's ground inside its step,
+    says the card's again. The Library's groups of actions are cards, so their buttons are not
+    bare on the page. The top and bottom bars' controls, their lists included, take the bar's
+    ground (the same user, the same day)."""
+    css = (UI / "styles.css").read_text(encoding="utf-8")
+    rules = _css_rules(css)
+    base = dict(rules)
+    assert "--field-bg: var(--bg-2);" in base[":root"]
+    fields = 'input[type="text"], input[type="number"], input[type="search"], select, textarea'
+    for selector in (
+        fields,
+        ".with-unit",
+        ".settings-search-input, .works-search-input, .library-search-input",
+        ".find-input",
+    ):
+        assert "background: var(--field-bg);" in base[selector], selector
+    # the top bar's three tools, its list too, take the bar's ground: they are the bar's; and
+    # the bottom bar's
+    assert "background" not in base[".topbar-tools .tool-select"].replace("background-position", "")
+    assert "background: transparent;" in base[".status-select"]
+    grey = [".plan-step", ".dialog", ".question", ".find-bar"]
+    grey.append(".library-act")
+    assert base[", ".join(grey)].strip() == "--field-bg: var(--bg);"
+    for surface in grey:  # each of them really is painted with the card's ground
+        assert any(sel == surface and "background: var(--bg-2);" in body for sel, body in rules), (
+            surface
+        )
+    zone = [body.strip() for sel, body in rules if sel == ".zone-item"]
+    assert "--field-bg: var(--bg-2);" in zone
+    assert any(sel == ".zone-item" and "background: var(--bg);" in body for sel, body in rules)
+    assert "background: transparent;" in base[".btn"]
+    top = ".topbar-tools .tool-select, .topbar-tools .tool-btn, .topbar-tools .quit-btn"
+    assert "background-color: transparent;" in base[top]
+
+
+def test_every_button_has_the_text_of_a_field() -> None:
+    """A small button had 12 px of text and the others 13.5, chosen case by case, and a button took
+    the size of the note it sat in (a user, 2026-11-02): every button has the text of the field and
+    the list beside it, the page's text style, so the text size still draws it larger. The small
+    button is gone; the bottom bar keeps its own size and the top bar's tools set theirs."""
+    css = (UI / "styles.css").read_text(encoding="utf-8")
+    rules = dict(_css_rules(css))
+    assert "font-size: var(--fs);" in rules[".btn"]
+    assert rules[".statusbar .btn"].strip() == "font-size: inherit;"
+    assert (
+        "font-size: 12px;"
+        in rules[".topbar-tools .tool-select, .topbar-tools .tool-btn, .topbar-tools .quit-btn"]
+    )
+    for name in ("styles.css", INDEX_FILE, "app.js", "map.js", "settings.js"):
+        assert "btn-small" not in (UI / name).read_text(encoding="utf-8"), name
 
 
 def test_shift_and_a_drag_choose_the_squares_of_a_rectangle() -> None:
@@ -6528,7 +6631,7 @@ def test_the_legend_says_what_the_view_is_worth_in_a_builds_terms() -> None:
         '[[18, 46, 14, "EOX"], [14, 46, 14, "EOX"], [18, 46, null, ""]]'
         ".map(([z, lat, cap, name]) => m.viewLabel(z, lat, cap, name))",
     )
-    assert over[0] == "ZL18, enlarged. EOX goes no further than ZL14, about 7 m per pixel"
+    assert over[0] == "ZL18 enlarged: EOX stops at ZL14, about 7 m per pixel"
     assert over[1] == "Low, about 7 m per pixel \u00b7 ZL14", "at the ceiling nothing is enlarged"
     assert over[2] == "Very sharp, about 40 cm per pixel \u00b7 ZL18", "no ceiling, nothing to warn"
 
@@ -6674,8 +6777,8 @@ def test_the_map_says_when_its_source_refuses_this_computer() -> None:
     assert 'await ctx.api("GET", url);' in ask
     assert "return tileRefused(err?.status, err?.detail);" in ask
     tables = _i18n_tables()
-    assert tables["fr"]["map.base_refused"].startswith("{provider} refuse votre connexion (accès")
-    assert tables["en"]["map.base_refused"].startswith("{provider} refuses your connection (access")
+    assert tables["fr"]["map.base_refused"].startswith("{provider} refuse votre connexion")
+    assert tables["en"]["map.base_refused"].startswith("{provider} refuses your connection")
     # the line never runs under the legend: at the bottom right, as wide as its words up to what
     # the legend, at most 45 % at the bottom left, leaves
     rules = dict(_css_rules((UI / "styles.css").read_text(encoding="utf-8")))
@@ -7140,7 +7243,8 @@ def test_the_texture_grid_is_drawn_while_a_zone_is_drawn() -> None:
     # while a zone is under way, and while the keys that snap to the grid are held: the first
     # point is the one that starts the shape, so at that moment there is no zone in progress and
     # the grid appeared only after the click that needed it (a user, 2026-09-24)
-    assert "if (!zs.draft && !snapKeysHeld) return;" in body
+    # a zone's drawing only: a cloud's outline, drawn the same way, has no textures to take
+    assert "if ((!zs.draft || othersShape()) && !snapKeysHeld) return;" in body
     assert "TEXTURE_GRID_MIN_PX" in body, "and only while the squares can be aimed at"
     assert "zs.nextZl" in body, "at the level the zone will take, not the map's"
     assert "map.getBounds()" in body, "the view only, or it is thousands of lines"
@@ -7744,7 +7848,7 @@ def test_the_folder_filter_is_wired() -> None:
     css = (UI / "styles.css").read_text(encoding="utf-8")
     for rule in (
         ".library-folder > span { font-size: var(--fs-2); font-weight: 600; color: var(--fg-2); }",
-        ".library-folder select { max-width: 320px; min-width: 0; min-height: 30px; }",
+        ".library-folder select { max-width: 320px; min-width: 0; }",
     ):
         assert rule in css, rule
     tables = _i18n_tables()
@@ -7976,7 +8080,7 @@ def test_the_tiles_picked_are_built_again_as_the_plan_would_build_them() -> None
     ]
     assert got["q"]["go"] is True
     assert got["short"]["go"] is True
-    assert got["short"]["body"][-1].startswith("The disk may run short: about 4.5 GB to write")
+    assert got["short"]["body"][-1].startswith("Space is tight: 4.5 GB to write")
     # after an update that changes a stage, the same words: the figures are what the store says
     # ("up to" did not go, 2026-10-16)
     assert got["most"]["body"][1] == got["q"]["body"][1]
@@ -8026,10 +8130,7 @@ def test_answers_not_saved_are_said_until_they_are_saved() -> None:
         const draft = m.rebuildQuestion(reqs, [plan], 0, true);
         process.stdout.write(JSON.stringify({ saved, draft }));"""
     )
-    said = (
-        "Your changes in Settings are not saved: a build uses the settings saved before. Save "
-        "them in Settings first if they are meant for it."
-    )
+    said = "Settings not saved: the build takes the previous ones."
     assert said not in got["saved"]["body"]
     assert got["draft"]["body"][-1] == said
     assert got["draft"]["go"] is True  # said, not refused: the pilot may mean the saved ones
@@ -8229,13 +8330,11 @@ class El {
   setAttribute(k, v) { this.attrs[k] = String(v); }
   addEventListener() {}
   append(...kids) { this.kids.push(...kids); }
-  cloneNode() { return new El("svg"); }
 }
 globalThis.Node = El;
-const icon = { content: { firstElementChild: new El("svg") } };
 globalThis.document = {
   documentElement: {},
-  getElementById: (id) => (id === "tpl-folder-icon" ? icon : null),
+  getElementById: () => null,
   createElement: (tag) => new El(tag),
   createTextNode: (text) => Object.assign(new El("#text"), { textContent: text }),
 };
@@ -8679,7 +8778,7 @@ def test_the_show_menu_and_the_bar_s_actions_are_wired() -> None:
         "library-delete-picked",
     ]
     assert [bar.index(f'id="{b}"') for b in order] == sorted(bar.index(f'id="{b}"') for b in order)
-    assert 'class="btn btn-small btn-danger" id="library-delete-picked"' in bar
+    assert 'class="btn btn-danger" id="library-delete-picked"' in bar
     assert '<dialog id="library-bulk-dialog"' in html and 'value="go" id="library-bulk-go"' in html
     assert 'value="cancel" autofocus data-i18n="library.bulk_keep"' in html
     app_js = (UI / "app.js").read_text(encoding="utf-8")
@@ -8780,3 +8879,205 @@ def test_a_zone_as_the_tiles_offers_no_level_above_the_tiles_source() -> None:
     assert "const code = provider || ctx.planProvider?.() || null;" in body("maxZlFor")
     assert 'const source = provider || ctx.planProvider?.() || "";' in body("clampZl")
     assert "renderToolOptions();" in code.split("planChanged() {", 1)[1][:200]
+
+
+def test_every_control_of_the_cloud_mode_is_redrawn_as_itself() -> None:
+    """The panel is drawn again in place, an element matched to the live one of its kind and
+    place unless it has a key: a search's Stop came in as Tick all's button, its handler with it,
+    and ticked every cloud (a user, 2026-11-06). Every button of the mode has a key, or a name of
+    its own (a cloud's row's, which carries its cloud)."""
+    code = (UI / "clouds.js").read_text(encoding="utf-8")
+    calls = re.findall(r'h\("button", \{[^}]*\}', code)
+    assert calls
+    loose = [c for c in calls if "dataset:" not in c and '"aria-label"' not in c]
+    assert loose == [], loose
+
+
+def test_the_step_that_lays_a_tiles_clouds_again_says_so_in_works() -> None:
+    """Whatever the step that finishes a tile, its clouds laid again are said from the engine's
+    line (``build.clouds_again_message``): an Assembly said "putting the tile together" for the
+    12 s they took (a user, 2026-11-07)."""
+    from orthostudio.pipeline import build as build_mod
+
+    line = build_mod.clouds_again_message(3, 19)
+    job = {"status": "running", "install": False, "tiles": []}
+    pack = {"role": "pack", "status": "running", "fraction": 1.0}
+    assembly = {"status": "running", "fraction": 1.0, "message": line,
+                "nodes": {"+46+006/BI16/pack": pack}}  # fmt: skip
+    tile = {"tile": "+46+006", "steps": {"assembly": assembly}}
+    got = _node_json("app.js", f"m.tileActivity({json.dumps(job)}, {json.dumps(tile)})")
+    assert got == [{"step": "assembly", "words": "laying its clouds: 3 of 19 textures"}]
+
+
+def test_the_cloud_mode_opened_again_keeps_its_last_answer_until_the_next() -> None:
+    # cleared at each opening, the tile's picture and outlines went until its answer came back:
+    # a blink at each return to the mode (a user, 2026-11-07); another tile's goes with close
+    code = (UI / "clouds.js").read_text(encoding="utf-8")
+    opening = code[code.index("  async function open(tile) {") :]
+    opening = opening[: opening.index("\n  }\n")]
+    assert "answer: null" not in opening
+    closing = code[code.index("  function close() {") :]
+    assert "answer: null" in closing[: closing.index("\n  }\n")]
+
+
+def test_build_again_says_the_plans_warnings_the_replaced_clouds_put_back_among_them() -> None:
+    # Build again builds with today's colours: the clouds a user replaced came back as
+    # photographed, unsaid (a campaign, 2026-11-07); the disk keeps its own line
+    if NODE is None:
+        pytest.skip("node is not installed")
+    got = _run_node(
+        """const m = await import("./app.js");
+        const reqs = [{ tiles: ["-02-049"], provider: "BI", zoom_level: 16, install: false }];
+        const back = { code: "CLOUD_PUT_BACK", severity: "info", context: { tiles: "-02-049" } };
+        const warnings = [back, "SYS_DISK_FULL"];
+        const plan = { network: { mb: 0 }, disk: { needed_gb: 1, free_gb: 500 }, warnings };
+        process.stdout.write(JSON.stringify(m.rebuildQuestion(reqs, [plan]).body));"""
+    )
+    assert (
+        "-02-049: this build makes the photos again, so the clouds you replaced there may show as "
+        "photographed until their images are got again in the clouds mode." in got
+    )
+    assert not any("disk" in line.lower() and "full" in line.lower() for line in got)
+
+
+def test_a_view_shown_earlier_lets_no_picture_of_the_one_shown_now_go() -> None:
+    # After, Before, After quickly: Before's picture, in late, let After's go and the map stayed
+    # with no picture until the next change of view (a review, 2026-11-07)
+    code = (UI / "clouds.js").read_text(encoding="utf-8")
+    assert "const turn = ++cs.groundTurn;" in code and "groundTurn: 0," in code
+    assert "if (turn !== cs.groundTurn) return;" in code
+
+
+def test_the_cloud_mode_frames_the_map_on_its_tile_only_when_another_is_opened() -> None:
+    # framed at each return from the Library, a view zoomed in on a cloud went back to the whole
+    # tile and the base map was loaded again: the tile blinked (a user, 2026-11-07)
+    code = (UI / "clouds.js").read_text(encoding="utf-8")
+    opening = code[code.index("  async function open(tile) {") :]
+    opening = opening[: opening.index("\n  }\n")]
+    assert "const again = cs.tile === tile;" in opening
+    assert "if (!again) ctx.planMap.fitTile(tile);" in opening
+    assert opening.count("fitTile(") == 1
+
+
+def test_the_cloud_mode_says_a_picture_of_the_view_shown_is_being_made() -> None:
+    # a tick answered at once and its picture came a second later, without a sign (a user,
+    # 2026-11-07): the view's sentence over the map says it with a spinner while the engine says
+    # its picture is drawn; said in the panel, its line pushed the list down and back (a user)
+    code = (UI / "clouds.js").read_text(encoding="utf-8")
+    banner = code[code.index("  function renderBanner() {") :]
+    banner = banner[: banner.index("\n  }\n")]
+    assert 'a?.views?.[k] === "clouds.drawing"' in banner
+    assert 'making(k) ? h("span", { class: "spinner"' in banner
+    panel = code[code.index("  function renderPanel() {") :]
+    assert "clouds.drawing" not in panel[: panel.index("\n  }\n")]  # nothing moves the list
+
+
+def test_a_change_of_one_cloud_draws_its_outline_and_its_mark_alone_again() -> None:
+    # every outline and mark drawn again at each change of one, a click drew 540 shapes twice
+    # and the page took 0.65 s before sending it (a user's tile of 200 clouds, 2026-11-07)
+    code = (UI / "clouds.js").read_text(encoding="utf-8")
+
+    def body(head: str) -> str:
+        part = code[code.index(head) :]
+        return part[: part.index("\n  }\n")]
+
+    assert "shapesKey" not in code
+    kept = body("  function keep(group, kept, items, make) {")
+    assert "if (old?.key === k) continue;" in kept  # the same: left as it is
+    assert "group.removeLayer(l)" in kept and "kept.delete(id)" in kept  # changed or gone
+    assert "keep(cs.shapes, cs.drawn, items," in body("  function drawShapes(map) {")
+    assert "keep(cs.marks, cs.marked, items," in body("  function drawMarks() {")
+    # a shape or a pin kept outlives the answer it was drawn from: a click acts on the cloud now
+    assert code.count("clickCloud(cloudNow(c.id) || c)") == 2 and "clickCloud(c);" not in code
+    assert "forgetShapes()" in body("  function close() {")
+    assert "rerender: () => cs.tile && (forgetShapes(), render())" in code  # every word again
+
+
+def test_a_click_sends_its_request_before_the_panel_is_drawn() -> None:
+    # the panel of 200 clouds drawn first held a tick 0.12 to 0.16 s before its request left
+    # (a user, 2026-11-07): the spinner is drawn after, on the same frame
+    code = (UI / "clouds.js").read_text(encoding="utf-8")
+    body = code[code.index("  async function waiting(at, work) {") :]
+    body = body[: body.index("\n  }\n")]
+    assert body.index("const job = work();") < body.index("render();") < body.index("await job")
+
+
+def test_a_click_spins_on_what_was_clicked_alone() -> None:
+    # a spinner beside the title and another in the cloud's row could not be told apart (a user,
+    # 2026-11-07): one spinner, on the cloud's row or the button clicked, until the answer
+    code = (UI / "clouds.js").read_text(encoding="utf-8")
+    styles = (UI / "styles.css").read_text(encoding="utf-8")
+    assert "clouds-sending" not in code + styles and "cs.sending" not in code
+    title = code[code.index("  function renderPanel() {") :]
+    title = title[: title.index("if (!a) {")]
+    assert "spinner" not in title  # nothing turns beside the title
+    # every click names what it was clicked on: the engine's answer awaited, its spinner there
+    assert re.findall(r"send\([^)]*\)", code) and all(
+        call.count(",") >= 3 for call in re.findall(r"send\(\"[A-Z]+\"[^)]*\)", code)
+    )
+    row = code[code.index("  function row(c) {") :]
+    row = row[: row.index("\n  }\n")]
+    # the very same spinner from the click to the end of its task: one element, its attributes
+    # the same (two spinners came one after the other, a user, 2026-11-07)
+    assert "const busy = c.working || cs.pending.has(`cloud-${c.id}`)" in row
+    assert (
+        row.count('class: "cloud-stop"') == 1 and "disabled" not in row.split("const busy")[1][:400]
+    )
+    for button in (
+        "tick-all",
+        "untick-all",
+        "apply",
+        "discard",
+        "quick",
+        "fine",
+        "restore",
+        "forget",
+    ):
+        assert f'pendingAt("{button}")' in code, button
+
+
+def test_the_tile_is_read_again_sooner_for_a_few_seconds_after_a_click() -> None:
+    # a tick's images were made 0.3 s after it and shown 0.5 s later, at the next reading (a
+    # user's tile, 2026-11-07): every 0.2 s for 3 s after a click, then every 0.5 s
+    code = (UI / "clouds.js").read_text(encoding="utf-8")
+    assert "const SOON_MS = 200;" in code and "const SOON_FOR_MS = 3000;" in code
+    assert (
+        "cs.soonUntil = performance.now() + SOON_FOR_MS;"
+        in code[code.index("  async function waiting(") :][:400]
+    )
+    assert "setTimeout(refresh, performance.now() < cs.soonUntil ? SOON_MS : POLL_MS)" in code
+
+
+def test_the_librarys_clouds_heading_turns_until_its_column_is_first_read() -> None:
+    # the Library opened, nothing in Clouds, then its buttons came out of nowhere 1.6 s later (a
+    # user, 2026-11-07): its heading turns until the column is first read
+    html = (UI / "index.html").read_text(encoding="utf-8")
+    code = (UI / "app.js").read_text(encoding="utf-8")
+    assert 'id="library-clouds-reading"' in html and '<span data-i18n="library.clouds">' in html
+    # in the cells' two places, the title over the cloud (a user, 2026-11-08)
+    assert '<th scope="col" class="library-clouds"><div><span data-i18n="library.clouds">' in html
+    css = (UI / "styles.css").read_text(encoding="utf-8")
+    assert ".library-table th.library-clouds > div > :first-child { justify-self: center; }" in css
+    assert "  clouds: null," in code
+    library = code[code.index("function renderLibrary() {") :]
+    assert '$("library-clouds-reading").hidden = state.clouds != null;' in library[:2000]
+
+
+def test_a_clouds_label_stands_where_its_number_is_over_every_mark() -> None:
+    # at the middle of its frame, a long curved cloud's label lay outside it, far from its number
+    # (a user, 2026-11-07): where its number is, over the marks, its number gone meanwhile
+    code = (UI / "clouds.js").read_text(encoding="utf-8")
+    shapes = code[code.index("  function shapesOf(c, drawing) {") :]
+    shapes = shapes[: shapes.index("\n  }\n")]
+    assert "L.marker(placeOf(c.rings[0])," in shapes and "pane: LABEL_PANE," in shapes
+    # over the tooltips too (650), and above them: a cloud's tooltip came over its label (a user,
+    # 2026-11-07); the label stands above its number's place, the tooltip under the pointer
+    assert 'zIndex: 660, pointerEvents: "none"' in code
+    assert 'sticky: true, direction: "bottom", offset: [0, 16]' in code
+    css = (UI / "styles.css").read_text(encoding="utf-8")
+    pending = css[css.index(".cloud-pending {") :]
+    assert "transform: translate(-50%, calc(-100% - 4px));" in pending[: pending.index("}")]
+    marks = code[code.index("  function drawMarks() {") :]
+    marks = marks[: marks.index("\n  }\n")]
+    assert "if (seen && (!c.numbered || c.label)) continue;" in marks
+    assert "L.marker(placeOf(c.rings[0])," in marks  # the number at the very same place

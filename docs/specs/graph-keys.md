@@ -442,8 +442,10 @@ collects by reachability from the packs on disk instead:
   filed on another disk has its images counted once: `filed_apart_bytes` is the filed tiles' data
   once those went;
 * **copies made one file** (every run, whatever the choices; API level 40): the textures and the
-  DSF of the atelier's tiles that are copies of the store's own, on the store's disk, the same size,
-  not one file with it and with no other name of their own (`clean._doubles`; `doubles_files`,
+  DSF of the atelier's tiles that are copies of the store's own, on the store's disk, the same size
+  and the same first 128 bytes (`clean._same_head`: a texture showing replaced clouds, its header
+  marked, is no copy; 246 MB of a user's 19 were said taken twice, which freeing gave nothing of,
+  2026-11-07), not one file with it and with no other name of their own (`clean._doubles`; `doubles_files`,
   `doubles_bytes`, `doubles_packs`). A tile of the atelier holds them as links to the store's; one
   brought back from another disk, by hand or filed back, holds copies, and so did a pack kept as it
   was when an image made again came out the same: 11 GB of a user's 16 tiles, freed by no choice

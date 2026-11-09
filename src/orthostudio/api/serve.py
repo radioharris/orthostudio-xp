@@ -9,10 +9,12 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import os
 import socket
 import threading
 import time
 import webbrowser
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -281,9 +283,17 @@ def serve(
     stopping = threading.Event()
     if quit_when_closed:
         state = app.state.orthostudio
+        if os.environ.get(presence.WINDOW_HOLDS_ENV) == "1":
+            # the app's own window: its pipe on standard input, open for as long as it lives
+            threading.Thread(
+                target=presence.held_by_window,
+                args=(state["presence"], lambda: os.read(0, 1024)),
+                name="held-by-window",
+                daemon=True,
+            ).start()
         threading.Thread(
             target=presence.quit_when_closed,
-            args=(state["presence"], lambda: state["jobs"].active() is not None, shutdown),
+            args=(state["presence"], lambda: _busy(state), shutdown),
             kwargs={"wait": stopping.wait},
             name="quit-when-closed",
             daemon=True,
@@ -297,6 +307,17 @@ def serve(
         manager = app.state.orthostudio["jobs"]
         with contextlib.suppress(Exception):
             manager.close(timeout=5.0)
+        clouds = app.state.orthostudio.get("clouds")
+        if clouds is not None:
+            with contextlib.suppress(Exception):
+                clouds.tasks.end()  # an Apply ends what it began, the others stop
+
+
+def _busy(state: Mapping[str, Any]) -> bool:
+    """Whether the engine works for nobody's page: a build, or a task of the cloud mode (a search,
+    an Apply), which ends whether a page is open or not (``clouds.md`` R7)."""
+    clouds = state.get("clouds")
+    return state["jobs"].active() is not None or bool(clouds is not None and clouds.tasks.busy())
 
 
 def check(*, port: int = DEFAULT_PORT, ui_dir: Path | None = None, timeout_s: float = 20.0) -> dict:

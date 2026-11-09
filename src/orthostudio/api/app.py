@@ -33,6 +33,7 @@ from pydantic import ValidationError
 from orthostudio import __version__, config, update
 from orthostudio.airports import default_index as default_airport_index
 from orthostudio.api.basemap import basemap_router
+from orthostudio.api.clouds_api import CloudHooks, clouds_router
 from orthostudio.api.guard import (
     ALLOWED_FETCH_SITES,
     DEFAULT_ALLOWED_HOSTS,
@@ -55,8 +56,11 @@ from orthostudio.api.models import (
     ImportRequest,
     InstallRequest,
     JobRequest,
+    NewProfileRequest,
     OverlaysRequest,
     PlanRequest,
+    ProfileRenameRequest,
+    ProfileRequest,
     QuitRequest,
     RetryRequest,
     RevealRequest,
@@ -77,7 +81,10 @@ from orthostudio.api.specs import (
 )
 from orthostudio.api.zones_api import zones_router
 from orthostudio.clean import GRACE_S, clean, disk_bytes, pack_disk_bytes
+from orthostudio.clouds.laying import puts_back
 from orthostudio.codemark import code_mark
+from orthostudio.config import profiles as config_profiles
+from orthostudio.config.profiles import ProfileError
 from orthostudio.dem.sources import default_elevation_dir
 from orthostudio.doctor import run_doctor
 from orthostudio.errors import Action, OsxpError, Severity, wrap
@@ -160,7 +167,7 @@ __all__ = [
     "sse_message",
 ]
 
-API_LEVEL = 42
+API_LEVEL = 53
 """What this engine's API offers, for the page: 1 = P2b, 2 = zones (``/api/zones``) and the base map
 (``/api/map``), 3 = deleting a tile (``POST /api/library/{name}/delete``) and the sizes of the
 library, 4 = the disk space of the Library (``GET /api/disk``, ``POST /api/clean``), 5 = clearing
@@ -214,7 +221,12 @@ summary (how many of its tiles at each detail level, which Works writes), 40 = `
 ``GET /api/disk`` and ``doubles_freed_bytes`` in ``POST /api/clean`` (the atelier's tiles' copies of
 the store's files, made one file with them whatever the choices), 41 = the setting
 ``expert.road_smoothing`` (an older engine refuses a settings document that holds it), 42 = the
-setting ``expert.rounded_road_ends`` (likewise). A page
+setting ``expert.rounded_road_ends`` (likewise), 43 = the settings profiles (``/api/profiles``)
+and ``profile`` in a job's summary, 50 = the replaced clouds (``/api/clouds``, ``clouds.md`` 6); 44
+to 49 were test builds of the clouds (1.4.0 rc), never released, whose routes were other, 51 = what
+runs of a tile's clouds (``GET /api/clouds/{tile}/tasks``), 52 = ``working`` in a cloud's row (its
+spinner from its task's start to its end), 53 = ``named`` in ``/api/profiles`` (the profile to
+name, from the second one on). A page
 served by an engine older than itself (a ``osxp serve`` started before an update: the page's files
 are read from disk at each load, the routes were imported at start) asks the user to restart
 OrthoStudio XP instead of showing "Not Found"."""
@@ -915,8 +927,12 @@ def create_app(
     # Held while a tile is filed elsewhere (the atelier, step 3): one at a time, and nothing else
     # changes a tile or starts a build meanwhile; the request lasts as long as the copy
     filing_lock = asyncio.Lock()
+    # one change of the settings or of the profiles at a time: leaving a profile reads the settings
+    # it keeps, then writes the next one's
+    settings_lock = asyncio.Lock()
     filing_stop = threading.Event()
     filing_progress: dict[str, Any] = {}
+    deleting_now: set[str] = set()  # the tiles being deleted, the cloud mode none of them
 
     def busy_filing() -> JSONResponse:
         return _plain_error(
@@ -1264,6 +1280,7 @@ def create_app(
             )
         # the queued builds first, so that none starts when the running one stops
         cancelled = manager.cancel_all() if active is not None else []
+        await asyncio.to_thread(clouds.tasks.end)  # an Apply ends what it began
         active_id = None if active is None else active.id
         # after the answer has left: the page learns that OrthoStudio XP is stopping
         asyncio.get_running_loop().call_later(0.3, shutdown)
@@ -1524,6 +1541,12 @@ def create_app(
                 data["essential"]["provider"] = "BI"
                 config.save_settings(config.settings_from_dict(data), state["settings_path"])
                 reset = "BI"
+            # the profiles that take it take Bing too: one made current again would bring it back
+            with contextlib.suppress(OsxpError, OSError):
+                kept = read_profiles()
+                others = config_profiles.replace_provider(kept, code, "BI")
+                if others != kept:
+                    config_profiles.save_profiles(others, profiles_path())
             return {"removed": code, "settings_provider": reset}
 
         return await asyncio.to_thread(run)
@@ -1548,8 +1571,9 @@ def create_app(
     async def get_settings() -> Any:
         return settings().model_dump(mode="json")
 
-    @app.put("/api/settings")
-    async def put_settings(body: dict[str, Any]) -> Any:
+    async def checked_settings(body: Mapping[str, Any]) -> Any:
+        """The settings a page sends, as they will be saved, or the error to answer: what Save
+        checks, and *Save as a new profile* too."""
         try:
             s = config.settings_from_dict(body)
         except ValueError as exc:
@@ -1578,19 +1602,136 @@ def create_app(
                     status=409,
                 )
             data_dir = await asyncio.to_thread(new_data_dir, data_dir, s.essential.xplane_dir)
-        s = s.model_copy(
+        return s.model_copy(
             update={"essential": s.essential.model_copy(update={"data_dir": data_dir})}
         )
-        config.save_settings(s, state["settings_path"])
+
+    def settings_saved(s: Any, xplane_before: str | None) -> None:
         state["doctor"] = None
-        if s.essential.xplane_dir != before and state["airports"] is None:
+        if s.essential.xplane_dir != xplane_before and state["airports"] is None:
             # The airport search failed without X-Plane: it tries again with the folder just chosen.
             state["airports_tried"] = False
-        return s.model_dump(mode="json")
+
+    @app.put("/api/settings")
+    async def put_settings(body: dict[str, Any], profile: str | None = None) -> Any:
+        """The settings saved, and kept by the current profile. ``profile`` is the one the page's
+        Save names: another being current now, nothing is saved (``check_current``)."""
+        async with settings_lock:
+            if profile is not None:
+                try:
+                    config_profiles.check_current(read_profiles(), profile)
+                except ProfileError as err:
+                    return profile_error(err)
+                except (OsxpError, OSError):
+                    pass  # a profiles' file that cannot be read stops no save, as below
+            before = settings().essential.xplane_dir
+            s = await checked_settings(body)
+            if isinstance(s, JSONResponse):
+                return s
+            config.save_settings(s, state["settings_path"])
+            # what was saved is the current profile's from now on; the settings are saved
+            # whatever becomes of the profiles' file
+            try:
+                kept = read_profiles()
+                if kept.entries:
+                    config_profiles.save_profiles(
+                        config_profiles.remember(kept, s), profiles_path()
+                    )
+            except (OsxpError, OSError) as exc:
+                log.warning("the current profile could not keep the settings saved: %s", exc)
+            settings_saved(s, before)
+            return s.model_dump(mode="json")
 
     @app.get("/api/settings/schema")
     async def settings_schema() -> Any:
         return config.settings_schema()
+
+    # -- profiles ----------------------------------------------------------------------------
+
+    def profiles_path() -> Path:
+        return config_profiles.default_profiles_path(state["settings_path"])
+
+    def read_profiles() -> config_profiles.Profiles:
+        return config_profiles.load_profiles(profiles_path())
+
+    def current_profile() -> str | None:
+        """The name of the current profile, for a build's record; ``None`` when there is none to
+        name (``Profiles.named``) or its file cannot be read (a build is not refused over it)."""
+        try:
+            return read_profiles().named
+        except (OsxpError, OSError):
+            return None
+
+    def profile_error(err: ProfileError) -> JSONResponse:
+        return _plain_error(
+            err.code, err.message, err.remedy, status=err.status, context=err.context
+        )
+
+    @app.get("/api/profiles")
+    async def get_profiles() -> Any:
+        return read_profiles().answer()
+
+    @app.post("/api/profiles", status_code=201)
+    async def post_profile(req: NewProfileRequest) -> Any:
+        """*Save as a new profile*: the settings sent, checked as Save checks them, saved and kept
+        under ``name``, which becomes current; the profile left keeps what it held."""
+        async with settings_lock:
+            kept = read_profiles()
+            before = settings()
+            s = await checked_settings(req.settings)
+            if isinstance(s, JSONResponse):
+                return s
+            try:
+                kept = config_profiles.create(kept, req.name, before, s, req.first_name)
+            except ProfileError as err:
+                return profile_error(err)
+            config_profiles.save_profiles(kept, profiles_path())
+            config.save_settings(s, state["settings_path"])
+            settings_saved(s, before.essential.xplane_dir)
+            return {"settings": s.model_dump(mode="json"), **kept.answer()}
+
+    @app.post("/api/profiles/current")
+    async def post_profile_current(req: ProfileRequest) -> Any:
+        """``name`` made current: its settings are saved as the settings, what belongs to this
+        computer kept (``COMPUTER_SETTINGS``); the profile left keeps what it held."""
+        async with settings_lock:
+            try:
+                kept, s, problems = config_profiles.switch(read_profiles(), req.name, settings())
+            except ProfileError as err:
+                return profile_error(err)
+            config_profiles.save_profiles(kept, profiles_path())
+            config.save_settings(s, state["settings_path"])
+            return {"settings": s.model_dump(mode="json"), "problems": problems, **kept.answer()}
+
+    @app.post("/api/profiles/rename")
+    async def post_profile_rename(req: ProfileRenameRequest) -> Any:
+        async with settings_lock:
+            try:
+                kept = config_profiles.rename(read_profiles(), req.name, req.new_name)
+            except ProfileError as err:
+                return profile_error(err)
+            config_profiles.save_profiles(kept, profiles_path())
+            return kept.answer()
+
+    @app.post("/api/profiles/delete")
+    async def post_profile_delete(req: ProfileRequest) -> Any:
+        """``name`` deleted; the current one deleted, the first of the others becomes current and
+        its settings are saved. The tiles built with it are not touched."""
+        async with settings_lock:
+            now = settings()
+            try:
+                kept, s, problems = config_profiles.delete(read_profiles(), req.name, now)
+            except ProfileError as err:
+                return profile_error(err)
+            config_profiles.save_profiles(kept, profiles_path())
+            if s is not None:
+                config.save_settings(s, state["settings_path"])
+            shown = s if s is not None else now
+            return {
+                "settings": shown.model_dump(mode="json"),
+                "problems": problems,
+                **kept.answer(),
+            }
 
     # -- airports ----------------------------------------------------------------------------
 
@@ -1710,6 +1851,25 @@ def create_app(
                 if isinstance(env, BuildEnv):
                     env.close()  # each plan opened the store's index and left it open
             answer = plan_answer(est, specs)
+            # its replaced clouds that this build may show as photographed again (``clouds.md`` R1)
+            cs = custom_scenery_dir(xp) if (xp := xplane_dir()) is not None else None
+            back = [
+                te.tile
+                for te in est.tiles
+                if puts_back(
+                    TileRef.parse(te.tile),
+                    next((n.key for n in te.nodes if n.role == "textures"), None),
+                    custom_scenery=cs,
+                )
+            ]
+            if back:
+                answer["warnings"].append(
+                    {
+                        "code": "CLOUD_PUT_BACK",
+                        "severity": "info",
+                        "context": {"tiles": " ".join(back)},
+                    }
+                )
             if sea:  # left out, said as a line of its own (SYS_TILES_OPEN_SEA)
                 answer["warnings"].append(
                     {
@@ -1722,20 +1882,50 @@ def create_app(
 
         return await asyncio.to_thread(run)
 
+    # the cloud mode: its tasks are the engine's, and Apply one of them. A tile's folder is the
+    # cloud mode's only while nothing else holds it: a build, waiting for one, a filing; each of
+    # them lets its cloud tasks end before it takes the folder (``Tasks.end``)
+    def taken_now() -> dict[str, str]:
+        out = {
+            tile: "in_build" if how == "running" else "queued"
+            for tile, how in manager.building_states().items()
+        }
+        filed = filing_progress.get("tile") if filing_lock.locked() else None
+        if filed:
+            out.setdefault(filed, "filing")
+        for tile in list(deleting_now):
+            out.setdefault(tile, "deleting")
+        return out
+
+    cloud_routes, clouds = clouds_router(
+        CloudHooks(
+            custom_scenery=lambda: (
+                custom_scenery_dir(xp) if (xp := xplane_dir()) is not None else None
+            ),
+            taken=taken_now,
+            changed=lambda folder: _measure_again([folder]),
+        )
+    )
+    manager.make_way = lambda tiles: clouds.tasks.end(set(tiles))
+    state["clouds"] = clouds  # what runs of the clouds keeps the engine up, as a build does
+    app.include_router(cloud_routes)
+
     @app.post("/api/jobs", status_code=201)
     async def post_job(req: JobRequest) -> Any:
-        specs = await asyncio.to_thread(_specs, req, install=req.install)
+        def specs_and_profile() -> tuple[list[Any], str | None]:
+            return _specs(req, install=req.install), current_profile()
+
+        specs, profile = await asyncio.to_thread(specs_and_profile)
+        request = req.model_dump(mode="json", exclude={"queue"})
+        if profile is not None:
+            # the profile the build takes its settings from, which Works names
+            request["profile"] = profile
         if deleting.locked():
             return busy_deleting()
         if filing_lock.locked():
             return busy_filing()
         try:
-            job = manager.start(
-                specs,
-                install=req.install,
-                request=req.model_dump(mode="json", exclude={"queue"}),
-                queue=req.queue,
-            )
+            job = manager.start(specs, install=req.install, request=request, queue=req.queue)
         except JobBusyError as busy:
             return _plain_error(
                 "SYS_BUSY",
@@ -2281,6 +2471,7 @@ def create_app(
                 )
             filing_progress.clear()
             filing_progress.update(tile=entry.tile.name, phase="start", done=0, total=0)
+            await asyncio.to_thread(clouds.tasks.end, {entry.tile.name})  # its folder is moved
 
             def progress(phase: str, done: int, total: int) -> None:
                 filing_progress.update(phase=phase, done=done, total=total)
@@ -2331,12 +2522,20 @@ def create_app(
         def run() -> dict[str, Any]:
             xp = xplane_dir(req.xplane_dir)
             entry = pack_to_delete(name, path=req.path, library_path=default_library_path())
-            return delete_receipt(
-                entry.path,
-                tile=entry.tile,
-                custom_scenery=None if xp is None else custom_scenery_dir(xp),
-                library_path=default_library_path(),
-            )
+            cs = None if xp is None else custom_scenery_dir(xp)
+            deleting_now.add(entry.tile.name)  # taken from the cloud mode, said first
+            try:
+                # its cloud tasks ended first (an Apply ends what it began); its list of clouds
+                # kept: built again from the atelier, the tile gets them back, as all the rest
+                clouds.let_go(entry.tile)
+                return delete_receipt(
+                    entry.path,
+                    tile=entry.tile,
+                    custom_scenery=cs,
+                    library_path=default_library_path(),
+                )
+            finally:
+                deleting_now.discard(entry.tile.name)
 
         async with deleting:  # a second delete waits for this one
             if manager.active() is not None:

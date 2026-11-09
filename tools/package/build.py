@@ -100,9 +100,11 @@ LICENCE_FILES = (
     ("native/triangle4xp/Triangle4XP.c", "triangle4xp/Triangle4XP.c"),
     ("native/triangle4xp/CMakeLists.txt", "triangle4xp/CMakeLists.txt"),
     ("native/dsftool/README.md", "dsftool/README.md"),
+    ("tools/clouds/LICENSE-OmniCloudMask.txt", "omnicloudmask/LICENSE.txt"),
 )
 """Shipped with every installer: the GPL of OrthoStudio XP and its notice (who holds its copyright),
-and the sources and notice of modifications Triangle4XP's licence requires with its binary."""
+the sources and notice of modifications Triangle4XP's licence requires with its binary, and the
+MIT licence of OmniCloudMask, whose networks the cloud search downloads."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -152,9 +154,10 @@ Apple Silicon Mac, where the app for an x64 PC was built and checked (2026-10-02
 FOR_THIS_MAC = [False]
 """``--this-mac``: the app is built for the Mac it runs on, not for the release (see
 :func:`check_oldest_macos`)."""
-MAC_OLDEST = {"arm64": "14.0", "x86_64": "15.0"}
+MAC_OLDEST = {"arm64": "15.0", "x86_64": "15.0"}
 """The oldest macOS the README gives for each app. The wheels are chosen for the macOS the build
-runs on, and pyproj's Intel wheels ask for macOS 15: the Intel app is built on macOS 15."""
+runs on: both apps are built on macOS 15, the oldest GitHub still offers (its macOS 14 machines
+closed on 2026-11-02), where orjson's Apple Silicon wheel and pyproj's Intel wheel ask for it."""
 
 
 def this_target(machine: str | None = None) -> Target:
@@ -759,7 +762,7 @@ def build_macos(target: Target, version: str) -> tuple[Path, Path]:
     # The image is written with zlib and then converted to LZMA. The same content: 134 MB with
     # zlib, 106 MB when `create` writes LZMA itself, 64 MB through `convert` -- which is also the
     # fastest of the three, since it compresses on every core (measured 2026-09-19). macOS mounts
-    # LZMA images from 10.15, and this app asks for macOS 14 (MAC_OLDEST).
+    # LZMA images from 10.15, and this app asks for macOS 15 (MAC_OLDEST).
     plain = stage / "plain.dmg"
     make = [
         "hdiutil", "create", "-volname", f"{APP_NAME} {version}", "-srcfolder", image,

@@ -24,6 +24,10 @@ the disk is in [how-it-works.md](how-it-works.md). To fly without building tiles
   may take (80, 70 or 60 %), never more than what the other apps leave free.
 - **Settings in plain words.** Questions about what you want to see in X-Plane, three presets, and
   every Ortho4XP setting under "For experts" with a plain label.
+- **Settings profiles.** Keep a set of settings under a name ("Save as a new profile…"), then choose
+  it in the Plan for each build: its source, detail level and every other setting come with it.
+  Folders, X-Plane, the map data, SimBrief, the patches folder, the update check and the memory a
+  build takes stay the same for every profile; Works names the profile each build used.
 - **A Library.** Every tile on the computer, its size, whether X-Plane shows it and what it was
   built with, searched, sorted and opened in its folder. Take a tile out of X-Plane and back,
   delete it, file it on any disk and bring it back into the workshop
@@ -46,6 +50,14 @@ the disk is in [how-it-works.md](how-it-works.md). To fly without building tiles
 - **The colours of the photos, seen on the map**: as delivered, toned down, or by your own numbers,
   for everything, one square or one zone. Changing them builds a tile again without downloading
   anything.
+- **Clouds replaced.** The cloud button in the Library opens a built tile on the map, drawn as
+  X-Plane draws it once the cloud detection tool is downloaded. *Quick search* (or *Fine search*,
+  for the small ones) looks for them and tries every other source covering the tile under each; you
+  tick those to replace, each with the clear source you choose, and the map shows the result before
+  anything changes. *Apply* changes, in a few seconds, only the pixels under the clouds in the
+  finished tile, and every later build of the tile lays them again on the same photo; *Restore the
+  original photos* puts the textures back as built. The detection tool (OmniCloudMask's networks and
+  OpenCV, about 110 MB) is not in the installer: it is downloaded once, when you ask.
 - **Roads without bumps.** The ground flattened under the roads can be smoothed along them over
   100 or 250 m, so that X-Plane's roads no longer bump over the small waves of the relief, on
   whichever relief you build with. Off by default, as in Ortho4XP. The road bands can also get the
@@ -76,7 +88,8 @@ the disk is in [how-it-works.md](how-it-works.md). To fly without building tiles
   larger; the window opens where you left it.
 
 How it works, what it keeps on disk and how to clean it:
-[how-it-works.md](how-it-works.md).
+[how-it-works.md](how-it-works.md). Replacing a tile's clouds and keeping settings as
+profiles, step by step: [manual.md](manual.md).
 
 | What it will cost | Works |
 |---|---|

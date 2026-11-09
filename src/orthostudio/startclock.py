@@ -27,6 +27,7 @@ from orthostudio import STARTED_AT
 __all__ = [
     "LAUNCHED_ENV",
     "SLOW_S",
+    "WINDOW_HOLDS_ENV",
     "from_filetime",
     "launched_at",
     "parts",
@@ -36,6 +37,11 @@ __all__ = [
 
 LAUNCHED_ENV = "OSXP_LAUNCHED_AT"
 """When the window started its engine (``time.time()``), handed to the engine's process."""
+
+WINDOW_HOLDS_ENV = "OSXP_HELD_BY_WINDOW"
+"""``1``, handed by the app's own window to the engine it starts: that engine's standard input is a
+pipe the window holds open for as long as it lives (``api.presence.held_by_window``). Here, beside
+:data:`LAUNCHED_ENV`, because the window must not import the engine's modules to start it."""
 
 SLOW_S = 1.0
 """What the page waits for longer than this is named in ``serve.log`` with its time."""

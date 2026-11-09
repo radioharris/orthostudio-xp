@@ -37,6 +37,12 @@ server = ["fastapi>=0.115", "sse-starlette>=2", "uvicorn>=0.34"]
 
 [dependency-groups]
 dev = [
+  # OpenCV runs the cloud detector's two networks and the pixel work of a cloud's replacement
+  # (orthostudio/clouds): one abi3 wheel per platform, Intel Macs included, where ONNX Runtime
+  # has none for the Python the app ships. Not in the installer, which it made half as large
+  # again: the app downloads the wheel uv.lock pins at the clouds' first use
+  # (orthostudio/clouds/opencv.py, whose table a test keeps equal to uv.lock; 2026-11-03)
+  "opencv-python-headless>=5.0",
   "pytest>=8",
   "pytest-cov>=6",
   "ruff>=0.9",

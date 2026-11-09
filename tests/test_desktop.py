@@ -31,7 +31,7 @@ from orthostudio.desktop import (
     opening_page,
 )
 from orthostudio.home import osxp_home
-from orthostudio.startclock import LAUNCHED_ENV
+from orthostudio.startclock import LAUNCHED_ENV, WINDOW_HOLDS_ENV
 
 
 def test_the_log_is_in_the_platform_log_folder() -> None:
@@ -302,7 +302,13 @@ def test_the_window_starts_its_engine_writing_utf8(
     from orthostudio.fsutil import NO_CONSOLE_WINDOW
 
     started: list[tuple[list[str], dict[str, Any]]] = []
-    monkeypatch.setattr(subprocess, "Popen", lambda args, **kw: started.append((args, kw)))
+
+    def popen(args: list[str], **kw: Any) -> object:
+        started.append((args, kw))
+        return started[-1]
+
+    monkeypatch.setattr(subprocess, "Popen", popen)
+    monkeypatch.setattr(desktop, "_HELD_ENGINES", [])
     monkeypatch.setenv("PYTHONIOENCODING", "cp1252")
     log = tmp_path / "serve.log"
 
@@ -313,10 +319,14 @@ def test_the_window_starts_its_engine_writing_utf8(
     env = dict(kw["env"])
     # and the time it was started at, from which it counts its start (orthostudio.startclock)
     assert abs(float(env.pop(LAUNCHED_ENV)) - time.time()) < 60
+    # held by this window through its standard input, kept for as long as the window lives: its
+    # page alone let the engine stop with the Mac's display off (2026-11-04)
+    assert env.pop(WINDOW_HOLDS_ENV) == "1" and kw["stdin"] == subprocess.PIPE
+    assert len(desktop._HELD_ENGINES) == 1 and desktop._HELD_ENGINES[0] is started[0]
     assert env == {**os.environ, "PYTHONIOENCODING": "utf-8"}
     assert kw["stderr"] is kw["stdout"]  # the log itself, which the header went into
     assert "orthostudio serve" in log.read_text(encoding="utf-8")
-    assert kw["stdin"] == subprocess.DEVNULL and kw["start_new_session"] is True
+    assert kw["start_new_session"] is True
     assert kw["creationflags"] == NO_CONSOLE_WINDOW  # no console window flashes on Windows
 
 

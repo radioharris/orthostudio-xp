@@ -29,8 +29,9 @@ import { PHOTO_LOOKS, photoValues } from "./colour.js";
 import { TEXTURE_MB, ZONES_FORMAT, normalizeZone, parseTile, tileName, validateZonesDocument, zoneTextureKeys } from "./geo.js";
 import { OLD_STORAGE_KEY, STORAGE_KEY, defaultLevels, excluding, groupsOf, levelOf, newFlightPlan, readSaved, restoredPlan, squaresOf, toSaved, withPlan, withoutPlan } from "./flightplan.js";
 import { createPlanMap, detailLabel, detailName } from "./map.js";
+import { createCloudMode } from "./clouds.js";
 import { colourPreview } from "./preview.js";
-import { defaultsKeepingFolders, refusedValueText, renderSettingsView, sameValue, settingsSummary } from "./settings.js";
+import { defaultsKeepingFolders, profileDiffers, profileDiffersText, profileNameProblem, refusedValueText, renderSettingsView, sameValue, settingsSummary } from "./settings.js";
 import { bindFind, bindFindKeys, findForget } from "./find.js";
 import { bindZoom } from "./zoom.js";
 import { applyTextSize, bindTextSize, savedTextSize } from "./textsize.js";
@@ -87,6 +88,23 @@ export function isOn(value) {
  * name says exFAT or FAT32 is refused, as on such a disk.
  */
 const MOCK_FAIL = PARAMS.get("fail");
+/** `?mock=1&profiles=2` starts the demo with two settings profiles; none otherwise, as on a
+ * computer where no second set of settings was ever kept. */
+const MOCK_PROFILES = Number(PARAMS.get("profiles")) || 0;
+/** What every profile shares (orthostudio.config.profiles.COMPUTER_SETTINGS; a test keeps the two
+ * equal). */
+export const COMPUTER_SETTINGS = [
+  "essential.xplane_dir",
+  "essential.data_dir",
+  "essential.simbrief_user",
+  "essential.relief.private_sources",
+  "expert.osm_folder",
+  "expert.osm_library",
+  "expert.osm_library_token",
+  "expert.patches_dir",
+  "expert.check_updates",
+  "expert.build_memory",
+];
 /** `?mock=1&speed=10` runs the mock builds ten times faster (the tests use it); 1 by default. */
 const MOCK_SPEED = Math.min(100, Math.max(0.1, Number(PARAMS.get("speed")) || 1));
 const STATIC = "static/";
@@ -184,6 +202,9 @@ const state = {
   /** GET /api/sizes: the store's and the downloaded images' bytes, which the status bar shows when
    * they come (measured apart from the status: no screen waits for them). */
   sizes: null,
+  /** GET /api/clouds: the Library's Clouds cells by row path; ``null`` until first read, its
+   * column's heading turning meanwhile. */
+  clouds: null,
   providers: [],
   settings: null,
   schema: null,
@@ -226,6 +247,18 @@ const state = {
   patches: null,
   /** The same for the folder Settings shows, saved or not. */
   settingsPatches: null,
+  /** GET /api/profiles: `{current, profiles, computer}`, or null (an engine before them). */
+  profiles: null,
+  /** Why the profiles could not be read, said at the top of Settings. */
+  profilesError: null,
+  /** A rename or a deletion asked at the top of Settings: `{mode, value}`, or null. */
+  profileEdit: null,
+  /** What refused the last rename or deletion, said under the profile's line. */
+  profileError: null,
+  /** A profile is being made current, renamed, deleted or created: its buttons wait. */
+  profileBusy: false,
+  /** Save as a new profile asks for its name in Save's bar. */
+  newProfile: false,
   busy: false,
   jobsClearing: false,
 };
@@ -233,6 +266,8 @@ const state = {
 /** The map, the zones and the drawing tools of the Plan (map.js); created by boot() so that the
  * zones load with the rest. The tile selection stays in `state.tiles`. */
 let planMap = null;
+/** The Plan's cloud mode (``clouds.js``), opened on a built tile from the Library. */
+let cloudMode = null;
 
 // ------------------------------------------------------------------ DOM helpers
 
@@ -569,6 +604,111 @@ async function mockCheckCoverage(body) {
   throw new ApiError(422, { error: { code: "CFG_PROVIDER_OUT_OF_COVERAGE", severity: "blocking", action: "stop", message: `Imagery source ${code} covers ${p.extent} only, not tile(s) ${missing.join(" ")}.`, remedy: "Choose a source that covers these tiles: Bing Maps and Esri cover the whole world.", context: { provider: code, extent: p.extent, tiles: missing.join(" ") } } });
 }
 
+/** The mock's settings profiles: `{current, list: [{name, settings}]}` (`?profiles=2`: two). */
+async function mockProfiles() {
+  if (!mock.profiles) {
+    mock.profiles = { current: null, list: [] };
+    if (MOCK_PROFILES >= 2) {
+      const main = await mockFile("settings");
+      const alps = structuredClone(main);
+      Object.assign(alps.essential, { provider: "Arc", zoom_level: 17 });
+      alps.essential.airports.mode = "on";
+      mock.profiles = { current: t("profiles.first_name"), list: [{ name: t("profiles.first_name"), settings: main }, { name: "VFR Alpes", settings: alps }] };
+    }
+  }
+  return mock.profiles;
+}
+
+/** `settings` holding a profile's settings, what belongs to the computer kept (the engine's
+ * `with_build_part`). */
+function mockWithProfile(settings, profile) {
+  const out = structuredClone(profile);
+  for (const path of COMPUTER_SETTINGS) {
+    const keys = path.split(".");
+    const from = keys.slice(0, -1).reduce((o, k) => o?.[k], settings);
+    const to = keys.slice(0, -1).reduce((o, k) => (o[k] = o[k] || {}), out);
+    to[keys[keys.length - 1]] = from?.[keys[keys.length - 1]] ?? null;
+  }
+  return out;
+}
+
+function mockProfileError(status, code, name, message) {
+  return new ApiError(status, { error: { code, severity: "blocking", action: "stop", message, remedy: "Give the profile another name.", context: { name } } });
+}
+
+/** The profile to name, as the engine's `Profiles.named`: from the second one on. */
+function mockNamed() {
+  return mock.profiles?.list.length > 1 ? mock.profiles.current : null;
+}
+
+/** `/api/profiles` and its four actions, as the engine answers them. */
+async function mockProfilesRoute(p, method, body) {
+  const kept = await mockProfiles();
+  const answer = (settings) => ({ ...(settings ? { settings: structuredClone(settings) } : {}), current: kept.current, named: mockNamed(), profiles: kept.list.map((x) => x.name), computer: [...COMPUTER_SETTINGS] });
+  const saved = await mockFile("settings");
+  const at = (name) => kept.list.findIndex((x) => x.name.toLowerCase() === String(name || "").trim().toLowerCase());
+  const named = (name, others) => {
+    const text = String(name || "").trim();
+    if (!text || text.length > 40) throw mockProfileError(422, "CFG_PROFILE_NAME", text, "A profile's name is 1 to 40 characters, without a line break.");
+    const held = others.find((n) => n.toLowerCase() === text.toLowerCase());
+    if (held !== undefined) throw mockProfileError(409, "CFG_PROFILE_TAKEN", held, `A profile is already called '${held}'.`);
+    return text;
+  };
+  const known = (name) => {
+    const i = at(name);
+    if (i < 0) throw mockProfileError(404, "CFG_PROFILE_UNKNOWN", String(name), `There is no profile called '${name}'.`);
+    return i;
+  };
+  const take = (settings) => {
+    mock.cache.set("settings", structuredClone(settings));
+    mock.settingsSaved = true;
+  };
+  const leave = () => {
+    const here = kept.list.find((x) => x.name === kept.current);
+    if (here) here.settings = structuredClone(saved);
+  };
+  if (p === "/api/profiles" && method === "GET") return answer(null);
+  if (p === "/api/profiles" && method === "POST") {
+    const first = kept.list.length ? null : named(body.first_name || "Main", []);
+    const name = named(body.name, first ? [first] : kept.list.map((x) => x.name));
+    if (first) kept.list.push({ name: first, settings: structuredClone(saved) });
+    else leave();
+    kept.list.push({ name, settings: structuredClone(body.settings) });
+    kept.current = name;
+    take(body.settings);
+    return answer(body.settings);
+  }
+  if (p === "/api/profiles/current" && method === "POST") {
+    const i = known(body.name);
+    leave();
+    const next = mockWithProfile(saved, kept.list[i].settings);
+    kept.current = kept.list[i].name;
+    take(next);
+    return { ...answer(next), problems: [] };
+  }
+  if (p === "/api/profiles/rename" && method === "POST") {
+    const i = known(body.name);
+    const old = kept.list[i].name;
+    const name = named(body.new_name, kept.list.filter((_, j) => j !== i).map((x) => x.name));
+    kept.list[i].name = name;
+    if (kept.current === old) kept.current = name;
+    return answer(null);
+  }
+  if (p === "/api/profiles/delete" && method === "POST") {
+    const i = known(body.name);
+    if (kept.list.length <= 1) throw mockProfileError(409, "CFG_PROFILE_LAST", kept.list[i].name, "The last profile cannot be deleted: the settings are always those of a profile.");
+    const [gone] = kept.list.splice(i, 1);
+    let shown = saved;
+    if (gone.name === kept.current) {
+      shown = mockWithProfile(saved, kept.list[0].settings);
+      kept.current = kept.list[0].name;
+      take(shown);
+    }
+    return { ...answer(shown), problems: [] };
+  }
+  throw mockError(404, "SYS_NOT_FOUND", `No route ${method} ${p}.`, "");
+}
+
 function mockError(status, code, message, remedy) {
   return new ApiError(status, { error: { code, severity: "blocking", action: "stop", message, remedy, context: {} } });
 }
@@ -767,7 +907,7 @@ export function jobLevel(job) {
 /** GET /api/jobs of a mock job: the engine's `Job.summary()`. */
 function mockJobSummary(run) {
   const d = run.doc;
-  return { id: d.id, status: d.status, created_at: d.created_at, started_at: d.started_at, finished_at: d.finished_at, install: d.install, tiles: d.tiles.map((x) => x.tile), provider: d.provider, zl: d.zl, levels: mockLevels(d.tiles), ok: d.status === "done" };
+  return { id: d.id, status: d.status, created_at: d.created_at, started_at: d.started_at, finished_at: d.finished_at, install: d.install, tiles: d.tiles.map((x) => x.tile), provider: d.provider, zl: d.zl, levels: mockLevels(d.tiles), profile: d.profile ?? null, ok: d.status === "done" };
 }
 
 /** The engine's `levels` of a mock job: how many of its tiles at each level. */
@@ -1023,6 +1163,8 @@ async function mockStartJob(body, reuse = new Set(), queued = false) {
   const provider = body.provider || template.provider;
   const zl = Number(body.zoom_level ?? template.zl);
   const install = Boolean(body.install);
+  // like the engine: the profile to name when the build is asked, kept by a build again
+  const profile = body.profile ?? mockNamed();
   const now = Date.now();
   const doc = {
     id: mockJobId(mock.nextId++),
@@ -1033,7 +1175,8 @@ async function mockStartJob(body, reuse = new Set(), queued = false) {
     install,
     provider,
     zl,
-    request: { ...template.request, tiles: [...(body.tiles || [])], provider, zoom_level: zl, zones: body.zones || [], install },
+    request: { ...template.request, tiles: [...(body.tiles || [])], provider, zoom_level: zl, zones: body.zones || [], install, ...(profile ? { profile } : {}) },
+    profile,
     tiles: (body.tiles || []).map((name) => ({ tile: name, provider, zl, install, nodes: mockTileNodes(template, name, `${provider}${zl}`, install, script) })),
     stats: null,
     last_seq: 0,
@@ -1215,9 +1358,13 @@ export async function mockApi(method, path, body, options = {}) {
     if (reset) settings.essential.provider = reset;
     return { removed: code, settings_provider: reset };
   }
+  if (p === "/api/profiles" || p.startsWith("/api/profiles/")) return mockProfilesRoute(p, method, body);
   if (p === "/api/settings/schema") return mockFile("settings_schema");
   if (p === "/api/settings") {
     if (method === "PUT") {
+      const named = url.searchParams.get("profile");
+      const now = mock.profiles?.current || "";
+      if (named !== null && mock.profiles?.list.length && named !== now) throw mockProfileError(409, "CFG_PROFILE_CHANGED", now, `The profiles were changed in another window: the one in use is now '${now}'.`);
       const wanted = String(body?.essential?.data_dir || "").trim() || null;
       if (wanted && wanted !== mockDataDir()) {
         if (mockActiveRun()) throw mockError(409, "SYS_BUSY", "A build is running or waiting, and the data folder changes between builds.", "Wait for the builds to finish, or cancel them, then save again.");
@@ -1230,6 +1377,9 @@ export async function mockApi(method, path, body, options = {}) {
       if (saved.essential) saved.essential.data_dir = wanted;
       mock.cache.set("settings", saved);
       mock.settingsSaved = true;
+      // like the engine: what is saved is the current profile's
+      const kept = mock.profiles?.list.find((x) => x.name === mock.profiles.current);
+      if (kept) kept.settings = structuredClone(saved);
       return structuredClone(saved);
     }
     const settings = await mockFile("settings");
@@ -2388,7 +2538,7 @@ function routeFromHash() {
 // ------------------------------------------------------------------ status bar
 
 /** The engine API this page needs (orthostudio.api.app.API_LEVEL); a test keeps the two equal. */
-const PAGE_API_LEVEL = 42;
+const PAGE_API_LEVEL = 53;
 
 async function loadStatus() {
   try {
@@ -2498,7 +2648,7 @@ function renderWindowNote() {
     // and nothing said where (a user asked, 2026-09-20)
     t("app.window_browser_only_again"),
     " ",
-    h("button", { class: "btn btn-small", onclick: away }, t("app.window_browser_only_ok")),
+    h("button", { class: "btn", onclick: away }, t("app.window_browser_only_ok")),
   );
   $("main").prepend(note);
 }
@@ -2552,9 +2702,9 @@ function renderUpdateNote() {
     " ",
     // A link, not a button calling window.open: the window hands a clicked target="_blank" link
     // to the system's browser (pywebview, OPEN_EXTERNAL_LINKS_IN_BROWSER), and only a link.
-    h("a", { class: "btn btn-small btn-primary", href: u.url, target: "_blank", rel: "noopener" }, t("app.update_open")),
+    h("a", { class: "btn btn-primary", href: u.url, target: "_blank", rel: "noopener" }, t("app.update_open")),
     " ",
-    h("button", { type: "button", class: "btn btn-small", onclick: later }, t("app.update_later")),
+    h("button", { type: "button", class: "btn", onclick: later }, t("app.update_later")),
   );
   $("main").prepend(note);
   measureMapTop(); // it sits above the map and pushes it down
@@ -2637,19 +2787,19 @@ function renderEngineBanner() {
   if (!state.engineOutdated && !state.engineError && unread.length) {
     banner.append(
       " ",
-      h("button", { class: "btn btn-small", onclick: () => showScreen("settings") }, t("app.settings_unread_open")),
+      h("button", { class: "btn", onclick: () => showScreen("settings") }, t("app.settings_unread_open")),
     );
   }
   if (state.engineError && !state.engineOutdated) {
     banner.append(
       " ",
-      h("button", { class: "btn btn-small", onclick: () => location.reload() }, t("app.engine_error_reload")),
+      h("button", { class: "btn", onclick: () => location.reload() }, t("app.engine_error_reload")),
     );
   }
   if (!state.engineOutdated && !state.engineError && !unread.length && failed.length) {
     banner.append(
       " ",
-      h("button", { class: "btn btn-small", onclick: showChecks }, t("app.checks_failed_show")),
+      h("button", { class: "btn", onclick: showChecks }, t("app.checks_failed_show")),
     );
   }
   measureMapTop(); // the banner sits above the map and pushes it down
@@ -2695,7 +2845,7 @@ function renderStatus() {
   const shown = dataFolderShown(s);
   if (shown) {
     const label = revealLabel(s.platform);
-    place.append(h("button", { type: "button", class: "btn btn-small btn-icon reveal-btn status-reveal", title: label, "aria-label": label, onclick: () => revealPath(shown) }, folderIcon()));
+    place.append(h("button", { type: "button", class: "btn btn-icon reveal-btn status-reveal", title: label, "aria-label": label, onclick: () => revealPath(shown) }, icon("folder")));
   }
 }
 
@@ -3176,6 +3326,9 @@ function addTilesFromText() {
 function addTileFromLatLon() {
   const lat = Number($("lat-input").value);
   const lon = Number($("lon-input").value);
+  // both empty: the button is the box's only one, clicked after typing tile names, which their
+  // field adds as it is left; "Latitude or longitude invalid" came under the cost (2026-11-04)
+  if ($("lat-input").value === "" && $("lon-input").value === "") return;
   if ($("lat-input").value === "" || $("lon-input").value === "" || Number.isNaN(lat) || Number.isNaN(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) {
     showPlanError(t("plan.latlon_invalid"));
     return;
@@ -3713,7 +3866,7 @@ function renderSourcesList() {
   for (const p of mine) {
     ul.append(h("li", { class: "source-row" },
       h("div", { class: "source-text" }, h("b", null, p.name || p.code), " ", h("code", null, p.code), h("div", { class: "source-url" }, p.url_template || "")),
-      h("button", { type: "button", class: "btn btn-small btn-danger", onclick: () => removeSource(p) }, t("sources.remove"))));
+      h("button", { type: "button", class: "btn btn-danger", onclick: () => removeSource(p) }, t("sources.remove"))));
   }
 }
 
@@ -3858,6 +4011,7 @@ function renderZlOptions() {
   sel.value = String(planZl());
   $("zl-help").textContent = t("plan.zl_help", { lat: fmtNum(lat, 1) });
   renderFlightPlan();
+  renderPlanProfile(); // the source or the level may no longer be the profile's
 }
 
 // ------------------------------------------------------------------ Plan: estimate + build
@@ -4053,20 +4207,8 @@ function renderBuildActions() {
   setText(queue, queue.hidden ? "" : t("step4.queue_note"));
 }
 
-const COST_ICON_PATHS = {
-  network: "M12 20v-4M4 10a12 12 0 0 1 16 0M7 13.5a7 7 0 0 1 10 0M10 16.5a3 3 0 0 1 4 0",
-  compute: "M4 5h16v11H4zM9 20h6M12 16v4",
-  disk: "M4 12a8 8 0 1 1 16 0 8 8 0 0 1-16 0zM12 12h.01",
-};
-
-/** Inline SVG icon (static markup, no user data). */
-function strokeIcon(d) {
-  const markup = `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="${d}"/></svg>`;
-  return document.createRange().createContextualFragment(markup).firstElementChild;
-}
-
 function costIcon(kind) {
-  return strokeIcon(COST_ICON_PATHS[kind]);
+  return icon(`cost-${kind}`);
 }
 
 function kv(rows) {
@@ -4084,7 +4226,11 @@ function warningEntries(plan) {
   return out;
 }
 
-function errorCard(err, { onRetry, tile } = {}) {
+/** A failure, or a warning, in a card: its code and severity above its words, what a report
+ * quotes. `advice`: the Plan's warnings, said before a build, have nothing to report: their words
+ * alone ("CLOUD_PUT_BACK", "INFO" before them read as a failure, a campaign, 2026-11-08), the
+ * code kept for one the page has no words for. */
+function errorCard(err, { onRetry, tile, advice = false } = {}) {
   const tpl = $("tpl-error-card").content.firstElementChild.cloneNode(true);
   const sev = err.severity || "info";
   tpl.classList.add(`sev-card-${sev}`);
@@ -4095,12 +4241,13 @@ function errorCard(err, { onRetry, tile } = {}) {
   const where = [err.tile || tile, err.step ? STEP_KEYS[err.step]?.() : null].filter(Boolean).join(" · ");
   tpl.querySelector(".error-where").textContent = where;
   const [message, remedy] = codeWords(err);
+  if (advice && codeText(err.code, err.context)) tpl.querySelector(".error-head").remove();
   tpl.querySelector(".error-msg").textContent = message;
   tpl.querySelector(".error-remedy").textContent = remedy;
   const actions = tpl.querySelector(".error-actions");
   const action = uiAction(err);
-  if (action === "retry" && onRetry) actions.append(h("button", { type: "button", class: "btn btn-small", onclick: onRetry }, t("works.retry")));
-  else if (action === "settings") actions.append(h("button", { type: "button", class: "btn btn-small", onclick: () => openSettingsFor(err) }, t("works.settings")));
+  if (action === "retry" && onRetry) actions.append(h("button", { type: "button", class: "btn", onclick: onRetry }, t("works.retry")));
+  else if (action === "settings") actions.append(h("button", { type: "button", class: "btn", onclick: () => openSettingsFor(err) }, t("works.settings")));
   else actions.remove();
   return tpl;
 }
@@ -4175,7 +4322,7 @@ function renderPlanPanel() {
   const warnings = warningEntries(plan).filter((w) => !(disk.ok === false && w.code === "SYS_DISK_FULL"));
   if (warnings.length) {
     panel.append(h("h3", { class: "section-title" }, t("plan.warnings")));
-    panel.append(h("div", { class: "error-list" }, warnings.map((w) => errorCard({ severity: "degraded", ...w }))));
+    panel.append(h("div", { class: "error-list" }, warnings.map((w) => errorCard({ severity: "degraded", ...w }, { advice: true }))));
   }
 
   const tiles = plan.tiles || [];
@@ -4259,6 +4406,7 @@ function jobsChanged() {
   tellFrame?.(); // what the page is doing, which the app's frame says beside its name (embed.js)
   renderBuildActions();
   planMap?.jobChanged();
+  cloudMode?.jobsChanged();
   if (state.screen === "library" && state.library) renderLibrary();
   if (state.screen === "disk") renderDisk(); // Free space waits for a build, from the last measure
   followBuildUnderWay();
@@ -4544,10 +4692,10 @@ function buildJobView(box, job, previous) {
 
   v.pill = h("span", { class: "job-pill" });
   v.meta = h("span", { class: "help num" });
-  v.stop = h("button", { type: "button", class: "btn btn-small btn-danger", onclick: cancelJob }, t("works.stop"));
+  v.stop = h("button", { type: "button", class: "btn btn-danger", onclick: cancelJob }, t("works.stop"));
   // A build that failed or was stopped offered nothing but a Retry buried in an error card, and
   // only for the handful of codes that carry action "retry" (a user, 2026-09-20).
-  v.again = h("button", { type: "button", class: "btn btn-small", title: t("works.again_help"), onclick: retryJob }, t("works.again"));
+  v.again = h("button", { type: "button", class: "btn", title: t("works.again_help"), onclick: retryJob }, t("works.again"));
   const head = h("div", { class: "job-head" }, h("h2", null, t("works.job", { id: job.id })), v.pill, v.meta, h("span", { class: "spacer" }), v.again, v.stop);
 
   v.progress = h("b");
@@ -4623,7 +4771,8 @@ function updateJobView(v, job) {
     chosen && gap ? `${chosen} (${gap})` : chosen,
     job.relief_own ? t("works.relief_own") : "",
   ].filter(Boolean).join(" + ");
-  const parts = [`${job.provider || ""} ${jobLevel(job)}`, relief, job.install ? t("works.install") : t("works.no_install")];
+  const profile = job.profile ? t("works.profile", { name: job.profile }) : "";
+  const parts = [`${job.provider || ""} ${jobLevel(job)}`, profile, relief, job.install ? t("works.install") : t("works.no_install")];
   setText(v.meta, parts.filter(Boolean).join(" · "));
   const waiting = job.status === "queued";
   v.stop.hidden = !active;
@@ -4915,6 +5064,11 @@ function imageryWait(job, tile) {
  * (`osm_progress_message`, `dem_downloading_message`, `textures_progress_message`). */
 function nodeWords(n, message) {
   const line = String(message || "");
+  // whatever the step, its tile's replaced clouds laid again before it ends (build.py
+  // `_clouds_before_done`): its role's words said "putting the tile together" for the 12 s they
+  // took (a user, 2026-11-07)
+  const clouds = /laying its clouds again: (\d+) of (\d+) textures/.exec(line);
+  if (clouds) return t("works.act_clouds", { done: fmtInt(Number(clouds[1])), total: fmtInt(Number(clouds[2])) });
   switch (n.role) {
     case "osm": {
       const back = /: (\d+) of (\d+) back\b/.exec(line);
@@ -5210,7 +5364,7 @@ function renderReport(job) {
     ? h("p", { class: "report-note" },
         t("works.not_installed_yet"),
         " ",
-        h("button", { type: "button", class: "btn btn-small", onclick: () => showScreen("library") }, t("works.open_library")))
+        h("button", { type: "button", class: "btn", onclick: () => showScreen("library") }, t("works.open_library")))
     : null;
   return h("section", { class: "report" },
     h("div", { class: "report-grid" },
@@ -5304,7 +5458,29 @@ async function loadLibrarySizes() {
   askSizesAgain();
 }
 
+/** The Library's Clouds cells, by row path, the engine's (``GET /api/clouds``): none when the
+ * list does not come. */
+async function loadClouds() {
+  try {
+    const res = await api("GET", "/api/clouds");
+    state.clouds = res?.rows || {};
+  } catch (_err) {
+    state.clouds = {};
+  }
+  renderLibrary();
+}
+
+/** What the Library's column says of a tile's clouds: those it holds replaced and those waiting
+ * for Apply, in this order. */
+export function cloudsWords(c) {
+  const out = [];
+  if (c?.replaced > 0) out.push(t("library.clouds_replaced", { n: fmtInt(c.replaced) }));
+  if (c?.to_apply > 0) out.push(t("library.clouds_to_apply", { n: fmtInt(c.to_apply) }));
+  return out;
+}
+
 async function loadLibrary() {
+  loadClouds();
   try {
     const rows = await api("GET", "/api/library");
     state.library = Array.isArray(rows) ? rows : [];
@@ -5947,9 +6123,9 @@ function builtBlock(e) {
  * few seconds while a build installs its tiles. */
 const libraryOpen = new Set();
 
-/** A small folder, drawn like the page's other icons (the template in index.html). */
-function folderIcon() {
-  return $("tpl-folder-icon").content.firstElementChild.cloneNode(true);
+/** One of the page's icons, drawn by styles.css (`.icon-folder`, `.icon-cloud`...). */
+export function icon(name) {
+  return h("span", { class: `icon icon-${name}`, "aria-hidden": "true" });
 }
 
 export function libraryRow(e, showFolder = false) {
@@ -5969,24 +6145,24 @@ export function libraryRow(e, showFolder = false) {
   // An imported tile still in X-Plane whose files are gone keeps its way out of X-Plane: it has no
   // Delete, and is taken off the list only once out of X-Plane.
   if (e.installed && (present || !byOsxp)) {
-    xplaneButton = h("button", { type: "button", class: "btn btn-small", title: inBuild ? t("library.in_build_help") : t("library.remove_help"), disabled: busy || inBuild, onclick: () => libraryAction(e, "uninstall") }, t("library.remove"));
+    xplaneButton = h("button", { type: "button", class: "btn", title: inBuild ? t("library.in_build_help") : t("library.remove_help"), disabled: busy || inBuild, onclick: () => libraryAction(e, "uninstall") }, t("library.remove"));
   } else if (present) {
-    xplaneButton = h("button", { type: "button", class: "btn btn-small btn-primary", title: inBuild ? t("library.in_build_help") : t("library.add_help"), disabled: busy || inBuild, onclick: () => libraryAction(e, "install") }, t("library.add"));
+    xplaneButton = h("button", { type: "button", class: "btn btn-primary", title: inBuild ? t("library.in_build_help") : t("library.add_help"), disabled: busy || inBuild, onclick: () => libraryAction(e, "install") }, t("library.add"));
   } else if (byOsxp) {
     // its folder moved by hand: shown where it went, it is found again (the atelier, step 2,
     // 2026-10-05). A disk away comes back by itself once plugged in; a disk renamed or left for
     // another, its tiles copied there, has only this way back (a review, 2026-10-05)
-    xplaneButton = h("button", { type: "button", class: "btn btn-small btn-primary", title: inBuild ? t("library.in_build_help") : t("library.find_help"), disabled: busy || inBuild, onclick: () => findLibraryTile(e) }, t("library.find"));
+    xplaneButton = h("button", { type: "button", class: "btn btn-primary", title: inBuild ? t("library.in_build_help") : t("library.find_help"), disabled: busy || inBuild, onclick: () => findLibraryTile(e) }, t("library.find"));
   }
   // A tile OrthoStudio XP did not build has no Delete, and had nothing in its place: the reason
   // is said in the lead and in the "Built by" column, and a user still looked for the button
   // (2026-09-20). It is now said where the button would be.
   const deleteButton = byOsxp
-    ? h("button", { type: "button", class: "btn btn-small btn-danger", title: building ? t("library.delete_wait") : t("library.delete_help"), disabled: busy || building, onclick: () => deleteLibraryTile(e) }, t("library.delete"))
+    ? h("button", { type: "button", class: "btn btn-danger", title: building ? t("library.delete_wait") : t("library.delete_help"), disabled: busy || building, onclick: () => deleteLibraryTile(e) }, t("library.delete"))
     // the way back from an import: off the list, and nothing on the disk touched (a user asked
     // for it, 2026-09-21), in place of a "not deletable here" that offered nothing. Not while
     // X-Plane shows the tile: the Library could no longer take it out.
-    : h("button", { type: "button", class: "btn btn-small", title: e.installed ? t("library.forget_installed") : t("library.forget_help"), disabled: busy || Boolean(e.installed), onclick: () => forgetLibraryTile(e) }, t("library.forget"));
+    : h("button", { type: "button", class: "btn", title: e.installed ? t("library.forget_installed") : t("library.forget_help"), disabled: busy || Boolean(e.installed), onclick: () => forgetLibraryTile(e) }, t("library.forget"));
   let missing = null;
   if (!present) {
     const away = Boolean(e.disk_absent);
@@ -6009,12 +6185,12 @@ export function libraryRow(e, showFolder = false) {
   const overlayMark = overlayPill(e, busy || inBuild);
   const label = revealLabel(state.status?.platform);
   const revealButton = present && e.path
-    ? h("button", { type: "button", class: "btn btn-small btn-icon reveal-btn", title: label, "aria-label": `${label}: ${e.tile}`, onclick: () => revealPath(e.path) }, folderIcon())
+    ? h("button", { type: "button", class: "btn btn-icon reveal-btn", title: label, "aria-label": `${label}: ${e.tile}`, onclick: () => revealPath(e.path) }, icon("folder"))
     : null;
   // What the tile was built with, one click away and only for a tile OrthoStudio XP built: an
   // imported one's settings are Ortho4XP's, which nothing here can read.
   const open = libraryOpen.has(key);
-  const detail = byOsxp ? h("tr", { class: "library-built", hidden: !open }, h("td", { colspan: 9 }, builtBlock(e))) : null;
+  const detail = byOsxp ? h("tr", { class: "library-built", hidden: !open }, h("td", { colspan: 10 }, builtBlock(e))) : null;
   let builtCell = t("library.by_ortho4xp");
   if (byOsxp) {
     const chevron = h("span", { class: "built-chevron", "aria-hidden": "true" }, open ? "▾" : "▸");
@@ -6046,10 +6222,29 @@ export function libraryRow(e, showFolder = false) {
     h("td", null, e.installed ? pill(t("app.yes"), "ok") : pill(t("app.no"), "cancelled")),
     h("td", { class: "num" }, fmtBytes(e.size_bytes)),
     h("td", null, builtCell),
+    cloudsCell(e),
     h("td", { class: "library-action" }, revealButton),
     h("td", { class: "library-action" }, xplaneButton),
     h("td", { class: "library-action" }, deleteButton));
   return detail ? [row, detail] : [row];
+}
+
+/** A row's Clouds cell, on the rows the engine offers it on (a tile OrthoStudio XP built, the
+ * row its own folder). */
+function cloudsCell(e) {
+  const cell = state.clouds?.[e.path];
+  if (!cell) return h("td", { class: "library-clouds" });
+  // one line at the smallest window, the tile's name whole (a user, 2026-11-07): two icons, as the
+  // folder's; its counts on the cloud, what the tile holds replaced above, what waits for Apply
+  // below, said in words in its tooltip. Its words in the cell sized the column by what it held,
+  // and every other column moved as the Library opened (a user, 2026-11-07).
+  const said = cloudsWords(cell).join(" · ");
+  const badge = (n, kind) => (n > 0 ? h("span", { class: `clouds-badge is-${kind}`, "aria-hidden": "true" }, fmtInt(n)) : null);
+  return h("td", { class: "library-clouds" }, h("div", null,
+    h("button", { type: "button", class: "btn btn-icon clouds-open", title: [said, t("library.clouds_help")].filter(Boolean).join("\n"), "aria-label": [`${t("library.clouds_open")} ${e.tile}`, said].filter(Boolean).join(": "), onclick: () => cloudMode?.open(e.tile) },
+      icon("cloud"), badge(cell.replaced, "replaced"), badge(cell.to_apply, "waiting")),
+    // its clouds forgotten from here, the question asked here
+    cell.forget ? h("button", { type: "button", class: "btn btn-icon btn-danger btn-trash", title: t("library.clouds_forget_help"), "aria-label": `${t("library.clouds_forget")}: ${e.tile}`, onclick: () => forgetLibraryClouds(e) }, icon("bin")) : null));
 }
 
 /** The names of the overlay packs of other tools, as a user knows them. */
@@ -6099,12 +6294,12 @@ function renderOverlayNotices(rows) {
     const packs = [...new Set(doubles.flatMap((e) => (e.overlay.others || []).map(overlayPackLabel)))].join(", ");
     box.append(h("div", { class: "overlay-notice" },
       h("p", null, t("library.overlays_double", { n: doubles.length, tiles: doubles.map((e) => e.tile).join(" "), packs })),
-      h("button", { type: "button", class: "btn btn-small", onclick: () => setOverlays(doubles.map((e) => e.tile), "others") }, t("library.overlays_leave", { packs }))));
+      h("button", { type: "button", class: "btn", onclick: () => setOverlays(doubles.map((e) => e.tile), "others") }, t("library.overlays_leave", { packs }))));
   }
   if (missing.length) {
     box.append(h("div", { class: "overlay-notice overlay-notice-fail" },
       h("p", null, t("library.overlays_missing", { n: missing.length, tiles: missing.map((e) => e.tile).join(" ") })),
-      h("button", { type: "button", class: "btn btn-small", onclick: () => setOverlays(missing.map((e) => e.tile), "own") }, t("library.overlays_take_back"))));
+      h("button", { type: "button", class: "btn", onclick: () => setOverlays(missing.map((e) => e.tile), "own") }, t("library.overlays_take_back"))));
   }
 }
 
@@ -6137,6 +6332,10 @@ function renderLibrary() {
   const kept = cell ? { key: cell.parentElement.dataset.key, column: cell.cellIndex } : null;
   clear(body);
   $("library-building").hidden = !activeJobs().length;
+  // the Clouds column being read for the first time: its heading turns, its cells come at once (a
+  // user, 2026-11-07: nothing, then the buttons came out of nowhere 1.6 s later); read again, the
+  // cells read before stay meanwhile
+  $("library-clouds-reading").hidden = state.clouds != null;
   const rows = libraryTiles(state.library);
   renderOverlayNotices(rows);
   const sort = state.librarySort || { key: "tile", dir: 1 };
@@ -6159,7 +6358,7 @@ function renderLibrary() {
   note.classList.toggle("is-warn", Boolean(view.note?.warn));
   if (view.note) setText(note, view.note.text);
   if (!rows.length) {
-    body.append(h("tr", null, h("td", { colspan: 9, class: "placeholder" }, t("library.empty"))));
+    body.append(h("tr", null, h("td", { colspan: 10, class: "placeholder" }, t("library.empty"))));
     markWideTables();
     return;
   }
@@ -6420,6 +6619,23 @@ async function deleteLibraryTile(e) {
   await runLibraryChange(e, () => api("POST", req.path, req.body), (res) => toast(deletedMessage(res?.tile || e.tile, res?.freed_bytes, res?.warning)));
 }
 
+/** The trash of a row's Clouds cell: asks first, then the cloud mode's Forget, its own task
+ * (`POST /api/clouds/{tile}/apply {action: "forget"}`), waited for: the original photos back in the
+ * tile, its list of clouds erased with their images. A failure is said on the row's card. */
+async function forgetLibraryClouds(e) {
+  const question = { title: t("clouds.forget_title", { tile: e.tile }), body: [t("clouds.forget_text")], go: "delete", words: t("clouds.forget_go") };
+  if (libraryBusy.has(libraryKey(e)) || !(await confirmBulk(question))) return;
+  const path = `/api/clouds/${encodeURIComponent(e.tile)}`;
+  await runLibraryChange(e, async () => {
+    await api("POST", `${path}/apply`, { action: "forget" });
+    // what runs of the tile, nothing of it read: the mode's answer drew its picture (R3)
+    let runs = await api("GET", `${path}/tasks`);
+    for (; runs.busy; runs = await api("GET", `${path}/tasks`)) await new Promise((go) => setTimeout(go, 300));
+    const failed = runs.failed;
+    if (failed?.kind === "forget") throw new ApiError(409, { error: failed.error });
+  });
+}
+
 /** "Remove from the list" (tiles imported from Ortho4XP): the Library forgets the tile, and its
  * files stay where Ortho4XP put them. */
 function forgetLibraryTile(e) {
@@ -6463,7 +6679,7 @@ function confirmBulk(question) {
   $("library-bulk-title").textContent = question.title;
   clear($("library-bulk-text")).append(...question.body.map((line) => h("p", null, line)));
   const go = $("library-bulk-go");
-  go.textContent = question.go === "delete" ? t("library.delete_confirm") : t("library.forget_go");
+  go.textContent = question.words || (question.go === "delete" ? t("library.delete_confirm") : t("library.forget_go"));
   go.classList.toggle("btn-danger", question.go === "delete");
   go.classList.toggle("btn-primary", question.go !== "delete");
   dialog.returnValue = "";
@@ -6890,6 +7106,9 @@ export function rebuildQuestion(requests, plans, inXplane = 0, unsaved = false) 
   const short = verdicts.some((v) => v.ok === false) || (free !== null && free <= 2 * need);
   const figures = { mb: fmtMB(mb), need: fmtGB(need), free: fmtGB(free) };
   const body = [t("library.rebuild_kept"), t("library.rebuild_costs", figures)];
+  // what the Plan warns of, as the Plan says it (replaced clouds put back, CLOUD_PUT_BACK): the
+  // disk said below in the question's own words
+  for (const p of plans) for (const w of warningEntries(p || {})) if (w.code !== "SYS_DISK_FULL") body.push(codeWords(w)[0]);
   if (inXplane) body.push(t("library.rebuild_back", { n: fmtInt(inXplane) }));
   if (short) body.push(t("plan.disk_short", { need: fmtGB(need), free: fmtGB(free) }));
   if (unsaved) body.push(t("settings.unsaved_build"));
@@ -7154,6 +7373,7 @@ function setDraft(next) {
 }
 
 function renderSettings(message, kind) {
+  renderProfiles();
   if (!state.schema || !state.settingsDraft) return;
   loadSettingsPatches();
   renderSettingsView(
@@ -7205,12 +7425,16 @@ function renderUnsaved() {
     else tab.removeAttribute("title");
   }
   $("plan-unsaved").hidden = !dirty;
+  // a profile cannot be left with changes not saved: its lists wait, and say why
+  renderProfiles();
 }
 
 /** The Plan says in a few words what the build will use, and where to change it. */
 function renderPlanSettings() {
   const parts = settingsSummary(state.settings);
-  $("plan-settings-summary").textContent = parts.length ? t("plan.settings_summary", { list: parts.join(" · ") }) : "";
+  const profile = state.profiles?.named || null;
+  const list = parts.join(" · ");
+  $("plan-settings-summary").textContent = !parts.length ? "" : profile ? t("plan.settings_summary_profile", { name: profile, list }) : t("plan.settings_summary", { list });
   renderPlanXplane();
   renderUnsaved();
 }
@@ -7261,7 +7485,7 @@ function renderTileColours() {
     box.append(h("div", { class: "colours-own" },
       h("p", { class: "help" }, line),
       own.free
-        ? h("button", { type: "button", class: "btn btn-small btn-accent", onclick: () => {
+        ? h("button", { type: "button", class: "btn btn-accent", onclick: () => {
             const given = planMap.resetColours();
             renderTileColours();
             renderPlanSettings();
@@ -7277,7 +7501,7 @@ function renderTileColours() {
       h("p", { class: "help" }, otherwise.length === 1
         ? t("plan.colours_built_one", { tile: otherwise[0].tile })
         : t("plan.colours_built_many", { n: otherwise.length })),
-      h("button", { type: "button", class: "btn btn-small btn-accent", onclick: () => {
+      h("button", { type: "button", class: "btn btn-accent", onclick: () => {
           planMap.setEachTilePhoto(Object.fromEntries(otherwise.map((e) => [e.tile, e.choice])));
           renderTileColours();
           renderPlanSettings();
@@ -7347,30 +7571,53 @@ async function saveSettings(ev) {
     // saved, built with the source of the settings and was never told; and narrowing that to
     // the settings a save had really changed still moved the plan he had set up under him
     // (a user, 2026-09-20 and the day after).
-    state.settings = await api("PUT", "/api/settings", state.settingsDraft);
+    // The profile this page believes current goes with the answers: another page of the same
+    // engine (starting the app again opens one in the browser) may have made another current, and
+    // Save then wrote these answers into it, its own settings lost without a word (a campaign,
+    // 2026-11-04). The engine refuses with CFG_PROFILE_CHANGED.
+    const profile = state.profiles ? `?profile=${encodeURIComponent(state.profiles.current || "")}` : "";
+    state.settings = await api("PUT", `/api/settings${profile}`, state.settingsDraft);
     setDraft(structuredClone(state.settings));
     planChanged();  // the cost again: it was worked out with the settings of before
-    // The X-Plane folder may have changed: the Settings line, step 3 and the status bar follow it,
-    // and step 3 no longer shows a refusal made with the settings of before.
-    await loadStatus();
-    showPlanError(null);
-    renderSettings(t("settings.saved"));
-    setTimeout(() => {
-      if (state.screen === "settings" && sameValue(state.settingsDraft, state.settings)) $("settings-status").textContent = "";
-    }, 3000);
+    await settingsSaved(t("settings.saved"));
     renderProviders();  // the list of sources, never the one the Plan shows
-    renderPlanSettings();
-    loadPatches(); // the folder of patches may be another one now
   } catch (e) {
-    err.hidden = false;
-    // the page's words for the code and its remedy: which folder, and what to do (a user on a
-    // computer without X-Plane read only "XP_DIR_NOT_FOUND: The X-Plane 12 folder was not found")
-    const d = errorDetail(e);
-    // a number out of its range: the field's name and the values it takes, not the setting's key
-    const refused = d?.code === "CFG_VALUE_INVALID" ? refusedValueText(d.context, state.schema) : null;
-    const detail = refused || (d?.code ? codeWords(d).filter(Boolean).join(" ") : errorMessage(e));
-    err.textContent = t("settings.invalid", { detail });
+    if (errorDetail(e)?.code === "CFG_PROFILE_CHANGED") {
+      // the list and the saved settings as they are now: Save names the profile it would write
+      // into, and Undo my changes goes back to that profile's answers; the answers on screen stay
+      await loadProfiles();
+      state.settings = await api("GET", "/api/settings");
+      renderSettings();
+    }
+    showSettingsError(e);
   }
+}
+
+/** What follows any save of the settings, Save's or a new profile's. */
+async function settingsSaved(message) {
+  // The X-Plane folder may have changed: the Settings line, step 3 and the status bar follow it,
+  // and step 3 no longer shows a refusal made with the settings of before.
+  await loadStatus();
+  showPlanError(null);
+  renderSettings(message);
+  setTimeout(() => {
+    if (state.screen === "settings" && sameValue(state.settingsDraft, state.settings)) $("settings-status").textContent = "";
+  }, 3000);
+  renderPlanSettings();
+  loadPatches(); // the folder of patches may be another one now
+}
+
+/** A save refused, in the bar of Save. */
+function showSettingsError(e) {
+  const err = $("settings-error");
+  err.hidden = false;
+  // the page's words for the code and its remedy: which folder, and what to do (a user on a
+  // computer without X-Plane read only "XP_DIR_NOT_FOUND: The X-Plane 12 folder was not found")
+  const d = errorDetail(e);
+  // a number out of its range: the field's name and the values it takes, not the setting's key
+  const refused = d?.code === "CFG_VALUE_INVALID" ? refusedValueText(d.context, state.schema) : null;
+  const detail = refused || (d?.code ? codeWords(d).filter(Boolean).join(" ") : errorMessage(e));
+  err.textContent = t("settings.invalid", { detail });
 }
 
 function resetSettings() {
@@ -7384,6 +7631,319 @@ function defaultSettings() {
   if (!state.schema) return;
   setDraft(defaultsKeepingFolders(state.schema, state.settingsDraft));
   renderSettings();
+}
+
+// ------------------------------------------------------------------ Settings: the profiles
+
+/** The names of the settings profiles. A computer has none until a second set of settings is kept,
+ * and the page then shows no list: nothing changes for those who never make one (a user asked to
+ * keep settings by name and choose them for each build, 2026-11-02). */
+function profileNames() {
+  return Array.isArray(state.profiles?.profiles) ? state.profiles.profiles : [];
+}
+
+/** The lists of profiles show while the engine names one, from the second on (`named`). */
+function profilesShown() {
+  return Boolean(state.profiles?.named);
+}
+
+async function loadProfiles() {
+  try {
+    state.profiles = await api("GET", "/api/profiles");
+    state.profilesError = null;
+  } catch (e) {
+    state.profiles = null;
+    // an engine from before the profiles has no route, which its banner says; a file it cannot
+    // read is said at the top of Settings
+    state.profilesError = e instanceof ApiError && e.status === 404 ? null : profileErrorText(e);
+  }
+}
+
+/** An error about the profiles in the page's words, without its code. */
+function profileErrorText(e) {
+  const d = errorDetail(e);
+  return d?.code ? codeWords(d).filter(Boolean).join(" ") : errorMessage(e);
+}
+
+/** What a change of the profiles gives back: the list, and the settings saved, which the draft
+ * then shows. */
+function profilesAnswered(answer) {
+  state.profiles = { current: answer.current, named: answer.named, profiles: answer.profiles, computer: answer.computer };
+  state.profilesError = null;
+  if (answer.settings) {
+    state.settings = answer.settings;
+    setDraft(structuredClone(answer.settings));
+  }
+}
+
+/** Another profile chosen: step 1's source and detail level are its own, since its list stands
+ * above them there and says so. A plain Save leaves them as the pilot set them (saveSettings). */
+function planTakesProfile() {
+  const essential = state.settings?.essential || {};
+  if (essential.zoom_level) state.planZl = Number(essential.zoom_level);
+  renderProviders(essential.provider || "BI");
+  planChanged();
+}
+
+function renderProfiles() {
+  renderSettingsProfile();
+  renderSaveButtons();
+  renderPlanProfile();
+}
+
+/** The top of Settings, from the second profile on: the profile Save writes into, with Rename and
+ * Delete beside it; a rename or a deletion is asked on that same line. With changes not saved, the
+ * list waits: changing profile then would lose them without a word. */
+function renderSettingsProfile() {
+  const box = $("settings-profile");
+  const names = profileNames();
+  const current = state.profiles?.current || "";
+  const edit = state.profileEdit;
+  const dirty = settingsUnsaved();
+  const busy = state.profileBusy;
+  const shown = profilesShown() || Boolean(state.profilesError);
+  const drawn = JSON.stringify([shown, names, current, edit?.mode || "", dirty, busy, state.profileError, state.profilesError, language()]);
+  if (box.dataset.drawn === drawn) return;
+  box.dataset.drawn = drawn;
+  box.hidden = !shown;
+  const focused = box.contains(document.activeElement) ? document.activeElement.id : null;
+  clear(box);
+  if (!shown) return;
+  if (state.profilesError) {
+    box.append(h("p", { class: "error-inline" }, t("settings.profile_unread", { detail: state.profilesError })));
+    return;
+  }
+  let row;
+  if (edit?.mode === "rename") {
+    const input = h("input", { type: "text", id: "settings-profile-name", maxlength: "40", autocomplete: "off", spellcheck: "false", "aria-invalid": state.profileError ? "true" : null });
+    input.value = edit.value ?? current;
+    input.addEventListener("input", () => {
+      edit.value = input.value;
+    });
+    input.addEventListener("keydown", (ev) => {
+      // Enter in a field of the form would save the settings: here it renames
+      if (ev.key === "Enter") {
+        ev.preventDefault();
+        renameProfile(input.value);
+      } else if (ev.key === "Escape") {
+        ev.preventDefault();
+        closeProfileEdit();
+      }
+    });
+    row = h("div", { class: "settings-profile-row" },
+      h("label", { class: "settings-profile-label", for: "settings-profile-name" }, t("settings.profile_new_name")),
+      input,
+      h("button", { type: "button", class: "btn btn-primary", id: "settings-profile-rename-ok", disabled: busy, onclick: () => renameProfile(input.value) }, t("settings.profile_rename")),
+      h("button", { type: "button", class: "btn", onclick: closeProfileEdit }, t("settings.profile_cancel")));
+    queueMicrotask(() => {
+      if (focused !== "settings-profile-name") input.select();
+      input.focus();
+    });
+  } else if (edit?.mode === "delete") {
+    row = h("div", { class: "settings-profile-row" },
+      h("p", { class: "settings-profile-ask", role: "alert" }, t("settings.profile_delete_ask", { name: current })),
+      h("button", { type: "button", class: "btn btn-danger", id: "settings-profile-delete-ok", disabled: busy, onclick: deleteProfile }, t("settings.profile_delete")),
+      h("button", { type: "button", class: "btn", id: "settings-profile-keep", onclick: closeProfileEdit }, t("settings.profile_keep")));
+    queueMicrotask(() => $("settings-profile-keep")?.focus());
+  } else {
+    const select = h("select", { id: "settings-profile-select", disabled: dirty || busy, "aria-describedby": "settings-profile-help" },
+      names.map((name) => h("option", { value: name }, name)));
+    select.value = current;
+    select.addEventListener("change", () => switchProfile(select.value));
+    row = h("div", { class: "settings-profile-row" },
+      h("label", { class: "settings-profile-label", for: "settings-profile-select" }, t("settings.profile")),
+      select,
+      h("button", { type: "button", class: "btn", id: "settings-profile-rename", disabled: busy, onclick: () => openProfileEdit("rename") }, t("settings.profile_rename")),
+      h("button", { type: "button", class: "btn", id: "settings-profile-delete", disabled: dirty || busy, onclick: () => openProfileEdit("delete") }, t("settings.profile_delete")));
+    if (focused) queueMicrotask(() => $(focused)?.focus());
+  }
+  box.append(row);
+  if (!edit) {
+    box.append(h("p", { class: `help${dirty ? " is-warn" : ""}`, id: "settings-profile-help" }, dirty ? t("settings.profile_unsaved") : t("settings.profile_help")));
+  }
+  if (state.profileError) box.append(h("p", { class: "error-inline", role: "alert" }, state.profileError));
+}
+
+function openProfileEdit(mode) {
+  state.profileEdit = { mode, value: null };
+  state.profileError = null;
+  renderSettingsProfile();
+}
+
+function closeProfileEdit() {
+  state.profileEdit = null;
+  state.profileError = null;
+  renderSettingsProfile();
+  $("settings-profile-select")?.focus();
+}
+
+/** Save names the profile it writes into once there are two; Save as a new profile asks for the
+ * name in the same bar. */
+function renderSaveButtons() {
+  const name = state.profiles?.named || null;
+  setText($("settings-save"), name ? t("settings.save_in", { name }) : t("settings.save"));
+  const open = state.newProfile;
+  for (const el of document.querySelectorAll("#settings-form .settings-main")) el.hidden = open;
+  $("settings-new").hidden = !open;
+  if (!open) return;
+  // the profile left: its own name, or the one it takes now when it had none
+  const left = state.profiles?.current || t("profiles.first_name");
+  setText($("settings-new-help"), profileNames().length ? t("settings.new_help", { name: left }) : t("settings.new_help_first", { name: left }));
+  $("settings-new-create").disabled = state.profileBusy;
+}
+
+function openNewProfile() {
+  state.newProfile = true;
+  $("settings-error").hidden = true;
+  const input = $("settings-new-name");
+  input.value = "";
+  input.removeAttribute("aria-invalid");
+  renderSaveButtons();
+  input.focus();
+}
+
+function closeNewProfile() {
+  state.newProfile = false;
+  $("settings-error").hidden = true;
+  renderSaveButtons();
+  $("settings-save-new").focus();
+}
+
+/** Save as a new profile: the answers on screen, checked as Save checks them, saved under a name
+ * of their own, which becomes current; the profile left keeps what it held. */
+async function createProfile() {
+  const input = $("settings-new-name");
+  const err = $("settings-error");
+  const first = t("profiles.first_name");
+  const problem = profileNameProblem(input.value, profileNames().length ? profileNames() : [first]);
+  if (problem) {
+    err.textContent = problem;
+    err.hidden = false;
+    input.setAttribute("aria-invalid", "true");
+    input.focus();
+    return;
+  }
+  err.hidden = true;
+  input.removeAttribute("aria-invalid");
+  state.profileBusy = true;
+  renderSaveButtons();
+  try {
+    const name = input.value.trim();
+    profilesAnswered(await api("POST", "/api/profiles", { name, settings: state.settingsDraft, first_name: first }));
+    state.newProfile = false;
+    state.profileEdit = null;
+    planTakesProfile();
+    await settingsSaved(t("settings.new_done", { name: state.profiles.current }));
+    toast(t("settings.new_done", { name: state.profiles.current }));
+  } catch (e) {
+    if (["CFG_PROFILE_NAME", "CFG_PROFILE_TAKEN"].includes(errorDetail(e)?.code)) input.setAttribute("aria-invalid", "true");
+    showSettingsError(e);
+  } finally {
+    state.profileBusy = false;
+    renderProfiles();
+  }
+}
+
+/** Another profile made current, from Settings or from the Plan: its settings are saved as the
+ * settings, and step 1 takes its source and detail level. */
+async function switchProfile(name) {
+  if (!name || name === state.profiles?.current || settingsUnsaved()) {
+    renderProfiles(); // the list back on the profile in use
+    return;
+  }
+  state.profileBusy = true;
+  state.profileError = null;
+  renderProfiles();
+  try {
+    profilesAnswered(await api("POST", "/api/profiles/current", { name }));
+    planTakesProfile();
+    renderSettings(t("settings.profile_switched", { name: state.profiles.current }));
+    renderPlanSettings();
+  } catch (e) {
+    toast(profileErrorText(e), "fail");
+    await loadProfiles();
+  } finally {
+    state.profileBusy = false;
+    renderProfiles();
+  }
+}
+
+async function renameProfile(value) {
+  const current = state.profiles?.current;
+  const problem = profileNameProblem(value, profileNames().filter((n) => n !== current));
+  if (problem) {
+    state.profileError = problem;
+    renderSettingsProfile();
+    return;
+  }
+  if (value.trim() === current) {
+    closeProfileEdit();
+    return;
+  }
+  state.profileBusy = true;
+  state.profileError = null;
+  renderProfiles();
+  try {
+    profilesAnswered(await api("POST", "/api/profiles/rename", { name: current, new_name: value.trim() }));
+    state.profileEdit = null;
+    renderSettings(t("settings.profile_renamed", { name: state.profiles.current }));
+    renderPlanSettings();
+    queueMicrotask(() => $("settings-profile-select")?.focus());
+  } catch (e) {
+    state.profileError = profileErrorText(e);
+  } finally {
+    state.profileBusy = false;
+    renderProfiles();
+  }
+}
+
+/** The current profile deleted: the first of the others becomes current, its settings with it.
+ * Tiles already built are not touched. */
+async function deleteProfile() {
+  const name = state.profiles?.current;
+  state.profileBusy = true;
+  state.profileError = null;
+  renderProfiles();
+  try {
+    profilesAnswered(await api("POST", "/api/profiles/delete", { name }));
+    state.profileEdit = null;
+    planTakesProfile();
+    const message = t("settings.profile_deleted_now", { name, current: state.profiles.current });
+    renderSettings(message);
+    renderPlanSettings();
+    toast(message);
+  } catch (e) {
+    state.profileError = profileErrorText(e);
+  } finally {
+    state.profileBusy = false;
+    renderProfiles();
+  }
+}
+
+/** Step 1, from the second profile on: the profile the build takes, above the source and the
+ * detail level, which come with it. */
+function renderPlanProfile() {
+  const field = $("plan-profile");
+  const shown = profilesShown();
+  field.hidden = !shown;
+  if (!shown) return;
+  const select = $("plan-profile-select");
+  const names = profileNames();
+  const listed = JSON.stringify(names);
+  if (select.dataset.names !== listed) {
+    clear(select).append(...names.map((name) => h("option", { value: name }, name)));
+    select.dataset.names = listed;
+  }
+  select.value = state.profiles.current;
+  const dirty = settingsUnsaved();
+  select.disabled = dirty || state.profileBusy;
+  const help = $("plan-profile-help");
+  setText(help, dirty ? t("plan.profile_unsaved") : t("plan.profile_help"));
+  help.classList.toggle("is-warn", dirty);
+  // step 1's source or level no longer the profile's: said, with the button that takes them
+  const differs = profileDiffers(state.settings?.essential, { provider: $("provider-select").value, zl: planZl() }, state.providers);
+  $("plan-profile-differs").hidden = !differs;
+  if (differs) setText($("plan-profile-differs-text"), profileDiffersText(state.profiles.current, differs, sourceLabel(differs.source)));
 }
 
 // ------------------------------------------------------------------ theme + language
@@ -7431,6 +7991,7 @@ function rerenderAll() {
   renderDisk(); // from the last measure: measuring again takes minutes on a hard disk
   renderSettings();
   planMap?.rerender();
+  cloudMode?.rerender();
 }
 
 // ------------------------------------------------------------------ boot
@@ -7591,6 +8152,7 @@ async function boot() {
   $("zl-select").addEventListener("change", () => {
     // the level of the squares chosen by hand; the flight plan's keep their own two
     state.planZl = Number($("zl-select").value) || planZl();
+    renderPlanProfile();
     selectionChanged();
     renderTilesBuilt();
     planMap?.planChanged();
@@ -7686,6 +8248,24 @@ async function boot() {
     });
   }
   $("settings-form").addEventListener("submit", saveSettings);
+  $("settings-save-new").addEventListener("click", openNewProfile);
+  $("settings-new-create").addEventListener("click", createProfile);
+  $("settings-new-cancel").addEventListener("click", closeNewProfile);
+  $("settings-new-name").addEventListener("keydown", (ev) => {
+    // Enter in a field of the form would save the settings: here it creates the profile
+    if (ev.key === "Enter") {
+      ev.preventDefault();
+      createProfile();
+    } else if (ev.key === "Escape") {
+      ev.preventDefault();
+      closeNewProfile();
+    }
+  });
+  $("plan-profile-select").addEventListener("change", (ev) => switchProfile(ev.target.value));
+  $("plan-profile-take").addEventListener("click", () => {
+    planTakesProfile();
+    $("plan-profile-select").focus();
+  });
   $("settings-reset").addEventListener("click", resetSettings);
   $("settings-defaults").addEventListener("click", defaultSettings);
   $("plan-settings-change").addEventListener("click", () => showScreen("settings"));
@@ -7742,6 +8322,18 @@ async function boot() {
       renderLibrary();
     },
   });
+  cloudMode = createCloudMode({
+    api,
+    h,
+    icon,
+    clear,
+    morph: morphChildren,
+    toast,
+    errorMessage,
+    planMap,
+    providers: () => state.providers,
+    showPlan: () => showScreen("plan"),
+  });
   renderTiles();
   renderPlanPanel();
   restoreFlightPlan();
@@ -7764,9 +8356,10 @@ async function boot() {
   const schema = api("GET", "/api/settings/schema").then((s) => {
     state.schema = s;
   });
+  const profiles = loadProfiles();
   // The Plan's source and detail level, and Settings, as soon as what they show is known,
   // whatever the rest takes.
-  const early = Promise.allSettled([providers, settings, schema]).then(() => {
+  const early = Promise.allSettled([providers, settings, schema, profiles]).then(() => {
     renderProviders(state.settings?.essential?.provider || "BI");
     renderPlanSettings();
     if (state.screen === "settings") renderSettings();

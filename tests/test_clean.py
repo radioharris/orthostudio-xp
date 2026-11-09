@@ -171,9 +171,13 @@ def test_free_space_makes_a_tile_s_copy_of_the_store_s_image_one_file_with_it(
     assert report.doubles_files == 1 and report.doubles_bytes == len(data)  # type: ignore[attr-defined]
     assert tex.stat().st_nlink > 1 and tex.read_bytes() == data
     assert _run(world, dry_run=True).doubles_files == 0  # type: ignore[attr-defined]
-    retouched = bytes(255 - b for b in data)
+    marked = b"M" + data[1:]  # the same size, another header: a texture showing replaced clouds
     tex.unlink()
-    tex.write_bytes(retouched)  # the same size, other bytes
+    tex.write_bytes(marked)
+    assert _run(world, dry_run=True).doubles_files == 0  # never a copy (246 MB said twice, a user)
+    retouched = data[:128] + bytes(255 - b for b in data[128:])
+    tex.unlink()
+    tex.write_bytes(retouched)  # the same size and header, other pixels
     assert _run(world, dry_run=True).doubles_files == 1  # type: ignore[attr-defined]
     assert _run(world).doubles_files == 0  # type: ignore[attr-defined]
     assert tex.read_bytes() == retouched and tex.stat().st_nlink == 1

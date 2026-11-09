@@ -75,7 +75,10 @@ The launcher becomes that process rather than starting it aside, so that the win
 this bundle; a window opened by a process started aside is called Python and carries Python's icon
 (measured, 2026-09-20). The engine is the one put aside, in a process of its own
 (`orthostudio.desktop.start_engine`): closing the window leaves a build running, and the engine
-stops by itself a while after its last page. The engine starts only once the window is on screen,
+stops by itself a while after its last page. The window holds its engine through a pipe on the
+engine's standard input for as long as it lives, and the engine counts it as an open page
+(`api.md` section 6): an app left alone, its display asleep, no longer stops by itself. The engine
+starts only once the window is on screen,
 behind the opening page, so that a system with no window to give is left as it was found and the
 browser opens instead, as every version before 0.1.8 did. The doctor's `window` check says which it
 was, and the page lists it: a system that could have a window and lacks a library is told which
@@ -100,8 +103,12 @@ and size as a normal window (`Bounds`, or `RestoreBounds` when it is maximized o
 whether it was maximized. `RestoreBounds` alone follows only what code sets and the moment the
 window leaves its normal state, not a move by hand: 0.1.22rc5 kept the place of each start for
 ever (a Shadow, 2026-10-03). A place whose title
-bar lies on no screen any more, the screen it was on unplugged, opens where the system puts it, as
-on a first start (`grabbable`); one that cannot be read or written is said in `serve.log`.
+bar lies on no screen any more, the screen it was on unplugged, is centred (`grabbable`): by
+`NSWindow.center` on macOS; on Windows, as a first start, in the middle of the working area of the
+screen the pointer is on (`centred`). Left to Windows, a first window opened in Windows' own
+cascade, 49 to 343 px down and right of the corner though pywebview asks for the middle: past the
+right edge and under the taskbar of a screen it nearly filled (a Shadow, 2026-11-08). A place that
+cannot be read or written is said in `serve.log`.
 
 One program may show several windows (`window.open_another`, beside the one `window.show` opens and
 in its loop), with one icon in the Dock or the taskbar however many it shows. Each has a name of its
@@ -164,10 +171,13 @@ In every one:
 - Triangle4XP, compiled for the system, DSFTool and OrthoStudio XP Live's X-Plane plugin, in
   `orthostudio/bin` (section 3);
 - `licences/`: OrthoStudio XP's GPL, Triangle4XP's sources, notice of modifications and build
-  file, as its licence requires with the binary, and DSFTool's notice. The wheels keep theirs in
-  their `.dist-info`.
+  file, as its licence requires with the binary, DSFTool's notice and OmniCloudMask's licence (the
+  cloud detector's networks, downloaded at the user's word). The wheels keep theirs in their
+  `.dist-info`.
 
-Not shipped: pip, the test suites of the dependencies (about 50 MB, most of them scipy's), the
+Not shipped: the cloud detector, OpenCV and its two networks (downloaded once at the user's word,
+from OpenCV's wheel and this repository's release `clouds-detector-1`: `clouds.md` 4.1), pip, the
+test suites of the dependencies (about 50 MB, most of them scipy's), the
 command scripts the packages install (they name the build folder's Python and would run nothing
 once moved), and what `uv sync` records about the checkout in OrthoStudio XP's `.dist-info` (its
 path, its dates). The `.pyc` files are compiled at build time, their recorded paths relative to
@@ -211,9 +221,10 @@ processor per release; it is not worth it while the Linux archive is downloaded 
 times a release.
 
 The oldest macOS the app runs on is the highest `macosx_X_Y` of the wheels installed
-(`LSMinimumSystemVersion`, computed and printed at build time): 14.0 on the macOS 14 build
-machine of the release workflow, where numpy and scipy come built on Accelerate; 15.0 on a machine
-whose uv cache holds orjson's macOS 15 wheel.
+(`LSMinimumSystemVersion`, computed and printed at build time): 15.0 on the macOS 15 build
+machines of the release workflow, where orjson's Apple Silicon wheel and pyproj's Intel wheel ask
+for it. GitHub closed its macOS 14 machines on 2026-11-02, and every Apple Silicon Mac can move to
+macOS 15.
 
 ## 3. Where the programs are found (`programs.py`)
 
@@ -252,7 +263,8 @@ the engine has no terminal; without the log, uvicorn's output would have nowhere
 
 Opening the app while OrthoStudio XP runs opens the running one's page (`api/serve.py`); *Quit* in
 the page stops it. With `--quit-when-closed`, the app also stops by itself five minutes after the
-last word from a page, unless a build runs or waits (`api/presence.py`): once the page is closed,
+last word from a page, unless a build runs or waits or its own window holds it (`api/presence.py`):
+once the page is closed,
 nothing shows the engine (`pythonw` has no window on Windows), and a user had to end it in the Task
 Manager (2026-09-17).
 
@@ -366,11 +378,13 @@ checks a person makes before a release (section 7).
 
 ## 7. Release workflow (`.github/workflows/release.yml`)
 
-On a tag `v*`, and by hand: one job per installer (macOS 14 for the Apple Silicon app; macOS 15,
+On a tag `v*`, and by hand: one job per installer (macOS 15 for the Apple Silicon app and,
 with `--machine x86_64` after installing Rosetta, for the Intel app; Windows; Ubuntu 22.04: Triangle4XP
 compiled there runs on older glibc) builds and checks its installer. A private repository builds
 the Windows installer alone: its minutes are counted, macOS's ten times over, and the Mac app of a
-release candidate is tried from a checkout (2026-10-03). On a tag, a first job makes the
+release candidate is tried from a checkout (2026-10-03); a run by hand there may ask for the Apple
+Silicon one instead (`mac`), to try the installed app before a release (its own Python downloading
+OpenCV for the clouds, 2026-11-03). On a tag, a first job makes the
 release as a draft (a pre-release when the tag has a suffix, as in `v0.2.0-rc.1`), with
 `docs/releases/<version>.md` as its notes when that file exists (`v0.1.0`:
 `docs/releases/0.1.0.md`), else one line saying the installers are not signed. Each installer goes

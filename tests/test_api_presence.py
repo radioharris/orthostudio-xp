@@ -11,6 +11,8 @@ to end it in the Task Manager before the app would open again (2026-09-17).
 from __future__ import annotations
 
 import socket
+import subprocess
+import sys
 import threading
 from collections.abc import Callable
 from pathlib import Path
@@ -24,7 +26,13 @@ from orthostudio.api import presence as presence_mod
 from orthostudio.api import serve as serve_mod
 from orthostudio.api.app import API_LEVEL, create_app
 from orthostudio.api.jobs import JobManager
-from orthostudio.api.presence import QUIT_AFTER_S, TICK_S, Presence, quit_when_closed
+from orthostudio.api.presence import (
+    QUIT_AFTER_S,
+    TICK_S,
+    Presence,
+    held_by_window,
+    quit_when_closed,
+)
 from orthostudio.codemark import code_mark
 from test_api_fakes import FakeBuild, client_for
 
@@ -115,6 +123,48 @@ def test_a_computer_asleep_does_not_count_as_a_closed_page() -> None:
     )
     woke = 1000.0 + 2 * TICK_S + 3600.0
     assert ended is True and stops == [woke + QUIT_AFTER_S]
+
+
+def test_the_app_s_own_window_holds_the_engine_for_as_long_as_it_lives() -> None:
+    """With the Mac's display off, WebKit stops the page's timers after one to six minutes: five
+    minutes later the engine stopped and took the window with it, an idle app gone (three times,
+    2026-11-04). Held by its window, no page for an hour; let go at tick 200, the wait starts."""
+    clock = _Clock()
+    presence = Presence(clock)
+    presence.hold(True)
+
+    def window(tick: int) -> None:
+        if tick == 200:
+            presence.hold(False)
+
+    ended, stops, _ = _watch(clock, presence, on_tick=window, ticks=400)
+    assert ended is True and stops == [1000.0 + 200 * TICK_S + QUIT_AFTER_S]
+
+
+def test_the_window_holds_it_until_its_pipe_closes() -> None:
+    """A real process holding the pipe, as the window does: its end, whatever the way, is the end
+    of the pipe; the engine's side counts it held until then, and not after."""
+    script = (
+        "import os, sys\n"
+        "from orthostudio.api.presence import Presence, held_by_window\n"
+        "p = Presence()\n"
+        "print('reading', flush=True)\n"
+        "held_by_window(p, lambda: os.read(0, 1024))\n"
+        "print('let go', p.held, flush=True)\n"
+    )
+    engine = subprocess.Popen(
+        [sys.executable, "-c", script], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True
+    )
+    assert engine.stdout is not None and engine.stdin is not None
+    assert engine.stdout.readline().strip() == "reading"
+    engine.stdin.write("anything the window may write\n")
+    engine.stdin.flush()
+    engine.stdin.close()  # the window gone
+    assert engine.stdout.readline().strip() == "let go False"
+    assert engine.wait(timeout=60) == 0
+    failing = Presence()
+    held_by_window(failing, lambda: (_ for _ in ()).throw(OSError("no standard input")))
+    assert failing.held is False
 
 
 def test_the_watch_ends_with_the_engine() -> None:

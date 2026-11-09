@@ -204,8 +204,9 @@ names (`terrain/<name>.ter`, `:766, 941`).
 - Sea triangle: the texture is checked once per `(texture, 2)` with `needs_mask`
   (`O4_Mask_Utils.py:38-60`, ported as `orthostudio.textures.imprint.needs_mask_for_texture`: the
   raw crop of the `mask_zl` mask covering the texture must exceed 30 somewhere; no mask file or
-  `zl < mask_zl` means no). No mask -> the triangle goes to `terrain_Water` (`terrain_idx = 0`,
-  `:768`) and the `(texture, 2)` pair is remembered as skipped. Mask -> a new terrain with
+  `zl < mask_zl` means no; OrthoStudio XP lowers a tile's `mask_zl` to its coarsest texture level
+  in `BuildSpec.tile_config`, so a texture is never below it). No mask -> the triangle goes to
+  `terrain_Water` (`terrain_idx = 0`, `:768`) and the `(texture, 2)` pair is remembered as skipped. Mask -> a new terrain with
   `is_overlay = (water_tech == "XP11 + bathy") or not imprint_masks_to_dds` (`:704-706`), kind
   `SEA_OVERLAY` or `SEA` (`textures-ter.md`), and the texture is queued for download (`TextureJob`).
   An overlay sea triangle is **also** drawn with `terrain_Water` (`:840-872`).

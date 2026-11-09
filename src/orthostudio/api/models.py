@@ -27,7 +27,10 @@ __all__ = [
     "ImportRequest",
     "InstallRequest",
     "JobRequest",
+    "NewProfileRequest",
     "PlanRequest",
+    "ProfileRenameRequest",
+    "ProfileRequest",
     "UninstallRequest",
     "ZoneModel",
     "tile_error",
@@ -327,3 +330,28 @@ class DeleteRequest(BaseModel):
     """The ``path`` of the library row to delete, as ``GET /api/library`` gives it: a tile built
     into two output folders is in the library twice under the same name, so the name alone does not
     say which row the user clicked."""
+
+
+class NewProfileRequest(BaseModel):
+    """Settings saved as a new profile (``POST /api/profiles``): Settings' *Save as a new
+    profile*. The profile left keeps what it held; ``first_name`` names it when it had no name yet,
+    in the page's language."""
+
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(max_length=200)
+    settings: dict[str, Any]
+    first_name: str | None = Field(default=None, max_length=200)
+
+
+class ProfileRequest(BaseModel):
+    """The profile to make current (``POST /api/profiles/current``) or to delete (``POST
+    /api/profiles/delete``)."""
+
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(max_length=200)
+
+
+class ProfileRenameRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(max_length=200)
+    new_name: str = Field(max_length=200)

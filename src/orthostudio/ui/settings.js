@@ -84,6 +84,49 @@ export function defaultsKeepingFolders(schema, draft) {
   return doc;
 }
 
+// ---------------------------------------------------------------- profiles
+
+/** The longest name of a settings profile (orthostudio.config.profiles.MAX_NAME). */
+export const PROFILE_NAME_MAX = 40;
+
+/** Why `name` cannot name a profile, in the page's words, or null: empty, or already one of
+ * `taken`, upper and lower case alike, named as it is written (« alpes » is taken by « Alpes »). The
+ * engine checks it again (``CFG_PROFILE_*``); said here, it is said before anything is sent. */
+export function profileNameProblem(name, taken) {
+  const text = String(name ?? "").trim();
+  if (!text) return t("settings.profile_name_empty");
+  const folded = text.toLowerCase();
+  const held = (taken || []).find((other) => String(other).toLowerCase() === folded);
+  if (held !== undefined) return t("settings.profile_name_taken", { name: String(held) });
+  return null;
+}
+
+/** The current profile's source and level when step 1 shows others, or null: `{source, zl,
+ * sourceDiffers, zlDiffers}`, the level capped as step 1 caps it by the source's finest
+ * (`renderZlOptions`); the line names only what still differs, so that choosing the right source
+ * by hand leaves the level alone said (a user saw the line stay, 2026-11-02). A Save in Settings
+ * never changes step 1, which is the build being prepared (a user, 2026-09-20): with profiles, the
+ * Plan names one whose values it may no longer show, and says so with this (2026-11-02). A source
+ * the list no longer has is not offered. */
+export function profileDiffers(essential, plan, providers) {
+  const code = essential?.provider;
+  const source = (providers || []).find((p) => p.code === code);
+  if (!source) return null;
+  const zl = Math.min(Number(essential.zoom_level) || 16, 19, Number(source.max_zl) || 19);
+  const sourceDiffers = plan?.provider !== code;
+  const zlDiffers = Number(plan?.zl) !== zl;
+  if (!sourceDiffers && !zlDiffers) return null;
+  return { source, zl, sourceDiffers, zlDiffers };
+}
+
+/** The words of that line: the source, the level, or both, whichever step 1 does not show. */
+export function profileDiffersText(name, differs, label) {
+  const values = { name, source: label, zl: differs.zl };
+  if (!differs.zlDiffers) return t("plan.profile_differs_source", values);
+  if (!differs.sourceDiffers) return t("plan.profile_differs_level", values);
+  return t("plan.profile_differs", values);
+}
+
 // ---------------------------------------------------------------- presets
 
 /** Sizes: docs/specs/settings-plain-language.md section 5 (a coastal ZL16 tile with 7 main
@@ -884,7 +927,7 @@ function renderQuestions(box, view) {
   // A button instead of typing the path (user request, 2026-09-15): the Finder's, the File
   // Explorer's or the Linux file manager's own dialog, opened by the engine on this computer.
   const choose = view.chooseFolder
-    ? h("button", { type: "button", class: "btn btn-small", dataset: { focusKey: "q:xplane-choose" }, onclick: async () => {
+    ? h("button", { type: "button", class: "btn", dataset: { focusKey: "q:xplane-choose" }, onclick: async () => {
         const path = await view.chooseFolder(t("settings.q.xplane_prompt"), folder.value.trim() || xp?.path || null);
         if (!path) return;
         folder.value = path;
@@ -893,7 +936,7 @@ function renderQuestions(box, view) {
       } }, t("settings.q.xplane_choose"))
     : null;
   const showXp = view.reveal && xp && xp.detected && xp.path
-    ? h("button", { type: "button", class: "btn btn-small reveal-btn", dataset: { focusKey: "q:xplane-reveal" }, onclick: () => view.reveal.open(xp.path) }, view.reveal.label)
+    ? h("button", { type: "button", class: "btn reveal-btn", dataset: { focusKey: "q:xplane-reveal" }, onclick: () => view.reveal.open(xp.path) }, view.reveal.label)
     : null;
   // More than one X-Plane 12 on the machine: a user installed a tile into the one he had
   // forgotten, and found nothing in the Custom Scenery of the one he flies (2026-09-17).
@@ -1012,7 +1055,7 @@ function dataQuestion(view) {
   field.addEventListener("input", () => setPath(d, "essential.data_dir", field.value.trim() || null));
   field.addEventListener("change", () => view.changed());
   const choose = view.chooseFolder
-    ? h("button", { type: "button", class: "btn btn-small", dataset: { focusKey: "q:data-choose" }, onclick: async () => {
+    ? h("button", { type: "button", class: "btn", dataset: { focusKey: "q:data-choose" }, onclick: async () => {
         const path = await view.chooseFolder(t("settings.q.data_prompt"), field.value.trim() || view.dataDir?.path || null);
         if (!path) return;
         field.value = path;
@@ -1021,7 +1064,7 @@ function dataQuestion(view) {
       } }, t("settings.q.data_choose"))
     : null;
   const show = view.reveal && now && !now.warn
-    ? h("button", { type: "button", class: "btn btn-small reveal-btn", dataset: { focusKey: "q:data-reveal" }, onclick: () => view.reveal.open(view.dataDir.path) }, view.reveal.label)
+    ? h("button", { type: "button", class: "btn reveal-btn", dataset: { focusKey: "q:data-reveal" }, onclick: () => view.reveal.open(view.dataDir.path) }, view.reveal.label)
     : null;
   return questionBox(view, "data",
     now ? h("p", { class: `question-detected${now.warn ? " is-warn" : ""}` }, now.text, show ? [" ", show] : null) : null,
@@ -1048,7 +1091,7 @@ function ownFolderQuestion(view) {
   field.addEventListener("input", () => setPath(d, "essential.relief.folder", field.value.trim()));
   field.addEventListener("change", () => view.changed());
   const choose = view.chooseFolder
-    ? h("button", { type: "button", class: "btn btn-small", dataset: { focusKey: "q:relief-folder-choose" }, onclick: async () => {
+    ? h("button", { type: "button", class: "btn", dataset: { focusKey: "q:relief-folder-choose" }, onclick: async () => {
         const path = await view.chooseFolder(t("settings.q.own_prompt"), field.value.trim() || null);
         if (!path) return;
         field.value = path;
@@ -1183,7 +1226,7 @@ function expertField(view, path, prop) {
   // The folder field gets the platform's own dialog, like the X-Plane and data folders: a user
   // did not know what to type in it (2026-09-17).
   const choose = path === PATCHES_DIR && view.chooseFolder
-    ? h("button", { type: "button", class: "btn btn-small", dataset: { focusKey: `x:${path}-choose` }, onclick: async () => {
+    ? h("button", { type: "button", class: "btn", dataset: { focusKey: `x:${path}-choose` }, onclick: async () => {
         const picked = await view.chooseFolder(t("settings.x.patches_prompt"), control.value.trim() || null);
         if (!picked) return;
         control.value = picked;

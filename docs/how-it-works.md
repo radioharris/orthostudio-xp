@@ -349,6 +349,34 @@ nothing yet, so everything is made again there). They are built together, in one
 like the Plan's *Build*: a tile X-Plane shows is built again in its own folder and stays in
 X-Plane, updated, and one it does not show stays out.
 
+**Clouds.** The cloud button, on a tile's line in the Library, opens the Plan's map on that tile
+drawn as X-Plane draws it: from its own DSF and textures, the sea and the lakes at the share of the
+photo X-Plane gives them (nothing of the tile is downloaded). *Quick search* reads it; *Fine search*
+reads it a second time in more detail where it is sharp enough for small clouds, with
+OmniCloudMask's two networks run by OpenCV on this computer (downloaded once, at your word, about
+110 MB); each cloud comes with its shadow when it falls beside it. Every other source covering the
+tile is then tried under each cloud: whether it has a picture there, the same photo as the tile
+(ArcGIS sells Bing's in many places: never proposed, it would bring the cloud back), clear or
+cloudy, and how well its ground fits the photo around the cloud. Nothing is ticked for you. A tick
+fetches the source's pieces at the tile's own sharpness and freezes them: the map's *After* shows
+the tile's textures as X-Plane shows them, and where *Apply* will make one again, the clouds made
+from those frozen pieces by the very code *Apply* lays them with, so it is what the texture gets;
+laying never asks the source again. Your ticks wait in the tile's list until *Apply*, which changes
+the finished tile alone, in a few seconds: in each texture a cloud reaches, only the blocks of
+pixels under it are made again, at every level, every other block staying the build's, byte for
+byte; the texture as built is kept beside it in the tile's `clouds/` folder (the same file on the
+disk where it can be, a copy elsewhere), with the clouds laid in it written beside, for *Restore* to
+put back. Inside each cloud the other source's ground takes the colours of the photo around it, with
+a soft edge; where it has no picture, nothing is laid. The clouds are no part of the build: a build
+of the tile, from the Plan, the Library, Works or the command line, places its own textures, then,
+before it says it has finished the tile, lays the clouds again where the texture under each is the
+one it was chosen on; another source or level, new images, other colours there, and the photo stays
+as built, the cloud still ticked for one *Apply* to replace it again, or for a later build on the
+first photo to lay it again by itself (unless *Apply* or *Restore* ran on the tile in between).
+Deleting a tile keeps its list of clouds: built again, it gets them back. *Forget the clouds* (or
+the bin in the Library's Clouds cell) puts the photos back and erases the tile's list, to start from
+nothing. Details: `docs/specs/clouds.md`.
+
 A tile filed elsewhere that you build again is built in the workshop, beside the cache, then put
 back in its folder in place of the old version: moved there at once on the workshop's disk, copied
 and read back on another, the old version taken away only once the new one is in place. Built again
@@ -418,6 +446,32 @@ of a tile never built left them out: 54 photos announced, 114 built (2026-10-15)
 Answers count once saved: until then the Settings tab carries a dot, and the Plan and the Library's
 *Build again…* say that a build uses the settings saved before.
 
+**Settings profiles.** Settings can be kept under a name, to build some tiles one way and others
+another: sharp and with every airfield for the mountains you fly low over, light for the plains you
+cross. Change the answers you want, then press *Save as a new profile…* beside *Save*: the bar asks
+for a name, and *Create the profile* keeps the answers under it. The settings saved until then stay
+in a profile of their own, called *Main* the first time. From then on:
+
+- the top of Settings shows the profile in use, with *Rename* and *Delete*; *Save* says which
+  profile it writes into (*Save in "Mountains"*);
+- step 1 of the Plan shows the list above the imagery source: choosing a profile there gives the
+  build its source, its detail level and all its other settings, which you can still change for that
+  build alone. Saving in Settings never changes step 1, even the profile's source or level: when
+  step 1 no longer shows the profile's, a line under the list says what the profile holds, and *Use
+  them* takes them;
+- Works says, beside a build's source and level, which profile it used. *Build again* in Works makes
+  the same build again, with the settings it had then; to build a tile with another profile, choose
+  it again in the Plan.
+
+Each profile keeps the look of the tiles: the questions, the presets' answers, the photo colours and
+every expert setting. What belongs to the computer is the same for all of them: the X-Plane folder,
+the data folder, SimBrief, the map data's folder and library, the patches folder, the update check
+and the memory a build may take. While answers are not saved, the lists wait: changing profile
+then would lose them, so save them or undo them first. Deleting a profile deletes only its settings,
+never a tile; deleting the one in use makes another current, and the last one cannot be deleted. A
+computer that never keeps a second profile sees nothing of this but the *Save as a new profile…*
+button.
+
 **Where X-Plane is.** OrthoStudio XP works with the X-Plane 12 installed on the same computer: it
 takes the relief, roads, forests and buildings from X-Plane's own scenery, and adds the tiles to its
 Custom Scenery. X-Plane's scenery is in `Global Scenery/X-Plane 12 Global Scenery`, except the
@@ -450,26 +504,25 @@ where there is no icon to show that it runs, it still stops by itself five minut
 page closed, with no build running or waiting.
 
 The window is drawn by the web view your system already carries, so the page is the same one a
-browser would show. At the right end of the bar at its foot, `− 100 % +` zooms the whole page (Ctrl or ⌘
-with plus, minus and 0 do the same), and `Aa` beside it makes the text alone larger, at
-once. The window opens where you left it, the size it had, and where the system
-puts it when that screen is no longer there. On Linux the page opens in your browser instead: the web view a
-window needs there is built for the distribution's own Python, and OrthoStudio XP carries its own,
-so nothing a user installs would reach it. On Windows the window is drawn by Microsoft's WebView2,
-which must be version 101.0.1210.39 or later: with an older one, as on a cloud PC whose WebView2
-had not been updated since 2022, the page opens in your browser too, and says how to update it
-(Microsoft's installer, run as administrator), which the OrthoStudio XP installer also offers. The
-`window` line of *Checks*, at the foot of the page, says so, and the page says it once at the top. What the
-engine writes as it works goes to `serve.log`: `~/Library/Logs/OrthoStudio XP` on macOS,
-`%LOCALAPPDATA%\OrthoStudio XP\Logs` on Windows, `~/.orthostudio/log` on Linux. It
-holds how long each start took, part by part, with anything the page waited for more than a
-second. It also holds what every stage of a build is doing, a line per tile every ten seconds, and
-the end of each one; `OSXP_LOG_LEVEL=debug` asks for more. The app's launcher also takes a command: running
+browser would show. At the right end of the bar at its foot, `− 100 % +` zooms the whole page (Ctrl
+or ⌘ with plus, minus and 0 do the same), and `Aa` beside it makes the text alone larger, at once.
+The window opens where you left it, the size it had, and in the middle of the screen the first time
+or when that screen is no longer there. On Linux the page opens in your browser instead: the web
+view a window needs there is built for the distribution's own Python, and OrthoStudio XP carries its
+own, so nothing a user installs would reach it. On Windows the window is drawn by Microsoft's
+WebView2, which must be version 101.0.1210.39 or later: with an older one, as on a cloud PC whose
+WebView2 had not been updated since 2022, the page opens in your browser too, and says how to update
+it (Microsoft's installer, run as administrator), which the OrthoStudio XP installer also offers.
+The `window` line of *Checks*, at the foot of the page, says so, and the page says it once at the
+top. What the engine writes as it works goes to `serve.log`: `~/Library/Logs/OrthoStudio XP` on
+macOS, `%LOCALAPPDATA%\OrthoStudio XP\Logs` on Windows, `~/.orthostudio/log` on Linux. It holds how
+long each start took, part by part, with anything the page waited for more than a second. It also
+holds what every stage of a build is doing, a line per tile every ten seconds, and the end of each
+one; `OSXP_LOG_LEVEL=debug` asks for more. The app's launcher also takes a command: running
 `orthostudio-xp build --tile +50+008 --provider BI --zl 16` builds from the command line and writes
-the whole run to that same file. The
-app carries its own Python and its two helper programs, Triangle4XP and DSFTool; removing the app
-leaves your tiles, cache and settings in `~/.orthostudio` (and in the data folder, when you chose
-one).
+the whole run to that same file. The app carries its own Python and its two helper programs,
+Triangle4XP and DSFTool; removing the app leaves your tiles, cache and settings in `~/.orthostudio`
+(and in the data folder, when you chose one).
 
 ## 3. What is on the disk
 
@@ -492,6 +545,10 @@ one when the app starts.
   airports.sqlite  X-Plane's airports and the box of their runways, for the Plan's search, its map
                    and its count of the airports made sharper
   update.json      the latest version GitHub named, and when it was asked (once a day at most)
+  clouds/+46+006.json  the clouds of a tile you looked at: found or outlined, ticked, their source,
+                   and those laid in the tile
+  models/clouds-detector-1/  the cloud detector (64 MB) and  libs/opencv-<version>/  OpenCV,
+                   downloaded once, when you first look for clouds
 
 the data folder (~/.orthostudio unless Settings name another one)/
   chunks/          image pieces downloaded (raw material)          ≈ 0.75 GB per ZL16 tile
@@ -505,6 +562,10 @@ the data folder (~/.orthostudio unless Settings name another one)/
     zOrthoStudio_+46+006/
       Earth nav data/+40+000/+46+006.dsf
       terrain/*.ter   textures/*.dds   orthostudio.toml   tile_settings.cfg   CREDITS.txt
+      clouds/          the textures showing replaced clouds as the build made them, the same
+                       files on the disk, and the clouds laid in each (<digest>.json): Restore
+                       puts them back, the cloud mode's Before shows them (only when a cloud
+                       was applied)
                      orthostudio.toml: what the tile was built with (imagery, detail, relief
                      really read, zones, patches), which the Library and the Plan show
                      CREDITS.txt: who the imagery belongs to and what it is given under, so a
@@ -513,6 +574,8 @@ the data folder (~/.orthostudio unless Settings name another one)/
   work/            build reports and temporary files
   osm/             the OpenStreetMap data downloaded
   mapcache/        base-map images of the page
+  clouds/+46+006/  a tile's picture and its clouds' previews, for the cloud mode's map
+  clouds/parts/    the clouds' images got from their sources, which Apply and later builds lay
   elevation/  dem/ relief files downloaded when the relief is not X-Plane's, and the ones found missing
 
 X-Plane 12/Custom Scenery/

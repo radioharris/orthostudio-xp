@@ -47,10 +47,12 @@ visible string goes through `t(key)`; keys are literal so the test can check tha
 both languages, and dynamic keys go through `tOpt()` or a table of literal calls.
 
 Accessibility and rendering: `prefers-color-scheme` drives the theme (manual override kept in
-`localStorage`), `prefers-reduced-motion` disables the progress animations, focus rings are
-visible, numbers use `font-variant-numeric: tabular-nums`, controls are native (`<select>`,
-`<input>`, `<button>`, `<details>`), the navigation is a `<nav>` of buttons with
-`aria-current`. No icon font: the few glyphs are inline SVG in `index.html`.
+`localStorage`), `prefers-reduced-motion` disables the progress animations, focus rings are visible,
+numbers use `font-variant-numeric: tabular-nums`, controls are native (`<select>`, `<input>`,
+`<button>`, `<details>`), the navigation is a `<nav>` of buttons with `aria-current`. No icon font:
+each icon is drawn once in `styles.css` as a mask over the text's colour (`.icon-<name>`, built by
+`app.js` `icon()`), rounded with its box and so in its middle at any screen scale (an inline svg
+stood a pixel off in WebKit, a user, 2026-11-07).
 
 **Text styles**, as in a word processor's template (a user found eleven sizes of text and titles
 standing 0 to 14px above their text, and asked for one style per kind of text, 2026-09-21). Every
@@ -68,18 +70,33 @@ text is one of seven styles, defined once at the top of `styles.css` with tokens
 
 And one set of spaces: a title stands 6px above what follows it (`--title-gap`), a label 4px above
 its field (`--label-gap`), a field 5px above the text under it (`--help-gap`), a paragraph 8px above
-the next (`--gap`); the blocks of a card, and the cards, are 12px apart (`--block-gap`), the parts of
-a screen 20px (`--section-gap`); cards are padded 12px 14px (`--card-pad`). Controls (buttons,
+the next (`--gap`); the blocks of a card, and the cards, are 12px apart (`--block-gap`), the parts
+of a screen 20px (`--section-gap`); cards are padded 12px 14px (`--card-pad`). Controls (buttons,
 fields, pills), the map and the top and status bars keep sizes of their own; a test lists them.
 Every button has a frame: the quiet, frameless ones read as text (*My sources…*, then *Show in
-Finder*, 2026-09-21). Every list draws its own up and down arrows (`--select-arrow`, one SVG per
-theme in its `--fg-2`): Chromium, in Windows' window and in Chrome, drew a chevron almost touching
-the right edge where the Mac's window drew its arrows clear of it (a user put the two side by side,
-2026-09-21). A field's title is text: a click on a label naming a field outside it is left to the
-text (`app.js` `isTitleClick`), so a double-click selects the name to copy instead of putting the
-caret in the field or ticking a box (2026-09-21); a label around its own box ("On", a question's
-choice) still ticks it. A check box of *For experts* is named by its title (`aria-labelledby`)
-without being tied to it: tied, a press on the title showed the box pressed, a flash. Settings' questions are cards of a line each (`inline-block`) in their two
+Finder*, 2026-09-21). Every button, every list and every field is 30 px high (`--control-h`), on
+every screen and in the top bar: there were four heights of each, 24 to 30 px, and a small button
+stood 4 px lower than the list beside it (a user, 2026-11-02). The status bar's controls, the cards
+one clicks (presets, jobs), the small round crosses, the table headers and the top bar's tabs keep
+their own. Every button has the text of the field and the list beside it (`--fs`, so the text size
+draws it larger too): a small button had 12 px and the others 13.5, chosen case by case, and a
+button took the size of the note it sat in; there is no small button any more. The bottom bar keeps
+its own size, the top bar's tools theirs. A field or a list takes the ground opposite to the one
+around it (`--field-bg`): the card's on the page, the page's on a card; a button has no ground of
+its own and is drawn by its border, so the two no longer look alike (the same user, the same day).
+The surfaces painted with the card's ground (the Plan's steps, Settings' questions, the dialogs, the
+find bar, the Library's groups of actions) give their fields the page's ground; a zone's line, the
+page's ground inside its step, gives them the card's again. The Library's groups of actions are
+cards for that reason: on the page, their buttons stood bare. The top and bottom bars' controls,
+their lists included, take the bar's ground: they are the bar's. Every list draws its own up and
+down arrows (`--select-arrow`, one SVG per theme in its `--fg-2`): Chromium, in Windows' window and
+in Chrome, drew a chevron almost touching the right edge where the Mac's window drew its arrows
+clear of it (a user put the two side by side, 2026-09-21). A field's title is text: a click on a
+label naming a field outside it is left to the text (`app.js` `isTitleClick`), so a double-click
+selects the name to copy instead of putting the caret in the field or ticking a box (2026-09-21); a
+label around its own box ("On", a question's choice) still ticks it. A check box of *For experts* is
+named by its title (`aria-labelledby`) without being tied to it: tied, a press on the title showed
+the box pressed, a flash. Settings' questions are cards of a line each (`inline-block`) in their two
 columns: as blocks, WebKit carried the space under the first column's last card to the top of the
 second, 12px lower than the first in the Mac's window and not in Windows'. A table wider than its
 box scrolls sideways, and one that is wider keeps its scrollbar from the start (`app.js`
@@ -204,14 +221,33 @@ else centimetres by 10 from 50 cm and by 5 below), then the zoom level as second
 2. From zoom 9, a click inside a zone selects the first zone of the list containing the point
    (the one on top); a click outside every zone while one is selected only deselects it.
    Below zoom 9 zones are not picked, so the tiles under a region stay clickable.
-3. From zoom 5, a click toggles the tile under the point in the selection (`toggleTile` in
-   `app.js`: the chips and the map show one selection, `state.tiles`); below zoom 5 a toast
-   asks to zoom in a little. A tile in a build, under way or waiting, is not chosen (user
-   request, 2026-09-14: it would be built a second time once that build ended): a toast says
-   "+46+006 is already in a build, under way or waiting: you can choose it again once that build
-   ends." (`tilesInBuilds` over the jobs the page knows).
+3. From zoom 5, a click toggles the tile under the point in the selection (`toggleTile` in `app.js`:
+   the chips and the map show one selection, `state.tiles`); below zoom 5 a toast asks to zoom in a
+   little. A tile in a build, under way or waiting, is not chosen (user request, 2026-09-14: it
+   would be built a second time once that build ended): a toast says "+46+006 is already in a build:
+   choose it once that build is done." (`tilesInBuilds` over the jobs the page knows).
 
 #### Step 1 · Choose the tiles
+
+**The settings profile** (a user, 2026-11-02; `settings.md` 7): from the second profile on, its list
+stands first among step 1's fields, above the imagery source, "Settings profile", with "Source,
+level and settings come from this profile." Choosing one makes it current (`POST
+/api/profiles/current`) and gives step 1 its source and detail level (`planTakesProfile`), which can
+still be changed for this build alone; a plain *Save* in Settings leaves them as the pilot set them
+(section 2.4). While Settings hold changes not saved the list waits, greyed, and its line says why:
+"Settings not saved: save or undo first." Step 3's sentence names it: "Build settings, profile
+"Mountains": …". With one profile, nothing of this shows.
+
+A Save in Settings still never changes step 1's source and level, the build being prepared (a user,
+2026-09-20), even when it changes the current profile's. So when step 1's source or level is no
+longer the profile's, after such a Save or a change made in step 1 itself, a line under the list
+says what the profile holds, in the warning colour, "The profile "Mountains" is set to Bing Maps,
+ZL18.", with *Use them* (`settings.js` `profileDiffers`, the level capped as step 1 caps it by the
+source's finest; a source the list no longer has is not offered). It names only what still differs,
+"… is set to ZL18." once the right source is chosen by hand: naming both, it seemed to stay for
+nothing (a user, 2026-11-02). Choosing a profile and *Use them* give step 1 the profile's; a source
+or level chosen in step 1 is for this build only, and choosing a profile again replaces it (a user
+went through both cases, 2026-11-02).
 
 The chips of the selection (removable), "N tile(s) selected", and the approximate size of the
 selection before any estimate (7.0.4): "About 3.2 GB of imagery, including 705 MB of extra
@@ -247,18 +283,19 @@ the build would go (a campaign, 2026-10-24). Then:
   stays. Under the field, in red, the tiles the source does not cover ("Netherlands · PDOK 2020
   does not cover +46+006: it is one country's source (Netherlands). Choose a Whole world source
   for these tiles."), before the estimate refuses them; then the attribution, with the licence after it.
-- **My sources…** (a small button under the field; user request, 2026-09-14: Apple Maps and
-  Google Maps, much used in the USA, which OrthoStudio XP does not ship, `imagery-providers.md`
-  4.1): a dialog that says in a yellow box that the user adds the source themselves, that its
-  terms of use apply to them, and that OrthoStudio XP does not ship it nor check that they may
-  download its images. It lists the sources added (name, code, address, *Remove*) and has a form:
-  *Name*, *Address of a tile* (`{x}`, `{y}` and `{zoom}`, or `{quadkey}`, in place of its
-  numbers), *Highest detail level* (19). The address is checked in the page first (http or https,
-  the tile's place). *Try* asks for one tile where the page is looking (the middle of the first
-  tile chosen, else of the map): "It works: a JPEG image of 23 KB arrived.", or "No image arrived
-  (answer 403): check the address." *Add* saves it and selects it in step 1; *Remove* says when
-  zones use it (`SYS_SOURCE_IN_USE`). Every list of sources follows at once (step 1, the zones',
-  Settings).
+- **My sources…** (a button on the list's line, the list taking what it leaves: under the field's
+  notes until 2026-11-02, when a user asked for it beside the list; user request, 2026-09-14: Apple
+  Maps and Google Maps, much used in the USA, which OrthoStudio XP does not ship,
+  `imagery-providers.md` 4.1): a dialog that says in a yellow box that the user adds the source
+  themselves, that its terms of use apply to them, and that OrthoStudio XP does not ship it nor
+  check that they may download its images. It lists the sources added (name, code, address,
+  *Remove*) and has a form: *Name*, *Address of a tile* (`{x}`, `{y}` and `{zoom}`, or `{quadkey}`,
+  in place of its numbers), *Highest detail level* (19). The address is checked in the page first
+  (http or https, the tile's place). *Try* asks for one tile where the page is looking (the middle
+  of the first tile chosen, else of the map): "It works: a JPEG image of 23 KB arrived.", or "No
+  image arrived (answer 403): check the address." *Add* saves it and selects it in step 1; *Remove*
+  says when zones use it (`SYS_SOURCE_IN_USE`). Every list of sources follows at once (step 1, the
+  zones', Settings).
 - **Detail level**: 12-19 clipped to the source's `max_zl`, labelled as above at the latitude
   of the first tile (centre of the cell, `lat + 0.5`), else the map centre's, else 45°; the
   help under it names that latitude.
@@ -277,7 +314,7 @@ the build would go (a campaign, 2026-10-24). Then:
   - latitude / longitude → tile `floor(lat)`, `floor(lon)` formatted `%+03d%+04d`.
 
   The tiles of a build under way or waiting are left out of what these add, and step 3's message
-  line says so: "Already in a build, under way or waiting, so left out: +46+006."
+  line says so: "Already in a build, left out: +46+006."
 
 The request to `/api/plan` and `/api/jobs` always carries the explicit `tiles: [...]` list
 (never `{icao, radius_km}`), so what the user sees is what is built.
@@ -308,7 +345,7 @@ adds nothing. These are approximations; step 3 gives the engine's numbers.
   - rectangle: "Click two opposite corners of the rectangle. Esc to cancel", then "Now click
     the opposite corner"; a dashed rectangle follows the pointer; two corners apart make a
     4-vertex zone (south-west, south-east, north-east, north-west);
-  - free shape: "Click to add points, double-click to finish, Esc to cancel (n point(s))";
+  - free shape: "Click: a point · Double-click: finish · Esc: cancel (n point(s))";
     a dashed line joins the last point, the pointer and the first point. Finishing refuses
     fewer than 3 points and a ring that crosses or touches itself (`polygonIsSimple`), so the
     engine's validity check (`shapely`) is not the first to see it. At most 2000 points.
@@ -360,7 +397,7 @@ adds nothing. These are approximations; step 3 gives the engine's numbers.
 - **Delete the zones in the list** (user request, 2026-09-13): a small trash above the list, on the
   line of the priority sentence, shown when the list has rows and loaded. It asks first ("Delete
   the zones in the list?", their number, how many zones outside the selected tiles stay when some
-  do, "Tiles already built do not change: their sharper areas stay until they are built again";
+  do, "Built tiles keep their sharp zones until built again";
   *Keep them* has the focus, Esc keeps them), then deletes the zones the list shows, their marks
   and the selection if it was one of them, moves the focus to the zones step and says "Zones
   deleted: N." The zones left out stay: the trash never deletes what cannot be seen (2026-09-22).
@@ -413,22 +450,23 @@ adds nothing. These are approximations; step 3 gives the engine's numbers.
   build them in two goes, the second waits in the queue."; *Build* then starts nothing. The
   engine's refusal was a list error, which a user took for a limit of the program (64 then,
   2026-09-22).
-- *X-Plane 12* (`app.js` `xplaneNotice`), shown only when `GET /api/status` knows no X-Plane
-  folder: "X-Plane 12 was not found on this computer. OrthoStudio XP needs its folder: it takes
-  the relief, roads, forests and buildings from it, and adds the tiles to it.", or, when Settings
-  holds a folder that is not one any more, "The X-Plane 12 folder chosen in Settings was not found:
-  <path>." with the same reason; its button *Choose the X-Plane 12 folder* opens Settings with the
-  focus in the folder field of *Where is X-Plane 12 installed?*. Without it the engine refuses any
-  estimate or build (`api.md` 2.2). User report, 2026-09-14: the Windows app in a virtual machine,
-  X-Plane on the Mac around it, answered *Estimate* with "XP_GLOBAL_SCENERY_NOT_FOUND: Global
-  Scenery is not installed in <not detected>." and nothing on what to do.
-- *Build settings*: one sentence of plain words on what the build will use besides the tiles,
-  the source and the level (`settings.js` `settingsSummary`: airports, coast, water, relief,
-  overlays), and a *Change in Settings* button (section 2.4). The Plan takes the source and level
-  of the settings when the page opens; after that step 1's are this build's and the settings are
-  the next plan's: *Build* writes nothing into the settings (until 2026-09-21 it saved step 1's
-  source and level with `PUT /api/settings`). The request carries `provider` and `zoom_level`
-  only; `overrides` is not used by the page.
+- *X-Plane 12* (`app.js` `xplaneNotice`), shown only when `GET /api/status` knows no X-Plane folder:
+  "X-Plane 12 not found on this computer: OrthoStudio XP needs it for the relief, the roads and the
+  install.", or, when Settings holds a folder that is not one any more, "The X-Plane 12 folder in
+  Settings is missing: <path>. OrthoStudio XP needs it."; its button *Choose the X-Plane 12 folder*
+  opens Settings with the focus in the folder field of *Where is X-Plane 12 installed?*. Without it
+  the engine refuses any estimate or build (`api.md` 2.2). User report, 2026-09-14: the Windows app
+  in a virtual machine, X-Plane on the Mac around it, answered *Estimate* with
+  "XP_GLOBAL_SCENERY_NOT_FOUND: Global Scenery is not installed in <not detected>." and nothing on
+  what to do.
+- *Build settings*: one sentence of plain words on what the build will use besides the tiles, the
+  source and the level (`settings.js` `settingsSummary`: airports, coast, water, relief, overlays),
+  across the whole step, and under it a *Change in Settings* button (section 2.4; beside it, in the
+  Plan's column, the sentence ran down six short lines, 2026-11-02). The Plan takes the source and
+  level of the settings when the page opens; after that step 1's are this build's and the settings
+  are the next plan's: *Build* writes nothing into the settings (until 2026-09-21 it saved step 1's
+  source and level with `PUT /api/settings`). The request carries `provider` and `zoom_level` only;
+  `overrides` is not used by the page.
 - **The estimate, live** (user request, 2026-09-14: pressing *Estimate* before *Build* was
   tedious): `POST /api/plan` with `{tiles, provider, zoom_level, zones, tiles_settings}` and, for
   the squares whose level is not step 1's, `tiles_zl` (`app.js` `planRequest`; `tiles_settings`
@@ -446,15 +484,18 @@ adds nothing. These are approximations; step 3 gives the engine's numbers.
   - *Compute: your computer* (it said *your Mac* on Windows and Linux too until 1.1.0) — images to prepare (`compute.textures`), images already prepared (`compute.cached`: taken from the cache as they are), seconds. They were every image of the tiles and the steps in the store, 309 to prepare and 7 prepared for a tile whose 309 images all came back in a second (2026-10-23);
   - *Disk* — the engine's verdict (`app.js` `diskVerdict`): space needed is `disk.needed_gb` (images
     and downloads), then `free_gb` labelled "OK" in green when `disk.ok`, else "may run short" in
-    amber after an amber line "The disk may run short: about X to write, Y free. If it fills up,
-    the build stops cleanly, and started again it carries on from where it stopped." (7.0.4);
+    amber after an amber line "Space is tight: X to write, Y free. If the disk fills up, the build
+    stops; started again, it resumes where it was." (7.0.4);
     `disk.ok` is the engine's rule, free > 2 × needed (`orthostudio.estimate.Estimate.disk_ok`),
     applied by the page itself only to an answer without it (`dds_gb` standing for a missing
     `needed_gb`). It is a warning, never a refusal: the figure is an estimate, and a disk that fills
     up stops a build cleanly (`SYS_DISK_FULL`, nothing done is lost); it refused builds of tiles
     whose images were all in the cache, and a user asked "we block a user on an uncertainty?"
     (2026-10-16). The engine's `SYS_DISK_FULL` warning gets no second card under the line;
-  - *Warnings* — one card per code with message and remedy (the page carries the message
+  - *Warnings* — one card per code with message and remedy, without the code and severity a
+    failure's card shows above them (`errorCard(..., {advice})`: advice before a build has
+    nothing to report, and "CLOUD_PUT_BACK", "INFO" read as a failure, a campaign, 2026-11-08;
+    the code stays for one the page has no words for) (the page carries the message
     and remedy of every warning code it knows in `i18n.js`, `ZONE_INVALID`, `ZONE_TOO_MANY`
     and `ZONE_CONFLICT` included, but a `ZONE_*` card uses the engine's own message and remedy
     when it has them; unknown codes show the code and whatever `message`/`remedy` strings the
@@ -478,20 +519,19 @@ adds nothing. These are approximations; step 3 gives the engine's numbers.
 `install: true|false` and `queue: true`. Both are active as soon as tiles are chosen, with no
 estimate to ask for first. They are disabled, the reason under them, only when no tile is chosen
 ("Choose tiles first (step 1).") or when the estimate was refused ("The estimate was refused: see
-step 3."). A disk that may run short leaves them active, the line under them in amber: "The disk
-may run short: about 8.3 GB to write, 6.1 GB free. You can build: if it fills up, the build stops
-cleanly." Otherwise the line under them,
-10 px below, sums the estimate up: "About 1.88 GB to download (5 – 9 min) and 8.31 GB on disk."
-A click while the estimate of a change is under way waits for it, and starts nothing the estimate
-refused; both buttons stay disabled until the engine answered, so that a
-second click never asks twice. A success empties the selection (a later build would build these
-tiles again with its own): the map shows the tiles of the build in their own style meanwhile.
+step 3."). A disk that may run short leaves them active, the line under them in amber: "Space is
+tight: 8.3 GB to write, 6.1 GB free. If the disk fills up, the build stops cleanly." Otherwise the
+line under them, 10 px below, sums the estimate up: "About 1.88 GB to download (5 – 9 min) and 8.31
+GB on disk." A click while the estimate of a change is under way waits for it, and starts nothing
+the estimate refused; both buttons stay disabled until the engine answered, so that a second click
+never asks twice. A success empties the selection (a later build would build these tiles again with
+its own): the map shows the tiles of the build in their own style meanwhile.
 
 - Nothing else runs (`queue_position` 0): Works shows the new job.
 - **A build under way or waiting** (user request, 2026-09-14): this one waits for its turn. Step 4
   says it before the click, under the buttons: "A build is under way: this one will wait for its
-  turn." After it, the Plan stays, where more tiles can be chosen and queued; a toast says "Build
-  queued behind N other(s): it starts as soon as the one before it ends.", and the map dashes its
+  turn." After it, the Plan stays, where more tiles can be chosen and queued; a toast says "Queued
+  behind N other(s): starts as soon as the one before ends.", and the map dashes its
   tiles.
 - `409 SYS_TILE_IN_BUILD` (a tile queued from another window meanwhile): step 3's message line
   names the tiles, "Take them out of the selection, or wait for that build to end.", and the job
@@ -506,8 +546,8 @@ one of the chosen tiles (possibly none), invalid zones included, so that the eng
 zone marked with a problem elsewhere does not refuse it (the engine, when a request carries no
 `zones`, likewise ignores a problem of a saved zone that touches none of the tiles). When the zones
 could not be loaded (network or `5xx`), the estimate and *Build* load them again first; if that
-fails too nothing is sent and step 3 says so ("Nothing was sent: the zones of step 2 could not be
-loaded..."), since an empty list would build without the saved zones and leaving `zones` out would
+fails too nothing is sent and step 3 says so ("Step 2's zones did not load, nothing was sent:
+..."), since an empty list would build without the saved zones and leaving `zones` out would
 build zones the page never showed.
 
 ### 2.2 Works
@@ -546,12 +586,15 @@ finished or not, so the status pills stay in one column.
 
 The selected job (default: the running one, else the newest) shows, from top to bottom:
 
-- **Header**: the job, its status, *Stop* while it runs (`POST /api/jobs/{id}/cancel`). A job
-  waiting in the queue says *waiting*, its button reads *Remove from the queue* (the same request:
-  it never starts, "Build removed from the queue."), and a line under the bar says "Waiting: this
-  build starts as soon as the one before it ends."; no time left is shown until it starts. The
-  retry of the missing ones asks with `{queue: true}`: during a build it waits too ("Retry of the
-  missing ones queued: it starts after the build under way."), and the job shown stays.
+- **Header**: the job, its status, *Stop* while it runs (`POST /api/jobs/{id}/cancel`). Its line
+  names the source and level, then the settings profile the build took (`profile`, *profile
+  "Mountains"*, from the second profile on: a build asked without profiles names none), the relief
+  and the install. A job waiting in the queue says *waiting*, its button reads *Remove from the
+  queue* (the same request: it never starts, "Build removed from the queue."), and a line under the
+  bar says "Waiting: this build starts as soon as the one before it ends."; no time left is shown
+  until it starts. The retry of the missing ones asks with `{queue: true}`: during a build it waits
+  too ("Retry of the missing ones queued: it starts after the build under way."), and the job shown
+  stays.
 - **The whole job's numbers**, each label with a tooltip saying they are for the whole job:
   - *Progress*: `stats.progress` (0 to 1, weighted over every tile and step, never decreasing),
     shown `42 %` (rounded down, so that 100 % means finished) above an overall bar;
@@ -932,6 +975,7 @@ an osxp build of the same tile are two rows.
 | In X-Plane | *yes* / *no* pill (`installed`) |
 | Size | `size_bytes` (`fmtBytes`), an em dash when `null`. The header's tooltip (dotted underline) says that, for a tile built by OrthoStudio XP, most of it is the very files OrthoStudio XP's cache keeps, counted in this column and not again under Store in the status bar (`cacheBytes`, since API level 33) |
 | Built by | *OrthoStudio XP* / *Ortho4XP*; for the first, a click unfolds what the tile was built with (`builtLines`), its *Relief* line naming the file of one's own the tile stands on or saying why it was not used (`reliefSentence`, `relief_own`), the whole path in the line's tooltip; for viewfinderpanoramas at 30 m it says *30 m*, or *90 m* where the site has no 30 m for the square (`relief_arcsec`, a relief made from 2026-10-30 on; one made before says *viewfinderpanoramas* alone) |
+| Clouds | on a tile OrthoStudio XP built (`GET /api/clouds`): the cloud icon, which opens the cloud mode, its counts as badges at its left corners (replaced above, waiting for Apply below, both in words in its tooltip), and the bin that forgets its clouds (asked on the spot) while it has any, each in a place of its own so the clouds of every row line up, the column's title centred over the cloud (its spinner, while the column is first read, in the bin's place); one line at the smallest window; a sixth of the table like the five sortable columns, never narrower than its two icons (`clouds.md` 1.2) |
 | (actions) | three columns, so that the buttons line up from row to row: the folder icon (2.5, *The file manager*), the X-Plane button, then *Delete…* or *Remove from the list* |
 
 **Actions** (`{name}` is the row's `name`, else the last component of its path; every change
@@ -1074,58 +1118,81 @@ In plain words (user request, 2026-09-13: "sand, land, lakes, radius... nobody u
 what each setting really does, and the wording of every question: `settings-plain-language.md`,
 for the settings it studied on 2026-09-13; its status names those added since).
 
-**A number says its range first.** Every number of the generated fields starts its explanation,
-in bold, with what it may take and what it is unless changed: *From 0 to 30°, 10° by default.*,
-*0 km² or more, 200 km² by default.* (`rangeText`), so a user sees where the recommended value
-lies before moving it, above all among the expert ones (a user asked, 2026-09-25). Only the bounds
-the schema holds, which are what the engine checks; a number it does not bound says its default
-alone (*ZL19 by default.*). Measured in the page: 23 fields, in both languages. A number the
-engine refuses on Save is said the same way, by the field's own name: "Not saved: Maximum
-triangles per tile: 50 is not accepted. From 0 to less than 50 million, 3 million by default."
-(`settings.js` `refusedValueText`), where the engine's words named the setting by its key and asked
-for "a value of type less_than in range lt 50.0" (2026-10-15).
-`settings.js` holds the descriptions and pure functions (tested under node) and draws the screen;
-`app.js` owns the saved settings, the draft and the buttons. The screen is drawn again on each
-answer, apart, and only what differs is put in (`app.js` `morphChildren`): a text, an attribute, a
-field's value, a control whose attributes changed; what has not changed is not touched, whatever
-the change (a user saw the whole screen flash in the Mac's window each time a field was left, and a
-number answer late under its own arrows, and asked for one method for every case, 2026-09-21). A
-canvas drawn later says what it shows in `data-version`. The draft keeps its identity (`setDraft`),
-since the parts left in place keep handlers that write into it. The focus, the caret and the
-window's scroll position survive a redraw (user report, 2026-09-14: an answer changed at the bottom
-brought the top of the screen back, since removing the focused answer made the browser lay out the
-half-drawn page). Nothing is saved before *Save*; *Undo
-my changes* goes back to the saved settings, *Default values* to the schema's defaults
-(Ortho4XP's, and OrthoStudio XP's own `overlays`), the X-Plane folder, the data folder, the SimBrief
-name, the places the map data comes from (a folder of one's own, a library's address and key)
-and the switch `relief.private_sources` set by hand (it turned off, and viewfinderpanoramas left
-the relief question, 2026-10-30) kept, since they are this computer's and its pilot's and no look of the tiles (the defaults emptied
-a library's key, and a build from source, which carries none, went to the public servers,
-2026-10-02); a draft that differs from the saved settings says
-"Changes not saved yet". For as long as it differs, the Settings tab carries a dot (its tooltip says
-the same), step 3 of the Plan says "Your changes in Settings are not saved: a build uses the
-settings saved before. Save them in Settings first if they are meant for it.", and so does the
-Library's *Build again…* question (`app.js` `renderUnsaved`); Save or *Undo my changes* clears the
-three. A message given on leaving Settings went by in three seconds, and a user built a tile with
-Copernicus alone, the folder of his lidar never saved (2026-10-15). The action bar sticks to the bottom, and a save the engine refuses says
-why in it, in the page's words for the code: "Not saved: /Volumes/… will not do: files cannot be
-linked there, as in a folder shared over a network or with a virtual machine, and on a disk
-formatted exFAT or FAT32…". Its remedy sends a shared folder to the computer's own disk and tells
-not to format that disk, whose format is not the cause: the old words blamed exFAT or FAT32 and
-advised formatting to a user whose APFS disk the Windows VM reached through Parallels (2026-09-27).
-It also says where a disk's format is read (Disk Utility, the disk's Properties). A drive letter
-alone (`E:`, `why` = `drive`) is named as a drive, with the full path to type (`E:\OrthoStudio`),
-and a folder not made yet on a disk that is there (`absent`) is told to be made first: the same
-user read "not a full path" for `E:`, then "Plug in the disk it is on" with the disk in place
-(2026-09-27); "Plug in" is kept for a folder whose disk is away, the folder above it gone too
-(`CFG_DATA_DIR_MISSING`). The refusal used
-to show at the foot of the form, under every question, where a user
-saving from the data folder's question never saw it, and began "Settings rejected by the engine"
-(a French tester, 2026-09-22).
-Under the form, the credits line begins with the notices GPL v3 asks an interactive program to
-show (its Appropriate Legal Notices): "OrthoStudio XP © 2026 radioharris, free software under the GNU
-GPL v3 or later, without warranty (the LICENSE file comes with the app)", then the credits of the
-map data and of the imagery. A reuse of the page keeps showing it; `NOTICE` says the same.
+**Profiles** (a user asked to keep settings by name and choose them for each build, 2026-11-02;
+`settings.md` 7). Created after the answers, never before: one changes the answers first, then may
+decide to keep them. Save's bar holds *Save as a new profile…* beside *Save*; pressed, the same bar
+asks "Name of the new profile" with its field, *Create the profile* and *Cancel*, and under them
+"Your answers go into this new profile. "Main" stays as it was." (the first time: "The settings
+saved until now stay in a profile "Main"."). Enter creates, Escape cancels (the field is inside the
+form, whose Enter is Save). An empty name or one already taken, whatever the case, is said in the
+bar before anything is sent (`settings.js` `profileNameProblem`); the engine checks again
+(`CFG_PROFILE_*`). Created, the profile is current, step 1 takes its source and level, and a toast
+says "Profile "Mountains" created."
+
+From the second profile on, the top of the screen, above the search, shows "Profile", the list, and
+*Rename* and *Delete* on one line, with under it "Your changes are saved in this profile. What
+belongs to this computer (folders, X-Plane, map data, SimBrief, memory, updates) is the same for
+every profile."; *Save* reads *Save in "Mountains"*. Choosing another profile shows its settings
+(`POST /api/profiles/current`). *Rename* puts a field with the name on that line, with *Rename* and
+*Cancel*; *Delete* asks on the same line, "Delete the profile "Mountains"? Tiles already built stay
+as they are.", *Delete* in red and *Keep*, which has the focus; the profile deleted is always the
+one shown, the first of the others becomes current with its settings, and a toast names both. The
+last profile is never deleted (the list is gone by then). While the draft differs from the saved
+settings, the list and *Delete* wait, greyed, and the line under them says "Save or undo your
+changes to switch profiles." in orange: switching then would lose them without a word. A profiles
+file the engine cannot read is said there in red, the settings working as before. The line is
+drawn again only when what it shows changes (`renderSettingsProfile`), so a name being typed keeps
+its caret.
+
+**A number says its range first.** Every number of the generated fields starts its explanation, in
+bold, with what it may take and what it is unless changed: *From 0 to 30°, 10° by default.*, *0 km²
+or more, 200 km² by default.* (`rangeText`), so a user sees where the recommended value lies before
+moving it, above all among the expert ones (a user asked, 2026-09-25). Only the bounds the schema
+holds, which are what the engine checks; a number it does not bound says its default alone (*ZL19 by
+default.*). Measured in the page: 23 fields, in both languages. A number the engine refuses on Save
+is said the same way, by the field's own name: "Not saved: Maximum triangles per tile: 50 is not
+accepted. From 0 to less than 50 million, 3 million by default." (`settings.js` `refusedValueText`),
+where the engine's words named the setting by its key and asked for "a value of type less_than in
+range lt 50.0" (2026-10-15). `settings.js` holds the descriptions and pure functions (tested under
+node) and draws the screen; `app.js` owns the saved settings, the draft and the buttons. The screen
+is drawn again on each answer, apart, and only what differs is put in (`app.js` `morphChildren`): a
+text, an attribute, a field's value, a control whose attributes changed; what has not changed is not
+touched, whatever the change (a user saw the whole screen flash in the Mac's window each time a
+field was left, and a number answer late under its own arrows, and asked for one method for every
+case, 2026-09-21). A canvas drawn later says what it shows in `data-version`. The draft keeps its
+identity (`setDraft`), since the parts left in place keep handlers that write into it. The focus,
+the caret and the window's scroll position survive a redraw (user report, 2026-09-14: an answer
+changed at the bottom brought the top of the screen back, since removing the focused answer made the
+browser lay out the half-drawn page). Nothing is saved before *Save*; *Undo my changes* goes back to
+the saved settings, *Default values* to the schema's defaults (Ortho4XP's, and OrthoStudio XP's own
+`overlays`), the X-Plane folder, the data folder, the SimBrief name, the places the map data comes
+from (a folder of one's own, a library's address and key) and the switch `relief.private_sources`
+set by hand (it turned off, and viewfinderpanoramas left the relief question, 2026-10-30) kept,
+since they are this computer's and its pilot's and no look of the tiles (the defaults emptied a
+library's key, and a build from source, which carries none, went to the public servers, 2026-10-02);
+a draft that differs from the saved settings says "Changes not saved yet". For as long as it
+differs, the Settings tab carries a dot (its tooltip says the same), step 3 of the Plan says
+"Settings not saved: the build takes the previous ones.", and so does the Library's *Build again…*
+question (`app.js` `renderUnsaved`); Save or *Undo my changes* clears the three. A message given on
+leaving Settings went by in three seconds, and a user built a tile with Copernicus alone, the folder
+of his lidar never saved (2026-10-15). The action bar sticks to the bottom, and a save the engine
+refuses says why in it, in the page's words for the code: "Not saved: /Volumes/… will not do: files
+cannot be linked there, as in a folder shared over a network or with a virtual machine, and on a
+disk formatted exFAT or FAT32…". Its remedy sends a shared folder to the computer's own disk and
+tells not to format that disk, whose format is not the cause: the old words blamed exFAT or FAT32
+and advised formatting to a user whose APFS disk the Windows VM reached through Parallels
+(2026-09-27). It also says where a disk's format is read (Disk Utility, the disk's Properties). A
+drive letter alone (`E:`, `why` = `drive`) is named as a drive, with the full path to type
+(`E:\OrthoStudio`), and a folder not made yet on a disk that is there (`absent`) is told to be made
+first: the same user read "not a full path" for `E:`, then "Plug in the disk it is on" with the disk
+in place (2026-09-27); "Plug in" is kept for a folder whose disk is away, the folder above it gone
+too (`CFG_DATA_DIR_MISSING`). The refusal used to show at the foot of the form, under every
+question, where a user saving from the data folder's question never saw it, and began "Settings
+rejected by the engine" (a French tester, 2026-09-22). Under the form, the credits line begins with
+the notices GPL v3 asks an interactive program to show (its Appropriate Legal Notices): "OrthoStudio
+XP © 2026 radioharris, free software under the GNU GPL v3 or later, without warranty (the LICENSE
+file comes with the app)", then the credits of the map data and of the imagery. A reuse of the page
+keeps showing it; `NOTICE` says the same.
 
 1. **Presets**: three buttons, *Recommended* (ZL16, main airports at ZL18), *Best quality* (ZL17,
    every airfield at ZL18), *Light on disk* (ZL15, nothing extra), each with its size per tile
@@ -1137,41 +1204,40 @@ map data and of the imagery. A reuse of the page keeps showing it; `NOTICE` says
    with one sentence on what it changes and radio choices (the recommended one tagged *recommended*,
    a note under a choice when it helps). First what OrthoStudio XP needs to know of the user's
    X-Plane (user request, 2026-09-13): the X-Plane 12 folder (the detected one from `/api/status`,
-   the other X-Plane 12 of the machine named under it when the status gives any (`xplane.others`:
-   a user's tile went into an X-Plane 12 he had forgotten, 2026-09-17), and a field for another),
-   then where the tiles and the downloaded imagery go
-   (`essential.data_dir`, user request 2026-09-15: an external disk): the folder in use from the
-   status's `data_dir`, warned when its disk is unplugged, a field for another with *Choose the
-   folder for the tiles…*, and two notes, that the tiles already built stay where they are and keep working
-   (a user did not understand the first wording, which asked to delete them before building into
-   the new folder, 2026-09-15: that step is gone), and which disk formats can hold the data on the
-   engine's platform (exFAT, FAT32 and folders shared over a network or with a virtual machine are
-   refused), and that the folder must be outside X-Plane's
-   Custom Scenery, where OrthoStudio XP puts its own links (a user typed his Custom Scenery there
-   and was only refused once he had saved, 2026-09-17), then roads,
-   forests and buildings (X-Plane's / X-Plane's roads, railways and power lines only / none,
+   the other X-Plane 12 of the machine named under it when the status gives any (`xplane.others`: a
+   user's tile went into an X-Plane 12 he had forgotten, 2026-09-17), and a field for another), then
+   where the tiles and the downloaded imagery go (`essential.data_dir`, user request 2026-09-15: an
+   external disk): the folder in use from the status's `data_dir`, warned when its disk is
+   unplugged, a field for another with *Choose the folder for the tiles…*, and two notes, that the
+   tiles already built stay where they are and keep working (a user did not understand the first
+   wording, which asked to delete them before building into the new folder, 2026-09-15: that step is
+   gone), and which disk formats can hold the data on the engine's platform (exFAT, FAT32 and
+   folders shared over a network or with a virtual machine are refused), and that the folder must be
+   outside X-Plane's Custom Scenery, where OrthoStudio XP puts its own links (a user typed his
+   Custom Scenery there and was only refused once he had saved, 2026-09-17), then roads, forests and
+   buildings (X-Plane's / X-Plane's roads, railways and power lines only / none,
    `essential.overlays`, whose sentence starts "Using simHeaven X-World? Choose “None from
    OrthoStudio XP”", since a user looked for the simHeaven option and did not find it at the end of
    the list; **when the engine finds such a pack in Custom Scenery** the question answers itself:
    `xplane.packs_of_their_own` of `/api/status` names it, *None* becomes the recommended answer and
    every answer says why (roads only, never recommended, tells to turn that pack's own roads off,
-   idea 6, 2026-10-11), because a user of the X-Plane.Org page had X-World installed, kept ours,
-   and had everything drawn twice, 2026-09-20. On a **first run**, with no settings file yet, such
-   a pack also makes *None* the answer *chosen*, written to the file so that the page, a build and
-   the command line agree: a user who never opens Settings is the one this happened to. Nothing is
-   written when nothing was adjusted). Then the look of the tiles: whose photos (a select of the providers, an unavailable
-   one disabled); how much detail (ZL15-18 in plain names with the ground size at 45°, the
-   multiplier of disk and time, levels above the source's `max_zl` disabled); airports (main ones
-   with an ICAO code / every airfield / no, naming the airport level); coast fade (sand / rocks);
-   how far out to sea (50 / 100 / 200 m, hidden for a fade in three steps); water near the coast;
-   lakes and rivers (10 / 25 / 50 %); relief, seven answers since 2026-09-20 (`settings.js`
-   `questionChoices`): X-Plane 12's own, Copernicus at 1", the USGS 3DEP at 1/3" (United States),
-   the USGS at 1" (North America), Canada's lidar (HRDEM) or South America's ANADEM with Copernicus
-   elsewhere, or my own file, then the file's path, warned while empty, and its holes;
-   viewfinderpanoramas at 30 m and at 90 m come before *my own file* only where `config.toml` sets
-   `relief.private_sources` (or holds one of them already), never otherwise (2026-10-30); under it, a
-   folder of one's own elevation files (2.5, *Your own elevation files*). A value set by hand that
-   no choice offers (a width of 80 m, lakes at 40 %, the airport mode `existing`, the `3steps`
+   idea 6, 2026-10-11), because a user of the X-Plane.Org page had X-World installed, kept ours, and
+   had everything drawn twice, 2026-09-20. On a **first run**, with no settings file yet, such a
+   pack also makes *None* the answer *chosen*, written to the file so that the page, a build and the
+   command line agree: a user who never opens Settings is the one this happened to. Nothing is
+   written when nothing was adjusted). Then the look of the tiles: whose photos (a select of the
+   providers, an unavailable one disabled); how much detail (ZL15-18 in plain names with the ground
+   size at 45°, the multiplier of disk and time, levels above the source's `max_zl` disabled);
+   airports (main ones with an ICAO code / every airfield / no, naming the airport level); coast
+   fade (sand / rocks); how far out to sea (50 / 100 / 200 m, hidden for a fade in three steps);
+   water near the coast; lakes and rivers (10 / 25 / 50 %); relief, seven answers since 2026-09-20
+   (`settings.js` `questionChoices`): X-Plane 12's own, Copernicus at 1", the USGS 3DEP at 1/3"
+   (United States), the USGS at 1" (North America), Canada's lidar (HRDEM) or South America's ANADEM
+   with Copernicus elsewhere, or my own file, then the file's path, warned while empty, and its
+   holes; viewfinderpanoramas at 30 m and at 90 m come before *my own file* only where `config.toml`
+   sets `relief.private_sources` (or holds one of them already), never otherwise (2026-10-30); under
+   it, a folder of one's own elevation files (2.5, *Your own elevation files*). A value set by hand
+   that no choice offers (a width of 80 m, lakes at 40 %, the airport mode `existing`, the `3steps`
    profile) is shown as one more choice, never hidden.
 3. **For experts** (`<details>`, closed): a band with a chevron, its title, how many settings are
    behind it and its one-line lead, all readable while it is closed, and whether it was open is
@@ -1329,11 +1395,11 @@ level.
 Past the source's own ceiling the map keeps zooming and Leaflet enlarges the last tiles it
 downloaded (`maxNativeZoom`): the pixels grow, the detail does not, and a user zoomed to ZL18 on
 EOX, which stops at ZL14 (2026-09-25). The line must not then promise a sharpness no build can
-deliver, so it reads *This view: ZL18, enlarged. EOX goes no further than ZL14, about 7 m per
-pixel*. `nativeCeiling` is that ceiling, `min(19, max_zl)`, and the layer and the legend read the
-same one, so the warning cannot land on a different zoom from the one the imagery stops improving
-at. The street map and the mock are not the source's imagery: no ceiling is given, and nothing is
-called enlarged.
+deliver, so it reads *This view: ZL18 enlarged: EOX stops at ZL14, about 7 m per pixel*.
+`nativeCeiling` is that ceiling, `min(19, max_zl)`, and the layer and the legend read the same one,
+so the warning cannot land on a different zoom from the one the imagery stops improving at. The
+street map and the mock are not the source's imagery: no ceiling is given, and nothing is called
+enlarged.
 
 The source is chosen in step 1, not on the map, so the line is drawn again in `setBaseLayer` as
 well as on `zoomend` and `moveend`: the same user switched to EOX while at ZL18 and the line went
@@ -1369,13 +1435,13 @@ and nowhere else, so it is the same at every zoom and in every window (`imageryN
    for this view." Esri Clarity has ZL19 over New York and nothing past ZL18 over Lyon or Paris
    (the engine turns its 404 into a 204, an error for an `<img>`), and a source may be down.
 3. when not one image came, one tile of the view is asked again through the page's `api()`
-   (`tileRefusal`), which reads what an `<img>` cannot: if the engine's answer is its 502
-   carrying `NET_FORBIDDEN`, what it makes of a 403 from the source (`tileRefused`), line 2
-   becomes "{provider} refuses your connection (access denied): choose another source
-   meanwhile." Esri's network answered "Access Denied" to a user's address for two days, the day
-   after he had built 37 tiles at ZL17 from it in an afternoon, and the map said only that no
-   imagery came (2026-10-07). It is said only while that view of that source is still the one
-   on screen; any other answer leaves line 2 as it is.
+   (`tileRefusal`), which reads what an `<img>` cannot: if the engine's answer is its 502 carrying
+   `NET_FORBIDDEN`, what it makes of a 403 from the source (`tileRefused`), line 2 becomes
+   "{provider} refuses your connection: choose another source meanwhile." Esri's network answered
+   "Access Denied" to a user's address for two days, the day after he had built 37 tiles at ZL17
+   from it in an afternoon, and the map said only that no imagery came (2026-10-07). It is said only
+   while that view of that source is still the one on screen; any other answer leaves line 2 as it
+   is.
 
 A new view (`loading`) clears the line until it is drawn. The rule used to count failed tiles and
 speak at six: at the deepest zoom a view holds four, so a switch from Bing to Clarity there left
@@ -1428,20 +1494,20 @@ Its box in the legend is a checkbox, as the airports' is, shown when there is su
 unless unticked, and remembered (`osxp.mapBuilt`); unticked, the tiles leave the map and the
 hover. Every kind of tile has had one since 2026-09-26 (above).
 
-**The legend** (the same user, same day). Its labels started at three places, 52, 67 and 71 px:
-a line without a checkbox kept the checkbox's room (13 px) and every mark is 14 px wide (the
-airport's 10 px ring gets 2 px each side), so they all started at 71. Since 2026-09-26 the rule
-holds among the tiles' marks (`legend-marks`), and the zones' levels, which have no box, start
-at the legend's edge (the same user). A chevron at the end of its first line folds it away to see the map under it, one *Legend*
-button brings it back, and the choice is remembered (`osxp.mapLegend`, open unless folded;
-`aria-expanded` on both). The chevron is one line high on that line (`legend-head`), so its centre
-is the line's: placed by hand in the corner it sat 2 px above it. The *Legend* button is an
-ordinary `btn btn-small`, 24 px and 12 px like the other button set on the map, and the spaces
-are the stylesheet's own (`--title-gap`, `--label-gap`). A redraw, which happens on every zoom, gives the focus back to the control that had it
-(`data-keep`): it went to the first checkbox, whichever had it. With the four marks of the tiles
-it took twelve lines over the map (the same user, 2026-09-26): *Show* and the zones fold away,
-and each line says less (above). Set side by side, the map's three boxes had gone on over two
-lines and read as a jumble; they keep a line each.
+**The legend** (the same user, same day). Its labels started at three places, 52, 67 and 71 px: a
+line without a checkbox kept the checkbox's room (13 px) and every mark is 14 px wide (the airport's
+10 px ring gets 2 px each side), so they all started at 71. Since 2026-09-26 the rule holds among
+the tiles' marks (`legend-marks`), and the zones' levels, which have no box, start at the legend's
+edge (the same user). A chevron at the end of its first line folds it away to see the map under it,
+one *Legend* button brings it back, and the choice is remembered (`osxp.mapLegend`, open unless
+folded; `aria-expanded` on both). The chevron is one line high on that line (`legend-head`), so its
+centre is the line's: placed by hand in the corner it sat 2 px above it. The *Legend* button is an
+ordinary `btn`, like the other buttons set on the map, and the spaces are the stylesheet's own
+(`--title-gap`, `--label-gap`). A redraw, which happens on every zoom, gives the focus back to the
+control that had it (`data-keep`): it went to the first checkbox, whichever had it. With the four
+marks of the tiles it took twelve lines over the map (the same user, 2026-09-26): *Show* and the
+zones fold away, and each line says less (above). Set side by side, the map's three boxes had gone
+on over two lines and read as a jumble; they keep a line each.
 
 **Marks are outlines, never fills** (a user, 2026-09-18). A chosen square, an installed one, a
 zone: each is a stroke and nothing else, so no translucent colour lies about the ground under it
@@ -1796,15 +1862,18 @@ under a title in the new one, until the next measure (2026-10-05).
 
 ## 3. Mock mode
 
-`index.html?mock=1` makes the API client read `static/mock/<name>.json` instead of
-`/api/...`. `osxp serve --mock` opens that address, which is the way to reach it without typing
-one. The switch is read from the query and from a query written after the route (`#plan?mock=1`,
-which silently showed the real engine before), and `mock`, `mock=true`, `mock=yes` and `mock=on`
-all mean `mock=1` (`pageParams`, `isOn`; a user, 2026-09-18). An option written after the route is
-kept as the route changes (`HASH_OPTIONS`), so moving to another screen and reloading stays in the
-mock rather than landing on the real engine. Airports are filtered client-side from `mock/airports.json`. This is the development
-and visual-test harness: it must exercise every rendering path, and the mock files must satisfy
-the interface contract so that they double as fixtures for the API chantier.
+`index.html?mock=1` makes the API client read `static/mock/<name>.json` instead of `/api/...`. `osxp
+serve --mock` opens that address, which is the way to reach it without typing one. The switch is
+read from the query and from a query written after the route (`#plan?mock=1`, which silently showed
+the real engine before), and `mock`, `mock=true`, `mock=yes` and `mock=on` all mean `mock=1`
+(`pageParams`, `isOn`; a user, 2026-09-18). An option written after the route is kept as the route
+changes (`HASH_OPTIONS`), so moving to another screen and reloading stays in the mock rather than
+landing on the real engine. Airports are filtered client-side from `mock/airports.json`.
+`profiles=2` starts with two settings profiles, *Main* (the mock's settings) and *VFR Alpes* (Esri,
+ZL17, every airfield sharper); without it there is none, and the five profile routes answer as the
+engine does (`mockProfilesRoute`). This is the development and visual-test harness: it must exercise
+every rendering path, and the mock files must satisfy the interface contract so that they double as
+fixtures for the API chantier.
 
 Jobs in mock mode run like the engine's, whether a page listens or not (`app.js`, "mock jobs"):
 `POST /api/jobs` starts one, its nodes those of the one tile of `mock/job.json` (the engine's state
