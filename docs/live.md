@@ -3,7 +3,7 @@
 Aerial imagery under your aircraft wherever you fly, downloaded while you fly, with no tiles to
 build first. OrthoStudio XP Live comes with OrthoStudio XP from version 2.0.
 
-![Live's window in flight near Toulouse: on the left the map, the aircraft at its centre and the textures built around it coloured by how sharp they are, sharper still around the airports; on the right Live's state, the photo source and its two zooms, the flight's altitude, speed and position, and the textures being built](images/live/flight.png)
+![Live's window in flight near Toulouse: on the left the map, the aircraft at its centre and the textures built around it coloured by how sharp they are, sharper still around the airports; on the right Live's state, the photo source and its zoom, the flight's altitude, speed and position, and the textures being built](images/live/flight.png)
 
 This guide is for pilots: what Live does, what you do, and why it asks for so few settings. The
 design and the measurements behind it are in [specs/live.md](specs/live.md) and
@@ -179,7 +179,7 @@ itself. Prepare brings the map to the departure, as close as a flight's start.
 disk space (with what the textures and the imagery take, and a button to delete either), what the
 app opens on, and Live's folder. They apply with Save, at the next start.
 
-![Live's Settings: the mesh by region with what each downloads and an Install button, the season and its sliders, roads and forests, your own tiles, the flight plan, the disk space and what the app opens first](images/live/settings.png)
+![Live's Settings: the mesh by region with what each downloads and an Install button, the season, the roads, forests and buildings, your own tiles and the flight plan](images/live/settings.png)
 
 ## The zoom
 
