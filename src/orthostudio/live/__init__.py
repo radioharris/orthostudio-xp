@@ -7,7 +7,7 @@ will read, before X-Plane reads it, following the aircraft and the camera. A sma
 holds X-Plane on its loading screen at a flight's start until the area is built. The design, the
 measurements behind it and the users' guide are in ``docs/specs/live.md``.
 
-It is switched on in the beta that brings it (:data:`ENABLED_BY_DEFAULT`), and its own file
+It is switched on by default (:data:`ENABLED_BY_DEFAULT`), and its own file
 ``live.toml``, beside ``config.toml`` in ``$OSXP_HOME``, switches it off with ``enabled = false``
 (:func:`enabled`). OrthoStudio XP's settings screen never saves that file, so the switch stays as
 set. It runs on macOS (Apple Silicon and Intel), Windows and Linux: its X-Plane plugin is built for
@@ -27,9 +27,8 @@ from orthostudio.home import osxp_home
 __all__ = ["ENABLED_BY_DEFAULT", "enabled", "settings_file", "supported"]
 
 ENABLED_BY_DEFAULT = True
-"""Live's switch where ``live.toml`` does not set it: on, in the beta that brings it into the app
-(1.1, the user's choice, 2026-10-02). It was off before, while Live was tried on a branch of its
-own; the tests keep it off unless they switch it on (``tests/conftest.py``)."""
+"""Live's switch where ``live.toml`` does not set it: on. It was off before, while Live was tried on
+a branch of its own; the tests keep it off unless they switch it on (``tests/conftest.py``)."""
 
 
 def supported() -> bool:

@@ -47,7 +47,7 @@ def _no_sources_of_this_machine(
 
 @pytest.fixture(autouse=True)
 def _live_off_unless_a_test_switches_it_on(monkeypatch: pytest.MonkeyPatch) -> None:
-    """OrthoStudio XP Live is on by default in the beta that brings it
+    """OrthoStudio XP Live is on by default
     (``orthostudio.live.ENABLED_BY_DEFAULT``): the suite keeps it off unless a test switches it on
     (``enabled = true`` in its ``live.toml``), as before, so that a test's app or OrthoStudio XP's
     engine never reaches for a Live window of the machine it runs on (port 8642)."""

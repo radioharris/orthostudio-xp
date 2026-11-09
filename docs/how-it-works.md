@@ -968,7 +968,7 @@ downloads its image pieces again.
 
 ## 6. Flying without tiles: OrthoStudio XP Live
 
-From 1.4, in beta, OrthoStudio XP has a second way to get ortho in X-Plane: OrthoStudio XP Live
+From 2.0, OrthoStudio XP has a second way to get ortho in X-Plane: OrthoStudio XP Live
 downloads the imagery while you fly, as AutoOrtho and XPME do, with no tile to build first, but
 with no virtual disk between X-Plane and its textures: it builds them beside X-Plane as ordinary
 files, so X-Plane waits only on its loading screen at a flight's start, never in flight. At its

@@ -1,7 +1,7 @@
 # OrthoStudio XP Live
 
 Aerial imagery under your aircraft wherever you fly, downloaded while you fly, with no tiles to
-build first. OrthoStudio XP Live comes with OrthoStudio XP from version 1.4, in beta.
+build first. OrthoStudio XP Live comes with OrthoStudio XP from version 2.0.
 
 ![Live's window in flight near Toulouse: on the left the map, the aircraft at its centre and the textures built around it coloured by how sharp they are, sharper still around the airports; on the right Live's state, the photo source and its two zooms, the flight's altitude, speed and position, and the textures being built](images/live/flight.png)
 

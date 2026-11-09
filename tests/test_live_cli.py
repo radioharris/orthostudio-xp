@@ -27,7 +27,7 @@ def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 def test_on_in_the_beta_unless_live_toml_says_off(
     home: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The beta that brings Live into the app switches it on (the suite keeps it off,
+    """Live is on by default (the suite keeps it off,
     tests/conftest.py): ``enabled = false`` switches it off."""
     import subprocess
     import sys
@@ -55,7 +55,7 @@ def test_on_in_the_beta_unless_live_toml_says_off(
 
 
 def test_switched_off_until_live_toml_says_so_when_off_by_default(home: Path) -> None:
-    """As before the beta, and as the suite runs: off unless ``enabled = true``."""
+    """As the suite runs: off unless ``enabled = true``."""
     assert not enabled()  # no file
     settings_file().write_text("enabled = false\n")
     assert not enabled()
