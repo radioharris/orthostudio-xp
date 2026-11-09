@@ -11,6 +11,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -532,3 +533,13 @@ def test_the_disk_image_is_asked_again_when_the_machine_is_busy() -> None:
     finally:
         packaging.subprocess.run, packaging.time.sleep = real_run, real_sleep
     assert len(calls) == 3
+
+
+def test_the_files_written_for_a_build_go_into_the_wheel():
+    """Hatchling honours .gitignore: a file the build writes from the secrets and git ignores is
+    left out of the wheel unless it is an artifact, and the installer then reaches nothing (Live's
+    regions, caught by the build's own check on 2026-11-09)."""
+    pyproject = Path(__file__).parents[1] / "pyproject.toml"
+    project = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+    artifacts = project["tool"]["hatch"]["build"]["targets"]["wheel"]["artifacts"]
+    assert set(artifacts) >= {"src/orthostudio/library.json", "src/orthostudio/live/host.json"}
