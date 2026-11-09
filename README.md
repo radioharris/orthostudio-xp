@@ -67,7 +67,7 @@ X-Plane; that version calculates everything again to rebuild one, without downlo
 again unless you deleted them.
 
 At its first start the app asks what you want to do: build your tiles, or fly now with
-OrthoStudio XP Live (from 1.4, in beta). Both are in its one window, Build | Live at the top. To
+OrthoStudio XP Live (from 2.0, in beta). Both are in its one window, Build | Live at the top. To
 fly with Live: install the mesh of where you fly (Live's Settings, first question), then Start Live
 and Start X-Plane; the steps are in [docs/live.md](docs/live.md#a-flight-step-by-step).
 
@@ -133,7 +133,7 @@ Its guide, with what you get, the measured build times and the comparison with O
 
 ## Flying with Live
 
-OrthoStudio XP Live, in beta from 1.4, works as AutoOrtho and XPME do from the pilot's seat, with
+OrthoStudio XP Live, in beta from 2.0, works as XPME and AutoOrtho do from the pilot's seat, with
 no virtual disk between X-Plane and its textures: it builds them beside X-Plane as ordinary files.
 
 - **X-Plane never waits in flight.** It waits only on its loading screen at a flight's start; with

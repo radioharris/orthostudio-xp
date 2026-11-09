@@ -299,7 +299,7 @@ Asia, and Australia and the Pacific (Hawaii and Easter Island in). Together they
 of the world but Antarctica: 19,295 squares.
 
 The panel lists the six, each with what it downloads and the room it takes once installed
-(Europe: 17.7 GB to download, as much on the disk), and **Install**. Live downloads it from
+(Europe: 16.3 GB to download, as much on the disk), and **Install**. Live downloads it from
 OrthoStudio XP's server, a few files at a time, checks each one and unpacks it as soon as it is
 whole; the bar shows the download, and the line under it the gigabytes downloaded and the pace in
 megabytes a second over the last few seconds. **Stop** stops it, and **Install** again goes on where it
