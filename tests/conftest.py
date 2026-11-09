@@ -46,6 +46,16 @@ def _no_sources_of_this_machine(
 
 
 @pytest.fixture(autouse=True)
+def _no_xplane_unless_a_test_says_so(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No process of the machine counts as X-Plane: a stand-in that another test of the run has
+    started on Windows stopped a delete with XP_RUNNING (2026-11-09). A test about it sets its
+    own."""
+    from orthostudio.install import packs
+
+    monkeypatch.setattr(packs, "xplane_running", lambda: False)
+
+
+@pytest.fixture(autouse=True)
 def _live_off_unless_a_test_switches_it_on(monkeypatch: pytest.MonkeyPatch) -> None:
     """OrthoStudio XP Live is on by default
     (``orthostudio.live.ENABLED_BY_DEFAULT``): the suite keeps it off unless a test switches it on

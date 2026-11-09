@@ -1244,6 +1244,7 @@ def test_what_the_app_s_engine_and_web_view_cost() -> None:
     assert "of it" not in report.computer_lines(plain, run)[1]
 
 
+@mac_only
 def test_the_app_opens_on_its_sides_and_starts_live(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
