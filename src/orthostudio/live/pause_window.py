@@ -303,10 +303,22 @@ class _WinPanel:
 
         @wndproc
         def proc(hwnd, msg, wp, lp):
+            if msg == 0x0014:  # WM_ERASEBKGND: the whole window is drawn at once, below
+                return 1
             if msg == 0x000F:  # WM_PAINT
                 ps = PAINTSTRUCT()
                 dc = user32.BeginPaint(hwnd, ctypes.byref(ps))
-                paint(hwnd, dc)
+                # drawn apart, then put up in one go: Windows composes the window as it is drawn,
+                # and showed it now and then with the background alone (Shadow, 2026-11-09)
+                w, h = int(PANEL_W * state["scale"]), int(PANEL_H * state["scale"])
+                apart = gdi32.CreateCompatibleDC(dc)
+                bitmap = gdi32.CreateCompatibleBitmap(dc, w, h)
+                before = gdi32.SelectObject(apart, bitmap)
+                paint(hwnd, apart)
+                gdi32.BitBlt(dc, 0, 0, w, h, apart, 0, 0, 0x00CC0020)  # SRCCOPY
+                gdi32.SelectObject(apart, before)
+                gdi32.DeleteObject(bitmap)
+                gdi32.DeleteDC(apart)
                 user32.EndPaint(hwnd, ctypes.byref(ps))
                 return 0
             return user32.DefWindowProcW(hwnd, msg, wp, lp)
@@ -343,6 +355,7 @@ class _WinPanel:
                     user32.DestroyWindow(hwnd)
                 state["hwnd"] = state["shown"] = None
                 return
+            changed = want != state["shown"]
             state["shown"] = want
             if not hwnd:
                 x, y, scale = _xplane_middle_win(user32, self._pid)
@@ -368,11 +381,12 @@ class _WinPanel:
                     hwnd, gdi32.CreateRoundRectRgn(0, 0, w + 1, h + 1, radius, radius), False
                 )
                 user32.ShowWindow(hwnd, 4)  # SW_SHOWNOACTIVATE
+                user32.SetWindowPos(
+                    hwnd, -1, 0, 0, 0, 0, 0x2 | 0x1 | 0x10 | 0x200
+                )  # TOPMOST, no move/size/activate
                 state["hwnd"] = hwnd
-            user32.InvalidateRect(hwnd, None, True)
-            user32.SetWindowPos(
-                hwnd, -1, 0, 0, 0, 0, 0x2 | 0x1 | 0x10 | 0x200
-            )  # TOPMOST, no move/size/activate
+            elif changed:
+                user32.InvalidateRect(hwnd, None, False)
 
         while user32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
             if msg.message == self.WM_SYNC:
