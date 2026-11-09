@@ -32,6 +32,8 @@ from pathlib import Path
 from typing import Any, NamedTuple
 
 from orthostudio.decals import DECALS
+from orthostudio.errors import OsxpError
+from orthostudio.install.xplane import other_xplane_dirs
 from orthostudio.live import aoregions, osxpregions, session, supported
 from orthostudio.live.evict import usage
 from orthostudio.live.meshmap import REGION_NAMES, squares_of
@@ -51,8 +53,10 @@ from orthostudio.live.scenery import (
     default_sources,
     is_installed,
     launch_xplane,
+    named_xplane,
     ortho_streamers,
     osxp_regions,
+    save_named_xplane,
     xplane_running,
 )
 from orthostudio.live.settings import LiveSettings, load_settings
@@ -173,6 +177,13 @@ def made_by(pack: str) -> str:
     if pack.startswith(ORTHO_PREFIX):
         return "osxp"
     return "ortho4xp" if pack.startswith(IMPORTED_PACK_PREFIX) else "other"
+
+
+def _same_folder(one: str, other: str | None) -> bool:
+    try:
+        return other is not None and os.path.samefile(one, other)
+    except OSError:  # one of them gone: not the same as far as anyone can tell
+        return False
 
 
 def gather_checks() -> dict[str, Any]:
@@ -545,6 +556,39 @@ class LiveControl:
         self._uninstall(Path(checks["xplane"]), self.log)  # the X-Plane the window shows
         self.checks(fresh=True)
         return True
+
+    def xplane_folders(self) -> dict[str, Any]:
+        """For the Settings: the folder named, and the other X-Planes of this computer."""
+        used = self.checks().get("xplane")
+        others = other_xplane_dirs(None if used is None else Path(used))
+        return {"named": named_xplane(), "others": [str(p) for p in others]}
+
+    def name_xplane(self, folder: str | None) -> None:
+        """Name the X-Plane to work with, in the setting Build reads too (``None``: the one
+        detected). Not while Live runs or X-Plane does: the pack is in use. The X-Plane left keeps
+        neither the pack nor the plugin."""
+        folder = (folder or "").strip() or None
+        if folder == named_xplane():
+            return
+        before = self.checks(fresh=True)
+        if self._state != IDLE:
+            raise session.RefusedError("Live is running: stop it first")
+        if before["xplane_running"]:
+            raise session.RefusedError("X-Plane is running: quit it first")
+        try:
+            if folder is not None:
+                from orthostudio.api.specs import check_xplane_dir  # the engine's: only here
+
+                folder = str(check_xplane_dir(folder))
+            save_named_xplane(folder)
+        except OsxpError as e:
+            raise session.RefusedError(f"{e.message} {e.remedy}") from e
+        after = self.checks(fresh=True)
+        if before["installed"] and not _same_folder(before["xplane"], after["xplane"]):
+            try:
+                self._uninstall(Path(before["xplane"]), self.log)
+            except (OSError, OsxpError) as e:  # harmless: without Live, they hold nothing
+                self.log(f"the pack could not be taken out of {before['xplane']}: {e}")
 
     def delete(self, *, textures: bool, imagery: bool) -> None:
         """Forget the built textures (back to the neutral one, built again when flown to), the

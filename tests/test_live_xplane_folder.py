@@ -11,7 +11,12 @@ import pytest
 from orthostudio.api.specs import resolve_xplane
 from orthostudio.config.models import Settings
 from orthostudio.config.store import load_settings, save_settings
-from orthostudio.live import control, logfile, session
+from orthostudio.live import control, logfile, session, settings_file
+from orthostudio.live.control import IDLE, STREAMING, LiveControl
+from orthostudio.live.web import UI_DIR, create_live_app
+from orthostudio.ui import ui_dir
+from test_api_fakes import anyio_backend as anyio_backend
+from test_api_fakes import client_for
 
 
 def _xplane(folder: Path) -> Path:
@@ -33,6 +38,7 @@ def found_first(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setenv("OSXP_HOME", str(tmp_path / "home"))
     folder = _xplane(tmp_path / "C" / "X-Plane 12")
     monkeypatch.setattr("orthostudio.install.xplane.detect_xplane", lambda: folder)
+    monkeypatch.setattr(control, "xplane_running", lambda: False)
     return folder
 
 
@@ -87,3 +93,126 @@ def test_the_log_goes_beside_the_x_plane_named(
     monkeypatch.setattr("orthostudio.live.scenery.load_settings", lambda: saved)
     monkeypatch.delenv("OSXP_HOME")  # a test window keeps its log in its own folder
     assert logfile.log_path() == flown / logfile.NAME
+
+
+# --- Live's Settings ask the same question ------------------------------------------------------
+
+
+def _control(installed: bool = False) -> tuple[LiveControl, list[Path]]:
+    """A window on this computer's folders, and the X-Planes its pack was taken out of."""
+    out_of: list[Path] = []
+    window = LiveControl(
+        checks=lambda: {**control.gather_checks(), "installed": installed},
+        uninstall=lambda xplane, log: out_of.append(xplane),
+        echo=lambda _: None,
+        catalog=lambda root: {},
+    )
+    return window, out_of
+
+
+@pytest.mark.anyio
+@pytest.mark.usefixtures("found_first")
+async def test_live_s_settings_name_the_x_plane_of_build(
+    flown: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    window, _ = _control()
+    first = control.gather_checks()["xplane"]
+    monkeypatch.setattr(
+        "orthostudio.install.xplane.xplane_candidates", lambda **_: [Path(first), flown]
+    )
+    settings = load_settings()
+    essential = settings.essential.model_copy(update={"simbrief_user": "someone"})
+    save_settings(settings.model_copy(update={"essential": essential}))
+    async with client_for(create_live_app(window)) as client:
+        before = (await client.get("/api/live/xplane-folder")).json()
+        assert before == {"named": None, "others": [str(flown)]}
+        answer = await client.put("/api/live/xplane-folder", json={"path": str(flown)})
+        assert answer.status_code == 200
+        assert answer.json() == {"named": str(flown.resolve()), "others": [first]}
+    saved = load_settings().essential
+    assert saved.xplane_dir == str(flown.resolve())
+    assert saved.simbrief_user == "someone"  # the rest of the settings, as they were
+    assert resolve_xplane(None, saved.xplane_dir) == flown.resolve()  # what Build reads
+    assert not settings_file().exists()  # no second setting in Live's own file
+    assert window.checks()["xplane"] == str(flown.resolve())  # the window's line, at once
+
+
+@pytest.mark.anyio
+async def test_empty_goes_back_to_the_one_detected(found_first: Path, flown: Path) -> None:
+    _name_in_the_settings(flown)
+    window, _ = _control()
+    async with client_for(create_live_app(window)) as client:
+        answer = await client.put("/api/live/xplane-folder", json={"path": "  "})
+    assert answer.status_code == 200 and answer.json()["named"] is None
+    assert session.xplane_dir(None) == found_first
+
+
+@pytest.mark.anyio
+@pytest.mark.usefixtures("found_first")
+async def test_a_folder_that_is_no_x_plane_is_refused_and_nothing_changes(tmp_path: Path) -> None:
+    window, out_of = _control(installed=True)
+    (tmp_path / "Photos").mkdir()
+    async with client_for(create_live_app(window)) as client:
+        answer = await client.put(
+            "/api/live/xplane-folder", json={"path": str(tmp_path / "Photos")}
+        )
+    assert answer.status_code == 409 and "Resources" in answer.json()["detail"]
+    assert load_settings().essential.xplane_dir is None and out_of == []
+
+
+@pytest.mark.usefixtures("found_first")
+@pytest.mark.parametrize("what", ["streaming", "x-plane running"])
+def test_not_while_the_pack_is_in_use(
+    what: str, flown: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    window, out_of = _control(installed=True)
+    if what == "streaming":
+        window._state = STREAMING
+    else:
+        monkeypatch.setattr(control, "xplane_running", lambda: True)
+    with pytest.raises(session.RefusedError, match="first"):
+        window.name_xplane(str(flown))
+    assert load_settings().essential.xplane_dir is None and out_of == []
+
+
+def test_the_x_plane_left_keeps_neither_pack_nor_plugin(found_first: Path, flown: Path) -> None:
+    window, out_of = _control(installed=True)
+    window.name_xplane(str(flown))
+    assert out_of == [found_first]
+
+
+@pytest.mark.usefixtures("found_first")
+def test_nothing_to_take_out_when_no_pack_was_left(flown: Path) -> None:
+    window, out_of = _control(installed=False)
+    window.name_xplane(str(flown))
+    assert out_of == []
+
+
+def test_naming_the_x_plane_already_used_takes_nothing_out(found_first: Path) -> None:
+    """The one detected, named: the same X-Plane, the pack stays."""
+    window, out_of = _control(installed=True)
+    window.name_xplane(str(found_first))
+    assert load_settings().essential.xplane_dir == str(found_first.resolve())
+    assert out_of == []
+
+
+@pytest.mark.usefixtures("found_first")
+def test_the_same_answer_changes_nothing_even_while_streaming(flown: Path) -> None:
+    """A Save with this folder as it was: its disk may be unplugged, Live may be running."""
+    _name_in_the_settings(flown)
+    window, out_of = _control(installed=True)
+    window._state = STREAMING
+    window.name_xplane(str(flown))
+    assert window.state == STREAMING and window._state != IDLE and out_of == []
+
+
+def test_a_save_in_build_never_writes_back_the_folder_it_read_earlier() -> None:
+    script = (ui_dir() / "app.js").read_text(encoding="utf-8")
+    save = script[script.index("async function saveSettings") :]
+    assert save.index("await followXplaneFolder()") < save.index('api("PUT", `/api/settings')
+
+
+def test_the_question_stands_before_live_s_folder() -> None:
+    html = (UI_DIR / "index.html").read_text(encoding="utf-8")
+    assert html.index('id="q-xplane"') < html.index('id="q-folder"')
+    assert 'id="set-xplane"' in html and 'id="xplane-choose"' in html

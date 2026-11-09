@@ -570,7 +570,8 @@ required with `file` (`config/models.py:107-120`).
   (`airports.py:546-563`). In Ortho4XP it only served the "1-click" links
   (`O4_GUI_Utils.py:1516, 1608, 1721, 1747`); the Global Scenery was a separate setting,
   `custom_overlay_src`, which OrthoStudio XP dropped. Live streams into this same X-Plane and
-  starts it (`install/xplane.py`, `chosen_xplane`).
+  starts it (`install/xplane.py`, `chosen_xplane`), and its Settings ask the same question and
+  write this value.
 - **In X-Plane.** Nothing directly. Without it: no installation, no overlay, no X-Plane relief
   (the build is refused).
 - **Cost.** None.

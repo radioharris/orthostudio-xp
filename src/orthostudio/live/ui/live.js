@@ -18,6 +18,8 @@ let last = null; // the last status
 let logSeq = 0;
 let providers = []; // GET /api/live/providers
 let saved = null; // the settings as saved: what "Undo my changes" goes back to
+let namedXplane = ""; // the X-Plane folder named, in OrthoStudio XP's settings: the same for Build
+let otherXplanes = []; // the other X-Planes of this computer
 let liveMap = null; // the map (livemap.js), when Leaflet has loaded
 
 // --- talking to the engine ---------------------------------------------------------------------
@@ -522,6 +524,52 @@ function drawFolder(status) {
   $("set-folder").placeholder = status.checks.folder_default;
 }
 
+/** The X-Plane Live works with, the others found, and whether it can be changed now. */
+function drawXplane(status) {
+  const { xplane, xplane_running: running } = status.checks;
+  const line = $("xplane-now");
+  if (xplane) {
+    pathLine(line, t("folder.now", { path: xplane }), xplane, status.platform);
+  } else {
+    delete line.dataset.path;
+    line.textContent = t("xplane.not_found");
+  }
+  $("set-xplane").placeholder = xplane ? t("xplane.placeholder") : "";
+  $("xplane-others").hidden = !otherXplanes.length;
+  $("xplane-others").textContent = t("xplane.others", { paths: otherXplanes.join(", ") });
+  const busy = status.state !== "idle" || running; // the pack is in use
+  $("set-xplane").disabled = busy;
+  $("xplane-choose").disabled = busy;
+  $("xplane-busy").hidden = !busy;
+}
+
+/** The field follows the folder named unless something else is being typed in it. */
+function fillXplaneFolder(got, { typed = false } = {}) {
+  const field = $("set-xplane");
+  const untouched = field.value.trim() === namedXplane;
+  namedXplane = got.named || "";
+  otherXplanes = got.others;
+  if (typed || untouched) field.value = namedXplane;
+  if (last) drawXplane(last);
+}
+
+/** Build's Settings ask the same question, and may have answered it since. */
+async function readXplaneFolder() {
+  try {
+    fillXplaneFolder(await api("xplane-folder"));
+  } catch (_e) {
+    // the Settings go on without the list; a save says what is wrong
+  }
+}
+
+/** Saved before Live's own settings: its folder is checked against this X-Plane. */
+async function saveXplaneFolder() {
+  const path = $("set-xplane").value.trim();
+  if (path === namedXplane) return;
+  const body = { path: path || null };
+  fillXplaneFolder(await api("xplane-folder", { method: "PUT", body }), { typed: true });
+}
+
 /** The log's file, LogLive.txt beside X-Plane's Log.txt (orthostudio/live/logfile.py). */
 function drawLogFile(status) {
   const line = $("log-file");
@@ -698,6 +746,7 @@ function draw(status) {
   drawMemory();
   drawDisk(status);
   drawFolder(status);
+  drawXplane(status);
   drawLogFile(status);
   drawRegions(status);
   liveMap?.update({ ...status, providers });
@@ -1095,6 +1144,7 @@ function formSettings() {
 /** Whether an answer was changed without Save. */
 function settingsChanged() {
   if (!saved) return false;
+  if ($("set-xplane").value.trim() !== namedXplane) return true;
   const now = formSettings();
   // the seasons' sliders are an object: compared as written
   const text = (value) => (typeof value === "object" ? JSON.stringify(value) : String(value ?? ""));
@@ -1108,6 +1158,7 @@ async function saveSettings(event) {
   $("settings-status").textContent = "";
   try {
     const before = saved?.simbrief_user;
+    await saveXplaneFolder();
     saved = await api("settings", { method: "PUT", body });
     fillSettings(saved);
     $("settings-status").textContent = t("settings.saved");
@@ -1123,11 +1174,11 @@ async function saveSettings(event) {
   }
 }
 
-async function chooseFolder() {
-  const start = $("set-folder").value.trim() || last?.checks.folder || null;
+async function chooseFolder(field, prompt, now) {
+  const start = field.value.trim() || now || null;
   try {
-    const got = await api("choose-folder", { method: "POST", body: { prompt: t("folder.prompt"), start } });
-    if (got.path) $("set-folder").value = got.path;
+    const got = await api("choose-folder", { method: "POST", body: { prompt, start } });
+    if (got.path) field.value = got.path;
   } catch (error) {
     $("settings-error").hidden = false;
     $("settings-error").textContent = error.message;
@@ -1507,6 +1558,9 @@ async function bindPageTools() {
       tabs: () => SCREENS.map((id) => ({ id, label: $("nav").querySelector(`[data-screen="${id}"]`)?.textContent || id })),
       current: () => shownScreen,
       show: (id) => showScreen(id),
+      shown: () => {
+        if (shownScreen === "settings") readXplaneFolder();
+      },
       prefs: framePrefs,
       ownPrefs: () => ({ language: language(), textSize: textSize.savedTextSize() }), // no theme of its own
       busy: () => last?.state || "",
@@ -1635,6 +1689,7 @@ function showScreen(name, question = null) {
   if (location.hash !== `#${name}`) history.replaceState(null, "", `#${name}`);
   tellFrame?.(); // the app's frame shows these screens as its tabs (embed.js)
   findTools?.findForget(); // an open find bar looks in the screen now shown
+  if (name === "settings") readXplaneFolder();
   if (name === "live") {
     measureMapTop(); // measured nothing while hidden
     liveMap?.shown();
@@ -1769,7 +1824,8 @@ function boot() {
     $("set-simbrief").value = last?.checks?.osxp_simbrief || "";
     drawSimbrief();
   });
-  $("folder-choose").addEventListener("click", chooseFolder);
+  $("folder-choose").addEventListener("click", () => chooseFolder($("set-folder"), t("folder.prompt"), last?.checks.folder));
+  $("xplane-choose").addEventListener("click", () => chooseFolder($("set-xplane"), t("xplane.prompt"), last?.checks.xplane));
   $("delete-btn").addEventListener("click", openDelete);
   $("delete-here").addEventListener("click", openDelete);
   $("delete-dialog").addEventListener("close", deleteClosed);
@@ -1777,6 +1833,7 @@ function boot() {
   bindSeason();
   $("settings-undo").addEventListener("click", () => {
     if (saved) fillSettings(saved);
+    $("set-xplane").value = namedXplane;
     $("settings-status").textContent = "";
     $("settings-error").hidden = true;
   });

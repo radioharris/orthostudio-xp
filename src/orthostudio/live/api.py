@@ -21,6 +21,8 @@ can include as it is the day Live comes into its window (``app.include_router``)
   ``GET /api/live/osxp-build``: whether OrthoStudio XP builds now; ``POST /api/live/front``: this
   window to the front, or the page opened again in the browser (``orthostudio.live.app_start``);
 - ``GET``/``PUT /api/live/settings``: the settings of ``live.toml`` (:mod:`.settings`);
+- ``GET``/``PUT /api/live/xplane-folder`` ``{"path"}``: the X-Plane folder named in OrthoStudio
+  XP's settings, the same for Build and Live, with the other X-Planes of the computer;
 - ``GET /api/live/providers``: the imagery sources, as OrthoStudio XP's ``GET /api/providers``;
 - ``POST /api/live/choose-folder`` ``{"prompt", "start"}``: the system's folder dialog, as
   OrthoStudio XP's ``POST /api/choose-folder``; ``POST /api/live/reveal`` ``{"path"}``: the
@@ -66,6 +68,10 @@ class DeleteBody(BaseModel):
 class FolderBody(BaseModel):
     prompt: str = "Choose a folder"
     start: str | None = None
+
+
+class XplaneFolderBody(BaseModel):
+    path: str | None = Field(None, max_length=1024)  # None: the one detected
 
 
 class RevealBody(BaseModel):
@@ -323,6 +329,18 @@ def live_router(
         finally:
             dialog_open.release()
         return {"path": None if chosen is None else str(chosen)}
+
+    @router.get("/xplane-folder")
+    def get_xplane_folder() -> dict[str, Any]:
+        return control.xplane_folders()
+
+    @router.put("/xplane-folder")
+    def put_xplane_folder(body: XplaneFolderBody) -> dict[str, Any]:
+        try:
+            control.name_xplane(body.path)
+        except session.RefusedError as e:
+            raise HTTPException(409, str(e)) from e
+        return control.xplane_folders()
 
     @router.post("/reveal")
     def reveal(body: RevealBody) -> dict[str, Any]:

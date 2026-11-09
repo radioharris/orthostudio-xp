@@ -374,6 +374,21 @@
         </div>
       </fieldset>
 
+      <fieldset class="question" id="q-xplane">
+        <legend class="question-title" data-i18n="xplane.title">Where is X-Plane 12 installed?</legend>
+        <p class="question-help" data-i18n="xplane.help"></p>
+        <p class="question-detected" id="xplane-now"></p>
+        <p class="question-help" id="xplane-others" hidden></p>
+        <div class="sub-question">
+          <label class="sub-question-title" for="set-xplane" data-i18n="folder.other">Another folder</label>
+          <div class="path-row">
+            <input type="text" id="set-xplane" class="question-path" spellcheck="false" autocomplete="off">
+            <button type="button" class="btn" id="xplane-choose" data-i18n="folder.choose">Choose…</button>
+          </div>
+        </div>
+        <p class="question-help" id="xplane-busy" data-i18n="xplane.busy" hidden></p>
+      </fieldset>
+
       <fieldset class="question" id="q-folder">
         <legend class="question-title" data-i18n="folder.title">Live's folder</legend>
         <p class="question-help" data-i18n="folder.help"></p>

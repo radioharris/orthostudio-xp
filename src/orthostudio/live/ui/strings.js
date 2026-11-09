@@ -363,6 +363,13 @@ export const STRINGS = {
     "delete.keep": "Keep them",
     "delete.confirm": "Delete",
 
+    "xplane.title": "Where is X-Plane 12 installed?",
+    "xplane.help": "Live installs itself in this X-Plane and starts it. It is the same setting as in Build: your tiles go to the same X-Plane.",
+    "xplane.not_found": "Not found: choose its folder below.",
+    "xplane.others": "Other X-Plane 12 found on this computer: {paths}. Live uses the one above; name the right one below if you fly another.",
+    "xplane.placeholder": "empty = the detected folder",
+    "xplane.prompt": "Choose the X-Plane 12 folder",
+    "xplane.busy": "To change it, stop Live and quit X-Plane.",
     "folder.title": "Live's folder",
     "folder.help":
       "Where Live keeps its files: the computer's disk, or a disk in APFS (Mac), NTFS (Windows) or ext4 (Linux).",
@@ -750,6 +757,13 @@ export const STRINGS = {
     "delete.keep": "Les garder",
     "delete.confirm": "Supprimer",
 
+    "xplane.title": "Où est installé X-Plane 12 ?",
+    "xplane.help": "Live s'installe dans ce X-Plane et le démarre. C'est le même réglage que dans Build : vos tuiles vont dans le même X-Plane.",
+    "xplane.not_found": "Introuvable : choisissez son dossier ci-dessous.",
+    "xplane.others": "Autres X-Plane 12 trouvés sur cet ordinateur : {paths}. Live utilise celui du dessus ; indiquez le bon ci-dessous si vous volez avec un autre.",
+    "xplane.placeholder": "vide = le dossier détecté",
+    "xplane.prompt": "Choisissez le dossier d'X-Plane 12",
+    "xplane.busy": "Pour le changer, arrêtez Live et quittez X-Plane.",
     "folder.title": "Dossier de Live",
     "folder.help":
       "Où Live range ses fichiers : le disque de l'ordinateur, ou un disque en APFS (Mac), NTFS (Windows) ou ext4 (Linux).",

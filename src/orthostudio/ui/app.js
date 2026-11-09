@@ -2515,7 +2515,10 @@ function showScreen(name, arg) {
     refreshJobList(); // its buttons wait for the builds under way or waiting
   }
   if (name === "disk") loadDisk();
-  if (name === "settings") renderSettings();
+  if (name === "settings") {
+    renderSettings();
+    followXplaneFolder().catch(() => {}); // a save says what is wrong
+  }
   if (name === "plan") {
     loadPatches();
     renderPlanSettings();
@@ -7560,11 +7563,25 @@ function photoSliders(photo, onchange) {
   return box;
 }
 
+/** Live's Settings name the same X-Plane folder, and may have changed it since this page read its
+ * settings: what the Settings show and what Save writes follow, unless it is being changed here. */
+async function followXplaneFolder() {
+  const named = (await api("GET", "/api/settings")).essential?.xplane_dir ?? null;
+  const known = state.settings?.essential;
+  if (!known || (known.xplane_dir ?? null) === named) return;
+  const draft = state.settingsDraft?.essential;
+  if (draft && (draft.xplane_dir ?? null) === (known.xplane_dir ?? null)) draft.xplane_dir = named;
+  known.xplane_dir = named;
+  await loadStatus(); // the Settings' line and the status bar
+  if (state.screen === "settings") renderSettings();
+}
+
 async function saveSettings(ev) {
   ev.preventDefault();
   const err = $("settings-error");
   err.hidden = true;
   try {
+    await followXplaneFolder();
     // Settings are where the *next* plan starts, and nothing more: the Plan on screen is this
     // build's and is never written over. Saving used to put the settings' source and detail
     // level back into it, so a user who chose Bing there, changed only the relief here and
@@ -8100,6 +8117,7 @@ async function boot() {
     tabs: () => SCREENS.map((id) => ({ id, label: $("nav").querySelector(`[data-screen="${id}"]`)?.textContent || id })),
     current: () => state.screen || "plan",
     show: (id) => showScreen(id),
+    shown: () => followXplaneFolder().catch(() => {}),
     prefs: framePrefs,
     ownPrefs: () => ({ language: language(), theme: storedTheme(), textSize: savedTextSize() }),
     busy: () => (activeJobs().length ? "building" : ""),

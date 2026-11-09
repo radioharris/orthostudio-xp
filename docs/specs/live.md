@@ -134,6 +134,13 @@ modules, English and French, English unless the switch chose French, as OrthoStu
   its defaults: a budget set in the window holds in a terminal too. The reach of outside views and
   the texture quality are not settings (the command line keeps them, for tests): less than X-Plane
   reads shows the neutral colour, green-grey (a user, 2026-09-27).
+- **The X-Plane folder** is not one of them: it is `essential.xplane_dir` in `config.toml`, one
+  setting with Build's (`chosen_xplane`). Live's Settings read and write it through
+  `/api/live/xplane-folder`, saved before Live's own settings since Live's folder is checked against
+  this X-Plane. It changes only while Live is idle and X-Plane is not running; Live's pack and
+  plugin then leave the X-Plane left, and go into the new one at the next start. Build's page reads
+  the value again when its Settings are shown and before its Save (`followXplaneFolder`), so that a
+  Save never writes back the folder it read earlier.
 - **The page** is made of OrthoStudio XP's own parts (its Settings' cards and fields, its dialogs),
   so that the spacing is the same, and a click on a field's title is left to its text as
   OrthoStudio XP leaves it (`isTitleClick`): the title can be selected.
@@ -142,8 +149,8 @@ modules, English and French, English unless the switch chose French, as OrthoStu
   texture), the downloaded imagery, or both, while nothing streams, in Settings and from the trash
   at the end of Live's buttons (OrthoStudio XP's `.btn-trash`), the same dialog (the user,
   2026-10-31: in place of a From scratch box, which a Prepare starting Live did not read; the
-  command line keeps `--fresh`); Choose and Show in the Finder for Live's folder, with OrthoStudio
-  XP's folder dialog.
+  command line keeps `--fresh`); Choose and Show in the Finder for Live's folder and X-Plane's, with
+  OrthoStudio XP's folder dialog.
 - **The zoom**, AutoOrtho's max_zoom and max_zoom_near_airports (the latter for the mesh's ZL18
   textures, AutoOrtho's rule), sizes each texture's file as AutoOrtho sizes its DDS: smaller below
   the mesh's zoom, 8192 px one zoom above at most (level -1), from the pack's layout on
