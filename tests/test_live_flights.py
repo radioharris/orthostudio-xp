@@ -1423,6 +1423,7 @@ def test_a_cold_live_takes_the_regions_lists_and_leaves_its_log(
     assert (out / "LogLive.txt").read_text().endswith("starting\n")  # its log kept
 
 
+@mac_only
 def test_xpme_is_flown_as_the_user_starts_it(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

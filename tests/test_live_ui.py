@@ -776,7 +776,7 @@ def _strings() -> dict[str, list[str]]:
     out = subprocess.run(
         [NODE or "node", "--input-type=module", "-e", script],
         capture_output=True,
-        text=True,
+        encoding="utf-8",
         check=True,
     )
     return json.loads(out.stdout)
@@ -837,7 +837,7 @@ def test_the_foot_of_the_page_is_osxp_s_text_size_and_zoom() -> None:
     out = subprocess.run(
         [NODE or "node", "--input-type=module", "-e", script],
         capture_output=True,
-        text=True,
+        encoding="utf-8",
         check=True,
     )
     for lang, pairs in json.loads(out.stdout).items():
@@ -882,7 +882,7 @@ def _views(statuses: list[dict]) -> dict:
     out = subprocess.run(
         [NODE or "node", "--input-type=module", "-e", script],
         capture_output=True,
-        text=True,
+        encoding="utf-8",
         check=True,
     )
     return json.loads(re.sub(r"\\u00a0|\\u202f|\u00a0|\u202f", " ", out.stdout))
@@ -1053,7 +1053,7 @@ def test_a_start_says_what_it_does_the_textures_set_to_a_new_zoom_included() -> 
     out = subprocess.run(
         [NODE or "node", "--input-type=module", "-e", script],
         capture_output=True,
-        text=True,
+        encoding="utf-8",
         check=True,
     )
     assert json.loads(out.stdout) == [
@@ -1082,7 +1082,7 @@ def test_the_window_says_a_source_refuses_this_computer() -> None:
     out = subprocess.run(
         [NODE or "node", "--input-type=module", "-e", script],
         capture_output=True,
-        text=True,
+        encoding="utf-8",
         check=True,
     )
     said = json.loads(out.stdout)
@@ -1125,7 +1125,7 @@ def test_the_departure_box_and_a_new_simbrief_plan() -> None:
     out = subprocess.run(
         [NODE or "node", "--input-type=module", "-e", script],
         capture_output=True,
-        text=True,
+        encoding="utf-8",
         check=True,
     )
     a = {"icao": "LFMN", "plan": "LFMN-LFPG", "briefing": "101"}
@@ -1155,7 +1155,7 @@ def test_a_click_on_a_field_title_is_left_to_its_text() -> None:
     out = subprocess.run(
         [NODE or "node", "--input-type=module", "-e", script],
         capture_output=True,
-        text=True,
+        encoding="utf-8",
         check=True,
     )
     assert json.loads(out.stdout) == [True, False, False, False]
@@ -1183,7 +1183,7 @@ def test_the_settings_search_reads_what_a_question_shows() -> None:
     out = subprocess.run(
         [NODE or "node", "--input-type=module", "-e", script],
         capture_output=True,
-        text=True,
+        encoding="utf-8",
         check=True,
     )
     assert json.loads(out.stdout) == [True, False, True, True]
@@ -1201,7 +1201,7 @@ def test_the_address_names_the_screen() -> None:
     out = subprocess.run(
         [NODE or "node", "--input-type=module", "-e", script],
         capture_output=True,
-        text=True,
+        encoding="utf-8",
         check=True,
     )
     live = {"name": "live", "question": None}
@@ -1225,7 +1225,7 @@ def test_a_square_is_named_as_osxp_names_it() -> None:
     out = subprocess.run(
         [NODE or "node", "--input-type=module", "-e", script],
         capture_output=True,
-        text=True,
+        encoding="utf-8",
         check=True,
     )
     assert json.loads(out.stdout) == ["+46+006", "-33-070", "+05+150"]
@@ -1245,7 +1245,7 @@ def test_the_page_warns_of_zl17_and_zl19_on_a_small_computer() -> None:
     out = subprocess.run(
         [NODE or "node", "--input-type=module", "-e", script],
         capture_output=True,
-        text=True,
+        encoding="utf-8",
         check=True,
     )
     assert json.loads(out.stdout) == [False, True, True, False, False, False]
@@ -1261,7 +1261,7 @@ def test_the_file_manager_s_name() -> None:
     out = subprocess.run(
         [NODE or "node", "--input-type=module", "-e", script],
         capture_output=True,
-        text=True,
+        encoding="utf-8",
         check=True,
     )
     assert json.loads(out.stdout) == ["Show in Finder", "Show in File Explorer", "Open the folder"]
