@@ -37,8 +37,8 @@ ground is aerial imagery. The difference is where it sits.
   it. Live stands beside X-Plane: it builds the textures before X-Plane asks for them and puts them
   on the disk as ordinary files. There is nothing to install for it, no kernel extension, no
   driver.
-- **X-Plane never waits in flight.** It waits only on its loading screen at a flight's start, until
-  the ground it shows first is built. In flight a texture that comes late is shown a little blurry,
+- **X-Plane never waits while you fly.** It waits only while a flight or a new location chosen in
+  flight loads, until the ground it shows first is built. In flight a texture that comes late is shown a little blurry,
   and sharper at the next look.
 - **If Live stops, X-Plane flies on** over what is on the disk. Nothing is pulled from under it.
 - **Light on the computer.** Live took about a third of one processor core in flight, a quarter of
@@ -179,7 +179,7 @@ itself. Prepare brings the map to the departure, as close as a flight's start.
 disk space (with what the textures and the imagery take, and a button to delete either), what the
 app opens on, and Live's folder. They apply with Save, at the next start.
 
-![Live's Settings tab: the regions of the mesh with Install and Delete, the roads, forests and buildings, the zoom, the flight plan, the disk space and Live's folder](images/live/settings.png)
+![Live's Settings: the mesh by region with what each downloads and an Install button, the season and its sliders, roads and forests, your own tiles, the flight plan, the disk space and what the app opens first](images/live/settings.png)
 
 ## The zoom
 
@@ -438,8 +438,8 @@ To switch Live off, put `enabled = false` in `live.toml`, in OrthoStudio XP's ow
 
 ## Limits
 
-- Only where AutoOrtho has a mesh: the six regions cover the land of the planet, a few islands
-  excepted.
+- Only where a region is installed: the six regions cover all the land of the planet but
+  Antarctica.
 - On Linux, a new location chosen in flight waits too, but without Live's loading window over
   X-Plane: `LogLive.txt` says the wait.
 - Flown with X-Plane 12 on a Mac and on Windows; not yet on Linux.

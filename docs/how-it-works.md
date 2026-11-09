@@ -971,7 +971,7 @@ downloads its image pieces again.
 From 2.0, OrthoStudio XP has a second way to get ortho in X-Plane: OrthoStudio XP Live
 downloads the imagery while you fly, as AutoOrtho and XPME do, with no tile to build first, but
 with no virtual disk between X-Plane and its textures: it builds them beside X-Plane as ordinary
-files, so X-Plane waits only on its loading screen at a flight's start, never in flight. At its
+files, so X-Plane waits only while a flight or a new location loads, never while you fly. At its
 first start the app asks what you want to do, build your tiles or fly now with Live, and remembers
 the answer; both are in its one window, Build | Live at the top. Its full guide, with a measured
 comparison with XPME and AutoOrtho and why it has no zoom by flight level, prefetch or waiting
@@ -991,8 +991,8 @@ For a flight:
    pauses X-Plane there, with its own loading window, until the ground is built.
 4. Quit X-Plane, then click Stop: Live takes its scenery and its small plugin out of X-Plane.
 
-Live lays its photos on AutoOrtho's mesh, which it installs by region from its Settings tab (Europe,
-North America...). Your own tiles come first: where you built one, X-Plane shows it, and Live
+Live lays its photos on its own mesh of the world, which it installs by region from its Settings
+tab (Europe, North America...). Your own tiles come first: where you built one, X-Plane shows it, and Live
 downloads nothing there.
 
 What it keeps is in its own folder, `~/.orthostudio/live` unless its settings name another, apart
@@ -1002,11 +1002,11 @@ from the data folder:
 ~/.orthostudio/live/
   pack/            the scenery X-Plane reads while Live runs (z_osxp_live in Custom Scenery)
   chunks.sqlite    the imagery downloaded, kept so as not to download it twice
-  regions/         AutoOrtho's regions Live installed (the mesh), 6 to 33 GB each
+  regions/         the mesh's regions Live installed, 4 to 42 GB each
   overlays/        the roads, forests and buildings of Live's squares
 ```
 
-The textures and the imagery share one disk space, 40 GB by default, set in Live's Settings tab:
+The textures and the imagery share one disk space, 20 GB by default, set in Live's Settings tab:
 past it, Live makes the textures seen longest ago coarser and drops the imagery used longest ago.
 The same tab deletes the textures (built again when flown over) or the imagery (downloaded again
 when needed), and each region has its own Delete. `enabled = false` in `~/.orthostudio/live.toml`

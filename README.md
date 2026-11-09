@@ -16,7 +16,7 @@ and checked automatically at every release.
 | Build your tiles: **OrthoStudio XP** | Fly now: **OrthoStudio XP Live** |
 |---|---|
 | ![The Plan page: the map of Europe, the tiles already in X-Plane outlined in green over the Alps, three tiles chosen in blue near Paris with a sharper zone drawn over them in orange, and beside it the first of the four steps](docs/images/plan.png) | ![Live's window in flight near Toulouse: the map with the aircraft and the textures built around it, coloured by how sharp they are; beside it the state, the flight and the textures](docs/images/live/flight.png) |
-| Choose the regions you fly over and build them once, at the best quality: nothing to download in flight, your tiles stay on your disk. It takes computing time and disk space. | Choose a flight anywhere: the imagery is downloaded while you fly, ahead of the aircraft, with no tiles to build. X-Plane never waits in flight. It needs the internet, and AutoOrtho's mesh of the regions you fly over, installed from the app. |
+| Choose the regions you fly over and build them once, at the best quality: nothing to download in flight, your tiles stay on your disk. It takes computing time and disk space. | Choose a flight anywhere: the imagery is downloaded while you fly, ahead of the aircraft, with no tiles to build. X-Plane never waits in flight. It needs the internet, and the mesh of the regions you fly over, installed from the app. |
 | [The guide to building tiles](docs/build.md) | [The guide to flying with Live](docs/live.md) |
 
 Both at once: build your tiles where you want them (your airport, your region), and Live takes
