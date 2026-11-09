@@ -102,7 +102,7 @@ jobs:
           if [ -z "${URL:-}" ]; then echo "no library configured; the build carries none"; exit 0; fi
           python -c "import json,os,pathlib; pathlib.Path('src/orthostudio/library.json').write_text(json.dumps({'url': os.environ['URL'], 'token': os.environ['TOKEN']}))"
       # The same for Live's regions: the address of the Worker in front of its bucket and Live's
-      # token (orthostudio.live.osxpregions, docs/specs/live/mesh.md). Without them Live's window
+      # token (orthostudio.live.osxpregions). Without them Live's window
       # says it carries no address for its regions, and installs none.
       - name: Carry Live's downloads
         shell: bash

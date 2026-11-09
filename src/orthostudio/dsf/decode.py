@@ -76,8 +76,7 @@ def _strings(payload: bytes) -> list[str]:
 
 def _read_pool(payload: bytes) -> np.ndarray:
     """A pool's table, its planes raw, differenced, run-length encoded or both
-    (:func:`orthostudio.dsf.strips.read_pool`: OrthoStudio XP's own are raw, Live's mesh's are
-    differenced and run-length encoded)."""
+    (:func:`orthostudio.dsf.strips.read_pool`)."""
     from .strips import read_pool
 
     return read_pool(payload)[0]
@@ -125,7 +124,7 @@ def _walk_commands(data: bytes, cmds: bytes, decoded: DecodedDsf) -> None:
             first, last = struct.unpack_from("<HH", cmds, pos)
             pos += 4
             tri([(pool, i) for i in range(first, last)])
-        elif cmd in (26, 27, 28, 29, 30, 31):  # strips and fans (Live's mesh: strips)
+        elif cmd in (26, 27, 28, 29, 30, 31):  # strips and fans
             from .strips import FAN, STRIP, _triangles
 
             kind = STRIP if cmd in (26, 27, 28) else FAN
