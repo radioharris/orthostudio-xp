@@ -27,6 +27,7 @@ __all__ = [
     "SCENERY_OF_ITS_OWN",
     "XPLANE_DIR_ENV",
     "XPLANE_EXECUTABLES",
+    "chosen_xplane",
     "custom_scenery_dir",
     "default_candidates",
     "default_install_file",
@@ -168,6 +169,20 @@ def detect_xplane(
         if is_xplane_dir(candidate):
             return candidate
     return None
+
+
+def chosen_xplane(settings_dir: str | None) -> Path | None:
+    """The X-Plane 12 folder Build and Live work with: the one named in the Settings, else the
+    one detected.
+
+    ``None`` when the folder named is not an X-Plane folder, a disk unplugged for example: never
+    another X-Plane of the computer in its place. Build alone read the Settings until 2.0.0: a user
+    who flies from one disk and keeps a second X-Plane on another saw Live take the second.
+    """
+    if settings_dir:
+        named = Path(settings_dir).expanduser()
+        return named if is_xplane_dir(named) else None
+    return detect_xplane()
 
 
 def global_scenery_dir(xplane: Path) -> Path:

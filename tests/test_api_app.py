@@ -203,11 +203,10 @@ async def test_validation_errors_carry_codes(app, xplane: Path) -> None:  # type
 
 
 def _no_xplane_on_this_machine(monkeypatch: pytest.MonkeyPatch) -> None:
-    from orthostudio.api import specs
     from orthostudio.pipeline import build
 
     monkeypatch.delenv("OSXP_XPLANE_DIR", raising=False)
-    monkeypatch.setattr(specs, "detect_xplane", lambda: None)
+    monkeypatch.setattr("orthostudio.install.xplane.detect_xplane", lambda: None)
     monkeypatch.setattr(build, "detect_xplane", lambda: None)
 
 
@@ -828,12 +827,12 @@ async def test_library_delete_refuses_what_osxp_did_not_build_and_waits_for_buil
 async def test_library_delete_without_xplane_and_of_a_folder_already_gone(
     app, home: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:  # type: ignore[no-untyped-def]
-    from orthostudio.api import specs
     from orthostudio.install import Library, default_library_path, packs
     from orthostudio.model import TileRef
 
     monkeypatch.delenv("OSXP_XPLANE_DIR", raising=False)
-    monkeypatch.setattr(specs, "detect_xplane", lambda: None)  # no X-Plane on this machine
+    # no X-Plane on this machine
+    monkeypatch.setattr("orthostudio.install.xplane.detect_xplane", lambda: None)
     monkeypatch.setattr(packs, "xplane_running", lambda: False)
     pack = _osxp_pack(home, "+43+005")
     gone = home / "tiles" / "zOrthoStudio_+44+005"

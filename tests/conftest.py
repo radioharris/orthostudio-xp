@@ -129,6 +129,23 @@ def link_kind(request: pytest.FixtureRequest) -> str:
 
 
 @pytest.fixture(autouse=True)
+def _no_xplane_folder_of_this_machine(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The X-Plane folder a user named (``essential.xplane_dir``) is read from
+    ``$OSXP_HOME/config.toml``: a test that does not set ``$OSXP_HOME`` never reads that of the
+    machine it runs on."""
+    from orthostudio import home
+    from orthostudio.config.models import Settings
+    from orthostudio.live import scenery
+
+    real = scenery.load_settings
+
+    def settings() -> Settings:
+        return real() if os.environ.get(home.OSXP_HOME_ENV) else Settings()
+
+    monkeypatch.setattr(scenery, "load_settings", settings)
+
+
+@pytest.fixture(autouse=True)
 def _no_data_folder_of_this_machine(monkeypatch: pytest.MonkeyPatch) -> None:
     """The data folder a user chose (``essential.data_dir``, an external disk) is read from
     ``$OSXP_HOME/config.toml``: a test that does not set ``$OSXP_HOME`` never writes there, and

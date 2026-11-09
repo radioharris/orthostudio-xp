@@ -22,6 +22,7 @@ from orthostudio.install.scenery_packs import (
     pack_kind,
 )
 from orthostudio.install.xplane import (
+    chosen_xplane,
     custom_scenery_dir,
     detect_xplane,
     global_scenery_dir,
@@ -39,6 +40,7 @@ __all__ = [
     "SceneryPackEntry",
     "SceneryPacks",
     "TileRef",
+    "chosen_xplane",
     "custom_scenery_dir",
     "default_library_path",
     "detect_xplane",

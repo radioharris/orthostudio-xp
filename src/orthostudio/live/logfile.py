@@ -43,11 +43,11 @@ def log_path() -> Path:
     root = live_root()
     if os.environ.get("OSXP_HOME"):
         return root / NAME
-    from orthostudio.install.xplane import detect_xplane
+    from orthostudio.live.scenery import find_xplane
 
     with contextlib.suppress(Exception):  # no X-Plane found, or settings unreadable
-        xplane = detect_xplane()
-        if xplane is not None and os.access(xplane, os.W_OK):
+        xplane = find_xplane()
+        if os.access(xplane, os.W_OK):
             return xplane / NAME
     return root / NAME
 

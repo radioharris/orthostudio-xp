@@ -47,6 +47,10 @@ first (the Settings override). A folder is valid when it holds both `Resources/`
 them too, and lists them when none is an X-Plane folder (it had its own list, without the
 installer's file, and could miss on Windows the X-Plane every command found).
 
+`chosen_xplane(settings_dir)` is the folder Build and Live work with: `essential.xplane_dir` when
+it is set, else `detect_xplane()`. A folder named that is not an X-Plane folder gives `None`, never
+another X-Plane of the computer in its place.
+
 `global_scenery_dir(xp)` is `<xp>/Global Scenery/X-Plane 12 Global Scenery` and
 `custom_scenery_dir(xp)` is `<xp>/Custom Scenery`; both only compute paths.
 

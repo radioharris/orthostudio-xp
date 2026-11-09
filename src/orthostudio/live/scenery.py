@@ -20,9 +20,10 @@ import threading
 from collections.abc import Collection
 from pathlib import Path
 
+from orthostudio.config.store import load_settings
 from orthostudio.errors import OsxpError
 from orthostudio.fsutil import NO_CONSOLE_WINDOW
-from orthostudio.install import detect_xplane, is_xplane_dir
+from orthostudio.install import chosen_xplane, is_xplane_dir
 from orthostudio.install.scenery_packs import PackKind, SceneryPacks
 from orthostudio.install.xplane import XPLANE_EXECUTABLES, custom_scenery_dir
 from orthostudio.install.xplane import xplane_running as _xplane_running
@@ -30,15 +31,16 @@ from orthostudio.live.filesystem import folder_link, is_folder_link, remove_fold
 
 
 def find_xplane(explicit: Path | None = None) -> Path:
-    """The X-Plane 12 folder: ``explicit``, else the one OrthoStudio XP detects."""
+    """The X-Plane 12 folder: ``explicit``, else the one Build uses (``chosen_xplane``)."""
     if explicit is not None:
         path = Path(explicit).expanduser()
         if not is_xplane_dir(path) and not (path / "Custom Scenery").is_dir():
             raise OsxpError("XP_DIR_NOT_FOUND", context={"path": str(path)})
         return path
-    found = detect_xplane()
+    named = load_settings().essential.xplane_dir
+    found = chosen_xplane(named)
     if found is None:
-        raise OsxpError("XP_DIR_NOT_FOUND", context={"path": "(detected)"})
+        raise OsxpError("XP_DIR_NOT_FOUND", context={"path": named or "(detected)"})
     return found
 
 

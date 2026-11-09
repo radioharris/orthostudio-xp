@@ -22,7 +22,7 @@ from orthostudio.dsf.xp12 import global_scenery_dsf
 from orthostudio.errors import OsxpError
 from orthostudio.estimate import Estimate
 from orthostudio.imagery.providers import Provider, load_registry
-from orthostudio.install import custom_scenery_dir, detect_xplane, is_xplane_dir
+from orthostudio.install import chosen_xplane, custom_scenery_dir, is_xplane_dir
 from orthostudio.install.library import holds_ortho4xp_tiles, own_pack_dirs
 from orthostudio.model import TileRef
 from orthostudio.pipeline.build import (
@@ -144,10 +144,7 @@ def resolve_xplane(explicit: str | None, settings_dir: str | None) -> Path | Non
     """The request's directory, else the settings', else detection; validated when given."""
     if explicit:
         return check_xplane_dir(explicit)
-    if settings_dir:
-        p = Path(settings_dir).expanduser()
-        return p if is_xplane_dir(p) else None
-    return detect_xplane()
+    return chosen_xplane(settings_dir)
 
 
 def patches_dir_of(settings: Any, typed: str | None = None) -> Path | None:

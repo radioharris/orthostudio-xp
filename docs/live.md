@@ -427,6 +427,9 @@ To switch Live off, put `enabled = false` in `live.toml`, in OrthoStudio XP's ow
   `Log.txt`: send both when something went wrong. It is written again each time Live's window
   opens, so send it before opening Live again; the ten before are kept in Live's `log` folder.
   The window's Log has a button that shows it in the Finder (File Explorer on Windows).
+- Live works with the X-Plane that Build uses: the one named under *Where is X-Plane 12 installed?*
+  in OrthoStudio XP's Settings, or the first one detected when none is named. If the window shows
+  another X-Plane than the one you fly, name yours there.
 - If Live stops, X-Plane goes on flying over what is on the disk. If the streamer stops on an
   error, the window says so with the error, and the plugin lets X-Plane go on.
 - If a texture comes late, X-Plane shows it a little blurry and sharpens it at its next ring.

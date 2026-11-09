@@ -488,7 +488,7 @@ and found nothing in the Custom Scenery of the one they fly. When it finds none,
 a virtual machine whose X-Plane is installed on the host, step 3 of the Plan says so before any
 estimate, and its button opens the Settings question *Where is X-Plane 12 installed?*, where
 *Choose the X-Plane folder…* opens the Finder's (or the File Explorer's) folder window: nothing is estimated
-or built until the folder is known.
+or built until the folder is known. Live works with the same folder.
 
 **Starting and stopping.** OrthoStudio XP is a program that runs on your computer; nothing leaves
 your computer except the downloads of imagery and map data. Open the OrthoStudio XP app to start it:
