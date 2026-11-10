@@ -442,6 +442,67 @@ def with_decal(ter: bytes, decal: str) -> bytes:
     return b"\n".join(out)
 
 
+def night_name(name: str) -> str:
+    """The night texture of a texture (``23904_34080_BI16.dds``: ``23904_34080_BI16_LIT.dds``)."""
+    return name[: -len(".dds")] + "_LIT.dds"
+
+
+def with_night(ter: bytes, lit: str | None) -> bytes:
+    """A land ``.ter`` file naming its night texture ``lit`` (``LIT_TEX_NOWRAP``) right after its
+    photo, or naming none when ``lit`` is None. X-Plane adds it to the photo at night."""
+    from .region import NIGHT_FOLDER
+
+    lines = [line for line in ter.split(b"\n") if not line.startswith(b"LIT_TEX")]
+    if lit is None:
+        return b"\n".join(lines)
+    out = []
+    for line in lines:
+        out.append(line)
+        if line.startswith(b"BASE_TEX_NOWRAP "):
+            out.append(f"LIT_TEX_NOWRAP ../{NIGHT_FOLDER}/{lit}".encode("ascii"))
+    return b"\n".join(out)
+
+
+class NightPool(NeutralPool):
+    """The black night texture the names of night textures not built lead to, and its copies."""
+
+    def path(self, top: int = 0, copy: int = 0) -> Path:
+        from .region import NIGHT_NEUTRAL
+
+        base = self.pack_dir / NIGHT_NEUTRAL
+        return base if copy == 0 else base.with_name(f"{base.stem}-{copy + 1}{base.suffix}")
+
+    def _ensure(self, top: int, copy: int) -> Path:
+        from .region import ensure_night_neutral
+
+        path = self.path(top, copy)
+        if not path.exists():
+            base = ensure_night_neutral(self.pack_dir)
+            if copy:
+                tmp = path.with_name(f".live-tmp-{os.getpid()}-{path.name}")
+                shutil.copyfile(base, tmp)
+                replace(tmp, path)
+        return path
+
+
+def _night_inodes(pack: Path) -> set[tuple[int, int]]:
+    """(device, inode) of the black night texture and its copies."""
+    out = set()
+    for path in (pack / "_live").glob("night*.dds"):
+        with contextlib.suppress(OSError):
+            st = os.stat(path)
+            out.add((st.st_dev, st.st_ino))
+    return out
+
+
+def _ter_text(text: bytes, decal: str | None, lit: str | None, night: bool) -> bytes:
+    """A ``.ter`` file as the pack has it: the decal Live's settings choose, and its night texture
+    when the night lights are on (``lit``: the land's; None for the water's files)."""
+    if decal is not None:
+        text = with_decal(text, decal)
+    return with_night(text, lit) if night else text
+
+
 def _copy_small(src: str, dst: str) -> None:
     """A small file (a ``.ter``, a water mask) copied, never over another one. A copy is the
     fastest there is on APFS and writes the least: 0.11 ms and 4.8 KB for a ``.ter``, against 0.17
@@ -491,6 +552,7 @@ def _neutral_tops(pack: Path) -> dict[tuple[int, int], int]:
 
 
 _POOLS: dict[str, NeutralPool] = {}  # a worker's neutral textures, by pack
+_NIGHT_POOLS: dict[str, NeutralPool] = {}  # its black night textures
 
 
 def _ignore_ctrl_c() -> None:
@@ -515,8 +577,11 @@ def run_ops(pack_dir: str, ops: Sequence[tuple]) -> dict:
     ``top`` gives if it has another (a new zoom: orthostudio.live.region.set_zooms), its levels
     kept, nothing downloaded; ("check", top, destination), a texture being built: said ``stale``
     if it still has another size; ("drop", path), a file removed; ("drop_name", path), a texture's
-    name removed only while it leads to the neutral texture (one built since stays). Every error
-    is reported, none stops the others."""
+    name removed only while it leads to the neutral texture (one built since stays); ("night",
+    destination), a night texture's name made black if not there; ("drop_night", path), one
+    removed while still black. The ``.ter`` operations may carry two more: the land's night
+    texture and whether the night lights are on (:func:`with_night`). Every error is reported,
+    none stops the others."""
     pack = Path(pack_dir)
     pool = _POOLS.get(pack_dir) or _POOLS.setdefault(pack_dir, NeutralPool(pack))
     placed = dropped = 0
@@ -524,6 +589,7 @@ def run_ops(pack_dir: str, ops: Sequence[tuple]) -> dict:
     missing: list[str] = []
     errors: list[tuple[str, str]] = []
     neutral: set[tuple[int, int]] | None = None
+    night_black: set[tuple[int, int]] | None = None
     tops: dict[tuple[int, int], int] | None = None
     fitted: dict[str, int] = {}
     stale: list[str] = []
@@ -537,13 +603,29 @@ def run_ops(pack_dir: str, ops: Sequence[tuple]) -> dict:
             elif kind == "ter":
                 if not os.path.lexists(op[2]):
                     with open(op[1], "rb") as f:
-                        _write_new(op[2], with_decal(f.read(), op[3]))
+                        text = f.read()
+                    lit, night = (op[4], op[5]) if len(op) > 5 else (None, False)
+                    _write_new(op[2], _ter_text(text, op[3], lit, night))
                     placed += 1
             elif kind == "make":  # a region naming its terrain files: made from the name
                 if not os.path.lexists(op[2]):
                     ter = made_ter(os.path.basename(op[2]))
-                    _write_new(op[2], ter if op[3] is None else with_decal(ter, op[3]))
+                    lit, night = (op[4], op[5]) if len(op) > 5 else (None, False)
+                    _write_new(op[2], _ter_text(ter, op[3], lit, night))
                     placed += 1
+            elif kind == "night":  # a night texture's name, black until it is built
+                if not os.path.lexists(op[1]):
+                    night_pool = _NIGHT_POOLS.get(pack_dir) or _NIGHT_POOLS.setdefault(
+                        pack_dir, NightPool(pack)
+                    )
+                    night_pool.link(0, Path(op[1]))
+            elif kind == "drop_night":
+                if night_black is None:
+                    night_black = _night_inodes(pack)
+                st = os.stat(op[1])
+                if (st.st_dev, st.st_ino) in night_black:
+                    os.unlink(op[1])
+                    dropped += 1
             elif kind == "name":
                 if not os.path.lexists(op[2]) and pool.link(op[1], Path(op[2])):
                     named.append(os.path.basename(op[2]))
@@ -646,9 +728,11 @@ class Names:
         level_of: Callable[[str], int | None] = lambda name: None,
         refit: Callable[[str, int], None] = lambda name, level: None,
         decal: str | None = None,
+        night: bool = False,
     ):
         self.pack_dir = pack_dir
         self.decal = decal  # the land's decal of its .ter files (:func:`with_decal`); None: theirs
+        self.night = night  # the land's .ter files name a night texture (:func:`with_night`)
         self.by_tile = textures  # the streamer's index: textures by the square of their centre
         self.sources = list(sources)
         self.others = others or {}
@@ -764,16 +848,27 @@ class Names:
         if result["stale"]:
             raise SquareWaitError(result["stale"])
         ops: list[tuple] = []
+        if self.night:  # the night textures' names first: never a .ter naming one not there
+            from .region import NIGHT_FOLDER
+
+            (self.pack_dir / NIGHT_FOLDER).mkdir(exist_ok=True)
+            ops += [
+                ("night", str(self.pack_dir / NIGHT_FOLDER / night_name(entry[0])))
+                for entry in entries
+                if entry[4] & 1
+            ]
         for entry in entries:
             source = self.sources[entry[5]] if self.sources else None
             if source is not None:
                 named = terrain_folder(source).name == TERRAIN_LISTS
+                land = entry[0][: -len(".dds")] + ".ter"
                 for folder, file in self._files(entry):
                     src, dst = str(source / folder / file), str(self.pack_dir / folder / file)
+                    lit = night_name(entry[0]) if file == land else None
                     if named and file.endswith(".ter"):
-                        ops.append(("make", src, dst, self.decal))
-                    elif self.decal is not None and file.endswith(".ter"):
-                        ops.append(("ter", src, dst, self.decal))
+                        ops.append(("make", src, dst, self.decal, lit, self.night))
+                    elif (self.decal is not None or self.night) and file.endswith(".ter"):
+                        ops.append(("ter", src, dst, self.decal, lit, self.night))
                     else:
                         ops.append(("file", src, dst))
         placed = self._run_ops(ops)
@@ -803,6 +898,11 @@ class Names:
                 for n in names
                 if not self.busy(n)
             ]
+        if self.night:  # those still black; one built stays, as a texture built does
+            from .region import NIGHT_FOLDER
+
+            night = self.pack_dir / NIGHT_FOLDER
+            ops += [("drop_night", str(night / night_name(n))) for n in names]
         result = self._run_ops(ops)
         if result["errors"]:
             raise SquareError(result["errors"])

@@ -83,18 +83,21 @@ class OsxpRegion:
     release: str  # when the manifest was made
     mesh: tuple[Zip, ...]
     overlays: tuple[Zip, ...] = ()
+    # the night lights' density grids of its squares (orthostudio.live.nightwork), unpacked into
+    # the region's folder as its mesh zips are: ``night/<square>.png``
+    night: tuple[Zip, ...] = ()
 
     @property
     def size(self) -> int:
-        return sum(z.size for z in (*self.mesh, *self.overlays))
+        return sum(z.size for z in (*self.mesh, *self.night, *self.overlays))
 
     @property
     def mesh_size(self) -> int:
-        return sum(z.size for z in self.mesh)
+        return sum(z.size for z in (*self.mesh, *self.night))
 
     @property
     def unpacked(self) -> int:
-        return sum(z.unpacked for z in self.mesh)
+        return sum(z.unpacked for z in (*self.mesh, *self.night))
 
 
 @functools.cache
@@ -128,6 +131,7 @@ def parse_manifest(doc: dict) -> dict[str, OsxpRegion]:
             made,
             tuple(Zip(**z) for z in kinds.get("mesh", ())),
             tuple(Zip(**z) for z in kinds.get("overlays", ())),
+            tuple(Zip(**z) for z in kinds.get("night", ())),
         )
     return out
 
@@ -210,11 +214,12 @@ def _write(path: Path, doc: dict) -> None:
 
 
 def to_fetch(root: Path, region: OsxpRegion, overlays: bool) -> tuple[list[Zip], list[Zip]]:
-    """The mesh zips and overlay zips not installed yet, or changed in the bucket since."""
+    """The mesh zips and overlay zips not installed yet, or changed in the bucket since; the night
+    grids' zips with the mesh's, unpacked into the region's folder as they are."""
     marker = _read(mesh_dir(root, region.id) / MARKER)
     step = _read(mesh_dir(root, region.id) / STEP)
     have = {**(marker.get("zips") or {}), **(step.get("zips") or {})}
-    mesh = [z for z in region.mesh if have.get(z.path) != z.sha256]
+    mesh = [z for z in (*region.mesh, *region.night) if have.get(z.path) != z.sha256]
     record = _read(overlay_pack(root) / OVERLAY_RECORD)
     ovl = [z for z in region.overlays if record.get(z.path) != z.sha256] if overlays else []
     return mesh, ovl
@@ -521,7 +526,7 @@ class Installer:
         region = self.region
         marker = _read(folder / MARKER)
         zips = {**(marker.get("zips") or {}), **step["zips"]}
-        sizes = {z.path: z.unpacked for z in region.mesh}
+        sizes = {z.path: z.unpacked for z in (*region.mesh, *region.night)}
         _write(
             folder / MARKER,
             {

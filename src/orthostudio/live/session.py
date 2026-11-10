@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import os
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
@@ -95,6 +96,7 @@ class Options:
     looks: dict | None = None  # each season's colours (orthostudio.live.look.Look); None: Live's
     decal: str | None = None  # the land's decal on Live's squares; "" none; None: as the region has
     own_tiles: str = "first"  # the pilot's own tiles first, or "under" Live's pack while it runs
+    night: bool = False  # the towns' lights at night (orthostudio.live.night); the app: on
 
 
 class StartClock:
@@ -263,6 +265,7 @@ def prepare(options: Options, log: Log) -> Prepared:
         remove_aside,
         remove_temps,
         set_decal,
+        set_night,
         set_zooms,
         setup_region,
     )
@@ -333,6 +336,7 @@ def prepare(options: Options, log: Log) -> Prepared:
     with machine.background_io():
         setup_region(sources, pack_dir, log=log, zooms=zooms, xplane_running=xplane_running)
         set_decal(pack_dir, options.decal, log=log, xplane_running=xplane_running)
+        set_night(pack_dir, options.night, log=log, xplane_running=xplane_running)
         left = remove_temps(pack_dir)  # before anything writes there
         if left:
             log(f"{left} unfinished files a stopped Live left among the textures removed")
@@ -585,6 +589,7 @@ def follow(
                         p.name.removeprefix("z_osxp_") for p in osxp_regions(live_root())
                     },
                     region_lists=aoregions.lists_dir(live_root()),
+                    night=_night_work(prepared, log) if options.night else None,
                 )
                 clock.done("textures")
                 if streamer.region_note:
@@ -636,6 +641,29 @@ def follow(
     finally:
         if prepared.gate is not None:
             prepared.gate.close()
+
+
+GRIDS_ENV = "OSXP_LIVE_NIGHT_GRIDS"  # a folder of density grids looked in first: the test flights'
+
+
+def _night_work(prepared: Prepared, log: Log):
+    """The night textures of the textures built (orthostudio.live.nightwork): X-Plane's roads from
+    its Global Scenery, else from the overlays of Live's regions, NASA's grids from each
+    region's night folder, else Live's."""
+    from orthostudio.live import aoregions
+    from orthostudio.live.nightwork import NightWork
+    from orthostudio.live.osxpregions import OVERLAY_PACK
+
+    return NightWork(
+        prepared.pack,
+        prepared.xplane / "Global Scenery" / "X-Plane 12 Global Scenery",
+        aoregions.regions_dir(live_root()) / OVERLAY_PACK,
+        ([Path(os.environ[GRIDS_ENV])] if os.environ.get(GRIDS_ENV) else [])
+        + [Path(source) / "night" for source in prepared.sources]
+        + [live_root() / "night"],
+        log=log,
+        prefs=_freeflight(prepared.xplane),
+    )
 
 
 def _freeflight(xplane: Path) -> Path:

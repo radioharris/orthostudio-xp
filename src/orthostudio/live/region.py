@@ -114,6 +114,26 @@ def ensure_neutral(pack_dir: Path, top: int) -> Path:
     return path if path.exists() else write_neutral(pack_dir, top)
 
 
+NIGHT_FOLDER = "textures_night"
+"""Where the pack's night textures are (orthostudio.live.night), one beside each land texture."""
+
+NIGHT_NEUTRAL = Path("_live") / "night.dds"
+"""What a night texture not built leads to: black, which X-Plane adds to the photo as nothing."""
+
+NIGHT_TOP = 2
+"""A night texture's sharpest level, counted as a texture's: 1024 px."""
+
+
+def ensure_night_neutral(pack_dir: Path) -> Path:
+    """The black night texture of the pack, written once."""
+    path = pack_dir / NIGHT_NEUTRAL
+    if not path.exists():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        black = neutral_levels(NIGHT_TOP, rgb=(0, 0, 0), file_top=NIGHT_TOP)
+        write_sparse(path, NIGHT_TOP, black, file_top=NIGHT_TOP)
+    return path
+
+
 def region_layout(pack_dir: Path) -> tuple[Zooms, int]:
     """The zoom the pack's textures are laid out for, and how: :data:`LAYOUT_FIXED`, or one of the
     layouts before it (the constants' comment)."""
@@ -593,6 +613,44 @@ def set_decal(
         )
     record.parent.mkdir(parents=True, exist_ok=True)
     record.write_text(json.dumps({"decal": decal}), encoding="utf-8")
+
+
+NIGHT_RECORD = "_live/night.json"
+"""Whether the pack's ``.ter`` files name night textures (:func:`set_night`)."""
+
+
+def set_night(
+    pack_dir: Path,
+    night: bool,
+    log: Callable[[str], None] = print,
+    xplane_running: Callable[[], bool] = lambda: False,
+) -> None:
+    """The ``.ter`` files of the pack made again when Live's settings turn its night lights on or
+    off and the files say otherwise (orthostudio.live.names.with_night), as :func:`set_decal`
+    does: not while X-Plane runs, at the next start then. The night textures built stay."""
+    record = pack_dir / NIGHT_RECORD
+    try:
+        was = bool(json.loads(record.read_text(encoding="utf-8")).get("night"))
+    except (OSError, ValueError, AttributeError):
+        was = False  # a pack of before: no night lines
+    if was == night:
+        return
+    terrain = pack_dir / "terrain"
+    if terrain.is_dir() and next(terrain.glob("*.ter"), None) is not None:
+        if xplane_running():
+            log(
+                f"night lights {'on' if night else 'off'}: the terrain files made already stay as "
+                "they are until Live's next start with X-Plane not running"
+            )
+            return
+        removed = _remove_tree(terrain, log, "terrain files")
+        terrain.mkdir(exist_ok=True)
+        log(
+            f"night lights {'on' if night else 'off'}: {removed} terrain files made again as "
+            "X-Plane comes"
+        )
+    record.parent.mkdir(parents=True, exist_ok=True)
+    record.write_text(json.dumps({"night": night}), encoding="utf-8")
 
 
 def setup_region(

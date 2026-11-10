@@ -129,6 +129,7 @@ def options_for(settings: LiveSettings) -> session.Options:
         looks=settings.seasons.looks(),
         decal=settings.decal,
         own_tiles=settings.own_tiles,
+        night=settings.night,
     )
 
 

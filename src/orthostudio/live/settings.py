@@ -134,6 +134,11 @@ class LiveSettings(BaseModel):
     X-Plane shows them and Live fills the rest, a step in the relief possible at their edges (the
     app's tiles stand on X-Plane's relief, Live's mesh on viewfinderpanoramas'); "under", Live
     everywhere: its pack listed above them while it runs, they are back once it stops."""
+    night: bool = True
+    """The towns' lights at night on Live's squares (:mod:`orthostudio.live.night`): a night
+    texture beside each land texture, made only while it is night in X-Plane; off: none, the
+    land's ``.ter`` files naming none. On by default: by day it costs nothing (the user,
+    2026-11-10)."""
     decal: str = LIVE_DECAL
     """X-Plane 12's decal on the land of Live's squares, one of OrthoStudio XP's
     (:data:`orthostudio.decals.DECALS`): the fine ground detail drawn over the photo near the

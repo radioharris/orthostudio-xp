@@ -1118,6 +1118,9 @@ function fillSettings(settings) {
   for (const input of document.querySelectorAll('input[name="own_tiles"]')) {
     input.checked = input.value === (settings.own_tiles || "first");
   }
+  for (const input of document.querySelectorAll('input[name="night"]')) {
+    input.checked = input.value === (settings.night === false ? "off" : "on");
+  }
   drawSimbrief();
   drawMemory();
   drawZooms();
@@ -1135,6 +1138,8 @@ function formSettings() {
     app_home: document.querySelector('input[name="app_home"]:checked')?.value || saved?.app_home || "ask",
     overlays: document.querySelector('input[name="overlays"]:checked')?.value || saved?.overlays || "auto",
     own_tiles: document.querySelector('input[name="own_tiles"]:checked')?.value || saved?.own_tiles || "first",
+    night: (document.querySelector('input[name="night"]:checked')?.value
+      || (saved?.night === false ? "off" : "on")) === "on",
     decal: $("set-decal").options.length ? $("set-decal").value : (saved?.decal ?? LIVE_DECAL),
     season: seasonChosen(),
     seasons: seasonLooks || saved?.seasons,

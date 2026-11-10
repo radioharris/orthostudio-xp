@@ -507,6 +507,113 @@ Global Forests carries `sim/exclude_for` over the whole square: listed above Liv
 hides their forests and keeps their roads and buildings, with nothing to do. The setting
 `overlays` "off" leaves them all out. The pack comes out of X-Plane with Live's.
 
+## Night lights
+
+X-Plane 12's own ground glows at night where it is a town: its urban terrain files
+(`terrain12/urban_*.ter`) name a night texture (`TEXTURE_LIT ../textures12/urban_FAR/*_LIT.dds`,
+`LUMINANCE 600`, `LIT_FADE_PARAMS`), a generic block pattern laid every 2 to 3 km. A photo texture
+replaces that ground, and without a night texture of its own a town on Live's ground is black but
+for X-Plane's roads and buildings. AutoOrtho switches its ortho off at night instead (its Night
+Exclusion, by the sun's height); XPME sells a night texture.
+
+**The terrain files.** With `night` on (`LiveSettings.night`, on by default), each land `.ter` of
+a square names its night texture right after its photo, `LIT_TEX_NOWRAP
+../textures_night/<texture>_LIT.dds` (`names.with_night`, applied with the decal by `run_ops` to
+the `ter` and `make` operations); the water's and the sea's files name none. The night textures'
+names are made before the `.ter` files that name them (`("night", path)`), each a hard link to the
+pack's black night texture (`_live/night.dds`, 1024 px BC1, `region.ensure_night_neutral`) and its
+copies past a disk's names per file (`names.NightPool`), so a night texture not made takes no
+space and adds nothing. A square taken away drops the names still black (`("drop_night", path)`);
+one made stays, as a texture built does. A change of the setting makes the `.ter` files again at
+the next start with X-Plane not running (`region.set_night`, recorded in `_live/night.json`, as
+`set_decal`).
+
+**What a night texture is** (`orthostudio.live.night`), as a prototype on the user's tile of Nice
+settled it (2026-11-10): street lamps along X-Plane's own roads, one every 20 to 45 m by the road's
+class (`ROADS`), a third white and the rest sodium orange, at random levels, one in eight out,
+dimmer and farther apart along a `rural_edge` road; a soft glow round the lamps and the larger
+streets; windows in a band 50 m wide along the town's streets; all of it times NASA's Black
+Marble 2016 brightness of the place (0.2 where it sees nothing to 1.5 where it is saturated); then
+×0.75 and a twentieth of the day photo under the lights (XPME's "night ground visibility", 5 % by
+default). It is drawn at the same metres a pixel at every zoom, a ZL18 texture's at a quarter of
+its side and enlarged: drawn at its own pixels, the airport's sharper zone came out twice darker
+than the town round it. Its smaller levels are each the power mean (p = 3) of four pixels of the
+level above, not their plain mean: the town stays visible from far (the coast of Nice at 80 km
+20 % brighter than with the plain mean; at 120 km barely visible either way).
+
+**The roads** are X-Plane's own (`orthostudio.dsf.networks`): the network chains of the square's
+Global Scenery DSF, their subtype the `.net` file's `ROAD_TYPE` less its last two digits (10 to
+29 primary, 30 to 49 secondary, 50 to 79 local, 100 to 119 highway, 120 to 129 ramps, a unit of 9
+a rural edge; 151 to 153 railways and 220 power lines left out). On Nice's square they are 41,920
+chains, 7,457 km, read in 0.4 s, against 9,261 km of OpenStreetMap roads of which 2,610 km of
+service ways; flown side by side, night textures from either could not be told apart. They are on
+every user's disk and are the same with simHeaven X-World or without; where the Global Scenery's
+DSF is missing (a part of the world not installed), the overlays of Live's regions, cut from it.
+
+**The density grids**: one per square, `<region>/night/<square>.png`, grey, 288 × 288 cells of 15
+arc-seconds over the square and 0.1° round it, north-west corner at (lon − 0.1, lat + 1.1), cut
+from Black Marble 2016's eight grey tiles by the world mesh's tools and installed with the region
+(the user's choice, 2026-11-10); about 16 KB a square round Nice. Without a grid a texture's lights
+are ×0.85, what a town's grid gives on average. `OSXP_LIVE_NIGHT_GRIDS` names a folder looked in
+first, for the test flights.
+
+**When** (`orthostudio.live.nightwork`). Live receives the sun's height,
+`sim/graphics/scenery/sun_pitch_degrees`, with its other datarefs. Below 20° (`NIGHT_SUN_DEG`,
+about an hour and a half before sunset) each texture built gets its night texture right after it
+(`NightWork.built`), and the textures built before the sun went below get theirs at once: X-Plane
+never reads again a level it took, and in the first flight with Live, the night textures made
+after X-Plane had loaded their area (at 3° then, and after the build), the textures X-Plane did
+not come closer to stayed black (2026-11-10). A night texture is made from the same level down
+at a quarter of its side: a 4096 px day texture a 1024 px night one, a 256 px one far away a
+64 px one (its larger levels a hole, which reads black), always drawn at 1024 px and made smaller
+(`night.lights_at`). The ground under the lights is the day texture's level of the night's side,
+read back from its file (`night.decode_bc1`). Nothing is made by day. X-Plane fades the night
+textures in by itself (at Nice on 11 November: nothing at 17:25, partly lit at 17:50, full at
+18:15).
+
+**One process.** The work runs in one process of its own at the encoders' lower priority, forked
+as they are (`pools.context`, started again if it dies), two textures given at a time, after the
+streamer's own: a night texture never holds up a day one. Those of the textures built at 1024 px
+or more (`NEAR_LEVEL`, within about 40 km) go first, then the others, each nearest the aircraft
+first. Made in each texture's own build job instead, as tried on 2026-11-10, the night took each
+of Live's twelve encoders 155 MB more (27 MB at rest, 182 MB once it had made one) and Live
+8.9 GB in flight against 4.7 at most without the night.
+
+**Its memory**, measured on the user's Mac (2026-11-10), 18 MB at rest and 110 to 140 MB at work:
+- 34 MB of modules: numpy and Pillow, no scipy (`night._blur`, `_max2` and `_zoom_linear` give
+  scipy's values within 1e-6, faster) and not OrthoStudio XP's DSF package, which only the roads'
+  own process loads;
+- each square's roads read once, in a Python of its own that ends with it (`nightwork._read_apart`,
+  a second more a square): a DSF read in the night's process left it 70 to 120 MB more for good;
+  straight into arrays (`night.roads_of`, 64 MB at most on Marseille's square against 138 with an
+  object a road), their points float32 degrees from the square's corner, a centimetre anywhere,
+  2 to 6 MB a square; the last nine squares kept (`_ROADS_KEPT`), a texture on several drawn from
+  each in turn, never copied into one;
+- 60 to 70 MB the drawing keeps for the next texture: NASA's density worked out at 64 points a
+  side and drawn up between them (`night.DENSITY_SAMPLES`; at every pixel it cost 120 MB a
+  texture by itself), the arrays added in place, the photo and the first reduced level a channel
+  at a time.
+
+A night texture written after X-Plane loaded its area is read as X-Plane comes closer, as the
+photo's levels are: black placeholders replaced 20 s into a path were shown equal to a reference
+by 100 s, with no reload.
+
+**A start.** X-Plane gives no time before it runs: the sun's height at a start is worked out from
+the time it saved with it (`_time` of `Freeflight.prf`: day, local time, latitude, longitude;
+`nightwork.sun_at_start`), the local time taken for the zone's mean solar time, and the night
+textures are made for a start up to 5° (`START_MARGIN_DEG`) above the threshold. A start at night
+waits for every night texture of a texture built at 1024 px or more, and for all within 10 km of
+it (`START_KM`), as for its photos, at the plugin's HOLD and in Live's pause window.
+
+**The disk.** The night textures made count in the textures' budget before the day ones
+(`NightWork.bytes`); a texture the budget makes neutral has its night texture black again, or gone
+with its name.
+
+**Measured** with the prototype's textures on the user's tile of Nice, X-Plane alone, 2704 × 1756,
+three flights each way alternated: frame times at 21.1 against 21.7 ms over the city, the same on
+the approach and from far, X-Plane's memory and its first load the same; 54 MB of night textures
+for 1.1 GB of photos; 0.15 to 0.25 s a texture in the module.
+
 ## The user's own tiles
 
 For each 1-degree square, X-Plane draws the ground of the first pack of `scenery_packs.ini` holding
@@ -1148,3 +1255,8 @@ Over it, Live's layers:
   for, where X-Plane at FL300 reads about a third of them (the review of 2026-09-30). X-Plane has
   no altitude for the aircraft while it loads a flight: the plugin read an altitude of 0 and a
   height above the ground of -2,090,546 m at its HOLD, for a start at FL300 (2026-09-30).
+- Night lights: not yet flown with Live itself (the measurements are the prototype's, on a tile of
+  Nice); the density grids are not yet hosted with the regions, so a region installed today lights
+  its towns evenly; OrthoStudio XP's own tiles have no night texture yet (its option to come, with
+  the same code); X-Plane 12's own `LUMINANCE` and `LIT_FADE_PARAMS` on the night lines not tried,
+  which may carry towns farther than 80 km.

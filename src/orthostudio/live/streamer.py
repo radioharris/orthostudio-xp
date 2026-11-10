@@ -62,6 +62,7 @@ from .look import DEFAULT_LOOKS, Look
 from .mapdata import route_points, shown
 from .meshmap import REGION_NAMES, REGION_NAMES_FR, region_of
 from .names import KEEP, RING, Entry, Names, RegionTextures, SquareTextures, squares_round
+from .nightwork import NightWork
 from .pack import MARKER, load_built
 from .region import (
     NEUTRAL_LEVEL,
@@ -200,6 +201,8 @@ DATAREFS = [
     # (wind, the ground, a position set from outside that gives it no speed: a user, 2026-09-29)
     ("hdg_deg", "sim/flightmodel/position/psi"),
     ("vs_ms", "sim/flightmodel/position/vh_ind"),  # climbing or descending, m/s (_cruise_height)
+    # the sun's height in X-Plane: the night textures are made from a little before sunset
+    ("sun_deg", "sim/graphics/scenery/sun_pitch_degrees"),
 ]
 # X-Plane loading scenery in flight (its flag above), and this long after: Live pauses, nothing
 # downloaded, encoded, copied up or made coarser, only the squares' files X-Plane needs made (their
@@ -376,6 +379,7 @@ class Streamer:
         sharp_builds: int = SHARP_WORKERS,
         memory_pressure: Callable[[], int] = machine.memory_pressure,
         region_lists: Path | None = None,
+        night: NightWork | None = None,
     ):
         """``downloader_factory(on_piece)`` makes the downloader
         (``orthostudio.live.downloader.Downloader``) the
@@ -555,8 +559,10 @@ class Streamer:
                 level_of=self.built.get,
                 refit=self._refit,
                 decal=decal,
+                night=night is not None,
             )
             self.names.yielding = self.yielding
+        self.night = night  # the night textures of the textures built (orthostudio.live.nightwork)
         self._points: dict[str, tuple[float, float]] = {}  # "aircraft", "start", "hold"
 
     # --- the season ---------------------------------------------------------------------------
@@ -1236,6 +1242,8 @@ class Streamer:
                     return
                 self.stale.pop(name, None)  # its file written again, whole
                 self.built[name] = level
+                if self.night is not None:
+                    self.night.built(name, level)
                 self.built_version += 1
                 self.done[level] += 1
                 self.copied_up.discard(name)  # its file written again: no copy there any more
@@ -1634,7 +1642,8 @@ class Streamer:
             self.built,
             self.seen,
             lambda n: n not in busy and self.may_coarsen(n),
-            self.texture_budget(),
+            # the night textures' share first: they are a twentieth of the day ones'
+            self.texture_budget() - (self.night.bytes() if self.night is not None else 0),
             self.top_of,
             neutral=lambda n: n not in busy and self.far(n),
             behind=self.behind,
@@ -1643,10 +1652,13 @@ class Streamer:
             path = self.pack_dir / "textures" / name
             try:
                 if level >= NEUTRAL_LEVEL and self.names is not None:
-                    if self.names.holds(name):  # on a square made: the neutral texture's name
+                    held = self.names.holds(name)
+                    if held:  # on a square made: the neutral texture's name
                         self.names.pool.replace(self.top_of(name), path)
                     else:  # far from every square made: no file there at all
                         path.unlink(missing_ok=True)
+                    if self.night is not None:  # its night black again, or gone with it
+                        self.night.back_to_black(name, held)
                 else:
                     top = dds.read_top(path)  # the file's size from its header: it keeps it
                     downgrade(path, level, self.pack_dir / neutral_file(top), file_top=top)
@@ -1688,12 +1700,19 @@ class Streamer:
         if self.names is not None:
             self.names.start()
 
+    def built_copy(self) -> dict[str, int]:
+        """The textures built and their levels, a copy."""
+        with self.lock:
+            return dict(self.built)
+
     def close(self) -> None:
         self.stop.set()
         if self._thread is not None:
             self._thread.join()
         if self.names is not None:
             self.names.close()
+        if self.night is not None:
+            self.night.close()
         self.save()
 
     def save(self) -> None:
@@ -2053,6 +2072,8 @@ def run(
         # situation) saves none, so its LOAD waits for the HOLD's date
         if season_for is not None and (day is not None or how != "plugin"):
             streamer.choose_season(*season_for(lat, day))
+        if streamer.night is not None:  # night at the start's time: its lights made first
+            streamer.night.start(lat, lon)
         streamer.plan(Fix(lat, lon), x_plane_there=False, starting=True)
         arrival.progress(streamer.urgent_work()[1])
         streamer.refresh_flight_plan()  # a new flight may have a new plan
@@ -2152,8 +2173,15 @@ def run(
                         stalled = left > 0 and streamer.stalled_s() > STALL_S
                         # and the files of its squares made (orthostudio.live.names), where the
                         # start was chosen and where X-Plane says it loads it
+                        night_left = 0
+                        if streamer.night is not None:  # its towns' lights too, at night
+                            streamer.night.tick(
+                                None, (arrival.lat, arrival.lon), streamer.built_copy
+                            )
+                            night_left = streamer.night.start_left()
                         ready = (
                             left == 0
+                            and night_left == 0
                             and streamer.squares_ready(arrival.lat, arrival.lon)
                             and streamer.squares_ready(lat, lon)
                         )
@@ -2213,7 +2241,15 @@ def run(
                     arrival.held = arrival.loading = True
                     building = streamer.urgent_building()
                     stalled = left > 0 and streamer.stalled_s() > STALL_S
-                    ready = left == 0 and streamer.squares_ready(arrival.lat, arrival.lon)
+                    night_left = 0
+                    if streamer.night is not None:
+                        streamer.night.tick(None, (arrival.lat, arrival.lon), streamer.built_copy)
+                        night_left = streamer.night.start_left()
+                    ready = (
+                        left == 0
+                        and night_left == 0
+                        and streamer.squares_ready(arrival.lat, arrival.lon)
+                    )
                     pause_window.show(
                         *lines(
                             place_in(arrival.name, lang), left, building, mbs, took, left > 0, lang
@@ -2300,6 +2336,10 @@ def run(
                     motion_from_positions(*(before or (None, 0.0)), fix, now)
                     before = (fix, now)
                 running = fix is not None and now - last_packet < FRESH_S
+                if streamer.night is not None and running:
+                    streamer.night.tick(
+                        values.get("sun_deg"), (fix.lat, fix.lon), streamer.built_copy
+                    )
                 if arrival is not None and not running:
                     arrival.loading = True  # X-Plane stopped sending its position: it is loading
                 if arrival is None:

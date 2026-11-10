@@ -47,7 +47,9 @@ def make_source(root: Path, tile=(45, 6), textures=("23296_33152_BI16",)) -> Pat
     return src
 
 
-def live_names(pack: Path, busy=lambda name: False, forget=lambda name: None, log=None):
+def live_names(
+    pack: Path, busy=lambda name: False, forget=lambda name: None, log=None, night=False
+):
     """The ``Names`` of a pack set up (``orthostudio.live.names``), as the streamer makes it,
     nothing made yet."""
     import threading
@@ -75,6 +77,7 @@ def live_names(pack: Path, busy=lambda name: False, forget=lambda name: None, lo
         forget=forget,
         log=log or (lambda _: None),
         others=region.others,
+        night=night,
     )
 
 

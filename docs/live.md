@@ -19,6 +19,7 @@ design and the measurements behind it are in [specs/live.md](specs/live.md) and
 - [The zoom](#the-zoom)
 - [The season](#the-season)
 - [Ground grain up close (decals)](#ground-grain-up-close-decals)
+- [Towns at night](#towns-at-night)
 - [Imagery sources, your own tiles, roads and forests](#imagery-sources-your-own-tiles-roads-and-forests)
 - [The mesh, by region](#the-mesh-by-region)
 - [What happens while you fly](#what-happens-while-you-fly)
@@ -254,6 +255,35 @@ OrthoStudio XP's tiles have; `grass_and_stony_dirt_1`, long grass on the green, 
 or none. The sea keeps none. A new choice takes effect at the next start: the terrain files of the
 squares flown already are made again as X-Plane comes, not while X-Plane runs.
 
+## Towns at night
+
+X-Plane 12's own ground glows at night where it is a town; a photo replaces that ground, and
+without more a town on Live's photos is black at night but for X-Plane's roads and buildings.
+With "Night lights" on (the Settings tab, on by default), Live gives each texture of its land a
+night texture that X-Plane adds to the photo in the dark: street lamps along X-Plane's own roads,
+orange and white, brighter where NASA's Black Marble sees a dense town and dimmer on the hills,
+windows along the town's streets, and a twentieth of the photo under them so that the ground
+between the lights is not a hole.
+
+- Nothing is made in the middle of the day. From about an hour and a half before sunset in
+  X-Plane (the sun 20° high), each texture Live builds gets its night texture right after it,
+  the sharp ones near the aircraft first, so that X-Plane does not find a texture without its
+  night; X-Plane fades them in by itself at dusk (at Nice on 11 November: nothing at 17:25, lit
+  at 17:50, full at 18:15).
+- The night textures are made by one process of their own, beside the twelve that build the
+  photos, and after them: the photos always come first.
+- A start at night waits for the sharp night textures round the airport, as it waits for its
+  photos.
+- Far away they are made small first, as the photos are, so a town shows from far: the coast of
+  Nice from 40 and 80 km.
+- They take about a twentieth of the photos' disk space (54 MB on Nice's square), counted in Live's
+  disk space. With the same night textures on a tile of Nice, flown three times each way at
+  2704 x 1756 on an M4 Pro, frame times did not change beyond their spread from one flight to the
+  next.
+
+"No": no night texture, the terrain files naming none. A new choice takes effect at the next
+start, as the decal's: the terrain files flown already are made again as X-Plane comes.
+
 ## Imagery sources, your own tiles, roads and forests
 
 **Sources.** OrthoStudio XP's: Bing Maps, Esri, EOX, the countries' own (Spain's PNOA, the
@@ -399,10 +429,13 @@ Windows, ext4 on Linux, never Mac OS Extended, exFAT or FAT32.
   The files X-Plane looks for are there; the textures are built for real where you have flown, and
   a neutral placeholder that takes no space elsewhere (a disk-usage tool counts every placeholder
   whole: they share one file).
+  Its `textures_night` folder holds the night textures, black and sharing one file until
+  made.
 - `chunks.sqlite`: the downloaded imagery, so that it is not downloaded twice. The photos of the
   sharpest levels (4096 and 8192 px) are kept in the textures themselves instead: a texture made
   coarser for the disk, then built sharp again, downloads them again.
-- `regions`: the mesh's regions Live installed.
+- `regions`: the mesh's regions Live installed, each with the night lights' density grids of its
+  squares in its `night` folder.
 - `overlays`: the roads, forests and buildings of Live's squares, linked as `y_osxp_live_overlays`
   while Live runs, listed right above Live's pack: X-Plane reads none listed under it.
 
@@ -446,6 +479,8 @@ To switch Live off, put `enabled = false` in `live.toml`, in OrthoStudio XP's ow
 - Only where a region is installed: the six regions cover all the land of the planet but
   Antarctica.
 - Flown with X-Plane 12 on a Mac and on Windows; not yet on Linux.
+- Night lights on Live's photos only: your own tiles ("Yours first") have none yet, and a region
+  installed without its density grids lights its towns evenly.
 - External views add nothing: X-Plane takes the textures for the aircraft alone, so a camera taken
   far shows the ground there as sharp as the aircraft's distance allows, a little blurry. Live
   notes how far external views take the camera, flight after flight, for information.

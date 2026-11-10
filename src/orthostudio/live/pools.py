@@ -86,8 +86,8 @@ class RenewingPool:
         self.renewals += 1
         self._log(f"  an encoding process died ({cause}): its pool started again")
 
-    def shutdown(self, wait: bool = True) -> None:
-        self._pool.shutdown(wait=wait)
+    def shutdown(self, wait: bool = True, cancel_futures: bool = False) -> None:
+        self._pool.shutdown(wait=wait, cancel_futures=cancel_futures)
 
     def __enter__(self) -> RenewingPool:
         return self

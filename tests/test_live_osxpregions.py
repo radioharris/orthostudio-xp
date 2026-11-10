@@ -284,3 +284,34 @@ def test_a_region_brought_to_zips_that_name_their_terrain(tmp_path: Path, world)
         "z_osxp_eur_+45+005.txt",
         "z_osxp_eur_+46+005.txt",
     ]
+
+
+def test_a_region_s_night_grids_come_with_it_and_alone_later(tmp_path: Path, world) -> None:
+    """The night lights' density grids (orthostudio.live.nightwork) are a zip of their own in the
+    manifest (``night``): unpacked into the region's folder as its mesh, and, added to a region
+    installed before, the only thing an update downloads."""
+    files, region = world
+    install(tmp_path, region, Host(files))
+    night = zip_of("night_eur", {"night/+45+005.png": b"grid a", "night/+46+005.png": b"grid b"})
+    files = {**files, "eur/night-zips/night_eur.zip": night}
+    doc = {
+        "made": "2026-11-10",
+        "regions": {
+            "eur": {
+                "mesh": [dataclasses.asdict(z) for z in region.mesh],
+                "overlays": [dataclasses.asdict(z) for z in region.overlays],
+                "night": [dataclasses.asdict(entry("eur/night-zips/night_eur.zip", night))],
+            }
+        },
+    }
+    later = osxpregions.parse_manifest(doc)["eur"]
+    mesh, ovl = osxpregions.to_fetch(tmp_path, later, True)
+    assert [z.path for z in mesh] == ["eur/night-zips/night_eur.zip"] and ovl == []
+    assert later.mesh_size == region.mesh_size + len(night)
+    host = Host(files)
+    inst, lines = install(tmp_path, later, host)
+    assert inst.progress.phase == "done", lines
+    assert [k for k, _ in host.asked] == ["eur/night-zips/night_eur.zip"]
+    folder = osxpregions.mesh_dir(tmp_path, "eur")
+    assert (folder / "night/+45+005.png").read_bytes() == b"grid a"
+    assert osxpregions.to_fetch(tmp_path, later, True) == ([], [])
