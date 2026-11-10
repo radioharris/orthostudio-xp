@@ -497,6 +497,18 @@ class NightWorkTest(unittest.TestCase):
         self.assertEqual(self.work.start_left(), 0)
         self.assertEqual(len(self.work.made), 5)
 
+    def test_a_start_waits_only_for_the_nights_of_what_was_built_with_its_photos(self):
+        """Those built after, farther, are made in flight: waiting for them took 27 s more at
+        LSGG (2026-11-11)."""
+        self.work.start_at = (43.70, 7.25)
+        self.work.sun = 10.0
+        self.work.want(self.near, 0)
+        self.assertEqual(self.work.start_left(day_left=0), 1)  # the start's own: the near one
+        self.work.want(self.far, 4)  # built after, as X-Plane waits
+        self.assertEqual(self.work.start_left(day_left=0), 1)
+        self.work.tick(None, (43.7, 7.25), lambda: {})
+        self.assertEqual(self.work.start_left(day_left=0), 0)
+
     def test_a_start_waits_a_minute_at_most_for_its_nights(self):
         from unittest import mock
 

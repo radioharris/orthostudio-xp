@@ -322,6 +322,7 @@ class NightWork:
         self._at: tuple[float, float] | None = None  # where the aircraft was last
         self.closed = False
         self.failed = 0
+        self._start_set: set[str] | None = None  # the nights a start waits for, its day built
         self.team = 0  # the start's team: Live's encoders (the streamer sets it), TEAM_MAX at most
         self._team_pool: Any = None
         self._team_jobs = 0  # its squares not done yet
@@ -370,6 +371,7 @@ class NightWork:
         2026-11-10)."""
         self.start_at = (lat, lon)
         self._waited_since, self.gave_up = None, False
+        self._start_set = None
         sun = sun_at_start(self.prefs) if self.prefs is not None else None
         if sun is not None:
             was = self.night
@@ -383,16 +385,26 @@ class NightWork:
 
     def start_left(self, day_left: int = 0) -> int:
         """Night textures still to make which a start waits for, as for its photos (0 by day):
-        all those of the textures built, which X-Plane reads there. X-Plane never reads again a
-        level it took: a night made after it loaded its area stays black there until it comes
-        closer (the user's Live flight, 2026-11-10). ``day_left``: the start's day textures still
-        to build; once none is, the team makes the far ones (:data:`TEAM_MAX`), and the nights
-        are waited for :data:`NIGHT_WAIT_S` at most."""
+        those of the textures built when its photos were, which X-Plane reads there (those built
+        after, farther, are made in flight: waiting for them took 27 s more at LSGG, 2026-11-11).
+        X-Plane never reads again a level it took: a night made after it loaded its area stays
+        black there until it comes closer (the user's Live flight, 2026-11-10). ``day_left``: the
+        start's day textures still to build; once none is, the team makes the far ones
+        (:data:`TEAM_MAX`), and the nights are waited for :data:`NIGHT_WAIT_S` at most."""
         if self.start_at is None or not self.night or self.gave_up:
             return 0
         with self.lock:
-            left = len(self.waiting) + len(self.in_flight)
-        if left and day_left == 0 and self.team > 1 and self._team_pool is None:
+            if day_left > 0:  # its photos still coming: what is wanted so far, for the window
+                self._start_set = None
+                left = len(self.waiting) + len(self.in_flight)
+            else:
+                if self._start_set is None:  # what X-Plane reads there, built: the start's nights
+                    self._start_set = set(self.waiting) | set(self.in_flight)
+                    team = self.team > 1 and self._team_pool is None
+                else:
+                    team = False
+                left = sum(1 for n in self._start_set if n in self.waiting or n in self.in_flight)
+        if day_left == 0 and left and team:
             self._team_up()
         if left == 0 or day_left > 0:
             self._waited_since = None
@@ -416,7 +428,10 @@ class NightWork:
         the team (one process: 13 minutes; split in smaller jobs: no faster, 2.3 GB)."""
         with self.lock:
             squares: dict[tuple[int, int], list[str]] = {}
+            start = self._start_set or set()
             for name, level in self.waiting.items():
+                if name not in start:  # built after: made in flight, X-Plane does not wait for it
+                    continue
                 centre = self._centre(name)
                 if level > NEAR_LEVEL and centre is not None:
                     squares.setdefault((math.floor(centre[0]), math.floor(centre[1])), []).append(
