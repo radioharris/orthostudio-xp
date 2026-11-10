@@ -2073,7 +2073,7 @@ def run(
         if season_for is not None and (day is not None or how != "plugin"):
             streamer.choose_season(*season_for(lat, day))
         if streamer.night is not None:  # night at the start's time: its lights made first
-            streamer.night.start(lat, lon)
+            streamer.night.start(lat, lon, streamer.built_copy)
         streamer.plan(Fix(lat, lon), x_plane_there=False, starting=True)
         arrival.progress(streamer.urgent_work()[1])
         streamer.refresh_flight_plan()  # a new flight may have a new plan

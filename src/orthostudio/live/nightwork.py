@@ -297,15 +297,26 @@ class NightWork:
                 return
             self.waiting[name] = min(level, self.waiting.get(name, 99))
 
-    def start(self, lat: float, lon: float) -> None:
+    def start(
+        self, lat: float, lon: float, built: Callable[[], dict[str, int]] | None = None
+    ) -> None:
         """A start planned there: night there if the time X-Plane saved says so, with a margin
-        (:data:`START_MARGIN_DEG`), its night textures then made before X-Plane goes on."""
+        (:data:`START_MARGIN_DEG`), its night textures then made before X-Plane goes on, those of
+        the textures ``built`` already too. Live may learn of a start before X-Plane saves its
+        time, and build round it by the time of the flight before: at LSGG, 8,744 textures built
+        by a day's time got no night when X-Plane then gave 23:30 (the user's flight,
+        2026-11-10)."""
         self.start_at = (lat, lon)
         sun = sun_at_start(self.prefs) if self.prefs is not None else None
         if sun is not None:
+            was = self.night
             self.sun = sun - START_MARGIN_DEG  # night from that much higher, at a start
             if self.night:
-                self.log(f"  a start at night (the sun at about {sun:.0f}°): its towns lit first")
+                lit = self._nightfall(built) if not was and built is not None else 0
+                self.log(
+                    f"  a start at night (the sun at about {sun:.0f}°): its towns lit first"
+                    + (f", {lit} textures built already" if lit else "")
+                )
 
     def start_left(self) -> int:
         """Night textures still to make which a start waits for, as for its photos (0 by day):
@@ -368,13 +379,17 @@ class NightWork:
         if not self.night:
             return
         if not was:
-            textures = built()
-            self.log(
-                f"  night in X-Plane (the sun at {self.sun:.1f}°): {len(textures)} textures lit"
-            )
-            for name, level in textures.items():
-                self.want(name, level)
+            lit = self._nightfall(built)
+            self.log(f"  night in X-Plane (the sun at {self.sun:.1f}°): {lit} textures lit")
         self._give(at)
+
+    def _nightfall(self, built: Callable[[], dict[str, int]]) -> int:
+        """Night has come: every texture built gets its night (the nearest first, :meth:`_give`).
+        Returns how many."""
+        textures = built()
+        for name, level in textures.items():
+            self.want(name, level)
+        return len(textures)
 
     def _give(self, at: tuple[float, float] | None) -> None:
         with self.lock:

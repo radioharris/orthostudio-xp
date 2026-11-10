@@ -337,6 +337,33 @@ class NightWorkTest(unittest.TestCase):
         self.work.tick(None, (43.7, 7.25), lambda: {})
         self.assertEqual(self.work.start_left(), 0)
 
+    def test_a_start_known_at_night_after_its_textures_were_built(self):
+        """Live learnt of LSGG before X-Plane saved its time, built round it by the day of the
+        flight before, then X-Plane gave 23:30 (2026-11-10): the textures built get their night."""
+        from pathlib import Path
+
+        prefs = Path(self.tmp.name) / "Freeflight.prf"
+
+        def saved(hours: float) -> None:
+            prefs.write_text(
+                '_time {"local_time":{"day_of_year":314,"latitude":43.7,"longitude":7.25,'
+                f'"time_in_24_hours":{hours}}}}}\n'
+            )
+
+        self.work.prefs = prefs
+        saved(12.0)
+        self.work.start(43.70, 7.25, lambda: {})
+        self.assertFalse(self.work.night)
+        self.work.built(self.near, 0)  # built by day: no night wanted yet
+        self.work.built(self.far, 4)
+        saved(23.5)
+        self.work.start(43.70, 7.25, lambda: {self.near: 0, self.far: 4})
+        self.assertTrue(self.work.night)
+        self.assertEqual(self.work.start_left(), 1)  # the near one, which the start waits for
+        self.work.tick(None, (43.7, 7.25), lambda: {})
+        self.assertEqual({job[1] for job in self.ex.jobs}, {self.near, self.far})
+        self.assertEqual(self.work.start_left(), 0)
+
     def test_a_start_waits_for_every_near_night_however_far(self):
         self.work.start_at = (43.70, 7.25)
         self.work.sun = 10.0
