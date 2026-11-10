@@ -91,6 +91,7 @@ made LSGG's 8,700 in 13 minutes, and those X-Plane read before stayed black (the
 The team is closed once they are made, its memory with it."""
 
 _ROADS: dict = {}  # the night process's roads (orthostudio.live.night.Roads), by DSF
+_READ_APART = True  # the team's processes read the roads themselves: they end with the start
 _ROADS_KEPT = 9  # the squares round the aircraft, 3 x 3: each read once while it flies there
 
 
@@ -157,7 +158,7 @@ def roads_from(paths: Iterable[Path]):
         if key not in _ROADS:
             if len(_ROADS) >= _ROADS_KEPT:
                 _ROADS.pop(next(iter(_ROADS)))
-            _ROADS[key] = _read_apart(Path(path))
+            _ROADS[key] = _read_apart(Path(path)) if _READ_APART else read_roads(key)
         if len(_ROADS[key]):
             parts.append(_ROADS[key])
     return parts
@@ -282,9 +283,20 @@ def night_batch(jobs: list[tuple]) -> list[tuple]:
 def _team_pool(size: int):
     """The start's team: ``size`` processes forked as the encoders are (orthostudio.live.pools)."""
     from . import pools
+
+    return ProcessPoolExecutor(size, initializer=_team_member, mp_context=pools.context())
+
+
+def _team_member() -> None:
+    """A process of the start's team: the encoders' priority, and the roads read in it rather
+    than in a Python of their own, a second less a square: it ends with the start, and the memory
+    a DSF read leaves with it (LSGG: 62 squares, each process reading its own and their
+    neighbours')."""
     from .texture import worker_ignores_ctrl_c
 
-    return ProcessPoolExecutor(size, initializer=worker_ignores_ctrl_c, mp_context=pools.context())
+    global _READ_APART
+    _READ_APART = False
+    worker_ignores_ctrl_c()
 
 
 class NightWork:

@@ -16,9 +16,9 @@ What this module paints, for one texture, as the prototype on the user's Nice ti
   20 to 45 m by the road's class, a third of them white (LEDs) and the rest sodium orange, at
   levels drawn at random and one in eight out; far fewer and dimmer along a rural road;
 - **a soft glow** round the lamps and the larger streets;
-- **what the day photo shows built** (:func:`built_map`, read at 28 m a pixel): its blocks lit
-  between the streets with windows and yards, a lamp in the woods at a quarter of its light;
-  windows in a band along the town's streets where no photo can be read;
+- **windows** in a band along the town's streets, a few bright, most dim;
+- **what the day photo shows built** (:func:`built_map`, read at 28 m a pixel): a lamp where
+  nothing is, in the woods or the fields, at a quarter of its light;
 - **NASA's Black Marble** (:class:`Density`) decides how many lamps are lit, all in a village,
   a fifth in the open country, and how bright the windows are; a lamp is as bright in a village
   as in a town, a little brighter there (:data:`LIT_SHARE_MIN`, :data:`LAMP_COUNTRY`);
@@ -102,11 +102,6 @@ ROAD_DARK, ROAD_BUILT = 0.25, 1.6
 full from a built share of 1 / 1.6 on: the roads through the hills' woods lit as the town's
 streets looked laid out on the ground (the user, 2026-11-10: « les lumières me semblent un peu
 artificielles »)."""
-
-WINDOWS_POINTS, WINDOWS_BUILT, WINDOWS_GLOW = 0.05, 1.3, 0.015
-"""What is built, as the photo shows it, lit between the streets: a pixel in twenty a lit window
-or yard where it is all built (from a built share of 1 / 1.3), and a faint glow; the town's
-blocks were black between their streets."""
 
 LAMP_COUNTRY = 0.8
 """A lamp's light where NASA saw nothing, against 1.2 where it saw its brightest: a town's
@@ -373,52 +368,13 @@ def _draw(parts: list[Roads], density, x0, y0, zoom_level, side, seed, built=Non
     draw_core, draw_fill = ImageDraw.Draw(core), ImageDraw.Draw(fill)
     sodium = np.zeros((side, side), dtype=np.float32)
     white = np.zeros((side, side), dtype=np.float32)
-    houses_px = max(1, round(HOUSES_M / m_per_px))
-    houses_k = _width_k(HOUSES_M, m_per_px, ref)
     dens = None if density is None else _density_field(density, x0, y0, zoom_level, side)
     built = None if built is None else _fit(built, side)
     box = (s - margin, w - margin, n + margin, e + margin)
-    for part, i in [(p, i) for p in parts for i in p.near(*box)]:
-        kind = KINDS[int(part.kind[i])]
-        rural = bool(part.rural[i])
-        width_m, bright, spacing_m = ROADS[kind]
-        if rural:
-            bright, spacing_m = bright * RURAL[0], spacing_m * RURAL[1]
-        px, py = _pixels(x0, y0, zoom_level, side, *part.points(i))
-        points = list(zip(px.tolist(), py.tolist(), strict=True))
-        if kind in HOUSES and not rural and built is None:
-            draw_fill.line(points, fill=HOUSES[kind] * houses_k, width=houses_px)
-        draw_core.line(
-            points,
-            fill=bright * _width_k(width_m, m_per_px, ref),
-            width=max(1, round(width_m / m_per_px)),
-        )
-        # lamps along the road, one every spacing_m from a random start, a few out
-        steps = np.hypot(np.diff(px), np.diff(py))
-        along = np.concatenate(([0.0], np.cumsum(steps)))
-        step = spacing_m / m_per_px
-        at = np.arange(rng.uniform(0.0, step), along[-1], step)
-        if len(at) == 0:
-            continue
-        lit = rng.random(len(at)) > LAMPS_OUT
-        level = (bright * lamp_k * rng.uniform(0.35, 0.8, len(at)))[lit]
-        ix = np.interp(at, along, px)[lit].astype(int)
-        iy = np.interp(at, along, py)[lit].astype(int)
-        inside = (ix >= 0) & (ix < side) & (iy >= 0) & (iy < side)
-        ix, iy, level = ix[inside], iy[inside], level[inside]
-        if dens is not None:  # NASA: how many are lit, a village's all, the open country's few
-            here = dens[iy, ix]
-            on = rng.random(len(ix)) < LIT_SHARE_MIN + (1 - LIT_SHARE_MIN) * np.minimum(
-                here / LIT_FULL, 1.0
-            )
-            ix, iy = ix[on], iy[on]
-            level = level[on] * (LAMP_COUNTRY + (2 * (1 - LAMP_COUNTRY)) * here[on])
-        if built is not None:  # the photo: a lamp among houses full, in the woods dim
-            level = level * (
-                ROAD_DARK + (1 - ROAD_DARK) * np.minimum(built[iy, ix] * ROAD_BUILT, 1)
-            )
-        target = white if rng.random() < WHITE_SHARE else sodium
-        np.maximum.at(target, (iy, ix), level.astype(np.float32))
+    _roads_and_lamps(
+        parts, box, (x0, y0, zoom_level, side), m_per_px, ref, lamp_k, rng, dens, built,
+        (draw_core, draw_fill), (sodium, white),
+    )  # fmt: skip
     # a lamp is a dot of about two pixels across, as the prototype drew them (a disc of 0.6 px);
     # drawn coarser, a pixel
     if k == 1:
@@ -435,11 +391,12 @@ def _draw(parts: list[Roads], density, x0, y0, zoom_level, side, seed, built=Non
         share += np.float32(LIT_SHARE_MIN)
         core_a = core_a * share
         del share
+    away = None  # the photo: what is far from houses, dimmer (its streets, lamps, windows)
     if built is not None:
-        core_a = core_a * (
-            np.float32(ROAD_DARK)
-            + np.float32(1 - ROAD_DARK) * np.minimum(built * np.float32(ROAD_BUILT), np.float32(1))
+        away = np.float32(ROAD_DARK) + np.float32(1 - ROAD_DARK) * np.minimum(
+            built * np.float32(ROAD_BUILT), np.float32(1)
         )
+        core_a = core_a * away
     tmp = core_a * np.float32(0.5)
     tmp += sodium * np.float32(glow_k)
     warm = _blur(tmp, sigma)  # the glow round the sodium lamps and the streets
@@ -455,16 +412,16 @@ def _draw(parts: list[Roads], density, x0, y0, zoom_level, side, seed, built=Non
     np.multiply(white, b, out=tmp)
     cool += tmp
     del white, tmp
-    if built is None:  # windows along the town's streets
-        windows = np.array(fill, dtype=np.float32)  # a copy: Pillow's array is read only
-        spark = rng.random((side, side), dtype=np.float32)
-        spark **= 6
-        spark *= np.float32(2.5)
-        spark += np.float32(0.25)
-        windows *= spark
-        del spark
-    else:  # what the photo shows built: lit windows and yards, a pixel in twenty at most
-        windows = _windows(built, k, rng)
+    windows = np.array(fill, dtype=np.float32)  # a copy: Pillow's array is read only
+    spark = rng.random((side, side), dtype=np.float32)
+    spark **= 6
+    spark *= np.float32(2.5)
+    spark += np.float32(0.25)
+    windows *= spark
+    del spark
+    if away is not None:  # a street through the woods has no houses along it
+        windows *= away
+    del away
     del draw_fill, fill
     cold = rng.random((side, side), dtype=np.float32) < 0.3
     windows *= d
@@ -479,6 +436,88 @@ def _draw(parts: list[Roads], density, x0, y0, zoom_level, side, seed, built=Non
         np.multiply(warm, np.float32(SODIUM[ch]), out=rgb[..., ch])
         rgb[..., ch] += cool * np.float32(WHITE[ch])
     return rgb
+
+
+def _roads_and_lamps(parts, box, where, m_per_px, ref, lamp_k, rng, dens, built, draws, lamps):
+    """Every road of the texture, all at once: their lines into ``draws`` (the street, and the
+    windows' band, or None), their lamps into ``lamps`` (sodium, white). A road at a time, the
+    loop took three quarters of a night texture's time, 60 ms of 90 (2026-11-11)."""
+    x0, y0, zoom_level, side = where
+    draw_core, draw_fill = draws
+    sodium, white = lamps
+    lon_parts, lat_parts, kinds, rurals, lengths = [], [], [], [], []
+    for part in parts:
+        idx = part.near(*box)
+        if not len(idx):
+            continue
+        first, after = part.start[idx], part.start[idx + 1]
+        n = after - first
+        at = np.repeat(first - np.cumsum(n) + n, n) + np.arange(int(n.sum()))
+        lon_parts.append(part.lon[at].astype(np.float64) + part.west)
+        lat_parts.append(part.lat[at].astype(np.float64) + part.south)
+        kinds.append(part.kind[idx])
+        rurals.append(part.rural[idx])
+        lengths.append(n)
+    if not kinds:
+        return
+    kind = np.concatenate(kinds).astype(np.intp)
+    rural = np.concatenate(rurals)
+    count = np.concatenate(lengths).astype(np.int64)
+    px, py = _pixels(x0, y0, zoom_level, side, np.concatenate(lon_parts), np.concatenate(lat_parts))
+    begin = np.concatenate(([0], np.cumsum(count)[:-1]))
+    end = begin + count
+    table = np.array([ROADS[k] for k in KINDS])  # width, brightness, spacing by class
+    width_m, bright, spacing_m = table[kind, 0], table[kind, 1].copy(), table[kind, 2].copy()
+    bright[rural] *= RURAL[0]
+    spacing_m[rural] *= RURAL[1]
+    # the lines, a call each to Pillow
+    flat = np.empty(2 * len(px))
+    flat[0::2], flat[1::2] = px, py
+    coords = flat.tolist()
+    width_k = np.array([_width_k(ROADS[k][0], m_per_px, ref) for k in KINDS])  # by class
+    core_fill = (bright * width_k[kind]).tolist()
+    core_width = np.maximum(1, np.round(width_m / m_per_px)).astype(int).tolist()
+    houses = [HOUSES.get(KINDS[k]) for k in kind.tolist()] if draw_fill is not None else None
+    houses_px = max(1, round(HOUSES_M / m_per_px))
+    houses_k = _width_k(HOUSES_M, m_per_px, ref)
+    for r, (b, e) in enumerate(zip(begin.tolist(), end.tolist(), strict=True)):
+        line = coords[2 * b : 2 * e]
+        if houses is not None and houses[r] is not None and not rural[r]:
+            draw_fill.line(line, fill=houses[r] * houses_k, width=houses_px)
+        draw_core.line(line, fill=core_fill[r], width=core_width[r])
+    # the lamps: one every spacing along each road from a random start, a few out
+    step = np.hypot(np.diff(px), np.diff(py))
+    step[begin[1:] - 1] = 0.0  # no step from one road to the next
+    along = np.concatenate(([0.0], np.cumsum(step)))
+    start, length = along[begin], along[end - 1] - along[begin]
+    spacing = spacing_m / m_per_px
+    offset = rng.uniform(0.0, spacing)
+    lamps_per = np.where(length > offset, np.ceil((length - offset) / spacing), 0).astype(np.int64)
+    road = np.repeat(np.arange(len(kind)), lamps_per)
+    nth = np.arange(len(road)) - np.repeat(np.cumsum(lamps_per) - lamps_per, lamps_per)
+    g = start[road] + offset[road] + nth * spacing[road]
+    seg = np.clip(np.searchsorted(along, g, side="right") - 1, begin[road], end[road] - 2)
+    seg_len = np.where(step[seg] > 0, step[seg], 1.0)
+    t = (g - along[seg]) / seg_len
+    ix = (px[seg] + t * (px[seg + 1] - px[seg])).astype(int)
+    iy = (py[seg] + t * (py[seg + 1] - py[seg])).astype(int)
+    lit = rng.random(len(road)) > LAMPS_OUT
+    level = bright[road] * lamp_k * rng.uniform(0.35, 0.8, len(road))
+    keep = lit & (ix >= 0) & (ix < side) & (iy >= 0) & (iy < side)
+    ix, iy, level, road = ix[keep], iy[keep], level[keep], road[keep]
+    if dens is not None:  # NASA: how many are lit, a village's all, the open country's few
+        here = dens[iy, ix]
+        on = rng.random(len(ix)) < LIT_SHARE_MIN + (1 - LIT_SHARE_MIN) * np.minimum(
+            here / LIT_FULL, 1.0
+        )
+        ix, iy, road = ix[on], iy[on], road[on]
+        level = level[on] * (LAMP_COUNTRY + (2 * (1 - LAMP_COUNTRY)) * here[on])
+    if built is not None:  # the photo: a lamp among houses full, in the woods dim
+        level = level * (ROAD_DARK + (1 - ROAD_DARK) * np.minimum(built[iy, ix] * ROAD_BUILT, 1))
+    whites = (rng.random(len(kind)) < WHITE_SHARE)[road]  # a road's lamps all one kind
+    level = level.astype(np.float32)
+    np.maximum.at(white, (iy[whites], ix[whites]), level[whites])
+    np.maximum.at(sodium, (iy[~whites], ix[~whites]), level[~whites])
 
 
 def built_map(photo: np.ndarray) -> np.ndarray:
@@ -518,23 +557,6 @@ def _fit(field: np.ndarray, side: int) -> np.ndarray:
         return _zoom_linear(field, side)
     f = n // side
     return field[: side * f, : side * f].reshape(side, f, side, f).mean(axis=(1, 3))
-
-
-def _windows(built: np.ndarray, k: int, rng: np.random.Generator) -> np.ndarray:
-    """Lit windows and yards where the photo shows houses: :data:`WINDOWS_POINTS` of the pixels
-    where it is all built, k² as many drawn k times coarser (their light kept), and a faint glow
-    (:data:`WINDOWS_GLOW`)."""
-    side = built.shape[0]
-    share = np.minimum(built * np.float32(WINDOWS_BUILT), np.float32(1))
-    chance = share * np.float32(WINDOWS_POINTS * k * k)
-    on = rng.random((side, side), dtype=np.float32) < chance
-    lit = rng.uniform(0.25, 0.9, (side, side)).astype(np.float32)
-    # a chance above one: fewer points than wanted, each brighter for the rest (its power mean)
-    over = np.maximum(chance, np.float32(1))
-    lit *= over ** np.float32(1 / POWER)
-    windows = np.where(on, lit, np.float32(0))
-    windows += np.float32(WINDOWS_GLOW) * share
-    return _blur(windows, 0.7)
 
 
 def _width_k(width_m: float, m_per_px: float, ref: float) -> float:

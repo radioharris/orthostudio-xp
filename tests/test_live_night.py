@@ -699,8 +699,9 @@ class StartBarTest(unittest.TestCase):
 
 
 class PhotoTest(unittest.TestCase):
-    """The day photo decides where the lights are: lamps among houses full, in the woods dim,
-    windows lit in the built blocks between the streets (the user, 2026-11-11)."""
+    """The day photo dims the lamps in the woods (the user, 2026-11-11). Its windows lit between
+    the streets, a pixel in twenty, came out in flight as soft blobs all over the fields: « c'est
+    exagéré les points partout »; gone."""
 
     def _photo(self):
         rng = np.random.default_rng(5)
@@ -715,7 +716,7 @@ class PhotoTest(unittest.TestCase):
         self.assertLess(float(built[:, 10:100].mean()), 0.05)
         self.assertGreater(float(built[:, 150:240].mean()), 0.8)
 
-    def test_lamps_dim_in_the_woods_and_windows_lit_among_houses(self):
+    def test_lamps_dim_in_the_woods(self):
         built = night.built_map(self._photo())
         lat, lon = 43.70, 7.25
         x0, y0 = texture_at(lat, lon)
@@ -728,8 +729,6 @@ class PhotoTest(unittest.TestCase):
         row = slice(500, 524)
         woods, houses = lights[row, 50:450].sum(), lights[row, 574:974].sum()
         self.assertGreater(houses, 2.5 * woods)
-        off_road = lights[100:400]  # far from the road
-        self.assertGreater(float(off_road[:, 600:1000].sum()), 10 * float(off_road[:, :400].sum()))
 
     def test_the_photo_read_from_a_day_texture_of_live(self):
         import tempfile
