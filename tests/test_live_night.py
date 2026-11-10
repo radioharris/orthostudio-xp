@@ -336,6 +336,28 @@ class _Now:
         pass
 
 
+class _Later:
+    """An executor whose jobs end when the test says: in the order given."""
+
+    def __init__(self):
+        self.given, self.pending = [], []
+
+    def submit(self, fn, job):
+        from concurrent.futures import Future
+
+        fut = Future()
+        self.given.append(job[1])
+        self.pending.append((fut, job))
+        return fut
+
+    def finish_one(self):
+        fut, job = self.pending.pop(0)
+        fut.set_result((job[1], job[2], 0.01))
+
+    def shutdown(self, **_):
+        pass
+
+
 class NightWorkTest(unittest.TestCase):
     def setUp(self):
         import tempfile
@@ -462,14 +484,17 @@ class NightWorkTest(unittest.TestCase):
         for lat, lon in ((44.05, 7.5), (43.9, 7.9), (43.1, 7.1)):
             x, y = texture_at(lat, lon)
             names[(lat, lon)] = f"{y}_{x}_BI16.dds"
+        later = _Later()
+        self.work._executor = later
         self.work.sun = 10.0
         for name in names.values():
             self.work.want(name, 4)
-        for _ in range(3):
-            self.work.tick(10.0, (43.98, 7.5), lambda: {})
-        got = [job[1] for job in self.ex.jobs]
+        self.work.tick(10.0, (43.98, 7.5), lambda: {})
+        later.finish_one()  # the next given as soon as one is made, without a tick
+        later.finish_one()
         # the square +43+007 (its centre nearer) whole first, its nearer texture first
-        self.assertEqual(got, [names[(43.9, 7.9)], names[(43.1, 7.1)], names[(44.05, 7.5)]])
+        self.assertEqual(later.given, [names[(43.9, 7.9)], names[(43.1, 7.1)], names[(44.05, 7.5)]])
+        self.assertEqual(len(self.work.made), 2)
 
     def test_the_sun_at_noon_and_at_night(self):
         from pathlib import Path

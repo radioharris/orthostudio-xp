@@ -253,6 +253,8 @@ class NightWork:
         self._centres: dict[str, tuple[float, float] | None] = {}  # each texture's, read once
         self._waited_since: float | None = None  # the start's day textures built, its nights not
         self.gave_up = False
+        self._at: tuple[float, float] | None = None  # where the aircraft was last
+        self.closed = False
         self.failed = 0
 
     @property
@@ -383,6 +385,8 @@ class NightWork:
         was = self.night
         if sun is not None:
             self.sun = sun
+        if at is not None:
+            self._at = at
         if not self.night:
             return
         if not was:
@@ -400,6 +404,8 @@ class NightWork:
 
     def _give(self, at: tuple[float, float] | None) -> None:
         with self.lock:
+            if self.closed:
+                return
             free = IN_FLIGHT - len(self.in_flight)
             if free <= 0 or not self.waiting:
                 return
@@ -437,6 +443,8 @@ class NightWork:
         return found
 
     def _done(self, fut: Future, name: str, level: int) -> None:
+        """A night texture made, or failed: the next given at once, not at the plan loop's next
+        turn, which held the night's process to a texture or two a second (LSGG, 2026-11-10)."""
         with self.lock:
             self.in_flight.pop(name, None)
             if name not in self.waiting:
@@ -447,9 +455,11 @@ class NightWork:
                 self.failed += 1
                 if self.failed <= 5:
                     self.log(f"  the night texture of {name} failed: {type(e).__name__}: {e}")
-                return
-            self.made[name] = min(level, self.made.get(name, 99))
-            self.seconds += seconds
+            else:
+                self.made[name] = min(level, self.made.get(name, 99))
+                self.seconds += seconds
+        if self.night:
+            self._give(self._at)
 
     def _order(self, name: str, level: int, at: tuple[float, float] | None) -> tuple:
         """The near ones first (:data:`NEAR_LEVEL`), nearest the aircraft first; then the far
@@ -477,6 +487,7 @@ class NightWork:
 
     def close(self) -> None:
         with self.lock:
+            self.closed = True
             made = len(self.made)
         if made:
             self.log(f"  {made} night textures made")
