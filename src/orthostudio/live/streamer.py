@@ -1829,6 +1829,11 @@ def read_before_ready(ready_at: float | None, xplane_started: float | None) -> b
     return ready_at is None or xplane_started is None or xplane_started < ready_at
 
 
+DAY_SHARE = 0.4
+"""At a start at night, the share of the progress bar its photos take, the night textures the
+rest: at LSGG the photos took about 30 s, the night textures 55 (2026-11-11)."""
+
+
 @dataclass
 class Arrival:
     """A flight X-Plane is about to load, or is loading: where, and what the plugin was told."""
@@ -1845,6 +1850,7 @@ class Arrival:
     stalled: bool = False  # ... or let it go because nothing downloaded any more
     elsewhere_since: float | None = None  # X-Plane running somewhere else since then
     work: int = 0  # the most image pieces seen to build for it: the progress bar's whole
+    night_work: int = 0  # the most night textures seen to make for it, its day's built
     loading: bool = (
         True  # X-Plane went through a load since: its position stopped, or the plugin spoke
     )
@@ -1852,6 +1858,19 @@ class Arrival:
     def progress(self, work_left: int) -> float:
         self.work = max(self.work, work_left)
         return 1.0 - work_left / self.work if self.work else 1.0
+
+    def with_night(self, day: float, day_left: int, night_left: int, night: bool) -> float:
+        """The progress bar of a start at night (``night``): its photos the first
+        :data:`DAY_SHARE`, its night textures the rest once the photos are built. It stood at 100 %
+        while 8,700 night textures were made at LSGG (2026-11-11)."""
+        if not night:
+            return day
+        if day_left > 0:
+            return DAY_SHARE * day
+        self.night_work = max(self.night_work, night_left)
+        if not self.night_work:
+            return 1.0
+        return DAY_SHARE + (1.0 - DAY_SHARE) * (1.0 - night_left / self.night_work)
 
     def near(self, lat: float, lon: float) -> bool:
         return haversine_m(self.lat, self.lon, lat, lon) <= JUMP_KM * 1000.0
@@ -2181,6 +2200,7 @@ def run(
                                 None, (arrival.lat, arrival.lon), streamer.built_copy
                             )
                             night_left = streamer.night.start_left(left)
+                            done = arrival.with_night(done, left, night_left, streamer.night.night)
                         ready = (
                             left == 0
                             and night_left == 0
@@ -2256,6 +2276,7 @@ def run(
                     if streamer.night is not None:
                         streamer.night.tick(None, (arrival.lat, arrival.lon), streamer.built_copy)
                         night_left = streamer.night.start_left(left)
+                        done = arrival.with_night(done, left, night_left, streamer.night.night)
                     ready = (
                         left == 0
                         and night_left == 0

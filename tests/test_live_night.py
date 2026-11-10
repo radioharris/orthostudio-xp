@@ -669,3 +669,18 @@ class LeanDrawingTest(unittest.TestCase):
         whole = night.draw(night.Roads.of(west + east), None, x0, y0, 16, 256)
         self.assertGreater(float(whole.sum()), 0.0)
         self.assertLess(abs(float(apart.sum()) / float(whole.sum()) - 1.0), 0.01)
+
+
+class StartBarTest(unittest.TestCase):
+    def test_the_bar_of_a_start_at_night_counts_its_night_textures(self):
+        """It stood at 100 % while LSGG's 8,700 night textures were made (2026-11-11)."""
+        from orthostudio.live.streamer import DAY_SHARE, Arrival
+
+        a = Arrival(46.24, 6.11, "LSGG", "plugin", 0.0)
+        self.assertEqual(a.with_night(0.5, 10, 0, night=False), 0.5)  # by day: the photos alone
+        self.assertAlmostEqual(a.with_night(0.5, 10, 30, night=True), DAY_SHARE * 0.5)
+        self.assertAlmostEqual(a.with_night(1.0, 0, 8700, night=True), DAY_SHARE)
+        self.assertAlmostEqual(
+            a.with_night(1.0, 0, 4350, night=True), DAY_SHARE + (1 - DAY_SHARE) / 2
+        )
+        self.assertAlmostEqual(a.with_night(1.0, 0, 0, night=True), 1.0)
