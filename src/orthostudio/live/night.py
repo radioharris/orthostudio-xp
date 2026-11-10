@@ -17,8 +17,9 @@ What this module paints, for one texture, as the prototype on the user's Nice ti
   levels drawn at random and one in eight out; far fewer and dimmer along a rural road;
 - **a soft glow** round the lamps and the larger streets;
 - **windows** in a band along the town's streets, a few bright, most dim;
-- all of it times **how bright NASA's Black Marble saw the place** (:class:`Density`): a dense
-  centre glows, the hills round it less;
+- **NASA's Black Marble** (:class:`Density`) decides how many lamps are lit, all in a village,
+  a fifth in the open country, and how bright the windows are; a lamp is as bright in a village
+  as in a town, a little brighter there (:data:`LIT_SHARE_MIN`, :data:`LAMP_COUNTRY`);
 - and nothing else: between the lights the night texture is black, X-Plane lighting the photo
   itself at night. A twentieth of the day photo under the lights, as XPME does (its « night
   ground visibility », 5 % by default), came out of BC1 as a checkerboard of purple, brown and
@@ -80,7 +81,17 @@ WHITE_SHARE = 0.35
 LAMPS_OUT = 0.12
 
 DENSITY_FLOOR, DENSITY_SPAN = 0.2, 1.3
-"""The lights' factor where NASA saw nothing, and how much more where it saw its brightest."""
+"""The windows' light where NASA saw nothing, and how much more where it saw its brightest."""
+
+LIT_SHARE_MIN, LIT_FULL = 0.2, 0.12
+"""NASA's density decides how many of a road's lamps are lit, not how bright they are: a fifth
+where it saw nothing, all from this density on (a village round Geneva, 0.12). Dimming the lamps
+by it, a village's lamps came out at a fifth of a town's and the country went dark (the user,
+LSGG, 2026-11-11: « il y a moins de lumière qu'avant »); a village's lamp is a town's lamp."""
+
+LAMP_COUNTRY = 0.8
+"""A lamp's light where NASA saw nothing, against 1.2 where it saw its brightest: a town's
+streets a little brighter, its many lamps and windows the rest."""
 
 DENSITY_SAMPLES = 64
 """NASA's density is worked out at this many points a side of a texture, drawn up between them:
@@ -343,6 +354,7 @@ def _draw(parts: list[Roads], density, x0, y0, zoom_level, side, seed) -> np.nda
     white = np.zeros((side, side), dtype=np.float32)
     houses_px = max(1, round(HOUSES_M / m_per_px))
     houses_k = _width_k(HOUSES_M, m_per_px, ref)
+    dens = None if density is None else _density_field(density, x0, y0, zoom_level, side)
     box = (s - margin, w - margin, n + margin, e + margin)
     for part, i in [(p, i) for p in parts for i in p.near(*box)]:
         kind = KINDS[int(part.kind[i])]
@@ -371,8 +383,16 @@ def _draw(parts: list[Roads], density, x0, y0, zoom_level, side, seed) -> np.nda
         ix = np.interp(at, along, px)[lit].astype(int)
         iy = np.interp(at, along, py)[lit].astype(int)
         inside = (ix >= 0) & (ix < side) & (iy >= 0) & (iy < side)
+        ix, iy, level = ix[inside], iy[inside], level[inside]
+        if dens is not None:  # NASA: how many are lit, a village's all, the open country's few
+            here = dens[iy, ix]
+            on = rng.random(len(ix)) < LIT_SHARE_MIN + (1 - LIT_SHARE_MIN) * np.minimum(
+                here / LIT_FULL, 1.0
+            )
+            ix, iy = ix[on], iy[on]
+            level = level[on] * (LAMP_COUNTRY + (2 * (1 - LAMP_COUNTRY)) * here[on])
         target = white if rng.random() < WHITE_SHARE else sodium
-        np.maximum.at(target, (iy[inside], ix[inside]), level[inside].astype(np.float32))
+        np.maximum.at(target, (iy, ix), level.astype(np.float32))
     # a lamp is a dot of about two pixels across, as the prototype drew them (a disc of 0.6 px);
     # drawn coarser, a pixel
     if k == 1:
@@ -383,6 +403,12 @@ def _draw(parts: list[Roads], density, x0, y0, zoom_level, side, seed) -> np.nda
     # it keeps (2026-11-10)
     core_a = np.asarray(core, dtype=np.float32)
     del draw_core, core
+    if dens is not None:  # a street's own light where its lamps are lit
+        share = np.minimum(dens / np.float32(LIT_FULL), np.float32(1.0))
+        share *= np.float32(1 - LIT_SHARE_MIN)
+        share += np.float32(LIT_SHARE_MIN)
+        core_a = core_a * share
+        del share
     tmp = core_a * np.float32(0.5)
     tmp += sodium * np.float32(glow_k)
     warm = _blur(tmp, sigma)  # the glow round the sodium lamps and the streets
@@ -408,14 +434,12 @@ def _draw(parts: list[Roads], density, x0, y0, zoom_level, side, seed) -> np.nda
     del spark
     cold = rng.random((side, side), dtype=np.float32) < 0.3
     windows *= d
+    if dens is not None:  # the windows: a town's many, the country's few
+        windows *= DENSITY_FLOOR + DENSITY_SPAN * dens
     np.add(warm, windows, out=warm, where=~cold)
     np.add(cool, windows, out=cool, where=cold)
     del windows, cold
-    if density is not None:
-        factor = _density_factor(density, x0, y0, zoom_level, side)
-        warm *= factor
-        cool *= factor
-        del factor
+    del dens
     rgb = np.empty((side, side, 3), dtype=np.float32)
     for ch in range(3):
         np.multiply(warm, np.float32(SODIUM[ch]), out=rgb[..., ch])
@@ -482,11 +506,11 @@ def _zoom_linear(a: np.ndarray, side: int) -> np.ndarray:
     return rows[:, i0] * g.reshape(shape) + rows[:, i0 + 1] * f.reshape(shape)
 
 
-def _density_factor(density: Density, x0: int, y0: int, zoom_level: int, side: int) -> np.ndarray:
-    """:data:`DENSITY_FLOOR` plus :data:`DENSITY_SPAN` times NASA's density, at each pixel: worked
-    out at :data:`DENSITY_SAMPLES` points a side and drawn up between them (a cell of the grid,
-    15 arc-seconds, is about 60 px of a ZL16 texture at 1024 px). Worked out at every pixel, it
-    took a worker 120 MB a texture (2026-11-10)."""
+def _density_field(density: Density, x0: int, y0: int, zoom_level: int, side: int) -> np.ndarray:
+    """NASA's density, 0 to 1, at each pixel: worked out at :data:`DENSITY_SAMPLES` points a side
+    and drawn up between them (a cell of the grid, 15 arc-seconds, is about 60 px of a ZL16
+    texture at 1024 px). Worked out at every pixel, it took a worker 120 MB a texture
+    (2026-11-10)."""
     n = min(side, DENSITY_SAMPLES)
     # the pixels sampled are those zoom keeps: the first, the last and evenly between
     u = np.linspace(0.0, side - 1.0, n) + 0.5
@@ -494,7 +518,7 @@ def _density_factor(density: Density, x0: int, y0: int, zoom_level: int, side: i
     lon = (x0 + u / side * 16.0) / nn * 360.0 - 180.0
     lat = np.degrees(np.arctan(np.sinh(math.pi * (1 - 2 * (y0 + u / side * 16.0) / nn))))
     lons, lats = np.meshgrid(lon, lat)
-    small = (DENSITY_FLOOR + DENSITY_SPAN * density.at(lons, lats)).astype(np.float32)
+    small = np.clip(density.at(lons, lats), 0.0, 1.0).astype(np.float32)
     return small if n == side else _zoom_linear(small, side)
 
 

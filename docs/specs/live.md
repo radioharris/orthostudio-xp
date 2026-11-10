@@ -532,8 +532,14 @@ the next start with X-Plane not running (`region.set_night`, recorded in `_live/
 settled it (2026-11-10): street lamps along X-Plane's own roads, one every 20 to 45 m by the road's
 class (`ROADS`), a third white and the rest sodium orange, at random levels, one in eight out,
 dimmer and farther apart along a `rural_edge` road; a soft glow round the lamps and the larger
-streets; windows in a band 50 m wide along the town's streets; all of it times NASA's Black
-Marble 2016 brightness of the place (0.2 where it sees nothing to 1.5 where it is saturated); then
+streets; windows in a band 50 m wide along the town's streets. NASA's Black Marble 2016
+brightness of the place (its density, 0 to 1) decides how many lamps are lit, a fifth where it
+sees nothing and all from 0.12 (a village round Geneva; `LIT_SHARE_MIN`, `LIT_FULL`), a lamp
+0.8 to 1.2 as bright (`LAMP_COUNTRY`), and the windows' light, 0.2 to 1.5 (`DENSITY_FLOOR`,
+`DENSITY_SPAN`). The lights all times the density at first, a village's lamps came out a fifth
+of a town's and the country went dark (the user at LSGG, 2026-11-11); against the same textures
+lit so, Geneva's centre 1.44 of its light without a grid (1.65 before), the Pays de Gex's
+villages 1.05 (0.89), the country south of Geneva 0.68 (0.48), the Jura's woods 0.13 (0.15). Then
 ×0.75, what is fainter than 6 out of 255 black (`night.FLOOR`), and nothing else: a twentieth of
 the day photo under the lights, as XPME does (its "night ground visibility", 5 % by default), came
 out of BC1 as a checkerboard of purple, brown and green blocks, values of 4 to 10 out of 255 the
