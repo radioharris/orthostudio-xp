@@ -224,6 +224,29 @@ def decode_bc1(blob: bytes, side: int) -> np.ndarray:
     return out.reshape(blocks * 4, blocks * 4, 3)[:side, :side].astype(np.uint8)
 
 
+class ResetNightTest(unittest.TestCase):
+    def test_a_reset_puts_the_nights_back_to_black(self):
+        """Every built texture back to neutral: its night black again, never left over it."""
+        import json
+        import os
+        import tempfile
+        from pathlib import Path
+
+        from orthostudio.live.region import NIGHT_FOLDER, ensure_night_neutral, reset_built
+
+        with tempfile.TemporaryDirectory() as tmp:
+            pack = Path(tmp)
+            (pack / "textures").mkdir()
+            (pack / NIGHT_FOLDER).mkdir()
+            black = ensure_night_neutral(pack)
+            name = "23904_34080_BI16.dds"
+            lit = pack / NIGHT_FOLDER / "23904_34080_BI16_LIT.dds"
+            lit.write_bytes(b"a night made before")
+            (pack / "_live" / "ortho.json").write_text(json.dumps({"textures": {name: 0}}))
+            reset_built(pack, log=lambda _: None)
+            self.assertEqual(os.stat(lit).st_ino, os.stat(black).st_ino)
+
+
 class Bc1Test(unittest.TestCase):
     def test_a_level_reads_back_as_it_was_encoded(self):
         from orthostudio.live.imaging import encode_bc1

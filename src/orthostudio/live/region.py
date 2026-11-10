@@ -763,20 +763,27 @@ def reset_built(pack_dir: Path, log: Callable[[str], None] = print) -> int:
     """Every built texture back to the neutral one, and forgotten: the pack as the first time.
 
     Only the textures the streamer recorded as built are touched (``_live/ortho.json``), so a reset
-    takes seconds; those built in another season and not made neutral yet too (``stale``)."""
-    from .names import NeutralPool
+    takes seconds; those built in another season and not made neutral yet too (``stale``). Their
+    night textures are black again too: one made before stayed over the neutral texture until its
+    texture was built again at night."""
+    from .names import NeutralPool, NightPool, night_name
     from .pack import MARKER, load_built
 
     meta = load_built(pack_dir)
     built = {**meta.get("stale", {}), **meta.get("textures", {})}
     zooms, layout = region_layout(pack_dir)
     pool = NeutralPool(pack_dir)
+    nights: NightPool | None = None
     for name in built:
         path = pack_dir / "textures" / name
         tex = parse_texture_name(name)
         top = 0 if tex is None else _laid_out_top(zooms, layout, tex.zoom)
         if path.exists():
             pool.replace(top, path)
+        lit = pack_dir / NIGHT_FOLDER / night_name(name)
+        if lit.exists():
+            nights = nights or NightPool(pack_dir)
+            nights.replace(0, lit)
     if meta:
         meta["textures"], meta["seen"], meta["patchy"], meta["stale"] = {}, {}, [], {}
         meta.pop("grown", None)
