@@ -328,6 +328,12 @@ def draw(
 def _draw(parts: list[Roads], density, x0, y0, zoom_level, side, seed) -> np.ndarray:
     s, w, n, e = _bounds(x0, y0, zoom_level)
     m_per_px = 16.0 * EARTH_M / 2.0**zoom_level * math.cos(math.radians((s + n) / 2)) / side
+    # k: 1 at the reference scale (a ZL16 texture at 1024 px, a ZL18 one at 256), k times coarser
+    # for a far texture (FAR_DRAW): its light kept, its lamps a pixel each
+    ref = m_per_px * side / LIT_SIDE * 2.0 ** (zoom_level - 16)
+    k = max(1, round(m_per_px / ref))
+    lamp_k = (4.0 / k**2) ** (1 / POWER) if k > 1 else 1.0  # a lamp's light, its power mean kept
+    glow_k = (4.0 / k**2) ** (1 - 1 / POWER) if k > 1 else 1.0  # and what it adds to the glow
     margin = 0.01
     rng = np.random.default_rng(seed)
     core = Image.new("F", (side, side), 0.0)
@@ -336,6 +342,7 @@ def _draw(parts: list[Roads], density, x0, y0, zoom_level, side, seed) -> np.nda
     sodium = np.zeros((side, side), dtype=np.float32)
     white = np.zeros((side, side), dtype=np.float32)
     houses_px = max(1, round(HOUSES_M / m_per_px))
+    houses_k = _width_k(HOUSES_M, m_per_px, ref)
     box = (s - margin, w - margin, n + margin, e + margin)
     for part, i in [(p, i) for p in parts for i in p.near(*box)]:
         kind = KINDS[int(part.kind[i])]
@@ -346,8 +353,12 @@ def _draw(parts: list[Roads], density, x0, y0, zoom_level, side, seed) -> np.nda
         px, py = _pixels(x0, y0, zoom_level, side, *part.points(i))
         points = list(zip(px.tolist(), py.tolist(), strict=True))
         if kind in HOUSES and not rural:
-            draw_fill.line(points, fill=HOUSES[kind], width=houses_px)
-        draw_core.line(points, fill=bright, width=max(1, round(width_m / m_per_px)))
+            draw_fill.line(points, fill=HOUSES[kind] * houses_k, width=houses_px)
+        draw_core.line(
+            points,
+            fill=bright * _width_k(width_m, m_per_px, ref),
+            width=max(1, round(width_m / m_per_px)),
+        )
         # lamps along the road, one every spacing_m from a random start, a few out
         steps = np.hypot(np.diff(px), np.diff(py))
         along = np.concatenate(([0.0], np.cumsum(steps)))
@@ -356,14 +367,16 @@ def _draw(parts: list[Roads], density, x0, y0, zoom_level, side, seed) -> np.nda
         if len(at) == 0:
             continue
         lit = rng.random(len(at)) > LAMPS_OUT
-        level = (bright * rng.uniform(0.35, 0.8, len(at)))[lit]
+        level = (bright * lamp_k * rng.uniform(0.35, 0.8, len(at)))[lit]
         ix = np.interp(at, along, px)[lit].astype(int)
         iy = np.interp(at, along, py)[lit].astype(int)
         inside = (ix >= 0) & (ix < side) & (iy >= 0) & (iy < side)
         target = white if rng.random() < WHITE_SHARE else sodium
         np.maximum.at(target, (iy[inside], ix[inside]), level[inside].astype(np.float32))
-    # a lamp is a dot of about two pixels across, as the prototype drew them (a disc of 0.6 px)
-    sodium, white = _max2(sodium), _max2(white)
+    # a lamp is a dot of about two pixels across, as the prototype drew them (a disc of 0.6 px);
+    # drawn coarser, a pixel
+    if k == 1:
+        sodium, white = _max2(sodium), _max2(white)
     sigma = max(1.5, 12.0 / m_per_px)
     a, b, c, d = (np.float32(v) for v in WEIGHTS)
     # in place, a few arrays at a time: each is 4 MB at 1024 px, and what the process once held
@@ -371,7 +384,7 @@ def _draw(parts: list[Roads], density, x0, y0, zoom_level, side, seed) -> np.nda
     core_a = np.asarray(core, dtype=np.float32)
     del draw_core, core
     tmp = core_a * np.float32(0.5)
-    tmp += sodium
+    tmp += sodium * np.float32(glow_k)
     warm = _blur(tmp, sigma)  # the glow round the sodium lamps and the streets
     warm *= c
     np.multiply(core_a, a, out=tmp)
@@ -380,7 +393,7 @@ def _draw(parts: list[Roads], density, x0, y0, zoom_level, side, seed) -> np.nda
     np.multiply(sodium, b, out=tmp)
     warm += tmp
     del sodium
-    cool = _blur(white, sigma)
+    cool = _blur(white * np.float32(glow_k), sigma)
     cool *= c
     np.multiply(white, b, out=tmp)
     cool += tmp
@@ -408,6 +421,16 @@ def _draw(parts: list[Roads], density, x0, y0, zoom_level, side, seed) -> np.nda
         np.multiply(warm, np.float32(SODIUM[ch]), out=rgb[..., ch])
         rgb[..., ch] += cool * np.float32(WHITE[ch])
     return rgb
+
+
+def _width_k(width_m: float, m_per_px: float, ref: float) -> float:
+    """A line ``width_m`` wide drawn at ``m_per_px`` lit as at the reference scale ``ref``: its
+    light times the width it had there over the width it has here (a pixel at the least)."""
+    if m_per_px <= ref * 1.01:
+        return 1.0
+    there = max(1, round(width_m / ref)) * ref
+    here = max(1, round(width_m / m_per_px)) * m_per_px
+    return there / here
 
 
 def _blur(a: np.ndarray, sigma: float) -> np.ndarray:

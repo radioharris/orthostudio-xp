@@ -32,7 +32,7 @@ import time
 from collections.abc import Callable, Iterable
 from concurrent.futures import Future, ProcessPoolExecutor
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
@@ -63,6 +63,14 @@ START_MARGIN_DEG = 5.0
 to a few degrees: its night textures are made for a start up to this much higher than
 :data:`NIGHT_SUN_DEG`, a few seconds more at a start round dusk rather than an airport left dark."""
 
+FAR_DRAW = 2
+"""A night texture is drawn this many levels above its own, four times its side, and made
+smaller: a 64 px one far away drawn at 256 px rather than 1024, its light the same
+(orthostudio.live.night: its lamps a pixel each, their light kept), up to ten times faster in
+the country (2026-11-11)."""
+
+FAR_DRAW_MIN = 128
+
 NEAR_LEVEL = 2
 """The coarsest day level whose night goes first, and which a start waits for: 1024 px, within
 about 40 km."""
@@ -70,10 +78,17 @@ about 40 km."""
 START_KM = 10.0
 """A start also waits for every night texture this close to it, as for its day ones (BLOCK_KM)."""
 
-NIGHT_WAIT_S = 60.0
+NIGHT_WAIT_S = 180.0
 """How long a start waits for its night textures once its day ones are built, at most: a night
 process stuck never holds X-Plane on its loading screen, and what is left is made in flight
-(X-Plane reads it as it comes closer). At LSGG the night took 25 s (2026-11-10)."""
+(X-Plane reads it as it comes closer, no sooner)."""
+
+TEAM_MAX = 8
+"""At a start at night, a team of this many processes at most (and no more than Live's encoders)
+makes the night textures of every texture X-Plane reads there, as the day ones are: one process
+made LSGG's 8,700 in 13 minutes, and those X-Plane read before stayed black (the user, 2026-11-11:
+« paralléliser le démarrage des textures et attendre que tout soit fait comme pour le jour »).
+The team is closed once they are made, its memory with it."""
 
 _ROADS: dict = {}  # the night process's roads (orthostudio.live.night.Roads), by DSF
 _ROADS_KEPT = 9  # the squares round the aircraft, 3 x 3: each read once while it flies there
@@ -199,11 +214,11 @@ def make_night(pack: Path, name: str, level: int, dsfs, grid: str | None) -> Non
     if grid is not None:
         lat, lon = (int(v) for v in Path(grid).stem.replace("+", " +").replace("-", " -").split())
         density = density_of(Path(grid), lat, lon)
-    # drawn sharp, at the night texture's full side, then made smaller for a build far away
     roads = roads_from(Path(d) for d in dsfs)
-    lights = draw(roads, density, tex.x, tex.y, tex.zoom, LIT_SIDE,
-                  seed=seed_of(tex.x, tex.y))  # fmt: skip
-    lights = lights_at(lights, level)
+    # a far texture drawn at four times its side, not at 1024 px (FAR_DRAW)
+    side = max(FAR_DRAW_MIN, LIT_SIDE >> max(0, level - FAR_DRAW))
+    lights = draw(roads, density, tex.x, tex.y, tex.zoom, side, seed=seed_of(tex.x, tex.y))
+    lights = lights_at(lights, level - (LIT_SIDE // side).bit_length() + 1)
     if density is None:
         lights = lights * 0.85  # what the grid gives on average in a town
     levels = [encode_bc1(lv) for lv in lit_levels(night_rgb(lights))]
@@ -219,6 +234,26 @@ def night_job(job: tuple) -> tuple[str, int, float]:
     t = time.monotonic()
     make_night(Path(pack), name, level, dsfs, grid)
     return name, max(0, level), time.monotonic() - t
+
+
+def night_batch(jobs: list[tuple]) -> list[tuple]:
+    """In a process of the start's team: the night textures of a square, one after the other.
+    Returns (name, level, seconds) each, the level None and the error for one that failed."""
+    out: list[tuple] = []
+    for job in jobs:
+        try:
+            out.append(night_job(job))
+        except Exception as e:  # the others made all the same
+            out.append((job[1], None, f"{type(e).__name__}: {e}"))
+    return out
+
+
+def _team_pool(size: int):
+    """The start's team: ``size`` processes forked as the encoders are (orthostudio.live.pools)."""
+    from . import pools
+    from .texture import worker_ignores_ctrl_c
+
+    return ProcessPoolExecutor(size, initializer=worker_ignores_ctrl_c, mp_context=pools.context())
 
 
 class NightWork:
@@ -256,6 +291,10 @@ class NightWork:
         self._at: tuple[float, float] | None = None  # where the aircraft was last
         self.closed = False
         self.failed = 0
+        self.team = 0  # the start's team: Live's encoders (the streamer sets it), TEAM_MAX at most
+        self._team_pool: Any = None
+        self._team_jobs = 0  # its squares not done yet
+        self._make_team: Callable[[int], Any] = _team_pool
 
     @property
     def night(self) -> bool:
@@ -313,20 +352,17 @@ class NightWork:
 
     def start_left(self, day_left: int = 0) -> int:
         """Night textures still to make which a start waits for, as for its photos (0 by day):
-        every near one (:data:`NEAR_LEVEL`) and all within :data:`START_KM`. X-Plane never reads
-        again a level it took: a night made after it loaded its area stays black there until it
-        comes closer (the user's Live flight, 2026-11-10). ``day_left``: the start's day textures
-        still to build; once none is, the nights are waited for :data:`NIGHT_WAIT_S` at most."""
+        all those of the textures built, which X-Plane reads there. X-Plane never reads again a
+        level it took: a night made after it loaded its area stays black there until it comes
+        closer (the user's Live flight, 2026-11-10). ``day_left``: the start's day textures still
+        to build; once none is, the team makes the far ones (:data:`TEAM_MAX`), and the nights
+        are waited for :data:`NIGHT_WAIT_S` at most."""
         if self.start_at is None or not self.night or self.gave_up:
             return 0
         with self.lock:
-            todo = list(self.waiting.items()) + list(self.in_flight.items())
-        start = self.start_at
-        left = sum(
-            1
-            for n, level in todo
-            if level <= NEAR_LEVEL or self._distance(n, start) * 111.32 <= START_KM
-        )
+            left = len(self.waiting) + len(self.in_flight)
+        if left and day_left == 0 and self.team > 1 and self._team_pool is None:
+            self._team_up()
         if left == 0 or day_left > 0:
             self._waited_since = None
             return left
@@ -341,6 +377,58 @@ class NightWork:
             )
             return 0
         return left
+
+    def _team_up(self) -> None:
+        """The far night textures waiting, a square to a job, given to a team of processes, the
+        largest squares first: each reads its squares' roads once. The near ones and those wanted
+        after stay with the night's own process. LSGG's 8,685 in 64 s with 8, 2 GB at most for
+        the team (one process: 13 minutes; split in smaller jobs: no faster, 2.3 GB)."""
+        with self.lock:
+            squares: dict[tuple[int, int], list[str]] = {}
+            for name, level in self.waiting.items():
+                centre = self._centre(name)
+                if level > NEAR_LEVEL and centre is not None:
+                    squares.setdefault((math.floor(centre[0]), math.floor(centre[1])), []).append(
+                        name
+                    )
+            if not squares:
+                return
+            batches = sorted(squares.values(), key=len, reverse=True)
+            for names in batches:
+                for name in names:
+                    self.in_flight[name] = self.waiting.pop(name)
+            size = min(self.team, TEAM_MAX, len(batches))
+            self._team_pool = self._make_team(size)
+            self._team_jobs = len(batches)
+            jobs = [[self._job(n, self.in_flight[n]) for n in names] for names in batches]
+        self.log(
+            f"  a team of {size} processes makes the night of {sum(map(len, jobs))} textures "
+            f"over {len(squares)} squares"
+        )
+        for batch in jobs:
+            fut = self._team_pool.submit(night_batch, batch)
+            fut.add_done_callback(lambda f, b=batch: self._batch_done(f, b))
+
+    def _batch_done(self, fut: Future, batch: list[tuple]) -> None:
+        with self.lock:
+            try:
+                results = fut.result()
+            except Exception as e:  # its textures made later, by the night's own process
+                results = [(job[1], None, f"{type(e).__name__}: {e}") for job in batch]
+            for (name, level, seconds), job in zip(results, batch, strict=True):
+                self.in_flight.pop(name, None)
+                if level is None:
+                    self.failed += 1
+                    self.waiting[name] = job[2]
+                else:
+                    self.made[name] = min(level, self.made.get(name, 99))
+                    self.seconds += seconds
+            self._team_jobs -= 1
+            pool = self._team_pool if self._team_jobs <= 0 else None
+            if pool is not None:
+                self._team_pool = None
+        if pool is not None:  # its processes end, and their memory with them
+            pool.shutdown(wait=False)
 
     def back_to_black(self, name: str, keep_name: bool) -> None:
         """``name`` made neutral by the disk budget: its night texture black again (``keep_name``:
@@ -474,6 +562,13 @@ class NightWork:
         square = (math.floor(centre[0]) + 0.5, math.floor(centre[1]) + 0.5)
         return (True, round(_degrees(square, at), 6), near)
 
+    def _centre(self, name: str) -> tuple[float, float] | None:
+        centre = self._centres.get(name)
+        if centre is None:
+            tex = parse_texture_name(name)
+            centre = self._centres[name] = tex.center if tex is not None else None
+        return centre
+
     def _distance(self, name: str, at: tuple[float, float] | None) -> float:
         """In degrees of latitude, from ``at``; each name read once (thousands wait at dusk, and
         this runs at each of the plan loop's turns)."""
@@ -493,3 +588,5 @@ class NightWork:
             self.log(f"  {made} night textures made")
         if self._executor is not None:
             self._executor.shutdown(wait=False, cancel_futures=True)
+        if self._team_pool is not None:
+            self._team_pool.shutdown(wait=False, cancel_futures=True)

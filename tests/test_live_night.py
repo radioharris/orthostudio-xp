@@ -336,6 +336,32 @@ class _Now:
         pass
 
 
+class _TeamNow:
+    """The start's team, its square jobs ended when the test says."""
+
+    def __init__(self):
+        self.size, self.batches, self.futures, self.shut = None, [], [], False
+
+    def make(self, size):
+        self.size = size
+        return self
+
+    def submit(self, fn, batch):
+        from concurrent.futures import Future
+
+        fut = Future()
+        self.batches.append(batch)
+        self.futures.append((fut, batch))
+        return fut
+
+    def finish(self):
+        for fut, batch in self.futures:
+            fut.set_result([(job[1], job[2], 0.01) for job in batch])
+
+    def shutdown(self, **_):
+        self.shut = True
+
+
 class _Later:
     """An executor whose jobs end when the test says: in the order given."""
 
@@ -408,7 +434,7 @@ class NightWorkTest(unittest.TestCase):
         self.assertTrue(self.work.night)
         self.work.want(self.near, 0)
         self.work.want(self.far, 4)
-        self.assertEqual(self.work.start_left(), 1)  # the far one does not hold X-Plane
+        self.assertEqual(self.work.start_left(), 2)  # the far one too: X-Plane reads it there
         self.work.tick(None, (43.7, 7.25), lambda: {})
         self.assertEqual(self.work.start_left(), 0)
 
@@ -434,19 +460,42 @@ class NightWorkTest(unittest.TestCase):
         saved(23.5)
         self.work.start(43.70, 7.25, lambda: {self.near: 0, self.far: 4})
         self.assertTrue(self.work.night)
-        self.assertEqual(self.work.start_left(), 1)  # the near one, which the start waits for
+        self.assertEqual(self.work.start_left(), 2)  # both, which the start waits for
         self.work.tick(None, (43.7, 7.25), lambda: {})
         self.assertEqual({job[1] for job in self.ex.jobs}, {self.near, self.far})
         self.assertEqual(self.work.start_left(), 0)
 
-    def test_a_start_waits_for_every_near_night_however_far(self):
+    def test_a_team_makes_the_far_ones_a_square_each_and_ends(self):
+        """At a start at night, the far ones go to a team of processes, a square to a job, once
+        the day's textures are built; the team ends with its jobs (the user, 2026-11-11)."""
+        team = _TeamNow()
+        self.work._make_team = team.make
+        self.work.team = 12
         self.work.start_at = (43.70, 7.25)
         self.work.sun = 10.0
-        self.work.want(self.far, 2)  # 150 km away but built at 1024 px: X-Plane waits for it
+        far = {}
+        for lat, lon in ((43.10, 7.10), (43.15, 7.30), (43.12, 7.60), (44.50, 8.50)):
+            x, y = texture_at(lat, lon)
+            far[(lat, lon)] = f"{y}_{x}_BI16.dds"
+            self.work.want(far[(lat, lon)], 4)
+        self.work.want(self.near, 0)
+        self.assertEqual(self.work.start_left(day_left=3), 5)  # the day's first: no team yet
+        self.assertIsNone(team.size)
+        self.assertEqual(self.work.start_left(day_left=0), 5)  # the team, now
+        self.assertEqual(team.size, 2)  # two squares, two processes
+        self.assertEqual(
+            [sorted(job[1] for job in batch) for batch in team.batches],
+            [sorted(far[k] for k in ((43.10, 7.10), (43.15, 7.30), (43.12, 7.60))),
+             [far[(44.50, 8.50)]]],
+        )  # fmt: skip
+        self.assertEqual(self.work.waiting, {self.near: 0})  # the near one: the night's process
+        team.finish()
         self.assertEqual(self.work.start_left(), 1)
-        self.work.forget(self.far)
-        self.work.want(self.far, 4)  # far and small: X-Plane does not wait
+        self.assertTrue(team.shut)
+        self.assertIsNone(self.work._team_pool)
+        self.work.tick(None, (43.7, 7.25), lambda: {})
         self.assertEqual(self.work.start_left(), 0)
+        self.assertEqual(len(self.work.made), 5)
 
     def test_a_start_waits_a_minute_at_most_for_its_nights(self):
         from unittest import mock

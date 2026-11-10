@@ -563,6 +563,8 @@ class Streamer:
             )
             self.names.yielding = self.yielding
         self.night = night  # the night textures of the textures built (orthostudio.live.nightwork)
+        if night is not None:
+            night.team = self.workers  # the start's team: as many as the encoders, idle by then
         self._points: dict[str, tuple[float, float]] = {}  # "aircraft", "start", "hold"
 
     # --- the season ---------------------------------------------------------------------------

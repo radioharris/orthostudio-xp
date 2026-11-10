@@ -272,8 +272,9 @@ night.
   at 17:50, full at 18:15).
 - The night textures are made by one process of their own, beside the twelve that build the
   photos, and after them: the photos always come first.
-- A start at night waits for the sharp night textures round the airport, as it waits for its
-  photos.
+- A start at night waits for every night texture X-Plane reads round the airport, as it waits
+  for its photos: a team of processes makes them, then ends (at LSGG, 8,685 night textures in
+  about a minute, 2 GB more meanwhile).
 - Far away they are made small first, as the photos are, so a town shows from far: the coast of
   Nice from 40 and 80 km.
 - They take about a twentieth of the photos' disk space (54 MB on Nice's square), counted in Live's

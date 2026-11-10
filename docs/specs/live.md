@@ -607,8 +607,24 @@ by 100 s, with no reload.
 the time it saved with it (`_time` of `Freeflight.prf`: day, local time, latitude, longitude;
 `nightwork.sun_at_start`), the local time taken for the zone's mean solar time, and the night
 textures are made for a start up to 5° (`START_MARGIN_DEG`) above the threshold. A start at night
-waits for every night texture of a texture built at 1024 px or more, and for all within 10 km of
-it (`START_KM`), as for its photos, at the plugin's HOLD and in Live's pause window.
+waits for the night textures of every texture built, which X-Plane reads there, as for its photos,
+at the plugin's HOLD and in Live's pause window, counted with the day ones in its window; once the
+day ones are built, for 180 s at most (`NIGHT_WAIT_S`). Then a team of processes, as many as
+Live's encoders and 8 at most (`TEAM_MAX`), makes the far ones, a square to a job, the largest
+first, each reading a square's roads once (`NightWork._team_up`, `night_batch`), while the night's
+own process makes the near ones; the team is closed once its jobs are done, and its memory with
+it. Replayed on LSGG's start (8,685 night textures over 44 squares): 64 s with 8, 2 GB at most
+for the team, against 13 minutes with one process, the far ones X-Plane read before them black
+until it came closer (the user, 2026-11-11); split into smaller jobs, no faster and 2.3 GB.
+
+**Far textures drawn small.** A night texture is drawn at four times its own side
+(`nightwork.FAR_DRAW`, 128 px at least) and made smaller, not at 1024 px: a 64 px one far away
+at 256. Drawn k times coarser than a ZL16 texture at 1024 px, a lamp is a pixel, its light
+(4/k²)^(1/3) of its level, which keeps its power mean, and (4/k²)^(2/3) of it in the glow, which
+keeps the glow's light; a street and the windows' band keep the width they had at 1024 px
+(`night._width_k`). Against the same textures drawn at 1024 px, round Geneva, Nice, LSGG and in
+the country: 0.89 to 1.02 of the light, 0.83 to 1.00 seen from far, in 37 to 75 ms against 99 to
+131 (the roads' loop is most of what is left).
 
 **The disk.** The night textures made count in the textures' budget before the day ones
 (`NightWork.bytes`); a texture the budget makes neutral has its night texture black again, or gone
