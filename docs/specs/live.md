@@ -918,11 +918,20 @@ A plugin that does not return from one of these messages holds the whole load.
       loading window itself (`orthostudio.live.pause_window`: its sizes, colours and words, the
       start's whole name from the first instant, « preparing the files » while the squares' files
       are made, before the textures are counted), a Cocoa panel of the app on a Mac (none when Live
-      runs from a terminal), a topmost window of a thread of its own on Windows, none yet on Linux.
+      runs from a terminal), a topmost window of a thread of its own on Windows, on Linux a process
+      of its own while the window is up (`orthostudio.live.pause_window_x11`, X11 through ctypes,
+      the plugin's `live_panel_x11.c` window; apart from Live because Live's window is GTK in the
+      same process and Xlib's error handler is one for a whole process). It reads a JSON line per
+      change on its standard input, and at the end of that input (Live done, or gone however it
+      went) the window goes. Without libX11 or a display it ends at once and is not started again:
+      no window, and `LogLive.txt` says the wait.
       On a Mac the pointer over the paused X-Plane may turn into the spinning wheel. On Windows a
       click on a paused X-Plane greyed it as « Not Responding » and offered to close it: the plugin
       calls `DisableProcessWindowsGhosting` as X-Plane starts (only the process itself can), after
-      which clicks during a pause showed neither (the user's Shadow).
+      which clicks during a pause showed neither (the user's Shadow). On Linux a paused X-Plane
+      cannot answer the window manager's pings, and GNOME would offer after 5 s to force it to
+      quit: for the window's time X-Plane's windows stop saying they answer them (`_NET_WM_PING`
+      out of their `WM_PROTOCOLS`, as the plugin does at a start), and say it again after.
     - A guard process holds the reading end of a pipe whose writing end only Live holds: however
       Live ends, X-Plane goes on at that instant (a first test that looked every half second left
       X-Plane paused when the test was stopped mid-pause). Live's Stop lets it go too.

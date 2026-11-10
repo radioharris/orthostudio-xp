@@ -445,8 +445,6 @@ To switch Live off, put `enabled = false` in `live.toml`, in OrthoStudio XP's ow
 
 - Only where a region is installed: the six regions cover all the land of the planet but
   Antarctica.
-- On Linux, a new location chosen in flight waits too, but without Live's loading window over
-  X-Plane: `LogLive.txt` says the wait.
 - Flown with X-Plane 12 on a Mac and on Windows; not yet on Linux.
 - External views add nothing: X-Plane takes the textures for the aircraft alone, so a camera taken
   far shows the ground there as sharp as the aircraft's distance allows, a little blurry. Live

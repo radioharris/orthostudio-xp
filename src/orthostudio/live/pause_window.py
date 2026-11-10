@@ -7,7 +7,8 @@ same window itself: the plugin's sizes, colours and words (``native/xplane_plugi
 ``live_panel_win.c``, ``live_gate.c``'s ``show``), over the middle of X-Plane's window, above it
 (full screen too). On a Mac a panel of the app (Cocoa, drawn on the app's main thread: there is
 none when Live runs from a terminal, and no window then); on Windows a window of a thread of its
-own, topmost, which never takes the keyboard; on Linux none yet (Live's log says the wait).
+own, topmost, which never takes the keyboard; on Linux a process of its own while the window is up
+(``pause_window_x11``: X11, without libX11 or a display no window, Live's log says the wait).
 
 :func:`lines` gives the plugin's two lines in the Live window's language.
 """
@@ -16,8 +17,12 @@ from __future__ import annotations
 
 import contextlib
 import ctypes
+import json
+import os
+import subprocess
 import sys
 import threading
+from pathlib import Path
 
 PANEL_W, PANEL_H, BAR_W, BAR_H = 560, 120, 400, 8
 
@@ -66,6 +71,8 @@ class PauseWindow:
                 self._impl = _MacPanel()
             elif sys.platform == "win32":
                 self._impl = _WinPanel(xplane_pid)
+            else:
+                self._impl = _X11Panel(xplane_pid)
 
     @property
     def shown_somewhere(self) -> bool:
@@ -80,6 +87,59 @@ class PauseWindow:
         if self._impl is not None:
             with contextlib.suppress(Exception):
                 self._impl.hide()
+
+
+class _X11Panel:
+    """``pause_window_x11``, a process that lasts as long as the window: each change one line of
+    its standard input, whose end takes the window away (and Live gone, however it went)."""
+
+    def __init__(self, xplane_pid: int | None) -> None:
+        if not os.environ.get("DISPLAY"):
+            raise RuntimeError("no display: no window")
+        self._pid = xplane_pid or 0
+        self._child: subprocess.Popen | None = None
+        self._gave_up = False  # it ended by itself: no libX11, no display to open
+        self._lock = threading.Lock()
+
+    def show(self, headline: str, detail: str, fraction: float) -> None:
+        # short enough to go through the pipe in one piece, or not at all
+        line = json.dumps([headline[:300], detail[:300], fraction]) + "\n"
+        with self._lock:
+            if self._child is None and not self._gave_up:
+                self._child = self._start()
+            if self._child is None:
+                return
+            if self._child.poll() is not None:
+                self._child, self._gave_up = None, True
+                return
+            with contextlib.suppress(OSError):  # full (it will read the next one) or closed
+                os.write(self._child.stdin.fileno(), line.encode())  # type: ignore[union-attr]
+
+    def hide(self) -> None:
+        with self._lock:
+            child, self._child = self._child, None
+        if child is not None:
+            with contextlib.suppress(OSError):
+                child.stdin.close()  # type: ignore[union-attr]
+            with contextlib.suppress(subprocess.TimeoutExpired):
+                child.wait(timeout=2)
+
+    def _start(self) -> subprocess.Popen:
+        here = Path(__file__)
+        child = subprocess.Popen(
+            [
+                sys.executable,
+                "-I",
+                str(here.with_name(f"pause_window_x11{here.suffix}")),
+                str(self._pid),
+            ],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,  # whatever stops Live's group, it sees its input end
+        )
+        os.set_blocking(child.stdin.fileno(), False)  # type: ignore[union-attr]  # never waits
+        return child
 
 
 class _MacPanel:

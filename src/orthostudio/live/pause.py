@@ -24,7 +24,8 @@ A flight X-Plane loads otherwise (the first one, from the main menu; a situation
 loads its aircraft, and the plugin holds those: the pause is for the one case the plugin cannot
 take. While X-Plane is paused nothing of it runs, the plugin neither, so Live shows the wait in a
 window of its own (``orthostudio.live.pause_window``); on Windows the plugin has asked Windows, as
-X-Plane started, not to grey X-Plane's window as « Not Responding » and offer to close it.
+X-Plane started, not to grey X-Plane's window as « Not Responding » and offer to close it, and on
+Linux that window keeps the window manager from offering to force X-Plane to quit.
 
 A guard process (:data:`GUARD`) holds the reading end of a pipe whose writing end only Live holds:
 whatever way Live ends, its end closes, and the guard lets X-Plane go at that instant.
