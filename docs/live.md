@@ -262,7 +262,8 @@ without more a town on Live's photos is black at night but for X-Plane's roads a
 With "Night lights" on (the Settings tab, on by default), Live gives each texture of its land a
 night texture that X-Plane adds to the photo in the dark: street lamps along X-Plane's own roads,
 orange and white, all lit in towns and villages and few in the open country, as NASA's Black
-Marble sees them, and windows along the town's streets. Between the lights, the photo is as X-Plane lights it at
+Marble sees them; what the day photo shows built lit between the streets, windows and yards,
+and the roads through woods dimmer. Between the lights, the photo is as X-Plane lights it at
 night.
 
 - Nothing is made in the middle of the day. From about an hour and a half before sunset in

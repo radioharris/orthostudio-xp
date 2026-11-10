@@ -16,7 +16,9 @@ What this module paints, for one texture, as the prototype on the user's Nice ti
   20 to 45 m by the road's class, a third of them white (LEDs) and the rest sodium orange, at
   levels drawn at random and one in eight out; far fewer and dimmer along a rural road;
 - **a soft glow** round the lamps and the larger streets;
-- **windows** in a band along the town's streets, a few bright, most dim;
+- **what the day photo shows built** (:func:`built_map`, read at 28 m a pixel): its blocks lit
+  between the streets with windows and yards, a lamp in the woods at a quarter of its light;
+  windows in a band along the town's streets where no photo can be read;
 - **NASA's Black Marble** (:class:`Density`) decides how many lamps are lit, all in a village,
   a fifth in the open country, and how bright the windows are; a lamp is as bright in a village
   as in a town, a little brighter there (:data:`LIT_SHARE_MIN`, :data:`LAMP_COUNTRY`);
@@ -88,6 +90,23 @@ LIT_SHARE_MIN, LIT_FULL = 0.2, 0.12
 where it saw nothing, all from this density on (a village round Geneva, 0.12). Dimming the lamps
 by it, a village's lamps came out at a fifth of a town's and the country went dark (the user,
 LSGG, 2026-11-11: « il y a moins de lumière qu'avant »); a village's lamp is a town's lamp."""
+
+BUILT_K = 4
+"""The day photo is read for what is built at four times the reference scale: 28 m a pixel round
+46°, a ZL16 texture's at 256 px, a ZL18 one's at 64, the same for a texture near or far, so that
+the night of a texture built sharper later agrees with the far one (read at 7 m a pixel and at
+28, Nice's and Cagnes' maps agree to 0.84 to 0.90, 2026-11-11)."""
+
+ROAD_DARK, ROAD_BUILT = 0.25, 1.6
+"""A lamp where the photo shows nothing built round it (woods, fields) at a quarter of its light,
+full from a built share of 1 / 1.6 on: the roads through the hills' woods lit as the town's
+streets looked laid out on the ground (the user, 2026-11-10: « les lumières me semblent un peu
+artificielles »)."""
+
+WINDOWS_POINTS, WINDOWS_BUILT, WINDOWS_GLOW = 0.05, 1.3, 0.015
+"""What is built, as the photo shows it, lit between the streets: a pixel in twenty a lit window
+or yard where it is all built (from a built share of 1 / 1.3), and a faint glow; the town's
+blocks were black between their streets."""
 
 LAMP_COUNTRY = 0.8
 """A lamp's light where NASA saw nothing, against 1.2 where it saw its brightest: a town's
@@ -314,11 +333,13 @@ def draw(
     zoom_level: int,
     side: int = LIT_SIDE,
     seed: int = 0,
+    built: np.ndarray | None = None,
 ) -> np.ndarray:
     """The lights of one texture, ``(side, side, 3)`` RGB from 0 to 1 (float32), before
     :data:`GAIN`. The same roads, place and ``seed`` always give the same image. ``roads``: one
     square's, several squares' (drawn in turn, never copied into one: a texture on a corner took
-    four squares' worth, up to 40 MB, 2026-11-10), or :class:`Road` objects."""
+    four squares' worth, up to 40 MB, 2026-11-10), or :class:`Road` objects. ``built``: how built
+    the ground is (:func:`built_map` of the day photo), or None: windows along the streets then."""
     parts: list[Roads]
     if isinstance(roads, Roads):
         parts = [roads]
@@ -330,13 +351,13 @@ def draw(
             parts = [Roads.of(r for r in items if isinstance(r, Road))]
     shrink = 2 ** max(0, zoom_level - 16)
     inner = max(1, side // shrink)
-    rgb = _draw(parts, density, x0, y0, zoom_level, inner, seed)
+    rgb = _draw(parts, density, x0, y0, zoom_level, inner, seed, built)
     if shrink > 1:
         rgb = _zoom_linear(rgb, side)
     return np.clip(rgb, 0.0, 1.0, out=rgb)
 
 
-def _draw(parts: list[Roads], density, x0, y0, zoom_level, side, seed) -> np.ndarray:
+def _draw(parts: list[Roads], density, x0, y0, zoom_level, side, seed, built=None) -> np.ndarray:
     s, w, n, e = _bounds(x0, y0, zoom_level)
     m_per_px = 16.0 * EARTH_M / 2.0**zoom_level * math.cos(math.radians((s + n) / 2)) / side
     # k: 1 at the reference scale (a ZL16 texture at 1024 px, a ZL18 one at 256), k times coarser
@@ -355,6 +376,7 @@ def _draw(parts: list[Roads], density, x0, y0, zoom_level, side, seed) -> np.nda
     houses_px = max(1, round(HOUSES_M / m_per_px))
     houses_k = _width_k(HOUSES_M, m_per_px, ref)
     dens = None if density is None else _density_field(density, x0, y0, zoom_level, side)
+    built = None if built is None else _fit(built, side)
     box = (s - margin, w - margin, n + margin, e + margin)
     for part, i in [(p, i) for p in parts for i in p.near(*box)]:
         kind = KINDS[int(part.kind[i])]
@@ -364,7 +386,7 @@ def _draw(parts: list[Roads], density, x0, y0, zoom_level, side, seed) -> np.nda
             bright, spacing_m = bright * RURAL[0], spacing_m * RURAL[1]
         px, py = _pixels(x0, y0, zoom_level, side, *part.points(i))
         points = list(zip(px.tolist(), py.tolist(), strict=True))
-        if kind in HOUSES and not rural:
+        if kind in HOUSES and not rural and built is None:
             draw_fill.line(points, fill=HOUSES[kind] * houses_k, width=houses_px)
         draw_core.line(
             points,
@@ -391,6 +413,10 @@ def _draw(parts: list[Roads], density, x0, y0, zoom_level, side, seed) -> np.nda
             )
             ix, iy = ix[on], iy[on]
             level = level[on] * (LAMP_COUNTRY + (2 * (1 - LAMP_COUNTRY)) * here[on])
+        if built is not None:  # the photo: a lamp among houses full, in the woods dim
+            level = level * (
+                ROAD_DARK + (1 - ROAD_DARK) * np.minimum(built[iy, ix] * ROAD_BUILT, 1)
+            )
         target = white if rng.random() < WHITE_SHARE else sodium
         np.maximum.at(target, (iy, ix), level.astype(np.float32))
     # a lamp is a dot of about two pixels across, as the prototype drew them (a disc of 0.6 px);
@@ -409,6 +435,11 @@ def _draw(parts: list[Roads], density, x0, y0, zoom_level, side, seed) -> np.nda
         share += np.float32(LIT_SHARE_MIN)
         core_a = core_a * share
         del share
+    if built is not None:
+        core_a = core_a * (
+            np.float32(ROAD_DARK)
+            + np.float32(1 - ROAD_DARK) * np.minimum(built * np.float32(ROAD_BUILT), np.float32(1))
+        )
     tmp = core_a * np.float32(0.5)
     tmp += sodium * np.float32(glow_k)
     warm = _blur(tmp, sigma)  # the glow round the sodium lamps and the streets
@@ -424,14 +455,17 @@ def _draw(parts: list[Roads], density, x0, y0, zoom_level, side, seed) -> np.nda
     np.multiply(white, b, out=tmp)
     cool += tmp
     del white, tmp
-    windows = np.array(fill, dtype=np.float32)  # a copy: Pillow's array is read only
+    if built is None:  # windows along the town's streets
+        windows = np.array(fill, dtype=np.float32)  # a copy: Pillow's array is read only
+        spark = rng.random((side, side), dtype=np.float32)
+        spark **= 6
+        spark *= np.float32(2.5)
+        spark += np.float32(0.25)
+        windows *= spark
+        del spark
+    else:  # what the photo shows built: lit windows and yards, a pixel in twenty at most
+        windows = _windows(built, k, rng)
     del draw_fill, fill
-    spark = rng.random((side, side), dtype=np.float32)
-    spark **= 6
-    spark *= np.float32(2.5)
-    spark += np.float32(0.25)
-    windows *= spark
-    del spark
     cold = rng.random((side, side), dtype=np.float32) < 0.3
     windows *= d
     if dens is not None:  # the windows: a town's many, the country's few
@@ -445,6 +479,62 @@ def _draw(parts: list[Roads], density, x0, y0, zoom_level, side, seed) -> np.nda
         np.multiply(warm, np.float32(SODIUM[ch]), out=rgb[..., ch])
         rgb[..., ch] += cool * np.float32(WHITE[ch])
     return rgb
+
+
+def built_map(photo: np.ndarray) -> np.ndarray:
+    """How built each pixel's neighbourhood is, 0 to 1, from the day photo read at
+    :data:`BUILT_K` (RGB uint8): its texture (buildings, their shadows, the streets between)
+    where it is neither green nor water, as the prototype of 2026-11-10 read it."""
+    rgb = photo.astype(np.float32) * np.float32(1.0 / 255.0)
+    r, g, b = rgb[..., 0], rgb[..., 1], rgb[..., 2]
+    lum = (r + g + b) / np.float32(3.0)
+    veg = np.clip((2 * g - r - b - np.float32(0.005)) / np.float32(0.04), 0, 1)
+    dark_green = np.clip((np.float32(0.20) - lum) / np.float32(0.08), 0, 1) * (g + 0.01 >= r)
+    veg = np.maximum(veg, dark_green)
+    water = np.clip((b - np.maximum(r, g) - np.float32(0.01)) / np.float32(0.04), 0, 1)
+    mean, mean2 = _box3(lum), _box3(lum * lum)
+    std = np.sqrt(np.maximum(mean2 - mean * mean, 0))
+    texture = np.clip((std - np.float32(0.02)) / np.float32(0.05), 0, 1)
+    return _blur((texture * (1 - veg) * (1 - water)).astype(np.float32), 1.0)
+
+
+def _box3(a: np.ndarray) -> np.ndarray:
+    """The mean of each pixel's 3 x 3 (its border mirrored)."""
+    h, w = a.shape
+    p = np.pad(a, 1, mode="symmetric")
+    out = np.zeros_like(a)
+    for dy in range(3):
+        for dx in range(3):
+            out += p[dy : dy + h, dx : dx + w]
+    return out / np.float32(9.0)
+
+
+def _fit(field: np.ndarray, side: int) -> np.ndarray:
+    """A square field at ``side``: enlarged linearly, or each block averaged."""
+    n = field.shape[0]
+    if n == side:
+        return field
+    if n < side:
+        return _zoom_linear(field, side)
+    f = n // side
+    return field[: side * f, : side * f].reshape(side, f, side, f).mean(axis=(1, 3))
+
+
+def _windows(built: np.ndarray, k: int, rng: np.random.Generator) -> np.ndarray:
+    """Lit windows and yards where the photo shows houses: :data:`WINDOWS_POINTS` of the pixels
+    where it is all built, k² as many drawn k times coarser (their light kept), and a faint glow
+    (:data:`WINDOWS_GLOW`)."""
+    side = built.shape[0]
+    share = np.minimum(built * np.float32(WINDOWS_BUILT), np.float32(1))
+    chance = share * np.float32(WINDOWS_POINTS * k * k)
+    on = rng.random((side, side), dtype=np.float32) < chance
+    lit = rng.uniform(0.25, 0.9, (side, side)).astype(np.float32)
+    # a chance above one: fewer points than wanted, each brighter for the rest (its power mean)
+    over = np.maximum(chance, np.float32(1))
+    lit *= over ** np.float32(1 / POWER)
+    windows = np.where(on, lit, np.float32(0))
+    windows += np.float32(WINDOWS_GLOW) * share
+    return _blur(windows, 0.7)
 
 
 def _width_k(width_m: float, m_per_px: float, ref: float) -> float:
