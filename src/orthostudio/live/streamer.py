@@ -2178,7 +2178,7 @@ def run(
                             streamer.night.tick(
                                 None, (arrival.lat, arrival.lon), streamer.built_copy
                             )
-                            night_left = streamer.night.start_left()
+                            night_left = streamer.night.start_left(left)
                         ready = (
                             left == 0
                             and night_left == 0
@@ -2189,16 +2189,19 @@ def run(
                         # both, at 0.0 MB/s once every photo was in, read as stuck: the user's
                         # Shadow, 2026-10-11)
                         building = streamer.urgent_building()
+                        # the night textures counted with the day ones, all their photos in: the
+                        # window said 0 textures to build, 0.0 MB/s, 25 s while they were made
+                        # (the user's LSGG, 2026-11-10)
                         gate.answer(
                             addr,
                             ready or stalled,
-                            left,
+                            left + night_left,
                             arrival.name,
                             done,
                             took,
                             mbs,
                             lang=language(),
-                            building=building,
+                            building=building + night_left,
                         )
                         if stalled and not arrival.stalled:
                             arrival.stalled = True
@@ -2219,6 +2222,12 @@ def run(
                                 f"  X-Plane waits on its loading screen: {left} textures to build "
                                 f"around {arrival.name}, {left - building} of them waiting for "
                                 f"their photos ({done:.0%}, {took:.0f} s, {mbs:.1f} MB/s)"
+                            )
+                        elif night_left and now - last_wait >= 5:
+                            last_wait = now
+                            log(
+                                f"  X-Plane waits on its loading screen: {night_left} night "
+                                f"textures to make around {arrival.name} ({took:.0f} s)"
                             )
                         elif not ready and not stalled and now - last_wait >= 5:
                             last_wait = now
@@ -2244,7 +2253,7 @@ def run(
                     night_left = 0
                     if streamer.night is not None:
                         streamer.night.tick(None, (arrival.lat, arrival.lon), streamer.built_copy)
-                        night_left = streamer.night.start_left()
+                        night_left = streamer.night.start_left(left)
                     ready = (
                         left == 0
                         and night_left == 0
@@ -2252,7 +2261,13 @@ def run(
                     )
                     pause_window.show(
                         *lines(
-                            place_in(arrival.name, lang), left, building, mbs, took, left > 0, lang
+                            place_in(arrival.name, lang),
+                            left + night_left,
+                            building + night_left,
+                            mbs,
+                            took,
+                            left + night_left > 0,
+                            lang,
                         ),
                         done,
                     )

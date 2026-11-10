@@ -373,6 +373,28 @@ class NightWorkTest(unittest.TestCase):
         self.work.want(self.far, 4)  # far and small: X-Plane does not wait
         self.assertEqual(self.work.start_left(), 0)
 
+    def test_a_start_waits_a_minute_at_most_for_its_nights(self):
+        from unittest import mock
+
+        from orthostudio.live import nightwork
+
+        self.work.start_at = (43.70, 7.25)
+        self.work.sun = 10.0
+        self.work.want(self.near, 0)
+        clock = [1000.0]
+        with mock.patch.object(nightwork.time, "monotonic", lambda: clock[0]):
+            self.assertEqual(self.work.start_left(day_left=5), 1)  # its photos still coming
+            clock[0] += 500  # however long they take, the minute starts once they are built
+            self.assertEqual(self.work.start_left(day_left=0), 1)
+            clock[0] += nightwork.NIGHT_WAIT_S - 1
+            self.assertEqual(self.work.start_left(), 1)
+            clock[0] += 2
+            self.assertEqual(self.work.start_left(), 0)  # X-Plane goes on, the night made in flight
+            self.assertTrue(self.work.gave_up)
+            self.assertEqual(self.work.start_left(), 0)
+        self.work.start(43.70, 7.25)  # the next start waits again
+        self.assertFalse(self.work.gave_up)
+
     def test_the_near_ones_first_then_the_nearest(self):
         self.work.sun = 10.0
         self.work.want(self.near, 4)  # under the aircraft, but small

@@ -72,6 +72,11 @@ about 40 km."""
 START_KM = 10.0
 """A start also waits for every night texture this close to it, as for its day ones (BLOCK_KM)."""
 
+NIGHT_WAIT_S = 60.0
+"""How long a start waits for its night textures once its day ones are built, at most: a night
+process stuck never holds X-Plane on its loading screen, and what is left is made in flight
+(X-Plane reads it as it comes closer). At LSGG the night took 25 s (2026-11-10)."""
+
 _ROADS: dict = {}  # the night process's roads (orthostudio.live.night.Roads), by DSF
 _ROADS_KEPT = 9  # the squares round the aircraft, 3 x 3: each read once while it flies there
 
@@ -263,6 +268,8 @@ class NightWork:
         self.start_at: tuple[float, float] | None = None
         self._dsfs: dict[tuple[int, int], Path | None] = {}  # each square's, looked for once
         self._centres: dict[str, tuple[float, float] | None] = {}  # each texture's, read once
+        self._waited_since: float | None = None  # the start's day textures built, its nights not
+        self.gave_up = False
         self.failed = 0
 
     @property
@@ -307,6 +314,7 @@ class NightWork:
         by a day's time got no night when X-Plane then gave 23:30 (the user's flight,
         2026-11-10)."""
         self.start_at = (lat, lon)
+        self._waited_since, self.gave_up = None, False
         sun = sun_at_start(self.prefs) if self.prefs is not None else None
         if sun is not None:
             was = self.night
@@ -318,20 +326,36 @@ class NightWork:
                     + (f", {lit} textures built already" if lit else "")
                 )
 
-    def start_left(self) -> int:
+    def start_left(self, day_left: int = 0) -> int:
         """Night textures still to make which a start waits for, as for its photos (0 by day):
         every near one (:data:`NEAR_LEVEL`) and all within :data:`START_KM`. X-Plane never reads
         again a level it took: a night made after it loaded its area stays black there until it
-        comes closer (the user's Live flight, 2026-11-10)."""
-        if self.start_at is None or not self.night:
+        comes closer (the user's Live flight, 2026-11-10). ``day_left``: the start's day textures
+        still to build; once none is, the nights are waited for :data:`NIGHT_WAIT_S` at most."""
+        if self.start_at is None or not self.night or self.gave_up:
             return 0
         with self.lock:
             todo = list(self.waiting.items()) + list(self.in_flight.items())
-        return sum(
+        start = self.start_at
+        left = sum(
             1
             for n, level in todo
-            if level <= NEAR_LEVEL or self._distance(n, self.start_at) * 111.32 <= START_KM
+            if level <= NEAR_LEVEL or self._distance(n, start) * 111.32 <= START_KM
         )
+        if left == 0 or day_left > 0:
+            self._waited_since = None
+            return left
+        now = time.monotonic()
+        if self._waited_since is None:
+            self._waited_since = now
+        if now - self._waited_since > NIGHT_WAIT_S:
+            self.gave_up = True
+            self.log(
+                f"  X-Plane goes on: {left} night textures round the start not made in "
+                f"{NIGHT_WAIT_S:.0f} s, made in flight"
+            )
+            return 0
+        return left
 
     def back_to_black(self, name: str, keep_name: bool) -> None:
         """``name`` made neutral by the disk budget: its night texture black again (``keep_name``:
