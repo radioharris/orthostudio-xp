@@ -19,8 +19,11 @@ What this module paints, for one texture, as the prototype on the user's Nice ti
 - **windows** in a band along the town's streets, a few bright, most dim;
 - all of it times **how bright NASA's Black Marble saw the place** (:class:`Density`): a dense
   centre glows, the hills round it less;
-- and **a twentieth of the day photo** under the lights (:data:`GROUND`), so the ground between
-  them is not a hole (XPME's « night ground visibility », 5 % by default).
+- and nothing else: between the lights the night texture is black, X-Plane lighting the photo
+  itself at night. A twentieth of the day photo under the lights, as XPME does (its « night
+  ground visibility », 5 % by default), came out of BC1 as a checkerboard of purple, brown and
+  green blocks: values of 4 to 10 out of 255, which the format cannot hold in their colour (the
+  user's LSGG, 2026-11-10). What is fainter than :data:`FLOOR` is black for the same reason.
 
 Everything is drawn at the same metres a pixel at every zoom (a ZL18 texture's lights drawn at a
 quarter of its side and enlarged): drawn at the texture's own pixels, the airport's sharper zone
@@ -84,8 +87,11 @@ DENSITY_SAMPLES = 64
 every 16 px of a 1024 px texture, three or four points a cell of the grid."""
 
 GAIN = 0.75
-GROUND = 0.05
 POWER = 3.0
+
+FLOOR = 6
+"""Light fainter than this (out of 255, its brightest channel) is written black: BC1 holds red
+and blue in steps of 8, so the faint edge of a glow came out purple or green."""
 
 EARTH_M = 40075016.7
 
@@ -469,21 +475,16 @@ def _density_factor(density: Density, x0: int, y0: int, zoom_level: int, side: i
     return small if n == side else _zoom_linear(small, side)
 
 
-def night_rgb(
-    lights: np.ndarray, photo: np.ndarray | None, gain: float = GAIN, ground: float = GROUND
-) -> np.ndarray:
-    """The night texture's top level, RGB uint8: the lights times ``gain``, plus ``ground`` of the
-    day photo (RGB uint8 of the same side) under them. In place, in float32, the photo a channel at
-    a time: a 1024 px texture's copies are 12 MB each."""
+def night_rgb(lights: np.ndarray, gain: float = GAIN) -> np.ndarray:
+    """The night texture's top level, RGB uint8: the lights times ``gain``, what is fainter than
+    :data:`FLOOR` black. In place, in float32: a 1024 px texture's copies are 12 MB each."""
     rgb = lights * np.float32(gain)
-    if photo is not None and ground > 0:
-        k = np.float32(ground / 255.0)
-        for ch in range(3):
-            rgb[..., ch] += photo[..., ch] * k
     np.clip(rgb, 0.0, 1.0, out=rgb)
     rgb *= np.float32(255.0)
     rgb += np.float32(0.5)
-    return rgb.astype(np.uint8)
+    out = rgb.astype(np.uint8)
+    out[out.max(axis=-1) < FLOOR] = 0
+    return out
 
 
 def lit_levels(rgb: np.ndarray, power: float = POWER) -> list[np.ndarray]:
@@ -514,32 +515,6 @@ def lit_levels(rgb: np.ndarray, power: float = POWER) -> list[np.ndarray]:
             (np.clip(level, 0.0, 1.0) * np.float32(255.0) + np.float32(0.5)).astype(np.uint8)
         )
     return out
-
-
-def decode_bc1(blob: bytes, side: int) -> np.ndarray:
-    """The RGB uint8 pixels of one BC1 level ``side`` px wide (at least 4): how a night texture
-    reads the day photo's level back from Live's file, for :data:`GROUND`."""
-    blocks = max(1, side // 4)
-    b = np.frombuffer(blob, dtype="<u2", count=blocks * blocks * 4).reshape(blocks, blocks, 4)
-    c0, c1 = b[..., 0].astype(np.int32), b[..., 1].astype(np.int32)
-    idx = b[..., 2].astype(np.uint32) | (b[..., 3].astype(np.uint32) << 16)
-
-    def rgb565(c):
-        return np.stack(
-            [((c >> 11) & 31) * 255 // 31, ((c >> 5) & 63) * 255 // 63, (c & 31) * 255 // 31],
-            axis=-1,
-        )
-
-    p0, p1 = rgb565(c0), rgb565(c1)
-    four = (c0 > c1)[..., None]
-    p2 = np.where(four, (2 * p0 + p1) // 3, (p0 + p1) // 2)
-    p3 = np.where(four, (p0 + 2 * p1) // 3, 0)
-    palette = np.stack([p0, p1, p2, p3], axis=2)  # (by, bx, 4, 3)
-    shifts = np.arange(16, dtype=np.uint32) * 2
-    which = ((idx[..., None] >> shifts) & 3).astype(np.intp)  # (by, bx, 16)
-    pixels = np.take_along_axis(palette, which[..., None], axis=2)  # (by, bx, 16, 3)
-    out = pixels.reshape(blocks, blocks, 4, 4, 3).transpose(0, 2, 1, 3, 4)
-    return out.reshape(blocks * 4, blocks * 4, 3)[:side, :side].astype(np.uint8)
 
 
 def seed_of(x0: int, y0: int) -> int:

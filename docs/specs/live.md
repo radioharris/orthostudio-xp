@@ -534,8 +534,11 @@ class (`ROADS`), a third white and the rest sodium orange, at random levels, one
 dimmer and farther apart along a `rural_edge` road; a soft glow round the lamps and the larger
 streets; windows in a band 50 m wide along the town's streets; all of it times NASA's Black
 Marble 2016 brightness of the place (0.2 where it sees nothing to 1.5 where it is saturated); then
-×0.75 and a twentieth of the day photo under the lights (XPME's "night ground visibility", 5 % by
-default). It is drawn at the same metres a pixel at every zoom, a ZL18 texture's at a quarter of
+×0.75, what is fainter than 6 out of 255 black (`night.FLOOR`), and nothing else: a twentieth of
+the day photo under the lights, as XPME does (its "night ground visibility", 5 % by default), came
+out of BC1 as a checkerboard of purple, brown and green blocks, values of 4 to 10 out of 255 the
+format cannot hold in their colour (BC1 holds red and blue in steps of 8; the user's LSGG,
+2026-11-10). It is drawn at the same metres a pixel at every zoom, a ZL18 texture's at a quarter of
 its side and enlarged: drawn at its own pixels, the airport's sharper zone came out twice darker
 than the town round it. Its smaller levels are each the power mean (p = 3) of four pixels of the
 level above, not their plain mean: the town stays visible from far (the coast of Nice at 80 km
@@ -566,8 +569,7 @@ after X-Plane had loaded their area (at 3° then, and after the build), the text
 not come closer to stayed black (2026-11-10). A night texture is made from the same level down
 at a quarter of its side: a 4096 px day texture a 1024 px night one, a 256 px one far away a
 64 px one (its larger levels a hole, which reads black), always drawn at 1024 px and made smaller
-(`night.lights_at`). The ground under the lights is the day texture's level of the night's side,
-read back from its file (`night.decode_bc1`). Nothing is made by day. X-Plane fades the night
+(`night.lights_at`). Nothing is made by day. X-Plane fades the night
 textures in by itself (at Nice on 11 November: nothing at 17:25, partly lit at 17:50, full at
 18:15).
 
@@ -575,7 +577,10 @@ textures in by itself (at Nice on 11 November: nothing at 17:25, partly lit at 1
 as they are (`pools.context`, started again if it dies), two textures given at a time, after the
 streamer's own: a night texture never holds up a day one. Those of the textures built at 1024 px
 or more (`NEAR_LEVEL`, within about 40 km) go first, then the others, each nearest the aircraft
-first. Made in each texture's own build job instead, as tried on 2026-11-10, the night took each
+first, the far ones a square at a time, the nearest square first: given nearest first, they went
+round the aircraft from square to square and each needed its squares' roads read again, a
+texture a second (3,951 reads for LSGG's 8,535 far textures over 46 squares, against 136).
+Made in each texture's own build job instead, as tried on 2026-11-10, the night took each
 of Live's twelve encoders 155 MB more (27 MB at rest, 182 MB once it had made one) and Live
 8.9 GB in flight against 4.7 at most without the night.
 

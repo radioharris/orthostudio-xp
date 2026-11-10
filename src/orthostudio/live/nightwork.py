@@ -17,12 +17,10 @@ at 1024 px or more (:data:`NEAR_LEVEL`, within about 40 km) get theirs first, ri
 day texture, and a start waits for them; the far ones follow, nearest first. Never in Live's
 encoders: made in each texture's own build job, the night took each of the twelve 155 MB more
 (27 MB at rest, 182 MB once it had made one; the user's Mac, 2026-11-10), against one process.
-A texture's night is made from three things only, each read from the disk: X-Plane's roads of
-its squares (the Global Scenery's DSF, else the overlays of Live's regions, cut from it), NASA's
-grid of the square (``<region>/night/<square>.png``, installed with the region), and the day
-texture's own level a quarter of the night's side for the ground under the lights
-(orthostudio.live.night.GROUND). ``OSXP_LIVE_NIGHT_GRIDS`` names another folder of grids, looked
-in first: the test flights'.
+A texture's night is made from two things only, each read from the disk: X-Plane's roads of its
+squares (the Global Scenery's DSF, else the overlays of Live's regions, cut from it) and NASA's
+grid of the square (``<region>/night/<square>.png``, installed with the region).
+``OSXP_LIVE_NIGHT_GRIDS`` names another folder of grids, looked in first: the test flights'.
 """
 
 from __future__ import annotations
@@ -179,11 +177,14 @@ def read_roads(path: str):
         return Roads.empty()
 
 
-def make_night(
-    pack: Path, name: str, level: int, dsfs, grid: str | None, photo: np.ndarray | None
-) -> None:
-    """The night texture of ``name`` made from day level ``level`` (``photo``: the day photo at the
-    night texture's side for the ground under the lights, or None) and written over its black
+def _degrees(point: tuple[float, float], at: tuple[float, float]) -> float:
+    """From ``at`` to ``point`` (latitude, longitude), in degrees of latitude."""
+    dx = (point[1] - at[1]) * math.cos(math.radians(at[0]))
+    return math.hypot(point[0] - at[0], dx)
+
+
+def make_night(pack: Path, name: str, level: int, dsfs, grid: str | None) -> None:
+    """The night texture of ``name`` made from day level ``level`` and written over its black
     name, from its level down."""
     from .imaging import encode_bc1
     from .night import LIT_SIDE, draw, lights_at, lit_levels, night_rgb, seed_of
@@ -205,36 +206,18 @@ def make_night(
     lights = lights_at(lights, level)
     if density is None:
         lights = lights * 0.85  # what the grid gives on average in a town
-    levels = [encode_bc1(lv) for lv in lit_levels(night_rgb(lights, photo))]
+    levels = [encode_bc1(lv) for lv in lit_levels(night_rgb(lights))]
     out = pack / NIGHT_FOLDER / (name[: -len(".dds")] + "_LIT.dds")
     black = ensure_night_neutral(pack)
     write_sparse(out, NIGHT_TOP + level, levels, base=black, file_top=NIGHT_TOP)
 
 
 def night_job(job: tuple) -> tuple[str, int, float]:
-    """In the night's process: the night texture of a texture built, the ground under the lights
-    read back from its file. ``job``: (pack, name, level, the DSFs of its squares,
-    its density grid or None). Returns (name, level, seconds)."""
-    from .night import LIT_SIDE, decode_bc1
-
+    """In the night's process: the night texture of a texture built. ``job``: (pack, name, level,
+    the DSFs of its squares, its density grid or None). Returns (name, level, seconds)."""
     pack, name, level, dsfs, grid = job
     t = time.monotonic()
-    pack = Path(pack)
-    side = LIT_SIDE >> max(0, level)
-    photo = None
-    day = pack / "textures" / name
-    try:
-        file_top = dds.read_top(day)
-        k = max(0, level) + 2 - file_top  # the day level of the night's side
-        layout = dds.level_layout(file_top)
-        if 0 <= k < len(layout):
-            offset, length = layout[k]
-            with open(day, "rb") as f:
-                f.seek(offset)
-                photo = decode_bc1(f.read(length), side)
-    except (OSError, ValueError):
-        photo = None
-    make_night(pack, name, level, dsfs, grid, photo)
+    make_night(Path(pack), name, level, dsfs, grid)
     return name, max(0, level), time.monotonic() - t
 
 
@@ -420,11 +403,8 @@ class NightWork:
             free = IN_FLIGHT - len(self.in_flight)
             if free <= 0 or not self.waiting:
                 return
-            # the near ones first (NEAR_LEVEL), each kind nearest the aircraft first
             waiting = self.waiting
-            names = heapq.nsmallest(
-                free, waiting, key=lambda n: (waiting[n] > NEAR_LEVEL, self._distance(n, at))
-            )
+            names = heapq.nsmallest(free, waiting, key=lambda n: self._order(n, waiting[n], at))
             jobs = [(n, self.waiting.pop(n)) for n in names]
             for name, level in jobs:
                 self.in_flight[name] = level
@@ -471,6 +451,19 @@ class NightWork:
             self.made[name] = min(level, self.made.get(name, 99))
             self.seconds += seconds
 
+    def _order(self, name: str, level: int, at: tuple[float, float] | None) -> tuple:
+        """The near ones first (:data:`NEAR_LEVEL`), nearest the aircraft first; then the far
+        ones a square at a time, the nearest square first: given nearest first, they went round
+        the aircraft from square to square and the night's process read a square's roads again
+        for nearly every one, a texture a second (3,951 reads for LSGG's 8,535 far textures
+        over 46 squares, against 136 a square at a time; the user's flight, 2026-11-10)."""
+        near = self._distance(name, at)
+        centre = self._centres.get(name)
+        if level <= NEAR_LEVEL or centre is None or at is None:
+            return (level > NEAR_LEVEL, 0.0, near)
+        square = (math.floor(centre[0]) + 0.5, math.floor(centre[1]) + 0.5)
+        return (True, round(_degrees(square, at), 6), near)
+
     def _distance(self, name: str, at: tuple[float, float] | None) -> float:
         """In degrees of latitude, from ``at``; each name read once (thousands wait at dusk, and
         this runs at each of the plan loop's turns)."""
@@ -480,9 +473,7 @@ class NightWork:
             centre = self._centres[name] = tex.center if tex is not None else None
         if centre is None or at is None:
             return 0.0
-        lat, lon = centre
-        dx = (lon - at[1]) * math.cos(math.radians(at[0]))
-        return math.hypot(lat - at[0], dx)
+        return _degrees(centre, at)
 
     def close(self) -> None:
         with self.lock:

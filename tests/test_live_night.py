@@ -1,7 +1,7 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Night textures as drawn: the same image for the same roads, the same light per square metre at
-ZL16 and ZL18, rural roads dimmer, NASA's density, the day photo under the lights, and the brighter
+ZL16 and ZL18, rural roads dimmer, NASA's density, black between the lights, and the brighter
 smaller levels."""
 
 import math
@@ -83,11 +83,16 @@ class DensityTest(unittest.TestCase):
 
 
 class LevelsTest(unittest.TestCase):
-    def test_ground_under_the_lights(self):
-        lights = np.zeros((4, 4, 3))
-        photo = np.full((4, 4, 3), 200, np.uint8)
-        rgb = night.night_rgb(lights, photo, gain=1.0, ground=0.05)
-        self.assertEqual(int(rgb[0, 0, 0]), round(200 * 0.05))
+    def test_black_between_the_lights(self):
+        """No photo under them, and no faint glow BC1 would turn purple or green (LSGG,
+        2026-11-10)."""
+        lights = np.zeros((4, 4, 3), np.float32)
+        lights[0, 0] = 0.8  # a lamp
+        lights[1, 1] = 3 / 255  # the faint edge of a glow
+        rgb = night.night_rgb(lights, gain=1.0)
+        self.assertEqual(int(rgb[0, 0, 0]), 204)
+        self.assertEqual(int(rgb[1, 1].max()), 0)
+        self.assertEqual(int(rgb[2:, 2:].max()), 0)
 
     def test_smaller_levels_keep_a_lamp_brighter_than_the_mean(self):
         rgb = np.zeros((64, 64, 3), np.uint8)
@@ -195,10 +200,33 @@ class PackTest(unittest.TestCase):
 # --- the worker: a night texture made from the day texture on the disk
 
 
+def decode_bc1(blob: bytes, side: int) -> np.ndarray:
+    """The RGB uint8 pixels of one BC1 level ``side`` px wide (at least 4)."""
+    blocks = max(1, side // 4)
+    b = np.frombuffer(blob, dtype="<u2", count=blocks * blocks * 4).reshape(blocks, blocks, 4)
+    c0, c1 = b[..., 0].astype(np.int32), b[..., 1].astype(np.int32)
+    idx = b[..., 2].astype(np.uint32) | (b[..., 3].astype(np.uint32) << 16)
+
+    def rgb565(c):
+        return np.stack(
+            [((c >> 11) & 31) * 255 // 31, ((c >> 5) & 63) * 255 // 63, (c & 31) * 255 // 31],
+            axis=-1,
+        )
+
+    p0, p1 = rgb565(c0), rgb565(c1)
+    four = (c0 > c1)[..., None]
+    p2 = np.where(four, (2 * p0 + p1) // 3, (p0 + p1) // 2)
+    p3 = np.where(four, (p0 + 2 * p1) // 3, 0)
+    palette = np.stack([p0, p1, p2, p3], axis=2)
+    which = ((idx[..., None] >> (np.arange(16, dtype=np.uint32) * 2)) & 3).astype(np.intp)
+    pixels = np.take_along_axis(palette, which[..., None], axis=2)
+    out = pixels.reshape(blocks, blocks, 4, 4, 3).transpose(0, 2, 1, 3, 4)
+    return out.reshape(blocks * 4, blocks * 4, 3)[:side, :side].astype(np.uint8)
+
+
 class Bc1Test(unittest.TestCase):
     def test_a_level_reads_back_as_it_was_encoded(self):
         from orthostudio.live.imaging import encode_bc1
-        from orthostudio.live.night import decode_bc1
 
         y, x = np.mgrid[0:64, 0:64]
         rgb = np.stack([x * 4, y * 4, np.full_like(x, 128)], axis=-1).astype(np.uint8)
@@ -208,12 +236,11 @@ class Bc1Test(unittest.TestCase):
 
 
 class NightJobTest(unittest.TestCase):
-    def test_a_night_texture_from_a_day_texture_with_no_road(self):
+    def test_no_road_no_light(self):
         import tempfile
         from pathlib import Path
 
         from orthostudio.live import dds
-        from orthostudio.live.night import decode_bc1
         from orthostudio.live.nightwork import night_job
         from orthostudio.live.region import NIGHT_FOLDER, NIGHT_TOP, neutral_levels
         from orthostudio.live.texture import write_sparse
@@ -230,13 +257,14 @@ class NightJobTest(unittest.TestCase):
             self.assertEqual(dds.read_top(lit), NIGHT_TOP)
             offset, length = dds.level_layout(NIGHT_TOP)[0]
             top = decode_bc1(lit.read_bytes()[offset : offset + length], 1024)
-            self.assertAlmostEqual(float(top.mean()), 200 * 0.05, delta=2)  # the ground only
+            self.assertEqual(int(top.max()), 0)  # black: nothing of the day photo under it
 
     def test_far_away_only_its_small_levels(self):
         import tempfile
         from pathlib import Path
+        from unittest import mock
 
-        from orthostudio.live import dds
+        from orthostudio.live import dds, nightwork
         from orthostudio.live.nightwork import night_job
         from orthostudio.live.region import NIGHT_FOLDER, NIGHT_TOP, neutral_levels
         from orthostudio.live.texture import write_sparse
@@ -247,7 +275,9 @@ class NightJobTest(unittest.TestCase):
             (pack / "textures").mkdir()
             (pack / NIGHT_FOLDER).mkdir()
             write_sparse(pack / "textures" / name, 4, neutral_levels(4, rgb=(200, 200, 200)))
-            night_job((str(pack), name, 4, [], None))  # a 256 px day texture: a 64 px night one
+            town = [night.Roads.of(grid_of_streets(43.70, 7.27, span=0.03))]
+            with mock.patch.object(nightwork, "roads_from", lambda paths: town):
+                night_job((str(pack), name, 4, [], None))  # a 256 px day texture: a 64 px night one
             lit = (pack / NIGHT_FOLDER / "23904_34080_BI16_LIT.dds").read_bytes()
             layout = dds.level_layout(NIGHT_TOP)
             o0, n0 = layout[0]
@@ -401,6 +431,22 @@ class NightWorkTest(unittest.TestCase):
         self.work.want(self.far, 1)  # 150 km away, but sharp
         self.work.tick(10.0, (43.7, 7.25), lambda: {})
         self.assertEqual([job[1] for job in self.ex.jobs], [self.far, self.near])
+
+    def test_the_far_ones_a_square_at_a_time(self):
+        """Nearest first, the far ones went round the aircraft from square to square, each
+        needing its squares' roads read again (LSGG, 2026-11-10)."""
+        names = {}
+        for lat, lon in ((44.05, 7.5), (43.9, 7.9), (43.1, 7.1)):
+            x, y = texture_at(lat, lon)
+            names[(lat, lon)] = f"{y}_{x}_BI16.dds"
+        self.work.sun = 10.0
+        for name in names.values():
+            self.work.want(name, 4)
+        for _ in range(3):
+            self.work.tick(10.0, (43.98, 7.5), lambda: {})
+        got = [job[1] for job in self.ex.jobs]
+        # the square +43+007 (its centre nearer) whole first, its nearer texture first
+        self.assertEqual(got, [names[(43.9, 7.9)], names[(43.1, 7.1)], names[(44.05, 7.5)]])
 
     def test_the_sun_at_noon_and_at_night(self):
         from pathlib import Path
