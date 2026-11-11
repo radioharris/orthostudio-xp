@@ -706,10 +706,15 @@ were built, 64 s; the roads and lamps laid out at once rather than a road at a t
 roads in files, 27 s; the team from the first texture, 7 s; the near ones to it too, 0 s.
 
 **The disk.** Live stays within its disk space, each file counted as it holds (`evict.usage`): a
-texture's night texture once it holds lights, made from the same level (`NightWork.lit`, kept in
-the textures' record as `lit`; a night without a light is the black name, which takes nothing),
-and an 8192 px file's copy of its 4096 px level once made (`Streamer.copied_up`, kept as
-`copied`, 33 MB more a file). Counted for every texture, the night took half of Windows' space by
+texture's night texture at the level it was given, from the moment it is given until it comes
+back black or is put back black (`NightWork.lit`, kept in the textures' record as `lit`, the
+stale textures' too; a night without a light is the black name, which takes nothing), so the
+count is never short: a Live stopped while one was made, Windows refusing to put one back black
+(the review of 2026-11-11); and an 8192 px file's copy of its 4096 px level once made
+(`Streamer.copied_up`, kept as `copied`, 33 MB more a file; read back only for a file still built
+from its 4096 px level). A change of the night lights between on and off forgets `lit`
+(`region.set_night`). Looked up by name in sets and dictionaries: the record's lists made the
+Settings' figure 2.5 s for 28,800 night textures, every 3 s. Counted for every texture, the night took half of Windows' space by
 day before any was made, and a copy went uncounted (the review of 2026-11-11). Live stopped, the
 Settings' figure is counted from the same record (`control._textures_bytes`). A texture made
 coarser, or set to a new zoom's size as its square is made (`Streamer._refit`), has its night made

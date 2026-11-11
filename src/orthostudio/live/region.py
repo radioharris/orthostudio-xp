@@ -675,6 +675,19 @@ def set_night(
         _drop_night(pack_dir, log)
     record.parent.mkdir(parents=True, exist_ok=True)
     record.write_text(json.dumps({"night": night}), encoding="utf-8")
+    _forget_lit(pack_dir)  # none made yet, or none left: never counted from an old record
+
+
+def _forget_lit(pack_dir: Path) -> None:
+    """The textures' record without night textures holding lights (orthostudio.live.evict.usage)."""
+    from .pack import MARKER, load_built
+
+    meta = load_built(pack_dir)
+    if meta.get("lit"):
+        meta["lit"] = {}
+        tmp = pack_dir / MARKER.with_suffix(".tmp")
+        tmp.write_text(json.dumps(meta))
+        os.replace(tmp, pack_dir / MARKER)
 
 
 def _drop_night(pack_dir: Path, log: Callable[[str], None]) -> None:
@@ -825,7 +838,7 @@ def reset_built(pack_dir: Path, log: Callable[[str], None] = print) -> int:
             nights.replace(0, lit)
     if meta:
         meta["textures"], meta["seen"], meta["patchy"], meta["stale"] = {}, {}, [], {}
-        meta["lit"], meta["copied"] = [], []  # their nights black, their copies gone
+        meta["lit"], meta["copied"] = {}, []  # their nights black, their copies gone
         meta.pop("grown", None)
         tmp = pack_dir / MARKER.with_suffix(".tmp")
         tmp.write_text(json.dumps(meta))

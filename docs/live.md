@@ -282,18 +282,20 @@ night.
 - Far away they are made small first, as the photos are, so a town shows from far: the coast of
   Nice from 40 and 80 km.
 - Live stays within its disk space, each file counted as the disk takes it: the night textures
-  made take a part of it, nothing by day, and X-Plane's roads kept for them 5 % of it, 1 GB at most. On a Mac and on
-  Linux the night textures take about a tenth of what Live keeps; on Windows nearly half, where
-  the disk (NTFS) gives a far texture's file 128 KB whatever it holds, a night one as a photo
-  (on a start at LSGG: 11 % on a Mac, 44 % on Windows). With the same night textures on a tile of Nice, flown three times each way at
+  made take a part of it, those with lights only (none is made by day; those made stay on the
+  disk), and X-Plane's roads kept for them 5 % of it, 1 GB at most. On a Mac and on Linux the
+  night textures take about a tenth of what Live keeps at most; on Windows up to nearly half,
+  where the disk (NTFS) gives a far texture's file 128 KB whatever it holds, a night one as a
+  photo (on a start at LSGG, every night texture lit: 11 % on a Mac, 44 % on Windows; the sea
+  and the forests take nothing). With the same night textures on a tile of Nice, flown three times each way at
   2704 x 1756 on an M4 Pro, frame times did not change beyond their spread from one flight to the
   next.
 
 "Soft", "Normal" (the default) or "Strong": the same lamps fainter or brighter. A new strength
 shows from the next start: Live makes its night textures again as night comes, the nearest first.
 "No": no night texture, the terrain files naming none; the night textures and the roads kept for
-them are deleted. A change between on and off takes effect at the next start, as the decal's: the
-terrain files flown already are made again as X-Plane comes.
+them are deleted. A change between on and off takes effect at the next start with X-Plane not
+running, as the decal's: the terrain files flown already are made again as X-Plane comes.
 
 ## Imagery sources, your own tiles, roads and forests
 

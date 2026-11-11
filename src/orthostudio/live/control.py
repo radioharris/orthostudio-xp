@@ -193,7 +193,8 @@ def _textures_bytes(pack: Path) -> int:
     (evict.usage), the night textures and the 8192 px copies with them; without them the figure
     fell by nearly half on Windows as Live stopped (the review of 2026-11-11)."""
     meta = load_built(pack)
-    lit = meta.get("lit", ()) if night_on(pack) else ()  # night lights off: their files gone
+    lit = meta.get("lit")
+    lit = lit if isinstance(lit, dict) and night_on(pack) else {}  # lights off: their files gone
     return usage(meta.get("textures", {}), file_tops(pack), lit, meta.get("copied", ()))
 
 

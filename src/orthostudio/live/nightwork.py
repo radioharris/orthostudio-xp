@@ -437,7 +437,11 @@ class NightWork:
         # off in the settings while the pack's terrain files still name night textures (turned off
         # while X-Plane ran, region.set_night): none made, those there counted and followed
         self.lights = lights
-        self.lit: set[str] = set()  # those holding lights, as the disk counts them (the record's)
+        # the level of each night texture that may hold lights, as the disk counts it (kept in the
+        # textures' record): counted from the moment it is given, until it comes back black or is
+        # put back black, so the count is never short (a Live stopped while it was made, Windows
+        # refusing to put one back black)
+        self.lit: dict[str, int] = {}
         self.team = 1  # the processes at a start at night: Live's encoders (the streamer's)
         self.top_of: Callable[[str], int] = lambda name: 0  # a file's sharpest level (streamer's)
         self.night = False
@@ -643,10 +647,8 @@ class NightWork:
                         self.made[name] = min(level, self.made.get(name, 99))
                         self.tries.pop(name, None)
                         self.seconds += said
-                        if lit:
-                            self.lit.add(name)
-                        else:
-                            self.lit.discard(name)
+                        if not lit:  # the black name, which takes nothing
+                            self.lit.pop(name, None)
         for name in black:
             with contextlib.suppress(OSError):  # black again at its next eviction
                 self._black(name)
@@ -725,6 +727,7 @@ class NightWork:
                 for name, level in batch:
                     del self.wanted[name]
                     self.running[name] = level
+                    self.lit[name] = level
             self._jobs[pool] = self._jobs.get(pool, 0) + len(order)
         apart = size == 1  # one process lives the whole flight: a DSF read apart (_read_apart)
         for i, batch in enumerate(order):
@@ -775,17 +778,16 @@ class NightWork:
         from .names import NightPool, night_name
         from .region import NIGHT_FOLDER
 
-        with self.lock:
-            self.lit.discard(name)
         path = self.pack_dir / NIGHT_FOLDER / night_name(name)
-        if not path.exists():
-            return
-        if (self.pack_dir / "textures" / name).exists():
-            if self._pool_names is None:
-                self._pool_names = NightPool(self.pack_dir)
-            self._pool_names.replace(0, path)
-        else:
-            path.unlink(missing_ok=True)
+        if path.exists():
+            if (self.pack_dir / "textures" / name).exists():
+                if self._pool_names is None:
+                    self._pool_names = NightPool(self.pack_dir)
+                self._pool_names.replace(0, path)
+            else:
+                path.unlink(missing_ok=True)
+        with self.lock:  # once done: refused (Windows), it still holds its lights
+            self.lit.pop(name, None)
 
     def _job(self, name: str, level: int, apart: bool) -> tuple:
         tex = parse_texture_name(name)

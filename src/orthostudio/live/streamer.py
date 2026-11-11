@@ -436,8 +436,9 @@ class Streamer:
         self.cruising = False  # high enough that no 8192 px level gets its photos (_cruise_height)
         self.meta = load_built(pack_dir)
         self.built: dict[str, int] = dict(self.meta.get("textures", {}))
-        # recorded with them: on the disk until their file is written again (evict.usage)
-        self.copied_up: set[str] = set(self.meta.get("copied", [])) & self.built.keys()
+        # recorded with them: on the disk until their file is written again (evict.usage); a file
+        # built otherwise since (an older Live) holds none
+        self.copied_up = {n for n in self.meta.get("copied", []) if self.built.get(n) == 0}
         self.built_version = 0  # one more at each change of built: the window's map
         # built without pieces that did not come: when to build them again, and how many times
         self.patchy: dict[str, tuple[float, int]] = {
@@ -578,7 +579,8 @@ class Streamer:
         if night is not None:
             night.team = self.workers  # the start's team: as many as the encoders, idle by then
             night.top_of = self.top_of  # its levels counted from its file's top, as X-Plane does
-            night.lit = set(self.meta.get("lit", [])) & self.built.keys()  # made before
+            lit = self.meta.get("lit")
+            night.lit = dict(lit) if isinstance(lit, dict) else {}  # made before (evict.usage)
         self._points: dict[str, tuple[float, float]] = {}  # "aircraft", "start", "hold"
 
     # --- the season ---------------------------------------------------------------------------
@@ -1763,12 +1765,12 @@ class Streamer:
             self.night.close()
         self.save()
 
-    def _lit(self) -> set[str]:
-        """The textures whose night texture holds lights, a copy (orthostudio.live.nightwork)."""
+    def _lit(self) -> dict[str, int]:
+        """The level of each night texture holding lights, a copy (orthostudio.live.nightwork)."""
         if self.night is None:
-            return set()
+            return {}
         with self.night.lock:
-            return set(self.night.lit)
+            return dict(self.night.lit)
 
     def disk_used(self, built: dict[str, int] | None = None) -> int:
         """The disk of the textures built, as their files hold them (evict.usage)."""
@@ -1784,7 +1786,7 @@ class Streamer:
             stale = dict(self.stale)
             look, season = self.look, self.season
             copied = sorted(n for n in self.copied_up if n in textures)
-        lit = sorted(n for n in self._lit() if n in textures)
+        lit = self._lit()  # the stale ones' too: their night is on the disk until put back black
         meta = load_built(self.pack_dir)
         meta["look"] = list(look.values())  # what the textures recorded are built in
         meta["season"] = season

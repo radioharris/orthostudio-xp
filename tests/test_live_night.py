@@ -650,6 +650,27 @@ class NightWorkTest(unittest.TestCase):
         self.assertIn("the disk is full", failed[0])
         self.assertIn("left for this flight", failed[1])
 
+    def test_a_night_counted_from_its_job_until_it_is_black(self):
+        """Never short: a Live stopped while it was made, Windows refusing to put one back black
+        (the reviews of 2026-11-11)."""
+        from unittest import mock
+
+        self.work.tick((43.70, 7.25), (314, 20.0), lambda: {self.near: 0, self.far: 4})
+        self.turn()
+        self.assertEqual(self.work.lit, {self.near: 0, self.far: 4})  # given: counted at once
+        self.pools[0].finish(lit=False)  # no light there: the black name
+        self.turn()
+        self.assertEqual(self.work.lit, {})
+        self.work.built(self.near, 0)
+        self.work.lit[self.near] = 0
+        with (
+            mock.patch("orthostudio.live.names.NightPool.replace", side_effect=PermissionError),
+            mock.patch("pathlib.Path.exists", return_value=True),
+            self.assertRaises(PermissionError),
+        ):
+            self.work.back_to_black(self.near)  # Windows refuses
+        self.assertEqual(self.work.lit, {self.near: 0})  # its lights there: still counted
+
     def test_back_to_black_and_while_being_made(self):
         import os
 
@@ -892,7 +913,10 @@ class ReviewTest(unittest.TestCase):
             self.assertEqual(int(((low > 0) & (low < night.FLOOR)).sum()), 0, side)
 
     def test_night_lights_off_take_the_night_files_away(self):
+        import json
+
         from orthostudio.live.nightwork import ROADS_FOLDER
+        from orthostudio.live.pack import MARKER
         from orthostudio.live.region import NIGHT_FOLDER, NIGHT_NEUTRAL, set_night
 
         pack = self.root / "pack"
@@ -904,8 +928,11 @@ class ReviewTest(unittest.TestCase):
         (pack / NIGHT_NEUTRAL).write_bytes(b"black")
         copy = (pack / NIGHT_NEUTRAL).with_name("night-2.dds")  # past NTFS's 1,023 names
         copy.write_bytes(b"black")
+        record = pack / MARKER  # the textures' record: those lit forgotten with them
+        record.write_text(json.dumps({"textures": {"a": 0}, "lit": {"a": 0}}))
         self.assertTrue(any((pack / NIGHT_FOLDER).iterdir()))
         set_night(pack, False, log=self.said.append)
+        self.assertEqual(json.loads(record.read_text()), {"textures": {"a": 0}, "lit": {}})
         self.assertFalse(
             any((pack / NIGHT_FOLDER).iterdir()) if (pack / NIGHT_FOLDER).exists() else False
         )
@@ -1010,13 +1037,14 @@ class RoadsReadTest(unittest.TestCase):
 
 class NightDiskTest(unittest.TestCase):
     def test_each_texture_counts_its_night_with_it(self):
-        from orthostudio.live.evict import night_bytes, texture_bytes
+        from orthostudio.live.evict import held_bytes, night_bytes, texture_bytes
 
         for level, top in ((0, 0), (4, 0), (1, 1), (-1, -1)):
-            both = texture_bytes(level, top, night=True) - texture_bytes(level, top)
-            self.assertEqual(both, night_bytes(level - max(0, top)))
+            night = level - max(0, top)
+            both = held_bytes("a", level, top, {"a": night}) - texture_bytes(level, top)
+            self.assertEqual(both, night_bytes(night))
         self.assertLess(night_bytes(0), texture_bytes(0) * 0.07)  # about 6 % of a 4096 px level
-        self.assertEqual(texture_bytes(9, 0, night=True), 0)  # neutral: nothing
+        self.assertEqual(held_bytes("a", 9, 0), 0)  # neutral: nothing
 
     def test_one_count_worked_out_in_one_place_ready_with_its_nights(self):
         """Live's window said ready, or nothing, while X-Plane waited for 8,700 night textures,
@@ -1086,12 +1114,12 @@ class NightDiskTest(unittest.TestCase):
         tops = {"day": 0, "lit": 0, "copied": -1}.get
         day_only = usage(built, tops)
         self.assertEqual(day_only, 2 * texture_bytes(0) + texture_bytes(0, -1))  # by day: no night
-        both = usage(built, tops, lit={"lit"}, copied={"copied"})
+        both = usage(built, tops, lit={"lit": 0}, copied={"copied"})
         copy = texture_bytes(-1, -1) - texture_bytes(0, -1)
         self.assertEqual(both - day_only, night_bytes(0) + copy)
         # made coarser, a texture frees its night and its copy with it
         coarser = pick(built, {"copied": 1.0}, lambda n: n == "copied", both - 1, tops,
-                       lit={"lit"}, copied={"copied"})  # fmt: skip
+                       lit={"lit": 0}, copied=["copied"])  # fmt: skip
         self.assertEqual(coarser, [("copied", 4)])
 
     def test_night_lights_off_under_x_plane_its_nights_counted_and_followed(self):
@@ -1105,11 +1133,24 @@ class NightDiskTest(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             work = NightWork(Path(tmp), None, None, [], log=lambda _: None, lights=False)
-            work.lit = {"a.dds"}
+            work.lit = {"a.dds": 0}
             work.tick((43.70, 7.25), (314, 20.0), lambda: {"a.dds": 0})  # night in X-Plane
             self.assertFalse(work.night)  # none made
             work.back_to_black("a.dds")
-            self.assertEqual(work.lit, set())  # followed: black, no longer counted
+            self.assertEqual(work.lit, {})  # followed: black, no longer counted
+
+    def test_a_count_of_a_whole_flight_s_textures_in_milliseconds(self):
+        """The record's lists looked up by name took 2.5 s for 28,800 night textures, every 3 s,
+        in Live's own process (the reviews of 2026-11-11)."""
+        import time
+
+        from orthostudio.live.evict import usage
+
+        built = {f"{i}.dds": 4 for i in range(30000)}
+        lit = {f"{i}.dds": 2 for i in range(25000)}
+        t = time.perf_counter()
+        usage(built, lambda _: 0, lit, list(built)[:5000])
+        self.assertLess(time.perf_counter() - t, 0.5)
 
     def test_a_file_counted_as_the_disk_takes_it(self):
         """In the disk's own steps: on the user's Shadow (NTFS), 2,000 far night textures took
