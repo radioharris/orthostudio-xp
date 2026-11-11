@@ -274,7 +274,7 @@ class NightJobTest(unittest.TestCase):
             (pack / "textures").mkdir()
             (pack / NIGHT_FOLDER).mkdir()
             write_sparse(pack / "textures" / name, 0, neutral_levels(0, rgb=(200, 200, 200)))
-            got, level, _ = night_job((str(pack), name, 0, [], None))
+            got, level, _ = night_job((str(pack), name, 0, [], None, None))
             self.assertEqual((got, level), (name, 0))
             lit = pack / NIGHT_FOLDER / "23904_34080_BI16_LIT.dds"
             self.assertEqual(dds.read_top(lit), NIGHT_TOP)
@@ -300,13 +300,48 @@ class NightJobTest(unittest.TestCase):
             write_sparse(pack / "textures" / name, 4, neutral_levels(4, rgb=(200, 200, 200)))
             town = [night.Roads.of(grid_of_streets(43.70, 7.27, span=0.03))]
             with mock.patch.object(nightwork, "roads_from", lambda *_: town):
-                night_job((str(pack), name, 4, [], None))  # a 256 px day texture: a 64 px night one
+                night_job(
+                    (str(pack), name, 4, [], None, None)
+                )  # a 256 px day texture: a 64 px night one
             lit = (pack / NIGHT_FOLDER / "23904_34080_BI16_LIT.dds").read_bytes()
             layout = dds.level_layout(NIGHT_TOP)
             o0, n0 = layout[0]
             o4, n4 = layout[4]
             self.assertEqual(lit[o0 : o0 + n0].count(0), n0)  # the 1024 px level black
             self.assertNotEqual(lit[o4 : o4 + n4].count(0), n4)  # the 64 px one written
+
+    def test_the_lights_as_bright_as_chosen(self):
+        """Live's "Night lights": soft, normal or strong, the same lamps fainter or brighter."""
+        import tempfile
+        from pathlib import Path
+        from unittest import mock
+
+        from orthostudio.live import dds, nightwork
+        from orthostudio.live.night import GAIN, LIGHTS
+        from orthostudio.live.nightwork import night_job
+        from orthostudio.live.region import NIGHT_FOLDER, NIGHT_TOP, neutral_levels
+        from orthostudio.live.texture import write_sparse
+
+        self.assertEqual(GAIN, LIGHTS["normal"])
+        self.assertLess(LIGHTS["soft"], LIGHTS["normal"])
+        self.assertLess(LIGHTS["normal"], LIGHTS["strong"])
+        town = [night.Roads.of(grid_of_streets(43.70, 7.27, span=0.03))]
+        means = {}
+        for light, gain in LIGHTS.items():
+            with tempfile.TemporaryDirectory() as tmp:
+                pack = Path(tmp)
+                name = "23904_34080_BI16.dds"
+                (pack / "textures").mkdir()
+                (pack / NIGHT_FOLDER).mkdir()
+                write_sparse(pack / "textures" / name, 0, neutral_levels(0, rgb=(200, 200, 200)))
+                with mock.patch.object(nightwork, "roads_from", lambda *_: town):
+                    night_job((str(pack), name, 0, [], None, gain))
+                lit = (pack / NIGHT_FOLDER / "23904_34080_BI16_LIT.dds").read_bytes()
+                offset, length = dds.level_layout(NIGHT_TOP)[0]
+                means[light] = float(decode_bc1(lit[offset : offset + length], 1024).mean())
+        self.assertGreater(means["soft"], 0)
+        self.assertLess(means["soft"], means["normal"])
+        self.assertLess(means["normal"], means["strong"])
 
 
 # --- the streamer's night work: nothing by day, the textures built lit when night falls,
@@ -410,6 +445,12 @@ class NightWorkTest(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
+    def test_the_lights_chosen_go_with_each_job(self):
+        from orthostudio.live.nightwork import NightWork
+
+        work = NightWork(self.root, None, None, [], log=lambda _: None, executor=self.ex, gain=1.0)
+        self.assertEqual(work._job(self.near, 0)[5], 1.0)
+
     def test_nothing_by_day(self):
         self.work.tick(20.0, (43.7, 7.25), lambda: {self.near: 0})
         self.work.built(self.near, 0)
@@ -420,6 +461,7 @@ class NightWorkTest(unittest.TestCase):
         self.work.tick(2.0, (43.7, 7.25), lambda: {self.far: 4, self.near: 0})
         self.assertEqual([job[1] for job in self.ex.jobs], [self.near, self.far])
         self.assertEqual(self.work.made, {self.near: 0, self.far: 4})
+        self.assertEqual([job[5] for job in self.ex.jobs], [None, None])  # the gain: GAIN
         self.work.built(self.near, 0)  # built again at the same level: not made again
         self.work.tick(2.0, (43.7, 7.25), lambda: {})
         self.assertEqual(len(self.ex.jobs), 2)

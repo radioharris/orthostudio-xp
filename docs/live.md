@@ -282,8 +282,11 @@ night.
   2704 x 1756 on an M4 Pro, frame times did not change beyond their spread from one flight to the
   next.
 
-"No": no night texture, the terrain files naming none. A new choice takes effect at the next
-start, as the decal's: the terrain files flown already are made again as X-Plane comes.
+"Soft", "Normal" (the default) or "Strong": the same lamps fainter or brighter. Each start of
+Live makes its night textures again as night comes, so a new strength shows from the next start,
+the nearest first. "No": no night texture, the terrain files naming none. A change between on and
+off takes effect at the next start, as the decal's: the terrain files flown already are made again
+as X-Plane comes.
 
 ## Imagery sources, your own tiles, roads and forests
 

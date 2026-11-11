@@ -1119,13 +1119,23 @@ function fillSettings(settings) {
     input.checked = input.value === (settings.own_tiles || "first");
   }
   for (const input of document.querySelectorAll('input[name="night"]')) {
-    input.checked = input.value === (settings.night === false ? "off" : "on");
+    input.checked = input.value === nightChoice(settings);
   }
   drawSimbrief();
   drawMemory();
   drawZooms();
   fillSeason(settings);
   if (providers.length) renderProviders(settings.provider);
+}
+
+/** The "Night lights" answer of settings saved: off, or how bright. */
+function nightChoice(settings) {
+  return settings?.night === false ? "off" : (settings?.night_light || "normal");
+}
+
+/** The "Night lights" answer the form holds. */
+function nightChosen() {
+  return document.querySelector('input[name="night"]:checked')?.value || nightChoice(saved);
 }
 
 /** The answers the form holds, as Save sends them. The source and its zooms are not among them:
@@ -1138,8 +1148,8 @@ function formSettings() {
     app_home: document.querySelector('input[name="app_home"]:checked')?.value || saved?.app_home || "ask",
     overlays: document.querySelector('input[name="overlays"]:checked')?.value || saved?.overlays || "auto",
     own_tiles: document.querySelector('input[name="own_tiles"]:checked')?.value || saved?.own_tiles || "first",
-    night: (document.querySelector('input[name="night"]:checked')?.value
-      || (saved?.night === false ? "off" : "on")) === "on",
+    night: nightChosen() !== "off",
+    night_light: nightChosen() === "off" ? (saved?.night_light || "normal") : nightChosen(),
     decal: $("set-decal").options.length ? $("set-decal").value : (saved?.decal ?? LIVE_DECAL),
     season: seasonChosen(),
     seasons: seasonLooks || saved?.seasons,

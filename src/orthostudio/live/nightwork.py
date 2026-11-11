@@ -308,11 +308,14 @@ def _degrees(point: tuple[float, float], at: tuple[float, float]) -> float:
     return math.hypot(point[0] - at[0], dx)
 
 
-def make_night(pack: Path, name: str, level: int, dsfs, grid: str | None) -> None:
+def make_night(
+    pack: Path, name: str, level: int, dsfs, grid: str | None, gain: float | None = None
+) -> None:
     """The night texture of ``name`` made from day level ``level`` and written over its black
-    name, from its level down."""
+    name, from its level down; its lights times ``gain`` (:data:`orthostudio.live.night.GAIN`
+    when None)."""
     from .imaging import encode_bc1
-    from .night import LIT_SIDE, draw, lights_at, lit_levels, night_rgb, seed_of
+    from .night import GAIN, LIT_SIDE, draw, lights_at, lit_levels, night_rgb, seed_of
     from .region import NIGHT_FOLDER, NIGHT_TOP, ensure_night_neutral
     from .texture import write_sparse
 
@@ -331,7 +334,8 @@ def make_night(pack: Path, name: str, level: int, dsfs, grid: str | None) -> Non
     lights = lights_at(lights, level - (LIT_SIDE // side).bit_length() + 1)
     if density is None:
         lights = lights * 0.85  # what the grid gives on average in a town
-    levels = [encode_bc1(lv) for lv in lit_levels(night_rgb(lights))]
+    rgb = night_rgb(lights, GAIN if gain is None else gain)
+    levels = [encode_bc1(lv) for lv in lit_levels(rgb)]
     out = pack / NIGHT_FOLDER / (name[: -len(".dds")] + "_LIT.dds")
     # its larger levels a hole, which reads as zeros, black in BC1, at no cost to read: a clone
     # of the black texture, they were 700 KB that X-Plane read from the disk for each night
@@ -342,10 +346,11 @@ def make_night(pack: Path, name: str, level: int, dsfs, grid: str | None) -> Non
 
 def night_job(job: tuple) -> tuple[str, int, float]:
     """In the night's process: the night texture of a texture built. ``job``: (pack, name, level,
-    the DSFs of its squares, its density grid or None). Returns (name, level, seconds)."""
-    pack, name, level, dsfs, grid = job
+    the DSFs of its squares, its density grid or None, the lights' gain). Returns (name, level,
+    seconds)."""
+    pack, name, level, dsfs, grid, gain = job
     t = time.monotonic()
-    make_night(Path(pack), name, level, dsfs, grid)
+    make_night(Path(pack), name, level, dsfs, grid, gain)
     return name, max(0, level), time.monotonic() - t
 
 
@@ -392,8 +397,10 @@ class NightWork:
         log: Callable[[str], None] = print,
         executor=None,
         prefs: Path | None = None,
+        gain: float | None = None,
     ):
         self.pack_dir = pack_dir
+        self.gain = gain  # the lights' strength (orthostudio.live.night.LIGHTS); None: GAIN
         self.global_scenery = global_scenery
         self.overlays = overlays
         self.grids = list(grids)  # where the density grids are: each region's night folder
@@ -689,7 +696,7 @@ class NightWork:
         lat, lon = (math.floor(v) for v in tex.center) if tex is not None else (0, 0)
         file = f"{square_name(lat, lon)}.png"
         grid = next((d / file for d in self.grids if (d / file).is_file()), None)
-        return (str(self.pack_dir), name, level, dsfs, str(grid) if grid else None)
+        return (str(self.pack_dir), name, level, dsfs, str(grid) if grid else None, self.gain)
 
     def _dsf(self, lat: int, lon: int) -> Path | None:
         from .geo import dsf_rel_path

@@ -130,6 +130,7 @@ def options_for(settings: LiveSettings) -> session.Options:
         decal=settings.decal,
         own_tiles=settings.own_tiles,
         night=settings.night,
+        night_light=settings.night_light,
     )
 
 

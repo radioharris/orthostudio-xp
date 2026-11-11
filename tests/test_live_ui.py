@@ -71,6 +71,14 @@ def test_the_test_of_the_8192_px_is_off_until_ticked(home: Path) -> None:
     assert control_module.options_for(LiveSettings(tint_8192=True)).tint_8192
 
 
+def test_the_night_lights_normal_until_chosen(home: Path) -> None:
+    assert LiveSettings().night and LiveSettings().night_light == "normal"
+    assert control_module.options_for(LiveSettings()).night_light == "normal"
+    assert control_module.options_for(LiveSettings(night_light="soft")).night_light == "soft"
+    settings_file().write_text('[stream]\nnight_light = "blinding"\nprovider = "Arc"\n')
+    assert load_settings().night_light == "normal"  # a wrong value costs itself only
+
+
 def test_one_disk_space_shared_and_the_two_of_before(home: Path) -> None:
     """One space, as AutoOrtho's cache: half for the textures built, half for the downloaded
     imagery. A file from before, with two spaces, keeps as much as it gave: their sum."""

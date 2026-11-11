@@ -97,6 +97,7 @@ class Options:
     decal: str | None = None  # the land's decal on Live's squares; "" none; None: as the region has
     own_tiles: str = "first"  # the pilot's own tiles first, or "under" Live's pack while it runs
     night: bool = False  # the towns' lights at night (orthostudio.live.night); the app: on
+    night_light: str = "normal"  # their strength, a key of orthostudio.live.night.LIGHTS
 
 
 class StartClock:
@@ -589,7 +590,9 @@ def follow(
                         p.name.removeprefix("z_osxp_") for p in osxp_regions(live_root())
                     },
                     region_lists=aoregions.lists_dir(live_root()),
-                    night=_night_work(prepared, log) if options.night else None,
+                    night=_night_work(prepared, log, options.night_light)
+                    if options.night
+                    else None,
                 )
                 clock.done("textures")
                 if streamer.region_note:
@@ -646,11 +649,12 @@ def follow(
 GRIDS_ENV = "OSXP_LIVE_NIGHT_GRIDS"  # a folder of density grids looked in first: the test flights'
 
 
-def _night_work(prepared: Prepared, log: Log):
+def _night_work(prepared: Prepared, log: Log, light: str = "normal"):
     """The night textures of the textures built (orthostudio.live.nightwork): X-Plane's roads from
     its Global Scenery, else from the overlays of Live's regions, NASA's grids from each
-    region's night folder, else Live's."""
+    region's night folder, else Live's; their lights as bright as ``light`` says."""
     from orthostudio.live import aoregions
+    from orthostudio.live.night import GAIN, LIGHTS
     from orthostudio.live.nightwork import NightWork
     from orthostudio.live.osxpregions import OVERLAY_PACK
 
@@ -663,6 +667,7 @@ def _night_work(prepared: Prepared, log: Log):
         + [live_root() / "night"],
         log=log,
         prefs=_freeflight(prepared.xplane),
+        gain=LIGHTS.get(light, GAIN),
     )
 
 

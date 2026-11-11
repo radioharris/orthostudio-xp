@@ -144,6 +144,8 @@ no virtual disk between X-Plane and its textures: it builds them beside X-Plane 
 - **Your own tiles come first**: Live downloads nothing where you built one.
 - **Seasons**: the photos in the colours of the season of your flight's date in X-Plane, or of
   the one you choose.
+- **Towns at night**: street lamps and windows along X-Plane's roads on Live's photos, as many
+  lit as NASA's Black Marble sees there; soft, normal or strong, or none.
 
 Its guide, with the steps of a flight, the window and the measurements:
 [docs/live.md](docs/live.md).

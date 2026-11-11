@@ -548,7 +548,9 @@ came out as soft blobs all over the fields round LSGG, which the photo's texture
 (the user: « c'est exagéré les points partout »), and the dimming took 8 to 21 % of the towns'
 light, the photo seeing too little built in a dense centre (Nice's centre 0.84, its hills 0.79,
 Cagnes 0.87): Annecy came out darker. NASA's density does the country's part. Then
-×0.75, what is fainter than 6 out of 255 black (`night.FLOOR`), and nothing else: a twentieth of
+times the strength the setting `night_light` gives (`night.LIGHTS`: "soft" 0.55, "normal" 0.75,
+"strong" 1.0; `LiveSettings.night_light`, "normal" by default, carried by `NightWork.gain` in
+each job), what is fainter than 6 out of 255 black (`night.FLOOR`), and nothing else: a twentieth of
 the day photo under the lights, as XPME does (its "night ground visibility", 5 % by default), came
 out of BC1 as a checkerboard of purple, brown and green blocks, values of 4 to 10 out of 255 the
 format cannot hold in their colour (BC1 holds red and blue in steps of 8; the user's LSGG,

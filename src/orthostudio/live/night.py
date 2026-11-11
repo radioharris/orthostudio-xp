@@ -99,7 +99,12 @@ DENSITY_SAMPLES = 64
 """NASA's density is worked out at this many points a side of a texture, drawn up between them:
 every 16 px of a 1024 px texture, three or four points a cell of the grid."""
 
-GAIN = 0.75
+LIGHTS = {"soft": 0.55, "normal": 0.75, "strong": 1.0}
+"""The lights' strength each choice of Live's "Night lights" gives (orthostudio.live.settings):
+what the lights drawn are multiplied by. "normal", the one of the first night textures; the user
+liked them, and wanted a choice for those who find them too bright or too faint (2026-11-11)."""
+
+GAIN = LIGHTS["normal"]
 POWER = 3.0
 
 FLOOR = 6

@@ -259,6 +259,7 @@ def stream(
         decal=saved.decal,
         own_tiles=saved.own_tiles,
         night=saved.night,
+        night_light=saved.night_light,
     )
     try:
         prepared = session.prepare(options, typer.echo)
