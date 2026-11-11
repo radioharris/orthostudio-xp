@@ -220,12 +220,14 @@ and MapLibre GL (BSD-3-Clause), both vendored.
 ```bash
 uv sync --all-extras --all-groups
 uv run pytest -n 8 -m "not network"   # the suite, in parallel
+uv run pytest -m serial                # then the few that wait on their own timing, alone
 uv run ruff check .
 uv run mypy src
 ```
 
 Tests marked `xplane` read the local X-Plane 12 install (never write to it) and skip without it.
-Network tests (`-m network`) are never run in CI. No test needs Ortho4XP.
+Network tests (`-m network`) are never run in CI. Tests marked `serial` wait on their own timing,
+which a parallel run's load breaks: a run with `-n` leaves them out. No test needs Ortho4XP.
 
 ## Layout
 

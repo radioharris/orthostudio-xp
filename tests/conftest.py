@@ -4,7 +4,9 @@
 
 The suite tests OrthoStudio XP on its own: no test reads, runs or compares with Ortho4XP
 (decision 0010). Tests marked ``xplane`` read the local X-Plane 12 install, never write to it,
-and skip when it is absent; tests marked ``network`` talk to real servers.
+and skip when it is absent; tests marked ``network`` talk to real servers; tests marked
+``serial`` wait on their own timing and are left out of a parallel run (``-n``), run alone with
+``-m serial``.
 """
 
 from __future__ import annotations
@@ -25,6 +27,18 @@ if str(_REPO) not in sys.path:
 # Scenery to read. The suite builds with the viewfinderpanoramas relief instead, unless a test
 # asks for X-Plane's explicitly (``BuildSpec(relief="xplane")``, ``tests/test_dem_xplane.py``).
 os.environ.setdefault("OSXP_RELIEF", "view")
+
+
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    """The ``serial`` tests left out of a parallel run: two start tests of test_live_gate failed
+    under its load and passed alone (2026-11-11); ``pytest -m serial`` runs them, as the CI does
+    after its parallel run."""
+    if not (os.environ.get("PYTEST_XDIST_WORKER") or getattr(config.option, "numprocesses", None)):
+        return
+    left = [item for item in items if item.get_closest_marker("serial")]
+    if left:
+        config.hook.pytest_deselected(items=left)
+        items[:] = [item for item in items if not item.get_closest_marker("serial")]
 
 
 @pytest.fixture(autouse=True)

@@ -22,6 +22,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+import pytest
+
 from live_helpers import NAMES, FakeDownloader, Image, make_source
 from orthostudio.live import gate as gate_module
 from orthostudio.live import plugin
@@ -1624,6 +1626,7 @@ class RunTest(unittest.TestCase):
         )
         self.assertEqual(self.xp.commands, [])
 
+    @pytest.mark.serial
     def test_a_new_flight_while_flying(self):
         """Start Flight clicked while X-Plane runs elsewhere: its position is still the old one,
         yet the new start is what is built before X-Plane goes on."""
@@ -1669,6 +1672,7 @@ class RunTest(unittest.TestCase):
         self.assertEqual(answers[-1], "LIVE1 GO 0")
         self.assertEqual(self.streamer.built, {f"{n}.dds": 1 for n in NAMES})
 
+    @pytest.mark.serial
     def test_a_new_flight_while_flying_held_long(self):
         """Start Flight clicked in flight with another aircraft, the click read once X-Plane was
         already silent and the hold longer than a click is certain: the plugin's old position

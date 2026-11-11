@@ -84,6 +84,7 @@ addopts = "-q --dist worksteal"
 markers = [
   "xplane: reads the local X-Plane 12 install, read only (skipped without it)",
   "network: talks to real servers (local only)",
+  "serial: waits on its own timing, which a parallel run's load breaks: left out of a run with -n (tests/conftest.py), run alone with -m serial",
 ]
 
 [tool.mypy]
