@@ -6473,11 +6473,13 @@ def test_every_button_has_the_text_of_a_field() -> None:
     """A small button had 12 px of text and the others 13.5, chosen case by case, and a button took
     the size of the note it sat in (a user, 2026-11-02): every button has the text of the field and
     the list beside it, the page's text style, so the text size still draws it larger. The small
-    button is gone; the bottom bar keeps its own size and the top bar's tools set theirs."""
+    button is gone; the bottom bar keeps its own size, the app's frame's laid over it too (its
+    zoom's 100 % stood larger than the text size's beside it, and low in its button, 2026-11-11),
+    and the top bar's tools set theirs."""
     css = (UI / "styles.css").read_text(encoding="utf-8")
     rules = dict(_css_rules(css))
     assert "font-size: var(--fs);" in rules[".btn"]
-    assert rules[".statusbar .btn"].strip() == "font-size: inherit;"
+    assert rules[".statusbar .btn, .frame-foot .btn"].strip() == "font-size: inherit;"
     assert (
         "font-size: 12px;"
         in rules[".topbar-tools .tool-select, .topbar-tools .tool-btn, .topbar-tools .quit-btn"]

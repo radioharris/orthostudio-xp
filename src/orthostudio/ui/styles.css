@@ -411,8 +411,10 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .btn-primary:hover { filter: brightness(1.08); background: var(--accent); }
 /* One text size for every button, the field's and the list's beside it (--fs), wherever it stands:
    a small button had a smaller one, chosen case by case, and a button took the size of the note it
-   sat in (a user, 2026-11-02). The bottom bar keeps its own; the top bar's tools set theirs. */
-.statusbar .btn { font-size: inherit; }
+   sat in (a user, 2026-11-02). The bottom bar keeps its own, the app's frame's laid over it too
+   (frame.css .frame-foot: its zoom's 100 % stood larger than the text size's beside it, and low in
+   its 18 px button, the user, 2026-11-11); the top bar's tools set theirs. */
+.statusbar .btn, .frame-foot .btn { font-size: inherit; }
 .btn-danger { color: var(--fail); border-color: var(--fail); }
 /* An action that undoes something, which must be seen: the quiet, borderless button was
    invisible (a user, 2026-09-18). */

@@ -62,7 +62,8 @@ const frames = {};
 const loaded = { build: false, live: false };
 const tabsOf = { build: [], live: [] };
 const currentOf = { build: "", live: "" };
-const footOf = { build: null, live: null }; // the height of each page's own foot (embed.js page:foot)
+// each page's own foot (embed.js page:foot): its height, and the room its scroll bar takes on its right
+const footOf = { build: null, live: null };
 const busyOf = { build: "", live: "" }; // what each page said it is doing (embed.js page:tabs)
 const welcomeOnce = { live: Boolean(given.welcome) };
 // what nothing kept yet, taken once from the first page that has it (its own choices of before)
@@ -244,7 +245,8 @@ function heard(event) {
     if (part === "live" && data.part === "build") forget("live"); // the welcome, answered
     show(data.part);
   } else if (data.type === "page:foot") {
-    footOf[part] = Number(data.height) > 0 ? Number(data.height) : null;
+    const height = Number(data.height);
+    footOf[part] = height > 0 ? { height, right: Math.max(0, Number(data.right) || 0) } : null;
     if (part === shownPart) placeFoot();
   }
 }
@@ -287,10 +289,11 @@ function drawStates() {
 /** The foot over the right end of the shown page's own, as tall as it; on its own where the page
  * has none (the welcome). */
 function placeFoot() {
-  const height = shownPart ? footOf[shownPart] : null;
+  const own = shownPart ? footOf[shownPart] : null;
   const foot = $("frame-foot");
-  foot.classList.toggle("frame-foot-alone", !height);
-  foot.style.height = height ? `${height}px` : "";
+  foot.classList.toggle("frame-foot-alone", !own);
+  foot.style.height = own ? `${own.height}px` : "";
+  foot.style.right = own && own.right ? `calc(var(--pad) + ${own.right}px)` : "";
 }
 
 function languageChanged() {

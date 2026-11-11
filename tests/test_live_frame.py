@@ -407,6 +407,7 @@ top.parent = top;
 const make = (origin) => {
   const posted = [], listeners = {}, keys = [], style = {}, classes = [];
   const win = {
+    innerWidth: 1200, // its scroll bar 15 px wide, as Windows and a Mac set to show it give it
     parent: { postMessage: (m, o) => posted.push([m.type, o, m]) },
     location: { ancestorOrigins: [origin] },
     addEventListener: (type, fn) => (listeners[type] ||= []).push(fn),
@@ -414,6 +415,7 @@ const make = (origin) => {
     Event: class { constructor(type) { this.type = type; } },
     document: {
       documentElement: {
+        clientWidth: 1185,
         classList: { add: (c) => classes.push(c) },
         style: { setProperty: (k, v) => (style[k] = v) },
       },
@@ -451,7 +453,7 @@ f.keys.forEach((fn) => fn({ metaKey: true, key: "=", preventDefault() {} }));
 tell();
 out.bound = {
   classes: f.classes, posted: f.posted.map(([type, origin]) => [type, origin]), seen,
-  style: f.style, resized, ready: f.posted[1][2], tabs: f.posted[2][2],
+  style: f.style, resized, ready: f.posted[1][2], tabs: f.posted[2][2], foot: f.posted[0][2],
 };
 const outside = make("https://example.com");
 out.outside = [typeof bindFrame(page, outside.win), outside.posted.length, outside.classes.length];
@@ -474,6 +476,9 @@ def test_a_page_in_the_frame_leaves_it_its_bars_and_follows_it(tmp_path: Path) -
         ["page:zoom", origin],  # Cmd+plus typed in the page: the window's zoom, the frame's
         ["page:tabs", origin],
     ]
+    # its foot's height, and the room its scroll bar takes on its right, which the frame's foot
+    # stands left of (its + lay over the scroll bar on Windows and a Mac showing it, 2026-11-11)
+    assert (bound["foot"]["height"], bound["foot"]["right"]) == (31, 15)
     assert bound["ready"]["prefs"] == {"language": "fr"}  # what it kept, for a first start
     tabs = bound["tabs"]  # its screens, the one shown, and what it is doing, said beside its name
     assert tabs["tabs"] == [{"id": "plan", "label": "Plan"}] and tabs["current"] == "plan"

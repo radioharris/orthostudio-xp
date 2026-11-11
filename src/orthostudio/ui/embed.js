@@ -76,10 +76,17 @@ export function bindFrame(page, win = typeof window !== "undefined" ? window : n
     }
   });
   // and the frame's foot is as tall as this page's own, which grows on two lines when the window
-  // is narrow, or with the text size: told each time it changes
+  // is narrow, or with the text size, and stands left of this page's scroll bar where the system
+  // gives it room (Windows, Linux, a Mac set to show it always: the frame's + lay over it, the
+  // user, 2026-11-11): told each time it changes
   const bar = win.document.querySelector(".statusbar");
   if (bar) {
-    const tellFoot = () => post({ type: "page:foot", height: bar.offsetHeight });
+    const tellFoot = () =>
+      post({
+        type: "page:foot",
+        height: bar.offsetHeight,
+        right: Math.max(0, win.innerWidth - win.document.documentElement.clientWidth || 0),
+      });
     if (typeof win.ResizeObserver !== "undefined") new win.ResizeObserver(tellFoot).observe(bar);
     tellFoot();
   }
