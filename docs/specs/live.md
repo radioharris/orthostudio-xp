@@ -111,13 +111,13 @@ modules, English and French, English unless the switch chose French, as OrthoStu
   the very steps of `stream` (`orthostudio/live/session.py`: prepare, follow, finish). Its states:
   idle, starting, streaming, stopping, and leaving (stopped while X-Plane runs: the pack comes out
   once X-Plane quits, unless left installed). While it streams, Live's process forks neither its
-  encoders (see the encoding processes in the loop) nor commands: whether X-Plane runs and when
-  it started come from macOS's list of processes (`scenery.xplane_running`, `xplane_started_at`,
-  libproc; the newest of two, one quitting as the next starts), not from `ps` or `pgrep`, and X-Plane is launched by posix_spawn, which does not fork
-  (`scenery._spawn`). When the encoders'
+  encoders (see the encoding processes in the loop) nor commands: whether X-Plane runs and when it
+  started come from macOS's list of processes (`scenery.xplane_running`, `xplane_started_at`,
+  libproc; the newest of two, one quitting as the next starts), not from `ps` or `pgrep`, and
+  X-Plane is launched by posix_spawn, which does not fork (`scenery._spawn`). When the encoders'
   pool broke, X-Plane was taken for gone, most likely a `ps` that died the same way (a `ps` that
-  fails reads as no X-Plane), and the pack came out from under it; the next flight, a `pgrep`
-  died so as X-Plane arrived.
+  fails reads as no X-Plane), and the pack came out from under it; the next flight, a `pgrep` died
+  so as X-Plane arrived.
 - **The figures** are the status line's, counted once (`Streamer.snapshot`, `progress_report`):
   what X-Plane sends, the start it loads and whether it holds X-Plane, the textures queued, being
   built and built by level, the pieces downloaded, the sources refusing this computer, the rate,

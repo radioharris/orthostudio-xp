@@ -55,10 +55,10 @@ def test_x_plane_is_found_in_the_list_of_processes(monkeypatch):
     monkeypatch.setattr(scenery, "_processes", lambda: {1: ("launchd", 0.0), 7: ("X-Plane", 9.5)})
     assert scenery.xplane_running()
     assert scenery.xplane_started_at() == 9.5
-    two = {7: ("X-Plane", 9.5), 9: ("X-Plane", 30.0)}  # one quitting, the next one starting
+    two = {9: ("X-Plane", 9.5), 7: ("X-Plane", 30.0)}  # one quitting, the next one starting
     monkeypatch.setattr(scenery, "_processes", lambda: two)
     assert scenery.xplane_started_at() == 30.0
-    assert scenery.xplane_pid() == 9  # the newest's, whatever its number
+    assert scenery.xplane_pid() == 7  # the newest's, whatever its number
     monkeypatch.setattr(scenery, "_processes", lambda: {1: ("launchd", 0.0), 8: ("Finder", 1.0)})
     assert not scenery.xplane_running()
     assert scenery.xplane_started_at() is None
