@@ -993,7 +993,7 @@ class Streamer:
         dimensions, from the heights above the ground, as X-Plane measures: none from high up.
         At a start, X-Plane waits for all of them."""
         read = ring_km(0, zoom) * self.scale  # X-Plane's image: the rings grow with it
-        built = read * (1.0 if starting else self.margin)  # a start: no margin (plan)
+        built = read * self.margin  # a start too (plan)
         if s > built:
             return None
         return s_now - (built if starting else read)
@@ -1081,10 +1081,11 @@ class Streamer:
         self.on_route = route is not None
         reach = self.reach_km
         now = time.time()
-        # the margin anticipates the aircraft's moves: none while X-Plane loads a start or the
-        # aircraft stands, where X-Plane reads no farther than its rings (a third fewer 4096 px
-        # levels written at a start, 2026-10-20); back once it moves
-        margin = 1.0 if starting or fix.gs_ms < STILL_MS else None
+        # the margin anticipates the aircraft's moves, none while it stands (X-Plane reads nothing
+        # new), and is X-Plane's own at a start: its 4096 px ring lies within a few hundred metres
+        # of 14 km, past the 13.6 of the rings, and a texture 13.9 km from a start near LAX was
+        # read at 4096 px before Live built it, black at night, in every flight (2026-11-11)
+        margin = 1.0 if not starting and fix.gs_ms < STILL_MS else None
         # heights above the ground: X-Plane measures from the aircraft in three dimensions, and
         # at cruise a texture right under the aircraft is 10 km away, too far for its 8192 px.
         # Never from the camera: X-Plane reads nothing again for it, in the drone view or the

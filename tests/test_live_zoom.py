@@ -8,6 +8,7 @@ losing what was built, where the 8192 px level gets its photos, and its copy whe
 from __future__ import annotations
 
 import json
+import math
 import random
 import time
 from pathlib import Path
@@ -594,6 +595,19 @@ def test_what_a_start_waits_for(tmp_path: Path) -> None:
         assert jobs[f"{ROW[k]}.dds"][0] <= 0
     # 4096 px out to 40.8 km, 2048 px from 47.6 km
     assert [jobs[f"{name}.dds"][1] for name in ROW[3:8]] == [0, 0, 0, 0, 1]
+    s.cache.close()
+
+
+def test_a_start_plans_x_plane_s_4096_px_ring_with_the_margin(tmp_path: Path) -> None:
+    """X-Plane's 4096 px ring lies within a few hundred metres of 14 km, past the rings' 13.6: a
+    texture 13.9 km from a start near LAX was read at 4096 px before Live built it, black at night,
+    in every flight (2026-11-11). A start plans it with the flight's margin, and waits for it."""
+    s = row_streamer(tmp_path)
+    lat, lon = parse_texture_name(f"{ROW[0]}.dds").center
+    west = lon - 0.4 / (111.195 * math.cos(math.radians(lat)))  # the third one 13.97 km away
+    jobs = s.plan(Fix(lat, west), x_plane_there=False, starting=True)
+    assert sharp(jobs) == [0, 1, 2]
+    assert jobs[f"{ROW[2]}.dds"][0] <= 0  # X-Plane waits for it
     s.cache.close()
 
 

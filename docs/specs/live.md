@@ -198,7 +198,13 @@ modules, English and French, English unless the switch chose French, as OrthoStu
   flight shows: roads, forests and buildings, your own tiles, the season, the night lights, the
   ground grain; then the flight plan and what the app opens on.
 - **A start** waits for everything X-Plane reads while the flight loads, the 8192 px level within
-  15 km included (see "The 8192 px level"). The start modes of before (`full`, `around`,
+  15 km included (see "The 8192 px level"), its rings with the margin they have in flight (11 %,
+  `DEFAULT_MARGIN`; none only while the aircraft stands, where X-Plane reads nothing new): X-Plane's
+  4096 px ring lies within a few hundred metres of 14 km (a texture at 8.7 km read at 4096 px and
+  one at 14 km at 2048 px from LSGG, 2026-10-20; one at 13.9 km at 4096 px from a start near LAX,
+  2026-11-11), past the rings' 13.6 km, and without the margin that texture near LAX was taken
+  sharper than Live built it, its night black, the same in three flights. With it, X-Plane went on
+  after 13 s there, against 13 to 14 s without (10 textures at 4096 px instead of 9). The start modes of before (`full`, `around`,
   `normal`, and `reload` until 27 September) went with the growing; a saved `start_mode` is left
   out. The pink test of 27 September (the 8192 px levels built pink, `tint_8192`) showed the pink
   at LFLL on a new load of the flight, never after `sim/operation/reload_scenery` (the SDK's
