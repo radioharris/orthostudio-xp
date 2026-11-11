@@ -668,9 +668,10 @@ Live 8.9 GB in flight against 4.7 at most without the night.
   at a time.
 
 The start's team, replayed on an LSGG-like cold start (below) and measured as Activity Monitor
-counts it (`phys_footprint`, 2026-11-11): its 8 processes 2.87 GB at most together, 490 MB the
-largest, with the roads read cold (the team reads the DSFs itself); 2.61 GB and 402 MB with the
-roads in their files; Live's own process 35 MB. For the seconds of the start only: the team ends
+counts it (`phys_footprint`, 2026-11-11): its 8 processes 2.6 to 3.8 GB at most together from
+one replay to the next, 400 to 520 MB the largest, with the roads read cold (the team reads the
+DSFs itself) as from their files, the code of the morning before the reviews alike; Live's own
+process 35 MB. For the seconds of the start only: the team ends
 with it, or 180 s after its photos were built.
 
 A night texture written after X-Plane loaded its area is read as X-Plane comes closer, as the
@@ -685,8 +686,11 @@ day ones are built, those wanted then (`_start_set`: those built after, farther,
 flight, 27 s more at LSGG), for 180 s at most (`NIGHT_WAIT_S`). It waited for every texture of
 the pack, other regions' too: 11,142 night textures at a Paris start, Nice's and the Alps' among
 them (the review of 2026-11-11). The team works from the first texture built at a start at
-night, while its photos are still built and X-Plane starts, and ends with the start (the
-streamer's `arrived`: X-Plane flies there, or went elsewhere). Each square's roads are kept in
+night, while its photos are still built and X-Plane starts, and ends once the start waits for
+none (`NightWork.waiting`, set by `start_left`: its photos or its night textures still to make),
+or with the start (the streamer's `arrived`: X-Plane flies there, or went elsewhere). Kept until
+X-Plane flew there, it held its memory while X-Plane loaded once its night textures were made,
+and for good after a Prepare never flown (the review of 2026-11-11). Each square's roads are kept in
 the pack once read (`_live/roads/`, `nightwork.roads_file`, 4.8 MB a square round LSGG, the oldest
 dropped past Live's share for them), one process reading a square while the others wait for its
 file, 30 s at most from the lock's own time (`_lock_square`: one left by a process that died is
@@ -712,9 +716,16 @@ has it black again, or gone with it; a night texture without a light (the sea, a
 black name, not 684 KB of zeros. The roads kept for them take 5 % of Live's disk space, 1 GB at
 most (`streamer.ROADS_SHARE`, `nightwork.ROADS_KEPT_MB`: a fixed share of a 200 GB space set
 10 GB aside for 1 GB of roads), the night's loop dropping the oldest once a minute
-(`nightwork.prune_roads`): about a tenth of the 20 GB Live takes by default. Counted as their levels are, as the
-photos are: on NTFS a sparse file's data takes 64 KB blocks, 113 KB a night texture on the user's
-Shadow (4,892 of them, 555 MB, 2026-11-11). The night textures of every texture built are made
+(`nightwork.prune_roads`). Every texture file, day and night, is counted as the disk takes it
+(`evict.file_bytes`): its header and its levels written, each in the disk's steps
+(`evict.ALLOC_BLOCK`), 4 KB on APFS and ext4, 64 KB on NTFS, which gives a sparse file's data
+64 KB at a time. Checked against the free space on the user's Shadow (2026-11-11): 2,000 far
+night textures took 132,528 bytes each, counted 131,072 (6,840 before), 2,000 of 512 px 259,314,
+counted 262,144; NTFS's own list of a file's parts stops at its end, short of its last step (the
+113 KB a night texture said before). Counted by their levels alone, the photos too took up to
+twice what was counted on Windows, and Live went past its space there. On the textures of an
+LSGG start (8,535, most far): photos 0.75 GB and night textures 0.09 GB on a Mac (11 %), 1.45
+and 1.13 GB on Windows (44 %). The night textures of every texture built are made
 again at each start of Live as night comes. Turned off ("No"), the night textures, their black one
 and its copies and the roads go (`region._drop_night`), and the night is made only when the
 pack's terrain files name it (`region.night_on`: turned on while X-Plane ran, they do from the

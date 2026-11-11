@@ -502,12 +502,18 @@ def test_a_pack_of_8192_px_files_without_copies(tmp_path: Path) -> None:
 
 
 def test_an_8192_texture_on_the_disk_and_made_coarser(tmp_path: Path) -> None:
-    """Its disk, the copy counted; made coarser, it keeps its size, the copy above what it keeps."""
-    assert texture_bytes(-1, -1) == 4096 + sum(n for _, n in dds.level_layout(-1))
+    """Its disk, the copy counted; made coarser, it keeps its size, the copy above what it keeps.
+    Counted in the disk's steps (evict.ALLOC_BLOCK): equal give or take two of them."""
+    from orthostudio.live.evict import ALLOC_BLOCK
+
+    def about(a: int, b: int) -> bool:
+        return abs(a - b) <= 2 * ALLOC_BLOCK
+
+    assert about(texture_bytes(-1, -1), 4096 + sum(n for _, n in dds.level_layout(-1)))
     assert texture_bytes(-1, -1) > 4 * texture_bytes(0) - 1_000_000
-    assert texture_bytes(0, -1) == texture_bytes(0)  # no copy: its photos come first
-    assert texture_bytes(3, -1) == texture_bytes(3) + dds.level_layout(2)[0][1]
-    assert texture_bytes(4, -1) == texture_bytes(4) + dds.level_layout(3)[0][1]
+    assert about(texture_bytes(0, -1), texture_bytes(0))  # no copy: its photos come first
+    assert about(texture_bytes(3, -1), texture_bytes(3) + dds.level_layout(2)[0][1])
+    assert about(texture_bytes(4, -1), texture_bytes(4) + dds.level_layout(3)[0][1])
     assert texture_bytes(4, 0) == texture_bytes(4)
     pack = region(tmp_path, Zooms(17, 18))
     path = sharp_file(pack, f"{NAMES[0]}.dds")

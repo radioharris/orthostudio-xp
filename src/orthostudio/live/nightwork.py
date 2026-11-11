@@ -462,6 +462,7 @@ class NightWork:
         self._start_set: set[str] | None = None
         self._waited_since: float | None = None
         self.gave_up = False
+        self.waiting = False  # the start waits for its photos or its night textures: the team
 
     # --- what the streamer says ------------------------------------------------------------
 
@@ -512,6 +513,7 @@ class NightWork:
         self.start_at = (lat, lon)
         self._window = xplane_tiles(lat, lon)
         self._start_set, self._waited_since, self.gave_up = None, None, False
+        self.waiting = True
         saved = _solar_at_start(self.prefs) if self.prefs is not None else None
         if saved is not None:
             self._set_night(night_at(*saved, unsure_h=START_UNSURE_H), built, "at the start")
@@ -538,6 +540,7 @@ class NightWork:
                 if self._start_set is None:
                     self._start_set = set(pending)
                 left = sum(1 for n in self._start_set if n in self.wanted or n in self.running)
+        self.waiting = left > 0 or day_left > 0
         if left == 0 or day_left > 0:
             self._waited_since = None
             return left
@@ -545,7 +548,7 @@ class NightWork:
         if self._waited_since is None:
             self._waited_since = now
         if now - self._waited_since > NIGHT_WAIT_S:
-            self.gave_up = True
+            self.gave_up, self.waiting = True, False
             self.log(
                 f"  the start waits no more for its night textures: {left} not made in "
                 f"{NIGHT_WAIT_S:.0f} s, made in flight"
@@ -570,7 +573,8 @@ class NightWork:
     def pump(self) -> None:
         """At each turn of the streamer's loop, X-Plane running or not yet: what the processes
         made recorded; as many processes as the moment wants (a team while a start at night waits,
-        from its first texture built; one in flight; none by day); and two jobs a process, a few
+        from its first texture built until it waits for none; one in flight; none by day); and
+        two jobs a process, a few
         textures of a square each, the nearest first. Only here: jobs given from their pool's own
         thread blocked it for good when one of its processes died (Python 3.14, the review of
         2026-11-11)."""
@@ -584,7 +588,10 @@ class NightWork:
             prune_roads(self.pack_dir / ROADS_FOLDER, self.roads_cap)
         size = 0
         if self.night and not self.broken and not self.closed:
-            starting = self.start_at is not None and not self.gave_up
+            # the team while the start waits, not until X-Plane flies there: kept after its night
+            # textures were made, it held its memory while X-Plane loaded, or for good after a
+            # Prepare never flown (the review of 2026-11-11)
+            starting = self.start_at is not None and self.waiting
             size = min(max(1, self.team), TEAM_MAX) if starting else 1
         if self._pool is not None and self._size != size and not self._jobs.get(self._pool):
             self._pool.shutdown(wait=False)  # its processes end, their memory with them

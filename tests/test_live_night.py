@@ -509,6 +509,9 @@ class NightWorkTest(unittest.TestCase):
         self.assertEqual(self.work.made, {self.near: 0, self.far: 4, self.paris: 6})
 
     def test_a_team_while_a_start_at_night_waits_then_one_process(self):
+        """Kept until X-Plane flew there, the team held its memory while X-Plane loaded once its
+        night textures were made, and for good after a Prepare never flown (the review of
+        2026-11-11): it ends once the start waits for none."""
         at_night(self.prefs)
         self.work.start(43.70, 7.25, lambda: {self.near: 0, self.far: 4})
         self.assertTrue(self.work.night)
@@ -518,12 +521,16 @@ class NightWorkTest(unittest.TestCase):
         self.pools[0].finish()
         self.turn()
         self.assertEqual(self.work.start_left(day_left=0), 0)
-        self.work.arrived()  # X-Plane flies there
-        self.work.built(self.paris, 6)
+        self.work.built(self.paris, 6)  # X-Plane not there yet: farther ones, by one process
         self.turn()
         self.assertTrue(self.pools[0].shut)  # the team ends, its memory with it
         self.assertNotIn(self.pools[0], self.work._jobs)
         self.assertEqual([p.size for p in self.pools], [nightwork_team_max(), 1])
+        self.assertEqual(self.work.start_left(day_left=3), 0)  # new photos round it: Paris away
+        self.assertTrue(self.work.waiting)  # the start waits again
+        self.pools[1].finish()
+        self.turn()
+        self.assertEqual(self.pools[-1].size, nightwork_team_max())
 
     def test_a_start_by_day_then_dusk_in_flight_one_process(self):
         at_night(self.prefs, hours=11.0)
@@ -1064,6 +1071,18 @@ class NightDiskTest(unittest.TestCase):
         self.assertEqual(said, [("black", "a.dds"), ("built", "a.dds", 1)])
         Streamer._refit(s, "neutral.dds", 1)  # not built: nothing of its own
         self.assertEqual(len(said), 2)
+
+    def test_a_file_counted_as_the_disk_takes_it(self):
+        """In the disk's own steps: on the user's Shadow (NTFS), 2,000 far night textures took
+        132,528 bytes each of the free space, counted 6,840; 512 px ones 259,314, counted 178,872
+        (2026-11-11). On APFS, as the review read them back."""
+        from orthostudio.live.evict import file_bytes
+        from orthostudio.live.region import NIGHT_TOP
+
+        ntfs = [file_bytes(NIGHT_TOP, NIGHT_TOP + k, 65536) for k in (4, 1)]
+        self.assertEqual(ntfs, [131072, 262144])
+        apfs = [file_bytes(NIGHT_TOP, NIGHT_TOP + k, 4096) for k in range(5)]
+        self.assertEqual(apfs, [700416, 180224, 49152, 16384, 8192])
 
     def test_a_start_s_count_is_what_every_display_shows(self):
         """Live's window said 0 textures to build at 100 % while the plugin counted the night

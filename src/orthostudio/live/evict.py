@@ -41,6 +41,7 @@ for a sharper level and never for a coarser one.
 from __future__ import annotations
 
 import math
+import sys
 from collections import Counter
 from collections.abc import Callable, Mapping
 from functools import cache
@@ -116,19 +117,35 @@ def tiles_of(texture: Texture) -> set[tuple[int, int]]:
     }
 
 
+ALLOC_BLOCK = 65536 if sys.platform == "win32" else 4096
+"""What a texture file takes is counted in the disk's own steps: NTFS gives a sparse file's data
+64 KB at a time (a far night texture 128 KB on the user's Shadow, counted 7 KB: Live went past its
+space at nightfall, the review of 2026-11-11); APFS and ext4 4 KB."""
+
+
+def file_bytes(top: int, first: int, block: int = ALLOC_BLOCK) -> int:
+    """Disk a texture file whose sharpest level is ``top`` takes with its levels from ``first``
+    down written, and its header: each in the disk's steps of ``block`` bytes. The rest is a hole,
+    or shares the neutral template's blocks."""
+    layout = dds.level_layout(top)
+    start = layout[max(0, first - top)][0]
+    end = dds.file_size(dds.size_of(top))
+    low = start // block * block
+    return -(-end // block) * block - low + (block if low else 0)  # the header's step apart
+
+
 @cache
 def texture_bytes(level: int, top: int = 0, night: bool = False) -> int:
     """Disk a texture built from ``level`` takes in a file whose sharpest level is ``top``: its
     levels from that one down, and the copy of that level above it where there is one
-    (orthostudio.live.texture.needs_copy). The rest shares the neutral template's blocks.
-    ``night``: its night texture too, made from the same level counted from its file's top
-    (orthostudio.live.nightwork): a 1024 px one for a 4096 px level, its larger levels a hole."""
+    (orthostudio.live.texture.needs_copy). ``night``: its night texture too, made from the same
+    level counted from its file's top (orthostudio.live.nightwork): a 1024 px one for a 4096 px
+    level, its larger levels a hole."""
     from .texture import needs_copy
 
     if level >= NEUTRAL_LEVEL:
         return 0
-    copy = dds.level_layout(level - 1)[0][1] if needs_copy(level, top) else 0
-    day = 4096 + copy + sum(length for _, length in dds.level_layout(level))
+    day = file_bytes(top, level - 1 if needs_copy(level, top) else level)
     return day + (night_bytes(level - max(0, top)) if night else 0)
 
 
@@ -136,7 +153,7 @@ def night_bytes(level: int) -> int:
     """Disk a night texture made from ``level`` (counted from its file's top) takes."""
     from .region import NIGHT_TOP
 
-    return 4096 + sum(length for _, length in dds.level_layout(NIGHT_TOP + max(0, level)))
+    return file_bytes(NIGHT_TOP, NIGHT_TOP + max(0, level))
 
 
 def usage(
