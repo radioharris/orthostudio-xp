@@ -346,6 +346,54 @@ class StreamerTest(unittest.TestCase):
         s.last_fix = Fix(lat, lon - 3.6)
         self.assertFalse(s.may_coarsen(name))
 
+    def test_a_start_s_end_ends_the_night_s_start_too(self):
+        """The streamer's arrived tells the night (orthostudio.live.nightwork.NightWork.arrived):
+        a start by day left the night's team on for the whole flight (the review of 2026-11-11)."""
+        s = self.streamer()
+        told: list[str] = []
+        s.night = type("Night", (), {"arrived": lambda self: told.append("arrived")})()
+        s.arrived()
+        self.assertEqual(told, ["arrived"])
+
+    def test_a_night_texture_that_stays_lit_leaves_its_day_texture_recorded_neutral(self):
+        """Windows refusing to replace a night texture X-Plane holds open: the day texture,
+        neutral already, is recorded so all the same, and built again when flown to (the review of
+        2026-11-11)."""
+        from unittest import mock
+
+        from orthostudio.live import streamer as streamer_module
+
+        name = f"{NAMES[0]}.dds"
+        lines: list[str] = []
+        s = Streamer(self.pack, self.cache, lambda on_piece: None, finest_quality=0,
+                     log=lines.append)  # fmt: skip
+        s.built = {name: 4}
+        s.seen = {name: 1.0}
+
+        class Pool:
+            def replace(self, top, path):
+                path.write_bytes(b"neutral")
+
+        class Names:
+            pool = Pool()
+            crashed = None
+
+            def holds(self, name):
+                return True
+
+        class Night:
+            def bytes(self):
+                return 0
+
+            def back_to_black(self, name, held):
+                raise PermissionError("X-Plane holds it open")
+
+        s.names, s.night = Names(), Night()
+        with mock.patch.object(streamer_module, "pick", return_value=[(name, NEUTRAL_LEVEL)]):
+            s.evict()
+        self.assertNotIn(name, s.built)
+        self.assertTrue(any("stays as it was" in ln for ln in lines))
+
     def test_evicts_far_textures_down_to_the_budget(self):
         for n in NAMES:
             write_sparse(self.pack / "textures" / f"{n}.dds", 0, levels_from(0))

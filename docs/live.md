@@ -271,23 +271,24 @@ night.
   the sharp ones near the aircraft first, so that X-Plane does not find a texture without its
   night; X-Plane fades them in by itself at dusk (at Nice on 11 November: nothing at 17:25, lit
   at 17:50, full at 18:15).
-- The night textures are made by one process of their own, beside the twelve that build the
-  photos, and after them: the photos always come first.
-- A start at night waits for every night texture X-Plane reads round the airport, as it waits
-  for its photos: a team of processes makes them, then ends (at LSGG, 8,685 night textures in
-  about a minute, 2 GB more meanwhile).
+- The night textures are made by one process of their own, beside those that build the photos,
+  and after them: the photos always come first.
+- A start at night waits for the night textures X-Plane reads round the airport, as it waits for
+  its photos, three minutes at most once the photos are built: a team of processes makes them,
+  then ends (at LSGG, 8,685 night textures in about a minute, 2 GB more meanwhile). Those made at
+  an earlier start are kept: neither made again nor waited for.
 - Far away they are made small first, as the photos are, so a town shows from far: the coast of
   Nice from 40 and 80 km.
-- They take about a twentieth of the photos' disk space (54 MB on Nice's square), counted in Live's
-  disk space. With the same night textures on a tile of Nice, flown three times each way at
+- They take about a twentieth of the photos' disk space (54 MB on Nice's square), and X-Plane's
+  roads kept for them up to 1.5 GB, both counted in Live's disk space. With the same night textures on a tile of Nice, flown three times each way at
   2704 x 1756 on an M4 Pro, frame times did not change beyond their spread from one flight to the
   next.
 
-"Soft", "Normal" (the default) or "Strong": the same lamps fainter or brighter. Each start of
-Live makes its night textures again as night comes, so a new strength shows from the next start,
-the nearest first. "No": no night texture, the terrain files naming none. A change between on and
-off takes effect at the next start, as the decal's: the terrain files flown already are made again
-as X-Plane comes.
+"Soft", "Normal" (the default) or "Strong": the same lamps fainter or brighter. A new strength
+shows from the next start: Live makes its night textures again as night comes, the nearest first.
+"No": no night texture, the terrain files naming none; the night textures and the roads kept for
+them are deleted. A change between on and off takes effect at the next start, as the decal's: the
+terrain files flown already are made again as X-Plane comes.
 
 ## Imagery sources, your own tiles, roads and forests
 

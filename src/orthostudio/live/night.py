@@ -108,8 +108,14 @@ GAIN = LIGHTS["normal"]
 POWER = 3.0
 
 FLOOR = 6
-"""Light fainter than this (out of 255, its brightest channel) is written black: BC1 holds red
-and blue in steps of 8, so the faint edge of a glow came out purple or green."""
+"""Light fainter than this (out of 255, its brightest channel) is written black, at every level:
+BC1 holds red and blue in steps of 8, so the faint edge of a glow came out purple or green. Raised,
+it took light without taking the tint away (16: a fifth of a town's light gone, the tint still
+there; 2026-11-11): :func:`warm_bc1` does that."""
+
+VERSION = 1
+"""The way night textures are drawn: those made by another are made again (the record of those
+made, orthostudio.live.nightwork.MADE_RECORD, keeps it)."""
 
 EARTH_M = 40075016.7
 
@@ -603,6 +609,34 @@ def night_rgb(lights: np.ndarray, gain: float = GAIN) -> np.ndarray:
     return out
 
 
+def warm_bc1(blocks: bytes) -> bytes:
+    """BC1 blocks of a night texture with no colour greener or bluer than it is red: every light
+    drawn is orange or white, red its strongest, but BC1 keeps green in 6 bits and red and blue in
+    5, so a dim block's colours came out up to 8/255 green (2 % of a town's lit pixels, its glows'
+    edges; 2026-11-11). Each block's two colours have their green and blue brought down to their
+    red, the blocks kept in four-colour mode: two colours that swapped order swap back, and their
+    texels' indices with them (0 and 1, 2 and 3); two that became one keep it alone."""
+    a = np.frombuffer(blocks, dtype=np.uint8).reshape(-1, 8).copy()
+    ends = []
+    for at in (0, 2):
+        c = a[:, at].astype(np.uint32) | (a[:, at + 1].astype(np.uint32) << 8)
+        r5, g6, b5 = c >> 11, (c >> 5) & 63, c & 31
+        g6 = np.minimum(g6, r5 * 63 // 31)  # green as bright as red at most, in its own steps
+        b5 = np.minimum(b5, r5)
+        c = (r5 << 11) | (g6 << 5) | b5
+        a[:, at], a[:, at + 1] = (c & 255).astype(np.uint8), (c >> 8).astype(np.uint8)
+        ends.append(c)
+    c0, c1 = ends
+    idx = a[:, 4:8].copy().view("<u4").ravel()
+    swap = c0 < c1
+    if swap.any():
+        a[swap, 0:2], a[swap, 2:4] = a[swap, 2:4].copy(), a[swap, 0:2].copy()
+        idx[swap] ^= np.uint32(0x55555555)  # each texel's 0 <-> 1, 2 <-> 3
+    idx[c0 == c1] = 0
+    a[:, 4:8] = idx.view(np.uint8).reshape(-1, 4)
+    return a.tobytes()
+
+
 def lit_levels(rgb: np.ndarray, power: float = POWER) -> list[np.ndarray]:
     """``rgb`` (square, power-of-two side, uint8) and its smaller levels down to 1 x 1, each the
     power mean of four pixels of the one above: brighter than their plain mean where a few lamps
@@ -623,13 +657,19 @@ def lit_levels(rgb: np.ndarray, power: float = POWER) -> list[np.ndarray]:
         c **= p
         level[..., ch] = c.reshape(h, 2, h, 2).mean(axis=(1, 3), dtype=np.float32)
     level **= 1 / p
-    out.append((np.clip(level, 0.0, 1.0) * np.float32(255.0) + np.float32(0.5)).astype(np.uint8))
+    out.append(_floored(level))
     while level.shape[0] > 1:
         h = level.shape[0] // 2
         level = (level.reshape(h, 2, h, 2, -1) ** p).mean(axis=(1, 3), dtype=np.float32) ** (1 / p)
-        out.append(
-            (np.clip(level, 0.0, 1.0) * np.float32(255.0) + np.float32(0.5)).astype(np.uint8)
-        )
+        out.append(_floored(level))
+    return out
+
+
+def _floored(level: np.ndarray) -> np.ndarray:
+    """A smaller level in uint8, what is fainter than :data:`FLOOR` black as at the top: the power
+    mean of a faint glow among dark pixels gave 4 out of 255 there, which BC1 tinted."""
+    out = (np.clip(level, 0.0, 1.0) * np.float32(255.0) + np.float32(0.5)).astype(np.uint8)
+    out[out.max(axis=-1) < FLOOR] = 0
     return out
 
 

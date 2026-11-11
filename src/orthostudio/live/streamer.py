@@ -696,6 +696,8 @@ class Streamer:
         kept only as the aircraft's."""
         self._points.pop("start", None)
         self._points.pop("hold", None)
+        if self.night is not None:  # its team, if any, ends with its jobs
+            self.night.arrived()
 
     def squares_ready(self, lat: float, lon: float) -> bool:
         """Whether the files of X-Plane's window round (``lat``, ``lon``) are made: a start's, for
@@ -1660,7 +1662,10 @@ class Streamer:
                     else:  # far from every square made: no file there at all
                         path.unlink(missing_ok=True)
                     if self.night is not None:  # its night black again, or gone with it
-                        self.night.back_to_black(name, held)
+                        try:
+                            self.night.back_to_black(name, held)
+                        except OSError as e:  # its day texture neutral all the same: recorded so
+                            self.log(f"  the night texture of {name} stays as it was: {e}")
                 else:
                     top = dds.read_top(path)  # the file's size from its header: it keeps it
                     downgrade(path, level, self.pack_dir / neutral_file(top), file_top=top)
@@ -1767,7 +1772,9 @@ class Streamer:
             # the sources whose server refuses this computer (Downloader.refusing): the window
             # says so
             "refused_by": dl.refusing() if hasattr(dl, "refusing") else [],
-            "disk_bytes": usage(built, self.top_of),
+            # the night's too: its textures and the roads kept for them (the review of 2026-11-11)
+            "disk_bytes": usage(built, self.top_of)
+            + (self.night.bytes() if self.night is not None else 0),
             "disk_budget": self.texture_budget(),
             "read_early": self.read_early,
             # their 8192 px photos, those X-Plane shows (mapdata.shown)

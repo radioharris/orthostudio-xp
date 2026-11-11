@@ -134,6 +134,12 @@ def options_for(settings: LiveSettings) -> session.Options:
     )
 
 
+def _night_bytes(pack: Path) -> int:
+    from orthostudio.live.nightwork import night_disk_bytes  # numpy: only when asked
+
+    return night_disk_bytes(pack)
+
+
 def _osxp_simbrief() -> str | None:
     try:
         from orthostudio.config.store import load_settings as osxp_settings
@@ -210,9 +216,11 @@ def gather_checks() -> dict[str, Any]:
         "folder": str(live_root()),
         "folder_default": str(default_live_root()),
         "folder_problem": None,
+        # the night's too: its textures as recorded and the roads kept for them
         "textures_bytes": usage(
             load_built(default_pack_dir()).get("textures", {}), file_tops(default_pack_dir())
-        ),
+        )
+        + _night_bytes(default_pack_dir()),
         # the SimBrief name OrthoStudio XP has, which the window offers to take: never asked of
         # simbrief.com unless the pilot takes it into Live's settings
         "osxp_simbrief": _osxp_simbrief(),
@@ -335,6 +343,7 @@ class LiveControl:
         # the night grids of the regions installed before them, fetched by Live itself, unseen:
         # the pilot's own install goes first (:meth:`_fetch_night_grids`)
         self._quiet = False
+        self._night_thread: threading.Thread | None = None
         # the window's "Prepare": a departure for the running stream, and SimBrief's suggestion
         self._resolve = resolve
         self._simbrief = simbrief
@@ -740,7 +749,7 @@ class LiveControl:
             thread = threading.Thread(
                 target=self._night_grids, args=(root, regions), name="live-night-grids", daemon=True
             )
-            self._install_thread = thread
+            self._install_thread = self._night_thread = thread
         thread.start()
 
     def _night_grids(self, root: Path, regions: list) -> None:
@@ -822,22 +831,26 @@ class LiveControl:
         reads its files."""
         self._stop_night_grids()
         with self._lock:
-            catalog = self._catalog
-            busy = self._install_thread is not None and self._install_thread.is_alive()
-            streaming = self._state != IDLE
-        if busy:
-            raise session.RefusedError("a region is being installed: one at a time")
-        region = (catalog or {}).get(region_id)
+            region = (self._catalog or {}).get(region_id)
         if region is None:
             raise session.RefusedError(f"no region {region_id!r} in the list of Live's regions")
-        if streaming and region_id in osxpregions.installed(live_root()):
-            raise session.RefusedError("Live is streaming over this region: stop it first")
+        installed = region_id in osxpregions.installed(live_root())
         installer = self._installer_of(
             live_root(), region, overlays=self._settings().overlays != "off", log=self.log
         )
         thread = threading.Thread(target=installer.run, name="live-region-install", daemon=True)
+        # one check and one taking: the night grids' own download, started from the list's read
+        # between the two, ran beside it on the same files (the review of 2026-11-11)
         with self._lock:
-            self._installer, self._install_thread = installer, thread
+            if self._install_thread is not None and self._install_thread.is_alive():
+                raise session.RefusedError(
+                    "the night lights' grids are being downloaded: try again in a moment"
+                    if self._install_thread is self._night_thread
+                    else "a region is being installed: one at a time"
+                )
+            if self._state != IDLE and installed:
+                raise session.RefusedError("Live is streaming over this region: stop it first")
+            self._installer, self._install_thread, self._quiet = installer, thread, False
         thread.start()
 
     def cancel_install(self) -> None:

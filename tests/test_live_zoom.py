@@ -1155,7 +1155,7 @@ def test_a_start_s_wait_tells_the_textures_waiting_for_photos_from_those_being_b
     from orthostudio.live.gate import _wait_line
 
     line = _wait_line(801, "LFBO", 0.37, 100, 0.0, "fr", building=400)
-    assert line.startswith("LIVE1 WAIT n=801 b=400 p=370 s=100 mbs=0.0 lang=fr at=")
+    assert line.startswith("LIVE1 WAIT n=801 b=400 p=370 s=100 mbs=0.0 lang=fr night=0 at=")
     s = row_streamer(tmp_path)
     queued, taken, far = f"{ROW[0]}.dds", f"{ROW[1]}.dds", f"{ROW[5]}.dds"
     s.queue[queued] = (0.0, 0)  # urgent, its photos still to ask for

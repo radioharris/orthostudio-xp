@@ -24,6 +24,8 @@ import sys
 import threading
 from pathlib import Path
 
+from orthostudio.fsutil import NO_CONSOLE_WINDOW
+
 PANEL_W, PANEL_H, BAR_W, BAR_H = 560, 120, 400, 8
 
 WORDS = {  # live_gate.c's show(), and "preparing the files" before the textures are counted
@@ -148,6 +150,7 @@ class _X11Panel:
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             start_new_session=True,  # whatever stops Live's group, it sees its input end
+            creationflags=NO_CONSOLE_WINDOW,  # X11 only: 0 there, as every launch says it
         )
         os.set_blocking(child.stdin.fileno(), False)  # type: ignore[union-attr]  # never waits
         return child
@@ -408,7 +411,12 @@ class _WinPanel:
                 ("lpszClassName", wintypes.LPCWSTR),
             ]
 
-        module = k32.GetModuleHandleW(None)
+        # the module's handle whole: an address, beyond 32 bits, which ctypes cut to an int
+        # (« Windows fatal exception: access violation » at RegisterClassW, the Shadow's tests,
+        # 2026-11-11); passed back as a handle, not an int ctypes would cut again
+        k32.GetModuleHandleW.restype = wintypes.HMODULE
+        k32.GetModuleHandleW.argtypes = [wintypes.LPCWSTR]
+        module = wintypes.HINSTANCE(k32.GetModuleHandleW(None))
         wc = WNDCLASSW(0, proc, 0, 0, module, None, None, None, None, "OrthoStudioXPLivePause")
         user32.RegisterClassW(ctypes.byref(wc))
         self._thread_id = k32.GetCurrentThreadId()

@@ -171,11 +171,13 @@ def _wait_line(
 ) -> str:
     """``building``: of the ``left``, those with all their photos, being built (the plugin's
     second line); ``night``: of the ``left``, the night textures (the plugin says « night
-    textures to build » once only they are left; an older plugin reads past the word)."""
+    textures to build » once only they are left; an older plugin reads past the word). Sent
+    always, 0 too: the plugin keeps the last value it read, and said night textures after
+    there were none (the review of 2026-11-11)."""
     return (
         f"LIVE1 WAIT n={left} b={building} p={round(max(0.0, min(1.0, done)) * 1000)} "
         f"s={round(took)} "
-        f"mbs={mbs:.1f} lang={lang}{f' night={night}' if night else ''} "
+        f"mbs={mbs:.1f} lang={lang} night={night} "
         f"at={_fitted(place_in(name, lang), 100)}"
     )
 

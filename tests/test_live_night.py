@@ -274,7 +274,7 @@ class NightJobTest(unittest.TestCase):
             (pack / "textures").mkdir()
             (pack / NIGHT_FOLDER).mkdir()
             write_sparse(pack / "textures" / name, 0, neutral_levels(0, rgb=(200, 200, 200)))
-            got, level, _ = night_job((str(pack), name, 0, [], None, None))
+            got, level, _, _ = night_job((str(pack), name, 0, [], None, None))
             self.assertEqual((got, level), (name, 0))
             lit = pack / NIGHT_FOLDER / "23904_34080_BI16_LIT.dds"
             self.assertEqual(dds.read_top(lit), NIGHT_TOP)
@@ -361,7 +361,7 @@ class _Now:
         if fn.__name__ == "night_job":
             job = args[0]
             self.jobs.append(job)
-            fut.set_result((job[1], job[2], 0.01))
+            fut.set_result((job[1], job[2], 0.01, None))
         else:  # the roads of a square read (nightwork.read_roads), here at once
             self.jobs.append((fn.__name__, *args))
             fut.set_result(fn(*args))
@@ -397,7 +397,7 @@ class _TeamNow:
 
     def finish(self):
         for fut, batch in self.futures:
-            fut.set_result([(job[1], job[2], 0.01) for job in batch])
+            fut.set_result([(job[1], job[2], 0.01, None) for job in batch])
 
     def shutdown(self, **_):
         self.shut = True
@@ -419,7 +419,7 @@ class _Later:
 
     def finish_one(self):
         fut, job = self.pending.pop(0)
-        fut.set_result((job[1], job[2], 0.01))
+        fut.set_result((job[1], job[2], 0.01, None))
 
     def shutdown(self, **_):
         pass
@@ -756,6 +756,8 @@ class NightWordsTest(unittest.TestCase):
         line = _wait_line(12, "LSGG", 0.5, 30.0, 0.0, "en", building=12, night=12)
         self.assertIn(" night=12 ", line)
         self.assertTrue(line.split(" at=")[0].endswith("night=12"))  # at= stays last
+        # 0 said too: the plugin keeps the last value it read (the review of 2026-11-11)
+        self.assertIn(" night=0 ", _wait_line(4, "LSGG", 0.5, 30.0, 0.0, "en", building=4))
 
     def test_the_pause_window_says_night_textures(self):
         from orthostudio.live.pause_window import lines
@@ -769,3 +771,280 @@ class NightWordsTest(unittest.TestCase):
             "7 textures de nuit à construire  -  40 s",
         )
         self.assertNotIn("night", lines("LSGG", 9, 2, 3.0, 40.0, True, "en", night=7)[1])
+
+
+# --- the review of 2026-11-11: what it found, mended
+
+
+class _Failing:
+    """An executor whose every job fails at once."""
+
+    def __init__(self):
+        self.given = []
+
+    def submit(self, fn, job):
+        from concurrent.futures import Future
+
+        fut = Future()
+        self.given.append(job[1])
+        fut.set_exception(OSError("the disk is full"))
+        return fut
+
+    def shutdown(self, **_):
+        pass
+
+
+class _BrokenTeam(_TeamNow):
+    """A team that lost a process before its first job."""
+
+    def submit(self, fn, batch):
+        from concurrent.futures.process import BrokenProcessPool
+
+        raise BrokenProcessPool("a process of the team died")
+
+
+class ReviewTest(unittest.TestCase):
+    def setUp(self):
+        import tempfile
+        from pathlib import Path
+
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+        x, y = texture_at(43.70, 7.25)
+        self.near = f"{y}_{x}_BI16.dds"
+        xf, yf = texture_at(43.30, 7.60)
+        self.far = f"{yf}_{xf}_BI16.dds"
+        self.said: list[str] = []
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def work(self, executor, **kw):
+        from orthostudio.live.nightwork import NightWork
+
+        return NightWork(self.root, None, None, [], log=self.said.append, executor=executor, **kw)
+
+    def test_a_start_by_day_leaves_no_team_for_the_night_in_flight(self):
+        """Dusk in flight after a start by day: the night's own process, no team of eight
+        processes left on for the whole flight."""
+        team, ex = _TeamNow(), _Now()
+        work = self.work(ex)
+        work._make_team, work.team = team.make, 12
+        work.start(43.70, 7.25)
+        work.arrived()  # X-Plane flies there (the streamer's arrived)
+        work.tick(2.0, (43.70, 7.25), lambda: {self.near: 0, self.far: 4})
+        work.pump()
+        self.assertIsNone(team.size)
+        self.assertEqual(sorted(j[1] for j in ex.jobs), sorted([self.near, self.far]))
+
+    def test_a_team_that_loses_a_process_hands_its_textures_back(self):
+        """Its pool broken, the next job raised out of the streamer's loop and stopped Live."""
+        from concurrent.futures.process import BrokenProcessPool
+
+        for broken_at in ("submit", "result"):
+            team, ex = (_BrokenTeam() if broken_at == "submit" else _TeamNow()), _Now()
+            work = self.work(ex)
+            work._make_team, work.team = team.make, 12
+            work.sun = 10.0
+            work.start(43.70, 7.25)
+            work.want(self.near, 0)
+            work.want(self.far, 4)
+            work.pump()  # never raises
+            if broken_at == "result":
+                for fut, _ in team.futures:
+                    fut.set_exception(BrokenProcessPool("a process of the team died"))
+                work._pumped = 0.0
+                work.pump()
+            self.assertTrue(team.shut, broken_at)
+            self.assertTrue(work._team_off, broken_at)
+            self.assertEqual(set(work.made), {self.near, self.far}, broken_at)  # the night's own
+            self.assertEqual(work.in_flight, {}, broken_at)
+            self.assertTrue(any("a process of the start's team stopped" in s for s in self.said))
+
+    def test_a_night_process_that_keeps_dying_ends_the_night_not_live(self):
+        from concurrent.futures.process import BrokenProcessPool
+
+        class Dead:
+            def submit(self, fn, job):
+                raise BrokenProcessPool("6 encoding pools lost within 60 s")
+
+        work = self.work(Dead())
+        work.tick(2.0, (43.70, 7.25), lambda: {self.near: 0})  # never raises
+        self.assertTrue(work.broken)
+        self.assertEqual(work.in_flight, {})
+        self.assertIn(self.near, work.waiting)
+
+    def test_a_start_waits_only_for_x_plane_s_squares_round_it(self):
+        """Not for the whole pack's: 11,142 night textures at a Paris start, Nice's and the Alps'
+        among them (2026-11-11)."""
+        work = self.work(_Later())
+        work.sun = 10.0
+        work.start(43.70, 7.25)
+        x, y = texture_at(48.85, 2.35)
+        paris = f"{y}_{x}_BI16.dds"
+        work.want(self.near, 0)
+        work.want(paris, 4)
+        self.assertEqual(work.start_left(day_left=3), 1)
+        self.assertEqual(work.start_left(day_left=0), 1)
+        self.assertEqual(work._start_set, {self.near})
+
+    def test_one_job_a_texture_the_sharper_after_the_coarser(self):
+        """Two at once wrote the file in either order: a coarse one last left it black where
+        X-Plane looks, and the start counted it made while the other still ran."""
+        ex = _Later()
+        work = self.work(ex)
+        work.sun = 10.0
+        work.want(self.near, 4)
+        work._give(None)
+        work.want(self.near, 0)  # built sharper meanwhile
+        work._give(None)
+        self.assertEqual(ex.given, [self.near])  # not twice at once
+        self.assertEqual(work.start_left(), 0)  # no start: nothing waited for
+        ex.finish_one()  # the coarse one: the sharp one given right after
+        self.assertEqual(ex.given, [self.near, self.near])
+        self.assertEqual(work.made[self.near], 4)
+        ex.finish_one()
+        self.assertEqual(work.made[self.near], 0)
+
+    def test_a_failing_night_texture_is_said_tried_once_more_then_left(self):
+        ex = _Failing()
+        work = self.work(ex)
+        work.tick(2.0, (43.70, 7.25), lambda: {self.near: 0})
+        work._pumped = 0.0
+        work.pump()
+        self.assertEqual(ex.given, [self.near, self.near])  # twice, not every half second
+        self.assertEqual(work.waiting, {})
+        failed = [s for s in self.said if "failed" in s]
+        self.assertEqual(len(failed), 2)
+        self.assertIn("the disk is full", failed[0])
+        self.assertIn("left for this flight", failed[1])
+
+    def test_a_night_texture_made_neutral_while_made_is_black_again(self):
+        from orthostudio.live.names import night_name
+        from orthostudio.live.region import NIGHT_FOLDER
+
+        ex = _Later()
+        work = self.work(ex)
+        work.sun = 10.0
+        lit = self.root / NIGHT_FOLDER / night_name(self.near)
+        lit.parent.mkdir(parents=True)
+        work.want(self.near, 0)
+        work._give(None)
+        work.back_to_black(self.near, keep_name=False)  # far from every square made
+        lit.write_bytes(b"lit")  # the job writes it after
+        ex.finish_one()
+        self.assertFalse(lit.exists())
+        self.assertNotIn(self.near, work.made)
+
+    def test_the_night_textures_made_are_kept_from_one_start_to_the_next(self):
+        import os
+
+        from orthostudio.live.names import night_name
+        from orthostudio.live.nightwork import night_disk_bytes
+        from orthostudio.live.region import NIGHT_FOLDER
+
+        lit = self.root / NIGHT_FOLDER / night_name(self.near)
+        lit.parent.mkdir(parents=True)
+        lit.write_bytes(b"lit")
+        work = self.work(_Later())
+        work.made[self.near] = 0
+        work.stamps[self.near] = os.stat(lit).st_mtime_ns
+        work._changed = True
+        work.close()  # saves
+        self.assertGreater(night_disk_bytes(self.root), 600_000)
+        again = self.work(_Later())
+        self.assertEqual(again.made, {self.near: 0})
+        again.want(self.near, 0)
+        self.assertEqual(again.waiting, {})  # neither made again nor waited for
+        self.assertEqual(self.work(_Later(), gain=1.0).made, {})  # another strength: made again
+        stamp = os.stat(lit).st_mtime_ns + 10**9
+        os.utime(lit, ns=(stamp, stamp))  # made black again, or rewritten, since
+        self.assertEqual(self.work(_Later()).made, {})
+
+    def test_a_lock_left_by_a_process_that_died_is_taken_over(self):
+        import os
+        import time
+
+        from orthostudio.live.nightwork import ROADS_LOCK_S, _lock_square
+
+        file = self.root / "square.npz"
+        lock = file.with_suffix(".lock")
+        lock.write_text("")
+        old = time.time() - ROADS_LOCK_S - 10
+        os.utime(lock, (old, old))
+        t0 = time.monotonic()
+        self.assertEqual(_lock_square(file), lock)
+        self.assertLess(time.monotonic() - t0, 1.0)
+
+    def test_a_roads_read_that_could_not_be_made_is_not_kept_roadless(self):
+        from unittest import mock
+
+        from orthostudio.dsf import xp12
+        from orthostudio.live import nightwork
+
+        dsf = self.root / "+43+007.dsf"
+        dsf.write_bytes(b"dsf")
+        pack = self.root / "pack"
+        apart = mock.patch.object(nightwork, "_READ_APART", False)
+        short = mock.patch.object(xp12, "read_global_scenery_dsf", side_effect=MemoryError)
+        with apart, short, self.assertRaises(MemoryError):
+            nightwork._roads_of(dsf, pack)
+        self.assertEqual(list((pack / nightwork.ROADS_FOLDER).glob("*.npz")), [])
+        damaged = mock.patch.object(xp12, "read_global_scenery_dsf", side_effect=ValueError)
+        with apart, damaged:
+            self.assertEqual(len(nightwork._roads_of(dsf, pack)), 0)  # damaged: no lights
+        self.assertEqual(len(list((pack / nightwork.ROADS_FOLDER).glob("*.npz"))), 1)
+
+    def test_no_light_greener_or_bluer_than_red_out_of_bc1(self):
+        from orthostudio.live.imaging import encode_bc1
+
+        x, y = texture_at(43.70, 7.27)
+        streets = [night.Roads.of(grid_of_streets(43.70, 7.27, span=0.03))]
+        lights = night.draw(streets, None, x, y, 16, 1024, seed=1)
+        for level in night.lit_levels(night.night_rgb(lights, 0.75))[:3]:
+            side = level.shape[0]
+            plain = decode_bc1(encode_bc1(level), side).astype(int)
+            warm = decode_bc1(night.warm_bc1(encode_bc1(level)), side).astype(int)
+            self.assertGreater(int((plain[..., 1] > plain[..., 0] + 1).sum()), 0, side)
+            self.assertEqual(int((warm[..., 1] > warm[..., 0] + 1).sum()), 0, side)
+            self.assertEqual(int((warm[..., 2] > warm[..., 0] + 1).sum()), 0, side)
+            self.assertLess(np.abs(warm - plain).mean(), 0.2, side)
+            low = level.max(axis=-1)
+            self.assertEqual(int(((low > 0) & (low < night.FLOOR)).sum()), 0, side)
+
+    def test_night_lights_off_take_the_night_files_away(self):
+        from orthostudio.live.nightwork import MADE_RECORD, ROADS_FOLDER
+        from orthostudio.live.region import NIGHT_FOLDER, set_night
+
+        pack = self.root / "pack"
+        set_night(pack, True, log=self.said.append)
+        (pack / NIGHT_FOLDER).mkdir(parents=True)
+        (pack / NIGHT_FOLDER / "23904_34080_BI16_LIT.dds").write_bytes(b"lit")
+        (pack / ROADS_FOLDER).mkdir(parents=True)
+        (pack / ROADS_FOLDER / "a-1.npz").write_bytes(b"roads")
+        (pack / MADE_RECORD).write_text("{}")
+        self.assertTrue(any((pack / NIGHT_FOLDER).iterdir()))
+        set_night(pack, False, log=self.said.append)
+        self.assertFalse(
+            any((pack / NIGHT_FOLDER).iterdir()) if (pack / NIGHT_FOLDER).exists() else False
+        )
+        self.assertFalse((pack / ROADS_FOLDER / "a-1.npz").exists())
+        self.assertFalse((pack / MADE_RECORD).exists())
+
+    def test_a_start_removes_the_night_s_half_written_files(self):
+        from orthostudio.live.nightwork import ROADS_FOLDER
+        from orthostudio.live.region import NIGHT_FOLDER, TEMP_PREFIX, remove_temps
+
+        pack = self.root / "pack"
+        (pack / NIGHT_FOLDER).mkdir(parents=True)
+        (pack / ROADS_FOLDER).mkdir(parents=True)
+        half = [
+            pack / NIGHT_FOLDER / f"{TEMP_PREFIX}a",
+            pack / ROADS_FOLDER / ".+43+007-1.123.tmp",
+            pack / ROADS_FOLDER / "+43+007-1.lock",
+        ]
+        kept = [pack / NIGHT_FOLDER / "a_LIT.dds", pack / ROADS_FOLDER / "+43+007-1.npz"]
+        for f in half + kept:
+            f.write_bytes(b"x")
+        self.assertEqual(remove_temps(pack), 3)
+        self.assertEqual([f.exists() for f in half + kept], [False] * 3 + [True] * 2)

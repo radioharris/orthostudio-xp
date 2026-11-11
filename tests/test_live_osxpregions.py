@@ -335,9 +335,16 @@ def test_the_night_grids_alone_leave_the_region_as_it_was(tmp_path: Path, world)
     nav = folder / "Earth nav data"
     os.utime(nav, (1_000_000, 1_000_000))
     before = json.loads((folder / osxpregions.MARKER).read_text())
+    # an update the pilot stopped: what it downloaded is kept to go on from it
+    stopped = (
+        osxpregions.regions_dir(tmp_path) / ".download" / "osxp_eur" / "z_osxp_eur_+46+005.zip"
+    )
+    stopped.parent.mkdir(parents=True)
+    stopped.write_bytes(b"half a zip")
     host = Host(files)
     inst, lines = install(tmp_path, later, host, overlays=False, night_only=True)
     assert inst.progress.phase == "done", lines
+    assert stopped.read_bytes() == b"half a zip"
     assert [k for k, _ in host.asked] == ["eur/night-zips/night_eur.zip"]
     assert (folder / "night/+45+005.png").read_bytes() == b"grid a"
     marker = json.loads((folder / osxpregions.MARKER).read_text())

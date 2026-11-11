@@ -562,7 +562,10 @@ class Installer:
         if self.night_only:  # the region as it was, its grids recorded: nothing to set up again
             size = sum(sizes.get(p, 0) for p in zips)
             _write(folder / MARKER, {**marker, "zips": zips, "size": size})
-            shutil.rmtree(self.download, ignore_errors=True)
+            # its zips deleted as unpacked; an update the pilot stopped keeps what it downloaded
+            # there to go on from it (the review of 2026-11-11)
+            with contextlib.suppress(OSError):
+                self.download.rmdir()
             self.log(f"OrthoStudio XP's region {region.id}: its night lights' grids installed")
             return
         _write(

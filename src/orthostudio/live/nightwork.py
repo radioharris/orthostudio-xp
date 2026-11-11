@@ -26,20 +26,23 @@ grid of the square (``<region>/night/<square>.png``, installed with the region).
 from __future__ import annotations
 
 import contextlib
+import functools
 import heapq
+import json
 import math
 import os
 import threading
 import time
 from collections.abc import Callable, Iterable
-from concurrent.futures import Future, ProcessPoolExecutor
+from concurrent.futures import CancelledError, Future, ProcessPoolExecutor
+from concurrent.futures.process import BrokenProcessPool
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
 from . import dds
-from .evict import tiles_of
+from .evict import tiles_of, xplane_tiles
 from .geo import parse_texture_name
 
 if TYPE_CHECKING:
@@ -94,11 +97,23 @@ made LSGG's 8,700 in 13 minutes, and those X-Plane read before stayed black (the
 « paralléliser le démarrage des textures et attendre que tout soit fait comme pour le jour »).
 The team is closed once they are made, its memory with it."""
 
+TRIES = 2
+"""A night texture that failed this many times is left for the flight (the log says why): one that
+fails for good was given again every half second, unseen."""
+
+MADE_RECORD = Path("_live") / "night-made.json"
+"""The night textures made, kept from one start of Live to the next: each one's day level and its
+file's time as written, so that one changed since (made black again, deleted) is made again. Live
+made every night texture of its pack again at each start, a start at night waited for them all,
+and those of earlier starts were not counted in Live's disk space (the review of 2026-11-11). Read
+again only for the same way of drawing (orthostudio.live.night.VERSION) and the same strength."""
+
 _ROADS: dict = {}  # the night process's roads (orthostudio.live.night.Roads), by DSF
 _READ_APART = True  # the team's processes read the roads themselves: they end with the start
 _ROADS_KEPT = 9  # the squares round the aircraft, 3 x 3: each read once while it flies there
 
 
+@functools.cache
 def _night_bytes(top: int) -> int:
     """A night texture's bytes from level ``top`` down (its larger levels are a hole)."""
     from .region import NIGHT_TOP
@@ -250,7 +265,17 @@ def _lock_square(file: Path) -> Path | None:
             os.close(os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY))
             return lock
         except FileExistsError:
-            if file.is_file() or time.monotonic() > deadline:
+            if file.is_file():
+                return None
+            try:  # left by a process that died reading: taken over, never waited for again
+                stale = time.time() - os.stat(lock).st_mtime > ROADS_LOCK_S
+            except OSError:  # gone meanwhile: taken at the next turn
+                stale = False
+            if stale:
+                with contextlib.suppress(OSError):
+                    os.unlink(lock)
+                continue
+            if time.monotonic() > deadline:
                 return None
             time.sleep(0.05)
         except OSError:
@@ -280,15 +305,21 @@ def _read_apart(path: Path):
     import multiprocessing
     from concurrent.futures import ProcessPoolExecutor
 
+    from .texture import worker_ignores_ctrl_c
+
     with ProcessPoolExecutor(
-        1, mp_context=multiprocessing.get_context("spawn"), max_tasks_per_child=1
+        1,
+        mp_context=multiprocessing.get_context("spawn"),
+        max_tasks_per_child=1,
+        initializer=worker_ignores_ctrl_c,  # a Ctrl-C is Live's to take, not a trace of its own
     ) as pool:
         return pool.submit(read_roads, str(path)).result()
 
 
 def read_roads(path: str):
     """The roads of the DSF at ``path`` (the Global Scenery's, or an overlay of Live's), none if it
-    is missing or damaged."""
+    is damaged. A read that could not be made (the memory or the disk short) raises: kept as a
+    square without roads, it went dark until its DSF changed (the review of 2026-11-11)."""
     from orthostudio.dsf.xp12 import read_global_scenery_dsf
     from orthostudio.model import TileRef
 
@@ -297,9 +328,81 @@ def read_roads(path: str):
 
     try:
         tile = TileRef(*(dsf_tile_of(path) or (0, 0)))
-        return roads_of(read_global_scenery_dsf(Path(path), tile))
-    except Exception:  # no lights from it
+        dsf = read_global_scenery_dsf(Path(path), tile)
+    except (MemoryError, OSError):  # passing: read again the next time
+        raise
+    except Exception:  # damaged: no lights from it
         return Roads.empty()
+    return roads_of(dsf)
+
+
+def roads_bytes(pack: Path) -> int:
+    """What the roads kept in the pack take on the disk (:data:`ROADS_FOLDER`)."""
+    total = 0
+    with contextlib.suppress(OSError):
+        for entry in os.scandir(pack / ROADS_FOLDER):
+            if entry.name.endswith(".npz"):
+                with contextlib.suppress(OSError):
+                    total += entry.stat().st_size
+    return total
+
+
+def _record(pack: Path) -> dict:
+    try:
+        doc = json.loads((pack / MADE_RECORD).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return doc if isinstance(doc, dict) else {}
+
+
+def load_made(pack: Path, gain: float) -> dict[str, tuple[int, int]]:
+    """The night textures an earlier start made (:data:`MADE_RECORD`), as it wrote them still:
+    {name: (day level, file time)}; none when they were drawn another way or as bright."""
+    from .names import night_name
+    from .night import VERSION
+    from .region import NIGHT_FOLDER
+
+    doc = _record(pack)
+    if doc.get("version") != VERSION or doc.get("gain") != round(gain, 4):
+        return {}
+    folder = pack / NIGHT_FOLDER
+    out: dict[str, tuple[int, int]] = {}
+    for name, entry in (doc.get("made") or {}).items():
+        try:
+            level, stamp = int(entry[0]), int(entry[1])
+            if os.stat(folder / night_name(name)).st_mtime_ns == stamp:
+                out[name] = (level, stamp)
+        except (OSError, ValueError, TypeError, IndexError, KeyError):
+            continue
+    return out
+
+
+def save_made(pack: Path, gain: float, made: dict[str, int], stamps: dict[str, int]) -> None:
+    from .night import VERSION
+
+    doc = {
+        "version": VERSION,
+        "gain": round(gain, 4),
+        "made": {n: [lv, stamps[n]] for n, lv in made.items() if n in stamps},
+    }
+    path = pack / MADE_RECORD
+    tmp = path.with_name(f".{path.name}.tmp")
+    with contextlib.suppress(OSError):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp.write_text(json.dumps(doc), encoding="utf-8")
+        os.replace(tmp, path)
+
+
+def night_disk_bytes(pack: Path) -> int:
+    """What Live's night takes on the disk, Live stopped: its night textures as recorded
+    (:data:`MADE_RECORD`) and the roads kept for them."""
+    from .region import NIGHT_TOP
+
+    total = roads_bytes(pack)
+    for entry in (_record(pack).get("made") or {}).values():
+        with contextlib.suppress(ValueError, TypeError, IndexError):
+            total += _night_bytes(NIGHT_TOP + int(entry[0]))
+    return total
 
 
 def _degrees(point: tuple[float, float], at: tuple[float, float]) -> float:
@@ -310,12 +413,12 @@ def _degrees(point: tuple[float, float], at: tuple[float, float]) -> float:
 
 def make_night(
     pack: Path, name: str, level: int, dsfs, grid: str | None, gain: float | None = None
-) -> None:
+) -> int:
     """The night texture of ``name`` made from day level ``level`` and written over its black
     name, from its level down; its lights times ``gain`` (:data:`orthostudio.live.night.GAIN`
-    when None)."""
+    when None). Returns its file's time (:data:`MADE_RECORD`)."""
     from .imaging import encode_bc1
-    from .night import GAIN, LIT_SIDE, draw, lights_at, lit_levels, night_rgb, seed_of
+    from .night import GAIN, LIT_SIDE, draw, lights_at, lit_levels, night_rgb, seed_of, warm_bc1
     from .region import NIGHT_FOLDER, NIGHT_TOP, ensure_night_neutral
     from .texture import write_sparse
 
@@ -335,34 +438,36 @@ def make_night(
     if density is None:
         lights = lights * 0.85  # what the grid gives on average in a town
     rgb = night_rgb(lights, GAIN if gain is None else gain)
-    levels = [encode_bc1(lv) for lv in lit_levels(rgb)]
+    levels = [warm_bc1(encode_bc1(lv)) for lv in lit_levels(rgb)]
     out = pack / NIGHT_FOLDER / (name[: -len(".dds")] + "_LIT.dds")
     # its larger levels a hole, which reads as zeros, black in BC1, at no cost to read: a clone
     # of the black texture, they were 700 KB that X-Plane read from the disk for each night
     # texture, 64 px or not (4.9 GB more read in the Nice flight, 2026-11-11)
     ensure_night_neutral(pack)
     write_sparse(out, NIGHT_TOP + level, levels, file_top=NIGHT_TOP)
+    return os.stat(out).st_mtime_ns
 
 
-def night_job(job: tuple) -> tuple[str, int, float]:
+def night_job(job: tuple) -> tuple[str, int, float, int]:
     """In the night's process: the night texture of a texture built. ``job``: (pack, name, level,
     the DSFs of its squares, its density grid or None, the lights' gain). Returns (name, level,
-    seconds)."""
+    seconds, its file's time)."""
     pack, name, level, dsfs, grid, gain = job
     t = time.monotonic()
-    make_night(Path(pack), name, level, dsfs, grid, gain)
-    return name, max(0, level), time.monotonic() - t
+    stamp = make_night(Path(pack), name, level, dsfs, grid, gain)
+    return name, max(0, level), time.monotonic() - t, stamp
 
 
 def night_batch(jobs: list[tuple]) -> list[tuple]:
     """In a process of the start's team: the night textures of a square, one after the other.
-    Returns (name, level, seconds) each, the level None and the error for one that failed."""
+    Returns (name, level, seconds, file time) each, the level None and the error for one that
+    failed."""
     out: list[tuple] = []
     for job in jobs:
         try:
             out.append(night_job(job))
         except Exception as e:  # the others made all the same
-            out.append((job[1], None, f"{type(e).__name__}: {e}"))
+            out.append((job[1], None, f"{type(e).__name__}: {e}", None))
     return out
 
 
@@ -399,8 +504,11 @@ class NightWork:
         prefs: Path | None = None,
         gain: float | None = None,
     ):
+        from .night import GAIN
+
         self.pack_dir = pack_dir
         self.gain = gain  # the lights' strength (orthostudio.live.night.LIGHTS); None: GAIN
+        self._gain = GAIN if gain is None else gain
         self.global_scenery = global_scenery
         self.overlays = overlays
         self.grids = list(grids)  # where the density grids are: each region's night folder
@@ -427,9 +535,23 @@ class NightWork:
         self._team_pool: Any = None
         self._team_jobs = 0  # its jobs not done yet
         self._team_size = 0
-        self._starting = False  # a start at night waits for its nights
+        self._starting = False  # a start under way (:meth:`start` to :meth:`arrived`)
         self._pumped = 0.0
         self._make_team: Callable[[int], Any] = _team_pool
+        self._team_off = False  # the team lost a process: the night's own one for this start
+        self._window: set[tuple[int, int]] | None = None  # X-Plane's squares round the start
+        self._tries: dict[str, int] = {}  # the failures of each night texture
+        self._dropped: dict[str, bool] = {}  # made neutral while being made: keep its name or not
+        self.broken = False  # the night's process kept dying: no more night for this flight
+        self._roads_seen = (-1e9, 0)  # (when, the roads kept's bytes)
+        # those an earlier start made, as it wrote them: neither made again nor waited for
+        kept = load_made(pack_dir, self._gain)
+        self.made.update((n, lv) for n, (lv, _) in kept.items())
+        self.stamps: dict[str, int] = {n: st for n, (_, st) in kept.items()}
+        self._saved = time.monotonic()
+        self._changed = False
+        if kept:
+            log(f"  {len(kept)} night textures made at earlier starts, kept")
 
     @property
     def night(self) -> bool:
@@ -476,6 +598,10 @@ class NightWork:
         self._waited_since, self.gave_up = None, False
         self._start_set = None
         self._starting = True
+        self._team_off = False
+        # what X-Plane reads there: a start waited for every texture of the pack, other regions'
+        # too (11,142 night textures at a Paris start, Nice's and the Alps' among them, 2026-11-11)
+        self._window = xplane_tiles(lat, lon)
         sun = sun_at_start(self.prefs) if self.prefs is not None else None
         if sun is not None:
             was = self.night
@@ -498,12 +624,13 @@ class NightWork:
         if self.start_at is None or not self.night or self.gave_up:
             return 0
         with self.lock:
+            wanted = [n for n in {*self.waiting, *self.in_flight} if self._in_window(n)]
             if day_left > 0:  # its photos still coming: what is wanted so far, for the window
                 self._start_set = None
-                left = len(self.waiting) + len(self.in_flight)
+                left = len(wanted)
             else:
                 if self._start_set is None:  # what X-Plane reads there, built: the start's nights
-                    self._start_set = set(self.waiting) | set(self.in_flight)
+                    self._start_set = set(wanted)
                 left = sum(1 for n in self._start_set if n in self.waiting or n in self.in_flight)
         if day_left == 0 and left == 0:
             self._start_done()
@@ -523,18 +650,45 @@ class NightWork:
             return 0
         return left
 
+    def arrived(self) -> None:
+        """The start is over (X-Plane flies there, or went elsewhere; the streamer's
+        ``arrived``): the team ends with its jobs, and what night brings later is the night's own
+        process's. A start by day left the team on: at dusk in flight, eight processes started and
+        stayed for the whole flight (the review of 2026-11-11)."""
+        self._window = None
+        self._start_done()
+
     def pump(self) -> None:
         """At each turn of the streamer's loop, X-Plane running or not yet: the night's own
         process given its next textures, and at a start at night the team its far ones, from the
         first texture built rather than once its photos all are: at LSGG X-Plane took 20 s to
-        start, and the nights waited for its photos (2026-11-11)."""
+        start, and the nights waited for its photos (2026-11-11). The record of those made kept
+        every minute (:data:`MADE_RECORD`)."""
         now = time.monotonic()
-        if not self.night or now - self._pumped < 0.5:
+        if self._changed and now - self._saved > 60.0:
+            self.save()
+        if not self.night or self.broken or now - self._pumped < 0.5:
             return
         self._pumped = now
-        if self._starting and self.team > 1:  # the team first: the far ones are its
+        if self._starting and self.team > 1 and not self._team_off:  # the team: the far ones
             self._team_give()
         self._give(self._at or self.start_at)
+
+    def save(self) -> None:
+        """The record of the night textures made (:data:`MADE_RECORD`)."""
+        with self.lock:
+            made, stamps = dict(self.made), dict(self.stamps)
+            self._changed, self._saved = False, time.monotonic()
+        save_made(self.pack_dir, self._gain, made, stamps)
+
+    def _in_window(self, name: str) -> bool:
+        """Whether ``name`` lies in X-Plane's squares round the start (every name, no start)."""
+        if self._window is None:
+            return True
+        centre = self._centre(name)
+        return centre is not None and (
+            (math.floor(centre[0]), math.floor(centre[1])) in self._window
+        )
 
     def _team_give(self) -> None:
         """The start's night textures waiting (all those wanted while its photos are built),
@@ -551,7 +705,9 @@ class NightWork:
             near: list[str] = []
             squares: dict[tuple[int, int], list[str]] = {}
             for name, level in self.waiting.items():
-                if limit is not None and name not in limit:
+                if name in self.in_flight:  # one job a texture: the sharper one after it
+                    continue
+                if (name not in limit) if limit is not None else not self._in_window(name):
                     continue
                 centre = self._centre(name)
                 if level <= NEAR_LEVEL:
@@ -578,9 +734,35 @@ class NightWork:
             jobs = [[self._job(n, self.in_flight[n]) for n in names] for names in batches]
         if fresh:
             self.log(f"  a team of {self._team_size} processes makes the start's night textures")
-        for batch in jobs:
-            fut = pool.submit(night_batch, batch)
+        for i, batch in enumerate(jobs):
+            try:
+                fut = pool.submit(night_batch, batch)
+            except (BrokenProcessPool, RuntimeError) as e:  # a process of the team died
+                self._team_lost(jobs[i:], e)
+                return
             fut.add_done_callback(lambda f, b=batch: self._batch_done(f, b))
+
+    def _team_lost(self, batches: list[list[tuple]], why: BaseException) -> None:
+        """The team lost a process (the memory short: the system ended it): its textures not
+        given yet back to wait, made by the night's own process, the team closed for this start.
+        Its pool broken, the next submit raised out of the streamer's loop and stopped Live (the
+        review of 2026-11-11)."""
+        with self.lock:
+            for batch in batches:
+                for job in batch:
+                    name, level = job[1], job[2]
+                    self.in_flight.pop(name, None)
+                    self.waiting[name] = min(level, self.waiting.get(name, 99))
+            self._team_jobs -= len(batches)
+            pool, self._team_pool = self._team_pool, None
+            said, self._team_off = self._team_off or self.closed, True
+        if not said:
+            self.log(
+                f"  a process of the start's team stopped ({type(why).__name__}): its night "
+                "textures made by the night's own process"
+            )
+        if pool is not None:
+            pool.shutdown(wait=False, cancel_futures=True)
 
     def _start_done(self) -> None:
         """The start's nights made, or waited for long enough: the team ends with its jobs."""
@@ -593,34 +775,76 @@ class NightWork:
             pool.shutdown(wait=False)
 
     def _batch_done(self, fut: Future, batch: list[tuple]) -> None:
+        try:
+            results = fut.result()
+        except (BrokenProcessPool, CancelledError) as e:  # the team's end, not the textures'
+            self._team_lost([batch], e)
+            return
+        except Exception as e:
+            results = [(job[1], None, f"{type(e).__name__}: {e}", None) for job in batch]
+        blacken: list[tuple[str, bool]] = []
         with self.lock:
-            try:
-                results = fut.result()
-            except Exception as e:  # its textures made later, by the night's own process
-                results = [(job[1], None, f"{type(e).__name__}: {e}") for job in batch]
-            for (name, level, seconds), job in zip(results, batch, strict=True):
-                self.in_flight.pop(name, None)
-                if level is None:
-                    self.failed += 1
-                    self.waiting[name] = job[2]
-                else:
-                    self.made[name] = min(level, self.made.get(name, 99))
-                    self.seconds += seconds
+            for (name, level, seconds, stamp), job in zip(results, batch, strict=True):
+                self._finished(name, job[2], level, seconds, stamp, blacken)
             self._team_jobs -= 1
             pool = self._team_pool if self._team_jobs <= 0 and not self._starting else None
             if pool is not None:
                 self._team_pool = None
+        self._blacken(blacken)
         if pool is not None:  # its processes end, and their memory with them
             pool.shutdown(wait=False)
 
+    def _finished(
+        self,
+        name: str,
+        asked: int,
+        level: int | None,
+        seconds: Any,
+        stamp: int | None,
+        blacken: list[tuple[str, bool]],
+    ) -> None:
+        """A night texture's job ended, ``self.lock`` held: made (``level``), or failed (``level``
+        None, ``seconds`` the error), or made neutral meanwhile (written black again after)."""
+        self.in_flight.pop(name, None)
+        if name in self._dropped:
+            blacken.append((name, self._dropped.pop(name)))
+            return
+        if level is None:
+            self.failed += 1
+            tries = self._tries[name] = self._tries.get(name, 0) + 1
+            if self.failed <= 5:
+                again = "tried again" if tries < TRIES else "left for this flight"
+                self.log(f"  the night texture of {name} failed ({seconds}): {again}")
+            if tries < TRIES:
+                self.waiting[name] = min(asked, self.waiting.get(name, 99))
+            return
+        self._tries.pop(name, None)
+        if level <= self.made.get(name, 99):  # never coarser than what the file holds
+            self.made[name] = level
+            if stamp is not None:
+                self.stamps[name] = stamp
+            self._changed = True
+        self.seconds += seconds
+
+    def _blacken(self, names: list[tuple[str, bool]]) -> None:
+        """Night textures made after their texture went back to neutral: black again, or gone."""
+        for name, keep_name in names:
+            with contextlib.suppress(OSError):  # tried again at its next eviction
+                self._black_file(name, keep_name)
+
     def back_to_black(self, name: str, keep_name: bool) -> None:
         """``name`` made neutral by the disk budget: its night texture black again (``keep_name``:
-        its square is made, X-Plane may read it), or gone with it; made again if night comes."""
+        its square is made, X-Plane may read it), or gone with it; made again if night comes. One
+        being made is written black again once made (:meth:`_finished`): it came back lit, or
+        left alone without its day texture (the review of 2026-11-11)."""
+        self.forget(name, keep_name)
+        self._black_file(name, keep_name)
+
+    def _black_file(self, name: str, keep_name: bool) -> None:
         from .names import NightPool, night_name
         from .region import NIGHT_FOLDER
 
         path = self.pack_dir / NIGHT_FOLDER / night_name(name)
-        self.forget(name)
         if not path.exists():
             return
         if keep_name:
@@ -631,19 +855,28 @@ class NightWork:
             path.unlink(missing_ok=True)
 
     def bytes(self) -> int:
-        """What the night textures made take on the disk, as their levels count it."""
+        """What the night takes on the disk: the night textures made, as their levels count it,
+        and the roads kept for them (:data:`ROADS_FOLDER`, looked at once a minute)."""
         from .region import NIGHT_TOP
 
         with self.lock:
             levels = list(self.made.values())
-        return sum(_night_bytes(NIGHT_TOP + level) for level in levels)
+        now = time.monotonic()
+        if now - self._roads_seen[0] > 60.0:
+            self._roads_seen = (now, roads_bytes(self.pack_dir))
+        return sum(_night_bytes(NIGHT_TOP + level) for level in levels) + self._roads_seen[1]
 
-    def forget(self, name: str) -> None:
+    def forget(self, name: str, keep_name: bool = True) -> None:
         """``name`` back to neutral (the disk budget): its night back to black, made again later."""
         with self.lock:
-            self.made.pop(name, None)
+            if self.made.pop(name, None) is not None:
+                self._changed = True
+            self.stamps.pop(name, None)
             self.waiting.pop(name, None)
-            self._centres.pop(name, None)
+            if name in self.in_flight:
+                self._dropped[name] = keep_name
+            else:
+                self._centres.pop(name, None)
 
     def tick(
         self,
@@ -675,18 +908,33 @@ class NightWork:
 
     def _give(self, at: tuple[float, float] | None) -> None:
         with self.lock:
-            if self.closed:
+            if self.closed or self.broken:
                 return
             free = IN_FLIGHT - len(self.in_flight)
             if free <= 0 or not self.waiting:
                 return
             waiting = self.waiting
-            names = heapq.nsmallest(free, waiting, key=lambda n: self._order(n, waiting[n], at))
+            # one job a texture: two at once wrote it in either order, a coarse one last left
+            # it black where X-Plane looks (the review of 2026-11-11)
+            names = heapq.nsmallest(
+                free,
+                (n for n in waiting if n not in self.in_flight),
+                key=lambda n: self._order(n, waiting[n], at),
+            )
             jobs = [(n, self.waiting.pop(n)) for n in names]
             for name, level in jobs:
                 self.in_flight[name] = level
-        for name, level in jobs:
-            fut = self.executor().submit(night_job, self._job(name, level))
+        for i, (name, level) in enumerate(jobs):
+            try:
+                fut = self.executor().submit(night_job, self._job(name, level))
+            except (BrokenProcessPool, RuntimeError) as e:  # it kept dying: the night stops there
+                with self.lock:
+                    for n, lv in jobs[i:]:
+                        self.in_flight.pop(n, None)
+                        self.waiting[n] = min(lv, self.waiting.get(n, 99))
+                    self.broken = True
+                self.log(f"  the night's process keeps stopping ({e}): no more night textures")
+                return
             fut.add_done_callback(lambda f, n=name, lv=level: self._done(f, n, lv))
 
     def _job(self, name: str, level: int) -> tuple:
@@ -716,19 +964,18 @@ class NightWork:
     def _done(self, fut: Future, name: str, level: int) -> None:
         """A night texture made, or failed: the next given at once, not at the plan loop's next
         turn, which held the night's process to a texture or two a second (LSGG, 2026-11-10)."""
+        try:
+            _, made, seconds, stamp = fut.result()
+        except CancelledError:  # Live stopping
+            return
+        except Exception as e:  # tried again once (TRIES)
+            made, seconds, stamp = None, f"{type(e).__name__}: {e}", None
+        blacken: list[tuple[str, bool]] = []
         with self.lock:
-            self.in_flight.pop(name, None)
+            self._finished(name, level, made, seconds, stamp, blacken)
             if name not in self.waiting:
                 self._centres.pop(name, None)
-            try:
-                _, _, seconds = fut.result()
-            except Exception as e:  # tried again at the next sharper build, or the next night
-                self.failed += 1
-                if self.failed <= 5:
-                    self.log(f"  the night texture of {name} failed: {type(e).__name__}: {e}")
-            else:
-                self.made[name] = min(level, self.made.get(name, 99))
-                self.seconds += seconds
+        self._blacken(blacken)
         if self.night:
             self._give(self._at)
 
@@ -766,9 +1013,12 @@ class NightWork:
     def close(self) -> None:
         with self.lock:
             self.closed = True
-            made = len(self.made)
+            made, failed = len(self.made), self.failed
         if made:
             self.log(f"  {made} night textures made")
+        if failed > 5:
+            self.log(f"  {failed} night textures failed (the first five are said above)")
+        self.save()
         if self._executor is not None:
             self._executor.shutdown(wait=False, cancel_futures=True)
         if self._team_pool is not None:

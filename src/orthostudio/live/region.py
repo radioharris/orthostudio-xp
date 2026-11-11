@@ -339,14 +339,26 @@ TEMP_PREFIX = ".live-tmp-"  # a file being written, renamed over its name once w
 
 def remove_temps(pack_dir: Path) -> int:
     """The files a Live stopped in the middle of a write left beside the textures, removed: at a
-    start, before anything writes there (the next writes' own names are the same kind)."""
+    start, before anything writes there (the next writes' own names are the same kind). The
+    night textures' too, and the roads' half written (``.<square>.<pid>.tmp``) and their locks,
+    none of which a start finds in use (the review of 2026-11-11)."""
+    from .nightwork import ROADS_FOLDER
+
     removed = 0
-    with contextlib.suppress(FileNotFoundError):
-        for entry in os.scandir(pack_dir / "textures"):
-            if entry.name.startswith(TEMP_PREFIX):
-                with contextlib.suppress(OSError):
-                    os.unlink(entry.path)
-                    removed += 1
+    for folder, gone in (
+        (pack_dir / "textures", lambda n: n.startswith(TEMP_PREFIX)),
+        (pack_dir / NIGHT_FOLDER, lambda n: n.startswith(TEMP_PREFIX)),
+        (
+            pack_dir / ROADS_FOLDER,
+            lambda n: (n.startswith(".") and n.endswith(".tmp")) or n.endswith(".lock"),
+        ),
+    ):
+        with contextlib.suppress(FileNotFoundError, NotADirectoryError):
+            for entry in os.scandir(folder):
+                if gone(entry.name):
+                    with contextlib.suppress(OSError):
+                        os.unlink(entry.path)
+                        removed += 1
     return removed
 
 
@@ -629,7 +641,9 @@ def set_night(
 ) -> None:
     """The ``.ter`` files of the pack made again when Live's settings turn its night lights on or
     off and the files say otherwise (orthostudio.live.names.with_night), as :func:`set_decal`
-    does: not while X-Plane runs, at the next start then. The night textures built stay."""
+    does: not while X-Plane runs, at the next start then. Turned off, the night textures go with
+    them, and the roads kept for them: "No" said no night texture, and they stayed on the disk,
+    uncounted (the review of 2026-11-11)."""
     record = pack_dir / NIGHT_RECORD
     try:
         was = bool(json.loads(record.read_text(encoding="utf-8")).get("night"))
@@ -651,8 +665,23 @@ def set_night(
             f"night lights {'on' if night else 'off'}: {removed} terrain files made again as "
             "X-Plane comes"
         )
+    if not night:
+        _drop_night(pack_dir, log)
     record.parent.mkdir(parents=True, exist_ok=True)
     record.write_text(json.dumps({"night": night}), encoding="utf-8")
+
+
+def _drop_night(pack_dir: Path, log: Callable[[str], None]) -> None:
+    """The night textures, their record and the roads kept for them, deleted (night lights off:
+    no terrain file names them any more)."""
+    from .nightwork import MADE_RECORD, ROADS_FOLDER
+
+    gone = _remove_tree(pack_dir / NIGHT_FOLDER, log, "night textures")
+    gone += _remove_tree(pack_dir / ROADS_FOLDER, log, "roads kept for the night")
+    with contextlib.suppress(OSError):
+        (pack_dir / MADE_RECORD).unlink()
+    if gone:
+        log(f"night lights off: {gone} night files deleted")
 
 
 def setup_region(
@@ -792,5 +821,9 @@ def reset_built(pack_dir: Path, log: Callable[[str], None] = print) -> int:
         tmp = pack_dir / MARKER.with_suffix(".tmp")
         tmp.write_text(json.dumps(meta))
         os.replace(tmp, pack_dir / MARKER)
+    from .nightwork import MADE_RECORD
+
+    with contextlib.suppress(OSError):  # their night textures black: none made any more
+        (pack_dir / MADE_RECORD).unlink()
     log(f"{len(built)} built textures back to the neutral one")
     return len(built)
