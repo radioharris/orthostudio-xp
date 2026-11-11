@@ -65,8 +65,8 @@ gives the old one there.
 X-Plane relaunched with its saved start (LSGG runway 04, `Freeflight.prf`) while a flight was placed
 at LSZH through the web API: Live built round Geneva and X-Plane loaded Zurich before its textures,
 every one neutral there until the aircraft moved. Since 2026-11-11 the plugin's position, far from
-the start expected and not where X-Plane flew as that start was chosen, replaces it (`live.md`, the
-expected start).
+the start expected and not where the same X-Plane flew last as that start was chosen, replaces it
+(`live.md`, the expected start).
 
 ## The rings 12 % farther (2026-10-22, KOWB)
 

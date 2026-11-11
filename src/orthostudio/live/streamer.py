@@ -1918,8 +1918,8 @@ class Arrival:
     left_at: float = 0.0
 
     def progress(self, left: int, night_left: int, night: bool) -> float:
-        """The bar: the share done of the count the start shows, its textures and, while it is
-        night there, its night ones, each part's whole the most seen while it is wanted; it goes
+        """The bar: the share done of the count the start shows, its textures and, while it waits
+        for them, its night ones, each part's whole the most seen while it is wanted; it goes
         back only as work is added. With the photos 40 % of it by their image pieces and the night
         textures the rest once the photos were built, it stood at 38 % while the count fell from
         3,560 to 24, then went to 100 % at once (Toulouse, the campaign of 2026-11-11); with the
@@ -1996,7 +1996,7 @@ def start_count(streamer: Streamer, arrival: Arrival, now: float, fresh: bool = 
     night_left, night = 0, False
     if streamer.night is not None:
         streamer.night.tick((arrival.lat, arrival.lon), arrival.held_time, streamer.built_copy)
-        night_left, night = streamer.night.start_left(left), streamer.night.night
+        night_left, night = streamer.night.start_left(left), streamer.night.start_night
     done = arrival.progress(left, night_left, night)
     return arrival.count(left, streamer.urgent_building(), night_left, done)
 

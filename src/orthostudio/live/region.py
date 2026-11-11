@@ -540,7 +540,7 @@ def _place_dir(src: Path, dst: Path, log: Callable[[str], None]) -> None:
     elif old.exists():
         _remove_tree(old, log, "files")
     if dst.exists() or is_folder_link(dst):
-        dst.rename(old)
+        replace_file(dst, old)
     if same_disk(src, dst.parent):
         done = [0]
         _place_tree(src, dst, log, done)

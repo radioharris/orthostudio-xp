@@ -534,13 +534,19 @@ class NightWork:
         one process again."""
         self.start_at = self._window = self._start_set = None
 
+    @property
+    def start_night(self) -> bool:
+        """A start that waits for its night textures: at night there, its processes working, not
+        given up (:meth:`start_left`); the start's bar counts them only then."""
+        return self.start_at is not None and self.night and not self.gave_up and not self.broken
+
     def start_left(self, day_left: int = 0) -> int:
         """Night textures still to make which a start waits for, as for its photos (0 by day): those
         of X-Plane's squares round it (its whole pack's, other regions' too, 11,142 at a Paris
         start, the review of 2026-11-11), of the textures built when its photos were (those built
         after, farther, are made in flight: 27 s more at LSGG, 2026-11-11). ``day_left``: the
         start's day textures still to build; once none is, :data:`NIGHT_WAIT_S` at most."""
-        if self.start_at is None or not self.night or self.gave_up or self.broken:
+        if not self.start_night:
             return 0
         with self.lock:
             pending = [n for n in {*self.wanted, *self.running} if self._in_window(n)]

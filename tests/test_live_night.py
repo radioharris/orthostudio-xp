@@ -887,7 +887,7 @@ class StartBarTest(unittest.TestCase):
 
         from orthostudio.live.streamer import Arrival, start_count
 
-        night = SimpleNamespace(left=600, night=True)
+        night = SimpleNamespace(left=600, start_night=True)
         night.tick = lambda at, when, built: None
         night.start_left = lambda day_left: night.left
         day = SimpleNamespace(left=400)
@@ -1150,7 +1150,7 @@ class NightDiskTest(unittest.TestCase):
 
         from orthostudio.live.streamer import COUNT_EVERY_S, Arrival, start_count
 
-        night = SimpleNamespace(night=True, left=8700, when=None)
+        night = SimpleNamespace(night=True, start_night=True, left=8700, when=None)
         night.tick = lambda at, when, built: setattr(night, "when", when)
         night.start_left = lambda day_left: night.left
         s = SimpleNamespace(

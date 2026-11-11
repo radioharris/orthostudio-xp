@@ -124,7 +124,7 @@ def test_every_replace_of_live_tries_again_on_windows() -> None:
         for p in sorted(live.glob("*.py"))
         if p.name != "filesystem.py"
         for n, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1)
-        if "os.replace(" in line or "os.rename(" in line
+        if any(call in line for call in ("os.replace(", "os.rename(", ".rename("))
     ]
     assert bare == []
 
