@@ -288,8 +288,8 @@ function drawStates() {
   }
 }
 
-/** The foot over the right end of the shown page's own, as tall as it; on its own where the page
- * has none (the welcome). */
+/** The foot over the right end of the shown page's own, as tall as it and left of its scroll bar;
+ * on its own where the page has none (the welcome). */
 function placeFoot() {
   const own = shownPart ? footOf[shownPart] : null;
   const foot = $("frame-foot");

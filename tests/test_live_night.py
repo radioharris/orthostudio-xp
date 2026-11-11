@@ -884,6 +884,23 @@ class StartBarTest(unittest.TestCase):
         d.progress(8, 1000, True)
         self.assertEqual(d.progress(6, 0, True), 0.99)  # not 100 % with work left
 
+    def test_a_start_waits_for_its_nights_only_while_they_can_come(self):
+        """The one rule of start_left and of the bar's night part: a start, at night, the night's
+        processes working, not given up; with the processes lost, the bar stood at 90 % with every
+        photo still to build (the review of 2026-11-11)."""
+        from types import SimpleNamespace
+
+        from orthostudio.live.nightwork import NightWork
+
+        def start_night(**change):
+            state = {"start_at": (46.2, 6.1), "night": True, "gave_up": False, "broken": False}
+            return NightWork.start_night.fget(SimpleNamespace(**{**state, **change}))
+
+        self.assertTrue(start_night())
+        for change in ({"broken": True}, {"gave_up": True}, {"night": False}, {"start_at": None}):
+            with self.subTest(**change):
+                self.assertFalse(start_night(**change))
+
     def test_the_count_the_start_shows_is_the_bar_s(self):
         """The bar is worked out from the count shown, night textures in it."""
         from types import SimpleNamespace
@@ -1153,7 +1170,7 @@ class NightDiskTest(unittest.TestCase):
 
         from orthostudio.live.streamer import COUNT_EVERY_S, Arrival, start_count
 
-        night = SimpleNamespace(night=True, start_night=True, left=8700, when=None)
+        night = SimpleNamespace(start_night=True, left=8700, when=None)
         night.tick = lambda at, when, built: setattr(night, "when", when)
         night.start_left = lambda day_left: night.left
         s = SimpleNamespace(

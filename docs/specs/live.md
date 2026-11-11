@@ -113,7 +113,7 @@ modules, English and French, English unless the switch chose French, as OrthoStu
   once X-Plane quits, unless left installed). While it streams, Live's process forks neither its
   encoders (see the encoding processes in the loop) nor commands: whether X-Plane runs and when
   it started come from macOS's list of processes (`scenery.xplane_running`, `xplane_started_at`,
-  libproc), not from `ps` or `pgrep`, and X-Plane is launched by posix_spawn, which does not fork
+  libproc; the newest of two, one quitting as the next starts), not from `ps` or `pgrep`, and X-Plane is launched by posix_spawn, which does not fork
   (`scenery._spawn`). When the encoders'
   pool broke, X-Plane was taken for gone, most likely a `ps` that died the same way (a `ps` that
   fails reads as no X-Plane), and the pack came out from under it; the next flight, a `pgrep`
@@ -243,8 +243,10 @@ suite keeps it off unless a test switches it on, `tests/conftest.py`):
   program, `control.in_frame`, its welcome first when `app_home` is "ask"), kept alive after. A
   page in the frame (`ui/embed.js`, its origin the loopback's) hides what it leaves the frame
   (`data-frame-owned`: the top bar, the foot's text size and zoom), gives its screens as the
-  frame's tabs, what it is doing (`busy`: "building", Live's state) and its foot's height, and
-  takes the language, the theme, the text size and the room the foot takes. The zoom is the
+  frame's tabs, what it is doing (`busy`: "building", Live's state), its foot's height and the
+  room its scroll bar takes on its right (the frame's foot stands left of it: its + lay over the
+  scroll bar on Windows and on a Mac showing scroll bars always), and takes the language, the
+  theme, the text size and the room the foot takes. The zoom is the
   window's (`FrameTools` is a `PageTools`), its keys typed in a page passed on to the frame. What
   the pilot chose is kept in `frame.json` and written into the frame's page as it is served; the
   first start takes, once, what the pages had kept of their own. Quitting (the frame's Quit,
