@@ -339,10 +339,11 @@ def make_night(
     grid: str | None,
     gain: float | None = None,
     apart: bool = True,
-) -> None:
+) -> bool:
     """The night texture of ``name`` made from level ``level`` (counted from the top of the
     texture's file) and written over its black name, from its level down; its lights times
-    ``gain`` (:data:`orthostudio.live.night.GAIN` when None)."""
+    ``gain`` (:data:`orthostudio.live.night.GAIN` when None). False: no light there, its black
+    name kept, which takes no disk."""
     from .imaging import encode_bc1
     from .night import GAIN, LIT_SIDE, draw, lights_at, lit_levels, night_rgb, seed_of, warm_bc1
     from .region import NIGHT_FOLDER, NIGHT_TOP, ensure_night_neutral
@@ -371,27 +372,29 @@ def make_night(
         from .names import NightPool
 
         NightPool(pack).replace(0, out)
-        return
+        return False
     levels = [warm_bc1(encode_bc1(lv)) for lv in lit_levels(rgb)]
     # its larger levels a hole, which reads as zeros, black in BC1, at no cost to read: a clone
     # of the black texture, they were 700 KB that X-Plane read from the disk for each night
     # texture, 64 px or not (4.9 GB more read in the Nice flight, 2026-11-11)
     write_sparse(out, NIGHT_TOP + level, levels, file_top=NIGHT_TOP)
+    return True
 
 
 def night_batch(jobs: list[tuple]) -> list[tuple]:
     """In a night process: the night textures of a job, one after the other. ``jobs``: (pack,
     name, level, the DSFs of its squares, its density grid or None, the lights' gain, apart) each.
-    Returns (name, seconds) each, or (name, the error) for one that failed."""
+    Returns (name, seconds, whether it holds lights) each, or (name, the error, False) for one
+    that failed."""
     out: list[tuple] = []
     for pack, name, level, dsfs, grid, gain, apart in jobs:
         t = time.monotonic()
         try:
-            make_night(Path(pack), name, level, dsfs, grid, gain, apart)
+            lit = make_night(Path(pack), name, level, dsfs, grid, gain, apart)
         except Exception as e:  # the others made all the same
-            out.append((name, f"{type(e).__name__}: {e}"))
+            out.append((name, f"{type(e).__name__}: {e}", False))
         else:
-            out.append((name, time.monotonic() - t))
+            out.append((name, time.monotonic() - t, lit))
     # a square whose roads could not be read is read again at its next job: kept for the flight's
     # process, a passing failure left the square dark for the flight (the review of 2026-11-11)
     for key in [k for k, roads in _ROADS.items() if isinstance(roads, Exception)]:
@@ -422,6 +425,7 @@ class NightWork:
         make_pool: Callable[[int], Any] | None = None,
         prefs: Path | None = None,
         gain: float | None = None,
+        lights: bool = True,
     ):
         self.pack_dir = pack_dir
         self.global_scenery = global_scenery
@@ -430,6 +434,10 @@ class NightWork:
         self.log = log
         self.prefs = prefs  # X-Plane's Freeflight.prf: the time of a start
         self.gain = gain  # the lights' strength (orthostudio.live.night.LIGHTS); None: GAIN
+        # off in the settings while the pack's terrain files still name night textures (turned off
+        # while X-Plane ran, region.set_night): none made, those there counted and followed
+        self.lights = lights
+        self.lit: set[str] = set()  # those holding lights, as the disk counts them (the record's)
         self.team = 1  # the processes at a start at night: Live's encoders (the streamer's)
         self.top_of: Callable[[str], int] = lambda name: 0  # a file's sharpest level (streamer's)
         self.night = False
@@ -623,7 +631,7 @@ class NightWork:
                 self._ended_job(pool)
                 for i, (name, level) in enumerate(batch):
                     self.running.pop(name, None)
-                    said = None if results is None else results[i][1]
+                    said, lit = (None, False) if results is None else results[i][1:]
                     if name in self.changed:  # neutral or coarser meanwhile: as its day file
                         self.changed.discard(name)
                         black.append(name)
@@ -635,6 +643,10 @@ class NightWork:
                         self.made[name] = min(level, self.made.get(name, 99))
                         self.tries.pop(name, None)
                         self.seconds += said
+                        if lit:
+                            self.lit.add(name)
+                        else:
+                            self.lit.discard(name)
         for name in black:
             with contextlib.suppress(OSError):  # black again at its next eviction
                 self._black(name)
@@ -739,6 +751,7 @@ class NightWork:
     # --- helpers ------------------------------------------------------------------------------
 
     def _set_night(self, night: bool, built: Callable[[], dict[str, int]] | None, why: str) -> None:
+        night = night and self.lights
         was, self.night = self.night, night
         if night and not was and built is not None:
             textures = built()
@@ -762,6 +775,8 @@ class NightWork:
         from .names import NightPool, night_name
         from .region import NIGHT_FOLDER
 
+        with self.lock:
+            self.lit.discard(name)
         path = self.pack_dir / NIGHT_FOLDER / night_name(name)
         if not path.exists():
             return

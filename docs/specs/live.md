@@ -705,9 +705,13 @@ in the user's flight of 2026-11-11. The steps: one process, 13 minutes; a team o
 were built, 64 s; the roads and lamps laid out at once rather than a road at a time, 38 s; the
 roads in files, 27 s; the team from the first texture, 7 s; the near ones to it too, 0 s.
 
-**The disk.** Live stays within its disk space: each texture built counts its night texture with
-it, made from the same level (`evict.texture_bytes`, `night=`): 6.3 % of a texture in a 4096 px
-file (14 % far away, 256 px), a quarter in a 2048 px file, 1.6 % at 8192 px. A texture made
+**The disk.** Live stays within its disk space, each file counted as it holds (`evict.usage`): a
+texture's night texture once it holds lights, made from the same level (`NightWork.lit`, kept in
+the textures' record as `lit`; a night without a light is the black name, which takes nothing),
+and an 8192 px file's copy of its 4096 px level once made (`Streamer.copied_up`, kept as
+`copied`, 33 MB more a file). Counted for every texture, the night took half of Windows' space by
+day before any was made, and a copy went uncounted (the review of 2026-11-11). Live stopped, the
+Settings' figure is counted from the same record (`control._textures_bytes`). A texture made
 coarser, or set to a new zoom's size as its square is made (`Streamer._refit`), has its night made
 black, then again from its new level when it is night (`Streamer._night_follows`; kept sharp, a
 night texture took fifteen times its day one; left at its old size, X-Plane read a hole, black,
@@ -723,14 +727,16 @@ most (`streamer.ROADS_SHARE`, `nightwork.ROADS_KEPT_MB`: a fixed share of a 200 
 night textures took 132,528 bytes each, counted 131,072 (6,840 before), 2,000 of 512 px 259,314,
 counted 262,144; NTFS's own list of a file's parts stops at its end, short of its last step (the
 113 KB a night texture said before). Counted by their levels alone, the photos too took up to
-twice what was counted on Windows, and Live went past its space there. On the textures of an
+nearly three times what was counted on Windows (a far one 131,072 bytes, counted 47,800), and Live went past its space there. On the textures of an
 LSGG start (8,535, most far): photos 0.75 GB and night textures 0.09 GB on a Mac (11 %), 1.45
 and 1.13 GB on Windows (44 %). The night textures of every texture built are made
 again at each start of Live as night comes. Turned off ("No"), the night textures, their black one
 and its copies and the roads go (`region._drop_night`), and the night is made only when the
 pack's terrain files name it (`region.night_on`: turned on while X-Plane ran, they do from the
-next start); the terrain files follow the pack's record, not the settings (turned off while
-X-Plane ran, then on again, the squares flown meanwhile were made with no night line for good). Deleting
+next start); the terrain files and the night's work follow the pack's record, not the settings
+(turned off while X-Plane ran, then on again, the squares flown meanwhile were made with no night
+line for good; turned off, the night textures made before were neither counted nor made black
+with their day texture): the settings say only whether more are made (`NightWork(lights=)`). Deleting
 the textures deletes the roads too; a start removes the half-written files of their folders and
 the locks a process that died left (`region.remove_temps`). A start's count, night textures with
 the day ones, is worked out in one place (`streamer.start_count`), X-Plane held or not: as it is

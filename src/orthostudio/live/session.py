@@ -591,8 +591,11 @@ def follow(
                         p.name.removeprefix("z_osxp_") for p in osxp_regions(live_root())
                     },
                     region_lists=aoregions.lists_dir(live_root()),
-                    night=_night_work(prepared, log, options.night_light)
-                    if options.night and night_on(prepared.pack)
+                    # as the pack's terrain files name them, made only when the settings say so:
+                    # turned off while X-Plane ran, those made before were neither counted nor
+                    # followed (the review of 2026-11-11)
+                    night=_night_work(prepared, log, options.night_light, options.night)
+                    if night_on(prepared.pack)
                     else None,
                 )
                 clock.done("textures")
@@ -650,10 +653,11 @@ def follow(
 GRIDS_ENV = "OSXP_LIVE_NIGHT_GRIDS"  # a folder of density grids looked in first: the test flights'
 
 
-def _night_work(prepared: Prepared, log: Log, light: str = "normal"):
+def _night_work(prepared: Prepared, log: Log, light: str = "normal", lights: bool = True):
     """The night textures of the textures built (orthostudio.live.nightwork): X-Plane's roads from
     its Global Scenery, else from the overlays of Live's regions, NASA's grids from each
-    region's night folder, else Live's; their lights as bright as ``light`` says."""
+    region's night folder, else Live's; their lights as bright as ``light`` says; none made
+    without ``lights``, those there counted and followed."""
     from orthostudio.live import aoregions
     from orthostudio.live.night import GAIN, LIGHTS
     from orthostudio.live.nightwork import NightWork
@@ -669,6 +673,7 @@ def _night_work(prepared: Prepared, log: Log, light: str = "normal"):
         log=log,
         prefs=_freeflight(prepared.xplane),
         gain=LIGHTS.get(light, GAIN),
+        lights=lights,
     )
 
 

@@ -316,9 +316,10 @@ class NightJobTest(unittest.TestCase):
         from orthostudio.live import dds
         from orthostudio.live.region import NIGHT_NEUTRAL, NIGHT_TOP
 
-        [(got, seconds)] = make_one(self.pack, self.name, 0)
+        [(got, seconds, lit)] = make_one(self.pack, self.name, 0)
         self.assertEqual(got, self.name)
         self.assertIsInstance(seconds, float)
+        self.assertFalse(lit)  # its black name takes no disk: not counted
         self.assertTrue(os.path.samefile(self.lit, self.pack / NIGHT_NEUTRAL))
         self.assertEqual(dds.read_top(self.lit), NIGHT_TOP)
         offset, length = dds.level_layout(NIGHT_TOP)[0]
@@ -364,10 +365,10 @@ class NightJobTest(unittest.TestCase):
         from orthostudio.live import nightwork
 
         jobs = [(str(self.pack), name, 0, [], None, None, False) for name in ("a", "b")]
-        with mock.patch.object(nightwork, "make_night", side_effect=[OSError("full"), None]):
+        with mock.patch.object(nightwork, "make_night", side_effect=[OSError("full"), True]):
             out = nightwork.night_batch(jobs)
-        self.assertEqual(out[0], ("a", "OSError: full"))
-        self.assertEqual(out[1][0], "b")
+        self.assertEqual(out[0], ("a", "OSError: full", False))
+        self.assertEqual((out[1][0], out[1][2]), ("b", True))  # it holds lights
         self.assertIsInstance(out[1][1], float)
 
 
@@ -390,11 +391,14 @@ class _Pool:
         self.given.append([job[1] for job in jobs])
         return fut
 
-    def finish(self, said=None):
-        """Every job given so far ended: made, or ``said`` (an error) for each texture."""
+    def finish(self, said=None, lit=True):
+        """Every job given so far ended: made (with lights, or black), or ``said`` (an error) for
+        each texture."""
         for fut, jobs in self.futures:
             if not fut.done():
-                fut.set_result([(job[1], 0.01 if said is None else said) for job in jobs])
+                fut.set_result(
+                    [(job[1], 0.01, lit) if said is None else (job[1], said, False) for job in jobs]
+                )
 
     def die(self):
         from concurrent.futures.process import BrokenProcessPool
@@ -1064,13 +1068,48 @@ class NightDiskTest(unittest.TestCase):
         said = []
         night = SimpleNamespace(back_to_black=lambda name: said.append(("black", name)))
         night.built = lambda name, level: said.append(("built", name, level))
-        s = SimpleNamespace(built={"a.dds": 0}, night=night, log=print)
+        s = SimpleNamespace(built={"a.dds": 0}, night=night, log=print, copied_up={"a.dds"})
         s._night_follows = lambda name, level: Streamer._night_follows(s, name, level)
         Streamer._refit(s, "a.dds", 1)
-        self.assertEqual(s.built, {"a.dds": 1})
+        self.assertEqual((s.built, s.copied_up), ({"a.dds": 1}, set()))  # written again: no copy
         self.assertEqual(said, [("black", "a.dds"), ("built", "a.dds", 1)])
         Streamer._refit(s, "neutral.dds", 1)  # not built: nothing of its own
         self.assertEqual(len(said), 2)
+
+    def test_only_what_a_file_holds_is_counted(self):
+        """A texture's night counted once it holds lights, its 8192 px copy once made: counted
+        for all, the night took half of Windows' space by day before any was made, and a copy,
+        33 MB, went uncounted (the review of 2026-11-11)."""
+        from orthostudio.live.evict import night_bytes, pick, texture_bytes, usage
+
+        built = {"day": 0, "lit": 0, "copied": 0}
+        tops = {"day": 0, "lit": 0, "copied": -1}.get
+        day_only = usage(built, tops)
+        self.assertEqual(day_only, 2 * texture_bytes(0) + texture_bytes(0, -1))  # by day: no night
+        both = usage(built, tops, lit={"lit"}, copied={"copied"})
+        copy = texture_bytes(-1, -1) - texture_bytes(0, -1)
+        self.assertEqual(both - day_only, night_bytes(0) + copy)
+        # made coarser, a texture frees its night and its copy with it
+        coarser = pick(built, {"copied": 1.0}, lambda n: n == "copied", both - 1, tops,
+                       lit={"lit"}, copied={"copied"})  # fmt: skip
+        self.assertEqual(coarser, [("copied", 4)])
+
+    def test_night_lights_off_under_x_plane_its_nights_counted_and_followed(self):
+        """Turned off while X-Plane ran: the night textures made before stayed on the disk,
+        neither counted nor made black with their day texture (the review of 2026-11-11). The
+        night follows the pack's terrain files; the settings only say whether more are made."""
+        import tempfile
+        from pathlib import Path
+
+        from orthostudio.live.nightwork import NightWork
+
+        with tempfile.TemporaryDirectory() as tmp:
+            work = NightWork(Path(tmp), None, None, [], log=lambda _: None, lights=False)
+            work.lit = {"a.dds"}
+            work.tick((43.70, 7.25), (314, 20.0), lambda: {"a.dds": 0})  # night in X-Plane
+            self.assertFalse(work.night)  # none made
+            work.back_to_black("a.dds")
+            self.assertEqual(work.lit, set())  # followed: black, no longer counted
 
     def test_a_file_counted_as_the_disk_takes_it(self):
         """In the disk's own steps: on the user's Shadow (NTFS), 2,000 far night textures took

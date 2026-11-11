@@ -46,7 +46,7 @@ from orthostudio.live.pack import (
     live_root,
     load_built,
 )
-from orthostudio.live.region import file_tops
+from orthostudio.live.region import file_tops, night_on
 from orthostudio.live.scenery import (
     autoortho_mounted,
     autoortho_scenery,
@@ -188,6 +188,15 @@ def _same_folder(one: str, other: str | None) -> bool:
         return False
 
 
+def _textures_bytes(pack: Path) -> int:
+    """The disk of the textures built, Live stopped: as the streamer counts it, from its record
+    (evict.usage), the night textures and the 8192 px copies with them; without them the figure
+    fell by nearly half on Windows as Live stopped (the review of 2026-11-11)."""
+    meta = load_built(pack)
+    lit = meta.get("lit", ()) if night_on(pack) else ()  # night lights off: their files gone
+    return usage(meta.get("textures", {}), file_tops(pack), lit, meta.get("copied", ()))
+
+
 def gather_checks() -> dict[str, Any]:
     """What streaming needs, as the page lists it."""
     from orthostudio.live import machine, plugin
@@ -210,9 +219,7 @@ def gather_checks() -> dict[str, Any]:
         "folder": str(live_root()),
         "folder_default": str(default_live_root()),
         "folder_problem": None,
-        "textures_bytes": usage(
-            load_built(default_pack_dir()).get("textures", {}), file_tops(default_pack_dir())
-        ),
+        "textures_bytes": _textures_bytes(default_pack_dir()),
         # the SimBrief name OrthoStudio XP has, which the window offers to take: never asked of
         # simbrief.com unless the pilot takes it into Live's settings
         "osxp_simbrief": _osxp_simbrief(),

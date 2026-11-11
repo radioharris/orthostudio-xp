@@ -433,10 +433,11 @@ class Streamer:
         # 8192 px levels whose photos are late: the 4096 px level copied up into them meanwhile
         # (orthostudio.live.texture.copy_up), so that X-Plane never reads the neutral colour there
         self.to_copy: set[str] = set()
-        self.copied_up: set[str] = set()
         self.cruising = False  # high enough that no 8192 px level gets its photos (_cruise_height)
         self.meta = load_built(pack_dir)
         self.built: dict[str, int] = dict(self.meta.get("textures", {}))
+        # recorded with them: on the disk until their file is written again (evict.usage)
+        self.copied_up: set[str] = set(self.meta.get("copied", [])) & self.built.keys()
         self.built_version = 0  # one more at each change of built: the window's map
         # built without pieces that did not come: when to build them again, and how many times
         self.patchy: dict[str, tuple[float, int]] = {
@@ -577,6 +578,7 @@ class Streamer:
         if night is not None:
             night.team = self.workers  # the start's team: as many as the encoders, idle by then
             night.top_of = self.top_of  # its levels counted from its file's top, as X-Plane does
+            night.lit = set(self.meta.get("lit", [])) & self.built.keys()  # made before
         self._points: dict[str, tuple[float, float]] = {}  # "aircraft", "start", "hold"
 
     # --- the season ---------------------------------------------------------------------------
@@ -685,6 +687,7 @@ class Streamer:
         (the review of 2026-11-11)."""
         if name in self.built:
             self.built[name] = level
+            self.copied_up.discard(name)  # its file written again: no copy there any more
             self._night_follows(name, level)
 
     def _fitting(self, name: str) -> bool:
@@ -1695,7 +1698,8 @@ class Streamer:
             self.top_of,
             neutral=lambda n: n not in busy and self.far(n),
             behind=self.behind,
-            night=self.night is not None,  # each texture's night counted with it
+            lit=self._lit(),
+            copied=self.copied_up,
         )
         for name, level in picks[:EVICT_BATCH]:
             path = self.pack_dir / "textures" / name
@@ -1729,7 +1733,7 @@ class Streamer:
         if picks:
             self.log(
                 f"  disk budget: {min(len(picks), EVICT_BATCH)} textures made coarser, "
-                f"{usage(self.built, self.top_of) / 1e9:.1f} GB of "
+                f"{self.disk_used() / 1e9:.1f} GB of "
                 f"{self.texture_budget() / 1e9:.0f} GB now"
             )
         if self._cache_size > self.cache_budget:
@@ -1759,6 +1763,19 @@ class Streamer:
             self.night.close()
         self.save()
 
+    def _lit(self) -> set[str]:
+        """The textures whose night texture holds lights, a copy (orthostudio.live.nightwork)."""
+        if self.night is None:
+            return set()
+        with self.night.lock:
+            return set(self.night.lit)
+
+    def disk_used(self, built: dict[str, int] | None = None) -> int:
+        """The disk of the textures built, as their files hold them (evict.usage)."""
+        return usage(
+            self.built if built is None else built, self.top_of, self._lit(), self.copied_up
+        )
+
     def save(self) -> None:
         with self.lock:  # the builder changes them meanwhile
             textures = dict(self.built)
@@ -1766,6 +1783,8 @@ class Streamer:
             patchy = sorted(n for n in self.patchy if n in textures)
             stale = dict(self.stale)
             look, season = self.look, self.season
+            copied = sorted(n for n in self.copied_up if n in textures)
+        lit = sorted(n for n in self._lit() if n in textures)
         meta = load_built(self.pack_dir)
         meta["look"] = list(look.values())  # what the textures recorded are built in
         meta["season"] = season
@@ -1777,6 +1796,7 @@ class Streamer:
         meta["seen"] = seen
         meta.pop("grown", None)  # a pack's record from when textures grew
         meta["patchy"] = patchy
+        meta["lit"], meta["copied"] = lit, copied  # what their files hold besides (evict.usage)
         meta["updated"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
         tmp = self.pack_dir / MARKER.with_suffix(".tmp")
         text = json.dumps(meta)
@@ -1809,7 +1829,7 @@ class Streamer:
             # the sources whose server refuses this computer (Downloader.refusing): the window
             # says so
             "refused_by": dl.refusing() if hasattr(dl, "refusing") else [],
-            "disk_bytes": usage(built, self.top_of, self.night is not None),
+            "disk_bytes": self.disk_used(built),
             "disk_budget": self.texture_budget(),
             "read_early": self.read_early,
             # their 8192 px photos, those X-Plane shows (mapdata.shown)

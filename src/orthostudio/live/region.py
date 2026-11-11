@@ -825,6 +825,7 @@ def reset_built(pack_dir: Path, log: Callable[[str], None] = print) -> int:
             nights.replace(0, lit)
     if meta:
         meta["textures"], meta["seen"], meta["patchy"], meta["stale"] = {}, {}, [], {}
+        meta["lit"], meta["copied"] = [], []  # their nights black, their copies gone
         meta.pop("grown", None)
         tmp = pack_dir / MARKER.with_suffix(".tmp")
         tmp.write_text(json.dumps(meta))

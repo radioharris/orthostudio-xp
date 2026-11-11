@@ -382,6 +382,8 @@ class StreamerTest(unittest.TestCase):
                 return True
 
         class Night:
+            lock, lit = threading.Lock(), set()
+
             def bytes(self):
                 return 0
 
@@ -409,6 +411,7 @@ class StreamerTest(unittest.TestCase):
 
         class Night:
             roads_cap = 0
+            lock, lit = threading.Lock(), set()
 
             def back_to_black(self, name):
                 told.append(("black", name))
