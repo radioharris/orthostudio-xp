@@ -860,25 +860,35 @@ class LiveControl:
         """Delete one of OrthoStudio XP's regions from the disk, with its overlays. Not while Live
         streams, nor while the region is being installed."""
         self._stop_night_grids()
+        # one check and one taking, as an install's: the night grids' own download, started from
+        # the list's read while the region was deleted, wrote half of it back, listed as installed
+        # (the review of 2026-11-11)
         with self._lock:
-            installing = (
-                self._install_thread is not None
-                and self._install_thread.is_alive()
-                and self._installer is not None
-                and self._installer.region.id == region_id
+            running = self._install_thread
+            if running is not None and not running.is_alive():
+                running = None
+            if self._state != IDLE:
+                raise session.RefusedError("Live is streaming: stop it first")
+            if running is not None and (
+                running is self._night_thread
+                or (self._installer is not None and self._installer.region.id == region_id)
+            ):
+                raise session.RefusedError("this region is being installed: stop that first")
+            taken = None if running is not None else threading.current_thread()
+            if taken is not None:
+                self._install_thread = taken
+        try:
+            if not osxpregions.mesh_dir(live_root(), region_id).exists():
+                raise session.RefusedError(f"the region {region_id!r} is not installed")
+            squares = squares_of({region_id}).get(region_id, [])
+            osxpregions.remove(
+                live_root(), region_id, [(lat, lon) for lat, lon in squares], log=self.log
             )
-            streaming = self._state != IDLE
-        if streaming:
-            raise session.RefusedError("Live is streaming: stop it first")
-        if installing or (self._night_thread is not None and self._night_thread.is_alive()):
-            raise session.RefusedError("this region is being installed: stop that first")
-        if not osxpregions.mesh_dir(live_root(), region_id).exists():
-            raise session.RefusedError(f"the region {region_id!r} is not installed")
-        squares = squares_of({region_id}).get(region_id, [])
-        osxpregions.remove(
-            live_root(), region_id, [(lat, lon) for lat, lon in squares], log=self.log
-        )
-        self._checked = (0.0, None)
+            self._checked = (0.0, None)
+        finally:
+            with self._lock:
+                if taken is not None and self._install_thread is taken:
+                    self._install_thread = None
 
     def wait_idle(self, timeout: float | None = None) -> bool:
         thread = self._thread

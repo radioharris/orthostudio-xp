@@ -196,6 +196,27 @@ class PackTest(unittest.TestCase):
         set_night(self.pack, True, log=said.append)  # recorded: nothing more
         self.assertEqual(len(said), 2)
 
+    def test_the_terrain_files_follow_the_pack_s_record_not_the_settings(self):
+        """Turned off while X-Plane ran, then on again: the squares flown meanwhile were made with
+        no night line, and the record, on all along, never made them again (the review of
+        2026-11-11)."""
+        from live_helpers import live_names
+        from orthostudio.live.cache import ChunkCache
+        from orthostudio.live.region import night_on, set_night
+        from orthostudio.live.streamer import Streamer
+
+        set_night(self.pack, True, log=lambda _: None)
+        live_names(self.pack, night=True).make((46, 2))  # flown at night
+        set_night(self.pack, False, log=lambda _: None, xplane_running=lambda: True)  # "No"
+        self.assertTrue(night_on(self.pack))  # its terrain files made already name them
+        cache = ChunkCache(self.pack.parent / "c.sqlite")
+        try:
+            s = Streamer(self.pack, cache, lambda on_piece: None, 0, log=lambda _: None)
+            self.assertIsNone(s.night)  # no night texture made
+            self.assertTrue(s.names.night)  # the files name them as the others do
+        finally:
+            cache.close()
+
 
 # --- the worker: a night texture made from the day texture on the disk
 
@@ -450,16 +471,17 @@ class NightWorkTest(unittest.TestCase):
         self.assertTrue(night_at(314, 7.5, 46.24, unsure_h=START_UNSURE_H))
         self.assertFalse(night_at(314, 11.0, 46.24, unsure_h=START_UNSURE_H))
 
-    def test_a_start_s_own_time_decides_until_x_plane_flies_there(self):
-        """The time X-Plane sends while a start is chosen in flight is the flight before's: it took
-        a start at night for day (the review of 2026-11-11)."""
-        at_night(self.prefs)
-        self.work.start(43.70, 7.25, lambda: {self.near: 0})
-        self.work.tick((46.24, 6.11), (314, 11.0), lambda: {})  # the flight before: by day
-        self.assertTrue(self.work.night)
-        self.work.arrived()
-        self.work.tick((43.70, 7.25), (314, 11.0), lambda: {})
+    def test_a_start_s_time_as_the_plugin_read_it_in_x_plane_decides(self):
+        """Freeflight.prf saves a start's local time, its zone's: with two hours of doubt, a start
+        at Geneva at 17:30 in June waited for its night textures in daylight; the plugin reads
+        X-Plane's UTC time as it loads the flight (the review of 2026-11-11)."""
+        at_night(self.prefs, hours=17.5, lat=46.24, lon=6.11, day=172)
+        self.work.start(46.24, 6.11, lambda: {self.near: 0})
+        self.assertTrue(self.work.night)  # maybe night, by the local time alone
+        self.work.tick((46.24, 6.11), (171, 15.5), lambda: {})  # 17:30 in summer: 15:30 UTC
         self.assertFalse(self.work.night)
+        self.work.tick((46.24, 6.11), (171, 17.5), lambda: {self.near: 0})  # 19:30: dusk
+        self.assertTrue(self.work.night)
 
     def test_in_flight_by_x_plane_s_utc_time_at_the_aircraft(self):
         built = {self.near: 0}
@@ -627,18 +649,32 @@ class NightWorkTest(unittest.TestCase):
         lit.parent.mkdir(parents=True)
         lit.write_bytes(b"lit")
         self.work.made[self.near] = 0
-        self.work.back_to_black(self.near, keep_name=True)
-        self.assertTrue(os.path.samefile(lit, self.root / NIGHT_NEUTRAL))
+        self.work.back_to_black(self.near)  # its day file gone with its square: the night too
+        self.assertFalse(lit.exists())
         self.assertEqual(self.work.made, {})
-        # made neutral while being made: black again once made, or rebuilt meanwhile, kept
+        day = self.root / "textures" / self.near
+        day.parent.mkdir()
+        day.write_bytes(b"neutral")
+        lit.write_bytes(b"lit")
+        self.work.back_to_black(self.near)  # its day file there, X-Plane may read it: black
+        self.assertTrue(os.path.samefile(lit, self.root / NIGHT_NEUTRAL))
+        # made coarser while its night was made: not counted made, black, made again from its
+        # new level (a 1024 px night stayed over a 256 px texture, the review of 2026-11-11)
         self.work.tick((43.70, 7.25), (314, 20.0), lambda: {self.near: 0})
         self.turn()
-        self.work.back_to_black(self.near, keep_name=False)
-        lit.write_bytes(b"lit")  # the job writes it after
+        self.work.back_to_black(self.near)
+        self.work.built(self.near, 4)
+        lit.unlink()
+        lit.write_bytes(b"lit sharp")  # the job writes it after
         self.pools[0].finish()
         self.turn()
-        self.assertFalse(lit.exists())
+        self.assertTrue(os.path.samefile(lit, self.root / NIGHT_NEUTRAL))
         self.assertNotIn(self.near, self.work.made)
+        _, jobs = self.pools[0].futures[-1]
+        self.assertEqual([(job[1], job[2]) for job in jobs], [(self.near, 4)])  # given again
+        self.pools[0].finish()
+        self.turn()
+        self.assertEqual(self.work.made, {self.near: 4})
 
     def test_the_lights_chosen_go_with_each_job(self):
         work = self.work
@@ -855,6 +891,8 @@ class ReviewTest(unittest.TestCase):
         (pack / ROADS_FOLDER).mkdir(parents=True)
         (pack / ROADS_FOLDER / "a-1.npz").write_bytes(b"roads")
         (pack / NIGHT_NEUTRAL).write_bytes(b"black")
+        copy = (pack / NIGHT_NEUTRAL).with_name("night-2.dds")  # past NTFS's 1,023 names
+        copy.write_bytes(b"black")
         self.assertTrue(any((pack / NIGHT_FOLDER).iterdir()))
         set_night(pack, False, log=self.said.append)
         self.assertFalse(
@@ -862,6 +900,7 @@ class ReviewTest(unittest.TestCase):
         )
         self.assertFalse((pack / ROADS_FOLDER / "a-1.npz").exists())
         self.assertFalse((pack / NIGHT_NEUTRAL).exists())
+        self.assertFalse(copy.exists())
 
     def test_a_start_removes_the_night_s_half_written_files(self):
         from orthostudio.live.nightwork import ROADS_FOLDER
@@ -893,8 +932,9 @@ class RoadsReadTest(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def test_a_process_reads_each_dsf_once_worked_or_not(self):
-        """A DSF that cannot be read was read again for each texture of a job: minutes."""
+    def test_a_dsf_that_cannot_be_read_is_read_once_a_job(self):
+        """Read again for each texture of a job: minutes. Kept for the flight's one process, a
+        passing failure left the square dark for the flight (the review of 2026-11-11)."""
         from pathlib import Path
         from unittest import mock
 
@@ -912,7 +952,12 @@ class RoadsReadTest(unittest.TestCase):
             for _ in range(3):
                 with self.assertRaises(OSError):
                     nightwork.roads_from([Path("+43+007.dsf")], self.root)
-        self.assertEqual(len(reads), 1)
+            self.assertEqual(len(reads), 1)
+            self.assertIsNone(nightwork._ROADS["+43+007.dsf"].__traceback__)  # not its memory
+            nightwork.night_batch([])  # the job ended
+            with self.assertRaises(OSError):
+                nightwork.roads_from([Path("+43+007.dsf")], self.root)
+        self.assertEqual(len(reads), 2)
 
     def test_a_damaged_roads_file_is_read_again(self):
         from orthostudio.live.nightwork import _load_roads
@@ -961,6 +1006,64 @@ class NightDiskTest(unittest.TestCase):
             self.assertEqual(both, night_bytes(level - max(0, top)))
         self.assertLess(night_bytes(0), texture_bytes(0) * 0.07)  # about 6 % of a 4096 px level
         self.assertEqual(texture_bytes(9, 0, night=True), 0)  # neutral: nothing
+
+    def test_one_count_worked_out_in_one_place_ready_with_its_nights(self):
+        """Live's window said ready, or nothing, while X-Plane waited for 8,700 night textures,
+        and its count stood still once X-Plane was let go (the review of 2026-11-11)."""
+        from types import SimpleNamespace
+
+        from orthostudio.live.streamer import COUNT_EVERY_S, Arrival, start_count
+
+        night = SimpleNamespace(night=True, left=8700, when=None)
+        night.tick = lambda at, when, built: setattr(night, "when", when)
+        night.start_left = lambda day_left: night.left
+        s = SimpleNamespace(
+            night=night,
+            urgent_work=lambda: (0, 0),
+            urgent_building=lambda: 0,
+            built_copy=lambda: {},
+        )
+        a = Arrival(46.24, 6.11, "LSGG", "plugin", 0.0, held_time=(171, 15.5))
+        self.assertEqual(start_count(s, a, 100.0)["left"], 8700)  # its photos built: not ready
+        self.assertEqual(night.when, (171, 15.5))  # the start's time, as the plugin read it
+        night.left = 0
+        self.assertEqual(start_count(s, a, 100.5)["left"], 8700)  # the window: once a second
+        self.assertEqual(start_count(s, a, 100.5, fresh=True)["left"], 0)  # the plugin: as it is
+        night.left = 3
+        self.assertEqual(start_count(s, a, 100.5 + COUNT_EVERY_S)["left"], 3)
+
+    def test_the_roads_share_never_more_than_they_keep(self):
+        """A fixed share of a 200 GB space set 10 GB aside for 1 GB of roads (the review of
+        2026-11-11)."""
+        from types import SimpleNamespace
+
+        from orthostudio.live.nightwork import ROADS_KEPT_MB
+        from orthostudio.live.streamer import ROADS_SHARE, Streamer
+
+        for space in (20 * 10**9, 200 * 10**9):
+            s = SimpleNamespace(disk_budget=space, cache_budget=0, _cache_size=0)
+            s.night = SimpleNamespace(roads_cap=0)
+            textures = Streamer.texture_budget(s)
+            cap = min(int(space * ROADS_SHARE), ROADS_KEPT_MB * 10**6)
+            self.assertEqual((s.night.roads_cap, textures), (cap, space - cap))
+
+    def test_a_texture_set_to_a_new_size_has_its_night_follow(self):
+        """Left as it was, counted from the old file's top, X-Plane read a hole there, black,
+        until the next night (the review of 2026-11-11)."""
+        from types import SimpleNamespace
+
+        from orthostudio.live.streamer import Streamer
+
+        said = []
+        night = SimpleNamespace(back_to_black=lambda name: said.append(("black", name)))
+        night.built = lambda name, level: said.append(("built", name, level))
+        s = SimpleNamespace(built={"a.dds": 0}, night=night, log=print)
+        s._night_follows = lambda name, level: Streamer._night_follows(s, name, level)
+        Streamer._refit(s, "a.dds", 1)
+        self.assertEqual(s.built, {"a.dds": 1})
+        self.assertEqual(said, [("black", "a.dds"), ("built", "a.dds", 1)])
+        Streamer._refit(s, "neutral.dds", 1)  # not built: nothing of its own
+        self.assertEqual(len(said), 2)
 
     def test_a_start_s_count_is_what_every_display_shows(self):
         """Live's window said 0 textures to build at 100 % while the plugin counted the night

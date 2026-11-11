@@ -602,8 +602,12 @@ X-Plane's day of the year and UTC time (`sim/time/local_date_days`, `sim/time/zu
 its other datarefs) and the aircraft's longitude; at a start, the time X-Plane saved with it
 (`_time` of `Freeflight.prf`), its local time, its zone's, which may be up to two hours ahead of
 the sun's (summer time; Nice's is Central Europe's: its towns lit at 17:50 local on 10 November),
-so night at any of those hours (`START_UNSURE_H`), the start's own time deciding until X-Plane
-flies there (the time X-Plane sends meanwhile is the flight before's). The sun's height alone
+so night at any of those hours (`START_UNSURE_H`), until the plugin gives X-Plane's own UTC time
+as it loads the flight (`utc=` in its HOLD, `Gate.held_utc`, `Arrival.held_time`), which decides
+there: with the doubt alone, a start at Geneva at 17:30 in June waited for its night textures in
+daylight (the review of 2026-11-11). The caller of `NightWork.tick` gives the time that is right:
+in flight X-Plane's own, at a start the plugin's or none, never the one X-Plane sends meanwhile,
+the flight before's. The sun's height alone
 (below 20°) made a winter's day in Europe night all day long, a start by day waiting for night
 textures (the review of 2026-11-11). From then each
 texture built gets its night texture (`NightWork.built`), and those built before get theirs at
@@ -611,9 +615,10 @@ once, the nearest first: X-Plane never reads again a level it took, and in the f
 Live, the night textures made after X-Plane had loaded their area, the textures X-Plane did not
 come closer to stayed black (2026-11-10). A night texture is made from the same level down,
 counted from the top of the texture's file as X-Plane counts it (`NightWork.want`: the night of a
-2048 px file was a hole where X-Plane read it, the review of 2026-11-11), at a quarter of its
-side: a 4096 px day texture a 1024 px night one, a 256 px one far away a 64 px one (its larger
-levels a hole, which reads black). X-Plane fades the night textures in by itself (at Nice on 11
+2048 px file was a hole where X-Plane read it, the review of 2026-11-11): 1024 px for a file's
+sharpest level whatever its size, halved at each level below, a quarter of the day texture's side
+in a 4096 px file (a 256 px one far away a 64 px one), half in a 2048 px one; its larger levels a
+hole, which reads black. X-Plane fades the night textures in by itself (at Nice on 11
 November: nothing at 17:25, partly lit at 17:50, full at 18:15).
 
 **One rule, in one place** (`NightWork.pump`, at each turn of the streamer's loop, X-Plane running
@@ -634,7 +639,13 @@ pool, a new one made at the next turn, the textures given again; past five in a 
 night for the flight (`LOST_MAX`), never Live stopped. A texture is never given while it is being
 made (two at once wrote its file in either order, a coarse one last left it black); one that
 fails is given again once, then left for the flight, the first five failures said in the log
-(`TRIES`); one made neutral while it was made is made black again once made. The night's
+(`TRIES`); one made neutral or coarser while it was made is not counted made, and is put back as
+its day file once made, then made again from its new level if it is wanted (counted at the level
+it was given, a 1024 px night stayed over a 256 px texture, the review of 2026-11-11). Put back as
+its day file means read from the disk then (`NightWork._black`): black where the day file is,
+which X-Plane may read, gone where it is not; told beforehand, a square made meanwhile was left
+naming a night deleted. Filling the jobs stops once each is full and no room is left (28,800
+textures wanted at nightfall went through the lock to the end each time). The night's
 processes run at the encoders' lower priority, forked as they are (`pools.context`). Made in
 each texture's own build job instead, as tried on 2026-11-10, the night took each of Live's
 encoders (twelve on the user's Mac) 155 MB more (27 MB at rest, 182 MB once it had made one) and
@@ -673,8 +684,9 @@ the pack once read (`_live/roads/`, `nightwork.roads_file`, 4.8 MB a square roun
 dropped past Live's share for them), one process reading a square while the others wait for its
 file, 30 s at most from the lock's own time (`_lock_square`: one left by a process that died is
 not waited for); only a read that worked is kept on the disk (a passing failure, the memory
-short, was kept as a square without roads, dark for good), and a process reads each DSF once,
-worked or not (its other textures fail at once, then are given again). The team's processes read the DSFs themselves, as they
+short, was kept as a square without roads, dark for good), and a DSF that could not be read is
+read again at the next job, its job's other textures failing at once (kept for the process's
+life, the flight's one process left the square dark for the flight). The team's processes read the DSFs themselves, as they
 end with the start; the one process in flight reads each in a Python of its own. Replayed on an
 LSGG-like cold start (8,535 night textures over 62 squares, the photos built over 21 s while
 X-Plane starts, X-Plane asking at 24 s): every night texture made by then, against 79 s of wait
@@ -682,23 +694,34 @@ in the user's flight of 2026-11-11. The steps: one process, 13 minutes; a team o
 were built, 64 s; the roads and lamps laid out at once rather than a road at a time, 38 s; the
 roads in files, 27 s; the team from the first texture, 7 s; the near ones to it too, 0 s.
 
-**The disk.** Each texture built counts its night texture with it, made from the same level
-(`evict.texture_bytes`, `night=`): about 6 % of a 4096 px day level, 17 % of a 256 px one. A
-texture made coarser has its night made black, then again from its new level when it is night
-(`Streamer._night_follows`; kept sharp, a night texture took fifteen times its day one); one made
-neutral (the disk budget, a season changed: `Streamer._neutral`) has it black again, or gone with
-it; a night texture without a light (the sea, a forest) is the black name, not 684 KB of zeros. The
-roads kept for them take 5 % of Live's disk space at most (`streamer.ROADS_SHARE`), the night's loop
-dropping the oldest once a minute (`nightwork.prune_roads`). Counted as their levels are, as the
+**The disk.** Live stays within its disk space: each texture built counts its night texture with
+it, made from the same level (`evict.texture_bytes`, `night=`): 6.3 % of a texture in a 4096 px
+file (14 % far away, 256 px), a quarter in a 2048 px file, 1.6 % at 8192 px. A texture made
+coarser, or set to a new zoom's size as its square is made (`Streamer._refit`), has its night made
+black, then again from its new level when it is night (`Streamer._night_follows`; kept sharp, a
+night texture took fifteen times its day one; left at its old size, X-Plane read a hole, black,
+until the next night); one made neutral (the disk budget, a season changed: `Streamer._neutral`)
+has it black again, or gone with it; a night texture without a light (the sea, a forest) is the
+black name, not 684 KB of zeros. The roads kept for them take 5 % of Live's disk space, 1 GB at
+most (`streamer.ROADS_SHARE`, `nightwork.ROADS_KEPT_MB`: a fixed share of a 200 GB space set
+10 GB aside for 1 GB of roads), the night's loop dropping the oldest once a minute
+(`nightwork.prune_roads`): about a tenth of the 20 GB Live takes by default. Counted as their levels are, as the
 photos are: on NTFS a sparse file's data takes 64 KB blocks, 113 KB a night texture on the user's
 Shadow (4,892 of them, 555 MB, 2026-11-11). The night textures of every texture built are made
 again at each start of Live as night comes. Turned off ("No"), the night textures, their black one
-and the roads go (`region._drop_night`), and the night is made only when the pack's terrain files
-name it (`region.night_on`: turned on while X-Plane ran, they do from the next start). Deleting
+and its copies and the roads go (`region._drop_night`), and the night is made only when the
+pack's terrain files name it (`region.night_on`: turned on while X-Plane ran, they do from the
+next start); the terrain files follow the pack's record, not the settings (turned off while
+X-Plane ran, then on again, the squares flown meanwhile were made with no night line for good). Deleting
 the textures deletes the roads too; a start removes the half-written files of their folders and
-the locks a process that died left (`region.remove_temps`). A start's count (`Arrival.count`),
-night textures with the day ones, is what the plugin, the pause window and Live's window show:
-the window said 0 textures to build at 100 % while the plugin counted the night ones.
+the locks a process that died left (`region.remove_temps`). A start's count, night textures with
+the day ones, is worked out in one place (`streamer.start_count`), X-Plane held or not: as it is
+for the plugin and the pause window, as it was at most a second before for Live's window
+(`COUNT_EVERY_S`, 7 ms to count 8,000 textures); the start is ready, for all of them, when none
+is left. The window said 0 textures to build at 100 % while the plugin counted the night ones,
+then ready, or nothing, while X-Plane waited for them, and its count stood still once X-Plane was
+let go (the reviews of 2026-11-11). Its three minutes for the night textures run once its photos
+are built whether X-Plane is held or not ("Prepare my departure"), the team then ending too.
 
 **Far textures drawn small.** A night texture is drawn at four times its own side
 (`nightwork.FAR_DRAW`, 128 px at least) and made smaller, not at 1024 px: a 64 px one far away
@@ -1071,8 +1094,9 @@ A plugin that does not return from one of these messages holds the whole load.
     port), it removes Live's links `z_osxp_live` and `y_osxp_live_overlays` from Custom Scenery,
     never a folder, before X-Plane lists its scenery (see "The pack");
   - at PLANE_LOADED it sends the streamer `LIVE1 LOAD lat lon`;
-  - at the radio's FMOD_BANK_LOADED and at LIVERY_LOADED it sends `LIVE1 HOLD lat lon` every 250 ms
-    over UDP (127.0.0.1:49250), and returns only on `LIVE1 GO`.
+  - at the radio's FMOD_BANK_LOADED and at LIVERY_LOADED it sends `LIVE1 HOLD lat lon aircraft
+    day=N utc=S` every 250 ms over UDP (127.0.0.1:49250), the flight's date and UTC time as X-Plane
+    loads it (its season; whether it is night there), and returns only on `LIVE1 GO`.
 
   If nothing listens, it returns at once; if the streamer stops answering for 5 s, or goes away
   (its port closes), it returns too. There is no time limit otherwise: the five minutes it once

@@ -1471,6 +1471,38 @@ def test_the_night_grids_of_a_region_installed_before_them_come_by_themselves(
     wait_for(lambda: c.regions()["install"]["phase"] == "cancelled")
 
 
+def test_the_night_grids_never_come_back_into_a_region_being_deleted(
+    home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The list read while a region was deleted: its grids' own download wrote half of it back,
+    listed as installed (the review of 2026-11-11). The deletion holds the installs' one place."""
+    import dataclasses
+
+    from orthostudio.live import aoregions, osxpregions
+    from orthostudio.live.osxpregions import Zip
+    from orthostudio.live.pack import live_root
+
+    c = regions_control(tmp_path / "X-Plane 12")
+    grids = Zip("eur/night-zips/night_eur.zip", 2, "d" * 64, 5)
+    catalog = c._catalog_of(None)
+    catalog["eur"] = dataclasses.replace(catalog["eur"], night=(grids,))
+    mine = osxpregions.mesh_dir(live_root(), "eur")
+    mine.mkdir(parents=True)
+    (mine / aoregions.MARKER).write_text(json.dumps({"size": 17, "zips": {}}))
+    removing = osxpregions.remove
+
+    def remove(*args, **kwargs):
+        c._fetch_night_grids(catalog)  # the list read meanwhile
+        return removing(*args, **kwargs)
+
+    monkeypatch.setattr(osxpregions, "remove", remove)
+    c.remove_region("eur")
+    assert c._night_thread is None and not mine.exists()
+    assert c._install_thread is None  # its place given back
+    c._fetch_night_grids(catalog)  # read again: nothing installed, nothing fetched
+    assert c._night_thread is None
+
+
 def test_without_overlays_a_region_downloads_its_mesh_alone(home: Path, tmp_path: Path) -> None:
     c = regions_control(tmp_path / "X-Plane 12", overlays="off")
     c.regions(fetch=True)

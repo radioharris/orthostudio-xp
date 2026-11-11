@@ -62,7 +62,7 @@ from .look import DEFAULT_LOOKS, Look
 from .mapdata import route_points, shown
 from .meshmap import REGION_NAMES, REGION_NAMES_FR, region_of
 from .names import KEEP, RING, Entry, Names, RegionTextures, SquareTextures, squares_round
-from .nightwork import NightWork
+from .nightwork import ROADS_KEPT_MB, NightWork
 from .pack import MARKER, load_built
 from .region import (
     NEUTRAL_LEVEL,
@@ -70,6 +70,7 @@ from .region import (
     Zooms,
     ensure_neutral,
     neutral_file,
+    night_on,
     region_version,
     sources_of_pack,
 )
@@ -173,9 +174,10 @@ BETWEEN_S = 5.0  # how often the stream looks at what may change between two fli
 # loads scenery (yielding), since a round of 500 files rewritten met a hitch of 387 ms (2026-09-28)
 EVICT_BATCH = 50
 ROADS_SHARE = 0.05
-"""Live's disk space the roads kept for the night take at most, when it is on
-(orthostudio.live.nightwork: the night's loop keeps them to it); the night textures are counted
-with their day ones (evict.texture_bytes)."""
+"""Live's disk space the roads kept for the night take at most, when it is on, and never more than
+orthostudio.live.nightwork.ROADS_KEPT_MB (the night's loop keeps them to it): a fixed share of a
+200 GB space set 10 GB aside for 1 GB of roads (the review of 2026-11-11). The night textures are
+counted with their day ones (evict.texture_bytes)."""
 # textures built in another season (stale): their files made neutral again a few at a time, at
 # most this long every STALE_EVERY_S, those X-Plane may read built again first by the planner
 STALE_EVERY_S = 1.0
@@ -565,7 +567,10 @@ class Streamer:
                 level_of=self.built.get,
                 refit=self._refit,
                 decal=decal,
-                night=night is not None,
+                # as the pack's .ter files say, not as the settings: turned off while X-Plane ran,
+                # then on again, squares flown meanwhile stayed without night for good (the review
+                # of 2026-11-11)
+                night=night_on(pack_dir),
             )
             self.names.yielding = self.yielding
         self.night = night  # the night textures of the textures built (orthostudio.live.nightwork)
@@ -638,13 +643,13 @@ class Streamer:
         return done
 
     def _night_follows(self, name: str, level: int) -> None:
-        """A texture made coarser: its night too, black then made again from that level when it is
-        night, as it is counted (evict.texture_bytes): kept sharp, it took fifteen times its day
-        texture (the review of 2026-11-11)."""
+        """A texture made coarser, or set to a new zoom's size: its night too, black then made
+        again from that level when it is night, as it is counted (evict.texture_bytes): kept
+        sharp, it took fifteen times its day texture (the review of 2026-11-11)."""
         if self.night is None:
             return
         try:
-            self.night.back_to_black(name, True)
+            self.night.back_to_black(name)
         except OSError as e:
             self.log(f"  the night texture of {name} stays as it was: {e}")
         self.night.built(name, level)
@@ -662,7 +667,7 @@ class Streamer:
             path.unlink(missing_ok=True)
         if self.night is not None:
             try:
-                self.night.back_to_black(name, held)
+                self.night.back_to_black(name)
             except OSError as e:
                 self.log(f"  the night texture of {name} stays as it was: {e}")
 
@@ -675,9 +680,12 @@ class Streamer:
 
     def _refit(self, name: str, level: int) -> None:
         """Under ``self.lock``: a texture set to a new zoom's size as its square was made
-        (orthostudio.live.names), the level its new file keeps."""
+        (orthostudio.live.names), the level its new file keeps; its night follows, counted from
+        the new file's top: left as it was, X-Plane read a hole there, black, until the next night
+        (the review of 2026-11-11)."""
         if name in self.built:
             self.built[name] = level
+            self._night_follows(name, level)
 
     def _fitting(self, name: str) -> bool:
         """Whether a texture is being set to a new zoom's size: not written meanwhile."""
@@ -1668,7 +1676,7 @@ class Streamer:
         budget = self.disk_budget + max(0, self.cache_budget - self._cache_size)
         if self.night is None:
             return budget
-        self.night.roads_cap = int(budget * ROADS_SHARE)
+        self.night.roads_cap = min(int(budget * ROADS_SHARE), ROADS_KEPT_MB * 10**6)
         return budget - self.night.roads_cap
 
     def evict(self) -> int:
@@ -1885,8 +1893,11 @@ class Arrival:
     elsewhere_since: float | None = None  # X-Plane running somewhere else since then
     work: int = 0  # the most image pieces seen to build for it: the progress bar's whole
     night_work: int = 0  # the most night textures seen to make for it, its day's built
-    # what is left, as the plugin, the pause window and Live's window all show it (:meth:`count`)
+    # what is left, as the plugin, the pause window and Live's window all show it (start_count)
     shown: dict | None = None
+    counted: float = 0.0  # when it was worked out
+    # the flight's day of the year from 0 and UTC hours, as the plugin read them in X-Plane
+    held_time: tuple[float, float] | None = None
     loading: bool = (
         True  # X-Plane went through a load since: its position stopped, or the plugin spoke
     )
@@ -1909,9 +1920,8 @@ class Arrival:
         return DAY_SHARE + (1.0 - DAY_SHARE) * (1.0 - night_left / self.night_work)
 
     def count(self, left: int, building: int, night_left: int, done: float) -> dict:
-        """What a start waits for, once a turn: its textures and its night ones, those all of
-        whose photos are in, its progress; read by every display, Live's window said 0 textures
-        to build at 100 % while the plugin counted the night ones (the review of 2026-11-11)."""
+        """What a start waits for: its textures and its night ones, those all of whose photos are
+        in, its progress (:func:`start_count`)."""
         self.shown = {
             "left": left + night_left,
             "building": building + night_left,
@@ -1938,6 +1948,30 @@ def longest_frame(said: str) -> int | None:
             with contextlib.suppress(ValueError):
                 return int(word[4:])
     return None
+
+
+COUNT_EVERY_S = 1.0
+"""A start's count kept this long for Live's window (8,000 textures: 7 ms to count)."""
+
+
+def start_count(streamer: Streamer, arrival: Arrival, now: float, fresh: bool = False) -> dict:
+    """What a start waits for, worked out in this one place: the textures X-Plane may show there
+    and, at night, the night ones round it, those all of whose photos are in, its progress. The
+    plugin and the pause window show it as it is (``fresh``), Live's window as it was at most
+    :data:`COUNT_EVERY_S` before, X-Plane held or not; the start is ready when none is left.
+    Live's window said ready, or nothing, while X-Plane waited for 8,700 night textures, and its
+    count stood still once X-Plane was let go (the review of 2026-11-11)."""
+    if not fresh and arrival.shown is not None and now - arrival.counted < COUNT_EVERY_S:
+        return arrival.shown
+    arrival.counted = now
+    left, work = streamer.urgent_work()
+    done = arrival.progress(work)
+    night_left = 0
+    if streamer.night is not None:
+        streamer.night.tick((arrival.lat, arrival.lon), arrival.held_time, streamer.built_copy)
+        night_left = streamer.night.start_left(left)
+        done = arrival.with_night(done, left, night_left, streamer.night.night)
+    return arrival.count(left, streamer.urgent_building(), night_left, done)
 
 
 def may_have_read_early(arrival: Arrival, xplane_started: float | None) -> bool:
@@ -2031,20 +2065,11 @@ def progress_report(
         }
     start = None
     if arrival is not None:
-        shown = arrival.shown
-        if shown is None:  # not held yet: the photos alone
-            left, work = streamer.urgent_work()
-            shown = {
-                "left": left,
-                "building": streamer.urgent_building(),  # of them, all their photos in
-                "night": 0,
-                "progress": arrival.progress(work),
-            }
         start = {
             "name": arrival.name,
             "held": arrival.held and not arrival.released,  # X-Plane waits on its loading screen
             "ready": arrival.ready_at is not None,
-            **shown,
+            **start_count(streamer, arrival, now),
             "seconds": now - arrival.since,
         }
     fresh = now - last_packet < FRESH_S
@@ -2248,36 +2273,35 @@ def run(
                     arrival.loading = True
                     if kind == "HOLD":
                         streamer.hold_at(lat, lon)
-                        left, work = streamer.urgent_work()
-                        done = arrival.progress(work)
+                        if gate.held_day is not None and gate.held_utc is not None:
+                            if arrival.held_time is None:
+                                utc = int(gate.held_utc) // 60
+                                log(
+                                    f"  X-Plane loads the flight at {utc // 60:02d}:{utc % 60:02d} "
+                                    f"UTC, day {gate.held_day} of the year"
+                                )
+                            arrival.held_time = (gate.held_day - 1, gate.held_utc / 3600.0)
                         took = now - arrival.since
                         arrival.held = True
+                        # one count for the plugin, the pause window and Live's window: the night
+                        # textures with the day ones, those all of whose photos are in apart (the
+                        # plugin said 0 textures to build, 0.0 MB/s, 25 s while the night ones
+                        # were made, LSGG 2026-11-10; 0.0 MB/s once every photo was in, read as
+                        # stuck, the user's Shadow, 2026-10-11)
+                        shown = start_count(streamer, arrival, now, fresh=True)
+                        night_left = shown["night"]
+                        left, building = shown["left"] - night_left, shown["building"] - night_left
+                        done = shown["progress"]
                         # no time limit: X-Plane waits while pieces arrive, however long a start
                         # takes, and goes on only once nothing has arrived for a minute
                         stalled = left > 0 and streamer.stalled_s() > STALL_S
                         # and the files of its squares made (orthostudio.live.names), where the
                         # start was chosen and where X-Plane says it loads it
-                        night_left = 0
-                        if streamer.night is not None:  # its towns' lights too, at night
-                            streamer.night.tick(
-                                (arrival.lat, arrival.lon), None, streamer.built_copy
-                            )
-                            night_left = streamer.night.start_left(left)
-                            done = arrival.with_night(done, left, night_left, streamer.night.night)
                         ready = (
-                            left == 0
-                            and night_left == 0
+                            shown["left"] == 0
                             and streamer.squares_ready(arrival.lat, arrival.lon)
                             and streamer.squares_ready(lat, lon)
                         )
-                        # apart: those waiting for their photos, those being built (one count of
-                        # both, at 0.0 MB/s once every photo was in, read as stuck: the user's
-                        # Shadow, 2026-10-11)
-                        building = streamer.urgent_building()
-                        # one count for the plugin, the pause window and Live's window: the night
-                        # textures with the day ones, all their photos in (the plugin said 0
-                        # textures to build, 0.0 MB/s, 25 s while they were made, LSGG 2026-11-10)
-                        shown = arrival.count(left, building, night_left, done)
                         gate.answer(
                             addr,
                             ready or stalled,
@@ -2332,22 +2356,13 @@ def run(
                 if pause_window is None:
                     pause_window = PauseWindow(xplane["pid"] or xplane_pid())
                 if arrival is not None and arrival.how == "click" and key and key in arrival.name:
-                    left, work = streamer.urgent_work()
-                    done = arrival.progress(work)
                     arrival.held = arrival.loading = True
-                    building = streamer.urgent_building()
+                    shown = start_count(streamer, arrival, now, fresh=True)
+                    night_left = shown["night"]
+                    left, building = shown["left"] - night_left, shown["building"] - night_left
+                    done = shown["progress"]
                     stalled = left > 0 and streamer.stalled_s() > STALL_S
-                    night_left = 0
-                    if streamer.night is not None:
-                        streamer.night.tick((arrival.lat, arrival.lon), None, streamer.built_copy)
-                        night_left = streamer.night.start_left(left)
-                        done = arrival.with_night(done, left, night_left, streamer.night.night)
-                    ready = (
-                        left == 0
-                        and night_left == 0
-                        and streamer.squares_ready(arrival.lat, arrival.lon)
-                    )
-                    shown = arrival.count(left, building, night_left, done)
+                    ready = shown["left"] == 0 and streamer.squares_ready(arrival.lat, arrival.lon)
                     pause_window.show(
                         *lines(
                             place_in(arrival.name, lang),
@@ -2395,6 +2410,7 @@ def run(
                 arrival is not None
                 and arrival.ready_at is None
                 and streamer.urgent_left() == 0
+                and start_count(streamer, arrival, now)["left"] == 0  # its night textures too
                 and streamer.squares_ready(arrival.lat, arrival.lon)
             ):
                 arrival.ready_at = now
@@ -2441,10 +2457,9 @@ def run(
                     motion_from_positions(*(before or (None, 0.0)), fix, now)
                     before = (fix, now)
                 running = fix is not None and now - last_packet < FRESH_S
-                if streamer.night is not None and running:
-                    streamer.night.tick(
-                        (fix.lat, fix.lon), xplane_time(values), streamer.built_copy
-                    )
+                if streamer.night is not None and running:  # a start's time is its own
+                    when = xplane_time(values) if arrival is None else None
+                    streamer.night.tick((fix.lat, fix.lon), when, streamer.built_copy)
                 if arrival is not None and not running:
                     arrival.loading = True  # X-Plane stopped sending its position: it is loading
                 if arrival is None:

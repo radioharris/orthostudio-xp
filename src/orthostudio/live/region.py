@@ -684,8 +684,10 @@ def _drop_night(pack_dir: Path, log: Callable[[str], None]) -> None:
 
     gone = _remove_tree(pack_dir / NIGHT_FOLDER, log, "night textures")
     gone += _remove_tree(pack_dir / ROADS_FOLDER, log, "roads kept for the night")
-    with contextlib.suppress(OSError):
-        (pack_dir / NIGHT_NEUTRAL).unlink()
+    neutral = pack_dir / NIGHT_NEUTRAL
+    for black in neutral.parent.glob(f"{neutral.stem}*{neutral.suffix}"):  # its copies too (NTFS)
+        with contextlib.suppress(OSError):
+            black.unlink()
     if gone:
         log(f"night lights off: {gone} night files deleted")
 

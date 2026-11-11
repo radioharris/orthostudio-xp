@@ -109,8 +109,10 @@ def night_at(day: float, solar: float, lat: float, unsure_h: float = 0.0) -> boo
 START_UNSURE_H = 2.0
 """X-Plane saves a start's local time, its zone's, up to two hours ahead of the sun's in summer
 time (Central Europe's: Nice's towns lit at 17:50 local on 10 November): night at a start is night
-at any of those hours. Taken for the zone of its longitude alone, a start at dawn in Europe was
-day (the review of 2026-11-11)."""
+at any of those hours, until the plugin gives X-Plane's UTC time as it loads the flight
+(:meth:`NightWork.tick`). Taken for the zone of its longitude alone, a start at dawn in Europe was
+day; with this doubt alone, a start at Geneva at 17:30 in June waited for its night textures in
+daylight (the reviews of 2026-11-11)."""
 
 
 def _solar_at_start(prefs: Path) -> tuple[float, float, float] | None:
@@ -187,8 +189,8 @@ def roads_from(paths: Iterable[Path], pack: Path | None = None, apart: bool = Tr
                 _ROADS.pop(next(iter(_ROADS)))
             try:
                 _ROADS[key] = _roads_of(Path(path), pack, apart)
-            except Exception as e:  # read once, worked or not: its other textures fail at once
-                _ROADS[key] = e
+            except Exception as e:  # its job's other textures fail at once (night_batch)
+                _ROADS[key] = e.with_traceback(None)  # not the read's memory with it
         roads = _ROADS[key]
         if isinstance(roads, Exception):
             raise roads
@@ -390,6 +392,10 @@ def night_batch(jobs: list[tuple]) -> list[tuple]:
             out.append((name, f"{type(e).__name__}: {e}"))
         else:
             out.append((name, time.monotonic() - t))
+    # a square whose roads could not be read is read again at its next job: kept for the flight's
+    # process, a passing failure left the square dark for the flight (the review of 2026-11-11)
+    for key in [k for k, roads in _ROADS.items() if isinstance(roads, Exception)]:
+        del _ROADS[key]
     return out
 
 
@@ -431,7 +437,7 @@ class NightWork:
         self.wanted: dict[str, int] = {}  # name: the level its night is wanted from
         self.running: dict[str, int] = {}
         self.made: dict[str, int] = {}
-        self.gone: dict[str, bool] = {}  # made neutral while being made: its name kept or not
+        self.changed: set[str] = set()  # made neutral or coarser while its night was being made
         self.tries: dict[str, int] = {}
         self.failed = 0
         self.seconds = 0.0
@@ -444,7 +450,7 @@ class NightWork:
         self._ended: list[tuple] = []  # (future, its names and levels, its pool): pump reads them
         self._lost: list[float] = []
         self._pumped = 0.0
-        self.roads_cap = ROADS_KEPT_MB * 1_000_000  # the streamer's share for them (ROADS_SHARE)
+        self.roads_cap = ROADS_KEPT_MB * 10**6  # the streamer's share for them (ROADS_SHARE)
         self._pruned = 0.0
         self._at: tuple[float, float] | None = None  # where the aircraft is
         self._centres: dict[str, tuple[float, float] | None] = {}
@@ -465,9 +471,10 @@ class NightWork:
         file was a hole, black, where X-Plane reads it (the review of 2026-11-11)."""
         level = max(0, level - max(0, self.top_of(name)))
         with self.lock:
-            self.gone.pop(name, None)  # built again since it went neutral: its night stands
-            if self.made.get(name, 99) <= level or self.running.get(name, 99) <= level:
+            if self.made.get(name, 99) <= level:
                 return
+            if name not in self.changed and self.running.get(name, 99) <= level:
+                return  # the one being made does
             self.wanted[name] = min(level, self.wanted.get(name, 99))
 
     def built(self, name: str, level: int) -> None:
@@ -481,13 +488,15 @@ class NightWork:
         when: tuple[float, float] | None,
         built: Callable[[], dict[str, int]],
     ) -> None:
-        """Where the aircraft is, and X-Plane's day of the year and UTC hours (``when``): when night
-        comes, every texture built is wanted (the nearest first)."""
+        """Where the aircraft is, or the start, and X-Plane's day of the year and UTC hours there
+        (``when``, None when not known): when night comes, every texture built is wanted (the
+        nearest first). The caller gives the time that is right: in flight X-Plane's own; at a
+        start the one the plugin read in X-Plane as it loads it (orthostudio.live.gate), never
+        the one X-Plane sends meanwhile, the flight before's (it took a start at night chosen in
+        flight for day)."""
         if at is not None:
             self._at = at
-        # a start's own time decides until X-Plane flies there: the time X-Plane sends meanwhile
-        # is the flight before's, and took a start at night chosen in flight for day
-        if when is None or self._at is None or self.start_at is not None:
+        if when is None or self._at is None:
             return
         solar = (when[1] + self._at[1] / 15.0) % 24.0  # UTC to the aircraft's solar time
         self._set_night(night_at(when[0], solar, self._at[0]), built, "in X-Plane")
@@ -538,22 +547,23 @@ class NightWork:
         if now - self._waited_since > NIGHT_WAIT_S:
             self.gave_up = True
             self.log(
-                f"  X-Plane goes on: {left} night textures round the start not made in "
+                f"  the start waits no more for its night textures: {left} not made in "
                 f"{NIGHT_WAIT_S:.0f} s, made in flight"
             )
             return 0
         return left
 
-    def back_to_black(self, name: str, keep_name: bool) -> None:
-        """``name`` made neutral: its night texture black again (``keep_name``: its square is
-        made, X-Plane may read it), or gone with it; made again if night comes. One being made is
-        made black again once made (:meth:`pump`)."""
+    def back_to_black(self, name: str) -> None:
+        """``name`` made neutral or coarser: its night as its day file (:meth:`_black`), made again
+        if it is wanted. One being made meanwhile is not counted made, and is put back so once
+        made (:meth:`pump`): counted at the level it was given, a night 1024 px wide stayed over a
+        texture made 256 px (the review of 2026-11-11)."""
         with self.lock:
             self.made.pop(name, None)
             self.wanted.pop(name, None)
             if name in self.running:
-                self.gone[name] = keep_name
-        self._black(name, keep_name)
+                self.changed.add(name)
+        self._black(name)
 
     # --- the one rule ------------------------------------------------------------------------
 
@@ -571,7 +581,7 @@ class NightWork:
         self._collect()
         if now - self._pruned > 60.0:  # the roads kept within their share
             self._pruned = now
-            prune_roads(self.pack_dir / ROADS_FOLDER, min(self.roads_cap, ROADS_KEPT_MB * 10**6))
+            prune_roads(self.pack_dir / ROADS_FOLDER, self.roads_cap)
         size = 0
         if self.night and not self.broken and not self.closed:
             starting = self.start_at is not None and not self.gave_up
@@ -594,37 +604,33 @@ class NightWork:
     def _collect(self) -> None:
         with self.lock:
             ended, self._ended = self._ended, []
-        black: list[tuple[str, bool]] = []
+        black: list[str] = []
         for fut, batch, pool in ended:
             try:
                 results = fut.result()
             except BaseException as e:  # its pool lost or closed: the textures given again
-                with self.lock:
-                    self._ended_job(pool)
-                    for name, level in batch:
-                        self.running.pop(name, None)
-                        if name in self.gone:
-                            black.append((name, self.gone.pop(name)))
-                        else:
-                            self.wanted[name] = min(level, self.wanted.get(name, 99))
+                results = None
                 if not self.closed:
                     self._lost_one(pool, e)
-                continue
             with self.lock:
                 self._ended_job(pool)
-                for (name, level), (_, said) in zip(batch, results, strict=True):
+                for i, (name, level) in enumerate(batch):
                     self.running.pop(name, None)
-                    if name in self.gone:  # neutral meanwhile: black again
-                        black.append((name, self.gone.pop(name)))
+                    said = None if results is None else results[i][1]
+                    if name in self.changed:  # neutral or coarser meanwhile: as its day file
+                        self.changed.discard(name)
+                        black.append(name)
+                    elif said is None:
+                        self.wanted[name] = min(level, self.wanted.get(name, 99))
                     elif isinstance(said, str):
                         self._failed(name, level, said)
                     else:
                         self.made[name] = min(level, self.made.get(name, 99))
                         self.tries.pop(name, None)
                         self.seconds += said
-        for name, keep_name in black:
+        for name in black:
             with contextlib.suppress(OSError):  # black again at its next eviction
-                self._black(name, keep_name)
+                self._black(name)
 
     def _ended_job(self, pool: Any) -> None:
         """One job of ``pool`` less, ``self.lock`` held: a pool no longer used forgotten with its
@@ -675,7 +681,10 @@ class NightWork:
         with self.lock:
             order: list[list[tuple[str, int]]] = []
             filling: dict[tuple[int, int] | None, tuple[list[tuple[str, int]], list[float]]] = {}
+            open_jobs = 0  # jobs that may take more: none, and no room, the rest waits
             for name in names:
+                if len(order) >= room and not open_jobs:
+                    break  # 28,800 wanted at nightfall went through the lock to the end each time
                 level = self.wanted.get(name)
                 if level is None or name in self.running:  # made neutral meanwhile
                     continue
@@ -688,8 +697,11 @@ class NightWork:
                     job, work = [], [0.0]
                     order.append(job)
                     filling[square] = (job, work)
+                    open_jobs += 1
                 job.append((name, level))
                 work[0] += _work(level)
+                if work[0] >= JOB_WORK:
+                    open_jobs -= 1
             for batch in order:
                 for name, level in batch:
                     del self.wanted[name]
@@ -736,14 +748,17 @@ class NightWork:
             (math.floor(centre[0]), math.floor(centre[1])) in self._window
         )
 
-    def _black(self, name: str, keep_name: bool) -> None:
+    def _black(self, name: str) -> None:
+        """``name``'s night as its day file, read from the disk when it is put back: black where
+        the day file is (X-Plane may read it), gone with it. Told beforehand, a square made
+        meanwhile was left naming a night deleted (the review of 2026-11-11)."""
         from .names import NightPool, night_name
         from .region import NIGHT_FOLDER
 
         path = self.pack_dir / NIGHT_FOLDER / night_name(name)
         if not path.exists():
             return
-        if keep_name:
+        if (self.pack_dir / "textures" / name).exists():
             if self._pool_names is None:
                 self._pool_names = NightPool(self.pack_dir)
             self._pool_names.replace(0, path)

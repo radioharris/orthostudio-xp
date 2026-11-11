@@ -385,7 +385,7 @@ class StreamerTest(unittest.TestCase):
             def bytes(self):
                 return 0
 
-            def back_to_black(self, name, held):
+            def back_to_black(self, name):
                 raise PermissionError("X-Plane holds it open")
 
         s.names, s.night = Names(), Night()
@@ -410,8 +410,8 @@ class StreamerTest(unittest.TestCase):
         class Night:
             roads_cap = 0
 
-            def back_to_black(self, name, held):
-                told.append(("black", name, held))
+            def back_to_black(self, name):
+                told.append(("black", name))
 
             def built(self, name, level):
                 told.append(("built", name, level))
@@ -420,7 +420,7 @@ class StreamerTest(unittest.TestCase):
         with mock.patch.object(streamer_module, "pick", return_value=[(name, 4)]):
             s.evict()
         self.assertEqual(s.built, {name: 4})
-        self.assertEqual(told, [("black", name, True), ("built", name, 4)])
+        self.assertEqual(told, [("black", name), ("built", name, 4)])
 
     def test_evicts_far_textures_down_to_the_budget(self):
         for n in NAMES:

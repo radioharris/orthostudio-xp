@@ -220,6 +220,16 @@ class GateTest(unittest.TestCase):
                     ],
                 )
                 self.assertEqual(gate.held_day, 288)  # 15 October: X-Plane counts from 0
+                self.assertIsNone(gate.held_utc)  # an older plugin: the date alone
+                # a newer one gives the flight's UTC time too: whether it is night at the start
+                p.send(b"LIVE1 HOLD 43.438210 5.212888 aircraft day=171 utc=55800")
+                time.sleep(0.1)
+                self.assertEqual([k for k, *_ in gate.requests()], ["HOLD"])
+                self.assertEqual((gate.held_day, gate.held_utc), (172, 55800.0))
+                p.send(b"LIVE1 HOLD 43.438210 5.212888 aircraft day=171 utc=-1")  # no dataref
+                time.sleep(0.1)
+                gate.requests()
+                self.assertEqual((gate.held_day, gate.held_utc), (172, None))
                 gate.answer(got[1][3], False, 12, "LFML runway 13L", 0.4567, 23.4, 15.18)
                 self.assertEqual(
                     p.recv(100),
@@ -433,8 +443,10 @@ class PluginTest(unittest.TestCase):
             let_go(sock)
         heard = [h for h in heard if h != "LIVE1 HELLO"]  # the plugin's start: is Live there?
         self.assertEqual(heard[0], "LIVE1 LOAD 43.438200 5.212900")  # PLANE_LOADED tells where
-        # the stand-in X-Plane's date: day 0
-        self.assertTrue(all(h == "LIVE1 HOLD 43.438200 5.212900 aircraft day=0" for h in heard[1:]))
+        # the stand-in X-Plane's date and UTC time: day 0, at 0 s
+        self.assertTrue(
+            all(h == "LIVE1 HOLD 43.438200 5.212900 aircraft day=0 utc=0" for h in heard[1:])
+        )
         self.assertGreater(took["112:1"], 0.6)  # three waits of 0.25 s before the go
         self.assertLess(took["112:1"], 3.0)
         for other in (
@@ -823,6 +835,7 @@ class PrebuiltTest(unittest.TestCase):
                 "XPLMEnableFeature",
                 "XPLMFindDataRef",
                 "XPLMGetDatad",
+                "XPLMGetDataf",
                 "XPLMGetDatai",
                 "XPLMGetSystemPath",
                 "XPLMRegisterFlightLoopCallback",

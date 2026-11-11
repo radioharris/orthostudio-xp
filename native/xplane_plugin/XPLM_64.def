@@ -9,6 +9,7 @@ EXPORTS
     XPLMFindDataRef
     XPLMGetDatad
     XPLMGetDatai
+    XPLMGetDataf
     XPLMGetSystemPath
     XPLMRegisterFlightLoopCallback
     XPLMUnregisterFlightLoopCallback

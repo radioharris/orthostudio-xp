@@ -7,12 +7,16 @@ OrthoStudio XP Live's X-Plane plugin (``native/xplane_plugin/live_gate.c``, put 
 X-Plane reads the scenery. It sends one line per datagram over UDP on 127.0.0.1:GATE_PORT:
 
 - ``LIVE1 LOAD lat lon``: a flight is loading there (PLANE_LOADED); no answer is expected.
-- ``LIVE1 HOLD lat lon why day=N``: X-Plane waits for the answer. ``why`` is ``aircraft``: the
+- ``LIVE1 HOLD lat lon why day=N utc=S``: X-Plane waits for the answer. ``why`` is ``aircraft``: the
   aircraft's sounds or livery, which a livery changed in flight also sends (a new location chosen
   in flight loads no aircraft: Live pauses X-Plane itself there, ``orthostudio.live.pause``).
   ``day`` is the flight's date, its day of the year from 0 (``sim/time/local_date_days``), kept
   as :attr:`Gate.held_day` for the photos' season: a flight started otherwise than by a click on
   Start Flight (X-Plane's web API, a situation) saves no date in Freeflight.prf (2026-10-13).
+  ``utc`` is its UTC time in seconds (``sim/time/zulu_time_sec``), kept as
+  :attr:`Gate.held_utc`: whether it is night at the start (orthostudio.live.nightwork), where
+  Freeflight.prf saves only the local time of a zone Live does not know. An older plugin sends
+  ``day`` alone.
   The gate sends ``LIVE1 GO n`` once every texture X-Plane will read there is built. Otherwise
   it sends, for instance,
   ``LIVE1 WAIT n=12 p=450 s=23 mbs=15.2 lang=en at=LFMN runway 04R``:
@@ -210,6 +214,7 @@ class Gate:
         no_port_unreachable(self.sock)  # Windows: an answer to a plugin gone with X-Plane
         self._mtime = self._prefs_mtime()
         self.held_day: int | None = None  # the date of the flight the plugin last held, from 1
+        self.held_utc: float | None = None  # ... and its UTC time, in seconds (a newer plugin)
         self._lock = threading.Lock()  # the socket's reads, the loop's or the stand-in's
         self._inbox: list[Request] = []  # read for the loop while it was busy
         self._polled = time.monotonic()  # the loop's last read of the plugin's lines
@@ -267,11 +272,16 @@ class Gate:
             parts = data.decode("ascii", "replace").split()
             if parts[:2] == ["LIVE1", "ASK"]:  # its frames of the second after: "max=123 n=45"
                 out.append(("ASK", 0.0, 0.0, addr, " ".join(parts[2:])))
-            elif len(parts) in (4, 5, 6) and parts[0] == "LIVE1" and parts[1] in ("LOAD", "HOLD"):
-                if len(parts) == 6 and parts[5].startswith("day="):  # the flight's date
+            elif 4 <= len(parts) <= 7 and parts[0] == "LIVE1" and parts[1] in ("LOAD", "HOLD"):
+                words = dict(w.split("=", 1) for w in parts[5:] if "=" in w)
+                if "day" in words:  # the flight's date, and its UTC time from a newer plugin
+                    self.held_day = self.held_utc = None
                     with contextlib.suppress(ValueError):
-                        day = int(parts[5][4:])
+                        day = int(words["day"])
                         self.held_day = day + 1 if 0 <= day <= 365 else None
+                    with contextlib.suppress(ValueError):
+                        utc = float(words.get("utc", ""))
+                        self.held_utc = utc if 0.0 <= utc <= 86400.0 else None
                     parts = parts[:5]
                 with contextlib.suppress(ValueError):
                     out.append(

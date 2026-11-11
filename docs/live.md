@@ -275,11 +275,14 @@ night.
 - A start at night waits for the night textures X-Plane reads round the airport, as it waits for
   its photos, three minutes at most once the photos are built: a team of processes makes them
   while the photos are built, then ends (at LSGG, 8,685 night textures in about a minute, 2 GB
-  more meanwhile).
+  more meanwhile). Whether it is night there is known exactly once X-Plane loads the flight:
+  before, Live takes the time X-Plane saved with the start, its time zone's, and counts it night
+  if it may be.
 - Far away they are made small first, as the photos are, so a town shows from far: the coast of
   Nice from 40 and 80 km.
-- They count in Live's disk space with their photos, about a twentieth of them (54 MB on Nice's
-  square), and X-Plane's roads kept for them take 5 % of it at most. With the same night textures on a tile of Nice, flown three times each way at
+- Live stays within its disk space: the night textures take a part of it, about a sixteenth of
+  what their photos take (54 MB on Nice's square), and X-Plane's roads kept for them 5 % of it,
+  1 GB at most; about a tenth of the 20 GB Live takes by default. With the same night textures on a tile of Nice, flown three times each way at
   2704 x 1756 on an M4 Pro, frame times did not change beyond their spread from one flight to the
   next.
 

@@ -91,6 +91,7 @@ typedef float (*XPLMFlightLoop_f)(float inElapsedSinceLastCall, float inElapsedT
 extern XPLMDataRef XPLMFindDataRef(const char *inDataRefName);
 extern double XPLMGetDatad(XPLMDataRef inDataRef);
 extern int XPLMGetDatai(XPLMDataRef inDataRef);
+extern float XPLMGetDataf(XPLMDataRef inDataRef);
 extern void XPLMDebugString(const char *inString);
 extern void XPLMRegisterFlightLoopCallback(XPLMFlightLoop_f inFlightLoop, float inInterval, void *inRefcon);
 extern void XPLMUnregisterFlightLoopCallback(XPLMFlightLoop_f inFlightLoop, void *inRefcon);
@@ -163,6 +164,7 @@ static int holding = 0; /* hold() runs: on Windows X-Plane's window may be hande
 static int flights = 0; /* flights whose aircraft has loaded */
 static XPLMDataRef lat_ref, lon_ref;
 static XPLMDataRef day_ref; /* the flight's date: its day of the year, from 0 */
+static XPLMDataRef utc_ref; /* ... and its UTC time, in seconds */
 static int noted = 0, closed_note = 0; /* the notice shown (its id), and the last one closed */
 static int french = 0; /* the Live window's language, which each answer says: its words in X-Plane */
 static char note[160]; /* its words */
@@ -387,9 +389,10 @@ static void hold(const char *at) {
     double lat, lon, start, answered = 0, t;
     int told = 0, r;
     if (sock == NO_SOCKET || !position(&lat, &lon)) return;
-    /* the date too: the streamer gives the photos its season (a start's, never in flight) */
-    snprintf(line, sizeof line, "LIVE1 HOLD %.6f %.6f aircraft day=%d", lat, lon,
-             day_ref ? XPLMGetDatai(day_ref) : -1);
+    /* the date too: the streamer gives the photos its season (a start's, never in flight), and
+       the UTC time, whether it is night there (the local time X-Plane saves is its zone's) */
+    snprintf(line, sizeof line, "LIVE1 HOLD %.6f %.6f aircraft day=%d utc=%.0f", lat, lon,
+             day_ref ? XPLMGetDatai(day_ref) : -1, utc_ref ? XPLMGetDataf(utc_ref) : -1.0);
     snprintf(st.where, sizeof st.where, "%.3f %.3f", lat, lon);
     start = now();
     holding = 1;
@@ -558,6 +561,7 @@ PLUGIN_API int XPluginStart(char *outName, char *outSig, char *outDesc) {
     lat_ref = XPLMFindDataRef("sim/flightmodel/position/latitude");
     lon_ref = XPLMFindDataRef("sim/flightmodel/position/longitude");
     day_ref = XPLMFindDataRef("sim/time/local_date_days");
+    utc_ref = XPLMFindDataRef("sim/time/zulu_time_sec");
 #ifdef _WIN32
     {
         WSADATA wsa;
