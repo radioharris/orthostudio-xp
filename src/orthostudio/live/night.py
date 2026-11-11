@@ -28,9 +28,12 @@ What this module paints, for one texture, as the prototype on the user's Nice ti
 
 Everything is drawn at the same metres a pixel at every zoom (a ZL18 texture's lights drawn at a
 quarter of its side and enlarged): drawn at the texture's own pixels, the airport's sharper zone
-came out twice darker than the town round it. The smaller levels are a power mean of the level
-above (:data:`POWER`), not the plain mean, so a few lamps in the dark keep showing from far: at
-80 km the coast was 20 % brighter for it.
+came out twice darker than the town round it. The smaller levels are the average of four pixels
+of the level above in linear light, as the day textures' (:data:`POWER`, ``imaging.GAMMA``), so
+that a texture shows the same light from far and near: a power mean of 3 made each smaller level
+30 % brighter, and the user saw the tiles dim one after another as the aircraft came closer; the
+plain mean of the stored values made them darker, and the tiles grew brighter coming closer (Los
+Angeles, 2026-11-12).
 """
 
 from __future__ import annotations
@@ -45,6 +48,7 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 from .filesystem import replace as replace_file
+from .imaging import GAMMA
 
 __all__ = [
     "LIT_SIDE",
@@ -107,7 +111,7 @@ what the lights drawn are multiplied by. "normal", the one of the first night te
 liked them, and wanted a choice for those who find them too bright or too faint (2026-11-11)."""
 
 GAIN = LIGHTS["normal"]
-POWER = 3.0
+POWER = GAMMA  # the smaller levels averaged in linear light, as the day textures' (imaging)
 
 FLOOR = 6
 """Light fainter than this (out of 255, its brightest channel) is written black, at every level:
@@ -297,8 +301,8 @@ class Density:
 
 
 def lights_at(lights: np.ndarray, level: int, power: float = POWER) -> np.ndarray:
-    """``lights`` (float, drawn at the night texture's full side) reduced ``level`` times by the
-    power mean, as :func:`lit_levels` reduces a texture: a night texture far away is the sharp one
+    """``lights`` (float, drawn at the night texture's full side) reduced ``level`` times in linear
+    light, as :func:`lit_levels` reduces a texture: a night texture far away is the sharp one
     made smaller, never one drawn small, whose lamps kept their pixels where a pixel covers 16 or
     256 times the ground, and came out up to four times too bright (the user's Live flight,
     2026-11-10: blown-out blocks far off, put out coming closer)."""
@@ -637,8 +641,8 @@ def warm_bc1(blocks: bytes) -> bytes:
 
 def lit_levels(rgb: np.ndarray, power: float = POWER) -> list[np.ndarray]:
     """``rgb`` (square, power-of-two side, uint8) and its smaller levels down to 1 x 1, each the
-    power mean of four pixels of the one above: brighter than their plain mean where a few lamps
-    stand in the dark, which is what keeps a town visible from far."""
+    average of four pixels of the one above in linear light (the power mean of :data:`POWER`):
+    every level as bright on the screen as the top, as the day textures' (``imaging.mip_chain``)."""
     side = rgb.shape[0]
     if rgb.ndim != 3 or rgb.shape[1] != side or side & (side - 1):
         raise ValueError(f"lit_levels needs a square power-of-two RGB image, got {rgb.shape}")

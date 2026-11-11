@@ -94,13 +94,19 @@ class LevelsTest(unittest.TestCase):
         self.assertEqual(int(rgb[1, 1].max()), 0)
         self.assertEqual(int(rgb[2:, 2:].max()), 0)
 
-    def test_smaller_levels_keep_a_lamp_brighter_than_the_mean(self):
+    def test_smaller_levels_keep_the_light_the_screen_shows(self):
+        """Each smaller level as bright on the screen as the top, as the day textures': a power
+        mean of 3 made each 30 % brighter, the tiles dimming one after another as the aircraft came
+        closer; the plain mean of the stored values made them darker (Los Angeles, 2026-11-12)."""
+        from orthostudio.live.imaging import GAMMA
+
         rgb = np.zeros((64, 64, 3), np.uint8)
-        rgb[10, 10] = 255
+        rgb[::4, ::4] = 200  # a lamp in every 4 x 4 pixels
         levels = night.lit_levels(rgb)
         self.assertEqual([lv.shape[0] for lv in levels], [64, 32, 16, 8, 4, 2, 1])
-        plain = 255 / 4
-        self.assertGreater(int(levels[1][5, 5, 0]), plain)  # 255 / 4^(1/3), about 161
+        shown = [float(((lv / 255.0) ** GAMMA).mean()) for lv in levels]
+        for light in shown[1:]:
+            self.assertAlmostEqual(light / shown[0], 1.0, delta=0.03)
 
 
 if __name__ == "__main__":

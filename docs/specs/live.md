@@ -573,10 +573,13 @@ out of BC1 as a checkerboard of purple, brown and green blocks, values of 4 to 1
 format cannot hold in their colour (BC1 holds red and blue in steps of 8; the user's LSGG,
 2026-11-10). It is drawn at the same metres a pixel at every zoom, a ZL18 texture's at a quarter of
 its side and enlarged: drawn at its own pixels, the airport's sharper zone came out twice darker
-than the town round it. Its smaller levels are each the power mean (p = 3) of four pixels of the
-level above, not their plain mean: the town stays visible from far (the coast of Nice at 80 km
-20 % brighter than with the plain mean; at 120 km barely visible either way). `FLOOR` holds at
-every level (the power mean of a faint glow gave 4 out of 255 there). BC1 itself still tinted
+than the town round it. Its smaller levels are each the average of four pixels of the level above
+in linear light, as the day textures' (`night.POWER` is `imaging.GAMMA`, 2.2): a texture shows the
+same light from far and near. A power mean of 3 made each smaller level 30 % brighter (a town of
+Los Angeles 19.4 at 1024 px, 25.4 at 512, 33.2 at 256, 42.7 at 128), and the user saw the tiles
+dim one after another as the aircraft came closer; the plain mean of the stored values, tried,
+made the far levels darker on the screen, and the tiles grew brighter coming closer (2026-11-12).
+`FLOOR` holds at every level (the average of a faint glow gave 4 out of 255 there). BC1 itself still tinted
 the dim edges of the glows: green kept in 6 bits, red and blue in 5, 2 % of a town's lit pixels
 came out up to 8/255 greener than red (the review of 2026-11-11). Every light drawn being orange
 or white, each block's two colours have their green and blue brought down to their red
@@ -778,7 +781,7 @@ are built whether X-Plane is held or not ("Prepare my departure"), the team then
 **Far textures drawn small.** A night texture is drawn at four times its own side
 (`nightwork.FAR_DRAW`, 128 px at least) and made smaller, not at 1024 px: a 64 px one far away
 at 256. Drawn k times coarser than a ZL16 texture at 1024 px, a lamp is a pixel, its light
-(4/k²)^(1/3) of its level, which keeps its power mean, and (4/k²)^(2/3) of it in the glow, which
+(4/k²)^(1/2.2) of its level, which keeps its light on the screen, and (4/k²)^(1-1/2.2) of it in the glow, which
 keeps the glow's light; a street and the windows' band keep the width they had at 1024 px
 (`night._width_k`). Against the same textures drawn at 1024 px, round Geneva, Nice, LSGG and in
 the country: 0.89 to 1.02 of the light, 0.83 to 1.00 seen from far, in 37 to 75 ms against 99 to
