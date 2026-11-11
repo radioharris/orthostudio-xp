@@ -36,8 +36,10 @@ above (:data:`POWER`), not the plain mean, so a few lamps in the dark keep showi
 from __future__ import annotations
 
 import math
+import os
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
+from pathlib import Path
 
 import numpy as np
 from PIL import Image, ImageDraw
@@ -188,6 +190,23 @@ class Roads:
             self.lon[lo:hi].astype(np.float64) + self.west,
             self.lat[lo:hi].astype(np.float64) + self.south,
         )
+
+    def save(self, path: Path) -> None:
+        """Written to ``path``, whole or not at all: an ``.npz`` that :meth:`load` reads."""
+        tmp = path.with_name(f".{path.stem}.{os.getpid()}.tmp")
+        with open(tmp, "wb") as f:
+            origin = np.array([self.west, self.south])
+            np.savez(f, lon=self.lon, lat=self.lat, start=self.start, kind=self.kind,
+                     rural=self.rural, box=self.box, origin=origin)  # fmt: skip
+        os.replace(tmp, path)
+
+    @staticmethod
+    def load(path: Path) -> Roads:
+        with np.load(path) as z:
+            west, south = (float(v) for v in z["origin"])
+            return Roads(
+                z["lon"], z["lat"], z["start"], z["kind"], z["rural"], z["box"], west, south
+            )
 
     def near(self, s: float, w: float, n: float, e: float) -> np.ndarray:
         """The indices of the roads whose bounds meet the box."""

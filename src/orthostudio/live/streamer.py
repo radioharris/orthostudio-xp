@@ -2130,6 +2130,8 @@ def run(
                 last_between = now
                 between()
             mbs = rate.mbs(now, getattr(streamer.downloader, "bytes", 0))
+            if streamer.night is not None:  # its night textures, X-Plane running or not yet
+                streamer.night.pump()
             # X-Plane flying, no start pending: the encoders leave it its cores (submit_ready)
             streamer.flying = "lat" in values and now - last_packet < FRESH_S and arrival is None
             if (

@@ -626,10 +626,20 @@ at the plugin's HOLD and in Live's pause window, counted with the day ones in it
 day ones are built, for 180 s at most (`NIGHT_WAIT_S`). Then a team of processes, as many as
 Live's encoders and 8 at most (`TEAM_MAX`), makes the far ones, a square to a job, the largest
 first, each reading a square's roads once (`NightWork._team_up`, `night_batch`), while the night's
-own process makes the near ones; the team is closed once its jobs are done, and its memory with
-it. Replayed on LSGG's start (8,685 night textures over 44 squares): 64 s with 8, 2 GB at most
-for the team, against 13 minutes with one process, the far ones X-Plane read before them black
-until it came closer (the user, 2026-11-11); split into smaller jobs, no faster and 2.3 GB.
+own process. The team starts with the first texture built at a start at night, while its photos
+are still built and X-Plane starts (`NightWork.pump`, at each turn of the streamer's loop, X-Plane
+running or not), takes the near ones first, four to a job, then the far ones a square to a job,
+and is closed once the start's nights are made, its memory with it. Each square's roads are kept
+in the pack once read (`_live/roads/`, `nightwork.roads_file`, 4.8 MB a square round LSGG, 1.5 GB
+at most, the oldest dropped), one process reading a square while the others wait for its file
+(`_lock_square`); the team's processes read them themselves, not in a Python of their own, as
+they end with the start. Replayed on an LSGG-like cold start (8,535 night textures over 62
+squares, the photos built over 21 s while X-Plane starts, X-Plane asking at 24 s): every night
+texture made by then, against 79 s of wait in the user's flight of 2026-11-11 (the encoders not
+running beside it in the replay: a flight's wait to be measured). The steps: one process, 13
+minutes; a team once the photos were built, 64 s; the roads and lamps laid out at once rather
+than a road at a time, 38 s; the roads in files, 27 s; the team from the first texture, 7 s; the
+near ones to it too, 0 s.
 
 **Far textures drawn small.** A night texture is drawn at four times its own side
 (`nightwork.FAR_DRAW`, 128 px at least) and made smaller, not at 1024 px: a 64 px one far away

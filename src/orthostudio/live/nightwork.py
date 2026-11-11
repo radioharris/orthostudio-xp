@@ -25,8 +25,10 @@ grid of the square (``<region>/night/<square>.png``, installed with the region).
 
 from __future__ import annotations
 
+import contextlib
 import heapq
 import math
+import os
 import threading
 import time
 from collections.abc import Callable, Iterable
@@ -82,6 +84,8 @@ NIGHT_WAIT_S = 180.0
 """How long a start waits for its night textures once its day ones are built, at most: a night
 process stuck never holds X-Plane on its loading screen, and what is left is made in flight
 (X-Plane reads it as it comes closer, no sooner)."""
+
+NEAR_BATCH = 4
 
 TEAM_MAX = 8
 """At a start at night, a team of this many processes at most (and no more than Live's encoders)
@@ -148,20 +152,125 @@ def density_of(path: Path, lat: int, lon: int):
     return Density(grid, lon - MARGIN_DEG, lat + 1 + MARGIN_DEG, GRID_STEP_DEG)
 
 
-def roads_from(paths: Iterable[Path]):
-    """X-Plane's roads of the DSFs given, a :class:`orthostudio.live.night.Roads` each, read once
-    (:func:`_read_apart`) and the last few kept (:data:`_ROADS_KEPT`): a texture's squares are four
-    at most, and the textures are given nearest the aircraft first."""
+ROADS_FOLDER = Path("_live") / "roads"
+"""Each square's roads, kept in the pack once read from its DSF (:func:`roads_file`): read, the
+62 squares round LSGG took 64 s, a second each, and the start's team read a square again for
+each of its neighbours; from their files, a few milliseconds (2026-11-11)."""
+
+ROADS_LOCK_S = 30.0
+"""How long a process waits for another reading the same square, at most (a DSF takes about a
+second, Marseille's two)."""
+
+ROADS_KEPT_MB = 1500
+"""The roads' files kept at most, the oldest dropped: 4.8 MB a square on average round LSGG."""
+
+
+def roads_file(pack: Path, dsf: Path) -> Path:
+    """Where the roads of ``dsf`` are kept in the pack: named after the DSF, its size and its
+    time, so a Global Scenery updated is read again. Raises ``OSError`` for a DSF gone."""
+    import hashlib
+
+    st = os.stat(dsf)
+    key = hashlib.sha1(f"{Path(dsf).resolve()}|{st.st_size}|{st.st_mtime_ns}".encode()).hexdigest()
+    return pack / ROADS_FOLDER / f"{Path(dsf).stem}-{key[:12]}.npz"
+
+
+def roads_from(paths: Iterable[Path], pack: Path | None = None):
+    """X-Plane's roads of the DSFs given, a :class:`orthostudio.live.night.Roads` each: from their
+    file in ``pack`` (:func:`roads_file`), else read (:func:`_read_apart`) and their file written;
+    the last few kept in memory (:data:`_ROADS_KEPT`): a texture's squares are four at most, and
+    the textures are given nearest the aircraft first."""
     parts = []
     for path in paths:
         key = str(path)
         if key not in _ROADS:
             if len(_ROADS) >= _ROADS_KEPT:
                 _ROADS.pop(next(iter(_ROADS)))
-            _ROADS[key] = _read_apart(Path(path)) if _READ_APART else read_roads(key)
+            _ROADS[key] = _roads_of(Path(path), pack)
         if len(_ROADS[key]):
             parts.append(_ROADS[key])
     return parts
+
+
+def _roads_of(dsf: Path, pack: Path | None):
+    from .night import Roads
+
+    if pack is None:
+        return _read_apart(dsf) if _READ_APART else read_roads(str(dsf))
+    try:
+        file = roads_file(pack, dsf)
+    except OSError:  # the DSF gone: no lights from it
+        return Roads.empty()
+    roads = _load_roads(file)
+    if roads is not None:
+        return roads
+    # one process reads a square, the others wait for its file: at a start the team's processes
+    # read the same squares at once, the first start at LSGG 30 s long for it (2026-11-11)
+    file.parent.mkdir(parents=True, exist_ok=True)
+    lock = _lock_square(file)
+    try:
+        roads = _load_roads(file)  # written while we waited
+        if roads is not None:
+            return roads
+        roads = _read_apart(dsf) if _READ_APART else read_roads(str(dsf))
+        try:
+            roads.save(file)
+            _prune_roads(file.parent)
+        except OSError:  # the disk full: read again next time
+            pass
+        return roads
+    finally:
+        if lock is not None:
+            with contextlib.suppress(OSError):
+                os.unlink(lock)
+
+
+def _load_roads(file: Path):
+    from .night import Roads
+
+    if not file.is_file():
+        return None
+    try:
+        roads = Roads.load(file)
+    except (OSError, ValueError, KeyError):  # damaged: read again
+        return None
+    with contextlib.suppress(OSError):
+        os.utime(file)  # used: kept the longest
+    return roads
+
+
+def _lock_square(file: Path) -> Path | None:
+    """The square's lock (a file made only if none is there), waited for while another process
+    reads it, until its roads' file is there; None when it could not be had (a lock left by a
+    process that died, past :data:`ROADS_LOCK_S`): the square read all the same."""
+    lock = file.with_suffix(".lock")
+    deadline = time.monotonic() + ROADS_LOCK_S
+    while True:
+        try:
+            os.close(os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY))
+            return lock
+        except FileExistsError:
+            if file.is_file() or time.monotonic() > deadline:
+                return None
+            time.sleep(0.05)
+        except OSError:
+            return None
+
+
+def _prune_roads(folder: Path) -> None:
+    """The oldest roads' files dropped past :data:`ROADS_KEPT_MB`."""
+    files = []
+    for entry in os.scandir(folder):
+        if entry.name.endswith(".npz"):
+            st = entry.stat()
+            files.append((st.st_mtime, st.st_size, entry.path))
+    total = sum(size for _, size, _ in files)
+    for _, size, path in sorted(files):
+        if total <= ROADS_KEPT_MB * 1_000_000:
+            break
+        with contextlib.suppress(OSError):
+            os.unlink(path)
+        total -= size
 
 
 def _read_apart(path: Path):
@@ -215,7 +324,7 @@ def make_night(pack: Path, name: str, level: int, dsfs, grid: str | None) -> Non
     if grid is not None:
         lat, lon = (int(v) for v in Path(grid).stem.replace("+", " +").replace("-", " -").split())
         density = density_of(Path(grid), lat, lon)
-    roads = roads_from(Path(d) for d in dsfs)
+    roads = roads_from((Path(d) for d in dsfs), pack)
     # a far texture drawn at four times its side, not at 1024 px (FAR_DRAW)
     side = max(FAR_DRAW_MIN, LIT_SIDE >> max(0, level - FAR_DRAW))
     lights = draw(roads, density, tex.x, tex.y, tex.zoom, side, seed=seed_of(tex.x, tex.y))
@@ -306,7 +415,10 @@ class NightWork:
         self._start_set: set[str] | None = None  # the nights a start waits for, its day built
         self.team = 0  # the start's team: Live's encoders (the streamer sets it), TEAM_MAX at most
         self._team_pool: Any = None
-        self._team_jobs = 0  # its squares not done yet
+        self._team_jobs = 0  # its jobs not done yet
+        self._team_size = 0
+        self._starting = False  # a start at night waits for its nights
+        self._pumped = 0.0
         self._make_team: Callable[[int], Any] = _team_pool
 
     @property
@@ -353,6 +465,7 @@ class NightWork:
         self.start_at = (lat, lon)
         self._waited_since, self.gave_up = None, False
         self._start_set = None
+        self._starting = True
         sun = sun_at_start(self.prefs) if self.prefs is not None else None
         if sun is not None:
             was = self.night
@@ -381,12 +494,9 @@ class NightWork:
             else:
                 if self._start_set is None:  # what X-Plane reads there, built: the start's nights
                     self._start_set = set(self.waiting) | set(self.in_flight)
-                    team = self.team > 1 and self._team_pool is None
-                else:
-                    team = False
                 left = sum(1 for n in self._start_set if n in self.waiting or n in self.in_flight)
-        if day_left == 0 and left and team:
-            self._team_up()
+        if day_left == 0 and left == 0:
+            self._start_done()
         if left == 0 or day_left > 0:
             self._waited_since = None
             return left
@@ -395,6 +505,7 @@ class NightWork:
             self._waited_since = now
         if now - self._waited_since > NIGHT_WAIT_S:
             self.gave_up = True
+            self._start_done()
             self.log(
                 f"  X-Plane goes on: {left} night textures round the start not made in "
                 f"{NIGHT_WAIT_S:.0f} s, made in flight"
@@ -402,39 +513,74 @@ class NightWork:
             return 0
         return left
 
-    def _team_up(self) -> None:
-        """The far night textures waiting, a square to a job, given to a team of processes, the
-        largest squares first: each reads its squares' roads once. The near ones and those wanted
-        after stay with the night's own process. LSGG's 8,685 in 64 s with 8, 2 GB at most for
-        the team (one process: 13 minutes; split in smaller jobs: no faster, 2.3 GB)."""
+    def pump(self) -> None:
+        """At each turn of the streamer's loop, X-Plane running or not yet: the night's own
+        process given its next textures, and at a start at night the team its far ones, from the
+        first texture built rather than once its photos all are: at LSGG X-Plane took 20 s to
+        start, and the nights waited for its photos (2026-11-11)."""
+        now = time.monotonic()
+        if not self.night or now - self._pumped < 0.5:
+            return
+        self._pumped = now
+        if self._starting and self.team > 1:  # the team first: the far ones are its
+            self._team_give()
+        self._give(self._at or self.start_at)
+
+    def _team_give(self) -> None:
+        """The start's night textures waiting (all those wanted while its photos are built),
+        given to a team of processes: the near ones first, a few to a job, then the far ones a
+        square to a job, the largest squares first, each reading a square's roads from its file
+        (:func:`roads_file`). Those wanted after the start stay with the night's own process.
+        An LSGG-like cold start replayed, its photos built over 21 s while X-Plane starts: its
+        8,535 night textures made by the time X-Plane asks, at 24 s (the encoders not running
+        beside; 2026-11-11)."""
         with self.lock:
+            if self.closed:
+                return
+            limit = self._start_set
+            near: list[str] = []
             squares: dict[tuple[int, int], list[str]] = {}
-            start = self._start_set or set()
             for name, level in self.waiting.items():
-                if name not in start:  # built after: made in flight, X-Plane does not wait for it
+                if limit is not None and name not in limit:
                     continue
                 centre = self._centre(name)
-                if level > NEAR_LEVEL and centre is not None:
-                    squares.setdefault((math.floor(centre[0]), math.floor(centre[1])), []).append(
-                        name
-                    )
-            if not squares:
+                if level <= NEAR_LEVEL:
+                    near.append(name)
+                elif centre is not None:
+                    key = (math.floor(centre[0]), math.floor(centre[1]))
+                    squares.setdefault(key, []).append(name)
+            if not near and not squares:
                 return
-            batches = sorted(squares.values(), key=len, reverse=True)
+            # the near ones first, a few to a job so that the whole team makes them: alone, the
+            # night's process kept X-Plane 7 s longer on them (LSGG-like start, 2026-11-11)
+            near.sort(key=lambda n: self._distance(n, self.start_at))
+            batches = [near[i : i + NEAR_BATCH] for i in range(0, len(near), NEAR_BATCH)]
+            batches += sorted(squares.values(), key=len, reverse=True)
             for names in batches:
                 for name in names:
                     self.in_flight[name] = self.waiting.pop(name)
-            size = min(self.team, TEAM_MAX, len(batches))
-            self._team_pool = self._make_team(size)
-            self._team_jobs = len(batches)
+            fresh = self._team_pool is None
+            if fresh:
+                self._team_size = min(self.team, TEAM_MAX)
+                self._team_pool = self._make_team(self._team_size)
+            self._team_jobs += len(batches)
+            pool = self._team_pool
             jobs = [[self._job(n, self.in_flight[n]) for n in names] for names in batches]
-        self.log(
-            f"  a team of {size} processes makes the night of {sum(map(len, jobs))} textures "
-            f"over {len(squares)} squares"
-        )
+        if fresh:
+            self.log(f"  a team of {self._team_size} processes makes the start's night textures")
         for batch in jobs:
-            fut = self._team_pool.submit(night_batch, batch)
+            fut = pool.submit(night_batch, batch)
             fut.add_done_callback(lambda f, b=batch: self._batch_done(f, b))
+
+    def _start_done(self) -> None:
+        """The start's nights made, or waited for long enough: the team ends with its jobs."""
+        with self.lock:
+            self._starting = False
+            pool = self._team_pool if self._team_jobs <= 0 else None
+            if pool is not None:
+                self._team_pool = None
+        if pool is not None:
+            pool.shutdown(wait=False)
 
     def _batch_done(self, fut: Future, batch: list[tuple]) -> None:
         with self.lock:
@@ -451,7 +597,7 @@ class NightWork:
                     self.made[name] = min(level, self.made.get(name, 99))
                     self.seconds += seconds
             self._team_jobs -= 1
-            pool = self._team_pool if self._team_jobs <= 0 else None
+            pool = self._team_pool if self._team_jobs <= 0 and not self._starting else None
             if pool is not None:
                 self._team_pool = None
         if pool is not None:  # its processes end, and their memory with them
