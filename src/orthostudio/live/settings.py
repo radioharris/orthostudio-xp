@@ -137,8 +137,8 @@ class LiveSettings(BaseModel):
     night: bool = True
     """The towns' lights at night on Live's squares (:mod:`orthostudio.live.night`): a night
     texture beside each land texture, made from two hours before sunset in X-Plane to sunrise,
-    a tenth of Live's disk space kept for it; off: none, the land's ``.ter`` files naming none. On
-    by default: by day it costs nothing (the user, 2026-11-10)."""
+    counted in Live's disk space with its day one; off: none, the land's ``.ter`` files naming
+    none. On by default: by day it costs nothing (the user, 2026-11-10)."""
     night_light: Literal["soft", "normal", "strong"] = "normal"
     """How bright those lights are (:data:`orthostudio.live.night.LIGHTS`), the window's one
     question with ``night``: at the next start, each night texture made again as night comes."""

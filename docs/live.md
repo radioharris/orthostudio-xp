@@ -270,16 +270,16 @@ night.
   until sunrise, each texture Live builds gets its night texture, the sharp ones near the
   aircraft first, so that X-Plane does not find a texture without its night; X-Plane fades them
   in by itself at dusk (at Nice on 11 November: nothing at 17:25, lit at 17:50, full at 18:15).
-- In flight they are made by one process of its own, at a lower priority than the photos.
+- In flight they are made by one process of its own, at the priority of the processes that build
+  the photos.
 - A start at night waits for the night textures X-Plane reads round the airport, as it waits for
   its photos, three minutes at most once the photos are built: a team of processes makes them
   while the photos are built, then ends (at LSGG, 8,685 night textures in about a minute, 2 GB
   more meanwhile).
 - Far away they are made small first, as the photos are, so a town shows from far: the coast of
   Nice from 40 and 80 km.
-- A tenth of Live's disk space is kept for the night: its textures take about a twentieth of the
-  photos' (54 MB on Nice's square), and X-Plane's roads are kept for them (1 GB at most). With the
-  same night textures on a tile of Nice, flown three times each way at
+- They count in Live's disk space with their photos, about a twentieth of them (54 MB on Nice's
+  square), and X-Plane's roads kept for them take 5 % of it at most. With the same night textures on a tile of Nice, flown three times each way at
   2704 x 1756 on an M4 Pro, frame times did not change beyond their spread from one flight to the
   next.
 

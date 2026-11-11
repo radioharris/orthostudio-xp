@@ -394,6 +394,34 @@ class StreamerTest(unittest.TestCase):
         self.assertNotIn(name, s.built)
         self.assertTrue(any("stays as it was" in ln for ln in lines))
 
+    def test_a_texture_made_coarser_takes_its_night_down_with_it(self):
+        """Kept sharp, a night texture took fifteen times its day one (the review of
+        2026-11-11): black, then made again from the new level."""
+        from unittest import mock
+
+        from orthostudio.live import streamer as streamer_module
+
+        name = f"{NAMES[0]}.dds"
+        write_sparse(self.pack / "textures" / name, 0, levels_from(0))
+        s = self.streamer()
+        s.built, s.seen = {name: 0}, {name: 1.0}
+        told: list[tuple] = []
+
+        class Night:
+            roads_cap = 0
+
+            def back_to_black(self, name, held):
+                told.append(("black", name, held))
+
+            def built(self, name, level):
+                told.append(("built", name, level))
+
+        s.night = Night()
+        with mock.patch.object(streamer_module, "pick", return_value=[(name, 4)]):
+            s.evict()
+        self.assertEqual(s.built, {name: 4})
+        self.assertEqual(told, [("black", name, True), ("built", name, 4)])
+
     def test_evicts_far_textures_down_to_the_budget(self):
         for n in NAMES:
             write_sparse(self.pack / "textures" / f"{n}.dds", 0, levels_from(0))

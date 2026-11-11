@@ -99,10 +99,18 @@ def sun_height(day: float, solar: float, lat: float) -> float:
     return math.degrees(math.asin(max(-1.0, min(1.0, s))))
 
 
-def night_at(day: float, solar: float, lat: float) -> bool:
-    """Night for Live: the sun below the horizon now, or within :data:`NIGHT_AHEAD_H`."""
-    later = sun_height(day, solar + NIGHT_AHEAD_H, lat)
-    return min(sun_height(day, solar, lat), later) < 0.0
+def night_at(day: float, solar: float, lat: float, unsure_h: float = 0.0) -> bool:
+    """Night for Live: the sun below the horizon at ``solar`` hours, or within
+    :data:`NIGHT_AHEAD_H`; ``unsure_h``: the time known to that many hours earlier too."""
+    when = (solar - unsure_h, solar, solar + NIGHT_AHEAD_H)
+    return min(sun_height(day, h, lat) for h in when) < 0.0
+
+
+START_UNSURE_H = 2.0
+"""X-Plane saves a start's local time, its zone's, up to two hours ahead of the sun's in summer
+time (Central Europe's: Nice's towns lit at 17:50 local on 10 November): night at a start is night
+at any of those hours. Taken for the zone of its longitude alone, a start at dawn in Europe was
+day (the review of 2026-11-11)."""
 
 
 def _solar_at_start(prefs: Path) -> tuple[float, float, float] | None:
@@ -152,7 +160,8 @@ second, Marseille's two). A lock left by a process that died goes at Live's next
 (orthostudio.live.region.remove_temps)."""
 
 ROADS_KEPT_MB = 1000
-"""The roads' files kept at most, the oldest dropped: 4.8 MB a square on average round LSGG."""
+"""The roads' files kept at most, the oldest dropped (4.8 MB a square on average round LSGG), within
+Live's share for them (orthostudio.live.streamer.ROADS_SHARE): the night's loop keeps them to it."""
 
 
 def roads_file(pack: Path, dsf: Path) -> Path:
@@ -176,9 +185,15 @@ def roads_from(paths: Iterable[Path], pack: Path | None = None, apart: bool = Tr
         if key not in _ROADS:
             if len(_ROADS) >= _ROADS_KEPT:
                 _ROADS.pop(next(iter(_ROADS)))
-            _ROADS[key] = _roads_of(Path(path), pack, apart)
-        if len(_ROADS[key]):
-            parts.append(_ROADS[key])
+            try:
+                _ROADS[key] = _roads_of(Path(path), pack, apart)
+            except Exception as e:  # read once, worked or not: its other textures fail at once
+                _ROADS[key] = e
+        roads = _ROADS[key]
+        if isinstance(roads, Exception):
+            raise roads
+        if len(roads):
+            parts.append(roads)
     return parts
 
 
@@ -206,11 +221,8 @@ def _roads_of(dsf: Path, pack: Path | None, apart: bool = True):
         if roads is not None:
             return roads
         roads = read()  # only a read that worked is kept: one that failed raises
-        try:
+        with contextlib.suppress(OSError):  # the disk full: read again next time
             roads.save(file)
-            _prune_roads(file.parent)
-        except OSError:  # the disk full: read again next time
-            pass
         return roads
     finally:
         if lock is not None:
@@ -225,7 +237,7 @@ def _load_roads(file: Path):
         return None
     try:
         roads = Roads.load(file)
-    except (OSError, ValueError, KeyError):  # damaged: read again
+    except Exception:  # damaged, cut short: read again
         return None
     with contextlib.suppress(OSError):
         os.utime(file)  # used: kept the longest
@@ -234,36 +246,43 @@ def _load_roads(file: Path):
 
 def _lock_square(file: Path) -> Path | None:
     """The square's lock (a file made only if none is there), waited for while another process
-    reads it, until its roads' file is there; None when it could not be had in
-    :data:`ROADS_LOCK_S`: the square read all the same."""
+    reads it, until its roads' file is there; :data:`ROADS_LOCK_S` at most from the lock's own
+    time: one a process that died left is not waited for (a team whose process died: Python ends
+    the others with it). None when it could not be had: the square read all the same."""
     lock = file.with_suffix(".lock")
-    deadline = time.monotonic() + ROADS_LOCK_S
     while True:
         try:
             os.close(os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY))
             return lock
         except FileExistsError:
-            if file.is_file() or time.monotonic() > deadline:
+            try:
+                old = time.time() - os.stat(lock).st_mtime > ROADS_LOCK_S
+            except OSError:  # gone meanwhile: taken at the next turn
+                old = False
+            if file.is_file() or old:
                 return None
             time.sleep(0.05)
         except OSError:
             return None
 
 
-def _prune_roads(folder: Path) -> None:
-    """The oldest roads' files dropped past :data:`ROADS_KEPT_MB`."""
+def prune_roads(folder: Path, cap: int) -> int:
+    """The oldest roads' files dropped past ``cap`` bytes; returns the bytes kept."""
     files = []
-    for entry in os.scandir(folder):
-        if entry.name.endswith(".npz"):
-            st = entry.stat()
-            files.append((st.st_mtime, st.st_size, entry.path))
+    with contextlib.suppress(OSError):
+        for entry in os.scandir(folder):
+            if entry.name.endswith(".npz"):
+                with contextlib.suppress(OSError):
+                    st = entry.stat()
+                    files.append((st.st_mtime, st.st_size, entry.path))
     total = sum(size for _, size, _ in files)
     for _, size, path in sorted(files):
-        if total <= ROADS_KEPT_MB * 1_000_000:
+        if total <= cap:
             break
         with contextlib.suppress(OSError):
             os.unlink(path)
-        total -= size
+            total -= size
+    return total
 
 
 def _read_apart(path: Path):
@@ -343,13 +362,18 @@ def make_night(
     if density is None:
         lights = lights * 0.85  # what the grid gives on average in a town
     rgb = night_rgb(lights, GAIN if gain is None else gain)
-    levels = [warm_bc1(encode_bc1(lv)) for lv in lit_levels(rgb)]
     out = pack / NIGHT_FOLDER / (name[: -len(".dds")] + "_LIT.dds")
+    ensure_night_neutral(pack)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    if not rgb.any():  # no light (the sea, a forest): the black name, not 684 KB of zeros
+        from .names import NightPool
+
+        NightPool(pack).replace(0, out)
+        return
+    levels = [warm_bc1(encode_bc1(lv)) for lv in lit_levels(rgb)]
     # its larger levels a hole, which reads as zeros, black in BC1, at no cost to read: a clone
     # of the black texture, they were 700 KB that X-Plane read from the disk for each night
     # texture, 64 px or not (4.9 GB more read in the Nice flight, 2026-11-11)
-    ensure_night_neutral(pack)
-    out.parent.mkdir(parents=True, exist_ok=True)
     write_sparse(out, NIGHT_TOP + level, levels, file_top=NIGHT_TOP)
 
 
@@ -420,6 +444,8 @@ class NightWork:
         self._ended: list[tuple] = []  # (future, its names and levels, its pool): pump reads them
         self._lost: list[float] = []
         self._pumped = 0.0
+        self.roads_cap = ROADS_KEPT_MB * 1_000_000  # the streamer's share for them (ROADS_SHARE)
+        self._pruned = 0.0
         self._at: tuple[float, float] | None = None  # where the aircraft is
         self._centres: dict[str, tuple[float, float] | None] = {}
         self._dsfs: dict[tuple[int, int], Path | None] = {}
@@ -459,7 +485,9 @@ class NightWork:
         comes, every texture built is wanted (the nearest first)."""
         if at is not None:
             self._at = at
-        if when is None or self._at is None:
+        # a start's own time decides until X-Plane flies there: the time X-Plane sends meanwhile
+        # is the flight before's, and took a start at night chosen in flight for day
+        if when is None or self._at is None or self.start_at is not None:
             return
         solar = (when[1] + self._at[1] / 15.0) % 24.0  # UTC to the aircraft's solar time
         self._set_night(night_at(when[0], solar, self._at[0]), built, "in X-Plane")
@@ -477,7 +505,7 @@ class NightWork:
         self._start_set, self._waited_since, self.gave_up = None, None, False
         saved = _solar_at_start(self.prefs) if self.prefs is not None else None
         if saved is not None:
-            self._set_night(night_at(*saved), built, "at the start")
+            self._set_night(night_at(*saved, unsure_h=START_UNSURE_H), built, "at the start")
 
     def arrived(self) -> None:
         """The start is over (X-Plane flies there, or went elsewhere: the streamer's ``arrived``):
@@ -541,12 +569,16 @@ class NightWork:
             return
         self._pumped = now
         self._collect()
+        if now - self._pruned > 60.0:  # the roads kept within their share
+            self._pruned = now
+            prune_roads(self.pack_dir / ROADS_FOLDER, min(self.roads_cap, ROADS_KEPT_MB * 10**6))
         size = 0
         if self.night and not self.broken and not self.closed:
             starting = self.start_at is not None and not self.gave_up
             size = min(max(1, self.team), TEAM_MAX) if starting else 1
         if self._pool is not None and self._size != size and not self._jobs.get(self._pool):
             self._pool.shutdown(wait=False)  # its processes end, their memory with them
+            self._jobs.pop(self._pool, None)
             self._pool = None
         if self._pool is None and size:
             try:
@@ -636,17 +668,19 @@ class NightWork:
             room = 2 * size - self._jobs.get(pool, 0)
             if room <= 0 or not self.wanted:
                 return
-            at = self._at or self.start_at
-            names = sorted(
-                (n for n in self.wanted if n not in self.running),
-                key=lambda n: self._order(n, self.wanted[n], at),
-            )
+            free = {n: lv for n, lv in self.wanted.items() if n not in self.running}
+        # sorted outside the lock: the streamer's threads want textures meanwhile
+        at = self._at or self.start_at
+        names = sorted(free, key=lambda n: self._order(n, free[n], at))
+        with self.lock:
             order: list[list[tuple[str, int]]] = []
             filling: dict[tuple[int, int] | None, tuple[list[tuple[str, int]], list[float]]] = {}
             for name in names:
+                level = self.wanted.get(name)
+                if level is None or name in self.running:  # made neutral meanwhile
+                    continue
                 centre = self._centre(name)
                 square = (math.floor(centre[0]), math.floor(centre[1])) if centre else None
-                level = self.wanted[name]
                 job, work = filling.get(square, (None, [0.0]))
                 if job is None or work[0] >= JOB_WORK:
                     if len(order) >= room:

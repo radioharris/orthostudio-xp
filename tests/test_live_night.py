@@ -289,12 +289,16 @@ class NightJobTest(unittest.TestCase):
         self.tmp.cleanup()
 
     def test_no_road_no_light(self):
+        """No light (the sea, a forest): the black name, not 684 KB of zeros."""
+        import os
+
         from orthostudio.live import dds
-        from orthostudio.live.region import NIGHT_TOP
+        from orthostudio.live.region import NIGHT_NEUTRAL, NIGHT_TOP
 
         [(got, seconds)] = make_one(self.pack, self.name, 0)
         self.assertEqual(got, self.name)
         self.assertIsInstance(seconds, float)
+        self.assertTrue(os.path.samefile(self.lit, self.pack / NIGHT_NEUTRAL))
         self.assertEqual(dds.read_top(self.lit), NIGHT_TOP)
         offset, length = dds.level_layout(NIGHT_TOP)[0]
         top = decode_bc1(self.lit.read_bytes()[offset : offset + length], 1024)
@@ -437,6 +441,26 @@ class NightWorkTest(unittest.TestCase):
         self.assertFalse(night_at(195, 17.0, 46.24))  # 15 July: day until two hours to sunset
         self.assertTrue(night_at(195, 18.0, 46.24))
 
+    def test_a_start_s_time_known_to_two_hours(self):
+        """X-Plane's local time is its zone's, up to two hours ahead of the sun's: a start at dawn
+        in Europe was day (the review of 2026-11-11)."""
+        from orthostudio.live.nightwork import START_UNSURE_H, night_at
+
+        self.assertFalse(night_at(314, 7.5, 46.24))
+        self.assertTrue(night_at(314, 7.5, 46.24, unsure_h=START_UNSURE_H))
+        self.assertFalse(night_at(314, 11.0, 46.24, unsure_h=START_UNSURE_H))
+
+    def test_a_start_s_own_time_decides_until_x_plane_flies_there(self):
+        """The time X-Plane sends while a start is chosen in flight is the flight before's: it took
+        a start at night for day (the review of 2026-11-11)."""
+        at_night(self.prefs)
+        self.work.start(43.70, 7.25, lambda: {self.near: 0})
+        self.work.tick((46.24, 6.11), (314, 11.0), lambda: {})  # the flight before: by day
+        self.assertTrue(self.work.night)
+        self.work.arrived()
+        self.work.tick((43.70, 7.25), (314, 11.0), lambda: {})
+        self.assertFalse(self.work.night)
+
     def test_in_flight_by_x_plane_s_utc_time_at_the_aircraft(self):
         built = {self.near: 0}
         self.work.tick((43.70, 7.25), (314, 10.0), lambda: built)  # 10:30 solar at Nice: day
@@ -476,6 +500,7 @@ class NightWorkTest(unittest.TestCase):
         self.work.built(self.paris, 6)
         self.turn()
         self.assertTrue(self.pools[0].shut)  # the team ends, its memory with it
+        self.assertNotIn(self.pools[0], self.work._jobs)
         self.assertEqual([p.size for p in self.pools], [nightwork_team_max(), 1])
 
     def test_a_start_by_day_then_dusk_in_flight_one_process(self):
@@ -855,3 +880,94 @@ class ReviewTest(unittest.TestCase):
             f.write_bytes(b"x")
         self.assertEqual(remove_temps(pack), 3)
         self.assertEqual([f.exists() for f in half + kept], [False] * 3 + [True] * 2)
+
+
+class RoadsReadTest(unittest.TestCase):
+    def setUp(self):
+        import tempfile
+        from pathlib import Path
+
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_a_process_reads_each_dsf_once_worked_or_not(self):
+        """A DSF that cannot be read was read again for each texture of a job: minutes."""
+        from pathlib import Path
+        from unittest import mock
+
+        from orthostudio.live import nightwork
+
+        nightwork._ROADS.clear()
+        self.addCleanup(nightwork._ROADS.clear)
+        reads = []
+
+        def failing(path, pack, apart):
+            reads.append(path)
+            raise OSError("cannot read")
+
+        with mock.patch.object(nightwork, "_roads_of", failing):
+            for _ in range(3):
+                with self.assertRaises(OSError):
+                    nightwork.roads_from([Path("+43+007.dsf")], self.root)
+        self.assertEqual(len(reads), 1)
+
+    def test_a_damaged_roads_file_is_read_again(self):
+        from orthostudio.live.nightwork import _load_roads
+
+        file = self.root / "+43+007-1.npz"
+        file.write_bytes(b"")  # cut short by a power cut
+        self.assertIsNone(_load_roads(file))
+
+    def test_a_lock_is_waited_for_from_its_own_time(self):
+        """One left by a process that died (a team whose process died: Python ends the others
+        with it) is not waited for."""
+        import os
+        import time
+
+        from orthostudio.live.nightwork import ROADS_LOCK_S, _lock_square
+
+        file = self.root / "square.npz"
+        lock = file.with_suffix(".lock")
+        lock.write_text("")
+        old = time.time() - ROADS_LOCK_S - 1
+        os.utime(lock, (old, old))
+        t0 = time.monotonic()
+        self.assertIsNone(_lock_square(file))
+        self.assertLess(time.monotonic() - t0, 1.0)
+
+    def test_the_roads_kept_within_their_share(self):
+        import os
+
+        from orthostudio.live.nightwork import prune_roads
+
+        for i in range(5):
+            f = self.root / f"+43+00{i}-1.npz"
+            f.write_bytes(b"x" * 1000)
+            os.utime(f, (1000 + i, 1000 + i))
+        self.assertEqual(prune_roads(self.root, 2500), 2000)
+        self.assertEqual(sorted(f.name for f in self.root.glob("*.npz")),
+                         ["+43+003-1.npz", "+43+004-1.npz"])  # fmt: skip
+
+
+class NightDiskTest(unittest.TestCase):
+    def test_each_texture_counts_its_night_with_it(self):
+        from orthostudio.live.evict import night_bytes, texture_bytes
+
+        for level, top in ((0, 0), (4, 0), (1, 1), (-1, -1)):
+            both = texture_bytes(level, top, night=True) - texture_bytes(level, top)
+            self.assertEqual(both, night_bytes(level - max(0, top)))
+        self.assertLess(night_bytes(0), texture_bytes(0) * 0.07)  # about 6 % of a 4096 px level
+        self.assertEqual(texture_bytes(9, 0, night=True), 0)  # neutral: nothing
+
+    def test_a_start_s_count_is_what_every_display_shows(self):
+        """Live's window said 0 textures to build at 100 % while the plugin counted the night
+        ones (the review of 2026-11-11)."""
+        from orthostudio.live.streamer import Arrival
+
+        a = Arrival(43.70, 7.25, "LFMN", "plugin", 0.0)
+        shown = a.count(0, 0, 8700, 0.4)
+        self.assertEqual(shown, {"left": 8700, "building": 8700, "night": 8700, "progress": 0.4})
+        self.assertIs(a.shown, shown)

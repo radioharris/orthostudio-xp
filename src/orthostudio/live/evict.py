@@ -117,24 +117,37 @@ def tiles_of(texture: Texture) -> set[tuple[int, int]]:
 
 
 @cache
-def texture_bytes(level: int, top: int = 0) -> int:
+def texture_bytes(level: int, top: int = 0, night: bool = False) -> int:
     """Disk a texture built from ``level`` takes in a file whose sharpest level is ``top``: its
     levels from that one down, and the copy of that level above it where there is one
-    (orthostudio.live.texture.needs_copy). The rest shares the neutral template's blocks."""
+    (orthostudio.live.texture.needs_copy). The rest shares the neutral template's blocks.
+    ``night``: its night texture too, made from the same level counted from its file's top
+    (orthostudio.live.nightwork): a 1024 px one for a 4096 px level, its larger levels a hole."""
     from .texture import needs_copy
 
     if level >= NEUTRAL_LEVEL:
         return 0
     copy = dds.level_layout(level - 1)[0][1] if needs_copy(level, top) else 0
-    return 4096 + copy + sum(length for _, length in dds.level_layout(level))
+    day = 4096 + copy + sum(length for _, length in dds.level_layout(level))
+    return day + (night_bytes(level - max(0, top)) if night else 0)
 
 
-def usage(built: dict[str, int], top_of: Callable[[str], int] | None = None) -> int:
+def night_bytes(level: int) -> int:
+    """Disk a night texture made from ``level`` (counted from its file's top) takes."""
+    from .region import NIGHT_TOP
+
+    return 4096 + sum(length for _, length in dds.level_layout(NIGHT_TOP + max(0, level)))
+
+
+def usage(
+    built: dict[str, int], top_of: Callable[[str], int] | None = None, night: bool = False
+) -> int:
     """The disk of the textures built; ``top_of``: each one's file size (its sharpest level), 4096
-    px for all when not given."""
-    if top_of is None:
+    px for all when not given; ``night``: their night textures too (:func:`texture_bytes`)."""
+    if top_of is None and not night:
         return levels_usage(Counter(built.values()))
-    return sum(texture_bytes(level, top_of(name)) for name, level in built.items())
+    top_of = top_of or (lambda _: 0)
+    return sum(texture_bytes(level, top_of(name), night) for name, level in built.items())
 
 
 def levels_usage(levels: Mapping[int, int]) -> int:
@@ -150,12 +163,14 @@ def pick(
     top_of: Callable[[str], int] = lambda _: 0,
     neutral: Callable[[str], bool] | None = None,
     behind: Callable[[str], bool] = lambda _: False,
+    night: bool = False,
 ) -> list[tuple[str, int]]:
     """[(texture, new level)] bringing ``built`` to 90 % of ``budget``, or as close as it can:
     sharp textures ``coarsen`` allows back to 256 px, then 256 px ones ``neutral`` allows (the same
     when not given) back to the neutral clone; those ``behind`` the aircraft first, then the least
-    recently seen. ``top_of``: each texture's file size, as :func:`usage` takes it."""
-    total = usage(built, top_of)
+    recently seen. ``top_of``: each texture's file size, as :func:`usage` takes it; ``night``:
+    their night textures counted too."""
+    total = usage(built, top_of, night)
     if total <= budget:
         return []
     neutral = coarsen if neutral is None else neutral
@@ -168,13 +183,13 @@ def pick(
     sharp = sorted((n for n, lv in built.items() if lv < 4 and coarsen(n)), key=first)
     for name in sharp:
         top = top_of(name)
-        total -= texture_bytes(built[name], top) - texture_bytes(4, top)
+        total -= texture_bytes(built[name], top, night) - texture_bytes(4, top, night)
         out.append((name, 4))
         if total <= target:
             return out
     small = sorted((n for n, lv in built.items() if lv == 4 and neutral(n)), key=first)
     for name in small:
-        total -= texture_bytes(4, top_of(name))
+        total -= texture_bytes(4, top_of(name), night)
         out.append((name, NEUTRAL_LEVEL))
         if total <= target:
             break

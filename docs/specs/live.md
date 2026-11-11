@@ -597,11 +597,15 @@ are ×0.85, what a town's grid gives on average. `OSXP_LIVE_NIGHT_GRIDS` names a
 first, for the test flights.
 
 **When** (`orthostudio.live.nightwork`). Night, for Live, is from two hours before sunset to
-sunrise (`NIGHT_AHEAD_H`, `nightwork.night_at`): by X-Plane's day of the year and local time at the
-aircraft (`sim/time/local_date_days`, `sim/time/local_time_sec`, with its other datarefs), and at
-a start by the time X-Plane saved with it (`_time` of `Freeflight.prf`), the local time taken for
-the zone's mean solar time. The sun's height alone (below 20°) made a winter's day in Europe night
-all day long, a start by day waiting for night textures (the review of 2026-11-11). From then each
+sunrise (`NIGHT_AHEAD_H`, `nightwork.night_at`), by the sun's time at the aircraft: in flight,
+X-Plane's day of the year and UTC time (`sim/time/local_date_days`, `sim/time/zulu_time_sec`, with
+its other datarefs) and the aircraft's longitude; at a start, the time X-Plane saved with it
+(`_time` of `Freeflight.prf`), its local time, its zone's, which may be up to two hours ahead of
+the sun's (summer time; Nice's is Central Europe's: its towns lit at 17:50 local on 10 November),
+so night at any of those hours (`START_UNSURE_H`), the start's own time deciding until X-Plane
+flies there (the time X-Plane sends meanwhile is the flight before's). The sun's height alone
+(below 20°) made a winter's day in Europe night all day long, a start by day waiting for night
+textures (the review of 2026-11-11). From then each
 texture built gets its night texture (`NightWork.built`), and those built before get theirs at
 once, the nearest first: X-Plane never reads again a level it took, and in the first flight with
 Live, the night textures made after X-Plane had loaded their area, the textures X-Plane did not
@@ -665,10 +669,12 @@ the pack, other regions' too: 11,142 night textures at a Paris start, Nice's and
 them (the review of 2026-11-11). The team works from the first texture built at a start at
 night, while its photos are still built and X-Plane starts, and ends with the start (the
 streamer's `arrived`: X-Plane flies there, or went elsewhere). Each square's roads are kept in
-the pack once read (`_live/roads/`, `nightwork.roads_file`, 4.8 MB a square round LSGG, 1 GB at
-most, the oldest dropped), one process reading a square while the others wait for its file
-(`_lock_square`); only a read that worked is kept (a passing failure, the memory short, was kept
-as a square without roads, dark for good). The team's processes read the DSFs themselves, as they
+the pack once read (`_live/roads/`, `nightwork.roads_file`, 4.8 MB a square round LSGG, the oldest
+dropped past Live's share for them), one process reading a square while the others wait for its
+file, 30 s at most from the lock's own time (`_lock_square`: one left by a process that died is
+not waited for); only a read that worked is kept on the disk (a passing failure, the memory
+short, was kept as a square without roads, dark for good), and a process reads each DSF once,
+worked or not (its other textures fail at once, then are given again). The team's processes read the DSFs themselves, as they
 end with the start; the one process in flight reads each in a Python of its own. Replayed on an
 LSGG-like cold start (8,535 night textures over 62 squares, the photos built over 21 s while
 X-Plane starts, X-Plane asking at 24 s): every night texture made by then, against 79 s of wait
@@ -676,15 +682,23 @@ in the user's flight of 2026-11-11. The steps: one process, 13 minutes; a team o
 were built, 64 s; the roads and lamps laid out at once rather than a road at a time, 38 s; the
 roads in files, 27 s; the team from the first texture, 7 s; the near ones to it too, 0 s.
 
-**The disk.** With the night on, a tenth of Live's disk space is kept for it
-(`streamer.NIGHT_SHARE`): its textures, a twentieth of the photos', and the roads kept for them.
-The night textures of every texture built are made again at each start of Live as night comes;
-one made neutral (the disk budget, a season changed: `Streamer._neutral`) is black again, or gone
-with it. Turned off ("No"), the night textures, their black one and the roads go
-(`region._drop_night`), and the night is made only when the pack's terrain files name it
-(`region.night_on`: turned on while X-Plane ran, they do from the next start). Deleting the
-textures deletes the roads too; a start removes the half-written files of their folders and the
-locks a process that died left (`region.remove_temps`).
+**The disk.** Each texture built counts its night texture with it, made from the same level
+(`evict.texture_bytes`, `night=`): about 6 % of a 4096 px day level, 17 % of a 256 px one. A
+texture made coarser has its night made black, then again from its new level when it is night
+(`Streamer._night_follows`; kept sharp, a night texture took fifteen times its day one); one made
+neutral (the disk budget, a season changed: `Streamer._neutral`) has it black again, or gone with
+it; a night texture without a light (the sea, a forest) is the black name, not 684 KB of zeros. The
+roads kept for them take 5 % of Live's disk space at most (`streamer.ROADS_SHARE`), the night's loop
+dropping the oldest once a minute (`nightwork.prune_roads`). Counted as their levels are, as the
+photos are: on NTFS a sparse file's data takes 64 KB blocks, 113 KB a night texture on the user's
+Shadow (4,892 of them, 555 MB, 2026-11-11). The night textures of every texture built are made
+again at each start of Live as night comes. Turned off ("No"), the night textures, their black one
+and the roads go (`region._drop_night`), and the night is made only when the pack's terrain files
+name it (`region.night_on`: turned on while X-Plane ran, they do from the next start). Deleting
+the textures deletes the roads too; a start removes the half-written files of their folders and
+the locks a process that died left (`region.remove_temps`). A start's count (`Arrival.count`),
+night textures with the day ones, is what the plugin, the pause window and Live's window show:
+the window said 0 textures to build at 100 % while the plugin counted the night ones.
 
 **Far textures drawn small.** A night texture is drawn at four times its own side
 (`nightwork.FAR_DRAW`, 128 px at least) and made smaller, not at 1024 px: a 64 px one far away
@@ -694,10 +708,6 @@ keeps the glow's light; a street and the windows' band keep the width they had a
 (`night._width_k`). Against the same textures drawn at 1024 px, round Geneva, Nice, LSGG and in
 the country: 0.89 to 1.02 of the light, 0.83 to 1.00 seen from far, in 37 to 75 ms against 99 to
 131 (the roads' loop is most of what is left).
-
-**The disk.** The night textures made count in the textures' budget before the day ones
-(`NightWork.bytes`); a texture the budget makes neutral has its night texture black again, or gone
-with its name.
 
 **Measured** with the prototype's textures on the user's tile of Nice, X-Plane alone, 2704 × 1756,
 three flights each way alternated: frame times at 21.1 against 21.7 ms over the city, the same on

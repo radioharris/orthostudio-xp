@@ -39,6 +39,7 @@ export const STRINGS = {
     "state.error": "Live stopped: {error}",
     "hold.text": "{left} textures to build · {mbs} MB/s · {seconds} s",
     "hold.photos_in": "{left} textures to build · every photo in, building · {seconds} s",
+    "hold.night": "{left} night textures to build · {seconds} s",
 
     "action.start": "Start Live",
     "action.stop": "Stop",
@@ -217,7 +218,7 @@ export const STRINGS = {
     "overlays.off": "No",
     "overlays.off_note": "Bare ground, except what your other sceneries add.",
     "night.title": "Night lights",
-    "night.help": "Light up the towns at night on Live's photos? Street lights under X-Plane's own, from two hours before sunset; a tenth of Live's disk space kept for them, nothing done by day.",
+    "night.help": "Light up the towns at night on Live's photos? Street lights under X-Plane's own, from two hours before sunset; about 5 % more disk, nothing done by day.",
     "night.soft": "Soft",
     "night.soft_note": "Fainter lights, more of the photo seen between them.",
     "night.normal": "Normal (recommended)",
@@ -439,6 +440,7 @@ export const STRINGS = {
     "state.error": "Live s'est arrêté : {error}",
     "hold.text": "{left} textures à construire · {mbs} Mo/s · {seconds} s",
     "hold.photos_in": "{left} textures à construire · photos reçues, construction en cours · {seconds} s",
+    "hold.night": "{left} textures de nuit à construire · {seconds} s",
 
     "action.start": "Démarrer Live",
     "action.stop": "Arrêter",
@@ -617,7 +619,7 @@ export const STRINGS = {
     "overlays.off": "Non",
     "overlays.off_note": "Le sol nu, sauf ce qu'ajoutent vos autres scènes.",
     "night.title": "Lumières de nuit",
-    "night.help": "Éclairer les villes la nuit sur les photos de Live ? Les lumières des rues, sous celles de X-Plane, dès deux heures avant le coucher du soleil ; un dixième de l'espace disque de Live leur est réservé, rien de fait le jour.",
+    "night.help": "Éclairer les villes la nuit sur les photos de Live ? Les lumières des rues, sous celles de X-Plane, dès deux heures avant le coucher du soleil ; environ 5 % de disque en plus, rien de fait le jour.",
     "night.soft": "Douces",
     "night.soft_note": "Des lumières plus faibles, la photo plus visible entre elles.",
     "night.normal": "Normales (recommandé)",
