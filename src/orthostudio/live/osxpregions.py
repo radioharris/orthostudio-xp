@@ -550,7 +550,7 @@ class Installer:
         lists = {p.stem for p in (folder / TERRAIN_LISTS).glob("*.txt")}
         if not old.is_dir() or lists != {z.name.removesuffix(".zip") for z in self.region.mesh}:
             return
-        os.replace(old, gone)
+        replace_file(old, gone)
         shutil.rmtree(gone, ignore_errors=True)
         self.log("  its terrain files of before taken away: made from their names now")
 

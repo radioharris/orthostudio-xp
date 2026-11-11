@@ -113,6 +113,22 @@ def test_windows_waits_for_a_file_open_in_x_plane(
         filesystem.replace(tmp_path / "old", tmp_path / "other")
 
 
+def test_every_replace_of_live_tries_again_on_windows() -> None:
+    """A file another part of Live reads, its window every second or the night's processes, is
+    replaced through :func:`filesystem.replace` alone: a bare one stopped a first install of
+    Europe on Windows (WinError 5, the window reading the region's record, 2026-11-11), and the
+    textures' record read by the window every 3 s went the same way."""
+    live = Path(filesystem.__file__).parent
+    bare = [
+        f"{p.name}:{n}"
+        for p in sorted(live.glob("*.py"))
+        if p.name != "filesystem.py"
+        for n, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1)
+        if "os.replace(" in line or "os.rename(" in line
+    ]
+    assert bare == []
+
+
 def test_pwrite_without_os_pwrite(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Windows has no os.pwrite."""
     path = tmp_path / "f"

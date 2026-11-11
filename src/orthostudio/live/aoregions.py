@@ -615,7 +615,7 @@ class Installer:
                 continue
             if final.exists():
                 shutil.rmtree(final)
-            os.replace(staged, final)
+            replace_file(staged, final)
         (final_mesh / MARKER).write_text(
             json.dumps(
                 {

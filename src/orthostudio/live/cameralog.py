@@ -16,10 +16,10 @@ from __future__ import annotations
 
 import json
 import math
-import os
 import time
 from pathlib import Path
 
+from .filesystem import replace as replace_file
 from .rings import DEFAULT_MARGIN, LOAD_LEVEL, RINGS_ZL16_KM
 
 HIGH_M = 3000.0  # the aircraft this high above the ground: cruise, or near it
@@ -114,4 +114,4 @@ class CameraLog:
         tmp = self.path.with_suffix(".tmp")
         tmp.parent.mkdir(parents=True, exist_ok=True)
         tmp.write_text(json.dumps({"flights": flights[-KEEP:]}, indent=1))
-        os.replace(tmp, self.path)
+        replace_file(tmp, self.path)

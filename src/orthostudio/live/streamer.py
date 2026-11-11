@@ -56,6 +56,7 @@ from pathlib import Path
 from . import dds, machine, pools, writes
 from .cache import IMAGE, NO_IMAGERY, ChunkCache, Key
 from .evict import EVICT_SAFE_KM, TARGET, XPlaneWindow, pick, tiles_of, usage, xplane_tiles
+from .filesystem import replace as replace_file
 from .flightplan import MOVING_MS, FlightPlan, last_plan
 from .geo import bearing_deg, haversine_m, parse_texture_name
 from .look import DEFAULT_LOOKS, Look
@@ -1791,7 +1792,7 @@ class Streamer:
         tmp = self.pack_dir / MARKER.with_suffix(".tmp")
         text = json.dumps(meta)
         tmp.write_text(text)
-        os.replace(tmp, self.pack_dir / MARKER)
+        replace_file(tmp, self.pack_dir / MARKER)
         writes.add("Live's record of its textures", len(text))
 
     def snapshot(self) -> dict:
@@ -1897,7 +1898,6 @@ class Arrival:
     stalled: bool = False  # ... or let it go because nothing downloaded any more
     elsewhere_since: float | None = None  # X-Plane running somewhere else since then
     most: int = 0  # the most textures seen left for it, photos and nights: the bar's whole
-    done: float = 0.0  # the bar
     # what is left, as the plugin, the pause window and Live's window all show it (start_count)
     shown: dict | None = None
     counted: float = 0.0  # when it was worked out
@@ -1906,16 +1906,18 @@ class Arrival:
     loading: bool = (
         True  # X-Plane went through a load since: its position stopped, or the plugin spoke
     )
+    # where X-Plane flew as this start was chosen: the position its plugin may still read while
+    # it loads the start, after a teleport
+    left_from: tuple[float, float] | None = None
 
     def progress(self, left: int) -> float:
         """The bar: the share done of the count the start shows (its textures and its night
-        ones), the most seen as the whole, never going back. With the photos 40 % of it by their
-        image pieces and the night textures the rest once the photos were built, it stood at 38 %
-        while the count fell from 3,560 to 24, then went to 100 % at once (Toulouse, the campaign
-        of 2026-11-11)."""
+        ones), the most seen as the whole; it goes back only as work is added. With the photos
+        40 % of it by their image pieces and the night textures the rest once the photos were
+        built, it stood at 38 % while the count fell from 3,560 to 24, then went to 100 % at once
+        (Toulouse, the campaign of 2026-11-11)."""
         self.most = max(self.most, left)
-        self.done = max(self.done, 1.0 - left / self.most if self.most else 1.0)
-        return self.done
+        return 1.0 - left / self.most if self.most else 1.0
 
     def count(self, left: int, building: int, night_left: int, done: float) -> dict:
         """What a start waits for: its textures and its night ones, those all of whose photos are
@@ -1930,6 +1932,17 @@ class Arrival:
 
     def near(self, lat: float, lon: float) -> bool:
         return haversine_m(self.lat, self.lon, lat, lon) <= JUMP_KM * 1000.0
+
+    def holds_for(self, lat: float, lon: float) -> bool:
+        """The plugin's position is this start's: near it, or where X-Plane flew as it was
+        chosen, which the plugin may still read after a teleport. Anywhere else is where X-Plane
+        loads the flight: a click is no proof, X-Plane writes Freeflight.prf as it quits too, and
+        a flight it then loads through its web API saves none (a flight to Lyon answered for
+        Geneva, 2026-11-11)."""
+        if self.near(lat, lon):
+            return True
+        old = self.left_from
+        return old is not None and haversine_m(*old, lat, lon) <= JUMP_KM * 1000.0
 
     def certain(self, now: float) -> bool:
         """Said by X-Plane itself (a click just now) or by the user (``--from``): X-Plane goes
@@ -2161,13 +2174,15 @@ def run(
         nonlocal arrival
         # A click while X-Plane runs is a start only once X-Plane stops to load it: X-Plane also
         # writes Freeflight.prf when it quits.
+        flying = "lat" in values and time.time() - last_packet < FRESH_S
         arrival = Arrival(
             lat,
             lon,
             name,
             how,
             time.time(),
-            loading=not ("lat" in values and time.time() - last_packet < FRESH_S),
+            loading=not flying,
+            left_from=(values["lat"], values["lon"]) if flying else None,
         )
         if gate is not None:  # the gate's word to a waiting X-Plane while this start is planned
             gate.hold_at(name, language())
@@ -2179,7 +2194,6 @@ def run(
         if streamer.night is not None:  # night at the start's time: its lights made first
             streamer.night.start(lat, lon, streamer.built_copy)
         streamer.plan(Fix(lat, lon), x_plane_there=False, starting=True)
-        arrival.progress(streamer.urgent_left())
         streamer.refresh_flight_plan()  # a new flight may have a new plan
         if streamer.covers(lat, lon):
             said = "click_running" if how == "click" and not arrival.loading else how
@@ -2254,16 +2268,8 @@ def run(
                         continue
                     # the flight's date as X-Plane loads it: its season, over the one saved
                     day = gate.held_day if kind == "HOLD" else None
-                    # where X-Plane loads the flight, unless X-Plane flew there just now: after a
-                    # teleport the plugin may still read the old position. A click is no proof:
-                    # X-Plane writes its last flight as it starts, then a flight loaded another way
-                    # (its web API, a situation) saves none (LFLL answered for LSGG, 2026-11-11)
-                    flew_there = (
-                        "lat" in values
-                        and now - last_packet < LOADING_S
-                        and haversine_m(values["lat"], values["lon"], lat, lon) <= JUMP_KM * 1000.0
-                    )
-                    if arrival is None or not (arrival.near(lat, lon) or flew_there):
+                    # where X-Plane loads the flight (Arrival.holds_for)
+                    if arrival is None or not arrival.holds_for(lat, lon):
                         expect(lat, lon, f"{lat:.3f} {lon:.3f}", "plugin", day)
                     elif (
                         season_for is not None

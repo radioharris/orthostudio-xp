@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import contextlib
 import hashlib
-import os
 import shutil
 import subprocess
 import sys
@@ -31,6 +30,8 @@ from pathlib import Path
 
 from orthostudio.fsutil import NO_CONSOLE_WINDOW
 from orthostudio.programs import PACKAGE_BIN
+
+from .filesystem import replace as replace_file
 
 NATIVE = Path(__file__).resolve().parents[3] / "native" / "xplane_plugin"  # in a checkout
 SOURCE = NATIVE / "live_gate.c"
@@ -150,7 +151,7 @@ def compile_plugin(out: Path, port: int | None = None, extra: tuple = ()) -> Non
         done = subprocess.run(cmd, capture_output=True, text=True, creationflags=NO_CONSOLE_WINDOW)
     if done.returncode != 0:
         raise RuntimeError(f"clang failed:\n{done.stderr.strip()}")
-    os.replace(tmp, out)
+    replace_file(tmp, out)
 
 
 def built() -> Path:
@@ -212,7 +213,7 @@ def install(xplane: Path, log: Callable[[str], None] = print) -> bool:
     dest.parent.mkdir(parents=True, exist_ok=True)
     tmp = dest.with_name(dest.name + ".tmp")
     shutil.copy2(src, tmp)
-    os.replace(tmp, dest)
+    replace_file(tmp, dest)
     return True
 
 

@@ -44,6 +44,8 @@ from pathlib import Path
 import numpy as np
 from PIL import Image, ImageDraw
 
+from .filesystem import replace as replace_file
+
 __all__ = [
     "LIT_SIDE",
     "Density",
@@ -205,7 +207,7 @@ class Roads:
             origin = np.array([self.west, self.south])
             np.savez(f, lon=self.lon, lat=self.lat, start=self.start, kind=self.kind,
                      rural=self.rural, box=self.box, origin=origin)  # fmt: skip
-        os.replace(tmp, path)
+        replace_file(tmp, path)
 
     @staticmethod
     def load(path: Path) -> Roads:

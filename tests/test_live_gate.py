@@ -1652,18 +1652,39 @@ class RunTest(unittest.TestCase):
         time.sleep(1.0)
         self.assertEqual(self.xp.commands[before:], [])  # no reload for the new flight
 
-    def test_a_flight_loaded_another_way_after_x_plane_s_start(self):
-        """X-Plane writes its last flight into Freeflight.prf as it starts; a flight it then loads
-        another way (its web API, a situation) saves none: the plugin's position is where it
-        loads, built before X-Plane goes on (LFLL answered for LSGG, 2026-11-11)."""
-        write_start(
-            self.prefs,
-            {"lle_ground_start": {"latitude": self.lat - 2.0, "longitude": self.lon}},
-        )  # the last flight, 220 km south, written again as X-Plane starts
-        self.assertTrue(self.wait_for(lambda: any("no mesh there" in m for m in self.log)))
+    def test_a_flight_loaded_another_way_after_x_plane_quit(self):
+        """X-Plane writes its last flight into Freeflight.prf as it quits; a flight it loads
+        after another way (its web API, a situation) saves none: the plugin's position is where
+        it loads, built before X-Plane goes on (a flight to Lyon answered for Geneva,
+        2026-11-11)."""
+        last = (self.lat + 0.3, self.lon)  # its last start, 33 km north, in the region too
+        self.xp.position = (self.lat - 2.0, self.lon)  # flying 220 km south (placed there since)
+        self.assertTrue(self.wait_for(lambda: self.pauser.flying))
+        self.xp.position = None  # X-Plane quits, writing its last start...
+        write_start(self.prefs, {"lle_ground_start": {"latitude": last[0], "longitude": last[1]}})
+        self.assertTrue(self.wait_for(lambda: any("next start is" in m for m in self.log)))
+        time.sleep(streamer_module.FRESH_S + 0.5)  # ... and starts again
         answers = self.hold(self.lat, self.lon)
         self.assertTrue(answers[0].startswith("LIVE1 WAIT"), answers)
         self.assertEqual(answers[-1], "LIVE1 GO 0")
+        self.assertEqual(self.streamer.built, {f"{n}.dds": 1 for n in NAMES})
+
+    def test_a_new_flight_while_flying_held_long(self):
+        """Start Flight clicked in flight with another aircraft, X-Plane silent as it loads for
+        longer than a click is certain: the plugin's old position still answers for the new
+        start, whose textures are built before X-Plane goes on (the review of 2026-11-11)."""
+        home = parse_texture_name(f"{NAMES[1]}.dds").center
+        old = (home[0] - 2.0, home[1])
+        self.xp.position = old  # flying 220 km south
+        self.assertTrue(self.wait_for(lambda: self.pauser.flying))
+        self.click()
+        self.assertTrue(self.wait_for(lambda: any("next start is" in m for m in self.log)))
+        self.xp.position = None  # X-Plane loads the new flight: silent
+        with mock.patch.object(streamer_module, "LOADING_S", 0.5):
+            time.sleep(streamer_module.FRESH_S + 0.5)
+            answers = self.hold(*old)  # the plugin still reads the old position
+        self.assertEqual(answers[-1], "LIVE1 GO 0")
+        self.assertFalse(any("no mesh there" in m for m in self.log), self.log)  # not taken
         self.assertEqual(self.streamer.built, {f"{n}.dds": 1 for n in NAMES})
 
     def test_a_new_location_in_flight_paused_until_built(self):

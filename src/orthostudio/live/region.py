@@ -35,7 +35,14 @@ from pathlib import Path
 
 from . import dds
 from .clone import same_disk
-from .filesystem import folder_link, is_folder_link, link_target, place_file, remove_folder_link
+from .filesystem import (
+    folder_link,
+    is_folder_link,
+    link_target,
+    place_file,
+    remove_folder_link,
+)
+from .filesystem import replace as replace_file
 from .geo import parse_texture_name
 from .rings import file_top, zoom_for
 from .texture import write_sparse
@@ -287,7 +294,7 @@ def relayout(
         built_meta.pop("grown", None)  # every file at its size now: nothing grows any more
         tmp = pack_dir / MARKER.with_suffix(".tmp")
         tmp.write_text(json.dumps(built_meta))
-        os.replace(tmp, pack_dir / MARKER)
+        replace_file(tmp, pack_dir / MARKER)
     meta["zooms"] = asdict(zooms)
     meta["layout"] = LAYOUT_FIXED
     marker.write_text(json.dumps(meta))
@@ -320,7 +327,7 @@ def set_zooms(pack_dir: Path, zooms: Zooms, log: Callable[[str], None] = print) 
     meta = json.loads(marker.read_text())
     terrain = pack_dir / "terrain"
     if terrain.is_dir() and not is_folder_link(terrain):
-        os.replace(terrain, pack_dir / f"{ASIDE_PREFIX}{time.time_ns()}")
+        replace_file(terrain, pack_dir / f"{ASIDE_PREFIX}{time.time_ns()}")
     terrain.mkdir(exist_ok=True)
     meta["zooms"] = asdict(zooms)
     meta["layout"] = LAYOUT_FIXED
@@ -687,7 +694,7 @@ def _forget_lit(pack_dir: Path) -> None:
         meta["lit"] = {}
         tmp = pack_dir / MARKER.with_suffix(".tmp")
         tmp.write_text(json.dumps(meta))
-        os.replace(tmp, pack_dir / MARKER)
+        replace_file(tmp, pack_dir / MARKER)
 
 
 def _drop_night(pack_dir: Path, log: Callable[[str], None]) -> None:
@@ -843,7 +850,7 @@ def reset_built(pack_dir: Path, log: Callable[[str], None] = print) -> int:
         meta.pop("grown", None)
         tmp = pack_dir / MARKER.with_suffix(".tmp")
         tmp.write_text(json.dumps(meta))
-        os.replace(tmp, pack_dir / MARKER)
+        replace_file(tmp, pack_dir / MARKER)
     from .nightwork import ROADS_FOLDER
 
     _remove_tree(pack_dir / ROADS_FOLDER, lambda _: None, "roads")  # the night's, read again

@@ -861,15 +861,42 @@ class StartBarTest(unittest.TestCase):
         """Photos 40 % of it by their image pieces, night textures the rest once the photos were
         built: it stood at 38 % while the count fell from 3,560 to 24, then 100 % at once
         (Toulouse, the campaign of 2026-11-11). It shows the share done of the count, the most
-        seen as the whole, never going back."""
+        seen as the whole: back only as work is added, never full with work left (stuck at 100 %
+        once a first count of 0 was kept, the review of 2026-11-11)."""
         from orthostudio.live.streamer import Arrival
 
         a = Arrival(43.63, 1.37, "LFBO", "plugin", 0.0)
         self.assertEqual(a.progress(3560), 0.0)
         self.assertAlmostEqual(a.progress(1780), 0.5)
-        self.assertAlmostEqual(a.progress(1900), 0.5)  # night textures wanted meanwhile: it holds
+        self.assertAlmostEqual(a.progress(1900), 1 - 1900 / 3560)  # night ones wanted meanwhile
         self.assertAlmostEqual(a.progress(356), 0.9)
         self.assertEqual(a.progress(0), 1.0)
+        b = Arrival(46.24, 6.11, "LSGG", "click", 0.0)  # its photos all built already
+        self.assertEqual(b.progress(0), 1.0)
+        self.assertEqual(b.progress(8700), 0.0)  # then its night textures, known at the HOLD
+        self.assertAlmostEqual(b.progress(4350), 0.5)
+
+    def test_the_count_the_start_shows_is_the_bar_s(self):
+        """The bar is worked out from the count shown, night textures in it."""
+        from types import SimpleNamespace
+
+        from orthostudio.live.streamer import Arrival, start_count
+
+        night = SimpleNamespace(left=600)
+        night.tick = lambda at, when, built: None
+        night.start_left = lambda day_left: night.left
+        day = SimpleNamespace(left=400)
+        s = SimpleNamespace(
+            night=night,
+            urgent_left=lambda: day.left,
+            urgent_building=lambda: 0,
+            built_copy=lambda: {},
+        )
+        a = Arrival(43.63, 1.37, "LFBO", "plugin", 0.0)
+        self.assertEqual(start_count(s, a, 0.0, fresh=True)["progress"], 0.0)
+        day.left, night.left = 0, 250
+        shown = start_count(s, a, 1.0, fresh=True)
+        self.assertEqual((shown["left"], shown["night"], shown["progress"]), (250, 250, 0.75))
 
 
 class NightWordsTest(unittest.TestCase):
