@@ -9,6 +9,7 @@ import dataclasses
 import hashlib
 import io
 import json
+import os
 import time
 import zipfile
 from pathlib import Path
@@ -315,3 +316,39 @@ def test_a_region_s_night_grids_come_with_it_and_alone_later(tmp_path: Path, wor
     folder = osxpregions.mesh_dir(tmp_path, "eur")
     assert (folder / "night/+45+005.png").read_bytes() == b"grid a"
     assert osxpregions.to_fetch(tmp_path, later, True) == ([], [])
+
+
+def test_the_night_grids_alone_leave_the_region_as_it_was(tmp_path: Path, world) -> None:
+    """Live fetches the night grids of a region installed before them by itself
+    (orthostudio.live.control): only their zip, the region's mesh, its step and the dates the
+    set-up compares untouched, so that the next start does not set the region up again."""
+    files, region = world
+    folder = osxpregions.mesh_dir(tmp_path, "eur")
+    assert osxpregions.night_to_fetch(tmp_path, region) == []  # not installed: nothing
+    install(tmp_path, region, Host(files))
+    night = zip_of("night_eur", {"night/+45+005.png": b"grid a"})
+    files = {**files, "eur/night-zips/night_eur.zip": night}
+    later = dataclasses.replace(region, night=(entry("eur/night-zips/night_eur.zip", night),))
+    assert [z.path for z in osxpregions.night_to_fetch(tmp_path, later)] == [
+        "eur/night-zips/night_eur.zip"
+    ]
+    nav = folder / "Earth nav data"
+    os.utime(nav, (1_000_000, 1_000_000))
+    before = json.loads((folder / osxpregions.MARKER).read_text())
+    host = Host(files)
+    inst, lines = install(tmp_path, later, host, overlays=False, night_only=True)
+    assert inst.progress.phase == "done", lines
+    assert [k for k, _ in host.asked] == ["eur/night-zips/night_eur.zip"]
+    assert (folder / "night/+45+005.png").read_bytes() == b"grid a"
+    marker = json.loads((folder / osxpregions.MARKER).read_text())
+    assert marker["zips"] == {
+        **before["zips"],
+        "eur/night-zips/night_eur.zip": later.night[0].sha256,
+    }
+    assert marker["size"] == before["size"] + later.night[0].unpacked
+    assert marker["installed"] == before["installed"]
+    assert nav.stat().st_mtime == 1_000_000  # the set-up not made again
+    assert not (folder / osxpregions.STEP).exists()
+    assert osxpregions.night_to_fetch(tmp_path, later) == []
+    assert osxpregions.to_fetch(tmp_path, later, True) == ([], [])
+    assert any("night lights' grids" in ln for ln in lines)

@@ -1329,9 +1329,12 @@ def test_threads_are_not_left_behind(home: Path, monkeypatch: pytest.MonkeyPatch
 class FakeInstaller:
     """An install that downloads until it is stopped."""
 
-    def __init__(self, root: Path, region, overlays: bool = True, log=print) -> None:
+    def __init__(
+        self, root: Path, region, overlays: bool = True, log=print, night_only: bool = False
+    ) -> None:
         self.region = region
         self.overlays = overlays
+        self.night_only = night_only
         self.stopped = threading.Event()
         self.phase = "downloading"
 
@@ -1411,6 +1414,39 @@ def test_the_regions_the_page_lists(home: Path, tmp_path: Path) -> None:
         c.remove_region("eur")  # not installed (any more)
     with pytest.raises(session.RefusedError):
         c.install_region("atlantis")
+
+
+def test_the_night_grids_of_a_region_installed_before_them_come_by_themselves(
+    home: Path, tmp_path: Path
+) -> None:
+    """Europe installed with 2.0, before the night grids: reading the list fetches them alone,
+    unseen (no bar, no Update), and the pilot's own install stops that and goes first."""
+    import dataclasses
+
+    from orthostudio.live import aoregions, osxpregions
+    from orthostudio.live.osxpregions import Zip
+    from orthostudio.live.pack import live_root
+
+    c = regions_control(tmp_path / "X-Plane 12")
+    grids = Zip("eur/night-zips/night_eur.zip", 2, "d" * 64, 5)
+    catalog = c._catalog_of(None)
+    catalog["eur"] = dataclasses.replace(catalog["eur"], night=(grids,))
+    mine = osxpregions.mesh_dir(live_root(), "eur")
+    mine.mkdir(parents=True)
+    zips = {"eur/zips/z_osxp_eur_+45+005.zip": "a" * 64}
+    (mine / aoregions.MARKER).write_text(json.dumps({"size": 17, "zips": zips}))
+    c.regions(fetch=True)
+    wait_for(lambda: c._installer is not None)
+    quiet = c._installer
+    assert quiet.night_only and quiet.region.id == "eur" and not quiet.overlays
+    assert c.regions()["install"] is None  # unseen on the page
+    listed = {r["id"]: r for r in c.regions()["list"]}
+    assert listed["eur"]["changed"] == 1  # its overlays only: the grids come by themselves
+    c.install_region("eur")  # the pilot's update: it brings the grids too
+    assert quiet.stopped.is_set()
+    assert not c._installer.night_only and c.regions()["install"]["region"] == "eur"
+    c.cancel_install()
+    wait_for(lambda: c.regions()["install"]["phase"] == "cancelled")
 
 
 def test_without_overlays_a_region_downloads_its_mesh_alone(home: Path, tmp_path: Path) -> None:

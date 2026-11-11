@@ -343,8 +343,10 @@ roads, forests and buildings come with it, unless "Roads, forests and buildings"
 Once installed, a region shows its size on the disk and **Delete** (click twice). When a region
 is made again on the server, the panel says an update is available and how much it downloads,
 and offers **Update**: only
-those are downloaded again. Updating and deleting wait until Live is stopped. A region may sit on
-another disk, linked from Live's folder: the panel says where each one is.
+those are downloaded again. Updating and deleting wait until Live is stopped. A region installed
+before the night lights (2.0) gets their grids by itself, a few megabytes (Europe 11.6 MB), as the
+window opens: no Update to click. A region may sit on another disk, linked from Live's folder: the
+panel says where each one is.
 
 A region AutoOrtho installed on its own is still recognised, and left as it is; Live no longer
 offers to install AutoOrtho's. In a terminal, `python -m orthostudio.live regions list`,

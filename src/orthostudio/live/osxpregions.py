@@ -225,6 +225,17 @@ def to_fetch(root: Path, region: OsxpRegion, overlays: bool) -> tuple[list[Zip],
     return mesh, ovl
 
 
+def night_to_fetch(root: Path, region: OsxpRegion) -> list[Zip]:
+    """The night grids' zips of a region installed whole that it has not got yet, or that changed
+    in the bucket since: a region installed before Live lit its towns (2.0) has none."""
+    folder = mesh_dir(root, region.id)
+    if not (folder / MARKER).is_file():
+        return []
+    marker, step = _read(folder / MARKER), _read(folder / STEP)
+    have = {**(marker.get("zips") or {}), **(step.get("zips") or {})}
+    return [z for z in region.night if have.get(z.path) != z.sha256]
+
+
 def unpack(path: Path, dest: Path, stop: threading.Event | None = None) -> int:
     """A zip's files into ``dest``, its top folder taken off; each written beside its place and
     renamed onto it whole, so that a stop leaves the file of before or the new one, never half of
@@ -288,7 +299,8 @@ def remove(root: Path, region: str, squares: Sequence[tuple[int, int]], log: Log
 class Installer:
     """Downloads a region's zips (a few at a time) and unpacks each as soon as it is whole.
     :meth:`run` blocks; :meth:`cancel` stops it at the next megabyte, and the next install goes on
-    from there."""
+    from there. ``night_only``: a region installed already given its night grids alone
+    (:func:`night_to_fetch`), its mesh and its record of the set-up left as they are."""
 
     def __init__(
         self,
@@ -299,10 +311,12 @@ class Installer:
         client=None,
         host: tuple[str, str] | None = None,
         log: Log = print,
+        night_only: bool = False,
     ):
         self.root = root
         self.region = region
         self.with_overlays = overlays
+        self.night_only = night_only
         self.host = host or shipped_host()
         self.client = client
         self.log = log
@@ -355,14 +369,19 @@ class Installer:
             self._set(phase="done")
         except CancelledError:
             self._set(phase="cancelled")
-            self.log(f"install of {self.region.id} stopped: it goes on from there the next time")
+            self.log(f"{self._what()} stopped: it goes on from there the next time")
         except Exception as e:
             self._set(phase="failed", error=str(e) or type(e).__name__)
-            self.log(f"install of {self.region.id} failed: {e}")
+            self.log(f"{self._what()} failed: {e}")
         finally:
             if own:
                 self.client.close()
         return self.progress
+
+    def _what(self) -> str:
+        if self.night_only:
+            return f"the night lights' grids of {self.region.id}"
+        return f"install of {self.region.id}"
 
     def _run(self) -> None:
         from orthostudio.live import winsearch
@@ -373,7 +392,10 @@ class Installer:
         region = self.region
         folder = mesh_dir(self.root, region.id)
         pack = overlay_pack(self.root)
-        mesh, ovl = to_fetch(self.root, region, self.with_overlays)
+        if self.night_only:
+            mesh, ovl = night_to_fetch(self.root, region), []
+        else:
+            mesh, ovl = to_fetch(self.root, region, self.with_overlays)
         todo = [*mesh, *ovl]
         self._set(
             total_bytes=sum(z.size for z in todo),
@@ -381,7 +403,8 @@ class Installer:
             phase="downloading" if todo else "done",
         )
         if not todo:
-            self.log(f"OrthoStudio XP's region {region.id} is up to date")
+            if not self.night_only:
+                self.log(f"OrthoStudio XP's region {region.id} is up to date")
             return
         folder.mkdir(parents=True, exist_ok=True)
         pack.mkdir(parents=True, exist_ok=True)
@@ -399,12 +422,20 @@ class Installer:
             self.rate.samples.clear()
         update = (folder / MARKER).exists()
         size = sum(z.size for z in todo) / 1e9
-        self.log(
-            f"{'updating' if update else 'installing'} OrthoStudio XP's region {region.id}: "
-            f"{len(mesh)} mesh zips, {len(ovl)} overlay zips, {size:.1f} GB, into "
-            f"{folder.resolve()}"
-        )
-        step = _read(folder / STEP)
+        if self.night_only:
+            self.log(
+                f"the night lights' grids of OrthoStudio XP's region {region.id}: "
+                f"{sum(z.size for z in todo) / 1e6:.1f} MB, into {folder.resolve()}"
+            )
+        else:
+            self.log(
+                f"{'updating' if update else 'installing'} OrthoStudio XP's region {region.id}: "
+                f"{len(mesh)} mesh zips, {len(ovl)} overlay zips, {size:.1f} GB, into "
+                f"{folder.resolve()}"
+            )
+        # the night grids alone keep their record to themselves: an update the pilot stopped
+        # keeps its step for the next one
+        step = {"zips": {}} if self.night_only else _read(folder / STEP)
         step.setdefault("zips", {})
 
         rank = {z.path: i for i, z in enumerate(todo)}
@@ -429,7 +460,8 @@ class Installer:
                 else:
                     unpack(path, folder, self.stop)
                     step["zips"][z.path] = z.sha256
-                    _write(folder / STEP, step)
+                    if not self.night_only:
+                        _write(folder / STEP, step)
                 path.unlink()
                 with self.lock:
                     self.progress.unpacked += 1
@@ -527,6 +559,12 @@ class Installer:
         marker = _read(folder / MARKER)
         zips = {**(marker.get("zips") or {}), **step["zips"]}
         sizes = {z.path: z.unpacked for z in (*region.mesh, *region.night)}
+        if self.night_only:  # the region as it was, its grids recorded: nothing to set up again
+            size = sum(sizes.get(p, 0) for p in zips)
+            _write(folder / MARKER, {**marker, "zips": zips, "size": size})
+            shutil.rmtree(self.download, ignore_errors=True)
+            self.log(f"OrthoStudio XP's region {region.id}: its night lights' grids installed")
+            return
         _write(
             folder / MARKER,
             {

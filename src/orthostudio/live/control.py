@@ -332,6 +332,9 @@ class LiveControl:
         self._catalog_thread: threading.Thread | None = None
         self._installer: Any = None
         self._install_thread: threading.Thread | None = None
+        # the night grids of the regions installed before them, fetched by Live itself, unseen:
+        # the pilot's own install goes first (:meth:`_fetch_night_grids`)
+        self._quiet = False
         # the window's "Prepare": a departure for the running stream, and SimBrief's suggestion
         self._resolve = resolve
         self._simbrief = simbrief
@@ -709,9 +712,63 @@ class LiveControl:
         except Exception as e:
             with self._lock:
                 self._catalog_error = str(e)
+            return
         finally:
             with self._lock:
                 self._catalog_at = time.monotonic()
+        self._fetch_night_grids(got)
+
+    def _fetch_night_grids(self, catalog: dict) -> None:
+        """The night lights' grids of the regions installed before them (2.0), a few megabytes
+        each (Europe 11.6), downloaded by Live itself, in the background and unseen on the page,
+        while it streams too: they are no file X-Plane reads, and the night's process takes each
+        one as it comes. Not while an install runs, which brings them; the pilot's own install
+        stops this one and goes first. A failure is tried again at the next read of the list."""
+        root = live_root()
+        mine = osxpregions.installed(root)
+        regions = [
+            catalog[r]
+            for r in REGION_NAMES
+            if r in mine and r in catalog and osxpregions.night_to_fetch(root, catalog[r])
+        ]
+        if not regions:
+            return
+        with self._lock:
+            if self._install_thread is not None and self._install_thread.is_alive():
+                return
+            self._quiet = True
+            thread = threading.Thread(
+                target=self._night_grids, args=(root, regions), name="live-night-grids", daemon=True
+            )
+            self._install_thread = thread
+        thread.start()
+
+    def _night_grids(self, root: Path, regions: list) -> None:
+        for region in regions:
+            installer = self._installer_of(
+                root, region, overlays=False, log=self.log, night_only=True
+            )
+            with self._lock:
+                if not self._quiet:  # the pilot's install took over
+                    return
+                self._installer = installer
+            installer.run()
+            if installer.snapshot().get("phase") != "done":
+                return
+
+    def _stop_night_grids(self) -> None:
+        """The quiet download of night grids stopped, for the pilot's install or delete: it goes
+        on from there the next time."""
+        with self._lock:
+            if not self._quiet:
+                return
+            self._quiet = False
+            installer, thread = self._installer, self._install_thread
+            self._installer = None
+        if installer is not None:
+            installer.cancel()
+        if thread is not None:
+            thread.join(30)
 
     def regions(self, *, fetch: bool = False) -> dict[str, Any]:
         """OrthoStudio XP's regions as the page lists them: those installed (:func:`our_regions`,
@@ -728,7 +785,7 @@ class LiveControl:
                 )
                 self._catalog_thread.start()
             catalog, error = self._catalog, self._catalog_error
-            installer = self._installer
+            installer = None if self._quiet else self._installer
         root = live_root()
         mine = osxpregions.installed(root)
         overlays = self._settings().overlays != "off"
@@ -740,6 +797,7 @@ class LiveControl:
             item: dict[str, Any] = {"id": region_id, "installed": region_id in mine}
             if region is not None:
                 mesh, ovl = osxpregions.to_fetch(root, region, overlays)
+                mesh = [z for z in mesh if z not in region.night]  # those come by themselves
                 item["download"] = region.mesh_size + (
                     sum(z.size for z in region.overlays) if overlays else 0
                 )
@@ -762,6 +820,7 @@ class LiveControl:
         (only its zips that changed), in the background. One at a time; a region new while Live
         streams is used from the next start, and one installed is not updated then: the pack
         reads its files."""
+        self._stop_night_grids()
         with self._lock:
             catalog = self._catalog
             busy = self._install_thread is not None and self._install_thread.is_alive()
@@ -783,17 +842,19 @@ class LiveControl:
 
     def cancel_install(self) -> None:
         with self._lock:
-            installer = self._installer
+            installer = None if self._quiet else self._installer
         if installer is not None:
             installer.cancel()
 
     def remove_region(self, region_id: str) -> None:
         """Delete one of OrthoStudio XP's regions from the disk, with its overlays. Not while Live
         streams, nor while the region is being installed."""
+        self._stop_night_grids()
         with self._lock:
             installing = (
                 self._install_thread is not None
                 and self._install_thread.is_alive()
+                and self._installer is not None
                 and self._installer.region.id == region_id
             )
             streaming = self._state != IDLE

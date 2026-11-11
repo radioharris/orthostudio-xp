@@ -572,7 +572,16 @@ DSF is missing (a part of the world not installed), the overlays of Live's regio
 **The density grids**: one per square, `<region>/night/<square>.png`, grey, 288 × 288 cells of 15
 arc-seconds over the square and 0.1° round it, north-west corner at (lon − 0.1, lat + 1.1), cut
 from Black Marble 2016's eight grey tiles by the world mesh's tools and installed with the region
-(the user's choice, 2026-11-10); about 16 KB a square round Nice. Without a grid a texture's lights
+(the user's choice, 2026-11-10), one zip a region (`night` in the manifest, Europe 11.6 MB); about
+16 KB a square round Nice. A region installed before them (2.0) gets them by itself: each read of
+the list of regions (the window's, at its opening and every ten minutes at most) starts their
+download for the regions installed that lack them (`LiveControl._fetch_night_grids`,
+`Installer(night_only=True)`, `osxpregions.night_to_fetch`), in the background, unseen on the page
+(no bar, and the panel's Update counts no night zip), while Live streams too: X-Plane reads none
+of them, and the night's process takes each grid as it comes. Only the grids' zip is fetched; the
+region's marker records it, nothing else of the region changes, its set-up is not made again. The
+pilot's own install or delete stops it first and the install brings the grids itself; a failure is
+tried again at the next read. Without a grid a texture's lights
 are ×0.85, what a town's grid gives on average. `OSXP_LIVE_NIGHT_GRIDS` names a folder looked in
 first, for the test flights.
 
@@ -1304,8 +1313,6 @@ Over it, Live's layers:
   for, where X-Plane at FL300 reads about a third of them (the review of 2026-09-30). X-Plane has
   no altitude for the aircraft while it loads a flight: the plugin read an altitude of 0 and a
   height above the ground of -2,090,546 m at its HOLD, for a start at FL300 (2026-09-30).
-- Night lights: not yet flown with Live itself (the measurements are the prototype's, on a tile of
-  Nice); the density grids are not yet hosted with the regions, so a region installed today lights
-  its towns evenly; OrthoStudio XP's own tiles have no night texture yet (its option to come, with
+- Night lights: OrthoStudio XP's own tiles have no night texture yet (its option to come, with
   the same code); X-Plane 12's own `LUMINANCE` and `LIT_FADE_PARAMS` on the night lines not tried,
   which may carry towns farther than 80 km.
