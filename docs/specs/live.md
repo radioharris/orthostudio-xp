@@ -1234,11 +1234,12 @@ A plugin that does not return from one of these messages holds the whole load.
     seconds since the start was known, and a progress bar; the window's start card says the same.
     The bar is the share done of the count it shows, its textures and, while the start waits for
     them (`NightWork.start_night`), its night textures, each part's whole the most seen while it is
-    wanted, going back only as work is added (`Arrival.progress`): counted in image pieces, the
-    night textures after the photos, it stood at 38 % while the count fell from 3,560 to 24, then
-    jumped to 100 % (Toulouse, 2026-11-11); the night of a start found to be day at the HOLD leaves
-    the whole with its textures. At a first flight the streamer starts building before the plugin
-    starts waiting. Each system draws it its own way, the same sizes, colours and words:
+    wanted, going back only as work is added, never full with work left (`Arrival.progress`):
+    counted in image pieces, the night textures after the photos, it stood at 38 % while the count
+    fell from 3,560 to 24, then jumped to 100 % (Toulouse, 2026-11-11); the night of a start found
+    to be day at the HOLD leaves the whole with its textures. At a first flight the streamer starts
+    building before the plugin starts waiting. Each system draws it its own way, the same sizes,
+    colours and words:
     - on a Mac (`native/xplane_plugin/live_panel.m`), the run loop does not turn, so it is drawn
       on the spot with `-display` and `[CATransaction flush]`;
     - on Windows (`live_panel_win.c`), the windows belong to a thread of the plugin's own, which

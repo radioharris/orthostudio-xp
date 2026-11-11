@@ -880,6 +880,9 @@ class StartBarTest(unittest.TestCase):
         self.assertEqual(c.progress(1000, 8744, True), 0.0)
         self.assertEqual(c.progress(1000, 0, False), 0.0)  # day at the HOLD: its photos alone
         self.assertAlmostEqual(c.progress(500, 0, False), 0.5)
+        d = Arrival(43.66, 7.22, "LFMN", "plugin", 0.0)  # its nights made, 6 photos still to come
+        d.progress(8, 1000, True)
+        self.assertEqual(d.progress(6, 0, True), 0.99)  # not 100 % with work left
 
     def test_the_count_the_start_shows_is_the_bar_s(self):
         """The bar is worked out from the count shown, night textures in it."""

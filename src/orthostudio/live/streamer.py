@@ -1924,11 +1924,15 @@ class Arrival:
         textures the rest once the photos were built, it stood at 38 % while the count fell from
         3,560 to 24, then went to 100 % at once (Toulouse, the campaign of 2026-11-11); with the
         night of a start found to be day at the HOLD kept in the whole, at 90 % with every photo
-        to build (the review of 2026-11-11)."""
+        to build (the review of 2026-11-11). Never full with work left: 6 textures of 1,008 read
+        100 % (Nice, 2026-11-11)."""
         self.most = max(self.most, left)
         self.most_night = max(self.most_night, night_left) if night else 0
         whole = self.most + self.most_night
-        return 1.0 - (left + night_left) / whole if whole else 1.0
+        if not whole:
+            return 1.0
+        done = 1.0 - (left + night_left) / whole
+        return min(done, 0.99) if left + night_left else done
 
     def count(self, left: int, building: int, night_left: int, done: float) -> dict:
         """What a start waits for: its textures and its night ones, those all of whose photos are
