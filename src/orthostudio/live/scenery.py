@@ -256,9 +256,9 @@ def _is_xplane(name: str) -> bool:
 
 def xplane_pid() -> int | None:
     """X-Plane's process, from the system's own list (:func:`_processes`); None where X-Plane does
-    not run or that list cannot be read."""
-    found = [pid for pid, (name, _) in (_processes() or {}).items() if _is_xplane(name)]
-    return min(found) if found else None
+    not run or that list cannot be read. The newest of two, as :func:`xplane_started_at`."""
+    found = [(at, pid) for pid, (name, at) in (_processes() or {}).items() if _is_xplane(name)]
+    return max(found)[1] if found else None
 
 
 class _BsdInfo(ctypes.Structure):

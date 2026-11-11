@@ -141,10 +141,12 @@ function post(part, message) {
   frames[part]?.contentWindow?.postMessage(message, "*");
 }
 
-/** The room the foot takes over the right end of a page's own (styles.css html.in-frame). */
+/** The room the foot takes over the right end of a page's own (styles.css html.in-frame): its
+ * width and its gap to the page's foot's end, whatever room a page's scroll bar takes (placeFoot;
+ * counted from the window's edge, that room counted twice on Windows). */
 function footRoom() {
-  const left = $("frame-foot").getBoundingClientRect().left;
-  return Math.max(0, Math.ceil(window.innerWidth - left + 12));
+  const gap = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--pad")) || 12;
+  return Math.max(0, Math.ceil($("frame-foot").getBoundingClientRect().width + gap + 12));
 }
 
 /** Give `part`'s page what the pilot chose here, and the room the foot takes. */
