@@ -176,10 +176,11 @@ aircraft, and comes to it when a flight starts (about 60 km across); drag it awa
 to look elsewhere, and "Follow the aircraft" brings it back. The next flight is followed again by
 itself. Prepare brings the map to the departure, as close as a flight's start.
 
-**The Settings tab**: the mesh's regions, the roads, forests and buildings, the flight plan, Live's
-disk space (with what the textures and the imagery take, and a button to delete either), what the
-app opens on, the X-Plane folder (one setting with Build's) and Live's folder. They apply with Save,
-at the next start.
+**The Settings tab**, the most needed first: the X-Plane folder (one setting with Build's), the
+mesh's regions, Live's disk space (with what the textures and the imagery take, and a button to
+delete either) and Live's folder; then what the flight shows: the roads, forests and buildings,
+your own tiles, the season, the night lights, the ground grain up close; then the flight plan and
+what the app opens on. They apply with Save, at the next start.
 
 ![Live's Settings: the mesh by region with what each downloads and an Install button, the season, the roads, forests and buildings, your own tiles and the flight plan](images/live/settings.png)
 

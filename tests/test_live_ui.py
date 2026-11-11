@@ -864,6 +864,28 @@ def test_the_decal_list_follows_a_change_of_language() -> None:
     assert "JSON.stringify([language(), decals])" in fill  # drawn again in the new language
 
 
+def test_the_settings_read_the_most_needed_first() -> None:
+    """Live's Settings, down the first column then the second: what Live cannot fly without,
+    then what a flight shows, then comforts (the user, 2026-11-11)."""
+    import re
+
+    html = (UI_DIR / "index.html").read_text()
+    cards = re.findall(r'<fieldset class="question" id="(q-[a-z-]+)">', html)
+    assert cards == [
+        "q-xplane",
+        "q-regions",
+        "q-disk",
+        "q-folder",
+        "q-overlays",
+        "q-own-tiles",
+        "q-season",
+        "q-night",
+        "q-decal",
+        "q-plan",
+        "q-home",
+    ]
+
+
 @pytest.mark.skipif(NODE is None, reason="needs node")
 def test_the_page_says_everything_in_both_languages() -> None:
     keys = _strings()

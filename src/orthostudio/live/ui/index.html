@@ -243,6 +243,25 @@
       <p class="help settings-search-note" id="settings-search-note" aria-live="polite" hidden></p>
     </div>
     <div class="settings-questions">
+      <!-- most needed first: where X-Plane is, the mesh, the room it takes; then what the
+           flight shows; then comforts. No Zoom card: the zooms, their hover and their warnings
+           are on Live's screen, and the pink test of the 8192 px is live.toml's tint_8192 alone
+           (the user, 2026-10-31) -->
+      <fieldset class="question" id="q-xplane">
+        <legend class="question-title" data-i18n="xplane.title">Where is X-Plane 12 installed?</legend>
+        <p class="question-help" data-i18n="xplane.help"></p>
+        <p class="question-detected" id="xplane-now"></p>
+        <p class="question-help" id="xplane-others" hidden></p>
+        <div class="sub-question">
+          <label class="sub-question-title" for="set-xplane" data-i18n="folder.other">Another folder</label>
+          <div class="path-row">
+            <input type="text" id="set-xplane" class="question-path" spellcheck="false" autocomplete="off">
+            <button type="button" class="btn" id="xplane-choose" data-i18n="folder.choose">Choose…</button>
+          </div>
+        </div>
+        <p class="question-help" id="xplane-busy" data-i18n="xplane.busy" hidden></p>
+      </fieldset>
+
       <fieldset class="question" id="q-regions">
         <legend class="question-title" data-i18n="regions.title">The mesh, by region</legend>
         <p class="question-help" data-i18n="regions.help"></p>
@@ -254,6 +273,65 @@
         <p class="question-help" data-i18n="regions.ours_source"></p>
       </fieldset>
 
+      <fieldset class="question" id="q-disk">
+        <legend class="question-title" data-i18n="disk.title">Disk space</legend>
+        <p class="question-help" data-i18n="disk.help"></p>
+        <p class="question-detected" id="disk-now"></p>
+        <div class="sub-question">
+          <label class="sub-question-title" for="set-disk" data-i18n="disk.space">Space for Live</label>
+          <div class="with-unit"><input type="number" id="set-disk" name="disk_gb" min="10" step="1">
+            <span class="unit" data-i18n="unit.gb">GB</span></div>
+          <!-- a space under the zooms' floor, raised to it as it was saved (settings.disk_floor) -->
+          <p class="question-help is-warn" id="disk-raised" hidden></p>
+        </div>
+        <div class="actions live-delete">
+          <button type="button" class="btn btn-danger" id="delete-btn" data-i18n="disk.delete">Delete…</button>
+          <span class="help" id="delete-help"></span>
+        </div>
+      </fieldset>
+
+      <fieldset class="question" id="q-folder">
+        <legend class="question-title" data-i18n="folder.title">Live's folder</legend>
+        <p class="question-help" data-i18n="folder.help"></p>
+        <p class="question-detected" id="folder-now"></p>
+        <div class="sub-question">
+          <label class="sub-question-title" for="set-folder" data-i18n="folder.other">Another folder</label>
+          <div class="path-row">
+            <input type="text" id="set-folder" name="folder" class="question-path" spellcheck="false" autocomplete="off">
+            <button type="button" class="btn" id="folder-choose" data-i18n="folder.choose">Choose…</button>
+          </div>
+        </div>
+        <p class="question-help" data-i18n="folder.moved"></p>
+      </fieldset>
+
+      <fieldset class="question" id="q-overlays">
+        <legend class="question-title" data-i18n="overlays.title">Roads, forests and buildings</legend>
+        <p class="question-help" data-i18n="overlays.help"></p>
+        <div class="choices">
+          <label class="choice"><input type="radio" name="overlays" value="auto">
+            <span class="choice-text"><span class="choice-label" data-i18n="overlays.auto">Yes (recommended)</span>
+              <span class="choice-note" data-i18n="overlays.auto_note"></span></span></label>
+          <label class="choice"><input type="radio" name="overlays" value="off">
+            <span class="choice-text"><span class="choice-label" data-i18n="overlays.off">No</span>
+              <span class="choice-note" data-i18n="overlays.off_note"></span></span></label>
+        </div>
+      </fieldset>
+
+      <fieldset class="question" id="q-own-tiles">
+        <legend class="question-title" data-i18n="own_tiles.title">Your own tiles</legend>
+        <p class="question-help" data-i18n="own_tiles.help"></p>
+        <div class="choices">
+          <label class="choice"><input type="radio" name="own_tiles" value="first">
+            <span class="choice-text"><span class="choice-label" data-i18n="own_tiles.first">Yours first (recommended)</span>
+              <span class="choice-note" data-i18n="own_tiles.first_note"></span></span></label>
+          <label class="choice"><input type="radio" name="own_tiles" value="under">
+            <span class="choice-text"><span class="choice-label" data-i18n="own_tiles.under">Live everywhere</span>
+              <span class="choice-note" data-i18n="own_tiles.under_note"></span></span></label>
+        </div>
+        <p class="question-help" data-i18n="own_tiles.restart"></p>
+      </fieldset>
+
+      <!-- the photos' colours: a season per start, never one in flight (orthostudio.live.look) -->
       <fieldset class="question" id="q-season">
         <legend class="question-title" data-i18n="season.title">Season</legend>
         <p class="question-help" data-i18n="season.help"></p>
@@ -293,26 +371,6 @@
         </fieldset>
       </fieldset>
 
-      <fieldset class="question" id="q-decal">
-        <legend class="question-title" data-i18n="decal.title">Ground grain up close (decals)</legend>
-        <p class="question-help" data-i18n="decal.help"></p>
-        <select id="set-decal" name="decal" class="question-select" data-i18n-aria-label="decal.title" aria-label="Ground grain up close (decals)"></select>
-        <p class="question-help" data-i18n="decal.restart"></p>
-      </fieldset>
-
-      <fieldset class="question" id="q-overlays">
-        <legend class="question-title" data-i18n="overlays.title">Roads, forests and buildings</legend>
-        <p class="question-help" data-i18n="overlays.help"></p>
-        <div class="choices">
-          <label class="choice"><input type="radio" name="overlays" value="auto">
-            <span class="choice-text"><span class="choice-label" data-i18n="overlays.auto">Yes (recommended)</span>
-              <span class="choice-note" data-i18n="overlays.auto_note"></span></span></label>
-          <label class="choice"><input type="radio" name="overlays" value="off">
-            <span class="choice-text"><span class="choice-label" data-i18n="overlays.off">No</span>
-              <span class="choice-note" data-i18n="overlays.off_note"></span></span></label>
-        </div>
-      </fieldset>
-
       <fieldset class="question" id="q-night">
         <legend class="question-title" data-i18n="night.title">Night lights</legend>
         <p class="question-help" data-i18n="night.help"></p>
@@ -332,24 +390,13 @@
         </div>
       </fieldset>
 
-      <fieldset class="question" id="q-own-tiles">
-        <legend class="question-title" data-i18n="own_tiles.title">Your own tiles</legend>
-        <p class="question-help" data-i18n="own_tiles.help"></p>
-        <div class="choices">
-          <label class="choice"><input type="radio" name="own_tiles" value="first">
-            <span class="choice-text"><span class="choice-label" data-i18n="own_tiles.first">Yours first (recommended)</span>
-              <span class="choice-note" data-i18n="own_tiles.first_note"></span></span></label>
-          <label class="choice"><input type="radio" name="own_tiles" value="under">
-            <span class="choice-text"><span class="choice-label" data-i18n="own_tiles.under">Live everywhere</span>
-              <span class="choice-note" data-i18n="own_tiles.under_note"></span></span></label>
-        </div>
-        <p class="question-help" data-i18n="own_tiles.restart"></p>
+      <fieldset class="question" id="q-decal">
+        <legend class="question-title" data-i18n="decal.title">Ground grain up close (decals)</legend>
+        <p class="question-help" data-i18n="decal.help"></p>
+        <select id="set-decal" name="decal" class="question-select" data-i18n-aria-label="decal.title" aria-label="Ground grain up close (decals)"></select>
+        <p class="question-help" data-i18n="decal.restart"></p>
       </fieldset>
 
-      <!-- no Zoom card: the zooms, their hover and their warnings are on Live's screen, and the
-           pink test of the 8192 px is live.toml's tint_8192 alone (the user, 2026-10-31) -->
-
-      <!-- the photos' colours: a season per start, never one in flight (orthostudio.live.look) -->
       <fieldset class="question" id="q-plan">
         <legend class="question-title" data-i18n="plan.title">Flight plan</legend>
         <p class="question-help" data-i18n="plan.help"></p>
@@ -360,23 +407,6 @@
             <button type="button" class="btn" id="simbrief-osxp" hidden></button>
           </div>
           <p class="question-help" data-i18n="plan.privacy"></p>
-        </div>
-      </fieldset>
-
-      <fieldset class="question" id="q-disk">
-        <legend class="question-title" data-i18n="disk.title">Disk space</legend>
-        <p class="question-help" data-i18n="disk.help"></p>
-        <p class="question-detected" id="disk-now"></p>
-        <div class="sub-question">
-          <label class="sub-question-title" for="set-disk" data-i18n="disk.space">Space for Live</label>
-          <div class="with-unit"><input type="number" id="set-disk" name="disk_gb" min="10" step="1">
-            <span class="unit" data-i18n="unit.gb">GB</span></div>
-          <!-- a space under the zooms' floor, raised to it as it was saved (settings.disk_floor) -->
-          <p class="question-help is-warn" id="disk-raised" hidden></p>
-        </div>
-        <div class="actions live-delete">
-          <button type="button" class="btn btn-danger" id="delete-btn" data-i18n="disk.delete">Delete…</button>
-          <span class="help" id="delete-help"></span>
         </div>
       </fieldset>
 
@@ -391,35 +421,6 @@
           <label class="choice"><input type="radio" name="app_home" value="build">
             <span class="choice-text"><span class="choice-label" data-i18n="home.build">OrthoStudio XP, to build tiles</span></span></label>
         </div>
-      </fieldset>
-
-      <fieldset class="question" id="q-xplane">
-        <legend class="question-title" data-i18n="xplane.title">Where is X-Plane 12 installed?</legend>
-        <p class="question-help" data-i18n="xplane.help"></p>
-        <p class="question-detected" id="xplane-now"></p>
-        <p class="question-help" id="xplane-others" hidden></p>
-        <div class="sub-question">
-          <label class="sub-question-title" for="set-xplane" data-i18n="folder.other">Another folder</label>
-          <div class="path-row">
-            <input type="text" id="set-xplane" class="question-path" spellcheck="false" autocomplete="off">
-            <button type="button" class="btn" id="xplane-choose" data-i18n="folder.choose">Choose…</button>
-          </div>
-        </div>
-        <p class="question-help" id="xplane-busy" data-i18n="xplane.busy" hidden></p>
-      </fieldset>
-
-      <fieldset class="question" id="q-folder">
-        <legend class="question-title" data-i18n="folder.title">Live's folder</legend>
-        <p class="question-help" data-i18n="folder.help"></p>
-        <p class="question-detected" id="folder-now"></p>
-        <div class="sub-question">
-          <label class="sub-question-title" for="set-folder" data-i18n="folder.other">Another folder</label>
-          <div class="path-row">
-            <input type="text" id="set-folder" name="folder" class="question-path" spellcheck="false" autocomplete="off">
-            <button type="button" class="btn" id="folder-choose" data-i18n="folder.choose">Choose…</button>
-          </div>
-        </div>
-        <p class="question-help" data-i18n="folder.moved"></p>
       </fieldset>
     </div>
     <div class="actions settings-actions">

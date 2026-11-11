@@ -192,7 +192,11 @@ modules, English and French, English unless the switch chose French, as OrthoStu
   (`drawZooms`), saved as soon as chosen and locked while Live runs, as the source (`chooseZoom`),
   the disk space raised to their floor and said under it (`zoom-disk`). The Settings tab has no
   Zoom card since 2026-10-31 (the user: it only said again what the hover says); the pink test is
-  `tint_8192` in `live.toml` alone. The engine still takes any zoom (`--max-zoom`).
+  `tint_8192` in `live.toml` alone. The engine still takes any zoom (`--max-zoom`). Its cards read
+  the most needed first (the user, 2026-11-11), down the first column then the second (CSS
+  columns): X-Plane's folder, the mesh by region, the disk space, Live's folder; then what a
+  flight shows: roads, forests and buildings, your own tiles, the season, the night lights, the
+  ground grain; then the flight plan and what the app opens on.
 - **A start** waits for everything X-Plane reads while the flight loads, the 8192 px level within
   15 km included (see "The 8192 px level"). The start modes of before (`full`, `around`,
   `normal`, and `reload` until 27 September) went with the growing; a saved `start_mode` is left
