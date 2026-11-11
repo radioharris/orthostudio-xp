@@ -437,10 +437,11 @@ class NightWork:
         # off in the settings while the pack's terrain files still name night textures (turned off
         # while X-Plane ran, region.set_night): none made, those there counted and followed
         self.lights = lights
-        # the level of each night texture that may hold lights, as the disk counts it (kept in the
-        # textures' record): counted from the moment it is given, until it comes back black or is
-        # put back black, so the count is never short (a Live stopped while it was made, Windows
-        # refusing to put one back black)
+        # the sharpest level each night texture may hold lights from, as the disk counts it (kept
+        # in the textures' record): from the moment it is given, the sharper of the two while a
+        # job runs, what came back once one has; gone once put back black with none running
+        # (a Live stopped while one was made, Windows refusing to put one back black: the count
+        # is not short)
         self.lit: dict[str, int] = {}
         self.team = 1  # the processes at a start at night: Live's encoders (the streamer's)
         self.top_of: Callable[[str], int] = lambda name: 0  # a file's sharpest level (streamer's)
@@ -647,7 +648,9 @@ class NightWork:
                         self.made[name] = min(level, self.made.get(name, 99))
                         self.tries.pop(name, None)
                         self.seconds += said
-                        if not lit:  # the black name, which takes nothing
+                        if lit:  # its file written again: what it holds now
+                            self.lit[name] = level
+                        else:  # the black name, which takes nothing
                             self.lit.pop(name, None)
         for name in black:
             with contextlib.suppress(OSError):  # black again at its next eviction
@@ -727,7 +730,7 @@ class NightWork:
                 for name, level in batch:
                     del self.wanted[name]
                     self.running[name] = level
-                    self.lit[name] = level
+                    self.lit[name] = min(level, self.lit.get(name, level))
             self._jobs[pool] = self._jobs.get(pool, 0) + len(order)
         apart = size == 1  # one process lives the whole flight: a DSF read apart (_read_apart)
         for i, batch in enumerate(order):
@@ -786,8 +789,9 @@ class NightWork:
                 self._pool_names.replace(0, path)
             else:
                 path.unlink(missing_ok=True)
-        with self.lock:  # once done: refused (Windows), it still holds its lights
-            self.lit.pop(name, None)
+        with self.lock:  # once done (refused, Windows: it still holds its lights), none running
+            if name not in self.running:  # (one running writes its lights after: pump then)
+                self.lit.pop(name, None)
 
     def _job(self, name: str, level: int, apart: bool) -> tuple:
         tex = parse_texture_name(name)

@@ -162,17 +162,21 @@ def usage(
     lit: Mapping[str, int] | None = None,
     copied: Collection[str] = (),
 ) -> int:
-    """The disk of the textures built, as their files hold them; ``top_of``: each one's file size
-    (its sharpest level), 4096 px for all when not given; ``lit``: the level of each night texture
-    holding lights (orthostudio.live.nightwork); ``copied``: the 8192 px files holding the copy of
-    their 4096 px level (orthostudio.live.texture.copy_up). Counted for all, the night took half
-    of Windows' space by day before any was made, and an 8192 px copy, 33 MB, went uncounted (the
-    review of 2026-11-11)."""
+    """The disk of the textures built and of the night textures, as their files hold them;
+    ``top_of``: each one's file size (its sharpest level), 4096 px for all when not given;
+    ``lit``: the level of each night texture that may hold lights, built or not (a stale
+    texture's night is on the disk until put back black: orthostudio.live.nightwork);
+    ``copied``: the 8192 px files that may hold the copy of their 4096 px level
+    (orthostudio.live.texture.copy_up). Counted for every texture, the night took half of
+    Windows' space by day before any was made, and an 8192 px copy, 33 MB, went uncounted; a
+    night counted with its built texture only, a season's change left them all out (the reviews
+    of 2026-11-11)."""
     lit, copied = lit or {}, frozenset(copied)  # looked up by name: in a list, 2.5 s a count
-    if top_of is None and not lit and not copied:
-        return levels_usage(Counter(built.values()))
+    nights = sum(night_bytes(level) for level in lit.values())
+    if top_of is None and not copied:
+        return levels_usage(Counter(built.values())) + nights
     top_of = top_of or (lambda _: 0)
-    return sum(held_bytes(n, lv, top_of(n), lit, copied) for n, lv in built.items())
+    return sum(held_bytes(n, lv, top_of(n), None, copied) for n, lv in built.items()) + nights
 
 
 def held_bytes(
@@ -183,9 +187,10 @@ def held_bytes(
     copied: Collection[str] = (),
 ) -> int:
     """Disk the file of ``name`` takes, built from ``level``, and its night texture, as
-    :func:`usage` counts them."""
+    :func:`usage` counts them: a copy only where the file is built from its 4096 px level, the
+    one it copies (another since, by an older Live: none there)."""
     night = (lit or {}).get(name)
-    day = texture_bytes(-1 if name in copied else level, top)
+    day = texture_bytes(-1 if level == 0 and name in copied else level, top)
     return day + (0 if night is None else night_bytes(night))
 
 

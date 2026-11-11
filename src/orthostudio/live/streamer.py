@@ -436,9 +436,8 @@ class Streamer:
         self.cruising = False  # high enough that no 8192 px level gets its photos (_cruise_height)
         self.meta = load_built(pack_dir)
         self.built: dict[str, int] = dict(self.meta.get("textures", {}))
-        # recorded with them: on the disk until their file is written again (evict.usage); a file
-        # built otherwise since (an older Live) holds none
-        self.copied_up = {n for n in self.meta.get("copied", []) if self.built.get(n) == 0}
+        # recorded with them: on the disk until their file is written again (evict.usage)
+        self.copied_up: set[str] = set(self.meta.get("copied", []))
         self.built_version = 0  # one more at each change of built: the window's map
         # built without pieces that did not come: when to build them again, and how many times
         self.patchy: dict[str, tuple[float, int]] = {
@@ -1431,6 +1430,8 @@ class Streamer:
                     continue
                 top = self.top_of(name)
                 neutral = self.neutral_for(top)
+                with self.lock:  # counted from now: a Live stopped meanwhile writes it all the same
+                    self.copied_up.add(name)
                 copying[name] = pool.submit(
                     copy_up,
                     self.pack_dir / "textures" / name,
@@ -1460,10 +1461,10 @@ class Streamer:
                     fut.result()
                 except Exception as e:
                     self.log(f"  could not copy up the 4096 px level of {name}: {e}")
+                    with self.lock:
+                        self.copied_up.discard(name)
                     continue
                 writes.add("8192 px copies of the 4096 px level", dds.level_layout(-1)[0][1])
-                with self.lock:
-                    self.copied_up.add(name)
                 self.log(
                     f"  {name}: its 8192 px photos late, its 4096 px level copied up meanwhile"
                 )

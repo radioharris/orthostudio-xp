@@ -284,7 +284,7 @@ night.
 - Live stays within its disk space, each file counted as the disk takes it: the night textures
   made take a part of it, those with lights only (none is made by day; those made stay on the
   disk), and X-Plane's roads kept for them 5 % of it, 1 GB at most. On a Mac and on Linux the
-  night textures take about a tenth of what Live keeps at most; on Windows up to nearly half,
+  night textures take about a tenth of what Live keeps, a seventh at most; on Windows up to half,
   where the disk (NTFS) gives a far texture's file 128 KB whatever it holds, a night one as a
   photo (on a start at LSGG, every night texture lit: 11 % on a Mac, 44 % on Windows; the sea
   and the forests take nothing). With the same night textures on a tile of Nice, flown three times each way at
@@ -295,7 +295,9 @@ night.
 shows from the next start: Live makes its night textures again as night comes, the nearest first.
 "No": no night texture, the terrain files naming none; the night textures and the roads kept for
 them are deleted. A change between on and off takes effect at the next start with X-Plane not
-running, as the decal's: the terrain files flown already are made again as X-Plane comes.
+running, as the decal's: the terrain files flown already are made again as X-Plane comes. So does
+the night itself after an update from a version without it: Live started while X-Plane runs
+lights nothing until then.
 
 ## Imagery sources, your own tiles, roads and forests
 

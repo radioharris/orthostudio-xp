@@ -671,6 +671,33 @@ class NightWorkTest(unittest.TestCase):
             self.work.back_to_black(self.near)  # Windows refuses
         self.assertEqual(self.work.lit, {self.near: 0})  # its lights there: still counted
 
+    def test_a_night_counted_at_the_sharpest_it_may_hold(self):
+        """Made coarser while its job wrote it sharp, or refused black by Windows then given
+        coarser: counted as the job left it, never as the coarser one asked (the reviews of
+        2026-11-11)."""
+        from unittest import mock
+
+        self.work.tick((43.70, 7.25), (314, 20.0), lambda: {self.near: 0})
+        self.turn()
+        self.work.back_to_black(self.near)  # made coarser while its job runs
+        self.work.built(self.near, 4)
+        self.assertEqual(self.work.lit, {self.near: 0})  # its job writes it sharp all the same
+        self.pools[0].finish()
+        self.turn()  # back: black, then given again from its new level
+        self.assertEqual(self.work.lit, {self.near: 4})
+        self.pools[0].finish()
+        self.turn()
+        self.work.lit[self.near] = 0  # say it is sharp again, and Windows refuses it black
+        with (
+            mock.patch("orthostudio.live.names.NightPool.replace", side_effect=PermissionError),
+            mock.patch("pathlib.Path.exists", return_value=True),
+            self.assertRaises(PermissionError),
+        ):
+            self.work.back_to_black(self.near)
+        self.work.built(self.near, 4)
+        self.turn()
+        self.assertEqual(self.work.lit, {self.near: 0})  # given coarser: still the sharp one
+
     def test_back_to_black_and_while_being_made(self):
         import os
 
@@ -1121,6 +1148,15 @@ class NightDiskTest(unittest.TestCase):
         coarser = pick(built, {"copied": 1.0}, lambda n: n == "copied", both - 1, tops,
                        lit={"lit": 0}, copied=["copied"])  # fmt: skip
         self.assertEqual(coarser, [("copied", 4)])
+
+    def test_a_night_counted_by_itself_its_texture_built_or_stale(self):
+        """Counted with their built texture only, a season's change left every night out (the
+        review of 2026-11-11); a copy only where the file is built from the level it copies."""
+        from orthostudio.live.evict import held_bytes, night_bytes, texture_bytes, usage
+
+        self.assertEqual(usage({}, lit={"stale.dds": 0}), night_bytes(0))
+        self.assertEqual(held_bytes("a", 4, -1, None, {"a"}), texture_bytes(4, -1))
+        self.assertEqual(held_bytes("a", 0, -1, None, {"a"}), texture_bytes(-1, -1))
 
     def test_night_lights_off_under_x_plane_its_nights_counted_and_followed(self):
         """Turned off while X-Plane ran: the night textures made before stayed on the disk,
