@@ -218,10 +218,7 @@ def make_night(pack: Path, name: str, level: int, dsfs, grid: str | None) -> Non
     roads = roads_from(Path(d) for d in dsfs)
     # a far texture drawn at four times its side, not at 1024 px (FAR_DRAW)
     side = max(FAR_DRAW_MIN, LIT_SIDE >> max(0, level - FAR_DRAW))
-    built = built_of(pack / "textures" / name, tex.zoom, level)
-    lights = draw(
-        roads, density, tex.x, tex.y, tex.zoom, side, seed=seed_of(tex.x, tex.y), built=built
-    )
+    lights = draw(roads, density, tex.x, tex.y, tex.zoom, side, seed=seed_of(tex.x, tex.y))
     lights = lights_at(lights, level - (LIT_SIDE // side).bit_length() + 1)
     if density is None:
         lights = lights * 0.85  # what the grid gives on average in a town
@@ -229,34 +226,6 @@ def make_night(pack: Path, name: str, level: int, dsfs, grid: str | None) -> Non
     out = pack / NIGHT_FOLDER / (name[: -len(".dds")] + "_LIT.dds")
     black = ensure_night_neutral(pack)
     write_sparse(out, NIGHT_TOP + level, levels, base=black, file_top=NIGHT_TOP)
-
-
-def built_of(day: Path, zoom: int, level: int) -> np.ndarray | None:
-    """How built the ground of the day texture ``day`` is (orthostudio.live.night.built_map), read
-    on its level at :data:`orthostudio.live.night.BUILT_K` (256 px for a ZL16 texture, 64 for a
-    ZL18 one), or on its sharpest level built when it is smaller (``level``, built far away):
-    the levels above it are the neutral texture's. None if the file cannot be read."""
-    from PIL import Image
-
-    from .night import BUILT_K, LIT_SIDE, built_map
-
-    side = max(4, (LIT_SIDE // BUILT_K) >> max(0, zoom - 16))
-    wanted = max(round(math.log2(dds.size_of(0) / side)), level)  # 4096 px is level 0
-    try:
-        top = dds.read_top(day)
-        layout = dds.level_layout(top)
-        index = wanted - top
-        if not 0 <= index < len(layout):
-            return None
-        offset, length = layout[index]
-        with open(day, "rb") as f:
-            f.seek(offset)
-            data = f.read(length)
-        px = dds.size_of(wanted)
-        photo = np.asarray(Image.frombuffer("RGBA", (px, px), data, "bcn", 1).convert("RGB"))
-    except (OSError, ValueError):
-        return None
-    return built_map(photo)
 
 
 def night_job(job: tuple) -> tuple[str, int, float]:

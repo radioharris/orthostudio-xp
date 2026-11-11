@@ -541,19 +541,13 @@ of a town's and the country went dark (the user at LSGG, 2026-11-11); against th
 lit so, Geneva's centre 1.44 of its light without a grid (1.65 before), the Pays de Gex's
 villages 1.05 (0.89), the country south of Geneva 0.68 (0.48), the Jura's woods 0.13 (0.15).
 
-**The day photo.** What it shows built dims the lamps away from houses, against the lights laid
-out on the roads alone, which looked artificial to the user (2026-11-10): the night's process
-reads the day texture's level at 28 m a pixel (`night.BUILT_K`: 256 px for a ZL16 texture, 64 for
-a ZL18 one; its sharpest level built when smaller), the same near or far so that a texture built
-sharper later agrees with its far night (read at 7 m a pixel and at 28, the maps of Nice and
-Cagnes agree to 0.84 to 0.90). `night.built_map`: its texture (the standard deviation of its
-light over 3 x 3 pixels, 0.02 to 0.07), where it is neither green nor water, blurred a pixel. A
-lamp where nothing is built round it has a quarter of its light, full from a built share of
-1 / 1.6 (`ROAD_DARK`, `ROAD_BUILT`; `nightwork.built_of`). The built blocks lit between the
-streets too, a window or yard in twenty pixels, came out in flight as soft blobs all over the
-fields round LSGG, which the photo's texture took for houses (the user: « c'est exagéré les
-points partout »): gone, the windows along the streets back, dimmed as the lamps away from
-houses. Then
+**The day photo, tried and left out** (2026-11-11). Read at 28 m a pixel for what is built (its
+texture where it is neither green nor water), it lit the blocks between the streets, a window or
+yard in twenty pixels, and dimmed the lamps away from houses to a quarter. In flight the points
+came out as soft blobs all over the fields round LSGG, which the photo's texture took for houses
+(the user: « c'est exagéré les points partout »), and the dimming took 8 to 21 % of the towns'
+light, the photo seeing too little built in a dense centre (Nice's centre 0.84, its hills 0.79,
+Cagnes 0.87): Annecy came out darker. NASA's density does the country's part. Then
 ×0.75, what is fainter than 6 out of 255 black (`night.FLOOR`), and nothing else: a twentieth of
 the day photo under the lights, as XPME does (its "night ground visibility", 5 % by default), came
 out of BC1 as a checkerboard of purple, brown and green blocks, values of 4 to 10 out of 255 the
