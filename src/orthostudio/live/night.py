@@ -113,10 +113,6 @@ BC1 holds red and blue in steps of 8, so the faint edge of a glow came out purpl
 it took light without taking the tint away (16: a fifth of a town's light gone, the tint still
 there; 2026-11-11): :func:`warm_bc1` does that."""
 
-VERSION = 1
-"""The way night textures are drawn: those made by another are made again (the record of those
-made, orthostudio.live.nightwork.MADE_RECORD, keeps it)."""
-
 EARTH_M = 40075016.7
 
 

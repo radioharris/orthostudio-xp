@@ -134,12 +134,6 @@ def options_for(settings: LiveSettings) -> session.Options:
     )
 
 
-def _night_bytes(pack: Path) -> int:
-    from orthostudio.live.nightwork import night_disk_bytes  # numpy: only when asked
-
-    return night_disk_bytes(pack)
-
-
 def _osxp_simbrief() -> str | None:
     try:
         from orthostudio.config.store import load_settings as osxp_settings
@@ -216,11 +210,9 @@ def gather_checks() -> dict[str, Any]:
         "folder": str(live_root()),
         "folder_default": str(default_live_root()),
         "folder_problem": None,
-        # the night's too: its textures as recorded and the roads kept for them
         "textures_bytes": usage(
             load_built(default_pack_dir()).get("textures", {}), file_tops(default_pack_dir())
-        )
-        + _night_bytes(default_pack_dir()),
+        ),
         # the SimBrief name OrthoStudio XP has, which the window offers to take: never asked of
         # simbrief.com unless the pilot takes it into Live's settings
         "osxp_simbrief": _osxp_simbrief(),
@@ -531,7 +523,12 @@ class LiveControl:
         """Whether a stream is on its way, in or out, or a region is being installed: the app,
         started from its icon, does not let Live's process go then (``orthostudio.live.web``)."""
         with self._lock:
-            installing = self._install_thread is not None and self._install_thread.is_alive()
+            thread = self._install_thread
+            # the night grids' own download is unseen: it never holds the app (an install starts
+            # again where it stopped)
+            installing = (
+                thread is not None and thread.is_alive() and thread is not self._night_thread
+            )
             return self._state != IDLE or installing
 
     def quit(self, *, force: bool = False) -> bool:
@@ -873,7 +870,7 @@ class LiveControl:
             streaming = self._state != IDLE
         if streaming:
             raise session.RefusedError("Live is streaming: stop it first")
-        if installing:
+        if installing or (self._night_thread is not None and self._night_thread.is_alive()):
             raise session.RefusedError("this region is being installed: stop that first")
         if not osxpregions.mesh_dir(live_root(), region_id).exists():
             raise session.RefusedError(f"the region {region_id!r} is not installed")

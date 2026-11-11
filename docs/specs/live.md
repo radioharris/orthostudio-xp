@@ -596,29 +596,45 @@ tried again at the next read. Without a grid a texture's lights
 are ×0.85, what a town's grid gives on average. `OSXP_LIVE_NIGHT_GRIDS` names a folder looked in
 first, for the test flights.
 
-**When** (`orthostudio.live.nightwork`). Live receives the sun's height,
-`sim/graphics/scenery/sun_pitch_degrees`, with its other datarefs. Below 20° (`NIGHT_SUN_DEG`,
-about an hour and a half before sunset) each texture built gets its night texture right after it
-(`NightWork.built`), and the textures built before the sun went below get theirs at once: X-Plane
-never reads again a level it took, and in the first flight with Live, the night textures made
-after X-Plane had loaded their area (at 3° then, and after the build), the textures X-Plane did
-not come closer to stayed black (2026-11-10). A night texture is made from the same level down
-at a quarter of its side: a 4096 px day texture a 1024 px night one, a 256 px one far away a
-64 px one (its larger levels a hole, which reads black), always drawn at 1024 px and made smaller
-(`night.lights_at`). Nothing is made by day. X-Plane fades the night
-textures in by itself (at Nice on 11 November: nothing at 17:25, partly lit at 17:50, full at
-18:15).
+**When** (`orthostudio.live.nightwork`). Night, for Live, is from two hours before sunset to
+sunrise (`NIGHT_AHEAD_H`, `nightwork.night_at`): by X-Plane's day of the year and local time at the
+aircraft (`sim/time/local_date_days`, `sim/time/local_time_sec`, with its other datarefs), and at
+a start by the time X-Plane saved with it (`_time` of `Freeflight.prf`), the local time taken for
+the zone's mean solar time. The sun's height alone (below 20°) made a winter's day in Europe night
+all day long, a start by day waiting for night textures (the review of 2026-11-11). From then each
+texture built gets its night texture (`NightWork.built`), and those built before get theirs at
+once, the nearest first: X-Plane never reads again a level it took, and in the first flight with
+Live, the night textures made after X-Plane had loaded their area, the textures X-Plane did not
+come closer to stayed black (2026-11-10). A night texture is made from the same level down,
+counted from the top of the texture's file as X-Plane counts it (`NightWork.want`: the night of a
+2048 px file was a hole where X-Plane read it, the review of 2026-11-11), at a quarter of its
+side: a 4096 px day texture a 1024 px night one, a 256 px one far away a 64 px one (its larger
+levels a hole, which reads black). X-Plane fades the night textures in by itself (at Nice on 11
+November: nothing at 17:25, partly lit at 17:50, full at 18:15).
 
-**One process.** The work runs in one process of its own at the encoders' lower priority, forked
-as they are (`pools.context`, started again if it dies), two textures given at a time, after the
-streamer's own: a night texture never holds up a day one. Those of the textures built at 1024 px
-or more (`NEAR_LEVEL`, within about 40 km) go first, then the others, each nearest the aircraft
-first, the far ones a square at a time, the nearest square first: given nearest first, they went
-round the aircraft from square to square and each needed its squares' roads read again, a
-texture a second (3,951 reads for LSGG's 8,535 far textures over 46 squares, against 136).
-Made in each texture's own build job instead, as tried on 2026-11-10, the night took each
-of Live's encoders (twelve on the user's Mac) 155 MB more (27 MB at rest, 182 MB once it had made one) and Live
-8.9 GB in flight against 4.7 at most without the night.
+**One rule, in one place** (`NightWork.pump`, at each turn of the streamer's loop, X-Plane running
+or not). It records what the processes made, sets how many processes there are (a team while a
+start at night waits, as many as Live's encoders and 8 at most, `TEAM_MAX`; one in flight; none
+by day), and gives two jobs a process, each the textures of one square up to four 1024 px
+drawings' work (`JOB_WORK`: four near ones, or tens of far ones drawn small; jobs of four textures
+whatever their size left the processes waiting between two turns of the loop, 3,157 of an LSGG
+start's 8,535 made in 24 s against 8,530 so; the same replay with the code of before: 8,535), the start's
+first (X-Plane's squares round it), then the near ones (`NEAR_LEVEL`, 1024 px, within about 40
+km) nearest the aircraft first, then the far ones a square at a time, the nearest square first
+(given nearest first, they went round the aircraft from square to square and each needed its
+square's roads again: 3,951 reads for LSGG's 8,535 far textures, against 136). A pool of another
+size takes no more jobs and is closed once its jobs are done, its memory with it. The jobs only
+say they ended (`NightWork._end`): jobs given from their pool's own thread blocked it for good
+when one of its processes died (Python 3.14, the review of 2026-11-11). A process lost closes its
+pool, a new one made at the next turn, the textures given again; past five in a minute, no more
+night for the flight (`LOST_MAX`), never Live stopped. A texture is never given while it is being
+made (two at once wrote its file in either order, a coarse one last left it black); one that
+fails is given again once, then left for the flight, the first five failures said in the log
+(`TRIES`); one made neutral while it was made is made black again once made. The night's
+processes run at the encoders' lower priority, forked as they are (`pools.context`). Made in
+each texture's own build job instead, as tried on 2026-11-10, the night took each of Live's
+encoders (twelve on the user's Mac) 155 MB more (27 MB at rest, 182 MB once it had made one) and
+Live 8.9 GB in flight against 4.7 at most without the night.
 
 **Its memory**, measured on the user's Mac (2026-11-10), 18 MB at rest and 110 to 140 MB at work:
 - 34 MB of modules: numpy and Pillow, no scipy (`night._blur`, `_max2` and `_zoom_linear` give
@@ -639,55 +655,36 @@ A night texture written after X-Plane loaded its area is read as X-Plane comes c
 photo's levels are: black placeholders replaced 20 s into a path were shown equal to a reference
 by 100 s, with no reload.
 
-**A start.** X-Plane gives no time before it runs: the sun's height at a start is worked out from
-the time it saved with it (`_time` of `Freeflight.prf`: day, local time, latitude, longitude;
-`nightwork.sun_at_start`), the local time taken for the zone's mean solar time, and the night
-textures are made for a start up to 5° (`START_MARGIN_DEG`) above the threshold. A start at night
-waits for the night textures of the textures built in X-Plane's squares round it
-(`evict.xplane_tiles`, `NightWork._in_window`), which X-Plane reads there, as for its photos, at
-the plugin's HOLD and in Live's pause window, counted with the day ones in its window; once the
-day ones are built, for 180 s at most (`NIGHT_WAIT_S`). It waited for every texture of the pack,
-other regions' too: 11,142 night textures at a Paris start, Nice's and the Alps' among them (the
-review of 2026-11-11). Then a team of processes, as many as Live's encoders and 8 at most
-(`TEAM_MAX`), makes the far ones, a square to a job, the largest first, each reading a square's
-roads once (`NightWork._team_give`, `night_batch`), while the night's own process makes the
-others. The start ends with the streamer's `arrived` (X-Plane flies there, or went elsewhere),
-which ends the team with its jobs (`NightWork.arrived`): a start by day left it on, and at dusk
-in flight eight processes started and stayed for the whole flight. A process of the team that
-dies (the memory short) closes the team for that start, its textures given back to the night's
-own process (`_team_lost`): its pool broken, the next job raised out of the streamer's loop and
-stopped Live. The night's own process, started again when it dies (`pools.RenewingPool`), ends
-the night for the flight when it keeps dying (`NightWork.broken`), never Live.
+**A start.** X-Plane gives no time before it runs: night at a start is worked out from the time
+it saved with it (above). A start at night waits for the night textures of the textures built in
+X-Plane's squares round it (`evict.xplane_tiles`), which X-Plane reads there, as for its photos,
+at the plugin's HOLD and in Live's pause window, counted with the day ones in its window; once the
+day ones are built, those wanted then (`_start_set`: those built after, farther, are made in
+flight, 27 s more at LSGG), for 180 s at most (`NIGHT_WAIT_S`). It waited for every texture of
+the pack, other regions' too: 11,142 night textures at a Paris start, Nice's and the Alps' among
+them (the review of 2026-11-11). The team works from the first texture built at a start at
+night, while its photos are still built and X-Plane starts, and ends with the start (the
+streamer's `arrived`: X-Plane flies there, or went elsewhere). Each square's roads are kept in
+the pack once read (`_live/roads/`, `nightwork.roads_file`, 4.8 MB a square round LSGG, 1 GB at
+most, the oldest dropped), one process reading a square while the others wait for its file
+(`_lock_square`); only a read that worked is kept (a passing failure, the memory short, was kept
+as a square without roads, dark for good). The team's processes read the DSFs themselves, as they
+end with the start; the one process in flight reads each in a Python of its own. Replayed on an
+LSGG-like cold start (8,535 night textures over 62 squares, the photos built over 21 s while
+X-Plane starts, X-Plane asking at 24 s): every night texture made by then, against 79 s of wait
+in the user's flight of 2026-11-11. The steps: one process, 13 minutes; a team once the photos
+were built, 64 s; the roads and lamps laid out at once rather than a road at a time, 38 s; the
+roads in files, 27 s; the team from the first texture, 7 s; the near ones to it too, 0 s.
 
-**One job a texture, failures, the record.** A texture is never made by two jobs at once: a
-sharper one waits for the coarser one being made (`_give`, `_team_give`); two at once wrote its
-file in either order, and a coarse one written last left it black where X-Plane looks. A night
-texture that fails is tried once more, then left for the flight, the first five failures said in
-the log (`TRIES`, `_finished`); one failing for good was given again every half second, unseen.
-One made neutral while it was made is written black again once made (`_dropped`). The night
-textures made are kept from one start to the next (`_live/night-made.json`, `MADE_RECORD`): each
-one's day level and its file's time as written, so that one changed since (made black again,
-deleted) is made again; the record is read again only for the same way of drawing
-(`night.VERSION`) and the same strength. Live made every night texture of its pack again at each
-start, and those of earlier starts were not counted in its disk space; they are now, with the
-roads kept for them (`NightWork.bytes`, `nightwork.night_disk_bytes` for the window while Live is
-stopped). Turned off ("No"), the night textures, their record and the roads go
-(`region._drop_night`); a start removes the half-written files of their folders
-(`region.remove_temps`). A season changed leaves the night textures as they are: they do not
-depend on the photo. The team starts with the first texture built at a start at night, while its photos
-are still built and X-Plane starts (`NightWork.pump`, at each turn of the streamer's loop, X-Plane
-running or not), takes the near ones first, four to a job, then the far ones a square to a job,
-and is closed once the start's nights are made, its memory with it. Each square's roads are kept
-in the pack once read (`_live/roads/`, `nightwork.roads_file`, 4.8 MB a square round LSGG, 1.5 GB
-at most, the oldest dropped), one process reading a square while the others wait for its file
-(`_lock_square`); the team's processes read them themselves, not in a Python of their own, as
-they end with the start. Replayed on an LSGG-like cold start (8,535 night textures over 62
-squares, the photos built over 21 s while X-Plane starts, X-Plane asking at 24 s): every night
-texture made by then, against 79 s of wait in the user's flight of 2026-11-11 (the encoders not
-running beside it in the replay: a flight's wait to be measured). The steps: one process, 13
-minutes; a team once the photos were built, 64 s; the roads and lamps laid out at once rather
-than a road at a time, 38 s; the roads in files, 27 s; the team from the first texture, 7 s; the
-near ones to it too, 0 s.
+**The disk.** With the night on, a tenth of Live's disk space is kept for it
+(`streamer.NIGHT_SHARE`): its textures, a twentieth of the photos', and the roads kept for them.
+The night textures of every texture built are made again at each start of Live as night comes;
+one made neutral (the disk budget, a season changed: `Streamer._neutral`) is black again, or gone
+with it. Turned off ("No"), the night textures, their black one and the roads go
+(`region._drop_night`), and the night is made only when the pack's terrain files name it
+(`region.night_on`: turned on while X-Plane ran, they do from the next start). Deleting the
+textures deletes the roads too; a start removes the half-written files of their folders and the
+locks a process that died left (`region.remove_temps`).
 
 **Far textures drawn small.** A night texture is drawn at four times its own side
 (`nightwork.FAR_DRAW`, 128 px at least) and made smaller, not at 1024 px: a 64 px one far away

@@ -172,6 +172,9 @@ BETWEEN_S = 5.0  # how often the stream looks at what may change between two fli
 # textures made coarser per round, a round every EVICT_EVERY_S: small rounds, never while X-Plane
 # loads scenery (yielding), since a round of 500 files rewritten met a hitch of 387 ms (2026-09-28)
 EVICT_BATCH = 50
+NIGHT_SHARE = 0.1
+"""Live's disk space kept for the night when it is on: its textures, a twentieth of the photos',
+and X-Plane's roads kept for them (orthostudio.live.nightwork.ROADS_KEPT_MB)."""
 # textures built in another season (stale): their files made neutral again a few at a time, at
 # most this long every STALE_EVERY_S, those X-Plane may read built again first by the planner
 STALE_EVERY_S = 1.0
@@ -201,8 +204,10 @@ DATAREFS = [
     # (wind, the ground, a position set from outside that gives it no speed: a user, 2026-09-29)
     ("hdg_deg", "sim/flightmodel/position/psi"),
     ("vs_ms", "sim/flightmodel/position/vh_ind"),  # climbing or descending, m/s (_cruise_height)
-    # the sun's height in X-Plane: the night textures are made from a little before sunset
-    ("sun_deg", "sim/graphics/scenery/sun_pitch_degrees"),
+    # X-Plane's day of the year and UTC time: the night textures are made from two hours before
+    # sunset to sunrise, by the aircraft's solar time (orthostudio.live.nightwork.night_at)
+    ("day", "sim/time/local_date_days"),
+    ("zulu_s", "sim/time/zulu_time_sec"),
 ]
 # X-Plane loading scenery in flight (its flag above), and this long after: Live pauses, nothing
 # downloaded, encoded, copied up or made coarser, only the squares' files X-Plane needs made (their
@@ -565,6 +570,7 @@ class Streamer:
         self.night = night  # the night textures of the textures built (orthostudio.live.nightwork)
         if night is not None:
             night.team = self.workers  # the start's team: as many as the encoders, idle by then
+            night.top_of = self.top_of  # its levels counted from its file's top, as X-Plane does
         self._points: dict[str, tuple[float, float]] = {}  # "aircraft", "start", "hold"
 
     # --- the season ---------------------------------------------------------------------------
@@ -620,12 +626,8 @@ class Streamer:
                 break
             if self._fitting(name):
                 continue
-            path = self.pack_dir / "textures" / name
             try:
-                if self.names is not None and self.names.holds(name):
-                    self.names.pool.replace(self.top_of(name), path)
-                else:
-                    path.unlink(missing_ok=True)
+                self._neutral(name)
             except OSError as e:
                 self.log(f"  could not make {name} neutral again: {e}")
                 continue
@@ -633,6 +635,23 @@ class Streamer:
                 self.stale.pop(name, None)
             done += 1
         return done
+
+    def _neutral(self, name: str) -> None:
+        """``name`` back to the neutral texture (its square made: X-Plane may read it), or gone (far
+        from every square made), and its night black again or gone with it: one way for the disk
+        budget and a season's change. Raises ``OSError`` for the day file; the night's is said and
+        left (Windows refusing a file X-Plane holds open), the day texture neutral all the same."""
+        path = self.pack_dir / "textures" / name
+        held = self.names is not None and self.names.holds(name)
+        if held:
+            self.names.pool.replace(self.top_of(name), path)  # type: ignore[union-attr]
+        else:
+            path.unlink(missing_ok=True)
+        if self.night is not None:
+            try:
+                self.night.back_to_black(name, held)
+            except OSError as e:
+                self.log(f"  the night texture of {name} stays as it was: {e}")
 
     # --- the squares' files -------------------------------------------------------------------
 
@@ -1631,8 +1650,10 @@ class Streamer:
     def texture_budget(self) -> int:
         """The textures' share of Live's disk space, with the room the imagery cache leaves in its
         own: one space, as the user sets it (the imagery held 1.7 GB of its 20 when the textures
-        filled theirs over Norway, 2026-09-29)."""
-        return self.disk_budget + max(0, self.cache_budget - self._cache_size)
+        filled theirs over Norway, 2026-09-29); the night's share kept aside when it is on
+        (:data:`NIGHT_SHARE`)."""
+        budget = self.disk_budget + max(0, self.cache_budget - self._cache_size)
+        return budget if self.night is None else int(budget * (1.0 - NIGHT_SHARE))
 
     def evict(self) -> int:
         """Keep the pack under its disk budget and the imagery cache under its own. Builder
@@ -1646,8 +1667,7 @@ class Streamer:
             self.built,
             self.seen,
             lambda n: n not in busy and self.may_coarsen(n),
-            # the night textures' share first: they are a twentieth of the day ones'
-            self.texture_budget() - (self.night.bytes() if self.night is not None else 0),
+            self.texture_budget(),
             self.top_of,
             neutral=lambda n: n not in busy and self.far(n),
             behind=self.behind,
@@ -1656,16 +1676,7 @@ class Streamer:
             path = self.pack_dir / "textures" / name
             try:
                 if level >= NEUTRAL_LEVEL and self.names is not None:
-                    held = self.names.holds(name)
-                    if held:  # on a square made: the neutral texture's name
-                        self.names.pool.replace(self.top_of(name), path)
-                    else:  # far from every square made: no file there at all
-                        path.unlink(missing_ok=True)
-                    if self.night is not None:  # its night black again, or gone with it
-                        try:
-                            self.night.back_to_black(name, held)
-                        except OSError as e:  # its day texture neutral all the same: recorded so
-                            self.log(f"  the night texture of {name} stays as it was: {e}")
+                    self._neutral(name)
                 else:
                     top = dds.read_top(path)  # the file's size from its header: it keeps it
                     downgrade(path, level, self.pack_dir / neutral_file(top), file_top=top)
@@ -1772,9 +1783,7 @@ class Streamer:
             # the sources whose server refuses this computer (Downloader.refusing): the window
             # says so
             "refused_by": dl.refusing() if hasattr(dl, "refusing") else [],
-            # the night's too: its textures and the roads kept for them (the review of 2026-11-11)
-            "disk_bytes": usage(built, self.top_of)
-            + (self.night.bytes() if self.night is not None else 0),
+            "disk_bytes": usage(built, self.top_of),
             "disk_budget": self.texture_budget(),
             "read_early": self.read_early,
             # their 8192 px photos, those X-Plane shows (mapdata.shown)
@@ -2019,6 +2028,13 @@ def progress_report(
     }
 
 
+def xplane_time(values: dict) -> tuple[float, float] | None:
+    """X-Plane's day of the year and UTC hours, as its datarefs say (None before they come)."""
+    if "day" not in values or "zulu_s" not in values:
+        return None
+    return float(values["day"]), float(values["zulu_s"]) / 3600.0
+
+
 def run(
     streamer: Streamer,
     xp,
@@ -2206,7 +2222,7 @@ def run(
                         night_left = 0
                         if streamer.night is not None:  # its towns' lights too, at night
                             streamer.night.tick(
-                                None, (arrival.lat, arrival.lon), streamer.built_copy
+                                (arrival.lat, arrival.lon), None, streamer.built_copy
                             )
                             night_left = streamer.night.start_left(left)
                             done = arrival.with_night(done, left, night_left, streamer.night.night)
@@ -2284,7 +2300,7 @@ def run(
                     stalled = left > 0 and streamer.stalled_s() > STALL_S
                     night_left = 0
                     if streamer.night is not None:
-                        streamer.night.tick(None, (arrival.lat, arrival.lon), streamer.built_copy)
+                        streamer.night.tick((arrival.lat, arrival.lon), None, streamer.built_copy)
                         night_left = streamer.night.start_left(left)
                         done = arrival.with_night(done, left, night_left, streamer.night.night)
                     ready = (
@@ -2387,7 +2403,7 @@ def run(
                 running = fix is not None and now - last_packet < FRESH_S
                 if streamer.night is not None and running:
                     streamer.night.tick(
-                        values.get("sun_deg"), (fix.lat, fix.lon), streamer.built_copy
+                        (fix.lat, fix.lon), xplane_time(values), streamer.built_copy
                     )
                 if arrival is not None and not running:
                     arrival.loading = True  # X-Plane stopped sending its position: it is loading

@@ -633,6 +633,15 @@ NIGHT_RECORD = "_live/night.json"
 """Whether the pack's ``.ter`` files name night textures (:func:`set_night`)."""
 
 
+def night_on(pack_dir: Path) -> bool:
+    """Whether the pack's ``.ter`` files name night textures (:func:`set_night`): the night is
+    made only then, not for files X-Plane would never read (turned on while X-Plane ran)."""
+    try:
+        return bool(json.loads((pack_dir / NIGHT_RECORD).read_text(encoding="utf-8")).get("night"))
+    except (OSError, ValueError, AttributeError):
+        return False  # a pack of before: no night lines
+
+
 def set_night(
     pack_dir: Path,
     night: bool,
@@ -645,10 +654,7 @@ def set_night(
     them, and the roads kept for them: "No" said no night texture, and they stayed on the disk,
     uncounted (the review of 2026-11-11)."""
     record = pack_dir / NIGHT_RECORD
-    try:
-        was = bool(json.loads(record.read_text(encoding="utf-8")).get("night"))
-    except (OSError, ValueError, AttributeError):
-        was = False  # a pack of before: no night lines
+    was = night_on(pack_dir)
     if was == night:
         return
     terrain = pack_dir / "terrain"
@@ -672,14 +678,14 @@ def set_night(
 
 
 def _drop_night(pack_dir: Path, log: Callable[[str], None]) -> None:
-    """The night textures, their record and the roads kept for them, deleted (night lights off:
+    """The night textures, their black one and the roads kept for them, deleted (night lights off:
     no terrain file names them any more)."""
-    from .nightwork import MADE_RECORD, ROADS_FOLDER
+    from .nightwork import ROADS_FOLDER
 
     gone = _remove_tree(pack_dir / NIGHT_FOLDER, log, "night textures")
     gone += _remove_tree(pack_dir / ROADS_FOLDER, log, "roads kept for the night")
     with contextlib.suppress(OSError):
-        (pack_dir / MADE_RECORD).unlink()
+        (pack_dir / NIGHT_NEUTRAL).unlink()
     if gone:
         log(f"night lights off: {gone} night files deleted")
 
@@ -821,9 +827,8 @@ def reset_built(pack_dir: Path, log: Callable[[str], None] = print) -> int:
         tmp = pack_dir / MARKER.with_suffix(".tmp")
         tmp.write_text(json.dumps(meta))
         os.replace(tmp, pack_dir / MARKER)
-    from .nightwork import MADE_RECORD
+    from .nightwork import ROADS_FOLDER
 
-    with contextlib.suppress(OSError):  # their night textures black: none made any more
-        (pack_dir / MADE_RECORD).unlink()
+    _remove_tree(pack_dir / ROADS_FOLDER, lambda _: None, "roads")  # the night's, read again
     log(f"{len(built)} built textures back to the neutral one")
     return len(built)

@@ -528,6 +528,7 @@ def follow(
     from orthostudio.live.cache import ChunkCache
     from orthostudio.live.downloader import Downloader
     from orthostudio.live.providers import cache_key
+    from orthostudio.live.region import night_on
     from orthostudio.live.streamer import DATAREFS, Streamer, run
     from orthostudio.live.xpudp import XPlaneUDP
 
@@ -591,7 +592,7 @@ def follow(
                     },
                     region_lists=aoregions.lists_dir(live_root()),
                     night=_night_work(prepared, log, options.night_light)
-                    if options.night
+                    if options.night and night_on(prepared.pack)
                     else None,
                 )
                 clock.done("textures")
