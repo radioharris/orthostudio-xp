@@ -702,3 +702,28 @@ class StartBarTest(unittest.TestCase):
             a.with_night(1.0, 0, 4350, night=True), DAY_SHARE + (1 - DAY_SHARE) / 2
         )
         self.assertAlmostEqual(a.with_night(1.0, 0, 0, night=True), 1.0)
+
+
+class NightWordsTest(unittest.TestCase):
+    """Once the photos are built, the loading window says night textures (the user,
+    2026-11-11: « possible de mettre "Night textures to build" ? »)."""
+
+    def test_the_plugin_is_told_how_many_are_night_ones(self):
+        from orthostudio.live.gate import _wait_line
+
+        line = _wait_line(12, "LSGG", 0.5, 30.0, 0.0, "en", building=12, night=12)
+        self.assertIn(" night=12 ", line)
+        self.assertTrue(line.split(" at=")[0].endswith("night=12"))  # at= stays last
+
+    def test_the_pause_window_says_night_textures(self):
+        from orthostudio.live.pause_window import lines
+
+        self.assertEqual(
+            lines("LSGG", 7, 7, 0.0, 40.0, True, "en", night=7)[1],
+            "7 night textures to build  -  40 s",
+        )
+        self.assertEqual(
+            lines("LSGG", 7, 7, 0.0, 40.0, True, "fr", night=7)[1],
+            "7 textures de nuit à construire  -  40 s",
+        )
+        self.assertNotIn("night", lines("LSGG", 9, 2, 3.0, 40.0, True, "en", night=7)[1])

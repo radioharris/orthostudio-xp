@@ -160,14 +160,23 @@ def place_in(name: str, lang: str) -> str:
 
 
 def _wait_line(
-    left: int, name: str, done: float, took: float, mbs: float, lang: str, building: int = 0
+    left: int,
+    name: str,
+    done: float,
+    took: float,
+    mbs: float,
+    lang: str,
+    building: int = 0,
+    night: int = 0,
 ) -> str:
     """``building``: of the ``left``, those with all their photos, being built (the plugin's
-    second line)."""
+    second line); ``night``: of the ``left``, the night textures (the plugin says « night
+    textures to build » once only they are left; an older plugin reads past the word)."""
     return (
         f"LIVE1 WAIT n={left} b={building} p={round(max(0.0, min(1.0, done)) * 1000)} "
         f"s={round(took)} "
-        f"mbs={mbs:.1f} lang={lang} at={_fitted(place_in(name, lang), 100)}"
+        f"mbs={mbs:.1f} lang={lang}{f' night={night}' if night else ''} "
+        f"at={_fitted(place_in(name, lang), 100)}"
     )
 
 
@@ -303,11 +312,12 @@ class Gate:
         mbs: float = 0.0,
         lang: str = "en",
         building: int = 0,
+        night: int = 0,
     ) -> None:
         if go:
             line = f"LIVE1 GO {left}"
         else:
-            line = self._wait = _wait_line(left, name, done, took, mbs, lang, building)
+            line = self._wait = _wait_line(left, name, done, took, mbs, lang, building, night)
         self._send(line, addr)
 
     def note(

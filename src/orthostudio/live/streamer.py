@@ -2226,6 +2226,7 @@ def run(
                             mbs,
                             lang=language(),
                             building=building + night_left,
+                            night=night_left,
                         )
                         if stalled and not arrival.stalled:
                             arrival.stalled = True
@@ -2293,6 +2294,7 @@ def run(
                             took,
                             left + night_left > 0,
                             lang,
+                            night_left,
                         ),
                         done,
                     )

@@ -33,6 +33,7 @@ WORDS = {  # live_gate.c's show(), and "preparing the files" before the textures
         "{:.1f} MB/s",
         "every photo in, building",
         "preparing the files",
+        "{} night textures to build",
     ),
     "fr": (
         "Chargement de l'ortho autour de {}",
@@ -40,21 +41,31 @@ WORDS = {  # live_gate.c's show(), and "preparing the files" before the textures
         "{:.1f} Mo/s",
         "photos reçues, construction en cours",
         "préparation des fichiers",
+        "{} textures de nuit à construire",
     ),
 }
 
 
 def lines(
-    where: str, left: int, building: int, mbs: float, seconds: float, counted: bool, lang: str
+    where: str,
+    left: int,
+    building: int,
+    mbs: float,
+    seconds: float,
+    counted: bool,
+    lang: str,
+    night: int = 0,
 ) -> tuple[str, str]:
     """The window's headline and detail: ``where`` (the start's name in that language), the
     textures ``left`` (``building`` of them with every photo in), the download rate, the seconds
     since the start was known; ``counted``: False while the files of the squares are made, before
     the textures are counted."""
-    around, to_build, rate, photos, preparing = WORDS.get(lang, WORDS["en"])
+    around, to_build, rate, photos, preparing, nights = WORDS.get(lang, WORDS["en"])
     headline = around.format(where)
     if not counted:
         return headline, f"{preparing}  -  {seconds:.0f} s"
+    if 0 < left <= night:  # the photos built: the night textures left (a start at night)
+        return headline, f"{nights.format(left)}  -  {seconds:.0f} s"
     said = photos if left > 0 and building >= left else rate.format(mbs)
     if lang == "fr":
         said = said.replace(".", ",")

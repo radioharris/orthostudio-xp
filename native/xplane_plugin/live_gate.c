@@ -279,11 +279,13 @@ static void drain(void) {
    14L" is 12 textures left, 4 of them with all their photos, being built (b=, the rest waiting for
    theirs: all of them, "every photo in" instead of the rate), 45.0 % of the work done, 23 s since
    the start was known, downloading at 15.2 MB/s, the Live window's language (the words shown take
-   it), and where (the rest of the line, in that language). */
+   it), and where (the rest of the line, in that language). "night=7": 7 of the textures left are
+   night ones (a start at night, after 2026-11-11; an older streamer says none). */
 struct state {
     int left, building, permille, secs;
     double mbs;
     char where[128];
+    int night;
 };
 
 static void parse_wait(char *p, struct state *st) {
@@ -294,6 +296,7 @@ static void parse_wait(char *p, struct state *st) {
             return;
         }
         if (sscanf(p, "n=%d", &st->left) != 1 && sscanf(p, "b=%d", &st->building) != 1 &&
+            sscanf(p, "night=%d", &st->night) != 1 &&
             sscanf(p, "p=%d", &st->permille) != 1 &&
             sscanf(p, "s=%d", &st->secs) != 1 && sscanf(p, "mbs=%lf", &st->mbs) != 1 && *p >= '0' && *p <= '9')
             st->left = atoi(p); /* "LIVE1 WAIT 12": the count alone */
@@ -352,7 +355,16 @@ static void tell_start(void) {
 static void show(const struct state *st) {
     char what[200], progress[120];
     int photos_in = st->left > 0 && st->building >= st->left;
-    if (french) {
+    int nights_only = st->night > 0 && st->night >= st->left; /* the photos built: the night left */
+    if (french && nights_only) {
+        snprintf(what, sizeof what, "Chargement de l'ortho autour de %s", st->where);
+        snprintf(progress, sizeof progress, "%d textures de nuit à construire  -  %d s", st->left,
+                 st->secs);
+    } else if (nights_only) {
+        snprintf(what, sizeof what, "Loading the ortho around %s", st->where);
+        snprintf(progress, sizeof progress, "%d night textures to build  -  %d s", st->left,
+                 st->secs);
+    } else if (french) {
         char rate[48], *dot;
         snprintf(rate, sizeof rate, "%.1f Mo/s", st->mbs);
         if ((dot = strchr(rate, '.')) != NULL) *dot = ','; /* 15,2 Mo/s */

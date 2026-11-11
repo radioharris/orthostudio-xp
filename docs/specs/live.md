@@ -1105,7 +1105,9 @@ A plugin that does not return from one of these messages holds the whole load.
     in MB/s, or « every photo in, building » once every photo they wait for is in (`LIVE1 WAIT n=
     b=`, `b` reaching `n`: a rate of 0.0 while the count went down read as stuck on the user's
     Shadow, 2026-10-11; two lines, the textures waiting for photos and those being built, were
-    tried and dropped: the second stayed between 0 and 4 on a Mac), the seconds since the start was
+    tried and dropped: the second stayed between 0 and 4 on a Mac), « N night textures to build »
+    once only night textures are left at a start at night (`night=`, sent only then, which an older
+    plugin reads past; the user, 2026-11-11), the seconds since the start was
     known, and a progress bar; the window's start card says the same. The bar counts image
     pieces, not textures (a 4096 px level is 256 pieces, a 256 px one is 4), from the moment the
     start was known. At a first flight the streamer starts building before the plugin starts
