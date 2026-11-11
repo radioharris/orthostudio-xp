@@ -182,7 +182,7 @@ delete either) and Live's folder; then what the flight shows: the roads, forests
 your own tiles, the season, the night lights, the ground grain up close; then the flight plan and
 what the app opens on. They apply with Save, at the next start.
 
-![Live's Settings: the mesh by region with what each downloads and an Install button, the season, the roads, forests and buildings, your own tiles and the flight plan](images/live/settings.png)
+![Live's Settings: where X-Plane is installed, the mesh by region with what each downloads and an Install button, the disk space, the season and the night lights](images/live/settings.png)
 
 ## The zoom
 
