@@ -1227,10 +1227,12 @@ A plugin that does not return from one of these messages holds the whole load.
     once only night textures are left at a start at night (`night=`, how many of those left are
     night ones, sent always, 0 too, which an older plugin reads past; the user, 2026-11-11), the
     seconds since the start was
-    known, and a progress bar; the window's start card says the same. The bar counts image
-    pieces, not textures (a 4096 px level is 256 pieces, a 256 px one is 4), from the moment the
-    start was known. At a first flight the streamer starts building before the plugin starts
-    waiting. Each system draws it its own way, the same sizes, colours and words:
+    known, and a progress bar; the window's start card says the same. The bar is the share done
+    of the count it shows, textures and night textures together, the most seen since the start
+    was known as the whole, never going back (`Arrival.progress`): counted in image pieces, the
+    night textures after the photos, it stood at 38 % while the count fell from 3,560 to 24, then
+    jumped to 100 % (Toulouse, 2026-11-11). At a first flight the streamer starts building before
+    the plugin starts waiting. Each system draws it its own way, the same sizes, colours and words:
     - on a Mac (`native/xplane_plugin/live_panel.m`), the run loop does not turn, so it is drawn
       on the spot with `-display` and `[CATransaction flush]`;
     - on Windows (`live_panel_win.c`), the windows belong to a thread of the plugin's own, which
@@ -1259,12 +1261,15 @@ A plugin that does not return from one of these messages holds the whole load.
     once came of it at LFPG.
 - **The expected start** (`Arrival` in `orthostudio/live/streamer.py`) is planned as soon as it is known:
   - the click;
-  - the plugin's position, if nothing else said where;
+  - the plugin's position, if nothing else said where, or if it says elsewhere (below);
   - `--from`.
 
   The streamer keeps planning it, not X-Plane's last position, until X-Plane runs there. This holds
-  even while X-Plane still flies where it was, just after the click. A click or `--from` is trusted
-  over the plugin's position, which may still be the old one after a teleport.
+  even while X-Plane still flies where it was, just after the click. The plugin's position, far
+  from the expected start, replaces it, unless X-Plane flew there less than 2 minutes before: after
+  a teleport the plugin may still read the old position. A click is no proof against it: X-Plane
+  writes its last flight into `Freeflight.prf` as it starts, and a flight then loaded another way
+  (its web API, a situation) saves none (a flight to Lyon was answered for Geneva, 2026-11-11).
 - **Read early**: when X-Plane runs at the start, the log says so once everything is built
   (no reload, see above) only if it may have read a texture before it was built:
   - not if the plugin held it until GO;

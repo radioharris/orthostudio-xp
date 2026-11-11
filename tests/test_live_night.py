@@ -857,18 +857,19 @@ class LeanDrawingTest(unittest.TestCase):
 
 
 class StartBarTest(unittest.TestCase):
-    def test_the_bar_of_a_start_at_night_counts_its_night_textures(self):
-        """It stood at 100 % while LSGG's 8,700 night textures were made (2026-11-11)."""
-        from orthostudio.live.streamer import DAY_SHARE, Arrival
+    def test_the_bar_follows_the_count_it_shows(self):
+        """Photos 40 % of it by their image pieces, night textures the rest once the photos were
+        built: it stood at 38 % while the count fell from 3,560 to 24, then 100 % at once
+        (Toulouse, the campaign of 2026-11-11). It shows the share done of the count, the most
+        seen as the whole, never going back."""
+        from orthostudio.live.streamer import Arrival
 
-        a = Arrival(46.24, 6.11, "LSGG", "plugin", 0.0)
-        self.assertEqual(a.with_night(0.5, 10, 0, night=False), 0.5)  # by day: the photos alone
-        self.assertAlmostEqual(a.with_night(0.5, 10, 30, night=True), DAY_SHARE * 0.5)
-        self.assertAlmostEqual(a.with_night(1.0, 0, 8700, night=True), DAY_SHARE)
-        self.assertAlmostEqual(
-            a.with_night(1.0, 0, 4350, night=True), DAY_SHARE + (1 - DAY_SHARE) / 2
-        )
-        self.assertAlmostEqual(a.with_night(1.0, 0, 0, night=True), 1.0)
+        a = Arrival(43.63, 1.37, "LFBO", "plugin", 0.0)
+        self.assertEqual(a.progress(3560), 0.0)
+        self.assertAlmostEqual(a.progress(1780), 0.5)
+        self.assertAlmostEqual(a.progress(1900), 0.5)  # night textures wanted meanwhile: it holds
+        self.assertAlmostEqual(a.progress(356), 0.9)
+        self.assertEqual(a.progress(0), 1.0)
 
 
 class NightWordsTest(unittest.TestCase):
@@ -1122,7 +1123,7 @@ class NightDiskTest(unittest.TestCase):
         night.start_left = lambda day_left: night.left
         s = SimpleNamespace(
             night=night,
-            urgent_work=lambda: (0, 0),
+            urgent_left=lambda: 0,
             urgent_building=lambda: 0,
             built_copy=lambda: {},
         )

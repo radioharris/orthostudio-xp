@@ -1652,6 +1652,20 @@ class RunTest(unittest.TestCase):
         time.sleep(1.0)
         self.assertEqual(self.xp.commands[before:], [])  # no reload for the new flight
 
+    def test_a_flight_loaded_another_way_after_x_plane_s_start(self):
+        """X-Plane writes its last flight into Freeflight.prf as it starts; a flight it then loads
+        another way (its web API, a situation) saves none: the plugin's position is where it
+        loads, built before X-Plane goes on (LFLL answered for LSGG, 2026-11-11)."""
+        write_start(
+            self.prefs,
+            {"lle_ground_start": {"latitude": self.lat - 2.0, "longitude": self.lon}},
+        )  # the last flight, 220 km south, written again as X-Plane starts
+        self.assertTrue(self.wait_for(lambda: any("no mesh there" in m for m in self.log)))
+        answers = self.hold(self.lat, self.lon)
+        self.assertTrue(answers[0].startswith("LIVE1 WAIT"), answers)
+        self.assertEqual(answers[-1], "LIVE1 GO 0")
+        self.assertEqual(self.streamer.built, {f"{n}.dds": 1 for n in NAMES})
+
     def test_a_new_location_in_flight_paused_until_built(self):
         """A new location chosen in flight loads no aircraft, so the plugin holds nothing: Live's
         pause keeps X-Plane (orthostudio.live.pause), for the start X-Plane wrote at the click,

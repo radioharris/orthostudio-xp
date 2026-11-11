@@ -47,6 +47,7 @@ from orthostudio.live.aoregions import (
     lists_dir,
     regions_dir,
 )
+from orthostudio.live.filesystem import replace as replace_file
 
 HOST_FILE = "host.json"
 CATALOG_MAX_AGE_S = 3600.0
@@ -165,7 +166,7 @@ def catalog(
                 path.parent.mkdir(parents=True, exist_ok=True)
                 tmp = path.with_name(".osxp-catalog.json.tmp")
                 tmp.write_text(json.dumps(doc))
-                os.replace(tmp, path)
+                replace_file(tmp, path)
                 return regions
         except (OSError, ValueError, TypeError, httpx.HTTPError) as e:
             if not path.exists():
@@ -210,7 +211,7 @@ def _read(path: Path) -> dict:
 def _write(path: Path, doc: dict) -> None:
     tmp = path.with_name(f".{path.name}.tmp")
     tmp.write_text(json.dumps(doc), encoding="utf-8")
-    os.replace(tmp, path)
+    replace_file(tmp, path)
 
 
 def to_fetch(root: Path, region: OsxpRegion, overlays: bool) -> tuple[list[Zip], list[Zip]]:
@@ -260,7 +261,7 @@ def unpack(path: Path, dest: Path, stop: threading.Event | None = None) -> int:
             part = target.with_name(f".{target.name}.part")
             with zf.open(info) as src, open(part, "wb") as out:
                 shutil.copyfileobj(src, out, CHUNK)
-            os.replace(part, target)
+            replace_file(part, target)
             count += 1
     if count == 0:
         raise InstallError(f"nothing in {path.name}")

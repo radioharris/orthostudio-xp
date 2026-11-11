@@ -43,6 +43,8 @@ from functools import cache
 from pathlib import Path
 from typing import Any
 
+from orthostudio.live.filesystem import replace as replace_file
+
 REPO = "kubilus1/autoortho-scenery"
 RELEASES_URL = f"https://api.github.com/repos/{REPO}/releases?per_page=100"
 CATALOG_MAX_AGE_S = 3600.0  # AutoOrtho asks GitHub again at most every hour too
@@ -218,7 +220,7 @@ def catalog(root: Path, *, refresh: bool = False, client=None) -> dict[str, AoRe
                 path.parent.mkdir(parents=True, exist_ok=True)
                 tmp = path.with_name(".catalog.json.tmp")
                 tmp.write_text(json.dumps({i: asdict(g) for i, g in regions.items()}))
-                os.replace(tmp, path)
+                replace_file(tmp, path)
                 return regions
         except (OSError, ValueError, httpx.HTTPError) as e:
             if not path.exists():
@@ -434,7 +436,7 @@ class Installer:
         self.download.mkdir(parents=True, exist_ok=True)
         tmp = self.state_file.with_name(".state.json.tmp")
         tmp.write_text(json.dumps(state))
-        os.replace(tmp, self.state_file)
+        replace_file(tmp, self.state_file)
 
     def run(self) -> Progress:
         own = self.client is None

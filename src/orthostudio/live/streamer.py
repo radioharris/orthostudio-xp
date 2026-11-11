@@ -1234,16 +1234,6 @@ class Streamer:
             }
         return self.notice
 
-    def urgent_work(self) -> tuple[int, int]:
-        """The urgent textures, and the image pieces they take (256 for a 4096 px level, 4 for 256
-        px):
-        what a progress bar follows, since a sharp texture is so much more work than a small one."""
-        urgent = self._urgent()
-        return len(urgent), sum(
-            pieces_of(lv, (t := parse_texture_name(name)).zoom, photo_floor(t.provider))
-            for name, lv in urgent.items()
-        )
-
     def stalled_s(self) -> float:
         """How long pieces have been awaited with none arriving (0 while they arrive)."""
         return time.monotonic() - self.last_progress
@@ -1891,11 +1881,6 @@ def read_before_ready(ready_at: float | None, xplane_started: float | None) -> b
     return ready_at is None or xplane_started is None or xplane_started < ready_at
 
 
-DAY_SHARE = 0.4
-"""At a start at night, the share of the progress bar its photos take, the night textures the
-rest: at LSGG the photos took about 30 s, the night textures 55 (2026-11-11)."""
-
-
 @dataclass
 class Arrival:
     """A flight X-Plane is about to load, or is loading: where, and what the plugin was told."""
@@ -1911,8 +1896,8 @@ class Arrival:
     released: bool = False  # ... and let it go with everything built
     stalled: bool = False  # ... or let it go because nothing downloaded any more
     elsewhere_since: float | None = None  # X-Plane running somewhere else since then
-    work: int = 0  # the most image pieces seen to build for it: the progress bar's whole
-    night_work: int = 0  # the most night textures seen to make for it, its day's built
+    most: int = 0  # the most textures seen left for it, photos and nights: the bar's whole
+    done: float = 0.0  # the bar
     # what is left, as the plugin, the pause window and Live's window all show it (start_count)
     shown: dict | None = None
     counted: float = 0.0  # when it was worked out
@@ -1922,22 +1907,15 @@ class Arrival:
         True  # X-Plane went through a load since: its position stopped, or the plugin spoke
     )
 
-    def progress(self, work_left: int) -> float:
-        self.work = max(self.work, work_left)
-        return 1.0 - work_left / self.work if self.work else 1.0
-
-    def with_night(self, day: float, day_left: int, night_left: int, night: bool) -> float:
-        """The progress bar of a start at night (``night``): its photos the first
-        :data:`DAY_SHARE`, its night textures the rest once the photos are built. It stood at 100 %
-        while 8,700 night textures were made at LSGG (2026-11-11)."""
-        if not night:
-            return day
-        if day_left > 0:
-            return DAY_SHARE * day
-        self.night_work = max(self.night_work, night_left)
-        if not self.night_work:
-            return 1.0
-        return DAY_SHARE + (1.0 - DAY_SHARE) * (1.0 - night_left / self.night_work)
+    def progress(self, left: int) -> float:
+        """The bar: the share done of the count the start shows (its textures and its night
+        ones), the most seen as the whole, never going back. With the photos 40 % of it by their
+        image pieces and the night textures the rest once the photos were built, it stood at 38 %
+        while the count fell from 3,560 to 24, then went to 100 % at once (Toulouse, the campaign
+        of 2026-11-11)."""
+        self.most = max(self.most, left)
+        self.done = max(self.done, 1.0 - left / self.most if self.most else 1.0)
+        return self.done
 
     def count(self, left: int, building: int, night_left: int, done: float) -> dict:
         """What a start waits for: its textures and its night ones, those all of whose photos are
@@ -1984,13 +1962,12 @@ def start_count(streamer: Streamer, arrival: Arrival, now: float, fresh: bool = 
     if not fresh and arrival.shown is not None and now - arrival.counted < COUNT_EVERY_S:
         return arrival.shown
     arrival.counted = now
-    left, work = streamer.urgent_work()
-    done = arrival.progress(work)
+    left = streamer.urgent_left()
     night_left = 0
     if streamer.night is not None:
         streamer.night.tick((arrival.lat, arrival.lon), arrival.held_time, streamer.built_copy)
         night_left = streamer.night.start_left(left)
-        done = arrival.with_night(done, left, night_left, streamer.night.night)
+    done = arrival.progress(left + night_left)
     return arrival.count(left, streamer.urgent_building(), night_left, done)
 
 
@@ -2202,7 +2179,7 @@ def run(
         if streamer.night is not None:  # night at the start's time: its lights made first
             streamer.night.start(lat, lon, streamer.built_copy)
         streamer.plan(Fix(lat, lon), x_plane_there=False, starting=True)
-        arrival.progress(streamer.urgent_work()[1])
+        arrival.progress(streamer.urgent_left())
         streamer.refresh_flight_plan()  # a new flight may have a new plan
         if streamer.covers(lat, lon):
             said = "click_running" if how == "click" and not arrival.loading else how
@@ -2277,9 +2254,16 @@ def run(
                         continue
                     # the flight's date as X-Plane loads it: its season, over the one saved
                     day = gate.held_day if kind == "HOLD" else None
-                    if arrival is None or (
-                        arrival.how not in ("click", "from") and not arrival.near(lat, lon)
-                    ):
+                    # where X-Plane loads the flight, unless X-Plane flew there just now: after a
+                    # teleport the plugin may still read the old position. A click is no proof:
+                    # X-Plane writes its last flight as it starts, then a flight loaded another way
+                    # (its web API, a situation) saves none (LFLL answered for LSGG, 2026-11-11)
+                    flew_there = (
+                        "lat" in values
+                        and now - last_packet < LOADING_S
+                        and haversine_m(values["lat"], values["lon"], lat, lon) <= JUMP_KM * 1000.0
+                    )
+                    if arrival is None or not (arrival.near(lat, lon) or flew_there):
                         expect(lat, lon, f"{lat:.3f} {lon:.3f}", "plugin", day)
                     elif (
                         season_for is not None
