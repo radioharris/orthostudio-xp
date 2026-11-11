@@ -333,8 +333,11 @@ def make_night(pack: Path, name: str, level: int, dsfs, grid: str | None) -> Non
         lights = lights * 0.85  # what the grid gives on average in a town
     levels = [encode_bc1(lv) for lv in lit_levels(night_rgb(lights))]
     out = pack / NIGHT_FOLDER / (name[: -len(".dds")] + "_LIT.dds")
-    black = ensure_night_neutral(pack)
-    write_sparse(out, NIGHT_TOP + level, levels, base=black, file_top=NIGHT_TOP)
+    # its larger levels a hole, which reads as zeros, black in BC1, at no cost to read: a clone
+    # of the black texture, they were 700 KB that X-Plane read from the disk for each night
+    # texture, 64 px or not (4.9 GB more read in the Nice flight, 2026-11-11)
+    ensure_night_neutral(pack)
+    write_sparse(out, NIGHT_TOP + level, levels, file_top=NIGHT_TOP)
 
 
 def night_job(job: tuple) -> tuple[str, int, float]:

@@ -125,12 +125,14 @@ NIGHT_TOP = 2
 
 
 def ensure_night_neutral(pack_dir: Path) -> Path:
-    """The black night texture of the pack, written once."""
+    """The black night texture of the pack, written once: a hole but for its 1 x 1 level, zeros
+    being black in BC1, so that what X-Plane reads of it costs no reading of the disk."""
     path = pack_dir / NIGHT_NEUTRAL
     if not path.exists():
         path.parent.mkdir(parents=True, exist_ok=True)
-        black = neutral_levels(NIGHT_TOP, rgb=(0, 0, 0), file_top=NIGHT_TOP)
-        write_sparse(path, NIGHT_TOP, black, file_top=NIGHT_TOP)
+        smallest = NIGHT_TOP + len(dds.level_layout(NIGHT_TOP)) - 1
+        black = neutral_levels(smallest, rgb=(0, 0, 0), file_top=NIGHT_TOP)
+        write_sparse(path, smallest, black, file_top=NIGHT_TOP)
     return path
 
 
