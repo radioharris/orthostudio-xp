@@ -604,7 +604,8 @@ its other datarefs) and the aircraft's longitude; at a start, the time X-Plane s
 the sun's (summer time; Nice's is Central Europe's: its towns lit at 17:50 local on 10 November),
 so night at any of those hours (`START_UNSURE_H`), until the plugin gives X-Plane's own UTC time
 as it loads the flight (`utc=` in its HOLD, `Gate.held_utc`, `Arrival.held_time`), which decides
-there: with the doubt alone, a start at Geneva at 17:30 in June waited for its night textures in
+there (X-Plane 12.4.4, flights started through its web API: Geneva at 17:30 on 21 June gave
+15:30 UTC, at 06:00 on 20 December 05:00, 2026-11-11): with the doubt alone, a start at Geneva at 17:30 in June waited for its night textures in
 daylight (the review of 2026-11-11). The caller of `NightWork.tick` gives the time that is right:
 in flight X-Plane's own, at a start the plugin's or none, never the one X-Plane sends meanwhile,
 the flight before's. The sun's height alone
