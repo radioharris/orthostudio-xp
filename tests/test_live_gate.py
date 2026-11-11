@@ -1670,22 +1670,41 @@ class RunTest(unittest.TestCase):
         self.assertEqual(self.streamer.built, {f"{n}.dds": 1 for n in NAMES})
 
     def test_a_new_flight_while_flying_held_long(self):
-        """Start Flight clicked in flight with another aircraft, X-Plane silent as it loads for
-        longer than a click is certain: the plugin's old position still answers for the new
-        start, whose textures are built before X-Plane goes on (the review of 2026-11-11)."""
+        """Start Flight clicked in flight with another aircraft, the click read once X-Plane was
+        already silent and the hold longer than a click is certain: the plugin's old position
+        still answers for the new start, whose textures are built before X-Plane goes on (the
+        reviews of 2026-11-11)."""
         home = parse_texture_name(f"{NAMES[1]}.dds").center
         old = (home[0] - 2.0, home[1])
         self.xp.position = old  # flying 220 km south
         self.assertTrue(self.wait_for(lambda: self.pauser.flying))
-        self.click()
-        self.assertTrue(self.wait_for(lambda: any("next start is" in m for m in self.log)))
-        self.xp.position = None  # X-Plane loads the new flight: silent
+        self.xp.position = None  # X-Plane loads the new flight: silent...
+        time.sleep(streamer_module.FRESH_S + 0.5)
+        self.click()  # ... its click read late
+        self.assertTrue(self.wait_for(lambda: any("starting a flight" in m for m in self.log)))
         with mock.patch.object(streamer_module, "LOADING_S", 0.5):
-            time.sleep(streamer_module.FRESH_S + 0.5)
+            time.sleep(1.0)
             answers = self.hold(*old)  # the plugin still reads the old position
         self.assertEqual(answers[-1], "LIVE1 GO 0")
         self.assertFalse(any("no mesh there" in m for m in self.log), self.log)  # not taken
         self.assertEqual(self.streamer.built, {f"{n}.dds": 1 for n in NAMES})
+
+    def test_a_flight_loaded_where_x_plane_flew_before_it_restarted(self):
+        """X-Plane flying 220 km south quits, writing its last start; started again, it loads a
+        flight back there another way (a situation saved there): the position of the X-Plane
+        before is no teleport's, the start is where the plugin says (the review of
+        2026-11-11)."""
+        south = (self.lat - 2.0, self.lon)
+        self.xp.position = south
+        self.assertTrue(self.wait_for(lambda: self.pauser.flying))
+        self.xp.position = None  # X-Plane quits, writing its last start, here...
+        self.click()
+        self.assertTrue(self.wait_for(lambda: any("next start is" in m for m in self.log)))
+        time.sleep(streamer_module.FRESH_S + 0.5)
+        with mock.patch("orthostudio.live.scenery.xplane_started_at", return_value=time.time()):
+            answers = self.hold(*south)  # ... and, started again, loads the flight south
+        self.assertEqual(answers[-1], "LIVE1 GO 0")
+        self.assertTrue(any(m.startswith(f"{south[0]:.3f} ") for m in self.log), self.log)
 
     def test_a_new_location_in_flight_paused_until_built(self):
         """A new location chosen in flight loads no aircraft, so the plugin holds nothing: Live's

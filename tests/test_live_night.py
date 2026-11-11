@@ -860,21 +860,26 @@ class StartBarTest(unittest.TestCase):
     def test_the_bar_follows_the_count_it_shows(self):
         """Photos 40 % of it by their image pieces, night textures the rest once the photos were
         built: it stood at 38 % while the count fell from 3,560 to 24, then 100 % at once
-        (Toulouse, the campaign of 2026-11-11). It shows the share done of the count, the most
-        seen as the whole: back only as work is added, never full with work left (stuck at 100 %
-        once a first count of 0 was kept, the review of 2026-11-11)."""
+        (Toulouse, the campaign of 2026-11-11). It shows the share done of the count, each part's
+        most seen while wanted as the whole: back only as work is added, never full with work
+        left (stuck at 100 % once a first count of 0 was kept), the night of a start found to be
+        day at the HOLD out of it (90 % with every photo to build; the reviews of 2026-11-11)."""
         from orthostudio.live.streamer import Arrival
 
         a = Arrival(43.63, 1.37, "LFBO", "plugin", 0.0)
-        self.assertEqual(a.progress(3560), 0.0)
-        self.assertAlmostEqual(a.progress(1780), 0.5)
-        self.assertAlmostEqual(a.progress(1900), 1 - 1900 / 3560)  # night ones wanted meanwhile
-        self.assertAlmostEqual(a.progress(356), 0.9)
-        self.assertEqual(a.progress(0), 1.0)
+        self.assertEqual(a.progress(1780, 1780, True), 0.0)
+        self.assertAlmostEqual(a.progress(890, 890, True), 0.5)
+        self.assertAlmostEqual(a.progress(890, 1010, True), 1 - 1900 / 3560)  # night ones added
+        self.assertAlmostEqual(a.progress(0, 356, True), 0.9)
+        self.assertEqual(a.progress(0, 0, True), 1.0)
         b = Arrival(46.24, 6.11, "LSGG", "click", 0.0)  # its photos all built already
-        self.assertEqual(b.progress(0), 1.0)
-        self.assertEqual(b.progress(8700), 0.0)  # then its night textures, known at the HOLD
-        self.assertAlmostEqual(b.progress(4350), 0.5)
+        self.assertEqual(b.progress(0, 0, False), 1.0)
+        self.assertEqual(b.progress(0, 8700, True), 0.0)  # then its night, known at the HOLD
+        self.assertAlmostEqual(b.progress(0, 4350, True), 0.5)
+        c = Arrival(46.24, 6.11, "LSGG", "click", 0.0)  # night by the time saved, unsure
+        self.assertEqual(c.progress(1000, 8744, True), 0.0)
+        self.assertEqual(c.progress(1000, 0, False), 0.0)  # day at the HOLD: its photos alone
+        self.assertAlmostEqual(c.progress(500, 0, False), 0.5)
 
     def test_the_count_the_start_shows_is_the_bar_s(self):
         """The bar is worked out from the count shown, night textures in it."""
@@ -882,7 +887,7 @@ class StartBarTest(unittest.TestCase):
 
         from orthostudio.live.streamer import Arrival, start_count
 
-        night = SimpleNamespace(left=600)
+        night = SimpleNamespace(left=600, night=True)
         night.tick = lambda at, when, built: None
         night.start_left = lambda day_left: night.left
         day = SimpleNamespace(left=400)

@@ -438,6 +438,30 @@ class MissingPieceTest(unittest.TestCase):
             s.close()
             s.cache.close()
 
+    def test_a_save_refused_never_stops_live(self):
+        """The textures' record held by another program past Live's tries: that save is skipped
+        and said, as a stop between two saves, and the next one writes it whole (the review of
+        2026-11-11)."""
+        from unittest import mock
+
+        from orthostudio.live import streamer as streamer_module
+
+        said = []
+        with tempfile.TemporaryDirectory() as tmp:
+            s = self.streamer(Path(tmp), lambda on_piece: None)
+            s.log = said.append
+            record = s.pack_dir / "_live" / "ortho.json"
+            before = record.read_text() if record.exists() else None
+            refused = PermissionError(13, "The process cannot access the file")
+            with mock.patch.object(streamer_module, "replace_file", side_effect=refused):
+                s.save()
+            self.assertTrue(any("not saved" in m for m in said), said)
+            self.assertEqual(record.read_text() if record.exists() else None, before)
+            s.save()
+            self.assertIn("updated", json.loads(record.read_text()))
+            s.close()
+            s.cache.close()
+
 
 class _Server:
     """A local tile server: an image, no imagery (404), a 429 then an image, a slow image."""

@@ -411,7 +411,9 @@ Windows a file X-Plane has open cannot be replaced: tried again for two seconds
 (`filesystem.replace`), and every texture written in binary (`O_BINARY`). Every file Live replaces
 goes through it, a test checks it: Live's window reads the regions' records every second and the
 textures' record every 3 s, and a bare replace stopped a first install of Europe on Windows
-(WinError 5, 2026-11-11).
+(WinError 5, 2026-11-11). A save of the textures' record still refused after that (another
+program holding it) is skipped and said, as a stop between two saves would leave it: the next one,
+30 s later, writes it whole.
 
 The pack records its regions (`sources` in `_live/region.json`): one installed since is merged in
 at the next start, the textures built kept; one taken away sets the pack up again. A region
@@ -1230,10 +1232,12 @@ A plugin that does not return from one of these messages holds the whole load.
     once only night textures are left at a start at night (`night=`, how many of those left are
     night ones, sent always, 0 too, which an older plugin reads past; the user, 2026-11-11), the
     seconds since the start was known, and a progress bar; the window's start card says the same.
-    The bar is the share done of the count it shows, textures and night textures together, the
-    most seen since the start was known as the whole, going back only as work is added
-    (`Arrival.progress`): counted in image pieces, the night textures after the photos, it stood
-    at 38 % while the count fell from 3,560 to 24, then jumped to 100 % (Toulouse, 2026-11-11).
+    The bar is the share done of the count it shows, its textures and, while it is night there,
+    its night textures, each part's whole the most seen while it is wanted, going back only as
+    work is added (`Arrival.progress`): counted in image pieces, the night textures after the
+    photos, it stood at 38 % while the count fell from 3,560 to 24, then jumped to 100 %
+    (Toulouse, 2026-11-11); the night of a start found to be day at the HOLD leaves the whole
+    with its textures.
     At a first flight the streamer starts building before the plugin starts waiting. Each system draws it its own way, the same sizes, colours and words:
     - on a Mac (`native/xplane_plugin/live_panel.m`), the run loop does not turn, so it is drawn
       on the spot with `-display` and `[CATransaction flush]`;
@@ -1268,9 +1272,10 @@ A plugin that does not return from one of these messages holds the whole load.
 
   The streamer keeps planning it, not X-Plane's last position, until X-Plane runs there. This holds
   even while X-Plane still flies where it was, just after the click. The plugin's position, far
-  from the expected start, replaces it, unless it is where X-Plane flew as that start was chosen
+  from the expected start, replaces it, unless it is where X-Plane flew last as that start was
+  chosen, however long ago it last sent its position, and X-Plane has not started again since
   (`Arrival.holds_for`): after a teleport the plugin may still read the old position, for as long
-  as X-Plane loads. A click is no proof against it: X-Plane writes its last start into
+  as X-Plane loads; an X-Plane started since reads none, and may load a situation saved there. A click is no proof against it: X-Plane writes its last start into
   `Freeflight.prf` as it quits, and a flight then loaded another way (its web API, a situation)
   saves none (X-Plane, flying at Nice, quit writing Geneva; a flight to Lyon was then answered for
   Geneva and went on with nothing built, 2026-11-11).

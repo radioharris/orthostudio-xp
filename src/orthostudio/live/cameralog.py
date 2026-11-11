@@ -14,6 +14,7 @@ for the reach to be set on them.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import math
 import time
@@ -112,6 +113,7 @@ class CameraLog:
         flights = [f for f in flights if f.get("started") != self.started]
         flights.append({"started": self.started, **self.phases})
         tmp = self.path.with_suffix(".tmp")
-        tmp.parent.mkdir(parents=True, exist_ok=True)
-        tmp.write_text(json.dumps({"flights": flights[-KEEP:]}, indent=1))
-        replace_file(tmp, self.path)
+        with contextlib.suppress(OSError):  # held by another program: saved whole next time
+            tmp.parent.mkdir(parents=True, exist_ok=True)
+            tmp.write_text(json.dumps({"flights": flights[-KEEP:]}, indent=1))
+            replace_file(tmp, self.path)

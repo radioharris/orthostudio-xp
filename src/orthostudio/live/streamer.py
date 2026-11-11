@@ -1791,8 +1791,12 @@ class Streamer:
         meta["updated"] = meta["copied_with"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
         tmp = self.pack_dir / MARKER.with_suffix(".tmp")
         text = json.dumps(meta)
-        tmp.write_text(text)
-        replace_file(tmp, self.pack_dir / MARKER)
+        try:
+            tmp.write_text(text)
+            replace_file(tmp, self.pack_dir / MARKER)
+        except OSError as e:  # held by another program: as a stop between two saves, never fatal
+            self.log(f"  Live's record of its textures not saved ({e}): saved whole next time")
+            return
         writes.add("Live's record of its textures", len(text))
 
     def snapshot(self) -> dict:
@@ -1897,7 +1901,9 @@ class Arrival:
     released: bool = False  # ... and let it go with everything built
     stalled: bool = False  # ... or let it go because nothing downloaded any more
     elsewhere_since: float | None = None  # X-Plane running somewhere else since then
-    most: int = 0  # the most textures seen left for it, photos and nights: the bar's whole
+    # the most textures and night textures seen left for it while wanted: the bar's whole
+    most: int = 0
+    most_night: int = 0
     # what is left, as the plugin, the pause window and Live's window all show it (start_count)
     shown: dict | None = None
     counted: float = 0.0  # when it was worked out
@@ -1906,18 +1912,23 @@ class Arrival:
     loading: bool = (
         True  # X-Plane went through a load since: its position stopped, or the plugin spoke
     )
-    # where X-Plane flew as this start was chosen: the position its plugin may still read while
-    # it loads the start, after a teleport
+    # where X-Plane flew last as this start was chosen, and when it said so: the position its
+    # plugin may still read while it loads the start, after a teleport
     left_from: tuple[float, float] | None = None
+    left_at: float = 0.0
 
-    def progress(self, left: int) -> float:
-        """The bar: the share done of the count the start shows (its textures and its night
-        ones), the most seen as the whole; it goes back only as work is added. With the photos
-        40 % of it by their image pieces and the night textures the rest once the photos were
-        built, it stood at 38 % while the count fell from 3,560 to 24, then went to 100 % at once
-        (Toulouse, the campaign of 2026-11-11)."""
+    def progress(self, left: int, night_left: int, night: bool) -> float:
+        """The bar: the share done of the count the start shows, its textures and, while it is
+        night there, its night ones, each part's whole the most seen while it is wanted; it goes
+        back only as work is added. With the photos 40 % of it by their image pieces and the night
+        textures the rest once the photos were built, it stood at 38 % while the count fell from
+        3,560 to 24, then went to 100 % at once (Toulouse, the campaign of 2026-11-11); with the
+        night of a start found to be day at the HOLD kept in the whole, at 90 % with every photo
+        to build (the review of 2026-11-11)."""
         self.most = max(self.most, left)
-        return 1.0 - left / self.most if self.most else 1.0
+        self.most_night = max(self.most_night, night_left) if night else 0
+        whole = self.most + self.most_night
+        return 1.0 - (left + night_left) / whole if whole else 1.0
 
     def count(self, left: int, building: int, night_left: int, done: float) -> dict:
         """What a start waits for: its textures and its night ones, those all of whose photos are
@@ -1934,15 +1945,21 @@ class Arrival:
         return haversine_m(self.lat, self.lon, lat, lon) <= JUMP_KM * 1000.0
 
     def holds_for(self, lat: float, lon: float) -> bool:
-        """The plugin's position is this start's: near it, or where X-Plane flew as it was
-        chosen, which the plugin may still read after a teleport. Anywhere else is where X-Plane
-        loads the flight: a click is no proof, X-Plane writes Freeflight.prf as it quits too, and
-        a flight it then loads through its web API saves none (a flight to Lyon answered for
-        Geneva, 2026-11-11)."""
+        """The plugin's position is this start's: near it, or where the same X-Plane flew last as
+        it was chosen, which the plugin may still read after a teleport. Anywhere else is where
+        X-Plane loads the flight: a click is no proof, X-Plane writes Freeflight.prf as it quits
+        too, and a flight it then loads through its web API saves none (a flight to Lyon answered
+        for Geneva, 2026-11-11); nor is an X-Plane started since, which a situation saved there
+        may bring back (the review of 2026-11-11)."""
         if self.near(lat, lon):
             return True
         old = self.left_from
-        return old is not None and haversine_m(*old, lat, lon) <= JUMP_KM * 1000.0
+        if old is None or haversine_m(*old, lat, lon) > JUMP_KM * 1000.0:
+            return False
+        from .scenery import xplane_started_at  # the X-Plane that said it, not one started since
+
+        started = xplane_started_at()
+        return started is None or started <= self.left_at
 
     def certain(self, now: float) -> bool:
         """Said by X-Plane itself (a click just now) or by the user (``--from``): X-Plane goes
@@ -1976,11 +1993,11 @@ def start_count(streamer: Streamer, arrival: Arrival, now: float, fresh: bool = 
         return arrival.shown
     arrival.counted = now
     left = streamer.urgent_left()
-    night_left = 0
+    night_left, night = 0, False
     if streamer.night is not None:
         streamer.night.tick((arrival.lat, arrival.lon), arrival.held_time, streamer.built_copy)
-        night_left = streamer.night.start_left(left)
-    done = arrival.progress(left + night_left)
+        night_left, night = streamer.night.start_left(left), streamer.night.night
+    done = arrival.progress(left, night_left, night)
     return arrival.count(left, streamer.urgent_building(), night_left, done)
 
 
@@ -2174,15 +2191,16 @@ def run(
         nonlocal arrival
         # A click while X-Plane runs is a start only once X-Plane stops to load it: X-Plane also
         # writes Freeflight.prf when it quits.
-        flying = "lat" in values and time.time() - last_packet < FRESH_S
         arrival = Arrival(
             lat,
             lon,
             name,
             how,
             time.time(),
-            loading=not flying,
-            left_from=(values["lat"], values["lon"]) if flying else None,
+            loading=not ("lat" in values and time.time() - last_packet < FRESH_S),
+            # the last position X-Plane sent, however old: the click may be read late
+            left_from=(values["lat"], values["lon"]) if "lat" in values else None,
+            left_at=last_packet,
         )
         if gate is not None:  # the gate's word to a waiting X-Plane while this start is planned
             gate.hold_at(name, language())
