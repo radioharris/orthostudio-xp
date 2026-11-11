@@ -284,7 +284,8 @@ night.
 - Live stays within its disk space, each file counted as the disk takes it: the night textures
   made take a part of it, those with lights only (none is made by day; those made stay on the
   disk), and X-Plane's roads kept for them 5 % of it, 1 GB at most. On a Mac and on Linux the
-  night textures take about a tenth of what Live keeps, a seventh at most; on Windows up to half,
+  night textures take about a tenth of what Live keeps at its usual zooms (ZL16 and above, a
+  seventh at most), up to a quarter at ZL15 and half at ZL14; on Windows up to half,
   where the disk (NTFS) gives a far texture's file 128 KB whatever it holds, a night one as a
   photo (on a start at LSGG, every night texture lit: 11 % on a Mac, 44 % on Windows; the sea
   and the forests take nothing). With the same night textures on a tile of Nice, flown three times each way at

@@ -657,10 +657,10 @@ class NightWorkTest(unittest.TestCase):
 
         self.work.tick((43.70, 7.25), (314, 20.0), lambda: {self.near: 0, self.far: 4})
         self.turn()
-        self.assertEqual(self.work.lit, {self.near: 0, self.far: 4})  # given: counted at once
+        self.assertEqual(self.work.counted(), {self.near: 0, self.far: 4})  # being made: counted
         self.pools[0].finish(lit=False)  # no light there: the black name
         self.turn()
-        self.assertEqual(self.work.lit, {})
+        self.assertEqual(self.work.counted(), {})
         self.work.built(self.near, 0)
         self.work.lit[self.near] = 0
         with (
@@ -681,12 +681,13 @@ class NightWorkTest(unittest.TestCase):
         self.turn()
         self.work.back_to_black(self.near)  # made coarser while its job runs
         self.work.built(self.near, 4)
-        self.assertEqual(self.work.lit, {self.near: 0})  # its job writes it sharp all the same
+        self.assertEqual(self.work.counted(), {self.near: 0})  # its job writes it sharp
         self.pools[0].finish()
         self.turn()  # back: black, then given again from its new level
-        self.assertEqual(self.work.lit, {self.near: 4})
+        self.assertEqual(self.work.counted(), {self.near: 4})
         self.pools[0].finish()
         self.turn()
+        self.assertEqual(self.work.lit, {self.near: 4})
         self.work.lit[self.near] = 0  # say it is sharp again, and Windows refuses it black
         with (
             mock.patch("orthostudio.live.names.NightPool.replace", side_effect=PermissionError),
@@ -696,7 +697,20 @@ class NightWorkTest(unittest.TestCase):
             self.work.back_to_black(self.near)
         self.work.built(self.near, 4)
         self.turn()
-        self.assertEqual(self.work.lit, {self.near: 0})  # given coarser: still the sharp one
+        self.assertEqual(self.work.counted(), {self.near: 0})  # given coarser: still the sharp one
+        self.pools[0].finish(said="OSError: full")  # and that job writes nothing
+        self.turn()
+        self.assertEqual(self.work.counted(), {self.near: 0})  # the sharp one, as it is
+
+    def test_a_night_that_fails_is_not_counted(self):
+        """Noted when given, a night whose job failed for good stayed counted, from one session
+        to the next (the review of 2026-11-11)."""
+        self.work.tick((43.70, 7.25), (314, 20.0), lambda: {self.near: 0})
+        for _ in range(2):  # tried twice, then left
+            self.turn()
+            self.pools[0].finish(said="OSError: DSF unreadable")
+            self.turn()
+        self.assertEqual(self.work.counted(), {})
 
     def test_back_to_black_and_while_being_made(self):
         import os
@@ -966,6 +980,29 @@ class ReviewTest(unittest.TestCase):
         self.assertFalse((pack / ROADS_FOLDER / "a-1.npz").exists())
         self.assertFalse((pack / NIGHT_NEUTRAL).exists())
         self.assertFalse(copy.exists())
+
+    def test_a_reset_puts_back_black_every_night_the_record_counts(self):
+        """One lit over a neutral texture (Windows refused it black) was left lit, uncounted (the
+        review of 2026-11-11)."""
+        import json
+        import os
+
+        from orthostudio.live.names import night_name
+        from orthostudio.live.pack import MARKER, copies_in
+        from orthostudio.live.region import NIGHT_FOLDER, NIGHT_NEUTRAL, reset_built
+
+        pack = self.root / "pack"
+        (pack / NIGHT_FOLDER).mkdir(parents=True)
+        (pack / NIGHT_NEUTRAL).parent.mkdir(parents=True, exist_ok=True)
+        (pack / NIGHT_NEUTRAL).write_bytes(b"black")
+        lit = pack / NIGHT_FOLDER / night_name("23904_34080_BI16.dds")
+        lit.write_bytes(b"lit")
+        (pack / MARKER).write_text(json.dumps({"lit": {"23904_34080_BI16.dds": 0}}))
+        reset_built(pack, log=self.said.append)
+        self.assertTrue(os.path.samefile(lit, pack / NIGHT_NEUTRAL))
+        # the copies read back only from the record saved with them, not one an older Live wrote
+        self.assertEqual(copies_in({"copied": ["a"], "copied_with": "t", "updated": "t"}), ["a"])
+        self.assertEqual(copies_in({"copied": ["a"], "copied_with": "t", "updated": "u"}), [])
 
     def test_a_start_removes_the_night_s_half_written_files(self):
         from orthostudio.live.nightwork import ROADS_FOLDER

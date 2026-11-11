@@ -706,16 +706,23 @@ were built, 64 s; the roads and lamps laid out at once rather than a road at a t
 roads in files, 27 s; the team from the first texture, 7 s; the near ones to it too, 0 s.
 
 **The disk.** Live stays within its disk space, each file counted as it holds (`evict.usage`): a
-night texture from the moment it is given, at the sharpest level it may hold (the sharper of the
-two while a job runs, what came back once one has), until it comes back black or is put back
-black with no job running (`NightWork.lit`, kept in the textures' record as `lit`; a night
-without a light is the black name, which takes nothing), counted by itself, its texture built
-or stale (a season's change left them all out, counted with their built texture); and an 8192
-px file's copy of its 4096 px level from the moment it is given (`Streamer.copied_up`, kept as
-`copied`, 33 MB more a file), counted while the file is built from that level. Short only by
-what a crash loses since the record's last save (every 30 s): a Live stopped while they were
-made, Windows refusing to put one back black, a night made coarser while a job wrote it sharper
-are counted (the reviews of 2026-11-11). A change of the night lights between on and off forgets `lit`
+night texture made with lights, at the level it came back from (`NightWork.lit`, gone once put
+back black with no job running; a night without a light is the black name, which takes
+nothing), and one being made, at the sharper of the two, which may be written whatever happens
+to Live (`NightWork.counted`, kept in the textures' record as `lit`; a job that fails writes
+nothing, and noted when given, one that failed stayed counted for good), each counted by itself,
+its texture built or stale (a season's change left them all out, counted with their built
+texture); and an 8192 px file's copy of its 4096 px level from the moment it is given
+(`Streamer.copied_up`, kept as `copied`, 33 MB more a file), counted while the file is built
+from that level, read back only while the record is the one saved with it (`pack.copies_in`: an
+older Live rewrites the record, and the file). A Live stopped while nights or copies were made,
+Windows refusing to put one back black, a night made coarser while a job wrote it sharper are
+counted; a reset puts back black every night the record counts. Short only by what a crash loses
+since the record's last save (every 30 s), and, after a season's change, by the textures waiting
+to be built again in the new one, their old files counted once built again or made neutral
+(minutes; as before the night) (the reviews of 2026-11-11). Not measured: on Windows, at night,
+whether Live's smallest space (10 GB) holds the textures it may not take away round the
+aircraft, a far night there taking as much as its photo. A change of the night lights between on and off forgets `lit`
 (`region.set_night`). Looked up by name in sets and dictionaries: the record's lists made the
 Settings' figure 2.5 s for 28,800 night textures, every 3 s. Counted for every texture, the night took half of Windows' space by
 day before any was made, and a copy went uncounted (the review of 2026-11-11). Live stopped, the

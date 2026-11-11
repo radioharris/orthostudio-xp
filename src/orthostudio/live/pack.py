@@ -86,3 +86,12 @@ def default_cache_path() -> Path:
 def load_built(pack_dir: Path) -> dict[str, Any]:
     path = pack_dir / MARKER
     return json.loads(path.read_text()) if path.exists() else {}
+
+
+def copies_in(meta: dict[str, Any]) -> list[str]:
+    """The 8192 px files the record says hold the copy of their 4096 px level
+    (orthostudio.live.texture.copy_up), while the record is the one saved with them: an older
+    Live rewrote it (its own ``updated``) without knowing them, and may have written those files
+    again (the review of 2026-11-11)."""
+    same = meta.get("copied_with") == meta.get("updated")
+    return list(meta.get("copied", [])) if same else []

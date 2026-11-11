@@ -63,7 +63,7 @@ from .mapdata import route_points, shown
 from .meshmap import REGION_NAMES, REGION_NAMES_FR, region_of
 from .names import KEEP, RING, Entry, Names, RegionTextures, SquareTextures, squares_round
 from .nightwork import ROADS_KEPT_MB, NightWork
-from .pack import MARKER, load_built
+from .pack import MARKER, copies_in, load_built
 from .region import (
     NEUTRAL_LEVEL,
     REGION_VERSION,
@@ -437,7 +437,7 @@ class Streamer:
         self.meta = load_built(pack_dir)
         self.built: dict[str, int] = dict(self.meta.get("textures", {}))
         # recorded with them: on the disk until their file is written again (evict.usage)
-        self.copied_up: set[str] = set(self.meta.get("copied", []))
+        self.copied_up: set[str] = set(copies_in(self.meta))
         self.built_version = 0  # one more at each change of built: the window's map
         # built without pieces that did not come: when to build them again, and how many times
         self.patchy: dict[str, tuple[float, int]] = {
@@ -1767,11 +1767,8 @@ class Streamer:
         self.save()
 
     def _lit(self) -> dict[str, int]:
-        """The level of each night texture holding lights, a copy (orthostudio.live.nightwork)."""
-        if self.night is None:
-            return {}
-        with self.night.lock:
-            return dict(self.night.lit)
+        """The night textures the disk counts, by level (orthostudio.live.nightwork)."""
+        return {} if self.night is None else self.night.counted()
 
     def disk_used(self, built: dict[str, int] | None = None) -> int:
         """The disk of the textures built, as their files hold them (evict.usage)."""
@@ -1800,7 +1797,7 @@ class Streamer:
         meta.pop("grown", None)  # a pack's record from when textures grew
         meta["patchy"] = patchy
         meta["lit"], meta["copied"] = lit, copied  # what their files hold besides (evict.usage)
-        meta["updated"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+        meta["updated"] = meta["copied_with"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
         tmp = self.pack_dir / MARKER.with_suffix(".tmp")
         text = json.dumps(meta)
         tmp.write_text(text)

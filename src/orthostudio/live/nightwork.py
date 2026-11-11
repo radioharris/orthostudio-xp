@@ -437,11 +437,9 @@ class NightWork:
         # off in the settings while the pack's terrain files still name night textures (turned off
         # while X-Plane ran, region.set_night): none made, those there counted and followed
         self.lights = lights
-        # the sharpest level each night texture may hold lights from, as the disk counts it (kept
-        # in the textures' record): from the moment it is given, the sharper of the two while a
-        # job runs, what came back once one has; gone once put back black with none running
-        # (a Live stopped while one was made, Windows refusing to put one back black: the count
-        # is not short)
+        # the level each night texture holding lights was made from (kept in the textures'
+        # record): what came back from its job; gone once put back black with none running
+        # (Windows refusing it: still lit). Counted with those being made (:meth:`counted`)
         self.lit: dict[str, int] = {}
         self.team = 1  # the processes at a start at night: Live's encoders (the streamer's)
         self.top_of: Callable[[str], int] = lambda name: 0  # a file's sharpest level (streamer's)
@@ -730,7 +728,6 @@ class NightWork:
                 for name, level in batch:
                     del self.wanted[name]
                     self.running[name] = level
-                    self.lit[name] = min(level, self.lit.get(name, level))
             self._jobs[pool] = self._jobs.get(pool, 0) + len(order)
         apart = size == 1  # one process lives the whole flight: a DSF read apart (_read_apart)
         for i, batch in enumerate(order):
@@ -849,6 +846,17 @@ class NightWork:
         if centre is None or at is None:
             return 0.0
         return _degrees(centre, at)
+
+    def counted(self) -> dict[str, int]:
+        """The night textures the disk counts, at the sharpest level each may hold: those made
+        with lights, and those being made, which may be written whatever happens to Live (a job
+        that fails writes nothing). Noted when given instead, one that failed stayed counted for
+        good (the review of 2026-11-11)."""
+        with self.lock:
+            out = dict(self.lit)
+            for name, level in self.running.items():
+                out[name] = min(level, out.get(name, level))
+        return out
 
     def close(self) -> None:
         with self.lock:

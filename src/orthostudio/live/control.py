@@ -41,6 +41,7 @@ from orthostudio.live.pack import (
     LINK_NAME,
     FolderError,
     check_folder,
+    copies_in,
     default_live_root,
     default_pack_dir,
     live_root,
@@ -195,7 +196,7 @@ def _textures_bytes(pack: Path) -> int:
     meta = load_built(pack)
     lit = meta.get("lit")
     lit = lit if isinstance(lit, dict) and night_on(pack) else {}  # lights off: their files gone
-    return usage(meta.get("textures", {}), file_tops(pack), lit, meta.get("copied", ()))
+    return usage(meta.get("textures", {}), file_tops(pack), lit, copies_in(meta))
 
 
 def gather_checks() -> dict[str, Any]:

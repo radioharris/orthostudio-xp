@@ -826,11 +826,12 @@ def reset_built(pack_dir: Path, log: Callable[[str], None] = print) -> int:
     zooms, layout = region_layout(pack_dir)
     pool = NeutralPool(pack_dir)
     nights: NightPool | None = None
-    for name in built:
+    lit_too = meta.get("lit") if isinstance(meta.get("lit"), dict) else {}
+    for name in {**built, **lit_too}:  # a night lit over a neutral texture too (Windows refused)
         path = pack_dir / "textures" / name
         tex = parse_texture_name(name)
         top = 0 if tex is None else _laid_out_top(zooms, layout, tex.zoom)
-        if path.exists():
+        if name in built and path.exists():
             pool.replace(top, path)
         lit = pack_dir / NIGHT_FOLDER / night_name(name)
         if lit.exists():
