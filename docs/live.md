@@ -274,8 +274,9 @@ night.
   the photos.
 - A start at night waits for the night textures X-Plane reads round the airport, as it waits for
   its photos, three minutes at most once the photos are built: a team of processes makes them
-  while the photos are built, then ends (at LSGG, 8,685 night textures in about a minute, 2 GB
-  more meanwhile). Whether it is night there is known exactly once X-Plane loads the flight:
+  while the photos are built, then ends (at LSGG, 8,685 night textures in about a minute; replayed
+  on the same start, its 8 processes took 2.9 GB at most together for those seconds, as Activity
+  Monitor counts it). Whether it is night there is known exactly once X-Plane loads the flight:
   before, Live takes the time X-Plane saved with the start, its time zone's, and counts it night
   if it may be.
 - Far away they are made small first, as the photos are, so a town shows from far: the coast of

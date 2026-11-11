@@ -667,6 +667,12 @@ Live 8.9 GB in flight against 4.7 at most without the night.
   texture by itself), the arrays added in place, the photo and the first reduced level a channel
   at a time.
 
+The start's team, replayed on an LSGG-like cold start (below) and measured as Activity Monitor
+counts it (`phys_footprint`, 2026-11-11): its 8 processes 2.87 GB at most together, 490 MB the
+largest, with the roads read cold (the team reads the DSFs itself); 2.61 GB and 402 MB with the
+roads in their files; Live's own process 35 MB. For the seconds of the start only: the team ends
+with it, or 180 s after its photos were built.
+
 A night texture written after X-Plane loaded its area is read as X-Plane comes closer, as the
 photo's levels are: black placeholders replaced 20 s into a path were shown equal to a reference
 by 100 s, with no reload.
