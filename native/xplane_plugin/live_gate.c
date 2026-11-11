@@ -383,7 +383,7 @@ static void show(const struct state *st) {
 
 static void hold(const char *at) {
     char line[96];
-    struct state st = {-1, 0, 0, 0, 0.0, ""};
+    struct state st = {-1, 0, 0, 0, 0.0, "", 0};
     double lat, lon, start, answered = 0, t;
     int told = 0, r;
     if (sock == NO_SOCKET || !position(&lat, &lon)) return;
