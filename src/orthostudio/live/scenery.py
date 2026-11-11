@@ -407,7 +407,8 @@ def launch_xplane(xplane: Path) -> None:
 
 def xplane_started_at() -> float | None:
     """When the running X-Plane started (Unix time), or None; from the system's list of
-    processes, as :func:`xplane_running`."""
+    processes, as :func:`xplane_running`. The newest of two: one quitting may still be listed as
+    the next one starts (the review of 2026-11-11)."""
     procs = _processes() or {}
     started = [at for name, at in procs.values() if _is_xplane(name)]
-    return min(started) if started else None
+    return max(started) if started else None
