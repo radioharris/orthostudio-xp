@@ -272,6 +272,11 @@ night.
   in by itself at dusk (at Nice on 11 November: nothing at 17:25, lit at 17:50, full at 18:15).
 - In flight they are made by one process of its own, at the priority of the processes that build
   the photos.
+- A jump of X-Plane's clock into the night in flight (its menu, its time commands) finds the
+  night textures of a city to make, and X-Plane lights them a square after another as it reads
+  them: a minute or more over a large city. That is X-Plane's own pace: with every night texture
+  ready in 10 s, Los Angeles lit at the same pace (2026-11-11). A start at night and a dusk in
+  real time find them all made.
 - A start at night waits for the night textures X-Plane reads round the airport, as it waits for
   its photos, three minutes at most once the photos are built: a team of processes makes them
   while the photos are built, and ends once the start waits for none (at LSGG, 8,685 night

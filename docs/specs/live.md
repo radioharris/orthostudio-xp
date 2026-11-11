@@ -1422,6 +1422,12 @@ Over it, Live's layers:
 
 ## Not yet
 
+- A jump of X-Plane's clock into the night in flight: X-Plane reads the night textures once it is
+  night and lights them a square after another, a minute or more over Los Angeles, and never
+  faster when Live had them ready: made in 10 s by a team of processes (tried, not kept), the
+  screen lit at the same pace on a Mac, and on a Windows computer X-Plane's workers, all busy from
+  the jump on, kept Live to one process anyway (2026-11-11).
+
 - Turns tighter than the two-minute look-ahead are caught by the rings' margin and by X-Plane's
   next ring, not predicted (none late on the turning test flight at ZL17/19, 2026-10-12, where
   ninety seconds left 4).
