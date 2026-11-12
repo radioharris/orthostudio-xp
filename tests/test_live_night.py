@@ -360,7 +360,8 @@ class NightJobTest(unittest.TestCase):
         layout = dds.level_layout(NIGHT_TOP)
 
         def shown(name: str, made_from: int, k: int) -> float:
-            make_one(self.pack, name, made_from, town=town)
+            [(_, said, made)] = make_one(self.pack, name, made_from, town=town)
+            self.assertIs(made, True, said)  # made with lights, never the file of before
             lit = self.pack / NIGHT_FOLDER / name.replace(".dds", "_LIT.dds")
             offset, length = layout[k]
             rgb = decode_bc1(lit.read_bytes()[offset : offset + length], 1024 >> k)

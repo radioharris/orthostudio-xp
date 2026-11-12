@@ -285,7 +285,7 @@ night.
   before, Live takes the time X-Plane saved with the start, its time zone's, and counts it night
   if it may be.
 - Far away they are made small first, as the photos are. Seen from far, a town has about the same
-  light as up close, or a little less, up to a quarter less round airports (computed): for towns
+  light as up close, or a little less, a quarter to a third less round airports (computed): for towns
   that show from farther, choose "Strong" (below).
 - Live stays within its disk space, each file counted as the disk takes it: the night textures
   made take a part of it, those with lights only (none is made by day; those made stay on the
@@ -297,8 +297,8 @@ night.
   and the forests take nothing). With the same night textures on a tile of Nice, flown three times each way at
   2704 x 1756 on an M4 Pro, frame times did not change beyond their spread from one flight to the
   next. On a Windows PC (16 GB), two pairs of night flights at Nice with the lights on and off took
-  0.6 to 0.9 ms more a frame with them (3 to 5 %), the night's own process about 0.6 of a core in
-  flight (2026-11-11).
+  0.6 to 0.9 ms more a frame with them (3 to 5 %), and Live about 0.6 of a core more in flight,
+  half a core of it the night's own process (2026-11-11).
 
 "Soft", "Normal" (the default) or "Strong": the same lamps fainter or brighter; with "Strong",
 towns show from farther. A new strength

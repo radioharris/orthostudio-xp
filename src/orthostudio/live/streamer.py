@@ -1061,9 +1061,9 @@ class Streamer:
     ) -> dict[str, tuple[float, int]]:
         """Queue every texture within reach built coarser than X-Plane will read it.
 
-        ``x_plane_there`` False: a place prepared before X-Plane loads it (``--from``), which a new
-        start there X-Plane cannot have read early. ``starting``: a start X-Plane has read nothing
-        of yet: it waits for every 8192 px level around (:meth:`_sharpest`).
+        ``x_plane_there`` False: a place prepared before X-Plane loads it (``--from``), which
+        X-Plane cannot have read early: no read-early flag there. ``starting``: a start X-Plane
+        has read nothing of yet: it waits for every 8192 px level around (:meth:`_sharpest`).
         """
         jumped = x_plane_there and (
             self.last_fix is None

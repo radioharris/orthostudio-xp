@@ -208,9 +208,11 @@ modules, English and French, English unless the switch chose French, as OrthoStu
   built it, its night black, the same in three flights. With it, in three starts, X-Plane went on
   after 13 to 14 s there, as in the four starts without (zooms 16/18: 10 textures at 4096 px
   instead of 9, 24 at 2048 px instead of 17, 270 MB downloaded instead of 254). At zooms 17/19 it
-  costs a cold start time: near LSGG by day, X-Plane went on after 54, 63 and 66 s with it (1.16 to
-  1.19 GB downloaded) against 40, 40, 41 and 41 s without (1.05 to 1.07 GB), the two alternated;
-  with it but for the 8192 px level at a start, 45 and 51 s (1.10 GB) (2026-11-12). The start modes of before (`full`, `around`,
+  makes a cold start longer: near LSGG by day, X-Plane went on after 54, 63 and 66 s with it
+  against 40, 40, 41 and 41 s without, the two alternated (1.16 to 1.19 GB downloaded during the
+  start against 1.05 to 1.07, 1.30 to 1.35 GB either way with the 30 s of path after: downloaded
+  earlier, not more); with it but for the 8192 px level at a start, 45 and 51 s (1.10 GB)
+  (2026-11-12). The start modes of before (`full`, `around`,
   `normal`, and `reload` until 27 September) went with the growing; a saved `start_mode` is left
   out. The pink test of 27 September (the 8192 px levels built pink, `tint_8192`) showed the pink
   at LFLL on a new load of the flight, never after `sim/operation/reload_scenery` (the SDK's
@@ -812,9 +814,10 @@ power mean of 3 on stored values, 0.89 to 1.02 and 0.83 to 1.00). Drawn in 37 to
 three flights each way alternated: frame times at 21.1 against 21.7 ms over the city, the same on
 the approach and from far, X-Plane's memory and its first load the same; 54 MB of night textures
 for 1.1 GB of photos; 0.15 to 0.25 s a texture in the module. On a Windows PC (16 GB, the
-Shadow), two pairs of night flights at Nice, the lights on and off: 0.6 to 0.9 ms more a frame
-with them (3 to 5 %), 1.0 ms at the 99th percentile, the night's process 0.6 of a core in flight
-(2026-11-11; the Mac: no change, 0.06 of a core).
+Shadow), two pairs of night flights at Nice with Live's own night textures, the lights on and off:
+0.6 to 0.9 ms more a frame with them (3 to 5 %), 0.9 to 1.0 ms at the 99th percentile, Live 0.6 of
+a core more in flight, 0.52 of it the night's process (2026-11-11; the Mac: frame times the same,
+0.06 of a core more).
 
 ## The user's own tiles
 
