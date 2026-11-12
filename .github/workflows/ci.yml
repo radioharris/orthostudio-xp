@@ -35,4 +35,3 @@ jobs:
       - run: uv run ruff check .
       - run: uv run ruff format --check .
       - run: uv run pytest -n auto -m "not network"
-      - run: uv run pytest -m "serial and not network"
