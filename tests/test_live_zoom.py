@@ -923,8 +923,8 @@ def test_the_photos_of_the_sharp_levels_are_not_kept(
     )
     name = f"{NAMES[0]}.dds"
     lat, lon = parse_texture_name(name).center
-    # in flight, with the rings' margin: at a start, without it, a ZL18 texture near the airport
-    # gets its 2048 px level from the same ZL17 photos, which that level keeps
+    # in flight, with the rings' margin (a start has it too since 2026-11-11; without it, a ZL18
+    # texture near the airport gets its 2048 px level from the same ZL17 photos, which it keeps)
     s.plan(Fix(lat, lon, gs_ms=150.0, trk_deg=90.0), x_plane_there=False)
     s.start()
     deadline = time.time() + 120

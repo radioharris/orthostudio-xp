@@ -284,8 +284,8 @@ night.
   most together for those seconds, as Activity Monitor counts it). Whether it is night there is known exactly once X-Plane loads the flight:
   before, Live takes the time X-Plane saved with the start, its time zone's, and counts it night
   if it may be.
-- Far away they are made small first, as the photos are. Seen from far, a town has no more light
-  than up close: for towns that show from farther, choose "Strong" (below).
+- Far away they are made small first, as the photos are. Seen from far, a town has about the same
+  light as up close, or a little less: for towns that show from farther, choose "Strong" (below).
 - Live stays within its disk space, each file counted as the disk takes it: the night textures
   made take a part of it, those with lights only (none is made by day; those made stay on the
   disk), and X-Plane's roads kept for them 5 % of it, 1 GB at most. On a Mac and on Linux the

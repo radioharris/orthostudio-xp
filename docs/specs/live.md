@@ -204,7 +204,7 @@ modules, English and French, English unless the switch chose French, as OrthoStu
   one at 14 km at 2048 px from LSGG, 2026-10-20; one at 13.9 km at 4096 px from a start in the
   air near LAX, 5,000 ft, counted in three dimensions, 13.8 km along the ground, 2026-11-11), past
   the rings' 13.6 km, and without the margin that texture near LAX was taken sharper than Live
-  built it, its night black, the same in three flights. With it, X-Plane went on after 13 s there,
+  built it, its night black, the same in three flights. With it, in one start, X-Plane went on after 13 s there,
   against 13 to 14 s in four starts without (zooms 16/18: 10 textures at 4096 px instead of 9, 24
   at 2048 px instead of 17, 270 MB downloaded instead of 254); at zooms 17/19 it also widens the
   8192 px level's ring at a start, not measured. The start modes of before (`full`, `around`,
@@ -578,8 +578,10 @@ format cannot hold in their colour (BC1 holds red and blue in steps of 8; the us
 its side and enlarged: drawn at its own pixels, the airport's sharper zone came out twice darker
 than the town round it. Its smaller levels are each the average of four pixels of the level above
 in linear light, as the day textures' (`night.POWER` is `imaging.GAMMA`, 2.2): a texture shows the
-same light from far and near. A power mean of 3 gave each smaller level about 15 % more light on
-the screen than the one above (1.16, 1.34 and 1.53 times the top's at 512, 256 and 128 px on three
+same light from far and near (computed with the screen's 2.2; flown over Los Angeles, the user
+found it better than either rule below, 2026-11-12). A power mean of 3 gave each smaller level about
+15 % more light on the screen than the one above (computed: 1.16, 1.34 and 1.53 times the top's at
+512, 256 and 128 px on three
 ZL16 textures of Los Angeles; its stored values 30 % higher a level, a town 19.4 at 1024 px, 25.4
 at 512, 33.2 at 256, 42.7 at 128), and the user saw the tiles dim one after another as the
 aircraft came closer; the plain mean of the stored values, tried, made the far levels darker on
@@ -588,7 +590,8 @@ towns are fainter than with the power mean of 3: "Strong" (`night_light`) is the
 holds at every level (the power mean of 3 of a faint glow gave 4 out of 255 there); in linear
 light it takes more of a lone road's faint light at the smallest levels, far off (computed on
 synthetic streets: 0.96 of it left at 128 px, 0.72 at 64 px, 0.03 at 32 px; a town 1.00; the
-power mean of 3 lost under 1 %). BC1 itself still tinted
+power mean of 3 lost under 1 %; a lone rural road where NASA sees nothing, 0.99, 0.40 and none,
+against 1.01, 0.95 and 0.53 with the power mean of 3). BC1 itself still tinted
 the dim edges of the glows: green kept in 6 bits, red and blue in 5, 2 % of a town's lit pixels
 came out up to 8/255 greener than red (the review of 2026-11-11). Every light drawn being orange
 or white, each block's two colours have their green and blue brought down to their red
@@ -795,7 +798,8 @@ the glow, which keeps the glow's light; a street and the windows' band keep the 
 1024 px (`night._width_k`). Against the same textures drawn at 1024 px, round Geneva, Nice and in
 the country (ZL16): 0.87 to 0.99 of the light on the screen on average (0.85 to 1.08 a texture),
 0.87 to 0.99 seen from far; round LSGG (ZL18) 0.73 at 128 px and 0.87 at 64 px, such a texture
-brightening a little when Live builds it sharp (computed with power 2.2, 2026-11-12; with the
+gaining up to a third more light (1/0.73) when Live builds it sharp (computed with power 2.2,
+2026-11-12; with the
 power mean of 3 on stored values, 0.89 to 1.02 and 0.83 to 1.00). Drawn in 37 to 75 ms against
 99 to 131 (2026-11-11; the roads' loop is most of what is left).
 
@@ -844,9 +848,10 @@ not taken for a change.
   swept all around the aircraft, and Live built 233 textures at 8192 px where X-Plane read 133,
   the encoding costing a few frames; 90 s still leave about two minutes before X-Plane reads each
   level, at any speed); it reads the camera too (`view_x/y/z` against the aircraft's
-  `local_x/y/z`, both in X-Plane's OpenGL frame), since X-Plane measures from the camera and
-  external views take it away from the aircraft. For every texture within 300 km: the level X-Plane
-  will read of it at its closest approach to that path or to the camera (`orthostudio/live/rings.py`), at least
+  `local_x/y/z`, both in X-Plane's OpenGL frame), so that the disk's budget keeps what X-Plane may
+  show round it (`Streamer.may_coarsen`, `far`): X-Plane takes each texture's levels for the
+  aircraft alone (`live/levels-test.md`). For every texture within 300 km: the level X-Plane
+  will read of it at its closest approach to that path (`orthostudio/live/rings.py`), at least
   256 px. Textures built coarser are
   queued, the most urgent first: urgency is the distance left before the ring where X-Plane reads
   that level (230 km for 256 px, where X-Plane loads a tile).

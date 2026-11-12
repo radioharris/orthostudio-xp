@@ -32,7 +32,7 @@ from orthostudio.live.gate import Gate, read_last_start, start_position
 from orthostudio.live.geo import parse_texture_name
 from orthostudio.live.pause import last_start
 from orthostudio.live.region import Zooms, setup_region
-from orthostudio.live.streamer import Fix, Streamer, run
+from orthostudio.live.streamer import Arrival, Fix, Streamer, run
 
 HERE = Path(__file__).resolve().parent
 CLANG = shutil.which("clang")
@@ -172,6 +172,26 @@ class StartTest(unittest.TestCase):
         )
         self.assertIsNone(start_position({"runway_start": {"airport_id": "ZZZZ"}}, airports))
         self.assertIsNone(start_position({"boat_start": {"boat_name": "carrier"}}, airports))
+
+
+class ArrivalTest(unittest.TestCase):
+    def test_the_plugin_s_position_holds_for_the_start_only_from_the_same_x_plane(self):
+        """Near the start, the plugin's position is it; far from it, it is the start's only where
+        the X-Plane that flew there as the start was chosen still runs (the plugin may read the
+        old position after a teleport); an X-Plane started since, or no flight before, makes it
+        where X-Plane loads the flight (a flight to Lyon was answered for Geneva, 2026-11-11)."""
+        geneva, lyon = (46.24, 6.11), (45.73, 5.08)
+        a = Arrival(*geneva, "LSGG", "click", 1000.0)
+        self.assertTrue(a.holds_for(46.25, 6.12))  # near the start
+        self.assertFalse(a.holds_for(*lyon))  # no flight before: where X-Plane loads it
+        a.left_from, a.left_at = lyon, 1000.0  # X-Plane flew at Lyon as the start was chosen
+        with mock.patch("orthostudio.live.scenery.xplane_started_at", return_value=400.0):
+            self.assertTrue(a.holds_for(*lyon))  # the same X-Plane: its old position
+            self.assertFalse(a.holds_for(48.0, 2.0))  # elsewhere again: a flight loaded there
+        with mock.patch("orthostudio.live.scenery.xplane_started_at", return_value=1500.0):
+            self.assertFalse(a.holds_for(*lyon))  # an X-Plane started since: its own start
+        with mock.patch("orthostudio.live.scenery.xplane_started_at", return_value=None):
+            self.assertTrue(a.holds_for(*lyon))  # its start not known: the old position
 
 
 class GateTest(unittest.TestCase):
@@ -1479,10 +1499,13 @@ class RunTest(unittest.TestCase):
         patch = mock.patch.object(streamer_module, "PLAN_EVERY_S", 0.2)
         patch.start()
         self.addCleanup(patch.stop)
-        # no X-Plane started since: the machine's own process list answered otherwise, a stand-in
-        # X-Plane another test runs in parallel taken for an X-Plane started after the plugin's
-        # position, which then counted for nothing (two tests here, 2 runs in 8, 2026-11-12)
-        started = mock.patch("orthostudio.live.scenery.xplane_started_at", return_value=None)
+        # the X-Plane flying started an hour ago, as in a real flight: the machine's own process
+        # list answered otherwise, a stand-in X-Plane another test runs in parallel taken for an
+        # X-Plane started after the plugin's position, which then counted for nothing (two tests
+        # here, 2 runs in 8, 2026-11-12)
+        started = mock.patch(
+            "orthostudio.live.scenery.xplane_started_at", return_value=time.time() - 3600.0
+        )
         started.start()
         self.addCleanup(started.stop)
         self.run_live()

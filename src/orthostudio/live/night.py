@@ -372,7 +372,7 @@ def _draw(parts: list[Roads], density, x0, y0, zoom_level, side, seed) -> np.nda
     s, w, n, e = _bounds(x0, y0, zoom_level)
     m_per_px = 16.0 * EARTH_M / 2.0**zoom_level * math.cos(math.radians((s + n) / 2)) / side
     # k: 1 at the reference scale (a ZL16 texture at 1024 px, a ZL18 one at 256), k times coarser
-    # for a far texture (FAR_DRAW): its light kept, its lamps a pixel each
+    # for a far texture (FAR_DRAW): most of its light kept, its lamps a pixel each
     ref = m_per_px * side / LIT_SIDE * 2.0 ** (zoom_level - 16)
     k = max(1, round(m_per_px / ref))
     lamp_k = (4.0 / k**2) ** (1 / POWER) if k > 1 else 1.0  # a lamp's light, kept in linear light

@@ -17,7 +17,8 @@ At a flight's start, OrthoStudio XP Live's X-Plane plugin holds X-Plane on its l
 everything it will read there is built (``orthostudio.live.gate``). The streamer starts building
 when the user clicks Start Flight. Without the plugin, or after a jump it did not see coming,
 X-Plane loaded the area before its textures were there: once everything it may already show is
-built, the streamer asks it to reload the scenery.
+built, the log says what it read before stays the neutral colour until it loads that place again
+(no reload is asked of it).
 
 External views take the camera away from the aircraft, but X-Plane takes each texture's levels
 for the aircraft alone, when it loads a flight and as the aircraft moves: a camera taken
@@ -31,11 +32,12 @@ One zoom above the mesh's (AutoOrtho's max_zoom 17, or 19 near airports), a text
 the start. Its photos are built as those of a 4096 px file, at the same distances: X-Plane, which
 counts a file's levels from its top, reads each level a ring earlier, and finds there its photos
 already or, for the far levels, their copy (``orthostudio.live.texture``). The 8192 px level
-itself gets its photos, one zoom above the mesh's, a quarter farther than X-Plane reads it (12 km
-at ZL16), all around the aircraft and its path ahead, in three dimensions as X-Plane measures, so
-not from high up. At a start, X-Plane waits for all of them. In flight, photos late as X-Plane is
-about to read them get the 4096 px level copied up in their place first
-(:attr:`Streamer.copied_up`): the ortho as at ZL16, never the neutral colour.
+itself gets its photos, one zoom above the mesh's, 11 % farther than X-Plane reads it (13.6 km at
+ZL16, 3.4 km at ZL18; the rings' margin, at a start too), all around the aircraft and its path
+ahead, in three dimensions as X-Plane measures, so not from high up. At a start, X-Plane waits for
+all of them. In flight, photos late as X-Plane is about to read them get the 4096 px level copied
+up in their place first (:attr:`Streamer.copied_up`): the ortho as at ZL16, never the neutral
+colour.
 """
 
 from __future__ import annotations
