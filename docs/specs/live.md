@@ -806,7 +806,7 @@ grid of Nice, computed, 2026-11-12); a street and the windows' band keep the wid
 the country (ZL16): 0.87 to 0.99 of the light on the screen on average (0.85 to 1.08 a texture),
 0.87 to 0.99 seen from far; round LSGG (ZL18) 0.73 at 128 px and 0.87 at 64 px, such a texture
 gaining up to 37 % more light (1/0.73) when Live builds it sharp (computed with power 2.2,
-2026-11-12; with the
+2026-11-12; 0.69 and 0.87 on the test's grid of streets at ZL18; with the
 power mean of 3 on stored values, 0.89 to 1.02 and 0.83 to 1.00). Drawn in 37 to 75 ms against
 99 to 131 (2026-11-11; the roads' loop is most of what is left).
 
