@@ -993,8 +993,8 @@ For a flight:
 4. Quit X-Plane, then click Stop: Live takes its scenery and its small plugin out of X-Plane.
 
 At night Live lights the towns on its photos, street lamps and windows along X-Plane's roads: it
-makes them from two hours before sunset in X-Plane, which shows them from dusk. Soft, Normal,
-Strong or No in its Settings (the guide's "Towns at night").
+makes these lights from two hours before sunset in X-Plane, and X-Plane shows them from dusk.
+Soft, Normal, Strong or No in its Settings (the guide's "Towns at night").
 
 Live lays its photos on its own mesh of the world, which it installs by region from its Settings
 tab (Europe, North America...). Your own tiles come first: where you built one, X-Plane shows it, and Live

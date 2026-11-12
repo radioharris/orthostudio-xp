@@ -1062,9 +1062,10 @@ class Streamer:
         """Queue every texture within reach built coarser than X-Plane will read it.
 
         ``x_plane_there`` False: no read-early flag from this plan, its caller deciding (a start
-        X-Plane has not loaded yet, a place prepared with ``--from``; X-Plane arrived there,
-        :func:`may_have_read_early`). ``starting``: a start X-Plane has read nothing of yet: it
-        waits for every 8192 px level around (:meth:`_sharpest`).
+        X-Plane has not loaded yet, a place prepared with ``--from``, X-Plane still elsewhere while
+        a start is awaited; X-Plane arrived there, :func:`may_have_read_early`). ``starting``: a
+        start X-Plane has read nothing of yet: it waits for every 8192 px level around
+        (:meth:`_sharpest`).
         """
         jumped = x_plane_there and (
             self.last_fix is None
