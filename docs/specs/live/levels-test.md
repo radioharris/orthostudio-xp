@@ -96,7 +96,7 @@ In flight Live builds each ring wider, to keep ahead of the aircraft: 1.25 times
 until then, 11 % past the true rings, which every flight had flown with (0 texture late near the
 aircraft in the campaign of 2026-10-17). The margin is now 1.11 (`rings.DEFAULT_MARGIN`): in flight
 the same distances as before to 0.3 %, 1.13 x 1.11 against 1.25. The starts were built without
-it until 2026-11-11, and have it since: a ZL16 texture 13.9 km from a start in the air near LAX
+it until 2026-11-11, and the aircraft standing until 2026-11-12; both have it since: a ZL16 texture 13.9 km from a start in the air near LAX
 (5,000 ft, counted in three dimensions; 13.8 km along the ground) was read at 4096 px before Live
 built it, past ring 0's 13.6 km, the same in three flights (`live.md`, "A start").
 

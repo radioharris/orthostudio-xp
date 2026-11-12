@@ -31,9 +31,9 @@ quarter of its side and enlarged): drawn at the texture's own pixels, the airpor
 came out twice darker than the town round it. The smaller levels are the average of four pixels
 of the level above in linear light, as the day textures' (:data:`POWER`, ``imaging.GAMMA``), so
 that a texture shows the same light from far and near: a power mean of 3 gave each smaller level
-about 15 % more light (its stored values 30 % higher), and the user saw the tiles dim one after
-another as the aircraft came closer; the plain mean of the stored values made them darker, and
-the tiles grew brighter coming closer (Los Angeles, 2026-11-12).
+about 15 % more light on the screen (computed; its stored values 30 % higher), and the user saw
+the tiles dim one after another as the aircraft came closer; the plain mean of the stored values
+made them darker, and the tiles grew brighter coming closer (Los Angeles, 2026-11-12).
 """
 
 from __future__ import annotations
@@ -642,7 +642,8 @@ def warm_bc1(blocks: bytes) -> bytes:
 def lit_levels(rgb: np.ndarray, power: float = POWER) -> list[np.ndarray]:
     """``rgb`` (square, power-of-two side, uint8) and its smaller levels down to 1 x 1, each the
     average of four pixels of the one above in linear light (the power mean of :data:`POWER`):
-    every level as bright on the screen as the top, as the day textures' (``imaging.mip_chain``)."""
+    every level as bright on the screen as the top, as the day textures' (``imaging.mip_chain``),
+    but for the faint light :data:`FLOOR` writes black at the smallest levels."""
     side = rgb.shape[0]
     if rgb.ndim != 3 or rgb.shape[1] != side or side & (side - 1):
         raise ValueError(f"lit_levels needs a square power-of-two RGB image, got {rgb.shape}")

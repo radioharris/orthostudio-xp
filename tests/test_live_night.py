@@ -96,9 +96,10 @@ class LevelsTest(unittest.TestCase):
 
     def test_smaller_levels_keep_the_light_the_screen_shows(self):
         """Each smaller level as bright on the screen as the top, as the day textures': a power
-        mean of 3 gave each about 15 % more light (its stored values 30 % higher), the tiles
-        dimming one after another as the aircraft came closer; the plain mean of the stored values
-        made them darker (Los Angeles, 2026-11-12). The screen's gamma, 2.2, written here."""
+        mean of 3 gave each about 15 % more light on the screen (computed; its stored values 30 %
+        higher), the tiles dimming one after another as the aircraft came closer; the plain mean
+        of the stored values made them darker (Los Angeles, 2026-11-12). The screen's gamma, 2.2,
+        written here."""
         rgb = np.zeros((64, 64, 3), np.uint8)
         rgb[::4, ::4] = 200  # a lamp in every 4 x 4 pixels
         levels = night.lit_levels(rgb)
@@ -343,6 +344,28 @@ class NightJobTest(unittest.TestCase):
         o4, n4 = layout[4]
         self.assertEqual(lit[o0 : o0 + n0].count(0), n0)  # the 1024 px level black
         self.assertNotEqual(lit[o4 : o4 + n4].count(0), n4)  # the 64 px one written
+
+    def test_a_far_night_has_the_light_of_a_near_one(self):
+        """Made far (drawn small, FAR_DRAW, and reduced in linear light), a night texture's level
+        has on the screen about the light of the same level of the texture made near: its lamps'
+        light (lamp_k), their glow (glow_k) and the reduction (lights_at) hold it. One of them at a
+        power of 1, or none, made far towns three times too dark or too bright, and passed every
+        test (the review of 2026-11-12; the blown-out far blocks of 2026-11-10)."""
+        from orthostudio.live import dds
+        from orthostudio.live.region import NIGHT_TOP
+
+        town = [night.Roads.of(grid_of_streets(43.70, 7.27, span=0.03))]
+        layout = dds.level_layout(NIGHT_TOP)
+
+        def shown(made_from: int, k: int) -> float:
+            make_one(self.pack, self.name, made_from, town=town)
+            offset, length = layout[k]
+            rgb = decode_bc1(self.lit.read_bytes()[offset : offset + length], 1024 >> k)
+            return float(((rgb / 255.0) ** 2.2).mean())  # the screen's gamma
+
+        for k in (3, 4):
+            ratio = shown(k, k) / shown(0, k)
+            self.assertTrue(0.8 <= ratio <= 1.15, f"{1024 >> k} px: {ratio:.2f}")
 
     def test_the_lights_as_bright_as_chosen(self):
         """Live's "Night lights": soft, normal or strong, the same lamps fainter or brighter."""

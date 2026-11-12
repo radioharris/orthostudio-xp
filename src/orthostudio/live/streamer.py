@@ -1084,9 +1084,9 @@ class Streamer:
         # the rings with their margin always (_level): it anticipates the aircraft's moves, and
         # covers X-Plane's own 4096 px ring, which lies within a few hundred metres of 14 km, past
         # the 13.6 of the rings: a texture 13.9 km from a start near LAX was read at 4096 px
-        # before Live built it, black at night, in every flight (2026-11-11). None at a start or
-        # standing took the same risk after a jump X-Plane did not wait for (the review of
-        # 2026-11-12): one rule since
+        # before Live built it, black at night, in every flight (2026-11-11). Standing without it,
+        # as until 2026-11-12, took the same risk after a jump X-Plane did not wait for (the
+        # review of that day): one rule since
         # heights above the ground: X-Plane measures from the aircraft in three dimensions, and
         # at cruise a texture right under the aircraft is 10 km away, too far for its 8192 px.
         # Never from the camera: X-Plane reads nothing again for it, in the drone view or the

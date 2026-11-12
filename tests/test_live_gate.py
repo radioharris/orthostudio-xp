@@ -1463,7 +1463,6 @@ class ScriptedXPlane:
         }  # latitude and longitude, DATAREFS' first two
 
 
-@unittest.skipIf(Image is None, "needs numpy, Pillow and ispc_texcomp")
 class FakePauser:
     """What run() reads of orthostudio.live.pause.Pauser, and its resume() noted."""
 
@@ -1478,6 +1477,7 @@ class FakePauser:
         self.resumed = True
 
 
+@unittest.skipIf(Image is None, "needs numpy, Pillow and ispc_texcomp")
 class RunTest(unittest.TestCase):
     """run() with the gate: a click in X-Plane, the plugin holding it, the aircraft arriving."""
 

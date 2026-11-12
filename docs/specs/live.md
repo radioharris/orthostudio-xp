@@ -199,8 +199,8 @@ modules, English and French, English unless the switch chose French, as OrthoStu
   ground grain; then the flight plan and what the app opens on.
 - **A start** waits for everything X-Plane reads while the flight loads, the 8192 px level within
   15 km included (see "The 8192 px level"), its rings with the margin they have in flight (11 %,
-  `DEFAULT_MARGIN`, the aircraft standing too: without it at a start or standing, a jump X-Plane did
-  not wait for took the same risk, the review of 2026-11-12): X-Plane's
+  `DEFAULT_MARGIN`; the aircraft standing has it too since the review of 2026-11-12: standing
+  without it, a jump X-Plane did not wait for took the same risk): X-Plane's
   4096 px ring lies within a few hundred metres of 14 km (a texture at 8.7 km read at 4096 px and
   one at 14 km at 2048 px from LSGG, 2026-10-20; one at 13.9 km at 4096 px from a start in the
   air near LAX, 5,000 ft, counted in three dimensions, 13.8 km along the ground, 2026-11-11), past
@@ -799,7 +799,7 @@ the glow, which keeps the glow's light; a street and the windows' band keep the 
 1024 px (`night._width_k`). Against the same textures drawn at 1024 px, round Geneva, Nice and in
 the country (ZL16): 0.87 to 0.99 of the light on the screen on average (0.85 to 1.08 a texture),
 0.87 to 0.99 seen from far; round LSGG (ZL18) 0.73 at 128 px and 0.87 at 64 px, such a texture
-gaining up to a third more light (1/0.73) when Live builds it sharp (computed with power 2.2,
+gaining up to 37 % more light (1/0.73) when Live builds it sharp (computed with power 2.2,
 2026-11-12; with the
 power mean of 3 on stored values, 0.89 to 1.02 and 0.83 to 1.00). Drawn in 37 to 75 ms against
 99 to 131 (2026-11-11; the roads' loop is most of what is left).
