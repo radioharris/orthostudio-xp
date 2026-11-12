@@ -585,9 +585,9 @@ def sharp(jobs: dict) -> list[int]:
 
 def test_what_a_start_waits_for(tmp_path: Path) -> None:
     """At a start: the 8192 px within 15.1 km, the rings' 13.6 with the flight's margin (a start
-    without it since 2026-10-20, with it again since 2026-11-11), which X-Plane waits for (urgency
-    <= 0); farther, each level of these 8192 px files where X-Plane reads it, a ring before a
-    4096 px file's, widened by the camera's reach even in the cockpit."""
+    without it from 2026-10-20 to 2026-11-11), which X-Plane waits for (urgency <= 0); farther,
+    each level of these 8192 px files where X-Plane reads it, a ring before a 4096 px file's,
+    widened by the camera's reach even in the cockpit."""
     s = row_streamer(tmp_path)
     jobs = s.plan(at(0), x_plane_there=False, starting=True)
     assert sharp(jobs) == [0, 1, 2]  # 0, 6.8 and 13.57 km, within 15.1; 20.4 km beyond

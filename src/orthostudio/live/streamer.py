@@ -32,12 +32,12 @@ One zoom above the mesh's (AutoOrtho's max_zoom 17, or 19 near airports), a text
 the start. Its photos are built as those of a 4096 px file, at the same distances: X-Plane, which
 counts a file's levels from its top, reads each level a ring earlier, and finds there its photos
 already or, for the far levels, their copy (``orthostudio.live.texture``). The 8192 px level
-itself gets its photos, one zoom above the mesh's, 11 % farther than X-Plane reads it (13.6 km at
-ZL16, 3.4 km at ZL18; the rings' margin, at a start too), all around the aircraft and its path
-ahead, in three dimensions as X-Plane measures, so not from high up. At a start, X-Plane waits for
-all of them. In flight, photos late as X-Plane is about to read them get the 4096 px level copied
-up in their place first (:attr:`Streamer.copied_up`): the ortho as at ZL16, never the neutral
-colour.
+itself gets its photos, one zoom above the mesh's, 11 % past ring 0 (13.6 km at ZL16, 3.4 km at
+ZL18; X-Plane's own near 14 km at ZL16; the rings' margin, at a start too), all around the
+aircraft and its path ahead, in three dimensions as X-Plane measures, so not from high up. At a
+start, X-Plane waits for all of them. In flight, photos late as X-Plane is about to read them get
+the 4096 px level copied up in their place first (:attr:`Streamer.copied_up`): the ortho as at
+ZL16, never the neutral colour.
 """
 
 from __future__ import annotations
@@ -986,12 +986,12 @@ class Streamer:
         """Whether an 8192 px file gets the photos of its 8192 px level now, and how urgent they
         are (as :meth:`plan` counts it); None: the copy of its 4096 px level stays there for now.
 
-        X-Plane reads that level where it reads a 4096 px file's 4096 px one (13.6 km at ZL16,
-        3.4 km at ZL18). The photos come within the margin (11 % more, at a start too) of the path
-        ahead of the aircraft (``s``),
-        urgent once X-Plane reads them (``s_now``: from the aircraft). Both are in three
-        dimensions, from the heights above the ground, as X-Plane measures: none from high up.
-        At a start, X-Plane waits for all of them."""
+        X-Plane reads that level where it reads a 4096 px file's 4096 px one (ring 0: 13.6 km at
+        ZL16, 3.4 km at ZL18; X-Plane's own near 14 km at ZL16). The photos come within the margin
+        (11 % more, at a start too) of the path ahead of the aircraft (``s``), urgent once X-Plane
+        reads them (``s_now``: from the aircraft). Both are in three dimensions, from the heights
+        above the ground, as X-Plane measures: none from high up. At a start, X-Plane waits for all
+        of them."""
         read = ring_km(0, zoom) * self.scale  # X-Plane's image: the rings grow with it
         built = read * self.margin  # a start too (plan)
         if s > built:
@@ -1062,8 +1062,8 @@ class Streamer:
         """Queue every texture within reach built coarser than X-Plane will read it.
 
         ``x_plane_there`` False: a place prepared before X-Plane loads it (``--from``), which a new
-        start there must not reload. ``starting``: a start X-Plane has read nothing of yet: it
-        waits for every 8192 px level around (:meth:`_sharpest`).
+        start there X-Plane cannot have read early. ``starting``: a start X-Plane has read nothing
+        of yet: it waits for every 8192 px level around (:meth:`_sharpest`).
         """
         jumped = x_plane_there and (
             self.last_fix is None
@@ -1137,9 +1137,8 @@ class Streamer:
                 # built without pieces that did not come: again, as sharp, never waited for
                 level, urgency = self.level_of(name), max(urgency, 1.0)
             jobs[name] = (urgency, level)
-        with (
-            self.lock
-        ):  # the queue and the reload flag together: the builder must not see one without the other
+        # the queue and the read-early flag together: the builder must not see one without the other
+        with self.lock:
             self.queue = {
                 n: j
                 for n, j in jobs.items()

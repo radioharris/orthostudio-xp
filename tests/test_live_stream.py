@@ -393,7 +393,9 @@ class MissingPieceTest(unittest.TestCase):
                 s.start()
                 self.assertTrue(self.wait(lambda: name in s.built))  # without the piece
                 self.assertIn(name, s.patchy)
-                self.assertEqual(s.urgent_left(), 0)  # X-Plane goes on
+                # X-Plane goes on once all it waits for is built, the other texture too, which a
+                # slower computer was still encoding at that moment (a Windows PC, 2026-11-12)
+                self.assertTrue(self.wait(lambda: s.urgent_left() == 0))
                 released.set()  # the piece comes, into the cache
                 self.assertTrue(self.wait(lambda: s.patchy[name][0] <= time.time()))
                 again = s.plan(Fix(*tex.center), x_plane_there=False)

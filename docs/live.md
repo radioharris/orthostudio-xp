@@ -285,7 +285,8 @@ night.
   before, Live takes the time X-Plane saved with the start, its time zone's, and counts it night
   if it may be.
 - Far away they are made small first, as the photos are. Seen from far, a town has about the same
-  light as up close, or a little less: for towns that show from farther, choose "Strong" (below).
+  light as up close, or a little less, up to a quarter less round airports (computed): for towns
+  that show from farther, choose "Strong" (below).
 - Live stays within its disk space, each file counted as the disk takes it: the night textures
   made take a part of it, those with lights only (none is made by day; those made stay on the
   disk), and X-Plane's roads kept for them 5 % of it, 1 GB at most. On a Mac and on Linux the
@@ -295,7 +296,9 @@ night.
   photo (on a start at LSGG, every night texture lit: 11 % on a Mac, 44 % on Windows; the sea
   and the forests take nothing). With the same night textures on a tile of Nice, flown three times each way at
   2704 x 1756 on an M4 Pro, frame times did not change beyond their spread from one flight to the
-  next.
+  next. On a Windows PC (16 GB), two pairs of night flights at Nice with the lights on and off took
+  0.6 to 0.9 ms more a frame with them (3 to 5 %), the night's own process about 0.6 of a core in
+  flight (2026-11-11).
 
 "Soft", "Normal" (the default) or "Strong": the same lamps fainter or brighter; with "Strong",
 towns show from farther. A new strength
@@ -362,7 +365,7 @@ Once installed, a region shows its size on the disk and **Delete** (click twice)
 is made again on the server, the panel says an update is available and how much it downloads,
 and offers **Update**: only
 those are downloaded again. Updating and deleting wait until Live is stopped. A region installed
-before the night lights (2.0) gets their grids by itself, a few megabytes (Europe 11.6 MB), as the
+with 2.0, before the night lights, gets their grids by itself, a few megabytes (Europe 11.6 MB), as the
 window opens: no Update to click. A region may sit on another disk, linked from Live's folder: the
 panel says where each one is.
 

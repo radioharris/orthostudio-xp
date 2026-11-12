@@ -347,25 +347,29 @@ class NightJobTest(unittest.TestCase):
 
     def test_a_far_night_has_the_light_of_a_near_one(self):
         """Made far (drawn small, FAR_DRAW, and reduced in linear light), a night texture's level
-        has on the screen about the light of the same level of the texture made near: its lamps'
-        light (lamp_k), their glow (glow_k) and the reduction (lights_at) hold it. One of them at a
-        power of 1, or none, made far towns three times too dark or too bright, and passed every
-        test (the review of 2026-11-12; the blown-out far blocks of 2026-11-10)."""
+        has on the screen about the light of the same level of the texture made near, at ZL16 and
+        at ZL18 round an airport (computed there: 0.86 and 0.96 at ZL16, 0.69 and 0.87 at ZL18).
+        The lamps' light (lamp_k) and the reduction (lights_at) hold it: either at a power of 1,
+        or lamp_k left out, made far towns up to three times too dark or too bright and passed
+        every test (the review of 2026-11-12; the blown-out far blocks of 2026-11-10). The glow
+        (glow_k) weighs a tenth of it here, not held to this."""
         from orthostudio.live import dds
-        from orthostudio.live.region import NIGHT_TOP
+        from orthostudio.live.region import NIGHT_FOLDER, NIGHT_TOP
 
         town = [night.Roads.of(grid_of_streets(43.70, 7.27, span=0.03))]
         layout = dds.level_layout(NIGHT_TOP)
 
-        def shown(made_from: int, k: int) -> float:
-            make_one(self.pack, self.name, made_from, town=town)
+        def shown(name: str, made_from: int, k: int) -> float:
+            make_one(self.pack, name, made_from, town=town)
+            lit = self.pack / NIGHT_FOLDER / name.replace(".dds", "_LIT.dds")
             offset, length = layout[k]
-            rgb = decode_bc1(self.lit.read_bytes()[offset : offset + length], 1024 >> k)
+            rgb = decode_bc1(lit.read_bytes()[offset : offset + length], 1024 >> k)
             return float(((rgb / 255.0) ** 2.2).mean())  # the screen's gamma
 
-        for k in (3, 4):
-            ratio = shown(k, k) / shown(0, k)
-            self.assertTrue(0.8 <= ratio <= 1.15, f"{1024 >> k} px: {ratio:.2f}")
+        for name, low in ((self.name, 0.8), ("95616_136352_BI18.dds", 0.6)):  # the same town
+            for k in (3, 4):
+                ratio = shown(name, k, k) / shown(name, 0, k)
+                self.assertTrue(low <= ratio <= 1.15, f"{name} {1024 >> k} px: {ratio:.2f}")
 
     def test_the_lights_as_bright_as_chosen(self):
         """Live's "Night lights": soft, normal or strong, the same lamps fainter or brighter."""

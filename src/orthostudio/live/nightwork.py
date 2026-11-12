@@ -55,7 +55,8 @@ GRID_STEP_DEG = 1.0 / 240.0
 FAR_DRAW = 2
 """A night texture is drawn this many levels above its own, four times its side, and made
 smaller: a 64 px one far away drawn at 256 px rather than 1024, with most of its light (its lamps
-a pixel each: 0.87 to 0.99 of it at ZL16, 0.73 to 0.87 at ZL18, computed, docs/specs/live.md),
+a pixel each: 0.87 to 0.99 of it on average at ZL16, 0.73 and 0.87 round LSGG at ZL18, computed,
+docs/specs/live.md),
 up to ten times faster in the country (2026-11-11)."""
 
 FAR_DRAW_MIN = 128

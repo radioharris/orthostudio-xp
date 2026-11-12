@@ -205,10 +205,12 @@ modules, English and French, English unless the switch chose French, as OrthoStu
   one at 14 km at 2048 px from LSGG, 2026-10-20; one at 13.9 km at 4096 px from a start in the
   air near LAX, 5,000 ft, counted in three dimensions, 13.8 km along the ground, 2026-11-11), past
   the rings' 13.6 km, and without the margin that texture near LAX was taken sharper than Live
-  built it, its night black, the same in three flights. With it, in one start, X-Plane went on after 13 s there,
-  against 13 to 14 s in four starts without (zooms 16/18: 10 textures at 4096 px instead of 9, 24
-  at 2048 px instead of 17, 270 MB downloaded instead of 254); at zooms 17/19 it also widens the
-  8192 px level's ring at a start, not measured. The start modes of before (`full`, `around`,
+  built it, its night black, the same in three flights. With it, in three starts, X-Plane went on
+  after 13 to 14 s there, as in the four starts without (zooms 16/18: 10 textures at 4096 px
+  instead of 9, 24 at 2048 px instead of 17, 270 MB downloaded instead of 254). At zooms 17/19 it
+  costs a cold start time: near LSGG by day, X-Plane went on after 54, 63 and 66 s with it (1.16 to
+  1.19 GB downloaded) against 40, 40, 41 and 41 s without (1.05 to 1.07 GB), the two alternated;
+  with it but for the 8192 px level at a start, 45 and 51 s (1.10 GB) (2026-11-12). The start modes of before (`full`, `around`,
   `normal`, and `reload` until 27 September) went with the growing; a saved `start_mode` is left
   out. The pink test of 27 September (the 8192 px levels built pink, `tint_8192`) showed the pink
   at LFLL on a new load of the flight, never after `sim/operation/reload_scenery` (the SDK's
@@ -613,7 +615,7 @@ DSF is missing (a part of the world not installed), the overlays of Live's regio
 arc-seconds over the square and 0.1° round it, north-west corner at (lon − 0.1, lat + 1.1), cut
 from Black Marble 2016's eight grey tiles by the world mesh's tools and installed with the region
 (the user's choice, 2026-11-10), one zip a region (`night` in the manifest, Europe 11.6 MB); about
-16 KB a square round Nice. A region installed before them (2.0) gets them by itself: each read of
+16 KB a square round Nice. A region installed with 2.0, before them, gets them by itself: each read of
 the list of regions (the window's, at its opening and every ten minutes at most) starts their
 download for the regions installed that lack them (`LiveControl._fetch_night_grids`,
 `Installer(night_only=True)`, `osxpregions.night_to_fetch`), in the background, unseen on the page
@@ -795,7 +797,9 @@ are built whether X-Plane is held or not ("Prepare my departure"), the team then
 (`nightwork.FAR_DRAW`, 128 px at least) and made smaller, not at 1024 px: a 64 px one far away
 at 256. Drawn k times coarser than a ZL16 texture at 1024 px, a lamp is a pixel, its light
 (4/k²)^(1/2.2) of its level, which keeps its light on the screen, and (4/k²)^(1-1/2.2) of it in
-the glow, which keeps the glow's light; a street and the windows' band keep the width they had at
+the glow, which keeps the lamps' part of the glow in stored values (the glow, drawn wider, keeps
+less of it on the screen, and the streets less still: 0.59 and 0.43 of their light at 128 px on a
+grid of Nice, computed, 2026-11-12); a street and the windows' band keep the width they had at
 1024 px (`night._width_k`). Against the same textures drawn at 1024 px, round Geneva, Nice and in
 the country (ZL16): 0.87 to 0.99 of the light on the screen on average (0.85 to 1.08 a texture),
 0.87 to 0.99 seen from far; round LSGG (ZL18) 0.73 at 128 px and 0.87 at 64 px, such a texture
@@ -807,7 +811,10 @@ power mean of 3 on stored values, 0.89 to 1.02 and 0.83 to 1.00). Drawn in 37 to
 **Measured** with the prototype's textures on the user's tile of Nice, X-Plane alone, 2704 × 1756,
 three flights each way alternated: frame times at 21.1 against 21.7 ms over the city, the same on
 the approach and from far, X-Plane's memory and its first load the same; 54 MB of night textures
-for 1.1 GB of photos; 0.15 to 0.25 s a texture in the module.
+for 1.1 GB of photos; 0.15 to 0.25 s a texture in the module. On a Windows PC (16 GB, the
+Shadow), two pairs of night flights at Nice, the lights on and off: 0.6 to 0.9 ms more a frame
+with them (3 to 5 %), 1.0 ms at the 99th percentile, the night's process 0.6 of a core in flight
+(2026-11-11; the Mac: no change, 0.06 of a core).
 
 ## The user's own tiles
 
@@ -1458,8 +1465,9 @@ Over it, Live's layers:
 - Turns tighter than the two-minute look-ahead are caught by the rings' margin and by X-Plane's
   next ring, not predicted (none late on the turning test flight at ZL17/19, 2026-10-12, where
   ninety seconds left 4).
-- Windows and Linux flown with X-Plane: everything is built for them and tested with a stand-in
-  X-Plane, Live's whole test suite passes on Linux, but no flight yet. Nor is it known whether
+- Linux flown with X-Plane: everything is built for it and tested with a stand-in X-Plane, Live's
+  whole test suite passes on Linux, but no flight yet (Windows is flown, on the Shadow's
+  campaigns). Nor is it known whether
   X-Plane names its background workers on Windows as on a Mac and Linux (see "X-Plane's
   background workers" in "The loop": Live goes without them where it does not).
 - A jump X-Plane makes without the plugin's hold (the map, no new flight) may find no files in its
