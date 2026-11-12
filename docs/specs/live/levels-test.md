@@ -9,8 +9,9 @@ runway 04 (from X-Plane's menu).
 
 - **X-Plane takes each texture's level from the distance between the aircraft and the texture's
   centre**, in the rings of [probe-flight-1.md](probe-flight-1.md) times 1.13 (below, 2026-10-22):
-  for a ZL16 texture 4096 px under 13.6 km, 2048 px to 23.7 km, 1024 px to 42.9 km, 512 px to
-  81.4 km, 256 px beyond; for a ZL18 texture the same four times closer.
+  for a ZL16 texture 4096 px under 13.6 km (13.9 km read at 4096 px near LAX, 2026-11-11: below),
+  2048 px to 23.7 km, 1024 px to 42.9 km, 512 px to 81.4 km, 256 px beyond; for a ZL18 texture
+  the same four times closer.
 - **It takes them when it loads a flight, and again as the aircraft moves.** It reads nothing
   again when only the camera moves, in the drone view or the circle view, kilometres out and near
   the ground.
@@ -94,8 +95,10 @@ read them nearer is not known: it measured in flight, a Cessna, the same image.
 In flight Live builds each ring wider, to keep ahead of the aircraft: 1.25 times the probe flight's
 until then, 11 % past the true rings, which every flight had flown with (0 texture late near the
 aircraft in the campaign of 2026-10-17). The margin is now 1.11 (`rings.DEFAULT_MARGIN`): in flight
-the same distances as before to 0.3 %, 1.13 x 1.11 against 1.25; only the starts, built without
-it, changed.
+the same distances as before to 0.3 %, 1.13 x 1.11 against 1.25. The starts were built without
+it until 2026-11-11, and have it since: a ZL16 texture 13.9 km from a start in the air near LAX
+(5,000 ft, counted in three dimensions; 13.8 km along the ground) was read at 4096 px before Live
+built it, past ring 0's 13.6 km, the same in three flights (`live.md`, "A start").
 
 Not explained by it: a ZL16 texture at 29.1 km, built at 1024 px, showed neutral at the first
 start of that morning, its neighbours not; that start followed a pack set up again from scratch.

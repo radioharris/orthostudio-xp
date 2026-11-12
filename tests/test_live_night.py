@@ -1,8 +1,8 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Night textures as drawn: the same image for the same roads, the same light per square metre at
-ZL16 and ZL18, rural roads dimmer, NASA's density, black between the lights, and the brighter
-smaller levels."""
+ZL16 and ZL18, rural roads dimmer, NASA's density, black between the lights, and smaller levels
+as bright on the screen as the top."""
 
 import math
 import unittest
@@ -96,15 +96,14 @@ class LevelsTest(unittest.TestCase):
 
     def test_smaller_levels_keep_the_light_the_screen_shows(self):
         """Each smaller level as bright on the screen as the top, as the day textures': a power
-        mean of 3 made each 30 % brighter, the tiles dimming one after another as the aircraft came
-        closer; the plain mean of the stored values made them darker (Los Angeles, 2026-11-12)."""
-        from orthostudio.live.imaging import GAMMA
-
+        mean of 3 gave each about 15 % more light (its stored values 30 % higher), the tiles
+        dimming one after another as the aircraft came closer; the plain mean of the stored values
+        made them darker (Los Angeles, 2026-11-12). The screen's gamma, 2.2, written here."""
         rgb = np.zeros((64, 64, 3), np.uint8)
         rgb[::4, ::4] = 200  # a lamp in every 4 x 4 pixels
         levels = night.lit_levels(rgb)
         self.assertEqual([lv.shape[0] for lv in levels], [64, 32, 16, 8, 4, 2, 1])
-        shown = [float(((lv / 255.0) ** GAMMA).mean()) for lv in levels]
+        shown = [float(((lv / 255.0) ** 2.2).mean()) for lv in levels]
         for light in shown[1:]:
             self.assertAlmostEqual(light / shown[0], 1.0, delta=0.03)
 

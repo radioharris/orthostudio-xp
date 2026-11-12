@@ -30,10 +30,10 @@ Everything is drawn at the same metres a pixel at every zoom (a ZL18 texture's l
 quarter of its side and enlarged): drawn at the texture's own pixels, the airport's sharper zone
 came out twice darker than the town round it. The smaller levels are the average of four pixels
 of the level above in linear light, as the day textures' (:data:`POWER`, ``imaging.GAMMA``), so
-that a texture shows the same light from far and near: a power mean of 3 made each smaller level
-30 % brighter, and the user saw the tiles dim one after another as the aircraft came closer; the
-plain mean of the stored values made them darker, and the tiles grew brighter coming closer (Los
-Angeles, 2026-11-12).
+that a texture shows the same light from far and near: a power mean of 3 gave each smaller level
+about 15 % more light (its stored values 30 % higher), and the user saw the tiles dim one after
+another as the aircraft came closer; the plain mean of the stored values made them darker, and
+the tiles grew brighter coming closer (Los Angeles, 2026-11-12).
 """
 
 from __future__ import annotations
@@ -375,7 +375,7 @@ def _draw(parts: list[Roads], density, x0, y0, zoom_level, side, seed) -> np.nda
     # for a far texture (FAR_DRAW): its light kept, its lamps a pixel each
     ref = m_per_px * side / LIT_SIDE * 2.0 ** (zoom_level - 16)
     k = max(1, round(m_per_px / ref))
-    lamp_k = (4.0 / k**2) ** (1 / POWER) if k > 1 else 1.0  # a lamp's light, its power mean kept
+    lamp_k = (4.0 / k**2) ** (1 / POWER) if k > 1 else 1.0  # a lamp's light, kept in linear light
     glow_k = (4.0 / k**2) ** (1 - 1 / POWER) if k > 1 else 1.0  # and what it adds to the glow
     margin = 0.01
     rng = np.random.default_rng(seed)
@@ -669,7 +669,7 @@ def lit_levels(rgb: np.ndarray, power: float = POWER) -> list[np.ndarray]:
 
 def _floored(level: np.ndarray) -> np.ndarray:
     """A smaller level in uint8, what is fainter than :data:`FLOOR` black as at the top: the power
-    mean of a faint glow among dark pixels gave 4 out of 255 there, which BC1 tinted."""
+    mean of 3 of a faint glow among dark pixels gave 4 out of 255 there, which BC1 tinted."""
     out = (np.clip(level, 0.0, 1.0) * np.float32(255.0) + np.float32(0.5)).astype(np.uint8)
     out[out.max(axis=-1) < FLOOR] = 0
     return out

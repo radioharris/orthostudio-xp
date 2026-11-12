@@ -584,13 +584,13 @@ def sharp(jobs: dict) -> list[int]:
 
 
 def test_what_a_start_waits_for(tmp_path: Path) -> None:
-    """At a start: the 8192 px within 13.6 km, where X-Plane reads them, no margin while it loads
-    (2026-10-20), which X-Plane waits for (urgency <= 0); farther, each level of these 8192 px
-    files where X-Plane reads it, a ring before a 4096 px file's, widened by the camera's reach
-    even in the cockpit."""
+    """At a start: the 8192 px within 15.1 km, the rings' 13.6 with the flight's margin (a start
+    without it since 2026-10-20, with it again since 2026-11-11), which X-Plane waits for (urgency
+    <= 0); farther, each level of these 8192 px files where X-Plane reads it, a ring before a
+    4096 px file's, widened by the camera's reach even in the cockpit."""
     s = row_streamer(tmp_path)
     jobs = s.plan(at(0), x_plane_there=False, starting=True)
-    assert sharp(jobs) == [0, 1, 2]  # 0, 6.8 and 13.57 km, within 13.6; 20.4 km beyond
+    assert sharp(jobs) == [0, 1, 2]  # 0, 6.8 and 13.57 km, within 15.1; 20.4 km beyond
     for k in (0, 1, 2):
         assert jobs[f"{ROW[k]}.dds"][0] <= 0
     # 4096 px out to 40.8 km, 2048 px from 47.6 km
@@ -609,6 +609,31 @@ def test_a_start_plans_x_plane_s_4096_px_ring_with_the_margin(tmp_path: Path) ->
     assert sharp(jobs) == [0, 1, 2]
     assert jobs[f"{ROW[2]}.dds"][0] <= 0  # X-Plane waits for it
     s.cache.close()
+
+
+def test_a_start_builds_x_plane_s_4096_px_ring_at_the_default_zooms(tmp_path: Path) -> None:
+    """The default zooms (16/18) and no camera reach: a texture 13.97 km from a start gets its
+    4096 px level, and X-Plane waits for it, as near LAX (2026-11-11); the aircraft standing in
+    flight, where X-Plane reads nothing new, plans the rings without margin, 2048 px there."""
+    pack = region(tmp_path, Zooms(16, 18), textures=ROW)
+    cache = ChunkCache(tmp_path / "c.sqlite")
+    s = Streamer(
+        pack,
+        cache,
+        FakeDownloader,
+        finest_quality=0,
+        max_zoom=16,
+        max_zoom_airports=18,
+        reach_km=0.0,
+        log=quiet,
+    )
+    lat, lon = parse_texture_name(f"{ROW[0]}.dds").center
+    west = lon - 0.4 / (111.195 * math.cos(math.radians(lat)))  # the third one 13.97 km away
+    urgency, level = s.plan(Fix(lat, west), x_plane_there=False, starting=True)[f"{ROW[2]}.dds"]
+    assert (level, urgency <= 0) == (0, True)
+    standing = s.plan(Fix(lat, west, gs_ms=0.0), x_plane_there=False)
+    assert standing[f"{ROW[2]}.dds"][1] == 1
+    cache.close()
 
 
 def test_in_flight_all_around_and_ahead(tmp_path: Path) -> None:

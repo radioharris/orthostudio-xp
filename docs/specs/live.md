@@ -201,10 +201,13 @@ modules, English and French, English unless the switch chose French, as OrthoStu
   15 km included (see "The 8192 px level"), its rings with the margin they have in flight (11 %,
   `DEFAULT_MARGIN`; none only while the aircraft stands, where X-Plane reads nothing new): X-Plane's
   4096 px ring lies within a few hundred metres of 14 km (a texture at 8.7 km read at 4096 px and
-  one at 14 km at 2048 px from LSGG, 2026-10-20; one at 13.9 km at 4096 px from a start near LAX,
-  2026-11-11), past the rings' 13.6 km, and without the margin that texture near LAX was taken
-  sharper than Live built it, its night black, the same in three flights. With it, X-Plane went on
-  after 13 s there, against 13 to 14 s without (10 textures at 4096 px instead of 9). The start modes of before (`full`, `around`,
+  one at 14 km at 2048 px from LSGG, 2026-10-20; one at 13.9 km at 4096 px from a start in the
+  air near LAX, 5,000 ft, counted in three dimensions, 13.8 km along the ground, 2026-11-11), past
+  the rings' 13.6 km, and without the margin that texture near LAX was taken sharper than Live
+  built it, its night black, the same in three flights. With it, X-Plane went on after 13 s there,
+  against 13 to 14 s in four starts without (zooms 16/18: 10 textures at 4096 px instead of 9, 24
+  at 2048 px instead of 17, 270 MB downloaded instead of 254); at zooms 17/19 it also widens the
+  8192 px level's ring at a start, not measured. The start modes of before (`full`, `around`,
   `normal`, and `reload` until 27 September) went with the growing; a saved `start_mode` is left
   out. The pink test of 27 September (the 8192 px levels built pink, `tint_8192`) showed the pink
   at LFLL on a new load of the flight, never after `sim/operation/reload_scenery` (the SDK's
@@ -575,11 +578,17 @@ format cannot hold in their colour (BC1 holds red and blue in steps of 8; the us
 its side and enlarged: drawn at its own pixels, the airport's sharper zone came out twice darker
 than the town round it. Its smaller levels are each the average of four pixels of the level above
 in linear light, as the day textures' (`night.POWER` is `imaging.GAMMA`, 2.2): a texture shows the
-same light from far and near. A power mean of 3 made each smaller level 30 % brighter (a town of
-Los Angeles 19.4 at 1024 px, 25.4 at 512, 33.2 at 256, 42.7 at 128), and the user saw the tiles
-dim one after another as the aircraft came closer; the plain mean of the stored values, tried,
-made the far levels darker on the screen, and the tiles grew brighter coming closer (2026-11-12).
-`FLOOR` holds at every level (the average of a faint glow gave 4 out of 255 there). BC1 itself still tinted
+same light from far and near. A power mean of 3 gave each smaller level about 15 % more light on
+the screen than the one above (1.16, 1.34 and 1.53 times the top's at 512, 256 and 128 px on three
+ZL16 textures of Los Angeles; its stored values 30 % higher a level, a town 19.4 at 1024 px, 25.4
+at 512, 33.2 at 256, 42.7 at 128), and the user saw the tiles dim one after another as the
+aircraft came closer; the plain mean of the stored values, tried, made the far levels darker on
+the screen, and the tiles grew brighter coming closer (2026-11-12). Seen from far or high up,
+towns are fainter than with the power mean of 3: "Strong" (`night_light`) is the lever. `FLOOR`
+holds at every level (the power mean of 3 of a faint glow gave 4 out of 255 there); in linear
+light it takes more of a lone road's faint light at the smallest levels, far off (computed on
+synthetic streets: 0.96 of it left at 128 px, 0.72 at 64 px, 0.03 at 32 px; a town 1.00; the
+power mean of 3 lost under 1 %). BC1 itself still tinted
 the dim edges of the glows: green kept in 6 bits, red and blue in 5, 2 % of a town's lit pixels
 came out up to 8/255 greener than red (the review of 2026-11-11). Every light drawn being orange
 or white, each block's two colours have their green and blue brought down to their red
@@ -781,11 +790,14 @@ are built whether X-Plane is held or not ("Prepare my departure"), the team then
 **Far textures drawn small.** A night texture is drawn at four times its own side
 (`nightwork.FAR_DRAW`, 128 px at least) and made smaller, not at 1024 px: a 64 px one far away
 at 256. Drawn k times coarser than a ZL16 texture at 1024 px, a lamp is a pixel, its light
-(4/k²)^(1/2.2) of its level, which keeps its light on the screen, and (4/k²)^(1-1/2.2) of it in the glow, which
-keeps the glow's light; a street and the windows' band keep the width they had at 1024 px
-(`night._width_k`). Against the same textures drawn at 1024 px, round Geneva, Nice, LSGG and in
-the country: 0.89 to 1.02 of the light, 0.83 to 1.00 seen from far, in 37 to 75 ms against 99 to
-131 (the roads' loop is most of what is left).
+(4/k²)^(1/2.2) of its level, which keeps its light on the screen, and (4/k²)^(1-1/2.2) of it in
+the glow, which keeps the glow's light; a street and the windows' band keep the width they had at
+1024 px (`night._width_k`). Against the same textures drawn at 1024 px, round Geneva, Nice and in
+the country (ZL16): 0.87 to 0.99 of the light on the screen on average (0.85 to 1.08 a texture),
+0.87 to 0.99 seen from far; round LSGG (ZL18) 0.73 at 128 px and 0.87 at 64 px, such a texture
+brightening a little when Live builds it sharp (computed with power 2.2, 2026-11-12; with the
+power mean of 3 on stored values, 0.89 to 1.02 and 0.83 to 1.00). Drawn in 37 to 75 ms against
+99 to 131 (2026-11-11; the roads' loop is most of what is left).
 
 **Measured** with the prototype's textures on the user's tile of Nice, X-Plane alone, 2704 × 1756,
 three flights each way alternated: frame times at 21.1 against 21.7 ms over the city, the same on
@@ -1455,4 +1467,4 @@ Over it, Live's layers:
   height above the ground of -2,090,546 m at its HOLD, for a start at FL300 (2026-09-30).
 - Night lights: OrthoStudio XP's own tiles have no night texture yet (its option to come, with
   the same code); X-Plane 12's own `LUMINANCE` and `LIT_FADE_PARAMS` on the night lines not tried,
-  which may carry towns farther than 80 km.
+  which may carry towns farther.

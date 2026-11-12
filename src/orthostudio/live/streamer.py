@@ -987,8 +987,9 @@ class Streamer:
         """Whether an 8192 px file gets the photos of its 8192 px level now, and how urgent they
         are (as :meth:`plan` counts it); None: the copy of its 4096 px level stays there for now.
 
-        X-Plane reads that level where it reads a 4096 px file's 4096 px one (12 km at ZL16, 3 km
-        at ZL18). The photos come within a quarter more of the path ahead of the aircraft (``s``),
+        X-Plane reads that level where it reads a 4096 px file's 4096 px one (13.6 km at ZL16,
+        3.4 km at ZL18). The photos come within the margin (11 % more, at a start too) of the path
+        ahead of the aircraft (``s``),
         urgent once X-Plane reads them (``s_now``: from the aircraft). Both are in three
         dimensions, from the heights above the ground, as X-Plane measures: none from high up.
         At a start, X-Plane waits for all of them."""
