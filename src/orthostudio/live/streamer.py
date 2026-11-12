@@ -113,7 +113,6 @@ PLAN_ASK_EVERY_S = 60.0  # SimBrief is asked for the pilot's last plan at most t
 JUMP_KM = 20.0  # a position this far from the last one is a new start: a teleport, a new flight
 PLAN_EVERY_S = 2.0
 REPORT_EVERY_S = 1.0  # what the Live window is told, this often
-STILL_MS = 1.0  # the aircraft slower than this: standing, its rings without their margin (plan)
 WRITES_EVERY_S = 300.0  # what Live wrote, by kind, in the log this often (writes.py)
 # what the pack's record says its textures follow (texture.photo_floor): ZL13, ZL14 for the sources
 # whose ZL13 is other imagery; a record of before has their far textures built again
@@ -967,17 +966,15 @@ class Streamer:
         path = self.pack_dir / neutral_file(top)
         return str(path) if path.exists() else None
 
-    def _level(
-        self, distance_km: float, zoom: int, top: int, finest: int, margin: float | None = None
-    ) -> tuple[int, float]:
+    def _level(self, distance_km: float, zoom: int, top: int, finest: int) -> tuple[int, float]:
         """The level a texture needs built at ``distance_km`` from the aircraft (in X-Plane's
         image), and how far out X-Plane reads that level of it (km, with the margin, before the
         image's scale). X-Plane counts a file's levels from its top, so it reads each level of an
         8192 px file (``top`` -1) where it reads the next smaller one of a 4096 px file, a ring
         farther out: its 4096 px and 2048 px levels are built that ring earlier (its 8192 px
         level is :meth:`_sharpest`'s; its farther levels have the copy above them,
-        ``texture.needs_copy``). ``margin``: the rings' margin, :attr:`margin` when None."""
-        margin = self.margin if margin is None else margin
+        ``texture.needs_copy``). With the rings' margin (:attr:`margin`), always."""
+        margin = self.margin
         level = top_level_for(distance_km, zoom, finest, margin)
         ahead = top < 0 and 0 < level <= 2 and level - 1 >= max(finest, 0)
         if ahead:
@@ -1084,11 +1081,12 @@ class Streamer:
         self.on_route = route is not None
         reach = self.reach_km
         now = time.time()
-        # the margin anticipates the aircraft's moves, none while it stands (X-Plane reads nothing
-        # new), and is X-Plane's own at a start: its 4096 px ring lies within a few hundred metres
-        # of 14 km, past the 13.6 of the rings, and a texture 13.9 km from a start near LAX was
-        # read at 4096 px before Live built it, black at night, in every flight (2026-11-11)
-        margin = 1.0 if not starting and fix.gs_ms < STILL_MS else None
+        # the rings with their margin always (_level): it anticipates the aircraft's moves, and
+        # covers X-Plane's own 4096 px ring, which lies within a few hundred metres of 14 km, past
+        # the 13.6 of the rings: a texture 13.9 km from a start near LAX was read at 4096 px
+        # before Live built it, black at night, in every flight (2026-11-11). None at a start or
+        # standing took the same risk after a jump X-Plane did not wait for (the review of
+        # 2026-11-12): one rule since
         # heights above the ground: X-Plane measures from the aircraft in three dimensions, and
         # at cruise a texture right under the aircraft is 10 km away, too far for its 8192 px.
         # Never from the camera: X-Plane reads nothing again for it, in the drone view or the
@@ -1113,9 +1111,7 @@ class Streamer:
             # the aircraft and its path: the camera may be anywhere within the reach of them, near
             # the ground, a moment after the cockpit, so the rings are widened by it, along the
             # ground
-            level, read_km = self._level(
-                max(0.0, d - reach) / self.scale, zoom, top, finest, margin
-            )
+            level, read_km = self._level(max(0.0, d - reach) / self.scale, zoom, top, finest)
             ring = LOAD_KM if level == LOAD_LEVEL else read_km * self.scale + reach
             urgency = d_now - ring
             if name in block and level > max(finest, 0):  # the airport's, all at 4096 px

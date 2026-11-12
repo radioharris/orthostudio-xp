@@ -613,8 +613,8 @@ def test_a_start_plans_x_plane_s_4096_px_ring_with_the_margin(tmp_path: Path) ->
 
 def test_a_start_builds_x_plane_s_4096_px_ring_at_the_default_zooms(tmp_path: Path) -> None:
     """The default zooms (16/18) and no camera reach: a texture 13.97 km from a start gets its
-    4096 px level, and X-Plane waits for it, as near LAX (2026-11-11); the aircraft standing in
-    flight, where X-Plane reads nothing new, plans the rings without margin, 2048 px there."""
+    4096 px level, and X-Plane waits for it, as near LAX (2026-11-11); the aircraft standing,
+    after a jump X-Plane did not wait for, the same (the rings' margin always, 2026-11-12)."""
     pack = region(tmp_path, Zooms(16, 18), textures=ROW)
     cache = ChunkCache(tmp_path / "c.sqlite")
     s = Streamer(
@@ -632,7 +632,7 @@ def test_a_start_builds_x_plane_s_4096_px_ring_at_the_default_zooms(tmp_path: Pa
     urgency, level = s.plan(Fix(lat, west), x_plane_there=False, starting=True)[f"{ROW[2]}.dds"]
     assert (level, urgency <= 0) == (0, True)
     standing = s.plan(Fix(lat, west, gs_ms=0.0), x_plane_there=False)
-    assert standing[f"{ROW[2]}.dds"][1] == 1
+    assert standing[f"{ROW[2]}.dds"][1] == 0
     cache.close()
 
 

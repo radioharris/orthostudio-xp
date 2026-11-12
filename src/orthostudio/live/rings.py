@@ -38,7 +38,8 @@ AIRPORT_ZOOM = 18  # the mesh's textures round its airports (AutoOrtho's ZL18 wi
 RINGS_ZL16_KM = {3: 81.4, 2: 42.9, 1: 23.7, 0: 13.6}  # probe flight 1 x 1.13 (2026-10-22)
 # rings built this much wider than X-Plane reads them: in flight to keep ahead of the aircraft
 # (1.25 on the probe flight's rings until they were found 12 % short, the same distances since),
-# and at a start since 2026-11-11, X-Plane's 4096 px ring lying past ring 0 (13.9 km near LAX)
+# and at a start and standing since 2026-11-11, X-Plane's 4096 px ring lying past ring 0 (13.9 km
+# near LAX)
 DEFAULT_MARGIN = 1.11
 REFERENCE_WIDTH_PX = 2704  # X-Plane's image when the rings were measured
 REFERENCE_FOV_DEG = 65.0

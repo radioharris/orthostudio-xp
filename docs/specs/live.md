@@ -199,7 +199,8 @@ modules, English and French, English unless the switch chose French, as OrthoStu
   ground grain; then the flight plan and what the app opens on.
 - **A start** waits for everything X-Plane reads while the flight loads, the 8192 px level within
   15 km included (see "The 8192 px level"), its rings with the margin they have in flight (11 %,
-  `DEFAULT_MARGIN`; none only while the aircraft stands, where X-Plane reads nothing new): X-Plane's
+  `DEFAULT_MARGIN`, the aircraft standing too: without it at a start or standing, a jump X-Plane did
+  not wait for took the same risk, the review of 2026-11-12): X-Plane's
   4096 px ring lies within a few hundred metres of 14 km (a texture at 8.7 km read at 4096 px and
   one at 14 km at 2048 px from LSGG, 2026-10-20; one at 13.9 km at 4096 px from a start in the
   air near LAX, 5,000 ft, counted in three dimensions, 13.8 km along the ground, 2026-11-11), past
