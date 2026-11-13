@@ -19,6 +19,7 @@ from pydantic import ValidationError
 
 import test_api_fakes as fakes
 from live_helpers import make_source
+from orthostudio.live import api as api_module
 from orthostudio.live import control as control_module
 from orthostudio.live import enabled, session, settings_file
 from orthostudio.live.control import IDLE, LEAVING, STREAMING, LiveControl
@@ -630,6 +631,14 @@ async def test_the_page_and_its_api(home: Path, monkeypatch: pytest.MonkeyPatch)
         chosen = await client.put("/api/live/settings", json={"folder": str(home / "Live")})
         assert chosen.status_code == 200 and chosen.json()["folder"] == str(home / "Live")
         assert load_settings().disk_gb == 60  # the rest as it was
+        # the setting own_tiles moves Live's line once, the rest of the settings never
+        moved: list[str] = []
+        monkeypatch.setattr(api_module, "move_live", lambda xp, own_tiles: moved.append(own_tiles))
+        monkeypatch.setattr(session, "xplane_dir", lambda _: home)
+        assert (await client.put("/api/live/settings", json={"own_tiles": "under"})).is_success
+        assert (await client.put("/api/live/settings", json={"own_tiles": "under"})).is_success
+        assert (await client.put("/api/live/settings", json={"disk_gb": 70})).is_success
+        assert moved == ["under"]
 
 
 @pytest.mark.anyio

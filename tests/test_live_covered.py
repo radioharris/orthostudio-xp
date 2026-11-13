@@ -20,6 +20,7 @@ from orthostudio.live.covered import covered_squares, dsf_properties, is_overlay
 from orthostudio.live.geo import parse_texture_name
 from orthostudio.live.pack import LINK_NAME
 from orthostudio.live.region import setup_region
+from orthostudio.live.scenery import move_live
 from orthostudio.live.streamer import Fix, Streamer
 
 STRADDLING = "23296_33312_BI16"  # from 2.99 to 3.08 degrees east: in two squares
@@ -106,8 +107,8 @@ def test_the_squares_the_users_own_tiles_cover(tmp_path: Path) -> None:
 
 
 def test_the_users_tiles_while_live_is_stopped(tmp_path: Path) -> None:
-    """Live's pack out of X-Plane's list (Live stopped): its tiles are those above where
-    OrthoStudio XP would list it, below the tiles it built; the list on the disk is left alone."""
+    """Live's line not listed (Live never started there): its tiles are those above where Live's
+    next start lists it, right above the first mesh; the list on the disk is left alone."""
     xp = tmp_path / "X-Plane 12"
     scenery = xp / "Custom Scenery"
     scenery.mkdir(parents=True)
@@ -121,17 +122,20 @@ def test_the_users_tiles_while_live_is_stopped(tmp_path: Path) -> None:
     )
     before = ini.read_text()
     put_dsf(scenery / f"{ORTHO_PREFIX}+46+006", (46, 6), b"not read")
-    put_dsf(scenery / "Photo Lyon", (44, 5), dsf({"sim/west": "5"}))  # below Live's place
+    put_dsf(scenery / "Photo Lyon", (44, 5), dsf({"sim/west": "5"}))  # another photo pack
     put_dsf(scenery / "z_ao_eur", (46, 6), dsf({"sim/west": "6"}))
-    assert own_squares(xp, LINK_NAME) == {(46, 6): f"{ORTHO_PREFIX}+46+006"}
-    # Live everywhere: its next flight shows Live's textures on the tile, the map too
-    assert own_squares(xp, LINK_NAME, "under") == {}
-    assert ini.read_text() == before
-    # while Live's pack is listed (a flight on), the list X-Plane read, whatever the setting
-    ini.write_text(before + f"SCENERY_PACK Custom Scenery/{LINK_NAME}/\n")
-    assert own_squares(xp, LINK_NAME, "under") == {
+    assert own_squares(xp, LINK_NAME) == {
         (46, 6): f"{ORTHO_PREFIX}+46+006",
         (44, 5): "Photo Lyon",  # above Live's line too
+    }
+    # Live everywhere: above the pilot's tiles, and so above the photo pack listed under them
+    assert own_squares(xp, LINK_NAME, "under") == {}
+    assert ini.read_text() == before
+    # while Live's line is listed, where it is, whatever the setting
+    ini.write_text(before + f"SCENERY_PACK_DISABLED Custom Scenery/{LINK_NAME}/\n")
+    assert own_squares(xp, LINK_NAME, "under") == {
+        (46, 6): f"{ORTHO_PREFIX}+46+006",
+        (44, 5): "Photo Lyon",
     }
 
 
@@ -248,10 +252,17 @@ def test_live_everywhere_lists_its_pack_above_the_users_tiles(
     assert start("under").covered == {}  # Live draws the square
     order = ini.read_text().splitlines()
     assert order.index(live) < order.index(tile)
-    # a stop that left it there: the pilot's tiles first again at the next start
+    # stopped: unchecked there, where the next starts find it, whatever the setting says then
+    session.uninstall(xp, lambda _: None)
+    assert f"SCENERY_PACK_DISABLED Custom Scenery/{LINK_NAME}/" in ini.read_text().splitlines()
+    assert start("first").covered == {}
+    # the setting changed in the window moves it once, right under the pilot's tiles
+    assert move_live(xp, "first")
     assert start("first").covered == {(46, 2): f"{ORTHO_PREFIX}+46+002"}
     order = ini.read_text().splitlines()
-    assert order.index(tile) < order.index(live)
+    assert (
+        order.index(tile) < order.index(live) < order.index("SCENERY_PACK Custom Scenery/z_ao_eur/")
+    )
 
 
 def test_a_tile_taken_out_between_two_flights(

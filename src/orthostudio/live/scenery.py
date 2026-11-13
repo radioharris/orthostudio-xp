@@ -5,9 +5,9 @@
 The mesh is AutoOrtho's (``z_ao_eur``: DSFs, ``.ter`` files, water masks), read only: the regions
 AutoOrtho installed, and those Live installed itself the same way
 (:mod:`orthostudio.live.aoregions`).
-The pack, a link in Custom Scenery, is listed in ``scenery_packs.ini`` by OrthoStudio XP's own rules
-(:class:`orthostudio.install.scenery_packs.SceneryPacks`): below OrthoStudio XP's built tiles, which
-draw over it, and above AutoOrtho and the base meshes. Its overlays' link goes above the ortho.
+The pack, a link in Custom Scenery, is listed in ``scenery_packs.ini`` where the pilot puts it;
+where it is missing, right above the first mesh, below OrthoStudio XP's tiles, which draw over it
+(above them with "Live everywhere"): :func:`place_line`. Its overlays' line goes right above it.
 """
 
 from __future__ import annotations
@@ -17,17 +17,17 @@ import os
 import subprocess
 import sys
 import threading
-from collections.abc import Collection
 from pathlib import Path
 
 from orthostudio.config.store import load_settings, save_settings
 from orthostudio.errors import OsxpError
 from orthostudio.fsutil import NO_CONSOLE_WINDOW
 from orthostudio.install import chosen_xplane, is_xplane_dir
-from orthostudio.install.scenery_packs import PackKind, SceneryPacks
+from orthostudio.install.scenery_packs import PackKind, SceneryPackEntry, SceneryPacks
 from orthostudio.install.xplane import XPLANE_EXECUTABLES, custom_scenery_dir
 from orthostudio.install.xplane import xplane_running as _xplane_running
 from orthostudio.live.filesystem import folder_link, is_folder_link, remove_folder_link
+from orthostudio.live.pack import LINK_NAME, OVERLAY_LINK_NAME
 
 
 def named_xplane() -> str | None:
@@ -138,6 +138,19 @@ def install_link(
     ``.osxp-previous``), or right above ``above``'s line ("Live everywhere": above the pilot's own
     tiles, :func:`live_above`). A line already there stays where it is, unless ``again``: then it
     goes where it would go new."""
+    link = _link(xplane, pack_dir, link_name)
+    packs = SceneryPacks.load(_ini(xplane))
+    before = packs.to_bytes()
+    if again:
+        packs.remove(link_name)
+    packs.ensure(link_name, kind=kind, above=above)
+    if packs.to_bytes() != before:
+        packs.save(_ini(xplane))
+    log(f"installed: {link} -> {pack_dir.resolve()}, listed in scenery_packs.ini")
+
+
+def _link(xplane: Path, pack_dir: Path, link_name: str) -> Path:
+    """``pack_dir`` linked into Custom Scenery as ``link_name``, made again."""
     link = custom_scenery_dir(xplane) / link_name
     if is_folder_link(link):
         remove_folder_link(link)
@@ -150,27 +163,106 @@ def install_link(
             },
         )
     folder_link(pack_dir.resolve(), link)  # a junction on Windows without Developer Mode
+    return link
+
+
+# Live's line in X-Plane's list. One rule (the user, 2026-11-13): Live lists its line itself only
+# where it is missing, or once when the setting own_tiles changes; wherever it is listed, by the
+# pilot or a sorting tool such as xOrganizer, it stays; Live checks it as it starts and unchecks it
+# as it stops, so that the list itself keeps that place. Until 2026-11-13 Live took its line out at
+# every stop and listed it again by its rule at every start: moved by hand, it came back.
+
+
+def is_mesh(xplane: Path, entry: SceneryPackEntry) -> bool:
+    """A base mesh, which Live's line goes right above: AutoOrtho's (by its name: a mount), or a
+    pack named as meshes are (``zzz_``, ``XPME_``, ``zz_``, any ``z`` name after the tiles') whose
+    first DSF is ground. A library (no DSF) or overlays so named is not one: a library named
+    ``z...`` took Live's line above every simHeaven X-World pack, whose buildings Live's photos then
+    hid (issue 24). Its name decides when that DSF cannot be read (a disk unplugged)."""
+    from .covered import _folder, dsf_properties  # covered reads this module's list
+
+    if entry.is_autoortho:
+        return True
+    if not entry.is_mesh or entry.name in (LINK_NAME, OVERLAY_LINK_NAME):
+        return False
+    try:
+        folder = _folder(xplane, entry.path)
+        if not folder.is_dir():
+            return True
+        first = next((folder / "Earth nav data").glob("*/*.dsf"), None)
+        if first is None:
+            return False
+        properties = dsf_properties(first)
+    except OSError:
+        return True
+    return properties.get("sim/overlay") != "1"
+
+
+def live_anchor(xplane: Path, packs: SceneryPacks, own_tiles: str) -> SceneryPackEntry | None:
+    """The line Live's goes right above when Live lists it itself: with "Live everywhere" the first
+    of the pilot's tiles (OrthoStudio XP's, Ortho4XP's), else the first mesh, below the tiles, the
+    other photo packs and everything that draws over the ground; None: the end of the list."""
+    lines = [e for e in packs.entries if e.name not in (LINK_NAME, OVERLAY_LINK_NAME)]
+    start = next((i + 1 for i, e in enumerate(lines) if e.is_global_airports), 0)
+    enabled = [e for e in lines[start:] if e.enabled]
+    if own_tiles == "under":
+        tile = next((e for e in enabled if e.is_ortho), None)
+        if tile is not None:
+            return tile
+    return next((e for e in enabled if is_mesh(xplane, e)), None)
+
+
+def place_line(
+    xplane: Path, packs: SceneryPacks, own_tiles: str, move: bool = False
+) -> SceneryPackEntry:
+    """Live's line in ``packs``: where it is listed, never moved; else, or with ``move`` (the
+    setting own_tiles changed), right above :func:`live_anchor`. A new line is checked."""
+    entry = packs.find(LINK_NAME)
+    if entry is not None and not move:
+        return entry
+    if entry is None:
+        entry = SceneryPackEntry(f"Custom Scenery/{LINK_NAME}/", enabled=True)
+    else:
+        packs.body = [x for x in packs.body if x is not entry]
+    anchor = live_anchor(xplane, packs, own_tiles)
+    packs.body.insert(
+        next((i for i, x in enumerate(packs.body) if x is anchor), len(packs.body)), entry
+    )
+    return entry
+
+
+def list_live(xplane: Path, pack_dir: Path, own_tiles: str, log=print) -> None:
+    """At a start: Live's pack linked into Custom Scenery, its line checked where it is listed, or
+    listed by :func:`place_line`."""
+    link = _link(xplane, pack_dir, LINK_NAME)
     packs = SceneryPacks.load(_ini(xplane))
     before = packs.to_bytes()
-    if again:
-        packs.remove(link_name)
-    packs.ensure(link_name, kind=kind, above=above)
+    place_line(xplane, packs, own_tiles).enabled = True
     if packs.to_bytes() != before:
         packs.save(_ini(xplane))
     log(f"installed: {link} -> {pack_dir.resolve()}, listed in scenery_packs.ini")
 
 
-def live_above(xplane: Path, link_name: str, packs_named: Collection[str]) -> str | None:
-    """The first of ``packs_named`` X-Plane's list has above ``link_name``: where "Live everywhere"
-    lists Live's pack, so that X-Plane takes Live's ground over the pilot's own tiles while Live
-    runs (it takes the first pack listed that has a square). None when none is above."""
-    wanted = set(packs_named)
-    for entry in SceneryPacks.load(_ini(xplane)).entries:
-        if entry.name == link_name:
-            return None
-        if entry.name in wanted:
-            return entry.name
-    return None
+def move_live(xplane: Path, own_tiles: str) -> bool:
+    """The setting own_tiles changed: Live's line, when listed, moved once right above its new
+    anchor (:func:`live_anchor`). True when it moved."""
+    packs = SceneryPacks.load(_ini(xplane))
+    before = packs.to_bytes()
+    if packs.find(LINK_NAME) is not None:
+        place_line(xplane, packs, own_tiles, move=True)
+    if packs.to_bytes() == before:
+        return False
+    packs.save(_ini(xplane))
+    return True
+
+
+def unlist_live(xplane: Path, log=print) -> None:
+    """Live out of X-Plane (a stop): its lines unchecked where they are, their links kept, X-Plane
+    dropping the line of a folder it cannot reach. The pack itself stays."""
+    packs = SceneryPacks.load(_ini(xplane))
+    if [name for name in (LINK_NAME, OVERLAY_LINK_NAME) if packs.disable(name)]:
+        packs.save(_ini(xplane))
+    log("uninstalled: Live's scenery is unchecked in X-Plane's list, where it is")
 
 
 def uninstall_link(xplane: Path, link_name: str, log=print) -> None:

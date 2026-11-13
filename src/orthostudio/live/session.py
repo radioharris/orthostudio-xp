@@ -39,10 +39,11 @@ from orthostudio.live.scenery import (
     find_xplane,
     install_link,
     is_installed,
-    live_above,
+    list_live,
     ortho_streamers,
     osxp_regions,
     uninstall_link,
+    unlist_live,
     xplane_pref,
     xplane_running,
 )
@@ -359,7 +360,7 @@ def prepare(options: Options, log: Log) -> Prepared:
         if options.fresh:
             reset(pack_dir, log)
     clock.done("region")
-    covered = own_ground(xp_dir, pack_dir, options, xplane_running(), log)
+    covered = own_ground(xp_dir, pack_dir, options, log)
     clock.done("own tiles")
     _overlays(xp_dir, pack_dir, sources, covered, options.overlays, xplane_running(), log)
     clock.done("overlays")
@@ -393,18 +394,16 @@ def prepare(options: Options, log: Log) -> Prepared:
 
 
 def own_ground(
-    xp_dir: Path, pack_dir: Path, options: Options, running: bool, log: Log
+    xp_dir: Path, pack_dir: Path, options: Options, log: Log
 ) -> dict[tuple[int, int], str]:
-    """Live's line in X-Plane's list of sceneries, and the squares whose ground X-Plane takes from
-    the pilot's own sceneries then (``{(lat, lon): pack}``), as the setting ``own_tiles`` wants
-    them: at a start, and again between two flights when that list changed (:func:`follow`)."""
+    """Live's line in X-Plane's list of sceneries (:func:`orthostudio.live.scenery.list_live`:
+    checked where it is listed, never moved), and the squares whose ground X-Plane takes from the
+    packs listed above it then (``{(lat, lon): pack}``): at a start, and again between two flights
+    when that list changed (:func:`follow`)."""
     from orthostudio.live.covered import covered_squares
     from orthostudio.live.geo import dsf_tile_of
 
-    # Live's line where the rule lists it, below the pilot's own tiles, at every start: one a
-    # stop left above them ("Live everywhere", below) does not hide them when they come first;
-    # left as it is under a running X-Plane, which read the list as it started
-    install_link(xp_dir, pack_dir, LINK_NAME, log=log, again=not running)
+    list_live(xp_dir, pack_dir, options.own_tiles, log=log)
     # only the squares Live's pack has: another pack's elsewhere does not matter to it
     region = {
         square
@@ -412,17 +411,6 @@ def own_ground(
         if (square := dsf_tile_of(str(dsf))) is not None
     }
     covered = covered_squares(xp_dir, LINK_NAME, region)
-    if covered and options.own_tiles == "under" and not running:
-        # Live everywhere: Live's pack above the pilot's own tiles while it runs, taken out of
-        # X-Plane at its stop (they are back then); nothing above it covers a square any more
-        first = live_above(xp_dir, LINK_NAME, set(covered.values()))
-        if first is not None:
-            install_link(xp_dir, pack_dir, LINK_NAME, log=lambda _: None, above=first, again=True)
-            log(
-                f"Live everywhere: its pack listed above {first}, your own scenery's "
-                f"{len(covered)} squares under it while Live runs"
-            )
-            covered = covered_squares(xp_dir, LINK_NAME, region)
     if covered:
         packs = sorted(set(covered.values()))
         log(
@@ -457,7 +445,7 @@ def own_ground_watch(
         if stamp() == seen[0] or xplane_running():
             return
         log("X-Plane's list of sceneries changed: your own sceneries looked for again")
-        covered = own_ground(prepared.xplane, prepared.pack, options, False, log)
+        covered = own_ground(prepared.xplane, prepared.pack, options, log)
         _overlays(
             prepared.xplane, prepared.pack, prepared.sources, covered, options.overlays, False, log
         )
@@ -706,14 +694,12 @@ def _season_for(xplane: Path) -> Callable[..., tuple[str, str]]:
 
 
 def uninstall(xplane: Path, log: Log) -> None:
-    """The pack and the plugin out of X-Plane (the pack itself stays)."""
+    """Live out of X-Plane, at a stop and from the window: its lines unchecked where they are (the
+    pilot's place kept, :func:`orthostudio.live.scenery.unlist_live`), the plugin taken out. The
+    pack itself stays."""
     from orthostudio.live import plugin
 
-    uninstall_link(xplane, LINK_NAME, log=log)
-    if is_folder_link(xplane / "Custom Scenery" / OVERLAY_LINK_NAME) or is_installed(
-        xplane, OVERLAY_LINK_NAME
-    ):
-        uninstall_link(xplane, OVERLAY_LINK_NAME, log=log)
+    unlist_live(xplane, log=log)
     if plugin.installed(xplane):
         if plugin.uninstall(xplane):
             log("uninstalled: the OrthoStudio XP Live plugin is out of X-Plane")

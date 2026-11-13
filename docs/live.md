@@ -138,7 +138,8 @@ slow disk).
    in flight: at « Resume flight » X-Plane waits a moment, with the same small panel (« Quality
    raised: sharper textures around the aircraft »), while Live builds the sharper textures around
    the aircraft, their night ones too at night. Lowered, nothing waits.
-5. **Quit X-Plane, then Stop.** Live takes its scenery and its small plugin out of X-Plane. Stopped
+5. **Quit X-Plane, then Stop.** Live unchecks its scenery in X-Plane's list, where it is, and takes
+   its small plugin out of X-Plane. Stopped
    while X-Plane still runs, Live waits for X-Plane to quit first ("Leave it installed" stops
    waiting).
 
@@ -325,18 +326,29 @@ Textures already built keep their photos: deleting them (the trash after Live's 
 kept) builds them all again with a new source.
 
 **Your own tiles first, or Live everywhere.** Where you built a tile with OrthoStudio XP (or
-imported one from Ortho4XP, or installed another ortho scenery above Live's), Settings, "Your own
-tiles", chooses what X-Plane shows:
+imported one from Ortho4XP), Settings, "Your own tiles", chooses what X-Plane shows:
 
 - "Yours first" (the default): your tile, and Live downloads nothing there: at a start from your
   home airport, X-Plane waits for none of it. The map frames them, and the checks list them. At
   their edges the ground can show a small step: OrthoStudio XP's tiles stand on X-Plane's relief,
   Live's mesh on viewfinderpanoramas'.
-- "Live everywhere": Live's photos and mesh there too, with no step. Live lists its pack above
-  your tiles in X-Plane's scenery list while it runs; they come back when it stops, and at the
-  next start with "Yours first". Taken at the next start, since X-Plane reads its list as it
-  starts. The map shows Live's textures on your tiles then, Live stopped too: what its next
-  flight shows.
+- "Live everywhere": Live's photos and mesh there too, with no step. Choosing it moves Live's line
+  once above your tiles in X-Plane's scenery list ("Yours first" moves it back under them); your
+  tiles come back whenever Live stops, its line unchecked then. Taken at the next start, since
+  X-Plane reads its list as it starts. The map shows Live's textures on your tiles then, Live
+  stopped too: what its next flight shows.
+
+Another photo scenery listed above Live's line (Orbx TrueEarth, a regional one) shows on its
+squares with either setting, and Live downloads nothing there. To see Live's photos there instead,
+move Live's line above it, by hand or with xOrganizer: it stays there.
+
+**Live's place in X-Plane's scenery list.** The first time, Live lists its scenery at the bottom,
+right above the first mesh: under your tiles, simHeaven X-World, the airports and any other photo
+scenery, which X-Plane then draws over or instead of Live's. After that Live never moves its line:
+moved by hand in `scenery_packs.ini` or with xOrganizer, it stays there, Live running or stopped
+(stopped, the line is unchecked). Live lists it at the bottom again only when the line is gone,
+X-Plane having dropped it (Live's folder out of reach, or an X-Plane started after Live crashed).
+A tile you build goes with your other tiles, so on the side of Live's line the setting above says.
 
 A tile you build, take out or put back in OrthoStudio XP while Live runs counts from the next
 flight: once X-Plane is closed, Live sees X-Plane's list of sceneries change and looks for your
@@ -459,7 +471,8 @@ Live's folder is `~/.orthostudio/live` (`%USERPROFILE%\.orthostudio\live` on Win
 settings choose another, on the computer's own disk or one of the same kind: APFS on a Mac, NTFS on
 Windows, ext4 on Linux, never Mac OS Extended, exFAT or FAT32.
 
-- `pack`: the scenery X-Plane reads, linked into Custom Scenery as `z_osxp_live` while Live runs.
+- `pack`: the scenery X-Plane reads, linked into Custom Scenery as `z_osxp_live` (its line
+  unchecked while Live is stopped).
   The files X-Plane looks for are there; the textures are built for real where you have flown, and
   a neutral placeholder that takes no space elsewhere (a disk-usage tool counts every placeholder
   whole: they share one file).

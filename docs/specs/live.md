@@ -38,8 +38,8 @@ ortho textures ([live/probe-flight-1.md](live/probe-flight-1.md),
   ([live/flights.md](live/flights.md)).
 - **Code**: `src/orthostudio/live` (the engine and `python -m orthostudio.live`),
   `native/xplane_plugin` (the X-Plane plugin), `tests/test_live_*.py`.
-- **Reused from OrthoStudio XP**: X-Plane's detection and `scenery_packs.ini`, whose rules put the
-  pack `z_osxp_live` below OrthoStudio XP's own tiles and above AutoOrtho and the base meshes; its
+- **Reused from OrthoStudio XP**: X-Plane's detection and its reading and writing of
+  `scenery_packs.ini` (Live's own rule lists `z_osxp_live`: "Live's line in the list"); its
   window, the guard of its API and its style sheet, for Live's window.
 - **Live's folder** holds `pack` and `chunks.sqlite`: `~/.orthostudio/live` unless the window's
   settings choose another (`folder` in `live.toml`), on a disk in APFS, NTFS or ext4 (see "The
@@ -69,9 +69,10 @@ found by their processes' names (XPME's window « XPlane Map Enhancement » and 
 « XplaneMapEnhancement », AutoOrtho's « autoortho ») or by the folders they mount (AutoOrtho's
 `z_ao_*` regions, the folder XPME's `XPME_*` packs link into): `scenery.ortho_streamers`.
 Start the streamer before X-Plane: X-Plane lists
-scenery packs and loads plugins when it starts. The streamer installs its pack (`z_osxp_live`) and
-its plugin (`Resources/plugins/OrthoStudio XP Live`) as it starts, and takes both out as it stops, once
-X-Plane has quit: X-Plane opens its textures through the pack's link.
+scenery packs and loads plugins when it starts. The streamer links its pack (`z_osxp_live`), checks
+its line and installs its plugin (`Resources/plugins/OrthoStudio XP Live`) as it starts; as it
+stops, once X-Plane has quit (X-Plane opens its textures through the pack's link), it unchecks the
+line where it is and takes the plugin out.
 
 ## The window
 
@@ -531,7 +532,7 @@ first ortho pack, below every other overlay. A square of Live's gets none:
   AutoOrtho's.
 Global Forests carries `sim/exclude_for` over the whole square: listed above Live's overlays, it
 hides their forests and keeps their roads and buildings, with nothing to do. The setting
-`overlays` "off" leaves them all out. The pack comes out of X-Plane with Live's.
+`overlays` "off" leaves them all out. Its line is unchecked with Live's.
 
 ## Night lights
 
@@ -832,24 +833,51 @@ tiles without reading) covers that square. The planner leaves alone every textur
 squares are covered: nothing downloaded, nothing waited for at a start. A texture that reaches
 into a square Live draws is built, for that square.
 
-Live's own settings choose (`own_tiles`, Settings, "Your own tiles"): "first" (the default) keeps
-that order; "under", Live everywhere, lists Live's link right above the first pack that covers a
-square (`scenery.live_above`, `install_link(above=..., again=True)`), and nothing above it covers
-one any more: Live builds its textures there too, with no step in the relief at the tiles' edges
-(OrthoStudio XP's tiles stand on X-Plane's relief, Live's mesh on viewfinderpanoramas'). Its link
-leaves the list at its stop, and the tiles are back. At every start Live's line goes where the
-ordering rule lists it first (`again`): one a stop left above the tiles (Live left installed) does
-not keep them under it with "first". Under a running X-Plane, which read the list as it started,
-the list is left as it is. While Live's line is out of the list (Live stopped), the window's map
-and checks show the squares as Live's next start lists them, by the setting
-(`covered.own_squares(own_tiles=...)`); while it is in, as X-Plane read the list.
+Live's own settings choose (`own_tiles`, Settings, "Your own tiles"): "first" (the default) lists
+Live's line under the pilot's tiles; "under", Live everywhere, right above the first of them, and
+none covers a square any more: Live builds its textures there too, with no step in the relief at
+the tiles' edges (OrthoStudio XP's tiles stand on X-Plane's relief, Live's mesh on
+viewfinderpanoramas'). The setting moves the line once, as it is saved (`scenery.move_live`, the
+API's `PUT /api/live/settings`); at its stop Live's line is unchecked and the tiles are back. The
+window's map and checks show the squares with Live's line where it is listed, else where Live's
+next start lists it (`covered.own_squares`, the same rule, in memory).
+
+### Live's line in the list
+
+One rule, in `scenery.place_line` (the user, 2026-11-13: « l'utilisateur doit pouvoir changer de
+place sans que live n'écrase à chaque fois la valeur »):
+
+- **Missing**, Live lists its line right above the first mesh after `*GLOBAL_AIRPORTS*`
+  (`scenery.live_anchor`), so under the pilot's tiles, every other photo pack and everything that
+  draws over the ground; with "Live everywhere", right above the first of the pilot's tiles
+  (OrthoStudio XP's, Ortho4XP's) when there is one. No mesh: the end of the list. A mesh
+  (`scenery.is_mesh`): AutoOrtho's by its name, or a pack named as meshes are (`zzz_`, `XPME_`,
+  `zz_`, any `z` name sorting after the tiles') whose first DSF is ground (no `sim/overlay 1`);
+  its name decides when that DSF cannot be read (a disk unplugged). A library named `z...` (no
+  DSF) took Live's line above every simHeaven X-World pack by the name alone, and Live's photos
+  hid their buildings (issue 24).
+- **Listed**, wherever the pilot or a sorting tool (xOrganizer) put it, it is never moved: checked
+  at a start (`scenery.list_live`), unchecked at a stop (`scenery.unlist_live`), its link kept,
+  so that X-Plane keeps the line there (it drops the line of a folder it cannot reach). The
+  window's "Take the pack out of X-Plane" and a change of X-Plane folder do the same as a stop.
+- **The setting own_tiles changed**: moved once, as above (`scenery.move_live`).
+
+Build lists a new tile right after the last of its tiles (spec install 3.2), so on the side of
+Live's line the setting chose, with no rule of its own about Live; its first tile ever goes right
+above the first line its name rule takes for a mesh, which `z_osxp_live` is: under Live's line
+with "Live everywhere" too, that once. Live's overlays line goes right above Live's at every start
+(`session._overlays`). An X-Plane started after Live crashed finds the plugin, which removes
+Live's links (`take_out_if_alone`): X-Plane drops their lines, and Live's next start lists its line
+again as missing. Until 2026-11-13 Live took its line out at every stop and listed it again by
+Build's rule at every start and at every change of the list between two flights: moved below
+simHeaven by hand, it came back above within seconds.
 
 While Live streams, every 5 s (`streamer.BETWEEN_S`), it looks at the time of
 `scenery_packs.ini`: once it changed and X-Plane is not running (X-Plane reads the list as it
-starts), the same steps as at a start run again (`session.own_ground`, the overlays), and the
-streamer is told the squares it leaves alone (`Streamer.set_covered`): a tile taken out while Live
-ran was left alone until Live's next start (Haneda, 2026-10-18). Live's own lines written then are
-not taken for a change.
+starts), the same steps as at a start run again (`session.own_ground`, the overlays: Live's line
+never moved), and the streamer is told the squares it leaves alone (`Streamer.set_covered`): a
+tile taken out while Live ran was left alone until Live's next start (Haneda, 2026-10-18). Live's
+own lines written then are not taken for a change.
 
 ## The loop
 
@@ -1180,7 +1208,8 @@ A plugin that does not return from one of these messages holds the whole load.
     `tools/package/build.py`);
   - as X-Plane starts (`XPluginStart`), it sends `LIVE1 HELLO`: refused (nothing listens on Live's
     port), it removes Live's links `z_osxp_live` and `y_osxp_live_overlays` from Custom Scenery,
-    never a folder, before X-Plane lists its scenery (see "The pack");
+    never a folder, before X-Plane lists its scenery (see "The pack"): only after Live crashed,
+    since a stop takes the plugin out;
   - at PLANE_LOADED it sends the streamer `LIVE1 LOAD lat lon`;
   - at the radio's FMOD_BANK_LOADED and at LIVERY_LOADED it sends `LIVE1 HOLD lat lon aircraft
     day=N utc=S` every 250 ms over UDP (127.0.0.1:49250), the flight's date and UTC time as X-Plane

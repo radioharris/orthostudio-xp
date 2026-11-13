@@ -993,7 +993,11 @@ For a flight:
    pauses X-Plane there, with its own loading window, until the ground is built. X-Plane's texture
    quality raised in flight waits a moment too, with the same window, until the sharper ground
    around the aircraft is built; Live follows the quality you set, lowered as well.
-4. Quit X-Plane, then click Stop: Live takes its scenery and its small plugin out of X-Plane.
+4. Quit X-Plane, then click Stop: Live unchecks its scenery in X-Plane's list, where it is, and
+   takes its small plugin out of X-Plane.
+
+Live lists its scenery the first time at the bottom of X-Plane's list, right above the first mesh,
+and never moves it after that: moved by hand or with xOrganizer, it stays there.
 
 At night Live lights the towns on its photos, street lamps and windows along X-Plane's roads: it
 makes these lights from two hours before sunset in X-Plane, and X-Plane shows them from dusk.

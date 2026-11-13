@@ -11,6 +11,7 @@ from pathlib import Path
 
 from orthostudio.install.scenery_packs import SceneryPacks
 from orthostudio.live import aoregions, overlays, session
+from orthostudio.live.filesystem import is_folder_link
 from orthostudio.live.pack import LINK_NAME, OVERLAY_LINK_NAME
 from orthostudio.live.scenery import default_sources, install_link
 
@@ -138,11 +139,12 @@ def test_listed_above_the_ortho_below_every_other_overlay(tmp_path: Path) -> Non
         names.index("Global_Forests_v2") < names.index(OVERLAY_LINK_NAME) < names.index(LINK_NAME)
     )
     assert names.index(LINK_NAME) < names.index("z_ao_eur")
-    # and out again with the pack, once X-Plane has quit
+    # out of X-Plane once it has quit: both lines unchecked where they are, their links kept
     session.uninstall(xp, lambda _: None)
-    names = [e.name for e in SceneryPacks.load(xp / "Custom Scenery" / "scenery_packs.ini").entries]
-    assert OVERLAY_LINK_NAME not in names and LINK_NAME not in names
-    assert not (xp / "Custom Scenery" / OVERLAY_LINK_NAME).exists()
+    packs = SceneryPacks.load(xp / "Custom Scenery" / "scenery_packs.ini")
+    assert [e.name for e in packs.entries] == names
+    assert not packs.find(OVERLAY_LINK_NAME).enabled and not packs.find(LINK_NAME).enabled
+    assert is_folder_link(xp / "Custom Scenery" / OVERLAY_LINK_NAME)
 
 
 def test_live_everywhere_keeps_its_overlays_above_its_pack(tmp_path: Path, monkeypatch) -> None:

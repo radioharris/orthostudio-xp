@@ -130,10 +130,12 @@ class LiveSettings(BaseModel):
     seasons: SeasonLooks = Field(default_factory=SeasonLooks)
     """Each season's colours, as the window's sliders set them."""
     own_tiles: Literal["first", "under"] = "first"
-    """Where the pilot built tiles with OrthoStudio XP (or has another ortho scenery): "first",
+    """Where the pilot built tiles with OrthoStudio XP or imported them from Ortho4XP: "first",
     X-Plane shows them and Live fills the rest, a step in the relief possible at their edges (the
     app's tiles stand on X-Plane's relief, Live's mesh on viewfinderpanoramas'); "under", Live
-    everywhere: its pack listed above them while it runs, they are back once it stops."""
+    everywhere: Live's line listed above them, moved once when the setting changes
+    (:func:`orthostudio.live.scenery.move_live`), unchecked at Live's stop, when they are back.
+    Another photo pack listed above Live's line shows with either."""
     night: bool = True
     """The towns' lights at night on Live's squares (:mod:`orthostudio.live.night`): a night
     texture beside each land texture, made from two hours before sunset in X-Plane to sunrise,

@@ -40,9 +40,11 @@ from typing import Any, Literal
 from fastapi import APIRouter, Body, HTTPException, Response
 from pydantic import BaseModel, Field, ValidationError
 
+from orthostudio.errors import OsxpError
 from orthostudio.live import session
 from orthostudio.live.control import LiveControl, Refusal
 from orthostudio.live.pack import FolderError, check_folder
+from orthostudio.live.scenery import move_live
 from orthostudio.live.settings import (
     LiveSettings,
     SettingsFileError,
@@ -375,8 +377,9 @@ def live_router(
 
     @router.put("/settings")
     def put_settings(body: dict[str, Any] = Body(...)) -> dict[str, Any]:  # noqa: B008
+        before = load_settings()
         try:
-            settings = LiveSettings.model_validate({**load_settings().model_dump(), **body})
+            settings = LiveSettings.model_validate({**before.model_dump(), **body})
         except ValidationError as e:
             first = e.errors()[0]
             where = ".".join(str(p) for p in first.get("loc", ()))
@@ -394,6 +397,11 @@ def live_router(
             save_settings(settings)
         except (OSError, SettingsFileError) as e:
             raise HTTPException(500, f"the settings could not be saved: {e}") from e
+        if settings.own_tiles != before.own_tiles:  # Live's line once above or below the tiles
+            try:
+                move_live(session.xplane_dir(None), settings.own_tiles)
+            except (session.RefusedError, OSError, OsxpError) as e:
+                control.log(f"Live's line in X-Plane's list stays where it is: {e}")
         return settings.model_dump()
 
     return router

@@ -143,6 +143,8 @@ no virtual disk between X-Plane and its textures: it builds them beside X-Plane 
 - **Measured on the same flight**: the ground ready about twice as fast as with XPME and five times
   as fast as with AutoOrtho, for a third of a processor core.
 - **Your own tiles come first**: Live downloads nothing where you built one.
+- **Your order of sceneries is kept**: Live lists itself at the bottom, right above the mesh, the
+  first time, and never moves its line after that: moved by hand or with xOrganizer, it stays.
 - **Seasons**: the photos in the colours of the season of your flight's date in X-Plane, or of
   the one you choose.
 - **Towns at night**: street lamps and windows along X-Plane's roads on Live's photos, as many

@@ -19,7 +19,7 @@ from pathlib import Path
 from orthostudio.install.scenery_packs import SceneryPacks
 
 from .geo import dsf_tile_of
-from .scenery import _ini
+from .scenery import _ini, place_line
 
 DSF_MAGIC = b"XPLNEDSF"
 SEVEN_ZIP = b"7z\xbc\xaf\x27\x1c"
@@ -178,18 +178,9 @@ def covered_squares(
 
 def own_squares(xplane: Path, below: str, own_tiles: str = "first") -> dict[tuple[int, int], str]:
     """The squares X-Plane takes from the user's own scenery, as :func:`covered_squares` finds
-    them, Live's pack listed or not: where it is listed, else where Live's next start lists it, in
-    memory only: where OrthoStudio XP's ordering rule puts it (below the tiles it built), or, with
-    ``own_tiles`` "under" (Live everywhere), above the first pack that covers a square. The Live
-    window shows them while Live is stopped too: what its next flight shows."""
+    them, with Live's line where it is listed, else where Live's next start lists it
+    (:func:`orthostudio.live.scenery.place_line`, in memory only: the list on the disk stays as it
+    is). The Live window shows them while Live is stopped too: what its next flight shows."""
     packs = SceneryPacks.load(_ini(xplane))
-    listed = packs.find(below)
-    # never saved: the list on the disk stays as it is
-    packs.ensure(below, kind="ortho")
-    got = covered_squares(xplane, below, packs=packs)
-    if got and own_tiles == "under" and (listed is None or not listed.enabled):
-        first = next(e.name for e in packs.entries if e.name in set(got.values()))
-        packs.remove(below)
-        packs.ensure(below, kind="ortho", above=first)
-        got = covered_squares(xplane, below, packs=packs)
-    return got
+    place_line(xplane, packs, own_tiles)
+    return covered_squares(xplane, below, packs=packs)
