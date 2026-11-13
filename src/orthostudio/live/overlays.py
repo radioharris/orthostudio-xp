@@ -50,7 +50,7 @@ from orthostudio.install.xplane import SCENERY_OF_ITS_OWN, custom_scenery_dir
 from . import aoregions
 from .filesystem import place_file
 from .geo import dsf_rel_path, dsf_tile_of
-from .pack import OVERLAY_LINK_NAME
+from .pack import LINK_NAME, OVERLAY_LINK_NAME
 from .scenery import _ini
 
 OSXP_OVERLAYS = "y_osxp_overlays"  # Live's own, in its regions folder
@@ -94,11 +94,15 @@ def overlay_folders(xplane: Path, sources: Sequence[Path], root: Path) -> list[P
 def other_overlays(xplane: Path) -> dict[Square, str]:
     """The squares whose roads and buildings another enabled pack draws, {square: what it is}: an
     overlay pack (``yAutoOrtho_Overlays``, ``yOrtho4XP_Overlays``, ``yOrthoStudio_Overlays``...), or
-    simHeaven X-World and its kin."""
+    simHeaven X-World and its kin, listed above Live's line: X-Plane reads no overlay listed under
+    the ground it shows (2026-10-26), and a pack listed there first (Build's first overlays with
+    "Live everywhere") left Live's squares bare (the review of 2026-11-13)."""
     own = dict(SCENERY_OF_ITS_OWN)
     out: dict[Square, str] = {}
     with contextlib.suppress(OSError, ValueError):
         for entry in SceneryPacks.load(_ini(xplane)).entries:
+            if entry.name == LINK_NAME:
+                break
             if not entry.enabled or entry.name == OVERLAY_LINK_NAME:
                 continue
             kin = next((own[p] for p in own if entry.name.lower().startswith(p)), None)

@@ -341,7 +341,7 @@ def status(xplane: XPlaneOpt = None, pack: PackOpt = None) -> None:
 
 @app.command()
 def uninstall(xplane: XPlaneOpt = None) -> None:
-    """Take the pack and the plugin out of X-Plane (the pack itself stays)."""
+    """Live out of X-Plane: its lines unchecked where they are (the pack itself stays)."""
     xp_dir = _xplane(xplane)
     if xplane_running():
         raise typer.Exit(

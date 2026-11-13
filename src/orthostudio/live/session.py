@@ -694,27 +694,18 @@ def _season_for(xplane: Path) -> Callable[..., tuple[str, str]]:
 
 
 def uninstall(xplane: Path, log: Log) -> None:
-    """Live out of X-Plane, at a stop and from the window: its lines unchecked where they are (the
-    pilot's place kept, :func:`orthostudio.live.scenery.unlist_live`), the plugin taken out. The
-    pack itself stays."""
-    from orthostudio.live import plugin
-
+    """Live out of X-Plane, at a stop and from the window: its lines unchecked where they are, their
+    links kept (:func:`orthostudio.live.scenery.unlist_live`), so that X-Plane keeps the place the
+    pilot gave them. The plugin stays, idle without Live: at X-Plane's start it takes Live's links
+    out only when Live's line is checked or gone (``take_out_if_alone``). The pack itself stays."""
     unlist_live(xplane, log=log)
-    if plugin.installed(xplane):
-        if plugin.uninstall(xplane):
-            log("uninstalled: the OrthoStudio XP Live plugin is out of X-Plane")
-        else:  # harmless: without Live, the plugin holds nothing
-            log(
-                "the OrthoStudio XP Live plugin stays in X-Plane for now: Windows still holds its "
-                "file; it goes at Live's next stop"
-            )
 
 
 def finish(
     xplane: Path, log: Log, *, hint: str, give_up: Callable[[], bool] = lambda: False
 ) -> bool:
-    """Take the pack and the plugin out of X-Plane once it has quit: it reads its textures through
-    the link. False, both left in, when ``give_up`` says so first (``hint`` says how)."""
+    """Live out of X-Plane once it has quit (:func:`uninstall`): it reads its textures through the
+    link. False, Live's line left checked, when ``give_up`` says so first (``hint`` says how)."""
     if xplane_running():
         log(
             "X-Plane is still running and reads its textures from the pack: it stays until "

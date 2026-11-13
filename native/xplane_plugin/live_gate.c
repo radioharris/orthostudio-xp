@@ -624,21 +624,63 @@ static int remove_link(const char *path) {
 }
 #endif
 
-/* Live's scenery in Custom Scenery while no streamer is there: left behind (Live stopped without
-   taking it out, crashed, the computer restarted). X-Plane lists its scenery after it starts its
-   plugins (its Log.txt), so taken out now it is never read: Live makes the files its DSFs name only
-   round the aircraft while it runs, and elsewhere X-Plane would find none (2026-09-30). Only links
-   Live made, never a folder; Live puts them back at its next start. */
+/* Whether X-Plane's list has `name`'s line, and only unchecked ("SCENERY_PACK_DISABLED"): Live
+   stopped as it should, its link kept so that X-Plane keeps the line where the pilot put it. */
+static int listed_unchecked(const char *ini, const char *name) {
+    char line[2048];
+    int unchecked = 0, checked = 0;
+    FILE *f;
+#ifdef _WIN32
+    wchar_t w[1300];
+    if (!MultiByteToWideChar(CP_UTF8, 0, ini, -1, w, (int)(sizeof w / sizeof *w))) return 0;
+    f = _wfopen(w, L"rb");
+#else
+    f = fopen(ini, "rb");
+#endif
+    if (!f) return 0;
+    while (fgets(line, sizeof line, f)) {
+        size_t n = strlen(line);
+        const char *last;
+        int off = strncmp(line, "SCENERY_PACK_DISABLED ", 22) == 0;
+        if (!off && strncmp(line, "SCENERY_PACK ", 13) != 0) continue;
+        while (n > 0 && strchr("\r\n \t/\\", line[n - 1])) line[--n] = 0;
+        last = line + n;
+        while (last > line && last[-1] != '/' && last[-1] != '\\' && last[-1] != ' ') last--;
+        if (strcmp(last, name) != 0) continue;
+        if (off)
+            unchecked = 1;
+        else
+            checked = 1;
+    }
+    fclose(f);
+    return unchecked && !checked;
+}
+
+/* Set at X-Plane's start when no streamer is there: Live cannot join this X-Plane, which lists
+   its scenery once, and the plugin stays idle until X-Plane quits. */
+static int alone = 0;
+
+/* Live's scenery in Custom Scenery while no streamer is there and its line is checked or gone:
+   left behind (Live crashed, or left it installed and X-Plane started without it), or relisted by
+   X-Plane itself, at the end and checked, after Live's folder was out of reach once. X-Plane lists
+   its scenery after it starts its plugins (its Log.txt), so taken out now it is never read: Live
+   makes the files its DSFs name only round the aircraft while it runs, and elsewhere X-Plane would
+   find none (2026-09-30). Unchecked, the line stays with its link: Live stopped as it should, and
+   X-Plane keeps the place the pilot gave it (2026-11-13). Only links Live made, never a folder;
+   Live puts them back at its next start. */
 static void take_out_if_alone(void) {
     static const char *links[] = {"z_osxp_live", "y_osxp_live_overlays"};
-    char root[1024], path[1300];
+    char root[1024], path[1300], ini[1300];
     size_t i;
     if (streamer_listens()) return;
+    alone = 1;
     XPLMEnableFeature("XPLM_USE_NATIVE_PATHS", 1); /* on the Mac, "/Users/..." */
     root[0] = 0;
     XPLMGetSystemPath(root); /* with its separator at the end, in UTF-8 */
     if (!root[0]) return;
+    snprintf(ini, sizeof ini, "%sCustom Scenery" SEP "scenery_packs.ini", root);
     for (i = 0; i < sizeof links / sizeof *links; i++) {
+        if (listed_unchecked(ini, links[i])) continue;
         snprintf(path, sizeof path, "%sCustom Scenery" SEP "%s", root, links[i]);
         if (remove_link(path))
             say("Live is not running: its scenery %s is out of X-Plane until Live starts again", links[i]);
@@ -674,8 +716,10 @@ PLUGIN_API void XPluginStop(void) {
 }
 
 PLUGIN_API int XPluginEnable(void) {
-    sock = open_socket();
-    if (sock == NO_SOCKET) say("no UDP socket: X-Plane will not wait for the ortho");
+    if (!alone) { /* alone, no socket: every hold and ask returns at once */
+        sock = open_socket();
+        if (sock == NO_SOCKET) say("no UDP socket: X-Plane will not wait for the ortho");
+    }
     XPLMRegisterFlightLoopCallback(every_second, NOTE_EVERY_S, NULL);
     XPLMRegisterFlightLoopCallback(every_frame, -1.0f, NULL);
     return 1;

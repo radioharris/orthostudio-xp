@@ -135,9 +135,8 @@ def install_link(
 ) -> None:
     """Link ``pack_dir`` into Custom Scenery as ``link_name`` and list it where OrthoStudio XP lists
     a pack of that ``kind`` (its rules and backups: ``scenery_packs.ini.bak`` and
-    ``.osxp-previous``), or right above ``above``'s line ("Live everywhere": above the pilot's own
-    tiles, :func:`live_above`). A line already there stays where it is, unless ``again``: then it
-    goes where it would go new."""
+    ``.osxp-previous``), or right above ``above``'s line (Live's overlays: right above Live's). A
+    line already there stays where it is, unless ``again``: then it goes where it would go new."""
     link = _link(xplane, pack_dir, link_name)
     packs = SceneryPacks.load(_ini(xplane))
     before = packs.to_bytes()
@@ -199,17 +198,16 @@ def is_mesh(xplane: Path, entry: SceneryPackEntry) -> bool:
 
 
 def live_anchor(xplane: Path, packs: SceneryPacks, own_tiles: str) -> SceneryPackEntry | None:
-    """The line Live's goes right above when Live lists it itself: with "Live everywhere" the first
-    of the pilot's tiles (OrthoStudio XP's, Ortho4XP's), else the first mesh, below the tiles, the
-    other photo packs and everything that draws over the ground; None: the end of the list."""
+    """The line Live's goes right above when Live lists it itself: the first mesh, below the
+    tiles, the other photo packs and everything that draws over the ground; with "Live
+    everywhere", the first of the pilot's tiles (OrthoStudio XP's, Ortho4XP's) if it comes first
+    (one listed under the mesh is hidden by it anyway, and Live with it); None: the end."""
     lines = [e for e in packs.entries if e.name not in (LINK_NAME, OVERLAY_LINK_NAME)]
     start = next((i + 1 for i, e in enumerate(lines) if e.is_global_airports), 0)
     enabled = [e for e in lines[start:] if e.enabled]
-    if own_tiles == "under":
-        tile = next((e for e in enabled if e.is_ortho), None)
-        if tile is not None:
-            return tile
-    return next((e for e in enabled if is_mesh(xplane, e)), None)
+    return next(
+        (e for e in enabled if (own_tiles == "under" and e.is_ortho) or is_mesh(xplane, e)), None
+    )
 
 
 def place_line(

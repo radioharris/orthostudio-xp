@@ -5,10 +5,10 @@
 For each 1-degree square, X-Plane draws the ground of the first pack of its list
 (``scenery_packs.ini``, top first) holding a DSF of that square that is not an overlay (a DSF with
 the property ``sim/overlay 1`` only adds roads, forests, buildings or an airport over the ground).
-OrthoStudio XP lists the tiles it built above Live's pack, as it lists them above AutoOrtho
-(``orthostudio.install.scenery_packs``, which takes ``z_osxp_live`` for a base layer), and the
-tiles it imported from Ortho4XP too. Where such a tile is, X-Plane never reads Live's textures: Live
-downloads nothing there, and a start there waits for none of them.
+Live lists its line under the tiles OrthoStudio XP built or imported from Ortho4XP, unless the
+pilot chose "Live everywhere" or moved it (:func:`orthostudio.live.scenery.place_line`). Where a
+pack listed above it gives the ground, X-Plane never reads Live's textures: Live downloads nothing
+there, and a start there waits for none of them.
 """
 
 from __future__ import annotations

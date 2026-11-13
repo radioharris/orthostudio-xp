@@ -76,6 +76,27 @@ def test_only_where_nothing_else_draws_them(tmp_path: Path) -> None:
     assert overlays.squares_of(out) == {}
 
 
+def test_overlays_listed_under_live_s_line_do_not_count(tmp_path: Path) -> None:
+    """X-Plane reads no overlay listed under the ground it shows: an overlays pack Build listed
+    first between Live's line and the pilot's first tile ("Live everywhere") left Live's squares
+    without roads or forests (the review of 2026-11-13). Live brings its own there."""
+    xp = xplane(
+        tmp_path,
+        [
+            "SCENERY_PACK *GLOBAL_AIRPORTS*",
+            "SCENERY_PACK Custom Scenery/yOrtho4XP_Overlays/",
+            f"SCENERY_PACK Custom Scenery/{LINK_NAME}/",
+            "SCENERY_PACK Custom Scenery/yOrthoStudio_Overlays/",
+            "SCENERY_PACK Custom Scenery/zOrthoStudio_+46+005/",
+            "SCENERY_PACK Custom Scenery/z_ao_eur/",
+        ],
+    )
+    scenery = xp / "Custom Scenery"
+    put(scenery / "yOrtho4XP_Overlays", A)
+    put(scenery / "yOrthoStudio_Overlays", B)
+    assert overlays.other_overlays(xp) == {A: "yOrtho4XP_Overlays"}
+
+
 def test_a_region_live_installed_brings_its_own(tmp_path: Path) -> None:
     xp = xplane(tmp_path, ["SCENERY_PACK *GLOBAL_AIRPORTS*"])
     root = tmp_path / "live"

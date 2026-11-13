@@ -72,7 +72,7 @@ Start the streamer before X-Plane: X-Plane lists
 scenery packs and loads plugins when it starts. The streamer links its pack (`z_osxp_live`), checks
 its line and installs its plugin (`Resources/plugins/OrthoStudio XP Live`) as it starts; as it
 stops, once X-Plane has quit (X-Plane opens its textures through the pack's link), it unchecks the
-line where it is and takes the plugin out.
+line where it is. The plugin stays, idle without Live.
 
 ## The window
 
@@ -521,9 +521,12 @@ up to date, 0.34 s on a start like the one before (the user's Mac, 2026-10-31). 
 linked as `y_osxp_live_overlays` and listed by OrthoStudio XP's rule for overlays: right above the
 first ortho pack, below every other overlay. A square of Live's gets none:
 - where the user's own tiles give the ground (they have their overlays);
-- where another enabled overlay pack has it (`y*overlays`: AutoOrtho's, Ortho4XP's, OrthoStudio
-  XP's), which carries no exclusion zone: the same roads would be drawn twice;
-- where an enabled pack of simHeaven X-World or its kin has it
+- where another enabled overlay pack listed above Live's line has it (`y*overlays`: AutoOrtho's,
+  Ortho4XP's, OrthoStudio XP's), which carries no exclusion zone: the same roads would be drawn
+  twice. One listed under it is not read on Live's squares (`overlays.other_overlays` stops at
+  Live's line): Build's first overlays with "Live everywhere" land there, and left Live's squares
+  bare (the review of 2026-11-13);
+- where an enabled pack of simHeaven X-World or its kin listed above Live's line has it
   (`orthostudio.install.xplane.SCENERY_OF_ITS_OWN`). Read in a user's packs on 27 September: its
   roads pack excludes `sim/exclude_net`, its scenery pack `sim/exclude_obj` and `sim/exclude_fac`,
   over the whole square; they would hide AutoOrtho's, but its manual says that X-Plane loads a
@@ -824,9 +827,9 @@ a core more in flight, 0.52 of it the night's process (2026-11-11; the Mac: fram
 ## The user's own tiles
 
 For each 1-degree square, X-Plane draws the ground of the first pack of `scenery_packs.ini` holding
-a DSF of that square that is not an overlay (`sim/overlay 1`). OrthoStudio XP lists its tiles above
-Live's link, which its ordering takes for a base layer as it takes AutoOrtho's, and the tiles it
-imported from Ortho4XP too. At each start, after its link is listed, Live reads the packs above it
+a DSF of that square that is not an overlay (`sim/overlay 1`). Live's line goes under the tiles
+OrthoStudio XP built or imported from Ortho4XP, unless the setting below or the pilot put it above
+them ("Live's line in the list"). At each start, after its line is listed, Live reads the packs above it
 (`orthostudio/live/covered.py`): an enabled pack with a DSF of a square that is not an overlay
 (its HEAD's PROP atom, unpacked from its 7z archive when it is one; OrthoStudio XP's and Ortho4XP's
 tiles without reading) covers that square. The planner leaves alone every texture all of whose
@@ -850,7 +853,8 @@ place sans que live n'écrase à chaque fois la valeur »):
 - **Missing**, Live lists its line right above the first mesh after `*GLOBAL_AIRPORTS*`
   (`scenery.live_anchor`), so under the pilot's tiles, every other photo pack and everything that
   draws over the ground; with "Live everywhere", right above the first of the pilot's tiles
-  (OrthoStudio XP's, Ortho4XP's) when there is one. No mesh: the end of the list. A mesh
+  (OrthoStudio XP's, Ortho4XP's) when it comes before the first mesh (one listed under the mesh
+  is hidden by it, and Live would be too). No mesh: the end of the list. A mesh
   (`scenery.is_mesh`): AutoOrtho's by its name, or a pack named as meshes are (`zzz_`, `XPME_`,
   `zz_`, any `z` name sorting after the tiles') whose first DSF is ground (no `sim/overlay 1`);
   its name decides when that DSF cannot be read (a disk unplugged). A library named `z...` (no
@@ -860,17 +864,22 @@ place sans que live n'écrase à chaque fois la valeur »):
   at a start (`scenery.list_live`), unchecked at a stop (`scenery.unlist_live`), its link kept,
   so that X-Plane keeps the line there (it drops the line of a folder it cannot reach). The
   window's "Take the pack out of X-Plane" and a change of X-Plane folder do the same as a stop.
+  The plugin stays in X-Plane: started without Live, it takes Live's links out only when Live's
+  line is checked or gone (see "The plugin").
 - **The setting own_tiles changed**: moved once, as above (`scenery.move_live`).
 
 Build lists a new tile right after the last of its tiles (spec install 3.2), so on the side of
-Live's line the setting chose, with no rule of its own about Live; its first tile ever goes right
-above the first line its name rule takes for a mesh, which `z_osxp_live` is: under Live's line
-with "Live everywhere" too, that once. Live's overlays line goes right above Live's at every start
-(`session._overlays`). An X-Plane started after Live crashed finds the plugin, which removes
-Live's links (`take_out_if_alone`): X-Plane drops their lines, and Live's next start lists its line
-again as missing. Until 2026-11-13 Live took its line out at every stop and listed it again by
-Build's rule at every start and at every change of the list between two flights: moved below
-simHeaven by hand, it came back above within seconds.
+Live's line the setting chose, with no rule of its own about Live. Its first tile ever goes right
+above the first line its name rule takes for a mesh, which `z_osxp_live` is: above Live's line,
+with "Live everywhere" too, and every tile after it follows it there; changing the setting twice,
+or moving the line, puts Live above them (the guide says so). Live's overlays line goes right
+above Live's at every start (`session._overlays`). An X-Plane started while Live's line is still
+checked (Live crashed, was left installed, or quit during a flight), or after X-Plane dropped
+Live's lines with its folder out of reach and would list them again checked at the end, finds the
+plugin, which removes Live's links (`take_out_if_alone`): X-Plane drops their lines, and Live's
+next start lists its line again as missing. Until 2026-11-13 Live took its line out at every stop
+and listed it again by Build's rule at every start and at every change of the list between two
+flights: moved below simHeaven by hand, it came back above within seconds.
 
 While Live streams, every 5 s (`streamer.BETWEEN_S`), it looks at the time of
 `scenery_packs.ini`: once it changed and X-Plane is not running (X-Plane reads the list as it
@@ -1208,8 +1217,10 @@ A plugin that does not return from one of these messages holds the whole load.
     `tools/package/build.py`);
   - as X-Plane starts (`XPluginStart`), it sends `LIVE1 HELLO`: refused (nothing listens on Live's
     port), it removes Live's links `z_osxp_live` and `y_osxp_live_overlays` from Custom Scenery,
-    never a folder, before X-Plane lists its scenery (see "The pack"): only after Live crashed,
-    since a stop takes the plugin out;
+    never a folder, before X-Plane lists its scenery (see "The pack"), unless that link's line is
+    listed unchecked only (`listed_unchecked`, any path form): Live stopped as it should, and the
+    pilot's place kept. Without Live it then stays idle until X-Plane quits (no socket: Live
+    cannot join an X-Plane that listed its scenery without it);
   - at PLANE_LOADED it sends the streamer `LIVE1 LOAD lat lon`;
   - at the radio's FMOD_BANK_LOADED and at LIVERY_LOADED it sends `LIVE1 HOLD lat lon aircraft
     day=N utc=S` every 250 ms over UDP (127.0.0.1:49250), the flight's date and UTC time as X-Plane

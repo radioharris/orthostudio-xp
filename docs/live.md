@@ -138,8 +138,8 @@ slow disk).
    in flight: at « Resume flight » X-Plane waits a moment, with the same small panel (« Quality
    raised: sharper textures around the aircraft »), while Live builds the sharper textures around
    the aircraft, their night ones too at night. Lowered, nothing waits.
-5. **Quit X-Plane, then Stop.** Live unchecks its scenery in X-Plane's list, where it is, and takes
-   its small plugin out of X-Plane. Stopped
+5. **Quit X-Plane, then Stop.** Live unchecks its scenery in X-Plane's list, where it is. Its small
+   plugin stays in X-Plane and does nothing without Live. Stopped
    while X-Plane still runs, Live waits for X-Plane to quit first ("Leave it installed" stops
    waiting).
 
@@ -344,11 +344,17 @@ move Live's line above it, by hand or with xOrganizer: it stays there.
 
 **Live's place in X-Plane's scenery list.** The first time, Live lists its scenery at the bottom,
 right above the first mesh: under your tiles, simHeaven X-World, the airports and any other photo
-scenery, which X-Plane then draws over or instead of Live's. After that Live never moves its line:
-moved by hand in `scenery_packs.ini` or with xOrganizer, it stays there, Live running or stopped
-(stopped, the line is unchecked). Live lists it at the bottom again only when the line is gone,
-X-Plane having dropped it (Live's folder out of reach, or an X-Plane started after Live crashed).
+scenery, which X-Plane then draws over or instead of Live's ("Live everywhere": above your tiles).
+After that Live moves its line only when you change "Your own tiles": moved by hand in
+`scenery_packs.ini` or with xOrganizer, it stays there, Live running or stopped (stopped, the line
+is unchecked). Live lists it at its first place again when the line is gone: X-Plane started while
+it was still checked (Live crashed, was left installed, or the app was quit during a flight), or
+while Live's folder was out of reach (its disk unplugged).
+
 A tile you build goes with your other tiles, so on the side of Live's line the setting above says.
+With "Live everywhere" and no tile of yours yet, the first one you build goes above Live's line,
+and those after it too: choose "Yours first" then "Live everywhere" again, or move the line, to
+have Live above them.
 
 A tile you build, take out or put back in OrthoStudio XP while Live runs counts from the next
 flight: once X-Plane is closed, Live sees X-Plane's list of sceneries change and looks for your
@@ -511,14 +517,14 @@ To switch Live off, put `enabled = false` in `live.toml`, in OrthoStudio XP's ow
 - Live works with the X-Plane that Build uses: the one named under *Where is X-Plane 12 installed?*,
   in Live's Settings or Build's (it is one setting), or the first one detected when none is named.
   If the window shows another X-Plane than the one you fly, name yours there. Stop Live and quit
-  X-Plane first: Live then takes its pack and its plugin out of the X-Plane you leave.
+  X-Plane first: Live then unchecks its scenery in the X-Plane you leave.
 - If Live stops, X-Plane goes on flying over what is on the disk. If the streamer stops on an
   error, the window says so with the error, and the plugin lets X-Plane go on.
 - If a texture comes late, X-Plane shows it a little blurry and sharpens it at its next ring.
 - If the photo source refuses your connection (access denied), Live says so under the source and
   the textures read "Downloads refused": stop Live, choose another source, start it again.
-- Quit X-Plane before Stop: Live takes its scenery and its plugin out when it stops, and waits for
-  X-Plane to quit first.
+- Quit X-Plane before Stop: Live unchecks its scenery when it stops, and waits for X-Plane to quit
+  first.
 - Quitting the app while Live streams asks first, in the window.
 
 ## Limits

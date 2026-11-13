@@ -458,6 +458,31 @@ class PluginTest(unittest.TestCase):
         self.assertTrue((root / "pack").is_dir())  # the link went, not what it led to
         self.assertTrue(any("Live is not running" in line for line in logged), logged)
 
+    def test_an_unchecked_line_keeps_its_link(self):
+        """Live stopped as it should: its lines unchecked, their links kept, so that X-Plane keeps
+        them where the pilot put them, whoever wrote the list (a sorting tool's own paths too).
+        Checked (left behind) or gone (dropped by X-Plane, which would list it again checked at
+        the end once Live's folder is back): taken out."""
+        root = self.fake_xplane_with_live_s_links()
+        scenery = root / "Custom Scenery"
+        (scenery / "scenery_packs.ini").write_text(
+            "I\r\n1000 Version\r\nSCENERY\r\n\r\n"
+            "SCENERY_PACK_DISABLED C:\\X-Plane 12\\Custom Scenery\\z_osxp_live\\\r\n"
+            "SCENERY_PACK_DISABLED Custom Scenery/y_osxp_live_overlays/\r\n"
+        )
+        _, logged = self.xplane(43.4382, 5.2129, root=root)
+        self.assertTrue(is_folder_link(scenery / "z_osxp_live"))
+        self.assertTrue(is_folder_link(scenery / "y_osxp_live_overlays"))
+        self.assertFalse(any("Live is not running" in line for line in logged), logged)
+        root = self.fake_xplane_with_live_s_links()
+        scenery = root / "Custom Scenery"
+        (scenery / "scenery_packs.ini").write_text(
+            "I\n1000 Version\nSCENERY\n\nSCENERY_PACK Custom Scenery/z_osxp_live/\n"
+        )
+        self.xplane(43.4382, 5.2129, root=root)
+        self.assertFalse(os.path.lexists(scenery / "z_osxp_live"))
+        self.assertFalse(os.path.lexists(scenery / "y_osxp_live_overlays"))
+
     def test_live_s_scenery_stays_while_live_runs(self):
         root = self.fake_xplane_with_live_s_links()
         with live_port(self.port):  # Live listens, answering nothing yet
@@ -856,10 +881,6 @@ class BuildTest(unittest.TestCase):
                         {line.split()[-3] for line in bound if line.endswith("(from XPLM)")},
                         {f"_{name}" for name in plugin.xplm_functions()},
                     )
-                plugin.uninstall(xplane)
-                self.assertFalse(
-                    (xplane / "Resources" / "plugins" / "OrthoStudio XP Live").exists()
-                )
 
     def test_shipped_by_the_mac_installer(self):
         """The Mac installer's copy (:func:`plugin.ship`, tools/package/build.py): built for Apple
@@ -1034,8 +1055,6 @@ class PrebuiltTest(unittest.TestCase):
                 self.assertTrue(plugin.install(xplane, log=self.fail))
                 xpl = xplane / "Resources" / "plugins" / plugin.NAME / folder / f"{plugin.NAME}.xpl"
                 self.assertEqual(xpl.read_bytes(), self.xpl(platform))
-                self.assertTrue(plugin.uninstall(xplane))
-                self.assertFalse((xplane / "Resources" / "plugins" / plugin.NAME).exists())
 
     def test_none_for_this_system(self):
         with (
@@ -1048,21 +1067,6 @@ class PrebuiltTest(unittest.TestCase):
             self.assertEqual(plugin.availability(), "missing")
             self.assertFalse(plugin.install(Path(tmp) / "X-Plane 12", log=said.append))
             self.assertIn("will not wait", said[0])
-
-    def test_windows_holds_a_loaded_plugin(self):
-        """Windows keeps the file of a plugin X-Plane has loaded until X-Plane has quit: it stays,
-        and says so."""
-        with (
-            tempfile.TemporaryDirectory() as tmp,
-            mock.patch.object(plugin.sys, "platform", "win32"),
-        ):
-            xplane = Path(tmp)
-            xpl = plugin._xpl(plugin.plugin_dir(xplane))
-            xpl.parent.mkdir(parents=True)
-            xpl.write_bytes(b"MZ")
-            with mock.patch.object(Path, "unlink", side_effect=PermissionError("in use")):
-                self.assertFalse(plugin.uninstall(xplane))
-            self.assertTrue(xpl.exists())
 
 
 def runs_intel_code() -> bool:

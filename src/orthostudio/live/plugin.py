@@ -19,7 +19,6 @@ again once X-Plane has quit: X-Plane loads plugins at start-up only.
 
 from __future__ import annotations
 
-import contextlib
 import hashlib
 import shutil
 import subprocess
@@ -219,19 +218,3 @@ def install(xplane: Path, log: Callable[[str], None] = print) -> bool:
 
 def installed(xplane: Path) -> bool:
     return _xpl(plugin_dir(xplane)).exists()
-
-
-def uninstall(xplane: Path) -> bool:
-    """The plugin out of X-Plane. False where it stays: Windows keeps the file of a plugin that a
-    program has loaded until that program has quit, so in the seconds X-Plane takes to go."""
-    folder = plugin_dir(xplane)
-    xpl = _xpl(folder)
-    if xpl.exists():
-        try:
-            xpl.unlink()
-        except PermissionError:
-            return False
-    for d in (xpl.parent, folder):  # only if nothing else is in them
-        with contextlib.suppress(OSError):
-            d.rmdir()
-    return True

@@ -525,7 +525,7 @@ class LiveControl:
         self._stop.set()
 
     def leave(self) -> None:
-        """Stop waiting for X-Plane to quit: the pack and the plugin stay installed."""
+        """Stop waiting for X-Plane to quit: Live's line stays checked."""
         self._leave.set()
 
     def busy(self) -> bool:
@@ -544,7 +544,7 @@ class LiveControl:
         """The app is being updated or removed (the Windows installer, ``stop_running.pas``): stop,
         and let the window and its process go (``leaving_for``). False, and nothing done, while
         a stream feeds a running X-Plane, unless ``force``: the stream then stops without waiting
-        for X-Plane, which flies on over what is on the disk, and the pack stays installed; the
+        for X-Plane, which flies on over what is on the disk, and Live's line stays checked; the
         plugin takes Live's links out of Custom Scenery at X-Plane's next start."""
         flying = self._state != IDLE and xplane_running()
         if flying and not force:
@@ -586,7 +586,7 @@ class LiveControl:
     def name_xplane(self, folder: str | None) -> None:
         """Name the X-Plane to work with, in the setting Build reads too (``None``: the one
         detected). Not while Live runs or X-Plane does: the pack is in use. The X-Plane left keeps
-        neither the pack nor the plugin."""
+        Live's lines unchecked (:func:`orthostudio.live.session.uninstall`)."""
         folder = (folder or "").strip() or None
         if folder == named_xplane():
             return

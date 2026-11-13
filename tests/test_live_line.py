@@ -83,6 +83,11 @@ def test_a_missing_line_goes_right_above_the_first_mesh(tmp_path: Path) -> None:
     xp = xplane(tmp_path / "d", [*LIST[:-1], "zzz_unplugged", "zzz_mesh"])
     list_live(xp, pack, "first", log=lambda _: None)
     assert names(xp) == [*LIST[:-1], LINK_NAME, "zzz_unplugged", "zzz_mesh"]
+    # "Live everywhere", a tile listed under the mesh: above the mesh, which hides the tile anyway
+    under = ["*", "simHeaven_X-World_Europe-1-vfr", "zzz_mesh", TILE]
+    xp = xplane(tmp_path / "e", under)
+    list_live(xp, pack, "under", log=lambda _: None)
+    assert names(xp) == [*under[:2], LINK_NAME, *under[2:]]
 
 
 def test_the_line_stays_where_it_is_listed(tmp_path: Path) -> None:
