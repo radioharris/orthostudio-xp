@@ -56,9 +56,15 @@ def test_live_works_with_the_x_plane_build_uses(flown: Path) -> None:
 
 @pytest.mark.usefixtures("found_first")
 def test_the_window_shows_the_x_plane_named_in_the_settings(flown: Path) -> None:
-    """The line of the window, and the folder its Start X-Plane launches."""
+    """The line of the window, the folder its Start X-Plane launches, and the texture quality its
+    note under the zoom reads: that X-Plane's."""
     _name_in_the_settings(flown)
-    assert control.gather_checks()["xplane"] == str(flown)
+    prefs = flown / "Output" / "preferences"
+    prefs.mkdir(parents=True, exist_ok=True)
+    (prefs / "X-Plane.prf").write_text("renopt_tex_res_04 3\n")
+    checks = control.gather_checks()
+    assert checks["xplane"] == str(flown)
+    assert checks["xplane_quality"] == 3
 
 
 def test_with_nothing_named_live_takes_the_one_detected(found_first: Path) -> None:

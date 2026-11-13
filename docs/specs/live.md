@@ -133,8 +133,8 @@ modules, English and French, English unless the switch chose French, as OrthoStu
 - **The settings** are the `[stream]` table of `live.toml`, beside the switch, which is written
   back as it was read: the disk space, the imagery source, Live's folder. `stream` takes them as
   its defaults: a budget set in the window holds in a terminal too. The reach of outside views is
-  not a setting (the command line keeps it, for tests). X-Plane's texture quality is not read:
-  Live builds every level of the zoom chosen (the user, 2026-11-13: « on télécharge ce que
+  not a setting (the command line keeps it, for tests). X-Plane's texture quality changes nothing
+  in what Live builds: every level of the zoom chosen (the user, 2026-11-13: « on télécharge ce que
   l'utilisateur choisi 16/18 ou 17/19 »), see "X-Plane's texture quality".
 - **The X-Plane folder** is not one of them: it is `essential.xplane_dir` in `config.toml`, one
   setting with Build's (`chosen_xplane`). Live's Settings read and write it through
@@ -901,9 +901,9 @@ own lines written then are not taken for a change.
 
 ## X-Plane's texture quality
 
-Live builds every level the zoom chosen gives (16/18, 17/19), whatever X-Plane's texture quality,
-which it does not read (the user, 2026-11-13: « Qu'importe la texture choisie dans xplane on
-télécharge ce que l'utilisateur choisi 16/18 ou 17/19 »). Measured with tinted levels
+Live builds every level the zoom chosen gives (16/18, 16/19, 17/19), whatever X-Plane's texture
+quality, which changes nothing in what it builds (the user, 2026-11-13: « Qu'importe la texture
+choisie dans xplane on télécharge ce que l'utilisateur choisi 16/18 ou 17/19 »). Measured with tinted levels
 (`OSXP_LIVE_TINT_LEVELS=1`, every level built) on X-Plane 12.4.4, 13 November 2026, over Toulouse:
 at High, X-Plane shows a 4096 px texture at 2048 px at most, even overhead (as on 12.4.4-b1 on 26
 September: probe flight 1), and an 8192 px texture (17/19) at 4096 px under 14 km: High drops one
@@ -911,11 +911,17 @@ level from the file's own size. A pilot at High with 16/18 so sees ZL15 near the
 the ZL16 photos; with 17/19, ZL16. Live 2.1.0 built no level X-Plane would not read at its quality,
 read from its preferences, and two pilots at High saw ZL15 only (issue 25, discussion 26). Since
 everything is built, a quality raised in flight finds its sizes on the disk and holds nothing (the
-hold of 2026-11-13 is kept on the branch `quality-hold`). The window only reads the quality, to say
-under the zoom what X-Plane shows below Maximum and that Maximum gives the zoom chosen
-(`scenery.xplane_texture_quality`, the checks' `xplane_quality`: `renopt_tex_res_04`, which X-Plane
-12 reads, else `_tex_res`). It never suggests 17/19 there: at High, 17/19 takes the graphics memory
-of Maximum for the same ZL16, and downloads more.
+hold of 2026-11-13 is kept on the branch `quality-hold`). The quality is read only to be said
+(`scenery.xplane_texture_quality`: `renopt_tex_res_04`, which X-Plane 12 reads, else `_tex_res`;
+None when the preferences are missing or cannot be read, so that the window's checks go on): under
+the zoom in the window (the checks' `xplane_quality`), where a note says what X-Plane shows below
+Maximum and that Maximum gives the zoom chosen, and in LogLive.txt at a start
+(`scenery.quality_said`: "High (3 of 4)"), for a pilot who sends it. The note gives a ZL at High
+only, one zoom lower, around airports too, as measured; below High, not measured, it gives no number.
+It never suggests 17/19: at High, 17/19 takes the graphics memory of Maximum for the same ZL16, and
+downloads more. X-Plane's VR settings have a quality of their own (`vr_renopt_tex_res_04`), not read:
+the guide says the window reads the other one. In French the note names High « High (Haut) », as
+X-Plane's French menu says it.
 
 ## The loop
 

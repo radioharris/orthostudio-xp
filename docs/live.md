@@ -422,12 +422,13 @@ On a wider screen, or zoomed in, X-Plane reads sharp textures farther, and Live 
 too; the Flight card says how far for yours. Airport textures (about 1.8 km across) follow the same
 law four times closer.
 
-**X-Plane's texture quality.** Live builds the zoom you chose, 16/18 or 17/19, whatever X-Plane's
-texture quality. At High, X-Plane shows every texture one size smaller: with 16/18, 2048 px under
-14 km, which is ZL15 on the ground, made from the ZL16 photos. To see ZL16 at High, choose the zoom
-17/19: X-Plane then shows the 4096 px of its 8192 px textures (measured on 13 November 2026), or set
-X-Plane's texture quality to Maximum: Live's window says so under the zoom when X-Plane is below
-Maximum. Raised in flight, X-Plane finds the sharper sizes already built.
+**X-Plane's texture quality.** Live builds the zoom you chose, 16/18, 16/19 or 17/19, whatever
+X-Plane's texture quality, and the map shows what it built. At High, X-Plane shows every texture one
+size smaller (measured on 13 November 2026): with 16/18, 2048 px under 14 km, which is ZL15 on the
+ground, made from the ZL16 photos, and one zoom lower around airports too. For the zoom you chose,
+set X-Plane's texture quality to Maximum: Live's window says so under the zoom when X-Plane is below
+Maximum. Raised in flight, X-Plane finds the sharper sizes already built. The window reads X-Plane's
+own setting, not the one of its VR settings, which X-Plane uses in VR.
 
 External views read nothing more: X-Plane takes each texture's levels for the aircraft, when it
 loads a flight and then as the aircraft moves, and a camera taken away, even kilometres out near the

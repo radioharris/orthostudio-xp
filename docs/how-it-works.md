@@ -980,7 +980,9 @@ settings, is [live.md](live.md).
 
 For a flight:
 
-1. In Live's tab, choose the imagery source and the zoom; optionally, type the departure and click
+1. In Live's tab, choose the imagery source and the zoom (Live builds it whatever X-Plane's texture
+   quality; below Maximum, X-Plane shows it less sharp, and the window says so under the zoom);
+   optionally, type the departure and click
    Prepare, which builds the ground there before X-Plane loads the flight and brings the map
    there. Then click Start Live.
 2. Start X-Plane (Live's Start X-Plane button), choose the flight and click Start Flight. X-Plane

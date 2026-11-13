@@ -222,3 +222,13 @@ def test_x_plane_s_texture_quality_for_the_window(tmp_path: Path) -> None:
     prf.unlink()
     prf.mkdir()  # a file that cannot be read: no note, and no error for the window's checks
     assert xplane_texture_quality(tmp_path) is None
+
+
+def test_live_s_log_says_x_plane_s_texture_quality() -> None:
+    """LogLive.txt says the quality a pilot's X-Plane is at, for the one who reads it."""
+    from orthostudio.live.scenery import quality_said
+
+    assert quality_said(4) == "Maximum (4 of 4)"
+    assert quality_said(3) == "High (3 of 4)"
+    assert quality_said(1) == "below High (1 of 4)"
+    assert quality_said(None) == "not found in X-Plane's preferences"

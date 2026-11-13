@@ -136,6 +136,14 @@ def xplane_texture_quality(xplane: Path) -> int | None:
     return None
 
 
+def quality_said(quality: int | None) -> str:
+    """X-Plane's texture quality as LogLive.txt says it, for a pilot who sends it: its name in
+    X-Plane's menu where known, and its value 0 to 4."""
+    if quality is None:
+        return "not found in X-Plane's preferences"
+    return f"{ {4: 'Maximum', 3: 'High'}.get(quality, 'below High') } ({quality} of 4)"
+
+
 def _ini(xplane: Path) -> Path:
     return custom_scenery_dir(xplane) / "scenery_packs.ini"
 

@@ -43,9 +43,11 @@ from orthostudio.live.scenery import (
     list_live,
     ortho_streamers,
     osxp_regions,
+    quality_said,
     uninstall_link,
     unlist_live,
     xplane_running,
+    xplane_texture_quality,
 )
 
 Log = Callable[[str], None]
@@ -385,7 +387,8 @@ def prepare(options: Options, log: Log) -> Prepared:
         # each texture one size smaller, which the pilot's photos then make the sharpest it can be
         # (the user, 2026-11-13: « on télécharge ce que l'utilisateur choisi 16/18 ou 17/19 »)
         log(
-            "X-Plane texture quality: not read, Live builds every level of the zoom chosen; "
+            f"X-Plane texture quality: {quality_said(xplane_texture_quality(xp_dir))}, Live builds "
+            "every level of the zoom chosen; "
             f"sharp up to {options.camera_reach_km:.0f} km farther for external views"
         )
         return Prepared(xp_dir, pack_dir, gate, fix, covered, list(sources), clock)

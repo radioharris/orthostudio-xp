@@ -947,9 +947,9 @@ function drawMemory() {
   drawQuality();
 }
 
-/** Under the zooms too: X-Plane's texture quality below Maximum, which shows each texture one size
- *  smaller for each notch under it (Live builds the zoom chosen whatever it is; measured
- *  2026-11-13). */
+/** Under the zooms too: X-Plane's texture quality below Maximum (Live builds the zoom chosen
+ *  whatever it is). At High X-Plane shows each texture one size smaller, measured 2026-11-13: the
+ *  note says which ZL; below High it was not measured, so the note gives no number. */
 function drawQuality() {
   const q = last?.checks?.xplane_quality;
   const note = $("zoom-quality");
@@ -957,8 +957,7 @@ function drawQuality() {
   note.hidden = !below;
   if (!below) return;
   const zoom = zoomsChosen()[0];
-  const shown = Math.max(12, zoom - (4 - q));
-  note.textContent = t(q === 3 ? "zoom.quality_high" : "zoom.quality_low", { zl: shown, zoom });
+  note.textContent = t(q === 3 ? "zoom.quality_high" : "zoom.quality_low", { zl: zoom - 1, zoom });
 }
 
 // ---------------------------------------------------------------- the season
