@@ -56,6 +56,9 @@ OVERLAY_RECORD = ".live-overlays.json"  # in the overlay pack: {zip path: SHA-25
 STEP = ".live-install.json"  # in a region being installed: the zips unpacked so far
 CHUNK = 1 << 20
 ATTEMPTS = 5
+PASSING = frozenset({429, 500, 502, 503, 504})
+"""The host's answers that pass (busy, or a fault of its own): tried again as a cut line is. Until
+2026-11-14 a single 500 stopped the whole install, the pilot left to click Install again."""
 DOWNLOADS = 3  # at a time: one stream from the host is not the pilot's whole line
 SPARE_BYTES = 2 * 10**9
 
@@ -513,6 +516,8 @@ class Installer:
                         have = 0
                     elif r.status_code == 401:
                         raise InstallError("the host refused Live's key: a newer Live has another")
+                    elif r.status_code in PASSING:
+                        r.raise_for_status()  # an httpx.HTTPError: tried again below
                     elif r.status_code not in (200, 206):
                         raise InstallError(f"{z.name}: HTTP {r.status_code}")
                     with open(path, "ab" if have else "wb") as f:
@@ -523,7 +528,13 @@ class Installer:
                             self._add(len(chunk))
             except (httpx.HTTPError, OSError) as e:
                 if attempt == ATTEMPTS - 1:
-                    raise InstallError(f"{z.name}: {e}") from e
+                    # the status alone: the host's address stays out of the window and the logs
+                    said = (
+                        f"HTTP {e.response.status_code}"
+                        if isinstance(e, httpx.HTTPStatusError)
+                        else e
+                    )
+                    raise InstallError(f"{z.name}: {said}") from e
                 _pause(attempt)
         size = path.stat().st_size
         if size != z.size:

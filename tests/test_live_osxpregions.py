@@ -40,14 +40,20 @@ def entry(path: str, data: bytes) -> Zip:
 
 class Host:
     """The server: the files, Live's token, Range; ``cut`` drops the first
-    answer of a file after that many bytes, as a line that goes down."""
+    answer of a file after that many bytes, as a line that goes down; ``failing`` answers that many
+    first asks of the zips with a 500, a fault of its own."""
 
     def __init__(
-        self, files: dict[str, bytes], cut: int | None = None, slow: dict[str, float] | None = None
+        self,
+        files: dict[str, bytes],
+        cut: int | None = None,
+        slow: dict[str, float] | None = None,
+        failing: int = 0,
     ) -> None:
         self.files = files
         self.cut = cut
         self.slow = slow or {}  # a file answered that many seconds late
+        self.failing = failing
         self.asked: list[tuple[str, str | None]] = []
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
@@ -56,6 +62,9 @@ class Host:
         time.sleep(self.slow.get(key, 0.0))
         if request.headers.get("Authorization") != f"Bearer {TOKEN}":
             return httpx.Response(401)
+        if self.failing and "/zips/" in key:
+            self.failing -= 1
+            return httpx.Response(500)
         data = self.files.get(key)
         if data is None:
             return httpx.Response(404)
@@ -128,6 +137,22 @@ def test_a_region_installed_whole(tmp_path: Path, world, monkeypatch) -> None:
     assert not (tmp_path / "regions" / ".download" / "osxp_eur").exists()  # the zips deleted
     assert any(r is not None and r.startswith("bytes=") for _, r in host.asked)  # resumed
     assert osxpregions.to_fetch(tmp_path, region, True) == ([], [])
+
+
+def test_a_fault_of_the_host_is_tried_again_as_a_cut_line_is(
+    tmp_path: Path, world, monkeypatch
+) -> None:
+    """A 500 from the host no longer stops an install: tried again, as a cut line is; one that
+    lasts stops it, said by its status alone."""
+    monkeypatch.setattr(osxpregions, "_pause", lambda attempt: None)
+    files, region = world
+    inst, lines = install(tmp_path / "once", region, Host(files, failing=1))
+    assert inst.progress.phase == "done", lines
+    inst, lines = install(tmp_path / "lasting", region, Host(files, failing=99))
+    assert inst.progress.phase == "failed"
+    assert inst.progress.error is not None
+    assert inst.progress.error.endswith(": HTTP 500")
+    assert URL not in inst.progress.error
 
 
 def test_only_the_zips_mended_come_again(tmp_path: Path, world) -> None:
