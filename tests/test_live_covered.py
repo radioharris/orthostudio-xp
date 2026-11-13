@@ -71,6 +71,7 @@ def test_the_properties_of_a_dsf(tmp_path: Path) -> None:
     assert is_overlay(over)
     assert is_overlay(zipped)
     assert dsf_properties(junk) == {}
+    assert dsf_properties(tmp_path / "gone.dsf") == {}  # a broken link, no right to read it
 
 
 def test_the_squares_the_users_own_tiles_cover(tmp_path: Path) -> None:

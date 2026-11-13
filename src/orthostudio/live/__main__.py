@@ -44,7 +44,7 @@ PackOpt = Annotated[
     Path | None, typer.Option("--pack", help="the pack folder (default: <Live's folder>/pack)")
 ]
 
-LEAVE_HINT = "Ctrl-C again to leave it installed; `python -m orthostudio.live uninstall` later"
+LEAVE_HINT = "Ctrl-C again to leave it installed: Live's next stop unchecks it"
 
 
 @app.callback()
@@ -182,7 +182,10 @@ def stream(
     no_plugin: Annotated[
         bool,
         typer.Option(
-            help="do not install the X-Plane plugin: X-Plane will not wait for the ortho at a start"
+            help=(
+                "do not install the X-Plane plugin: X-Plane will not wait for the ortho at a "
+                "start; an earlier one is taken out of X-Plane"
+            )
         ),
     ] = False,
     fresh: Annotated[

@@ -139,7 +139,7 @@ slow disk).
    raised: sharper textures around the aircraft »), while Live builds the sharper textures around
    the aircraft, their night ones too at night. Lowered, nothing waits.
 5. **Quit X-Plane, then Stop.** Live unchecks its scenery in X-Plane's list, where it is. Its small
-   plugin stays in X-Plane and does nothing without Live. Stopped
+   plugin stays in X-Plane, idle without Live. Stopped
    while X-Plane still runs, Live waits for X-Plane to quit first ("Leave it installed" stops
    waiting).
 
@@ -438,13 +438,15 @@ start, the whole airport and its surroundings (its ZL18 textures, about 7 km acr
 4096 px before X-Plane goes on, whatever the runway or the stand: a camera taken anywhere over the
 airport finds them sharp.
 
-**The plugin.** To make X-Plane wait at a start, Live puts a small plugin in X-Plane. It stays
-there, and does nothing in an X-Plane started without Live. It holds X-Plane on its loading screen as long as the ortho keeps
-arriving, and lets it go when everything there is built, when nothing has downloaded for a minute
+**The plugin.** To make X-Plane wait at a start, Live puts a small plugin in X-Plane, where it
+stays. It holds X-Plane on its loading screen as long as the ortho keeps arriving, and lets it go when everything there is built, when nothing has downloaded for a minute
 (no internet, or a source refusing every request: `LogLive.txt` says why), or when you click Stop.
 In flight it holds X-Plane only when you raise its texture quality: X-Plane then reads again,
 sharper, the textures around the aircraft, so it waits until those are built, their night ones too
-at night, with the same ways out. It does nothing when Live is not running. A new location chosen
+at night, with the same ways out. In an X-Plane started without Live it stays idle, with one
+exception: Live's line left checked (Live crashed, or was left installed), it takes Live's scenery
+out of that X-Plane, which would show neutral textures, and the line loses its place. A new
+location chosen
 in flight loads no aircraft, so the plugin hears nothing to hold X-Plane at: Live pauses X-Plane
 itself, the instant X-Plane writes the new start in its preferences, and lets it go once everything
 there is built, or at once if Live stops. On Windows the plugin asks Windows not to grey X-Plane as
@@ -511,6 +513,11 @@ To switch Live off, put `enabled = false` in `live.toml`, in OrthoStudio XP's ow
 
 ## If something goes wrong
 
+- To take Live out of X-Plane for good: on Windows, uninstalling OrthoStudio XP does it for the
+  X-Plane named in the Settings (with X-Plane closed). Elsewhere, or for another X-Plane, quit
+  X-Plane, then delete the folder `Resources/plugins/OrthoStudio XP Live` and, in `Custom Scenery`,
+  `z_osxp_live` and `y_osxp_live_overlays`: they are links, and deleting them deletes nothing in
+  Live's folder. X-Plane drops their lines at its next start.
 - Live keeps its log in `LogLive.txt`, at the top of your X-Plane folder, beside X-Plane's own
   `Log.txt`: send both when something went wrong. It is written again each time Live's window
   opens, so send it before opening Live again; the ten before are kept in Live's `log` folder.

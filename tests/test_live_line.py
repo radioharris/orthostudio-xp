@@ -14,7 +14,7 @@ from live_helpers import NAMES, make_source, make_xplane
 from orthostudio.install.scenery_packs import ORTHO_PREFIX, SceneryPacks
 from orthostudio.live import plugin, session
 from orthostudio.live.filesystem import is_folder_link
-from orthostudio.live.pack import LINK_NAME
+from orthostudio.live.pack import LINK_NAME, OVERLAY_LINK_NAME
 from orthostudio.live.scenery import list_live, move_live
 from test_live_covered import dsf, put_dsf
 
@@ -162,6 +162,21 @@ def test_a_start_that_fails_unchecks_the_line(tmp_path: Path, monkeypatch) -> No
     assert "-" + LINK_NAME in names(xp)
 
 
+def test_a_start_that_fails_leaves_another_s_line_checked(tmp_path: Path, monkeypatch) -> None:
+    """A second Live refused (its port taken), or a start rejoining a running X-Plane that fails:
+    the line was checked before it, and stays so (the review of 2026-11-13)."""
+    xp, options = a_start(tmp_path, monkeypatch)
+    session.prepare(options, log=lambda _: None)  # the first Live, streaming
+
+    def fails(*args, **kwargs) -> None:
+        raise OSError("the port is taken")
+
+    monkeypatch.setattr(session, "_overlays", fails)
+    with pytest.raises(OSError):
+        session.prepare(options, log=lambda _: None)
+    assert LINK_NAME in names(xp)
+
+
 def test_a_start_without_the_plugin_takes_an_old_one_out(tmp_path: Path, monkeypatch) -> None:
     """Without Live's port open, a plugin left from an earlier start would take Live's links out
     as X-Plane starts, and X-Plane would fly without Live's scenery while Live streams."""
@@ -180,7 +195,10 @@ def test_live_out_of_x_plane_for_good(tmp_path: Path, monkeypatch) -> None:
     plugin_file = plugin._xpl(plugin.plugin_dir(xp))
     plugin_file.parent.mkdir(parents=True)
     plugin_file.write_bytes(b"the plugin")
+    ini = xp / "Custom Scenery" / "scenery_packs.ini"
+    ini.write_text(ini.read_text() + f"SCENERY_PACK Custom Scenery/{OVERLAY_LINK_NAME}/\n")
     session.remove(xp, lambda _: None)
-    assert LINK_NAME not in names(xp) and "-" + LINK_NAME not in names(xp)
+    for name in (LINK_NAME, OVERLAY_LINK_NAME):
+        assert name not in names(xp) and "-" + name not in names(xp)
     assert not (xp / "Custom Scenery" / LINK_NAME).exists() and not plugin.installed(xp)
     assert (tmp_path / "pack").is_dir()

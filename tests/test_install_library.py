@@ -187,6 +187,10 @@ def test_an_ortho_pack_is_known_by_what_it_holds_not_by_its_name(tmp_path: Path)
     assert holds_ortho4xp_tiles(his.parent), "and the one holding it"
 
     assert not looks_like_an_ortho_pack(pack(tmp_path / "zOrthoStudio_x", ours=True)), "ours"
+    live = pack(tmp_path / "live" / "pack")  # Live's, linked in Custom Scenery after its stops too
+    (live / "_live").mkdir()
+    assert not looks_like_an_ortho_pack(live), "Live's"
+    assert not looks_like_an_ortho_pack(pack(tmp_path / "z_osxp_live")), "Live's link"
     assert not looks_like_an_ortho_pack(pack(tmp_path / "empty", dsf=False)), "no tile in it"
     plain = tmp_path / "Documents"
     (plain / "textures").mkdir(parents=True)

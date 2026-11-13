@@ -256,7 +256,9 @@ def reset(pack: Path, log: Log) -> None:
 def prepare(options: Options, log: Log) -> Prepared:
     """Check, set the region up (once), and put the pack and the plugin in X-Plane.
 
-    Raises :class:`RefusedError`, with nothing installed, when streaming cannot start."""
+    Raises :class:`RefusedError` when streaming cannot start: before installing anything, or, past
+    Live's line, with the line it checked unchecked again. Without the plugin (``no_plugin``, or
+    one that cannot be installed), an earlier one is taken out of an X-Plane not running."""
     from orthostudio.live import plugin
     from orthostudio.live.gate import GATE_PORT, Gate
     from orthostudio.live.region import (
@@ -399,9 +401,11 @@ def prepare(options: Options, log: Log) -> Prepared:
         clock.done("texture quality")
         return Prepared(xp_dir, pack_dir, gate, fix, finest, covered, list(sources), clock)
     except BaseException:
-        # a start that ends here unchecks Live's line as a stop does: left checked, it would lose
-        # its place at X-Plane's next start (the review of 2026-11-13)
-        unlist_live(xp_dir, log=log)
+        # a start that ends here unchecks the line it checked, as a stop does: left checked, it
+        # would lose its place at X-Plane's next start; one checked before it (another Live, or
+        # a running X-Plane this start rejoined) stays as it was (the reviews of 2026-11-13)
+        if not already:
+            unlist_live(xp_dir, log=log)
         raise
 
 

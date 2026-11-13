@@ -107,6 +107,12 @@ def test_a_first_tile_goes_above_the_mesh_not_a_library_named_z(tmp_path: Path) 
     p = SceneryPacks.load(ini)
     p.ensure("zOrthoStudio_+46+006", kind="ortho")
     assert _names(p) == [*names[:2], "zOrthoStudio_+46+006", "zzz_unplugged"]
+    # XPME's packs, a mount as AutoOrtho's, by their name: never read through it
+    (scenery / "XPME_Europe" / "Earth nav data").mkdir(parents=True)  # as it shows when stopped
+    p = SceneryPacks.load(ini)
+    p.body.insert(1, SceneryPackEntry("Custom Scenery/XPME_Europe/"))
+    p.ensure("zOrthoStudio_+46+006", kind="ortho")
+    assert _names(p)[:3] == ["z_library", "zOrthoStudio_+46+006", "XPME_Europe"]
 
 
 def test_a_built_tile_goes_above_the_imported_tile_of_its_square() -> None:

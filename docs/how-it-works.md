@@ -994,7 +994,7 @@ For a flight:
    quality raised in flight waits a moment too, with the same window, until the sharper ground
    around the aircraft is built; Live follows the quality you set, lowered as well.
 4. Quit X-Plane, then click Stop: Live unchecks its scenery in X-Plane's list, where it is. Its
-   small plugin stays in X-Plane and does nothing without Live.
+   small plugin stays in X-Plane, idle without Live.
 
 Live lists its scenery the first time at the bottom of X-Plane's list, right above the first mesh,
 and moves it after that only when you change "Your own tiles": moved by hand or with xOrganizer,

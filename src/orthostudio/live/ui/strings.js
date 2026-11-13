@@ -235,7 +235,7 @@ export const STRINGS = {
     "checks.plugin_build": "The X-Plane plugin is built at the first start (Xcode's command-line tools)",
     "checks.plugin_missing": "No X-Plane plugin: X-Plane will not wait for the ortho at a start",
     "checks.left_installed":
-      "Live's pack is still active in X-Plane: take it out, or it loses the place you gave it in X-Plane's scenery list.",
+      "Live's pack is still checked in X-Plane: Take the pack out of X-Plane unchecks it where it is. Left checked, an X-Plane started without Live drops it from its place in the list.",
     "checks.machine":
       "This computer: {cores} cores, {ram} GB of memory. In flight, Live takes only a small share of it: X-Plane comes first.",
 
@@ -637,7 +637,7 @@ export const STRINGS = {
       "Le plugin X-Plane sera compilé au premier démarrage (outils en ligne de commande de Xcode)",
     "checks.plugin_missing": "Pas de plugin X-Plane : X-Plane n'attendra pas l'ortho au départ",
     "checks.left_installed":
-      "Le pack de Live est encore actif dans X-Plane : retirez-le, sinon il perd la place que vous lui avez donnée dans la liste des scènes d'X-Plane.",
+      "Le pack de Live est encore coché dans X-Plane : « Retirer le pack de X-Plane » le décoche là où il est. Laissé coché, un X-Plane lancé sans Live le retire de sa place dans la liste.",
     "checks.machine":
       "Cet ordinateur : {cores} cœurs, {ram} Go de mémoire. En vol, Live n'en prend qu'une petite part : X-Plane passe en premier.",
 

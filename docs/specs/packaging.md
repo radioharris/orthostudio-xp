@@ -21,7 +21,8 @@ confirmation the first time (`README.md`).
 | Python | `Contents/Resources/python` | `python\` | `python/` |
 | started by | `Contents/MacOS/orthostudio` (shell script) | `python\pythonw.exe -m orthostudio.desktop` | `orthostudio-xp` (shell script) |
 
-Uninstalling on Windows removes the program and nothing else, and says so
+Uninstalling on Windows removes the program, and takes Live out of X-Plane (below), nothing else,
+and says so
 (`tools/package/uninstall_data.pas`). The settings and the data OrthoStudio XP keeps live apart,
 in `%USERPROFILE%\.orthostudio` and in a data folder chosen elsewhere, and can weigh tens of
 gigabytes: the uninstaller names both, so the room is not lost track of, and warns what removing

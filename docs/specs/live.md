@@ -856,9 +856,10 @@ place sans que live n'écrase à chaque fois la valeur »):
   draws over the ground; with "Live everywhere", right above the first of the pilot's tiles
   (OrthoStudio XP's, Ortho4XP's) when it comes before the first mesh (one listed under the mesh
   is hidden by it, and Live would be too). No mesh: the end of the list. A mesh
-  (`SceneryPacks.is_mesh`, Build's rule for a first tile too): AutoOrtho's by its name, or a pack named as meshes are (`zzz_`, `XPME_`,
-  `zz_`, any `z` name sorting after the tiles') whose first DSF is ground (no `sim/overlay 1`);
-  its name decides when that DSF cannot be read (a disk unplugged). A library named `z...` (no
+  (`SceneryPacks.is_mesh`, Build's rule for a first tile too): AutoOrtho's or XPME's by their
+  names (mounts, never read through), or a pack named as meshes are (`zzz_`, `zz_`, any `z` name
+  sorting after the tiles') whose first DSF is ground (no `sim/overlay 1`); its name decides when
+  that DSF cannot be read (a disk unplugged). A library named `z...` (no
   DSF) took Live's line above every simHeaven X-World pack by the name alone, and Live's photos
   hid their buildings (issue 24).
 - **Listed**, wherever the pilot or a sorting tool (xOrganizer) put it, it is never moved: checked
@@ -868,6 +869,15 @@ place sans que live n'écrase à chaque fois la valeur »):
   The plugin stays in X-Plane: started without Live, it takes Live's links out only when Live's
   line is checked or gone (see "The plugin").
 - **The setting own_tiles changed**: moved once, as above (`scenery.move_live`).
+- **A start that fails** once the line is listed (a port taken, a disk full) unchecks the line it
+  checked, as a stop does; one checked before it (another Live streaming, a running X-Plane it
+  rejoined) stays as it was (`session.prepare`).
+- **A start without Live's port** (`--no-plugin`, or a plugin that cannot be installed) takes an
+  earlier plugin out of an X-Plane not running: finding nobody on the port as X-Plane starts, it
+  would take Live's links out while Live streams.
+- **Live out of X-Plane for good** (`python -m orthostudio.live uninstall`, which the Windows
+  uninstaller runs: `session.remove`): its lines, links and plugin, in the X-Plane named in the
+  Settings, nothing while X-Plane runs. Another X-Plane Live used keeps them, the plugin idle.
 
 Build lists a new tile right after the last of its tiles (spec install 3.2), so on the side of
 Live's line the setting chose, with no rule of its own about Live. Its first tile ever goes right

@@ -92,8 +92,12 @@ def _unpacked(path: Path) -> bytes:
 
 
 def dsf_properties(path: Path) -> dict[str, str]:
-    """The properties of a DSF (the PROP atom of its HEAD), empty when it cannot be read."""
-    data = _head(path)
+    """The properties of a DSF (the PROP atom of its HEAD), empty when it cannot be read (a
+    broken link, no right to read it: a start stopped there once, the review of 2026-11-13)."""
+    try:
+        data = _head(path)
+    except OSError:
+        return {}
     if not data.startswith(DSF_MAGIC):
         return {}
     for atom, start, end in _atoms(data, 12, len(data)):

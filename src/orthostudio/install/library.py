@@ -520,7 +520,9 @@ def looks_like_an_ortho_pack(folder: Path) -> bool:
     ``Earth nav data`` with DSFs in it and the textures beside it (2026-09-23).
 
     Our own packs are left alone: they carry an ``orthostudio.toml`` and the library already
-    knows them.
+    knows them. So is Live's (its ``_live`` folder), linked as ``z_osxp_live`` in Custom
+    Scenery, now after Live's stops too: taken for Ortho4XP's, its 19,295 squares were imported
+    as tiles, hours of it (the review of 2026-11-13).
 
     What says "photo tiles" is the **name of the textures**: an orthophoto is
     ``<til_y>_<til_x>_<provider><zl>.dds``, as Ortho4XP writes it and as we do. A DSF and a
@@ -529,7 +531,11 @@ def looks_like_an_ortho_pack(folder: Path) -> bool:
     forest pack for 37 632 photo tiles, each a lat/lon its owner never built, with no way to undo
     them but deleting the library by hand (found in review, 2026-09-23).
     """
+    from orthostudio.live.pack import LINK_NAME, MARKER
+
     if (folder / OSXP_PACK_FILE).is_file():
+        return False
+    if folder.name == LINK_NAME or (folder / MARKER.parent).is_dir():  # Live's pack
         return False
     textures = folder / "textures"
     if not textures.is_dir():

@@ -258,17 +258,17 @@ class SceneryPacks:
         return None
 
     def is_mesh(self, entry: SceneryPackEntry) -> bool:
-        """A base mesh, which tiles and Live's line go right above: AutoOrtho's (by its name: a
-        mount), or a pack named as meshes are (:attr:`SceneryPackEntry.named_as_mesh`) whose
-        first DSF is ground (no ``sim/overlay 1``). A library (no DSF) or overlays so named is not
-        one: a library named ``z...`` above simHeaven X-World took Live's line above every
-        X-World pack, whose buildings Live's photos then hid (issue 24), and a first tile there
-        too. Its name decides when that DSF cannot be read (a disk unplugged), or when the list
-        was not read from X-Plane's folder."""
+        """A base mesh, which tiles and Live's line go right above: AutoOrtho's or XPME's (by
+        their names: mounts), or a pack named as meshes are
+        (:attr:`SceneryPackEntry.named_as_mesh`) whose first DSF is ground (no ``sim/overlay
+        1``). A library (no DSF) or overlays so named is not one: a library named ``z...`` above
+        simHeaven X-World took Live's line above every X-World pack, whose buildings Live's
+        photos then hid (issue 24), and a first tile there too. Its name decides when that DSF
+        cannot be read (a disk unplugged), or when the list was not read from X-Plane's folder."""
         from .dsf_head import dsf_properties
 
-        if entry.is_autoortho:
-            return True
+        if entry.is_autoortho or entry.name.startswith("XPME_"):
+            return True  # a mount, never read through: its streamer would answer
         if not entry.named_as_mesh:
             return False
         if self.root is None:
