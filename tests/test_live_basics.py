@@ -15,8 +15,6 @@ from orthostudio.live.filesystem import allocated
 from orthostudio.live.geo import parse_texture_name
 from orthostudio.live.rings import (
     file_top,
-    finest_for_quality,
-    finest_readable,
     ring_km,
     top_level_for,
     zoom_for,
@@ -49,11 +47,6 @@ class RingsTest(unittest.TestCase):
         self.assertEqual(top_level_for(5, 16, finest=-1), 0)  # 8192 px: the streamer's own rule
         self.assertEqual(top_level_for(10, 16, finest=-1), 0)
 
-    def test_settings(self):
-        self.assertEqual(finest_for_quality(5), 0)
-        self.assertEqual(finest_for_quality(4), 1)
-        self.assertEqual(finest_for_quality(None), 0)
-
     def test_zooms_as_autoortho_sizes_them(self):
         """getortho.py: below the mesh's zoom a smaller texture, one zoom above an 8192 px one."""
         self.assertEqual(file_top(16, 16), 0)  # 4096 px
@@ -64,13 +57,6 @@ class RingsTest(unittest.TestCase):
         self.assertEqual(file_top(18, 16), 2)
         self.assertEqual(zoom_for(18, 14, 19), 19)  # the mesh's ZL18 textures: its airports
         self.assertEqual(zoom_for(16, 14, 19), 14)
-        # X-Plane at Maximum reads a file's sharpest level; at High, the sharper of two readings
-        self.assertEqual(finest_readable(0, 0), 0)
-        self.assertEqual(finest_readable(-1, 0), -1)
-        self.assertEqual(finest_readable(2, 0), 2)
-        self.assertEqual(finest_readable(0, 1), 1)
-        self.assertEqual(finest_readable(-1, 1), 0)  # 4096 of 8192: one level down from the file
-        self.assertEqual(finest_readable(2, 1), 2)  # 1024 px: under High's 2048 already
 
 
 class RouteTest(unittest.TestCase):

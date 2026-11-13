@@ -238,9 +238,7 @@ class StreamerTest(unittest.TestCase):
         self.tmp.cleanup()
 
     def streamer(self, **kw):
-        return Streamer(
-            self.pack, self.cache, lambda on_piece: None, finest_quality=0, log=lambda _: None, **kw
-        )
+        return Streamer(self.pack, self.cache, lambda on_piece: None, log=lambda _: None, **kw)
 
     def test_textures_being_built_are_as_urgent_as_the_last_plan_says(self):
         """A texture taken for the camera stops counting as urgent once a plan elsewhere no longer
@@ -365,7 +363,7 @@ class StreamerTest(unittest.TestCase):
 
         name = f"{NAMES[0]}.dds"
         lines: list[str] = []
-        s = Streamer(self.pack, self.cache, lambda on_piece: None, finest_quality=0,
+        s = Streamer(self.pack, self.cache, lambda on_piece: None,
                      log=lines.append)  # fmt: skip
         s.built = {name: 4}
         s.seen = {name: 1.0}

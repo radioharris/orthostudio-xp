@@ -222,7 +222,6 @@ def test_the_streamer_counts_its_changes(tmp_path: Path) -> None:
         pack,
         ChunkCache(tmp_path / "c.sqlite"),
         FakeDownloader,
-        finest_quality=1,
         log=lambda _: None,
     )
     try:

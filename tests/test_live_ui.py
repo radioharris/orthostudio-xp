@@ -243,7 +243,7 @@ class FakeStream:
         if self.refuse:
             raise session.RefusedError(self.refuse)
         log("prepared")
-        return session.Prepared(Path("/X-Plane 12"), Path("/pack"), None, None, 0)
+        return session.Prepared(Path("/X-Plane 12"), Path("/pack"), None, None)
 
     def follow(
         self,
@@ -354,7 +354,7 @@ def test_a_stop_while_preparing_gives_the_plugins_port_back(
         gate = Gate(home, None, port=0)  # Live's real gate, on a free port
         gates.append(gate)
         c.stop()  # Stop pressed while the start is being prepared
-        return session.Prepared(Path("/X-Plane 12"), Path("/pack"), gate, None, 0)
+        return session.Prepared(Path("/X-Plane 12"), Path("/pack"), gate, None)
 
     c._prepare = prepare
     assert c.start()
@@ -526,7 +526,7 @@ def test_the_status_line_and_the_window_read_the_same_figures(tmp_path: Path) ->
     setup_region(make_source(tmp_path, tile=(45, 6), textures=names), pack, log=lambda _: None)
     cache = ChunkCache(tmp_path / "c.sqlite")
     try:
-        s = Streamer(pack, cache, lambda on_piece: None, finest_quality=0, log=lambda _: None)
+        s = Streamer(pack, cache, lambda on_piece: None, log=lambda _: None)
         s.built = {f"{names[0]}.dds": 0}
         s.done[0] = 1
         snap = s.snapshot()

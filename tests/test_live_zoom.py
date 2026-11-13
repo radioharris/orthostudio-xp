@@ -564,11 +564,11 @@ def row_streamer(tmp_path: Path, reach_km: float = 20.0, **kw) -> Streamer:
         pack,
         cache,
         FakeDownloader,
-        **{"finest_quality": 0, **kw},
         max_zoom=17,
         max_zoom_airports=18,
         reach_km=reach_km,
         log=quiet,
+        **kw,
     )
 
 
@@ -620,7 +620,6 @@ def test_a_start_builds_x_plane_s_4096_px_ring_at_the_default_zooms(tmp_path: Pa
         pack,
         cache,
         FakeDownloader,
-        finest_quality=0,
         max_zoom=16,
         max_zoom_airports=18,
         reach_km=0.0,
@@ -638,21 +637,13 @@ def test_a_start_builds_x_plane_s_4096_px_ring_at_the_default_zooms(tmp_path: Pa
 def test_in_flight_all_around_and_ahead(tmp_path: Path) -> None:
     """In flight: within 15 km of the path ahead, the aircraft and the camera, whatever the way it
     flies, nothing guessed of where it turns; urgent once X-Plane reads them (13.6 km). The path is
-    two minutes long: in a turn, five minutes swept 38 km of it all around the aircraft. Built
-    coarser than X-Plane reads it now, a texture ahead is urgent whatever its path's level: one 16
-    km ahead, queued for 4096 px and not urgent, was read at 2048 px 3 s after a texture quality
-    raised let X-Plane go, 2 s after Live wrote it (2026-11-13)."""
+    two minutes long: in a turn, five minutes swept 38 km of it all around the aircraft."""
     s = row_streamer(tmp_path)
-    for name in ROW:  # 4096 px, as X-Plane read them coming nearer
-        s.built[f"{name}.dds"] = 0
     east = s.plan(at(0, gs_ms=150.0, trk_deg=90.0), x_plane_there=False)
     assert sharp(east) == list(range(5))  # the path: 13.5 km ahead, 15.1 km around its end
     assert east[f"{ROW[1]}.dds"][0] <= 0  # 6.8 km: X-Plane reads it now
     assert east[f"{ROW[2]}.dds"][0] <= 0  # 13.57 km: within 13.6, read now too
-    assert east[f"{ROW[3]}.dds"][0] > 0  # 20.4 km: its 8192 px level not yet
-    s.built[f"{ROW[3]}.dds"] = 2  # 1024 px only (built at a lower texture quality)
-    east = s.plan(at(0, gs_ms=150.0, trk_deg=90.0), x_plane_there=False)
-    assert east[f"{ROW[3]}.dds"][0] <= 0  # X-Plane reads its 4096 px level there now
+    assert east[f"{ROW[3]}.dds"][0] > 0  # 20.4 km: not yet
     west = s.plan(at(0, gs_ms=150.0, trk_deg=270.0), x_plane_there=False)
     assert sharp(west) == [0, 1, 2]  # behind: those around the aircraft still
     s.cache.close()
@@ -768,36 +759,8 @@ def test_a_wider_image_reads_sharper_farther(tmp_path: Path) -> None:
         "km_4096": pytest.approx(28.8, abs=0.2),
     }
     s.save()  # remembered for the next start, before X-Plane says it again
-    again = Streamer(s.pack_dir, s.cache, FakeDownloader, finest_quality=0, max_zoom=17, log=quiet)
+    again = Streamer(s.pack_dir, s.cache, FakeDownloader, max_zoom=17, log=quiet)
     assert again.scale == pytest.approx(s.scale)
-    s.cache.close()
-
-
-def test_no_8192_px_below_maximum_texture_quality(tmp_path: Path) -> None:
-    """At High, X-Plane reads no 8192 px level: none gets its photos."""
-    s = row_streamer(tmp_path)
-    s.reads_8192.clear()  # as finest_quality=1 makes it
-    assert sharp(s.plan(at(0), x_plane_there=False, starting=True)) == []
-    s.cache.close()
-
-
-def test_the_texture_quality_x_plane_says_is_followed(tmp_path: Path) -> None:
-    """X-Plane's texture quality changed in flight, as its plugin reads it in X-Plane: the levels
-    built follow it, the 8192 px ones too, raised or lowered; not with a quality set in Live's
-    options. Read once at Live's start, a quality raised later left X-Plane reading levels never
-    built, green-grey under the aircraft all flight (a user, 2026-11-12)."""
-    s = row_streamer(tmp_path, finest_quality=1)  # High, as X-Plane's preferences said
-    assert s.reads_8192 == set()
-    assert sharp(s.plan(at(0), x_plane_there=False, starting=True)) == []
-    assert s.set_quality(5)  # Maximum: the 8192 px levels near
-    assert (s.finest_quality, s.reads_8192) == (0, {16})
-    assert sharp(s.plan(at(0), x_plane_there=False, starting=True)) == [0, 1, 2]
-    assert not s.set_quality(5)  # the same: nothing changes
-    assert s.set_quality(3)  # lower: none sharper than 1024 px of a 4096 px level
-    assert (s.finest_quality, s.reads_8192) == (2, set())
-    s.follow_quality = False  # a quality set in Live's options stands
-    assert not s.set_quality(5)
-    assert s.finest_quality == 2
     s.cache.close()
 
 
@@ -835,7 +798,7 @@ def test_a_start_waits_for_the_airport_s_whole_block(tmp_path: Path) -> None:
     block, other = block_names()
     pack = region(tmp_path, textures=(*block, other))
     cache = ChunkCache(tmp_path / "c.sqlite")
-    s = Streamer(pack, cache, FakeDownloader, finest_quality=0, log=quiet)
+    s = Streamer(pack, cache, FakeDownloader, log=quiet)
     start = Fix(*parse_texture_name(f"{block[5]}.dds").center)  # the block's second row and column
     corner = f"{block[15]}.dds"  # 4.8 km from the start: X-Plane reads its 2048 px level there
     jobs = s.plan(start, x_plane_there=False, starting=True)
@@ -871,7 +834,7 @@ def test_the_builder_copies_up_while_the_photos_do_not_come(tmp_path: Path) -> N
     path = pack / "textures" / name
     write_sparse(path, 0, levels_from(0, -1), base=ensure_neutral(pack, -1), file_top=-1)
     cache = ChunkCache(tmp_path / "c.sqlite")
-    s = Streamer(pack, cache, NoInternet, finest_quality=0, max_zoom=17, workers=2, log=quiet)
+    s = Streamer(pack, cache, NoInternet, max_zoom=17, workers=2, log=quiet)
     s.built[name] = 0
     s.plan(at(0, gs_ms=150.0, trk_deg=270.0), x_plane_there=False)
     s.start()
@@ -941,7 +904,6 @@ def test_the_photos_of_the_sharp_levels_are_not_kept(
         pack,
         cache,
         FakeDownloader,
-        finest_quality=0,
         max_zoom=max_zoom,
         max_zoom_airports=18,
         workers=2,
@@ -1159,7 +1121,6 @@ def test_the_streamer_builds_to_the_file_size(
         pack,
         cache,
         FakeDownloader,
-        finest_quality=0,
         max_zoom=max_zoom,
         max_zoom_airports=18,
         workers=2,

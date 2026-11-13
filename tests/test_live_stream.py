@@ -113,7 +113,7 @@ class RegionTest(unittest.TestCase):
             self.assertEqual(json.loads((pack / REGION_MARKER).read_text())["version"], 2)
             self.assertTrue(other.exists() and (pack / "terrain" / f"{NAMES[1]}.ter").exists())
             cache = ChunkCache(Path(tmp) / "c.sqlite")
-            s = Streamer(pack, cache, FakeDownloader, finest_quality=0, log=lambda _: None)
+            s = Streamer(pack, cache, FakeDownloader, log=lambda _: None)
             self.assertIsNone(s.names)  # nothing made nor taken away: every file is there
             self.assertEqual(len(s.index), 2)
             cache.close()
@@ -151,7 +151,6 @@ class NoticeTest(unittest.TestCase):
                 pack,
                 ChunkCache(root / "c.sqlite"),
                 FakeDownloader,
-                finest_quality=1,
                 workers=1,
                 log=lambda _: None,
                 installed_regions=lambda: installed,
@@ -222,7 +221,6 @@ class CrashTest(unittest.TestCase):
                 pack,
                 ChunkCache(root / "c.sqlite"),
                 BrokenDownloader,
-                finest_quality=1,
                 workers=1,
                 log=logged.append,
             )
@@ -256,7 +254,6 @@ class StreamerTest(unittest.TestCase):
                 pack,
                 ChunkCache(root / "c.sqlite"),
                 FakeDownloader,
-                finest_quality=1,
                 workers=2,
                 xplane=xp,
                 log=lambda _: None,
@@ -264,7 +261,7 @@ class StreamerTest(unittest.TestCase):
             lat, lon = parse_texture_name(f"{NAMES[0]}.dds").center
             jobs = s.plan(Fix(lat, lon))
             self.assertEqual(
-                {n: lv for n, (_, lv) in jobs.items()}, {f"{NAMES[0]}.dds": 1, f"{NAMES[1]}.dds": 1}
+                {n: lv for n, (_, lv) in jobs.items()}, {f"{NAMES[0]}.dds": 0, f"{NAMES[1]}.dds": 0}
             )
             self.assertTrue(s.read_early)
             s.start()
@@ -273,10 +270,10 @@ class StreamerTest(unittest.TestCase):
                 time.sleep(0.1)
             s.close()
             s.cache.close()
-            self.assertEqual(s.built, {f"{NAMES[0]}.dds": 1, f"{NAMES[1]}.dds": 1})
+            self.assertEqual(s.built, {f"{NAMES[0]}.dds": 0, f"{NAMES[1]}.dds": 0})
             self.assertEqual(xp.commands, [])  # no reload: X-Plane's keeps what it holds
             path = pack / "textures" / f"{NAMES[0]}.dds"
-            self.assertGreater(allocated(path), 2_000_000)  # 2048 px written
+            self.assertGreater(allocated(path), 8_000_000)  # 4096 px written
             self.assertEqual(
                 json.loads((pack / "_live" / "ortho.json").read_text())["textures"], s.built
             )
@@ -293,7 +290,7 @@ class NoHeadOfLineTest(unittest.TestCase):
             pack = root / "stream_pack"
             setup_region(make_source(root, tile=(45, 6), textures=NAMES), pack, log=lambda _: None)
             slow_tex, _fast_tex = (parse_texture_name(f"{n}.dds") for n in NAMES)
-            slow_piece = piece_keys(slow_tex, 1)[0]
+            slow_piece = piece_keys(slow_tex, 0)[0]
             made = []
 
             def factory(on_piece):
@@ -305,7 +302,6 @@ class NoHeadOfLineTest(unittest.TestCase):
                 pack,
                 ChunkCache(root / "c.sqlite"),
                 factory,
-                finest_quality=1,
                 workers=2,
                 log=lambda _: None,
             )
@@ -354,7 +350,6 @@ class MissingPieceTest(unittest.TestCase):
             pack,
             ChunkCache(root / "c.sqlite"),
             factory,
-            finest_quality=1,
             workers=2,
             log=lambda _: None,
         )
@@ -376,7 +371,7 @@ class MissingPieceTest(unittest.TestCase):
         from orthostudio.live import streamer as streamer_module
 
         tex = parse_texture_name(f"{NAMES[0]}.dds")
-        stuck = piece_keys(tex, 1)[0]
+        stuck = piece_keys(tex, 0)[0]
         name = f"{NAMES[0]}.dds"
         released = threading.Event()
         with (
@@ -399,7 +394,7 @@ class MissingPieceTest(unittest.TestCase):
                 released.set()  # the piece comes, into the cache
                 self.assertTrue(self.wait(lambda: s.patchy[name][0] <= time.time()))
                 again = s.plan(Fix(*tex.center), x_plane_there=False)
-                self.assertEqual(again[name], (1.0, 1))  # the same level, never waited for
+                self.assertEqual(again[name], (1.0, 0))  # the same level, never waited for
                 self.assertTrue(self.wait(lambda: name not in s.patchy))
             finally:
                 released.set()
@@ -414,7 +409,7 @@ class MissingPieceTest(unittest.TestCase):
         from orthostudio.live import streamer as streamer_module
 
         tex = parse_texture_name(f"{NAMES[0]}.dds")
-        failing = piece_keys(tex, 1)[0]
+        failing = piece_keys(tex, 0)[0]
         name = f"{NAMES[0]}.dds"
         made = []
 

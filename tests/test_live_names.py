@@ -428,7 +428,6 @@ def streamer(tmp_path: Path) -> Streamer:
         pack,
         ChunkCache(tmp_path / "c.sqlite"),
         FakeDownloader,
-        finest_quality=0,
         log=quiet,
     )
 

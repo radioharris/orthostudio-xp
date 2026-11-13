@@ -101,7 +101,6 @@ def test_the_route_after_a_turn_is_prepared(
         pack,
         ChunkCache(tmp_path / "c.sqlite"),
         FakeDownloader,
-        finest_quality=0,
         max_zoom=17,
         reach_km=0.0,
         log=lambda _: None,

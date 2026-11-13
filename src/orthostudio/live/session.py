@@ -45,7 +45,6 @@ from orthostudio.live.scenery import (
     osxp_regions,
     uninstall_link,
     unlist_live,
-    xplane_pref,
     xplane_running,
 )
 
@@ -74,7 +73,6 @@ class Options:
     pack: Path | None = None  # None: <data folder>/live/pack
     start: str | None = None  # an airport (or lat,lon) to build around straight away
     provider: str = "BI"
-    quality: str = "auto"  # X-Plane's texture quality: auto (from its preferences), maximum, high
     max_zoom: int = 16
     max_zoom_airports: int = 18
     simbrief_user: str = ""  # whose last SimBrief plan the path ahead follows; empty: none
@@ -129,7 +127,6 @@ class Prepared:
     pack: Path
     gate: Any  # orthostudio.live.gate.Gate, or None: X-Plane will not wait
     fix: Any  # orthostudio.live.streamer.Fix to build around at once, or None
-    finest: int  # the sharpest level X-Plane reads (0: 4096 px)
     # {(lat, lon): pack}: squares whose ground X-Plane takes from the user's own tiles
     covered: dict = field(default_factory=dict)
     sources: list = field(default_factory=list)  # the regions the pack is made of
@@ -173,15 +170,6 @@ def relayout_due(options: Options) -> bool:
         Zooms(options.max_zoom, options.max_zoom_airports),
         LAYOUT_FIXED,
     )
-
-
-def finest_quality(xplane: Path, quality: str) -> int:
-    from orthostudio.live.rings import finest_for_quality
-
-    if quality == "auto":
-        value = xplane_pref(xplane, "_tex_res")
-        return finest_for_quality(int(value) if value and value.isdigit() else None)
-    return {"maximum": 0, "high": 1}[quality]
 
 
 def imagery_bytes() -> int:
@@ -393,13 +381,14 @@ def prepare(options: Options, log: Log) -> Prepared:
             if not plugin.uninstall(xp_dir):
                 log("an earlier X-Plane plugin of Live's could not be taken out of X-Plane")
         clock.done("plugin")
-        finest = finest_quality(xp_dir, options.quality)
+        # every level of the zoom chosen, whatever X-Plane's texture quality: at High X-Plane shows
+        # each texture one size smaller, which the pilot's photos then make the sharpest it can be
+        # (the user, 2026-11-13: « on télécharge ce que l'utilisateur choisi 16/18 ou 17/19 »)
         log(
-            f"X-Plane texture quality: a 4096 px texture read up to {4096 >> finest} px; "
+            "X-Plane texture quality: not read, Live builds every level of the zoom chosen; "
             f"sharp up to {options.camera_reach_km:.0f} km farther for external views"
         )
-        clock.done("texture quality")
-        return Prepared(xp_dir, pack_dir, gate, fix, finest, covered, list(sources), clock)
+        return Prepared(xp_dir, pack_dir, gate, fix, covered, list(sources), clock)
     except BaseException:
         # a start that ends here unchecks the line it checked, as a stop does: left checked, it
         # would lose its place at X-Plane's next start; one checked before it (another Live, or
@@ -572,7 +561,6 @@ def follow(
                     prepared.pack,
                     cache,
                     lambda on_piece: Downloader(options.provider, on_piece, log=log),
-                    prepared.finest,
                     options.max_zoom,
                     options.max_zoom_airports,
                     options.margin,
@@ -595,8 +583,6 @@ def follow(
                         p.name.removeprefix("z_osxp_") for p in osxp_regions(live_root())
                     },
                     region_lists=aoregions.lists_dir(live_root()),
-                    # X-Plane's texture quality as the plugin reads it in flight, unless set here
-                    follow_quality=options.quality == "auto",
                     # as the pack's terrain files name them, made only when the settings say so:
                     # turned off while X-Plane ran, those made before were neither counted nor
                     # followed (the review of 2026-11-11)

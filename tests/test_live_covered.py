@@ -183,7 +183,6 @@ def test_live_leaves_the_users_squares_alone(tmp_path: Path) -> None:
         pack,
         ChunkCache(tmp_path / "c.sqlite"),
         FakeDownloader,
-        finest_quality=0,
         log=lambda _: None,
         covered={square},
     )

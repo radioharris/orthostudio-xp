@@ -133,13 +133,6 @@ def stream(
         str | None,
         typer.Option(help="imagery source, a code of OrthoStudio XP's (default: BI, Bing Maps)"),
     ] = None,
-    quality: Annotated[
-        str,
-        typer.Option(
-            help="X-Plane's texture quality: auto (read from its preferences), maximum or high "
-            "(less than X-Plane reads shows the neutral colour, green-grey, up close)"
-        ),
-    ] = "auto",
     max_zoom: Annotated[
         int | None,
         typer.Option(
@@ -239,7 +232,6 @@ def stream(
         pack=pack,
         start=start,
         provider=provider or saved.provider,
-        quality=quality,
         max_zoom=saved.max_zoom if max_zoom is None else max_zoom,
         max_zoom_airports=(
             saved.max_zoom_airports if max_zoom_airports is None else max_zoom_airports

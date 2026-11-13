@@ -569,32 +569,6 @@ class NightWorkTest(unittest.TestCase):
         self.turn()
         self.assertEqual(self.pools[-1].size, nightwork_team_max())
 
-    def test_a_texture_quality_raised_in_flight_waits_for_their_nights(self):
-        """X-Plane held in flight for its texture quality raised (streamer.Sharpening): it reads
-        again the night textures of the textures it reads sharper, so it waits for those made from
-        the sharper level, by the team, as a start does; none other, nor by day."""
-        built = {self.near: 1, self.far: 4, self.paris: 6}
-        self.work.tick((43.70, 7.25), (314, 20.0), lambda: built)  # night in flight
-        self.turn()
-        self.pools[0].finish()
-        self.turn()
-        self.assertEqual(self.work.left_of([self.near]), 0)  # made at 2048 px
-        self.work.rush = True  # X-Plane held: the near one built sharper, its night wanted so
-        self.work.built(self.near, 0)
-        self.work.built(self.paris, 4)  # farther, not what X-Plane waits for
-        self.assertEqual(self.work.left_of([self.near]), 1)
-        self.turn()
-        self.assertEqual(self.pools[-1].size, nightwork_team_max())
-        self.pools[-1].finish()
-        self.turn()
-        self.assertEqual(self.work.left_of([self.near]), 0)
-        self.work.rush = False
-        self.turn()
-        self.assertEqual(self.pools[-1].size, 1)  # one process again once X-Plane goes on
-        self.work.night = False  # by day, nothing to wait for
-        self.work.want(self.near, -1)
-        self.assertEqual(self.work.left_of([self.near]), 0)
-
     def test_a_start_by_day_then_dusk_in_flight_one_process(self):
         at_night(self.prefs, hours=11.0)
         self.work.start(43.70, 7.25, lambda: {self.near: 0})
@@ -981,30 +955,6 @@ class StartBarTest(unittest.TestCase):
         day.left, night.left = 0, 250
         shown = start_count(s, a, 1.0, fresh=True)
         self.assertEqual((shown["left"], shown["night"], shown["progress"]), (250, 250, 0.75))
-
-    def test_what_a_quality_raised_in_flight_waits_for(self):
-        """X-Plane held for its texture quality raised: the textures it reads sharper now, then
-        the night ones of every one of them, made from the sharper level, its bar as a start's."""
-        from types import SimpleNamespace
-
-        from orthostudio.live.streamer import Sharpening, sharpen_count
-
-        urgent = {"a.dds": 0, "b.dds": 0}
-        nights: set[str] = set()
-        night = SimpleNamespace(night=True, left_of=lambda names: len(nights & set(names)))
-        s = SimpleNamespace(night=night, _urgent=lambda: dict(urgent), urgent_building=lambda: 1)
-        w = Sharpening(5, 0.0, 0.0)
-        shown = sharpen_count(s, w)
-        self.assertEqual((shown["left"], shown["building"], shown["progress"]), (2, 1, 0.0))
-        del urgent["a.dds"]  # built at 4096 px: its night wanted from it
-        nights.add("a.dds")
-        shown = sharpen_count(s, w)
-        self.assertEqual((shown["left"], shown["night"]), (2, 1))
-        urgent.clear()
-        nights.clear()
-        shown = sharpen_count(s, w)
-        self.assertEqual((shown["left"], shown["progress"]), (0, 1.0))
-        self.assertEqual(w.names, {"a.dds", "b.dds"})
 
 
 class NightWordsTest(unittest.TestCase):

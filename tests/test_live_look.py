@@ -256,7 +256,6 @@ def streamer(pack: Path, cache: ChunkCache, season: str, logs: list[str] | None 
         pack,
         cache,
         FakeDownloader,
-        finest_quality=0,
         workers=2,
         reach_km=0.0,
         log=(logs.append if logs is not None else quiet),

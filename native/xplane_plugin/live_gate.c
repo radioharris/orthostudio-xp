@@ -49,16 +49,6 @@
  * 8192 px textures built after a start, until a test showed that X-Plane's reload does not read
  * again the textures it holds (2026-09-27).
  *
- * X-Plane's texture quality sets how sharp the levels it reads are, and the streamer builds no
- * sharper ones. The plugin reads it in X-Plane (QUALITY_REF) and tells the streamer: before each
- * hold at a start ("LIVE1 QUALITY 5"), and every second in flight, with the ask. X-Plane applies a
- * new quality at once, at "Resume flight", and reads again the textures round the aircraft
- * whose sharper levels it now reads, 3 to 6 s later. So when the quality rises in flight, the
- * plugin holds X-Plane there and then, with the same window and the same ways to let it go as at
- * a start, until the streamer has built those sharper levels, their night textures too ("LIVE1
- * SHARPEN lat lon 5"): held, X-Plane reads nothing, and reads them once let go (2026-11-13). A
- * lower quality holds nothing: X-Plane reads less sharp levels, which are there.
- *
  * On a Mac, orthostudio/live/plugin.py builds it with clang; the Windows and Linux plugins are built
  * ahead (tools/live/plugin_builds.py) and kept with the sources. It declares the few XPLM functions
  * it uses itself, so the SDK is not needed: X-Plane gives them to the plugin as it loads it on
@@ -131,10 +121,6 @@ extern void XPLMEnableFeature(const char *inFeature, int inEnable);
 #define ALONE_S 0.5 /* at X-Plane's start: how long a streamer may take to answer that it is there */
 #endif
 #define NOTE_EVERY_S 1.0f /* in flight: whether the streamer has a notice */
-/* X-Plane's texture quality, 0 to 5 (Maximum): a private dataref of X-Plane's, the setting's own,
-   not there yet when the plugin starts (X-Plane 12.4.3, 2026-11-13) */
-#define QUALITY_REF "sim/private/controls/reno/tex_res"
-#define QUALITY_LOOK_S 1.0 /* while it is not there: looked for again this often */
 
 /* The loading window and the notice (live_panel.m, live_panel_win.c, live_panel_x11.c). */
 void live_panel_show(const char *what, const char *progress, double fraction);
@@ -182,10 +168,6 @@ static XPLMDataRef utc_ref; /* ... and its UTC time, in seconds */
 static int noted = 0, closed_note = 0; /* the notice shown (its id), and the last one closed */
 static int french = 0; /* the Live window's language, which each answer says: its words in X-Plane */
 static char note[160]; /* its words */
-static XPLMDataRef quality_ref; /* X-Plane's texture quality, once found (texture_quality) */
-static double quality_looked = -1.0; /* when it was last looked for */
-static int quality = -1; /* the quality last told to the streamer; -1: none read yet */
-static int quality_missing_said = 0;
 
 static double now(void) {
 #ifdef _WIN32
@@ -369,70 +351,48 @@ static void tell_start(void) {
     send_line(sock, line);
 }
 
-/* X-Plane's texture quality now, or -1 while its dataref is not there (looked for again every
-   QUALITY_LOOK_S: an X-Plane without it leaves the streamer with X-Plane's preferences). */
-static int texture_quality(void) {
-    if (!quality_ref) {
-        double t = now();
-        if (quality_looked >= 0.0 && t - quality_looked < QUALITY_LOOK_S) return -1;
-        quality_looked = t;
-        quality_ref = XPLMFindDataRef(QUALITY_REF);
-        if (!quality_ref) return -1;
-    }
-    return XPLMGetDatai(quality_ref);
-}
-
-static void tell_quality(void) {
-    char line[48];
-    if (sock == NO_SOCKET || quality < 0) return;
-    snprintf(line, sizeof line, "LIVE1 QUALITY %d", quality);
-    send_line(sock, line);
-}
-
 /* One line: the textures left, then the download rate, or once every photo they wait for is in
    (all of them being built: b= reaches n=), that instead of a rate of 0.0, which read as stuck
-   while the count went down (the user's Shadow, 2026-10-11). `sharper`: X-Plane held for its
-   texture quality raised in flight (sharpen), not at a start: its own first line, and no place. */
-static void show(const struct state *st, int sharper) {
+   while the count went down (the user's Shadow, 2026-10-11). */
+static void show(const struct state *st) {
     char what[200], progress[120];
     int photos_in = st->left > 0 && st->building >= st->left;
     int nights_only = st->night > 0 && st->night >= st->left; /* the photos built: the night left */
-    if (sharper && french)
-        snprintf(what, sizeof what, "Qualité relevée : textures plus nettes autour de l'avion");
-    else if (sharper)
-        snprintf(what, sizeof what, "Quality raised: sharper textures around the aircraft");
-    else if (french)
-        snprintf(what, sizeof what, "Chargement de l'ortho autour de %s", st->where);
-    else
-        snprintf(what, sizeof what, "Loading the ortho around %s", st->where);
     if (french && nights_only) {
+        snprintf(what, sizeof what, "Chargement de l'ortho autour de %s", st->where);
         snprintf(progress, sizeof progress, "%d textures de nuit à construire  -  %d s", st->left,
                  st->secs);
     } else if (nights_only) {
+        snprintf(what, sizeof what, "Loading the ortho around %s", st->where);
         snprintf(progress, sizeof progress, "%d night textures to build  -  %d s", st->left,
                  st->secs);
     } else if (french) {
         char rate[48], *dot;
         snprintf(rate, sizeof rate, "%.1f Mo/s", st->mbs);
         if ((dot = strchr(rate, '.')) != NULL) *dot = ','; /* 15,2 Mo/s */
+        snprintf(what, sizeof what, "Chargement de l'ortho autour de %s", st->where);
         snprintf(progress, sizeof progress, "%d textures à construire  -  %s  -  %d s", st->left,
                  photos_in ? "photos reçues, construction en cours" : rate, st->secs);
     } else {
         char rate[48];
         snprintf(rate, sizeof rate, "%.1f MB/s", st->mbs);
+        snprintf(what, sizeof what, "Loading the ortho around %s", st->where);
         snprintf(progress, sizeof progress, "%d textures to build  -  %s  -  %d s", st->left,
                  photos_in ? "every photo in, building" : rate, st->secs);
     }
     live_panel_show(what, progress, st->permille / 1000.0);
 }
 
-/* X-Plane held, asking `line` every ASK_EVERY_S, until the streamer says go, or stops, or never
-   answers: at a start (`at`, the message it holds at), or for the texture quality raised in
-   flight to `sharper` (`at` NULL). */
-static void hold_until_built(const char *line, const char *at, int sharper, double lat, double lon) {
+static void hold(const char *at) {
+    char line[96];
     struct state st = {-1, 0, 0, 0, 0.0, "", 0};
-    double start, answered = 0, t;
+    double lat, lon, start, answered = 0, t;
     int told = 0, r;
+    if (sock == NO_SOCKET || !position(&lat, &lon)) return;
+    /* the date too: the streamer gives the photos its season (a start's, never in flight), and
+       the UTC time, whether it is night there (the local time X-Plane saves is its zone's) */
+    snprintf(line, sizeof line, "LIVE1 HOLD %.6f %.6f aircraft day=%d utc=%.0f", lat, lon,
+             day_ref ? XPLMGetDatai(day_ref) : -1, utc_ref ? XPLMGetDataf(utc_ref) : -1.0);
     snprintf(st.where, sizeof st.where, "%.3f %.3f", lat, lon);
     start = now();
     holding = 1;
@@ -444,10 +404,7 @@ static void hold_until_built(const char *line, const char *at, int sharper, doub
         t = now();
         if (r == 1) {
             if (told) {
-                if (at)
-                    say("the ortho is built after %.0f s: X-Plane goes on", t - start);
-                else
-                    say("the sharper textures are built after %.0f s: X-Plane goes on", t - start);
+                say("the ortho is built after %.0f s: X-Plane goes on", t - start);
                 live_panel_hide();
             }
             holding = 0;
@@ -459,13 +416,11 @@ static void hold_until_built(const char *line, const char *at, int sharper, doub
         }
         if (r == 0) {
             answered = t;
-            if (!told && at)
+            if (!told) {
                 say("X-Plane waits at %s until the ortho around %s is built (%d textures to go)", at, st.where, st.left);
-            else if (!told)
-                say("X-Plane's texture quality rose to %d: X-Plane waits until the sharper textures around %s are "
-                    "built (%d textures to go)", sharper, st.where, st.left);
-            told = 1;
-            show(&st, !at);
+                told = 1;
+            }
+            show(&st);
             if (t - asked < ASK_EVERY_S) pause_for(ASK_EVERY_S - (t - asked));
         }
         if (answered == 0 && t - start > NO_STREAMER_S) break;
@@ -478,42 +433,15 @@ static void hold_until_built(const char *line, const char *at, int sharper, doub
     holding = 0;
 }
 
-/* At a start: X-Plane's texture quality told first, which the streamer builds the start for. */
-static void hold(const char *at) {
-    char line[96];
-    double lat, lon;
-    int q;
-    if (sock == NO_SOCKET || !position(&lat, &lon)) return;
-    if ((q = texture_quality()) >= 0) quality = q;
-    tell_quality();
-    /* the date too: the streamer gives the photos its season (a start's, never in flight), and
-       the UTC time, whether it is night there (the local time X-Plane saves is its zone's) */
-    snprintf(line, sizeof line, "LIVE1 HOLD %.6f %.6f aircraft day=%d utc=%.0f", lat, lon,
-             day_ref ? XPLMGetDatai(day_ref) : -1, utc_ref ? XPLMGetDataf(utc_ref) : -1.0);
-    hold_until_built(line, at, 0, lat, lon);
-}
-
-/* In flight, X-Plane's texture quality raised to `q`: X-Plane held where it is, before it reads the
-   sharper levels round the aircraft (3 to 6 s after "Resume flight"). */
-static void sharpen(int q) {
-    char line[96];
-    double lat, lon;
-    if (sock == NO_SOCKET || !position(&lat, &lon)) return;
-    snprintf(line, sizeof line, "LIVE1 SHARPEN %.6f %.6f %d", lat, lon, q);
-    hold_until_built(line, NULL, q, lat, lon);
-}
-
 #define FRAME_GAP_S 5.0 /* longer between two frames: X-Plane loaded or was held, no stutter */
 static double frame_last = 0.0, frame_max = 0.0; /* the longest frame of the second */
 static int frames = 0;
 
 /* Every frame (it returns -1): the time since the one before, the longest of each second kept for
    the ask, which tells the streamer: X-Plane's stutters, next to what Live was doing (a user saw
-   some while Live built, 2026-09-28). And X-Plane's texture quality: a new one told, and X-Plane
-   held right there when it rose in a flight (sharpen). */
+   some while Live built, 2026-09-28). */
 static float every_frame(float since_call, float since_loop, int counter, void *refcon) {
     double t = now(), gap = frame_last > 0.0 ? t - frame_last : 0.0;
-    int q;
     (void)since_call;
     (void)since_loop;
     (void)counter;
@@ -523,22 +451,12 @@ static float every_frame(float since_call, float since_loop, int counter, void *
         if (gap > frame_max) frame_max = gap;
         frames++;
     }
-    if (!holding && sock != NO_SOCKET && (q = texture_quality()) >= 0 && q != quality) {
-        int rose = quality >= 0 && q > quality && flights > 0; /* the first reading: as it is */
-        quality = q;
-        tell_quality();
-        if (rose) {
-            sharpen(q);
-            frame_last = now(); /* the hold is no frame of X-Plane's */
-        }
-    }
     return -1.0f;
 }
 
 /* Every second of a flight: whether the streamer has a notice ("LIVE1 NOTE id text"), and whether
    its cross was clicked. The answers to the last ask are read without waiting. The ask says the
-   second's frames: "LIVE1 ASK max=123 n=45 q=5", the longest in ms, how many, and X-Plane's texture
-   quality (none while it cannot be read). */
+   second's frames: "LIVE1 ASK max=123 n=45", the longest in ms and how many. */
 static float every_second(float since_call, float since_loop, int counter, void *refcon) {
     char buf[256];
     long n;
@@ -566,16 +484,7 @@ static float every_second(float since_call, float since_loop, int counter, void 
         live_note_show(note, french);
     else
         live_note_hide();
-    if (!quality_ref && quality_looked >= 0.0 && !quality_missing_said) {
-        say("X-Plane's texture quality cannot be read (" QUALITY_REF "): Live goes by X-Plane's "
-            "preferences as it started");
-        quality_missing_said = 1;
-    }
-    if (quality >= 0) /* X-Plane's texture quality too: a lower one, or a streamer started since */
-        snprintf(buf, sizeof buf, "LIVE1 ASK max=%d n=%d q=%d", (int)(frame_max * 1000.0 + 0.5), frames,
-                 quality);
-    else
-        snprintf(buf, sizeof buf, "LIVE1 ASK max=%d n=%d", (int)(frame_max * 1000.0 + 0.5), frames);
+    snprintf(buf, sizeof buf, "LIVE1 ASK max=%d n=%d", (int)(frame_max * 1000.0 + 0.5), frames);
     frame_max = 0.0;
     frames = 0;
     send_line(sock, buf);
@@ -691,8 +600,7 @@ static void take_out_if_alone(void) {
 PLUGIN_API int XPluginStart(char *outName, char *outSig, char *outDesc) {
     strcpy(outName, "OrthoStudio XP Live");
     strcpy(outSig, "orthostudio.live");
-    strcpy(outDesc, "Makes X-Plane wait until OrthoStudio XP Live has built the ortho it reads: while a flight loads, "
-                    "and when its texture quality rises in flight.");
+    strcpy(outDesc, "Makes X-Plane wait, while a flight loads, until OrthoStudio XP Live has built the ortho around the start.");
     lat_ref = XPLMFindDataRef("sim/flightmodel/position/latitude");
     lon_ref = XPLMFindDataRef("sim/flightmodel/position/longitude");
     day_ref = XPLMFindDataRef("sim/time/local_date_days");

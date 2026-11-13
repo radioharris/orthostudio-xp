@@ -136,9 +136,8 @@ Its guide, with what you get, the measured build times and the comparison with O
 OrthoStudio XP Live, from 2.0, works as XPME and AutoOrtho do from the pilot's seat, with
 no virtual disk between X-Plane and its textures: it builds them beside X-Plane as ordinary files.
 
-- **X-Plane never waits in flight.** It waits only on its loading screen at a flight's start (with
-  "Prepare my departure before starting the flight", not even there), and a moment when you raise
-  its texture quality in flight, while the sharper ground around the aircraft is built.
+- **X-Plane never waits in flight.** It waits only on its loading screen at a flight's start; with
+  "Prepare my departure before starting the flight", not even there.
 - **If Live stops, X-Plane flies on** over what is on the disk.
 - **Measured on the same flight**: the ground ready about twice as fast as with XPME and five times
   as fast as with AutoOrtho, for a third of a processor core.

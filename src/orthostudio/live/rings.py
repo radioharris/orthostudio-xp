@@ -76,17 +76,6 @@ def top_level_for(
     return LOAD_LEVEL
 
 
-def finest_for_quality(tex_res: int | None) -> int:
-    """The sharpest level X-Plane reads at its texture quality preference (``_tex_res``).
-
-    Measured: 5 (Maximum) reads level 0, 4 stops at level 1. Each notch below is assumed to drop one
-    more level. Unknown: level 0, which builds the most and is never wrong.
-    """
-    if tex_res is None:
-        return 0
-    return max(0, min(LOAD_LEVEL, 5 - tex_res))
-
-
 def zoom_for(zoom: int, max_zoom: int, max_zoom_airports: int) -> int:
     """The zoom set for a texture of ``zoom``: AutoOrtho's rule (getortho.py
     ``_get_target_zoom_level``), the one near airports for the mesh's ZL18 textures, which are its
@@ -99,11 +88,3 @@ def file_top(zoom: int, max_zoom: int) -> int:
     imagery at ``zoom - k``. As AutoOrtho sizes it, below the mesh's zoom it is a smaller texture
     (level 1: 2048 px) and above it an 8192 px one, one zoom above at most (level -1)."""
     return max(MIN_LEVEL, min(LOAD_LEVEL, zoom - max_zoom))
-
-
-def finest_readable(top: int, quality: int) -> int:
-    """The sharpest level X-Plane reads of a texture whose sharpest is ``top``, at its texture
-    quality (:func:`finest_for_quality`, 0 at Maximum). Whether the quality drops levels from the
-    file's own size or from 4096 px was not measured: the sharper of the two is built, so that
-    nothing X-Plane reads is left neutral."""
-    return min(top + quality, max(top, quality))

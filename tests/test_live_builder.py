@@ -37,7 +37,6 @@ def flying_short_of_memory(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> S
         pack,
         ChunkCache(tmp_path / "c.sqlite"),
         FakeDownloader,
-        finest_quality=0,
         workers=2,
         flight_encodes=1,
         log=lambda _: None,
