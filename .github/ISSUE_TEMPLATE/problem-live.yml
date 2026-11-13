@@ -1,0 +1,79 @@
+name: A problem with Live
+description: Something went wrong while flying with OrthoStudio XP Live, the ortho streamed in flight
+labels: ["bug", "live"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting it. This form is for **Live**, the ortho streamed while you fly. For a problem with tiles built in advance, go back and choose "A problem with Build".
+
+        What helps most to find the cause: what you did, what you saw, where and when in the flight, a screenshot, and Live's log of that flight, `LogLive.txt`.
+  - type: input
+    id: version
+    attributes:
+      label: Version of OrthoStudio XP
+      description: At the top left of its page, next to its name.
+      placeholder: "2.1.0"
+    validations:
+      required: true
+  - type: input
+    id: xplane
+    attributes:
+      label: Version of X-Plane
+      placeholder: "12.4.3"
+  - type: dropdown
+    id: system
+    attributes:
+      label: System
+      options:
+        - macOS (Apple Silicon)
+        - macOS (Intel)
+        - Windows
+        - Linux
+    validations:
+      required: true
+  - type: input
+    id: system-version
+    attributes:
+      label: Version of the system
+      placeholder: "macOS 15.6, Windows 11 25H2, Ubuntu 24.04"
+  - type: textarea
+    id: did
+    attributes:
+      label: What you did
+      placeholder: "Started Live, then a flight at LFMN runway 04R, and flew to LFLL at FL100."
+    validations:
+      required: true
+  - type: textarea
+    id: saw
+    attributes:
+      label: What you saw
+      description: And what you expected instead. For an error, its text as Live's tab shows it.
+    validations:
+      required: true
+  - type: textarea
+    id: where
+    attributes:
+      label: Where and when
+      description: The airport or the position (latitude, longitude), and the time on your computer's clock when it happened, to find it in the log.
+      placeholder: "Near LFLY, about 21:40."
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots
+      description: Of X-Plane where it happened, and of Live's tab if it says something. Drop the images here.
+  - type: textarea
+    id: settings
+    attributes:
+      label: Live's settings
+      description: The photo source, the zoom (16/18, 16/19 or 17/19), the night lights, the disk space.
+  - type: textarea
+    id: log
+    attributes:
+      label: Logs
+      description: |
+        Drop Live's log of that flight here, `LogLive.txt`. It is at the top of your X-Plane folder, beside X-Plane's own `Log.txt`; the button beside the log in Live's tab shows it in the Finder (File Explorer on Windows).
+        Live writes it again each time OrthoStudio XP opens. If you opened OrthoStudio XP again since that flight, its log is in the `log` folder of Live's folder, named `LogLive` with the date and time OrthoStudio XP opened (the last ten are kept). Live's folder is `~/.orthostudio/live` on macOS and Linux, `%USERPROFILE%\.orthostudio\live` on Windows, unless you chose another in Live's Settings.
+        X-Plane's own `Log.txt` of that flight helps too: X-Plane writes it again each time it starts.
+    validations:
+      required: true

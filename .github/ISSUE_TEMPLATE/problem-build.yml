@@ -1,11 +1,13 @@
-name: A problem
-description: Something OrthoStudio XP did wrong, or a defect in a tile it built
-labels: ["bug"]
+name: A problem with Build
+description: Something went wrong while building tiles, or a defect in a tile OrthoStudio XP built
+labels: ["bug", "build"]
 body:
   - type: markdown
     attributes:
       value: |
-        Thank you for reporting it. What helps most to find the cause: what you did, what you saw, the tile, a screenshot, and the log `serve.log`.
+        Thank you for reporting it. This form is for **Build**, the tiles made in advance. For a problem while flying with **Live**, the ortho streamed in flight, go back and choose "A problem with Live".
+
+        What helps most to find the cause: what you did, what you saw, the tile, a screenshot, and the log `serve.log`.
   - type: input
     id: version
     attributes:
