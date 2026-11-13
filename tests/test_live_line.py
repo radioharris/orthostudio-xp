@@ -217,3 +217,8 @@ def test_x_plane_s_texture_quality_for_the_window(tmp_path: Path) -> None:
     assert xplane_texture_quality(tmp_path) == 3  # High
     prf.write_text("_tex_res 5\nrenopt_tex_res_04 3\n")
     assert xplane_texture_quality(tmp_path) == 3  # the line X-Plane reads wins
+    prf.write_text("renopt_tex_res_04 4\n")
+    assert xplane_texture_quality(tmp_path) == 4  # Maximum
+    prf.unlink()
+    prf.mkdir()  # a file that cannot be read: no note, and no error for the window's checks
+    assert xplane_texture_quality(tmp_path) is None

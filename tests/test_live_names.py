@@ -416,7 +416,7 @@ def test_the_streamer_keeps_the_regions_lists_and_says_how_long_it_took(tmp_path
     pack = region(tmp_path)
     cache, lists = ChunkCache(tmp_path / "c.sqlite"), tmp_path / "lists"
     for said in ("z_ao_test listed from its folder", "read from their lists"):
-        s = Streamer(pack, cache, FakeDownloader, 0, log=quiet, region_lists=lists)
+        s = Streamer(pack, cache, FakeDownloader, log=quiet, region_lists=lists)
         assert s.region_note is not None
         assert s.region_note.startswith(f"the regions' {len(ROW)} textures in ")
         assert s.region_note.endswith(f" s: {said}")

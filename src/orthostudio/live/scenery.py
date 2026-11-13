@@ -110,13 +110,17 @@ def default_sources(xplane: Path, root: Path | None = None) -> list[Path]:
 
 
 def xplane_pref(xplane: Path, key: str) -> str | None:
-    """A value of X-Plane's own preferences (``Output/preferences/X-Plane.prf``), or None."""
-    prf = xplane / "Output" / "preferences" / "X-Plane.prf"
-    if prf.exists():
-        for line in prf.read_text(errors="replace").splitlines():
-            name, _, value = line.partition(" ")
-            if name == key:
-                return value.strip()
+    """A value of X-Plane's own preferences (``Output/preferences/X-Plane.prf``), or None: also when
+    the file cannot be read (its rights, or Windows' lock while X-Plane writes it), so that the
+    window's checks, which ask it, go on."""
+    try:
+        text = (xplane / "Output" / "preferences" / "X-Plane.prf").read_text(errors="replace")
+    except OSError:
+        return None
+    for line in text.splitlines():
+        name, _, value = line.partition(" ")
+        if name == key:
+            return value.strip()
     return None
 
 

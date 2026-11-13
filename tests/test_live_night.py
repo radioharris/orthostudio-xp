@@ -217,7 +217,7 @@ class PackTest(unittest.TestCase):
         self.assertTrue(night_on(self.pack))  # its terrain files made already name them
         cache = ChunkCache(self.pack.parent / "c.sqlite")
         try:
-            s = Streamer(self.pack, cache, lambda on_piece: None, 0, log=lambda _: None)
+            s = Streamer(self.pack, cache, lambda on_piece: None, log=lambda _: None)
             self.assertIsNone(s.night)  # no night texture made
             self.assertTrue(s.names.night)  # the files name them as the others do
         finally:
