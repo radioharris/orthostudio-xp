@@ -591,6 +591,8 @@ def follow(
                         p.name.removeprefix("z_osxp_") for p in osxp_regions(live_root())
                     },
                     region_lists=aoregions.lists_dir(live_root()),
+                    # X-Plane's texture quality as the plugin reads it in flight, unless set here
+                    follow_quality=options.quality == "auto",
                     # as the pack's terrain files name them, made only when the settings say so:
                     # turned off while X-Plane ran, those made before were neither counted nor
                     # followed (the review of 2026-11-11)

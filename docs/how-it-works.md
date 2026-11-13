@@ -972,7 +972,8 @@ downloads its image pieces again.
 From 2.0, OrthoStudio XP has a second way to get ortho in X-Plane: OrthoStudio XP Live
 downloads the imagery while you fly, as AutoOrtho and XPME do, with no tile to build first, but
 with no virtual disk between X-Plane and its textures: it builds them beside X-Plane as ordinary
-files, so X-Plane waits only while a flight or a new location loads, never while you fly. At its
+files, so X-Plane waits only while a flight or a new location loads, or a moment when you raise
+its texture quality in flight, never otherwise while you fly. At its
 first start the app asks what you want to do, build your tiles or fly now with Live, and remembers
 the answer; both are in its one window, Build | Live at the top. Its full guide, with a measured
 comparison with XPME and AutoOrtho and why it has no zoom by flight level, prefetch or waiting
@@ -989,7 +990,9 @@ For a flight:
    area.
 3. Fly. Live builds the textures ahead of the aircraft, and X-Plane never waits for it in flight.
    A new location chosen in flight from the Flight Configuration screen waits like a start: Live
-   pauses X-Plane there, with its own loading window, until the ground is built.
+   pauses X-Plane there, with its own loading window, until the ground is built. X-Plane's texture
+   quality raised in flight waits a moment too, with the same window, until the sharper ground
+   around the aircraft is built; Live follows the quality you set, lowered as well.
 4. Quit X-Plane, then click Stop: Live takes its scenery and its small plugin out of X-Plane.
 
 At night Live lights the towns on its photos, street lamps and windows along X-Plane's roads: it

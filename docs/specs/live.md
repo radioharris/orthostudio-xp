@@ -133,7 +133,8 @@ modules, English and French, English unless the switch chose French, as OrthoStu
   back as it was read: the disk space, the imagery source, Live's folder. `stream` takes them as
   its defaults: a budget set in the window holds in a terminal too. The reach of outside views and
   the texture quality are not settings (the command line keeps them, for tests): less than X-Plane
-  reads shows the neutral colour, green-grey (a user, 2026-09-27).
+  reads shows the neutral colour, green-grey (a user, 2026-09-27). The texture quality is X-Plane's
+  own, read in X-Plane and followed as it changes (see "X-Plane's texture quality").
 - **The X-Plane folder** is not one of them: it is `essential.xplane_dir` in `config.toml`, one
   setting with Build's (`chosen_xplane`). Live's Settings read and write it through
   `/api/live/xplane-folder`, saved before Live's own settings since Live's folder is checked against
@@ -865,7 +866,10 @@ not taken for a change.
   will read of it at its closest approach to that path (`orthostudio/live/rings.py`), at least
   256 px. Textures built coarser are
   queued, the most urgent first: urgency is the distance left before the ring where X-Plane reads
-  that level (230 km for 256 px, where X-Plane loads a tile).
+  that level (230 km for 256 px, where X-Plane loads a tile). A texture built coarser than X-Plane
+  reads it from where the aircraft is now is urgent whatever sharper level its path asks: one 16 km
+  ahead, queued at 4096 px for the path and not urgent, was read at 2048 px 3 s after a texture
+  quality raised let X-Plane go, 2 s after Live wrote it (2026-11-13).
 - **The builder** takes the most urgent textures while fewer than 1,024 pieces are awaited and it
   holds fewer than 8,192 pieces in all (`HELD_PIECES`); past that, only textures X-Plane may be
   showing already. The encoders take the most urgent ready texture as the planner's last pass rates
@@ -1078,7 +1082,8 @@ not taken for a change.
   the first smaller level is made by strips of rows (`imaging.mip_chain`), 1.3 GB at the peak of
   an 8192 px build instead of 2.3. The disk counts the far copies (`evict.texture_bytes`), and the
   disk budget makes an 8192 px texture coarser in its 8192 px file. X-Plane's texture quality
-  below Maximum reads no 8192 px level: none gets its photos. Estimated on the textures around
+  below Maximum reads no 8192 px level: none gets its photos (as the quality is now, see
+  "X-Plane's texture quality"). Estimated on the textures around
   LFLL at 250 kt: ZL16/18 about 1 GB at a start and 7 GB an hour, ZL17/19 1.4 GB and 13 GB an
   hour.
 - **At cruise height** (`Streamer._cruise_height`): above 18,500 ft from the ground, the aircraft's
@@ -1325,6 +1330,74 @@ A plugin that does not return from one of these messages holds the whole load.
   - not if everything was built before X-Plane was told where to start;
   - with `--from` and no plugin, only if X-Plane started before the area was ready
     (its process start time against the moment the last urgent texture was built).
+
+## X-Plane's texture quality
+
+X-Plane's texture quality (Settings, Graphics: Texture Quality) sets the sharpest level it reads
+of each texture: Maximum (5) reads them all, each notch below one level fewer (High, 4, stops at
+2048 px of a 4096 px texture, measured; below, assumed: `rings.finest_for_quality`). Live builds no
+level sharper than X-Plane reads (`Streamer.finest_quality`, `rings.finest_readable`): built as
+at Maximum, it would write about 45 % more and download 60 % more below it (estimated). X-Plane applies
+a new quality at once, at « Resume flight »: read once at Live's start from `X-Plane.prf`
+(`_tex_res`), a quality raised later left X-Plane reading levels Live never built, the neutral
+colour, green-grey, under the aircraft for the whole flight (a user's report, 2026-11-12).
+
+**What X-Plane does** (measured on a Mac, X-Plane 12.4.3, 2026-11-13, files' access times):
+- lowered, it reads again some 3,400 textures 3 s after « Resume flight », at the coarser levels,
+  which are there;
+- raised, it reads again only the textures round the aircraft whose sharper level it now reads,
+  within about 24 km (about fifteen, and their night textures), 3 to 6 s after;
+- the setting is the private dataref `sim/private/controls/reno/tex_res` (int, 5 Maximum), which
+  follows the slider at once; X-Plane registers it after its plugins start
+  (`XPLMFindDataRef` gives none in `XPluginStart`), so the plugin looks for it again once a
+  second until it is there;
+- held in a flight loop of the plugin's, 15 s at once after a rise (two tries), X-Plane read
+  none of those textures meanwhile and read them all right after: its loading of textures waits
+  for its main thread.
+
+**The rule**: Live builds for the quality X-Plane has now, read in X-Plane by the plugin; a raise
+in flight holds X-Plane, as a start does, until what it will read sharper is built, night textures
+included, with no time limit (the user: « ne redémarre pas xplane tant que les textures nettes ne
+sont pas finies, nuit incluse »).
+
+- **The plugin** (`live_gate.c`) reads the quality every frame (`texture_quality`):
+  - its first reading, and every change, go to the streamer: `LIVE1 QUALITY q`, before each
+    start's `HOLD` too, so that a start is built for it (a quality changed in X-Plane's menu, a
+    departure prepared at the old one); every second in flight the ask says it too
+    (`LIVE1 ASK max=.. n=.. q=5`): a lower quality, or a streamer started in flight;
+  - a rise in a flight (an aircraft loaded) holds X-Plane right there, in that frame, before
+    X-Plane reads anything: `LIVE1 SHARPEN lat lon q` every 250 ms, answered `WAIT` or `GO` as a
+    `HOLD` is, with the same loading window (its first line « Quality raised: sharper textures
+    around the aircraft », « Qualité relevée : textures plus nettes autour de l'avion »), the same
+    Windows ticks, the same ways out (no streamer: at once; silent 5 s; X-Plane quitting);
+  - a lower quality, or a rise before any flight, holds nothing;
+  - an X-Plane without the dataref: none of these lines, a line in `Log.txt` once in flight, and
+    the streamer keeps X-Plane's preferences as read at its start (as before 2026-11-13).
+- **The gate** keeps the quality the plugin last said (`Gate.quality`), and passes on `SHARPEN`
+  with its position; its stand-in answers a late loop's `SHARPEN` with the loop's last word for it.
+- **The streamer's loop** (`streamer.run`), before answering any line read with it: a quality the
+  plugin said that changes the sharpest level (`Streamer.set_quality`, which recomputes the zooms
+  whose 8192 px level X-Plane reads) is logged and planned at once, at the start awaited or where
+  the aircraft is, so no answer counts at the old quality. Not with `--quality` set
+  (`follow_quality`). Then a `SHARPEN`:
+  - with a start awaited, or nothing flown yet: `GO` at once (the start's own hold counts at the
+    new quality);
+  - else X-Plane waits (`Sharpening`, `sharpen_count`) for the planner's urgent textures, those it
+    may show now, at the new quality, and, at night, for the night textures of every one of them,
+    made from the sharper level (`NightWork.left_of`), by the start's team of processes
+    (`NightWork.rush`). Its count, bar and words are a start's (`_Bar`);
+  - measured on a Mac the same day, the quality raised in X-Plane's menu at night, from medium
+    (3): X-Plane held 6 s while Live built 45 textures and their night ones; of the textures Live
+    wrote meanwhile, X-Plane read none during the hold and, from 1 s after it, every one within
+    20 km of the aircraft, day and night (the access time macOS sets at a file's first read after
+    its writing, `scratchpad` tool `firstreads.py`); farther ones it read later, as it came nearer;
+  - `GO` once none is left, or when nothing has downloaded for a minute (`STALL_S`, as at a start):
+    a piece missing 10 s is built from the zoom below and again later (`STUCK_S`);
+  - the plugin asking no more for 5 s (`SHARPEN_GONE_S`): the wait is over.
+- **Tests**: the plugin against the stand-in X-Plane, whose `set:` sets the dataref
+  (`PluginTest`); the gate's lines (`GateTest`); a quality raised in flight and at a start, built
+  for real (`RunTest`); the streamer's levels (`test_live_zoom`); the night's part
+  (`test_live_night`).
 
 ## The season
 

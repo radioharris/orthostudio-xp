@@ -39,7 +39,8 @@ ground is aerial imagery. The difference is where it sits.
   on the disk as ordinary files. There is nothing to install for it, no kernel extension, no
   driver.
 - **X-Plane never waits while you fly.** It waits only while a flight or a new location chosen in
-  flight loads, until the ground it shows first is built. In flight a texture that comes late is shown a little blurry,
+  flight loads, until the ground it shows first is built, and a moment when you raise its texture
+  quality in flight, until the sharper ground around the aircraft is built. In flight a texture that comes late is shown a little blurry,
   and sharper at the next look.
 - **If Live stops, X-Plane flies on** over what is on the disk. Nothing is pulled from under it.
 - **Light on the computer.** Live took about a third of one processor core in flight, a quarter of
@@ -133,7 +134,10 @@ slow disk).
    chosen in flight from the Flight Configuration screen waits too: X-Plane stays paused on that
    screen, with Live's own loading window over it, the same as the plugin's, and goes on by itself
    once the ground there is built. On a Mac the pointer over X-Plane may turn into the spinning
-   wheel meanwhile; on Windows X-Plane is not greyed.
+   wheel meanwhile; on Windows X-Plane is not greyed. Texture quality raised in X-Plane's settings
+   in flight: at « Resume flight » X-Plane waits a moment, with the same small panel (« Quality
+   raised: sharper textures around the aircraft »), while Live builds the sharper textures around
+   the aircraft, their night ones too at night. Lowered, nothing waits.
 5. **Quit X-Plane, then Stop.** Live takes its scenery and its small plugin out of X-Plane. Stopped
    while X-Plane still runs, Live waits for X-Plane to quit first ("Leave it installed" stops
    waiting).
@@ -403,7 +407,8 @@ measured on the ground in October):
 On a wider screen, or zoomed in, X-Plane reads sharp textures farther, and Live builds them farther
 too; the Flight card says how far for yours. Airport textures (about 1.8 km across) follow the same
 law four times closer. The 4096 px level is never fetched when X-Plane's texture quality is below
-Maximum: X-Plane then never reads it.
+Maximum: X-Plane then never reads it. Live reads the quality in X-Plane and follows it when you
+change it, in flight too.
 
 External views read nothing more: X-Plane takes each texture's levels for the aircraft, when it
 loads a flight and then as the aircraft moves, and a camera taken away, even kilometres out near the
@@ -419,7 +424,9 @@ airport finds them sharp.
 and takes it out when it stops. It holds X-Plane on its loading screen as long as the ortho keeps
 arriving, and lets it go when everything there is built, when nothing has downloaded for a minute
 (no internet, or a source refusing every request: `LogLive.txt` says why), or when you click Stop.
-It never holds X-Plane in flight, and does nothing when Live is not running. A new location chosen
+In flight it holds X-Plane only when you raise its texture quality: X-Plane then reads again,
+sharper, the textures around the aircraft, so it waits until those are built, their night ones too
+at night, with the same ways out. It does nothing when Live is not running. A new location chosen
 in flight loads no aircraft, so the plugin hears nothing to hold X-Plane at: Live pauses X-Plane
 itself, the instant X-Plane writes the new start in its preferences, and lets it go once everything
 there is built, or at once if Live stops. On Windows the plugin asks Windows not to grey X-Plane as
@@ -441,7 +448,7 @@ set it. Live has no wait to manage, and X-Plane itself says how sharp it wants e
 | Maximum zoom, zoom near airports | One list on Live's tab beside the photo source: 16/18, 16/19 or 17/19. Below 16 is not offered, nor 18 away from airports (16,384 px textures). |
 | Zoom by flight level | Not needed: X-Plane already reads less sharp when the ground is farther away, and Live follows it. Only the 8192 px photos stop above about 18,500 ft over the ground. |
 | Prefetch radius, look-ahead, interval | Built in and measured: 300 km around, two minutes ahead along the track (along a SimBrief route while you fly it), the rings with an 11 % margin, at a start, in flight and standing alike, and nothing for external views (X-Plane takes the textures for the aircraft alone). |
-| Maximum wait, time budget, fallbacks | Not needed: X-Plane waits only while a flight loads, until everything it reads there is built. In flight it never waits. |
+| Maximum wait, time budget, fallbacks | Not needed: X-Plane waits only while a flight loads, until everything it reads there is built. In flight it waits only when you raise its texture quality, a moment, until the sharper ground around the aircraft is built. |
 | Cache sizes, workers, pipelines | Internal. |
 
 What you choose: the photo source, the zoom, and how much disk Live may take.

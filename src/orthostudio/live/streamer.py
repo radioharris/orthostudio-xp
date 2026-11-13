@@ -82,6 +82,7 @@ from .rings import (
     DEFAULT_MARGIN,
     LOAD_LEVEL,
     MIN_LEVEL,
+    finest_for_quality,
     finest_readable,
     ring_km,
     screen_scale,
@@ -390,13 +391,17 @@ class Streamer:
         memory_pressure: Callable[[], int] = machine.memory_pressure,
         region_lists: Path | None = None,
         night: NightWork | None = None,
+        follow_quality: bool = True,
     ):
         """``downloader_factory(on_piece)`` makes the downloader
         (``orthostudio.live.downloader.Downloader``) the
         builder feeds: ``submit(key, priority)``, ``close()``, and its counters. ``region_lists``:
         where each region's textures are kept from one start to the next (``names.one_region``).
         ``looks``: each season's colours (``orthostudio.live.look``); ``season``: the one the
-        textures are built in, until :meth:`choose_season` changes it."""
+        textures are built in, until :meth:`choose_season` changes it. ``finest_quality``: the
+        sharpest level X-Plane reads at its texture quality, as its preferences said at Live's
+        start; ``follow_quality``: then as the plugin reads it in X-Plane (:meth:`set_quality`),
+        False when Live's options set it."""
         self.pack_dir = pack_dir
         self.cache = cache
         self.downloader_factory = downloader_factory
@@ -405,6 +410,7 @@ class Streamer:
         self.from_cache = 0
         self.pieces_pending = 0
         self.finest_quality = finest_quality
+        self.follow_quality = follow_quality
         self.max_zoom = max_zoom
         self.max_zoom_airports = max_zoom_airports
         self.margin = margin
@@ -518,9 +524,7 @@ class Streamer:
         self.zooms = Zooms(max_zoom, max_zoom_airports)
         self._tops: dict[str, int] = {}  # each texture's file size, once known (top_of)
         zooms = self.index.zooms
-        self.reads_8192 = {  # the zooms whose 8192 px level X-Plane reads, at its texture quality
-            z for z in zooms if finest_readable(self.zooms.top(z), finest_quality) == MIN_LEVEL
-        }
+        self.reads_8192 = self._reads_8192()
         tops = {self.zooms.top(z) for z in zooms}
         for top in tops:  # the neutral texture of every size a file may take
             ensure_neutral(pack_dir, top)
@@ -952,6 +956,29 @@ class Streamer:
         whole flight in a test flight's freeze (FROZEN_IN_FLIGHT)."""
         return (FROZEN_IN_FLIGHT and self.flying) or time.monotonic() < self.yield_until
 
+    def _reads_8192(self) -> set[int]:
+        """The zooms whose 8192 px level X-Plane reads, at its texture quality."""
+        return {
+            z
+            for z in self.index.zooms
+            if finest_readable(self.zooms.top(z), self.finest_quality) == MIN_LEVEL
+        }
+
+    def set_quality(self, tex_res: int) -> bool:
+        """X-Plane's texture quality as the plugin reads it in X-Plane (orthostudio.live.gate): the
+        sharpest level built follows it, and the zooms whose 8192 px level X-Plane reads. True
+        when that changed; the caller plans again. X-Plane applies a new quality at once, at
+        « Resume flight »: read once at Live's start from its preferences, a quality raised after
+        left X-Plane reading levels never built, the neutral colour, green-grey, under the
+        aircraft for the whole flight (a user, 2026-11-12). Never with a quality set in Live's
+        options (:attr:`follow_quality`)."""
+        finest = finest_for_quality(tex_res)
+        if not self.follow_quality or finest == self.finest_quality:
+            return False
+        self.finest_quality = finest
+        self.reads_8192 = self._reads_8192()
+        return True
+
     def top_of(self, name: str) -> int:
         """The sharpest level of a texture's file, its size as the pack lays it out (0: 4096 px,
         1: 2048, -1: 8192)."""
@@ -1130,6 +1157,14 @@ class Streamer:
                         and s_now <= ring_km(0, zoom) * self.scale * COPY_UP_AT
                     ):
                         late.append(name)
+            # what X-Plane reads of it now, from where the aircraft is, not along its path: built
+            # coarser than that, it is urgent whatever sharper level the path asks. A texture 16 km
+            # ahead, queued at 4096 px for the path, not urgent, was read at 2048 px by X-Plane
+            # 3 s after a quality raised let it go, 2 s after Live wrote it (2026-11-13)
+            now_level, now_km = self._level(max(0.0, d_now - reach) / self.scale, zoom, top, finest)
+            if self.level_of(name) > now_level:
+                now_ring = LOAD_KM if now_level == LOAD_LEVEL else now_km * self.scale + reach
+                urgency = min(urgency, d_now - now_ring)
             if name in self.built and level <= self.built[name]:
                 self.seen[name] = now  # X-Plane will read it as sharp as it is: still needed so
             if self.level_of(name) <= level:
@@ -1887,8 +1922,46 @@ def read_before_ready(ready_at: float | None, xplane_started: float | None) -> b
     return ready_at is None or xplane_started is None or xplane_started < ready_at
 
 
+class _Bar:
+    """The bar and the count of what X-Plane waits for: a start's (:class:`Arrival`), or the
+    sharper textures of a texture quality raised in flight (:class:`Sharpening`). Each has its
+    ``most``, ``most_night`` and ``shown``."""
+
+    most: int
+    most_night: int
+    shown: dict | None
+
+    def progress(self, left: int, night_left: int, night: bool) -> float:
+        """The bar: the share done of the count the start shows, its textures and, while it waits
+        for them, its night ones, each part's whole the most seen while it is wanted; it goes
+        back only as work is added. With the photos 40 % of it by their image pieces and the night
+        textures the rest once the photos were built, it stood at 38 % while the count fell from
+        3,560 to 24, then went to 100 % at once (Toulouse, the campaign of 2026-11-11); with the
+        night of a start found to be day at the HOLD kept in the whole, at 90 % with every photo
+        to build (the review of 2026-11-11). Never full with work left: 6 textures of 1,008 read
+        100 % (Nice, 2026-11-11)."""
+        self.most = max(self.most, left)
+        self.most_night = max(self.most_night, night_left) if night else 0
+        whole = self.most + self.most_night
+        if not whole:
+            return 1.0
+        done = 1.0 - (left + night_left) / whole
+        return min(done, 0.99) if left + night_left else done
+
+    def count(self, left: int, building: int, night_left: int, done: float) -> dict:
+        """What X-Plane waits for: its textures and its night ones, those all of whose photos are
+        in, its progress (:func:`start_count`, :func:`sharpen_count`)."""
+        self.shown = {
+            "left": left + night_left,
+            "building": building + night_left,
+            "night": night_left,
+            "progress": done,
+        }
+        return self.shown
+
+
 @dataclass
-class Arrival:
+class Arrival(_Bar):
     """A flight X-Plane is about to load, or is loading: where, and what the plugin was told."""
 
     lat: float
@@ -1917,34 +1990,6 @@ class Arrival:
     # plugin may still read while it loads the start, after a teleport
     left_from: tuple[float, float] | None = None
     left_at: float = 0.0
-
-    def progress(self, left: int, night_left: int, night: bool) -> float:
-        """The bar: the share done of the count the start shows, its textures and, while it waits
-        for them, its night ones, each part's whole the most seen while it is wanted; it goes
-        back only as work is added. With the photos 40 % of it by their image pieces and the night
-        textures the rest once the photos were built, it stood at 38 % while the count fell from
-        3,560 to 24, then went to 100 % at once (Toulouse, the campaign of 2026-11-11); with the
-        night of a start found to be day at the HOLD kept in the whole, at 90 % with every photo
-        to build (the review of 2026-11-11). Never full with work left: 6 textures of 1,008 read
-        100 % (Nice, 2026-11-11)."""
-        self.most = max(self.most, left)
-        self.most_night = max(self.most_night, night_left) if night else 0
-        whole = self.most + self.most_night
-        if not whole:
-            return 1.0
-        done = 1.0 - (left + night_left) / whole
-        return min(done, 0.99) if left + night_left else done
-
-    def count(self, left: int, building: int, night_left: int, done: float) -> dict:
-        """What a start waits for: its textures and its night ones, those all of whose photos are
-        in, its progress (:func:`start_count`)."""
-        self.shown = {
-            "left": left + night_left,
-            "building": building + night_left,
-            "night": night_left,
-            "progress": done,
-        }
-        return self.shown
 
     def near(self, lat: float, lon: float) -> bool:
         return haversine_m(self.lat, self.lon, lat, lon) <= JUMP_KM * 1000.0
@@ -2004,6 +2049,41 @@ def start_count(streamer: Streamer, arrival: Arrival, now: float, fresh: bool = 
         night_left, night = streamer.night.start_left(left), streamer.night.start_night
     done = arrival.progress(left, night_left, night)
     return arrival.count(left, streamer.urgent_building(), night_left, done)
+
+
+SHARPEN_GONE_S = 5.0
+"""X-Plane held for its texture quality raised, and its plugin asking no more this long: X-Plane
+went on without the answer (its plugin let it go, X-Plane quit or crashed); the wait is over."""
+
+
+@dataclass
+class Sharpening(_Bar):
+    """X-Plane held in flight by its plugin, its texture quality raised (``LIVE1 SHARPEN``), until
+    the levels it reads sharper now round the aircraft are built, their night textures too."""
+
+    quality: int
+    since: float
+    asked: float  # when the plugin last asked
+    # every texture it waited for: their night textures, made from the sharper level, too
+    names: set[str] = field(default_factory=set)
+    most: int = 0
+    most_night: int = 0
+    shown: dict | None = None
+
+
+def sharpen_count(streamer: Streamer, sharpening: Sharpening) -> dict:
+    """What X-Plane, held for its texture quality raised in flight, waits for, as a start does
+    (:func:`start_count`): the textures it may show now built coarser than it reads them at that
+    quality (the planner's urgent ones, from a plan made at the new quality), and at night the
+    night textures of every one of those, made again from the sharper level: X-Plane reads them
+    again with their day textures, about fifteen round the aircraft (2026-11-13)."""
+    urgent = streamer._urgent()
+    sharpening.names.update(urgent)
+    night_left, night = 0, False
+    if streamer.night is not None:
+        night_left, night = streamer.night.left_of(sharpening.names), streamer.night.night
+    done = sharpening.progress(len(urgent), night_left, night)
+    return sharpening.count(len(urgent), streamer.urgent_building(), night_left, done)
 
 
 def may_have_read_early(arrival: Arrival, xplane_started: float | None) -> bool:
@@ -2170,6 +2250,7 @@ def run(
     fields = [name for name, _ in DATAREFS]
     values: dict[str, float] = {}
     arrival: Arrival | None = None
+    sharpening: Sharpening | None = None  # X-Plane held in flight for its texture quality raised
     last_plan = last_status = last_save = last_packet = last_subscribe = last_wait = 0.0
     last_writes = time.monotonic()
     last_pool = last_between = 0.0
@@ -2267,6 +2348,25 @@ def run(
                     expect(*clicked, "click")
                 running = "lat" in values and now - last_packet < FRESH_S
                 requests = gate.requests()
+                # a quality raised: the plugin asks every 250 ms, and those it asked while the
+                # loop was busy are answered once, the last: each was a wait of its own once the
+                # first had its GO (two « nothing sharper » after the GO, 2026-11-13)
+                last = max((i for i, r in enumerate(requests) if r[0] == "SHARPEN"), default=-1)
+                requests = [r for i, r in enumerate(requests) if r[0] != "SHARPEN" or i == last]
+                # X-Plane's texture quality as the plugin read it, before any answer: a start's
+                # count or a quality raised in flight counted at the new quality, never the old
+                if gate.quality is not None and streamer.set_quality(gate.quality):
+                    camera.first_ring = 1 if 16 in streamer.reads_8192 else 0
+                    log(
+                        f"  X-Plane's texture quality is {gate.quality} now: a 4096 px texture "
+                        f"read up to {4096 >> max(0, streamer.finest_quality)} px"
+                    )
+                    if arrival is not None:
+                        streamer.plan(
+                            Fix(arrival.lat, arrival.lon), x_plane_there=False, starting=True
+                        )
+                    elif streamer.last_fix is not None:
+                        streamer.plan(streamer.last_fix, x_plane_there=False)
                 late = gate.stood_in()
                 if late:
                     log(
@@ -2284,6 +2384,67 @@ def run(
                         notice, lang = streamer.notice, language()
                         note = plugin_note(notice, lang) if notice else None
                         gate.note(addr, note, notice, lang=lang)
+                        continue
+                    if kind == "SHARPEN":  # X-Plane's texture quality raised in flight
+                        if arrival is not None or streamer.last_fix is None:
+                            # a start's own hold counts for it at the new quality; nothing flown
+                            gate.answer(addr, True, 0, lang=language(), sharpen=True)
+                            continue
+                        if sharpening is None:
+                            sharpening = Sharpening(int(why), now, now)
+                            if streamer.night is not None:  # its night textures as at a start
+                                streamer.night.rush = True
+                        sharpening.asked = now
+                        shown = sharpen_count(streamer, sharpening)
+                        night_left = shown["night"]
+                        left = shown["left"] - night_left
+                        took = now - sharpening.since
+                        stalled = left > 0 and streamer.stalled_s() > STALL_S
+                        ready = shown["left"] == 0
+                        gate.answer(
+                            addr,
+                            ready or stalled,
+                            shown["left"],
+                            "",
+                            shown["progress"],
+                            took,
+                            mbs,
+                            lang=language(),
+                            building=shown["building"],
+                            night=night_left,
+                            sharpen=True,
+                        )
+                        if ready or stalled:
+                            if stalled:
+                                log(
+                                    f"  nothing downloaded for {STALL_S:.0f} s: X-Plane goes on "
+                                    f"with {left} sharper textures to build "
+                                    f"({why_nothing_comes(streamer.downloader)})"
+                                )
+                            elif sharpening.most or sharpening.most_night:
+                                log(
+                                    f"  X-Plane goes on after {took:.0f} s: the "
+                                    f"{sharpening.most} sharper textures it reads at its texture "
+                                    f"quality {sharpening.quality} are built"
+                                    + (", their night ones too" if sharpening.most_night else "")
+                                )
+                            else:
+                                log(
+                                    f"  X-Plane's texture quality raised to {sharpening.quality}: "
+                                    "nothing sharper to build around the aircraft"
+                                )
+                            if streamer.night is not None:
+                                streamer.night.rush = False
+                            sharpening = None
+                        elif now - last_wait >= 5 or took < 0.5:
+                            last_wait = now
+                            log(
+                                f"  X-Plane waits, its texture quality raised to "
+                                f"{sharpening.quality}: {shown['left']} sharper textures to build "
+                                f"around the aircraft"
+                                + (f", {night_left} of them night ones" if night_left else "")
+                                + f" ({shown['progress']:.0%}, {took:.0f} s, {mbs:.1f} MB/s)"
+                            )
                         continue
                     if running and not (arrival is not None and arrival.certain(now)):
                         if kind == "HOLD":  # a livery changed in flight: nothing loads
@@ -2379,6 +2540,11 @@ def run(
                                 "  X-Plane waits on its loading screen: the files of its squares "
                                 f"around {arrival.name} are being made"
                             )
+            if sharpening is not None and now - sharpening.asked > SHARPEN_GONE_S:
+                log("  X-Plane waits no more for its sharper textures (its plugin asks no more)")
+                if streamer.night is not None:
+                    streamer.night.rush = False
+                sharpening = None
             if pauser is not None and pauser.paused_for is not None:
                 # X-Plane paused at a new location chosen in flight: its start is the click read in
                 # Freeflight.prf just above (gate.new_start), held as the plugin's HOLD is: until

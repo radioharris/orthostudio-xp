@@ -475,6 +475,9 @@ class NightWork:
         self._waited_since: float | None = None
         self.gave_up = False
         self.waiting = False  # the start waits for its photos or its night textures: the team
+        # X-Plane held in flight for its texture quality raised (streamer.Sharpening): the team
+        # too, X-Plane waiting for the night textures of the sharper levels
+        self.rush = False
 
     # --- what the streamer says ------------------------------------------------------------
 
@@ -574,6 +577,16 @@ class NightWork:
             return 0
         return left
 
+    def left_of(self, names: Iterable[str]) -> int:
+        """Of ``names``, those whose night texture is still to make, or being made, while it is
+        night (0 by day, or with the night given up for the flight): what X-Plane, held for its
+        texture quality raised, waits for after their day textures (streamer.sharpen_count).
+        A night that failed twice is not wanted any more: it counts no more."""
+        if not self.night or self.broken or self.closed:
+            return 0
+        with self.lock:
+            return sum(1 for n in names if n in self.wanted or n in self.running)
+
     def back_to_black(self, name: str) -> None:
         """``name`` made neutral or coarser: its night as its day file (:meth:`_black`), made again
         if it is wanted. One being made meanwhile is not counted made, and is put back so once
@@ -608,8 +621,9 @@ class NightWork:
         if self.night and not self.broken and not self.closed:
             # the team while the start waits, not until X-Plane flies there: kept after its night
             # textures were made, it held its memory while X-Plane loaded, or for good after a
-            # Prepare never flown (the review of 2026-11-11)
-            starting = self.start_at is not None and self.waiting
+            # Prepare never flown (the review of 2026-11-11); and while X-Plane is held in flight
+            # for its texture quality raised (:attr:`rush`)
+            starting = (self.start_at is not None and self.waiting) or self.rush
             size = min(max(1, self.team), TEAM_MAX) if starting else 1
         if self._pool is not None and self._size != size and not self._jobs.get(self._pool):
             self._pool.shutdown(wait=False)  # its processes end, their memory with them
@@ -622,7 +636,7 @@ class NightWork:
                 self._lost_one(None, e)
                 return
             if size > 1:
-                self.log(f"  {size} processes make the start's night textures")
+                self.log(f"  {size} processes make the night textures X-Plane waits for")
         if self._pool is not None and self._size == size:
             self._give(size)
 

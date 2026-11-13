@@ -29,22 +29,35 @@ X-Plane reads the scenery. It sends one line per datagram over UDP on 127.0.0.1:
 
   The plugin's loading window shows all of it.
 
+- ``LIVE1 QUALITY 5``: X-Plane's texture quality, 0 to 5 (Maximum), the plugin's reading of the
+  setting in X-Plane (``sim/private/controls/reno/tex_res``), sent before each ``HOLD``: the
+  streamer builds the start for it (:attr:`Gate.quality`). No answer. A plugin that cannot read
+  it sends none, and the streamer goes by X-Plane's preferences as it started.
+- ``LIVE1 SHARPEN lat lon 5``: in flight, X-Plane's texture quality rose to 5, and X-Plane waits
+  for the answer, as at a ``HOLD``: X-Plane reads again, 3 to 6 s after « Resume flight », the
+  textures round the aircraft whose sharper levels it reads now, which the streamer had not built
+  (it builds none sharper than the quality). The same ``WAIT`` and ``GO`` answer it, once those
+  levels and their night textures are built (:func:`orthostudio.live.streamer.sharpen_count`).
 - ``LIVE1 ASK``, every second of a flight: whether the streamer has a notice for the pilot. Where
   the aircraft has no mesh under it but a region has one, the gate answers ``LIVE1 NOTE id lang=fr
   text`` ("Live : pas de mesh ici, installez Amérique du Nord dans la fenêtre de Live"), which the
   plugin shows in a small panel with its cross; ``id`` tells one notice from the next. Else
   ``LIVE1 NONE lang=en``. (It offered a reload of the scenery too, for the 8192 px textures built
   after a start, until a test showed X-Plane's reload does not read again the textures it holds,
-  2026-09-27.)
+  2026-09-27.) The ask says X-Plane's frames of the second and its texture quality:
+  ``LIVE1 ASK max=123 n=45 q=5`` (the longest frame in ms, how many; ``q`` from a newer plugin,
+  which tells a lower quality so, and a streamer started in flight).
 
 Lines go out in UTF-8, never cut inside a character: the plugin shows French with its accents.
 
-The plugin lets X-Plane go when its first ``HOLD`` gets no answer within a second: no streamer.
+The plugin lets X-Plane go when its first ``HOLD`` (or ``SHARPEN``) gets no answer within a
+second: no streamer.
 The streamer's loop, which answers, can be busy longer than that: a new start planned under a
 start's load kept it 3 s, and X-Plane went on at LGAV and LCLK with nothing built (2026-09-29).
 So while the loop is late reading the plugin's lines (``STAND_IN_S``), the gate reads them itself,
 keeps them for the loop and answers a ``HOLD`` with the loop's last ``WAIT`` (the start's name
-and figures as the loop last said them): X-Plane waits on. Never for a loop gone more than
+and figures as the loop last said them), a ``SHARPEN`` with its last one for that: X-Plane waits
+on. Never for a loop gone more than
 ``ALIVE_S``: then X-Plane goes on, as without a streamer.
 
 The start is known even before the plugin speaks. When the user clicks Start Flight, X-Plane saves
@@ -69,6 +82,7 @@ from .xpudp import no_port_unreachable
 GATE_PORT = 49250
 STAND_IN_S = 0.5  # the loop this late reading the plugin's lines: the gate answers for it
 ALIVE_S = 60.0  # ... but not for a loop gone this long
+QUALITY_MAX = 5  # X-Plane's texture quality, Maximum
 
 Airports = Callable[[str], tuple[float, float] | None]
 Start = tuple[float, float, str]  # latitude, longitude, a name for it
@@ -163,6 +177,15 @@ def place_in(name: str, lang: str) -> str:
     return name
 
 
+def _quality(word: str) -> int | None:
+    """X-Plane's texture quality as the plugin says it: 0 to 5 (Maximum), else None."""
+    with contextlib.suppress(ValueError):
+        value = int(word)
+        if 0 <= value <= QUALITY_MAX:
+            return value
+    return None
+
+
 def _wait_line(
     left: int,
     name: str,
@@ -219,6 +242,10 @@ class Gate:
         self._inbox: list[Request] = []  # read for the loop while it was busy
         self._polled = time.monotonic()  # the loop's last read of the plugin's lines
         self._wait = "LIVE1 WAIT n=0 b=0 p=0 s=0 mbs=0.0"  # what the gate says for the loop
+        self._sharpen_wait = self._wait  # ... and to a SHARPEN
+        # X-Plane's texture quality, as the plugin last said it (QUALITY, SHARPEN, the ask's q=):
+        # None until it does, X-Plane's preferences standing
+        self.quality: int | None = None
         self._stood_in: list[float] = []  # how late the loop was, each time
         self._closed = threading.Event()
         threading.Thread(target=self._stand_in, name="live-gate", daemon=True).start()
@@ -241,8 +268,10 @@ class Gate:
         return start_position(start, self.airports) if start else None
 
     def requests(self) -> list[Request]:
-        """The plugin's lines since the last call: (LOAD, HOLD or ASK, lat, lon, where to answer,
-        why); ASK has no position (0, 0), and its why is what it measured of X-Plane's frames."""
+        """The plugin's lines since the last call: (LOAD, HOLD, SHARPEN or ASK, lat, lon, where to
+        answer, why); ASK has no position (0, 0), and its why is what it measured of X-Plane's
+        frames; SHARPEN's is the quality X-Plane rose to. The quality any line said is
+        :attr:`quality` by then."""
         with self._lock:
             self._polled = time.monotonic()
             out, self._inbox = self._inbox, []
@@ -271,7 +300,20 @@ class Gate:
                 break
             parts = data.decode("ascii", "replace").split()
             if parts[:2] == ["LIVE1", "ASK"]:  # its frames of the second after: "max=123 n=45"
+                for word in parts[2:]:
+                    if word.startswith("q=") and (q := _quality(word[2:])) is not None:
+                        self.quality = q
                 out.append(("ASK", 0.0, 0.0, addr, " ".join(parts[2:])))
+            elif parts[:2] == ["LIVE1", "QUALITY"] and len(parts) == 3:
+                if (q := _quality(parts[2])) is not None:
+                    self.quality = q
+            elif parts[:2] == ["LIVE1", "SHARPEN"] and len(parts) == 5:
+                q = _quality(parts[4])
+                with contextlib.suppress(ValueError):
+                    lat, lon = float(parts[2]), float(parts[3])
+                    if q is not None:
+                        self.quality = q
+                        out.append(("SHARPEN", lat, lon, addr, str(q)))
             elif 4 <= len(parts) <= 7 and parts[0] == "LIVE1" and parts[1] in ("LOAD", "HOLD"):
                 words = dict(w.split("=", 1) for w in parts[5:] if "=" in w)
                 if "day" in words:  # the flight's date, and its UTC time from a newer plugin
@@ -305,8 +347,9 @@ class Gate:
                     continue
                 for request in self._read():
                     self._inbox.append(request)
-                    if request[0] == "HOLD":
-                        self._send(self._wait, request[3])
+                    if request[0] in ("HOLD", "SHARPEN"):
+                        wait = self._wait if request[0] == "HOLD" else self._sharpen_wait
+                        self._send(wait, request[3])
                         self._stood_in.append(late)
 
     def _send(self, line: str, addr: tuple) -> None:
@@ -325,11 +368,18 @@ class Gate:
         lang: str = "en",
         building: int = 0,
         night: int = 0,
+        sharpen: bool = False,
     ) -> None:
+        """The answer to a ``HOLD``, or to a ``SHARPEN`` (``sharpen``): ``GO``, or ``WAIT`` with
+        the figures, kept for the stand-in to say meanwhile."""
         if go:
             line = f"LIVE1 GO {left}"
         else:
-            line = self._wait = _wait_line(left, name, done, took, mbs, lang, building, night)
+            line = _wait_line(left, name, done, took, mbs, lang, building, night)
+            if sharpen:
+                self._sharpen_wait = line
+            else:
+                self._wait = line
         self._send(line, addr)
 
     def note(

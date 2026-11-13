@@ -5,8 +5,10 @@
    - "loop": call its flight loop, as X-Plane does every second of a flight;
    - "frames:5000": call its flight loops every 10 ms for 5 s, as X-Plane's frames do;
    - "click": click the cross of its notice's panel (not built with -DNO_CLICK, for the pilot);
-   - "sleep:100": wait 100 ms.
-   Its datarefs keep what is set into them; X-Plane's running time is the wall clock's since the
+   - "sleep:100": wait 100 ms;
+   - "set:sim/private/controls/reno/tex_res=5": set a dataref (X-Plane's texture quality).
+   Its datarefs keep what is set into them; X-Plane's private ones ("sim/private/...") are not
+   there until a "set:" makes them, as X-Plane's own are not when its plugins start; X-Plane's running time is the wall clock's since the
    start, its position what XPLMPlaceUserAtLocation said. The commands run are printed
    ("COMMAND sim/operation/quit"). */
 
@@ -56,10 +58,25 @@ EXPORT void *XPLMFindDataRef(const char *name) {
     if (strcmp(name, "sim/flightmodel/position/elevation") == 0) return &ele;
     if (strcmp(name, "sim/time/total_running_time_sec") == 0) return &run_clock;
     for (i = 0; i < SLOTS; i++) {
-        if (!slot_names[i][0]) snprintf(slot_names[i], sizeof slot_names[i], "%s", name);
+        if (!slot_names[i][0]) {
+            if (strncmp(name, "sim/private/", 12) == 0) return NULL; /* not made by a "set:" */
+            snprintf(slot_names[i], sizeof slot_names[i], "%s", name);
+        }
         if (strcmp(slot_names[i], name) == 0) return &slots[i];
     }
     return NULL;
+}
+
+/* A dataref made if need be, whatever its name, and set: the command line's "set:". */
+EXPORT void fake_set(const char *name, double value) {
+    int i;
+    for (i = 0; i < SLOTS; i++) {
+        if (!slot_names[i][0]) snprintf(slot_names[i], sizeof slot_names[i], "%s", name);
+        if (strcmp(slot_names[i], name) == 0) {
+            slots[i] = value;
+            return;
+        }
+    }
 }
 
 EXPORT double XPLMGetDatad(void *ref) {
@@ -296,6 +313,13 @@ int main(int argc, char **argv) {
             continue;
         }
 #endif
+        if (strncmp(argv[i], "set:", 4) == 0 && strchr(argv[i], '=')) {
+            char ref[96];
+            const char *eq = strchr(argv[i], '=');
+            snprintf(ref, sizeof ref, "%.*s", (int)(eq - argv[i] - 4), argv[i] + 4);
+            fake_set(ref, atof(eq + 1));
+            continue;
+        }
         if (sscanf(argv[i], "sleep:%d", &param) == 1) {
 #ifdef _WIN32
             Sleep((DWORD)param);

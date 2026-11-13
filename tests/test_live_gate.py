@@ -303,6 +303,57 @@ class GateTest(unittest.TestCase):
         finally:
             gate.close()
 
+    def test_the_texture_quality_the_plugin_says(self):
+        """X-Plane's texture quality, as the plugin reads it in X-Plane: before a start's HOLD
+        (QUALITY), every second in flight (the ask's q=), and when it rises in flight (SHARPEN,
+        which X-Plane waits on). An older plugin says none: X-Plane's preferences stand."""
+        gate = Gate(self.xplane, lambda icao: None, port=self.port)
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as p:
+                p.connect(("127.0.0.1", self.port))
+                p.settimeout(2)
+                p.send(b"LIVE1 ASK max=150 n=40")  # an older plugin
+                time.sleep(0.1)
+                self.assertEqual([k for k, *_ in gate.requests()], ["ASK"])
+                self.assertIsNone(gate.quality)
+                p.send(b"LIVE1 QUALITY 3")  # before a HOLD: no answer, no request
+                p.send(b"LIVE1 QUALITY 9")  # nonsense
+                time.sleep(0.1)
+                self.assertEqual(gate.requests(), [])
+                self.assertEqual(gate.quality, 3)
+                p.send(b"LIVE1 ASK max=12 n=60 q=2")  # lowered in flight
+                time.sleep(0.1)
+                got = gate.requests()
+                self.assertEqual(
+                    [(k, why) for k, _, _, _, why in got], [("ASK", "max=12 n=60 q=2")]
+                )
+                self.assertEqual(streamer_module.longest_frame(got[0][4]), 12)
+                self.assertEqual(gate.quality, 2)
+                p.send(b"LIVE1 SHARPEN 43.438210 5.212888 5")  # raised: X-Plane waits
+                p.send(b"LIVE1 SHARPEN 43.438210 5.212888 high")
+                time.sleep(0.1)
+                got = gate.requests()
+                self.assertEqual(
+                    [(k, lat, lon, why) for k, lat, lon, _, why in got],
+                    [("SHARPEN", 43.43821, 5.212888, "5")],
+                )
+                self.assertEqual(gate.quality, 5)
+                gate.answer(got[0][3], False, 15, "", 0.2, 3.0, 12.0, building=4, sharpen=True)
+                self.assertTrue(p.recv(100).startswith(b"LIVE1 WAIT n=15 b=4 p=200 s=3 "))
+                # the loop late: the gate answers a SHARPEN with the loop's last word for it, a
+                # HOLD with its last one for a start
+                gate.hold_at("LFMN runway 04R")
+                time.sleep(gate_module.STAND_IN_S + 0.3)
+                p.send(b"LIVE1 SHARPEN 43.438210 5.212888 5")
+                self.assertTrue(p.recv(100).startswith(b"LIVE1 WAIT n=15 b=4 "))
+                p.send(b"LIVE1 HOLD 43.438210 5.212888 aircraft")
+                self.assertTrue(p.recv(100).endswith(b"at=LFMN runway 04R"))
+                self.assertEqual([k for k, *_ in gate.requests()], ["SHARPEN", "HOLD"])
+                gate.answer(got[0][3], True, 0, sharpen=True)
+                self.assertEqual(p.recv(100), b"LIVE1 GO 0")
+        finally:
+            gate.close()
+
     def test_a_notice_asked_in_flight(self):
         """In flight, the plugin asks every second whether the streamer has a notice for it: none,
         or no mesh under the aircraft, in the window's language. A reload is no longer offered."""
@@ -553,6 +604,94 @@ class PluginTest(unittest.TestCase):
             said,
             ["OrthoStudio XP Live: Live: no mesh here: install North America in the Live window"],
         )
+
+    QUALITY = "set:sim/private/controls/reno/tex_res="  # X-Plane's texture quality, set
+
+    def test_the_texture_quality_told_before_a_start_s_hold(self):
+        """X-Plane's texture quality, read in X-Plane, said before the HOLD: the streamer builds
+        the start for it, whatever X-Plane's preferences said as Live started."""
+        heard = []
+
+        def streamer(sock):
+            with contextlib.suppress(OSError):  # its socket let go of
+                while True:
+                    data, addr = read(sock)
+                    heard.append(data.decode())
+                    if data.startswith(b"LIVE1 HOLD"):
+                        sock.sendto(b"LIVE1 GO 0", addr)
+
+        with live_port(self.port) as sock:
+            threading.Thread(target=streamer, args=(sock,), daemon=True).start()
+            self.xplane(43.4382, 5.2129, self.QUALITY + "3", "102:0", "112:1")
+            let_go(sock)
+        self.assertEqual(
+            [h for h in heard if h != "LIVE1 HELLO"][:3],
+            [
+                "LIVE1 LOAD 43.438200 5.212900",
+                "LIVE1 QUALITY 3",
+                "LIVE1 HOLD 43.438200 5.212900 aircraft day=0 utc=0",
+            ],
+        )
+
+    def test_a_texture_quality_raised_in_flight_holds_x_plane(self):
+        """X-Plane's texture quality raised in flight: the plugin holds X-Plane there and then, as
+        at a start, until the streamer has built the sharper levels round the aircraft, before
+        X-Plane reads them (3 to 6 s after « Resume flight », 2026-11-13). Lowered, or raised
+        before any flight, it holds nothing: the streamer is told. Every ask says it too."""
+        heard, sharpens = [], []
+        wait = b"LIVE1 WAIT n=15 b=3 p=200 s=1 mbs=8.0 lang=fr night=0 at=46.238 6.109"
+
+        def streamer(sock):
+            with contextlib.suppress(OSError):  # its socket let go of
+                while True:
+                    data, addr = read(sock)
+                    heard.append(data.decode())
+                    if data.startswith(b"LIVE1 SHARPEN"):
+                        sharpens.append(time.monotonic())
+                        sock.sendto(wait if len(sharpens) < 4 else b"LIVE1 GO 0", addr)
+
+        with live_port(self.port) as sock:
+            threading.Thread(target=streamer, args=(sock,), daemon=True).start()
+            _, logged = self.xplane(
+                46.2381,
+                6.1089,
+                self.QUALITY + "3",
+                "frames:200",  # read at once: said as it is
+                self.QUALITY + "5",
+                "frames:200",  # raised before any flight: said, nothing held
+                "102:0",
+                self.QUALITY + "3",
+                "frames:200",  # lowered in flight: said, nothing held
+                self.QUALITY + "5",
+                "frames:300",  # raised in flight: held until the streamer says go
+                "frames:300",
+            )
+            let_go(sock)
+        said = [h for h in heard if h.startswith(("LIVE1 QUALITY", "LIVE1 SHARPEN", "LIVE1 LOAD"))]
+        self.assertEqual(
+            said,
+            [
+                "LIVE1 QUALITY 3",
+                "LIVE1 QUALITY 5",
+                "LIVE1 LOAD 46.238100 6.108900",
+                "LIVE1 QUALITY 3",
+                "LIVE1 QUALITY 5",
+                *["LIVE1 SHARPEN 46.238100 6.108900 5"] * 4,
+            ],
+        )
+        self.assertGreater(sharpens[-1] - sharpens[0], 0.6)  # three waits of 0.25 s
+        first = heard.index("LIVE1 SHARPEN 46.238100 6.108900 5")
+        last = len(heard) - 1 - heard[::-1].index("LIVE1 SHARPEN 46.238100 6.108900 5")
+        self.assertFalse(  # X-Plane held: none of its flight loops ran meanwhile
+            [h for h in heard[first:last] if not h.startswith("LIVE1 SHARPEN")]
+        )
+        asks = [h for h in heard if h.startswith("LIVE1 ASK")]
+        self.assertTrue(
+            asks and all(re.fullmatch(r"LIVE1 ASK max=\d+ n=\d+ q=[35]", a) for a in asks)
+        )
+        self.assertTrue(asks[-1].endswith(" q=5"))
+        self.assertTrue(any("texture quality rose to 5" in line for line in logged), logged)
+        self.assertTrue(any("sharper textures are built after" in line for line in logged))
 
     def test_no_position_while_xplane_starts(self):
         with live_port(self.port) as sock:
@@ -1573,6 +1712,31 @@ class RunTest(unittest.TestCase):
                 time.sleep(0.1)
         return answers
 
+    def sharpen(self, quality, timeout=60.0):
+        """What the plugin gets when X-Plane's texture quality rose in flight: every answer to its
+        SHARPEN until GO."""
+        answers = []
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as p:
+            p.connect(("127.0.0.1", self.port))
+            p.settimeout(0.5)
+            end = time.time() + timeout
+            while time.time() < end:
+                p.send(f"LIVE1 SHARPEN {self.lat:.6f} {self.lon:.6f} {quality}".encode())
+                try:
+                    answers.append(p.recv(100).decode())
+                except TimeoutError:
+                    continue
+                if answers[-1].startswith("LIVE1 GO"):
+                    break
+                time.sleep(0.1)
+        return answers
+
+    def say(self, line):
+        """A line of the plugin's that X-Plane does not wait on (QUALITY, ASK)."""
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as p:
+            p.connect(("127.0.0.1", self.port))
+            p.send(line.encode())
+
     def wait_for(self, test, timeout=30.0):
         end = time.time() + timeout
         while time.time() < end:
@@ -1606,6 +1770,47 @@ class RunTest(unittest.TestCase):
         self.assertEqual(self.xp.commands, [])  # X-Plane read everything once built: no reload
         self.assertFalse(self.streamer.read_early)
         self.assertTrue(any("X-Plane goes on" in m for m in self.log))
+
+    def test_a_texture_quality_raised_in_flight(self):
+        """X-Plane's texture quality raised in flight (« Resume flight »): X-Plane reads again,
+        sharper, the textures round the aircraft, which Live built no sharper than the quality it
+        had read: green-grey under the aircraft all flight (a user, 2026-11-12). Its plugin holds
+        X-Plane until they are built at the new quality; lowered, nothing is held."""
+        built = {f"{n}.dds": 1 for n in NAMES}  # High, as X-Plane's preferences said: 2048 px
+        self.xp.position = (self.lat, self.lon)  # flying there
+        self.assertTrue(self.wait_for(lambda: self.streamer.built == built))
+        self.xp.position = None  # held by its plugin, X-Plane sends nothing
+        answers = self.sharpen(5)
+        self.assertRegex(answers[0], r"^LIVE1 WAIT n=[12] ")
+        self.assertEqual(answers[-1], "LIVE1 GO 0")
+        self.assertEqual(self.streamer.built, {n: 0 for n in built})  # 4096 px before it goes on
+        self.assertTrue(any("texture quality is 5 now" in m for m in self.log), self.log)
+        self.assertTrue(any("sharper textures it reads at its texture" in m for m in self.log))
+        self.assertEqual(self.sharpen(5), ["LIVE1 GO 0"])  # nothing more to build: at once
+        self.say("LIVE1 ASK max=20 n=50 q=3")  # lowered: told every second, nothing held
+        self.assertTrue(self.wait_for(lambda: self.streamer.finest_quality == 2))
+        self.assertTrue(any("texture quality is 3 now" in m for m in self.log))
+
+    def test_a_start_built_at_the_quality_x_plane_says(self):
+        """Before a start's HOLD the plugin says X-Plane's texture quality: the start is built for
+        it before X-Plane goes on, whatever X-Plane's preferences said as Live started (a quality
+        raised in X-Plane's menu, a departure prepared before at the old one)."""
+        self.click()
+        self.assertTrue(self.wait_for(lambda: any("starting a flight" in m for m in self.log)))
+        self.say("LIVE1 QUALITY 5")
+        answers = self.hold(self.lat, self.lon)
+        self.assertEqual(answers[-1], "LIVE1 GO 0")
+        self.assertEqual(self.streamer.built, {f"{n}.dds": 0 for n in NAMES})
+
+    def test_a_quality_raised_while_a_start_is_awaited(self):
+        """A start awaited (a Prepare, a click): its own HOLD counts at the new quality; a SHARPEN
+        meanwhile is not held."""
+        self.click()
+        self.assertTrue(self.wait_for(lambda: any("starting a flight" in m for m in self.log)))
+        self.assertEqual(self.sharpen(5), ["LIVE1 GO 0"])
+        answers = self.hold(self.lat, self.lon)
+        self.assertEqual(answers[-1], "LIVE1 GO 0")
+        self.assertEqual(self.streamer.built, {f"{n}.dds": 0 for n in NAMES})
 
     def test_a_start_prepared_by_its_name(self):
         """The Live window's Prepare (--from) with the start's name: built at once, and the plugin
