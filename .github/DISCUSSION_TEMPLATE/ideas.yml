@@ -4,6 +4,17 @@ body:
     attributes:
       value: |
         Thank you for the idea. The ideas are read before each version is planned, and the ones with the most votes come first. One idea per discussion, please: two ideas, two discussions. If someone already asked for yours, vote for it and add what you need.
+  - type: dropdown
+    id: part
+    attributes:
+      label: For
+      description: Build makes tiles in advance; Live streams the ortho while you fly.
+      options:
+        - Build
+        - Live
+        - Both
+    validations:
+      required: true
   - type: textarea
     id: want
     attributes:

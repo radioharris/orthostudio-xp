@@ -153,15 +153,19 @@ Its guide, with the steps of a flight, the window and the measurements:
 ## Reporting a problem, asking for a feature
 
 - **A problem**: open an issue in this repository
-  ([New issue](https://github.com/radioharris/orthostudio-xp/issues/new/choose)). Its form asks for
-  what helps find the cause: the version, your system, what you did and what you saw, the tile, a
-  screenshot, and the log `serve.log`. The issues are kept for what goes wrong.
+  ([New issue](https://github.com/radioharris/orthostudio-xp/issues/new/choose)) and choose "A
+  problem with Build" or "A problem with Live". Its form asks for what helps find the cause: the
+  version, your system, what you did and what you saw, a screenshot, and the log: `serve.log` for
+  Build, `LogLive.txt` of that flight for Live (where to find it, the ones before too, is in the
+  form). The issues are kept for what goes wrong.
 - **An idea or a request**: start a discussion in
   [Ideas](https://github.com/radioharris/orthostudio-xp/discussions/categories/ideas). Its form asks
-  what you would like, why, how you do it today, and examples. Others can vote for it and add what
-  they need, so the ideas with the most votes are the roadmap's starting point.
+  whether it is for Build or Live, what you would like, why, how you do it today, and examples.
+  Others can vote for it and add what they need, so the ideas with the most votes are the
+  roadmap's starting point.
 - **A question**: ask it in
-  [Q&A](https://github.com/radioharris/orthostudio-xp/discussions/categories/q-a).
+  [Q&A](https://github.com/radioharris/orthostudio-xp/discussions/categories/q-a); its form asks
+  whether it is about Build or Live.
 
 Without a GitHub account, the comments on OrthoStudio XP's page on X-Plane.Org are read too.
 

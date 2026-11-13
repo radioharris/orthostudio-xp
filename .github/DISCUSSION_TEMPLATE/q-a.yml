@@ -1,0 +1,32 @@
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for asking. Someone already asked yours? Add to their discussion instead.
+  - type: dropdown
+    id: part
+    attributes:
+      label: About
+      description: Build makes tiles in advance; Live streams the ortho while you fly.
+      options:
+        - Build
+        - Live
+        - Both
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: question
+    attributes:
+      label: Your question
+      placeholder: "Can Live use the tiles I built with Build where I have them?"
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: Details
+      description: |
+        What you tried, your system and the version of OrthoStudio XP, screenshots.
+        About a flight with Live, its log helps: `LogLive.txt`, at the top of your X-Plane folder, written again each time OrthoStudio XP opens; the ones before are in the `log` folder of Live's folder (`~/.orthostudio/live` on macOS and Linux, `%USERPROFILE%\.orthostudio\live` on Windows). About a build, the log `serve.log`: in `~/Library/Logs/OrthoStudio XP` on macOS, `%LOCALAPPDATA%\OrthoStudio XP\Logs` on Windows, `~/.orthostudio/log` on Linux.
