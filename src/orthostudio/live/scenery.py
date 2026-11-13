@@ -120,6 +120,18 @@ def xplane_pref(xplane: Path, key: str) -> str | None:
     return None
 
 
+def xplane_texture_quality(xplane: Path) -> int | None:
+    """X-Plane's texture quality as it applies it, 0 to 4 (4: Maximum, 3: High), from its
+    preferences: ``renopt_tex_res_04``, which X-Plane 12 reads ("Setting |Texture Resolution read
+    from prefs"), else the older ``_tex_res`` (1 to 5); None when neither is there. For the window
+    only: Live builds the zoom chosen whatever it is (the user, 2026-11-13)."""
+    for key, shift in (("renopt_tex_res_04", 0), ("_tex_res", -1)):
+        value = xplane_pref(xplane, key)
+        if value and value.isdigit():
+            return max(0, min(4, int(value) + shift))
+    return None
+
+
 def _ini(xplane: Path) -> Path:
     return custom_scenery_dir(xplane) / "scenery_packs.ini"
 

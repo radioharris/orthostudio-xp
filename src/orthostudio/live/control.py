@@ -59,6 +59,7 @@ from orthostudio.live.scenery import (
     osxp_regions,
     save_named_xplane,
     xplane_running,
+    xplane_texture_quality,
 )
 from orthostudio.live.settings import LiveSettings, load_settings
 
@@ -211,6 +212,7 @@ def gather_checks() -> dict[str, Any]:
         "xplane": None,
         "xplane_problem": None,
         "xplane_running": xplane_running(),
+        "xplane_quality": None,  # its texture quality, 0 to 4: the page says what High costs
         "mesh": None,
         "mesh_found": False,
         "region_ready": False,
@@ -239,6 +241,7 @@ def gather_checks() -> dict[str, Any]:
     sources = stream_sources(xp)
     out.update(
         xplane=str(xp),
+        xplane_quality=xplane_texture_quality(xp),
         # the regions installed, by name, or where they would be
         mesh=", ".join(s.name for s in sources) if sources else str(autoortho_scenery(xp)),
         mesh_regions=[s.name.removeprefix("z_ao_") for s in sources],

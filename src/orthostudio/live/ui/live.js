@@ -944,6 +944,21 @@ function drawMemory() {
   const short = shortOfMemory(m, ...zoomsChosen());
   note.hidden = !short;
   if (short) note.textContent = t("zoom.memory", { ram: m.ram_gb, need: m.sharp_ram_gb });
+  drawQuality();
+}
+
+/** Under the zooms too: X-Plane's texture quality below Maximum, which shows each texture one size
+ *  smaller for each notch under it (Live builds the zoom chosen whatever it is; measured
+ *  2026-11-13). */
+function drawQuality() {
+  const q = last?.checks?.xplane_quality;
+  const note = $("zoom-quality");
+  const below = Number.isInteger(q) && q < 4;
+  note.hidden = !below;
+  if (!below) return;
+  const zoom = zoomsChosen()[0];
+  const shown = Math.max(12, zoom - (4 - q));
+  note.textContent = t(q === 3 ? "zoom.quality_high" : "zoom.quality_low", { zl: shown, zoom });
 }
 
 // ---------------------------------------------------------------- the season

@@ -911,7 +911,11 @@ level from the file's own size. A pilot at High with 16/18 so sees ZL15 near the
 the ZL16 photos; with 17/19, ZL16. Live 2.1.0 built no level X-Plane would not read at its quality,
 read from its preferences, and two pilots at High saw ZL15 only (issue 25, discussion 26). Since
 everything is built, a quality raised in flight finds its sizes on the disk and holds nothing (the
-hold of 2026-11-13 is kept on the branch `quality-hold`).
+hold of 2026-11-13 is kept on the branch `quality-hold`). The window only reads the quality, to say
+under the zoom what X-Plane shows below Maximum and that Maximum gives the zoom chosen
+(`scenery.xplane_texture_quality`, the checks' `xplane_quality`: `renopt_tex_res_04`, which X-Plane
+12 reads, else `_tex_res`). It never suggests 17/19 there: at High, 17/19 takes the graphics memory
+of Maximum for the same ZL16, and downloads more.
 
 ## The loop
 

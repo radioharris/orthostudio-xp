@@ -426,8 +426,8 @@ law four times closer.
 texture quality. At High, X-Plane shows every texture one size smaller: with 16/18, 2048 px under
 14 km, which is ZL15 on the ground, made from the ZL16 photos. To see ZL16 at High, choose the zoom
 17/19: X-Plane then shows the 4096 px of its 8192 px textures (measured on 13 November 2026), or set
-X-Plane's texture quality to Maximum. Raised in flight, X-Plane finds the sharper sizes already
-built.
+X-Plane's texture quality to Maximum: Live's window says so under the zoom when X-Plane is below
+Maximum. Raised in flight, X-Plane finds the sharper sizes already built.
 
 External views read nothing more: X-Plane takes each texture's levels for the aircraft, when it
 loads a flight and then as the aircraft moves, and a camera taken away, even kilometres out near the

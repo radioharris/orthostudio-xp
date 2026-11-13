@@ -202,3 +202,18 @@ def test_live_out_of_x_plane_for_good(tmp_path: Path, monkeypatch) -> None:
         assert name not in names(xp) and "-" + name not in names(xp)
     assert not (xp / "Custom Scenery" / LINK_NAME).exists() and not plugin.installed(xp)
     assert (tmp_path / "pack").is_dir()
+
+
+def test_x_plane_s_texture_quality_for_the_window(tmp_path: Path) -> None:
+    """The line X-Plane 12 reads (renopt_tex_res_04, 0 to 4), else the older one (1 to 5); only
+    shown in the window: Live builds the zoom chosen whatever it is."""
+    from orthostudio.live.scenery import xplane_texture_quality
+
+    prefs = tmp_path / "Output" / "preferences"
+    prefs.mkdir(parents=True)
+    prf = prefs / "X-Plane.prf"
+    assert xplane_texture_quality(tmp_path) is None
+    prf.write_text("_tex_res 4\n")
+    assert xplane_texture_quality(tmp_path) == 3  # High
+    prf.write_text("_tex_res 5\nrenopt_tex_res_04 3\n")
+    assert xplane_texture_quality(tmp_path) == 3  # the line X-Plane reads wins
