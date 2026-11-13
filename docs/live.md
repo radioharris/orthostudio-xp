@@ -426,8 +426,8 @@ law four times closer.
 X-Plane's texture quality, and the map shows what it built. At High, X-Plane shows every texture one
 size smaller (measured on 13 November 2026): with 16/18, 2048 px under 14 km, which is ZL15 on the
 ground, made from the ZL16 photos, and one zoom lower around airports too. For the zoom you chose,
-set X-Plane's texture quality to Maximum: Live's window says so under the zoom when X-Plane is below
-Maximum. Raised in flight, X-Plane finds the sharper sizes already built. The window reads X-Plane's
+set Texture Quality to Maximum in X-Plane (Settings, Graphics): Live's window says so under the zoom
+when X-Plane is below Maximum. Raised in flight, X-Plane finds the sharper sizes already built. The window reads X-Plane's
 own setting, not the one of its VR settings, which X-Plane uses in VR.
 
 External views read nothing more: X-Plane takes each texture's levels for the aircraft, when it

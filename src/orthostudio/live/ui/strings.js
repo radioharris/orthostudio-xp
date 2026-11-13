@@ -289,9 +289,9 @@ export const STRINGS = {
     "zoom.disk":
       "The 8192 px textures of 16/19 and 17/19 need at least {gb} GB of disk space: Live's space is raised to {gb} GB (Settings, Disk space).",
     "zoom.quality_high":
-      "X-Plane's texture quality is High: it shows one zoom lower everywhere (ZL{zl} instead of ZL{zoom}). Set it to Maximum for the zoom chosen.",
+      "Texture Quality in X-Plane is High: X-Plane shows one zoom lower everywhere (ZL{zl} instead of ZL{zoom}). Set it to Maximum in X-Plane (Settings, Graphics) for the zoom chosen.",
     "zoom.quality_low":
-      "X-Plane's texture quality is below High: it shows the textures less sharp still. Set it to Maximum for the zoom chosen.",
+      "Texture Quality in X-Plane is below High: X-Plane shows the textures less sharp still. Set it to Maximum in X-Plane (Settings, Graphics) for the zoom chosen.",
     "zoom.memory":
       "This computer has {ram} GB of memory, and the 8192 px textures of 16/19 and 17/19 need {need} GB: X-Plane may stutter or run out of memory. 16/18, the package's, suits it better.",
     "home.title": "When the app starts",
@@ -696,9 +696,9 @@ export const STRINGS = {
     "zoom.disk":
       "Les textures de 8192 px de 16/19 et 17/19 demandent au moins {gb} Go sur le disque : l'espace de Live passe à {gb} Go (Réglages, Place sur le disque).",
     "zoom.quality_high":
-      "Qualité des textures d'X-Plane sur High (Haut) : il affiche un zoom en dessous partout (ZL{zl} au lieu de ZL{zoom}). Mettez-la sur Maximum pour le zoom choisi.",
+      "Qualité des textures dans X-Plane sur High (Haut) : X-Plane affiche un zoom en dessous partout (ZL{zl} au lieu de ZL{zoom}). Mettez-la sur Maximum dans X-Plane (Réglages, Graphiques) pour le zoom choisi.",
     "zoom.quality_low":
-      "Qualité des textures d'X-Plane sous High (Haut) : il affiche les textures encore moins nettes. Mettez-la sur Maximum pour le zoom choisi.",
+      "Qualité des textures dans X-Plane sous High (Haut) : X-Plane affiche les textures encore moins nettes. Mettez-la sur Maximum dans X-Plane (Réglages, Graphiques) pour le zoom choisi.",
     "zoom.memory":
       "Cet ordinateur a {ram} Go de mémoire, et les textures de 8192 px de 16/19 et 17/19 en demandent {need} : X-Plane risque de saccader ou d'en manquer. 16/18, celui du package, lui convient mieux.",
     "home.title": "Au lancement de l'application",
