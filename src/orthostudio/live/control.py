@@ -13,8 +13,8 @@ The states:
   put in X-Plane;
 - ``streaming``: following X-Plane;
 - ``stopping``: asked to stop, the builder finishing its textures;
-- ``leaving``: stopped while X-Plane still runs; it reads its textures from the pack, which is
-  taken out once X-Plane quits, unless the user leaves it installed;
+- ``leaving``: stopped while X-Plane still runs; it reads its textures from the pack, whose line
+  is unchecked once X-Plane quits, unless the user leaves it installed;
 - ``deleting``: the built textures, the downloaded imagery or both being forgotten, nothing
   streaming.
 """

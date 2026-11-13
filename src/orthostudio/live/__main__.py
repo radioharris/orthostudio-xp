@@ -5,11 +5,11 @@
 ``ui`` opens the Live window; ``stream`` follows X-Plane and keeps its textures built, in the
 terminal; ``setup`` prepares the region's pack once; ``regions`` lists, installs and deletes
 AutoOrtho's regions, the mesh Live streams onto; ``reset`` forgets what was built and downloaded;
-``status`` says what is built and installed; ``uninstall`` takes the pack and the plugin out of
-X-Plane; ``lists`` reads each region into its list, so that a start reads lists only. Every
-command refuses while Live is switched off (``enabled = false`` in ``~/.orthostudio/live.toml``,
-:func:`orthostudio.live.enabled`). ``stream`` takes the window's settings
-(:mod:`orthostudio.live.settings`) for the options it is not given.
+``status`` says what is built and installed; ``uninstall`` takes Live out of X-Plane for good
+(its lines, links and plugin); ``lists`` reads each region into its list, so that a start reads
+lists only. Every command refuses while Live is switched off (``enabled = false`` in
+``~/.orthostudio/live.toml``, :func:`orthostudio.live.enabled`). ``stream`` takes the window's
+settings (:mod:`orthostudio.live.settings`) for the options it is not given.
 """
 
 from __future__ import annotations
@@ -79,14 +79,12 @@ def _xplane(xplane: Path | None) -> Path:
 
 
 def _uninstall_when_xplane_quits(xplane: Path) -> None:
-    """Take the pack and the plugin out, but never under a running X-Plane: it reads its textures
-    through the link."""
+    """Live's lines unchecked, but never under a running X-Plane: it reads its textures through
+    the link."""
     try:
         session.finish(xplane, typer.echo, hint=LEAVE_HINT)
     except KeyboardInterrupt:
-        typer.echo(
-            "the pack stays installed: `python -m orthostudio.live uninstall` once X-Plane has quit"
-        )
+        typer.echo("Live's line stays checked in X-Plane until Live's next stop")
 
 
 @app.command()
@@ -341,13 +339,13 @@ def status(xplane: XPlaneOpt = None, pack: PackOpt = None) -> None:
 
 @app.command()
 def uninstall(xplane: XPlaneOpt = None) -> None:
-    """Live out of X-Plane: its lines unchecked where they are (the pack itself stays)."""
+    """Live out of X-Plane for good: its lines, links and plugin (the pack itself stays)."""
     xp_dir = _xplane(xplane)
     if xplane_running():
         raise typer.Exit(
             _fail("X-Plane is running and reads its textures from the pack: quit it first")
         )
-    session.uninstall(xp_dir, typer.echo)
+    session.remove(xp_dir, typer.echo)
 
 
 @app.command()

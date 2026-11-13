@@ -4,10 +4,11 @@
 and the Live window both run.
 
 :func:`prepare` checks, sets the region up once, and puts the pack and the plugin in X-Plane; it
-refuses (:class:`RefusedError`) before installing anything. :func:`follow` streams until asked to
-stop. :func:`finish` takes the pack and the plugin out, but only once X-Plane has quit: it reads its
-textures through the link, and a pack left behind would show neutral textures, green-grey, to an
-X-Plane started without the streamer.
+refuses (:class:`RefusedError`) before installing anything, and a start that fails after unchecks
+Live's line again. :func:`follow` streams until asked to stop. :func:`finish` unchecks Live's
+lines, but only once X-Plane has quit: it reads its textures through the link, and a pack left
+checked would lose the pilot's place, the plugin taking it out of an X-Plane started without the
+streamer. :func:`remove` takes Live out of X-Plane for good.
 """
 
 from __future__ import annotations
@@ -361,36 +362,47 @@ def prepare(options: Options, log: Log) -> Prepared:
             reset(pack_dir, log)
     clock.done("region")
     covered = own_ground(xp_dir, pack_dir, options, log)
-    clock.done("own tiles")
-    _overlays(xp_dir, pack_dir, sources, covered, options.overlays, xplane_running(), log)
-    clock.done("overlays")
-    gate = None
-    # X-Plane loads plugins at start-up: if it is running, only one already there counts
-    if not options.no_plugin and (
-        plugin.installed(xp_dir) if xplane_running() else plugin.install(xp_dir, log=log)
-    ):
-        try:
-            gate = Gate(xp_dir, AirportIndex(apt_dat(xp_dir), airport_files(xp_dir)))
-        except OSError as e:
-            # never streaming without it: the plugin, finding nobody there as X-Plane starts,
-            # would take Live's scenery out of X-Plane (the review of 2026-10-01)
-            raise RefusedError(
-                f"Live's port for its X-Plane plugin (UDP {GATE_PORT}) is taken: another Live "
-                "runs on this computer, or the system keeps the port for itself (on Windows, "
-                f"Hyper-V or WSL may): {e}"
-            ) from e
+    try:
+        clock.done("own tiles")
+        _overlays(xp_dir, pack_dir, sources, covered, options.overlays, xplane_running(), log)
+        clock.done("overlays")
+        gate = None
+        # X-Plane loads plugins at start-up: if it is running, only one already there counts
+        if not options.no_plugin and (
+            plugin.installed(xp_dir) if xplane_running() else plugin.install(xp_dir, log=log)
+        ):
+            try:
+                gate = Gate(xp_dir, AirportIndex(apt_dat(xp_dir), airport_files(xp_dir)))
+            except OSError as e:
+                # never streaming without it: the plugin, finding nobody there as X-Plane starts,
+                # would take Live's scenery out of X-Plane (the review of 2026-10-01)
+                raise RefusedError(
+                    f"Live's port for its X-Plane plugin (UDP {GATE_PORT}) is taken: another Live "
+                    "runs on this computer, or the system keeps the port for itself (on Windows, "
+                    f"Hyper-V or WSL may): {e}"
+                ) from e
+            log(
+                "X-Plane plugin installed: while a flight loads, X-Plane waits until the ortho "
+                "around the start is built"
+            )
+        elif not xplane_running() and plugin.installed(xp_dir):
+            # without the gate, one left from an earlier start would find nobody on Live's port
+            # as X-Plane starts and take Live's scenery out of X-Plane (the review of 2026-11-13)
+            if not plugin.uninstall(xp_dir):
+                log("an earlier X-Plane plugin of Live's could not be taken out of X-Plane")
+        clock.done("plugin")
+        finest = finest_quality(xp_dir, options.quality)
         log(
-            "X-Plane plugin installed: while a flight loads, X-Plane waits until the ortho "
-            "around the start is built"
+            f"X-Plane texture quality: a 4096 px texture read up to {4096 >> finest} px; "
+            f"sharp up to {options.camera_reach_km:.0f} km farther for external views"
         )
-    clock.done("plugin")
-    finest = finest_quality(xp_dir, options.quality)
-    log(
-        f"X-Plane texture quality: a 4096 px texture read up to {4096 >> finest} px; "
-        f"sharp up to {options.camera_reach_km:.0f} km farther for external views"
-    )
-    clock.done("texture quality")
-    return Prepared(xp_dir, pack_dir, gate, fix, finest, covered, list(sources), clock)
+        clock.done("texture quality")
+        return Prepared(xp_dir, pack_dir, gate, fix, finest, covered, list(sources), clock)
+    except BaseException:
+        # a start that ends here unchecks Live's line as a stop does: left checked, it would lose
+        # its place at X-Plane's next start (the review of 2026-11-13)
+        unlist_live(xp_dir, log=log)
+        raise
 
 
 def own_ground(
@@ -699,6 +711,17 @@ def uninstall(xplane: Path, log: Log) -> None:
     pilot gave them. The plugin stays, idle without Live: at X-Plane's start it takes Live's links
     out only when Live's line is checked or gone (``take_out_if_alone``). The pack itself stays."""
     unlist_live(xplane, log=log)
+
+
+def remove(xplane: Path, log: Log) -> None:
+    """Live out of X-Plane for good (the app uninstalled, ``python -m orthostudio.live
+    uninstall``): its lines and links, and its plugin. The pack itself stays."""
+    from orthostudio.live import plugin
+
+    for name in (LINK_NAME, OVERLAY_LINK_NAME):
+        uninstall_link(xplane, name, log=log)
+    if plugin.installed(xplane) and not plugin.uninstall(xplane):
+        log("the OrthoStudio XP Live plugin stays in X-Plane: Windows still holds its file")
 
 
 def finish(

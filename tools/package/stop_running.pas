@@ -9,8 +9,7 @@
 // not end is ended.
 //
 // OrthoStudio XP Live's window is a process of its own, with an API of its own: it is asked
-// first, so that it takes its pack and its plugin out of X-Plane as it goes, which a process
-// ended does not (orthostudio/live/control.py quit). While it streams to a running X-Plane it
+// first, so that it unchecks its pack in X-Plane as it goes, which a process ended does not (orthostudio/live/control.py quit). While it streams to a running X-Plane it
 // answers 409, and the user chooses: X-Plane then flies on over what is already built.
 // build.py fills in the ports of EngineQuitUrl and LiveQuitUrl.
 

@@ -43,16 +43,16 @@ The Windows setup program and its uninstaller first stop an OrthoStudio XP runni
 installation folder (`tools/package/stop_running.pas`, the `[Code]` of the script). A running
 engine holds `python\python3.dll`, and a user installing again read "DeleteFile failed; code 5"
 on it (2026-09-14). They ask OrthoStudio XP Live's window to quit first, on its own port, 8642
-(`POST /api/live/quit`), so that it takes its pack and its plugin out of X-Plane as it goes, which
-a process ended does not: while it streams to a running X-Plane it answers 409, and they ask the
+(`POST /api/live/quit`), so that it unchecks its pack in X-Plane as it goes, which a process
+ended does not: while it streams to a running X-Plane it answers 409, and they ask the
 user, who may let X-Plane fly on over what is built (`force`) or quit X-Plane first. Then they
 ask the engine to quit with the page's own request, `POST /api/quit` on port 8641 (a build
 running: they ask first, then `force`), wait up to 20 s for the processes started from the
 folder's Python (the engine, Live's window, Triangle4XP, DSFTool, found with WMI) to end, end
 those still running, and give up with a message only if something still runs.
 
-The uninstaller then takes Live's pack and plugin out of X-Plane, where a Live that did not stop
-left them (`python -m orthostudio.live uninstall`, `[UninstallRun]`; nothing while X-Plane runs,
+The uninstaller then takes Live out of X-Plane: its lines, links and plugin, which a stop leaves
+unchecked and idle (`python -m orthostudio.live uninstall`, `[UninstallRun]`; nothing while X-Plane runs,
 which reads the pack), and its message names Live's folder too when it was chosen elsewhere than
 in `%USERPROFILE%\.orthostudio`.
 

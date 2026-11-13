@@ -172,32 +172,7 @@ def _link(xplane: Path, pack_dir: Path, link_name: str) -> Path:
 # every stop and listed it again by its rule at every start: moved by hand, it came back.
 
 
-def is_mesh(xplane: Path, entry: SceneryPackEntry) -> bool:
-    """A base mesh, which Live's line goes right above: AutoOrtho's (by its name: a mount), or a
-    pack named as meshes are (``zzz_``, ``XPME_``, ``zz_``, any ``z`` name after the tiles') whose
-    first DSF is ground. A library (no DSF) or overlays so named is not one: a library named
-    ``z...`` took Live's line above every simHeaven X-World pack, whose buildings Live's photos then
-    hid (issue 24). Its name decides when that DSF cannot be read (a disk unplugged)."""
-    from .covered import _folder, dsf_properties  # covered reads this module's list
-
-    if entry.is_autoortho:
-        return True
-    if not entry.is_mesh or entry.name in (LINK_NAME, OVERLAY_LINK_NAME):
-        return False
-    try:
-        folder = _folder(xplane, entry.path)
-        if not folder.is_dir():
-            return True
-        first = next((folder / "Earth nav data").glob("*/*.dsf"), None)
-        if first is None:
-            return False
-        properties = dsf_properties(first)
-    except OSError:
-        return True
-    return properties.get("sim/overlay") != "1"
-
-
-def live_anchor(xplane: Path, packs: SceneryPacks, own_tiles: str) -> SceneryPackEntry | None:
+def live_anchor(packs: SceneryPacks, own_tiles: str) -> SceneryPackEntry | None:
     """The line Live's goes right above when Live lists it itself: the first mesh, below the
     tiles, the other photo packs and everything that draws over the ground; with "Live
     everywhere", the first of the pilot's tiles (OrthoStudio XP's, Ortho4XP's) if it comes first
@@ -206,13 +181,11 @@ def live_anchor(xplane: Path, packs: SceneryPacks, own_tiles: str) -> SceneryPac
     start = next((i + 1 for i, e in enumerate(lines) if e.is_global_airports), 0)
     enabled = [e for e in lines[start:] if e.enabled]
     return next(
-        (e for e in enabled if (own_tiles == "under" and e.is_ortho) or is_mesh(xplane, e)), None
+        (e for e in enabled if (own_tiles == "under" and e.is_ortho) or packs.is_mesh(e)), None
     )
 
 
-def place_line(
-    xplane: Path, packs: SceneryPacks, own_tiles: str, move: bool = False
-) -> SceneryPackEntry:
+def place_line(packs: SceneryPacks, own_tiles: str, move: bool = False) -> SceneryPackEntry:
     """Live's line in ``packs``: where it is listed, never moved; else, or with ``move`` (the
     setting own_tiles changed), right above :func:`live_anchor`. A new line is checked."""
     entry = packs.find(LINK_NAME)
@@ -222,7 +195,7 @@ def place_line(
         entry = SceneryPackEntry(f"Custom Scenery/{LINK_NAME}/", enabled=True)
     else:
         packs.body = [x for x in packs.body if x is not entry]
-    anchor = live_anchor(xplane, packs, own_tiles)
+    anchor = live_anchor(packs, own_tiles)
     packs.body.insert(
         next((i for i, x in enumerate(packs.body) if x is anchor), len(packs.body)), entry
     )
@@ -235,7 +208,7 @@ def list_live(xplane: Path, pack_dir: Path, own_tiles: str, log=print) -> None:
     link = _link(xplane, pack_dir, LINK_NAME)
     packs = SceneryPacks.load(_ini(xplane))
     before = packs.to_bytes()
-    place_line(xplane, packs, own_tiles).enabled = True
+    place_line(packs, own_tiles).enabled = True
     if packs.to_bytes() != before:
         packs.save(_ini(xplane))
     log(f"installed: {link} -> {pack_dir.resolve()}, listed in scenery_packs.ini")
@@ -247,7 +220,7 @@ def move_live(xplane: Path, own_tiles: str) -> bool:
     packs = SceneryPacks.load(_ini(xplane))
     before = packs.to_bytes()
     if packs.find(LINK_NAME) is not None:
-        place_line(xplane, packs, own_tiles, move=True)
+        place_line(packs, own_tiles, move=True)
     if packs.to_bytes() == before:
         return False
     packs.save(_ini(xplane))

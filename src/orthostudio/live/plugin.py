@@ -13,12 +13,14 @@ computers seldom have a compiler: their plugins are built ahead, on any computer
 (``tools/live/plugin_builds.py``), and kept with the sources in ``native/xplane_plugin/prebuilt``,
 with the digest of the sources they were built from (:func:`sources_digest`, which the tests and
 the installers' build check). The streamer installs it in ``Resources/plugins`` together with the
-pack, in X-Plane's folder for the system (``mac_x64``, ``win_x64``, ``lin_x64``), and takes it out
-again once X-Plane has quit: X-Plane loads plugins at start-up only.
+pack, in X-Plane's folder for the system (``mac_x64``, ``win_x64``, ``lin_x64``), where it stays,
+idle in an X-Plane started without Live; :func:`uninstall` takes it out when the app is uninstalled
+(``python -m orthostudio.live uninstall``) or a start goes without it.
 """
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import shutil
 import subprocess
@@ -218,3 +220,19 @@ def install(xplane: Path, log: Callable[[str], None] = print) -> bool:
 
 def installed(xplane: Path) -> bool:
     return _xpl(plugin_dir(xplane)).exists()
+
+
+def uninstall(xplane: Path) -> bool:
+    """The plugin out of X-Plane. False where it stays: Windows keeps the file of a plugin that a
+    program has loaded until that program has quit, so in the seconds X-Plane takes to go."""
+    folder = plugin_dir(xplane)
+    xpl = _xpl(folder)
+    if xpl.exists():
+        try:
+            xpl.unlink()
+        except PermissionError:
+            return False
+    for d in (xpl.parent, folder):  # only if nothing else is in them
+        with contextlib.suppress(OSError):
+            d.rmdir()
+    return True

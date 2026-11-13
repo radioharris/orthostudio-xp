@@ -657,7 +657,8 @@ static int listed_unchecked(const char *ini, const char *name) {
 }
 
 /* Set at X-Plane's start when no streamer is there: Live cannot join this X-Plane, which lists
-   its scenery once, and the plugin stays idle until X-Plane quits. */
+   its scenery once, and the plugin stays idle until X-Plane quits: no socket, no word in Log.txt,
+   and Windows greys X-Plane as it always does when it stops responding. */
 static int alone = 0;
 
 /* Live's scenery in Custom Scenery while no streamer is there and its line is checked or gone:
@@ -701,9 +702,11 @@ PLUGIN_API int XPluginStart(char *outName, char *outSig, char *outDesc) {
         WSADATA wsa;
         winsock = WSAStartup(MAKEWORD(2, 2), &wsa) == 0;
     }
-    DisableProcessWindowsGhosting(); /* paused by Live, X-Plane is not greyed nor offered to close */
 #endif
     take_out_if_alone();
+#ifdef _WIN32
+    if (!alone) DisableProcessWindowsGhosting(); /* paused by Live, X-Plane is not greyed nor offered to close */
+#endif
     return 1;
 }
 
@@ -735,7 +738,7 @@ PLUGIN_API void XPluginDisable(void) {
 
 PLUGIN_API void XPluginReceiveMessage(XPLMPluginID inFrom, int inMsg, void *inParam) {
     intptr_t param = (intptr_t)inParam;
-    if (inFrom != XPLM_PLUGIN_XPLANE) return;
+    if (alone || inFrom != XPLM_PLUGIN_XPLANE) return; /* alone: not a word in Log.txt either */
     say("message %d (%ld)", inMsg, (long)param);
     if (holding) return; /* sent from within a hold (see `holding`): it holds already */
     if (inMsg == XPLM_MSG_PLANE_LOADED && param == 0) {

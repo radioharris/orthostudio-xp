@@ -145,7 +145,7 @@ no virtual disk between X-Plane and its textures: it builds them beside X-Plane 
 - **Your own tiles come first**: Live downloads nothing where you built one.
 - **Your order of sceneries is kept**: Live lists itself the first time at the bottom, right above
   the mesh, and moves its line after that only when you change "Your own tiles": moved by hand or
-  with xOrganizer, it stays.
+  with xOrganizer, it stays (its roads line goes back right above it at every start).
 - **Seasons**: the photos in the colours of the season of your flight's date in X-Plane, or of
   the one you choose.
 - **Towns at night**: street lamps and windows along X-Plane's roads on Live's photos, as many

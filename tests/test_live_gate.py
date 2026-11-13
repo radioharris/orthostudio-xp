@@ -428,13 +428,12 @@ class PluginTest(unittest.TestCase):
         return took, logged
 
     def test_no_streamer_no_wait(self):
+        """Live not running as X-Plane starts: the plugin stays idle, not a word in Log.txt."""
         took, logged = self.xplane(43.4382, 5.2129, "102:0", "112:1", "108:0", "115:1")
         self.assertEqual(set(took), {"102:0", "112:1", "108:0", "115:1"})
         self.assertLess(max(took.values()), 0.5)
         self.assertEqual(logged, [])
-        self.assertEqual(
-            self.traced, ["102 (0)", "112 (1)", "108 (0)", "115 (1)"]
-        )  # every message, in Log.txt
+        self.assertEqual(self.traced, [])
 
     def fake_xplane_with_live_s_links(self) -> Path:
         root = Path(self.tmp.name) / f"X-Plane {time.monotonic_ns()}"
@@ -511,6 +510,7 @@ class PluginTest(unittest.TestCase):
             self.assertLess(took["115:1"], 0.3)
             took, _ = self.xplane(46.2381, 6.1089, "102:0", "115:0", "115:1")
             let_go(sock)
+        self.assertEqual(self.traced, ["102 (0)", "115 (0)", "115 (1)"])  # every one, in Log.txt
         self.assertLess(took["115:1"], 0.3)
         self.assertLess(took["115:0"], 0.3)
         self.assertEqual(holds, [])
@@ -881,6 +881,10 @@ class BuildTest(unittest.TestCase):
                         {line.split()[-3] for line in bound if line.endswith("(from XPLM)")},
                         {f"_{name}" for name in plugin.xplm_functions()},
                     )
+                plugin.uninstall(xplane)
+                self.assertFalse(
+                    (xplane / "Resources" / "plugins" / "OrthoStudio XP Live").exists()
+                )
 
     def test_shipped_by_the_mac_installer(self):
         """The Mac installer's copy (:func:`plugin.ship`, tools/package/build.py): built for Apple
@@ -1055,6 +1059,8 @@ class PrebuiltTest(unittest.TestCase):
                 self.assertTrue(plugin.install(xplane, log=self.fail))
                 xpl = xplane / "Resources" / "plugins" / plugin.NAME / folder / f"{plugin.NAME}.xpl"
                 self.assertEqual(xpl.read_bytes(), self.xpl(platform))
+                self.assertTrue(plugin.uninstall(xplane))
+                self.assertFalse((xplane / "Resources" / "plugins" / plugin.NAME).exists())
 
     def test_none_for_this_system(self):
         with (
@@ -1067,6 +1073,21 @@ class PrebuiltTest(unittest.TestCase):
             self.assertEqual(plugin.availability(), "missing")
             self.assertFalse(plugin.install(Path(tmp) / "X-Plane 12", log=said.append))
             self.assertIn("will not wait", said[0])
+
+    def test_windows_holds_a_loaded_plugin(self):
+        """Windows keeps the file of a plugin X-Plane has loaded until X-Plane has quit: it stays,
+        and says so."""
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            mock.patch.object(plugin.sys, "platform", "win32"),
+        ):
+            xplane = Path(tmp)
+            xpl = plugin._xpl(plugin.plugin_dir(xplane))
+            xpl.parent.mkdir(parents=True)
+            xpl.write_bytes(b"MZ")
+            with mock.patch.object(Path, "unlink", side_effect=PermissionError("in use")):
+                self.assertFalse(plugin.uninstall(xplane))
+            self.assertTrue(xpl.exists())
 
 
 def runs_intel_code() -> bool:
@@ -1240,7 +1261,7 @@ class BuiltAheadTest(unittest.TestCase):
     def scenario_without_live_x_plane_goes_on(self):
         took, logged = self.xplane("102:0", "112:1", "108:0")
         self.assertLess(max(took.values()), 1.5)  # no streamer: no wait
-        self.assertIn("OrthoStudio XP Live: message 112 (1)", logged)
+        self.assertFalse(any("OrthoStudio XP Live" in line for line in logged))  # idle, silent
 
     def scenario_x_plane_waits_until_live_says_go(self):
         holds = []

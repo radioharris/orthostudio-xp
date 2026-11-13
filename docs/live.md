@@ -438,8 +438,8 @@ start, the whole airport and its surroundings (its ZL18 textures, about 7 km acr
 4096 px before X-Plane goes on, whatever the runway or the stand: a camera taken anywhere over the
 airport finds them sharp.
 
-**The plugin.** To make X-Plane wait at a start, Live puts a small plugin in X-Plane while it runs,
-and takes it out when it stops. It holds X-Plane on its loading screen as long as the ortho keeps
+**The plugin.** To make X-Plane wait at a start, Live puts a small plugin in X-Plane. It stays
+there, and does nothing in an X-Plane started without Live. It holds X-Plane on its loading screen as long as the ortho keeps
 arriving, and lets it go when everything there is built, when nothing has downloaded for a minute
 (no internet, or a source refusing every request: `LogLive.txt` says why), or when you click Stop.
 In flight it holds X-Plane only when you raise its texture quality: X-Plane then reads again,
@@ -490,7 +490,8 @@ Windows, ext4 on Linux, never Mac OS Extended, exFAT or FAT32.
 - `regions`: the mesh's regions Live installed, each with the night lights' density grids of its
   squares in its `night` folder.
 - `overlays`: the roads, forests and buildings of Live's squares, linked as `y_osxp_live_overlays`
-  while Live runs, listed right above Live's pack: X-Plane reads none listed under it.
+  and listed right above Live's pack, put back there at every start: X-Plane reads none listed
+  under it.
 
 The textures and the imagery share one disk space, 20 GB by default, set in the Settings tab, and
 never under 10 GB at 16/18 nor 20 GB at 16/19 and 17/19: a smaller space is raised to it, and the

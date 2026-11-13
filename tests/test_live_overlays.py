@@ -154,6 +154,8 @@ def test_listed_above_the_ortho_below_every_other_overlay(tmp_path: Path) -> Non
         (OVERLAY_LINK_NAME, tmp_path / "overlays", "overlay"),
     ):
         folder.mkdir()
+        if kind == "ortho":
+            put(folder, A)  # Live's pack holds ground: a mesh to the list's rules
         install_link(xp, folder, name, log=lambda _: None, kind=kind)
     names = [e.name for e in SceneryPacks.load(xp / "Custom Scenery" / "scenery_packs.ini").entries]
     assert (

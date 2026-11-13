@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 
 from live_helpers import NAMES, FakeDownloader, atom, make_source, make_xplane
+from orthostudio.install import dsf_head
 from orthostudio.install.scenery_packs import IMPORTED_PACK_PREFIX, ORTHO_PREFIX
 from orthostudio.live import session
 from orthostudio.live.cache import ChunkCache
@@ -166,7 +167,7 @@ def test_one_dsf_read_a_pack_and_only_its_start(
     monkeypatch.setattr(covered, "dsf_properties", lambda p: read.append(p) or real(p))
     assert covered_squares(xp, LINK_NAME) == {}  # overlays; unreadable is not taken for ground
     assert len(read) == 2  # one DSF a pack
-    head = covered._head(read[0])
+    head = dsf_head._head(read[0])
     assert head.startswith(b"XPLNEDSF") and len(head) < 1_100_000  # its start, not 3 MB
 
 

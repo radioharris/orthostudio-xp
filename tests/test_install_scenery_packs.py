@@ -85,11 +85,28 @@ def test_the_packs_of_imported_tiles_are_ordered_like_osxps() -> None:
     ortho tile and its overlays still an overlays pack."""
     assert SceneryPackEntry("Custom Scenery/zOrtho4XP_+43+005/").is_ortho
     assert SceneryPackEntry("Custom Scenery/yOrtho4XP_Overlays/").is_overlay
-    assert not SceneryPackEntry("Custom Scenery/zOrtho4XP_+43+005/").is_mesh
+    assert not SceneryPackEntry("Custom Scenery/zOrtho4XP_+43+005/").named_as_mesh
     assert pack_kind("yOrtho4XP_Overlays") == "overlay"
     p = _packs(GLOBAL_AIRPORTS, "yOrtho4XP_Overlays", "zOrtho4XP_+43+005", "z_autoortho")
     assert p.ensure("zOrthoStudio_+44+005", kind="ortho") is True
     assert _names(p)[2:5] == ["zOrtho4XP_+43+005", "zOrthoStudio_+44+005", "z_autoortho"]
+
+
+def test_a_first_tile_goes_above_the_mesh_not_a_library_named_z(tmp_path: Path) -> None:
+    """A first tile goes right above the first mesh: a library named z... above simHeaven X-World
+    is none (no DSF), and a tile there hid X-World's buildings (issue 24's twin, the review of
+    2026-11-13). Named as a mesh and out of reach (a disk unplugged), its name decides."""
+    scenery = tmp_path / "X-Plane 12" / "Custom Scenery"
+    (scenery / "z_library").mkdir(parents=True)
+    ini = scenery / "scenery_packs.ini"
+    names = ["z_library", "simHeaven_X-World_Europe-1-vfr", "zzz_unplugged"]
+    ini.write_text(
+        "I\n1000 Version\nSCENERY\n\n"
+        + "".join(f"SCENERY_PACK Custom Scenery/{n}/\n" for n in names)
+    )
+    p = SceneryPacks.load(ini)
+    p.ensure("zOrthoStudio_+46+006", kind="ortho")
+    assert _names(p) == [*names[:2], "zOrthoStudio_+46+006", "zzz_unplugged"]
 
 
 def test_a_built_tile_goes_above_the_imported_tile_of_its_square() -> None:

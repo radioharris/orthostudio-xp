@@ -8,8 +8,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
+from live_helpers import NAMES, make_source, make_xplane
 from orthostudio.install.scenery_packs import ORTHO_PREFIX, SceneryPacks
-from orthostudio.live import session
+from orthostudio.live import plugin, session
 from orthostudio.live.filesystem import is_folder_link
 from orthostudio.live.pack import LINK_NAME
 from orthostudio.live.scenery import list_live, move_live
@@ -134,3 +137,50 @@ def test_a_tile_built_joins_the_others(tmp_path: Path) -> None:
         packs.ensure(new, kind="ortho")
         packs.save(ini)
         assert names(xp) == expected
+
+
+def a_start(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, session.Options]:
+    monkeypatch.setenv("OSXP_HOME", str(tmp_path / "home"))
+    (tmp_path / "home").mkdir()
+    monkeypatch.setattr(session, "xplane_running", lambda: False)
+    xp = make_xplane(tmp_path)
+    source = make_source(tmp_path, tile=(46, 2), textures=NAMES)
+    return xp, session.Options(xplane=xp, pack=tmp_path / "pack", source=source, no_plugin=True)
+
+
+def test_a_start_that_fails_unchecks_the_line(tmp_path: Path, monkeypatch) -> None:
+    """Left checked, the line would lose its place at X-Plane's next start, its plugin taking
+    Live's links out."""
+    xp, options = a_start(tmp_path, monkeypatch)
+
+    def fails(*args, **kwargs) -> None:
+        raise OSError("the disk is full")
+
+    monkeypatch.setattr(session, "_overlays", fails)
+    with pytest.raises(OSError):
+        session.prepare(options, log=lambda _: None)
+    assert "-" + LINK_NAME in names(xp)
+
+
+def test_a_start_without_the_plugin_takes_an_old_one_out(tmp_path: Path, monkeypatch) -> None:
+    """Without Live's port open, a plugin left from an earlier start would take Live's links out
+    as X-Plane starts, and X-Plane would fly without Live's scenery while Live streams."""
+    xp, options = a_start(tmp_path, monkeypatch)
+    old = plugin._xpl(plugin.plugin_dir(xp))
+    old.parent.mkdir(parents=True)
+    old.write_bytes(b"an earlier plugin")
+    session.prepare(options, log=lambda _: None)
+    assert not plugin.installed(xp) and LINK_NAME in names(xp)
+
+
+def test_live_out_of_x_plane_for_good(tmp_path: Path, monkeypatch) -> None:
+    """The app uninstalled: Live's lines, links and plugin out of X-Plane, its pack kept."""
+    xp, options = a_start(tmp_path, monkeypatch)
+    session.prepare(options, log=lambda _: None)
+    plugin_file = plugin._xpl(plugin.plugin_dir(xp))
+    plugin_file.parent.mkdir(parents=True)
+    plugin_file.write_bytes(b"the plugin")
+    session.remove(xp, lambda _: None)
+    assert LINK_NAME not in names(xp) and "-" + LINK_NAME not in names(xp)
+    assert not (xp / "Custom Scenery" / LINK_NAME).exists() and not plugin.installed(xp)
+    assert (tmp_path / "pack").is_dir()

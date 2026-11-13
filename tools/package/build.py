@@ -351,10 +351,11 @@ def inno_setup_script(
     """The Inno Setup script of the Windows installer: for the current user only (no
     administrator), a Start menu entry, an optional desktop one, the app started at the end, and
     an OrthoStudio XP running from the folder, its Live window first, stopped before its files are
-    replaced or removed (:data:`INNO_CODE`). Uninstalling also takes OrthoStudio XP Live's pack and
-    plugin out of X-Plane, where a Live that did not stop left them. Before the end, the app's code
-    is opened once (``orthostudio.warmup``), so that each new file has been read once, from the
-    disk and by the antivirus, before the first start (``docs/specs/packaging.md``).
+    replaced or removed (:data:`INNO_CODE`). Uninstalling also takes OrthoStudio XP Live out of
+    X-Plane: its lines, links and plugin, which a stop leaves unchecked and idle. Before the end,
+    the app's code is opened once (``orthostudio.warmup``), so that each new file has been read
+    once, from the disk and by the antivirus, before the first start
+    (``docs/specs/packaging.md``).
 
     On a machine without the WebView2 Runtime, which OrthoStudio XP shows its window through, the
     installer offers ``webview2`` (:func:`fetch_webview2`): a task of its own, ticked, that the
@@ -426,8 +427,8 @@ Name: "{{autoprograms}}\\{APP_NAME}"; Filename: "{run}"; Parameters: "-m {ENTRY_
 Name: "{{autodesktop}}\\{APP_NAME}"; Filename: "{run}"; Parameters: "-m {ENTRY_MODULE}"; WorkingDir: "{{app}}"; IconFilename: "{{app}}\\orthostudio.ico"; Tasks: desktopicon
 
 [UninstallRun]
-; OrthoStudio XP Live's pack and plugin out of X-Plane, where a Live that did not stop left them (it
-; takes them out as it stops); nothing while X-Plane runs, which reads the pack
+; OrthoStudio XP Live out of X-Plane: its lines, links and plugin, which a stop leaves unchecked and
+; idle; nothing while X-Plane runs, which reads the pack
 Filename: "{{app}}\\python\\python.exe"; Parameters: "-m orthostudio.live uninstall"; WorkingDir: "{{app}}"; Flags: runhidden; RunOnceId: "LiveOutOfXPlane"
 
 [Run]

@@ -130,8 +130,9 @@ class SceneryPackEntry:
         return self.name.startswith(AUTOORTHO_PREFIXES)
 
     @property
-    def is_mesh(self) -> bool:
-        """A base-mesh pack that an ortho tile must stay above (spec 3.2, rule 3)."""
+    def named_as_mesh(self) -> bool:
+        """Named as base meshes are (spec 3.2, rule 3): whether it is one, its DSF says
+        (:meth:`SceneryPacks.is_mesh`)."""
         name = self.name
         return name.startswith(MESH_PREFIXES) or (
             name > _BELOW_ORTHO and not name.startswith(ORTHO_PREFIXES)
@@ -157,6 +158,8 @@ class SceneryPacks:
     body: list[str | SceneryPackEntry] = field(default_factory=list)
     newline: str = "\r\n" if os.name == "nt" else "\n"
     trailing_newline: bool = True
+    root: Path | None = None
+    """X-Plane's folder, which the paths in the list are relative to: set by :meth:`load`."""
 
     # ------------------------------------------------------------ load/dump
 
@@ -200,10 +203,11 @@ class SceneryPacks:
         """Parse ``path``; a missing file yields an empty list with the default header."""
         path = Path(path)
         try:
-            data = path.read_bytes()
+            packs = cls.from_bytes(path.read_bytes())
         except FileNotFoundError:
-            return cls()
-        return cls.from_bytes(data)
+            packs = cls()
+        packs.root = path.parent.parent  # Custom Scenery's: X-Plane's
+        return packs
 
     def to_bytes(self) -> bytes:
         lines = list(self.header)
@@ -253,6 +257,35 @@ class SceneryPacks:
                 return i
         return None
 
+    def is_mesh(self, entry: SceneryPackEntry) -> bool:
+        """A base mesh, which tiles and Live's line go right above: AutoOrtho's (by its name: a
+        mount), or a pack named as meshes are (:attr:`SceneryPackEntry.named_as_mesh`) whose
+        first DSF is ground (no ``sim/overlay 1``). A library (no DSF) or overlays so named is not
+        one: a library named ``z...`` above simHeaven X-World took Live's line above every
+        X-World pack, whose buildings Live's photos then hid (issue 24), and a first tile there
+        too. Its name decides when that DSF cannot be read (a disk unplugged), or when the list
+        was not read from X-Plane's folder."""
+        from .dsf_head import dsf_properties
+
+        if entry.is_autoortho:
+            return True
+        if not entry.named_as_mesh:
+            return False
+        if self.root is None:
+            return True
+        folder = Path(entry.path.replace("\\", "/"))
+        folder = folder if folder.is_absolute() else self.root / folder
+        try:
+            if not folder.is_dir():
+                return True
+            first = next((folder / "Earth nav data").glob("*/*.dsf"), None)
+            if first is None:
+                return False
+            properties = dsf_properties(first)
+        except OSError:
+            return True
+        return properties.get("sim/overlay") != "1"
+
     def _floor(self) -> int:
         """First body index at which a new line may go: right after ``*GLOBAL_AIRPORTS*``."""
         for i, x in enumerate(self.body):
@@ -276,7 +309,7 @@ class SceneryPacks:
         # the mesh, the square never appears in the sim, and the Library says installed (found in
         # review, 2026-09-23).
         first_ao = next((i for i, x in entries if x.is_autoortho and i >= floor), None)
-        first_mesh = next((i for i, x in entries if x.is_mesh and i >= floor), None)
+        first_mesh = next((i for i, x in entries if i >= floor and self.is_mesh(x)), None)
         above = [i for i in (first_ao, first_mesh) if i is not None]
         if above:
             return min(above)

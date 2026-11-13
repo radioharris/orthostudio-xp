@@ -139,8 +139,9 @@ modules, English and French, English unless the switch chose French, as OrthoStu
 - **The X-Plane folder** is not one of them: it is `essential.xplane_dir` in `config.toml`, one
   setting with Build's (`chosen_xplane`). Live's Settings read and write it through
   `/api/live/xplane-folder`, saved before Live's own settings since Live's folder is checked against
-  this X-Plane. It changes only while Live is idle and X-Plane is not running; Live's pack and
-  plugin then leave the X-Plane left, and go into the new one at the next start. Build's page reads
+  this X-Plane. It changes only while Live is idle and X-Plane is not running; Live's lines in the
+  X-Plane left are unchecked (its plugin stays there, idle), and it goes into the new one at the
+  next start. Build's page reads
   the value again when its Settings are shown and before its Save (`followXplaneFolder`), so that a
   Save never writes back the folder it read earlier.
 - **The page** is made of OrthoStudio XP's own parts (its Settings' cards and fields, its dialogs),
@@ -518,8 +519,8 @@ on another disk, copies on Windows): a square whose overlay is already there, th
 link to it, or its size and date), is left alone, and only the others are placed or taken away
 (the log says how many). Made again whole, the 16,621 overlays took 2.2 s of every start; brought
 up to date, 0.34 s on a start like the one before (the user's Mac, 2026-10-31). The pack is
-linked as `y_osxp_live_overlays` and listed by OrthoStudio XP's rule for overlays: right above the
-first ortho pack, below every other overlay. A square of Live's gets none:
+linked as `y_osxp_live_overlays` and listed right above Live's line at every start, wherever that
+is (`session._overlays`). A square of Live's gets none:
 - where the user's own tiles give the ground (they have their overlays);
 - where another enabled overlay pack listed above Live's line has it (`y*overlays`: AutoOrtho's,
   Ortho4XP's, OrthoStudio XP's), which carries no exclusion zone: the same roads would be drawn
@@ -855,7 +856,7 @@ place sans que live n'écrase à chaque fois la valeur »):
   draws over the ground; with "Live everywhere", right above the first of the pilot's tiles
   (OrthoStudio XP's, Ortho4XP's) when it comes before the first mesh (one listed under the mesh
   is hidden by it, and Live would be too). No mesh: the end of the list. A mesh
-  (`scenery.is_mesh`): AutoOrtho's by its name, or a pack named as meshes are (`zzz_`, `XPME_`,
+  (`SceneryPacks.is_mesh`, Build's rule for a first tile too): AutoOrtho's by its name, or a pack named as meshes are (`zzz_`, `XPME_`,
   `zz_`, any `z` name sorting after the tiles') whose first DSF is ground (no `sim/overlay 1`);
   its name decides when that DSF cannot be read (a disk unplugged). A library named `z...` (no
   DSF) took Live's line above every simHeaven X-World pack by the name alone, and Live's photos
@@ -870,8 +871,8 @@ place sans que live n'écrase à chaque fois la valeur »):
 
 Build lists a new tile right after the last of its tiles (spec install 3.2), so on the side of
 Live's line the setting chose, with no rule of its own about Live. Its first tile ever goes right
-above the first line its name rule takes for a mesh, which `z_osxp_live` is: above Live's line,
-with "Live everywhere" too, and every tile after it follows it there; changing the setting twice,
+above the first mesh by the same rule (`SceneryPacks.is_mesh`), which Live's line is (its DSFs are
+ground): above Live's line, with "Live everywhere" too, and every tile after it follows it there; changing the setting twice,
 or moving the line, puts Live above them (the guide says so). Live's overlays line goes right
 above Live's at every start (`session._overlays`). An X-Plane started while Live's line is still
 checked (Live crashed, was left installed, or quit during a flight), or after X-Plane dropped
@@ -1219,8 +1220,9 @@ A plugin that does not return from one of these messages holds the whole load.
     port), it removes Live's links `z_osxp_live` and `y_osxp_live_overlays` from Custom Scenery,
     never a folder, before X-Plane lists its scenery (see "The pack"), unless that link's line is
     listed unchecked only (`listed_unchecked`, any path form): Live stopped as it should, and the
-    pilot's place kept. Without Live it then stays idle until X-Plane quits (no socket: Live
-    cannot join an X-Plane that listed its scenery without it);
+    pilot's place kept. Without Live it then stays idle until X-Plane quits: no socket (Live
+    cannot join an X-Plane that listed its scenery without it), not a word in Log.txt, and on
+    Windows X-Plane greyed as usual when it stops responding (`alone`);
   - at PLANE_LOADED it sends the streamer `LIVE1 LOAD lat lon`;
   - at the radio's FMOD_BANK_LOADED and at LIVERY_LOADED it sends `LIVE1 HOLD lat lon aircraft
     day=N utc=S` every 250 ms over UDP (127.0.0.1:49250), the flight's date and UTC time as X-Plane

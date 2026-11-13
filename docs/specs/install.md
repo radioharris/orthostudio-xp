@@ -119,9 +119,13 @@ like OrthoStudio XP's own (decision 0011).
    draws the first base mesh of a square, and the tile OrthoStudio XP built is the one wanted).
    Otherwise right after the **last** existing tile pack line; else right before the first
    `z_autoortho`/`z_ao_*` line or the first **base-mesh pack** at or below the floor, whichever
-   comes first (`SceneryPackEntry.is_mesh`: a name starting with `zzz_`, `XPME_` or `zz_`, or any
-   name other than a tile pack sorting after `zOrtho4XP_~`, i.e. the `z*` names X-Plane loads last:
-   `zzz_hd_global_scenery4`, `z_...`); else at the end of the body. Without this rule (P2a review)
+   comes first (`SceneryPacks.is_mesh`: a pack named as base meshes are,
+   `SceneryPackEntry.named_as_mesh`: a name starting with `zzz_`, `XPME_` or `zz_`, or any name
+   other than a tile pack sorting after `zOrtho4XP_~`, i.e. the `z*` names X-Plane loads last:
+   `zzz_hd_global_scenery4`, `z_...`, whose first DSF is ground; its name decides when that DSF
+   cannot be read or the list was not read from X-Plane's folder. A library or overlays pack so
+   named is not one: a first tile above a library named `z...` listed above simHeaven X-World hid
+   X-World's buildings on its square, issue 24's twin, 2026-11-13); else at the end of the body. Without this rule (P2a review)
    an ortho tile of a user with no AutoOrtho line landed *below* their HD mesh, which X-Plane then
    drew instead of the tile; until 2026-09-23 the AutoOrtho line was looked for first, and one
    below a base mesh put the tile below that mesh as well. Library packs (`simHeaven_*`,
