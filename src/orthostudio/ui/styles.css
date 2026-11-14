@@ -786,6 +786,9 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 }
 /* Outlining a cloud: a thin cross to aim, over the map and over what is drawn on it. */
 .plan-map.is-outlining, .plan-map.is-outlining.leaflet-grab, .plan-map.is-outlining .leaflet-interactive { cursor: crosshair; }
+/* a shape clicked takes the focus, and Chrome framed it in a box around the whole cloud before the
+   cloud was drawn ticked (a user, 2026-11-14); the shapes are no stop of the keyboard */
+.plan-map path.leaflet-interactive:focus { outline: none; }
 .plan-step { border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg-2); padding: var(--card-pad); min-width: 0; }
 .plan-step:focus { outline: none; }
 .plan-step-title { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
