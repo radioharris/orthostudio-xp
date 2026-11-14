@@ -460,6 +460,26 @@ unpacked in Live's folder as
 `default_sources`: a square it has takes its DSF (a DSF another region has already stays that
 region's), AutoOrtho's serves the squares it has not.
 
+**Another tool's mesh** (`scenery.other_mesh`, 2026-11-14): a folder chosen in the Settings
+(`LiveSettings.other_mesh`, empty: none), last in `default_sources` after Live's regions and
+AutoOrtho's in X-Plane, its overlay packs last in `overlays.overlay_folders`. A setting, not a
+read of the other tool's own configuration, which may change under Live (the user: « je préfère
+le réglage sans surprise »); AutoOrtho's regions in `Custom Scenery` stay found by themselves.
+- **By content, not by name:** the packs (`Earth nav data`) in the folder, it or down to
+  `PACK_DEPTH` (3) folders below it, the depth of AutoOrtho's own pack moved
+  (`<folder>/z_autoortho/scenery/z_ao_<id>`); a pack is not looked into, a folder below the first
+  that cannot be read is left out. A pack with no `terrain` folder is an overlay pack.
+- **A mesh Live can stream onto:** `_why_not_streamed` refuses a pack whose `textures` hold a
+  `.dds` (`photos`: a tile with its own photos, not one to stream onto) and one whose first
+  `TER_SAMPLE` (20) terrain files name no photo in Ortho4XP's names (`BASE_TEX` or
+  `BASE_TEX_NOWRAP` to `<row>_<col>_<provider><zl>.dds`; `no_photos`: X-Plane's land classes, HD
+  Mesh); `unreadable` when they cannot be read.
+- **Once:** a folder already in the sources (the same folder by `os.path.samefile`, AutoOrtho's
+  own chosen again) is not added twice.
+- **The window:** `checks.other_mesh` is None without a folder, else `{folder, there, meshes,
+  overlays, refused: [{name, why}]}`, the line under the setting; a missing mesh's notices name
+  the setting. No night grids on it: they come with Live's regions.
+
 `orthostudio/live/aoregions.py` installs a region the way AutoOrtho's installer does
 (`autoortho/downloader.py`), from the GitHub releases of `kubilus1/autoortho-scenery`, which hold
 the mesh of the whole planet (27 September 2026: na 25.8 GB, sa 9.2, eur 16.8, afr 12.3, asi 33.2,

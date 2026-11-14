@@ -68,7 +68,8 @@ again unless you deleted them.
 
 At its first start the app asks what you want to do: build your tiles, or fly now with
 OrthoStudio XP Live (from 2.0). Both are in its one window, Build | Live at the top. To
-fly with Live: install the mesh of where you fly (Live's Settings, first question), then Start Live
+fly with Live: install the mesh of where you fly (Live's Settings, first question), or choose a mesh
+in AutoOrtho's format you already have, then Start Live
 and Start X-Plane; the steps are in [docs/live.md](docs/live.md#a-flight-step-by-step).
 
 OrthoStudio XP runs entirely on your computer: its screens are a page it serves itself, at
