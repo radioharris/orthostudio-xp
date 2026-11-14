@@ -9,7 +9,8 @@ it, is ``clouds.state``'s alone.
 ``$OSXP_HOME/clouds/<tile>.json``: every cloud with its id (eight characters, never given again
 on the tile), its number (``Cloud 7``, ``Outline 2``), its outline, what each source has under it
 (the search's screening), its tick, the source the user chose (``chosen``, ``None`` for the
-best), and the images got of each source tried (its checks). The list is the draft: each change
+best), the level its sources are read at (``level``, absent for Auto), and the images got of each
+source tried (its checks). The list is the draft: each change
 is saved as it is made and survives closing, quitting and every build; only Apply changes what
 X-Plane shows. Its order is the order clouds are laid in. It keeps the clouds last laid too
 (``laid``), which a build of the tile lays again (``laying.lay_again``).
@@ -32,7 +33,7 @@ from shapely.geometry import Polygon
 from shapely.ops import unary_union
 from shapely.validation import make_valid
 
-from orthostudio.clouds.sources import JUDGED
+from orthostudio.clouds.sources import COARSEST, JUDGED
 from orthostudio.clouds.tile import (
     TileClouds,
     entry_problem,
@@ -48,6 +49,7 @@ from orthostudio.clouds.tile import (
 from orthostudio.errors import OsxpError
 from orthostudio.fsutil import atomic_write_text
 from orthostudio.model import TileRef
+from orthostudio.zones import MAX_ZL
 
 __all__ = ["CloudList", "erase", "knowing", "load", "pick", "update"]
 
@@ -167,6 +169,9 @@ def _cloud_problem(c: Any) -> str | None:
         return "no number or tick"
     if not (c.get("chosen") is None or isinstance(c["chosen"], str)):
         return "a source is named"
+    level = c.get("level")
+    if not (level is None or (type(level) is int and COARSEST <= level <= MAX_ZL)):
+        return "no level"
     rings = ring_problem(c.get("rings"))
     if rings is not None:
         return rings
@@ -260,28 +265,45 @@ def update(tile: TileRef) -> Iterator[CloudList]:
 # -- edits -------------------------------------------------------------------------------------
 
 
-def pick(
-    cl: CloudList, cid: str, action: str, source: str | None = None, level: int | None = None
-) -> None:
+def pick(cl: CloudList, cid: str, action: str, source: str | None = None) -> None:
     """One cloud's pick, the one way a cloud is ticked or unticked (its state allowed it, the
     caller asked ``state.View.allows``): ``choose`` makes ``source`` its source and ticks it,
-    ``level`` makes ``level`` the level its sources are read at (``None``: Auto, any), its source
-    the best there, and ticks it; ``tick`` ticks it, ``untick`` unticks it."""
+    ``tick`` ticks it, ``untick`` unticks it."""
     c = cl.get(cid)
     if action == "choose":
         c["chosen"] = source
-    if action == "level":
-        c["level"] = level
-        c["chosen"] = None
     c["tick"] = action != "untick"
 
 
-def record_level(cl: CloudList, cid: str, verdicts: Mapping[str, Any]) -> None:
-    """What the sources have under the cloud ``cid`` at the level chosen for it, kept with what
-    the search found (``screening_of``), unless it left the list meanwhile."""
+def set_level(
+    cl: CloudList,
+    cid: str,
+    rings: Any,
+    level: int | None,
+    verdicts: Mapping[str, Any] | None = None,
+) -> None:
+    """The level the sources of the cloud ``cid`` are read at (``None``: Auto, any), with what
+    they have there (``verdicts``, its try), written together once the try is over: a try
+    stopped, refused or failed leaves the list as it was (a level kept without its try left a
+    cloud with no source, a review, 2026-11-14). Its source is then the best there. Nothing
+    when the cloud left the list or changed outline meanwhile (another search)."""
     c = next((x for x in cl.clouds if x["id"] == cid), None)
-    if c is not None:
-        c.setdefault("screening", {}).update(screening_of(verdicts))
+    if c is None or c["rings"] != rings:
+        return
+    _choose(c, None, level)
+    if verdicts:
+        c["screening"] = {**c["screening"], **screening_of(verdicts)}
+
+
+def _choose(c: dict[str, Any], chosen: str | None, level: int | None = None) -> None:
+    """The one way a cloud's choice is set again: its source (``chosen``, ``None``: the best)
+    and its level (``None``: Auto, kept out of the file so that a list where no level was ever
+    chosen is written as before)."""
+    c["chosen"] = chosen
+    if level is None:
+        c.pop("level", None)
+    else:
+        c["level"] = level
 
 
 def _shape(rings: Sequence[Sequence[float]]) -> Any:
@@ -325,13 +347,9 @@ def merge_search(
         old = next((c for c in loose if _overlap(f["rings"], c["rings"])), None)
         if old is not None:
             loose.remove(old)
-            old.update(
-                rings=f["rings"],
-                ha=rings_ha(f["rings"]),
-                screening=f["screening"],
-                checks={},
-                chosen=None,
-            )
+            old.update(rings=f["rings"], ha=rings_ha(f["rings"]))
+            old.update(screening=f["screening"], checks={})
+            _choose(old, None)
             kept.append(old)
         else:
             c = cl.add("found", f["rings"], screening=f["screening"])
@@ -413,6 +431,7 @@ def discard(cl: CloudList, shown: TileClouds | None) -> None:
     holds = held_by_id(shown)
     for c in cl.clouds:
         c["tick"] = c["id"] in holds
-        c.pop("level", None)  # Auto: the source it holds, whatever its level
         if c["id"] in holds:
-            c["chosen"] = holds[c["id"]]["source"]
+            _choose(c, holds[c["id"]]["source"])
+        else:
+            c.pop("level", None)

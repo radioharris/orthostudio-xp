@@ -363,7 +363,7 @@ tile is then tried under each cloud: whether it has a picture there, the same ph
 cloudy, and how well its ground fits the photo around the cloud. Under a cloud no source is clear
 under, each one, the tile's own too, is also tried at its coarser levels down to ZL11: some show
 another photo there, blurred but with no clouds (Esri World Imagery at ZL11, Bing at ZL12, Esri
-Clarity at ZL13 over a tropical forest), offered as *Esri World Imagery · ZL11* and taken only
+Clarity at ZL13 over a tropical forest), offered as *Esri · ZL11* and taken only
 where no sharp photo is clear; beside a cloud's source, its level can be chosen by hand. Nothing is
 ticked for you. A tick
 fetches the source's pieces at the tile's own sharpness and freezes them: the map's *After* shows

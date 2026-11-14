@@ -41,7 +41,7 @@ from orthostudio.clouds.laying import folder_lock, show
 from orthostudio.clouds.model import detector_bytes, detector_ready, ensure_detector
 from orthostudio.clouds.opencv import opencv_ready
 from orthostudio.clouds.picture import Picture, draw, fine_level, frame_bounds, map_level
-from orthostudio.clouds.sources import SourcePieces, other_sources, resolve, tops
+from orthostudio.clouds.sources import SourcePieces, code_of, other_sources, resolve, tops
 from orthostudio.clouds.tasks import Task, Tasks, error_view, standing
 from orthostudio.clouds.tile import (
     TileClouds,
@@ -413,8 +413,8 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
         )
         tasks = [t.view() for t in engine.tasks.of(tile.name)]
         under_way = engine.tasks.busy(tile.name)  # what follows a task too
-        levels = tops(shown.textures, load_registry()) if shown is not None else None
-        view = state.view(cls.knowing(tile, shown), shown, tile, st, tasks, under_way, levels)
+        heights = tops(shown.textures, load_registry()) if shown is not None else None
+        view = state.view(cls.knowing(tile, shown), shown, tile, st, tasks, under_way, heights)
         return folder, shown, view
 
     def opened(
@@ -422,6 +422,7 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
         action: str,
         body: Mapping[str, Any] | None = None,
         source: str | None = None,
+        level: int | None = None,
     ) -> tuple[TileRef, Path, TileClouds, state.View]:
         """The tile ``name`` for ``action``, of the cloud ``body`` names when it names one (its
         ``id``; ``choose``: of ``source``): refused unless its view allows it, in the words of
@@ -432,7 +433,7 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
         cid = None if body is None else _cloud_of(tile, body)
         if cid is not None:
             v.cloud(cid)  # CLOUD_UNKNOWN when it is not in the list
-        if not v.allows(action, cid, source):
+        if not v.allows(action, cid, source, level):
             # the state's own rule: one allowing all as ready (the tool not here yet) said a
             # double tick was "build the tile first" (a review, 2026-11-07)
             if not state.TILE_STATES[v.state].allows:
@@ -549,14 +550,50 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
                 out[str(r.path)] = look(r.tile)[2].library() if looked else state.library_cell()
         return {"rows": out}
 
-    def sources_for(tile: TileRef, shown: TileClouds) -> SourcePieces:
-        """The sources a search judges under the tile's clouds: every other one covering it, and
-        its own, read at its coarser levels alone (``find.screen``)."""
+    def sources_for(
+        tile: TileRef, shown: TileClouds, level: int | None = None
+    ) -> tuple[SourcePieces, dict[str, int]]:
+        """The sources judged under the tile's clouds, and the tile's ``tops``: every other one
+        covering it and its own (``find.screen`` reads its own at its coarser levels alone); at a
+        cloud's ``level``, each by its code there (``sources.code_of``)."""
         registry = load_registry()
+        heights = tops(shown.textures, registry)
         found = other_sources(tile, shown.provider, registry)
         if shown.provider in registry:
             found[shown.provider] = registry[shown.provider]
-        return SourcePieces(default_chunks_root(), found)
+        if level is not None:
+            codes = {code_of(base, level, heights) for base in found}
+            found = {k: pr for k in codes if (pr := resolve(k, registry)) is not None}
+        return SourcePieces(default_chunks_root(), found), heights
+
+    def tried_under(
+        task: Task,
+        tile: TileRef,
+        shown: TileClouds,
+        rings: Any,
+        level: int | None = None,
+    ) -> dict[str, Any]:
+        """What the sources have under one cloud (its ``rings``), as the search judges them: an
+        outline's sources tried, or every source at a cloud's ``level`` (read there, not at the
+        search's level, and no coarser one looked for)."""
+        p = begin(task, tile, shown)
+        classes = engine.classes(tile, shown)
+        if classes is None:
+            classes = np.zeros(p.rgb.shape[:2], np.uint8)
+        pieces, heights = sources_for(tile, shown, level)
+        (verdicts,) = screen(
+            p,
+            [rings],
+            classes,
+            pieces,
+            heights,
+            own=shown.provider if level is None else None,
+            coarser=level is None,
+            finest=level,
+            cancel=task.stop,
+            phase=task.say,
+        )
+        return verdicts
 
     def get_images(
         tile: TileRef,
@@ -654,11 +691,13 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
             fine = engine.drawn(tile, shown, finer)[1] if finer is not None else None
             areas, classes = find(p, fine, cancel=task.stop, phase=task.say)
             rings = [a.rings(p) for a in areas]
+            pieces, heights = sources_for(tile, shown)
             verdicts = screen(
                 p,
                 rings,
                 classes,
-                sources_for(tile, shown),
+                pieces,
+                heights,
                 own=shown.provider,
                 cancel=task.stop,
                 phase=task.say,
@@ -699,58 +738,45 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
         body: Mapping[str, Any] | None,
         before: state.View,
     ) -> None:
-        """The level ``zl`` the cloud ``cid``'s sources are read at (``None``: Auto, any): kept,
-        then every source, the tile's own too, judged under it at that level, as the search
-        judges them (``find.screen``), and the images of the best there got: passing from ZL16 to
-        ZL12 asked the source shown alone, where every one was wanted at ZL12; then one may say
-        "I want to try EOX at ZL12" (a user, 2026-11-14)."""
-        with cls.update(tile) as cl:
-            cls.pick(cl, cid, "level", level=zl)
+        """The level ``zl`` the cloud ``cid``'s sources are read at (``None``: Auto, any). A
+        level: every source, the tile's own too, judged under it there (:func:`tried_under`),
+        then the level and what they have there written together (``cloudlist.set_level``:
+        stopped or refused, the list is as it was) and the best there ticked, its images got:
+        passing from ZL16 to ZL12 asked the source shown alone, where every one was wanted at
+        ZL12; then "I want to try EOX at ZL12" (a user, 2026-11-14). Auto: its source the best
+        whatever its level, its images got when its state asks them."""
+        rings = before.cloud(cid).cloud["rings"]
         if zl is None:
+            with cls.update(tile) as cl:
+                cls.set_level(cl, cid, rings, None)
             get_images(tile, [cid], body, before=before)
             return
-        _detector_said(body)  # its sources judged by the detector, then its images got
-        _folder, shown, v = look(tile)
-        assert shown is not None
-        rings = v.cloud(cid).cloud["rings"]
-        registry = load_registry()
-        heights = tops(shown.textures, registry)
-        bases = [*other_sources(tile, shown.provider, registry), shown.provider]
-        found = {
-            code: provider
-            for code in {state.line_at(b, zl, heights) for b in bases if b in registry}
-            if (provider := resolve(code, registry)) is not None
-        }
-        then = before.cloud(cid)
+        _detector_said(body)  # its sources judged by the detector, then the best's images got
+        _folder, shown, _v = look(tile)
+        if shown is None:
+            raise OsxpError("CLOUD_NOT_NOW", context={"tile": tile.name, "action": "level"})
+        was = before.cloud(cid)
 
         def run(task: Task) -> None:
-            p = begin(task, tile, shown)
-            classes = engine.classes(tile, shown)
-            if classes is None:
-                classes = np.zeros(p.rgb.shape[:2], np.uint8)
-            (verdicts,) = screen(
-                p,
-                [rings],
-                classes,
-                SourcePieces(default_chunks_root(), found),
-                coarser=False,
-                cancel=task.stop,
-                phase=task.say,
-            )
+            verdicts = tried_under(task, tile, shown, rings, zl)
             with cls.update(tile) as cl:
-                cls.record_level(cl, cid, verdicts)
+                cls.set_level(cl, cid, rings, zl, verdicts)
 
-        def images() -> None:
-            """Its best source at that level, its images got (the detector here: the try ran it)."""
-            get_images(tile, [cid], {"download": True})
+        def then() -> None:
+            """The best there taken, as an outline's: ticked when its state allows it, its
+            images got (the detector on this computer: the try ran it)."""
+            if look(tile)[2].allows("tick", cid):
+                pick(tile, [cid], "tick", body={"download": True})
+            else:
+                get_images(tile, [cid], {"download": True})
 
         engine.tasks.start(
             tile.name,
-            "check",
+            "outline",
             run,
             cloud=cid,
-            then=images,
-            was={"row": then.row, "lays": then.lays},
+            then=then,
+            was={"row": was.row, "lays": was.lays},
         )
 
     @router.post("/api/clouds/{name}/picks")
@@ -761,13 +787,12 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
         action, cid, source = _body_of(_tile_of(name), body, state.DRAFT | {"level"})
         if action == "level":
             zl = (body or {}).get("level")
-            tile, _folder, shown, v = opened(name, action, {"id": cid} if cid else None)
-            offered = state.levels_of(tops(shown.textures, load_registry()))
-            if cid is None or not (zl is None or (type(zl) is int and zl in offered)):
+            if cid is None or not (zl is None or type(zl) is int):
                 raise OsxpError(
                     "CLOUD_INVALID",
-                    context={"tile": tile.name, "cloud": str(cid or ""), "reason": "no such level"},
+                    context={"tile": name, "cloud": str(cid or ""), "reason": "no such level"},
                 )
+            tile, _folder, _shown, v = opened(name, action, {"id": cid}, level=zl)
             try_level(tile, cid, zl, body, before=v)
             return {"ok": True}
         if cid is None:
@@ -809,19 +834,7 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
         def run(task: Task) -> None:
             # drawn here, not in the answer: a picture to draw again held the click 10 s on a
             # Windows server (+52+004, 2026-11-07)
-            p = begin(task, tile, shown)
-            classes = engine.classes(tile, shown)
-            if classes is None:
-                classes = np.zeros(p.rgb.shape[:2], np.uint8)
-            (verdicts,) = screen(
-                p,
-                [[ring]],
-                classes,
-                sources_for(tile, shown),
-                own=shown.provider,
-                cancel=task.stop,
-                phase=task.say,
-            )
+            verdicts = tried_under(task, tile, shown, [ring])
             with cls.update(tile) as cl:
                 cls.record_screening(cl, cid, verdicts, shown)
 

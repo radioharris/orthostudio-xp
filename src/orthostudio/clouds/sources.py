@@ -35,8 +35,10 @@ __all__ = [
     "PROPOSABLE",
     "SourcePieces",
     "at_level",
+    "code_of",
     "level_of",
     "other_sources",
+    "read_at",
     "resolve",
     "tops",
 ]
@@ -74,7 +76,8 @@ Imagery at ZL11 over tropical forest, a user, 2026-11-14)."""
 
 def at_level(code: str, zl: int) -> str:
     """The source ``code`` read at ``zl`` at most: ``Arc:11``. Each is a source of its own for
-    the clouds (their screening, checks and menu), its pieces the source's own."""
+    the clouds (their screening, checks and menu), its pieces the source's own. Made by
+    :func:`code_of` alone, so that one reading has one code."""
     return f"{code}:{zl}"
 
 
@@ -84,16 +87,32 @@ def level_of(code: str) -> tuple[str, int | None]:
     return (base, int(zl)) if base and zl.isdigit() else (code, None)
 
 
+def code_of(base: str, zl: int | None, tops: Mapping[str, int]) -> str:
+    """The one code of the source ``base`` read at ``zl`` for a tile (``tops``): the source
+    itself at its sharpest there or finer (Bing at ZL16 on a ZL16 tile, EOX asked ZL16, which
+    has none finer than ZL14), ``Bing:12`` below. Two codes of one reading had the same images
+    got twice, a change counted where there was none, and the sharp one ranked as blurred (a
+    review, 2026-11-14)."""
+    top = tops.get(base)
+    return base if zl is None or top is None or zl >= top else at_level(base, zl)
+
+
+def read_at(code: str, tops: Mapping[str, int]) -> int | None:
+    """The level the tile reads ``code`` at (:func:`code_of`): its own, else the source's
+    sharpest there (``tops``); ``None`` for a source the tile does not know."""
+    base, zl = level_of(code)
+    return zl if zl is not None else tops.get(base)
+
+
 def resolve(code: str, registry: Mapping[str, Provider]) -> Provider | None:
     """The source ``code`` names, read no finer than its level: the registry's source with that
     level as its finest. ``None`` when its source is unknown or the level is not one it has
-    up to its finest, down to :data:`COARSEST` (``EOX:14``: a cloud's level is ZL16, EOX has no
-    finer)."""
+    coarser than its finest, down to :data:`COARSEST`."""
     base, zl = level_of(code)
     provider = registry.get(base)
     if provider is None or zl is None:
         return provider
-    if not COARSEST <= zl <= provider.max_zl:
+    if not COARSEST <= zl < provider.max_zl:
         return None
     return provider.model_copy(update={"max_zl": zl})
 
