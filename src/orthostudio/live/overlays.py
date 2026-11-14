@@ -51,7 +51,7 @@ from . import aoregions
 from .filesystem import place_file
 from .geo import dsf_rel_path, dsf_tile_of
 from .pack import LINK_NAME, OVERLAY_LINK_NAME
-from .scenery import _ini
+from .scenery import _ini, other_mesh, other_mesh_folder
 
 OSXP_OVERLAYS = "y_osxp_overlays"  # Live's own, in its regions folder
 AUTOORTHO_OVERLAYS = "yAutoOrtho_Overlays"  # where AutoOrtho's installer puts every region's
@@ -81,13 +81,15 @@ def overlay_folders(xplane: Path, sources: Sequence[Path], root: Path) -> list[P
     them: Live's install of a region keeps them beside its mesh (``regions/y_ao_<id>``), in
     whichever Live folder (its marker: a cold test flight's Live streams onto the region of the
     user's, tools/live/flights/fly.py); AutoOrtho's installer puts every region's in one pack,
-    ``yAutoOrtho_Overlays``, used here whether it is enabled or not."""
+    ``yAutoOrtho_Overlays``, used here whether it is enabled or not; last, those of the folder of
+    another tool's mesh chosen in the Settings (:func:`other_mesh`)."""
     out = [aoregions.regions_dir(root) / OSXP_OVERLAYS]
     for source in sources:
         region = source.name.removeprefix("z_ao_")
         if source == aoregions.mesh_dir(root, region) or (source / aoregions.MARKER).is_file():
             out.append(source.with_name(f"y_ao_{region}"))
     out.append(custom_scenery_dir(xplane) / AUTOORTHO_OVERLAYS)
+    out += other_mesh(other_mesh_folder()).overlays  # those of another tool's mesh, last
     return [f for f in out if (f / "Earth nav data").is_dir()]
 
 

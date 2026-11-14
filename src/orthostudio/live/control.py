@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import threading
 import time
 import traceback
@@ -57,6 +58,8 @@ from orthostudio.live.scenery import (
     named_xplane,
     ortho_streamers,
     osxp_regions,
+    other_mesh,
+    other_mesh_folder,
     save_named_xplane,
     xplane_running,
     xplane_texture_quality,
@@ -222,6 +225,8 @@ def gather_checks() -> dict[str, Any]:
         "plugin": plugin.availability(),
         "folder": str(live_root()),
         "folder_default": str(default_live_root()),
+        # the folder of another tool's mesh chosen in the Settings, what Live takes there and not
+        "other_mesh": _other_mesh_said(),
         "folder_problem": None,
         "textures_bytes": _textures_bytes(default_pack_dir()),
         # the SimBrief name OrthoStudio XP has, which the window offers to take: never asked of
@@ -244,7 +249,8 @@ def gather_checks() -> dict[str, Any]:
         xplane_quality=xplane_texture_quality(xp),
         # the regions installed, by name, or where they would be
         mesh=", ".join(s.name for s in sources) if sources else str(autoortho_scenery(xp)),
-        mesh_regions=[s.name.removeprefix("z_ao_") for s in sources],
+        # by region, Live's and AutoOrtho's ("eur"); another tool's by its folder's name
+        mesh_regions=[re.sub(r"^z_(?:ao|osxp)_", "", s.name) for s in sources],
         mesh_found=bool(sources),
         region_ready=session.region_ready(default_pack_dir(), sources),
         autoortho_mounted=autoortho_mounted(xp),
@@ -257,6 +263,22 @@ def gather_checks() -> dict[str, Any]:
         ],
     )
     return out
+
+
+def _other_mesh_said() -> dict[str, Any] | None:
+    """The folder of another tool's mesh as the Settings say it: its meshes and overlays by name,
+    those refused with why; None when none is chosen."""
+    folder = other_mesh_folder()
+    if folder is None:
+        return None
+    found = other_mesh(folder)
+    return {
+        "folder": str(folder),
+        "there": folder.is_dir(),
+        "meshes": [p.name for p in found.meshes],
+        "overlays": [p.name for p in found.overlays],
+        "refused": [{"name": name, "why": why} for name, why in found.refused],
+    }
 
 
 def our_regions(root: Path) -> list[dict[str, Any]]:

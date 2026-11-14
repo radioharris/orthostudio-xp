@@ -17,6 +17,7 @@ import os
 import subprocess
 import sys
 import threading
+from dataclasses import dataclass
 from pathlib import Path
 
 from orthostudio.config.store import load_settings, save_settings
@@ -90,10 +91,99 @@ def osxp_regions(root: Path) -> list[Path]:
     )
 
 
+@dataclass(frozen=True)
+class OtherMesh:
+    """What the folder of another tool's mesh holds (:func:`other_mesh`)."""
+
+    meshes: list[Path]
+    """Its regions Live streams onto: AutoOrtho's format, terrain files naming photos to make."""
+    overlays: list[Path]
+    """Its roads, forests and buildings: packs with DSFs and no terrain."""
+    refused: list[tuple[str, str]]
+    """Its packs Live cannot stream onto, and why."""
+
+
+NO_OTHER_MESH = OtherMesh([], [], [])
+
+
+def other_mesh(folder: Path | None) -> OtherMesh:
+    """The meshes and overlays of the folder the pilot chose (``LiveSettings.other_mesh``), by what
+    they hold, whatever their names: a pack (``Earth nav data``) with a ``terrain`` folder is a mesh
+    when its terrain files name photos Live makes (:func:`_why_not_streamed`), one without is an
+    overlay pack. The folder may be one such pack, or hold several. Nothing when it is gone (its
+    disk away)."""
+    if folder is None:
+        return NO_OTHER_MESH
+    try:
+        packs = (
+            [folder]
+            if (folder / "Earth nav data").is_dir()
+            else sorted(p for p in folder.iterdir() if (p / "Earth nav data").is_dir())
+        )
+    except OSError:
+        return NO_OTHER_MESH
+    meshes: list[Path] = []
+    overlays: list[Path] = []
+    refused: list[tuple[str, str]] = []
+    for pack in packs:
+        if not (pack / "terrain").is_dir():
+            overlays.append(pack)
+        elif (why := _why_not_streamed(pack)) is not None:
+            refused.append((pack.name, why))
+        else:
+            meshes.append(pack)
+    return OtherMesh(meshes, overlays, refused)
+
+
+TER_SAMPLE = 20  # a mesh's terrain files looked at: one naming a photo Live makes is enough
+
+
+def _why_not_streamed(pack: Path) -> str | None:
+    """Why Live cannot stream onto ``pack``, or None: a tile with its photos (textures there, which
+    Live leaves to X-Plane as the pilot's own tile), or terrain files naming no photo in Ortho4XP's
+    names, which Live makes (X-Plane's or HD Mesh's land classes)."""
+    from orthostudio.live.geo import _TEXTURE_RE
+
+    try:
+        with os.scandir(pack / "textures") as entries:
+            if any(e.name.lower().endswith(".dds") for e in entries):
+                return "photos"  # a tile with its photos
+    except OSError:
+        pass
+    seen = 0
+    try:
+        with os.scandir(pack / "terrain") as entries:
+            for entry in entries:
+                if not entry.name.endswith(".ter"):
+                    continue
+                seen += 1
+                with open(entry.path, "rb") as f:
+                    for line in f.read(8192).splitlines():
+                        if line.startswith((b"BASE_TEX ", b"BASE_TEX_NOWRAP ")):
+                            name = line.split()[-1].decode("utf-8", "replace")
+                            name = name.replace("\\", "/").rsplit("/", 1)[-1]
+                            if name.endswith(".dds") and _TEXTURE_RE.match(name):
+                                return None
+                if seen >= TER_SAMPLE:
+                    break
+    except OSError:
+        return "unreadable"
+    return "no_photos"  # X-Plane's or HD Mesh's land classes
+
+
+def other_mesh_folder() -> Path | None:
+    """The folder of another tool's mesh the pilot chose in Live's Settings, if any."""
+    from orthostudio.live.settings import load_settings
+
+    folder = load_settings().other_mesh.strip()
+    return Path(folder) if folder else None
+
+
 def default_sources(xplane: Path, root: Path | None = None) -> list[Path]:
     """The regions whose mesh Live streams onto: Live's own mesh first, so that a square it has is
     its (``region.setup_region``: a DSF a region has already stays that region's), then AutoOrtho's
-    own, then those Live installed (in ``root``, Live's folder) that AutoOrtho has not."""
+    own, then those Live installed (in ``root``, Live's folder) that AutoOrtho has not, then those
+    of the folder of another tool's mesh chosen in the Settings (:func:`other_mesh`), each once."""
     from orthostudio.live import aoregions
     from orthostudio.live.pack import live_root
 
@@ -106,7 +196,19 @@ def default_sources(xplane: Path, root: Path | None = None) -> list[Path]:
         for region in sorted(aoregions.installed(root))
         if f"z_ao_{region}" not in have
     ]
-    return ours + theirs + mine
+    out: list[Path] = []
+    for source in ours + theirs + mine + other_mesh(other_mesh_folder()).meshes:
+        if all(not _same_folder(source, kept) for kept in out):
+            out.append(source)
+    return out
+
+
+def _same_folder(a: Path, b: Path) -> bool:
+    """Whether two paths are one folder (AutoOrtho's own chosen as the other tool's, a link)."""
+    try:
+        return os.path.samefile(a, b)
+    except OSError:
+        return a == b
 
 
 def xplane_pref(xplane: Path, key: str) -> str | None:

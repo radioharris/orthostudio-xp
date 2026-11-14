@@ -108,6 +108,13 @@ class LiveSettings(BaseModel):
     folder: str = ""
     """Live's folder, for its pack and its imagery: empty for ``$OSXP_HOME/live``
     (:func:`orthostudio.live.pack.live_root`)."""
+    other_mesh: str = ""
+    """A folder holding another tool's mesh in AutoOrtho's format, chosen in the Settings: a region
+    copied by another streamer, AutoOrtho's moved elsewhere. Live streams onto them after its own
+    mesh and AutoOrtho's in X-Plane, and takes their roads, forests and buildings too
+    (:func:`orthostudio.live.scenery.other_mesh`); empty: none. A setting, not a look into the
+    other tool's own files, which may change under Live (the user, 2026-11-14: « je préfère le
+    réglage sans surprise »)."""
     app_home: Literal["ask", "live", "build"] = "ask"
     """What the app opens at its start (orthostudio.live.app_start): the question the first time,
     then Live's window or OrthoStudio XP's, as chosen."""
