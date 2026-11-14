@@ -24,6 +24,10 @@ from .geo import haversine_m
 
 KM_PER_DEG = 111.195
 _AIRPORT_ROW = (b"1 ", b"16 ", b"17 ")  # land airport, seaplane base, heliport
+# where the latitude of a runway's two ends are among a row's fields (its longitude next), the row
+# code first: a land runway, a water runway, a helipad (one point: both "ends" the same)
+_RUNWAY_ENDS = {b"100": (9, 18), b"101": (4, 7), b"102": (2, 2)}
+_RUNWAY_ROWS = tuple(code + b" " for code in _RUNWAY_ENDS)
 
 
 def apt_dat(xplane: Path) -> Path:
@@ -32,12 +36,14 @@ def apt_dat(xplane: Path) -> Path:
 
 def airport_positions(apt: Path, icaos: Iterable[str] | None) -> dict:
     """{ICAO: (lat, lon)} of the airports found in ``apt`` (one pass over the file); every
-    airport's with ``icaos`` None."""
+    airport's with ``icaos`` None. Its datum, else the middle of its first runway, on land or on
+    water, or its first helipad: a heliport has only helipads (EGLW: "X-Plane knows no airport",
+    a forum user, 2026-11-14), and Build's airport index takes them already."""
     wanted = None if icaos is None else {i.upper() for i in icaos}
     found: dict = {}
     current: str | None = None
     datum: dict = {}
-    runway: tuple[float, float] | None = None
+    runway: tuple[float, float] | None = None  # the first runway's middle, or helipad
 
     def close() -> None:
         if current is None:
@@ -64,12 +70,13 @@ def airport_positions(apt: Path, icaos: Iterable[str] | None) -> dict:
                 parts = line.split()
                 with contextlib.suppress(IndexError, ValueError):
                     datum["lat" if parts[1] == b"datum_lat" else "lon"] = float(parts[2])
-            elif line.startswith(b"100 ") and runway is None:
+            elif runway is None and line.startswith(_RUNWAY_ROWS):
                 parts = line.split()
+                a, b = _RUNWAY_ENDS[parts[0]]
                 with contextlib.suppress(IndexError, ValueError):
                     runway = (
-                        (float(parts[9]) + float(parts[18])) / 2,
-                        (float(parts[10]) + float(parts[19])) / 2,
+                        (float(parts[a]) + float(parts[b])) / 2,
+                        (float(parts[a + 1]) + float(parts[b + 1])) / 2,
                     )
         else:
             close()

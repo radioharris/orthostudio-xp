@@ -1279,7 +1279,10 @@ A plugin that does not return from one of these messages holds the whole load.
     answers a `HOLD` with the loop's last `WAIT` (`Gate.hold_at` gives it the start's name as
     soon as it is known), never for a loop gone more than `ALIVE_S` (60 s). The log says when
     it did ("Live was busy 2.1 s: the gate told X-Plane to wait meanwhile"). And the airports
-    are read once, when Live starts, in a thread of their own (`route.AirportIndex`).
+    are read once, when Live starts, in a thread of their own (`route.AirportIndex`): an
+    airport's datum, else the middle of its first runway, on land or on water, or its first
+    helipad, as Build's index (a heliport has only helipads: EGLW was "an airport X-Plane knows
+    not" until 2026-11-14; 6,524 of X-Plane's airports placed so, none of the others moved).
   - A new flight started from within a flight, with the same aircraft, loads no aircraft, so none
     of these messages come (LSGG, 26 September: X-Plane read the scenery without waiting, and the
     streamer reloaded it a minute later). The plugin held at message 115 (1) there until
