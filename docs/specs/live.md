@@ -64,9 +64,10 @@ uv run python -m orthostudio.live reset               # the same, without stream
 neutral texture, which takes seconds. They also delete the
 downloaded imagery. `--fresh` does not build the last departure ahead either.
 
-Quit any other program streaming ortho first: Live refuses to start beside XPME or AutoOrtho,
-found by their processes' names (XPME's window « XPlane Map Enhancement » and its server
-« XplaneMapEnhancement », AutoOrtho's « autoortho ») or by the folders they mount (AutoOrtho's
+Quit any other program streaming ortho first: Live refuses to start beside XPME, AutoOrtho or
+OrthoStreamXP, found by their processes' names (XPME's window « XPlane Map Enhancement » and its
+server « XplaneMapEnhancement », AutoOrtho's « autoortho », OrthoStreamXP's « orthostreamxp.exe »)
+or by the folders they mount (AutoOrtho's
 `z_ao_*` regions, the folder XPME's `XPME_*` packs link into): `scenery.ortho_streamers`.
 Start the streamer before X-Plane: X-Plane lists
 scenery packs and loads plugins when it starts. The streamer links its pack (`z_osxp_live`), checks

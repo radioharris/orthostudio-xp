@@ -487,11 +487,17 @@ def autoortho_mounted(xplane: Path) -> bool:
     return any(p.name.startswith("z_ao_") and os.path.ismount(p) for p in scenery.iterdir())
 
 
-ORTHO_STREAMERS = (("XPME", "xplanemapenh"), ("AutoOrtho", "autoortho"))
+ORTHO_STREAMERS = (
+    ("XPME", "xplanemapenh"),
+    ("AutoOrtho", "autoortho"),
+    ("OrthoStreamXP", "orthostreamxp"),
+)
 """The other programs that stream ortho to X-Plane, by how their processes' names start, in lower
 case and without spaces: XPME's window is « XPlane Map Enhancement » and its server
 « XplaneMapEnhancement » (its version 4.7.22 on a Mac, 2026-10-08), AutoOrtho's program
-« autoortho »; Linux keeps 15 characters of a name, Windows adds « .exe »."""
+« autoortho », OrthoStreamXP's « orthostreamxp.exe » (its AssemblyName, Windows only; a pilot of
+its may choose its mesh in Live's Settings, 2026-11-14); Linux keeps 15 characters of a name,
+Windows adds « .exe »."""
 
 
 def ortho_streamers(xplane: Path) -> list[str]:
