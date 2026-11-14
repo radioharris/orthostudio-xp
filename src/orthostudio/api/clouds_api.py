@@ -538,7 +538,9 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
     def library_column() -> dict[str, Any]:
         """The Library's Clouds cell of each row it is offered on, by the row's path: a tile
         OrthoStudio XP built, the row its own folder. Its words are read of a tile with a list or
-        clouds laid in its folder only: no other tile's textures are read."""
+        clouds laid in its folder only: no other tile's textures are read. A tile without either
+        was never searched: Find clouds takes it while nothing holds it and nothing of it runs,
+        its state judged as the search starts (:func:`find_many`)."""
         lists = listed()
         try:
             with Library(default_library_path()) as lib:
@@ -546,6 +548,7 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
         except Exception:  # no library, no cell
             return {"rows": {}}
         cs = hooks.custom_scenery()
+        taken = hooks.taken()
         out: dict[str, Any] = {}
         for r in rows:
             with contextlib.suppress(Exception):
@@ -553,8 +556,16 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
                     continue
                 if not is_own_folder(r.tile, r.path, custom_scenery=cs):
                     continue
-                looked = r.tile.name in lists or clouds_dir(r.path).is_dir()
-                out[str(r.path)] = look(r.tile)[2].library() if looked else state.library_cell()
+                name = r.tile.name
+                if name in lists or clouds_dir(r.path).is_dir():
+                    cell = look(r.tile)[2].library()
+                else:
+                    free = name not in taken and not engine.tasks.busy(name)
+                    cell = state.library_cell(find=free)
+                failed = engine.tasks.failed(name)
+                if failed is not None and failed.kind == "find":
+                    cell["failed"] = failed.error
+                out[str(r.path)] = cell
         return {"rows": out}
 
     def sources_for(
@@ -695,15 +706,72 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
         if asked_fine and not v.fine:
             raise OsxpError("CLOUD_NOT_NOW", context={"tile": tile.name, "action": "fine find"})
         _detector_said(body)  # the search runs it
+        return {"task": start_find(tile, shown, asked_fine).view()}
+
+    @router.post("/api/cloud-searches")
+    def find_many(body: Annotated[dict[str, Any], Body()]) -> dict[str, Any]:
+        """The Library's Find clouds: a quick search of each tile ``tiles`` names that its view
+        allows (:attr:`state.View.searchable`: never searched, a search allowed now), one after
+        the other as every search (one at a time for the app, ``Tasks``); each other one left,
+        with why: ``searched``, ``busy`` (a task of it runs), else its state. The detector is
+        asked for once, before any starts (``download``, as a tile's search)."""
+        names = body.get("tiles")
+        if not isinstance(names, list) or not all(isinstance(n, str) for n in names):
+            raise OsxpError(
+                "CLOUD_INVALID", context={"tile": "", "cloud": "", "reason": "no tiles named"}
+            )
+        go: list[tuple[TileRef, TileClouds]] = []
+        left: list[dict[str, str]] = []
+        for name in dict.fromkeys(names):
+            tile = _tile_of(name)
+            _folder, shown, v = look(tile)
+            if v.searchable:
+                assert shown is not None  # a view allowing a search has its folder read
+                go.append((tile, shown))
+            elif v.search is not None:
+                left.append({"tile": tile.name, "why": "searched"})
+            elif state.TILE_STATES[v.state].allows:  # its state allows one: a task of it runs
+                left.append({"tile": tile.name, "why": "busy"})
+            else:
+                left.append({"tile": tile.name, "why": v.state})
+        if go:
+            _detector_said(body)
+        started: list[str] = []
+        for tile, shown in go:
+            try:
+                start_find(tile, shown, False)
+                started.append(tile.name)
+            except OsxpError as exc:  # taken or started meanwhile
+                left.append({"tile": tile.name, "why": exc.code})
+        return {"started": started, "left": left}
+
+    @router.get("/api/cloud-searches")
+    def searches() -> dict[str, Any]:
+        """Every search under way or waiting for its turn, in the order they were asked: what the
+        Library's line says and its rows show while they run. Nothing of a tile is read."""
+        found = [t.view() for t in engine.tasks.of() if t.kind == "find"]
+        return {"searches": [{k: t[k] for k in ("id", "tile", "phase", "progress")} for t in found]}
+
+    @router.post("/api/cloud-searches/stop")
+    def stop_searches() -> dict[str, Any]:
+        """Stop every search, those waiting for their turn too: a tile searched keeps its clouds,
+        the others are left as they were."""
+        return {
+            "stopped": sum(engine.tasks.stop(t.id) for t in engine.tasks.of() if t.kind == "find")
+        }
+
+    def start_find(tile: TileRef, shown: TileClouds, fine: bool) -> Task:
+        """A search of the tile at the map's level, a level finer too when ``fine``: its task, the
+        one way a search starts, from its mode or from the Library."""
 
         def run(task: Task) -> None:
             p = begin(task, tile, shown)
             zl = p.zl
             # the quick search reads the map's level; the fine one a level finer too, where the
             # textures are that fine: it finds the small clouds, in about twice the time (B1)
-            finer = fine_level(zl, shown.textures) if asked_fine else None
-            fine = engine.drawn(tile, shown, finer)[1] if finer is not None else None
-            areas, classes = find(p, fine, cancel=task.stop, phase=task.say)
+            finer = fine_level(zl, shown.textures) if fine else None
+            sharper = engine.drawn(tile, shown, finer)[1] if finer is not None else None
+            areas, classes = find(p, sharper, cancel=task.stop, phase=task.say)
             rings = [a.rings(p) for a in areas]
             pieces, heights = sources_for(tile, shown, rings)
             verdicts = screen(
@@ -724,8 +792,7 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
                 cls.merge_search(cl, found, shown, {"level": zl, "found": len(found)})
             engine.remember(tile, shown, classes)
 
-        task = engine.tasks.start(tile.name, "find", run)
-        return {"task": task.view()}
+        return engine.tasks.start(tile.name, "find", run)
 
     def pick(
         tile: TileRef,

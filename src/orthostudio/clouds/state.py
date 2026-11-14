@@ -619,14 +619,48 @@ class View:
 
     def library(self) -> dict[str, Any]:
         """The Library's Clouds cell."""
-        return library_cell(self.counts["held"], self.to_apply, self.allows("forget"))
+        return library_cell(
+            self.counts["held"],
+            self.to_apply,
+            self.allows("forget"),
+            found=sum(1 for s in self.clouds if s.row == "found"),
+            find=self.searchable,
+            searched=self.search is not None,
+        )
+
+    @property
+    def searchable(self) -> bool:
+        """Whether the Library's Find clouds takes the tile: never searched (a tile searched is
+        left as it is, a user's choice, 2026-11-14) and a search allowed now."""
+        return self.search is None and self.allows("find")
 
 
-def library_cell(replaced: int = 0, to_apply: int = 0, forget: bool = False) -> dict[str, Any]:
+def library_cell(
+    replaced: int = 0,
+    to_apply: int = 0,
+    forget: bool = False,
+    *,
+    found: int = 0,
+    find: bool = False,
+    searched: bool = False,
+    failed: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
     """The Library's Clouds cell of a tile: the clouds it shows replaced, what Apply changes (the
-    page says them in its own words, every one of them written out for the words' check), and
-    whether its clouds may be forgotten (``forget``: its row offers it, the cloud mode asks)."""
-    return {"replaced": replaced, "to_apply": to_apply, "forget": forget}
+    page says them in its own words, every one of them written out for the words' check), whether
+    its clouds may be forgotten (``forget``: its row offers it, the cloud mode asks), the clouds
+    a search found that wait for a look (``found``: unticked), whether the Library's Find clouds
+    takes it (``find``, :attr:`View.searchable`), whether a search was made (``searched``: one that
+    found nothing says so) and how its last search failed (``failed``, the error, until its next
+    task)."""
+    return {
+        "replaced": replaced,
+        "to_apply": to_apply,
+        "forget": forget,
+        "found": found,
+        "find": find,
+        "searched": searched,
+        "failed": failed,
+    }
 
 
 def _k(key: str, **params: Any) -> dict[str, Any]:

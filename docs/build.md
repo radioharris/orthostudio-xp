@@ -58,8 +58,11 @@ the disk is in [how-it-works.md](how-it-works.md). To fly without building tiles
   down to ZL11, where some show another photo, blurred but without clouds; a cloud's level can be
   chosen by hand too. *Apply* changes, in a few seconds, only the pixels under the clouds in the
   finished tile, and every later build of the tile lays them again on the same photo; *Restore the
-  original photos* puts the textures back as built. The detection tool (OmniCloudMask's networks and
-  OpenCV, about 110 MB) is not in the installer: it is downloaded once, when you ask.
+  original photos* puts the textures back as built. *Find clouds*, on the tiles ticked in the
+  Library, runs the quick search on each one never searched, one after the other, while you do
+  something else; each tile's cell then shows how many clouds wait for a look, and you check and
+  apply tile by tile. The detection tool (OmniCloudMask's networks and OpenCV, about 110 MB) is not
+  in the installer: it is downloaded once, when you ask.
 - **Roads without bumps.** The ground flattened under the roads can be smoothed along them over
   100 or 250 m, so that X-Plane's roads no longer bump over the small waves of the relief, on
   whichever relief you build with. Off by default, as in Ortho4XP. The road bands can also get the

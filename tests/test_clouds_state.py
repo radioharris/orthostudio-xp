@@ -330,10 +330,32 @@ def test_what_the_tile_shows_is_counted_from_its_folder(folder: Path) -> None:
     v = _view(CloudList(TILE.name, []), shown)
     # held from the folder; Apply would make its texture again without it (the list knows it
     # first, ``cloudlist.knowing``, before any view of the routes)
-    assert v.counts["held"] == 1 and v.library() == state.library_cell(1, 1, True)
+    assert v.counts["held"] == 1 and v.library() == state.library_cell(1, 1, True, find=True)
     assert v.allows("restore")
     (line,) = v.texts()["restore_question"]["lines"]
     assert line["params"]["n"] == 1
+
+
+def test_the_library_cell_says_what_a_search_found_and_whether_find_clouds_takes_it(
+    folder: Path,
+) -> None:
+    # Find clouds (a user's ask, 2026-11-12): a tile never searched is taken, one searched is left
+    # as it is (his choice, 2026-11-14), one whose search runs is not taken twice; the clouds a
+    # search found that wait for a look are counted, a ticked one is not
+    cl = CloudList(TILE.name, [])
+    _cloud(cl, "cloud001", A)
+    _cloud(cl, "cloud002", B)["tick"] = True
+    cell = _view(cl, _shows(folder, [])).library()
+    assert cell["found"] == 1 and cell["find"] is True and cell["failed"] is None
+    assert cell["searched"] is False
+    cl.search = {"level": 12, "found": 2}
+    cell = _view(cl, _shows(folder, [])).library()
+    assert cell["find"] is False and cell["searched"] is True
+    searching = {"id": "t", "kind": "find", "stoppable": True, "phase": "waiting"}
+    fresh = _view(CloudList(TILE.name, []), _shows(folder, []), [searching])
+    assert fresh.library()["find"] is False
+    taken = state.view(CloudList(TILE.name, []), None, TILE, "in_build")
+    assert taken.library()["find"] is False
 
 
 def test_a_task_shows_in_its_row_even_while_its_tile_is_taken(folder: Path) -> None:

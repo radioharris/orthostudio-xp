@@ -372,6 +372,9 @@
             <span class="library-act-name" id="library-act-tiles-name" data-i18n="library.act_tiles">Tiles</span>
             <button type="button" class="btn" id="library-rebuild" data-i18n-title="library.rebuild_help" title="Build the tiles picked again with today's version and settings, without going through the Plan. What the data folder already holds is reused."><span data-i18n="library.rebuild">Build again…</span><span class="library-act-n" id="library-rebuild-n"></span></button>
             <button type="button" class="btn" id="library-file"><span data-i18n="library.file">File elsewhere…</span><span class="library-act-n" id="library-file-n"></span></button>
+            <!-- a quick search of the clouds of each tile picked never searched, one after the other;
+                 each tile then looked at and applied in its own cloud mode (a user's ask, 2026-11-12) -->
+            <button type="button" class="btn" id="library-clouds-find" data-i18n-title="library.clouds_find_help" title="Search the clouds of the tiles picked that were never searched, one after the other (quick search). You then check each tile and apply as usual."><span data-i18n="library.clouds_find">Find clouds</span><span class="library-act-n" id="library-clouds-find-n"></span></button>
           </div>
           <div class="library-act library-act-end" id="library-act-end" role="group" data-i18n-aria-label="library.act_end" aria-label="Off the list">
             <button type="button" class="btn" id="library-forget" data-i18n-title="library.forget_picked_help" title="The Ortho4XP tiles picked leave this list, taken out of X-Plane first. Their files stay where Ortho4XP put them."><span data-i18n="library.forget_picked">Remove from the list…</span><span class="library-act-n" id="library-forget-n"></span></button>
@@ -382,6 +385,13 @@
       <p class="library-filing" id="library-filing" role="status" aria-live="polite" hidden>
         <span id="library-filing-text"></span>
         <button type="button" class="btn" id="library-filing-stop" data-i18n="library.filing_stop">Stop</button>
+      </p>
+      <!-- the cloud searches under way and waiting, whoever asked them: what runs, what waits, Stop
+           for all of them (the engine's GET /api/cloud-searches, read every second while some run) -->
+      <p class="library-filing" id="library-searches" hidden>
+        <span class="spinner" aria-hidden="true"></span>
+        <span id="library-searches-text"></span>
+        <button type="button" class="btn" id="library-searches-stop" data-i18n="library.searches_stop">Stop</button>
       </p>
       <!-- Under the buttons, above the table: a refusal of File elsewhere showed under the last row,
            out of sight (app.js showLibraryErrors). -->
@@ -610,7 +620,7 @@
     <h2 class="dialog-title" id="library-bulk-title"></h2>
     <div class="dialog-text" id="library-bulk-text"></div>
     <div class="dialog-actions">
-      <button type="submit" class="btn" value="cancel" autofocus data-i18n="library.bulk_keep">Keep them</button>
+      <button type="submit" class="btn" value="cancel" autofocus id="library-bulk-keep" data-i18n="library.bulk_keep">Keep them</button>
       <button type="submit" class="btn btn-primary" value="go" id="library-bulk-go"></button>
     </div>
   </form>

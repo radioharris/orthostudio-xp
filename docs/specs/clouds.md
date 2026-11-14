@@ -42,6 +42,36 @@ read before stay meanwhile. Its words are read of a tile with a list or clouds l
 (`clouds/`); no other tile's textures are read. What the tile holds is counted from its folder
 (2.1).
 
+**Find clouds** (a user's ask, discussion 23, 2026-11-12): a button of the bar over the table, in
+its Tiles group with Build again and File elsewhere, with how many tiles it takes. It takes the
+tiles picked and shown whose cell says so (`find`, `View.searchable`): never searched, and a search
+allowed now (nothing of it at work, nothing else holding its folder); a tile searched is left as it
+is, its clouds already there to look at (his choice, 2026-11-14), and so is a tile a build holds.
+A tile without a list or clouds laid is never searched: its cell says `find` while nothing holds it
+and nothing of it runs, its folder read only as the search starts. One click starts the **quick**
+search of each (`POST /api/cloud-searches`), one after the other as every search (R7); the detector
+is asked for once, before any starts, as a tile's search asks it. Its toast says how many started
+and how many were left aside. Each tile is then looked at and applied in its own cloud mode, as
+before: Apply stays tile by tile, after a look, since the detector sometimes takes pale ground or
+muddy water for a cloud.
+
+While searches run or wait, whoever asked them (the Library or a tile's mode), a line under the bar
+says the tile searched and where it is, then how many wait ("Clouds of +21-083: reading the tile 40
+% · 2 tile(s) waiting"), with **Stop**, which stops every one, those waiting too
+(`POST /api/cloud-searches/stop`): a tile already searched keeps its clouds, the others are left as
+they were. In the column, a tile whose search waits has its cloud dimmed; under way, a spinner
+stands where the cloud is; its tooltip says it. A tile's cell gains a third badge at the cloud's
+other corner, quiet: the clouds a search found that wait for a look (`found`: unticked); a search
+that found none says so in its tooltip (`searched`), its cell otherwise the one of a tile never
+searched. A search
+that failed has its cloud in the danger's colour and says why in its tooltip (`failed`, until the
+tile's next task). The page reads the searches every second while there are some
+(`GET /api/cloud-searches`, nothing of a tile read), draws the table again only when a search
+starts or one waits no more (drawn every second, a tooltip under the pointer went away each time),
+and reads a tile's cell again once its search ended. The searches go on whether or not the Library
+stays open; Quit stops them, a tile searched keeping its clouds and those waiting forgotten (his
+choice, 2026-11-14).
+
 ### 1.3 The cloud mode
 
 The Plan's map, brought over the tile; the Plan's steps make way for the cloud panel.
@@ -705,7 +735,10 @@ Earth, around no ground or off the tile, `cloudlist.outline_problem`), `CLOUD_DE
 
 | Route | What |
 |---|---|
-| `GET /api/clouds` | The Library's column: by row path, the rows it is offered on (1.2), what the tile holds and what waits |
+| `GET /api/clouds` | The Library's column: by row path, the rows it is offered on (1.2), what the tile holds and what waits (`replaced`, `to_apply`), the clouds found waiting for a look (`found`), whether its clouds may be forgotten (`forget`), whether Find clouds takes it (`find`), whether a search was made (`searched`) and how its last search failed (`failed`) |
+| `POST /api/cloud-searches` | `{tiles, download?}`: Find clouds (1.2), a quick search of each tile its view allows (`View.searchable`), in this order; answers `{started, left}`, each tile left with why: `searched`, `busy`, else its state (`not_built`, `in_build`...); `CLOUD_DETECTOR_ASK` before any starts, as a tile's search (API level 55) |
+| `GET /api/cloud-searches` | `{searches}`: every search under way or waiting, in their order, `{id, tile, phase, progress}`; nothing of a tile read |
+| `POST /api/cloud-searches/stop` | Stops every search, those waiting too |
 | `GET /api/clouds/{tile}` | The view (1.5): the source its photo was built from (`provider`), the tile's state and line, what it allows (`allowed`), the words of After and Before (`views`; `clouds.drawing` for one whose picture is drawn aside), whether something is under way (`busy`, a picture drawn aside, or failed until asked again, too), its picture (Before) and After's (`after`; the last one of that view laid whole, of the same build, while its next is drawn, 2.6), whether a fine search reads more (`fine`), every row with its line and tone, its actions, what a click on it does (`toggle`) and its tooltip (`tip`), its task and After's preview of it, the count, Apply's and Restore's buttons and questions (`texts`), the tile's own tasks with their `actions`, a picture that could not be drawn, else its last failed task (`failed`) |
 | `GET /api/clouds/{tile}/tasks` | `{busy, failed}`: whether something of the tile is under way and its last failure, nothing of it read or drawn: what the Library's bin waits on (API level 51) |
 | `POST /api/clouds/{tile}/find` | `{fine?}`: starts the quick search, or the fine one where it is offered |
@@ -723,7 +756,7 @@ Earth, around no ground or off the tile, `cloudlist.outline_problem`), `CLOUD_DE
 
 - Clouds replaced with the 1.4.0 test versions (rc) are not carried: the next build of such a
   tile brings them back as photographed, and their lists are put aside.
-- Find and Apply act on one tile at a time.
+- Apply acts on one tile at a time, after a look; Find clouds searches many (1.2), quickly only.
 - A tile installed by copy (`osxp install --copy`, the command line only): X-Plane reads the copy,
   which Apply does not change; the next install copies the textures again, the clouds in them.
 - A cloud over the sea is laid sharp where the build blurs the sea (`sea_texture_blur`); X-Plane
