@@ -239,7 +239,21 @@ def launch(xp: Path, sc: scenarios.Scenario) -> list[str]:
         "--start_running",
     ]
     if sys.platform == "darwin":
-        subprocess.run(["open", "-a", str(xp / "X-Plane.app"), "--args", *args], check=True)
+        # a folder: macOS's malloc checks on, X-Plane's stderr kept there
+        # (tools/live/flights/xplane_debug)
+        debug = os.environ.get("FLY_MALLOC_DEBUG")
+        extra = []
+        if debug:
+            extra = [
+                *("--env", "MallocStackLogging=1", "--env", "MallocScribble=1"),
+                *(
+                    "--stderr",
+                    f"{debug}/xplane-stderr.txt",
+                    "--stdout",
+                    f"{debug}/xplane-stdout.txt",
+                ),
+            ]
+        subprocess.run(["open", *extra, "-a", str(xp / "X-Plane.app"), "--args", *args], check=True)
     else:
         exe = xp / ("X-Plane.exe" if WINDOWS else "X-Plane-x86_64")
         if not exe.is_file():
