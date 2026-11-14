@@ -169,17 +169,16 @@ def got_of(c: Mapping[str, Any], code: str) -> Mapping[str, Any] | None:
 
 def reading(c: Mapping[str, Any], code: str) -> Mapping[str, Any]:
     """What the source ``code`` has under the cloud ``c``, the newest said, its answer and its fit
-    together: its images got, else, at a level chosen, that level's try (``tries``, the newer),
-    else the search's or the outline's try; empty when never asked. In Auto a level's try is not
-    read: Auto is what the search found and what was taken (a user, 2026-11-14). What a piece
-    said (``sources.ASK_AGAIN``: no answer, refused, a page) is not what the source has: the
-    try's stands, and the cloud's line says it, offering to ask again. A source is so left out by
-    what it has there alone, never by a passing answer."""
+    together, one for its line whatever the cloud's level (a line said cloudy in Auto and clear
+    at ZL16, a review, 2026-11-14): its images got, else a level's try (``tries``, newer than the
+    search: a new search lets them go), else the search's or the outline's try; empty when never
+    asked. What a piece said (``sources.ASK_AGAIN``: no answer, refused, a page) is not what the
+    source has: the try's stands, and the cloud's line says it, offering to ask again. A source
+    is so left out by what it has there alone, never by a passing answer."""
     got = got_of(c, code)
     if got and got.get("answer") and got["answer"] not in ASK_AGAIN:
         return got
-    tried_there = (c.get("tries") or {}).get(code) if c.get("level") is not None else None
-    said = tried_there or (c.get("screening") or {}).get(code)
+    said = (c.get("tries") or {}).get(code) or (c.get("screening") or {}).get(code)
     return said if said and said.get("answer") else {}
 
 
@@ -417,14 +416,14 @@ def _line(s: CloudState) -> dict[str, Any] | None:
 
 def levels_of(tops: Mapping[str, int]) -> tuple[int, ...]:
     """The levels a cloud's sources may all be read at (its level list, besides Auto): from the
-    tile's finest (``tops``, ``sources.tops``) down to ``sources.COARSEST``; none for a tile no
-    finer than that."""
+    finest under it (``tops``, ``sources.tops_under``) down to ``sources.COARSEST``; none for a
+    cloud no finer than that."""
     finest = max(tops.values(), default=0)
     return tuple(range(finest, COARSEST - 1, -1)) if finest > COARSEST else ()
 
 
 def _level(c: Mapping[str, Any], tops: Mapping[str, int]) -> int | None:
-    """The cloud's level as its list shows it: none in Auto; one finer than the tile now has (a
+    """The cloud's level as its list shows it: none in Auto; one finer than the cloud now has (a
     tile built again coarser) is its finest, as its sources are read (``sources.code_of``)."""
     zl = c.get("level")
     finest = levels_of(tops)
@@ -435,7 +434,7 @@ def _menu(
     c: Mapping[str, Any], source: str | None, held: Any, tops: Mapping[str, int]
 ) -> list[dict[str, Any]]:
     """The cloud's menu of sources, beside its level (a user, 2026-11-14): the lines its level
-    offers (:func:`tried`: in Auto every one tried under it, at a level each source's there),
+    offers (:func:`tried`: in Auto the search's and those taken, at a level each source's there),
     and its own; each with what it has there, its fit, the level the tile reads it at
     (``sources.read_at``) and whether it may be chosen. A source's lines together from its
     sharpest, the sources in the order of their best line (:func:`_ranked`), so the best source

@@ -109,8 +109,9 @@ The Plan's map, brought over the tile; the Plan's steps make way for the cloud p
   its sharpest, the sources in the order of their best line, so the best first; each by its short
   name (`short`: "EOX", not "EOX Sentinel-2 cloudless 2024") and the level the tile reads it at
   (`sources.read_at`), with what it has there and its fit ("EOX · ZL14 · clear · fit 93 %"), both
-  from its newest reading (`state.reading`: its images got, judged as they are now, else the
-  search's; what a piece said, no answer, a refusal, a page, leaves the search's), those that
+  from its newest reading, one for its line whatever the level (`state.reading`: its images
+  got, judged as they are now, else a level's try, else the search's; what a piece said, no
+  answer, a refusal, a page, leaves the one before), those that
   cannot be chosen greyed (`sources.PROPOSABLE`: the same photo, no picture; the source whose
   images the tile shows of it always may be); and its **level**, for all its sources (`level`,
   `levels`, `state.levels_of`): **Auto** (none: the best line of any level), or one from the
@@ -366,8 +367,10 @@ fails a build: an error there is written in the log and the build goes on.
 `$OSXP_HOME/clouds/<tile>.json`, format `osxp-cloud-list-3`: every cloud with its id (eight
 characters, never given again on that tile), its number, its kind (`found`, `drawn`), its outline,
 its area, what each source has under it (`screening`, the search's), its tick, the source the user
-chose (`chosen`, none for the best), and per source tried its check (its answer, fit, entry and how
-it was judged, `judged`); and the clouds Apply last laid in the tile (`laid`, entries in laying
+chose (`chosen`, none for the best), its level (`level`, absent for Auto) and what each source has
+there (`tries`, a level's, absent until one is tried; `cloudlist.begin_level`, `set_level`,
+`undo_level`), and per source tried its check (its answer, fit, entry and how it was judged,
+`judged`); and the clouds Apply last laid in the tile (`laid`, entries in laying
 order). It keeps what the user did; what each cloud is follows from it (1.5). It knows every cloud
 the tile shows replaced: one it does not (its list put aside, or written on another computer) is
 added the first time the tile is looked at as Apply would have left it: ticked, its source and its

@@ -65,7 +65,7 @@ the same photo as the tile, which would bring the cloud back, or with no picture
   level, blurred but without clouds: Esri World Imagery at ZL11 over a tropical forest, for
   instance; where no sharp photo is clear, Auto finds them by itself. In Auto, the source list
   shows what the search found and the photos you took; a level's other tries come back when you
-  choose that level again, at once. Choose a level and every
+  choose that level again. Choose a level and every
   source is tried under the cloud at that level, in a few seconds (a minute or more for a large
   cloud at a fine level; **Stop** ends it): the source list then says what
   each has there, the best is taken and its images fetched. Choose another source and it stays at

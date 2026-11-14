@@ -753,12 +753,13 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
         before: state.View,
     ) -> None:
         """The level ``zl`` the cloud ``cid``'s sources are read at (``None``: Auto, any). A
-        level: every source, the tile's own too, judged under it there (:func:`tried_under`),
-        then the level and what they have there written together (``cloudlist.set_level``:
-        stopped or refused, the list is as it was) and the best there ticked, its images got:
-        passing from ZL16 to ZL12 asked the source shown alone, where every one was wanted at
-        ZL12; then "I want to try EOX at ZL12" (a user, 2026-11-14). Auto: its source the best
-        whatever its level, its images got when its state asks them."""
+        level: shown from the start (``cloudlist.begin_level``), every source, the tile's own
+        too, judged under it there (:func:`tried_under`), then what they have there written
+        (``cloudlist.set_level``; stopped, refused or failed, the level as it was,
+        ``undo_level``) and the best there ticked, its images got: passing from ZL16 to ZL12
+        asked the source shown alone, where every one was wanted at ZL12; then "I want to try
+        EOX at ZL12" (a user, 2026-11-14). Auto: its source the best whatever its level, its
+        images got when its state asks them."""
         rings = before.cloud(cid).cloud["rings"]
         if zl is None:
             with cls.update(tile) as cl:
@@ -770,11 +771,17 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
         if shown is None:
             raise OsxpError("CLOUD_NOT_NOW", context={"tile": tile.name, "action": "level"})
         was = before.cloud(cid)
+        with cls.update(tile) as cl:
+            had = cls.begin_level(cl, cid, zl)
 
         def run(task: Task) -> None:
             verdicts = tried_under(task, tile, shown, rings, zl)
             with cls.update(tile) as cl:
                 cls.set_level(cl, cid, rings, zl, verdicts)
+
+        def undo() -> None:
+            with contextlib.suppress(OsxpError), cls.update(tile) as cl:
+                cls.undo_level(cl, cid, had)
 
         def then() -> None:
             """The best there taken, as an outline's: ticked when its state allows it, its
@@ -784,14 +791,19 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
             else:
                 get_images(tile, [cid], {"download": True})
 
-        engine.tasks.start(
-            tile.name,
-            "outline",
-            run,
-            cloud=cid,
-            then=then,
-            was={"row": was.row, "lays": was.lays},
-        )
+        try:
+            engine.tasks.start(
+                tile.name,
+                "outline",
+                run,
+                cloud=cid,
+                then=then,
+                undo=undo,
+                was={"row": was.row, "lays": was.lays},
+            )
+        except OsxpError:
+            undo()
+            raise
 
     @router.post("/api/clouds/{name}/picks")
     def picks(name: str, body: Annotated[dict[str, Any], Body()]) -> dict[str, Any]:

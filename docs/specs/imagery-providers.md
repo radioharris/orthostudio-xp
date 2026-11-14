@@ -77,8 +77,8 @@ besides 429 with which the server says it is asked too fast, taken as a 429 by t
 `attribution`, `terms_url`, and three **additions** of 2026-09-14: `name` (a short name for the
 page's lists, "Bing Maps"; `attribution` stays the credit line), `same_as` (another code of the very
 same imagery: `NL` is `PDOK`, still accepted, listed once) and `custom` (a source the user added,
-section 4.1); and `short` (2026-11-14), a shorter name where room is scarce, a cloud's menu of
-sources ("EOX", not "EOX Sentinel-2 cloudless 2024"), its `name` when empty, sent as `short` by
+section 4.1); and `short` (2026-11-14), a shorter name where room is scarce, the cloud
+mode ("EOX", not "EOX Sentinel-2 cloudless 2024" in a cloud's menu), its `name` when empty, sent as `short` by
 `GET /api/providers`. Codes match `^[A-Za-z0-9_@-]{1,32}$` (the Ortho4XP codes contain `@`).
 `load_registry()` keeps the file's order: Bing Maps, then Esri, first in every list (a user asked
 for them first).

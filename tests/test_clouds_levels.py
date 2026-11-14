@@ -83,7 +83,7 @@ def _screened(
     p = _picture(_noise(0))
     read: list[tuple[str, int]] = []
 
-    def source_at(_s: Any, code: str, zl: int, _p: Picture, box: Any) -> Any:
+    def source_at(_s: Any, code: str, zl: int, _p: Picture, box: Any, *_c: Any) -> Any:
         read.append((code, zl))
         x0, y0, x1, y1 = box
         shown = shows[(code, zl)]
@@ -259,9 +259,16 @@ def test_the_same_photo_is_told_at_the_coarser_sources_sharpness() -> None:
     blurred = cv2.resize(small, (W, H), interpolation=cv2.INTER_LINEAR)
     core = np.zeros((H, W), bool)
     core[16:112, 16:112] = True
-    assert find._same(here, blurred, core, 4)
-    assert not find._same(here, _noise(9), core, 4)
-    assert find._same(here, here, core, 1) and not find._same(here, _noise(9), core, 1)
+    have = np.ones((H, W), bool)
+    assert find._same(here, blurred, core, have, 4)
+    assert not find._same(here, _noise(9), core, have, 4)
+    assert find._same(here, here, core, have, 1)
+    assert not find._same(here, _noise(9), core, have, 1)
+    # a small cloud: too few of its core's pixels at that sharpness, its whole window told
+    small = np.zeros((H, W), bool)
+    small[60:68, 60:68] = True
+    assert find._same(here, blurred, small, have, 4)
+    assert not find._same(here, _noise(9), small, have, 4)
 
 
 def test_sharpening_a_coarse_source_blurs_no_wider_than_before_its_levels(
@@ -407,9 +414,11 @@ def test_auto_shows_what_the_search_found_and_what_was_taken_a_levels_tries_at_t
         "checks": {"BI:12": {"answer": "clear", "fit": 80, "judged": sources.JUDGED}},
     }
     auto = [m["source"] for m in state._menu(c, None, None, CHOICE)]
-    assert auto == ["EOX", "BI", "BI:12"]  # EOX:12, never taken, waits for ZL12
-    assert state.reading(c, "BI")["answer"] == "cloudy"  # the search's: Auto reads no try
-    assert state.best_of(c, CHOICE) == "EOX"
+    assert auto == ["BI", "BI:12", "EOX"]  # EOX:12, never taken, waits for ZL12
+    # one verdict for a line whatever the level: the newest, Bing at ZL16 tried at ZL16, clear at
+    # 70 % where the search had it cloudy, now the best
+    assert state.reading(c, "BI")["answer"] == "clear"
+    assert state.best_of(c, CHOICE) == "BI"
     at12 = {**c, "level": 12}
     assert {m["source"] for m in state._menu(at12, None, None, CHOICE)} == {"EOX:12", "BI:12"}
     at16 = {**c, "level": 16}
@@ -456,7 +465,7 @@ def test_judging_the_sources_says_how_far_it_is_from_start_to_end(
     said: list[tuple[str, int, int]] = []
     p = _picture(_noise(0))
 
-    def source_at(_s: Any, code: str, zl: int, _p: Picture, box: Any) -> Any:
+    def source_at(_s: Any, code: str, zl: int, _p: Picture, box: Any, *_c: Any) -> Any:
         x0, y0, x1, y1 = box
         return _noise(1)[y0:y1, x0:x1], np.ones((y1 - y0, x1 - x0), bool)
 
@@ -474,7 +483,7 @@ def test_judging_the_sources_says_how_far_it_is_from_start_to_end(
     assert judged == [(50, 200), (100, 200), (150, 200), (200, 200)]
 
 
-def test_discard_keeps_a_clouds_source_as_before_a_level_tries_alone_let_go() -> None:
+def test_discard_keeps_a_clouds_source_as_before() -> None:
     cl, c = _list()
     c["screening"] = {"BI": {"answer": "clear", "fit": 30}}
     cloudlist.pick(cl, c["id"], "choose", "BI")
@@ -483,4 +492,18 @@ def test_discard_keeps_a_clouds_source_as_before_a_level_tries_alone_let_go() ->
     cloudlist.set_level(cl, c["id"], c["rings"], 12, {"EOX:12": Judgement("clear", 50)})
     cloudlist.pick(cl, c["id"], "choose", "EOX:12")
     cloudlist.discard(cl, None)
-    assert "level" not in c and c["chosen"] is None  # Auto never offered EOX at ZL12
+    assert "level" not in c and c["chosen"] == "EOX:12"  # taken: kept, with what it said
+    assert state.reading(c, "EOX:12")["answer"] == "clear"
+
+
+def test_a_level_is_shown_from_the_start_of_its_try_and_undone_when_it_does_not_end() -> None:
+    # the level list jumped back to the old one for the seconds the try took (a review)
+    cl, c = _list()
+    had = cloudlist.begin_level(cl, c["id"], 12)
+    assert had is None and c["level"] == 12 and c["chosen"] is None
+    cloudlist.undo_level(cl, c["id"], had)
+    assert "level" not in c
+    cloudlist.set_level(cl, c["id"], c["rings"], 14, {})
+    had = cloudlist.begin_level(cl, c["id"], 12)
+    cloudlist.undo_level(cl, c["id"], had)
+    assert c["level"] == 14

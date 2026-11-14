@@ -353,7 +353,7 @@ def judge(
     ``coarser``: how many times coarser than the picture the source was read (:func:`_same`)."""
     if not core.any() or have[core].mean() < COVERAGE:
         return Judgement("no_picture")
-    if _same(here, src, core, coarser):
+    if _same(here, src, core, have, coarser):
         return Judgement("same_photo")
     answer = "clear" if cloudy[core].mean() <= CLEAR_AT_MOST else "cloudy"
     ok = band & have
@@ -370,17 +370,21 @@ def judge(
     )
 
 
-def _same(here: np.ndarray, src: np.ndarray, core: np.ndarray, coarser: int) -> bool:
+def _same(
+    here: np.ndarray, src: np.ndarray, core: np.ndarray, have: np.ndarray, coarser: int
+) -> bool:
     """Whether ``src`` is the tile's photo under the cloud's ``core``: its lightness follows the
     photo's at :data:`SAME_PHOTO`. A source read ``coarser`` times coarser than the picture is
     compared at its own sharpness, where the same photo resampled follows at
-    :data:`LEVEL_ALIKE`: enlarged, the tile's own photo at ZL11 could slip under 0.9 and be laid
-    over itself, blurred (a review, 2026-11-14)."""
+    :data:`LEVEL_ALIKE`, on the core, or on its whole window (where it ``have`` a picture) when
+    the core holds too few of its pixels: enlarged, the tile's own photo at ZL11 could slip
+    under 0.9 and be laid over itself, blurred, a small cloud first (two reviews, 2026-11-14)."""
     if coarser > 1:
-        a, under = _shrunk(here, core, coarser)
-        if under.sum() >= ALIKE_PIXELS:
-            r = _correlation(_lum(a)[under], _lum(_shrunk(src, core, coarser)[0])[under])
-            return r is not None and r >= LEVEL_ALIKE
+        for mask in (core, have):
+            a, under = _shrunk(here, mask, coarser)
+            if under.sum() >= ALIKE_PIXELS:
+                r = _correlation(_lum(a)[under], _lum(_shrunk(src, mask, coarser)[0])[under])
+                return r is not None and r >= LEVEL_ALIKE
     r = _correlation(_lum(here)[core], _lum(src)[core])
     return r is not None and r >= SAME_PHOTO
 
@@ -471,7 +475,12 @@ def _world_box(p: Picture, box: tuple[int, int, int, int], zl: int) -> tuple[int
 
 
 def _source_at(
-    sources: SourcePieces, code: str, zl: int, p: Picture, box: tuple[int, int, int, int]
+    sources: SourcePieces,
+    code: str,
+    zl: int,
+    p: Picture,
+    box: tuple[int, int, int, int],
+    cancel: threading.Event | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """The source over ``box`` of the picture, read at ``zl`` and brought to the picture's
     level; where it has a picture. Finer than the picture, each piece is reduced where it lies
@@ -486,6 +495,7 @@ def _source_at(
     out = np.zeros(((gy1 - gy0) // k, (gx1 - gx0) // k, 3), np.uint8)
     have = np.zeros(out.shape[:2], bool)
     for ty in range(gy0 // 256, (gy1 - 1) // 256 + 1):
+        _heard(cancel)  # a large window read at a fine level: many rows of pieces
         for tx in range(gx0 // 256, (gx1 - 1) // 256 + 1):
             piece = read_piece(sources.body(code, (tx % n, ty, zl)))
             if piece.kind != "picture":
@@ -669,7 +679,7 @@ def screen(
             if lost is not None:
                 out[i][code] = Judgement(lost)
             else:
-                windows.append((i, *_source_at(sources, code, levels[code], p, box)))
+                windows.append((i, *_source_at(sources, code, levels[code], p, box, cancel)))
         judged({code: (levels[code], windows)}, lambda _j: True, "sources", n, len(codes))
     # every source, the tile's own too, at its coarser levels, under the clouds none clears
     wanting = [i for i, by in enumerate(out) if not any(j.answer == "clear" for j in by.values())]
@@ -698,17 +708,18 @@ def screen(
     phase("fetching", 0, sum(len(v) for v in todo.values()))
     sources.fetch(todo, cancel=cancel, progress=lambda d, t: phase("fetching", d, t))
     for n, code in enumerate(every):
+        phase("coarser", n * 100, 100 * len(every))  # its levels read before they are judged
         read: dict[str, tuple[int, _Windows]] = {}
         for i in wanting:
             _heard(cancel)
             box = boxes[i]
             above = None  # the level above, when it was read whole
             if _lost(sources, code, _keys_of(p, [box], levels[code])) is None:
-                above = _source_at(sources, code, levels[code], p, box)
+                above = _source_at(sources, code, levels[code], p, box, cancel)
             for zl in steps[(i, code)]:
                 if _lost(sources, code, _keys_of(p, [box], zl)) is not None:
                     break
-                there = _source_at(sources, code, zl, p, box)
+                there = _source_at(sources, code, zl, p, box, cancel)
                 if _shrunk(*there, _coarser(p, zl))[1].sum() < ALIKE_PIXELS:
                     break  # too few of its pixels to judge, coarser still fewer
                 # another photo than the level above, or the first one there
@@ -849,7 +860,7 @@ def check(
     if not sharp.usable:
         return Check(sharp)
     # its colours, matched on the band at the reading the screening judged: there it answers too
-    wide, wide_have = _source_at(sources, code, band_zl, p, box)
+    wide, wide_have = _source_at(sources, code, band_zl, p, box, cancel)
     fitted = judge(
         here, wide, wide_have, inside, core, band, np.zeros_like(band), _coarser(p, band_zl)
     )

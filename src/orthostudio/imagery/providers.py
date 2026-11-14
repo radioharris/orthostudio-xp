@@ -111,8 +111,8 @@ class Provider(BaseModel):
     name: str = ""
     """Short name for the page's lists (``Bing Maps``); ``attribution`` stays the credit line."""
     short: str = ""
-    """A shorter name where room is scarce, a cloud's menu of sources (``EOX``, not ``EOX Sentinel-2
-    cloudless 2024``: too long there, a user, 2026-11-14); empty, its ``name``."""
+    """A shorter name where room is scarce, the cloud mode (``EOX``, not ``EOX Sentinel-2
+    cloudless 2024``: too long in a cloud's menu, a user, 2026-11-14); empty, its ``name``."""
     same_as: str | None = None
     """Another code of the very same imagery (``NL`` is ``PDOK``): still accepted, listed once."""
     custom: bool = False

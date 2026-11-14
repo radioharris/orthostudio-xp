@@ -710,10 +710,8 @@ export function createCloudMode(ctx) {
     const label = cloudName(c);
     const box = h("input", { type: "checkbox", disabled: !c.toggle, onchange: () => toggle(c) });
     box.checked = c.tick;
-    // two lists (a user, 2026-11-14): its source, and its level for all its sources. Auto (the
-    // best whatever the level): every line tried, each source's together; a level: one line per
-    // source there, every source judged there. "I want to try EOX at ZL12": ZL12, then EOX.
-    // The engine's lines and codes
+    // two lists (a user, 2026-11-14): its source, and its level for all its sources ("I want to
+    // try EOX at ZL12": ZL12, then EOX); the engine's lines and codes, as it sends them
     const said = (x) => [x.answer ? t(`clouds.answer.${x.answer}`) : "", x.fit ? t("clouds.fit", { n: x.fit }) : ""];
     const menu = h("select", { "aria-label": t("clouds.source_of", { name: label }), disabled: !can.has("choose"), onchange: (ev) => choose(c, ev.target.value) },
       c.source ? null : h("option", { value: "", disabled: true }, t("clouds.choose")),

@@ -279,6 +279,23 @@ def pick(cl: CloudList, cid: str, action: str, source: str | None = None) -> Non
     c["tick"] = action != "untick"
 
 
+def begin_level(cl: CloudList, cid: str, level: int | None) -> int | None:
+    """The level of the cloud ``cid`` shown from the start of its try (its list jumped back to
+    the old one for the seconds the try took, a review, 2026-11-14), its source as it was until
+    the try ends (:func:`set_level`); the level it had, for :func:`undo_level`."""
+    c = cl.get(cid)
+    before: int | None = c.get("level")
+    _level_of(c, level)
+    return before
+
+
+def undo_level(cl: CloudList, cid: str, before: int | None) -> None:
+    """A level's try stopped, refused or failed: the cloud's level as it was."""
+    c = next((x for x in cl.clouds if x["id"] == cid), None)
+    if c is not None:
+        _level_of(c, before)
+
+
 def set_level(
     cl: CloudList,
     cid: str,
@@ -288,10 +305,10 @@ def set_level(
 ) -> None:
     """The level the sources of the cloud ``cid`` are read at (``None``: Auto, any), with what
     they have there (``verdicts``, its try, kept apart from the search's in ``tries``: Auto shows
-    what the search found and what was taken), written together once the try is over: a try
-    stopped, refused or failed leaves the list as it was (a level kept without its try left a
-    cloud with no source, a review, 2026-11-14). Its source is then the best there. Nothing
-    when the cloud left the list or changed outline meanwhile (another search)."""
+    what the search found and what was taken), written once the try is over (shown from its start,
+    :func:`begin_level`; a try stopped, refused or failed is undone, :func:`undo_level`: a level
+    kept without its try left a cloud with no source, a review, 2026-11-14). Its source is then
+    the best there. Nothing when the cloud left the list or changed outline meanwhile."""
     c = next((x for x in cl.clouds if x["id"] == cid), None)
     if c is None or c["rings"] != rings:
         return
@@ -303,16 +320,17 @@ def set_level(
 def _choose(c: dict[str, Any], chosen: str | None, level: int | None = None) -> None:
     """The one way a cloud's choice is set: its source (``chosen``, ``None``: the best) and its
     level (``None``: Auto, kept out of the file so that a list where no level was ever chosen is
-    written as before). Back in Auto, a source a level's try alone offered is let go: Auto does
-    not read the tries, and it stayed the source with nothing said of it (a review, 2026-11-14)."""
+    written as before)."""
+    c["chosen"] = chosen
+    _level_of(c, level)
+
+
+def _level_of(c: dict[str, Any], level: int | None) -> None:
+    """The cloud's level alone (``None``: Auto, out of the file)."""
     if level is None:
         c.pop("level", None)
-        said = {**c["screening"], **c["checks"]}
-        if chosen in c.get("tries", {}) and chosen not in said:
-            chosen = None
     else:
         c["level"] = level
-    c["chosen"] = chosen
 
 
 def _shape(rings: Sequence[Sequence[float]]) -> Any:
