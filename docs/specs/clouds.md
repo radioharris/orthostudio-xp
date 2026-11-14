@@ -101,20 +101,24 @@ The Plan's map, brought over the tile; the Plan's steps make way for the cloud p
   work a spinner beside its name around a square that stops it, the very same from a click on it to
   the end of its task (`pending`, then `working`, whatever the task's phase: two spinners came one
   after the other), its area, an eye (**Show**: the map over it), a trash for an outline the tile
-  does not hold; two lists (`state._menu`, `state._level_lines`; one list for the source, one for
-  its level, a user, 2026-11-14): its **source**, one line each of the sources tried under it (by
-  the search or its images got, a level chosen by hand too) and its own, by its short name
-  (`short`: "EOX", not "EOX Sentinel-2 cloudless 2024"), on the line it would take (its own for
-  the cloud's source, else its best: clear, the sharpest, the best fit), with what it has there and
-  its fit ("EOX · clear · fit 93 %"), both from its newest reading (`state.reading`: its images
-  got, judged as they are now, else the search's; what a piece said, no answer, a refusal, a page,
-  leaves the search's), the sources in the order of their best line, so the best first, those
-  that cannot be chosen greyed (`sources.PROPOSABLE`: the same photo, no picture; the source whose
-  images the tile shows of it always may be): a source picked takes its line; and its **level**
-  (`levels`, `level`: from the sharpest the tile has of that source down to ZL11,
-  `sources.COARSEST`; the source itself at the top, `Arc:11` below), each with what the source has
-  there when tried ("ZL12 · clear · fit 24 %"; none when never: chosen, its images are got),
-  shown when there is more than one: another level chooses that source at that level; its line
+  does not hold; two lists (a user, 2026-11-14): its **source**, one line each of the sources
+  tried under it (by the search, its images got, its level's try) and its own (`state._menu`), by
+  its short name (`short`: "EOX", not "EOX Sentinel-2 cloudless 2024") and the level it is read
+  at, on the line it would take (its own for the cloud's source, else its best: clear, the
+  sharpest, the best fit) among those the cloud's level offers (`state.tried`), with what it has
+  there and its fit ("EOX · ZL14 · clear · fit 93 %"), both from its newest reading
+  (`state.reading`: its images got, judged as they are now, else the search's; what a piece said,
+  no answer, a refusal, a page, leaves the search's), the sources in the order of their best line,
+  so the best first, those that cannot be chosen greyed (`sources.PROPOSABLE`: the same photo, no
+  picture; the source whose images the tile shows of it always may be): a source picked takes its
+  line; and its **level**, for all its sources (`level`, `levels`, `state.levels_of`): **Auto**
+  (none: the best line of any level, as the search found it), or a level from the tile's finest
+  down to ZL11 (`sources.COARSEST`). A level chosen keeps it with the cloud, ticks it, and judges
+  every source under it at that level, the tile's own too, as the search judges (`find.screen`,
+  `clouds_api.try_level`, a task of the cloud's: about 5 s), each read there or at its finest
+  when it has none so fine (`state.line_at`: `EOX:14` for ZL16); the best there is its source and
+  its images are got; another source picked stays at that level ("I want to try EOX at ZL12":
+  ZL12, then EOX); passing from ZL16 to ZL12 had asked the source shown alone; its line
   (1.5),
   under the menu: none when it is replaced or to be, as its tick and its menu say (held, ready),
   none while a task of it runs (its spinner says it; its label on the map); **Get its images** when

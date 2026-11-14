@@ -248,10 +248,9 @@ async def test_a_ready_tiles_rows_offer_what_its_list_allows(app: Any, ready: Pa
         unknown = await c.post(
             "/api/clouds/+43+005/picks", json={"id": "gone0001", "action": "tick"}
         )
-    assert (
-        rows[found["id"]]["actions"] == ["choose", "tick"] and rows[found["id"]]["toggle"] == "tick"
-    )
-    assert rows[drawn["id"]]["actions"] == ["choose", "remove"]  # no source yet: no tick
+    assert rows[found["id"]]["actions"] == ["choose", "level", "tick"]
+    assert rows[found["id"]]["toggle"] == "tick"
+    assert rows[drawn["id"]]["actions"] == ["choose", "level", "remove"]  # no source yet: no tick
     assert rows[drawn["id"]]["toggle"] is None and rows[found["id"]]["source"] == "EOX"
     assert refused.json()["error"]["code"] == "CLOUD_NOT_NOW"  # a click the page drew before
     assert unknown.json()["error"]["code"] == "CLOUD_UNKNOWN"
@@ -301,45 +300,54 @@ async def test_an_outline_is_tried_then_ticked_then_its_images_asked(
     ]  # every line says its level: EOX at its sharpest on this ZL12 tile
 
 
+def _level(cid: str, zl: int | None) -> dict[str, Any]:
+    return {"action": "level", "id": cid, "level": zl}
+
+
 @pytest.mark.anyio
-async def test_a_clouds_source_read_at_a_coarser_level_is_chosen_by_hand(
+async def test_a_clouds_level_judges_every_source_there_then_gets_the_best(
     app: Any, ready: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # some sources show another photo at ZL11, blurred but with no clouds (a user, 2026-11-14):
-    # the level beside its source, its images got there
+    # passing from ZL16 to ZL12 asked the source shown alone, where every one was wanted there;
+    # then "I want to try EOX at ZL12" (a user, 2026-11-14)
     from orthostudio.clouds.find import Check, Judgement
 
     asked: list[tuple[str, int]] = []
+    tried: list[set[str]] = []
 
     def check(*args: Any, **_k: Any) -> Check:
         code, pieces = args[4], args[6]
         asked.append((code, pieces.providers[code].max_zl))
         return Check(Judgement("did_not_answer"))  # the source stays the cloud's, asked again
 
+    def screen(p: Any, clouds: Any, classes: Any, pieces: Any, **k: Any) -> Any:
+        if k.get("coarser") is False:  # the level's try: every source at the level
+            tried.append(set(pieces.providers))
+            return [{code: Judgement("clear", 50) for code in pieces.providers}]
+        return [{"EOX": Judgement("clear", 70)}]
+
     monkeypatch.setattr(clouds_api, "detector_ready", lambda: True)
     monkeypatch.setattr(clouds_api, "opencv_ready", lambda: True)
     monkeypatch.setattr(clouds_api, "_tools", lambda task: None)
-    monkeypatch.setattr(clouds_api, "screen", lambda *a, **k: [{"EOX": Judgement("clear", 70)}])
+    monkeypatch.setattr(clouds_api, "screen", screen)
     monkeypatch.setattr(clouds_api, "check", check)
     polygon = [[5.1, 43.1], [5.2, 43.1], [5.2, 43.2], [5.1, 43.2]]
     async with client_for(app) as c:
         cid = (await c.post("/api/clouds/+43+005/outlines", json={"polygon": polygon})).json()["id"]
         a = await _read(c)
         (row,) = a["clouds"]
-        # the tile is ZL12: EOX at its sharpest there, or one coarser
-        assert [(x["zl"], x["source"]) for x in row["levels"]] == [(12, "EOX"), (11, "EOX:11")]
-        assert row["level"] == 12
-        r = await c.post(
-            "/api/clouds/+43+005/picks", json={"action": "choose", "id": cid, "source": "EOX:11"}
-        )
+        # the tile is ZL12: Auto, or ZL12 and ZL11 for all its sources
+        assert row["levels"] == [12, 11] and row["level"] is None
+        r = await c.post("/api/clouds/+43+005/picks", json=_level(cid, 11))
         assert r.status_code == 200, r.text
         a = await _read(c)
-        bad = await c.post(
-            "/api/clouds/+43+005/picks", json={"action": "choose", "id": cid, "source": "EOX:10"}
-        )
+        bad = await c.post("/api/clouds/+43+005/picks", json=_level(cid, 9))
     (row,) = a["clouds"]
-    assert ("EOX:11", 11) in asked and row["source"] == "EOX:11" and row["level"] == 11
-    assert bad.json()["error"]["code"] == "CLOUD_NOT_NOW"  # not a level of its source
+    assert tried and "EOX:11" in tried[0] and "BI:11" in tried[0]  # every source, its own too
+    assert row["level"] == 11 and row["source"].endswith(":11")
+    assert (row["source"], 11) in asked  # the best there, its images got at ZL11
+    assert {m["source"] for m in row["menu"]} >= {"EOX:11", "BI:11"}
+    assert bad.json()["error"]["code"] == "CLOUD_INVALID"  # not a level of the tile
 
 
 @pytest.mark.anyio

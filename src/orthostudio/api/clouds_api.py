@@ -692,11 +692,84 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
                 cls.pick(cl, cid, action, source)
         get_images(tile, ids, body, before=before)
 
+    def try_level(
+        tile: TileRef,
+        cid: str,
+        zl: int | None,
+        body: Mapping[str, Any] | None,
+        before: state.View,
+    ) -> None:
+        """The level ``zl`` the cloud ``cid``'s sources are read at (``None``: Auto, any): kept,
+        then every source, the tile's own too, judged under it at that level, as the search
+        judges them (``find.screen``), and the images of the best there got: passing from ZL16 to
+        ZL12 asked the source shown alone, where every one was wanted at ZL12; then one may say
+        "I want to try EOX at ZL12" (a user, 2026-11-14)."""
+        with cls.update(tile) as cl:
+            cls.pick(cl, cid, "level", level=zl)
+        if zl is None:
+            get_images(tile, [cid], body, before=before)
+            return
+        _detector_said(body)  # its sources judged by the detector, then its images got
+        _folder, shown, v = look(tile)
+        assert shown is not None
+        rings = v.cloud(cid).cloud["rings"]
+        registry = load_registry()
+        heights = tops(shown.textures, registry)
+        bases = [*other_sources(tile, shown.provider, registry), shown.provider]
+        found = {
+            code: provider
+            for code in {state.line_at(b, zl, heights) for b in bases if b in registry}
+            if (provider := resolve(code, registry)) is not None
+        }
+        then = before.cloud(cid)
+
+        def run(task: Task) -> None:
+            p = begin(task, tile, shown)
+            classes = engine.classes(tile, shown)
+            if classes is None:
+                classes = np.zeros(p.rgb.shape[:2], np.uint8)
+            (verdicts,) = screen(
+                p,
+                [rings],
+                classes,
+                SourcePieces(default_chunks_root(), found),
+                coarser=False,
+                cancel=task.stop,
+                phase=task.say,
+            )
+            with cls.update(tile) as cl:
+                cls.record_level(cl, cid, verdicts)
+
+        def images() -> None:
+            """Its best source at that level, its images got (the detector here: the try ran it)."""
+            get_images(tile, [cid], {"download": True})
+
+        engine.tasks.start(
+            tile.name,
+            "check",
+            run,
+            cloud=cid,
+            then=images,
+            was={"row": then.row, "lays": then.lays},
+        )
+
     @router.post("/api/clouds/{name}/picks")
     def picks(name: str, body: Annotated[dict[str, Any], Body()]) -> dict[str, Any]:
-        """``{action, id?, source?}``: ``tick``, ``untick`` or ``choose`` of the cloud ``id``;
-        without one, of every cloud whose state allows it (Tick all, Untick all)."""
-        action, cid, source = _body_of(_tile_of(name), body, state.DRAFT)
+        """``{action, id?, source?, level?}``: ``tick``, ``untick`` or ``choose`` of the cloud
+        ``id``; without one, of every cloud whose state allows it (Tick all, Untick all);
+        ``level`` of one cloud alone, ``null`` for Auto (:func:`try_level`)."""
+        action, cid, source = _body_of(_tile_of(name), body, state.DRAFT | {"level"})
+        if action == "level":
+            zl = (body or {}).get("level")
+            tile, _folder, shown, v = opened(name, action, {"id": cid} if cid else None)
+            offered = state.levels_of(tops(shown.textures, load_registry()))
+            if cid is None or not (zl is None or (type(zl) is int and zl in offered)):
+                raise OsxpError(
+                    "CLOUD_INVALID",
+                    context={"tile": tile.name, "cloud": str(cid or ""), "reason": "no such level"},
+                )
+            try_level(tile, cid, zl, body, before=v)
+            return {"ok": True}
         if cid is None:
             tile, _folder, _shown, v = opened(name, action)
             ids = [s.cloud["id"] for s in v.clouds if v.allows(action, s.cloud["id"])]

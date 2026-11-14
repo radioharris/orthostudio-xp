@@ -60,12 +60,14 @@ the same photo as the tile, which would bring the cloud back, or with no picture
 - To take another source, choose it in the cloud's menu: it is ticked with it, and the map goes to
   the cloud to show its new images when it is not on the map; zoomed in on a part of it, the map
   stays where it is.
-- Beside the source, its **level**: ZL16 for a ZL16 tile, down to ZL11, each with what the source
-  has there once tried (*ZL12 · clear · fit 24 %*). Some sources show another photo at a coarser
+- Beside the source, the cloud's **level**: **Auto**, the best photo whatever its level, or a level
+  from the tile's (ZL16 for a ZL16 tile) down to ZL11. Some sources show another photo at a coarser
   level, blurred but without clouds: Esri World Imagery at ZL11 over a tropical forest, for
-  instance. Where no sharp photo is clear, the search tries them by itself, and a source then comes
-  at its best level; choose another level and the cloud's images are fetched at that level. The
-  cloud's place then looks as blurred as that level.
+  instance; where no sharp photo is clear, Auto finds them by itself. Choose a level and every
+  source is tried under the cloud at that level, in a few seconds: the source list then says what
+  each has there, the best is taken and its images fetched. Choose another source and it stays at
+  that level: to try EOX at ZL12, choose ZL12, then EOX. The cloud's place looks as blurred as its
+  level.
 - **Tick all** and **Untick all**, above the list, tick or untick every cloud at once. Whatever
   you click, a spinner turns on it, in the cloud's line or in the button, until the app has
   answered; for a cloud, the same spinner goes on until its images are made, and a click on it

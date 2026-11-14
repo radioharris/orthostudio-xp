@@ -49,12 +49,15 @@ __all__ = [
     "View",
     "as_shown",
     "best_of",
+    "levels_of",
     "library_cell",
+    "line_at",
     "possible",
     "proposable",
     "reading",
     "source_of",
     "tile_state",
+    "tried",
     "view",
 ]
 
@@ -64,9 +67,10 @@ DRAFT = frozenset({"tick", "untick", "choose"})
 """A cloud's tick and its source: what the next Apply does, changed even while one runs. The
 names of every action are the same for the tile, its clouds, the routes, its tasks and the
 page."""
-LIST_EDITS = DRAFT | {"remove", "discard"}
+LIST_EDITS = DRAFT | {"remove", "discard", "level"}
 """The list's own changes: they wait for the next Apply. Removing an outline and Discard are
-read of what the tile shows, which an Apply under way changes: never beside one."""
+read of what the tile shows, which an Apply under way changes: never beside one; nor a cloud's
+level, whose sources are judged there on the tile's picture (``clouds_api.try_level``)."""
 TASKS = frozenset({"find", "outline", "check"})
 """What reads the tile's folder (its picture, its textures)."""
 WRITES = frozenset({"apply", "restore", "forget"})
@@ -194,20 +198,40 @@ def _ranked(c: Mapping[str, Any], codes: Iterable[str]) -> list[str]:
     return sorted(codes, key=key)
 
 
-def best_of(c: Mapping[str, Any]) -> str | None:
-    """Of the sources clear under ``c``, the one whose colours fit best (:func:`_ranked`)."""
-    codes = {*(c.get("screening") or {}), *(c.get("checks") or {})}
-    clear = [k for k in _ranked(c, codes) if reading(c, k).get("answer") == "clear"]
+def line_at(base: str, zl: int, tops: Mapping[str, int]) -> str:
+    """The source ``base`` read at the level ``zl`` chosen for a cloud, or at its sharpest for
+    the tile when it has none so sharp (``tops``): ``Bing:12``, ``EOX:14`` at ZL16."""
+    return at_level(base, min(zl, tops.get(base, zl)))
+
+
+def tried(c: Mapping[str, Any], tops: Mapping[str, int] | None = None) -> list[str]:
+    """The codes tried under ``c`` (by a search, its images got, its level's try) that its level
+    offers: every one when it has none (Auto), else each source's at that level."""
+    codes = list(dict.fromkeys([*(c.get("screening") or {}), *(c.get("checks") or {})]))
+    zl = c.get("level")
+    if zl is None or tops is None:
+        return codes
+    return [k for k in codes if k == line_at(level_of(k)[0], zl, tops)]
+
+
+def best_of(c: Mapping[str, Any], tops: Mapping[str, int] | None = None) -> str | None:
+    """Of the sources clear under ``c`` (at its level when it has one, :func:`tried`), the one
+    whose colours fit best (:func:`_ranked`)."""
+    clear = [k for k in _ranked(c, tried(c, tops)) if reading(c, k).get("answer") == "clear"]
     return clear[0] if clear else None
 
 
-def source_of(c: Mapping[str, Any], held: Mapping[str, Any] | None = None) -> str | None:
-    """The source of ``c``: the one the user chose while it may be chosen there, else the best,
-    else the one whose images the tile shows of it (``held``)."""
+def source_of(
+    c: Mapping[str, Any],
+    held: Mapping[str, Any] | None = None,
+    tops: Mapping[str, int] | None = None,
+) -> str | None:
+    """The source of ``c``: the one the user chose while it may be chosen there, else the best
+    (at its level when it has one), else the one whose images the tile shows of it (``held``)."""
     chosen = c.get("chosen")
     if chosen and proposable(c, chosen, held):
         return chosen
-    return best_of(c) or (held["source"] if held is not None else None)
+    return best_of(c, tops) or (held["source"] if held is not None else None)
 
 
 # -- a cloud -----------------------------------------------------------------------------------
@@ -236,12 +260,9 @@ class CloudState:
     """Why it waits (``waiting``): the key of its line."""
     actions: frozenset[str]
     task: Mapping[str, Any] | None = None
-    levels: tuple[tuple[int, str], ...] = ()
-    """The levels its source may be read at, the sharpest first, each with the code choosing it
-    (:func:`_levels`)."""
     tops: Mapping[str, int] = field(default_factory=dict)
     """The sharpest level each source is read at for the tile (``sources.tops``): its menu says
-    each one's level."""
+    each one's level, and its level list goes from the finest."""
 
     @property
     def unasked(self) -> bool:
@@ -288,19 +309,19 @@ class CloudState:
             "numbered": c["kind"] == "found",
             "preview": (previews or {}).get(c["id"]),
             "menu": _menu(c, self.source, self.held, self.tops),
-            "levels": _level_lines(c, self.levels, self.held),
-            "level": _level(self.source, self.levels),
+            "levels": list(levels_of(self.tops)),
+            "level": c.get("level"),
         }
 
 
 def _options(
-    c: Mapping[str, Any], held: Mapping[str, Any] | None
+    c: Mapping[str, Any], held: Mapping[str, Any] | None, tops: Mapping[str, int] | None = None
 ) -> tuple[str | None, list[Mapping[str, Any]], str | None]:
     """The cloud's source, the images Apply may lay for it, the wanted first, and why it waits
     before the folder is planned: unticked, none; ticked, the newest images got of its source and
     those the tile shows of that source, then, while it waits for them, those the tile shows of
     it (its ground kept)."""
-    source = source_of(c, held)
+    source = source_of(c, held, tops)
     if not c["tick"]:
         return source, [], None
     if source is None:  # no source: nothing the tile shows of it either (``source_of``)
@@ -357,7 +378,7 @@ def _actions(
     c: Mapping[str, Any], source: str | None, held: Any, why: str | None
 ) -> frozenset[str]:
     """What the cloud allows, before what the tile allows."""
-    out = {"choose", "untick" if c["tick"] else "tick"}
+    out = {"choose", "level", "untick" if c["tick"] else "tick"}
     if not c["tick"] and source is None:
         out.discard("tick")
     if _asks(why):
@@ -385,27 +406,12 @@ def _line(s: CloudState) -> dict[str, Any] | None:
     return {"key": f"clouds.row.{s.row}", "params": {**src, "held": held}, "tone": "plain"}
 
 
-def _levels(source: str | None, tops: Mapping[str, int]) -> tuple[tuple[int, str], ...]:
-    """The levels ``source`` may be read at for the cloud, from the sharpest the tile has of it
-    (``tops``, ``sources.tops``) down to ``sources.COARSEST``, each with its code: the source
-    itself at the sharpest, ``Arc:11`` below. None for a source unknown, or one level alone."""
-    if source is None:
-        return ()
-    base = level_of(source)[0]
-    top = tops.get(base)
-    if top is None or top <= COARSEST:
-        return ()
-    return tuple(
-        (zl, base if zl == top else at_level(base, zl)) for zl in range(top, COARSEST - 1, -1)
-    )
-
-
-def _level(source: str | None, levels: Sequence[tuple[int, str]]) -> int | None:
-    """The level ``source`` is read at among ``levels``: its own, else the sharpest."""
-    if source is None or not levels:
-        return None
-    zl = level_of(source)[1]
-    return levels[0][0] if zl is None else zl
+def levels_of(tops: Mapping[str, int]) -> tuple[int, ...]:
+    """The levels a cloud's sources may all be read at (its level list, besides Auto): from the
+    tile's finest (``tops``, ``sources.tops``) down to ``sources.COARSEST``; none for a tile no
+    finer than that."""
+    finest = max(tops.values(), default=0)
+    return tuple(range(finest, COARSEST - 1, -1)) if finest > COARSEST else ()
 
 
 def _menu(
@@ -414,15 +420,14 @@ def _menu(
     held: Any = None,
     tops: Mapping[str, int] | None = None,
 ) -> list[dict[str, Any]]:
-    """The sources tried under the cloud (by the search, or its images got, a level chosen by
-    hand too) and its own, each once (a user, 2026-11-14: one list for the source, one for its
-    level): the line it would take, its own for the cloud's source, else its best (:func:`_ranked`:
-    clear, the sharpest, the best fit), with what it has there, its fit, its level (its own, else
-    the sharpest the tile has of it, ``tops``) and whether it may be chosen; the sources in the
-    order of their best line, the best first. A source's other levels are the cloud's
-    ``levels``."""
-    tried = [*(c.get("screening") or {}), *(c.get("checks") or {})]
-    codes = list(dict.fromkeys([*tried, *([source] if source else [])]))
+    """The sources tried under the cloud (by the search, its images got, its level's try) and its
+    own, each once (a user, 2026-11-14: one list for the source, one for the level): the line it
+    would take, its own for the cloud's source, else its best (:func:`_ranked`: clear, the
+    sharpest, the best fit) among those the cloud's level offers (:func:`tried`: Auto, any; a
+    level chosen, each source at it, "I want to try EOX at ZL12"), with what it has there, its
+    fit, its level (its own, else the sharpest the tile has of it, ``tops``) and whether it may
+    be chosen; the sources in the order of their best line, the best first."""
+    codes = list(dict.fromkeys([*tried(c, tops), *([source] if source else [])]))
     lines: dict[str, str] = {}  # each source by its best line, in their order
     for code in _ranked(c, codes):
         lines.setdefault(level_of(code)[0], code)
@@ -443,26 +448,6 @@ def _menu(
             }
         )
     return items
-
-
-def _level_lines(
-    c: Mapping[str, Any], levels: Sequence[tuple[int, str]], held: Any = None
-) -> list[dict[str, Any]]:
-    """The cloud's ``levels`` as its level list shows them: each with what its source has there
-    and its fit, when tried (none when never: chosen, its images are got)."""
-    out = []
-    for zl, code in levels:
-        said = reading(c, code)
-        out.append(
-            {
-                "zl": zl,
-                "source": code,
-                "answer": said.get("answer"),
-                "fit": int(said.get("fit") or 0),
-                "proposable": proposable(c, code, held),
-            }
-        )
-    return out
 
 
 # -- the view ----------------------------------------------------------------------------------
@@ -534,8 +519,7 @@ class View:
         s = next((x for x in self.clouds if x.cloud["id"] == cid), None)
         if s is None or action not in s.actions:
             return False
-        offered = {i["source"] for i in _menu(s.cloud, s.source, s.held) if i["proposable"]}
-        offered |= {code for _zl, code in s.levels}  # its source at another level, by hand
+        offered = {i["source"] for i in _menu(s.cloud, s.source, s.held, s.tops) if i["proposable"]}
         return action != "choose" or source in offered
 
     @property
@@ -651,7 +635,7 @@ def view(
     holds = held_by_id(shown)
     wanted = []
     for c in cl.clouds:
-        source, options, wait = _options(c, holds.get(c["id"]))
+        source, options, wait = _options(c, holds.get(c["id"]), tops)
         wanted.append((c, source, holds.get(c["id"]), options, wait))
     asked = [_as_it_was(w[3], of_cloud.get(w[0]["id"])) for w in wanted]
     plan = plan_folder(tile, shown, asked) if shown is not None else None
@@ -680,10 +664,7 @@ def view(
             row, actions = "frozen", frozenset()
         else:
             row, actions = fact, _actions(c, source, held, why) & can
-        levels = _levels(source, tops or {})
-        clouds.append(
-            CloudState(c, source, held, lays, row, why, actions, task, levels, dict(tops or {}))
-        )
+        clouds.append(CloudState(c, source, held, lays, row, why, actions, task, dict(tops or {})))
         facts.append(fact)
     counts = _counts(facts, shown, remade, tasks)
     searching = "find" in kinds
@@ -695,6 +676,7 @@ def view(
         "discard": counts["changes"] == 0 and counts["waiting"] == 0,
         "find": searching,
         "choose": True,  # a cloud's alone
+        "level": True,
         "remove": True,
         # of every cloud: those each allows (Tick all, Untick all, their images)
         "tick": not any("tick" in s.actions for s in clouds),

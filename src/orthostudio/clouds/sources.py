@@ -87,12 +87,13 @@ def level_of(code: str) -> tuple[str, int | None]:
 def resolve(code: str, registry: Mapping[str, Provider]) -> Provider | None:
     """The source ``code`` names, read no finer than its level: the registry's source with that
     level as its finest. ``None`` when its source is unknown or the level is not one it has
-    coarser than its finest, down to :data:`COARSEST`."""
+    up to its finest, down to :data:`COARSEST` (``EOX:14``: a cloud's level is ZL16, EOX has no
+    finer)."""
     base, zl = level_of(code)
     provider = registry.get(base)
     if provider is None or zl is None:
         return provider
-    if not COARSEST <= zl < provider.max_zl:
+    if not COARSEST <= zl <= provider.max_zl:
         return None
     return provider.model_copy(update={"max_zl": zl})
 

@@ -260,14 +260,28 @@ def update(tile: TileRef) -> Iterator[CloudList]:
 # -- edits -------------------------------------------------------------------------------------
 
 
-def pick(cl: CloudList, cid: str, action: str, source: str | None = None) -> None:
+def pick(
+    cl: CloudList, cid: str, action: str, source: str | None = None, level: int | None = None
+) -> None:
     """One cloud's pick, the one way a cloud is ticked or unticked (its state allowed it, the
     caller asked ``state.View.allows``): ``choose`` makes ``source`` its source and ticks it,
-    ``tick`` ticks it, ``untick`` unticks it."""
+    ``level`` makes ``level`` the level its sources are read at (``None``: Auto, any), its source
+    the best there, and ticks it; ``tick`` ticks it, ``untick`` unticks it."""
     c = cl.get(cid)
     if action == "choose":
         c["chosen"] = source
+    if action == "level":
+        c["level"] = level
+        c["chosen"] = None
     c["tick"] = action != "untick"
+
+
+def record_level(cl: CloudList, cid: str, verdicts: Mapping[str, Any]) -> None:
+    """What the sources have under the cloud ``cid`` at the level chosen for it, kept with what
+    the search found (``screening_of``), unless it left the list meanwhile."""
+    c = next((x for x in cl.clouds if x["id"] == cid), None)
+    if c is not None:
+        c.setdefault("screening", {}).update(screening_of(verdicts))
 
 
 def _shape(rings: Sequence[Sequence[float]]) -> Any:
@@ -399,5 +413,6 @@ def discard(cl: CloudList, shown: TileClouds | None) -> None:
     holds = held_by_id(shown)
     for c in cl.clouds:
         c["tick"] = c["id"] in holds
+        c.pop("level", None)  # Auto: the source it holds, whatever its level
         if c["id"] in holds:
             c["chosen"] = holds[c["id"]]["source"]

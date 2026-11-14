@@ -560,6 +560,12 @@ export function createCloudMode(ctx) {
     return send("POST", "/picks", { id: c.id, action: "choose", source }, `cloud-${c.id}`);
   }
 
+  /** The cloud's level, for all its sources ("": Auto): each judged there, the best's images got. */
+  function setLevel(c, value) {
+    cs.reveal = c.id;
+    return send("POST", "/picks", { id: c.id, action: "level", level: value === "" ? null : Number(value) }, `cloud-${c.id}`);
+  }
+
   function ask(title, lines, go) {
     const dialog = $("clouds-dialog");
     if (!dialog || dialog.open) return Promise.resolve(false);
@@ -704,23 +710,23 @@ export function createCloudMode(ctx) {
     const label = cloudName(c);
     const box = h("input", { type: "checkbox", disabled: !c.toggle, onchange: () => toggle(c) });
     box.checked = c.tick;
-    // two lists: its source, one line each, the line it would take (its own, else its best);
-    // then that source's level, from the sharpest to ZL11, each with what it has there when tried
-    // (a user, 2026-11-14: a source shows another photo at some level, blurred but with no
-    // clouds). The engine's lines and codes; a source picked takes its line's code
+    // two lists (a user, 2026-11-14): its source, one line each, the line it would take (its
+    // own, else its best), at the cloud's level; and that level, for all its sources: Auto (the
+    // best whatever the level), or one, every source then judged there. "I want to try EOX at
+    // ZL12": ZL12, then EOX. The engine's lines and codes; a source picked takes its line's code
     const said = (x) => [x.answer ? t(`clouds.answer.${x.answer}`) : "", x.fit ? t("clouds.fit", { n: x.fit }) : ""];
     const lineOf = (base) => c.menu.find((m) => m.base === base);
     const menu = h("select", { "aria-label": t("clouds.source_of", { name: label }), disabled: !can.has("choose"), onchange: (ev) => { const m = lineOf(ev.target.value); if (m) choose(c, m.source); } },
       c.source ? null : h("option", { value: "", disabled: true }, t("clouds.choose")),
       ...c.menu.map((m) => h("option", { value: m.base, disabled: !m.proposable },
-        [n[m.base] || m.base, ...said(m)].filter(Boolean).join(" · "))));
+        [n[m.base] || m.base, m.level ? `ZL${m.level}` : "", ...said(m)].filter(Boolean).join(" · "))));
     menu.value = (c.menu.find((m) => m.source === c.source) || {}).base || "";
     const level = c.levels && c.levels.length
-      ? h("select", { class: "cloud-level", dataset: key(`level-${c.id}`), "aria-label": t("clouds.level_of", { name: label }), title: t("clouds.level_tip"), disabled: !can.has("choose"), onchange: (ev) => choose(c, ev.target.value) },
-        ...c.levels.map((l) => h("option", { value: l.source, disabled: l.answer ? !l.proposable : false },
-          [`ZL${l.zl}`, ...said(l)].filter(Boolean).join(" · "))))
+      ? h("select", { class: "cloud-level", dataset: key(`level-${c.id}`), "aria-label": t("clouds.level_of", { name: label }), title: t("clouds.level_tip"), disabled: !can.has("level"), onchange: (ev) => setLevel(c, ev.target.value) },
+        h("option", { value: "" }, t("clouds.level_auto")),
+        ...c.levels.map((zl) => h("option", { value: String(zl) }, `ZL${zl}`)))
       : null;
-    if (level) level.value = (c.levels.find((l) => l.zl === c.level) || c.levels[0]).source;
+    if (level) level.value = c.level == null ? "" : String(c.level);
     const task = c.task;
     const show = () => {
       cs.current = c.id;
