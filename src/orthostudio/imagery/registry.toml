@@ -25,6 +25,7 @@ max_in_flight = 128  # measured ceiling, 4 hostnames x 32 streams; 192 gave no m
 placeholder = { header_name = "X-VE-Tile-Info", header_value = "no-tile", size = 1033, blake3 = "1abc2dcd9d153b229306d34096a74a2e97587a1b5a74f00b75990207d3e0b484" }
 attribution = "Microsoft Bing Maps aerial imagery"
 name = "Bing Maps"
+short = "Bing"
 terms_url = "https://www.microsoft.com/en-us/maps/product/terms"
 
 [providers.Arc]
@@ -35,6 +36,7 @@ max_in_flight = 128  # 16, 32, 64, 128, 256 gave 249, 512, 915, 1 124, 1 116 req
 placeholder = { size = 2521 }  # O4_Imagery_Utils.py:1029-1032 ("no data yet" tile)
 attribution = "Esri World Imagery (Esri, Maxar, Earthstar Geographics, and the GIS User Community)"
 name = "Esri World Imagery"
+short = "Esri"
 terms_url = "https://www.esri.com/en-us/legal/terms/full-master-agreement"
 
 [providers."Arc@"]
@@ -51,6 +53,7 @@ min_photo_zl = 14  # its ZL13 21 apart in mean colour from ZL16's over Bern, ZL1
 server_req_per_s = 522
 attribution = "Esri World Imagery Clarity (Esri, Maxar, Earthstar Geographics, and the GIS User Community)"
 name = "Esri World Imagery Clarity"
+short = "Esri Clarity"
 terms_url = "https://www.esri.com/en-us/legal/terms/full-master-agreement"
 
 [providers.EOX]
@@ -80,6 +83,7 @@ pushback_status = [403]
 attribution = "EOxCloudless https://cloudless.eox.at by EOX IT Services GmbH (Contains modified Copernicus Sentinel data 2024)"
 name = "EOX Sentinel-2 cloudless 2024"  # they publish a new mosaic every year, and the
 # address names the one we ask for: the list must say which, or a pilot cannot tell (user, 2026-09-24)
+short = "EOX"
 terms_url = "https://cloudless.eox.at/documentation/license"
 licence = "CC BY-NC-SA 4.0, non-commercial use only"
 
@@ -196,6 +200,7 @@ max_in_flight = 128  # 64, 128 gave 168, 280 req/s, no error
 server_req_per_s = 280
 attribution = "USGS The National Map, USGS Imagery Only (public domain)"
 name = "USGS The National Map"
+short = "USGS"
 extent = "United States"
 extent_bounds = [-180.0, 17.5, -64.0, 71.5]  # Puerto Rico and Hawaii to Alaska, a rectangle
 terms_url = "https://www.usgs.gov/information-policies-and-instructions/copyrights-and-credits"

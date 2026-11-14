@@ -54,10 +54,12 @@ export function latlngs(ring) {
   return out;
 }
 
-/** The sources' names by their codes, a source read at a coarser level (``Arc:11``, the engine's
- * ``sources.at_level``) by its own and that level: "Esri World Imagery · ZL11". */
+/** The sources' short names by their codes, a source read at a coarser level (``Arc:11``, the
+ * engine's ``sources.at_level``) by its own and that level: "Esri · ZL11". */
 export function sourceNames(providers) {
-  const named = Object.fromEntries((providers || []).map((p) => [p.code, p.name || p.code]));
+  // their short names: the panel is narrow ("EOX", not "EOX Sentinel-2 cloudless 2024", a user,
+  // 2026-11-14)
+  const named = Object.fromEntries((providers || []).map((p) => [p.code, p.short || p.name || p.code]));
   return new Proxy(named, {
     get(o, code) {
       if (typeof code !== "string" || code in o) return o[code];
