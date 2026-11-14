@@ -390,3 +390,15 @@ def test_a_list_with_a_level_that_is_none_is_set_aside(level: Any) -> None:
     _cl, c = _list()
     assert cloudlist._cloud_problem({**c, "level": level}) == "no level"
     assert cloudlist._cloud_problem({**c, "level": 12}) is None
+
+
+def test_a_level_finer_than_the_tile_now_has_shows_as_its_finest() -> None:
+    # built again coarser, the level list showed nothing for a level it no longer has
+    assert state._level({"level": 16}, {"BI": 14}) == 14
+    assert state._level({"level": 12}, {"BI": 14}) == 12 and state._level({}, {"BI": 14}) is None
+
+
+def test_a_clouds_level_waits_for_apply_as_an_outline_removed_does() -> None:
+    # its try reads the tile's picture, which Apply changes
+    assert "level" not in state.possible("ready", {"apply"})
+    assert "level" in state.possible("ready", {"find"}) and "level" in state.possible("ready")

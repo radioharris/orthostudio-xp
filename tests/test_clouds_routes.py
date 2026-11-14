@@ -366,6 +366,22 @@ async def test_a_clouds_level_judges_every_source_there_then_gets_the_best(
 
 
 @pytest.mark.anyio
+async def test_a_clouds_level_asks_for_the_detector_first_and_changes_nothing_on_no(
+    app: Any, ready: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # answered no, a level kept without its try left the cloud with no source (a review)
+    with cloudlist.update(TILE) as cl:
+        cid = cl.add("found", _ring(), screening={"EOX": {"answer": "clear", "fit": 70}})["id"]
+    monkeypatch.setattr(clouds_api, "opencv_ready", lambda: True)
+    async with client_for(app) as c:
+        r = await c.post("/api/clouds/+43+005/picks", json=_level(cid, 11))
+        a = await _read(c)
+    assert r.json()["error"]["code"] == "CLOUD_DETECTOR_ASK"
+    (row,) = a["clouds"]
+    assert row["level"] is None and row["source"] == "EOX" and not row["tick"]
+
+
+@pytest.mark.anyio
 async def test_the_library_cell_is_offered_on_the_tiles_own_folder_only(
     app: Any, ready: Path, tmp_path: Path
 ) -> None:

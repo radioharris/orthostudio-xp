@@ -314,7 +314,7 @@ class CloudState:
             "preview": (previews or {}).get(c["id"]),
             "menu": _menu(c, self.source, self.held, tops or {}),
             "levels": list(levels_of(tops or {})),
-            "level": c.get("level"),
+            "level": _level(c, tops or {}),
         }
 
 
@@ -416,6 +416,14 @@ def levels_of(tops: Mapping[str, int]) -> tuple[int, ...]:
     finer than that."""
     finest = max(tops.values(), default=0)
     return tuple(range(finest, COARSEST - 1, -1)) if finest > COARSEST else ()
+
+
+def _level(c: Mapping[str, Any], tops: Mapping[str, int]) -> int | None:
+    """The cloud's level as its list shows it: none in Auto; one finer than the tile now has (a
+    tile built again coarser) is its finest, as its sources are read (``sources.code_of``)."""
+    zl = c.get("level")
+    finest = levels_of(tops)
+    return None if zl is None else min(zl, finest[0]) if finest else zl
 
 
 def _menu(
