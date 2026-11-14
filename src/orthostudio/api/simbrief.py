@@ -217,10 +217,29 @@ def _fetch(url: str) -> tuple[bytes | None, str]:
     if answer.error is not None:
         return None, answer.error
     if answer.status == 400:
-        return None, "unknown user"
+        return None, _refused(answer.body)
     if not (200 <= answer.status < 300) or not answer.body:
         return None, f"HTTP {answer.status}"
     return answer.body, ""
+
+
+UNKNOWN_USER = "unknown user"
+NO_PLAN = "no flight plan on file"
+
+
+def _refused(body: bytes | None) -> str:
+    """Why SimBrief answered 400, from the status of its answer: a name it does not know
+    ("Error: Unknown UserID"), or a known one with no plan ("Error: No flight plan on file for the
+    specified user", which Live said was an unknown user, 2026-11-14); else that status."""
+    try:
+        status = str(json.loads(body or b"")["fetch"]["status"])
+    except (ValueError, KeyError, TypeError):
+        return "HTTP 400"
+    if "unknown user" in status.lower():
+        return UNKNOWN_USER
+    if "no flight plan" in status.lower():
+        return NO_PLAN
+    return status
 
 
 def simbrief_url(user: str) -> str:
@@ -300,8 +319,10 @@ def simbrief_router(
             return _failed("CFG_SIMBRIEF_USER_MISSING", 400)
         body, why = await asyncio.to_thread(ask, simbrief_url(user))
         if body is None:
-            if why == "unknown user":
+            if why == UNKNOWN_USER:
                 return _failed("CFG_SIMBRIEF_USER_UNKNOWN", 404, {"user": user})
+            if why == NO_PLAN:
+                return _failed("CFG_SIMBRIEF_NO_PLAN", 404, {"user": user})
             return _failed("NET_SIMBRIEF_FAILED", 502, {"reason": why})
         try:
             doc = json.loads(body)

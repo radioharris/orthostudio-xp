@@ -104,7 +104,8 @@ The answer:
 `radius_km` is the airport field's radius (0 to 300 km, 15 by default), around the two airports
 and along the whole route; to widen the corridor, change it and read the plan again. Errors come in the engine's
 one shape (code, words, remedy, context): `CFG_SIMBRIEF_USER_MISSING` (400),
-`CFG_SIMBRIEF_USER_UNKNOWN` (404, with the name), `CFG_SIMBRIEF_PLAN_EMPTY` (404),
+`CFG_SIMBRIEF_USER_UNKNOWN` (404, with the name), `CFG_SIMBRIEF_NO_PLAN` (404, with the name: a
+known name with no plan, which SimBrief also answers with a 400), `CFG_SIMBRIEF_PLAN_EMPTY` (404),
 `NET_SIMBRIEF_FAILED` (502, with the reason; the network's general code said "retried with
 backoff", which this button never does).
 

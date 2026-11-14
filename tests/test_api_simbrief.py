@@ -18,7 +18,14 @@ import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
-from orthostudio.api.simbrief import SIMBRIEF_URL, route_of, simbrief_router, simbrief_url
+from orthostudio.api.simbrief import (
+    NO_PLAN,
+    SIMBRIEF_URL,
+    _refused,
+    route_of,
+    simbrief_router,
+    simbrief_url,
+)
 from orthostudio.model import TileRef
 
 anyio_backend = "asyncio"
@@ -120,6 +127,36 @@ async def test_a_name_they_do_not_know_says_so() -> None:
     assert answer.status_code == 404
     error = answer.json()["error"]
     assert error["code"] == "CFG_SIMBRIEF_USER_UNKNOWN" and "Settings" in error["remedy"]
+
+
+def test_a_known_name_with_no_plan_is_not_an_unknown_one() -> None:
+    """SimBrief answers both with a 400; its status tells them apart (a pilot with no plan on file
+    was told SimBrief did not know him, 2026-11-14)."""
+
+    def status(text: str) -> bytes:
+        return json.dumps({"fetch": {"userid": "", "status": text}}).encode()
+
+    assert _refused(status("Error: Unknown UserID")) == "unknown user"
+    assert _refused(status("Error: No flight plan on file for the specified user")) == NO_PLAN
+    assert _refused(status("Error: Something new")) == "Error: Something new"
+    assert _refused(b"<html>Bad Request</html>") == "HTTP 400"
+    assert _refused(None) == "HTTP 400"
+
+
+@pytest.mark.anyio
+async def test_a_known_name_with_no_plan_says_so() -> None:
+    def fetch(url: str) -> tuple[bytes | None, str]:
+        return None, NO_PLAN
+
+    app = FastAPI()
+    app.include_router(
+        simbrief_router(lambda: "pilot", global_scenery_of=lambda: None, fetch=fetch)
+    )
+    async with _client(app) as c:
+        answer = await c.get("/api/flightplan/simbrief")
+    assert answer.status_code == 404
+    error = answer.json()["error"]
+    assert error["code"] == "CFG_SIMBRIEF_NO_PLAN" and error["context"]["user"] == "pilot"
 
 
 @pytest.mark.anyio

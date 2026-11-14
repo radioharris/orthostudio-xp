@@ -898,6 +898,13 @@ _SPECS: tuple[ErrorSpec, ...] = (
         "Check the name in Settings: it is your SimBrief name, or your pilot ID.",
     ),
     _spec(
+        "CFG_SIMBRIEF_NO_PLAN",
+        _B,
+        _S,
+        "SimBrief has no flight plan for {user}.",
+        "Generate a flight plan on simbrief.com, then try again.",
+    ),
+    _spec(
         "CFG_SIMBRIEF_PLAN_EMPTY",
         _B,
         _S,
