@@ -224,7 +224,9 @@ def test_a_clouds_level_offers_each_source_at_it_and_the_best_there() -> None:
     assert state.best_of(auto, tops) == "EOX"  # Auto: the sharpest clear, whatever the level
 
 
-def test_a_clouds_menu_has_one_line_per_source_the_line_it_would_take() -> None:
+def test_auto_lists_every_line_tried_each_sources_together_the_best_first() -> None:
+    # EOX at ZL12 and at ZL11 tried by hand, Esri at ZL13: Auto showed the last alone, the
+    # others hidden behind EOX's best line (a user, 2026-11-14)
     c = {
         "screening": {
             "BI": {"answer": "cloudy", "fit": 80},
@@ -232,11 +234,18 @@ def test_a_clouds_menu_has_one_line_per_source_the_line_it_would_take() -> None:
             "BI:12": {"answer": "clear", "fit": 30},
             "Arc:11": {"answer": "clear", "fit": 90},
             "EOX:11": {"answer": "cloudy", "fit": 20},
+            "EOX:14": {"answer": "clear", "fit": 61},  # a level's try at ZL16: EOX at its finest
         }
     }
     tops = {"BI": 16, "EOX": 14, "Arc": 16}
-    # each source's best line, the sources in that order: EOX, Bing clear at ZL12, Esri at ZL11
-    assert [m["source"] for m in state._menu(c, None, None, tops)] == ["EOX", "BI:12", "Arc:11"]
-    # the cloud's own source on the line it is on now, in its place
-    assert [m["source"] for m in state._menu(c, "BI", None, tops)] == ["EOX", "BI", "Arc:11"]
-    assert state.best_of(c) == "EOX"  # the choice is the same rule as ever
+    menu = state._menu(c, None, None, tops)
+    assert [(m["source"], m["level"]) for m in menu] == [
+        ("EOX", 14),  # once, the source itself
+        ("EOX:11", 11),
+        ("BI", 16),
+        ("BI:12", 12),
+        ("Arc:11", 11),
+    ]
+    assert state._menu(c, "EOX:14", None, tops)[0]["source"] == "EOX:14"  # its own
+    assert state.best_of(c, tops) == "EOX"  # the choice is the same rule as ever
+

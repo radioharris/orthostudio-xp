@@ -101,11 +101,13 @@ The Plan's map, brought over the tile; the Plan's steps make way for the cloud p
   work a spinner beside its name around a square that stops it, the very same from a click on it to
   the end of its task (`pending`, then `working`, whatever the task's phase: two spinners came one
   after the other), its area, an eye (**Show**: the map over it), a trash for an outline the tile
-  does not hold; two lists (a user, 2026-11-14): its **source**, one line each of the sources
-  tried under it (by the search, its images got, its level's try) and its own (`state._menu`), by
-  its short name (`short`: "EOX", not "EOX Sentinel-2 cloudless 2024") and the level it is read
-  at, on the line it would take (its own for the cloud's source, else its best: clear, the
-  sharpest, the best fit) among those the cloud's level offers (`state.tried`), with what it has
+  does not hold; two lists (a user, 2026-11-14): its **source** (`state._menu`), in Auto every
+  line tried under it (by the search, its images got, its levels' tries) and its own, a source's
+  lines together from its sharpest, one per source and level (EOX at ZL12 and ZL11 tried by hand
+  had stayed hidden behind EOX's best), with a level chosen one line per source at that level
+  (`state.tried`), its own for the cloud's source, else its best (clear, the sharpest, the best
+  fit); each by its short name (`short`: "EOX", not "EOX Sentinel-2 cloudless 2024") and the level
+  it is read at, with what it has
   there and its fit ("EOX · ZL14 · clear · fit 93 %"), both from its newest reading
   (`state.reading`: its images got, judged as they are now, else the search's; what a piece said,
   no answer, a refusal, a page, leaves the search's), the sources in the order of their best line,

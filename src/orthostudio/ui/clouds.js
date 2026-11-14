@@ -710,17 +710,16 @@ export function createCloudMode(ctx) {
     const label = cloudName(c);
     const box = h("input", { type: "checkbox", disabled: !c.toggle, onchange: () => toggle(c) });
     box.checked = c.tick;
-    // two lists (a user, 2026-11-14): its source, one line each, the line it would take (its
-    // own, else its best), at the cloud's level; and that level, for all its sources: Auto (the
-    // best whatever the level), or one, every source then judged there. "I want to try EOX at
-    // ZL12": ZL12, then EOX. The engine's lines and codes; a source picked takes its line's code
+    // two lists (a user, 2026-11-14): its source, and its level for all its sources. Auto (the
+    // best whatever the level): every line tried, each source's together; a level: one line per
+    // source there, every source judged there. "I want to try EOX at ZL12": ZL12, then EOX.
+    // The engine's lines and codes
     const said = (x) => [x.answer ? t(`clouds.answer.${x.answer}`) : "", x.fit ? t("clouds.fit", { n: x.fit }) : ""];
-    const lineOf = (base) => c.menu.find((m) => m.base === base);
-    const menu = h("select", { "aria-label": t("clouds.source_of", { name: label }), disabled: !can.has("choose"), onchange: (ev) => { const m = lineOf(ev.target.value); if (m) choose(c, m.source); } },
+    const menu = h("select", { "aria-label": t("clouds.source_of", { name: label }), disabled: !can.has("choose"), onchange: (ev) => choose(c, ev.target.value) },
       c.source ? null : h("option", { value: "", disabled: true }, t("clouds.choose")),
-      ...c.menu.map((m) => h("option", { value: m.base, disabled: !m.proposable },
+      ...c.menu.map((m) => h("option", { value: m.source, disabled: !m.proposable },
         [n[m.base] || m.base, m.level ? `ZL${m.level}` : "", ...said(m)].filter(Boolean).join(" · "))));
-    menu.value = (c.menu.find((m) => m.source === c.source) || {}).base || "";
+    menu.value = c.source || "";
     const level = c.levels && c.levels.length
       ? h("select", { class: "cloud-level", dataset: key(`level-${c.id}`), "aria-label": t("clouds.level_of", { name: label }), title: t("clouds.level_tip"), disabled: !can.has("level"), onchange: (ev) => setLevel(c, ev.target.value) },
         h("option", { value: "" }, t("clouds.level_auto")),

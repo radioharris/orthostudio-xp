@@ -420,28 +420,48 @@ def _menu(
     held: Any = None,
     tops: Mapping[str, int] | None = None,
 ) -> list[dict[str, Any]]:
-    """The sources tried under the cloud (by the search, its images got, its level's try) and its
-    own, each once (a user, 2026-11-14: one list for the source, one for the level): the line it
-    would take, its own for the cloud's source, else its best (:func:`_ranked`: clear, the
-    sharpest, the best fit) among those the cloud's level offers (:func:`tried`: Auto, any; a
-    level chosen, each source at it, "I want to try EOX at ZL12"), with what it has there, its
-    fit, its level (its own, else the sharpest the tile has of it, ``tops``) and whether it may
-    be chosen; the sources in the order of their best line, the best first."""
+    """The cloud's menu of sources, beside its level (a user, 2026-11-14), each line with what it
+    has there, its fit, its level (its own, else the sharpest the tile has of it, ``tops``) and
+    whether it may be chosen:
+
+    - Auto (no level): every line tried under it, by the search, its images got and its levels'
+      tries, and its own (EOX at ZL12 and at ZL11 tried by hand stayed hidden behind EOX's best);
+      a source's lines together from its sharpest, the sources in the order of their best line
+      (:func:`_ranked`), so the best first; one line per source and level;
+    - a level chosen: one line per source, at that level (:func:`tried`), its own for the cloud's
+      source, the best first ("I want to try EOX at ZL12")."""
     codes = list(dict.fromkeys([*tried(c, tops), *([source] if source else [])]))
-    lines: dict[str, str] = {}  # each source by its best line, in their order
-    for code in _ranked(c, codes):
-        lines.setdefault(level_of(code)[0], code)
-    if source:
-        lines[level_of(source)[0]] = source  # the line it is on now
+    heights = tops or {}
+
+    def level(code: str) -> int | None:
+        base, zl = level_of(code)
+        return zl if zl is not None else heights.get(base)
+
+    ranked = _ranked(c, codes)
+    first: dict[str, int] = {}  # each source by its best line
+    for i, code in enumerate(ranked):
+        first.setdefault(level_of(code)[0], i)
+    lines: dict[tuple[str, int | None], str] = {}
+    if c.get("level") is None:
+        for code in sorted(codes, key=lambda k: (first[level_of(k)[0]], -(level(k) or 0))):
+            key = (level_of(code)[0], level(code))
+            # one line per source and level: its own, else the source itself (EOX at its finest
+            # read by the search and by a level's try alike)
+            if key not in lines or code == source or (lines[key] != source and ":" not in code):
+                lines[key] = code
+    else:
+        for code in ranked:
+            lines.setdefault((level_of(code)[0], None), code)
+        if source:
+            lines[(level_of(source)[0], None)] = source  # the line it is on now
     items = []
-    for base, code in lines.items():
+    for (base, _zl), code in lines.items():
         said = reading(c, code)
-        zl = level_of(code)[1]
         items.append(
             {
                 "source": code,
                 "base": base,
-                "level": zl if zl is not None else (tops or {}).get(base),
+                "level": level(code),
                 "answer": said.get("answer"),
                 "fit": int(said.get("fit") or 0),
                 "proposable": proposable(c, code, held),

@@ -63,7 +63,8 @@ the same photo as the tile, which would bring the cloud back, or with no picture
 - Beside the source, the cloud's **level**: **Auto**, the best photo whatever its level, or a level
   from the tile's (ZL16 for a ZL16 tile) down to ZL11. Some sources show another photo at a coarser
   level, blurred but without clouds: Esri World Imagery at ZL11 over a tropical forest, for
-  instance; where no sharp photo is clear, Auto finds them by itself. Choose a level and every
+  instance; where no sharp photo is clear, Auto finds them by itself. In Auto, the source list
+  keeps every source and level already tried for the cloud. Choose a level and every
   source is tried under the cloud at that level, in a few seconds: the source list then says what
   each has there, the best is taken and its images fetched. Choose another source and it stays at
   that level: to try EOX at ZL12, choose ZL12, then EOX. The cloud's place looks as blurred as its
