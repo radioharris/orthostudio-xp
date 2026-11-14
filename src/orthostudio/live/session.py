@@ -16,6 +16,7 @@ from __future__ import annotations
 import contextlib
 import json
 import os
+import sys
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
@@ -37,6 +38,7 @@ from orthostudio.live.pack import (
 from orthostudio.live.rings import DEFAULT_MARGIN
 from orthostudio.live.scenery import (
     NO_OTHER_MESH,
+    OtherMesh,
     default_sources,
     find_xplane,
     install_link,
@@ -307,7 +309,9 @@ def prepare(options: Options, log: Log) -> Prepared:
     sources = [options.source] if options.source else default_sources(xp_dir, other=other)
     from orthostudio.live.names import terrain_folder
 
-    chosen = other_mesh_folder()
+    chosen = None if options.source else other_mesh_folder()
+    if chosen is not None:  # said at each start: its disk unplugged went unnoticed otherwise
+        log(_other_said(chosen, other))
     if not sources and chosen is not None and not chosen.is_dir():
         raise RefusedError(
             f"no mesh: the folder of another tool's mesh, {chosen}, is not there (its disk "
@@ -327,7 +331,11 @@ def prepare(options: Options, log: Log) -> Prepared:
             )
             + "in the Live window (Settings, first question) or with "
             "`python -m orthostudio.live regions install <region>`"
-            + ("" if gone else "; or choose another tool's mesh in Live's Settings")
+            + (
+                ""
+                if gone or chosen is not None
+                else "; or choose another tool's mesh in its Settings"
+            )
         )
     clock.done("checks")
     fix = None
@@ -347,13 +355,14 @@ def prepare(options: Options, log: Log) -> Prepared:
         try:
             setup_region(sources, pack_dir, log=log, zooms=zooms, xplane_running=xplane_running)
         except OsxpError as e:
-            if e.code != "XP_LINK_FAILED" or not other.meshes:
+            if e.code != "XP_LINK_FAILED" or not other.meshes or sys.platform != "win32":
                 raise
-            # its error named Live's pack, not the folder the pilot chose (the review of 2026-11-14)
+            # its error named Live's pack, not the folder the pilot chose, the likeliest cause:
+            # Windows' junctions reach no network drive (the reviews of 2026-11-14)
             raise RefusedError(
-                f"Live could not link the mesh of {chosen}, chosen in its Settings as another "
-                f"tool's mesh: {e.message} A network folder is linked on Windows only with "
-                "Developer Mode: turn it on, or copy the mesh onto a disk of this computer"
+                f"{e.message} If it is a region of the folder of another tool's mesh, {chosen}, "
+                "on a network drive: Windows links it only with Developer Mode. Turn it on, or "
+                "copy the mesh onto a disk of this computer"
             ) from e
         set_decal(pack_dir, options.decal, log=log, xplane_running=xplane_running)
         set_night(pack_dir, options.night, log=log, xplane_running=xplane_running)
@@ -435,6 +444,21 @@ def prepare(options: Options, log: Log) -> Prepared:
         if not already:
             unlist_live(xp_dir, log=log)
         raise
+
+
+def _other_said(chosen: Path, other: OtherMesh) -> str:
+    """The start's line on the folder of another tool's mesh: what it takes there, or why not."""
+    if not chosen.is_dir():
+        return f"another tool's mesh: {chosen} is not there (its disk unplugged?): left out"
+    if other.whole is not None:
+        return f"another tool's mesh: {chosen} left aside ({other.whole})"
+    used = ", ".join(p.name for p in other.meshes) or "no mesh Live can use"
+    said = f"another tool's mesh in {chosen}: {used}"
+    if other.overlays:
+        said += f"; roads, forests and buildings: {', '.join(p.name for p in other.overlays)}"
+    if other.refused:
+        said += "; left aside: " + ", ".join(f"{name} ({why})" for name, why in other.refused)
+    return said
 
 
 def own_ground(

@@ -400,16 +400,18 @@ photos is a mesh, a pack with no terrain folder brings roads, forests and buildi
 a tile that has its own photos, a mesh with no photos to lay (X-Plane's land classes, as HD Mesh's),
 one of Live's own regions, and a copy of a region it already has (AutoOrtho's Europe in X-Plane and
 another copy of it there): the line under the setting says what it uses and what it leaves aside, or
-that the folder is not there (a disk unplugged). It refuses X-Plane's folder, or one inside it,
-which X-Plane reads already, and Live's own. Choose the folder that holds both the mesh and its
-roads: for AutoOrtho's pack moved, the one holding `z_autoortho` and `yAutoOrtho_Overlays`.
+that the folder is not there (a disk unplugged). It refuses X-Plane's folder and those X-Plane reads
+itself (`Custom Scenery`, `Global Scenery`, `Resources`), and Live's own. Choose the folder that
+holds both the mesh and its roads: for AutoOrtho's pack moved, the one holding `z_autoortho` and
+`yAutoOrtho_Overlays`.
 
 Live's regions come first, then AutoOrtho's in X-Plane, then this folder, for the mesh and for the
 roads alike. Nothing in that folder is changed. Its mesh and its roads are taken at Live's start,
-and kept until the next one: the line says "Used from Live's next start" until then. A start whose
-only mesh is in this folder, its disk unplugged, says so. On Windows, a folder on a network drive
-can be used only with Developer Mode on, as Windows links nothing else there. There are no town
-lights at night on it: they come with Live's regions.
+and kept until the next one: the line says "Used from Live's next start" until then. Each start says
+in Live's log what it takes there, or that the folder is not there (its disk unplugged); a start
+whose only mesh is in it then says so. On Windows, a folder on a network drive needs Developer Mode
+on: without it, Windows cannot link Live's scenery to it. There are no town lights at night on it:
+they come with Live's regions.
 
 Where no region installed has a mesh, X-Plane shows its own scenery, without photos: Live says so,
 in its window and in a small panel in X-Plane ("Live: no mesh here: install North America in the

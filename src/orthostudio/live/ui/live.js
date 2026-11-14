@@ -178,13 +178,18 @@ function streamersRunning(names) {
   return t("checks.streamers_running", { names: `${names.slice(0, -1).join(", ")} ${t("checks.and")} ${last}` });
 }
 
+/** A text saying there is no mesh, offering another tool's mesh only when none is chosen. */
+function noMesh(key, checks) {
+  return checks?.other_mesh ? key : `${key}_other`;
+}
+
 /** What keeps a stream from starting, in words, or null. */
 function blocking(checks) {
   if (!checks.supported) return t("checks.unsupported");
   if (!checks.xplane) return t("checks.xplane_missing", { problem: checks.xplane_problem || "" });
   if (checks.folder_problem) return t("checks.folder_problem", { problem: checks.folder_problem });
   if (checks.ortho_streamers?.length) return streamersRunning(checks.ortho_streamers);
-  if (!checks.mesh_found && !checks.region_ready) return t("checks.mesh_missing", { path: checks.mesh });
+  if (!checks.mesh_found && !checks.region_ready) return t(noMesh("checks.mesh_missing", checks), { path: checks.mesh });
   if (checks.xplane_running && !checks.installed) return t("checks.xplane_running_late");
   return null;
 }
@@ -315,7 +320,7 @@ function drawFlight(status) {
   const notice = stream?.notice;
   $("flight-notice").hidden = !notice;
   const said = notice
-    ? t(notice.installed ? "flight.notice_installed" : "flight.notice", { region: t(`region.${notice.region}`) })
+    ? t(notice.installed ? "flight.notice_installed" : noMesh("flight.notice", status.checks), { region: t(`region.${notice.region}`) })
     : "";
   if (said !== noticeDrawn) { // drawn again only when it changes: its button keeps the click
     noticeDrawn = said;
@@ -449,7 +454,7 @@ function drawChecks(status) {
     const named = (id) => (t(`region.${id}`) === `region.${id}` ? id : t(`region.${id}`));
     const names = (c.mesh_regions || []).map(named).join(", ") || c.mesh;
     add(c.mesh_found || c.region_ready ? "done" : "failed",
-      t(c.mesh_found ? "checks.mesh" : "checks.mesh_missing", { path: names }), !c.mesh_found);
+      t(c.mesh_found ? "checks.mesh" : noMesh("checks.mesh_missing", c), { path: names }), !c.mesh_found);
   }
   add(c.region_ready ? "done" : "info", t(c.region_ready ? "checks.region" : "checks.region_todo"));
   // the user's own tiles: X-Plane shows them, and Live leaves their squares alone

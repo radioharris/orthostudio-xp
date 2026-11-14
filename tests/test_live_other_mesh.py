@@ -89,11 +89,17 @@ def test_x_plane_s_folder_and_live_s_left_aside(tmp_path: Path) -> None:
     root = tmp_path / "live"
     put(root / "overlays", A)
     eur = mesh(tmp_path / "Mesh_Eur")
+    put(xp / "Global Scenery" / "X-Plane 12 Global Scenery", A)  # X-Plane's own mesh
     assert other_mesh(xp, xp, root) == OtherMesh([], [], [], "in_xplane")
     assert other_mesh(xp / "Custom Scenery", xp, root).whole == "in_xplane"
+    assert other_mesh(xp / "Global Scenery", xp, root).whole == "in_xplane"
     assert other_mesh(root, xp, root).whole == "in_live"
     found = other_mesh(tmp_path, xp, root)  # the folder holding them all
     assert found.meshes == [eur] and found.overlays == [] and found.whole is None
+    # another of X-Plane's folders, where a pilot keeps the scenery he took out (the review of
+    # 2026-11-14): taken
+    parked = mesh(xp / "Custom Scenery Disabled" / "z_autoortho" / "scenery" / "z_ao_eur")
+    assert other_mesh(xp / "Custom Scenery Disabled", xp, root).meshes == [parked]
 
 
 def test_after_lives_and_autoortho_s_a_copy_left_aside(
@@ -128,6 +134,33 @@ def test_the_folder_looked_at_again_after_a_while(
     mesh(folder / "Mesh_Na", square=B)
     assert scenery.other_mesh_found(None, root) is first
     assert len(scenery.other_mesh_found(None, root, fresh=True).meshes) == 2
+
+
+def test_the_window_reads_the_folder_once_in_a_while(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Its checks come every 3 s and asked for the folder twice, without X-Plane's folder then with
+    it: each forgot what the other found, and the folder was read twice each time (the second
+    review of 2026-11-14)."""
+    monkeypatch.setenv("OSXP_HOME", str(tmp_path / "home"))
+    (tmp_path / "home").mkdir()
+    xp = xplane(tmp_path, ["SCENERY_PACK *GLOBAL_AIRPORTS*"])
+    monkeypatch.setattr(control.session, "xplane_dir", lambda explicit: xp)
+    folder = tmp_path / "Base Packages"
+    mesh(folder / "Mesh_Eur")
+    save_settings(LiveSettings(other_mesh=str(folder)))
+    read: list[Path] = []
+    real = scenery.other_mesh
+
+    def counted(*args, **kwargs):
+        read.append(args[0])
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(scenery, "other_mesh", counted)
+    for _ in range(3):
+        checks = control.gather_checks()
+    assert checks["other_mesh"]["meshes"] == ["Mesh_Eur"] and checks["mesh_regions"] == ["Mesh_Eur"]
+    assert read == [folder]
 
 
 def test_the_roads_go_with_the_mesh_of_the_start(tmp_path: Path) -> None:
@@ -185,9 +218,31 @@ def test_a_start_says_the_folder_unplugged(tmp_path: Path, monkeypatch) -> None:
         session.prepare(options, log=lambda _: None)
 
 
+def test_a_start_says_the_folder(tmp_path: Path, monkeypatch) -> None:
+    """Its disk unplugged while another region is installed, the start went on without a word
+    (the second review of 2026-11-14): it says what it takes there, or that it is not there."""
+    folder = tmp_path / "Base Packages"
+    make_source(folder, tile=(46, 2))
+    assert session._other_said(folder, scenery.other_mesh(folder, None, tmp_path / "live")) == (
+        f"another tool's mesh in {folder}: z_ao_test"
+    )
+    gone = tmp_path / "unplugged"
+    assert session._other_said(gone, NO_OTHER_MESH) == (
+        f"another tool's mesh: {gone} is not there (its disk unplugged?): left out"
+    )
+    options = a_start(tmp_path, monkeypatch, gone)
+    installed = make_source(tmp_path / "live-region", tile=(46, 2))
+    monkeypatch.setattr(session, "default_sources", lambda xp, other=None: [installed])
+    said: list[str] = []
+    monkeypatch.setattr(session, "_overlays", lambda *args: None)
+    session.prepare(options, log=said.append)
+    assert f"another tool's mesh: {gone} is not there (its disk unplugged?): left out" in said
+
+
 def test_a_start_names_the_folder_it_could_not_link(tmp_path: Path, monkeypatch) -> None:
     """Windows links a network folder only with Developer Mode: the start's error named Live's
-    pack, not the folder chosen (the review of 2026-11-14)."""
+    pack, not the folder chosen (the review of 2026-11-14); elsewhere the error is left as it is
+    (the second review)."""
     folder = tmp_path / "share"
     make_source(folder, tile=(46, 2))
     options = a_start(tmp_path, monkeypatch, folder)
@@ -196,7 +251,11 @@ def test_a_start_names_the_folder_it_could_not_link(tmp_path: Path, monkeypatch)
         raise OsxpError("XP_LINK_FAILED", context={"link": "pack", "reason": "a junction"})
 
     monkeypatch.setattr(region, "setup_region", refused)
-    with pytest.raises(session.RefusedError, match="could not link the mesh of"):
+    monkeypatch.setattr(session.sys, "platform", "win32")
+    with pytest.raises(session.RefusedError, match=f"another tool's mesh, {folder}, on a network"):
+        session.prepare(options, log=lambda _: None)
+    monkeypatch.setattr(session.sys, "platform", "darwin")
+    with pytest.raises(OsxpError):
         session.prepare(options, log=lambda _: None)
 
 

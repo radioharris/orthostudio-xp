@@ -471,10 +471,13 @@ change under Live (the user: « je préfère le réglage sans surprise »); Auto
   (`<folder>/z_autoortho/scenery/z_ao_<id>`); a pack is not looked into, a folder below the first
   that cannot be read is left out. A pack with `terrain-lists` is one of Live's regions (`live`,
   left aside), one with no `terrain` folder an overlay pack.
-- **Not X-Plane's, not Live's:** the folder chosen at or inside X-Plane's (`whole: in_xplane`) or
-  Live's (`in_live`) is refused whole, and neither is looked into from a folder above them: chosen
-  by mistake, X-Plane's gave its 52 airport, Landmark and simHeaven packs as overlays (the review
-  of 2026-11-14).
+- **Not X-Plane's, not Live's:** the folder chosen is refused whole when it is X-Plane's folder
+  or at or inside one of the folders X-Plane reads itself (`XPLANE_READS`: `Custom Scenery`,
+  `Global Scenery`, `Resources`; `whole: in_xplane`), or at or inside Live's (`in_live`); neither
+  X-Plane's folder nor Live's is looked into from a folder above them. Chosen by mistake, X-Plane's
+  gave its 52 airport, Landmark and simHeaven packs as overlays (the review of 2026-11-14);
+  another of X-Plane's folders (« Custom Scenery Disabled ») may hold AutoOrtho's pack moved, and
+  is taken.
 - **A mesh Live can stream onto:** `_why_not_streamed` reads up to `TER_SAMPLE` (20) terrain files
   for one naming a photo in Ortho4XP's names (`BASE_TEX` or `BASE_TEX_NOWRAP` to
   `<row>_<col>_<provider><zl>.dds`): that photo in the pack's `textures` is a tile with its own
@@ -485,13 +488,18 @@ change under Live (the user: « je préfère le réglage sans surprise »); Auto
   copy of AutoOrtho's Europe beside AutoOrtho's own cost its listing, up to 57 s on a slow Windows
   disk, for nothing.
 - **Looked at once in a while:** `other_mesh_found` keeps what it found for `OTHER_MESH_S` (30 s)
-  for the window's checks, which come every 3 s; at once when the setting changes, and anew at
+  for the window's checks, which come every 3 s and ask with X-Plane's folder each time (without
+  it only when none is found: the two asked in turn and the folder was read twice every 3 s, the
+  second review of 2026-11-14); at once when the setting changes, and anew at
   Live's start (`fresh`), which keeps its overlay packs with its mesh (`Prepared.other_overlays`)
   for the overlays made again between flights: a folder changed meanwhile waits for the next
   start, mesh and roads alike.
-- **Its errors:** a start whose only mesh is this folder, gone, says so (« is not there, its disk
-  unplugged? »); a link the region's setup could not make (`XP_LINK_FAILED`, a Windows network
-  folder without Developer Mode, which junctions do not reach) names the folder.
+- **Its errors:** each start logs what it takes there, or that the folder is not there (« its disk
+  unplugged? »), and one whose only mesh is this folder, gone, is refused saying so; the hint
+  « or choose another tool's mesh » only when none is chosen. On Windows, a link the region's
+  setup could not make (`XP_LINK_FAILED`) while the folder gives a mesh adds that a network
+  folder is linked only with Developer Mode (junctions reach no network drive); elsewhere the
+  error is left as it is.
 - **The window:** `checks.other_mesh` is None without a folder, else `{folder, there, whole,
   next_start, meshes, overlays, refused: [{name, why}]}`, the line under the setting; `next_start`
   while a mesh of it is not among the pack's recorded sources. A missing mesh's notices name the

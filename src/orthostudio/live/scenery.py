@@ -105,8 +105,9 @@ class OtherMesh:
     refused: list[tuple[str, str]]
     """Its packs Live leaves aside, and why."""
     whole: str | None = None
-    """Why the whole folder is left aside: ``in_xplane`` (X-Plane reads what is there itself,
-    AutoOrtho's mesh there taken without the setting), ``in_live`` (Live's own folder)."""
+    """Why the whole folder is left aside: ``in_xplane`` (X-Plane's folder, or one of those it
+    reads itself, :data:`XPLANE_READS`: AutoOrtho's mesh in Custom Scenery taken without the
+    setting), ``in_live`` (Live's own folder)."""
 
 
 NO_OTHER_MESH = OtherMesh([], [], [])
@@ -121,23 +122,23 @@ def other_mesh(
     none of ``given`` (the regions before it) has, one without is an overlay pack, one with
     ``terrain-lists`` Live's own region. The folder may be one such pack, or hold several, as deep
     as AutoOrtho's own (:func:`_packs_in`), X-Plane's folder and Live's not looked into: chosen by
-    mistake, every airport and Landmark there was taken for roads (the review of 2026-11-14).
+    mistake, every airport and Landmark there was taken for roads (the review of 2026-11-14), and
+    the folders X-Plane reads refused (:data:`XPLANE_READS`).
     Nothing when it is gone (its disk away)."""
     if folder is None:
         return NO_OTHER_MESH
     try:
         real = folder.resolve()
-        homes = [
-            (why, home.resolve())
-            for why, home in (("in_xplane", xplane), ("in_live", root))
-            if home is not None
-        ]
+        live = root.resolve()
+        xp = xplane.resolve() if xplane is not None else None
+        read = [(xp / name).resolve() for name in XPLANE_READS] if xp is not None else []
     except OSError:
         return NO_OTHER_MESH
-    for why, home in homes:
-        if real == home or home in real.parents:
-            return OtherMesh([], [], [], why)
-    avoid = [home for _, home in homes]
+    if real == xp or any(real == home or home in real.parents for home in read):
+        return OtherMesh([], [], [], "in_xplane")
+    if real == live or live in real.parents:
+        return OtherMesh([], [], [], "in_live")
+    avoid = [live] + ([xp] if xp is not None else [])
     try:
         packs = _packs_in(folder, PACK_DEPTH, avoid)
     except OSError:
@@ -164,6 +165,11 @@ def other_mesh(
                 have |= squares
     return OtherMesh(meshes, overlays, refused)
 
+
+XPLANE_READS = ("Custom Scenery", "Global Scenery", "Resources")
+"""The folders of X-Plane's whose packs it reads itself: chosen, its airports, Landmarks and
+default scenery were taken for roads (the review of 2026-11-14); another of X-Plane's folders,
+« Custom Scenery Disabled », may hold AutoOrtho's pack moved."""
 
 PACK_DEPTH = 3  # AutoOrtho's own, moved: <folder>/z_autoortho/scenery/z_ao_<region>
 

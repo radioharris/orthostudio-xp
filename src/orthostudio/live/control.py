@@ -226,7 +226,7 @@ def gather_checks() -> dict[str, Any]:
         "folder": str(live_root()),
         "folder_default": str(default_live_root()),
         # the folder of another tool's mesh chosen in the Settings, what Live takes there and not
-        "other_mesh": _other_mesh_said(None),
+        "other_mesh": None,  # said with X-Plane's folder below, the folders it reads refused
         "folder_problem": None,
         "textures_bytes": _textures_bytes(default_pack_dir()),
         # the SimBrief name OrthoStudio XP has, which the window offers to take: never asked of
@@ -238,6 +238,7 @@ def gather_checks() -> dict[str, Any]:
         xp = session.xplane_dir(None)
     except session.RefusedError as e:
         out["xplane_problem"] = str(e)
+        out["other_mesh"] = _other_mesh_said(None)
         return out
     try:
         check_folder(live_root(), custom_scenery=xp / "Custom Scenery")
