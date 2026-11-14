@@ -390,7 +390,8 @@ the quick search runs on each tile never searched, one after the other (a tile a
 left as it is, its clouds there to look at). A line under the bar says the tile being searched and
 how many wait, with *Stop* for all of them; the searches go on while you use the rest of the app.
 In the Clouds column, a tile waiting has its cloud dimmed, the one being searched a spinner, and a
-quiet badge at the cloud's right corner counts the clouds found that wait for your look. Then open
+quiet badge at the cloud's right corner counts the clouds found that wait for your look, 0 when a
+search found none (no badge: never searched). Then open
 each tile's clouds, tick and *Apply* as above: Apply stays tile by tile, after a look, since the
 detector sometimes takes pale ground or muddy water for a cloud. Quitting stops the searches: the
 tiles searched keep their clouds, those still waiting are not searched. Details:

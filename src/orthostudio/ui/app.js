@@ -5485,13 +5485,20 @@ export function cloudsWords(c, search = null) {
   if (c?.replaced > 0) out.push(t("library.clouds_replaced", { n: fmtInt(c.replaced) }));
   if (c?.to_apply > 0) out.push(t("library.clouds_to_apply", { n: fmtInt(c.to_apply) }));
   if (c?.found > 0) out.push(t("library.clouds_found", { n: fmtInt(c.found) }));
-  else if (c?.searched && !out.length) out.push(t("library.clouds_none_found"));
+  else if (searchedNone(c)) out.push(t("library.clouds_none_found"));
   if (search) out.push(`${t("clouds.task.find")} ${taskWords(search)}`);
   else if (c?.failed) {
     const [message] = codeText(c.failed.code, c.failed.context) || [c.failed.message || ""];
     out.push(t("library.clouds_failed", { why: message }));
   }
   return out;
+}
+
+/** Whether a tile's cell says a search found none: searched, nothing found, replaced or waiting
+ * for Apply. Its cell then shows 0 where it shows the clouds found, or it was the cell of a tile
+ * never searched (a user, 2026-11-15). */
+export function searchedNone(c) {
+  return Boolean(c?.searched) && !(c.found > 0) && !(c.replaced > 0) && !(c.to_apply > 0);
 }
 
 /** The searches line (``GET /api/cloud-searches``): the tile searched and where it is, then how
@@ -6269,7 +6276,7 @@ function cloudsCell(e) {
   // its search, under way or waiting its turn (Find clouds): a spinner where the cloud is, or the
   // cloud dimmed, its step said without its share (the table is drawn again at each step, not at
   // each percent); a search that failed, the cloud in the danger's colour; what a search found and
-  // waits for a look, at the cloud's other corner
+  // waits for a look, at the cloud's other corner, 0 there when a search found none
   const search = state.searches?.find((x) => x.tile === e.tile) || null;
   const said = cloudsWords(cell, search && { ...search, progress: null }).join(" · ");
   const badge = (n, kind) => (n > 0 ? h("span", { class: `clouds-badge is-${kind}`, "aria-hidden": "true" }, fmtInt(n)) : null);
@@ -6278,7 +6285,8 @@ function cloudsCell(e) {
   return h("td", { class: "library-clouds" }, h("div", null,
     h("button", { type: "button", class: look, title: [said, t("library.clouds_help")].filter(Boolean).join("\n"), "aria-label": [`${t("library.clouds_open")} ${e.tile}`, said].filter(Boolean).join(": "), onclick: () => cloudMode?.open(e.tile) },
       running ? h("span", { class: "spinner", "aria-hidden": "true" }) : icon("cloud"),
-      badge(cell.replaced, "replaced"), badge(cell.to_apply, "waiting"), badge(cell.found, "found")),
+      badge(cell.replaced, "replaced"), badge(cell.to_apply, "waiting"), badge(cell.found, "found"),
+      searchedNone(cell) ? h("span", { class: "clouds-badge is-found", "aria-hidden": "true" }, fmtInt(0)) : null),
     // its clouds forgotten from here, the question asked here
     cell.forget ? h("button", { type: "button", class: "btn btn-icon btn-danger btn-trash", title: t("library.clouds_forget_help"), "aria-label": `${t("library.clouds_forget")}: ${e.tile}`, onclick: () => forgetLibraryClouds(e) }, icon("bin")) : null));
 }

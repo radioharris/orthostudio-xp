@@ -62,8 +62,9 @@ says the tile searched and where it is, then how many wait ("Clouds of +21-083: 
 they were. In the column, a tile whose search waits has its cloud dimmed; under way, a spinner
 stands where the cloud is; its tooltip says it. A tile's cell gains a third badge at the cloud's
 other corner, quiet: the clouds a search found that wait for a look (`found`: unticked); a search
-that found none says so in its tooltip (`searched`), its cell otherwise the one of a tile never
-searched. A search
+that found none (`searched`, nothing found, replaced or waiting for Apply) shows 0 there and says
+so in its tooltip: its cell was otherwise the one of a tile never searched (a user, 2026-11-15). A
+search
 that failed has its cloud in the danger's colour and says why in its tooltip (`failed`, until the
 tile's next task). The page reads the searches every second while there are some
 (`GET /api/cloud-searches`, nothing of a tile read), draws the table again only when a search

@@ -8680,6 +8680,9 @@ def test_the_clouds_cell_and_the_searches_line_say_the_searches() -> None:
             found: m.cloudsWords({ replaced: 1, to_apply: 0, found: 3 }),
             nothing: m.cloudsWords({ found: 0, searched: true }),
             never: m.cloudsWords({ found: 0, searched: false }),
+            zero: [{ searched: true, found: 0 }, { searched: false, found: 0 },
+                   { searched: true, found: 2 }, { searched: true, found: 0, replaced: 3 },
+                   { searched: true, found: 0, to_apply: 1 }].map(m.searchedNone),
             waiting: m.cloudsWords({ found: 0, failed }, next),
             failed: m.cloudsWords({ found: 0, failed }),
             line: m.searchesLine([now, next]),
@@ -8697,6 +8700,8 @@ def test_the_clouds_cell_and_the_searches_line_say_the_searches() -> None:
     assert len(got["found"]) == 2 and "3" in got["found"][1]
     # a search that found nothing says so: its cell is otherwise the one of a tile never searched
     assert len(got["nothing"]) == 1 and got["never"] == []
+    # its cell shows 0 where the clouds found are counted: searched, nothing found nor laid
+    assert got["zero"] == [True, False, False, False, False]
     # a search waiting is said, not the failure before it
     assert len(got["waiting"]) == 1 and got["waiting"][0] != got["failed"][0]
     assert len(got["failed"]) == 1
