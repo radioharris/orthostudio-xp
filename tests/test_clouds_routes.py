@@ -290,7 +290,14 @@ async def test_an_outline_is_tried_then_ticked_then_its_images_asked(
     # its one source has no picture this sharp: it may no longer be its source
     assert row["state"] == "waiting" and row["line"]["key"] == "clouds.row.waiting.no_source"
     assert row["menu"] == [
-        {"source": "EOX", "level": 12, "answer": "no_picture", "fit": 0, "proposable": False}
+        {
+            "source": "EOX",
+            "base": "EOX",
+            "level": 12,
+            "answer": "no_picture",
+            "fit": 0,
+            "proposable": False,
+        }
     ]  # every line says its level: EOX at its sharpest on this ZL12 tile
 
 
@@ -320,7 +327,7 @@ async def test_a_clouds_source_read_at_a_coarser_level_is_chosen_by_hand(
         a = await _read(c)
         (row,) = a["clouds"]
         # the tile is ZL12: EOX at its sharpest there, or one coarser
-        assert row["levels"] == [{"zl": 12, "source": "EOX"}, {"zl": 11, "source": "EOX:11"}]
+        assert [(x["zl"], x["source"]) for x in row["levels"]] == [(12, "EOX"), (11, "EOX:11")]
         assert row["level"] == 12
         r = await c.post(
             "/api/clouds/+43+005/picks", json={"action": "choose", "id": cid, "source": "EOX:11"}

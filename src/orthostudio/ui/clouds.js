@@ -69,14 +69,6 @@ export function sourceNames(providers) {
   });
 }
 
-/** A line of a cloud's menu of sources by its source's short name and the level it is read at,
- * every one (the engine's ``level``): "Bing · ZL16", "Esri · ZL11" (a user, 2026-11-14). */
-export function menuName(names, item) {
-  const base = String(item.source).replace(/:\d+$/, "");
-  const name = names[base] || base;
-  return item.level ? `${name} · ZL${item.level}` : names[item.source] || item.source;
-}
-
 /** The words of a line the engine sent (``{key, params}``), a source's code given its name. */
 export function lineWords(line, names = {}) {
   if (!line) return "";
@@ -712,16 +704,21 @@ export function createCloudMode(ctx) {
     const label = cloudName(c);
     const box = h("input", { type: "checkbox", disabled: !c.toggle, onchange: () => toggle(c) });
     box.checked = c.tick;
-    const menu = h("select", { "aria-label": t("clouds.source_of", { name: label }), disabled: !can.has("choose"), onchange: (ev) => choose(c, ev.target.value) },
+    // two lists: its source, one line each, the line it would take (its own, else its best);
+    // then that source's level, from the sharpest to ZL11, each with what it has there when tried
+    // (a user, 2026-11-14: a source shows another photo at some level, blurred but with no
+    // clouds). The engine's lines and codes; a source picked takes its line's code
+    const said = (x) => [x.answer ? t(`clouds.answer.${x.answer}`) : "", x.fit ? t("clouds.fit", { n: x.fit }) : ""];
+    const lineOf = (base) => c.menu.find((m) => m.base === base);
+    const menu = h("select", { "aria-label": t("clouds.source_of", { name: label }), disabled: !can.has("choose"), onchange: (ev) => { const m = lineOf(ev.target.value); if (m) choose(c, m.source); } },
       c.source ? null : h("option", { value: "", disabled: true }, t("clouds.choose")),
-      ...c.menu.map((m) => h("option", { value: m.source, disabled: !m.proposable },
-        [menuName(n, m), m.answer ? t(`clouds.answer.${m.answer}`) : "", m.fit ? t("clouds.fit", { n: m.fit }) : ""].filter(Boolean).join(" · "))));
-    menu.value = c.source || "";
-    // the level its source is read at: the sharpest, or coarser by hand (a source shows another
-    // photo at some level, blurred but with no clouds, a user, 2026-11-14); the engine's codes
+      ...c.menu.map((m) => h("option", { value: m.base, disabled: !m.proposable },
+        [n[m.base] || m.base, ...said(m)].filter(Boolean).join(" · "))));
+    menu.value = (c.menu.find((m) => m.source === c.source) || {}).base || "";
     const level = c.levels && c.levels.length
       ? h("select", { class: "cloud-level", dataset: key(`level-${c.id}`), "aria-label": t("clouds.level_of", { name: label }), title: t("clouds.level_tip"), disabled: !can.has("choose"), onchange: (ev) => choose(c, ev.target.value) },
-        ...c.levels.map((l) => h("option", { value: l.source }, `ZL${l.zl}`)))
+        ...c.levels.map((l) => h("option", { value: l.source, disabled: l.answer ? !l.proposable : false },
+          [`ZL${l.zl}`, ...said(l)].filter(Boolean).join(" · "))))
       : null;
     if (level) level.value = (c.levels.find((l) => l.zl === c.level) || c.levels[0]).source;
     const task = c.task;

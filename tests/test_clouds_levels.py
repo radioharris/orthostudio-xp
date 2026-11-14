@@ -206,22 +206,29 @@ def test_a_clouds_levels_go_from_the_sharpest_of_its_source_down_to_the_coarsest
     assert state._levels("Gone", tops) == ()
 
 
-def test_a_level_chosen_by_hand_stays_in_the_menu_once_another_source_is_taken() -> None:
-    # ZL11 chosen, its images got, then a ZL16 source taken: the menu went from four lines back
-    # to three, the ZL11 one gone with its verdict (a user, 2026-11-14)
+def test_a_level_tried_by_hand_keeps_its_verdict_in_its_sources_levels() -> None:
+    # ZL11 chosen, its images got, then a ZL16 source taken: the ZL11 line was gone with its
+    # verdict (a user, 2026-11-14); one list for the source, one for its level
     c = {
         "screening": {"EOX": {"answer": "clear", "fit": 70}, "BI": {"answer": "cloudy", "fit": 50}},
         "checks": {"EOX:11": {"answer": "clear", "fit": 40, "judged": sources.JUDGED}},
     }
-    menu = state._menu(c, "BI", None, {"EOX": 14, "BI": 16})
-    assert [(m["source"], m["level"], m["answer"]) for m in menu] == [
-        ("EOX", 14, "clear"),
-        ("EOX:11", 11, "clear"),
-        ("BI", 16, "cloudy"),
+    tops = {"EOX": 14, "BI": 16}
+    menu = state._menu(c, "BI", None, tops)
+    assert [(m["base"], m["source"], m["level"], m["answer"]) for m in menu] == [
+        ("EOX", "EOX", 14, "clear"),
+        ("BI", "BI", 16, "cloudy"),
+    ]
+    levels = state._level_lines(c, state._levels("EOX", tops))
+    assert [(x["zl"], x["source"], x["answer"]) for x in levels] == [
+        (14, "EOX", "clear"),
+        (13, "EOX:13", None),  # never tried: chosen, its images are got
+        (12, "EOX:12", None),
+        (11, "EOX:11", "clear"),
     ]
 
 
-def test_a_clouds_menu_keeps_each_sources_lines_together_the_best_source_first() -> None:
+def test_a_clouds_menu_has_one_line_per_source_the_line_it_would_take() -> None:
     c = {
         "screening": {
             "BI": {"answer": "cloudy", "fit": 80},
@@ -231,7 +238,9 @@ def test_a_clouds_menu_keeps_each_sources_lines_together_the_best_source_first()
             "EOX:11": {"answer": "cloudy", "fit": 20},
         }
     }
-    menu = [m["source"] for m in state._menu(c, None, None, {"BI": 16, "EOX": 14, "Arc": 16})]
-    # EOX's best line is the best of all, then Bing's (clear at ZL12), then Esri's (ZL11)
-    assert menu == ["EOX", "EOX:11", "BI", "BI:12", "Arc:11"]
+    tops = {"BI": 16, "EOX": 14, "Arc": 16}
+    # each source's best line, the sources in that order: EOX, Bing clear at ZL12, Esri at ZL11
+    assert [m["source"] for m in state._menu(c, None, None, tops)] == ["EOX", "BI:12", "Arc:11"]
+    # the cloud's own source on the line it is on now, in its place
+    assert [m["source"] for m in state._menu(c, "BI", None, tops)] == ["EOX", "BI", "Arc:11"]
     assert state.best_of(c) == "EOX"  # the choice is the same rule as ever

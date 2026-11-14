@@ -101,19 +101,21 @@ The Plan's map, brought over the tile; the Plan's steps make way for the cloud p
   work a spinner beside its name around a square that stops it, the very same from a click on it to
   the end of its task (`pending`, then `working`, whatever the task's phase: two spinners came one
   after the other), its area, an eye (**Show**: the map over it), a trash for an outline the tile
-  does not hold; the menu of its sources (every one tried under it, by the search or its images
-  got, a level chosen by hand too, and its own), each by its short name (`short`: "EOX", not "EOX
-  Sentinel-2 cloudless 2024") and the level it is read at (`level`: its own, else the sharpest the
-  tile has of that source), with what it has there and its fit ("Esri Clarity · ZL16 · clear ·
-  fit 93 %"), both from its newest reading (`state.reading`: its images got,
-  judged as they are now, else the search's; what a piece said, no answer, a refusal, a page, leaves
-  the search's), a source's lines together from its sharpest, the sources in the order of
-  their best line, so the best first (`state._menu`), those that cannot be chosen greyed (`sources.PROPOSABLE`: the same
-  photo, no picture; the source whose images the tile shows of it always may be); beside it the
-  **level** its source is read at (`levels`, `level`: from the sharpest the tile has of that
-  source down to ZL11, `sources.COARSEST`; the source itself at the top, `Arc:11` below, its name
-  with the level, "Esri · ZL11"), shown when there is more than one: another level
-  chooses that source at that level, its images got there; its line (1.5),
+  does not hold; two lists (`state._menu`, `state._level_lines`; one list for the source, one for
+  its level, a user, 2026-11-14): its **source**, one line each of the sources tried under it (by
+  the search or its images got, a level chosen by hand too) and its own, by its short name
+  (`short`: "EOX", not "EOX Sentinel-2 cloudless 2024"), on the line it would take (its own for
+  the cloud's source, else its best: clear, the sharpest, the best fit), with what it has there and
+  its fit ("EOX · clear · fit 93 %"), both from its newest reading (`state.reading`: its images
+  got, judged as they are now, else the search's; what a piece said, no answer, a refusal, a page,
+  leaves the search's), the sources in the order of their best line, so the best first, those
+  that cannot be chosen greyed (`sources.PROPOSABLE`: the same photo, no picture; the source whose
+  images the tile shows of it always may be): a source picked takes its line; and its **level**
+  (`levels`, `level`: from the sharpest the tile has of that source down to ZL11,
+  `sources.COARSEST`; the source itself at the top, `Arc:11` below), each with what the source has
+  there when tried ("ZL12 · clear · fit 24 %"; none when never: chosen, its images are got),
+  shown when there is more than one: another level chooses that source at that level; its line
+  (1.5),
   under the menu: none when it is replaced or to be, as its tick and its menu say (held, ready),
   none while a task of it runs (its spinner says it; its label on the map); **Get its images** when
   asking again may end its wait.

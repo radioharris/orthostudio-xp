@@ -288,7 +288,7 @@ class CloudState:
             "numbered": c["kind"] == "found",
             "preview": (previews or {}).get(c["id"]),
             "menu": _menu(c, self.source, self.held, self.tops),
-            "levels": [{"zl": zl, "source": code} for zl, code in self.levels],
+            "levels": _level_lines(c, self.levels, self.held),
             "level": _level(self.source, self.levels),
         }
 
@@ -414,31 +414,28 @@ def _menu(
     held: Any = None,
     tops: Mapping[str, int] | None = None,
 ) -> list[dict[str, Any]]:
-    """Every source tried under the cloud (searched or got), and its own: what each has there
-    and its fit (its newest reading), the level it is read at (its own, else the sharpest the
-    tile has of it, ``tops``; every line says its level, a user, 2026-11-14), whether it may be
-    chosen. A source's lines together, from its sharpest, the sources in the order of their best
-    line (:func:`_ranked`): the best first, and Bing at ZL16, ZL15 and ZL12 no longer scattered
-    among the others' (a user, 2026-11-14)."""
-    # what the search tried, what was got (a level chosen by hand, then another source: it left
-    # the menu, its images got and judged, a user, 2026-11-14), and its own
+    """The sources tried under the cloud (by the search, or its images got, a level chosen by
+    hand too) and its own, each once (a user, 2026-11-14: one list for the source, one for its
+    level): the line it would take, its own for the cloud's source, else its best (:func:`_ranked`:
+    clear, the sharpest, the best fit), with what it has there, its fit, its level (its own, else
+    the sharpest the tile has of it, ``tops``) and whether it may be chosen; the sources in the
+    order of their best line, the best first. A source's other levels are the cloud's
+    ``levels``."""
     tried = [*(c.get("screening") or {}), *(c.get("checks") or {})]
     codes = list(dict.fromkeys([*tried, *([source] if source else [])]))
-    first: dict[str, int] = {}  # each source by its best line
-    for i, code in enumerate(_ranked(c, codes)):
-        first.setdefault(level_of(code)[0], i)
-
-    def place(code: str) -> tuple[int, int]:
-        base, zl = level_of(code)
-        return first[base], 0 if zl is None else 100 - zl
-
+    lines: dict[str, str] = {}  # each source by its best line, in their order
+    for code in _ranked(c, codes):
+        lines.setdefault(level_of(code)[0], code)
+    if source:
+        lines[level_of(source)[0]] = source  # the line it is on now
     items = []
-    for code in sorted(codes, key=place):
+    for base, code in lines.items():
         said = reading(c, code)
-        base, zl = level_of(code)
+        zl = level_of(code)[1]
         items.append(
             {
                 "source": code,
+                "base": base,
                 "level": zl if zl is not None else (tops or {}).get(base),
                 "answer": said.get("answer"),
                 "fit": int(said.get("fit") or 0),
@@ -446,6 +443,26 @@ def _menu(
             }
         )
     return items
+
+
+def _level_lines(
+    c: Mapping[str, Any], levels: Sequence[tuple[int, str]], held: Any = None
+) -> list[dict[str, Any]]:
+    """The cloud's ``levels`` as its level list shows them: each with what its source has there
+    and its fit, when tried (none when never: chosen, its images are got)."""
+    out = []
+    for zl, code in levels:
+        said = reading(c, code)
+        out.append(
+            {
+                "zl": zl,
+                "source": code,
+                "answer": said.get("answer"),
+                "fit": int(said.get("fit") or 0),
+                "proposable": proposable(c, code, held),
+            }
+        )
+    return out
 
 
 # -- the view ----------------------------------------------------------------------------------

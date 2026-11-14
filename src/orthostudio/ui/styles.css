@@ -857,7 +857,7 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .zone-row { display: flex; align-items: center; gap: 4px; min-width: 0; }
 .zone-row .zone-name { flex: 1 1 auto; font-weight: 600; }
 .zone-row select { flex: 1 1 auto; min-width: 0; }
-.zone-row select.cloud-level { flex: none; width: auto; } /* ZL16 to ZL11, beside its source */
+.zone-row select.cloud-level { flex: none; width: auto; max-width: 50%; } /* ZL16 to ZL11, beside its source */
 .btn-icon { width: var(--control-h); padding: 0; flex: none; }
 /* Its drawing 16 px, even as the inside of its box is (28 px): at 15 px it stood 7.5 px in, off a
    whole pixel (a user, 2026-11-07). */
