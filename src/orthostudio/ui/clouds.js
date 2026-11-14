@@ -160,6 +160,10 @@ export function createCloudMode(ctx) {
     /** What was clicked and waits for the engine's answer, by its key (``cloud-<id>`` for a
      * cloud's, a button's own key), how many times (:func:`waiting`). */
     pending: new Map(),
+    /** A cloud's list chosen (``{list, value}``), by its click's key while it waits: shown in its
+     * list until the engine's answer is read (the level's list went back to Auto for half a
+     * second, longer while another cloud got its images, a user, 2026-11-14). */
+    picked: new Map(),
     /** Until when the tile is read again every ``SOON_MS`` (the last click and a few seconds). */
     soonUntil: 0,
   };
@@ -279,7 +283,10 @@ export function createCloudMode(ctx) {
     } finally {
       const left = cs.pending.get(at) - 1;
       if (left > 0) cs.pending.set(at, left);
-      else cs.pending.delete(at);
+      else {
+        cs.pending.delete(at);
+        cs.picked.delete(at);
+      }
       render();
     }
   }
@@ -557,12 +564,14 @@ export function createCloudMode(ctx) {
 
   function choose(c, source) {
     cs.reveal = c.id; // its row whole in view: what the new source says under it
+    cs.picked.set(`cloud-${c.id}`, { list: "source", value: source });
     return send("POST", "/picks", { id: c.id, action: "choose", source }, `cloud-${c.id}`);
   }
 
   /** The cloud's level, for all its sources ("": Auto): each judged there, the best's images got. */
   function setLevel(c, value) {
     cs.reveal = c.id;
+    cs.picked.set(`cloud-${c.id}`, { list: "level", value });
     return send("POST", "/picks", { id: c.id, action: "level", level: value === "" ? null : Number(value) }, `cloud-${c.id}`);
   }
 
@@ -717,13 +726,14 @@ export function createCloudMode(ctx) {
       c.source ? null : h("option", { value: "", disabled: true }, t("clouds.choose")),
       ...c.menu.map((m) => h("option", { value: m.source, disabled: !m.proposable },
         [n[m.base] || m.base, m.level ? `ZL${m.level}` : "", ...said(m)].filter(Boolean).join(" · "))));
-    menu.value = c.source || "";
+    const picked = cs.picked.get(`cloud-${c.id}`);
+    menu.value = picked?.list === "source" ? picked.value : c.source || "";
     const level = c.levels && c.levels.length
       ? h("select", { class: "cloud-level", dataset: key(`level-${c.id}`), "aria-label": t("clouds.level_of", { name: label }), title: t("clouds.level_tip"), disabled: !can.has("level"), onchange: (ev) => setLevel(c, ev.target.value) },
         h("option", { value: "" }, t("clouds.level_auto")),
         ...c.levels.map((zl) => h("option", { value: String(zl) }, `ZL${zl}`)))
       : null;
-    if (level) level.value = c.level == null ? "" : String(c.level);
+    if (level) level.value = picked?.list === "level" ? picked.value : c.level == null ? "" : String(c.level);
     const task = c.task;
     const show = () => {
       cs.current = c.id;
