@@ -474,8 +474,9 @@ change under Live (the user: « je préfère le réglage sans surprise »); Auto
 - **Ground, a mesh or not:** `_why_not_streamed` reads up to `TER_SAMPLE` (20) terrain files for
   one naming a photo in Ortho4XP's names (`BASE_TEX` or `BASE_TEX_NOWRAP` to
   `<row>_<col>_<provider><zl>.dds`): that photo in the pack's `textures` is a tile with its own
-  photos (`photos`); none named, or no `terrain` folder, X-Plane's own scenery, HD Mesh, Live's own
-  regions (`no_photos`); `unreadable` when they cannot be read. A mesh whose DSFs (by name) all
+  photos (`photos`: the pilot's tile, Live's own pack); none named, HD Mesh's land classes
+  (`no_photos`); no terrain file at all, X-Plane's own scenery, Live's regions, a virtual disk's
+  empty mount point (`no_terrain`); `unreadable` when they cannot be read. A mesh whose DSFs (by name) all
   have one in the sources before it, or in a mesh of the folder kept before it, adds nothing and
   is left aside (`already`): a copy of AutoOrtho's Europe beside AutoOrtho's own cost its listing,
   up to 57 s on a slow Windows disk, for nothing.
@@ -489,8 +490,7 @@ change under Live (the user: « je préfère le réglage sans surprise »); Auto
   another X-Plane's scenery AutoOrtho's squares (the review of 2026-11-14); scored against the
   meshes kept alone, the one pack of every region lost to a copy left aside (the fourth review);
   by squares alone, Global Forests passed for the roads of a mesh moved without them (the review
-  of 3ac4a84b). X-Plane's folder or Live's chosen by mistake give nothing: their ground names no
-  photo or is already there.
+  of 3ac4a84b). X-Plane's folder or Live's chosen by mistake give nothing: their ground has no terrain files, names no photo, has its photos or is already there.
 - **Looked at once in a while:** `other_mesh_found` keeps what it found for `OTHER_MESH_S` (30 s)
   for the window's checks, which come every 3 s and ask with X-Plane's folder each time (without
   it only when none is found); at once when the setting changes or the folder comes or goes (its
@@ -506,8 +506,9 @@ change under Live (the user: « je préfère le réglage sans surprise »); Auto
   folder is linked only with Developer Mode (junctions reach no network drive); elsewhere the
   error is left as it is.
 - **The window:** `checks.other_mesh` is None without a folder, else `{folder, there, next_start,
-  meshes, overlays, refused: [{name, why}]}`, the line under the setting (five refused named, the
-  rest counted); `next_start` while a mesh of it is not among the pack's recorded sources. A
+  meshes, overlays, refused: [{name, why}]}`, the line under the setting (five refused named, the rest counted; in orange too for a mesh
+  without roads, « choose the folder that holds them too »: one folder too deep, AutoOrtho's mesh
+  came without its roads beside it, said as « Used », the start's log saying it as well); `next_start` while a mesh of it is not among the pack's recorded sources. A
   missing mesh's notices name the setting. No night grids on it: they come with Live's regions.
 
 `orthostudio/live/aoregions.py` installs a region the way AutoOrtho's installer does

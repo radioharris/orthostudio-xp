@@ -253,7 +253,8 @@ def gather_checks() -> dict[str, Any]:
         # the regions installed, by name, or where they would be
         mesh=", ".join(s.name for s in sources) if sources else str(autoortho_scenery(xp)),
         # by region, Live's and AutoOrtho's ("eur"); another tool's by its folder's name
-        mesh_regions=[re.sub(r"^z_(?:ao|osxp)_", "", s.name) for s in sources],
+        # once each: Live's Europe and AutoOrtho's both said "Europe, Europe"
+        mesh_regions=list(dict.fromkeys(re.sub(r"^z_(?:ao|osxp)_", "", s.name) for s in sources)),
         mesh_found=bool(sources),
         region_ready=session.region_ready(default_pack_dir(), sources),
         autoortho_mounted=autoortho_mounted(xp),

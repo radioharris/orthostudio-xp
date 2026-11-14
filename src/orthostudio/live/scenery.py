@@ -122,8 +122,9 @@ def other_mesh(folder: Path | None, given: Sequence[Path] = ()) -> OtherMesh:
       the folder's ground naming photos, copies included, is the roads, forests and buildings of
       its meshes (:func:`_roads_of`): an airport, a Landmark, simHeaven or Global Forests lying
       there are not taken (the reviews of 2026-11-14).
-    X-Plane's folder or Live's chosen give nothing: their ground has no photos named, or is
-    already there. Nothing when the folder is gone (its disk away)."""
+    X-Plane's folder or Live's chosen give nothing: their ground has no terrain files, names no
+    photos, has its photos (a tile, Live's own pack) or is already there. Nothing when the folder
+    is gone (its disk away)."""
     from orthostudio.install.dsf_head import dsf_properties
     from orthostudio.live.overlays import squares_of
 
@@ -203,14 +204,15 @@ TER_SAMPLE = 20  # a mesh's terrain files looked at: one naming a photo Live mak
 
 
 def _why_not_streamed(pack: Path) -> str | None:
-    """Why Live cannot stream onto a pack of ground, or None: a tile with its photos (the photo its
-    first terrain file names is in its ``textures``: a tile of the pilot's), or no terrain file
-    naming a photo in Ortho4XP's names, which Live makes (X-Plane's own scenery, HD Mesh's land
-    classes, Live's own regions)."""
+    """Why Live cannot stream onto a pack of ground, or None: ``photos``, a tile with its photos
+    (the photo its first terrain file names is in its ``textures``: a tile of the pilot's, Live's
+    own pack); ``no_photos``, terrain files naming no photo in Ortho4XP's names, which Live makes
+    (HD Mesh's land classes); ``no_terrain``, no terrain file at all (X-Plane's own scenery,
+    Live's regions, a virtual disk's empty mount point); ``unreadable``."""
     from orthostudio.live.geo import _TEXTURE_RE
 
     if not (pack / "terrain").is_dir():
-        return "no_photos"
+        return "no_terrain"  # X-Plane's own scenery, Live's regions (their terrain-lists)
     seen = 0
     try:
         with os.scandir(pack / "terrain") as entries:
@@ -229,7 +231,8 @@ def _why_not_streamed(pack: Path) -> str | None:
                     break
     except OSError:
         return "unreadable"
-    return "no_photos"
+    # none at all: a virtual disk's mount point, empty while its streamer is not running
+    return "no_photos" if seen else "no_terrain"
 
 
 def other_mesh_folder() -> Path | None:

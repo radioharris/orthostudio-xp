@@ -455,6 +455,8 @@ def _other_said(chosen: Path, other: OtherMesh) -> str:
     said = f"another tool's mesh in {chosen}: {used}"
     if other.overlays:
         said += f"; roads, forests and buildings: {', '.join(p.name for p in other.overlays)}"
+    elif other.meshes:
+        said += "; no roads, forests or buildings found with it"
     if other.refused:
         said += "; left aside: " + ", ".join(f"{name} ({why})" for name, why in other.refused)
     return said

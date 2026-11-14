@@ -543,7 +543,8 @@ function drawOtherMesh(other) {
   const line = $("other-mesh-found");
   line.hidden = !other;
   if (!other) return;
-  line.classList.toggle("is-warn", !other.there || !other.meshes.length);
+  // a mesh without its roads warned too: chosen a folder too deep, the flight showed none
+  line.classList.toggle("is-warn", !other.there || !other.meshes.length || !other.overlays.length);
   if (!other.there) {
     line.textContent = t("other_mesh.gone");
     return;
@@ -551,6 +552,7 @@ function drawOtherMesh(other) {
   const used = other.next_start ? "other_mesh.meshes_next" : "other_mesh.meshes";
   const said = [other.meshes.length ? t(used, { names: other.meshes.join(", ") }) : t("other_mesh.none")];
   if (other.overlays.length) said.push(t("other_mesh.overlays", { names: other.overlays.join(", ") }));
+  else if (other.meshes.length) said.push(t("other_mesh.no_roads"));
   if (other.refused.length) {
     // a few, the rest counted: X-Plane's folder chosen lists every tile of Custom Scenery
     const shown = other.refused.slice(0, 5);

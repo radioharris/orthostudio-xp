@@ -72,6 +72,8 @@ def test_the_folder_taken_by_what_it_holds(tmp_path: Path) -> None:
     mesh(folder / "HD_Mesh", ter=b"A\n800\nTERRAIN\n\nBASE_TEX ../textures/grass_dry.dds\n")
     put(folder / "z_osxp_eur", A)  # one of Live's regions, kept on another disk: no terrain
     (folder / "z_osxp_eur" / "terrain-lists").mkdir()
+    put(folder / "Virtual_mount", B)  # a virtual disk's mount point, its streamer not running
+    (folder / "Virtual_mount" / "terrain").mkdir()
     (folder / "notes").mkdir()
     (folder / "1200 atc data" / "Earth nav data").mkdir(parents=True)  # no DSF: no scenery
     found = other_mesh(folder)
@@ -79,8 +81,9 @@ def test_the_folder_taken_by_what_it_holds(tmp_path: Path) -> None:
     assert found.overlays == [eur_roads]
     assert found.refused == [
         ("HD_Mesh", "no_photos"),
+        ("Virtual_mount", "no_terrain"),
         ("zOrtho4XP_+45+005", "photos"),
-        ("z_osxp_eur", "no_photos"),
+        ("z_osxp_eur", "no_terrain"),
     ]
     assert other_mesh(eur).meshes == [eur]  # the region's own folder chosen: that one
     assert other_mesh(tmp_path / "unplugged") == NO_OTHER_MESH
@@ -118,7 +121,7 @@ def test_the_roads_that_go_with_the_mesh(tmp_path: Path) -> None:
         put(world, square)  # ground, with no terrain folder
     found = other_mesh(folder)
     assert found.meshes == [aus] and found.overlays == [aus_roads]
-    assert found.refused == [("X-Plane 11 Global Scenery", "no_photos")]
+    assert found.refused == [("X-Plane 11 Global Scenery", "no_terrain")]
     only_roads = tmp_path / "only roads"
     roads(only_roads / "yAutoOrtho_Overlays", (A, B))
     assert other_mesh(only_roads).overlays == []  # no mesh, no roads to go with it
@@ -147,6 +150,18 @@ def test_the_roads_of_one_region_moved_with_the_others(tmp_path: Path) -> None:
     every = roads(folder / "yAutoOrtho_Overlays", (A, B, C, D))
     found = other_mesh(folder)
     assert found.meshes == [aus] and found.overlays == [every]
+
+
+def test_a_mesh_without_its_roads_said(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Chosen one folder too deep, AutoOrtho's mesh came without its roads beside it, and the line
+    said « Used » as if all was well (the review of 0eb7e561): the start's line says so."""
+    folder = tmp_path / "moved"
+    mesh(folder / "z_autoortho" / "scenery" / "z_ao_aus_pac")
+    roads(folder / "yAutoOrtho_Overlays")
+    deep = folder / "z_autoortho"
+    assert session._other_said(deep, other_mesh(deep)) == (
+        f"another tool's mesh in {deep}: z_ao_aus_pac; no roads, forests or buildings found with it"
+    )
 
 
 def test_no_roads_rather_than_another_s_overlays(tmp_path: Path) -> None:
@@ -239,6 +254,12 @@ def test_the_window_reads_the_folder_once_in_a_while(
         checks = control.gather_checks()
     assert checks["other_mesh"]["meshes"] == ["Mesh_Eur"] and checks["mesh_regions"] == ["Mesh_Eur"]
     assert read == [folder]
+    # Live's Europe and AutoOrtho's said « Europe, Europe » (the review of 0eb7e561): once
+    mesh(xp / "Custom Scenery" / "z_autoortho" / "scenery" / "z_ao_eur", squares=(B,))
+    monkeypatch.setattr(
+        control, "stream_sources", lambda xp: [Path("z_osxp_eur"), Path("z_ao_eur")]
+    )
+    assert control.gather_checks()["mesh_regions"] == ["eur"]
 
 
 def test_the_roads_go_with_the_mesh_of_the_start(tmp_path: Path) -> None:
@@ -314,7 +335,7 @@ def test_a_start_says_the_folder(tmp_path: Path, monkeypatch) -> None:
     folder = tmp_path / "Other mesh"
     make_source(folder, tile=(46, 2))
     assert session._other_said(folder, other_mesh(folder)) == (
-        f"another tool's mesh in {folder}: z_ao_test"
+        f"another tool's mesh in {folder}: z_ao_test; no roads, forests or buildings found with it"
     )
     gone = tmp_path / "unplugged"
     said_gone = f"another tool's mesh: {gone} is not there (its disk unplugged?): left out"
