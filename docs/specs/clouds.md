@@ -102,8 +102,10 @@ The Plan's map, brought over the tile; the Plan's steps make way for the cloud p
   the end of its task (`pending`, then `working`, whatever the task's phase: two spinners came one
   after the other), its area, an eye (**Show**: the map over it), a trash for an outline the tile
   does not hold; two lists (a user, 2026-11-14): its **source** (`state._menu`): the lines its
-  level offers (`state.tried`: in Auto every one tried under it, by the search, its images got and
-  its levels' tries; at a level, each source's there) and its own, a source's lines together from
+  level offers (`state.tried`: in Auto what the search found and what was taken, its images got;
+  at a level, each source's there, its tries kept apart from the search's in `tries` and read at
+  that level alone: once ZL12 tried, every source's ZL12 had come into Auto, taken or not, a user,
+  2026-11-14) and its own, a source's lines together from
   its sharpest, the sources in the order of their best line, so the best first; each by its short
   name (`short`: "EOX", not "EOX Sentinel-2 cloudless 2024") and the level the tile reads it at
   (`sources.read_at`), with what it has there and its fit ("EOX · ZL14 · clear · fit 93 %"), both

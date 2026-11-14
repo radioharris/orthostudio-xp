@@ -168,14 +168,17 @@ def got_of(c: Mapping[str, Any], code: str) -> Mapping[str, Any] | None:
 
 def reading(c: Mapping[str, Any], code: str) -> Mapping[str, Any]:
     """What the source ``code`` has under the cloud ``c``, the newest said, its answer and its fit
-    together: its images got, else the search's or the outline's try; empty when never asked.
-    What a piece said (``sources.ASK_AGAIN``: no answer, refused, a page) is not what the source
-    has: the try's stands, and the cloud's line says it, offering to ask again. A source is so
-    left out by what it has there alone, never by a passing answer."""
+    together: its images got, else, at a level chosen, that level's try (``tries``, the newer),
+    else the search's or the outline's try; empty when never asked. In Auto a level's try is not
+    read: Auto is what the search found and what was taken (a user, 2026-11-14). What a piece
+    said (``sources.ASK_AGAIN``: no answer, refused, a page) is not what the source has: the
+    try's stands, and the cloud's line says it, offering to ask again. A source is so left out by
+    what it has there alone, never by a passing answer."""
     got = got_of(c, code)
     if got and got.get("answer") and got["answer"] not in ASK_AGAIN:
         return got
-    said = (c.get("screening") or {}).get(code)
+    tried_there = (c.get("tries") or {}).get(code) if c.get("level") is not None else None
+    said = tried_there or (c.get("screening") or {}).get(code)
     return said if said and said.get("answer") else {}
 
 
@@ -209,12 +212,15 @@ def _ranked(c: Mapping[str, Any], codes: Iterable[str], tops: Mapping[str, int])
 
 
 def tried(c: Mapping[str, Any], tops: Mapping[str, int]) -> list[str]:
-    """The codes tried under ``c`` (by a search, its images got, a level's try) its level
-    offers: every one in Auto (none), else each source's at that level (``sources.code_of``)."""
-    codes = list(dict.fromkeys([*(c.get("screening") or {}), *(c.get("checks") or {})]))
+    """The codes its level offers of those tried under ``c``: in Auto (none) what the search
+    found and what was taken (its images got), a level's other tries left out (EOX, Bing and
+    Esri Clarity at ZL12 all came into Auto once ZL12 was tried, a user, 2026-11-14); at a level,
+    each source's there, of the search, its tries and its images got (``sources.code_of``)."""
     zl = c.get("level")
+    said = [*(c.get("screening") or {}), *(c.get("checks") or {})]
     if zl is None:
-        return codes
+        return list(dict.fromkeys(said))
+    codes = dict.fromkeys([*said, *(c.get("tries") or {})])
     return [k for k in codes if k == code_of(level_of(k)[0], zl, tops)]
 
 

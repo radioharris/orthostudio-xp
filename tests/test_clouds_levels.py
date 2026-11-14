@@ -364,7 +364,7 @@ def test_a_level_is_written_with_its_try_and_auto_leaves_no_trace() -> None:
     c["chosen"] = "BI"
     cloudlist.set_level(cl, c["id"], c["rings"], 12, {"EOX:12": Judgement("clear", 50)})
     assert c["level"] == 12 and c["chosen"] is None
-    assert c["screening"]["EOX:12"]["answer"] == "clear"
+    assert c["tries"]["EOX:12"]["answer"] == "clear" and "EOX:12" not in c["screening"]
     moved = [[0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 0.0, 0.0]]
     cloudlist.set_level(cl, c["id"], moved, 13)  # its outline changed meanwhile: nothing
     assert c["level"] == 12
@@ -379,7 +379,7 @@ def test_a_new_search_and_discard_bring_a_cloud_back_to_auto() -> None:
     found = [{"rings": c["rings"], "screening": {"EOX": {"answer": "clear"}}}]
     cloudlist.merge_search(cl, found, None)
     (again,) = cl.clouds
-    assert "level" not in again and again["chosen"] is None
+    assert "level" not in again and again["chosen"] is None and "tries" not in again
     cloudlist.set_level(cl, again["id"], again["rings"], 12, {})
     cloudlist.discard(cl, None)
     assert "level" not in again
@@ -390,6 +390,28 @@ def test_a_list_with_a_level_that_is_none_is_set_aside(level: Any) -> None:
     _cl, c = _list()
     assert cloudlist._cloud_problem({**c, "level": level}) == "no level"
     assert cloudlist._cloud_problem({**c, "level": 12}) is None
+    assert cloudlist._cloud_problem({**c, "tries": []}) == "no tries"
+
+
+def test_auto_shows_what_the_search_found_and_what_was_taken_a_levels_tries_at_that_level() -> None:
+    # ZL12 tried: every source's ZL12 came into Auto, taken or not (a user, 2026-11-14)
+    c: dict[str, Any] = {
+        "screening": {"EOX": {"answer": "clear", "fit": 40}, "BI": {"answer": "cloudy", "fit": 30}},
+        "tries": {
+            "EOX:12": {"answer": "clear", "fit": 90},
+            "BI:12": {"answer": "clear", "fit": 80},
+            "BI": {"answer": "clear", "fit": 70},  # Bing at ZL16 tried at ZL16
+        },
+        "checks": {"BI:12": {"answer": "clear", "fit": 80, "judged": sources.JUDGED}},
+    }
+    auto = [m["source"] for m in state._menu(c, None, None, CHOICE)]
+    assert auto == ["EOX", "BI", "BI:12"]  # EOX:12, never taken, waits for ZL12
+    assert state.reading(c, "BI")["answer"] == "cloudy"  # the search's: Auto reads no try
+    assert state.best_of(c, CHOICE) == "EOX"
+    at12 = {**c, "level": 12}
+    assert {m["source"] for m in state._menu(at12, None, None, CHOICE)} == {"EOX:12", "BI:12"}
+    at16 = {**c, "level": 16}
+    assert state.reading(at16, "BI")["answer"] == "clear"  # at ZL16, ZL16's try
 
 
 def test_a_level_finer_than_the_tile_now_has_shows_as_its_finest() -> None:

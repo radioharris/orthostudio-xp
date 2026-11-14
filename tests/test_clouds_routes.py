@@ -363,6 +363,9 @@ async def test_a_clouds_level_judges_every_source_there_then_gets_the_best(
     assert bad.json()["error"]["code"] == "CLOUD_NOT_NOW"  # not a level of the tile
     assert wrong.json()["error"]["code"] == "CLOUD_INVALID"
     assert auto["level"] is None  # Auto: the best whatever its level
+    # Auto: what the search found and what was taken; the other ZL11 tries wait for ZL11
+    taken = {row["source"]}
+    assert {m["source"] for m in auto["menu"]} == {"EOX"} | taken
 
 
 @pytest.mark.anyio

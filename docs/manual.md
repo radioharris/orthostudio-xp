@@ -64,7 +64,8 @@ the same photo as the tile, which would bring the cloud back, or with no picture
   from the tile's (ZL16 for a ZL16 tile) down to ZL11. Some sources show another photo at a coarser
   level, blurred but without clouds: Esri World Imagery at ZL11 over a tropical forest, for
   instance; where no sharp photo is clear, Auto finds them by itself. In Auto, the source list
-  keeps every source and level already tried for the cloud. Choose a level and every
+  shows what the search found and the photos you took; a level's other tries come back when you
+  choose that level again, at once. Choose a level and every
   source is tried under the cloud at that level, in a few seconds: the source list then says what
   each has there, the best is taken and its images fetched. Choose another source and it stays at
   that level: to try EOX at ZL12, choose ZL12, then EOX. Stopped, the cloud stays as it was; a new
