@@ -724,6 +724,12 @@ export function createCloudMode(ctx) {
       ctx.planMap.leaflet()?.fitBounds(now.rings.map(latlngs).flat(), { maxZoom: SHOW_ZOOM, paddingTopLeft: [16, top], paddingBottomRight: [16, 16] });
       render();
     };
+    /** Whether some of the cloud is on the map as it is now. */
+    const onScreen = () => {
+      const m = ctx.planMap.leaflet();
+      const now = cloudNow(c.id) || c;
+      return Boolean(m) && m.getBounds().intersects(now.rings.map(latlngs).flat());
+    };
     const buttons = [
       can.has("check") ? h("button", { type: "button", class: "btn", dataset: key(`check-${c.id}`), "aria-label": `${t("clouds.get_images")}: ${label}`, onclick: () => send("POST", "/check", { id: c.id, again: true }, `cloud-${c.id}`) }, t("clouds.get_images")) : null,
     ].filter(Boolean);
@@ -748,12 +754,17 @@ export function createCloudMode(ctx) {
     // keyed by its cloud: redrawn in place, a row stays its cloud's, its handlers with it
     // a click on the row shows its cloud; its checkbox and its name tick it, its menu and its
     // buttons do what they say (a user, 2026-11-06); whatever is done on a row makes its cloud
-    // the current one, the one rule for its tick, its source, its images and its Stop; a click
-    // on the row, its tick or its source changed shows it too, to look at what is ticked and see
-    // its new images (a user, 2026-11-07: a source changed, a tick left the map elsewhere)
+    // the current one, the one rule for its tick, its source, its level, its images and its
+    // Stop; a click on the row shows it whole; its tick, its source or its level changed bring
+    // it on the map when it is not there, and leave the map as it is when it is: zoomed in on
+    // a part of a large cloud, changing its level zoomed out to the whole of it (a user,
+    // 2026-11-14; a source changed, a tick left the map elsewhere, 2026-11-07)
     const pick = (ev) => {
       cs.current = c.id;
-      if (ev.type === "change" || !ev.target.closest("label, input, select, button")) show();
+      if (ev.type === "change") {
+        if (onScreen()) render();
+        else show();
+      } else if (!ev.target.closest("label, input, select, button")) show();
     };
     return h("li", { class: "zone-item cloud-item", "aria-current": String(c.id === cs.current), dataset: { cloud: c.id, state: c.state, focusKey: `cloud-${c.id}` }, onclick: pick, onchange: pick },
       h("span", { class: `zl-swatch cloud-swatch${c.tick ? " is-on" : ""}`, "aria-hidden": "true" }),

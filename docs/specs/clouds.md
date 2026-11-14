@@ -95,8 +95,9 @@ The Plan's map, brought over the tile; the Plan's steps make way for the cloud p
   later one is left: the page shows the latest.
 - **A row**, laid out as the Plan's zones (a click on it shows its cloud, as its eye does; its
   checkbox and its name tick it; a tick, a source chosen, Get its images or Stop make it the current
-  cloud, and a tick or a source chosen shows it too, the map over what is ticked and its new images;
-  Tick all moves nothing): its tick and name, while a task of it runs and it is the one cloud at
+  cloud, and a tick, a source or a level chosen brings it on the map when none of it is there, the
+  map left as it is when some is (zoomed in on a part of a large cloud, a level changed zoomed out
+  to the whole of it, a user, 2026-11-14); Tick all moves nothing): its tick and name, while a task of it runs and it is the one cloud at
   work a spinner beside its name around a square that stops it, the very same from a click on it to
   the end of its task (`pending`, then `working`, whatever the task's phase: two spinners came one
   after the other), its area, an eye (**Show**: the map over it), a trash for an outline the tile
