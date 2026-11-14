@@ -50,6 +50,19 @@ def test_the_folder_taken_by_what_it_holds(tmp_path: Path) -> None:
     assert other_mesh(folder / "notes") == NO_OTHER_MESH
 
 
+def test_autoortho_s_own_layout_moved(tmp_path: Path) -> None:
+    """AutoOrtho's pack taken out of X-Plane as it is: its region two folders down, its overlays
+    beside it."""
+    folder = tmp_path / "moved"
+    region = mesh(folder / "z_autoortho" / "scenery" / "z_ao_aus_pac")
+    (folder / "z_autoortho" / "aus_pac_info.json").write_text("{}")
+    put(folder / "yAutoOrtho_Overlays", A)
+    found = other_mesh(folder)
+    assert found.meshes == [region]
+    assert found.overlays == [folder / "yAutoOrtho_Overlays"]
+    assert other_mesh(folder / "z_autoortho").meshes == [region]
+
+
 def chosen(monkeypatch: pytest.MonkeyPatch, folder: Path | None) -> None:
     """The folder of another tool's mesh the Settings would say."""
     for module in (scenery, overlays):

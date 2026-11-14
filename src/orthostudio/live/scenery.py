@@ -12,6 +12,7 @@ where it is missing, right above the first mesh, below OrthoStudio XP's tiles, w
 
 from __future__ import annotations
 
+import contextlib
 import ctypes
 import os
 import subprocess
@@ -110,16 +111,12 @@ def other_mesh(folder: Path | None) -> OtherMesh:
     """The meshes and overlays of the folder the pilot chose (``LiveSettings.other_mesh``), by what
     they hold, whatever their names: a pack (``Earth nav data``) with a ``terrain`` folder is a mesh
     when its terrain files name photos Live makes (:func:`_why_not_streamed`), one without is an
-    overlay pack. The folder may be one such pack, or hold several. Nothing when it is gone (its
-    disk away)."""
+    overlay pack. The folder may be one such pack, or hold several, as deep as AutoOrtho's own
+    (:func:`_packs_in`). Nothing when it is gone (its disk away)."""
     if folder is None:
         return NO_OTHER_MESH
     try:
-        packs = (
-            [folder]
-            if (folder / "Earth nav data").is_dir()
-            else sorted(p for p in folder.iterdir() if (p / "Earth nav data").is_dir())
-        )
+        packs = _packs_in(folder, PACK_DEPTH)
     except OSError:
         return NO_OTHER_MESH
     meshes: list[Path] = []
@@ -133,6 +130,24 @@ def other_mesh(folder: Path | None) -> OtherMesh:
         else:
             meshes.append(pack)
     return OtherMesh(meshes, overlays, refused)
+
+
+PACK_DEPTH = 3  # AutoOrtho's own, moved: <folder>/z_autoortho/scenery/z_ao_<region>
+
+
+def _packs_in(folder: Path, depth: int) -> list[Path]:
+    """The packs (``Earth nav data``) in ``folder``, it or below it ``depth`` levels at most, by
+    name; a pack is not looked into, a folder that cannot be read below the first is left out."""
+    if (folder / "Earth nav data").is_dir():
+        return [folder]
+    if depth == 0:
+        return []
+    out: list[Path] = []
+    for sub in sorted(folder.iterdir()):
+        if sub.is_dir() and not sub.name.startswith("."):
+            with contextlib.suppress(OSError):
+                out += _packs_in(sub, depth - 1)
+    return out
 
 
 TER_SAMPLE = 20  # a mesh's terrain files looked at: one naming a photo Live makes is enough
