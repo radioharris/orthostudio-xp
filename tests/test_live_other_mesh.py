@@ -124,6 +124,17 @@ def test_the_roads_of_every_region_kept_beside_a_copy(tmp_path: Path) -> None:
     assert found.overlays == [both]
 
 
+def test_the_roads_of_one_region_moved_with_the_others(tmp_path: Path) -> None:
+    """AutoOrtho's one roads pack holds every region of its: moved with one region's mesh only, it
+    has more squares elsewhere than on it, and was taken for none (the fifth review of
+    2026-11-14). Most of the mesh is enough."""
+    folder = tmp_path / "Other mesh"
+    aus = mesh(folder / "z_autoortho" / "scenery" / "z_ao_aus_pac", squares=(B,))
+    every = roads(folder / "yAutoOrtho_Overlays", (A, B, C, D))
+    found = other_mesh(folder)
+    assert found.meshes == [aus] and found.overlays == [every]
+
+
 def test_no_roads_rather_than_an_airport(tmp_path: Path) -> None:
     """A mesh moved without its roads: an airport beside it, on one of its squares, was taken for
     them (the fourth review of 2026-11-14). Roads cover most of their mesh, or are none."""
@@ -257,6 +268,11 @@ def test_the_setting_and_what_the_window_says(
     save_settings(LiveSettings(other_mesh="Other mesh"))
     said = control._other_mesh_said(None)
     assert said is not None and said["there"] is False and said["meshes"] == []
+    # « ~someone » with no such user stopped the window's checks and every start (the fifth
+    # review of 2026-11-14): as typed, not there
+    save_settings(LiveSettings(other_mesh="~nosuchpilot1234/mesh"))
+    said = control._other_mesh_said(None)
+    assert said is not None and said["there"] is False
 
 
 def a_start(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, folder: Path) -> session.Options:

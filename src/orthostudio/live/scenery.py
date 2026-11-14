@@ -118,12 +118,15 @@ def other_mesh(folder: Path | None, given: Sequence[Path] = ()) -> OtherMesh:
     - a pack of ground is a mesh when its terrain files name photos Live makes, without them
       (:func:`_why_not_streamed`), and it gives a square none of ``given`` (the regions before it)
       nor a mesh kept before it has (``already``: a copy of one);
-    - of the overlay packs, the one whose squares best match those of the folder's ground naming
-      photos, copies included, and covering more than half of them, is the roads, forests and
-      buildings of its meshes (:func:`_roads_of`): an airport, a Landmark or simHeaven lying
-      there are not taken (the reviews of 2026-11-14).
+    - of the overlay packs, the one with most squares of the folder's ground naming photos,
+      copies included, when it has more than half of them, is the roads, forests and buildings
+      of its meshes (:func:`_roads_of`): an airport, a Landmark or simHeaven lying there are not
+      taken (the reviews of 2026-11-14).
     X-Plane's folder or Live's chosen give nothing: their ground has no photos named, or is
     already there. Nothing when the folder is gone (its disk away)."""
+    from orthostudio.live.covered import is_overlay
+    from orthostudio.live.overlays import squares_of
+
     if folder is None:
         return NO_OTHER_MESH
     try:
@@ -132,21 +135,21 @@ def other_mesh(folder: Path | None, given: Sequence[Path] = ()) -> OtherMesh:
         return NO_OTHER_MESH
     meshes: list[Path] = []
     refused: list[tuple[str, str]] = []
-    overlays: list[Path] = []
-    named: set[str] = set()  # the squares of its ground naming photos, copies included
-    have: set[str] | None = None  # the squares before it, listed once a mesh is found
+    overlays: list[tuple[Path, set]] = []
+    named: set = set()  # the squares of its ground naming photos, copies included
+    have: set | None = None  # the squares before it, listed once a mesh is found
     for pack in packs:
-        overlay = _is_overlay(pack)
-        if overlay is None:  # no DSF: no scenery (X-Plane's ATC data, an emptied pack)
+        dsfs = squares_of(pack)
+        if not dsfs:  # no DSF: no scenery (X-Plane's ATC data, an emptied pack)
             continue
-        if overlay:
-            overlays.append(pack)
+        squares = set(dsfs)
+        if is_overlay(dsfs[min(dsfs)]):
+            overlays.append((pack, squares))
         elif (why := _why_not_streamed(pack)) is not None:
             refused.append((pack.name, why))
         else:
             if have is None:
-                have = set().union(*(_squares(source) for source in given))
-            squares = _squares(pack)
+                have = set().union(*(squares_of(source) for source in given))
             named |= squares
             if squares <= have:  # the same region as one before it: it would add nothing
                 refused.append((pack.name, "already"))
@@ -171,48 +174,19 @@ def _packs_in(folder: Path, depth: int) -> list[Path]:
     return out
 
 
-def _squares(pack: Path) -> set[str]:
-    """The squares a pack has a DSF for, by the DSF's name (``+45+005.dsf``)."""
-    out: set[str] = set()
-    with contextlib.suppress(OSError), os.scandir(pack / "Earth nav data") as tens:
-        for ten in tens:
-            if ten.is_dir():
-                with contextlib.suppress(OSError), os.scandir(ten.path) as files:
-                    out.update(f.name.lower() for f in files if f.name.lower().endswith(".dsf"))
-    return out
-
-
-def _is_overlay(pack: Path) -> bool | None:
-    """Whether a pack's first DSF is an overlay (``sim/overlay 1``), as X-Plane tells them; None
-    when it has no DSF."""
-    from orthostudio.install.dsf_head import dsf_properties
-
-    with contextlib.suppress(OSError), os.scandir(pack / "Earth nav data") as tens:
-        for ten in sorted(tens, key=lambda e: e.name):
-            if not ten.is_dir():
-                continue
-            with contextlib.suppress(OSError), os.scandir(ten.path) as files:
-                for f in files:
-                    if f.name.lower().endswith(".dsf"):
-                        return dsf_properties(Path(f.path)).get("sim/overlay") == "1"
-    return None
-
-
-def _roads_of(ground: set[str], overlays: Sequence[Path]) -> list[Path]:
+def _roads_of(ground: set, overlays: Sequence[tuple[Path, set]]) -> list[Path]:
     """The overlay pack that is the roads of ``ground`` (the squares of the folder's ground naming
-    photos): the one with most squares in common less those elsewhere, when it covers more than
-    half of them. AutoOrtho's and the other streamer's cover 85 to 97 % of their mesh (Live's
-    Europe and North America, AutoOrtho's Australia, 2026-11-14), an airport one square: scored
-    against the meshes kept alone, the one pack of every region lost to the copies left aside
-    and a region had no roads (the fourth review of 2026-11-14)."""
+    photos): the one with most of them, when it has more than half. AutoOrtho's and the other
+    streamer's cover 85 to 97 % of their mesh (Live's Europe and North America, AutoOrtho's
+    Australia, 2026-11-14) and hold every region of theirs, moved or not; an airport, one square.
+    Scored against the meshes kept alone, the one pack of every region lost to the copies left
+    aside and a region had no roads (the fourth review of 2026-11-14)."""
     best: list[Path] = []
-    score = 0
-    for pack in overlays:
-        squares = _squares(pack)
+    most = len(ground) // 2  # more than half
+    for pack, squares in overlays:
         common = len(squares & ground)
-        match = common - len(squares - ground)
-        if match > score and 2 * common > len(ground):
-            best, score = [pack], match
+        if common > most:
+            best, most = [pack], common
     return best
 
 
@@ -254,7 +228,12 @@ def other_mesh_folder() -> Path | None:
     from orthostudio.live.settings import load_settings
 
     folder = load_settings().other_mesh.strip()
-    return Path(folder).expanduser() if folder else None
+    if not folder:
+        return None
+    try:
+        return Path(folder).expanduser()
+    except RuntimeError:  # « ~someone », no such user: as typed, not there (the fifth review)
+        return Path(folder)
 
 
 def other_mesh_there(folder: Path) -> bool:

@@ -470,7 +470,7 @@ change under Live (the user: « je préfère le réglage sans surprise »); Auto
   it, the depth of AutoOrtho's own pack moved (`<folder>/z_autoortho/scenery/z_ao_<id>`), by name;
   a pack is not looked into, one with no DSF is no scenery, a folder below the first that cannot
   be read is left out. Each is ground or overlays by its first DSF's head (`sim/overlay 1`,
-  `install.dsf_head`).
+  `covered.is_overlay`), its squares listed as Live's overlays list them (`overlays.squares_of`).
 - **Ground, a mesh or not:** `_why_not_streamed` reads up to `TER_SAMPLE` (20) terrain files for
   one naming a photo in Ortho4XP's names (`BASE_TEX` or `BASE_TEX_NOWRAP` to
   `<row>_<col>_<provider><zl>.dds`): that photo in the pack's `textures` is a tile with its own
@@ -479,9 +479,11 @@ change under Live (the user: « je préfère le réglage sans surprise »); Auto
   have one in the sources before it, or in a mesh of the folder kept before it, adds nothing and
   is left aside (`already`): a copy of AutoOrtho's Europe beside AutoOrtho's own cost its listing,
   up to 57 s on a slow Windows disk, for nothing.
-- **Overlays, the roads of the meshes:** of the overlay packs, the one with the most squares in
-  common with the folder's ground naming photos, copies left aside included, less those elsewhere,
-  when it covers more than half of that ground (`_roads_of`); none without a mesh kept. Real ones
+- **Overlays, the roads of the meshes:** of the overlay packs, the one with the most squares of
+  the folder's ground naming photos, copies left aside included, when it has more than half of
+  them (`_roads_of`); none without a mesh kept. Squares elsewhere do not count against it:
+  AutoOrtho's one pack holds every region of its, and moved with one region's mesh it was taken
+  for none (the fifth review of 2026-11-14). Real ones
   cover 85 to 97 % of their mesh (Live's Europe and North America, AutoOrtho's Australia), an
   airport one square: scored against the meshes kept alone, the one pack of every region lost to
   a copy left aside and the region kept had no roads, and a lone airport passed for the roads of a
@@ -498,8 +500,8 @@ change under Live (the user: « je préfère le réglage sans surprise »); Auto
   meanwhile waits for the next start, mesh and roads alike.
 - **Its errors:** each start logs what it takes there, or that the folder is not there (« its disk
   unplugged? »), and one whose only mesh is this folder, gone, is refused saying so, as the
-  window's headline says it then (`checks.other_mesh_gone`); the folder as typed, `~` expanded, a
-  relative path not there (`other_mesh_there`); the hint
+  window's headline says it then (`checks.other_mesh_gone`); the folder as typed, `~` expanded (a
+  `~someone` with no such user as typed), a relative path not there (`other_mesh_there`); the hint
   « or choose another tool's mesh » only when none is chosen. On Windows, a link the region's
   setup could not make (`XP_LINK_FAILED`) while the folder gives a mesh adds that a network
   folder is linked only with Developer Mode (junctions reach no network drive); elsewhere the
