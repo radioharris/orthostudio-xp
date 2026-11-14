@@ -5,7 +5,10 @@
 // Points are [lon, lat] pairs, the order of the zones document (GeoJSON).
 
 export const ZONES_FORMAT = "osxp-zones-1";
-export const ZONE_ZL_MIN = 12;
+/** The lowest level of a zone and of step 1's list: ZL11 for its photo, not its size, as some sources
+ * show another one there, blurred but with no clouds, where ZL12 shows cumulus (Esri World Imagery
+ * over tropical forest, a user, 2026-11-14). */
+export const ZONE_ZL_MIN = 11;
 export const ZONE_ZL_MAX = 20;
 export const MAX_ZONES = 500;
 export const MAX_VERTICES = 2000;

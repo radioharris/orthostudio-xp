@@ -33,7 +33,10 @@ the measurements, `docs/benchmarks/`.
   those squares' edges, up to a square beyond your outline (a small helipad where four squares
   meet sharpens the four). The Plan's map shows those squares, pale and dashed under each zone,
   and the list of zones says how many each takes, or that one takes none because the zones above
-  it in the list already take every square it covers.
+  it in the list already take every square it covers. A zone can also be less sharp than its tile:
+  ZL11, the coarsest level, is there for its photo rather than its size, since some sources show
+  another one at ZL11, blurred but with no clouds, where ZL12 shows cumulus (Esri World Imagery
+  over tropical forest).
 - **Overlay**: roads, buildings, forests, power lines and night lighting. They live in the same
   default DSF as the ground, so a photo tile that replaces the ground would lose them.
   OrthoStudio XP extracts them from X-Plane's own scenery into a shared pack,

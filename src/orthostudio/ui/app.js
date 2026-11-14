@@ -26,7 +26,7 @@ import {
   tOpt,
 } from "./i18n.js";
 import { PHOTO_LOOKS, photoValues } from "./colour.js";
-import { TEXTURE_MB, ZONES_FORMAT, normalizeZone, parseTile, tileName, validateZonesDocument, zoneTextureKeys } from "./geo.js";
+import { TEXTURE_MB, ZONES_FORMAT, ZONE_ZL_MIN, normalizeZone, parseTile, tileName, validateZonesDocument, zoneTextureKeys } from "./geo.js";
 import { OLD_STORAGE_KEY, STORAGE_KEY, defaultLevels, excluding, groupsOf, levelOf, newFlightPlan, readSaved, restoredPlan, squaresOf, toSaved, withPlan, withoutPlan } from "./flightplan.js";
 import { createPlanMap, detailLabel, detailName } from "./map.js";
 import { createCloudMode } from "./clouds.js";
@@ -3992,7 +3992,7 @@ function chosenLevels() {
  * whole sentence sent the list to a line of its own (a user, 2026-09-22). */
 function zlOptions(maxZl, lat, { short = false } = {}) {
   const out = [];
-  for (let zl = 12; zl <= Math.min(19, maxZl); zl += 1) {
+  for (let zl = ZONE_ZL_MIN; zl <= Math.min(19, maxZl); zl += 1) {
     const label = short ? t("detail.short", { name: detailName(zl), zl }) : detailLabel(zl, lat);
     out.push(h("option", { value: zl }, label));
   }

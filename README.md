@@ -121,7 +121,8 @@ OrthoStudio XP builds orthophoto tiles on the rules of Ortho4XP, with a differen
 that builds them faster.
 
 - **A map to choose from**: click the squares you want, draw sharper zones around airports or where
-  you fly low, and see the cost (disk, download, time) before you build.
+  you fly low, or a coarser one where a source's sharper photos are cloudy, and see the cost (disk,
+  download, time) before you build.
 - **Fast**: a ZL16 tile with nothing in the cache in 53 s, an unchanged tile again in under 0.1 s
   (Apple M4 Pro, home connection of 418 to 485 Mbit/s).
 - **Settings in plain words**, three presets, and every Ortho4XP setting still under "For experts".

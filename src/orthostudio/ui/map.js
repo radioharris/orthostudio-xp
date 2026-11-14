@@ -147,6 +147,7 @@ export function bordersRetryDelay(tries) {
 
 /** Plain names of the detail levels (section 7.0.3); literal keys for the i18n test. */
 const DETAIL_NAMES = {
+  11: () => t("detail.11"),
   12: () => t("detail.12"),
   13: () => t("detail.13"),
   14: () => t("detail.14"),

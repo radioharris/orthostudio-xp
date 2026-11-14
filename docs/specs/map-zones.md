@@ -46,7 +46,9 @@ snapped to the texture grid) and `O4_DSF_Utils.zone_list_to_ortho_dico` (already
   last vertex equal to the first is dropped on load), longitudes in [-180, 180], latitudes in
   [-85, 85] (web-mercator), a valid simple polygon (`shapely` `is_valid`; else `ZONE_INVALID`
   with the reason `explain_validity` gives).
-- `zl`: integer 12 to 20. When `provider` is set, at most that provider's `max_zl`; when it is
+- `zl`: integer 11 to 20 (ZL11 for its photo rather than its size: some sources show another one
+  there, blurred but with no clouds, where ZL12 shows cumulus, as Esri World Imagery over tropical
+  forest, a user 2026-11-14). When `provider` is set, at most that provider's `max_zl`; when it is
   `null` the tile's provider applies and the check happens when the build is planned.
 - `provider`: `null` (the tile's provider) or a registry code.
 - `photo`: `{look, brightness, contrast, saturation}`, the colours of the photos inside the zone.

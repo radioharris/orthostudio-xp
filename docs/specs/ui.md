@@ -137,8 +137,8 @@ words: never ZL, texture, DSF, mesh or mask (7.0.3);
 **Detail levels** (`map.js` `detailLabel`): a name and the ground size of a pixel at a latitude,
 `156543.03392 × cos(lat) / 2^zl`, rounded for reading (`fmtGround`: whole metres from 0.95 m,
 else centimetres by 10 from 50 cm and by 5 below), then the zoom level as secondary text:
-12 Very coarse, 13 Coarse, 14 Low, 15 Medium, 16 Standard, 17 Sharp, 18 Very sharp, 19 Maximum,
-20 Ultra, e.g. "Very sharp, about 40 cm per pixel · ZL18" at 46° N.
+11 Coarsest, 12 Very coarse, 13 Coarse, 14 Low, 15 Medium, 16 Standard, 17 Sharp, 18 Very sharp,
+19 Maximum, 20 Ultra, e.g. "Very sharp, about 40 cm per pixel · ZL18" at 46° N.
 
 #### The map (`map.js`)
 
@@ -296,7 +296,7 @@ the build would go (a campaign, 2026-10-24). Then:
   image arrived (answer 403): check the address." *Add* saves it and selects it in step 1; *Remove*
   says when zones use it (`SYS_SOURCE_IN_USE`). Every list of sources follows at once (step 1, the
   zones', Settings).
-- **Detail level**: 12-19 clipped to the source's `max_zl`, labelled as above at the latitude
+- **Detail level**: 11-19 clipped to the source's `max_zl` (`geo.js` `ZONE_ZL_MIN`, the zones' too), labelled as above at the latitude
   of the first tile (centre of the cell, `lat + 0.5`), else the map centre's, else 45°; the
   help under it names that latitude.
 - *Around an airport* (an ICAO code and a radius) and, under it, *Along my flight plan* are in plain

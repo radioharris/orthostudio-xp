@@ -115,7 +115,7 @@ def test_a_zone_is_normalised_closing_vertex_dropped_and_nine_decimals() -> None
         ({"polygon": [[181, 46.1], [6.2, 46.1], [6.2, 46.2]]}, "longitude 181"),
         ({"polygon": [[6.1, 85.5], [6.2, 85.5], [6.2, 85.4]]}, "latitude 85.5"),
         ({"polygon": [[6.1, 46.1], [6.2, 46.2], [6.2, 46.1], [6.1, 46.2]]}, "Self-intersection"),
-        ({"zl": 11}, "zl"),
+        ({"zl": 10}, "zl"),
         ({"zl": 21}, "zl"),
         ({"provider": "NOPE"}, "provider NOPE is not in the registry"),
         ({"provider": "JP", "zl": 19}, "above 18, the maximum of provider JP"),
@@ -132,6 +132,13 @@ def test_an_invalid_zone_refuses_the_whole_document(zone: dict[str, Any], needle
     err = _refused("ZONE_INVALID", {"format": "osxp-zones-1", "zones": [good, bad]})
     assert err.context["zone"] == bad["id"] and needle in err.context["reason"], err.context
     assert err.remedy and err.message.startswith(f"Zone {bad['id']} is invalid")
+
+
+def test_a_zone_may_take_the_coarsest_level_for_its_cloud_free_photo() -> None:
+    # some sources show another photo at ZL11, blurred but with no clouds (a user, 2026-11-14)
+    zone = {"id": "jungle", "zl": 11, "provider": "Arc", "polygon": _square(6.1, 46.1, 6.2, 46.2)}
+    (parsed,) = parse_zones_document({"zones": [zone]}).zones
+    assert parsed.zl == 11 and parsed.provider == "Arc"
 
 
 def test_document_limits_ids_and_format() -> None:

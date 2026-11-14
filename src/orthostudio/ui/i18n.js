@@ -208,6 +208,7 @@ const STRINGS = {
     "step4.summary": "Environ {download} à télécharger ({time}) et {disk} sur le disque.",
     "step4.queue_note": "Une construction est en cours : celle-ci attendra son tour.",
 
+    "detail.11": "Le plus grossier",
     "detail.12": "Très grossier",
     "detail.13": "Grossier",
     "detail.14": "Faible",
@@ -1560,6 +1561,7 @@ const STRINGS = {
     "step4.summary": "About {download} to download ({time}) and {disk} on disk.",
     "step4.queue_note": "A build is under way: this one will wait for its turn.",
 
+    "detail.11": "Coarsest",
     "detail.12": "Very coarse",
     "detail.13": "Coarse",
     "detail.14": "Low",

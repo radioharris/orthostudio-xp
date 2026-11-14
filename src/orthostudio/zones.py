@@ -107,7 +107,10 @@ ZONES_FILE = "zones.json"
 MAX_ZONES = 500
 """Zones in one document."""
 MIN_VERTICES, MAX_VERTICES = 3, 2000
-MIN_ZL, MAX_ZL = 12, 20
+MIN_ZL, MAX_ZL = 11, 20
+"""Levels a zone may hold. ZL11 for its photo, not its size: some sources show another one there,
+blurred but with no clouds, where ZL12 shows cumulus (Esri World Imagery over tropical forest, a
+user, 2026-11-14)."""
 MAX_LAT = 85.0
 """Latitude limit of a vertex (web-mercator)."""
 MAX_ID_LENGTH = 64

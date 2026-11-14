@@ -422,7 +422,7 @@ def test_mock_zones_follow_the_document_format() -> None:
         assert {"id", "name", "zl", "provider", "polygon"} <= set(zone), zone["id"]
         assert ZONE_ID_RE.match(zone["id"]), zone["id"]
         assert isinstance(zone["name"], str) and len(zone["name"]) <= 80
-        assert isinstance(zone["zl"], int) and 12 <= zone["zl"] <= 20
+        assert isinstance(zone["zl"], int) and 11 <= zone["zl"] <= 20
         if zone["provider"] is not None:
             assert zone["zl"] <= providers[zone["provider"]]["max_zl"]
         ring = zone["polygon"]
@@ -6830,7 +6830,16 @@ def test_the_map_stops_where_every_build_stops() -> None:
     assert "maxZoom: MAX_NATIVE_ZOOM, // the deepest level anything is built at" in code
     assert "maxZoom: 20" not in code
     app_js = (UI / "app.js").read_text(encoding="utf-8")
-    assert "for (let zl = 12; zl <= Math.min(19, maxZl); zl += 1) {" in app_js
+    assert "for (let zl = ZONE_ZL_MIN; zl <= Math.min(19, maxZl); zl += 1) {" in app_js
+
+
+def test_the_level_lists_start_at_the_coarsest_level_named_in_both_languages() -> None:
+    """Step 1's list and the zones' start at ZL11: some sources show another photo there, blurred
+    but with no clouds, where ZL12 shows cumulus (a user, 2026-11-14)."""
+    assert "export const ZONE_ZL_MIN = 11;" in (UI / "geo.js").read_text(encoding="utf-8")
+    assert '  11: () => t("detail.11"),' in (UI / "map.js").read_text(encoding="utf-8")
+    i18n = (UI / "i18n.js").read_text(encoding="utf-8")
+    assert '"detail.11": "Le plus grossier",' in i18n and '"detail.11": "Coarsest",' in i18n
 
 
 def test_an_error_in_one_line_says_what_to_do_as_well() -> None:
