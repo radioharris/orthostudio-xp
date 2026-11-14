@@ -399,19 +399,20 @@ packs in it, down to three folders below, whatever their names, and tells ground
 X-Plane does. Ground whose terrain files name photos is a mesh; Live leaves aside a tile that has
 its own photos, ground with no photos to lay (X-Plane's own scenery, HD Mesh's land classes, Live's
 own regions), and a copy of a region it already has (AutoOrtho's Europe in X-Plane and another copy
-of it there). Of the overlays, it takes the one pack whose squares best match the mesh's as its
-roads, forests and buildings: an airport, simHeaven or a Landmark lying in the same folder is not
-taken. The line under the setting says what it uses and what it leaves aside, or that the folder is
-not there (a disk unplugged). Choose the folder that holds both the mesh and its roads: for
-AutoOrtho's pack moved, the one holding `z_autoortho` and `yAutoOrtho_Overlays`.
+of it there). Of the overlays, it takes as roads, forests and buildings the one pack that covers
+most of the folder's mesh, copies included: an airport, simHeaven or a Landmark lying in the same
+folder is not taken, and a mesh moved without its roads has none from there. The line under the
+setting says what it uses and what it leaves aside, or that the folder is not there (a disk
+unplugged). Choose the folder that holds both the mesh and its roads: for AutoOrtho's pack moved,
+the one holding `z_autoortho` and `yAutoOrtho_Overlays`.
 
 Live's regions come first, then AutoOrtho's in X-Plane, then this folder, for the mesh and for the
 roads alike. Nothing in that folder is changed. Its mesh and its roads are taken at Live's start,
 and kept until the next one: the line says "Used from Live's next start" until then. Each start says
-in Live's log what it takes there, or that the folder is not there; a start whose only mesh is in it
-then says so. On Windows, a folder on a network drive needs Developer Mode on: without it, Windows
-cannot link Live's scenery to it. There are no town lights at night on it: they come with Live's
-regions.
+in Live's log what it takes there, or that the folder is not there; when it is the only mesh, the
+window and the start then say so. On Windows, a folder on a network drive needs Developer Mode on:
+without it, Windows cannot link Live's scenery to it. There are no town lights at night on it: they
+come with Live's regions.
 
 Where no region installed has a mesh, X-Plane shows its own scenery, without photos: Live says so,
 in its window and in a small panel in X-Plane ("Live: no mesh here: install North America in the

@@ -60,6 +60,7 @@ from orthostudio.live.scenery import (
     osxp_regions,
     other_mesh_folder,
     other_mesh_found,
+    other_mesh_there,
     save_named_xplane,
     xplane_running,
     xplane_texture_quality,
@@ -226,7 +227,7 @@ def gather_checks() -> dict[str, Any]:
         "folder": str(live_root()),
         "folder_default": str(default_live_root()),
         # the folder of another tool's mesh chosen in the Settings, what Live takes there and not
-        "other_mesh": None,  # said with X-Plane's folder below, the folders it reads refused
+        "other_mesh": None,  # said below with X-Plane's folder, once it is found
         "folder_problem": None,
         "textures_bytes": _textures_bytes(default_pack_dir()),
         # the SimBrief name OrthoStudio XP has, which the window offers to take: never asked of
@@ -279,7 +280,7 @@ def _other_mesh_said(xp: Path | None) -> dict[str, Any] | None:
     in_pack = set(session._recorded_sources(default_pack_dir()))
     return {
         "folder": str(folder),
-        "there": folder.is_dir(),
+        "there": other_mesh_there(folder),
         "next_start": any(str(p) not in in_pack for p in found.meshes),
         "meshes": [p.name for p in found.meshes],
         "overlays": [p.name for p in found.overlays],

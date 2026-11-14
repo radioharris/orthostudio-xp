@@ -178,9 +178,12 @@ function streamersRunning(names) {
   return t("checks.streamers_running", { names: `${names.slice(0, -1).join(", ")} ${t("checks.and")} ${last}` });
 }
 
-/** A text saying there is no mesh, offering another tool's mesh only when none is chosen. */
+/** A text saying there is no mesh: the folder of another tool's mesh gone when it is, as the
+ *  start says it; another tool's mesh offered only when none is chosen. */
 function noMesh(key, checks) {
-  return checks?.other_mesh ? key : `${key}_other`;
+  const other = checks?.other_mesh;
+  if (other && !other.there && key === "checks.mesh_missing") return "checks.other_mesh_gone";
+  return other ? key : `${key}_other`;
 }
 
 /** What keeps a stream from starting, in words, or null. */

@@ -480,8 +480,12 @@ change under Live (the user: « je préfère le réglage sans surprise »); Auto
   is left aside (`already`): a copy of AutoOrtho's Europe beside AutoOrtho's own cost its listing,
   up to 57 s on a slow Windows disk, for nothing.
 - **Overlays, the roads of the meshes:** of the overlay packs, the one with the most squares in
-  common with the meshes kept less those elsewhere, when that is above nought; none without a
-  mesh. AutoOrtho and the other streamer keep all their roads in one pack; taking every overlay
+  common with the folder's ground naming photos, copies left aside included, less those elsewhere,
+  when it covers more than half of that ground (`_roads_of`); none without a mesh kept. Real ones
+  cover 85 to 97 % of their mesh (Live's Europe and North America, AutoOrtho's Australia), an
+  airport one square: scored against the meshes kept alone, the one pack of every region lost to
+  a copy left aside and the region kept had no roads, and a lone airport passed for the roads of a
+  mesh moved without them (the fourth review of 2026-11-14). AutoOrtho and the other streamer keep all their roads in one pack; taking every overlay
   pack, the first by name winning its square, gave an airport, simHeaven or another X-Plane's
   scenery lying beside it the squares of AutoOrtho's roads (the review of 2026-11-14). X-Plane's
   folder or Live's chosen by mistake thus give nothing: their ground names no photo or is already
@@ -493,7 +497,9 @@ change under Live (the user: « je préfère le réglage sans surprise »); Auto
   (`Prepared.other_overlays`) for the overlays made again between flights: a folder changed
   meanwhile waits for the next start, mesh and roads alike.
 - **Its errors:** each start logs what it takes there, or that the folder is not there (« its disk
-  unplugged? »), and one whose only mesh is this folder, gone, is refused saying so; the hint
+  unplugged? »), and one whose only mesh is this folder, gone, is refused saying so, as the
+  window's headline says it then (`checks.other_mesh_gone`); the folder as typed, `~` expanded, a
+  relative path not there (`other_mesh_there`); the hint
   « or choose another tool's mesh » only when none is chosen. On Windows, a link the region's
   setup could not make (`XP_LINK_FAILED`) while the folder gives a mesh adds that a network
   folder is linked only with Developer Mode (junctions reach no network drive); elsewhere the

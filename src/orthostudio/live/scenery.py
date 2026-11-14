@@ -118,9 +118,10 @@ def other_mesh(folder: Path | None, given: Sequence[Path] = ()) -> OtherMesh:
     - a pack of ground is a mesh when its terrain files name photos Live makes, without them
       (:func:`_why_not_streamed`), and it gives a square none of ``given`` (the regions before it)
       nor a mesh kept before it has (``already``: a copy of one);
-    - of the overlay packs, the one whose squares best match the meshes' is their roads, forests
-      and buildings: an airport, a Landmark, simHeaven or another X-Plane lying there lose to it
-      (the review of 2026-11-14).
+    - of the overlay packs, the one whose squares best match those of the folder's ground naming
+      photos, copies included, and covering more than half of them, is the roads, forests and
+      buildings of its meshes (:func:`_roads_of`): an airport, a Landmark or simHeaven lying
+      there are not taken (the reviews of 2026-11-14).
     X-Plane's folder or Live's chosen give nothing: their ground has no photos named, or is
     already there. Nothing when the folder is gone (its disk away)."""
     if folder is None:
@@ -132,6 +133,7 @@ def other_mesh(folder: Path | None, given: Sequence[Path] = ()) -> OtherMesh:
     meshes: list[Path] = []
     refused: list[tuple[str, str]] = []
     overlays: list[Path] = []
+    named: set[str] = set()  # the squares of its ground naming photos, copies included
     have: set[str] | None = None  # the squares before it, listed once a mesh is found
     for pack in packs:
         overlay = _is_overlay(pack)
@@ -145,12 +147,13 @@ def other_mesh(folder: Path | None, given: Sequence[Path] = ()) -> OtherMesh:
             if have is None:
                 have = set().union(*(_squares(source) for source in given))
             squares = _squares(pack)
+            named |= squares
             if squares <= have:  # the same region as one before it: it would add nothing
                 refused.append((pack.name, "already"))
             else:
                 meshes.append(pack)
                 have |= squares
-    return OtherMesh(meshes, _roads_of(meshes, overlays), refused)
+    return OtherMesh(meshes, _roads_of(named, overlays) if meshes else [], refused)
 
 
 def _packs_in(folder: Path, depth: int) -> list[Path]:
@@ -195,18 +198,20 @@ def _is_overlay(pack: Path) -> bool | None:
     return None
 
 
-def _roads_of(meshes: Sequence[Path], overlays: Sequence[Path]) -> list[Path]:
-    """The overlay pack whose squares best match the meshes': most in common, least elsewhere,
-    when it has more in common than elsewhere; none without a mesh."""
-    if not meshes:
-        return []
-    wanted = set().union(*(_squares(mesh) for mesh in meshes))
+def _roads_of(ground: set[str], overlays: Sequence[Path]) -> list[Path]:
+    """The overlay pack that is the roads of ``ground`` (the squares of the folder's ground naming
+    photos): the one with most squares in common less those elsewhere, when it covers more than
+    half of them. AutoOrtho's and the other streamer's cover 85 to 97 % of their mesh (Live's
+    Europe and North America, AutoOrtho's Australia, 2026-11-14), an airport one square: scored
+    against the meshes kept alone, the one pack of every region lost to the copies left aside
+    and a region had no roads (the fourth review of 2026-11-14)."""
     best: list[Path] = []
     score = 0
     for pack in overlays:
         squares = _squares(pack)
-        match = len(squares & wanted) - len(squares - wanted)
-        if match > score:
+        common = len(squares & ground)
+        match = common - len(squares - ground)
+        if match > score and 2 * common > len(ground):
             best, score = [pack], match
     return best
 
@@ -249,7 +254,13 @@ def other_mesh_folder() -> Path | None:
     from orthostudio.live.settings import load_settings
 
     folder = load_settings().other_mesh.strip()
-    return Path(folder) if folder else None
+    return Path(folder).expanduser() if folder else None
+
+
+def other_mesh_there(folder: Path) -> bool:
+    """Whether the folder chosen is there: a full path to a folder (a relative one would depend on
+    where Live was started)."""
+    return folder.is_absolute() and folder.is_dir()
 
 
 OTHER_MESH_S = 30.0
@@ -266,7 +277,7 @@ def other_mesh_found(xplane: Path | None, root: Path, *, fresh: bool = False) ->
     global _found
     folder = other_mesh_folder()
     # its disk plugged in again: looked at at once, where the window said « no mesh » 30 s more
-    key = (folder, folder is not None and folder.is_dir(), xplane, root)
+    key = (folder, folder is not None and other_mesh_there(folder), xplane, root)
     at, was, got = _found
     if not fresh and was == key and time.monotonic() - at < OTHER_MESH_S:
         return got

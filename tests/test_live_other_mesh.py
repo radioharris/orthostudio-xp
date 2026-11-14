@@ -110,6 +110,29 @@ def test_the_roads_that_go_with_the_mesh(tmp_path: Path) -> None:
     assert other_mesh(only_roads).overlays == []  # no mesh, no roads to go with it
 
 
+def test_the_roads_of_every_region_kept_beside_a_copy(tmp_path: Path) -> None:
+    """The other streamer's Europe, a copy of AutoOrtho's in X-Plane, left aside, and its
+    Australia kept, with one roads pack for both: scored against Australia alone, the pack lost
+    to Europe's squares and Australia had no roads (the fourth review of 2026-11-14)."""
+    theirs = mesh(tmp_path / "X-Plane 12" / "z_ao_eur", squares=(A, C))
+    folder = tmp_path / "Other mesh"
+    mesh(folder / "Mesh_Eur", squares=(A, C))
+    aus = mesh(folder / "Mesh_Aus", squares=(B,))
+    both = roads(folder / "Mesh_Overlays", (A, B, C))
+    found = other_mesh(folder, [theirs])
+    assert found.meshes == [aus] and found.refused == [("Mesh_Eur", "already")]
+    assert found.overlays == [both]
+
+
+def test_no_roads_rather_than_an_airport(tmp_path: Path) -> None:
+    """A mesh moved without its roads: an airport beside it, on one of its squares, was taken for
+    them (the fourth review of 2026-11-14). Roads cover most of their mesh, or are none."""
+    folder = tmp_path / "Other mesh"
+    mesh(folder / "z_ao_aus_pac", squares=(A, B, C))
+    roads(folder / "Aerosoft - YSSY Sydney", (A,))
+    assert other_mesh(folder).overlays == []
+
+
 def test_x_plane_s_folder_or_live_s_give_nothing(tmp_path: Path) -> None:
     """Chosen by mistake: X-Plane's scenery holds tiles with their photos, airports, AutoOrtho's
     region already used; Live's folder its own regions, without photos named."""
@@ -225,6 +248,14 @@ def test_the_setting_and_what_the_window_says(
     }
     save_settings(LiveSettings(other_mesh=str(tmp_path / "unplugged")))
     said = control._other_mesh_said(None)  # a new setting, looked at at once
+    assert said is not None and said["there"] is False and said["meshes"] == []
+    # typed by hand: « ~ » is the home folder; a relative path, which would depend on where Live
+    # was started, is not there (the fourth review of 2026-11-14)
+    save_settings(LiveSettings(other_mesh="~/Other mesh"))
+    assert scenery.other_mesh_folder() == Path.home() / "Other mesh"
+    monkeypatch.chdir(tmp_path)
+    save_settings(LiveSettings(other_mesh="Other mesh"))
+    said = control._other_mesh_said(None)
     assert said is not None and said["there"] is False and said["meshes"] == []
 
 

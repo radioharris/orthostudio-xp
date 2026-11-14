@@ -48,6 +48,7 @@ from orthostudio.live.scenery import (
     osxp_regions,
     other_mesh_folder,
     other_mesh_found,
+    other_mesh_there,
     quality_said,
     uninstall_link,
     unlist_live,
@@ -312,7 +313,7 @@ def prepare(options: Options, log: Log) -> Prepared:
     chosen = None if options.source else other_mesh_folder()
     if chosen is not None:  # said at each start: its disk unplugged went unnoticed otherwise
         log(_other_said(chosen, other))
-    if not sources and chosen is not None and not chosen.is_dir():
+    if not sources and chosen is not None and not other_mesh_there(chosen):
         raise RefusedError(
             f"no mesh: the folder of another tool's mesh, {chosen}, is not there (its disk "
             "unplugged?), and no region is installed. Plug it in, or install the region you fly "
@@ -448,7 +449,7 @@ def prepare(options: Options, log: Log) -> Prepared:
 
 def _other_said(chosen: Path, other: OtherMesh) -> str:
     """The start's line on the folder of another tool's mesh: what it takes there, or why not."""
-    if not chosen.is_dir():
+    if not other_mesh_there(chosen):
         return f"another tool's mesh: {chosen} is not there (its disk unplugged?): left out"
     used = ", ".join(p.name for p in other.meshes) or "no mesh Live can use"
     said = f"another tool's mesh in {chosen}: {used}"
