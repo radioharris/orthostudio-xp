@@ -1,0 +1,37 @@
+# A heap crash of X-Plane's, reproduced: straight east across France at 47 N, FL350, 490 kt over
+# the ground; with a faulty plugin loaded, X-Plane aborted in libsystem_malloc 1 to 3 minutes in,
+# around the first scenery load, 3 times out of 4 (tools/live/flights/xplane_debug).
+title Plantage en croisière FL350, 490 kt, plein est
+start 47.00000 -0.50000 35000 90 490
+weather clear
+zulu 11 271
+# the camera 500 m above the aircraft, looking down at it: the ground right under it, which X-Plane
+# reads at its sharpest at cruise
+camera 0 99999 chase 50 500 180
+leg 2400 0 0 490
+screenshot 600
+screenshot 660
+screenshot 720
+screenshot 780
+screenshot 840
+screenshot 900
+screenshot 960
+screenshot 1020
+screenshot 1080
+screenshot 1140
+screenshot 1200
+screenshot 1260
+screenshot 1320
+screenshot 1380
+screenshot 1440
+screenshot 1500
+screenshot 1560
+screenshot 1620
+screenshot 1680
+screenshot 1740
+screenshot 1800
+screenshot 1860
+screenshot 1920
+screenshot 1980
+screenshot 2040
+screenshot 2100
