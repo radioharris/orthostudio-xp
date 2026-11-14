@@ -28,6 +28,7 @@ from orthostudio.clouds.layer import tile_pixels
 from orthostudio.clouds.opencv import cv2
 from orthostudio.dsf.decode import decode_dsf
 from orthostudio.errors import OsxpError
+from orthostudio.fsutil import open_read
 from orthostudio.imagery.grid import TextureId, parse_texture_name, tile_to_wgs84
 from orthostudio.masks.profiles import WATER_TRANSITION
 from orthostudio.model import TileRef
@@ -287,7 +288,7 @@ def _fill(image: np.ndarray, pts: np.ndarray, value: int) -> None:
 def _level_rows(path: Path, index: int, rows: tuple[int, int]) -> tuple[np.ndarray, int] | None:
     """Rows ``rows`` of mip level ``index`` of the DDS at ``path`` (``RGBA``), read alone from
     the disk, and the row they start at; ``None`` when the file stops above that level."""
-    with open(path, "rb") as f:
+    with open_read(path) as f:
         header = parse_header(f.read(HEADER_SIZE))
         dims = mip_dims(header.width, header.height, header.mip_count)
         if index >= len(dims):

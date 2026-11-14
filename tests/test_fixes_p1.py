@@ -81,6 +81,32 @@ def test_atomic_writes_leave_no_temporary_and_replace_the_target(tmp_path: Path)
     fsutil.fsync_dir(tmp_path / "does-not-exist")  # silent
 
 
+def test_a_read_refused_is_tried_again_on_windows_alone(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Windows refuses to open a file for the instant it is replaced; elsewhere a refusal is real
+    p = tmp_path / "list.json"
+    p.write_bytes(b"{}")
+    tries: list[int] = []
+
+    def refused_twice(file: object, *args: object, **kwargs: object) -> object:
+        tries.append(1)
+        if len(tries) <= 2:
+            raise PermissionError(13, "Permission denied", str(file))
+        return open(file, *args, **kwargs)  # type: ignore[call-overload]
+
+    monkeypatch.setattr(fsutil, "open", refused_twice, raising=False)
+    monkeypatch.setattr(fsutil, "WINDOWS", True)
+    with fsutil.open_read(p) as f:
+        assert f.read() == b"{}"
+    assert len(tries) == 3
+    tries.clear()
+    monkeypatch.setattr(fsutil, "WINDOWS", False)
+    with pytest.raises(PermissionError):
+        fsutil.open_read(p)
+    assert len(tries) == 1
+
+
 def test_atomic_write_failure_removes_the_temporary(tmp_path: Path) -> None:
     class BoomError(Exception):
         pass

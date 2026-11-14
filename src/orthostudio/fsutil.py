@@ -11,6 +11,7 @@ temporary name carries the pid and a random token so that concurrent writers nev
 from __future__ import annotations
 
 import contextlib
+import io
 import json
 import os
 import secrets
@@ -32,6 +33,7 @@ __all__ = [
     "atomic_write_bytes",
     "atomic_write_text",
     "fsync_dir",
+    "open_read",
     "raise_open_files_limit",
     "redirection_guard",
     "replace",
@@ -111,7 +113,11 @@ def raise_open_files_limit(wanted: int = OPEN_FILES_WANTED) -> tuple[int, int] |
 
 
 REPLACE_ATTEMPTS = 10
-"""How many times :func:`replace` tries on Windows (0.55 s of waiting at most)."""
+"""How many times :func:`replace` and :func:`open_read` try on Windows (0.45 s of waiting at
+most)."""
+
+WINDOWS = os.name == "nt"
+"""Where a file being replaced, or held by another handle, refuses for an instant."""
 
 
 def temp_name(final: Path) -> Path:
@@ -141,14 +147,29 @@ def replace(src: Path, dst: Path) -> None:
     has the target open (Python opens files without ``FILE_SHARE_DELETE``), which a concurrent
     read of a chunk container or a manifest does for a few milliseconds.
     """
-    for attempt in range(REPLACE_ATTEMPTS):
+    _again_on_windows(lambda: os.replace(src, dst))
+
+
+def open_read(path: Path | str) -> io.BufferedReader:
+    """``open(path, "rb")``, retried for an instant on Windows while the file is being replaced.
+
+    POSIX opens the old file or the new one. Windows refuses with ``PermissionError`` for the
+    instant a :func:`replace` moves a file over it: the page reading a tile's clouds while Restore
+    rewrote their list failed so (the Windows tests, 2026-11-13).
+    """
+    return _again_on_windows(lambda: open(path, "rb"))
+
+
+def _again_on_windows[T](action: Callable[[], T]) -> T:
+    """``action()``, tried again a few times on Windows while it raises ``PermissionError``."""
+    for attempt in range(REPLACE_ATTEMPTS - 1):
         try:
-            os.replace(src, dst)
-            return
+            return action()
         except PermissionError:
-            if os.name != "nt" or attempt == REPLACE_ATTEMPTS - 1:
+            if not WINDOWS:
                 raise
             time.sleep(0.01 * (attempt + 1))
+    return action()
 
 
 def _atomic(final: Path, produce: Callable[[Path], None], *, fsync: bool) -> Path:

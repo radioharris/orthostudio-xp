@@ -33,6 +33,7 @@ import numpy as np
 
 from orthostudio.clouds.layer import REACH_PX, CloudPatch, ring_pixels, tile_box, window
 from orthostudio.errors import OsxpError
+from orthostudio.fsutil import open_read
 from orthostudio.graph.digest import digest_bytes, digest_file
 from orthostudio.graph.store import Store
 from orthostudio.home import default_chunks_root, default_store_root, default_tiles_root, osxp_home
@@ -265,14 +266,14 @@ def _identity(f: Any) -> Identity:
 def identity(path: Path) -> Identity:
     """The identity of the file at ``path``, taken from the file opened, as :func:`read_head`
     takes it."""
-    with open(path, "rb") as f:
+    with open_read(path) as f:
         return _identity(f)
 
 
 def read_head(path: Path) -> tuple[Stamp | None, Identity]:
     """The stamp of the DDS at ``path`` (``None`` for a texture as built) and the identity of the
     very file it was read from."""
-    with open(path, "rb") as f:
+    with open_read(path) as f:
         known = _identity(f)
         head = f.read(_END)
     if len(head) < _END or head[:4] != b"DDS " or head[_AT : _AT + 4] != _STAMP:
@@ -356,7 +357,7 @@ def read_checked(path: Path, what: str, check: Callable[[Any], Any]) -> tuple[An
     each reading, the 124 sidecars and the list of a user's 200 clouds, a million numbers of
     outlines, took 0.9 s of every reading of the tile and four of a tick (-02-050, 2026-11-07).
     ``FileNotFoundError``, any other ``OSError`` and ``ValueError`` are the reading's."""
-    with open(path, "rb") as f:
+    with open_read(path) as f:
         st = os.fstat(f.fileno())
         data = f.read()
     doc = json.loads(data)

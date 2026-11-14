@@ -595,6 +595,32 @@ async def test_restore_unticks_what_was_ticked_when_it_was_asked(
 
 
 @pytest.mark.anyio
+async def test_the_clouds_are_read_while_windows_refuses_their_list_an_instant(
+    app: Any, ready: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Windows refuses to open a file for the instant it is replaced: the page reading the tile
+    # while Restore rewrote its list had an error (the Windows tests, 2026-11-13)
+    from orthostudio import fsutil
+
+    with cloudlist.update(TILE) as cl:
+        cl.add("found", _ring(), screening={"EOX": {"answer": "clear", "fit": 70}})
+    refused: list[str] = []
+
+    def held_once(file: Any, *args: Any, **kwargs: Any) -> Any:
+        if Path(file) == cloudlist.list_path(TILE) and not refused:
+            refused.append(str(file))
+            raise PermissionError(13, "Permission denied", str(file))
+        return open(file, *args, **kwargs)
+
+    monkeypatch.setattr(fsutil, "WINDOWS", True)
+    monkeypatch.setattr(fsutil, "open", held_once, raising=False)
+    async with client_for(app) as c:
+        r = await c.get("/api/clouds/+43+005")
+    assert r.status_code == 200, r.text
+    assert refused and len(r.json()["clouds"]) == 1
+
+
+@pytest.mark.anyio
 async def test_a_fine_search_is_refused_where_the_tile_has_nothing_finer(
     app: Any, ready: Path
 ) -> None:
