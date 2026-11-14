@@ -14,12 +14,14 @@ from __future__ import annotations
 
 import asyncio
 import threading
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from pathlib import Path
+
+import numpy as np
 
 from orthostudio.errors import OsxpError
 from orthostudio.imagery.chunks import ChunkStatus
-from orthostudio.imagery.grid import TextureId
+from orthostudio.imagery.grid import TextureId, texture_bbox
 from orthostudio.imagery.providers import Provider, cache_name, tile_url
 from orthostudio.model import TileRef
 from orthostudio.net import Fetcher, FetchRequest, FetchResult
@@ -41,6 +43,7 @@ __all__ = [
     "read_at",
     "resolve",
     "tops",
+    "tops_under",
 ]
 
 ANSWERS = (
@@ -82,9 +85,11 @@ def at_level(code: str, zl: int) -> str:
 
 
 def level_of(code: str) -> tuple[str, int | None]:
-    """The source and the level of ``code`` (:func:`at_level`); ``None``: its sharpest."""
+    """The source and the level of ``code`` (:func:`at_level`); ``None``: its sharpest. A list
+    file's text, whatever it holds, never raises: ``Arc:²`` is a source of that name."""
     base, _, zl = code.rpartition(":")
-    return (base, int(zl)) if base and zl.isdigit() else (code, None)
+    level = base and zl.isascii() and zl.isdigit() and len(zl) <= 2
+    return (base, int(zl)) if level else (code, None)
 
 
 def code_of(base: str, zl: int | None, tops: Mapping[str, int]) -> str:
@@ -119,9 +124,36 @@ def resolve(code: str, registry: Mapping[str, Provider]) -> Provider | None:
 
 def tops(textures: Iterable[TextureId], registry: Mapping[str, Provider]) -> dict[str, int]:
     """The sharpest level each source is read at for a tile of ``textures``: its finest, or the
-    finest texture's when coarser. A cloud's levels go from it down to :data:`COARSEST`."""
+    finest texture's when coarser. A cloud's own are :func:`tops_under`."""
     finest = max((t.zl for t in textures), default=0)
     return {code: min(finest, p.max_zl) for code, p in registry.items()}
+
+
+def tops_under(
+    textures: Iterable[TextureId], tile_tops: Mapping[str, int]
+) -> Callable[[Sequence[Sequence[float]]], dict[str, int]]:
+    """For the clouds of a tile: the sharpest level each source is read at under one cloud (its
+    rings), the finest of the textures its outline's box reaches (the tile's ``tile_tops``
+    capped there): a cloud in a ZL16 square of a tile with an airport at ZL18 was offered ZL18
+    and ZL17, read as ZL16, and its ZL16 photo ranked as blurred (two reviews, 2026-11-14). Its
+    levels go from it down to :data:`COARSEST`. The textures' boxes are read once."""
+    by_level: dict[int, list[tuple[float, float, float, float]]] = {}
+    for t in textures:
+        by_level.setdefault(t.zl, []).append(texture_bbox(t))
+    levels = sorted(((zl, np.array(b)) for zl, b in by_level.items()), reverse=True)
+
+    def under(rings: Sequence[Sequence[float]]) -> dict[str, int]:
+        lats = [float(v) for r in rings for v in r[0::2]]
+        lons = [float(v) for r in rings for v in r[1::2]]
+        if not lats:
+            return dict(tile_tops)
+        south, north, west, east = min(lats), max(lats), min(lons), max(lons)
+        for zl, b in levels:  # (lat_max, lon_min, lat_min, lon_max), the finest first
+            if ((b[:, 2] < north) & (b[:, 0] > south) & (b[:, 1] < east) & (b[:, 3] > west)).any():
+                return {code: min(top, zl) for code, top in tile_tops.items()}
+        return dict(tile_tops)
+
+    return under
 
 
 def _failed_kind(r: FetchResult) -> str:

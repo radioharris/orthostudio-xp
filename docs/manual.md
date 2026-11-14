@@ -66,7 +66,8 @@ the same photo as the tile, which would bring the cloud back, or with no picture
   instance; where no sharp photo is clear, Auto finds them by itself. In Auto, the source list
   shows what the search found and the photos you took; a level's other tries come back when you
   choose that level again, at once. Choose a level and every
-  source is tried under the cloud at that level, in a few seconds: the source list then says what
+  source is tried under the cloud at that level, in a few seconds (a minute or more for a large
+  cloud at a fine level; **Stop** ends it): the source list then says what
   each has there, the best is taken and its images fetched. Choose another source and it stays at
   that level: to try EOX at ZL12, choose ZL12, then EOX. Stopped, the cloud stays as it was; a new
   search finding it again, or *Discard changes*, puts it back to Auto. The cloud's place looks as

@@ -580,7 +580,7 @@ def screen(
     clouds: Sequence[Sequence[Sequence[float]]],
     classes: np.ndarray,
     sources: SourcePieces,
-    tops: Mapping[str, int],
+    tops: Sequence[Mapping[str, int]],
     *,
     own: str | None = None,
     coarser: bool = True,
@@ -595,7 +595,7 @@ def screen(
     Under a cloud no source is clear under so, each source, the tile's own too, is then read at
     every coarser level down to :data:`sources.COARSEST`, and a level showing another photo there
     than the level above it (:func:`_alike`), or the first showing one at all, is judged as a
-    source of its own, ``Arc:11`` (:func:`sources.code_of`, of the tile's ``tops``), kept when it
+    source of its own, ``Arc:11`` (:func:`sources.code_of`, of each cloud's ``tops``), kept when it
     is clear or cloudy there: Esri World Imagery shows another photo at ZL11, blurred but with no
     clouds, where its ZL12 shows cumulus over tropical forest (a user, 2026-11-14). A level
     showing the same photo has the same clouds, only blurrier. A blurred photo is the cloud's
@@ -623,8 +623,12 @@ def screen(
         before = 0
         for code, (zl, windows) in sorted(read.items()):
 
-            def said(done: int, _t: int, at: int = before) -> None:
-                phase(step, n * 100 + round(100 * (at + done) / max(total, 1)), 100 * of)
+            def said(
+                done: int, of_patches: int, at: int = before, part: int = len(windows)
+            ) -> None:
+                # the detector counts its patches, several windows to one: its share of them
+                share = (at + part * done / max(of_patches, 1)) / max(total, 1)
+                phase(step, n * 100 + round(100 * share), 100 * of)
 
             seen = _classified(
                 [src for _i, src, _have in windows],
@@ -660,6 +664,7 @@ def screen(
     for n, code in enumerate(codes):
         windows: _Windows = []
         for i, box in enumerate(boxes):
+            _heard(cancel)
             lost = _lost(sources, code, _keys_of(p, [box], levels[code]))
             if lost is not None:
                 out[i][code] = Judgement(lost)
@@ -671,22 +676,36 @@ def screen(
     if not coarser or not wanting:
         return out
     every = sorted(sources.providers)
+    # each cloud's coarser levels of each source: below its reading, above the coarsest, where
+    # its code is not the source itself (``sources.code_of`` of the cloud's own ``tops``)
     steps = {
-        c: [z for z in range(levels[c] - 1, COARSEST - 1, -1) if code_of(c, z, tops) != c]
+        (i, c): [z for z in range(levels[c] - 1, COARSEST - 1, -1) if code_of(c, z, tops[i]) != c]
+        for i in wanting
         for c in every
     }
-    under = [boxes[i] for i in wanting]
-    todo = {c: set().union(*(_keys_of(p, under, z) for z in (levels[c], *steps[c]))) for c in every}
+    # the pieces read: the first pass's are on the disk, or failed there and stay so (asked
+    # again, EOX refusing under load was asked twice); the tile's own was not read then
+    todo = {
+        c: set().union(
+            *(
+                _keys_of(p, [boxes[i]], z)
+                for i in wanting
+                for z in ([levels[c]] if c == own else []) + steps[(i, c)]
+            )
+        )
+        for c in every
+    }
     phase("fetching", 0, sum(len(v) for v in todo.values()))
     sources.fetch(todo, cancel=cancel, progress=lambda d, t: phase("fetching", d, t))
     for n, code in enumerate(every):
         read: dict[str, tuple[int, _Windows]] = {}
         for i in wanting:
+            _heard(cancel)
             box = boxes[i]
             above = None  # the level above, when it was read whole
             if _lost(sources, code, _keys_of(p, [box], levels[code])) is None:
                 above = _source_at(sources, code, levels[code], p, box)
-            for zl in steps[code]:
+            for zl in steps[(i, code)]:
                 if _lost(sources, code, _keys_of(p, [box], zl)) is not None:
                     break
                 there = _source_at(sources, code, zl, p, box)
@@ -694,11 +713,19 @@ def screen(
                     break  # too few of its pixels to judge, coarser still fewer
                 # another photo than the level above, or the first one there
                 if above is None or not _alike(above[0], there[0], above[1] & there[1], zl, p):
-                    read.setdefault(code_of(code, zl, tops), (zl, []))[1].append((i, *there))
+                    code_there = code_of(code, zl, tops[i])
+                    read.setdefault(code_there, (zl, []))[1].append((i, *there))
                 above = there
         # only another photo: the same as the tile's, or none there, adds nothing to choose
         judged(read, lambda j: j.usable, "coarser", n, len(every))
     return out
+
+
+def _heard(cancel: threading.Event | None) -> None:
+    """A Stop heard between two windows read: a cloud's level reads its sources as fine as ZL16
+    or more over the whole cloud, minutes for a large one (a review, 2026-11-14)."""
+    if cancel is not None and cancel.is_set():
+        raise OsxpError("SYS_CANCELLED")
 
 
 def _keys_of(

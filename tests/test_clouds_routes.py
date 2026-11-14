@@ -354,8 +354,12 @@ async def test_a_clouds_level_judges_every_source_there_then_gets_the_best(
         wrong = await c.post("/api/clouds/+43+005/picks", json=_level(cid, "11"))  # type: ignore[arg-type]
         await c.post("/api/clouds/+43+005/picks", json=_level(cid, None))
         auto = (await _read(c))["clouds"][0]
+        await c.post("/api/clouds/+43+005/picks", json=_level(cid, 12))
+        await _read(c)
     # every source, the tile's own (Bing) too, read at ZL11
-    assert len(tried) == 1 and tried[0][1] == 11 and {"EOX:11", "BI:11"} <= tried[0][0]
+    assert tried[0][1] == 11 and {"EOX:11", "BI:11"} <= tried[0][0]
+    # at ZL12, the tile's ZL12: EOX itself, and the tile's own Bing left out, its photo
+    assert tried[1][1] == 12 and "EOX" in tried[1][0] and "BI" not in tried[1][0]
     assert row["level"] == 11 and row["source"].endswith(":11")
     assert (row["source"], 11) in asked  # the best there, its images got at ZL11
     assert {m["source"] for m in row["menu"]} >= {"EOX:11", "BI:11"}

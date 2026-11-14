@@ -23,7 +23,7 @@ import json
 import logging
 import threading
 import time
-from collections.abc import Callable, Collection, Mapping
+from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated, Any
@@ -41,7 +41,14 @@ from orthostudio.clouds.laying import folder_lock, show
 from orthostudio.clouds.model import detector_bytes, detector_ready, ensure_detector
 from orthostudio.clouds.opencv import opencv_ready
 from orthostudio.clouds.picture import Picture, draw, fine_level, frame_bounds, map_level
-from orthostudio.clouds.sources import SourcePieces, code_of, other_sources, resolve, tops
+from orthostudio.clouds.sources import (
+    SourcePieces,
+    code_of,
+    other_sources,
+    resolve,
+    tops,
+    tops_under,
+)
 from orthostudio.clouds.tasks import Task, Tasks, error_view, standing
 from orthostudio.clouds.tile import (
     TileClouds,
@@ -551,18 +558,25 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
         return {"rows": out}
 
     def sources_for(
-        tile: TileRef, shown: TileClouds, level: int | None = None
-    ) -> tuple[SourcePieces, dict[str, int]]:
-        """The sources judged under the tile's clouds, and the tile's ``tops``: every other one
-        covering it and its own (``find.screen`` reads its own at its coarser levels alone); at a
-        cloud's ``level``, each by its code there (``sources.code_of``)."""
+        tile: TileRef,
+        shown: TileClouds,
+        clouds: Sequence[Any],
+        level: int | None = None,
+    ) -> tuple[SourcePieces, list[dict[str, int]]]:
+        """The sources judged under the tile's ``clouds`` (their rings), and each cloud's
+        ``tops`` (``sources.tops_under``): every other source covering the tile and its own
+        (``find.screen`` reads its own at its coarser levels alone, the search's); at a cloud's
+        ``level``, each by its code there (``sources.code_of``), its own but at its sharpest,
+        which is the tile's photo whatever it shows there."""
         registry = load_registry()
-        heights = tops(shown.textures, registry)
+        under = tops_under(shown.textures, tops(shown.textures, registry))
+        heights = [under(rings) for rings in clouds]
         found = other_sources(tile, shown.provider, registry)
         if shown.provider in registry:
             found[shown.provider] = registry[shown.provider]
         if level is not None:
-            codes = {code_of(base, level, heights) for base in found}
+            (mine,) = heights
+            codes = {code_of(base, level, mine) for base in found} - {shown.provider}
             found = {k: pr for k in codes if (pr := resolve(k, registry)) is not None}
         return SourcePieces(default_chunks_root(), found), heights
 
@@ -580,7 +594,7 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
         classes = engine.classes(tile, shown)
         if classes is None:
             classes = np.zeros(p.rgb.shape[:2], np.uint8)
-        pieces, heights = sources_for(tile, shown, level)
+        pieces, heights = sources_for(tile, shown, [rings], level)
         (verdicts,) = screen(
             p,
             [rings],
@@ -691,7 +705,7 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
             fine = engine.drawn(tile, shown, finer)[1] if finer is not None else None
             areas, classes = find(p, fine, cancel=task.stop, phase=task.say)
             rings = [a.rings(p) for a in areas]
-            pieces, heights = sources_for(tile, shown)
+            pieces, heights = sources_for(tile, shown, rings)
             verdicts = screen(
                 p,
                 rings,

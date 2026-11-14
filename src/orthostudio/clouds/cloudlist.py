@@ -275,7 +275,7 @@ def pick(cl: CloudList, cid: str, action: str, source: str | None = None) -> Non
     ``tick`` ticks it, ``untick`` unticks it."""
     c = cl.get(cid)
     if action == "choose":
-        c["chosen"] = source
+        _choose(c, source, c.get("level"))
     c["tick"] = action != "untick"
 
 
@@ -301,14 +301,18 @@ def set_level(
 
 
 def _choose(c: dict[str, Any], chosen: str | None, level: int | None = None) -> None:
-    """The one way a cloud's choice is set again: its source (``chosen``, ``None``: the best)
-    and its level (``None``: Auto, kept out of the file so that a list where no level was ever
-    chosen is written as before)."""
-    c["chosen"] = chosen
+    """The one way a cloud's choice is set: its source (``chosen``, ``None``: the best) and its
+    level (``None``: Auto, kept out of the file so that a list where no level was ever chosen is
+    written as before). Back in Auto, a source a level's try alone offered is let go: Auto does
+    not read the tries, and it stayed the source with nothing said of it (a review, 2026-11-14)."""
     if level is None:
         c.pop("level", None)
+        said = {**c["screening"], **c["checks"]}
+        if chosen in c.get("tries", {}) and chosen not in said:
+            chosen = None
     else:
         c["level"] = level
+    c["chosen"] = chosen
 
 
 def _shape(rings: Sequence[Sequence[float]]) -> Any:
@@ -433,11 +437,8 @@ def record_check(cl: CloudList, cid: str, code: str, rings: Any, got: Any) -> No
 
 
 def discard(cl: CloudList, shown: TileClouds | None) -> None:
-    """Every tick and source back to what the tile holds."""
+    """Every tick and source back to what the tile holds, every level to Auto."""
     holds = held_by_id(shown)
     for c in cl.clouds:
         c["tick"] = c["id"] in holds
-        if c["id"] in holds:
-            _choose(c, holds[c["id"]]["source"])
-        else:
-            c.pop("level", None)
+        _choose(c, holds[c["id"]]["source"] if c["id"] in holds else c["chosen"])

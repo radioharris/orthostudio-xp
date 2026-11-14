@@ -54,9 +54,10 @@ FEATHER_PX = 24
 REACH_PX = 2 * FEATHER_PX
 """How far the soft edge's blur sees: the outline is drawn this far past the window."""
 SHARPEN_FROM = 4
-SHARPEN_SIGMA_MAX = 32
-"""The widest blur sharpening takes, the widest a source could ask before its levels (EOX at ZL14
-on a texture at ZL19): every cloud laid before is laid the same."""
+SHARPEN_SIGMA_MAX = 64
+"""The widest blur sharpening takes: a source 64 times coarser than the texture (EOX at ZL14 on a
+texture at ZL20) is sharpened as before the levels, a coarser one no more (a source at ZL11 on a
+texture at ZL19 asked 256: 15 s a window, 64 about half a second)."""
 RULE = 3
 """The way a cloud is laid: a preview made another way is made again."""
 
@@ -304,8 +305,7 @@ def _source(
 def sharpened(src: np.ndarray, scale: float) -> np.ndarray:
     """A source ``scale`` times coarser than the texture, sharpened a little from
     :data:`SHARPEN_FROM` (soft at 10 m beside 2.7 m it looked smeared, 2026-11-03), its blur no
-    wider than :data:`SHARPEN_SIGMA_MAX`: a source at ZL11 on a texture at ZL19 asked 256, 15 s a
-    window where 32 took 0.1 s (a review, 2026-11-14)."""
+    wider than :data:`SHARPEN_SIGMA_MAX` (a review, 2026-11-14)."""
     if scale < SHARPEN_FROM:
         return src
     blur = cv2.GaussianBlur(src, (0, 0), sigmaX=min(scale, SHARPEN_SIGMA_MAX))

@@ -97,7 +97,7 @@ def _screened(
     monkeypatch.setattr(find, "_source_at", source_at)
     monkeypatch.setattr(find, "classify_many", seen)
     pieces = _Pieces({c for c, _zl in shows})
-    (out,) = screen(p, [_ring(p)], np.zeros((H, W), np.uint8), pieces, TOPS, **kwargs)  # type: ignore[arg-type]
+    (out,) = screen(p, [_ring(p)], np.zeros((H, W), np.uint8), pieces, [TOPS], **kwargs)  # type: ignore[arg-type]
     return out, read
 
 
@@ -116,6 +116,8 @@ def test_one_reading_has_one_code() -> None:
     assert sources.read_at("EOX", tops) == 14 and sources.read_at("Gone", tops) is None
     assert sources.level_of("Arc@:12") == ("Arc@", 12)
     assert sources.level_of("Arc@") == ("Arc@", None)  # Esri Clarity's own code keeps its @
+    assert sources.level_of("Arc:²") == ("Arc:²", None)  # a list's text never raises
+    assert sources.level_of("Arc:123") == ("Arc:123", None)
     registry = load_registry()
     coarse = sources.resolve("Arc:11", registry)
     assert coarse is not None and coarse.max_zl == 11 and coarse.code == "Arc"  # its pieces
@@ -424,3 +426,61 @@ def test_a_clouds_level_waits_for_apply_as_an_outline_removed_does() -> None:
     # its try reads the tile's picture, which Apply changes
     assert "level" not in state.possible("ready", {"apply"})
     assert "level" in state.possible("ready", {"find"}) and "level" in state.possible("ready")
+
+
+def test_each_clouds_levels_are_those_of_the_textures_under_it() -> None:
+    # a cloud in a ZL16 square of a tile with an airport at ZL18 was offered ZL18 and ZL17, read
+    # as ZL16, and its ZL16 photo ranked as blurred (two reviews, 2026-11-14)
+    from orthostudio.imagery.grid import texture_bbox, wgs84_to_tile
+
+    def tex(lat: float, lon: float, zl: int) -> TextureId:
+        x, y = wgs84_to_tile(lat, lon, zl)
+        return TextureId(int(x) // 16 * 16, int(y) // 16 * 16, zl, "BI")
+
+    airport = tex(8.5, -77.5, 18)
+    textures = [tex(8.2, -77.8, 16), tex(8.5, -77.5, 16), airport]
+    under = sources.tops_under(textures, {"BI": 18, "EOX": 14})
+    lat_max, lon_min, lat_min, lon_max = texture_bbox(airport)
+    over = [[lat_min, lon_min, lat_min, lon_max, lat_max, lon_max, lat_min, lon_min]]
+    assert under(over) == {"BI": 18, "EOX": 14}
+    away = [[8.20, -77.81, 8.20, -77.80, 8.21, -77.80, 8.20, -77.81]]
+    assert under(away) == {"BI": 16, "EOX": 14}
+    assert state.levels_of(under(away))[0] == 16
+
+
+def test_judging_the_sources_says_how_far_it_is_from_start_to_end(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # the detector counts its patches, several windows to one: the bar stopped near 5 % of each
+    # source and the phase ended far short of 100 (a review, 2026-11-14)
+    said: list[tuple[str, int, int]] = []
+    p = _picture(_noise(0))
+
+    def source_at(_s: Any, code: str, zl: int, _p: Picture, box: Any) -> Any:
+        x0, y0, x1, y1 = box
+        return _noise(1)[y0:y1, x0:x1], np.ones((y1 - y0, x1 - x0), bool)
+
+    def two_patches(imgs: list[np.ndarray], _h: Any, progress: Any, **_k: Any) -> Any:
+        progress(1, 2)
+        progress(2, 2)
+        return [np.zeros(i.shape[:2], np.uint8) for i in imgs]
+
+    monkeypatch.setattr(find, "_source_at", source_at)
+    monkeypatch.setattr(find, "classify_many", two_patches)
+    rings = [_ring(p)] * 4
+    screen(p, rings, np.zeros((H, W), np.uint8), _Pieces(["A", "B"]), [TOPS] * 4,  # type: ignore[arg-type]
+           phase=lambda step, d, t: said.append((step, d, t)))  # fmt: skip
+    judged = [(d, t) for step, d, t in said if step == "sources"]
+    assert judged == [(50, 200), (100, 200), (150, 200), (200, 200)]
+
+
+def test_discard_keeps_a_clouds_source_as_before_a_level_tries_alone_let_go() -> None:
+    cl, c = _list()
+    c["screening"] = {"BI": {"answer": "clear", "fit": 30}}
+    cloudlist.pick(cl, c["id"], "choose", "BI")
+    cloudlist.discard(cl, None)
+    assert c["chosen"] == "BI" and not c["tick"]  # an unheld cloud keeps its source, as before
+    cloudlist.set_level(cl, c["id"], c["rings"], 12, {"EOX:12": Judgement("clear", 50)})
+    cloudlist.pick(cl, c["id"], "choose", "EOX:12")
+    cloudlist.discard(cl, None)
+    assert "level" not in c and c["chosen"] is None  # Auto never offered EOX at ZL12

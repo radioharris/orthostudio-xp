@@ -41,6 +41,7 @@ from orthostudio.clouds.sources import (
     code_of,
     level_of,
     read_at,
+    tops_under,
 )
 from orthostudio.clouds.tile import TileClouds, held_by_id, same_laid, unready
 from orthostudio.errors import OsxpError
@@ -268,6 +269,9 @@ class CloudState:
     """Why it waits (``waiting``): the key of its line."""
     actions: frozenset[str]
     task: Mapping[str, Any] | None = None
+    tops: Mapping[str, int] = field(default_factory=dict)
+    """The sharpest level each source is read at under it (``sources.tops_under``): the levels
+    it may take, the level each line of its menu is read at."""
 
     @property
     def unasked(self) -> bool:
@@ -281,12 +285,7 @@ class CloudState:
         """What a click on its outline does."""
         return next((a for a in ("tick", "untick") if a in self.actions), None)
 
-    def page(
-        self,
-        previews: Mapping[str, Any] | None = None,
-        alone: bool = True,
-        tops: Mapping[str, int] | None = None,
-    ) -> dict[str, Any]:
+    def page(self, previews: Mapping[str, Any] | None = None, alone: bool = True) -> dict[str, Any]:
         """Its row as the page shows it, with its preview in ``previews`` when After needs one;
         on the map, a found cloud's number (``numbered``); and while a task of it is under way
         and it is the one cloud at work (``alone``), a spinner beside its name that stops it, from
@@ -318,9 +317,9 @@ class CloudState:
             "label": label,
             "numbered": c["kind"] == "found",
             "preview": (previews or {}).get(c["id"]),
-            "menu": _menu(c, self.source, self.held, tops or {}),
-            "levels": list(levels_of(tops or {})),
-            "level": _level(c, tops or {}),
+            "menu": _menu(c, self.source, self.held, self.tops),
+            "levels": list(levels_of(self.tops)),
+            "level": _level(c, self.tops),
         }
 
 
@@ -513,15 +512,12 @@ class View:
     fine: bool = False
     """Whether a fine search may be asked: the tile's textures are finer than the map's level,
     which the quick search reads (``picture.fine_level``)."""
-    tops: Mapping[str, int] = field(default_factory=dict)
-    """The sharpest level each source is read at for the tile (``sources.tops``): the levels a
-    cloud may take (:func:`levels_of`), the level each line of a menu is read at."""
 
     def rows(self, previews: Mapping[str, Any] | None = None) -> list[dict[str, Any]]:
         """Every cloud's row as the page shows it (:meth:`CloudState.page`), a cloud's work shown
         by its own when it is the one at work."""
         alone = self.counts["working"] == 1
-        return [s.page(previews, alone, self.tops) for s in self.clouds]
+        return [s.page(previews, alone) for s in self.clouds]
 
     def cloud(self, cid: str) -> CloudState:
         for s in self.clouds:
@@ -545,8 +541,8 @@ class View:
         if s is None or action not in s.actions:
             return False
         if action == "level":
-            return level is None or level in levels_of(self.tops)
-        menu = _menu(s.cloud, s.source, s.held, self.tops)
+            return level is None or level in levels_of(s.tops)
+        menu = _menu(s.cloud, s.source, s.held, s.tops)
         offered = {i["source"] for i in menu if i["proposable"]}
         return action != "choose" or source in offered
 
@@ -657,16 +653,18 @@ def view(
     ``None`` when not read), its tasks (``Task.view``s) and whether anything of it is under way
     (``Tasks.busy``: a task, or what follows one): its view, decided here alone. ``tops``: the
     sharpest level each source is read at for the tile (``sources.tops``; none when its folder is
-    not read)."""
+    not read), each cloud's its own under it (``sources.tops_under``)."""
     heights = dict(tops or {})
+    under = tops_under(shown.textures, heights) if shown is not None else lambda _r: heights
     kinds = {t["kind"] for t in tasks}
     can = possible(state, kinds)
     of_cloud = {t["cloud"]: t for t in tasks if t.get("cloud")}
     holds = held_by_id(shown)
     wanted = []
     for c in cl.clouds:
-        source, options, wait = _options(c, holds.get(c["id"]), heights)
-        wanted.append((c, source, holds.get(c["id"]), options, wait))
+        mine = under(c["rings"])
+        source, options, wait = _options(c, holds.get(c["id"]), mine)
+        wanted.append((c, source, holds.get(c["id"]), options, wait, mine))
     asked = [_as_it_was(w[3], of_cloud.get(w[0]["id"])) for w in wanted]
     plan = plan_folder(tile, shown, asked) if shown is not None else None
     kept = {e["id"]: e for e in (plan.laid if plan is not None else ())}
@@ -679,7 +677,7 @@ def view(
     previews = [
         (e, sorted((bare if i in again else remade) & set(e["parts"]))) for i, e in kept.items()
     ]
-    for c, source, held, options, wait in wanted:
+    for c, source, held, options, wait, mine in wanted:
         lays = kept.get(c["id"])
         task = of_cloud.get(c["id"])
         was = task.get("was") if task is not None else None
@@ -694,7 +692,7 @@ def view(
             row, actions = "frozen", frozenset()
         else:
             row, actions = fact, _actions(c, source, held, why) & can
-        clouds.append(CloudState(c, source, held, lays, row, why, actions, task))
+        clouds.append(CloudState(c, source, held, lays, row, why, actions, task, mine))
         facts.append(fact)
     counts = _counts(facts, shown, remade, tasks)
     searching = "find" in kinds
@@ -733,7 +731,6 @@ def view(
         asked,
         [(e, names) for e, names in previews if names],
         bool(fine),
-        heights,
     )
 
 

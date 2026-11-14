@@ -114,11 +114,14 @@ The Plan's map, brought over the tile; the Plan's steps make way for the cloud p
   cannot be chosen greyed (`sources.PROPOSABLE`: the same photo, no picture; the source whose
   images the tile shows of it always may be); and its **level**, for all its sources (`level`,
   `levels`, `state.levels_of`): **Auto** (none: the best line of any level), or one from the
-  tile's finest down to ZL11 (`sources.COARSEST`; `View.allows` refuses another). A level chosen
+  finest of the textures under the cloud down to ZL11 (`sources.COARSEST`; `View.allows` refuses
+  another, `CLOUD_NOT_NOW`). A level chosen
   has every source, the tile's own too, judged under the cloud at that level, read there
   (`find.screen`'s `finest`; ZL16, ZL15 and ZL14 all read at the search's ZL14 had said the same)
-  as the search judges, in a task of the cloud's (`clouds_api.try_level`, `tried_under`, shared
-  with an outline's try: "trying the sources"); then the level and what they have there are
+  as the search judges, the tile's own but at its sharpest, which is the tile's photo, in a task
+  of the cloud's (`clouds_api.try_level`, `tried_under`, shared with an outline's try: "trying the
+  sources"; a Stop heard between two windows read: as fine as ZL16 over a large cloud, a minute and
+  more); then the level and what they have there are
   written together (`cloudlist.set_level`: a try stopped, refused or failed leaves the cloud as it
   was), and the best there is ticked and its images got. Another source picked stays at that
   level ("I want to try EOX at ZL12": ZL12, then EOX); the tile's own source keeps its line beside
@@ -596,8 +599,10 @@ nothing. One reading has one code (`sources.code_of`): the source itself at its 
 tile (Bing on a ZL16 tile, EOX asked ZL16 which has none finer than ZL14), `Arc:11` below; two
 codes of one reading had the same images got twice and a change counted where there was none.
 `sources.resolve` makes `Arc:11` the source with that level as its finest, its pieces the source's
-own; `sources.read_at` says the level the tile reads a code at. A source with no picture at its
-own level is judged at the first coarser level that has one. A level showing the same photo as the level above has the same clouds,
+own; `sources.read_at` says the level a code is read at. The sharpest level of each source is each
+cloud's own (`sources.tops_under`: the finest texture its outline reaches; a cloud in a ZL16 square
+of a tile with an airport at ZL18 was offered ZL18 and ZL17, read as ZL16). A source with no picture
+at its own level is judged at the next coarser level, where it has one. A level showing the same photo as the level above has the same clouds,
 only blurrier; a window holding fewer than 64 of its pixels at that level stops there
 (`find.ALIKE_PIXELS`): a small cloud keeps its sharp sources. A blurred photo is a cloud's source
 only where no sharp one is clear, so it is looked for there alone: under every cloud, a search of
@@ -640,8 +645,9 @@ its preview is made then, in the task, as After will show it (2.6).
 `laying.lay_texture`, from the texture as the build made it: its first level decoded; each cloud
 laid over it in the list's order (`clouds/layer.py`): inside the outline the source's pixels,
 centre on centre, in the colours of `match`; a source four times or more coarser than the texture
-sharpened a little, its blur no wider than 32 texture pixels (`layer.SHARPEN_SIGMA_MAX`, the widest
-before the levels: a source at ZL11 on a texture at ZL19 asked 256, 15 s a window). The edge is soft (24 px), drawn past the window and the tile's edge before it
+sharpened a little, its blur no wider than 64 texture pixels (`layer.SHARPEN_SIGMA_MAX`: EOX at ZL14
+on a texture at ZL20 as before the levels; a source at ZL11 on a texture at ZL19 asked 256, 15 s a
+window). The edge is soft (24 px), drawn past the window and the tile's edge before it
 is blurred, so a seam between textures is no edge of the cloud. Where the source has no picture
 nothing is laid: a hole is worse than a cloud. The texture's levels are then made again from the
 laid first level as the build makes them (`mips.mip_chain`, `gamma22`), and in each level only
@@ -699,7 +705,7 @@ Earth, around no ground or off the tile, `cloudlist.outline_problem`), `CLOUD_DE
 | `GET /api/clouds/{tile}` | The view (1.5): the source its photo was built from (`provider`), the tile's state and line, what it allows (`allowed`), the words of After and Before (`views`; `clouds.drawing` for one whose picture is drawn aside), whether something is under way (`busy`, a picture drawn aside, or failed until asked again, too), its picture (Before) and After's (`after`; the last one of that view laid whole, of the same build, while its next is drawn, 2.6), whether a fine search reads more (`fine`), every row with its line and tone, its actions, what a click on it does (`toggle`) and its tooltip (`tip`), its task and After's preview of it, the count, Apply's and Restore's buttons and questions (`texts`), the tile's own tasks with their `actions`, a picture that could not be drawn, else its last failed task (`failed`) |
 | `GET /api/clouds/{tile}/tasks` | `{busy, failed}`: whether something of the tile is under way and its last failure, nothing of it read or drawn: what the Library's bin waits on (API level 51) |
 | `POST /api/clouds/{tile}/find` | `{fine?}`: starts the quick search, or the fine one where it is offered |
-| `POST /api/clouds/{tile}/picks` | `{action, id?, source?, level?}`: `tick`, `untick` or `choose` of a cloud, as its state allows, or without `id` of every cloud that allows it; gets the images when its state asks them. `level` of one cloud: `null` (Auto) or one of its `levels`, every source judged there, then the best's images got (`CLOUD_INVALID` for another level) |
+| `POST /api/clouds/{tile}/picks` | `{action, id?, source?, level?}`: `tick`, `untick` or `choose` of a cloud, as its state allows, or without `id` of every cloud that allows it; gets the images when its state asks them. `level` of one cloud: `null` (Auto) or one of its `levels`, every source judged there, then the best's images got (`CLOUD_NOT_NOW` for another level, `CLOUD_INVALID` for no whole number) |
 | `POST /api/clouds/{tile}/check` | `{id?, again?}`: gets a cloud's images, or of every cloud whose state offers it; `again`, **Get its images**: its pieces kept as no picture asked again |
 | `POST /api/clouds/{tile}/outlines` | `{polygon: [[lon, lat], ...]}`: an outline, its sources tried |
 | `DELETE /api/clouds/{tile}/outlines/{id}` | Removes an outline |
