@@ -175,11 +175,12 @@ def reading(c: Mapping[str, Any], code: str) -> Mapping[str, Any]:
     asked. What a piece said (``sources.ASK_AGAIN``: no answer, refused, a page) is not what the
     source has: the try's stands, and the cloud's line says it, offering to ask again. A source
     is so left out by what it has there alone, never by a passing answer."""
-    got = got_of(c, code)
-    if got and got.get("answer") and got["answer"] not in ASK_AGAIN:
-        return got
-    said = (c.get("tries") or {}).get(code) or (c.get("screening") or {}).get(code)
-    return said if said and said.get("answer") else {}
+    tried_there = (c.get("tries") or {}).get(code)
+    layers = (got_of(c, code), tried_there, (c.get("screening") or {}).get(code))
+    said = [x for x in layers if x and x.get("answer")]
+    # what a piece said leaves the one before, at each layer (EOX refused under load in a level's
+    # try showed refused in Auto over the search's clear, two reviews, 2026-11-14)
+    return next((x for x in said if x["answer"] not in ASK_AGAIN), said[-1] if said else {})
 
 
 def proposable(c: Mapping[str, Any], code: str, held: Mapping[str, Any] | None = None) -> bool:
@@ -318,7 +319,7 @@ class CloudState:
             "preview": (previews or {}).get(c["id"]),
             "menu": _menu(c, self.source, self.held, self.tops),
             "levels": list(levels_of(self.tops)),
-            "level": _level(c, self.tops),
+            "level": _asked(task) if _asked(task) is not None else _level(c, self.tops),
         }
 
 
@@ -420,6 +421,13 @@ def levels_of(tops: Mapping[str, int]) -> tuple[int, ...]:
     cloud no finer than that."""
     finest = max(tops.values(), default=0)
     return tuple(range(finest, COARSEST - 1, -1)) if finest > COARSEST else ()
+
+
+def _asked(task: Mapping[str, Any] | None) -> int | None:
+    """The level a try of the cloud is for, while it runs (its task's ``was``): its list showed
+    the old one for the seconds the try took, and the list holds the new one at its end alone
+    (``cloudlist.set_level``; two reviews, 2026-11-14)."""
+    return ((task or {}).get("was") or {}).get("level")
 
 
 def _level(c: Mapping[str, Any], tops: Mapping[str, int]) -> int | None:

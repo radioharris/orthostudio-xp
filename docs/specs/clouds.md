@@ -122,12 +122,13 @@ The Plan's map, brought over the tile; the Plan's steps make way for the cloud p
   as the search judges, the tile's own but at its sharpest, which is the tile's photo, in a task
   of the cloud's (`clouds_api.try_level`, `tried_under`, shared with an outline's try: "trying the
   sources"; a Stop heard between two windows read: as fine as ZL16 over a large cloud, a minute and
-  more); then the level and what they have there are
-  written together (`cloudlist.set_level`: a try stopped, refused or failed leaves the cloud as it
-  was), and the best there is ticked and its images got. Another source picked stays at that
-  level ("I want to try EOX at ZL12": ZL12, then EOX); the tile's own source keeps its line beside
-  the level's. A new search of a cloud found again, and Discard, bring it back to Auto
-  (`cloudlist._choose`, the one way a cloud's choice is set again); its line
+  more), the level asked shown meanwhile by its task (`was`, `state._asked`); then the level and
+  what they have there are written together (`cloudlist.set_level`: a try stopped, refused or
+  failed writes nothing, the cloud as it was), and the best there is ticked and its images got.
+  Another source picked stays at that level ("I want to try EOX at ZL12": ZL12, then EOX); the
+  tile's own source keeps its line beside the level's. Discard, and a new search finding an
+  unticked cloud again, bring it back to Auto (`cloudlist._choose`); a ticked cloud keeps its
+  level through a search, as it keeps its source; its line
   (1.5),
   under the menu: none when it is replaced or to be, as its tick and its menu say (held, ready),
   none while a task of it runs (its spinner says it; its label on the map); **Get its images** when
@@ -368,8 +369,8 @@ fails a build: an error there is written in the log and the build goes on.
 characters, never given again on that tile), its number, its kind (`found`, `drawn`), its outline,
 its area, what each source has under it (`screening`, the search's), its tick, the source the user
 chose (`chosen`, none for the best), its level (`level`, absent for Auto) and what each source has
-there (`tries`, a level's, absent until one is tried; `cloudlist.begin_level`, `set_level`,
-`undo_level`), and per source tried its check (its answer, fit, entry and how it was judged,
+there (`tries`, a level's, absent until one is tried, written with its level by
+`cloudlist.set_level`), and per source tried its check (its answer, fit, entry and how it was judged,
 `judged`); and the clouds Apply last laid in the tile (`laid`, entries in laying
 order). It keeps what the user did; what each cloud is follows from it (1.5). It knows every cloud
 the tile shows replaced: one it does not (its list put aside, or written on another computer) is

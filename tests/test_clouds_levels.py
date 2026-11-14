@@ -496,14 +496,22 @@ def test_discard_keeps_a_clouds_source_as_before() -> None:
     assert state.reading(c, "EOX:12")["answer"] == "clear"
 
 
-def test_a_level_is_shown_from_the_start_of_its_try_and_undone_when_it_does_not_end() -> None:
-    # the level list jumped back to the old one for the seconds the try took (a review)
-    cl, c = _list()
-    had = cloudlist.begin_level(cl, c["id"], 12)
-    assert had is None and c["level"] == 12 and c["chosen"] is None
-    cloudlist.undo_level(cl, c["id"], had)
-    assert "level" not in c
-    cloudlist.set_level(cl, c["id"], c["rings"], 14, {})
-    had = cloudlist.begin_level(cl, c["id"], 12)
-    cloudlist.undo_level(cl, c["id"], had)
-    assert c["level"] == 14
+def test_a_passing_answer_of_a_levels_try_leaves_the_searchs_verdict() -> None:
+    # EOX refused under load in a level's try showed refused in Auto over the search's clear
+    c = {
+        "screening": {"EOX": {"answer": "clear", "fit": 80}},
+        "tries": {"EOX": {"answer": "refused", "fit": 0}},
+        "checks": {},
+    }
+    assert state.reading(c, "EOX")["answer"] == "clear"
+    assert state.best_of(c, CHOICE) == "EOX"
+    alone = {"screening": {}, "tries": {"EOX": {"answer": "refused", "fit": 0}}, "checks": {}}
+    assert state.reading(alone, "EOX")["answer"] == "refused"  # said, offering to ask again
+
+
+def test_the_level_asked_is_shown_from_its_tries_task_the_list_as_it_was() -> None:
+    # during the try the list lost its source and showed the old level (two reviews)
+    trying = {"kind": "outline", "was": {"row": "found", "lays": None, "level": 12}}
+    assert state._asked(trying) == 12
+    assert state._asked({"kind": "check", "was": {"row": "found", "lays": None}}) is None
+    assert state._asked(None) is None

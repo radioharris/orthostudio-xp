@@ -69,8 +69,8 @@ the same photo as the tile, which would bring the cloud back, or with no picture
   source is tried under the cloud at that level, in a few seconds (a minute or more for a large
   cloud at a fine level; **Stop** ends it): the source list then says what
   each has there, the best is taken and its images fetched. Choose another source and it stays at
-  that level: to try EOX at ZL12, choose ZL12, then EOX. Stopped, the cloud stays as it was; a new
-  search finding it again, or *Discard changes*, puts it back to Auto. The cloud's place looks as
+  that level: to try EOX at ZL12, choose ZL12, then EOX. Stopped, the cloud stays as it was;
+  *Discard changes*, or a new search finding it again while it is unticked, puts it back to Auto. The cloud's place looks as
   blurred as its level.
 - **Tick all** and **Untick all**, above the list, tick or untick every cloud at once. Whatever
   you click, a spinner turns on it, in the cloud's line or in the button, until the app has

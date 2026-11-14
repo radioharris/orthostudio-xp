@@ -279,23 +279,6 @@ def pick(cl: CloudList, cid: str, action: str, source: str | None = None) -> Non
     c["tick"] = action != "untick"
 
 
-def begin_level(cl: CloudList, cid: str, level: int | None) -> int | None:
-    """The level of the cloud ``cid`` shown from the start of its try (its list jumped back to
-    the old one for the seconds the try took, a review, 2026-11-14), its source as it was until
-    the try ends (:func:`set_level`); the level it had, for :func:`undo_level`."""
-    c = cl.get(cid)
-    before: int | None = c.get("level")
-    _level_of(c, level)
-    return before
-
-
-def undo_level(cl: CloudList, cid: str, before: int | None) -> None:
-    """A level's try stopped, refused or failed: the cloud's level as it was."""
-    c = next((x for x in cl.clouds if x["id"] == cid), None)
-    if c is not None:
-        _level_of(c, before)
-
-
 def set_level(
     cl: CloudList,
     cid: str,
@@ -305,10 +288,10 @@ def set_level(
 ) -> None:
     """The level the sources of the cloud ``cid`` are read at (``None``: Auto, any), with what
     they have there (``verdicts``, its try, kept apart from the search's in ``tries``: Auto shows
-    what the search found and what was taken), written once the try is over (shown from its start,
-    :func:`begin_level`; a try stopped, refused or failed is undone, :func:`undo_level`: a level
-    kept without its try left a cloud with no source, a review, 2026-11-14). Its source is then
-    the best there. Nothing when the cloud left the list or changed outline meanwhile."""
+    what the search found and what was taken), written together once the try is over (shown from
+    its start by its task, ``state._asked``): a try stopped, refused or failed writes nothing (a
+    level kept without its try left a cloud with no source, a review, 2026-11-14). Its source is
+    then the best there. Nothing when the cloud left the list or changed outline meanwhile."""
     c = next((x for x in cl.clouds if x["id"] == cid), None)
     if c is None or c["rings"] != rings:
         return
