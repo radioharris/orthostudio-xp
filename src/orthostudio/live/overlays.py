@@ -74,20 +74,25 @@ def squares_of(folder: Path) -> dict[Square, Path]:
     return out
 
 
-def overlay_folders(xplane: Path, sources: Sequence[Path], root: Path) -> list[Path]:
+def overlay_folders(
+    xplane: Path, sources: Sequence[Path], root: Path, others: Sequence[Path] = ()
+) -> list[Path]:
     """Where the overlays of Live's squares are, the first that has a square giving it: Live's own
     first (``regions/y_osxp_overlays``, X-Plane's roads, forests and buildings of every square of
     OrthoStudio XP's mesh), then AutoOrtho's where a pilot has
     them: Live's install of a region keeps them beside its mesh (``regions/y_ao_<id>``), in
     whichever Live folder (its marker: a cold test flight's Live streams onto the region of the
     user's, tools/live/flights/fly.py); AutoOrtho's installer puts every region's in one pack,
-    ``yAutoOrtho_Overlays``, used here whether it is enabled or not."""
+    ``yAutoOrtho_Overlays``, used here whether it is enabled or not; last, those of the folder of
+    another tool's mesh chosen in the Settings, as Live's start found them (``others``,
+    :func:`orthostudio.live.scenery.other_mesh`), as its mesh."""
     out = [aoregions.regions_dir(root) / OSXP_OVERLAYS]
     for source in sources:
         region = source.name.removeprefix("z_ao_")
         if source == aoregions.mesh_dir(root, region) or (source / aoregions.MARKER).is_file():
             out.append(source.with_name(f"y_ao_{region}"))
     out.append(custom_scenery_dir(xplane) / AUTOORTHO_OVERLAYS)
+    out += others  # those of another tool's mesh, last
     return [f for f in out if (f / "Earth nav data").is_dir()]
 
 
@@ -177,6 +182,7 @@ def build(
     covered: Collection[Square],
     setting: str = "auto",
     log: Log = print,
+    others: Sequence[Path] = (),
 ) -> int:
     """Live's overlay pack brought up to date for the squares of ``pack_dir``, only the squares
     that changed placed or taken away: returns how many squares have their roads, forests and
@@ -190,7 +196,7 @@ def build(
     ground = set(squares_of(pack_dir)) - set(covered)
     drawn = other_overlays(xplane)
     available: dict[Square, tuple[Path, bool]] = {}  # square: its overlay, whether Live's own
-    for folder in overlay_folders(xplane, sources, root):
+    for folder in overlay_folders(xplane, sources, root, others):
         own = folder.name == OSXP_OVERLAYS
         for square, dsf in squares_of(folder).items():
             available.setdefault(square, (dsf, own))

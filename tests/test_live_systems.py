@@ -114,6 +114,7 @@ def test_the_other_programs_streaming_ortho_by_their_processes(monkeypatch, tmp_
         (["XplaneMapEnhanc"], ["XPME"]),  # Linux keeps 15 characters
         (["autoortho"], ["AutoOrtho"]),
         (["AutoOrtho.EXE", "XplaneMapEnhancement.exe"], ["XPME", "AutoOrtho"]),
+        (["orthostreamxp.exe"], ["OrthoStreamXP"]),  # Windows only
         (["X-Plane", "OrthoStudio XP", "python3.14"], []),
     ):
         listed = {pid: (name, 0.0) for pid, name in enumerate(names, 10)}

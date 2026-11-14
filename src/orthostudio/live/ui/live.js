@@ -178,13 +178,21 @@ function streamersRunning(names) {
   return t("checks.streamers_running", { names: `${names.slice(0, -1).join(", ")} ${t("checks.and")} ${last}` });
 }
 
+/** A text saying there is no mesh: the folder of another tool's mesh gone when it is, as the
+ *  start says it; another tool's mesh offered only when none is chosen. */
+function noMesh(key, checks) {
+  const other = checks?.other_mesh;
+  if (other && !other.there && key === "checks.mesh_missing") return "checks.other_mesh_gone";
+  return other ? key : `${key}_other`;
+}
+
 /** What keeps a stream from starting, in words, or null. */
 function blocking(checks) {
   if (!checks.supported) return t("checks.unsupported");
   if (!checks.xplane) return t("checks.xplane_missing", { problem: checks.xplane_problem || "" });
   if (checks.folder_problem) return t("checks.folder_problem", { problem: checks.folder_problem });
   if (checks.ortho_streamers?.length) return streamersRunning(checks.ortho_streamers);
-  if (!checks.mesh_found && !checks.region_ready) return t("checks.mesh_missing", { path: checks.mesh });
+  if (!checks.mesh_found && !checks.region_ready) return t(noMesh("checks.mesh_missing", checks), { path: checks.mesh });
   if (checks.xplane_running && !checks.installed) return t("checks.xplane_running_late");
   return null;
 }
@@ -315,7 +323,7 @@ function drawFlight(status) {
   const notice = stream?.notice;
   $("flight-notice").hidden = !notice;
   const said = notice
-    ? t(notice.installed ? "flight.notice_installed" : "flight.notice", { region: t(`region.${notice.region}`) })
+    ? t(notice.installed ? "flight.notice_installed" : noMesh("flight.notice", status.checks), { region: t(`region.${notice.region}`) })
     : "";
   if (said !== noticeDrawn) { // drawn again only when it changes: its button keeps the click
     noticeDrawn = said;
@@ -445,9 +453,11 @@ function drawChecks(status) {
     add("done", t("checks.xplane_stopped"));
   }
   if (c.mesh) {
-    const names = (c.mesh_regions || []).map((id) => t(`region.${id}`)).join(", ") || c.mesh;
+    // a region's name, else the folder's (another tool's mesh)
+    const named = (id) => (t(`region.${id}`) === `region.${id}` ? id : t(`region.${id}`));
+    const names = (c.mesh_regions || []).map(named).join(", ") || c.mesh;
     add(c.mesh_found || c.region_ready ? "done" : "failed",
-      t(c.mesh_found ? "checks.mesh" : "checks.mesh_missing", { path: names }), !c.mesh_found);
+      t(c.mesh_found ? "checks.mesh" : noMesh("checks.mesh_missing", c), { path: names }), !c.mesh_found);
   }
   add(c.region_ready ? "done" : "info", t(c.region_ready ? "checks.region" : "checks.region_todo"));
   // the user's own tiles: X-Plane shows them, and Live leaves their squares alone
@@ -524,6 +534,32 @@ function drawFolder(status) {
   const path = status.checks.folder;
   pathLine($("folder-now"), t("folder.now", { path }), path, status.platform);
   $("set-folder").placeholder = status.checks.folder_default;
+  drawOtherMesh(status.checks.other_mesh);
+}
+
+/** What the folder of another tool's mesh gives Live: its meshes, its overlays, those left aside
+ *  and why (orthostudio.live.scenery.other_mesh); nothing when none is chosen. */
+function drawOtherMesh(other) {
+  const line = $("other-mesh-found");
+  line.hidden = !other;
+  if (!other) return;
+  line.classList.toggle("is-warn", !other.there || !other.meshes.length);
+  if (!other.there) {
+    line.textContent = t("other_mesh.gone");
+    return;
+  }
+  const used = other.next_start ? "other_mesh.meshes_next" : "other_mesh.meshes";
+  const said = [other.meshes.length ? t(used, { names: other.meshes.join(", ") }) : t("other_mesh.none")];
+  if (other.overlays.length) said.push(t("other_mesh.overlays", { names: other.overlays.join(", ") }));
+  else if (other.meshes.length) said.push(t("other_mesh.no_roads"));
+  if (other.refused.length) {
+    // a few, the rest counted: X-Plane's folder chosen lists every tile of Custom Scenery
+    const shown = other.refused.slice(0, 5);
+    const names = shown.map((r) => `${r.name} (${t(`other_mesh.why_${r.why}`)})`).join(", ");
+    const more = other.refused.length - shown.length;
+    said.push(more ? t("other_mesh.refused_more", { names, count: more }) : t("other_mesh.refused", { names }));
+  }
+  line.textContent = said.join(" ");
 }
 
 /** The X-Plane Live works with, the others found, and whether it can be changed now. */
@@ -1124,6 +1160,7 @@ function fillSettings(settings) {
   fillDecal(decalList, settings.decal);
   $("set-disk").value = String(settings.disk_gb);
   $("set-folder").value = settings.folder || "";
+  $("set-other-mesh").value = settings.other_mesh || "";
   $("set-simbrief").value = settings.simbrief_user || "";
   for (const input of document.querySelectorAll('input[name="app_home"]')) {
     input.checked = input.value === (settings.app_home || "ask");
@@ -1160,6 +1197,7 @@ function formSettings() {
   return {
     disk_gb: Number($("set-disk").value),
     folder: $("set-folder").value.trim(),
+    other_mesh: $("set-other-mesh").value.trim(),
     simbrief_user: $("set-simbrief").value.trim(),
     app_home: document.querySelector('input[name="app_home"]:checked')?.value || saved?.app_home || "ask",
     overlays: document.querySelector('input[name="overlays"]:checked')?.value || saved?.overlays || "auto",
@@ -1856,6 +1894,8 @@ function boot() {
     drawSimbrief();
   });
   $("folder-choose").addEventListener("click", () => chooseFolder($("set-folder"), t("folder.prompt"), last?.checks.folder));
+  $("other-mesh-choose").addEventListener("click", () =>
+    chooseFolder($("set-other-mesh"), t("other_mesh.prompt"), last?.checks.other_mesh?.folder));
   $("xplane-choose").addEventListener("click", () => chooseFolder($("set-xplane"), t("xplane.prompt"), last?.checks.xplane));
   $("delete-btn").addEventListener("click", openDelete);
   $("delete-here").addEventListener("click", openDelete);

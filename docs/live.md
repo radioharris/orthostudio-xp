@@ -100,7 +100,8 @@ How the flights are made and measured: [specs/live/flights.md](specs/live/flight
 1. **Install the mesh of where you fly.** Live lays its photos on a mesh, the ground's shape, in six
    regions: Europe, North America, South America, Africa, Asia, Australia and the Pacific. Settings,
    first question, Install (see [The mesh, by region](#the-mesh-by-region)). A region AutoOrtho's
-   installer already put in X-Plane is found and used as it is.
+   installer already put in X-Plane is found and used as it is, and so is a mesh in AutoOrtho's
+   format you keep elsewhere, once its folder is chosen.
 2. **Choose the photos and the zoom**, at the top of Live's tab: the photo source (Bing Maps by
    default), the zoom away from airports and the zoom around them (ZL16 and ZL18 by default).
 3. **Optionally, your SimBrief name** (Settings, Flight plan): Live then follows your plan in
@@ -390,6 +391,29 @@ panel says where each one is.
 A region AutoOrtho installed on its own is still recognised, and left as it is; Live no longer
 offers to install AutoOrtho's. In a terminal, `python -m orthostudio.live regions list`,
 `regions install eur` and `regions remove eur` still handle AutoOrtho's regions.
+
+**Another tool's mesh.** A mesh in AutoOrtho's format kept outside X-Plane, the copy another
+streamer downloads or AutoOrtho's own pack moved out of `Custom Scenery`, can stand in where Live
+has no other mesh: under "Another tool's mesh", choose its folder, then Save. Live looks at the
+packs in it, down to three folders below, whatever their names, and tells ground from overlays as
+X-Plane does. Ground whose terrain files name photos is a mesh; Live leaves aside a tile that has
+its own photos, ground with no photos to lay (X-Plane's own scenery, HD Mesh's land classes, Live's
+own regions), and a copy of a region it already has (AutoOrtho's Europe in X-Plane and another copy
+of it there). As its roads, forests and buildings it takes X-Plane's own, the overlays AutoOrtho's
+pack holds: of those packs, the one that covers most of the folder's mesh, copies included. An
+airport, simHeaven, a Landmark or Global Forests lying in the same folder is not taken, and a mesh
+moved without its roads has none from there. The line under the setting says what it uses and what
+it leaves aside, that it takes no roads from the folder (chosen one folder too deep, say), or that
+the folder is not there (a disk unplugged). Choose the folder that holds both the mesh and its
+roads: for AutoOrtho's pack moved, the one holding `z_autoortho` and `yAutoOrtho_Overlays`.
+
+Live's regions come first, then AutoOrtho's in X-Plane, then this folder, for the mesh and for the
+roads alike. Nothing in that folder is changed. Its mesh and its roads are taken at Live's start,
+and kept until the next one: the line says "Used from Live's next start" until then. Each start says
+in Live's log what it takes there, or that the folder is not there; when it is the only mesh, the
+window and the start then say so. On Windows, a folder on a network drive needs Developer Mode on:
+without it, Windows cannot link Live's scenery to it. There are no town lights at night on it: they
+come with Live's regions.
 
 Where no region installed has a mesh, X-Plane shows its own scenery, without photos: Live says so,
 in its window and in a small panel in X-Plane ("Live: no mesh here: install North America in the

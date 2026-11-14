@@ -16,6 +16,7 @@ from __future__ import annotations
 import contextlib
 import json
 import os
+import sys
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
@@ -36,6 +37,8 @@ from orthostudio.live.pack import (
 )
 from orthostudio.live.rings import DEFAULT_MARGIN
 from orthostudio.live.scenery import (
+    NO_OTHER_MESH,
+    OtherMesh,
     default_sources,
     find_xplane,
     install_link,
@@ -43,6 +46,10 @@ from orthostudio.live.scenery import (
     list_live,
     ortho_streamers,
     osxp_regions,
+    other_mesh_folder,
+    other_mesh_found,
+    other_mesh_said,
+    other_mesh_there,
     quality_said,
     uninstall_link,
     unlist_live,
@@ -132,6 +139,8 @@ class Prepared:
     # {(lat, lon): pack}: squares whose ground X-Plane takes from the user's own tiles
     covered: dict = field(default_factory=dict)
     sources: list = field(default_factory=list)  # the regions the pack is made of
+    # the overlay packs of another tool's mesh, as the start found them with its mesh
+    other_overlays: list = field(default_factory=list)
     clock: StartClock = field(default_factory=StartClock)  # the start's steps, timed
 
 
@@ -297,9 +306,20 @@ def prepare(options: Options, log: Log) -> Prepared:
     from orthostudio.live import winsearch
 
     winsearch.keep_out(live_root(), log)  # Windows: its files too many for the indexer
-    sources = [options.source] if options.source else default_sources(xp_dir)
+    # another tool's mesh as it is now, once for the start: its mesh and its roads go together
+    other = NO_OTHER_MESH if options.source else other_mesh_found(xp_dir, live_root(), fresh=True)
+    sources = [options.source] if options.source else default_sources(xp_dir, other=other)
     from orthostudio.live.names import terrain_folder
 
+    chosen = None if options.source else other_mesh_folder()
+    if chosen is not None:  # said at each start: its disk unplugged went unnoticed otherwise
+        log(_other_said(chosen, other))
+    if not sources and chosen is not None and not other_mesh_there(chosen):
+        raise RefusedError(
+            f"no mesh: the folder of another tool's mesh, {chosen}, is not there (its disk "
+            "unplugged?), and no region is installed. Plug it in, or install the region you fly "
+            "over in the Live window (Settings, first question)"
+        )
     if not sources or not all(terrain_folder(s).is_dir() for s in sources):
         # the files the DSFs name come from the regions while Live streams, round the aircraft
         # (orthostudio.live.names): a region taken away leaves nothing to make them from, where the
@@ -313,6 +333,11 @@ def prepare(options: Options, log: Log) -> Prepared:
             )
             + "in the Live window (Settings, first question) or with "
             "`python -m orthostudio.live regions install <region>`"
+            + (
+                ""
+                if gone or chosen is not None
+                else "; or choose another tool's mesh in its Settings"
+            )
         )
     clock.done("checks")
     fix = None
@@ -329,7 +354,18 @@ def prepare(options: Options, log: Log) -> Prepared:
     # the pack's one-time work (hundreds of thousands of files) in the system's background mode for
     # the disk: every other program keeps it (machine.background_io)
     with machine.background_io():
-        setup_region(sources, pack_dir, log=log, zooms=zooms, xplane_running=xplane_running)
+        try:
+            setup_region(sources, pack_dir, log=log, zooms=zooms, xplane_running=xplane_running)
+        except OsxpError as e:
+            if e.code != "XP_LINK_FAILED" or not other.meshes or sys.platform != "win32":
+                raise
+            # its error named Live's pack, not the folder the pilot chose, the likeliest cause:
+            # Windows' junctions reach no network drive
+            raise RefusedError(
+                f"{e.message} If it is a region of the folder of another tool's mesh, {chosen}, "
+                "on a network drive: Windows links it only with Developer Mode. Turn it on, or "
+                "copy the mesh onto a disk of this computer"
+            ) from e
         set_decal(pack_dir, options.decal, log=log, xplane_running=xplane_running)
         set_night(pack_dir, options.night, log=log, xplane_running=xplane_running)
         left = remove_temps(pack_dir)  # before anything writes there
@@ -356,7 +392,16 @@ def prepare(options: Options, log: Log) -> Prepared:
     covered = own_ground(xp_dir, pack_dir, options, log)
     try:
         clock.done("own tiles")
-        _overlays(xp_dir, pack_dir, sources, covered, options.overlays, xplane_running(), log)
+        _overlays(
+            xp_dir,
+            pack_dir,
+            sources,
+            covered,
+            options.overlays,
+            xplane_running(),
+            log,
+            other.overlays,
+        )
         clock.done("overlays")
         gate = None
         # X-Plane loads plugins at start-up: if it is running, only one already there counts
@@ -391,7 +436,9 @@ def prepare(options: Options, log: Log) -> Prepared:
             "every level of the zoom chosen; "
             f"sharp up to {options.camera_reach_km:.0f} km farther for external views"
         )
-        return Prepared(xp_dir, pack_dir, gate, fix, covered, list(sources), clock)
+        return Prepared(
+            xp_dir, pack_dir, gate, fix, covered, list(sources), list(other.overlays), clock
+        )
     except BaseException:
         # a start that ends here unchecks the line it checked, as a stop does: left checked, it
         # would lose its place at X-Plane's next start; one checked before it (another Live, or
@@ -399,6 +446,22 @@ def prepare(options: Options, log: Log) -> Prepared:
         if not already:
             unlist_live(xp_dir, log=log)
         raise
+
+
+def _other_said(chosen: Path, other: OtherMesh) -> str:
+    """The start's line on the folder of another tool's mesh, what its window says
+    (:func:`other_mesh_said`) in words."""
+    said = other_mesh_said(chosen, other)
+    if not said["there"]:
+        return f"another tool's mesh: {chosen} is not there (its disk unplugged?): left out"
+    line = f"another tool's mesh in {chosen}: {', '.join(said['meshes']) or 'no mesh Live can use'}"
+    if said["overlays"]:
+        line += f"; roads, forests and buildings: {', '.join(said['overlays'])}"
+    elif said["meshes"]:
+        line += "; no roads, forests or buildings taken from it"
+    if said["refused"]:
+        line += "; left aside: " + ", ".join(f"{r['name']} ({r['why']})" for r in said["refused"])
+    return line
 
 
 def own_ground(
@@ -455,7 +518,14 @@ def own_ground_watch(
         log("X-Plane's list of sceneries changed: your own sceneries looked for again")
         covered = own_ground(prepared.xplane, prepared.pack, options, log)
         _overlays(
-            prepared.xplane, prepared.pack, prepared.sources, covered, options.overlays, False, log
+            prepared.xplane,
+            prepared.pack,
+            prepared.sources,
+            covered,
+            options.overlays,
+            False,
+            log,
+            prepared.other_overlays,
         )
         seen[0] = stamp()  # its own lines just written in it
         if covered != prepared.covered:
@@ -480,6 +550,7 @@ def _overlays(
     setting: str,
     running: bool,
     log: Log,
+    others: Sequence[Path] = (),
 ) -> None:
     """AutoOrtho's roads, forests and buildings on Live's squares where nothing else draws them,
     in a pack of their own listed above the ortho; none, and the pack out of X-Plane, else. Made
@@ -489,7 +560,9 @@ def _overlays(
     folder = overlay_dir()
     if running:  # the pack stays as X-Plane found it
         return
-    placed = overlays.build(xp_dir, pack_dir, folder, sources, live_root(), covered, setting, log)
+    placed = overlays.build(
+        xp_dir, pack_dir, folder, sources, live_root(), covered, setting, log, others
+    )
     if placed:
         # right above Live's pack, wherever "Live everywhere" put it, and back there at each start:
         # listed under it, X-Plane read none of them (2026-10-26)
