@@ -2,9 +2,9 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Stream ortho textures to X-Plane as real files: follow the aircraft, build ahead, rename() in.
 
-Every two seconds the planner takes the aircraft's position and track (X-Plane's UDP) and its
-speeds as measured from its positions, whatever X-Plane's sim rate (:class:`Motion`) and, for every
-texture within 300 km, the level X-Plane will read of
+Every two seconds the planner takes the aircraft's position, track and speed (X-Plane's UDP;
+from its last two positions when X-Plane says no speed while it moves:
+:func:`motion_from_positions`) and, for every texture within 300 km, the level X-Plane will read of
 it over the next minutes: the rings of ``orthostudio.live.rings`` applied to its distance from the
 path ahead. Textures built coarser than that are queued, the most urgent first: those nearest to
 the ring where X-Plane will want them.
@@ -278,44 +278,18 @@ def camera_position(lat: float, lon: float, plane_xyz, view_xyz) -> tuple[float,
 MAX_MOVING_MS = 1000.0
 
 
-MOTION_WINDOW_S = 10.0  # the positions the motion is measured over: five plans', a sim rate
-MOTION_MIN_S = 3.5  # changed within seconds; two plans' at least before it is measured
-
-
-class Motion:
-    """How the aircraft really moves, measured from its positions of the last MOTION_WINDOW_S of
-    real time: its speed over the ground and its vertical speed, which plan the path ahead and the
-    seconds before X-Plane reads each level. X-Plane's own figures ignore its sim rate: at 3x it
-    said 491 kt while the aircraft covered 1,450 kt over Labrador, and Live prepared a third of
-    the way it flew (issue 28, 2026-11-13). A position set from outside (a drone, a replay) moves
-    while X-Plane says 0 kt (600 kt in the measurement flight, 2026-09-29): its track then from its
-    positions too; else X-Plane's, right at any rate. X-Plane's figures stand until two positions
-    are far enough apart, below MOVING_MS (taxiing, or paused: Live goes on preparing the way
-    ahead), and after a jump (a new start)."""
-
-    def __init__(self) -> None:
-        self.points: deque[tuple[float, float, float, float]] = deque()  # (at, lat, lon, alt_m)
-
-    def measure(self, fix: Fix, at: float) -> None:
-        points = self.points
-        if points:
-            t, lat, lon, _ = points[-1]
-            if at <= t or haversine_m(lat, lon, fix.lat, fix.lon) / (at - t) > MAX_MOVING_MS:
-                points.clear()  # a jump, or a clock gone back: a new place, not a flight
-        points.append((at, fix.lat, fix.lon, fix.alt_m))
-        while len(points) > 2 and at - points[1][0] >= MOTION_WINDOW_S:
-            points.popleft()
-        t, lat, lon, alt = points[0]
-        span = at - t
-        if span < MOTION_MIN_S:
-            return
-        speed = haversine_m(lat, lon, fix.lat, fix.lon) / span
-        if speed <= MOVING_MS:
-            return
-        if fix.gs_ms <= MOVING_MS:
-            fix.trk_deg = bearing_deg(lat, lon, fix.lat, fix.lon)
+def motion_from_positions(before: Fix | None, before_at: float, fix: Fix, at: float) -> None:
+    """X-Plane saying no speed while the aircraft moves (its position set from outside: a drone,
+    a replay): ``fix``'s ground speed and track taken from its last two positions, so that the path
+    ahead is planned still. In the measurement flight X-Plane said 0 kt at 600 kt, and the ZL17
+    photos came under the aircraft only (the user: "le vert devant l'avion arrive tard",
+    2026-09-29)."""
+    if before is None or fix.gs_ms > MOVING_MS or at - before_at < 0.5:
+        return
+    speed = haversine_m(before.lat, before.lon, fix.lat, fix.lon) / (at - before_at)
+    if MOVING_MS < speed < MAX_MOVING_MS:
         fix.gs_ms = speed
-        fix.vs_ms = (fix.alt_m - alt) / span
+        fix.trk_deg = bearing_deg(before.lat, before.lon, fix.lat, fix.lon)
 
 
 def ahead(fix: Fix, minutes: float) -> tuple[float, float]:
@@ -2196,7 +2170,7 @@ def run(
     last_plan = last_status = last_save = last_packet = last_subscribe = last_wait = 0.0
     last_writes = time.monotonic()
     last_pool = last_between = 0.0
-    motion = Motion()  # the aircraft's speeds as it really moves, whatever X-Plane's sim rate
+    before: tuple[Fix, float] | None = None  # the last position planned, and when
     last_report = 0.0
 
     rate = Rate()
@@ -2510,7 +2484,8 @@ def run(
                         )
                         # the camera's height: the aircraft's, and how far above it the camera is
                         fix.cam_agl_m = fix.agl_m + values.get("vy", 0.0) - values.get("py", 0.0)
-                    motion.measure(fix, now)
+                    motion_from_positions(*(before or (None, 0.0)), fix, now)
+                    before = (fix, now)
                 running = fix is not None and now - last_packet < FRESH_S
                 if streamer.night is not None and running:  # a start's time is its own
                     when = xplane_time(values) if arrival is None else None
