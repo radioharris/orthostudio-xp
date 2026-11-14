@@ -414,12 +414,14 @@ def _menu(
     held: Any = None,
     tops: Mapping[str, int] | None = None,
 ) -> list[dict[str, Any]]:
-    """Every source tried under the cloud, and its own: what each has there and its fit (its
-    newest reading), the level it is read at (its own, else the sharpest the tile has of it,
-    ``tops``; every line says its level, a user, 2026-11-14), whether it may be chosen, the best
-    first."""
-    screening = c.get("screening") or {}
-    codes = [*screening, *([source] if source and source not in screening else [])]
+    """Every source tried under the cloud (searched or got), and its own: what each has there
+    and its fit (its newest reading), the level it is read at (its own, else the sharpest the
+    tile has of it, ``tops``; every line says its level, a user, 2026-11-14), whether it may be
+    chosen, the best first."""
+    # what the search tried, what was got (a level chosen by hand, then another source: it left
+    # the menu, its images got and judged, a user, 2026-11-14), and its own
+    tried = [*(c.get("screening") or {}), *(c.get("checks") or {})]
+    codes = list(dict.fromkeys([*tried, *([source] if source else [])]))
     items = []
     for code in _ranked(c, codes):
         said = reading(c, code)

@@ -204,3 +204,18 @@ def test_a_clouds_levels_go_from_the_sharpest_of_its_source_down_to_the_coarsest
     assert state._level("EOX", state._levels("EOX", tops)) == 14
     assert state._levels("X", tops) == () and state._levels(None, tops) == ()  # nothing to choose
     assert state._levels("Gone", tops) == ()
+
+
+def test_a_level_chosen_by_hand_stays_in_the_menu_once_another_source_is_taken() -> None:
+    # ZL11 chosen, its images got, then a ZL16 source taken: the menu went from four lines back
+    # to three, the ZL11 one gone with its verdict (a user, 2026-11-14)
+    c = {
+        "screening": {"EOX": {"answer": "clear", "fit": 70}, "BI": {"answer": "cloudy", "fit": 50}},
+        "checks": {"EOX:11": {"answer": "clear", "fit": 40, "judged": sources.JUDGED}},
+    }
+    menu = state._menu(c, "BI", None, {"EOX": 14, "BI": 16})
+    assert [(m["source"], m["level"], m["answer"]) for m in menu] == [
+        ("EOX", 14, "clear"),
+        ("EOX:11", 11, "clear"),
+        ("BI", 16, "cloudy"),
+    ]

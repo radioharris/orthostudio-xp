@@ -101,7 +101,8 @@ The Plan's map, brought over the tile; the Plan's steps make way for the cloud p
   work a spinner beside its name around a square that stops it, the very same from a click on it to
   the end of its task (`pending`, then `working`, whatever the task's phase: two spinners came one
   after the other), its area, an eye (**Show**: the map over it), a trash for an outline the tile
-  does not hold; the menu of its sources, each by its short name (`short`: "EOX", not "EOX
+  does not hold; the menu of its sources (every one tried under it, by the search or its images
+  got, a level chosen by hand too, and its own), each by its short name (`short`: "EOX", not "EOX
   Sentinel-2 cloudless 2024") and the level it is read at (`level`: its own, else the sharpest the
   tile has of that source), with what it has there and its fit ("Esri Clarity · ZL16 · clear ·
   fit 93 %"), both from its newest reading (`state.reading`: its images got,
