@@ -14,18 +14,37 @@ from __future__ import annotations
 
 import asyncio
 import threading
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from pathlib import Path
+
+import numpy as np
 
 from orthostudio.errors import OsxpError
 from orthostudio.imagery.chunks import ChunkStatus
+from orthostudio.imagery.grid import TextureId, texture_bbox
 from orthostudio.imagery.providers import Provider, cache_name, tile_url
 from orthostudio.model import TileRef
 from orthostudio.net import Fetcher, FetchRequest, FetchResult
 from orthostudio.pipeline.parents import ParentCache
 from orthostudio.pipeline.textures import chunk_entry_for
+from orthostudio.zones import MIN_ZL
 
-__all__ = ["ANSWERS", "ASK_AGAIN", "JUDGED", "PROPOSABLE", "SourcePieces", "other_sources"]
+__all__ = [
+    "ANSWERS",
+    "ASK_AGAIN",
+    "COARSEST",
+    "JUDGED",
+    "PROPOSABLE",
+    "SourcePieces",
+    "at_level",
+    "code_of",
+    "level_of",
+    "other_sources",
+    "read_at",
+    "resolve",
+    "tops",
+    "tops_under",
+]
 
 ANSWERS = (
     "clear",
@@ -51,6 +70,90 @@ picture in every source, and stayed so (``find.check``, 2026-11-06)."""
 
 Key = tuple[int, int, int]
 """``(x, y, zl)`` of a source's piece."""
+
+COARSEST = MIN_ZL
+"""The coarsest level a cloud's source is read at, the zones' and the Plan's: some sources show
+another photo there, blurred but with no clouds, where the level above shows cumulus (Esri World
+Imagery at ZL11 over tropical forest, a user, 2026-11-14)."""
+
+
+def at_level(code: str, zl: int) -> str:
+    """The source ``code`` read at ``zl`` at most: ``Arc:11``. Each is a source of its own for
+    the clouds (their screening, checks and menu), its pieces the source's own. Made by
+    :func:`code_of` alone, so that one reading has one code."""
+    return f"{code}:{zl}"
+
+
+def level_of(code: str) -> tuple[str, int | None]:
+    """The source and the level of ``code`` (:func:`at_level`); ``None``: its sharpest. A list
+    file's text, whatever it holds, never raises: ``Arc:²`` is a source of that name."""
+    base, _, zl = code.rpartition(":")
+    level = base and zl.isascii() and zl.isdigit() and len(zl) <= 2
+    return (base, int(zl)) if level else (code, None)
+
+
+def code_of(base: str, zl: int | None, tops: Mapping[str, int]) -> str:
+    """The one code of the source ``base`` read at ``zl`` for a tile (``tops``): the source
+    itself at its sharpest there or finer (Bing at ZL16 on a ZL16 tile, EOX asked ZL16, which
+    has none finer than ZL14), ``Bing:12`` below. Two codes of one reading had the same images
+    got twice, a change counted where there was none, and the sharp one ranked as blurred (a
+    review, 2026-11-14)."""
+    top = tops.get(base)
+    return base if zl is None or top is None or zl >= top else at_level(base, zl)
+
+
+def read_at(code: str, tops: Mapping[str, int]) -> int | None:
+    """The level the tile reads ``code`` at (:func:`code_of`): its own, else the source's
+    sharpest there (``tops``); ``None`` for a source the tile does not know."""
+    base, zl = level_of(code)
+    return zl if zl is not None else tops.get(base)
+
+
+def resolve(code: str, registry: Mapping[str, Provider]) -> Provider | None:
+    """The source ``code`` names, read no finer than its level: the registry's source with that
+    level as its finest. ``None`` when its source is unknown or the level is not one it has
+    coarser than its finest, down to :data:`COARSEST`."""
+    base, zl = level_of(code)
+    provider = registry.get(base)
+    if provider is None or zl is None:
+        return provider
+    if not COARSEST <= zl < provider.max_zl:
+        return None
+    return provider.model_copy(update={"max_zl": zl})
+
+
+def tops(textures: Iterable[TextureId], registry: Mapping[str, Provider]) -> dict[str, int]:
+    """The sharpest level each source is read at for a tile of ``textures``: its finest, or the
+    finest texture's when coarser. A cloud's own are :func:`tops_under`."""
+    finest = max((t.zl for t in textures), default=0)
+    return {code: min(finest, p.max_zl) for code, p in registry.items()}
+
+
+def tops_under(
+    textures: Iterable[TextureId], tile_tops: Mapping[str, int]
+) -> Callable[[Sequence[Sequence[float]]], dict[str, int]]:
+    """For the clouds of a tile: the sharpest level each source is read at under one cloud (its
+    rings), the finest of the textures its outline's box reaches (the tile's ``tile_tops``
+    capped there): a cloud in a ZL16 square of a tile with an airport at ZL18 was offered ZL18
+    and ZL17, read as ZL16, and its ZL16 photo ranked as blurred (two reviews, 2026-11-14). Its
+    levels go from it down to :data:`COARSEST`. The textures' boxes are read once."""
+    by_level: dict[int, list[tuple[float, float, float, float]]] = {}
+    for t in textures:
+        by_level.setdefault(t.zl, []).append(texture_bbox(t))
+    levels = sorted(((zl, np.array(b)) for zl, b in by_level.items()), reverse=True)
+
+    def under(rings: Sequence[Sequence[float]]) -> dict[str, int]:
+        lats = [float(v) for r in rings for v in r[0::2]]
+        lons = [float(v) for r in rings for v in r[1::2]]
+        if not lats:
+            return dict(tile_tops)
+        south, north, west, east = min(lats), max(lats), min(lons), max(lons)
+        for zl, b in levels:  # (lat_max, lon_min, lat_min, lon_max), the finest first
+            if ((b[:, 2] < north) & (b[:, 0] > south) & (b[:, 1] < east) & (b[:, 3] > west)).any():
+                return {code: min(top, zl) for code, top in tile_tops.items()}
+        return dict(tile_tops)
+
+    return under
 
 
 def _failed_kind(r: FetchResult) -> str:

@@ -135,7 +135,7 @@ def _case(folder: Path, tick: bool, chosen: Any, held: Any, images: str, neighbo
         shown_entries.append(_entry(folder, "cloud001", A, "EOX"))
     elif held == "other":
         shown_entries.append(_entry(folder, "cloud001", A, "Esri"))
-    src = state.source_of(c)
+    src = state.source_of(c, None, {})
     if src is not None and images != "none":
         if images in ("did_not_answer", "no_picture"):
             c["checks"][src] = {"answer": images, "fit": 0, "entry": None, "judged": JUDGED}
@@ -378,7 +378,7 @@ def test_the_best_source_is_the_menus_first_clear_one(folder: Path) -> None:
     c["screening"] = {"Esri": {"answer": "clear", "fit": 0}, "EOX": {"answer": "clear", "fit": 0}}
     v = _view(cl, _shows(folder, []))
     s = v.cloud("cloud001")
-    assert s.source == state.best_of(c) == s.page()["menu"][0]["source"] == "EOX"
+    assert s.source == state.best_of(c, {}) == s.page()["menu"][0]["source"] == "EOX"
 
 
 def test_every_cloud_ticked_or_unticked_at_once_as_each_allows(folder: Path) -> None:

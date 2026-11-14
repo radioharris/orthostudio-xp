@@ -54,7 +54,9 @@ the disk is in [how-it-works.md](how-it-works.md). To fly without building tiles
   X-Plane draws it once the cloud detection tool is downloaded. *Quick search* (or *Fine search*,
   for the small ones) looks for them and tries every other source covering the tile under each; you
   tick those to replace, each with the clear source you choose, and the map shows the result before
-  anything changes. *Apply* changes, in a few seconds, only the pixels under the clouds in the
+  anything changes. Where no sharp photo is clear, it also tries each source at its coarser levels,
+  down to ZL11, where some show another photo, blurred but without clouds; a cloud's level can be
+  chosen by hand too. *Apply* changes, in a few seconds, only the pixels under the clouds in the
   finished tile, and every later build of the tile lays them again on the same photo; *Restore the
   original photos* puts the textures back as built. The detection tool (OmniCloudMask's networks and
   OpenCV, about 110 MB) is not in the installer: it is downloaded once, when you ask.

@@ -54,6 +54,21 @@ export function latlngs(ring) {
   return out;
 }
 
+/** The sources' short names by their codes, a source read at a coarser level (``Arc:11``, the
+ * engine's ``sources.at_level``) by its own and that level: "Esri · ZL11". */
+export function sourceNames(providers) {
+  // their short names: the panel is narrow ("EOX", not "EOX Sentinel-2 cloudless 2024", a user,
+  // 2026-11-14)
+  const named = Object.fromEntries((providers || []).map((p) => [p.code, p.short || p.name || p.code]));
+  return new Proxy(named, {
+    get(o, code) {
+      if (typeof code !== "string" || code in o) return o[code];
+      const m = /^(.+):(\d+)$/.exec(code);
+      return m && m[1] in o ? `${o[m[1]]} · ZL${m[2]}` : undefined;
+    },
+  });
+}
+
 /** The words of a line the engine sent (``{key, params}``), a source's code given its name. */
 export function lineWords(line, names = {}) {
   if (!line) return "";
@@ -145,12 +160,16 @@ export function createCloudMode(ctx) {
     /** What was clicked and waits for the engine's answer, by its key (``cloud-<id>`` for a
      * cloud's, a button's own key), how many times (:func:`waiting`). */
     pending: new Map(),
+    /** A cloud's list chosen (``{list, value}``), by its click's key while it waits: shown in its
+     * list until the engine's answer is read (the level's list went back to Auto for half a
+     * second, longer while another cloud got its images, a user, 2026-11-14). */
+    picked: new Map(),
     /** Until when the tile is read again every ``SOON_MS`` (the last click and a few seconds). */
     soonUntil: 0,
   };
   const labels = new Map(); // a cloud's number's place, by its outline
 
-  const names = () => Object.fromEntries((ctx.providers() || []).map((p) => [p.code, p.name || p.code]));
+  const names = () => sourceNames(ctx.providers());
   /** A control's key: drawn again in place, an element stays the one it was, its handler with it.
    * Matched by place alone, a button took another's of the same look: a search's Stop came in as
    * Tick all's, and ticked every cloud (a user, 2026-11-06). Every control of the panel and the
@@ -264,7 +283,10 @@ export function createCloudMode(ctx) {
     } finally {
       const left = cs.pending.get(at) - 1;
       if (left > 0) cs.pending.set(at, left);
-      else cs.pending.delete(at);
+      else {
+        cs.pending.delete(at);
+        cs.picked.delete(at);
+      }
       render();
     }
   }
@@ -542,7 +564,15 @@ export function createCloudMode(ctx) {
 
   function choose(c, source) {
     cs.reveal = c.id; // its row whole in view: what the new source says under it
+    cs.picked.set(`cloud-${c.id}`, { list: "source", value: source });
     return send("POST", "/picks", { id: c.id, action: "choose", source }, `cloud-${c.id}`);
+  }
+
+  /** The cloud's level, for all its sources ("": Auto): each judged there, the best's images got. */
+  function setLevel(c, value) {
+    cs.reveal = c.id;
+    cs.picked.set(`cloud-${c.id}`, { list: "level", value });
+    return send("POST", "/picks", { id: c.id, action: "level", level: value === "" ? null : Number(value) }, `cloud-${c.id}`);
   }
 
   function ask(title, lines, go) {
@@ -689,11 +719,21 @@ export function createCloudMode(ctx) {
     const label = cloudName(c);
     const box = h("input", { type: "checkbox", disabled: !c.toggle, onchange: () => toggle(c) });
     box.checked = c.tick;
+    // two lists (a user, 2026-11-14): its source, and its level for all its sources ("I want to
+    // try EOX at ZL12": ZL12, then EOX); the engine's lines and codes, as it sends them
+    const said = (x) => [x.answer ? t(`clouds.answer.${x.answer}`) : "", x.fit ? t("clouds.fit", { n: x.fit }) : ""];
     const menu = h("select", { "aria-label": t("clouds.source_of", { name: label }), disabled: !can.has("choose"), onchange: (ev) => choose(c, ev.target.value) },
       c.source ? null : h("option", { value: "", disabled: true }, t("clouds.choose")),
       ...c.menu.map((m) => h("option", { value: m.source, disabled: !m.proposable },
-        [n[m.source] || m.source, m.answer ? t(`clouds.answer.${m.answer}`) : "", m.fit ? t("clouds.fit", { n: m.fit }) : ""].filter(Boolean).join(" · "))));
-    menu.value = c.source || "";
+        [n[m.base] || m.base, m.level ? `ZL${m.level}` : "", ...said(m)].filter(Boolean).join(" · "))));
+    const picked = cs.picked.get(`cloud-${c.id}`);
+    menu.value = picked?.list === "source" ? picked.value : c.source || "";
+    const level = c.levels && c.levels.length
+      ? h("select", { class: "cloud-level", dataset: key(`level-${c.id}`), "aria-label": t("clouds.level_of", { name: label }), title: t("clouds.level_tip"), disabled: !can.has("level"), onchange: (ev) => setLevel(c, ev.target.value) },
+        h("option", { value: "" }, t("clouds.level_auto")),
+        ...c.levels.map((zl) => h("option", { value: String(zl) }, `ZL${zl}`)))
+      : null;
+    if (level) level.value = picked?.list === "level" ? picked.value : c.level == null ? "" : String(c.level);
     const task = c.task;
     const show = () => {
       cs.current = c.id;
@@ -703,6 +743,12 @@ export function createCloudMode(ctx) {
       const now = cloudNow(c.id) || c; // the row's element outlives the answer it was drawn from
       ctx.planMap.leaflet()?.fitBounds(now.rings.map(latlngs).flat(), { maxZoom: SHOW_ZOOM, paddingTopLeft: [16, top], paddingBottomRight: [16, 16] });
       render();
+    };
+    /** Whether some of the cloud is on the map as it is now. */
+    const onScreen = () => {
+      const m = ctx.planMap.leaflet();
+      const now = cloudNow(c.id) || c;
+      return Boolean(m) && m.getBounds().intersects(now.rings.map(latlngs).flat());
     };
     const buttons = [
       can.has("check") ? h("button", { type: "button", class: "btn", dataset: key(`check-${c.id}`), "aria-label": `${t("clouds.get_images")}: ${label}`, onclick: () => send("POST", "/check", { id: c.id, again: true }, `cloud-${c.id}`) }, t("clouds.get_images")) : null,
@@ -728,12 +774,17 @@ export function createCloudMode(ctx) {
     // keyed by its cloud: redrawn in place, a row stays its cloud's, its handlers with it
     // a click on the row shows its cloud; its checkbox and its name tick it, its menu and its
     // buttons do what they say (a user, 2026-11-06); whatever is done on a row makes its cloud
-    // the current one, the one rule for its tick, its source, its images and its Stop; a click
-    // on the row, its tick or its source changed shows it too, to look at what is ticked and see
-    // its new images (a user, 2026-11-07: a source changed, a tick left the map elsewhere)
+    // the current one, the one rule for its tick, its source, its level, its images and its
+    // Stop; a click on the row shows it whole; its tick, its source or its level changed bring
+    // it on the map when it is not there, and leave the map as it is when it is: zoomed in on
+    // a part of a large cloud, changing its level zoomed out to the whole of it (a user,
+    // 2026-11-14; a source changed, a tick left the map elsewhere, 2026-11-07)
     const pick = (ev) => {
       cs.current = c.id;
-      if (ev.type === "change" || !ev.target.closest("label, input, select, button")) show();
+      if (ev.type === "change") {
+        if (onScreen()) render();
+        else show();
+      } else if (!ev.target.closest("label, input, select, button")) show();
     };
     return h("li", { class: "zone-item cloud-item", "aria-current": String(c.id === cs.current), dataset: { cloud: c.id, state: c.state, focusKey: `cloud-${c.id}` }, onclick: pick, onchange: pick },
       h("span", { class: `zl-swatch cloud-swatch${c.tick ? " is-on" : ""}`, "aria-hidden": "true" }),
@@ -744,7 +795,7 @@ export function createCloudMode(ctx) {
           h("span", { class: "zone-hint num" }, areaWords(c.ha)),
           h("button", { type: "button", class: "btn btn-icon cloud-show", dataset: key(`show-${c.id}`), title: t("clouds.show"), "aria-label": `${t("clouds.show")}: ${label}`, onclick: show }, icon("eye")),
           trash),
-        h("div", { class: "zone-row" }, menu),
+        h("div", { class: "zone-row" }, menu, level),
         line,
         buttons.length ? h("div", { class: "zone-row" }, ...buttons) : null));
   }

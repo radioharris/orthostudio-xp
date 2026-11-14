@@ -426,10 +426,13 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .error-inline { color: var(--fail); font-size: var(--fs-2); margin: var(--help-gap) 0 0; }
 
 .spinner {
-  width: 14px; height: 14px; border-radius: 50%;
+  /* a box of its own wherever it is: inline in a button it had no width, and its round border
+     was a "(" against the button's word (Discard changes, a user, 2026-11-14) */
+  display: inline-block; width: 14px; height: 14px; border-radius: 50%;
   border: 2px solid var(--line-2); border-top-color: var(--accent);
   animation: spin 0.8s linear infinite;
 }
+.btn > .spinner { margin-right: 6px; vertical-align: -3px; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* --------------------------------------------------------------- combo */
@@ -704,7 +707,7 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .cloud-stop .icon { width: 8px; height: 8px; }
 .cloud-stop:hover, .cloud-stop:focus-visible { color: var(--fail); }
 .cloud-show { display: inline-flex; align-items: center; justify-content: center; }
-.clouds-stop-all { display: inline-flex; align-items: center; gap: 6px; } /* its spinner: at work */
+.clouds-stop-all { display: inline-flex; align-items: center; } /* its spinner: at work, its gap the spinner's own */
 /* A cloud's line clear of its sources' list above it. */
 .cloud-item .zone-main > .cloud-line { margin-top: 4px; }
 /* A cloud's name as wide as its words: it ticks; the rest of its row shows the cloud, its area
@@ -786,6 +789,9 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 }
 /* Outlining a cloud: a thin cross to aim, over the map and over what is drawn on it. */
 .plan-map.is-outlining, .plan-map.is-outlining.leaflet-grab, .plan-map.is-outlining .leaflet-interactive { cursor: crosshair; }
+/* a shape clicked takes the focus, and Chrome framed it in a box around the whole cloud before the
+   cloud was drawn ticked (a user, 2026-11-14); the shapes are no stop of the keyboard */
+.plan-map path.leaflet-interactive:focus:not(:focus-visible) { outline: none; }
 .plan-step { border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg-2); padding: var(--card-pad); min-width: 0; }
 .plan-step:focus { outline: none; }
 .plan-step-title { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
@@ -854,6 +860,7 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 .zone-row { display: flex; align-items: center; gap: 4px; min-width: 0; }
 .zone-row .zone-name { flex: 1 1 auto; font-weight: 600; }
 .zone-row select { flex: 1 1 auto; min-width: 0; }
+.zone-row select.cloud-level { flex: none; width: auto; max-width: 50%; } /* ZL16 to ZL11, beside its source */
 .btn-icon { width: var(--control-h); padding: 0; flex: none; }
 /* Its drawing 16 px, even as the inside of its box is (28 px): at 15 px it stood 7.5 px in, off a
    whole pixel (a user, 2026-11-07). */

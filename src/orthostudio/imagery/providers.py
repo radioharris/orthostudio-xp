@@ -110,6 +110,9 @@ class Provider(BaseModel):
     passed to somebody else carries what it is bound by (found in review, 2026-09-23)."""
     name: str = ""
     """Short name for the page's lists (``Bing Maps``); ``attribution`` stays the credit line."""
+    short: str = ""
+    """A shorter name where room is scarce, the cloud mode (``EOX``, not ``EOX Sentinel-2
+    cloudless 2024``: too long in a cloud's menu, a user, 2026-11-14); empty, its ``name``."""
     same_as: str | None = None
     """Another code of the very same imagery (``NL`` is ``PDOK``): still accepted, listed once."""
     custom: bool = False
@@ -190,6 +193,7 @@ def provider_json(p: Provider) -> dict[str, Any]:
     doc: dict[str, Any] = {
         "code": p.code,
         "name": p.name or p.attribution or p.code,
+        "short": p.short or p.name or p.attribution or p.code,
         "max_zl": p.max_zl,
         "attribution": p.attribution,
         "terms_url": p.terms_url,

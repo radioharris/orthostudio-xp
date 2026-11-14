@@ -43,20 +43,35 @@ half to two and a half minutes. The panel shows where it is; **Stop** ends it. I
 ### 3. Choose what to replace
 
 Each cloud found is outlined in yellow on the map and listed in the panel with its size and its
-sources, for instance *Esri World Imagery · clear · fit 93 %*, the best first. Beside the panel's
+source, for instance *EOX · clear · fit 93 %*: what it has there and how well it fits, the best
+first, and beside it the source's level. Beside the panel's
 title, the source the tile's own photo comes from. A source showing
 the same photo as the tile, which would bring the cloud back, or with no picture there, is greyed.
 
 - Every cloud comes **unticked**. The tool can take something pale for a cloud, such as light,
   muddy water near a coast: look before you tick. The eye beside a cloud brings the map to it.
 - **Tick** a cloud, or click its outline on the map (its tooltip says what a click does; its row
-  comes to the middle of the list; ticked in the list, the map goes to it): its source's images
+  comes to the middle of the list; ticked in the list, the map goes to it when it is not on the
+  map): its source's images
   are fetched at the tile's own sharpness, in a few seconds, and the count above the list says one
   more to replace. Its outline turns to the accent colour. If the tool that finds clouds is not on
   your computer yet, the app asks first; say no, and the cloud stays ticked, waiting for its
   images.
 - To take another source, choose it in the cloud's menu: it is ticked with it, and the map goes to
-  the cloud to show its new images.
+  the cloud to show its new images when it is not on the map; zoomed in on a part of it, the map
+  stays where it is.
+- Beside the source, the cloud's **level**: **Auto**, the best photo whatever its level, or a level
+  from the tile's (ZL16 for a ZL16 tile) down to ZL11. Some sources show another photo at a coarser
+  level, blurred but without clouds: Esri World Imagery at ZL11 over a tropical forest, for
+  instance; where no sharp photo is clear, Auto finds them by itself. In Auto, the source list
+  shows what the search found and the photos you took; a level's other tries come back when you
+  choose that level again. Choose a level and every
+  source is tried under the cloud at that level, in a few seconds (a minute or more for a large
+  cloud at a fine level; **Stop** ends it): the source list then says what
+  each has there, the best is taken and its images fetched. Choose another source and it stays at
+  that level: to try EOX at ZL12, choose ZL12, then EOX. Stopped, the cloud stays as it was;
+  *Discard changes*, or a new search finding it again while it is unticked, puts it back to Auto. The cloud's place looks as
+  blurred as its level.
 - **Tick all** and **Untick all**, above the list, tick or untick every cloud at once. Whatever
   you click, a spinner turns on it, in the cloud's line or in the button, until the app has
   answered; for a cloud, the same spinner goes on until its images are made, and a click on it
