@@ -21,7 +21,17 @@ from orthostudio.live.settings import LiveSettings, load_settings, save_settings
 
 A, B, C, D = (45, 5), (46, 7), (47, 8), (48, 9)
 PHOTO_TER = b"A\n800\nTERRAIN\n\nBASE_TEX_NOWRAP ../textures/24528_38224_BI16.dds\n"
-OVERLAY = b"XPLNEDSF" + struct.pack("<i", 1) + atom(b"HEAD", atom(b"PROP", b"sim/overlay\x001\x00"))
+
+
+def overlay_dsf(agent: str | None) -> bytes:
+    """An overlay DSF's head, made by ``agent`` (``sim/creation_agent``), or by none said."""
+    props = b"sim/overlay\x001\x00" + (
+        f"sim/creation_agent\x00{agent}\x00".encode() if agent else b""
+    )
+    return b"XPLNEDSF" + struct.pack("<i", 1) + atom(b"HEAD", atom(b"PROP", props))
+
+
+XPLANE_MADE = "X-Plane Scenery Creator 0.9a"  # X-Plane's own overlays, AutoOrtho's and Live's
 
 
 def mesh(pack: Path, ter: bytes = PHOTO_TER, photos: bool = False, squares=(A,)) -> Path:
@@ -37,10 +47,11 @@ def mesh(pack: Path, ter: bytes = PHOTO_TER, photos: bool = False, squares=(A,))
     return pack
 
 
-def roads(pack: Path, squares=(A,)) -> Path:
-    """An overlay pack: DSFs X-Plane reads as overlays (``sim/overlay 1``)."""
+def roads(pack: Path, squares=(A,), agent: str | None = XPLANE_MADE) -> Path:
+    """An overlay pack: DSFs X-Plane reads as overlays (``sim/overlay 1``), X-Plane's own roads,
+    forests and buildings unless another ``agent`` made them."""
     for square in squares:
-        put(pack, square, OVERLAY)
+        put(pack, square, overlay_dsf(agent))
     return pack
 
 
@@ -97,8 +108,11 @@ def test_the_roads_that_go_with_the_mesh(tmp_path: Path) -> None:
     folder = tmp_path / "Scenery put aside"
     aus = mesh(folder / "z_autoortho" / "scenery" / "z_ao_aus_pac", squares=(A, B))
     aus_roads = roads(folder / "yAutoOrtho_Overlays", (A, B))
-    roads(folder / "Aerosoft - YSSY Sydney", (A,))
-    roads(folder / "simHeaven_X-World", (A, C, D))
+    roads(folder / "Aerosoft - YSSY Sydney", (A,), "WorldEditor2.7.0-r1")
+    roads(
+        folder / "simHeaven_X-World", (A, B, C, D), "Scenery Designer Pro (SDP) 1.2b by simHeaven"
+    )
+    roads(folder / "Global_Forests_v2", (A, B, C, D), None)
     world = folder / "X-Plane 11" / "Global Scenery" / "X-Plane 11 Global Scenery"
     for square in (A, B, C, D):
         put(world, square)  # ground, with no terrain folder
@@ -135,12 +149,14 @@ def test_the_roads_of_one_region_moved_with_the_others(tmp_path: Path) -> None:
     assert found.meshes == [aus] and found.overlays == [every]
 
 
-def test_no_roads_rather_than_an_airport(tmp_path: Path) -> None:
-    """A mesh moved without its roads: an airport beside it, on one of its squares, was taken for
-    them (the fourth review of 2026-11-14). Roads cover most of their mesh, or are none."""
+def test_no_roads_rather_than_another_s_overlays(tmp_path: Path) -> None:
+    """A mesh moved without its roads: an airport beside it was taken for them (the fourth review
+    of 2026-11-14), then Global Forests, which covers it all (the review of 3ac4a84b). Its roads
+    are X-Plane's own, or none."""
     folder = tmp_path / "Other mesh"
     mesh(folder / "z_ao_aus_pac", squares=(A, B, C))
-    roads(folder / "Aerosoft - YSSY Sydney", (A,))
+    roads(folder / "Aerosoft - YSSY Sydney", (A,), "WorldEditor2.7.0-r1")
+    roads(folder / "Global_Forests_v2", (A, B, C, D), None)
     assert other_mesh(folder).overlays == []
 
 

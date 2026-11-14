@@ -469,8 +469,8 @@ change under Live (the user: « je préfère le réglage sans surprise »); Auto
 - **Its packs:** the folders with `Earth nav data` in it or down to `PACK_DEPTH` (3) folders below
   it, the depth of AutoOrtho's own pack moved (`<folder>/z_autoortho/scenery/z_ao_<id>`), by name;
   a pack is not looked into, one with no DSF is no scenery, a folder below the first that cannot
-  be read is left out. Each is ground or overlays by its first DSF's head (`sim/overlay 1`,
-  `covered.is_overlay`), its squares listed as Live's overlays list them (`overlays.squares_of`).
+  be read is left out. Each is ground or overlays by its first DSF's head (`sim/overlay 1`, read once with
+  its maker), its squares listed as Live's overlays list them (`overlays.squares_of`).
 - **Ground, a mesh or not:** `_why_not_streamed` reads up to `TER_SAMPLE` (20) terrain files for
   one naming a photo in Ortho4XP's names (`BASE_TEX` or `BASE_TEX_NOWRAP` to
   `<row>_<col>_<provider><zl>.dds`): that photo in the pack's `textures` is a tile with its own
@@ -479,19 +479,18 @@ change under Live (the user: « je préfère le réglage sans surprise »); Auto
   have one in the sources before it, or in a mesh of the folder kept before it, adds nothing and
   is left aside (`already`): a copy of AutoOrtho's Europe beside AutoOrtho's own cost its listing,
   up to 57 s on a slow Windows disk, for nothing.
-- **Overlays, the roads of the meshes:** of the overlay packs, the one with the most squares of
-  the folder's ground naming photos, copies left aside included, when it has more than half of
-  them (`_roads_of`); none without a mesh kept. Squares elsewhere do not count against it:
-  AutoOrtho's one pack holds every region of its, and moved with one region's mesh it was taken
-  for none (the fifth review of 2026-11-14). Real ones
-  cover 85 to 97 % of their mesh (Live's Europe and North America, AutoOrtho's Australia), an
-  airport one square: scored against the meshes kept alone, the one pack of every region lost to
-  a copy left aside and the region kept had no roads, and a lone airport passed for the roads of a
-  mesh moved without them (the fourth review of 2026-11-14). AutoOrtho and the other streamer keep all their roads in one pack; taking every overlay
-  pack, the first by name winning its square, gave an airport, simHeaven or another X-Plane's
-  scenery lying beside it the squares of AutoOrtho's roads (the review of 2026-11-14). X-Plane's
-  folder or Live's chosen by mistake thus give nothing: their ground names no photo or is already
-  there.
+- **Overlays, the roads of the meshes:** X-Plane's own overlay packs, made by its tool
+  (`sim/creation_agent` « X-Plane Scenery Creator », `XPLANE_OVERLAYS`: AutoOrtho's and Live's
+  alike, the roads, forests and buildings a mesh replacing X-Plane's goes without); of them, the
+  one with the most squares of the folder's ground naming photos, copies left aside included
+  (`_roads_of`); none without a mesh kept, or with no square of it. An airport or a Landmark
+  (WorldEditor), simHeaven (Scenery Designer Pro) and Global Forests (no agent) are never taken:
+  taking every overlay pack, the first by name winning its square, gave an airport, simHeaven or
+  another X-Plane's scenery AutoOrtho's squares (the review of 2026-11-14); scored against the
+  meshes kept alone, the one pack of every region lost to a copy left aside (the fourth review);
+  by squares alone, Global Forests passed for the roads of a mesh moved without them (the review
+  of 3ac4a84b). X-Plane's folder or Live's chosen by mistake give nothing: their ground names no
+  photo or is already there.
 - **Looked at once in a while:** `other_mesh_found` keeps what it found for `OTHER_MESH_S` (30 s)
   for the window's checks, which come every 3 s and ask with X-Plane's folder each time (without
   it only when none is found); at once when the setting changes or the folder comes or goes (its

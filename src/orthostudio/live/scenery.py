@@ -118,13 +118,13 @@ def other_mesh(folder: Path | None, given: Sequence[Path] = ()) -> OtherMesh:
     - a pack of ground is a mesh when its terrain files name photos Live makes, without them
       (:func:`_why_not_streamed`), and it gives a square none of ``given`` (the regions before it)
       nor a mesh kept before it has (``already``: a copy of one);
-    - of the overlay packs, the one with most squares of the folder's ground naming photos,
-      copies included, when it has more than half of them, is the roads, forests and buildings
-      of its meshes (:func:`_roads_of`): an airport, a Landmark or simHeaven lying there are not
-      taken (the reviews of 2026-11-14).
+    - of the overlay packs X-Plane's own (:data:`XPLANE_OVERLAYS`), the one with most squares of
+      the folder's ground naming photos, copies included, is the roads, forests and buildings of
+      its meshes (:func:`_roads_of`): an airport, a Landmark, simHeaven or Global Forests lying
+      there are not taken (the reviews of 2026-11-14).
     X-Plane's folder or Live's chosen give nothing: their ground has no photos named, or is
     already there. Nothing when the folder is gone (its disk away)."""
-    from orthostudio.live.covered import is_overlay
+    from orthostudio.install.dsf_head import dsf_properties
     from orthostudio.live.overlays import squares_of
 
     if folder is None:
@@ -143,8 +143,10 @@ def other_mesh(folder: Path | None, given: Sequence[Path] = ()) -> OtherMesh:
         if not dsfs:  # no DSF: no scenery (X-Plane's ATC data, an emptied pack)
             continue
         squares = set(dsfs)
-        if is_overlay(dsfs[min(dsfs)]):
-            overlays.append((pack, squares))
+        head = dsf_properties(dsfs[min(dsfs)])
+        if head.get("sim/overlay") == "1":
+            if head.get("sim/creation_agent", "").startswith(XPLANE_OVERLAYS):
+                overlays.append((pack, squares))
         elif (why := _why_not_streamed(pack)) is not None:
             refused.append((pack.name, why))
         else:
@@ -174,15 +176,22 @@ def _packs_in(folder: Path, depth: int) -> list[Path]:
     return out
 
 
+XPLANE_OVERLAYS = "X-Plane Scenery Creator"
+"""The tool X-Plane's own scenery is made with (``sim/creation_agent``): the overlays of its
+Global Scenery, AutoOrtho's (« X-Plane Scenery Creator 0.9a ») and Live's alike, the roads,
+forests and buildings a mesh replacing X-Plane's goes without. An airport or a Landmark
+(WorldEditor), simHeaven (Scenery Designer Pro) and Global Forests (none) are made otherwise:
+taken by their squares alone, Global Forests passed for the roads of a mesh moved without them
+(the review of 3ac4a84b, 2026-11-14)."""
+
+
 def _roads_of(ground: set, overlays: Sequence[tuple[Path, set]]) -> list[Path]:
-    """The overlay pack that is the roads of ``ground`` (the squares of the folder's ground naming
-    photos): the one with most of them, when it has more than half. AutoOrtho's and the other
-    streamer's cover 85 to 97 % of their mesh (Live's Europe and North America, AutoOrtho's
-    Australia, 2026-11-14) and hold every region of theirs, moved or not; an airport, one square.
-    Scored against the meshes kept alone, the one pack of every region lost to the copies left
-    aside and a region had no roads (the fourth review of 2026-11-14)."""
+    """Of X-Plane's own overlay packs, the one with most squares of ``ground`` (the folder's ground
+    naming photos, copies left aside included: scored against the meshes kept alone, the one pack
+    of every region lost to a copy and a region had no roads, the fourth review of 2026-11-14);
+    none with no square of it."""
     best: list[Path] = []
-    most = len(ground) // 2  # more than half
+    most = 0
     for pack, squares in overlays:
         common = len(squares & ground)
         if common > most:
