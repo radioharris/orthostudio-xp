@@ -575,8 +575,9 @@ def run_ops(pack_dir: str, ops: Sequence[tuple]) -> dict:
     ("name", top, destination), a name of the neutral texture made if not there; ("fit", top,
     destination, level built or None), the same, and a texture there already set to the size
     ``top`` gives if it has another (a new zoom: orthostudio.live.region.set_zooms), its levels
-    kept, nothing downloaded; ("check", top, destination), a texture being built: said ``stale``
-    if it still has another size; ("drop", path), a file removed; ("drop_name", path), a texture's
+    kept, nothing downloaded; ("check", top, destination), a texture being built: a name of the
+    neutral texture made if it has no file yet, said ``stale`` if it still has another size;
+    ("drop", path), a file removed; ("drop_name", path), a texture's
     name removed only while it leads to the neutral texture (one built since stays); ("night",
     destination), a night texture's name made black if not there; ("drop_night", path), one
     removed while still black. The ``.ter`` operations may carry two more: the land's night
@@ -632,7 +633,10 @@ def run_ops(pack_dir: str, ops: Sequence[tuple]) -> dict:
             elif kind in ("fit", "check"):
                 top, dst = op[1], Path(op[2])
                 if not os.path.lexists(dst):
-                    if kind == "fit" and pool.link(top, dst):
+                    # a texture being built gets the neutral name too, until the builder writes
+                    # its file over it: its .ter files come next, and X-Plane loading the square
+                    # before it was written found them naming no file and stopped (issue 28)
+                    if pool.link(top, dst) and kind == "fit":
                         named.append(dst.name)
                     continue
                 if tops is None:

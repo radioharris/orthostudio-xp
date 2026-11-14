@@ -132,6 +132,26 @@ def test_a_texture_the_builder_wrote_as_its_name_was_made_is_kept(
     assert s.names.leads_to_neutral(gone) and not s.names.leads_to_neutral(written)
 
 
+def test_a_texture_taken_by_the_builder_has_a_name_before_its_terrain(tmp_path: Path) -> None:
+    """A texture the builder has taken but not written yet when its square's files are made gets
+    the neutral texture's name too, before the .ter files that name it; the builder's file then
+    takes its place. Without it, X-Plane loading the square in between found .ter files naming no
+    file and stopped (issue 28: at 490 kt some 900 textures taken waited for their encoding while
+    X-Plane loaded scenery)."""
+    s = streamer(tmp_path)
+    taken = f"{ROW[0]}.dds"
+    s.in_flight[taken] = (1.0, 4)
+    s.names.make(HERE)
+    texture = s.pack_dir / "textures" / taken
+    assert (s.pack_dir / "terrain" / f"{ROW[0]}.ter").exists()
+    assert texture.exists() and s.names.leads_to_neutral(taken)
+    tmp = texture.with_name(".live-tmp-built")  # the builder's rename, once encoded
+    tmp.write_bytes(b"built")
+    os.replace(tmp, texture)
+    assert texture.read_bytes() == b"built" and not s.names.leads_to_neutral(taken)
+    assert (s.pack_dir / neutral_file(0)).read_bytes() != b"built"  # the neutral one untouched
+
+
 def test_the_neutral_texture_gets_copies_past_the_names_a_file_may_have(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

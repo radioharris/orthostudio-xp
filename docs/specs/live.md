@@ -361,7 +361,9 @@ makes them for the squares of that window and a ring round it (`RING`): the `.te
 masks copied from the region (small files: a copy is the fastest on APFS and writes the least, 0.11
 ms and 4.8 KB against 0.17 ms and 7 KB for a clone, 0.26 ms and 11.7 KB for a hard link), each
 texture not built a name of one neutral texture (a hard link; a dull uniform colour at every
-level). A thread decides which, a process of its own does the file operations (`names.run_ops`): in
+level), one the builder has taken but not written yet too: its `.ter` files come right after, and
+X-Plane loading the square in between found them naming no file and stopped (issue 28, 2.1.0: at
+490 kt some 900 textures taken waited for their encoding while X-Plane loaded scenery). A thread decides which, a process of its own does the file operations (`names.run_ops`): in
 Live's process they waited for Python's lock behind its other threads, a Norway start's 4.4 s
 becoming 8.1 s with another thread busy half the time and 35 s at 90 %, against 4.7 to 5.3 s in a
 process of their own (2026-09-30). A square whose files fail (a full disk, a file held open on
