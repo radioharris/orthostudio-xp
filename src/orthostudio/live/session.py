@@ -48,6 +48,7 @@ from orthostudio.live.scenery import (
     osxp_regions,
     other_mesh_folder,
     other_mesh_found,
+    other_mesh_said,
     other_mesh_there,
     quality_said,
     uninstall_link,
@@ -359,7 +360,7 @@ def prepare(options: Options, log: Log) -> Prepared:
             if e.code != "XP_LINK_FAILED" or not other.meshes or sys.platform != "win32":
                 raise
             # its error named Live's pack, not the folder the pilot chose, the likeliest cause:
-            # Windows' junctions reach no network drive (the reviews of 2026-11-14)
+            # Windows' junctions reach no network drive
             raise RefusedError(
                 f"{e.message} If it is a region of the folder of another tool's mesh, {chosen}, "
                 "on a network drive: Windows links it only with Developer Mode. Turn it on, or "
@@ -448,18 +449,19 @@ def prepare(options: Options, log: Log) -> Prepared:
 
 
 def _other_said(chosen: Path, other: OtherMesh) -> str:
-    """The start's line on the folder of another tool's mesh: what it takes there, or why not."""
-    if not other_mesh_there(chosen):
+    """The start's line on the folder of another tool's mesh, what its window says
+    (:func:`other_mesh_said`) in words."""
+    said = other_mesh_said(chosen, other)
+    if not said["there"]:
         return f"another tool's mesh: {chosen} is not there (its disk unplugged?): left out"
-    used = ", ".join(p.name for p in other.meshes) or "no mesh Live can use"
-    said = f"another tool's mesh in {chosen}: {used}"
-    if other.overlays:
-        said += f"; roads, forests and buildings: {', '.join(p.name for p in other.overlays)}"
-    elif other.meshes:
-        said += "; no roads, forests or buildings found with it"
-    if other.refused:
-        said += "; left aside: " + ", ".join(f"{name} ({why})" for name, why in other.refused)
-    return said
+    line = f"another tool's mesh in {chosen}: {', '.join(said['meshes']) or 'no mesh Live can use'}"
+    if said["overlays"]:
+        line += f"; roads, forests and buildings: {', '.join(said['overlays'])}"
+    elif said["meshes"]:
+        line += "; no roads, forests or buildings found with it"
+    if said["refused"]:
+        line += "; left aside: " + ", ".join(f"{r['name']} ({r['why']})" for r in said["refused"])
+    return line
 
 
 def own_ground(

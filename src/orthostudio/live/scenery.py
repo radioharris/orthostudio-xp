@@ -121,7 +121,7 @@ def other_mesh(folder: Path | None, given: Sequence[Path] = ()) -> OtherMesh:
     - of the overlay packs X-Plane's own (:data:`XPLANE_OVERLAYS`), the one with most squares of
       the folder's ground naming photos, copies included, is the roads, forests and buildings of
       its meshes (:func:`_roads_of`): an airport, a Landmark, simHeaven or Global Forests lying
-      there are not taken (the reviews of 2026-11-14).
+      there are not taken.
     X-Plane's folder or Live's chosen give nothing: their ground has no terrain files, names no
     photos, has its photos (a tile, Live's own pack) or is already there. Nothing when the folder
     is gone (its disk away)."""
@@ -181,16 +181,14 @@ XPLANE_OVERLAYS = "X-Plane Scenery Creator"
 """The tool X-Plane's own scenery is made with (``sim/creation_agent``): the overlays of its
 Global Scenery, AutoOrtho's (« X-Plane Scenery Creator 0.9a ») and Live's alike, the roads,
 forests and buildings a mesh replacing X-Plane's goes without. An airport or a Landmark
-(WorldEditor), simHeaven (Scenery Designer Pro) and Global Forests (none) are made otherwise:
-taken by their squares alone, Global Forests passed for the roads of a mesh moved without them
-(the review of 3ac4a84b, 2026-11-14)."""
+(WorldEditor), simHeaven (Scenery Designer Pro) and Global Forests (none) are made otherwise, and
+cover as many of its squares."""
 
 
 def _roads_of(ground: set, overlays: Sequence[tuple[Path, set]]) -> list[Path]:
     """Of X-Plane's own overlay packs, the one with most squares of ``ground`` (the folder's ground
-    naming photos, copies left aside included: scored against the meshes kept alone, the one pack
-    of every region lost to a copy and a region had no roads, the fourth review of 2026-11-14);
-    none with no square of it."""
+    naming photos, copies left aside included: the one pack of every region is theirs too); none
+    with no square of it."""
     best: list[Path] = []
     most = 0
     for pack, squares in overlays:
@@ -200,39 +198,32 @@ def _roads_of(ground: set, overlays: Sequence[tuple[Path, set]]) -> list[Path]:
     return best
 
 
-TER_SAMPLE = 20  # a mesh's terrain files looked at: one naming a photo Live makes is enough
-
-
 def _why_not_streamed(pack: Path) -> str | None:
-    """Why Live cannot stream onto a pack of ground, or None: ``photos``, a tile with its photos
-    (the photo its first terrain file names is in its ``textures``: a tile of the pilot's, Live's
-    own pack); ``no_photos``, terrain files naming no photo in Ortho4XP's names, which Live makes
-    (HD Mesh's land classes); ``no_terrain``, no terrain file at all (X-Plane's own scenery,
-    Live's regions, a virtual disk's empty mount point); ``unreadable``."""
+    """Why Live cannot stream onto a pack of ground, or None, by its first terrain file (every one
+    of AutoOrtho's names a photo: 276,198 for Australia): ``photos``, the photo it names is in the
+    pack's ``textures`` (a tile of the pilot's, Live's own pack); ``no_photos``, it names no photo
+    in Ortho4XP's names, which Live makes (HD Mesh's land classes); ``no_terrain``, no terrain
+    file at all (X-Plane's own scenery, Live's regions, a virtual disk's empty mount point);
+    ``unreadable``."""
     from orthostudio.live.geo import _TEXTURE_RE
 
-    if not (pack / "terrain").is_dir():
-        return "no_terrain"  # X-Plane's own scenery, Live's regions (their terrain-lists)
-    seen = 0
     try:
         with os.scandir(pack / "terrain") as entries:
-            for entry in entries:
-                if not entry.name.endswith(".ter"):
-                    continue
-                seen += 1
-                with open(entry.path, "rb") as f:
-                    for line in f.read(8192).splitlines():
-                        if line.startswith((b"BASE_TEX ", b"BASE_TEX_NOWRAP ")):
-                            name = line.split()[-1].decode("utf-8", "replace")
-                            name = name.replace("\\", "/").rsplit("/", 1)[-1]
-                            if name.endswith(".dds") and _TEXTURE_RE.match(name):
-                                return "photos" if (pack / "textures" / name).is_file() else None
-                if seen >= TER_SAMPLE:
-                    break
+            first = next((e.path for e in entries if e.name.endswith(".ter")), None)
+        if first is None:
+            return "no_terrain"
+        with open(first, "rb") as f:
+            head = f.read(8192)
+    except FileNotFoundError:
+        return "no_terrain"
     except OSError:
         return "unreadable"
-    # none at all: a virtual disk's mount point, empty while its streamer is not running
-    return "no_photos" if seen else "no_terrain"
+    for line in head.splitlines():
+        if line.startswith((b"BASE_TEX ", b"BASE_TEX_NOWRAP ")):
+            name = line.split()[-1].decode("utf-8", "replace").replace("\\", "/").rsplit("/", 1)[-1]
+            if name.endswith(".dds") and _TEXTURE_RE.match(name):
+                return "photos" if (pack / "textures" / name).is_file() else None
+    return "no_photos"
 
 
 def other_mesh_folder() -> Path | None:
@@ -244,8 +235,20 @@ def other_mesh_folder() -> Path | None:
         return None
     try:
         return Path(folder).expanduser()
-    except RuntimeError:  # « ~someone », no such user: as typed, not there (the fifth review)
+    except RuntimeError:  # « ~someone », no such user: as typed, not there
         return Path(folder)
+
+
+def other_mesh_said(folder: Path, found: OtherMesh) -> dict:
+    """The folder of another tool's mesh as Live says it, in its window and in its log: whether it
+    is there, its meshes and roads by name, those left aside with why."""
+    return {
+        "folder": str(folder),
+        "there": other_mesh_there(folder),
+        "meshes": [p.name for p in found.meshes],
+        "overlays": [p.name for p in found.overlays],
+        "refused": [{"name": name, "why": why} for name, why in found.refused],
+    }
 
 
 def other_mesh_there(folder: Path) -> bool:
@@ -256,7 +259,7 @@ def other_mesh_there(folder: Path) -> bool:
 
 OTHER_MESH_S = 30.0
 """The folder of another tool's mesh looked at again this often by the window's checks, which
-come every 3 s (it was read twice each time, the review of 2026-11-14); at once when the setting
+come every 3 s and ask twice; at once when the setting
 changes or the folder comes or goes, and at Live's start."""
 
 _found: tuple[float, tuple, OtherMesh] = (0.0, (), NO_OTHER_MESH)

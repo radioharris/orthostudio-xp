@@ -471,15 +471,15 @@ change under Live (the user: « je préfère le réglage sans surprise »); Auto
   a pack is not looked into, one with no DSF is no scenery, a folder below the first that cannot
   be read is left out. Each is ground or overlays by its first DSF's head (`sim/overlay 1`, read once with
   its maker), its squares listed as Live's overlays list them (`overlays.squares_of`).
-- **Ground, a mesh or not:** `_why_not_streamed` reads up to `TER_SAMPLE` (20) terrain files for
-  one naming a photo in Ortho4XP's names (`BASE_TEX` or `BASE_TEX_NOWRAP` to
-  `<row>_<col>_<provider><zl>.dds`): that photo in the pack's `textures` is a tile with its own
-  photos (`photos`: the pilot's tile, Live's own pack); none named, HD Mesh's land classes
-  (`no_photos`); no terrain file at all, X-Plane's own scenery, Live's regions, a virtual disk's
-  empty mount point (`no_terrain`); `unreadable` when they cannot be read. A mesh whose DSFs (by name) all
-  have one in the sources before it, or in a mesh of the folder kept before it, adds nothing and
-  is left aside (`already`): a copy of AutoOrtho's Europe beside AutoOrtho's own cost its listing,
-  up to 57 s on a slow Windows disk, for nothing.
+- **Ground, a mesh or not:** `_why_not_streamed` reads its first terrain file (every one of
+  AutoOrtho's names a photo: 276,198 for Australia) for a photo in Ortho4XP's names (`BASE_TEX` or
+  `BASE_TEX_NOWRAP` to `<row>_<col>_<provider><zl>.dds`): that photo in the pack's `textures` is a
+  tile with its own photos (`photos`: the pilot's tile, Live's own pack); none named, HD Mesh's land
+  classes (`no_photos`); no terrain file at all, X-Plane's own scenery, Live's regions, a virtual
+  disk's empty mount point (`no_terrain`); `unreadable` when it cannot be read. A mesh whose DSFs
+  (by name) all have one in the sources before it, or in a mesh of the folder kept before it, adds
+  nothing and is left aside (`already`): a copy of AutoOrtho's Europe beside AutoOrtho's own cost
+  its listing, up to 57 s on a slow Windows disk, for nothing.
 - **Overlays, the roads of the meshes:** X-Plane's own overlay packs, made by its tool
   (`sim/creation_agent` « X-Plane Scenery Creator », `XPLANE_OVERLAYS`: AutoOrtho's and Live's
   alike, the roads, forests and buildings a mesh replacing X-Plane's goes without); of them, the
