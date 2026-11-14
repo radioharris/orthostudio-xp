@@ -1143,27 +1143,39 @@ def test_the_streamer_builds_to_the_file_size(
     assert path.stat().st_size == dds.file_size(side)
 
 
-def test_speed_and_track_from_positions_when_xplane_says_none() -> None:
-    """A drone's aircraft: X-Plane says 0 kt while it flies at 600 kt. The planner takes its speed
-    and track from its last two positions, so that the path ahead is planned (2026-09-29)."""
-    from orthostudio.live.streamer import motion_from_positions
+def test_the_motion_as_the_aircraft_really_moves() -> None:
+    """The ground and vertical speeds from the positions of the last 10 s of real time: X-Plane's
+    ignore its sim rate (3x over Labrador, issue 28); a drone's track from them too (X-Plane says
+    0 kt at 600 kt, 2026-09-29); X-Plane's figures while taxiing or paused, after a jump, and until
+    two positions are far enough apart."""
+    from orthostudio.live.streamer import Motion
 
-    before = Fix(43.637, 2.40)
-    fix = Fix(43.637, 2.40 + 0.6172 / 80.47, trk_deg=275.5)  # 617 m east in 2 s
-    motion_from_positions(before, 100.0, fix, 102.0)
-    assert fix.gs_ms == pytest.approx(308.6, rel=0.01)
-    assert fix.trk_deg == pytest.approx(90.0, abs=0.5)
-    flying = Fix(43.637, 2.4077, gs_ms=250.0, trk_deg=88.0)  # X-Plane says it: as it says
-    motion_from_positions(before, 100.0, flying, 102.0)
-    assert (flying.gs_ms, flying.trk_deg) == (250.0, 88.0)
-    parked = Fix(43.637, 2.40001)  # a metre: taxiing, or nothing
-    motion_from_positions(before, 100.0, parked, 102.0)
-    assert parked.gs_ms == 0.0
-    jumped = Fix(45.0, 5.0)  # hundreds of km in 2 s: a jump, not a flight
-    motion_from_positions(before, 100.0, jumped, 102.0)
+    def flown(gs_ms, trk_deg, east_ms, climb_ms, at=(0, 2, 4, 6, 8, 10, 12)):
+        m, fix = Motion(), None
+        for t in at:  # every 2 s, as the planner reads it
+            fix = Fix(53.0, -60.0 + east_ms * t / 66990.0, 12000.0 + climb_ms * t, gs_ms, trk_deg)
+            m.measure(fix, 100.0 + t)
+        return fix
+
+    fast = flown(252.0, 270.5, 756.0, -15.0)  # sim rate 3x: X-Plane says 252 m/s, 756 covered
+    assert fast.gs_ms == pytest.approx(756.0, rel=0.01)
+    assert fast.vs_ms == pytest.approx(-15.0, rel=0.01)
+    assert fast.trk_deg == 270.5  # X-Plane's track, right at any rate
+    drone = flown(0.0, 0.0, 308.0, 0.0)
+    assert drone.gs_ms == pytest.approx(308.0, rel=0.01)
+    assert drone.trk_deg == pytest.approx(90.0, abs=0.5)
+    paused = flown(250.0, 88.0, 0.0, 0.0)  # positions still: X-Plane's figures stand
+    assert (paused.gs_ms, paused.trk_deg) == (250.0, 88.0)
+    early = flown(252.0, 270.5, 756.0, 0.0, at=(0, 2))  # one plan apart: not measured yet
+    assert early.gs_ms == 252.0
+    m = Motion()
+    m.measure(Fix(43.6, 1.4, gs_ms=250.0), 100.0)
+    jumped = Fix(45.0, 5.0, gs_ms=0.0)  # hundreds of km in 2 s: a new start, not a flight
+    m.measure(jumped, 102.0)
     assert jumped.gs_ms == 0.0
-    motion_from_positions(None, 0.0, jumped, 102.0)  # the first position: nothing to go by
-    assert jumped.gs_ms == 0.0
+    later = Fix(45.0, 5.0 + 0.0353, gs_ms=0.0)  # 2.8 km from the jump in 4 s: measured from it
+    m.measure(later, 106.0)
+    assert later.gs_ms == pytest.approx(700.0, rel=0.02)
 
 
 def test_a_start_knows_when_it_sets_the_textures_to_a_new_zoom(tmp_path: Path) -> None:

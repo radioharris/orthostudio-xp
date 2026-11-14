@@ -927,9 +927,13 @@ X-Plane's French menu says it.
 
 ## The loop
 
-- **Every 2 s** the planner reads the aircraft's position, track and ground speed (UDP; from its
-  last two positions when X-Plane says no speed while it moves, a position set from outside such as
-  the measurement flight's drone: `motion_from_positions`, 2026-09-29) and looks at the path 90
+- **Every 2 s** the planner reads the aircraft's position and track (UDP) and takes its ground and
+  vertical speeds from its positions of the last 10 s of real time (`Motion`): X-Plane's own figures
+  ignore its sim rate (at 3x it said 491 kt while the aircraft covered 1,450 kt, and Live prepared a
+  third of the way it flew: issue 28, 2026-11-13); its track too when X-Plane says no speed while
+  it moves (a position set from outside, the measurement flight's drone, 2026-09-29); X-Plane's
+  figures below 25 m/s (taxiing, or paused: the way ahead is prepared still) and until two
+  positions are 3.5 s apart; and looks at the path 90
   seconds ahead, straight on its track (5 minutes until 2026-09-28: in a turn that line
   swept all around the aircraft, and Live built 233 textures at 8192 px where X-Plane read 133,
   the encoding costing a few frames; 90 s still leave about two minutes before X-Plane reads each
