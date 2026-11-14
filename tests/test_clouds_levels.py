@@ -219,3 +219,19 @@ def test_a_level_chosen_by_hand_stays_in_the_menu_once_another_source_is_taken()
         ("EOX:11", 11, "clear"),
         ("BI", 16, "cloudy"),
     ]
+
+
+def test_a_clouds_menu_keeps_each_sources_lines_together_the_best_source_first() -> None:
+    c = {
+        "screening": {
+            "BI": {"answer": "cloudy", "fit": 80},
+            "EOX": {"answer": "clear", "fit": 60},
+            "BI:12": {"answer": "clear", "fit": 30},
+            "Arc:11": {"answer": "clear", "fit": 90},
+            "EOX:11": {"answer": "cloudy", "fit": 20},
+        }
+    }
+    menu = [m["source"] for m in state._menu(c, None, None, {"BI": 16, "EOX": 14, "Arc": 16})]
+    # EOX's best line is the best of all, then Bing's (clear at ZL12), then Esri's (ZL11)
+    assert menu == ["EOX", "EOX:11", "BI", "BI:12", "Arc:11"]
+    assert state.best_of(c) == "EOX"  # the choice is the same rule as ever

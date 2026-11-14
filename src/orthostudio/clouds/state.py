@@ -417,13 +417,23 @@ def _menu(
     """Every source tried under the cloud (searched or got), and its own: what each has there
     and its fit (its newest reading), the level it is read at (its own, else the sharpest the
     tile has of it, ``tops``; every line says its level, a user, 2026-11-14), whether it may be
-    chosen, the best first."""
+    chosen. A source's lines together, from its sharpest, the sources in the order of their best
+    line (:func:`_ranked`): the best first, and Bing at ZL16, ZL15 and ZL12 no longer scattered
+    among the others' (a user, 2026-11-14)."""
     # what the search tried, what was got (a level chosen by hand, then another source: it left
     # the menu, its images got and judged, a user, 2026-11-14), and its own
     tried = [*(c.get("screening") or {}), *(c.get("checks") or {})]
     codes = list(dict.fromkeys([*tried, *([source] if source else [])]))
+    first: dict[str, int] = {}  # each source by its best line
+    for i, code in enumerate(_ranked(c, codes)):
+        first.setdefault(level_of(code)[0], i)
+
+    def place(code: str) -> tuple[int, int]:
+        base, zl = level_of(code)
+        return first[base], 0 if zl is None else 100 - zl
+
     items = []
-    for code in _ranked(c, codes):
+    for code in sorted(codes, key=place):
         said = reading(c, code)
         base, zl = level_of(code)
         items.append(

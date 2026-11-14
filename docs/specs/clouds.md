@@ -107,7 +107,8 @@ The Plan's map, brought over the tile; the Plan's steps make way for the cloud p
   tile has of that source), with what it has there and its fit ("Esri Clarity · ZL16 · clear ·
   fit 93 %"), both from its newest reading (`state.reading`: its images got,
   judged as they are now, else the search's; what a piece said, no answer, a refusal, a page, leaves
-  the search's), the best first, those that cannot be chosen greyed (`sources.PROPOSABLE`: the same
+  the search's), a source's lines together from its sharpest, the sources in the order of
+  their best line, so the best first (`state._menu`), those that cannot be chosen greyed (`sources.PROPOSABLE`: the same
   photo, no picture; the source whose images the tile shows of it always may be); beside it the
   **level** its source is read at (`levels`, `level`: from the sharpest the tile has of that
   source down to ZL11, `sources.COARSEST`; the source itself at the top, `Arc:11` below, its name
