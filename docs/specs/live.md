@@ -461,24 +461,41 @@ unpacked in Live's folder as
 region's), AutoOrtho's serves the squares it has not.
 
 **Another tool's mesh** (`scenery.other_mesh`, 2026-11-14): a folder chosen in the Settings
-(`LiveSettings.other_mesh`, empty: none), last in `default_sources` after Live's regions and
-AutoOrtho's in X-Plane, its overlay packs last in `overlays.overlay_folders`. A setting, not a
-read of the other tool's own configuration, which may change under Live (the user: « je préfère
-le réglage sans surprise »); AutoOrtho's regions in `Custom Scenery` stay found by themselves.
+(`LiveSettings.other_mesh`, empty: none), last in `default_sources` after `base_sources` (Live's
+regions, AutoOrtho's in X-Plane, those Live installed), its overlay packs last in
+`overlays.overlay_folders`. A setting, not a read of the other tool's own configuration, which may
+change under Live (the user: « je préfère le réglage sans surprise »); AutoOrtho's regions in
+`Custom Scenery` stay found by themselves.
 - **By content, not by name:** the packs (`Earth nav data`) in the folder, it or down to
   `PACK_DEPTH` (3) folders below it, the depth of AutoOrtho's own pack moved
   (`<folder>/z_autoortho/scenery/z_ao_<id>`); a pack is not looked into, a folder below the first
-  that cannot be read is left out. A pack with no `terrain` folder is an overlay pack.
-- **A mesh Live can stream onto:** `_why_not_streamed` refuses a pack whose `textures` hold a
-  `.dds` (`photos`: a tile with its own photos, not one to stream onto) and one whose first
-  `TER_SAMPLE` (20) terrain files name no photo in Ortho4XP's names (`BASE_TEX` or
-  `BASE_TEX_NOWRAP` to `<row>_<col>_<provider><zl>.dds`; `no_photos`: X-Plane's land classes, HD
-  Mesh); `unreadable` when they cannot be read.
-- **Once:** a folder already in the sources (the same folder by `os.path.samefile`, AutoOrtho's
-  own chosen again) is not added twice.
-- **The window:** `checks.other_mesh` is None without a folder, else `{folder, there, meshes,
-  overlays, refused: [{name, why}]}`, the line under the setting; a missing mesh's notices name
-  the setting. No night grids on it: they come with Live's regions.
+  that cannot be read is left out. A pack with `terrain-lists` is one of Live's regions (`live`,
+  left aside), one with no `terrain` folder an overlay pack.
+- **Not X-Plane's, not Live's:** the folder chosen at or inside X-Plane's (`whole: in_xplane`) or
+  Live's (`in_live`) is refused whole, and neither is looked into from a folder above them: chosen
+  by mistake, X-Plane's gave its 52 airport, Landmark and simHeaven packs as overlays (the review
+  of 2026-11-14).
+- **A mesh Live can stream onto:** `_why_not_streamed` reads up to `TER_SAMPLE` (20) terrain files
+  for one naming a photo in Ortho4XP's names (`BASE_TEX` or `BASE_TEX_NOWRAP` to
+  `<row>_<col>_<provider><zl>.dds`): that photo in the pack's `textures` is a tile with its own
+  photos (`photos`); none named, X-Plane's land classes or HD Mesh (`no_photos`); `unreadable`
+  when they cannot be read.
+- **A square more, or left aside:** a mesh whose DSFs (by name) all have one in the sources before
+  it, or in a mesh of the folder kept before it, adds nothing and is left aside (`already`): a
+  copy of AutoOrtho's Europe beside AutoOrtho's own cost its listing, up to 57 s on a slow Windows
+  disk, for nothing.
+- **Looked at once in a while:** `other_mesh_found` keeps what it found for `OTHER_MESH_S` (30 s)
+  for the window's checks, which come every 3 s; at once when the setting changes, and anew at
+  Live's start (`fresh`), which keeps its overlay packs with its mesh (`Prepared.other_overlays`)
+  for the overlays made again between flights: a folder changed meanwhile waits for the next
+  start, mesh and roads alike.
+- **Its errors:** a start whose only mesh is this folder, gone, says so (« is not there, its disk
+  unplugged? »); a link the region's setup could not make (`XP_LINK_FAILED`, a Windows network
+  folder without Developer Mode, which junctions do not reach) names the folder.
+- **The window:** `checks.other_mesh` is None without a folder, else `{folder, there, whole,
+  next_start, meshes, overlays, refused: [{name, why}]}`, the line under the setting; `next_start`
+  while a mesh of it is not among the pack's recorded sources. A missing mesh's notices name the
+  setting. No night grids on it: they come with Live's regions.
 
 `orthostudio/live/aoregions.py` installs a region the way AutoOrtho's installer does
 (`autoortho/downloader.py`), from the GitHub releases of `kubilus1/autoortho-scenery`, which hold

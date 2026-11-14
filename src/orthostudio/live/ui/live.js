@@ -536,11 +536,12 @@ function drawOtherMesh(other) {
   line.hidden = !other;
   if (!other) return;
   line.classList.toggle("is-warn", !other.there || !other.meshes.length);
-  if (!other.there) {
-    line.textContent = t("other_mesh.gone");
+  if (!other.there || other.whole) {
+    line.textContent = t(other.whole ? `other_mesh.${other.whole}` : "other_mesh.gone");
     return;
   }
-  const said = [other.meshes.length ? t("other_mesh.meshes", { names: other.meshes.join(", ") }) : t("other_mesh.none")];
+  const used = other.next_start ? "other_mesh.meshes_next" : "other_mesh.meshes";
+  const said = [other.meshes.length ? t(used, { names: other.meshes.join(", ") }) : t("other_mesh.none")];
   if (other.overlays.length) said.push(t("other_mesh.overlays", { names: other.overlays.join(", ") }));
   if (other.refused.length) {
     const names = other.refused.map((r) => `${r.name} (${t(`other_mesh.why_${r.why}`)})`).join(", ");

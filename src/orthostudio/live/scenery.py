@@ -18,6 +18,8 @@ import os
 import subprocess
 import sys
 import threading
+import time
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -101,43 +103,75 @@ class OtherMesh:
     overlays: list[Path]
     """Its roads, forests and buildings: packs with DSFs and no terrain."""
     refused: list[tuple[str, str]]
-    """Its packs Live cannot stream onto, and why."""
+    """Its packs Live leaves aside, and why."""
+    whole: str | None = None
+    """Why the whole folder is left aside: ``in_xplane`` (X-Plane reads what is there itself,
+    AutoOrtho's mesh there taken without the setting), ``in_live`` (Live's own folder)."""
 
 
 NO_OTHER_MESH = OtherMesh([], [], [])
 
 
-def other_mesh(folder: Path | None) -> OtherMesh:
+def other_mesh(
+    folder: Path | None, xplane: Path | None, root: Path, given: Sequence[Path] = ()
+) -> OtherMesh:
     """The meshes and overlays of the folder the pilot chose (``LiveSettings.other_mesh``), by what
     they hold, whatever their names: a pack (``Earth nav data``) with a ``terrain`` folder is a mesh
-    when its terrain files name photos Live makes (:func:`_why_not_streamed`), one without is an
-    overlay pack. The folder may be one such pack, or hold several, as deep as AutoOrtho's own
-    (:func:`_packs_in`). Nothing when it is gone (its disk away)."""
+    when its terrain files name photos Live makes (:func:`_why_not_streamed`) and it gives a square
+    none of ``given`` (the regions before it) has, one without is an overlay pack, one with
+    ``terrain-lists`` Live's own region. The folder may be one such pack, or hold several, as deep
+    as AutoOrtho's own (:func:`_packs_in`), X-Plane's folder and Live's not looked into: chosen by
+    mistake, every airport and Landmark there was taken for roads (the review of 2026-11-14).
+    Nothing when it is gone (its disk away)."""
     if folder is None:
         return NO_OTHER_MESH
     try:
-        packs = _packs_in(folder, PACK_DEPTH)
+        real = folder.resolve()
+        homes = [
+            (why, home.resolve())
+            for why, home in (("in_xplane", xplane), ("in_live", root))
+            if home is not None
+        ]
+    except OSError:
+        return NO_OTHER_MESH
+    for why, home in homes:
+        if real == home or home in real.parents:
+            return OtherMesh([], [], [], why)
+    avoid = [home for _, home in homes]
+    try:
+        packs = _packs_in(folder, PACK_DEPTH, avoid)
     except OSError:
         return NO_OTHER_MESH
     meshes: list[Path] = []
     overlays: list[Path] = []
     refused: list[tuple[str, str]] = []
+    have: set[str] | None = None  # the squares before it, listed once a mesh is found
     for pack in packs:
-        if not (pack / "terrain").is_dir():
+        if (pack / "terrain-lists").is_dir():
+            refused.append((pack.name, "live"))  # one of Live's regions, kept on another disk
+        elif not (pack / "terrain").is_dir():
             overlays.append(pack)
         elif (why := _why_not_streamed(pack)) is not None:
             refused.append((pack.name, why))
         else:
-            meshes.append(pack)
+            if have is None:
+                have = set().union(*(_squares(source) for source in given))
+            squares = _squares(pack)
+            if squares <= have:  # the same region as one before it: it would add nothing
+                refused.append((pack.name, "already"))
+            else:
+                meshes.append(pack)
+                have |= squares
     return OtherMesh(meshes, overlays, refused)
 
 
 PACK_DEPTH = 3  # AutoOrtho's own, moved: <folder>/z_autoortho/scenery/z_ao_<region>
 
 
-def _packs_in(folder: Path, depth: int) -> list[Path]:
+def _packs_in(folder: Path, depth: int, avoid: Sequence[Path] = ()) -> list[Path]:
     """The packs (``Earth nav data``) in ``folder``, it or below it ``depth`` levels at most, by
-    name; a pack is not looked into, a folder that cannot be read below the first is left out."""
+    name; a pack is not looked into, nor the folders of ``avoid``, and a folder that cannot be read
+    below the first is left out."""
     if (folder / "Earth nav data").is_dir():
         return [folder]
     if depth == 0:
@@ -146,7 +180,19 @@ def _packs_in(folder: Path, depth: int) -> list[Path]:
     for sub in sorted(folder.iterdir()):
         if sub.is_dir() and not sub.name.startswith("."):
             with contextlib.suppress(OSError):
-                out += _packs_in(sub, depth - 1)
+                if sub.resolve() not in avoid:
+                    out += _packs_in(sub, depth - 1, avoid)
+    return out
+
+
+def _squares(pack: Path) -> set[str]:
+    """The squares a pack has a DSF for, by the DSF's name (``+45+005.dsf``)."""
+    out: set[str] = set()
+    with contextlib.suppress(OSError), os.scandir(pack / "Earth nav data") as tens:
+        for ten in tens:
+            if ten.is_dir():
+                with contextlib.suppress(OSError), os.scandir(ten.path) as files:
+                    out.update(f.name.lower() for f in files if f.name.lower().endswith(".dsf"))
     return out
 
 
@@ -154,17 +200,11 @@ TER_SAMPLE = 20  # a mesh's terrain files looked at: one naming a photo Live mak
 
 
 def _why_not_streamed(pack: Path) -> str | None:
-    """Why Live cannot stream onto ``pack``, or None: a tile with its photos (textures there, which
-    Live leaves to X-Plane as the pilot's own tile), or terrain files naming no photo in Ortho4XP's
-    names, which Live makes (X-Plane's or HD Mesh's land classes)."""
+    """Why Live cannot stream onto ``pack``, or None: a tile with its photos (the photo its first
+    terrain file names is in its ``textures``: a tile of the pilot's), or terrain files naming no
+    photo in Ortho4XP's names, which Live makes (X-Plane's or HD Mesh's land classes)."""
     from orthostudio.live.geo import _TEXTURE_RE
 
-    try:
-        with os.scandir(pack / "textures") as entries:
-            if any(e.name.lower().endswith(".dds") for e in entries):
-                return "photos"  # a tile with its photos
-    except OSError:
-        pass
     seen = 0
     try:
         with os.scandir(pack / "terrain") as entries:
@@ -178,7 +218,7 @@ def _why_not_streamed(pack: Path) -> str | None:
                             name = line.split()[-1].decode("utf-8", "replace")
                             name = name.replace("\\", "/").rsplit("/", 1)[-1]
                             if name.endswith(".dds") and _TEXTURE_RE.match(name):
-                                return None
+                                return "photos" if (pack / "textures" / name).is_file() else None
                 if seen >= TER_SAMPLE:
                     break
     except OSError:
@@ -194,16 +234,35 @@ def other_mesh_folder() -> Path | None:
     return Path(folder) if folder else None
 
 
-def default_sources(xplane: Path, root: Path | None = None) -> list[Path]:
-    """The regions whose mesh Live streams onto: Live's own mesh first, so that a square it has is
-    its (``region.setup_region``: a DSF a region has already stays that region's), then AutoOrtho's
-    own, then those Live installed (in ``root``, Live's folder) that AutoOrtho has not, then those
-    of the folder of another tool's mesh chosen in the Settings (:func:`other_mesh`), each once."""
-    from orthostudio.live import aoregions
-    from orthostudio.live.pack import live_root
+OTHER_MESH_S = 30.0
+"""The folder of another tool's mesh looked at again this often by the window's checks, which
+come every 3 s (it was read twice each time, the review of 2026-11-14); at once when the setting
+changes, and at Live's start."""
 
-    root = live_root() if root is None else root
-    ours = osxp_regions(root)
+_found: tuple[float, tuple, OtherMesh] = (0.0, (), NO_OTHER_MESH)
+
+
+def other_mesh_found(xplane: Path | None, root: Path, *, fresh: bool = False) -> OtherMesh:
+    """The folder chosen in the Settings and what Live takes there after the regions before it
+    (:func:`base_sources`), as last looked at, or now when ``fresh`` (a start)."""
+    global _found
+    folder = other_mesh_folder()
+    key = (folder, xplane, root)
+    at, was, got = _found
+    if not fresh and was == key and time.monotonic() - at < OTHER_MESH_S:
+        return got
+    given = base_sources(xplane, root) if xplane is not None else []
+    got = other_mesh(folder, xplane, root, given)
+    _found = (time.monotonic(), key, got)
+    return got
+
+
+def base_sources(xplane: Path, root: Path) -> list[Path]:
+    """Live's own mesh first, so that a square it has is its (``region.setup_region``: a DSF a
+    region has already stays that region's), then AutoOrtho's own, then those Live installed (in
+    ``root``, Live's folder) that AutoOrtho has not."""
+    from orthostudio.live import aoregions
+
     theirs = autoortho_regions(xplane)
     have = {p.name for p in theirs}
     mine = [
@@ -211,19 +270,20 @@ def default_sources(xplane: Path, root: Path | None = None) -> list[Path]:
         for region in sorted(aoregions.installed(root))
         if f"z_ao_{region}" not in have
     ]
-    out: list[Path] = []
-    for source in ours + theirs + mine + other_mesh(other_mesh_folder()).meshes:
-        if all(not _same_folder(source, kept) for kept in out):
-            out.append(source)
-    return out
+    return osxp_regions(root) + theirs + mine
 
 
-def _same_folder(a: Path, b: Path) -> bool:
-    """Whether two paths are one folder (AutoOrtho's own chosen as the other tool's, a link)."""
-    try:
-        return os.path.samefile(a, b)
-    except OSError:
-        return a == b
+def default_sources(
+    xplane: Path, root: Path | None = None, other: OtherMesh | None = None
+) -> list[Path]:
+    """The regions whose mesh Live streams onto: :func:`base_sources`, then those of the folder of
+    another tool's mesh chosen in the Settings (``other``, as found at a start; else as last
+    looked at, :func:`other_mesh_found`)."""
+    from orthostudio.live.pack import live_root
+
+    root = live_root() if root is None else root
+    other = other_mesh_found(xplane, root) if other is None else other
+    return base_sources(xplane, root) + other.meshes
 
 
 def xplane_pref(xplane: Path, key: str) -> str | None:

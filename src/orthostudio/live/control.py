@@ -58,8 +58,8 @@ from orthostudio.live.scenery import (
     named_xplane,
     ortho_streamers,
     osxp_regions,
-    other_mesh,
     other_mesh_folder,
+    other_mesh_found,
     save_named_xplane,
     xplane_running,
     xplane_texture_quality,
@@ -226,7 +226,7 @@ def gather_checks() -> dict[str, Any]:
         "folder": str(live_root()),
         "folder_default": str(default_live_root()),
         # the folder of another tool's mesh chosen in the Settings, what Live takes there and not
-        "other_mesh": _other_mesh_said(),
+        "other_mesh": _other_mesh_said(None),
         "folder_problem": None,
         "textures_bytes": _textures_bytes(default_pack_dir()),
         # the SimBrief name OrthoStudio XP has, which the window offers to take: never asked of
@@ -244,6 +244,7 @@ def gather_checks() -> dict[str, Any]:
     except FolderError as e:
         out["folder_problem"] = str(e)
     sources = stream_sources(xp)
+    out["other_mesh"] = _other_mesh_said(xp)
     out.update(
         xplane=str(xp),
         xplane_quality=xplane_texture_quality(xp),
@@ -265,16 +266,21 @@ def gather_checks() -> dict[str, Any]:
     return out
 
 
-def _other_mesh_said() -> dict[str, Any] | None:
+def _other_mesh_said(xp: Path | None) -> dict[str, Any] | None:
     """The folder of another tool's mesh as the Settings say it: its meshes and overlays by name,
-    those refused with why; None when none is chosen."""
+    those refused with why, or why the whole folder is; whether its meshes wait for Live's next
+    start (not in the pack yet: the line said « Used » as the setting was saved, while the stream
+    took it at the next start, the review of 2026-11-14); None when none is chosen."""
     folder = other_mesh_folder()
     if folder is None:
         return None
-    found = other_mesh(folder)
+    found = other_mesh_found(xp, live_root())
+    in_pack = set(session._recorded_sources(default_pack_dir()))
     return {
         "folder": str(folder),
         "there": folder.is_dir(),
+        "whole": found.whole,
+        "next_start": any(str(p) not in in_pack for p in found.meshes),
         "meshes": [p.name for p in found.meshes],
         "overlays": [p.name for p in found.overlays],
         "refused": [{"name": name, "why": why} for name, why in found.refused],

@@ -393,18 +393,23 @@ offers to install AutoOrtho's. In a terminal, `python -m orthostudio.live region
 `regions install eur` and `regions remove eur` still handle AutoOrtho's regions.
 
 **Another tool's mesh.** A mesh in AutoOrtho's format kept outside X-Plane, the copy another
-streamer downloads or AutoOrtho's own pack moved out of `Custom Scenery`, can stand in where no
-region of Live's is installed: under "Another tool's mesh", choose its folder, then Save. Live takes
-what the folder holds, whatever the names, down to three folders below it: a pack whose terrain
-files name photos is a mesh, a pack with no terrain folder brings roads, forests and buildings. It
-leaves aside a tile that has its own photos and a mesh with no photos to lay (X-Plane's land
-classes, as HD Mesh's), and the line under the setting says what it uses and what it leaves aside,
-or that the folder is not there (a disk unplugged). Choose the folder that holds both the mesh and
-its roads: for AutoOrtho's pack moved, the one holding `z_autoortho` and `yAutoOrtho_Overlays`.
+streamer downloads or AutoOrtho's own pack moved out of `Custom Scenery`, can stand in where Live
+has no other mesh: under "Another tool's mesh", choose its folder, then Save. Live takes what the
+folder holds, whatever the names, down to three folders below it: a pack whose terrain files name
+photos is a mesh, a pack with no terrain folder brings roads, forests and buildings. It leaves aside
+a tile that has its own photos, a mesh with no photos to lay (X-Plane's land classes, as HD Mesh's),
+one of Live's own regions, and a copy of a region it already has (AutoOrtho's Europe in X-Plane and
+another copy of it there): the line under the setting says what it uses and what it leaves aside, or
+that the folder is not there (a disk unplugged). It refuses X-Plane's folder, or one inside it,
+which X-Plane reads already, and Live's own. Choose the folder that holds both the mesh and its
+roads: for AutoOrtho's pack moved, the one holding `z_autoortho` and `yAutoOrtho_Overlays`.
 
 Live's regions come first, then AutoOrtho's in X-Plane, then this folder, for the mesh and for the
-roads alike; a folder counted twice is used once. Nothing in that folder is changed, and it is used
-from Live's next start. There are no town lights at night on it: they come with Live's regions.
+roads alike. Nothing in that folder is changed. Its mesh and its roads are taken at Live's start,
+and kept until the next one: the line says "Used from Live's next start" until then. A start whose
+only mesh is in this folder, its disk unplugged, says so. On Windows, a folder on a network drive
+can be used only with Developer Mode on, as Windows links nothing else there. There are no town
+lights at night on it: they come with Live's regions.
 
 Where no region installed has a mesh, X-Plane shows its own scenery, without photos: Live says so,
 in its window and in a small panel in X-Plane ("Live: no mesh here: install North America in the
