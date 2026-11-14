@@ -403,9 +403,9 @@ of it there). As its roads, forests and buildings it takes X-Plane's own, the ov
 pack holds: of those packs, the one that covers most of the folder's mesh, copies included. An
 airport, simHeaven, a Landmark or Global Forests lying in the same folder is not taken, and a mesh
 moved without its roads has none from there. The line under the setting says what it uses and what
-it leaves aside, that it found no roads with the mesh (a folder chosen too deep), or that the folder
-is not there (a disk unplugged). Choose the folder that holds both the mesh and its roads: for
-AutoOrtho's pack moved, the one holding `z_autoortho` and `yAutoOrtho_Overlays`.
+it leaves aside, that the folder holds no roads beside the mesh (chosen one folder too deep, say),
+or that the folder is not there (a disk unplugged). Choose the folder that holds both the mesh and
+its roads: for AutoOrtho's pack moved, the one holding `z_autoortho` and `yAutoOrtho_Overlays`.
 
 Live's regions come first, then AutoOrtho's in X-Plane, then this folder, for the mesh and for the
 roads alike. Nothing in that folder is changed. Its mesh and its roads are taken at Live's start,

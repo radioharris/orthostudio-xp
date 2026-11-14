@@ -543,8 +543,7 @@ function drawOtherMesh(other) {
   const line = $("other-mesh-found");
   line.hidden = !other;
   if (!other) return;
-  // a mesh without its roads warned too: chosen a folder too deep, the flight showed none
-  line.classList.toggle("is-warn", !other.there || !other.meshes.length || !other.overlays.length);
+  line.classList.toggle("is-warn", !other.there || !other.meshes.length);
   if (!other.there) {
     line.textContent = t("other_mesh.gone");
     return;

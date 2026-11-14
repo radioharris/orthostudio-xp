@@ -506,10 +506,12 @@ change under Live (the user: « je préfère le réglage sans surprise »); Auto
   folder is linked only with Developer Mode (junctions reach no network drive); elsewhere the
   error is left as it is.
 - **The window:** `checks.other_mesh` is None without a folder, else `{folder, there, next_start,
-  meshes, overlays, refused: [{name, why}]}`, the line under the setting (five refused named, the rest counted; in orange too for a mesh
-  without roads, « choose the folder that holds them too »: one folder too deep, AutoOrtho's mesh
-  came without its roads beside it, said as « Used », the start's log saying it as well); `next_start` while a mesh of it is not among the pack's recorded sources. A
-  missing mesh's notices name the setting. No night grids on it: they come with Live's regions.
+  meshes, overlays, refused: [{name, why}]}`, the line under the setting (five refused named, the
+  rest counted; « no roads, forests or buildings in this folder » for a mesh without them there, a
+  fact of the folder and not a guess of what Live places, AutoOrtho's roads perhaps left in X-Plane:
+  the start's log says what it placed); `next_start` while a mesh of it is not among the pack's
+  recorded sources. A missing mesh's notices name the setting. No night grids on it: they come with
+  Live's regions.
 
 `orthostudio/live/aoregions.py` installs a region the way AutoOrtho's installer does
 (`autoortho/downloader.py`), from the GitHub releases of `kubilus1/autoortho-scenery`, which hold

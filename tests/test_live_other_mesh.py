@@ -153,14 +153,15 @@ def test_the_roads_of_one_region_moved_with_the_others(tmp_path: Path) -> None:
 
 
 def test_a_mesh_without_its_roads_said(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Chosen one folder too deep, AutoOrtho's mesh came without its roads beside it, and the line
-    said « Used » as if all was well (the review of 0eb7e561): the start's line says so."""
+    """Chosen one folder too deep, AutoOrtho's mesh came without its roads beside it: said as a
+    fact of the folder, not a guess of what Live places (AutoOrtho's may be left in X-Plane)."""
     folder = tmp_path / "moved"
     mesh(folder / "z_autoortho" / "scenery" / "z_ao_aus_pac")
     roads(folder / "yAutoOrtho_Overlays")
     deep = folder / "z_autoortho"
     assert session._other_said(deep, other_mesh(deep)) == (
-        f"another tool's mesh in {deep}: z_ao_aus_pac; no roads, forests or buildings found with it"
+        f"another tool's mesh in {deep}: z_ao_aus_pac; "
+        "no roads, forests or buildings in this folder"
     )
 
 
@@ -335,7 +336,7 @@ def test_a_start_says_the_folder(tmp_path: Path, monkeypatch) -> None:
     folder = tmp_path / "Other mesh"
     make_source(folder, tile=(46, 2))
     assert session._other_said(folder, other_mesh(folder)) == (
-        f"another tool's mesh in {folder}: z_ao_test; no roads, forests or buildings found with it"
+        f"another tool's mesh in {folder}: z_ao_test; no roads, forests or buildings in this folder"
     )
     gone = tmp_path / "unplugged"
     said_gone = f"another tool's mesh: {gone} is not there (its disk unplugged?): left out"
