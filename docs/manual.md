@@ -43,7 +43,8 @@ half to two and a half minutes. The panel shows where it is; **Stop** ends it. I
 ### 3. Choose what to replace
 
 Each cloud found is outlined in yellow on the map and listed in the panel with its size and its
-sources, for instance *Esri World Imagery · clear · fit 93 %*, the best first. Beside the panel's
+sources, for instance *Esri Clarity · ZL16 · clear · fit 93 %*: the source, the level it is read at,
+what it has there and how well it fits, the best first. Beside the panel's
 title, the source the tile's own photo comes from. A source showing
 the same photo as the tile, which would bring the cloud back, or with no picture there, is greyed.
 
@@ -62,7 +63,7 @@ the same photo as the tile, which would bring the cloud back, or with no picture
 - Beside the source, its **level**: ZL16 for a ZL16 tile, down to ZL11. Some sources show another
   photo at a coarser level, blurred but without clouds: Esri World Imagery at ZL11 over a tropical
   forest, for instance. Where no sharp photo is clear, the search tries them by itself and lists
-  them as *Esri World Imagery · ZL11*; elsewhere, choose a level by hand and the cloud's images are
+  them as *Esri · ZL11*; elsewhere, choose a level by hand and the cloud's images are
   fetched at that level. The cloud's place then looks as blurred as that level.
 - **Tick all** and **Untick all**, above the list, tick or untick every cloud at once. Whatever
   you click, a spinner turns on it, in the cloud's line or in the button, until the app has

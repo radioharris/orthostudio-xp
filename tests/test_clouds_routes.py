@@ -289,7 +289,9 @@ async def test_an_outline_is_tried_then_ticked_then_its_images_asked(
     assert row["id"] == cid and row["tick"] is True and asked == ["EOX"]
     # its one source has no picture this sharp: it may no longer be its source
     assert row["state"] == "waiting" and row["line"]["key"] == "clouds.row.waiting.no_source"
-    assert row["menu"] == [{"source": "EOX", "answer": "no_picture", "fit": 0, "proposable": False}]
+    assert row["menu"] == [
+        {"source": "EOX", "level": 12, "answer": "no_picture", "fit": 0, "proposable": False}
+    ]  # every line says its level: EOX at its sharpest on this ZL12 tile
 
 
 @pytest.mark.anyio

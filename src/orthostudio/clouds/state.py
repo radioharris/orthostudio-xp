@@ -239,6 +239,9 @@ class CloudState:
     levels: tuple[tuple[int, str], ...] = ()
     """The levels its source may be read at, the sharpest first, each with the code choosing it
     (:func:`_levels`)."""
+    tops: Mapping[str, int] = field(default_factory=dict)
+    """The sharpest level each source is read at for the tile (``sources.tops``): its menu says
+    each one's level."""
 
     @property
     def unasked(self) -> bool:
@@ -284,7 +287,7 @@ class CloudState:
             "label": label,
             "numbered": c["kind"] == "found",
             "preview": (previews or {}).get(c["id"]),
-            "menu": _menu(c, self.source, self.held),
+            "menu": _menu(c, self.source, self.held, self.tops),
             "levels": [{"zl": zl, "source": code} for zl, code in self.levels],
             "level": _level(self.source, self.levels),
         }
@@ -405,17 +408,26 @@ def _level(source: str | None, levels: Sequence[tuple[int, str]]) -> int | None:
     return levels[0][0] if zl is None else zl
 
 
-def _menu(c: Mapping[str, Any], source: str | None, held: Any = None) -> list[dict[str, Any]]:
+def _menu(
+    c: Mapping[str, Any],
+    source: str | None,
+    held: Any = None,
+    tops: Mapping[str, int] | None = None,
+) -> list[dict[str, Any]]:
     """Every source tried under the cloud, and its own: what each has there and its fit (its
-    newest reading), whether it may be chosen, the best first."""
+    newest reading), the level it is read at (its own, else the sharpest the tile has of it,
+    ``tops``; every line says its level, a user, 2026-11-14), whether it may be chosen, the best
+    first."""
     screening = c.get("screening") or {}
     codes = [*screening, *([source] if source and source not in screening else [])]
     items = []
     for code in _ranked(c, codes):
         said = reading(c, code)
+        base, zl = level_of(code)
         items.append(
             {
                 "source": code,
+                "level": zl if zl is not None else (tops or {}).get(base),
                 "answer": said.get("answer"),
                 "fit": int(said.get("fit") or 0),
                 "proposable": proposable(c, code, held),
@@ -640,7 +652,9 @@ def view(
         else:
             row, actions = fact, _actions(c, source, held, why) & can
         levels = _levels(source, tops or {})
-        clouds.append(CloudState(c, source, held, lays, row, why, actions, task, levels))
+        clouds.append(
+            CloudState(c, source, held, lays, row, why, actions, task, levels, dict(tops or {}))
+        )
         facts.append(fact)
     counts = _counts(facts, shown, remade, tasks)
     searching = "find" in kinds

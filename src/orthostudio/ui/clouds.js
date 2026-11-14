@@ -69,6 +69,14 @@ export function sourceNames(providers) {
   });
 }
 
+/** A line of a cloud's menu of sources by its source's short name and the level it is read at,
+ * every one (the engine's ``level``): "Bing · ZL16", "Esri · ZL11" (a user, 2026-11-14). */
+export function menuName(names, item) {
+  const base = String(item.source).replace(/:\d+$/, "");
+  const name = names[base] || base;
+  return item.level ? `${name} · ZL${item.level}` : names[item.source] || item.source;
+}
+
 /** The words of a line the engine sent (``{key, params}``), a source's code given its name. */
 export function lineWords(line, names = {}) {
   if (!line) return "";
@@ -707,7 +715,7 @@ export function createCloudMode(ctx) {
     const menu = h("select", { "aria-label": t("clouds.source_of", { name: label }), disabled: !can.has("choose"), onchange: (ev) => choose(c, ev.target.value) },
       c.source ? null : h("option", { value: "", disabled: true }, t("clouds.choose")),
       ...c.menu.map((m) => h("option", { value: m.source, disabled: !m.proposable },
-        [n[m.source] || m.source, m.answer ? t(`clouds.answer.${m.answer}`) : "", m.fit ? t("clouds.fit", { n: m.fit }) : ""].filter(Boolean).join(" · "))));
+        [menuName(n, m), m.answer ? t(`clouds.answer.${m.answer}`) : "", m.fit ? t("clouds.fit", { n: m.fit }) : ""].filter(Boolean).join(" · "))));
     menu.value = c.source || "";
     // the level its source is read at: the sharpest, or coarser by hand (a source shows another
     // photo at some level, blurred but with no clouds, a user, 2026-11-14); the engine's codes
