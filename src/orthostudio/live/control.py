@@ -269,7 +269,7 @@ def gather_checks() -> dict[str, Any]:
 
 def _other_mesh_said(xp: Path | None) -> dict[str, Any] | None:
     """The folder of another tool's mesh as the Settings say it: its meshes and overlays by name,
-    those refused with why, or why the whole folder is; whether its meshes wait for Live's next
+    those refused with why; whether its meshes wait for Live's next
     start (not in the pack yet: the line said « Used » as the setting was saved, while the stream
     took it at the next start, the review of 2026-11-14); None when none is chosen."""
     folder = other_mesh_folder()
@@ -280,7 +280,6 @@ def _other_mesh_said(xp: Path | None) -> dict[str, Any] | None:
     return {
         "folder": str(folder),
         "there": folder.is_dir(),
-        "whole": found.whole,
         "next_start": any(str(p) not in in_pack for p in found.meshes),
         "meshes": [p.name for p in found.meshes],
         "overlays": [p.name for p in found.overlays],

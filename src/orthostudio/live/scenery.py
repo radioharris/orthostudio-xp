@@ -99,58 +99,45 @@ class OtherMesh:
     """What the folder of another tool's mesh holds (:func:`other_mesh`)."""
 
     meshes: list[Path]
-    """Its regions Live streams onto: AutoOrtho's format, terrain files naming photos to make."""
+    """Its regions Live streams onto: ground whose terrain files name photos to make."""
     overlays: list[Path]
-    """Its roads, forests and buildings: packs with DSFs and no terrain."""
+    """Their roads, forests and buildings: the one overlay pack that goes with them."""
     refused: list[tuple[str, str]]
-    """Its packs Live leaves aside, and why."""
-    whole: str | None = None
-    """Why the whole folder is left aside: ``in_xplane`` (X-Plane's folder, or one of those it
-    reads itself, :data:`XPLANE_READS`: AutoOrtho's mesh in Custom Scenery taken without the
-    setting), ``in_live`` (Live's own folder)."""
+    """Its packs of ground Live leaves aside, and why."""
 
 
 NO_OTHER_MESH = OtherMesh([], [], [])
 
+PACK_DEPTH = 3  # AutoOrtho's own, moved: <folder>/z_autoortho/scenery/z_ao_<region>
 
-def other_mesh(
-    folder: Path | None, xplane: Path | None, root: Path, given: Sequence[Path] = ()
-) -> OtherMesh:
-    """The meshes and overlays of the folder the pilot chose (``LiveSettings.other_mesh``), by what
-    they hold, whatever their names: a pack (``Earth nav data``) with a ``terrain`` folder is a mesh
-    when its terrain files name photos Live makes (:func:`_why_not_streamed`) and it gives a square
-    none of ``given`` (the regions before it) has, one without is an overlay pack, one with
-    ``terrain-lists`` Live's own region. The folder may be one such pack, or hold several, as deep
-    as AutoOrtho's own (:func:`_packs_in`), X-Plane's folder and Live's not looked into: chosen by
-    mistake, every airport and Landmark there was taken for roads (the review of 2026-11-14), and
-    the folders X-Plane reads refused (:data:`XPLANE_READS`).
-    Nothing when it is gone (its disk away)."""
+
+def other_mesh(folder: Path | None, given: Sequence[Path] = ()) -> OtherMesh:
+    """The meshes and the roads of the folder the pilot chose (``LiveSettings.other_mesh``), by
+    what its packs (``Earth nav data``, in it or down to :data:`PACK_DEPTH` folders below) hold,
+    whatever their names, as X-Plane tells ground from overlays (``sim/overlay 1``):
+    - a pack of ground is a mesh when its terrain files name photos Live makes, without them
+      (:func:`_why_not_streamed`), and it gives a square none of ``given`` (the regions before it)
+      nor a mesh kept before it has (``already``: a copy of one);
+    - of the overlay packs, the one whose squares best match the meshes' is their roads, forests
+      and buildings: an airport, a Landmark, simHeaven or another X-Plane lying there lose to it
+      (the review of 2026-11-14).
+    X-Plane's folder or Live's chosen give nothing: their ground has no photos named, or is
+    already there. Nothing when the folder is gone (its disk away)."""
     if folder is None:
         return NO_OTHER_MESH
     try:
-        real = folder.resolve()
-        live = root.resolve()
-        xp = xplane.resolve() if xplane is not None else None
-        read = [(xp / name).resolve() for name in XPLANE_READS] if xp is not None else []
-    except OSError:
-        return NO_OTHER_MESH
-    if real == xp or any(real == home or home in real.parents for home in read):
-        return OtherMesh([], [], [], "in_xplane")
-    if real == live or live in real.parents:
-        return OtherMesh([], [], [], "in_live")
-    avoid = [live] + ([xp] if xp is not None else [])
-    try:
-        packs = _packs_in(folder, PACK_DEPTH, avoid)
+        packs = _packs_in(folder, PACK_DEPTH)
     except OSError:
         return NO_OTHER_MESH
     meshes: list[Path] = []
-    overlays: list[Path] = []
     refused: list[tuple[str, str]] = []
+    overlays: list[Path] = []
     have: set[str] | None = None  # the squares before it, listed once a mesh is found
     for pack in packs:
-        if (pack / "terrain-lists").is_dir():
-            refused.append((pack.name, "live"))  # one of Live's regions, kept on another disk
-        elif not (pack / "terrain").is_dir():
+        overlay = _is_overlay(pack)
+        if overlay is None:  # no DSF: no scenery (X-Plane's ATC data, an emptied pack)
+            continue
+        if overlay:
             overlays.append(pack)
         elif (why := _why_not_streamed(pack)) is not None:
             refused.append((pack.name, why))
@@ -163,21 +150,12 @@ def other_mesh(
             else:
                 meshes.append(pack)
                 have |= squares
-    return OtherMesh(meshes, overlays, refused)
+    return OtherMesh(meshes, _roads_of(meshes, overlays), refused)
 
 
-XPLANE_READS = ("Custom Scenery", "Global Scenery", "Resources")
-"""The folders of X-Plane's whose packs it reads itself: chosen, its airports, Landmarks and
-default scenery were taken for roads (the review of 2026-11-14); another of X-Plane's folders,
-« Custom Scenery Disabled », may hold AutoOrtho's pack moved."""
-
-PACK_DEPTH = 3  # AutoOrtho's own, moved: <folder>/z_autoortho/scenery/z_ao_<region>
-
-
-def _packs_in(folder: Path, depth: int, avoid: Sequence[Path] = ()) -> list[Path]:
+def _packs_in(folder: Path, depth: int) -> list[Path]:
     """The packs (``Earth nav data``) in ``folder``, it or below it ``depth`` levels at most, by
-    name; a pack is not looked into, nor the folders of ``avoid``, and a folder that cannot be read
-    below the first is left out."""
+    name; a pack is not looked into, a folder that cannot be read below the first is left out."""
     if (folder / "Earth nav data").is_dir():
         return [folder]
     if depth == 0:
@@ -186,8 +164,7 @@ def _packs_in(folder: Path, depth: int, avoid: Sequence[Path] = ()) -> list[Path
     for sub in sorted(folder.iterdir()):
         if sub.is_dir() and not sub.name.startswith("."):
             with contextlib.suppress(OSError):
-                if sub.resolve() not in avoid:
-                    out += _packs_in(sub, depth - 1, avoid)
+                out += _packs_in(sub, depth - 1)
     return out
 
 
@@ -202,15 +179,50 @@ def _squares(pack: Path) -> set[str]:
     return out
 
 
+def _is_overlay(pack: Path) -> bool | None:
+    """Whether a pack's first DSF is an overlay (``sim/overlay 1``), as X-Plane tells them; None
+    when it has no DSF."""
+    from orthostudio.install.dsf_head import dsf_properties
+
+    with contextlib.suppress(OSError), os.scandir(pack / "Earth nav data") as tens:
+        for ten in sorted(tens, key=lambda e: e.name):
+            if not ten.is_dir():
+                continue
+            with contextlib.suppress(OSError), os.scandir(ten.path) as files:
+                for f in files:
+                    if f.name.lower().endswith(".dsf"):
+                        return dsf_properties(Path(f.path)).get("sim/overlay") == "1"
+    return None
+
+
+def _roads_of(meshes: Sequence[Path], overlays: Sequence[Path]) -> list[Path]:
+    """The overlay pack whose squares best match the meshes': most in common, least elsewhere,
+    when it has more in common than elsewhere; none without a mesh."""
+    if not meshes:
+        return []
+    wanted = set().union(*(_squares(mesh) for mesh in meshes))
+    best: list[Path] = []
+    score = 0
+    for pack in overlays:
+        squares = _squares(pack)
+        match = len(squares & wanted) - len(squares - wanted)
+        if match > score:
+            best, score = [pack], match
+    return best
+
+
 TER_SAMPLE = 20  # a mesh's terrain files looked at: one naming a photo Live makes is enough
 
 
 def _why_not_streamed(pack: Path) -> str | None:
-    """Why Live cannot stream onto ``pack``, or None: a tile with its photos (the photo its first
-    terrain file names is in its ``textures``: a tile of the pilot's), or terrain files naming no
-    photo in Ortho4XP's names, which Live makes (X-Plane's or HD Mesh's land classes)."""
+    """Why Live cannot stream onto a pack of ground, or None: a tile with its photos (the photo its
+    first terrain file names is in its ``textures``: a tile of the pilot's), or no terrain file
+    naming a photo in Ortho4XP's names, which Live makes (X-Plane's own scenery, HD Mesh's land
+    classes, Live's own regions)."""
     from orthostudio.live.geo import _TEXTURE_RE
 
+    if not (pack / "terrain").is_dir():
+        return "no_photos"
     seen = 0
     try:
         with os.scandir(pack / "terrain") as entries:
@@ -229,7 +241,7 @@ def _why_not_streamed(pack: Path) -> str | None:
                     break
     except OSError:
         return "unreadable"
-    return "no_photos"  # X-Plane's or HD Mesh's land classes
+    return "no_photos"
 
 
 def other_mesh_folder() -> Path | None:
@@ -243,7 +255,7 @@ def other_mesh_folder() -> Path | None:
 OTHER_MESH_S = 30.0
 """The folder of another tool's mesh looked at again this often by the window's checks, which
 come every 3 s (it was read twice each time, the review of 2026-11-14); at once when the setting
-changes, and at Live's start."""
+changes or the folder comes or goes, and at Live's start."""
 
 _found: tuple[float, tuple, OtherMesh] = (0.0, (), NO_OTHER_MESH)
 
@@ -253,12 +265,14 @@ def other_mesh_found(xplane: Path | None, root: Path, *, fresh: bool = False) ->
     (:func:`base_sources`), as last looked at, or now when ``fresh`` (a start)."""
     global _found
     folder = other_mesh_folder()
-    key = (folder, xplane, root)
+    # its disk plugged in again: looked at at once, where the window said « no mesh » 30 s more
+    key = (folder, folder is not None and folder.is_dir(), xplane, root)
     at, was, got = _found
     if not fresh and was == key and time.monotonic() - at < OTHER_MESH_S:
         return got
-    given = base_sources(xplane, root) if xplane is not None else []
-    got = other_mesh(folder, xplane, root, given)
+    there = key[1]  # the regions before it listed only for a folder to look into
+    given = base_sources(xplane, root) if there and xplane is not None else []
+    got = other_mesh(folder, given) if there else NO_OTHER_MESH
     _found = (time.monotonic(), key, got)
     return got
 

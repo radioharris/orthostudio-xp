@@ -1,36 +1,46 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Another tool's mesh, from a folder chosen in Live's Settings: a region copied by another
-streamer, AutoOrtho's moved elsewhere. Taken by what they hold, whatever their names: after Live's
-own mesh and AutoOrtho's in X-Plane, overlays last too."""
+streamer, AutoOrtho's moved elsewhere. Taken by what its packs hold, whatever their names, as
+X-Plane tells ground from overlays: after Live's own mesh and AutoOrtho's in X-Plane, its roads
+the one overlay pack that goes with it."""
 
 from __future__ import annotations
 
+import struct
 from pathlib import Path
 
 import pytest
 from tests.test_live_overlays import put, xplane
 
-from live_helpers import make_source, make_xplane
+from live_helpers import atom, make_source, make_xplane
 from orthostudio.errors import OsxpError
 from orthostudio.live import control, overlays, region, scenery, session
-from orthostudio.live.scenery import NO_OTHER_MESH, OtherMesh, default_sources, other_mesh
+from orthostudio.live.scenery import NO_OTHER_MESH, base_sources, default_sources, other_mesh
 from orthostudio.live.settings import LiveSettings, load_settings, save_settings
 
-A = (45, 5)
-B = (46, 7)
+A, B, C, D = (45, 5), (46, 7), (47, 8), (48, 9)
 PHOTO_TER = b"A\n800\nTERRAIN\n\nBASE_TEX_NOWRAP ../textures/24528_38224_BI16.dds\n"
+OVERLAY = b"XPLNEDSF" + struct.pack("<i", 1) + atom(b"HEAD", atom(b"PROP", b"sim/overlay\x001\x00"))
 
 
-def mesh(pack: Path, ter: bytes = PHOTO_TER, photos: bool = False, square=A) -> Path:
-    """A pack of AutoOrtho's format: a DSF, a terrain file naming a photo, a water mask."""
-    put(pack, square)
+def mesh(pack: Path, ter: bytes = PHOTO_TER, photos: bool = False, squares=(A,)) -> Path:
+    """A pack of AutoOrtho's format: ground DSFs, a terrain file naming a photo, a water mask."""
+    for square in squares:
+        put(pack, square)
     (pack / "terrain").mkdir(parents=True, exist_ok=True)
     (pack / "terrain" / "24528_38224_BI16.ter").write_bytes(ter)
     (pack / "textures").mkdir(exist_ok=True)
     (pack / "textures" / "24528_38224_ZL16.png").write_bytes(b"mask")
     if photos:
         (pack / "textures" / "24528_38224_BI16.dds").write_bytes(b"DDS ")
+    return pack
+
+
+def roads(pack: Path, squares=(A,)) -> Path:
+    """An overlay pack: DSFs X-Plane reads as overlays (``sim/overlay 1``)."""
+    for square in squares:
+        put(pack, square, OVERLAY)
     return pack
 
 
@@ -41,30 +51,30 @@ def looked_at_anew(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_the_folder_taken_by_what_it_holds(tmp_path: Path) -> None:
-    """Another streamer's folder: its region, its overlays; a tile with its photos, a mesh of
+    """Another streamer's folder: its region, its roads; a tile with its photos, a mesh of
     X-Plane's land classes and a region of Live's kept there left aside, said why; a folder with
     no pack gives nothing."""
-    root = tmp_path / "live"
-    folder = tmp_path / "Base Packages"
+    folder = tmp_path / "Other mesh"
     eur = mesh(folder / "Mesh_Eur")
-    put(folder / "Mesh_Overlays", A)
+    eur_roads = roads(folder / "Mesh_Overlays")
     mesh(folder / "zOrtho4XP_+45+005", photos=True)
     mesh(folder / "HD_Mesh", ter=b"A\n800\nTERRAIN\n\nBASE_TEX ../textures/grass_dry.dds\n")
-    put(folder / "z_osxp_eur", A)  # one of Live's regions, kept on another disk
+    put(folder / "z_osxp_eur", A)  # one of Live's regions, kept on another disk: no terrain
     (folder / "z_osxp_eur" / "terrain-lists").mkdir()
     (folder / "notes").mkdir()
-    found = other_mesh(folder, None, root)
+    (folder / "1200 atc data" / "Earth nav data").mkdir(parents=True)  # no DSF: no scenery
+    found = other_mesh(folder)
     assert found.meshes == [eur]
-    assert found.overlays == [folder / "Mesh_Overlays"]
+    assert found.overlays == [eur_roads]
     assert found.refused == [
         ("HD_Mesh", "no_photos"),
         ("zOrtho4XP_+45+005", "photos"),
-        ("z_osxp_eur", "live"),
+        ("z_osxp_eur", "no_photos"),
     ]
-    assert other_mesh(eur, None, root).meshes == [eur]  # the region's own folder chosen: that one
-    assert other_mesh(tmp_path / "unplugged", None, root) == NO_OTHER_MESH
-    assert other_mesh(None, None, root) == NO_OTHER_MESH
-    assert other_mesh(folder / "notes", None, root) == NO_OTHER_MESH
+    assert other_mesh(eur).meshes == [eur]  # the region's own folder chosen: that one
+    assert other_mesh(tmp_path / "unplugged") == NO_OTHER_MESH
+    assert other_mesh(None) == NO_OTHER_MESH
+    assert other_mesh(folder / "notes") == NO_OTHER_MESH
 
 
 def test_autoortho_s_own_layout_moved(tmp_path: Path) -> None:
@@ -73,33 +83,49 @@ def test_autoortho_s_own_layout_moved(tmp_path: Path) -> None:
     folder = tmp_path / "moved"
     aus = mesh(folder / "z_autoortho" / "scenery" / "z_ao_aus_pac")
     (folder / "z_autoortho" / "aus_pac_info.json").write_text("{}")
-    put(folder / "yAutoOrtho_Overlays", A)
-    found = other_mesh(folder, None, tmp_path / "live")
-    assert found.meshes == [aus]
-    assert found.overlays == [folder / "yAutoOrtho_Overlays"]
-    assert other_mesh(folder / "z_autoortho", None, tmp_path / "live").meshes == [aus]
+    aus_roads = roads(folder / "yAutoOrtho_Overlays")
+    found = other_mesh(folder)
+    assert found.meshes == [aus] and found.overlays == [aus_roads]
+    assert other_mesh(folder / "z_autoortho").meshes == [aus]
 
 
-def test_x_plane_s_folder_and_live_s_left_aside(tmp_path: Path) -> None:
-    """Chosen by mistake, X-Plane's folder gave every airport and Landmark as roads, and Live's
-    its own regions (the review of 2026-11-14): both refused whole, and never looked into from a
-    folder above them."""
+def test_the_roads_that_go_with_the_mesh(tmp_path: Path) -> None:
+    """Every pack without terrain was taken for roads, the first by name winning its square: an
+    airport, simHeaven or another X-Plane's own scenery lying beside AutoOrtho's pack took Sydney's
+    (the review of 2026-11-14). The overlay pack whose squares best match the mesh's is its roads;
+    another X-Plane's ground is no mesh, having no photos named."""
+    folder = tmp_path / "Scenery put aside"
+    aus = mesh(folder / "z_autoortho" / "scenery" / "z_ao_aus_pac", squares=(A, B))
+    aus_roads = roads(folder / "yAutoOrtho_Overlays", (A, B))
+    roads(folder / "Aerosoft - YSSY Sydney", (A,))
+    roads(folder / "simHeaven_X-World", (A, C, D))
+    world = folder / "X-Plane 11" / "Global Scenery" / "X-Plane 11 Global Scenery"
+    for square in (A, B, C, D):
+        put(world, square)  # ground, with no terrain folder
+    found = other_mesh(folder)
+    assert found.meshes == [aus] and found.overlays == [aus_roads]
+    assert found.refused == [("X-Plane 11 Global Scenery", "no_photos")]
+    only_roads = tmp_path / "only roads"
+    roads(only_roads / "yAutoOrtho_Overlays", (A, B))
+    assert other_mesh(only_roads).overlays == []  # no mesh, no roads to go with it
+
+
+def test_x_plane_s_folder_or_live_s_give_nothing(tmp_path: Path) -> None:
+    """Chosen by mistake: X-Plane's scenery holds tiles with their photos, airports, AutoOrtho's
+    region already used; Live's folder its own regions, without photos named."""
     xp = xplane(tmp_path, ["SCENERY_PACK *GLOBAL_AIRPORTS*"])
-    put(xp / "Custom Scenery" / "Aerosoft - LFMN Nice Cote d Azur X", A)  # no terrain: an airport
+    scenery_dir = xp / "Custom Scenery"
+    mesh(scenery_dir / "z_autoortho" / "scenery" / "z_ao_eur")
+    roads(scenery_dir / "Aerosoft - LFMN Nice Cote d Azur X")
+    mesh(scenery_dir / "zOrtho4XP_+45+005", photos=True)
     root = tmp_path / "live"
-    put(root / "overlays", A)
-    eur = mesh(tmp_path / "Mesh_Eur")
-    put(xp / "Global Scenery" / "X-Plane 12 Global Scenery", A)  # X-Plane's own mesh
-    assert other_mesh(xp, xp, root) == OtherMesh([], [], [], "in_xplane")
-    assert other_mesh(xp / "Custom Scenery", xp, root).whole == "in_xplane"
-    assert other_mesh(xp / "Global Scenery", xp, root).whole == "in_xplane"
-    assert other_mesh(root, xp, root).whole == "in_live"
-    found = other_mesh(tmp_path, xp, root)  # the folder holding them all
-    assert found.meshes == [eur] and found.overlays == [] and found.whole is None
-    # another of X-Plane's folders, where a pilot keeps the scenery he took out (the review of
-    # 2026-11-14): taken
-    parked = mesh(xp / "Custom Scenery Disabled" / "z_autoortho" / "scenery" / "z_ao_eur")
-    assert other_mesh(xp / "Custom Scenery Disabled", xp, root).meshes == [parked]
+    put(root / "regions" / "z_osxp_eur", A)
+    roads(root / "regions" / "y_osxp_overlays")
+    given = base_sources(xp, root)
+    for chosen in (xp, scenery_dir, root):
+        found = other_mesh(chosen, given)
+        assert found.meshes == [] and found.overlays == [], chosen
+    assert ("z_ao_eur", "already") in other_mesh(scenery_dir, given).refused
 
 
 def test_after_lives_and_autoortho_s_a_copy_left_aside(
@@ -111,9 +137,9 @@ def test_after_lives_and_autoortho_s_a_copy_left_aside(
     xp = xplane(tmp_path, ["SCENERY_PACK *GLOBAL_AIRPORTS*"])
     root = tmp_path / "live"
     theirs = mesh(xp / "Custom Scenery" / "z_autoortho" / "scenery" / "z_ao_eur")
-    folder = tmp_path / "Base Packages"
+    folder = tmp_path / "Other mesh"
     mesh(folder / "Mesh_Eur")  # the same squares as AutoOrtho's
-    na = mesh(folder / "Mesh_Na", square=B)
+    na = mesh(folder / "Mesh_Na", squares=(B,))
     monkeypatch.setattr(scenery, "other_mesh_folder", lambda: folder)
     found = scenery.other_mesh_found(xp, root, fresh=True)
     assert found.meshes == [na]
@@ -124,14 +150,16 @@ def test_after_lives_and_autoortho_s_a_copy_left_aside(
 def test_the_folder_looked_at_again_after_a_while(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The window's checks come every 3 s and read it twice: once in a while now, at once for a
-    new setting or a start (the review of 2026-11-14)."""
+    """Once in a while, at once for a start, or as the folder comes back: its disk plugged in
+    again, the window said « no mesh » 30 s more (the third review of 2026-11-14)."""
     root = tmp_path / "live"
-    folder = tmp_path / "Base Packages"
-    mesh(folder / "Mesh_Eur")
+    folder = tmp_path / "Other mesh"
     monkeypatch.setattr(scenery, "other_mesh_folder", lambda: folder)
-    first = scenery.other_mesh_found(None, root)
-    mesh(folder / "Mesh_Na", square=B)
+    assert scenery.other_mesh_found(None, root) == NO_OTHER_MESH  # its disk away
+    mesh(folder / "Mesh_Eur")
+    first = scenery.other_mesh_found(None, root)  # back: looked at at once
+    assert len(first.meshes) == 1
+    mesh(folder / "Mesh_Na", squares=(B,))
     assert scenery.other_mesh_found(None, root) is first
     assert len(scenery.other_mesh_found(None, root, fresh=True).meshes) == 2
 
@@ -146,7 +174,7 @@ def test_the_window_reads_the_folder_once_in_a_while(
     (tmp_path / "home").mkdir()
     xp = xplane(tmp_path, ["SCENERY_PACK *GLOBAL_AIRPORTS*"])
     monkeypatch.setattr(control.session, "xplane_dir", lambda explicit: xp)
-    folder = tmp_path / "Base Packages"
+    folder = tmp_path / "Other mesh"
     mesh(folder / "Mesh_Eur")
     save_settings(LiveSettings(other_mesh=str(folder)))
     read: list[Path] = []
@@ -169,8 +197,8 @@ def test_the_roads_go_with_the_mesh_of_the_start(tmp_path: Path) -> None:
     2026-11-14)."""
     xp = xplane(tmp_path, ["SCENERY_PACK *GLOBAL_AIRPORTS*"])
     root = tmp_path / "live"
-    roads = put(tmp_path / "Mesh_Overlays", A).parents[2]
-    assert overlays.overlay_folders(xp, [], root, [roads]) == [roads]
+    found = roads(tmp_path / "Mesh_Overlays")
+    assert overlays.overlay_folders(xp, [], root, [found]) == [found]
     assert overlays.overlay_folders(xp, [], root) == []
 
 
@@ -180,9 +208,9 @@ def test_the_setting_and_what_the_window_says(
     """Kept in Live's settings; the window's line says what Live takes there and leaves aside,
     that it waits for Live's next start, or that the folder is gone."""
     monkeypatch.setenv("OSXP_HOME", str(tmp_path / "home"))
-    folder = tmp_path / "Base Packages"
+    folder = tmp_path / "Other mesh"
     mesh(folder / "Mesh_Eur")
-    put(folder / "Mesh_Overlays", A)
+    roads(folder / "Mesh_Overlays")
     mesh(folder / "zOrtho4XP_+45+005", photos=True)
     assert control._other_mesh_said(None) is None
     save_settings(LiveSettings(other_mesh=str(folder)))
@@ -190,7 +218,6 @@ def test_the_setting_and_what_the_window_says(
     assert control._other_mesh_said(None) == {
         "folder": str(folder),
         "there": True,
-        "whole": None,
         "next_start": True,  # no start has taken it yet
         "meshes": ["Mesh_Eur"],
         "overlays": ["Mesh_Overlays"],
@@ -221,22 +248,21 @@ def test_a_start_says_the_folder_unplugged(tmp_path: Path, monkeypatch) -> None:
 def test_a_start_says_the_folder(tmp_path: Path, monkeypatch) -> None:
     """Its disk unplugged while another region is installed, the start went on without a word
     (the second review of 2026-11-14): it says what it takes there, or that it is not there."""
-    folder = tmp_path / "Base Packages"
+    folder = tmp_path / "Other mesh"
     make_source(folder, tile=(46, 2))
-    assert session._other_said(folder, scenery.other_mesh(folder, None, tmp_path / "live")) == (
+    assert session._other_said(folder, other_mesh(folder)) == (
         f"another tool's mesh in {folder}: z_ao_test"
     )
     gone = tmp_path / "unplugged"
-    assert session._other_said(gone, NO_OTHER_MESH) == (
-        f"another tool's mesh: {gone} is not there (its disk unplugged?): left out"
-    )
+    said_gone = f"another tool's mesh: {gone} is not there (its disk unplugged?): left out"
+    assert session._other_said(gone, NO_OTHER_MESH) == said_gone
     options = a_start(tmp_path, monkeypatch, gone)
     installed = make_source(tmp_path / "live-region", tile=(46, 2))
     monkeypatch.setattr(session, "default_sources", lambda xp, other=None: [installed])
     said: list[str] = []
     monkeypatch.setattr(session, "_overlays", lambda *args: None)
     session.prepare(options, log=said.append)
-    assert f"another tool's mesh: {gone} is not there (its disk unplugged?): left out" in said
+    assert said_gone in said
 
 
 def test_a_start_names_the_folder_it_could_not_link(tmp_path: Path, monkeypatch) -> None:
@@ -261,9 +287,9 @@ def test_a_start_names_the_folder_it_could_not_link(tmp_path: Path, monkeypatch)
 
 def test_a_start_keeps_the_roads_it_found(tmp_path: Path, monkeypatch) -> None:
     """Its overlays found once, with its mesh, and kept for the rescans between flights."""
-    folder = tmp_path / "Base Packages"
+    folder = tmp_path / "Other mesh"
     make_source(folder, tile=(46, 2))
-    roads = put(folder / "Mesh_Overlays", (46, 2)).parents[2]
+    found = roads(folder / "Mesh_Overlays", ((46, 2),))
     options = a_start(tmp_path, monkeypatch, folder)
     given: list = []
 
@@ -273,4 +299,4 @@ def test_a_start_keeps_the_roads_it_found(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(session, "_overlays", overlays_of)
     prepared = session.prepare(options, log=lambda _: None)
     assert prepared.sources == [folder / "z_ao_test"]
-    assert prepared.other_overlays == [roads] and given == [[roads]]
+    assert prepared.other_overlays == [found] and given == [[found]]

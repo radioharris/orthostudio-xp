@@ -450,8 +450,6 @@ def _other_said(chosen: Path, other: OtherMesh) -> str:
     """The start's line on the folder of another tool's mesh: what it takes there, or why not."""
     if not chosen.is_dir():
         return f"another tool's mesh: {chosen} is not there (its disk unplugged?): left out"
-    if other.whole is not None:
-        return f"another tool's mesh: {chosen} left aside ({other.whole})"
     used = ", ".join(p.name for p in other.meshes) or "no mesh Live can use"
     said = f"another tool's mesh in {chosen}: {used}"
     if other.overlays:
