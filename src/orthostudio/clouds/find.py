@@ -48,7 +48,7 @@ from orthostudio.clouds.laying import LAYING_AT_ONCE
 from orthostudio.clouds.model import SHADOW, THICK, THIN, classify, classify_many
 from orthostudio.clouds.opencv import cv2
 from orthostudio.clouds.picture import Picture, box_bounds, over_water, pixel_metres
-from orthostudio.clouds.sources import SourcePieces
+from orthostudio.clouds.sources import COARSEST, SourcePieces, at_level
 from orthostudio.clouds.tile import (
     TileClouds,
     entry_patches,
@@ -78,6 +78,16 @@ BAND_M = 400.0
 CLEAR_AT_MOST = 0.10
 SAME_PHOTO = 0.9
 """A source whose lightness follows the tile's this closely under a cloud is the same photo."""
+ALIKE_PIXELS = 64
+"""Pixels of a window a coarser level must hold to say whether it shows another photo than the
+level above (``_alike``): a small cloud is a few pixels at ZL11, and keeps its sharp sources."""
+LEVEL_ALIKE = 0.6
+"""A source's level whose lightness follows the level above's this closely, at its own
+sharpness, is the same photo (``_alike``). Under 200 clouds of +08-078 (2026-11-14) a source
+showing another photo one level coarser correlated at most 0.48 (95th percentile: Esri at ZL11,
+Esri Clarity at ZL13, Bing at ZL12), the same photo resampled at least 0.69 (5th percentile:
+EOX and Esri Clarity, whose own levels differ a little); :data:`SAME_PHOTO` called a fifth of
+EOX's levels another photo."""
 COVERAGE = 0.9
 """Below this share of a cloud covered, a source has no picture there."""
 MAX_CLOUDS = 200
@@ -431,14 +441,23 @@ def _lost(sources: SourcePieces, code: str, keys: Iterable[tuple[int, int, int]]
     return None if not lost else "refused" if "refused" in lost else lost[0]
 
 
+def _world_box(p: Picture, box: tuple[int, int, int, int], zl: int) -> tuple[int, int, int, int]:
+    """``box`` of the picture in the world's whole pixels at ``zl``: exactly at the picture's
+    level or finer, the pixels it touches when coarser."""
+    x0, y0, x1, y1 = box
+    if zl >= p.zl:
+        k = 1 << (zl - p.zl)
+        return (p.x0 + x0) * k, (p.y0 + y0) * k, (p.x0 + x1) * k, (p.y0 + y1) * k
+    k = 1 << (p.zl - zl)
+    return (p.x0 + x0) // k, (p.y0 + y0) // k, -(-(p.x0 + x1) // k), -(-(p.y0 + y1) // k)
+
+
 def _source_at(
     sources: SourcePieces, code: str, zl: int, p: Picture, box: tuple[int, int, int, int]
 ) -> tuple[np.ndarray, np.ndarray]:
-    """The source over ``box`` of the picture, read at ``zl`` and reduced to the picture's
-    level; where it has a picture."""
-    k = 2 ** (zl - p.zl)
-    x0, y0, x1, y1 = box
-    gx0, gy0, gx1, gy1 = (p.x0 + x0) * k, (p.y0 + y0) * k, (p.x0 + x1) * k, (p.y0 + y1) * k
+    """The source over ``box`` of the picture, read at ``zl`` and brought to the picture's
+    level, reduced or enlarged; where it has a picture."""
+    gx0, gy0, gx1, gy1 = _world_box(p, box, zl)
     out = np.zeros((gy1 - gy0, gx1 - gx0, 3), np.uint8)
     have = np.zeros(out.shape[:2], np.uint8)
     n = 1 << zl
@@ -453,10 +472,64 @@ def _source_at(
             if cw > 0 and ch > 0:
                 out[dy0 : dy0 + ch, dx0 : dx0 + cw] = piece.rgb[sy0 : sy0 + ch, sx0 : sx0 + cw]  # type: ignore[index]
                 have[dy0 : dy0 + ch, dx0 : dx0 + cw] = piece.shows[sy0 : sy0 + ch, sx0 : sx0 + cw]  # type: ignore[index]
+    x0, y0, x1, y1 = box
     size = (x1 - x0, y1 - y0)
-    small = cv2.resize(out, size, interpolation=cv2.INTER_AREA)
-    small_have = cv2.resize(have * 255, size, interpolation=cv2.INTER_AREA) >= 128
-    return small, small_have
+    if zl >= p.zl:
+        small = cv2.resize(out, size, interpolation=cv2.INTER_AREA)
+        small_have = cv2.resize(have * 255, size, interpolation=cv2.INTER_AREA) >= 128
+        return small, small_have
+    # coarser than the picture (a source read at ZL11, ``sources.COARSEST``): enlarged
+    k = 1 << (p.zl - zl)
+    whole = ((gx1 - gx0) * k, (gy1 - gy0) * k)
+    big = cv2.resize(out, whole, interpolation=cv2.INTER_LINEAR)
+    big_have = cv2.resize(have, whole, interpolation=cv2.INTER_NEAREST) > 0
+    ox, oy = p.x0 + x0 - gx0 * k, p.y0 + y0 - gy0 * k
+    return big[oy : oy + size[1], ox : ox + size[0]], big_have[oy : oy + size[1], ox : ox + size[0]]
+
+
+def _alike(a: np.ndarray, b: np.ndarray, have: np.ndarray, zl: int, p: Picture) -> bool | None:
+    """Whether two readings of a source over one window (``a`` one level finer than ``b``, read
+    at ``zl``, both at the picture's level) are one photo: compared at ``b``'s own sharpness,
+    where ``have``; ``None`` when the window holds too few of its pixels to tell."""
+    if zl < p.zl:
+        k = 1 << (p.zl - zl)
+        size = (max(1, a.shape[1] // k), max(1, a.shape[0] // k))
+        a, b = (cv2.resize(x, size, interpolation=cv2.INTER_AREA) for x in (a, b))
+        have = cv2.resize(have.astype(np.uint8) * 255, size, interpolation=cv2.INTER_AREA) >= 255
+    if have.sum() < ALIKE_PIXELS:
+        return None
+    r = _correlation(_lum(a)[have], _lum(b)[have])
+    return r is None or r >= LEVEL_ALIKE
+
+
+def _shrunk(image: np.ndarray, have: np.ndarray, k: int) -> tuple[np.ndarray, np.ndarray]:
+    """A window of the picture brought back to ``1 / k`` of its size, its source's own."""
+    size = (max(1, image.shape[1] // k), max(1, image.shape[0] // k))
+    small = cv2.resize(image, size, interpolation=cv2.INTER_AREA)
+    return small, cv2.resize(have.astype(np.uint8) * 255, size, interpolation=cv2.INTER_AREA) >= 128
+
+
+def _classified(
+    images: Sequence[np.ndarray],
+    haves: Sequence[np.ndarray],
+    zl: int,
+    p: Picture,
+    **kwargs: Any,
+) -> list[np.ndarray]:
+    """The detector's classes of windows of the picture showing a source read at ``zl``
+    (``classify_many``): a source coarser than the picture judged at its own sharpness, its
+    classes enlarged after. Enlarged first, Esri's ZL11 over tropical forest, clear to the eye,
+    was mostly cloud under 187 of 200 clouds, its blur read as a veil; at its own sharpness it
+    was clear, and the tile's cumulus were still seen (+08-078, 2026-11-14)."""
+    if zl >= p.zl:
+        return list(classify_many(images, haves, **kwargs))
+    k = 1 << (p.zl - zl)
+    shrunk = [_shrunk(i, h, k) for i, h in zip(images, haves, strict=True)]
+    seen = classify_many([s for s, _h in shrunk], [h for _s, h in shrunk], **kwargs)
+    return [
+        cv2.resize(c, (i.shape[1], i.shape[0]), interpolation=cv2.INTER_NEAREST)
+        for c, i in zip(seen, images, strict=True)
+    ]
 
 
 def screen(
@@ -465,66 +538,134 @@ def screen(
     classes: np.ndarray,
     sources: SourcePieces,
     *,
+    own: str | None = None,
+    coarser: bool = True,
     cancel: threading.Event | None = None,
     phase: Phase = _quiet,
 ) -> list[dict[str, Judgement]]:
-    """Every source of ``sources`` judged under each of ``clouds`` (their rings) at the picture's
-    level: a source read one level finer when it has one, reduced, as the search's finer reading.
-    A source with no picture at that level is read at its own finest."""
+    """Every source of ``sources`` but the tile's own (``own``) judged under each of ``clouds``
+    (their rings) at the picture's level: a source read one level finer when it has one,
+    reduced, as the search's finer reading. A source with no picture at that level is read at
+    its own finest.
+
+    Under a cloud no source is clear under so, each source, the tile's own too, is then read at
+    every coarser level down to :data:`sources.COARSEST`, and a level showing another photo there
+    than the level above it (:func:`_alike`) is judged as a source of its own, ``Arc:11``
+    (:func:`sources.at_level`), kept when it is clear or cloudy there: Esri World Imagery shows
+    another photo at ZL11, blurred but with no clouds, where its ZL12 shows cumulus over tropical
+    forest (a user, 2026-11-14). A level showing the same photo has the same clouds, only
+    blurrier. A blurred photo is the cloud's source only where no sharp one is clear
+    (``state._ranked``), so it is looked for there alone: looked for under every cloud, it took a
+    search of 200 clouds from 47 s to 65 s, under none of which it was wanted (B13). ``coarser``
+    False: not looked for at all."""
     band_px = _band_px(p)
     boxes = [_cloud_box(p, rings) for rings in clouds]
     dirty = _not_ground(classes, p.share)
     levels = {c: _reading_level(p, pr) for c, pr in sources.providers.items()}
-    todo = {c: _keys_of(p, boxes, z) for c, z in levels.items()}
+    out: list[dict[str, Judgement]] = [{} for _ in clouds]
+
+    def judged(
+        read: Mapping[str, tuple[int, list[tuple[int, np.ndarray, np.ndarray]]]],
+        keep: Callable[[str, Judgement], bool],
+        step: str,
+        n: int,
+        of: int,
+    ) -> None:
+        """The windows ``read`` of one source (by the code each is judged as: its level, its
+        windows) judged by the detector, several to a patch (``classify_many``: 94 s to 3.4 s
+        under a user's 198 clouds, B6), a Stop heard at each one; said as ``step``, the
+        ``n``th source of ``of``."""
+        total = sum(len(w) for _zl, w in read.values())
+        before = 0
+        for code, (zl, windows) in sorted(read.items()):
+
+            def said(done: int, _t: int, at: int = before) -> None:
+                phase(step, n * 100 + round(100 * (at + done) / max(total, 1)), 100 * of)
+
+            seen = _classified(
+                [src for _i, src, _have in windows],
+                [have for _i, _src, have in windows],
+                zl,
+                p,
+                progress=said,
+                cancel=cancel,
+                regnety_alone=True,
+            )
+            before += len(windows)
+            for (i, src, have), cloudy in zip(windows, seen, strict=True):
+                x0, y0, x1, y1 = boxes[i]
+                inside = _inside(p, clouds[i], boxes[i])
+                j = judge(
+                    p.photo[y0:y1, x0:x1],
+                    src,
+                    have,
+                    inside,
+                    _core(inside, classes[y0:y1, x0:x1]),
+                    _band(inside, band_px, dirty[y0:y1, x0:x1]),
+                    _cloudy(cloudy),
+                )
+                if keep(code, j):
+                    out[i][code] = j
+
+    # every other source at its own level, under every cloud
+    codes = sorted(c for c in sources.providers if c != own)
+    todo = {c: _keys_of(p, boxes, levels[c]) for c in codes}
     phase("fetching", 0, sum(len(v) for v in todo.values()))
     sources.fetch(todo, cancel=cancel, progress=lambda d, t: phase("fetching", d, t))
-    out: list[dict[str, Judgement]] = [{} for _ in clouds]
-    # source by source, the clouds' windows read several to a detector's patch
-    # (``classify_many``: 94 s to 3.4 s under a user's 198 clouds, B6); said as the patches are
-    # read, a Stop heard at each one (the line left on the download's 100 % for minutes, a
-    # user, 2026-11-06)
-    codes = sorted(sources.providers)
     for n, code in enumerate(codes):
-        read: list[tuple[int, np.ndarray, np.ndarray]] = []  # (cloud, its window, shown there)
+        windows: list[tuple[int, np.ndarray, np.ndarray]] = []
         for i, box in enumerate(boxes):
             lost = _lost(sources, code, _keys_of(p, [box], levels[code]))
             if lost is not None:
                 out[i][code] = Judgement(lost)
             else:
-                read.append((i, *_source_at(sources, code, levels[code], p, box)))
-
-        def said(done: int, total: int, n: int = n) -> None:
-            phase("sources", n * 100 + round(100 * done / max(total, 1)), 100 * len(codes))
-
-        seen = classify_many(
-            [src for _i, src, _have in read],
-            [have for _i, _src, have in read],
-            progress=said,
-            cancel=cancel,
-            regnety_alone=True,
+                windows.append((i, *_source_at(sources, code, levels[code], p, box)))
+        judged({code: (levels[code], windows)}, lambda _c, _j: True, "sources", n, len(codes))
+    # every source, the tile's own too, at its coarser levels, under the clouds none clears
+    wanting = [
+        i for i, said in enumerate(out) if not any(j.answer == "clear" for j in said.values())
+    ]
+    if not coarser or not wanting:
+        return out
+    every = sorted(sources.providers)
+    steps = {c: list(range(levels[c] - 1, COARSEST - 1, -1)) for c in every}
+    todo = {
+        c: set().union(
+            *(_keys_of(p, [boxes[i] for i in wanting], zl) for zl in (levels[c], *steps[c]))
         )
-        for (i, src, have), cloudy in zip(read, seen, strict=True):
-            x0, y0, x1, y1 = boxes[i]
-            inside = _inside(p, clouds[i], boxes[i])
-            out[i][code] = judge(
-                p.photo[y0:y1, x0:x1],
-                src,
-                have,
-                inside,
-                _core(inside, classes[y0:y1, x0:x1]),
-                _band(inside, band_px, dirty[y0:y1, x0:x1]),
-                _cloudy(cloudy),
-            )
+        for c in every
+    }
+    phase("fetching", 0, sum(len(v) for v in todo.values()))
+    sources.fetch(todo, cancel=cancel, progress=lambda d, t: phase("fetching", d, t))
+    for n, code in enumerate(every):
+        read: dict[str, tuple[int, list[tuple[int, np.ndarray, np.ndarray]]]] = {}
+        for i in wanting:
+            box = boxes[i]
+            if _lost(sources, code, _keys_of(p, [box], levels[code])) is not None:
+                continue
+            above = _source_at(sources, code, levels[code], p, box)
+            for zl in steps[code]:
+                if _lost(sources, code, _keys_of(p, [box], zl)) is not None:
+                    break
+                there = _source_at(sources, code, zl, p, box)
+                same = _alike(above[0], there[0], above[1] & there[1], zl, p)
+                if same is None:  # too few of its pixels to tell, coarser still fewer
+                    break
+                if not same:
+                    read.setdefault(at_level(code, zl), (zl, []))[1].append((i, *there))
+                above = there
+        # only another photo: the same as the tile's, or none there, adds nothing to choose
+        judged(read, lambda _c, j: j.usable, "coarser", n, len(every))
     return out
 
 
 def _keys_of(
     p: Picture, boxes: Sequence[tuple[int, int, int, int]], zl: int
 ) -> set[tuple[int, int, int]]:
-    k, n = 2 ** (zl - p.zl), 1 << zl
+    n = 1 << zl
     keys: set[tuple[int, int, int]] = set()
-    for x0, y0, x1, y1 in boxes:
-        gx0, gy0, gx1, gy1 = (p.x0 + x0) * k, (p.y0 + y0) * k, (p.x0 + x1) * k, (p.y0 + y1) * k
+    for box in boxes:
+        gx0, gy0, gx1, gy1 = _world_box(p, box, zl)
         keys |= {
             (tx % n, ty, zl)
             for ty in range(gy0 // 256, (gy1 - 1) // 256 + 1)
@@ -626,7 +767,17 @@ def check(
     have = lay_a > 0
     cls = classes[y0:y1, x0:x1] if classes is not None else np.zeros((h, w), np.uint8)
     dirty = _not_ground(cls, p.share[y0:y1, x0:x1])
-    seen = classify(src, have, cancel=cancel, regnety_alone=True)
+    # judged at its own sharpness when coarser than the picture (``_classified``)
+    own_zl = min(provider.max_zl, max(t.zl for t in by_name.values()))
+    if own_zl >= p.zl:
+        seen = classify(src, have, cancel=cancel, regnety_alone=True)
+    else:
+        small, small_have = _shrunk(src, have, 1 << (p.zl - own_zl))
+        seen = cv2.resize(
+            classify(small, small_have, cancel=cancel, regnety_alone=True),
+            (w, h),
+            interpolation=cv2.INTER_NEAREST,
+        )
     core = _core(inside, cls)
     here = p.photo[y0:y1, x0:x1]
     band = _band(inside, _band_px(p), dirty)

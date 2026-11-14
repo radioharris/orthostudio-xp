@@ -293,6 +293,47 @@ async def test_an_outline_is_tried_then_ticked_then_its_images_asked(
 
 
 @pytest.mark.anyio
+async def test_a_clouds_source_read_at_a_coarser_level_is_chosen_by_hand(
+    app: Any, ready: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # some sources show another photo at ZL11, blurred but with no clouds (a user, 2026-11-14):
+    # the level beside its source, its images got there
+    from orthostudio.clouds.find import Check, Judgement
+
+    asked: list[tuple[str, int]] = []
+
+    def check(*args: Any, **_k: Any) -> Check:
+        code, pieces = args[4], args[6]
+        asked.append((code, pieces.providers[code].max_zl))
+        return Check(Judgement("did_not_answer"))  # the source stays the cloud's, asked again
+
+    monkeypatch.setattr(clouds_api, "detector_ready", lambda: True)
+    monkeypatch.setattr(clouds_api, "opencv_ready", lambda: True)
+    monkeypatch.setattr(clouds_api, "_tools", lambda task: None)
+    monkeypatch.setattr(clouds_api, "screen", lambda *a, **k: [{"EOX": Judgement("clear", 70)}])
+    monkeypatch.setattr(clouds_api, "check", check)
+    polygon = [[5.1, 43.1], [5.2, 43.1], [5.2, 43.2], [5.1, 43.2]]
+    async with client_for(app) as c:
+        cid = (await c.post("/api/clouds/+43+005/outlines", json={"polygon": polygon})).json()["id"]
+        a = await _read(c)
+        (row,) = a["clouds"]
+        # the tile is ZL12: EOX at its sharpest there, or one coarser
+        assert row["levels"] == [{"zl": 12, "source": "EOX"}, {"zl": 11, "source": "EOX:11"}]
+        assert row["level"] == 12
+        r = await c.post(
+            "/api/clouds/+43+005/picks", json={"action": "choose", "id": cid, "source": "EOX:11"}
+        )
+        assert r.status_code == 200, r.text
+        a = await _read(c)
+        bad = await c.post(
+            "/api/clouds/+43+005/picks", json={"action": "choose", "id": cid, "source": "EOX:10"}
+        )
+    (row,) = a["clouds"]
+    assert ("EOX:11", 11) in asked and row["source"] == "EOX:11" and row["level"] == 11
+    assert bad.json()["error"]["code"] == "CLOUD_NOT_NOW"  # not a level of its source
+
+
+@pytest.mark.anyio
 async def test_the_library_cell_is_offered_on_the_tiles_own_folder_only(
     app: Any, ready: Path, tmp_path: Path
 ) -> None:

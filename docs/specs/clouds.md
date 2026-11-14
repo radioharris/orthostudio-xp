@@ -104,7 +104,11 @@ The Plan's map, brought over the tile; the Plan's steps make way for the cloud p
   Imagery · clear · fit 93 %"), both from its newest reading (`state.reading`: its images got,
   judged as they are now, else the search's; what a piece said, no answer, a refusal, a page, leaves
   the search's), the best first, those that cannot be chosen greyed (`sources.PROPOSABLE`: the same
-  photo, no picture; the source whose images the tile shows of it always may be); its line (1.5),
+  photo, no picture; the source whose images the tile shows of it always may be); beside it the
+  **level** its source is read at (`levels`, `level`: from the sharpest the tile has of that
+  source down to ZL11, `sources.COARSEST`; the source itself at the top, `Arc:11` below, its name
+  with the level, "Esri World Imagery · ZL11"), shown when there is more than one: another level
+  chooses that source at that level, its images got there; its line (1.5),
   under the menu: none when it is replaced or to be, as its tick and its menu say (held, ready),
   none while a task of it runs (its spinner says it; its label on the map); **Get its images** when
   asking again may end its wait.
@@ -197,7 +201,7 @@ A cloud is, one way only:
   reason, in the warning tone: no source, not got yet, what its source answered (5.1), the texture
   under it changed since (its level, source, layout or photo), its images no longer on this
   computer;
-- its **actions**: choose a source the menu offers; tick (with a source) or untick; **Get its
+- its **actions**: choose a source the menu offers, or its source at another level; tick (with a source) or untick; **Get its
   images** (`check`) when asking again may end its wait; remove an outline the tile does not
   show; Stop while a task of it runs, unless it writes the textures (`actions`).
 
@@ -560,7 +564,28 @@ sea X-Plane draws alone is no part of a cloud):
   photo itself (`Picture.photo`), not with what X-Plane shows of it over water: the photo is what
   it replaces.
 
-The best source is the clear one with the best fit.
+The best source is the clear one, the sharpest first (a source at its finest before one read
+coarser), then the one whose colours fit best (`state._ranked`).
+
+**Coarser levels.** A source may show another photo at a coarser level: Esri World Imagery at ZL11
+over tropical forest, blurred but with no clouds, where its ZL12 shows cumulus (a user, 2026-11-14).
+Under a cloud no source is clear under at its own level, each source, the tile's own too, is read
+at every coarser level down to ZL11 (`sources.COARSEST`, the zones' and the Plan's lowest), and a
+level whose photo is not the level above's (`find._alike`: their lightness compared at the coarser
+one's sharpness, the same photo from 0.6, `find.LEVEL_ALIKE`, B13) is judged as a source of its own,
+`Arc:11` (`sources.at_level`; `sources.resolve` makes it the source with that level as its finest,
+its pieces the source's own), kept when it is clear or cloudy there: the same photo as the tile's,
+or none there, adds nothing. A level showing the same photo as the level above has the same clouds,
+only blurrier; a window holding fewer than 64 of its pixels at that level stops there
+(`find.ALIKE_PIXELS`): a small cloud keeps its sharp sources. A blurred photo is a cloud's source
+only where no sharp one is clear, so it is looked for there alone: under every cloud, a search of
+200 clouds took 65 s instead of 47 s, under none of which one was wanted (B13). By hand, the
+cloud's level list chooses its source at any level, its images got there.
+
+A source coarser than the picture is judged by the detector at its own sharpness, its classes
+enlarged after (`find._classified`; the check alike): enlarged first, Esri's ZL11 over tropical
+forest, clear to the eye, was mostly cloud under 187 of 200 clouds, its blur read as a veil; at its
+own sharpness it was clear, and the tile's own cumulus were still seen (B13).
 
 ### 4.2 What a source can answer
 

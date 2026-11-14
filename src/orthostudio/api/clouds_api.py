@@ -41,7 +41,7 @@ from orthostudio.clouds.laying import folder_lock, show
 from orthostudio.clouds.model import detector_bytes, detector_ready, ensure_detector
 from orthostudio.clouds.opencv import opencv_ready
 from orthostudio.clouds.picture import Picture, draw, fine_level, frame_bounds, map_level
-from orthostudio.clouds.sources import SourcePieces, other_sources
+from orthostudio.clouds.sources import SourcePieces, other_sources, resolve, tops
 from orthostudio.clouds.tasks import Task, Tasks, error_view, standing
 from orthostudio.clouds.tile import (
     TileClouds,
@@ -413,7 +413,8 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
         )
         tasks = [t.view() for t in engine.tasks.of(tile.name)]
         under_way = engine.tasks.busy(tile.name)  # what follows a task too
-        view = state.view(cls.knowing(tile, shown), shown, tile, st, tasks, under_way)
+        levels = tops(shown.textures, load_registry()) if shown is not None else None
+        view = state.view(cls.knowing(tile, shown), shown, tile, st, tasks, under_way, levels)
         return folder, shown, view
 
     def opened(
@@ -549,9 +550,13 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
         return {"rows": out}
 
     def sources_for(tile: TileRef, shown: TileClouds) -> SourcePieces:
-        return SourcePieces(
-            default_chunks_root(), other_sources(tile, shown.provider, load_registry())
-        )
+        """The sources a search judges under the tile's clouds: every other one covering it, and
+        its own, read at its coarser levels alone (``find.screen``)."""
+        registry = load_registry()
+        found = other_sources(tile, shown.provider, registry)
+        if shown.provider in registry:
+            found[shown.provider] = registry[shown.provider]
+        return SourcePieces(default_chunks_root(), found)
 
     def get_images(
         tile: TileRef,
@@ -602,7 +607,8 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
         def run(task: Task) -> None:
             p = begin(task, tile, shown)
             registry = load_registry()
-            if code not in registry:
+            provider = resolve(code, registry)  # a source, or one at a coarser level: Arc:11
+            if provider is None:
                 raise OsxpError(
                     "CFG_PROVIDER_UNKNOWN",
                     context={"provider": code, "known": ", ".join(sorted(registry))},
@@ -614,7 +620,7 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
                 rings,
                 code,
                 shown,
-                SourcePieces(default_chunks_root(), {code: registry[code]}),
+                SourcePieces(default_chunks_root(), {code: provider}),
                 classes=engine.classes(tile, shown),
                 again=again,
                 cancel=task.stop,
@@ -649,7 +655,13 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
             areas, classes = find(p, fine, cancel=task.stop, phase=task.say)
             rings = [a.rings(p) for a in areas]
             verdicts = screen(
-                p, rings, classes, sources_for(tile, shown), cancel=task.stop, phase=task.say
+                p,
+                rings,
+                classes,
+                sources_for(tile, shown),
+                own=shown.provider,
+                cancel=task.stop,
+                phase=task.say,
             )
             found = [
                 {"rings": r, "screening": cls.screening_of(v)}
@@ -729,7 +741,13 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
             if classes is None:
                 classes = np.zeros(p.rgb.shape[:2], np.uint8)
             (verdicts,) = screen(
-                p, [[ring]], classes, sources_for(tile, shown), cancel=task.stop, phase=task.say
+                p,
+                [[ring]],
+                classes,
+                sources_for(tile, shown),
+                own=shown.provider,
+                cancel=task.stop,
+                phase=task.say,
             )
             with cls.update(tile) as cl:
                 cls.record_screening(cl, cid, verdicts, shown)

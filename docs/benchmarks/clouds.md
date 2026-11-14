@@ -190,3 +190,37 @@ task ended), eight clicks each way, back to back:
 Each reading takes the engine about 0.05 s on that tile. The first tick right after the mode opens
 waits for the tile's picture begun as it opened (1.8 s there), then its images.
 
+## B13. Coarser levels under the clouds of +08-078 (Mac, 2026-11-14)
+
+A tile of +08-078 (Darién) built at ZL16 from Esri World Imagery, a quick search (200 clouds, the
+picture at ZL13, the sources read at ZL14), its pieces already on the disk, the search timed through
+the engine's route.
+
+How alike a source's photo is at each level and the level above, under the 200 clouds (Pearson's r
+of the lightness at the coarser level's sharpness; 5th, median and 95th percentile):
+
+| Source | ZL13 | ZL12 | ZL11 |
+|---|---|---|---|
+| Esri World Imagery (the tile's own) | 0.94 / 0.98 / 1.00 | 0.95 / 0.98 / 1.00 | **-0.24 / 0.08 / 0.48** |
+| Esri Clarity | **-0.19 / 0.07 / 0.29** | 0.69 / 0.91 / 0.98 | 0.75 / 0.92 / 0.98 |
+| Bing | 0.87 / 0.98 / 1.00 | **-0.19 / 0.09 / 0.37** | 0.83 / 0.96 / 0.99 |
+| EOX | 0.83 / 0.93 / 0.97 | 0.77 / 0.93 / 0.98 | 0.88 / 0.95 / 0.98 |
+
+Another photo stays under 0.5, the same one resampled above 0.69: `find.LEVEL_ALIKE` is 0.6
+(0.9, the same photo as the tile's, called a fifth of EOX's levels another photo).
+
+The detector on Esri's ZL11 enlarged to the picture's level saw cloud on 50 to 96 % of six large
+clouds' windows, clear to the eye; at its own sharpness 0 to 2 %, and on the tile's own photo
+brought to ZL11 its cumulus still at 3 to 26 % (`find._classified`).
+
+| Search | Coarser levels | Time | Of which the sources judged | Clouds with a source |
+|---|---|---|---|---|
+| Every source | not looked for | 46, 48 s | 21, 22 s | 200 |
+| Every source | under every cloud | 65, 64 s | 38, 38 s | 200 |
+| Every source | under the clouds none clears (kept) | 52, 59 s | 25, 22 s | 200 (none wanted one) |
+| Bing alone beside the tile's own | not looked for | 34 s | 7 s | 65 |
+| Bing alone beside the tile's own | under the clouds none clears (kept) | 40 s | 13 s | 200: Bing at ZL12 126, Esri at ZL11 9 |
+
+The machine was not at rest throughout (Spotlight indexing): the kept rule did no other work than
+the search without it where no cloud wanted a coarser level, and the spread of those runs is that.
+

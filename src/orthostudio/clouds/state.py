@@ -33,7 +33,7 @@ from typing import Any
 from orthostudio.clouds.cloudlist import CloudList
 from orthostudio.clouds.laying import FolderPlan, plan_folder
 from orthostudio.clouds.picture import fine_level, map_level
-from orthostudio.clouds.sources import ASK_AGAIN, JUDGED, PROPOSABLE
+from orthostudio.clouds.sources import ASK_AGAIN, COARSEST, JUDGED, PROPOSABLE, at_level, level_of
 from orthostudio.clouds.tile import TileClouds, held_by_id, same_laid, unready
 from orthostudio.errors import OsxpError
 from orthostudio.model import TileRef
@@ -179,13 +179,17 @@ def proposable(c: Mapping[str, Any], code: str, held: Mapping[str, Any] | None =
 
 def _ranked(c: Mapping[str, Any], codes: Iterable[str]) -> list[str]:
     """``codes`` in the order the sources under ``c`` are offered: the clear first, then the
-    cloudy, then the others, each by its fit, then by its name. The one order: the best is its
-    first clear one, and the menu lists them so."""
+    cloudy, then the others; each the sharpest first (a source at its finest before one read at
+    a coarser level, ``sources.at_level``), then by its fit, then by its name. The one order: the
+    best is its first clear one, and the menu lists them so: a blurred photo only where no sharp
+    one is clear."""
     order = {"clear": 0, "cloudy": 1}
 
-    def key(k: str) -> tuple[int, int, str]:
+    def key(k: str) -> tuple[int, int, int, str]:
         said = reading(c, k)
-        return order.get(said.get("answer"), 2), -int(said.get("fit") or 0), k
+        zl = level_of(k)[1]
+        coarse = 0 if zl is None else 100 - zl
+        return order.get(said.get("answer"), 2), coarse, -int(said.get("fit") or 0), k
 
     return sorted(codes, key=key)
 
@@ -232,6 +236,9 @@ class CloudState:
     """Why it waits (``waiting``): the key of its line."""
     actions: frozenset[str]
     task: Mapping[str, Any] | None = None
+    levels: tuple[tuple[int, str], ...] = ()
+    """The levels its source may be read at, the sharpest first, each with the code choosing it
+    (:func:`_levels`)."""
 
     @property
     def unasked(self) -> bool:
@@ -278,6 +285,8 @@ class CloudState:
             "numbered": c["kind"] == "found",
             "preview": (previews or {}).get(c["id"]),
             "menu": _menu(c, self.source, self.held),
+            "levels": [{"zl": zl, "source": code} for zl, code in self.levels],
+            "level": _level(self.source, self.levels),
         }
 
 
@@ -373,6 +382,29 @@ def _line(s: CloudState) -> dict[str, Any] | None:
     return {"key": f"clouds.row.{s.row}", "params": {**src, "held": held}, "tone": "plain"}
 
 
+def _levels(source: str | None, tops: Mapping[str, int]) -> tuple[tuple[int, str], ...]:
+    """The levels ``source`` may be read at for the cloud, from the sharpest the tile has of it
+    (``tops``, ``sources.tops``) down to ``sources.COARSEST``, each with its code: the source
+    itself at the sharpest, ``Arc:11`` below. None for a source unknown, or one level alone."""
+    if source is None:
+        return ()
+    base = level_of(source)[0]
+    top = tops.get(base)
+    if top is None or top <= COARSEST:
+        return ()
+    return tuple(
+        (zl, base if zl == top else at_level(base, zl)) for zl in range(top, COARSEST - 1, -1)
+    )
+
+
+def _level(source: str | None, levels: Sequence[tuple[int, str]]) -> int | None:
+    """The level ``source`` is read at among ``levels``: its own, else the sharpest."""
+    if source is None or not levels:
+        return None
+    zl = level_of(source)[1]
+    return levels[0][0] if zl is None else zl
+
+
 def _menu(c: Mapping[str, Any], source: str | None, held: Any = None) -> list[dict[str, Any]]:
     """Every source tried under the cloud, and its own: what each has there and its fit (its
     newest reading), whether it may be chosen, the best first."""
@@ -462,6 +494,7 @@ class View:
         if s is None or action not in s.actions:
             return False
         offered = {i["source"] for i in _menu(s.cloud, s.source, s.held) if i["proposable"]}
+        offered |= {code for _zl, code in s.levels}  # its source at another level, by hand
         return action != "choose" or source in offered
 
     @property
@@ -565,10 +598,12 @@ def view(
     state: str,
     tasks: Sequence[Mapping[str, Any]] = (),
     under_way: bool = False,
+    tops: Mapping[str, int] | None = None,
 ) -> View:
     """The tile ``tile`` in ``state``, its list ``cl`` and what its folder shows (``shown``,
     ``None`` when not read), its tasks (``Task.view``s) and whether anything of it is under way
-    (``Tasks.busy``: a task, or what follows one): its view, decided here alone."""
+    (``Tasks.busy``: a task, or what follows one): its view, decided here alone. ``tops``: the
+    sharpest level each source is read at for the tile (``sources.tops``), for a cloud's levels."""
     kinds = {t["kind"] for t in tasks}
     can = possible(state, kinds)
     of_cloud = {t["cloud"]: t for t in tasks if t.get("cloud")}
@@ -604,7 +639,8 @@ def view(
             row, actions = "frozen", frozenset()
         else:
             row, actions = fact, _actions(c, source, held, why) & can
-        clouds.append(CloudState(c, source, held, lays, row, why, actions, task))
+        levels = _levels(source, tops or {})
+        clouds.append(CloudState(c, source, held, lays, row, why, actions, task, levels))
         facts.append(fact)
     counts = _counts(facts, shown, remade, tasks)
     searching = "find" in kinds

@@ -54,6 +54,19 @@ export function latlngs(ring) {
   return out;
 }
 
+/** The sources' names by their codes, a source read at a coarser level (``Arc:11``, the engine's
+ * ``sources.at_level``) by its own and that level: "Esri World Imagery · ZL11". */
+export function sourceNames(providers) {
+  const named = Object.fromEntries((providers || []).map((p) => [p.code, p.name || p.code]));
+  return new Proxy(named, {
+    get(o, code) {
+      if (typeof code !== "string" || code in o) return o[code];
+      const m = /^(.+):(\d+)$/.exec(code);
+      return m && m[1] in o ? `${o[m[1]]} · ZL${m[2]}` : undefined;
+    },
+  });
+}
+
 /** The words of a line the engine sent (``{key, params}``), a source's code given its name. */
 export function lineWords(line, names = {}) {
   if (!line) return "";
@@ -150,7 +163,7 @@ export function createCloudMode(ctx) {
   };
   const labels = new Map(); // a cloud's number's place, by its outline
 
-  const names = () => Object.fromEntries((ctx.providers() || []).map((p) => [p.code, p.name || p.code]));
+  const names = () => sourceNames(ctx.providers());
   /** A control's key: drawn again in place, an element stays the one it was, its handler with it.
    * Matched by place alone, a button took another's of the same look: a search's Stop came in as
    * Tick all's, and ticked every cloud (a user, 2026-11-06). Every control of the panel and the
@@ -694,6 +707,13 @@ export function createCloudMode(ctx) {
       ...c.menu.map((m) => h("option", { value: m.source, disabled: !m.proposable },
         [n[m.source] || m.source, m.answer ? t(`clouds.answer.${m.answer}`) : "", m.fit ? t("clouds.fit", { n: m.fit }) : ""].filter(Boolean).join(" · "))));
     menu.value = c.source || "";
+    // the level its source is read at: the sharpest, or coarser by hand (a source shows another
+    // photo at some level, blurred but with no clouds, a user, 2026-11-14); the engine's codes
+    const level = c.levels && c.levels.length
+      ? h("select", { class: "cloud-level", dataset: key(`level-${c.id}`), "aria-label": t("clouds.level_of", { name: label }), title: t("clouds.level_tip"), disabled: !can.has("choose"), onchange: (ev) => choose(c, ev.target.value) },
+        ...c.levels.map((l) => h("option", { value: l.source }, `ZL${l.zl}`)))
+      : null;
+    if (level) level.value = (c.levels.find((l) => l.zl === c.level) || c.levels[0]).source;
     const task = c.task;
     const show = () => {
       cs.current = c.id;
@@ -744,7 +764,7 @@ export function createCloudMode(ctx) {
           h("span", { class: "zone-hint num" }, areaWords(c.ha)),
           h("button", { type: "button", class: "btn btn-icon cloud-show", dataset: key(`show-${c.id}`), title: t("clouds.show"), "aria-label": `${t("clouds.show")}: ${label}`, onclick: show }, icon("eye")),
           trash),
-        h("div", { class: "zone-row" }, menu),
+        h("div", { class: "zone-row" }, menu, level),
         line,
         buttons.length ? h("div", { class: "zone-row" }, ...buttons) : null));
   }

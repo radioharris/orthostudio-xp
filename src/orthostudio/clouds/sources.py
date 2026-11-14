@@ -19,13 +19,27 @@ from pathlib import Path
 
 from orthostudio.errors import OsxpError
 from orthostudio.imagery.chunks import ChunkStatus
+from orthostudio.imagery.grid import TextureId
 from orthostudio.imagery.providers import Provider, cache_name, tile_url
 from orthostudio.model import TileRef
 from orthostudio.net import Fetcher, FetchRequest, FetchResult
 from orthostudio.pipeline.parents import ParentCache
 from orthostudio.pipeline.textures import chunk_entry_for
+from orthostudio.zones import MIN_ZL
 
-__all__ = ["ANSWERS", "ASK_AGAIN", "JUDGED", "PROPOSABLE", "SourcePieces", "other_sources"]
+__all__ = [
+    "ANSWERS",
+    "ASK_AGAIN",
+    "COARSEST",
+    "JUDGED",
+    "PROPOSABLE",
+    "SourcePieces",
+    "at_level",
+    "level_of",
+    "other_sources",
+    "resolve",
+    "tops",
+]
 
 ANSWERS = (
     "clear",
@@ -51,6 +65,43 @@ picture in every source, and stayed so (``find.check``, 2026-11-06)."""
 
 Key = tuple[int, int, int]
 """``(x, y, zl)`` of a source's piece."""
+
+COARSEST = MIN_ZL
+"""The coarsest level a cloud's source is read at, the zones' and the Plan's: some sources show
+another photo there, blurred but with no clouds, where the level above shows cumulus (Esri World
+Imagery at ZL11 over tropical forest, a user, 2026-11-14)."""
+
+
+def at_level(code: str, zl: int) -> str:
+    """The source ``code`` read at ``zl`` at most: ``Arc:11``. Each is a source of its own for
+    the clouds (their screening, checks and menu), its pieces the source's own."""
+    return f"{code}:{zl}"
+
+
+def level_of(code: str) -> tuple[str, int | None]:
+    """The source and the level of ``code`` (:func:`at_level`); ``None``: its sharpest."""
+    base, _, zl = code.rpartition(":")
+    return (base, int(zl)) if base and zl.isdigit() else (code, None)
+
+
+def resolve(code: str, registry: Mapping[str, Provider]) -> Provider | None:
+    """The source ``code`` names, read no finer than its level: the registry's source with that
+    level as its finest. ``None`` when its source is unknown or the level is not one it has
+    coarser than its finest, down to :data:`COARSEST`."""
+    base, zl = level_of(code)
+    provider = registry.get(base)
+    if provider is None or zl is None:
+        return provider
+    if not COARSEST <= zl < provider.max_zl:
+        return None
+    return provider.model_copy(update={"max_zl": zl})
+
+
+def tops(textures: Iterable[TextureId], registry: Mapping[str, Provider]) -> dict[str, int]:
+    """The sharpest level each source is read at for a tile of ``textures``: its finest, or the
+    finest texture's when coarser. A cloud's levels go from it down to :data:`COARSEST`."""
+    finest = max((t.zl for t in textures), default=0)
+    return {code: min(finest, p.max_zl) for code, p in registry.items()}
 
 
 def _failed_kind(r: FetchResult) -> str:
