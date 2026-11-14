@@ -458,7 +458,7 @@ def _other_said(chosen: Path, other: OtherMesh) -> str:
     if said["overlays"]:
         line += f"; roads, forests and buildings: {', '.join(said['overlays'])}"
     elif said["meshes"]:
-        line += "; no roads, forests or buildings in this folder"
+        line += "; no roads, forests or buildings taken from it"
     if said["refused"]:
         line += "; left aside: " + ", ".join(f"{r['name']} ({r['why']})" for r in said["refused"])
     return line

@@ -507,11 +507,11 @@ change under Live (the user: « je préfère le réglage sans surprise »); Auto
   error is left as it is.
 - **The window:** `checks.other_mesh` is None without a folder, else `{folder, there, next_start,
   meshes, overlays, refused: [{name, why}]}`, the line under the setting (five refused named, the
-  rest counted; « no roads, forests or buildings in this folder » for a mesh without them there, a
-  fact of the folder and not a guess of what Live places, AutoOrtho's roads perhaps left in X-Plane:
-  the start's log says what it placed); `next_start` while a mesh of it is not among the pack's
-  recorded sources. A missing mesh's notices name the setting. No night grids on it: they come with
-  Live's regions.
+  rest counted; « Live takes no roads, forests or buildings from this folder » for a mesh without
+  them there, a fact of what Live takes and not a guess of what Live places, AutoOrtho's roads
+  perhaps left in X-Plane: the start's log says what it placed); `next_start` while a mesh of it is
+  not among the pack's recorded sources. A missing mesh's notices name the setting. No night grids
+  on it: they come with Live's regions.
 
 `orthostudio/live/aoregions.py` installs a region the way AutoOrtho's installer does
 (`autoortho/downloader.py`), from the GitHub releases of `kubilus1/autoortho-scenery`, which hold
