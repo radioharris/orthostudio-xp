@@ -248,4 +248,3 @@ def test_auto_lists_every_line_tried_each_sources_together_the_best_first() -> N
     ]
     assert state._menu(c, "EOX:14", None, tops)[0]["source"] == "EOX:14"  # its own
     assert state.best_of(c, tops) == "EOX"  # the choice is the same rule as ever
-
