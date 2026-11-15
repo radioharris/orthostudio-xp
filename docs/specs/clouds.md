@@ -65,9 +65,10 @@ them starts, by a click elsewhere, or by Escape.
   step once the one before has ended, `Tasks.settle`). It is a follow of the tile's tasks
   (`Tasks.follow`, R7): the tile under way throughout, stopped by Stop, a Stop of one of its tasks,
   Quit, a build or a deletion, which stop it before its Apply even once the tile is read for it.
-  However it ended, each cloud it ticked that the tile does not hold replaced is unticked (stopped,
-  an Apply refused: X-Plane running, a cloud whose images failed or whose sources were all worse at
-  the tile's level): found again in the Library and taken by the next Find and apply, never left
+  However it ended, each cloud it ticked that is not laid (the list's `laid`, which Apply writes
+  with what it laid, the folder not read: a build or a deletion may hold it then) is unticked
+  (stopped, an Apply refused: X-Plane running, a cloud whose images failed or whose sources were
+  all worse at the tile's level): found again in the Library and taken by the next Find and apply, never left
   ticked unseen, with a preview the cloud mode would have to make as it opens (it gets the images
   without their preview, a third of the work after the download, B14; reviews, 2026-11-15).
 - **Forget…** takes the tiles with clouds (`forget`), asks first in one question, and forgets each

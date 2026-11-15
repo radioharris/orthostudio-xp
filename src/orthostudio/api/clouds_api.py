@@ -55,7 +55,6 @@ from orthostudio.clouds.tasks import Task, Tasks, error_view, searches_at_once, 
 from orthostudio.clouds.tile import (
     TileClouds,
     clouds_dir,
-    held_by_id,
     is_own_folder,
     listed,
     own_folder,
@@ -767,8 +766,10 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
         (``Tasks.images_turn``: one tile at a time), every cloud Tick all takes ticked (a clear
         source judged under it) and its images got without their preview, then Apply as its
         question would lay it, each step once the one before has ended (``Tasks.settle``), not
-        once stopped. However it ended, each cloud it ticked that the tile does not hold replaced
-        is unticked (stopped, an Apply refused: X-Plane running, or a cloud whose images failed,
+        once stopped. However it ended, each cloud it ticked that is not laid (the list's
+        ``laid``, which Apply writes with what it laid: the folder is not read, a build or a
+        deletion may hold it then) is unticked (stopped, an Apply refused: X-Plane running, or a
+        cloud whose images failed,
         or whose sources were all worse at the tile's level): seen again in the Library as found
         and taken by the next Find and apply, never ticked unseen with a preview the mode would
         have to make as it opens (reviews, 2026-11-15)."""
@@ -793,10 +794,10 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
                 engine.tasks.settle(tile.name, stop)  # an Apply ends what it began, Stop or not
         finally:
             if ticked:
-                holds = held_by_id(look(tile)[1])
                 with cls.update(tile) as cl:
+                    laid = {e["id"] for e in cl.laid}
                     for c in cl.clouds:
-                        if c["id"] in ticked and c["tick"] and c["id"] not in holds:
+                        if c["id"] in ticked and c["tick"] and c["id"] not in laid:
                             cls.pick(cl, c["id"], "untick")
 
     @router.get("/api/cloud-searches")

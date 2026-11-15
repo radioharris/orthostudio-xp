@@ -1550,14 +1550,16 @@ def _found_with_images(folder: Path) -> str:
 
 
 def _laying(monkeypatch: pytest.MonkeyPatch) -> list[list[str]]:
-    """Apply faked: the clouds of each, by id, which the tile then holds replaced."""
+    """Apply faked: the clouds of each, by id, written laid in the list as Apply writes them."""
     laid: list[list[str]] = []
 
-    def show(_tile: Any, _folder: Any, asked: Any, **_k: Any) -> None:
-        laid.append([e["id"] for group in asked for e in group])
+    def show(tile: TileRef, _folder: Any, asked: Any, **_k: Any) -> None:
+        entries = [dict(e) for group in asked for e in group]
+        laid.append([e["id"] for e in entries])
+        with cloudlist.update(tile) as cl:
+            cl.laid = entries
 
     monkeypatch.setattr(clouds_api, "show", show)
-    monkeypatch.setattr(clouds_api, "held_by_id", lambda _s: {i: {} for g in laid for i in g})
     return laid
 
 
@@ -1606,6 +1608,33 @@ async def test_find_and_apply_unticks_a_cloud_its_apply_did_not_lay(
     with cloudlist.update(TILE) as cl:
         ticks = {x["id"]: x["tick"] for x in cl.clouds}
     assert laid == [[cid]] and ticks == {cid: True, other: False}
+
+
+@pytest.mark.anyio
+async def test_a_build_asked_while_find_and_apply_lays_leaves_what_it_laid_ticked(
+    app: Any, ready: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # the tile queued for a build as its Apply lays: read then, the folder said nothing held and
+    # the clouds just laid were unticked, the build laying them again all the same (a review,
+    # 2026-11-15); the list's own laid clouds say it, whoever holds the folder
+    cid = _found_with_images(ready)
+    _searching(monkeypatch)
+    laying = _laying(monkeypatch)
+    queued: dict[str, str] = {}
+    show = clouds_api.show
+
+    def laid_then_queued(*a: Any, **k: Any) -> None:
+        show(*a, **k)
+        queued[TILE.name] = "queued"
+
+    monkeypatch.setattr(clouds_api, "show", laid_then_queued)
+    monkeypatch.setattr(app.state.orthostudio["jobs"], "building_states", lambda: dict(queued))
+    async with client_for(app) as c:
+        await c.post("/api/cloud-searches", json={"tiles": ["+43+005"], "apply": True})
+        await _no_search(c)
+    with cloudlist.update(TILE) as cl:
+        ticks = {x["id"]: x["tick"] for x in cl.clouds}
+    assert laying == [[cid]] and ticks == {cid: True}
 
 
 @pytest.mark.anyio
