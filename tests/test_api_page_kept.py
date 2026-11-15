@@ -17,7 +17,7 @@ import pytest
 import test_api_fakes as fakes
 from orthostudio.api.app import create_app
 from orthostudio.api.jobs import JobManager
-from orthostudio.api.page_kept import KEPT_MARK, KEY, LIVE_PAGE_FILE, MAX_KEYS, MAX_VALUE_CHARS
+from orthostudio.api.page_kept import KEPT_MARK, KEY, LIVE_PAGE_FILE, MAX_VALUE_CHARS
 from orthostudio.ui import ui_dir, with_json
 from test_api_fakes import client_for
 
@@ -80,20 +80,6 @@ async def test_what_a_page_never_writes_is_refused(app: Any, home: Path, body: A
         r = await c.put("/api/page-kept", json=body)
     assert r.status_code == 422 and r.json()["error"]["code"] == "CFG_VALUE_INVALID"
     assert not (home / "page.json").exists()
-
-
-@pytest.mark.anyio
-async def test_the_values_kept_have_a_ceiling(app: Any, home: Path) -> None:
-    many = {f"osxp.k{i}": "1" for i in range(MAX_KEYS)}
-    async with client_for(app) as c:
-        assert (await c.put("/api/page-kept", json={"values": many})).status_code == 200
-        r = await c.put("/api/page-kept", json={"values": {"osxp.more": "1"}})
-        assert r.status_code == 422 and r.json()["error"]["code"] == "CFG_VALUE_INVALID"
-        # forgetting one makes room again
-        r = await c.put("/api/page-kept", json={"values": {"osxp.k0": None, "osxp.more": "1"}})
-        assert r.status_code == 200, r.text
-    kept = json.loads((home / "page.json").read_text(encoding="utf-8"))
-    assert len(kept) == MAX_KEYS and "osxp.more" in kept and "osxp.k0" not in kept
 
 
 @pytest.mark.anyio

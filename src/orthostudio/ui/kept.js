@@ -22,13 +22,14 @@ function written() {
   }
 }
 
-let served = written();
+const served = written();
 const values = new Map(Object.entries(served || {}));
+let sends = Boolean(served); // a server keeps them: each change goes to it
 let sending = Promise.resolve();
 
 /** The demo (`?mock=1`) neither reads nor writes the pilot's own choices: kept for the visit. */
 export function keepForThisVisit() {
-  served = null;
+  sends = false;
   values.clear();
 }
 
@@ -43,12 +44,12 @@ export function pageKeep(key, value) {
   if (pageKept(key) === text) return;
   if (text === null) values.delete(key);
   else values.set(key, text);
-  if (!served) return;
+  if (!sends) return;
   const body = JSON.stringify({ values: { [key]: text } });
   // one after the other, in the order made: two quick clicks end on the second
   sending = sending
     .then(() => fetch(ROUTE, { method: "PUT", headers: { "Content-Type": "application/json" }, body }))
     .catch(() => {
-      // a server older than the page, or gone: kept for this visit
+      // the server gone: kept for this visit (a refusal is an answer, and is not retried either)
     });
 }

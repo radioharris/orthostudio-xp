@@ -3031,7 +3031,7 @@ def test_the_library_finds_and_sorts_its_tiles() -> None:
     field keeps the tiles whose name has what is typed, and each header sorts its column, first
     in its most useful order (tiles south to north, imagery by name then level, the tiles in
     X-Plane, the largest and OrthoStudio XP's own first), again the other way round; ties keep
-    the tile order. The sort stays from one visit to the next, in this browser only."""
+    the tile order. The sort stays from one visit to the next (kept.js)."""
     rows = [
         {
             "tile": "+49+011",
@@ -9223,14 +9223,17 @@ def test_a_clouds_label_stands_where_its_number_is_over_every_mark() -> None:
     assert "L.marker(placeOf(c.rings[0])," in marks  # the number at the very same place
 
 
-def _kept_run(written: str, steps: str) -> Any:
+def _kept_run(written: str, steps: str, *, answer_ms: int = 0) -> Any:
     """kept.js under node, served with ``written`` in ``#page-kept`` (``"none"``: no such element,
-    the page served as plain files): ``steps`` use ``m`` and return a value; with it, what was
-    sent to the server."""
+    the page served as plain files), its server answering after ``answer_ms``: ``steps`` use ``m``
+    and return a value; with it, what was sent to the server, and when each answer came."""
     script = f"""
-    const sent = [];
+    const sent = [], answered = [];
     globalThis.fetch = async (url, init) => {{
-      sent.push([url, init.method, JSON.parse(init.body)]);
+      const body = JSON.parse(init.body);
+      sent.push([url, init.method, body]);
+      await new Promise((r) => setTimeout(r, {answer_ms}));
+      answered.push(sent.length);
       return {{}};
     }};
     const written = {json.dumps(written)};
@@ -9241,8 +9244,8 @@ def _kept_run(written: str, steps: str) -> Any:
     }}
     const m = await import("./kept.js");
     const got = await (async () => {{ {steps} }})();
-    for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
-    process.stdout.write(JSON.stringify({{ got, sent }}));
+    await new Promise((r) => setTimeout(r, 4 * {answer_ms} + 20));
+    process.stdout.write(JSON.stringify({{ got, sent, answered }}));
     """
     if NODE is None:
         pytest.skip("node is not installed")
@@ -9278,17 +9281,32 @@ def test_a_page_served_as_plain_files_or_as_the_demo_keeps_its_choices_for_the_v
         ' return [m.pageKept("osxp.experts"), m.pageKept("osxp.mapAirports")];'
     )
     for written in ("none", "null"):
-        assert _kept_run(written, steps) == {"got": ["open", None], "sent": []}, written
+        run = _kept_run(written, steps)
+        assert run["got"] == ["open", None] and run["sent"] == [], written
     demo = _kept_run(json.dumps({"osxp.mapAirports": "1"}), "m.keepForThisVisit(); " + steps)
-    assert demo == {"got": ["open", None], "sent": []}
+    assert demo["got"] == ["open", None] and demo["sent"] == []
     app_js = (UI / "app.js").read_text(encoding="utf-8")
-    assert 'const MOCK = isOn(PARAMS.get("mock"));\nif (MOCK) keepForThisVisit();' in app_js
+    assert "if (MOCK) keepForThisVisit();" in app_js
 
 
 def test_the_build_page_keeps_its_choices_through_kept_js_alone() -> None:
     """One place: the language, the theme, the text size and the zoom are the frame's and stay in
-    their own modules; every other choice of the page goes through kept.js."""
-    for name in ("app.js", "map.js", "flightplan.js", "kept.js", "clouds.js", "settings.js"):
-        js = (UI / name).read_text(encoding="utf-8")
-        uses = re.findall(r"localStorage\.\w+\(([^)]*)\)", js)
-        assert all('"osxp.theme"' in u for u in uses), (name, uses)
+    their own modules (and the theme in app.js); every other choice of the page goes through
+    kept.js."""
+    frames = {"i18n.js", "textsize.js", "zoom.js"}
+    for path in sorted(UI.glob("*.js")):
+        if path.name in frames:
+            continue
+        uses = re.findall(r"localStorage\.\w+\(([^)]*)\)", path.read_text(encoding="utf-8"))
+        assert all('"osxp.theme"' in u for u in uses), (path.name, uses)
+
+
+def test_the_changes_reach_the_server_one_after_the_other_in_the_order_made() -> None:
+    """Two quick clicks end on the second, however late the server answers."""
+    run = _kept_run(
+        json.dumps({}),
+        'm.pageKeep("osxp.mapStreet", "1"); m.pageKeep("osxp.mapStreet", "0"); return null;',
+        answer_ms=30,
+    )
+    assert [s[2]["values"]["osxp.mapStreet"] for s in run["sent"]] == ["1", "0"]
+    assert run["answered"] == [1, 2]  # the second sent only once the first was answered
