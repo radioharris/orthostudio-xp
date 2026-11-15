@@ -172,9 +172,13 @@ Why it is worth a module of its own (`dem/hrdem.py`):
 * **Bare earth.** Copernicus GLO-30 is a surface model and carries the tree canopy; a forest
   reads as a 10-20 m plateau. The DTM is the ground, which is what a mesh under photo scenery
   wants.
-* **The answers must be read here.** They are big-endian, uncompressed, tiled float32 GeoTIFFs;
-  Pillow reads their tags but decodes their samples in the wrong byte order, so `read_wcs_tiff`
-  reads the tiles with numpy at the offsets the tags give.
+* **The answers must be read here.** They are uncompressed float32 GeoTIFFs: big-endian and
+  tiled over the mosaic, little-endian and in strips far outside it (one void pixel in Canada's
+  Lambert projection over Cuba, measured 2026-11-15, where a build stopped at the relief with
+  "the raster is not tiled"). Pillow reads their tags but decodes the big-endian samples in the
+  wrong byte order, so `read_wcs_tiff` reads the pixels with numpy, in the byte order the file
+  declares, at the offsets its tiles or strips give. Read big-endian, that void pixel would be a
+  height of 0 m and the cell a flat patch of lidar; read right, the cell is `MISSING`.
 * **A window is served a post or two short** of what was asked (62 x 62 for 64 x 64, 999 x 1000
   for 1000 x 1000): each block is asked for with a post of margin and placed where **its own**
   geometry says, at the centre of its first post -- placing on the tie point's corner shifts a

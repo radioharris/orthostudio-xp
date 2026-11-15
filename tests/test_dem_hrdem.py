@@ -3,9 +3,10 @@
 """Canada's lidar relief (``dem/hrdem.py``): the WCS of NRCan, read cell by cell.
 
 A user of the X-Plane.Org page asked for other elevation sources, "especially for the US and
-Canada" (2026-09-18). The service answers big-endian tiled float32 GeoTIFFs whose pixels Pillow
-decodes in the wrong byte order, so they are read here; the cells are assembled from blocks and
-written as ``.hgt``. Every test but the one marked ``network`` builds its own answers.
+Canada" (2026-09-18). The service answers float32 GeoTIFFs, big-endian tiles over the mosaic and
+little-endian strips far outside it; Pillow decodes the big-endian pixels in the wrong byte
+order, so they are read here; the cells are assembled from blocks and written as ``.hgt``.
+Every test but the one marked ``network`` builds its own answers.
 """
 
 from __future__ import annotations
@@ -29,68 +30,96 @@ from orthostudio.dem.raster import read_elevation_from_file
 from orthostudio.dem.sources import Download
 
 
-def wcs_tiff(heights: np.ndarray, *, lon: float, lat: float, step: float, tile: int = 256) -> bytes:
-    """One answer as the service writes them: big-endian, uncompressed, tiled, float32.
+def wcs_tiff(
+    heights: np.ndarray,
+    *,
+    lon: float,
+    lat: float,
+    step: float,
+    tile: int = 256,
+    rows: int | None = None,
+    order: str = ">",
+) -> bytes:
+    """One answer as the service writes them over the mosaic: big-endian, uncompressed, tiled,
+    float32. ``rows`` writes strips of that many rows instead (the last one cut short) and
+    ``order="<"`` writes it little-endian, the form of its answers far outside the mosaic.
 
     ``lon``/``lat`` are the *centre* of the first post, the convention the reader gives back.
     """
     height, width = heights.shape
-    across, down = -(-width // tile), -(-height // tile)
-    pixels = bytearray()
-    for ty in range(down):
-        for tx in range(across):
-            block = np.full((tile, tile), np.float32(-32767.0), dtype=">f4")
-            part = heights[ty * tile : ty * tile + tile, tx * tile : tx * tile + tile]
-            block[: part.shape[0], : part.shape[1]] = part
-            pixels += block.tobytes()
-    scale = struct.pack(">3d", step, step, 0.0)
+    sample = order + "f4"
+    pieces: list[bytes] = []
+    if rows is None:
+        for ty in range(-(-height // tile)):
+            for tx in range(-(-width // tile)):
+                block = np.full((tile, tile), np.float32(-32767.0), dtype=sample)
+                part = heights[ty * tile : ty * tile + tile, tx * tile : tx * tile + tile]
+                block[: part.shape[0], : part.shape[1]] = part
+                pieces.append(block.tobytes())
+    else:
+        pieces = [heights[y : y + rows].astype(sample).tobytes() for y in range(0, height, rows)]
+    pixels = b"".join(pieces)
+    scale = struct.pack(order + "3d", step, step, 0.0)
     # the tie point names the pixel's corner: half a post north-west of the first post's centre
-    tie = struct.pack(">6d", 0.0, 0.0, 0.0, lon - step / 2, lat + step / 2, 0.0)
+    tie = struct.pack(order + "6d", 0.0, 0.0, 0.0, lon - step / 2, lat + step / 2, 0.0)
     nodata = b"-32767\0"
-    head = 8
-    data_at = head
+    many = len(pieces)
+    data_at = 8
     scale_at = data_at + len(pixels)
     tie_at = scale_at + len(scale)
     nodata_at = tie_at + len(tie)
     offsets_at = nodata_at + len(nodata)
-    counts_at = offsets_at + 4 * across * down
-    ifd_at = counts_at + 4 * across * down
-    many = across * down
-    offsets = struct.pack(f">{many}I", *(data_at + i * tile * tile * 4 for i in range(many)))
-    counts = struct.pack(f">{many}I", *([tile * tile * 4] * many))
+    counts_at = offsets_at + 4 * many
+    ifd_at = counts_at + 4 * many
+    starts = [data_at + sum(len(p) for p in pieces[:i]) for i in range(many)]
+    offsets = struct.pack(f"{order}{many}I", *starts)
+    counts = struct.pack(f"{order}{many}I", *(len(p) for p in pieces))
 
-    def entry(tag: int, kind: int, count: int, value: int | bytes) -> bytes:
-        raw = value if isinstance(value, bytes) else struct.pack(">I", value)
-        return struct.pack(">HHI", tag, kind, count) + raw.ljust(4, b"\0")[:4]
+    def short(value: int) -> bytes:
+        return struct.pack(order + "HH", value, 0)
 
-    entries = [
-        entry(256, 3, 1, struct.pack(">HH", width, 0)),
-        entry(257, 3, 1, struct.pack(">HH", height, 0)),
-        entry(258, 3, 1, struct.pack(">HH", 32, 0)),
-        entry(259, 3, 1, struct.pack(">HH", 1, 0)),
-        entry(262, 3, 1, struct.pack(">HH", 1, 0)),
-        entry(277, 3, 1, struct.pack(">HH", 1, 0)),
-        entry(284, 3, 1, struct.pack(">HH", 2, 0)),
-        entry(322, 3, 1, struct.pack(">HH", tile, 0)),
-        entry(323, 3, 1, struct.pack(">HH", tile, 0)),
-        entry(324, 4, many, offsets if many == 1 else offsets_at),
-        entry(325, 4, many, counts if many == 1 else counts_at),
-        entry(339, 3, 1, struct.pack(">HH", 3, 0)),
-        entry(33550, 12, 3, scale_at),
-        entry(33922, 12, 6, tie_at),
-        entry(42113, 2, len(nodata), nodata_at),
-    ]
-    ifd = struct.pack(">H", len(entries)) + b"".join(entries) + struct.pack(">I", 0)
-    return (
-        struct.pack(">2sHI", b"MM", 42, ifd_at)
-        + bytes(pixels)
-        + scale
-        + tie
-        + nodata
-        + offsets
-        + counts
-        + ifd
+    def entry(tag: int, kind: int, count: int, value: int | bytes) -> tuple[int, bytes]:
+        raw = value if isinstance(value, bytes) else struct.pack(order + "I", value)
+        return tag, struct.pack(order + "HHI", tag, kind, count) + raw.ljust(4, b"\0")[:4]
+
+    where = (offsets if many == 1 else offsets_at, counts if many == 1 else counts_at)
+    layout = (
+        [
+            entry(322, 3, 1, short(tile)),
+            entry(323, 3, 1, short(tile)),
+            entry(324, 4, many, where[0]),
+            entry(325, 4, many, where[1]),
+        ]
+        if rows is None
+        else [
+            entry(273, 4, many, where[0]),
+            entry(278, 3, 1, short(rows)),
+            entry(279, 4, many, where[1]),
+        ]
     )
+    entries = sorted(
+        [
+            entry(256, 3, 1, short(width)),
+            entry(257, 3, 1, short(height)),
+            entry(258, 3, 1, short(32)),
+            entry(259, 3, 1, short(1)),
+            entry(262, 3, 1, short(1)),
+            entry(277, 3, 1, short(1)),
+            entry(284, 3, 1, short(2)),
+            entry(339, 3, 1, short(3)),
+            entry(33550, 12, 3, scale_at),
+            entry(33922, 12, 6, tie_at),
+            entry(42113, 2, len(nodata), nodata_at),
+            *layout,
+        ]
+    )
+    ifd = (
+        struct.pack(order + "H", len(entries))
+        + b"".join(raw for _tag, raw in entries)
+        + struct.pack(order + "I", 0)
+    )
+    head = struct.pack(order + "2sHI", b"MM" if order == ">" else b"II", 42, ifd_at)
+    return head + pixels + scale + tie + nodata + offsets + counts + ifd
 
 
 def test_the_wcs_url_puts_the_latitude_first() -> None:
@@ -122,6 +151,48 @@ def test_a_wcs_answer_is_read_where_pillow_reads_it_wrong() -> None:
     assert read[3, 4] == HgtVoid and read[5, 5] == HgtVoid
     assert (lon, lat) == pytest.approx((-76.0, 46.0))
     assert (dlon, dlat) == pytest.approx((0.001, 0.001))
+
+
+def test_tiles_and_strips_are_read_in_the_byte_order_the_file_declares() -> None:
+    """Over the mosaic the service answers big-endian tiles; far outside it, little-endian
+    strips. The reader takes the layout and the byte order each file declares: read the other
+    way, the void of a little-endian answer is a height of 0 m (2.3e-38), a flat cell of lidar."""
+    heights = np.arange(7 * 5, dtype=np.float32).reshape(7, 5) + 100.0
+    heights[2, 3] = -32767.0
+    expected = np.where(heights == -32767.0, np.float32(HgtVoid), heights)
+    for rows in (None, 3):  # the last strip of three is cut short to one row
+        for order in "<>":
+            body = wcs_tiff(
+                heights, lon=-76.0, lat=46.0, step=0.001, tile=4, rows=rows, order=order
+            )
+
+            read, (lon, lat, _dlon, _dlat) = read_wcs_tiff(body)
+
+            assert (read == expected).all(), (rows, order)
+            assert (lon, lat) == pytest.approx((-76.0, 46.0))
+
+
+def test_the_answer_far_outside_the_mosaic_is_an_empty_cell(tmp_path: Path) -> None:
+    """A build of +21-083 (Cuba) over Canada's lidar stopped at the relief with "the raster is
+    not tiled" (2026-11-15). The coverage request there is answered by one void pixel,
+    little-endian, in a strip and in Canada's Lambert projection: its real 401 bytes are kept
+    here. It is an empty cell: one request, remembered, and the relief under it answers alone."""
+    from orthostudio.dem.sources import CellState, EnsureOptions, NegativeMemo, ensure_elevation
+
+    body = (Path(__file__).parent / "data" / "hrdem" / "outside-the-mosaic-21-083.tif").read_bytes()
+    heights, _geo = read_wcs_tiff(body)
+    assert heights.shape == (1, 1) and heights[0, 0] == HgtVoid
+
+    asked: list[str] = []
+
+    def download(url: str) -> Download:
+        asked.append(url)
+        return Download(url, body=body, status=200)
+
+    memo = NegativeMemo(tmp_path / "misses.json")
+    opts = EnsureOptions(elevation_dir=tmp_path, download=download, memo=memo)
+    assert ensure_elevation("HRDEM", 21, -83, opts).state is CellState.MISSING
+    assert len(asked) == 1 and len(memo.misses) == 1
 
 
 def _server(cover: np.ndarray, posts: int, lat: int, lon: int):

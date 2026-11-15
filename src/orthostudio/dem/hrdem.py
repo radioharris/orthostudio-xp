@@ -17,11 +17,12 @@ Two things make it usable here:
   forest reads as a 10-20 m plateau. HRDEM's DTM is the ground itself, which is what a mesh
   under photo scenery wants.
 
-The answer is a big-endian float32 GeoTIFF, uncompressed and tiled, which Pillow reads the tags
-of but not the pixels (it decodes the samples in the wrong byte order). The pixels are therefore
-read here, with numpy, from the tile offsets the tags give; the cell is written as a plain
-``.hgt`` (big-endian int16, ``-32768`` for the voids), the format the raster reader already
-knows.
+The answer is an uncompressed float32 GeoTIFF: big-endian and tiled over the mosaic, but
+little-endian and in strips (a single void pixel) far outside it, over Cuba for one (measured
+2026-11-15). Pillow reads the tags of both but decodes the big-endian samples in the wrong byte
+order, so the pixels are read here, with numpy, in the byte order the file declares and from the
+offsets its tiles or strips give; the cell is written as a plain ``.hgt`` (big-endian int16,
+``-32768`` for the voids), the format the raster reader already knows.
 """
 
 from __future__ import annotations
@@ -143,9 +144,10 @@ def hrdem_url(lat0: float, lon0: float, lat1: float, lon1: float, nx: int, ny: i
 def read_wcs_tiff(body: bytes) -> tuple[NDArray[np.float32], tuple[float, float, float, float]]:
     """The raster of a WCS answer, with ``(lon, lat, dlon, dlat)`` of its first post's centre.
 
-    Pillow reads the tags of these files but decodes their samples in the wrong byte order, so
-    the tiles are read here: uncompressed big-endian float32, no predictor (checked on the
-    service's own answers). Heights are returned with the voids as :data:`HgtVoid`.
+    Pillow reads the tags of these files but decodes their big-endian samples in the wrong byte
+    order, so the pixels are read here: uncompressed float32, no predictor (checked on the
+    service's own answers), in the file's byte order, tiles and strips alike. Heights are
+    returned with the voids as :data:`HgtVoid`.
     """
     import io
 
@@ -165,19 +167,23 @@ def read_wcs_tiff(body: bytes) -> tuple[NDArray[np.float32], tuple[float, float,
         if int(tags.get(258, (32,))[0]) != 32 or int(tags.get(339, (3,))[0]) != 3:
             raise ValueError("the raster is not 32-bit floating point")
         nodata = float(tags.get(42113, HgtVoid))
-        offsets = tags.get(324)
-        tile_w, tile_h = tags.get(322), tags.get(323)
-        if offsets is None or tile_w is None or tile_h is None:
-            raise ValueError("the raster is not tiled, which this reader does not do")
-        tile_w, tile_h = int(tile_w), int(tile_h)
-    across = math.ceil(width / tile_w)
+        if tags.get(324) is not None:  # tiles
+            offsets, piece_w, piece_h = tags[324], int(tags[322]), int(tags[323])
+        elif tags.get(273) is not None:  # strips: pieces as wide as the raster
+            offsets, piece_w = tags[273], width
+            piece_h = min(int(tags.get(278, height)), height)
+        else:
+            raise ValueError("the raster says nowhere where its pixels are")
+    sample = "<f4" if body[:2] == b"II" else ">f4"
+    across = math.ceil(width / piece_w)
     out = np.full((height, width), np.float32(HgtVoid), dtype=np.float32)
     for i, offset in enumerate(offsets):
-        tile = np.frombuffer(body, dtype=">f4", count=tile_w * tile_h, offset=int(offset))
-        tile = tile.reshape((tile_h, tile_w))
-        y0, x0 = (i // across) * tile_h, (i % across) * tile_w
-        part = tile[: min(tile_h, height - y0), : min(tile_w, width - x0)]
-        out[y0 : y0 + part.shape[0], x0 : x0 + part.shape[1]] = part
+        y0, x0 = (i // across) * piece_h, (i % across) * piece_w
+        rows, cols = min(piece_h, height - y0), min(piece_w, width - x0)
+        # a piece is stored row after row: a tile on the edge is padded and the last strip is
+        # cut short, so only the rows inside the raster are read, in either case
+        piece = np.frombuffer(body, dtype=sample, count=piece_w * rows, offset=int(offset))
+        out[y0 : y0 + rows, x0 : x0 + cols] = piece.reshape((rows, piece_w))[:, :cols]
     out[~np.isfinite(out)] = np.float32(HgtVoid)
     out[out == np.float32(nodata)] = np.float32(HgtVoid)
     # a lidar mosaic holds no height below the Dead Sea or above Everest: anything else is a void
