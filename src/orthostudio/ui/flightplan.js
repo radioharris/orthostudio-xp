@@ -21,11 +21,8 @@
  * a route crosses country seen from altitude, and each level up is four times the imagery. */
 export const ROUTE_ZL = 14;
 
-/** Where the page keeps the plan between two visits (the browser's storage, this page only). */
+/** Where the page keeps the plan between two visits (kept.js). */
 export const STORAGE_KEY = "osxp.flightplan";
-
-/** Where the first flight plan kept its route: read by nothing now, and cleared once. */
-export const OLD_STORAGE_KEY = "osxp.route";
 
 /** 2: the route and the pilot's choices, the squares computed again at each visit; 1 kept the
  * engine's answer whole, squares included. */
@@ -160,9 +157,9 @@ function isPoints(points) {
   );
 }
 
-/** A saved plan read back from the browser's storage: the route to send the engine again and what
- * the pilot chose, or `null` when it is not one this page wrote; anything else is dropped rather
- * than half believed. */
+/** A saved plan read back from what the page keeps (kept.js): the route to send the engine again
+ * and what the pilot chose, or `null` when it is not one this page wrote; anything else is dropped
+ * rather than half believed. */
 export function readSaved(text) {
   let doc;
   try {

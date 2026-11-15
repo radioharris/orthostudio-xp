@@ -201,6 +201,7 @@ def test_no_framework_or_cdn_script() -> None:
     html = (UI / INDEX_FILE).read_text(encoding="utf-8")
     scripts = re.findall(r"<script[^>]*>", html)
     assert scripts == [
+        '<script type="application/json" id="page-kept">',  # data, kept by the engine
         LEAFLET_SCRIPT,
         '<script type="module" src="static/app.js">',
         f'<script type="module" src="{LIVE_ENTRY}">',  # OrthoStudio XP Live's button, where it is
@@ -3110,7 +3111,7 @@ def test_the_library_finds_and_sorts_its_tiles() -> None:
         in view
     )
     assert 't("library.search_found"' in view and 't("library.search_none")' in view
-    assert "localStorage.setItem(LIBRARY_SORT_KEY, JSON.stringify(state.librarySort));" in app_js
+    assert "pageKeep(LIBRARY_SORT_KEY, JSON.stringify(state.librarySort));" in app_js
     assert (
         "state.librarySort = now.key === key ? { key, dir: -now.dir } : { key, dir: 1 };" in app_js
     )
@@ -4550,12 +4551,12 @@ def test_a_tile_built_and_not_in_x_plane_is_on_the_map() -> None:
     assert "built: built.some((name) => !ortho4xp.has(name))," in legend
     assert ".filter((kind) => has[kind]).map(tileToggle);" in legend
     assert 'const BUILT_KEY = "osxp.mapBuilt";' in map_js
-    assert 'builtWanted: storageGet(BUILT_KEY) !== "0",' in map_js, "shown unless unticked"
+    assert 'builtWanted: pageKept(BUILT_KEY) !== "0",' in map_js, "shown unless unticked"
     toggle = map_js[
         map_js.index("  function tileToggle(kind) {") : map_js.index("  function setLegendOpen(")
     ]
     assert 'built: ["builtWanted", BUILT_KEY],' in toggle
-    assert 'storageSet(stored[1], wanted ? "1" : "0");' in toggle
+    assert 'pageKeep(stored[1], wanted ? "1" : "0");' in toggle
     assert "renderGrid();" in toggle and "renderLegend();" in toggle
     changed = map_js[map_js.index("    libraryChanged() {") :]
     assert "renderLegend();" in changed[: changed.index("},")], "the legend follows the Library"
@@ -4631,7 +4632,7 @@ def test_a_tile_ortho4xp_built_is_violet_on_the_map() -> None:
     )
     for key, name in stored:
         assert f'const {key} = "{name}";' in map_js, key
-    assert 'installedOrtho4xpWanted: storageGet(INSTALLED_ORTHO4XP_KEY) !== "0",' in map_js
+    assert 'installedOrtho4xpWanted: pageKept(INSTALLED_ORTHO4XP_KEY) !== "0",' in map_js
     shown = map_js[map_js.index("  function installedShown() {") :]
     assert "(ortho4xp.has(name) ? zs.installedOrtho4xpWanted : zs.installedWanted)" in shown[:400]
     shown = map_js[map_js.index("  function builtShown() {") :]
@@ -4700,8 +4701,8 @@ def test_the_legend_lines_up_folds_away_and_keeps_the_keyboard() -> None:
     assert 'class: "legend-fold"' in legend and "onclick: () => setLegendOpen(false)" in legend
     assert '"aria-expanded": "true"' in legend and '"aria-expanded": "false"' in legend
     opening = map_js[map_js.index("  function setLegendOpen(open) {") :]
-    assert 'storageSet(LEGEND_KEY, open ? "1" : "0");' in opening[: opening.index("\n  }\n")]
-    assert 'legendOpen: storageGet(LEGEND_KEY) !== "0",' in map_js, "open unless folded"
+    assert 'pageKeep(LEGEND_KEY, open ? "1" : "0");' in opening[: opening.index("\n  }\n")]
+    assert 'legendOpen: pageKept(LEGEND_KEY) !== "0",' in map_js, "open unless folded"
 
     # the focus comes back to the control that had it, each named
     assert 'document.activeElement.closest("[data-keep]")?.dataset.keep' in legend
@@ -4716,22 +4717,22 @@ def test_the_legend_lines_up_folds_away_and_keeps_the_keyboard() -> None:
         in legend
     )
     assert 'const LEGEND_SHOW_KEY = "osxp.mapLegendShow";' in map_js
-    assert 'legendShowOpen: storageGet(LEGEND_SHOW_KEY) !== "0",' in map_js
+    assert 'legendShowOpen: pageKept(LEGEND_SHOW_KEY) !== "0",' in map_js
     assert 'groupHead(t("map.legend_show_group"), open, "show-fold",' in legend
     show_fold = map_js[map_js.index("  function setLegendShowOpen(open) {") :]
-    assert 'storageSet(LEGEND_SHOW_KEY, open ? "1" : "0");' in show_fold[:200]
+    assert 'pageKeep(LEGEND_SHOW_KEY, open ? "1" : "0");' in show_fold[:200]
     # the chosen tiles, the route's ends and the build's states have no box: their lines keep its
     # room, so the signs and the words line up with the tiles' lines
     assert 'items.push(row("legend-selected", t("map.legend_selected")));' in legend
     assert 'items.push(row("legend-route-end", t("map.legend_route_ends")));' in legend
     # the zones' levels fold away under their title, remembered (2026-09-26)
     assert 'const LEGEND_ZONES_KEY = "osxp.mapLegendZones";' in map_js
-    assert 'legendZonesOpen: storageGet(LEGEND_ZONES_KEY) !== "0",' in map_js
+    assert 'legendZonesOpen: pageKept(LEGEND_ZONES_KEY) !== "0",' in map_js
     assert 'groupHead(t("map.legend_zones"), open, "zones-fold",' in legend
     assert "onclick: () => setOpen(!open)," in legend, "one chevron for both groups"
     assert 'if (open) box.append(h("ul", null, levels.map(' in legend
     zones_fold = map_js[map_js.index("  function setLegendZonesOpen(open) {") :]
-    assert 'storageSet(LEGEND_ZONES_KEY, open ? "1" : "0");' in zones_fold[:200]
+    assert 'pageKeep(LEGEND_ZONES_KEY, open ? "1" : "0");' in zones_fold[:200]
     assert "rotate(-45deg)" in rules[".map-legend .legend-fold.is-closed::before"]
     assert "legend-row" not in map_js
 
@@ -4932,7 +4933,7 @@ def test_a_browser_only_system_is_told_at_the_top_of_the_page() -> None:
     js = (UI / "app.js").read_text(encoding="utf-8")
     note = js[js.index("function renderWindowNote") : js.index("function renderEngineBanner")]
     assert "browser_only" in note and "details.install" in note  # what the doctor found
-    assert "WINDOW_NOTE_KEY" in note and "localStorage.setItem" in note  # put away, it stays away
+    assert 'pageKeep(WINDOW_NOTE_KEY, "1")' in note  # put away, it stays away
     assert "app.window_browser_only" in note
     # a WebView2 too old to start the window is told so, with both versions: Microsoft's installer
     # then has to be run as administrator (a Shadow PC, 2026-10-01)
@@ -6543,7 +6544,7 @@ def _sweep_script(app_js: str, scenario: str) -> str:
             "import { excluding, groupsOf, levelOf, newFlightPlan, toSaved }"
             ' from "./flightplan.js";',
             'const STORAGE_KEY = "osxp.flightplan";',
-            "const localStorage = { setItem() {}, removeItem() {} };",
+            "const pageKeep = () => {};",
             "const MAX_BUILD_TILES = 500;",
             "const activeJobs = () => [];",
             "const tilesInBuilds = () => new Set();",
@@ -9221,3 +9222,94 @@ def test_a_clouds_label_stands_where_its_number_is_over_every_mark() -> None:
     marks = marks[: marks.index("\n  }\n")]
     assert "if (seen && (!c.numbered || c.label)) continue;" in marks
     assert "L.marker(placeOf(c.rings[0])," in marks  # the number at the very same place
+
+
+def _kept_run(given: Any, browser: dict[str, str], steps: str) -> Any:
+    """kept.js under node, served with ``given`` in ``#page-kept`` (``"none"``: no such element,
+    the page served as plain files), the browser's storage holding ``browser``: ``steps`` use
+    ``m`` and return a value; with it, what was sent to the engine and read from the browser."""
+    script = f"""
+    const sent = [], asked = [];
+    const browser = {json.dumps(browser)};
+    globalThis.localStorage = {{
+      getItem: (k) => {{ asked.push(k); return k in browser ? browser[k] : null; }},
+    }};
+    globalThis.fetch = async (url, init) => {{
+      sent.push([url, init.method, JSON.parse(init.body)]);
+      return {{}};
+    }};
+    const given = {json.dumps(given)};
+    if (given !== "none") {{
+      globalThis.document = {{
+        getElementById: (id) => (id === "page-kept" ? {{ textContent: given }} : null),
+      }};
+    }}
+    const m = await import("./kept.js");
+    const got = await (async () => {{ {steps} }})();
+    for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
+    process.stdout.write(JSON.stringify({{ got, sent, asked }}));
+    """
+    if NODE is None:
+        pytest.skip("node is not installed")
+    return _run_node(script)
+
+
+def test_the_page_reads_what_the_engine_kept_and_sends_it_each_change() -> None:
+    """In the app's frame the browser's storage was forgotten at every launch (2026-11-15): the
+    engine keeps the page's choices and writes them into the page (api/page_kept.py)."""
+    run = _kept_run(
+        json.dumps({"kept": {"osxp.mapAirports": "1"}}),
+        {"osxp.mapStreet": "1"},
+        """
+        const before = [m.pageKept("osxp.mapAirports"), m.pageKept("osxp.mapStreet")];
+        m.pageKeep("osxp.experts", "open");
+        m.pageKeep("osxp.experts", "open");  // the same again: nothing to send
+        m.pageKeep("osxp.mapAirports", null);
+        return [...before, m.pageKept("osxp.experts"), m.pageKept("osxp.mapAirports")];
+        """,
+    )
+    assert run["got"] == ["1", None, "open", None]
+    assert run["sent"] == [
+        ["/api/page-kept", "PUT", {"values": {"osxp.experts": "open"}}],
+        ["/api/page-kept", "PUT", {"values": {"osxp.mapAirports": None}}],
+    ]
+    assert run["asked"] == []  # the browser is no longer read once the engine keeps something
+
+
+def test_the_first_visit_takes_what_the_browser_still_holds_once() -> None:
+    run = _kept_run(
+        json.dumps({"kept": None}),
+        {"osxp.librarySort": '{"key":"zl","dir":-1}', "osxp.flightplan": "plan"},
+        """
+        const sort = m.pageKept("osxp.librarySort");
+        m.pageKeep("osxp.flightplan", null);  // forgotten before it was read
+        const again = m.pageKept("osxp.librarySort");
+        return [sort, again, m.pageKept("osxp.flightplan"), m.pageKept("osxp.none")];
+        """,
+    )
+    assert run["got"] == ['{"key":"zl","dir":-1}', '{"key":"zl","dir":-1}', None, None]
+    assert run["sent"] == [
+        ["/api/page-kept", "PUT", {"values": {"osxp.librarySort": '{"key":"zl","dir":-1}'}}],
+        ["/api/page-kept", "PUT", {"values": {"osxp.flightplan": None}}],
+    ]
+    assert run["asked"] == ["osxp.librarySort", "osxp.none"]  # each once, the forgotten one never
+
+
+def test_a_page_served_as_plain_files_keeps_its_choices_for_the_visit() -> None:
+    for given in ("none", "null"):
+        run = _kept_run(
+            given,
+            {"osxp.mapAirports": "1"},
+            'm.pageKeep("osxp.experts", "open");'
+            ' return [m.pageKept("osxp.experts"), m.pageKept("osxp.mapAirports")];',
+        )
+        assert run == {"got": ["open", None], "sent": [], "asked": []}, given
+
+
+def test_the_build_page_keeps_its_choices_through_kept_js_alone() -> None:
+    """One place: the language, the theme, the text size and the zoom are the frame's and stay in
+    their own modules; every other choice of the page goes through kept.js."""
+    for name in ("app.js", "map.js", "flightplan.js", "clouds.js", "settings.js", "find.js"):
+        js = (UI / name).read_text(encoding="utf-8")
+        uses = re.findall(r"localStorage\.\w+\(([^)]*)\)", js)
+        assert all('"osxp.theme"' in u for u in uses), (name, uses)

@@ -54,6 +54,22 @@ each icon is drawn once in `styles.css` as a mask over the text's colour (`.icon
 `app.js` `icon()`), rounded with its box and so in its middle at any screen scale (an inline svg
 stood a pixel off in WebKit, a user, 2026-11-07).
 
+**What the page keeps** from one visit to the next: the map's boxes and folds (the hint, the
+borders, the airports, the street map, the tiles built and installed, the legend and its two
+groups), the Library's order, the *For experts* band, the folder of the last plan file, the flight
+plan of step 1 and the notes put away. The engine keeps them, in `$OSXP_HOME/page.json`, and
+writes them into the page as it serves it (`#page-kept`, `api/page_kept.py`); a change goes back at
+once with `PUT /api/page-kept` (`api.md`), one after the other in the order made (`kept.js`
+`pageKept`, `pageKeep`, the one place of the page that keeps anything). The browser's storage
+kept them until 2.2.0: in the app's frame the page is an iframe on the port after the frame's, and
+the web view of macOS keeps an iframe's storage only while the window is open, so every launch
+since the frame (2.0.0) started from nothing (a user lost the airports box at each start; measured
+2026-11-15, the same page keeping its value as the window's own page and losing it in an iframe on
+the next port). The first visit after takes what the browser still holds, key by key, once.
+Served as plain files, with no engine, the page keeps its choices for the visit alone. The
+language, the theme, the text size and the zoom are the frame's, for both pages
+(`orthostudio.live.frame`, `frame.json`), and stay in the browser's storage outside the frame.
+
 **Text styles**, as in a word processor's template (a user found eleven sizes of text and titles
 standing 0 to 14px above their text, and asked for one style per kind of text, 2026-09-21). Every
 text is one of seven styles, defined once at the top of `styles.css` with tokens:
@@ -208,7 +224,7 @@ else centimetres by 10 from 50 cm and by 5 below), then the zoom level as second
   zones (plus the level being drawn), in their colours: Ortho4XP's (15 cyan, 16 green, 17 yellow,
   18 orange, 19 red) extended to 12-14 and 20, shared by both themes because they sit on imagery.
 - **First-visit hint** (7.0.6): "Zoom to the area you want, then click squares to choose
-  tiles", with *Got it*; gone for good (`localStorage["orthostudio.mapHintDone"]`) once dismissed or
+  tiles", with *Got it*; gone for good (`osxp.mapHintDone`, *What the page keeps*) once dismissed or
   once a tile is selected.
 - Leaflet options: `boxZoom` off (Shift+drag would zoom instead of adding a point),
   `doubleClickZoom` off (a double-click finishes a free shape); controls restyled with the
@@ -816,8 +832,8 @@ matches."; and the headers *Tile*, *Imagery*, *In X-Plane*, *Size* and *Built by
 tiles south to north then west to east, imagery by the code its column shows then level (by the
 sources' full names, which the column does not show, "BI" came before "Arc"), the tiles in
 X-Plane, the largest and OrthoStudio XP's own first; the second reverses it; ties, and the rows
-by default, keep the tile order the engine lists them in. The sort is kept in this browser
-(`osxp.librarySort`, a convenience: storage refused keeps the tile order); the search is not. A
+by default, keep the tile order the engine lists them in. The sort is kept
+(`osxp.librarySort`, *What the page keeps*); the search is not. A
 tile's detail row stays under it whatever the order. A size the engine is still measuring
 (`size_pending`, `api.md` 2.3) shows no figure, as for a folder that cannot be read, and sorts
 as unknown, and the page asks for the list
@@ -1251,8 +1267,8 @@ keeps showing it; `NOTICE` says the same.
    profile) is shown as one more choice, never hidden.
 3. **For experts** (`<details>`, closed): a band with a chevron, its title, how many settings are
    behind it and its one-line lead, all readable while it is closed, and whether it was open is
-   remembered in `localStorage` (a user found the old one-word summary too well hidden,
-   2026-09-18). It holds every other setting in groups (airports, coast and sea, lakes and rivers,
+   remembered (`osxp.experts`, *What the page keeps*; a user found the old one-word summary too
+   well hidden, 2026-09-18). It holds every other setting in groups (airports, coast and sea, lakes and rivers,
    terrain, roads, light and ground, X-Plane objects, where map data comes from, this app:
    `settings.js` `EXPERT_GROUPS`), each with a plain label, a
    one-sentence note, its unit in the control's frame and its name in Ortho4XP as a small badge, on the
@@ -1334,7 +1350,7 @@ it can be seen and measured with no network.
 whether a square holds the airport he wants, 2026-09-19): a checkbox in the legend draws the
 airports of the view, from the index the app ships (`GET /api/airports/in`), so nothing is
 downloaded and they show **over the aerial imagery**, where a runway is not always obvious. Off
-unless the user asks, remembered in `localStorage` (`osxp.mapAirports`). Below zoom
+unless the user asks, remembered (`osxp.mapAirports`, *What the page keeps*). Below zoom
 `AIRPORTS_MIN_ZOOM` (8) there would be thousands of them and the line, dimmed, says to zoom in on
 hover (in brackets after its name until 2026-09-26, when a user asked for them to go); from there
 the rings alone say where the airports are, and the codes join them at `AIRPORTS_LABEL_ZOOM` (9),
@@ -1371,7 +1387,7 @@ has no scenery for; then *Recenter*, which brings the map back to the route, and
 plan*. Step 1's list is the level of the squares chosen
 by hand; each chip says its level while the chosen squares differ (`+46+006 · ZL16`), and the
 request carries `tiles_zl` for every square whose level is not step 1's (`api.md` 2.2). What the
-pilot chose is kept in `localStorage` (`osxp.flightplan`): the route and its radius, the two
+pilot chose is kept (`osxp.flightplan`, *What the page keeps*): the route and its radius, the two
 levels, the squares taken out and the tick, never the squares; a reload sends the route to the
 engine (`POST /api/flightplan`), which computes them again by its version's rules. What
 went wrong is said right under the button (`#flightplan-error`); the airport's own line stays
@@ -1388,8 +1404,8 @@ aerial imagery for OpenStreetMap, rendered by OpenFreeMap and served by the engi
 (`vendor/maplibre/`, about a megabyte) **the first time it is asked for**, never on a page that
 stays on the photo; until they are there the imagery stays, and a failure says so in the legend
 and goes back to the imagery. The colours of a square or a zone are not repainted over it: they
-would tint roads and houses and say nothing about a build. Off by default, remembered in
-`localStorage` (`osxp.mapStreet`), with OpenFreeMap's attribution in the map's corner.
+would tint roads and houses and say nothing about a build. Off by default, remembered
+(`osxp.mapStreet`, *What the page keeps*), with OpenFreeMap's attribution in the map's corner.
 
 **What the view is worth** (a Linux user, 2026-09-24). The legend's first line reads *This view:
 Standard, about 2 m per pixel · ZL16*. The map's zoom **is** the web-mercator level, so the

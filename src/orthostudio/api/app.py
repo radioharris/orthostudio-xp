@@ -27,7 +27,7 @@ from typing import Any
 
 from fastapi import FastAPI, Query, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from pydantic import ValidationError
 
 from orthostudio import __version__, config, update
@@ -68,6 +68,7 @@ from orthostudio.api.models import (
     SourceTestRequest,
     UninstallRequest,
 )
+from orthostudio.api.page_kept import load_kept, page_kept_path, page_kept_router, page_with_kept
 from orthostudio.api.presence import Presence
 from orthostudio.api.serve import package_root
 from orthostudio.api.simbrief import simbrief_router
@@ -921,6 +922,8 @@ def create_app(
     # P5 (docs/specs/map-zones.md): the zones document and the base map. The map router carries
     # its own lifespan, which closes its upstream fetchers when the server stops.
     app.include_router(zones_router(mesh_zl_of=lambda: int(settings().expert.mesh_zl)))
+    # what the page keeps from one visit to the next (docs/specs/ui.md 1, What the page keeps)
+    app.include_router(page_kept_router())
     app.include_router(map_router(fetch=map_fetch))
     app.include_router(basemap_router())
     manager = jobs if jobs is not None else JobManager(env_factory=env_factory)
@@ -2720,8 +2723,9 @@ def create_app(
                 "Use the API (/api/status) or reinstall OrthoStudio XP.",
                 status=503,
             )
-        return FileResponse(
-            ui / "index.html", media_type="text/html", headers={"Cache-Control": PAGE_CACHE_CONTROL}
-        )
+        # with what the page keeps from one visit to the next (orthostudio.api.page_kept)
+        html = (ui / "index.html").read_text(encoding="utf-8")
+        page = page_with_kept(html, load_kept(page_kept_path()))
+        return Response(page, media_type="text/html", headers={"Cache-Control": PAGE_CACHE_CONTROL})
 
     return app

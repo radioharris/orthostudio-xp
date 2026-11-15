@@ -15,6 +15,7 @@
 
 import { adjustImageData, photoValues } from "./colour.js";
 import { fmtGround, fmtInt, fmtMB, fmtNum, t } from "./i18n.js";
+import { pageKeep, pageKept } from "./kept.js";
 import { mockPhoto } from "./preview.js";
 import { sourceCovers, sourceGroups, sourceGroupTitle, sourceLabel } from "./sources.js";
 import {
@@ -225,22 +226,6 @@ function escapeHtml(text) {
 
 const latLngs = (polygon) => polygon.map(([lon, lat]) => [lat, lon]);
 
-function storageGet(key) {
-  try {
-    return localStorage.getItem(key);
-  } catch (_e) {
-    return null;
-  }
-}
-
-function storageSet(key, value) {
-  try {
-    localStorage.setItem(key, value);
-  } catch (_e) {
-    // storage may be unavailable: the hint comes back next time
-  }
-}
-
 /** The If-Match header of a save: the revision the page last received, as an entity tag (quoted,
  * `""` when no file was saved yet). No header when the engine sent no revision at all. */
 export function ifMatch(revision) {
@@ -333,21 +318,21 @@ export function createPlanMap(ctx) {
     areasKey: "", // the zones and source the areas were asked for
     areasTimer: 0,
     areasSeq: 0, // only the answer to the last question is drawn
-    hintDone: storageGet(HINT_KEY) === "1",
-    installedWanted: storageGet(INSTALLED_KEY) !== "0",
-    installedOrtho4xpWanted: storageGet(INSTALLED_ORTHO4XP_KEY) !== "0",
-    builtWanted: storageGet(BUILT_KEY) !== "0",
-    builtOrtho4xpWanted: storageGet(BUILT_ORTHO4XP_KEY) !== "0",
-    legendOpen: storageGet(LEGEND_KEY) !== "0",
-    legendZonesOpen: storageGet(LEGEND_ZONES_KEY) !== "0",
-    legendShowOpen: storageGet(LEGEND_SHOW_KEY) !== "0",
+    hintDone: pageKept(HINT_KEY) === "1",
+    installedWanted: pageKept(INSTALLED_KEY) !== "0",
+    installedOrtho4xpWanted: pageKept(INSTALLED_ORTHO4XP_KEY) !== "0",
+    builtWanted: pageKept(BUILT_KEY) !== "0",
+    builtOrtho4xpWanted: pageKept(BUILT_ORTHO4XP_KEY) !== "0",
+    legendOpen: pageKept(LEGEND_KEY) !== "0",
+    legendZonesOpen: pageKept(LEGEND_ZONES_KEY) !== "0",
+    legendShowOpen: pageKept(LEGEND_SHOW_KEY) !== "0",
     street: {
-      wanted: storageGet(STREET_KEY) === "1", // off: the imagery is what a build will use
+      wanted: pageKept(STREET_KEY) === "1", // off: the imagery is what a build will use
       loading: false,
       failed: false,
     },
     airports: {
-      wanted: storageGet(AIRPORTS_KEY) === "1", // off unless the user asked: markers over a photo
+      wanted: pageKept(AIRPORTS_KEY) === "1", // off unless the user asked: markers over a photo
       rows: [],
       key: "", // the view the rows were read for
       loading: false,
@@ -355,7 +340,7 @@ export function createPlanMap(ctx) {
     },
   };
   const borders = {
-    wanted: storageGet(BORDERS_KEY) !== "0", // shown unless the user unticked them
+    wanted: pageKept(BORDERS_KEY) !== "0", // shown unless the user unticked them
     ready: false, // the lines are in layers.borders
     loading: false,
     failed: false, // the last reading failed: the legend says so, and the file is read again
@@ -1581,7 +1566,7 @@ export function createPlanMap(ctx) {
 
   function setAirportsWanted(wanted) {
     zs.airports.wanted = wanted;
-    storageSet(AIRPORTS_KEY, wanted ? "1" : "0");
+    pageKeep(AIRPORTS_KEY, wanted ? "1" : "0");
     if (!wanted) {
       zs.airports.rows = [];
       zs.airports.key = "";
@@ -1669,7 +1654,7 @@ export function createPlanMap(ctx) {
 
   function setBordersWanted(wanted) {
     borders.wanted = wanted;
-    storageSet(BORDERS_KEY, wanted ? "1" : "0");
+    pageKeep(BORDERS_KEY, wanted ? "1" : "0");
     if (wanted) retryBordersNow();
     renderBorders();
     renderLegend();
@@ -1806,7 +1791,7 @@ export function createPlanMap(ctx) {
   function setStreetWanted(wanted) {
     zs.street.wanted = wanted;
     zs.street.failed = false;
-    storageSet(STREET_KEY, wanted ? "1" : "0");
+    pageKeep(STREET_KEY, wanted ? "1" : "0");
     setNotice("");
     setBaseLayer(true);
     refreshColours();
@@ -2444,7 +2429,7 @@ export function createPlanMap(ctx) {
 
   function dismissHint() {
     zs.hintDone = true;
-    storageSet(HINT_KEY, "1");
+    pageKeep(HINT_KEY, "1");
     renderHint();
   }
 
@@ -2541,13 +2526,13 @@ export function createPlanMap(ctx) {
 
   function setLegendShowOpen(open) {
     zs.legendShowOpen = open;
-    storageSet(LEGEND_SHOW_KEY, open ? "1" : "0");
+    pageKeep(LEGEND_SHOW_KEY, open ? "1" : "0");
     renderLegend();
   }
 
   function setLegendZonesOpen(open) {
     zs.legendZonesOpen = open;
-    storageSet(LEGEND_ZONES_KEY, open ? "1" : "0");
+    pageKeep(LEGEND_ZONES_KEY, open ? "1" : "0");
     renderLegend();
   }
 
@@ -2581,14 +2566,14 @@ export function createPlanMap(ctx) {
       "built-ortho4xp": ["builtOrtho4xpWanted", BUILT_ORTHO4XP_KEY],
     }[kind];
     zs[stored[0]] = wanted;
-    storageSet(stored[1], wanted ? "1" : "0");
+    pageKeep(stored[1], wanted ? "1" : "0");
     renderGrid();
     renderLegend();
   }
 
   function setLegendOpen(open) {
     zs.legendOpen = open;
-    storageSet(LEGEND_KEY, open ? "1" : "0");
+    pageKeep(LEGEND_KEY, open ? "1" : "0");
     renderLegend();
   }
 

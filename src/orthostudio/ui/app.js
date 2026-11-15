@@ -27,7 +27,7 @@ import {
 } from "./i18n.js";
 import { PHOTO_LOOKS, photoValues } from "./colour.js";
 import { TEXTURE_MB, ZONES_FORMAT, ZONE_ZL_MIN, normalizeZone, parseTile, tileName, validateZonesDocument, zoneTextureKeys } from "./geo.js";
-import { OLD_STORAGE_KEY, STORAGE_KEY, defaultLevels, excluding, groupsOf, levelOf, newFlightPlan, readSaved, restoredPlan, squaresOf, toSaved, withPlan, withoutPlan } from "./flightplan.js";
+import { STORAGE_KEY, defaultLevels, excluding, groupsOf, levelOf, newFlightPlan, readSaved, restoredPlan, squaresOf, toSaved, withPlan, withoutPlan } from "./flightplan.js";
 import { createPlanMap, detailLabel, detailName } from "./map.js";
 import { createCloudMode, progressWords, taskWords } from "./clouds.js";
 import { colourPreview } from "./preview.js";
@@ -36,6 +36,7 @@ import { bindFind, bindFindKeys, findForget } from "./find.js";
 import { bindZoom } from "./zoom.js";
 import { applyTextSize, bindTextSize, savedTextSize } from "./textsize.js";
 import { bindFrame, inFrame } from "./embed.js";
+import { pageKeep, pageKept } from "./kept.js";
 import { countryName, sourceAddressProblem, sourceGroups, sourceGroupTitle, sourceLabel, tilesNotCovered } from "./sources.js";
 
 // ------------------------------------------------------------------ constants
@@ -111,7 +112,7 @@ const STATIC = "static/";
 /** Browsers refuse a keepalive request whose body passes 64 KiB: below this, a save may use it. */
 export const KEEPALIVE_MAX_BYTES = 60000;
 
-/** Where this browser keeps the Library's sort (`{key, dir}`): a per-viewer convenience. */
+/** Where the page keeps the Library's sort (`{key, dir}`, kept.js). */
 const LIBRARY_SORT_KEY = "osxp.librarySort";
 
 export const STEPS = ["osm", "relief", "terrain", "coast", "imagery", "assembly", "install"];
@@ -2627,12 +2628,7 @@ function renderWindowNote() {
   // a WebView2 too old to start the window is not a missing one: the page says which it is, since
   // Microsoft's installer then answers "already installed" unless run as administrator
   const old = check?.details?.webview2_found || "";
-  let done = false;
-  try {
-    done = localStorage.getItem(WINDOW_NOTE_KEY) === "1";
-  } catch (_e) {
-    // a browser that keeps nothing: the note shows again, which is better than not at all
-  }
+  const done = pageKept(WINDOW_NOTE_KEY) === "1";
   if (!install || done) {
     $("window-note")?.remove();
     return;
@@ -2640,11 +2636,7 @@ function renderWindowNote() {
   if ($("window-note")) return;
   const note = h("p", { id: "window-note", class: "window-note" });
   const away = () => {
-    try {
-      localStorage.setItem(WINDOW_NOTE_KEY, "1");
-    } catch (_e) {
-      // ignore
-    }
+    pageKeep(WINDOW_NOTE_KEY, "1");
     note.remove();
   };
   note.append(
@@ -2683,12 +2675,7 @@ async function loadUpdate() {
 
 function renderUpdateNote() {
   const u = state.update;
-  let dismissed = null;
-  try {
-    dismissed = localStorage.getItem(UPDATE_DISMISSED_KEY);
-  } catch (_e) {
-    // a browser that keeps nothing shows the note again next time, which is no harm
-  }
+  const dismissed = pageKept(UPDATE_DISMISSED_KEY);
   if (!u?.available || !u.url || dismissed === u.latest) {
     if ($("update-note")) {
       $("update-note").remove();
@@ -2699,11 +2686,7 @@ function renderUpdateNote() {
   if ($("update-note")) return;
   const note = h("p", { id: "update-note", class: "window-note update-note", role: "status" });
   const later = () => {
-    try {
-      localStorage.setItem(UPDATE_DISMISSED_KEY, u.latest);
-    } catch (_e) {
-      // ignore: it shows again next time
-    }
+    pageKeep(UPDATE_DISMISSED_KEY, u.latest);
     note.remove();
     measureMapTop();
   };
@@ -3550,16 +3533,10 @@ function airportTrouble(err, code) {
  * between two visits), `null` when nothing does. One at a time; each button names its own wait. */
 let flightPlanLoading = null;
 
-/** The plan kept between two visits, or taken away; a browser that refuses to keep it keeps it
- * as long as the page is open. */
+/** The plan kept between two visits, or taken away. */
 function setFlightPlanState(fp) {
   state.flightPlan = fp;
-  try {
-    if (fp) localStorage.setItem(STORAGE_KEY, toSaved(fp));
-    else localStorage.removeItem(STORAGE_KEY);
-  } catch {
-    /* the storage is refused: nothing else to do */
-  }
+  pageKeep(STORAGE_KEY, fp ? toSaved(fp) : null);
 }
 
 /** No flight plan any more, its line taken off the map; the selection is the caller's. The kept
@@ -3572,13 +3549,9 @@ function forgetFlightPlan() {
   planMap?.routeChanged();
 }
 
-/** The plan kept in the browser's storage as text, or `null` when the storage is refused. */
+/** The plan kept between two visits, as text ("" when none). */
 function keptFlightPlan() {
-  try {
-    return localStorage.getItem(STORAGE_KEY) || "";
-  } catch {
-    return null;
-  }
+  return pageKept(STORAGE_KEY) || "";
 }
 
 /** What went wrong with the flight plan, said right under its button. */
@@ -3627,19 +3600,10 @@ async function openFlightPlanFile() {
   renderFlightPlan();
   try {
     const r = Math.max(1, Math.min(300, Number($("radius-input").value) || 15));
-    let start = null;
-    try {
-      start = localStorage.getItem(PLAN_FOLDER_KEY);
-    } catch {
-      /* the storage is refused: the engine chooses the folder */
-    }
+    const start = pageKept(PLAN_FOLDER_KEY); // none yet: the engine chooses the folder
     const plan = await api("POST", "/api/flightplan/file", { radius_km: r, prompt: t("flightplan.open_prompt"), start });
     if (!plan?.chosen) return;
-    try {
-      localStorage.setItem(PLAN_FOLDER_KEY, plan.folder);
-    } catch {
-      /* not kept: the next dialog opens in the engine's choice */
-    }
+    pageKeep(PLAN_FOLDER_KEY, plan.folder);
     replaceFlightPlan(plan);
   } catch (err) {
     const d = errorDetail(err);
@@ -3717,11 +3681,6 @@ function setFlightPlanAlong(on) {
  * page, before a restart) leaves the plan kept for the next visit.
  */
 async function restoreFlightPlan() {
-  try {
-    localStorage.removeItem(OLD_STORAGE_KEY); // the first version's route, which nothing reads
-  } catch {
-    return;
-  }
   const text = keptFlightPlan();
   const saved = text ? readSaved(text) : null;
   if (!saved) {
@@ -8539,23 +8498,19 @@ async function boot() {
     cloudsMenu.querySelector("summary").focus();
   });
   $("library-searches-stop").addEventListener("click", stopSearches);
-  // The Library's sort stays from one visit to the next, a convenience of this browser only.
+  // The Library's sort stays from one visit to the next.
   try {
-    const kept = JSON.parse(localStorage.getItem(LIBRARY_SORT_KEY) || "null");
+    const kept = JSON.parse(pageKept(LIBRARY_SORT_KEY) || "null");
     if (kept && LIBRARY_SORT_FIRST[kept.key] && (kept.dir === 1 || kept.dir === -1)) state.librarySort = kept;
   } catch {
-    // private window, blocked storage: the tile order
+    // not one this page wrote: the tile order
   }
   for (const th of document.querySelectorAll("#library-table th[data-sort]")) {
     th.querySelector(".th-sort").addEventListener("click", () => {
       const key = th.dataset.sort;
       const now = state.librarySort || { key: "tile", dir: 1 };
       state.librarySort = now.key === key ? { key, dir: -now.dir } : { key, dir: 1 };
-      try {
-        localStorage.setItem(LIBRARY_SORT_KEY, JSON.stringify(state.librarySort));
-      } catch {
-        // kept for this visit only
-      }
+      pageKeep(LIBRARY_SORT_KEY, JSON.stringify(state.librarySort));
       renderLibrary();
     });
   }
@@ -8588,18 +8543,8 @@ async function boot() {
   // The expert band remembers whether it was open: a user who works in there should not have to
   // reopen it at every visit, and one who never opens it keeps a short page (2026-09-18).
   const experts = $("settings-experts");
-  try {
-    if (localStorage.getItem("osxp.experts") === "open") experts.open = true;
-  } catch {
-    // private window, blocked storage: the band simply starts closed
-  }
-  experts.addEventListener("toggle", () => {
-    try {
-      localStorage.setItem("osxp.experts", experts.open ? "open" : "closed");
-    } catch {
-      // nothing to remember, nothing to report
-    }
-  });
+  if (pageKept("osxp.experts") === "open") experts.open = true;
+  experts.addEventListener("toggle", () => pageKeep("osxp.experts", experts.open ? "open" : "closed"));
 
   planMap = createPlanMap({
     mock: MOCK,
