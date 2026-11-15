@@ -28,8 +28,8 @@ instead of 21, 18 % less surface.
   (`tools/clouds/export_detector.py`).
 - Downloaded where the environment has no OpenCV (Mac, 2026-11-03): 48 MB from PyPI in 3.3 s.
 - Memory, +24-102 at the finer level (12 805 x 11 652 pixels): the answers kept one row of
-  patches at a time, the search's peak 2.8 GB reading once, 3.6 GB with the finer reading. One
-  search at a time for the app (`clouds.md` R7).
+  patches at a time, the search's peak 2.8 GB reading once, 3.6 GB with the finer reading. As many
+  searches at once as the computer's memory holds, four at most (`clouds.md` R7, B14).
 
 ## B3. Outlines that touch themselves (Mac, 2026-11-05)
 
@@ -224,3 +224,68 @@ brought to ZL11 its cumulus still at 3 to 26 % (`find._classified`).
 The machine was not at rest throughout (Spotlight indexing): the kept rule did no other work than
 the search without it where no cloud wanted a coarser level, and the spread of those runs is that.
 
+
+## B14. Where a quick search spends its time (Mac, 2026-11-15)
+
+Five tiles built at ZL16 from Bing with the default settings (four in the Amazon, one off Cuba),
+searched one after the other from the Library's Find, an isolated home, the steps read from
+`GET /api/cloud-searches` every half second:
+
+| Tile | Clouds | Drawing | Reading (detector) | Sources fetched | Sources judged | Total |
+|---|---|---|---|---|---|---|
+| -02-050 | 200 | 1.5 s | 28 s | 39 s | 23 s | 92 s |
+| -03-050 | 200 | 1.5 s | 23.5 s | 23 s | 5.6 s | 53 s |
+| +21-083 | 4 | 1 s | 11 s | 0.5 s | 0 s | 12 s |
+
+About half a search is spent waiting on the network, its processor nearly idle: searches run
+several at once since (`tasks.searches_at_once`), each fetch from a source after another search's
+(`SourcePieces(one_at_a_time=True)`). The engine held 3.6 GB once the five were searched.
+
+Forty clouds of -02-050 got again one at a time after it was applied, each from the source laid
+(EOX at ZL14), its pieces downloaded into an empty folder, its preview made again:
+
+| Clouds | Download | Layers made and judged | Preview | Total |
+|---|---|---|---|---|
+| The 40 (the 10 largest, 30 others) | 69.2 s | 18.9 s | 8.4 s | 96.5 s |
+| The largest (1 670 km²) | 23.4 s | 7.8 s | 4.2 s | 35.3 s |
+
+In Find and apply the pieces are mostly on the disk already, the search having read the same
+source at the same level to judge it, and the work after the download kept 10.5 of 14 cores busy
+with three clouds at once: the preview, a third of that work, is not made there since
+(`find.check(previews=False)`), the cloud mode making one as it opens when it needs it.
+
+Find and apply on the four Amazon tiles twice, each from its tile's step to the next read on the
+searches' line (a tile's image step counts its wait for the three reads at once), the second run
+after Forget, without previews; the pieces under the clouds on the disk in both (the searches had
+read them), the searches' own times not comparable (the first downloaded its sources):
+
+| Tile | Images, with previews | Images, without | Clouds laid |
+|---|---|---|---|
+| -02-050 | 289 s | 75 s | 200 |
+| -02-051 | 243 s | 174 s | 200 |
+| -03-050 | 240 s | 62 s | 200 |
+| -03-051 | 245 s | 174 s | 200 |
+| The four | 1 017 s | 485 s | 800 |
+
+Since then a tile's images wait for those of the tile before (`Tasks.images_turn`, a review,
+2026-11-15): with four tiles' checks taking turns, the pictures kept for two, 400 checks drew 102
+pictures for 4 in the review's run, a drawing about 1.5 s (above).
+
+Timed again that night (Apple M4 Pro, 48 GB), Find and apply on the same four tiles from the
+Library, the searches' line read every half second: -03-050 searched already (a run stopped at its
+images), the three others searched together; every source's pieces on the disk from the runs
+before. Each tile's images, from its first image under way to its last, one tile at a time, an
+Apply laying while the next tile gets its images:
+
+| Tile | Search | Waiting for the images' turn | Images | Apply | Clouds laid |
+|---|---|---|---|---|---|
+| -03-050 | searched before | 0 s | 91 s | 18 s | 200 |
+| -02-050 | 157 s | 0 s | 80 s | 85 s | 200 |
+| -03-051 | 237 s | 4 s | 76 s | 100 s | 200 |
+| -02-051 | 235 s | 84 s | 78 s | 46 s | 200 |
+
+The whole run took 453 s (not comparable with the runs above: there every tile was searched in
+the run, here three); the engine's memory peaked at 9.3 GB with
+the three searches and the first tile's images at once, then fell back to 4.6 GB. A Stop at the
+first tile's images, in the run before, ended everything within two seconds, the processor at
+0 % right after; the tile kept its 200 clouds found, none ticked, nothing laid.

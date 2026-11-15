@@ -2,34 +2,48 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """The engine's cloud tasks: a search, getting a cloud's images, trying an outline's sources,
 Apply and Restore (``clouds.md`` R7). Each runs in a thread of its own and ends whether or not a
-page is open; it writes its result at its end, so a page that went away loses nothing. One search
-at a time for the whole app (a search holds gigabytes, B2), a few reads of a cloud's sources at
-once, Apply and Restore at once (never behind another tile's reads); one of each kind for a
-cloud, or for a tile. Each says its phase and how far it is; Stop ends it at its next step, the
-list left as it was, except Apply and Restore, which write a tile's textures and end what they
-began. A tile's folder is never the tasks' and another's at once: none starts while something
-else holds it (a build, a filing), and what takes it ends those under way first (:meth:`end`).
+page is open; it writes its result at its end, so a page that went away loses nothing. A few
+searches at once for the whole app, as many as its memory holds (:func:`searches_at_once`: a
+search holds gigabytes, B2), a few reads of a cloud's sources at once, Apply and Restore at once
+(never behind another tile's reads); one of each kind for a cloud, or for a tile. Each says its
+phase and how far it is; Stop ends it at its next step, the list left as it was, except Apply and
+Restore, which write a tile's textures and end what they began. A tile's folder is never the
+tasks' and another's at once: none starts while something else holds it (a build, a filing), and
+what takes it ends those under way first (:meth:`end`).
 """
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import secrets
 import threading
 import time
-from collections.abc import Callable, Collection, Mapping
+from collections.abc import Callable, Collection, Iterator, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
 from orthostudio.clouds.state import WRITES, possible
 from orthostudio.errors import OsxpError, wrap
 from orthostudio.home import data_root_missing
+from orthostudio.machine import physical_memory_mb
 
-__all__ = ["Task", "Tasks", "error_view", "standing"]
+__all__ = ["Task", "Tasks", "error_view", "searches_at_once", "standing"]
 
 log = logging.getLogger(__name__)
 
 CHECKS_AT_ONCE = 3
+SEARCHES_AT_MOST = 4
+"""Searches at once on a computer of 32 GB or more (a user's choice, 2026-11-15): a search reads
+for about half its time and waits on the network for the other half (B14), and holds up to 3.6
+GB (B2)."""
+
+
+def searches_at_once() -> int:
+    """How many searches run at once: :data:`SEARCHES_AT_MOST`, one per 8 GB of the computer's
+    memory below 32 GB (two on 16 GB), one when it does not say."""
+    mb = physical_memory_mb()
+    return 1 if mb is None else max(1, min(SEARCHES_AT_MOST, mb // 8192))
 
 
 @dataclass(eq=False)
@@ -52,11 +66,19 @@ class Task:
     stop: threading.Event = field(default_factory=threading.Event)
     error: dict[str, Any] | None = None
     """How it failed (``OsxpError.to_dict``), once it has."""
+    shares: Callable[[str, int, int], float | None] | None = None
+    """How far the whole task is at a phase and its count, 0 to 1, when its kind can say it (a
+    search's, ``find.search_share``)."""
+    share: float | None = None
+    """How far the whole task is (:attr:`shares`), never going back."""
 
     def say(self, phase: str, done: int = 0, total: int = 0) -> None:
         if self.stoppable and self.stop.is_set():
             raise OsxpError("SYS_CANCELLED")
         self.phase, self.done, self.total = phase, done, total
+        now = self.shares(phase, done, total) if self.shares is not None else None
+        if now is not None and (self.share is None or now > self.share):
+            self.share = now
 
     def view(self) -> dict[str, Any]:
         progress = self.done / self.total if self.total else None
@@ -67,6 +89,7 @@ class Task:
             "cloud": self.cloud,
             "phase": self.phase,
             "progress": progress,
+            "share": self.share,
             "stoppable": self.stoppable,
             "error": self.error,
             "was": self.was,
@@ -77,16 +100,20 @@ class Tasks:
     """The tasks running and waiting. ``taken``: the tiles whose folder something else holds,
     each with the state that says it (``state.TILE_STATES``: built, queued, filed, deleted)."""
 
-    def __init__(self, taken: Callable[[], Mapping[str, str]] = dict) -> None:
+    def __init__(self, taken: Callable[[], Mapping[str, str]] = dict, searches: int = 1) -> None:
         self._lock = threading.Lock()
         self._tasks: dict[str, Task] = {}
         self._failed: dict[str, Task] = {}  # each tile's last failure, until its next task
-        self._search = threading.Semaphore(1)
+        self._search = threading.Semaphore(searches)  # :func:`searches_at_once` for the app
         self._checks = threading.Semaphore(CHECKS_AT_ONCE)
+        self._images = threading.Semaphore(1)  # :meth:`images_turn`
         self._taken = taken
         self._following: dict[str, int] = {}
         """Per tile, the tasks ended whose follow-up runs (``then``): under way still
         (:meth:`busy`)."""
+        self._follows: dict[str, threading.Event] = {}
+        """Per tile, in the order they were taken, what takes it through tasks of its own without
+        being one (:meth:`follow`: Find and apply), with what stops it."""
 
     def start(
         self,
@@ -98,10 +125,11 @@ class Tasks:
         then: Callable[[], None] | None = None,
         undo: Callable[[], None] | None = None,
         was: Mapping[str, Any] | None = None,
+        shares: Callable[[str, int, int], float | None] | None = None,
     ) -> Task:
-        """Run ``run(task)`` in a thread once its turn comes (one search at a time for the app,
-        :data:`CHECKS_AT_ONCE` reads of sources, Apply and Restore at once); the task is
-        forgotten at its end, then ``then()`` runs when it ended neither stopped nor failed (what
+        """Run ``run(task)`` in a thread once its turn comes (:func:`searches_at_once` searches
+        for the app, :data:`CHECKS_AT_ONCE` reads of sources, Apply and Restore at once); the task
+        is forgotten at its end, then ``then()`` runs when it ended neither stopped nor failed (what
         follows it, seeing it ended); else ``undo()`` first, what was begun for it, whether it ran
         or not (an outline stopped while it waited for its turn stayed in the list, a review,
         2026-11-07). Refused while something else holds the tile's folder
@@ -120,6 +148,7 @@ class Tasks:
             if same or kind not in possible("ready", under_way):
                 raise OsxpError("CLOUD_NOT_NOW", context={"tile": tile, "action": kind})
             task = Task(secrets.token_hex(6), tile, kind, cloud, kind not in WRITES, was)
+            task.shares = shares
             self._tasks[task.id] = task
             self._failed.pop(tile, None)
         gate = self._search if kind == "find" else None if kind in WRITES else self._checks
@@ -171,12 +200,90 @@ class Tasks:
             return self._of(tile)
 
     def busy(self, tile: str | None = None) -> bool:
-        """Whether anything of ``tile`` (of any tile: ``None``) is under way: a task, or what
-        follows one (an outline's tick and images, between its end and their own task). The one
-        rule, for the cloud mode's view, :meth:`end` and the engine kept up for its tasks."""
+        """Whether anything of ``tile`` (of any tile: ``None``) is under way: a task, what
+        follows one (an outline's tick and images, between its end and their own task), or a
+        follow (:meth:`follow`). The one rule, for the cloud mode's view, the Library, :meth:`end`
+        and the engine kept up for its tasks."""
         tiles = None if tile is None else {tile}
         with self._lock:
-            return bool(self._mine(tiles)) or self._after(tiles)
+            return bool(self._mine(tiles)) or self._after(tiles) or bool(self._led(tiles))
+
+    def settle(self, tile: str, stop: threading.Event) -> bool:
+        """Wait for the tile's tasks and what follows them to end, those Stop ends stopped once
+        ``stop`` is set (an Apply ends what it began): what a follow waits for between its steps,
+        itself aside; whether ``stop`` was not set."""
+        self._drain({tile}, stopping=stop.is_set, follows=False)
+        return not stop.is_set()
+
+    @contextlib.contextmanager
+    def images_turn(self, stop: threading.Event) -> Iterator[bool]:
+        """A follow's turn to get its clouds' images, one follow at a time for the app: whether
+        it came before ``stop``. Their checks share the reads at once, and the picture each check
+        reads is kept for two tiles: with four tiles' checks taking turns, 400 checks drew 102
+        pictures for 4, about 1.5 s each (B14), in a review's run (2026-11-15)."""
+        got = False
+        while not stop.is_set() and not got:
+            got = self._images.acquire(timeout=0.25)
+        try:
+            yield got
+        finally:
+            if got:
+                self._images.release()
+
+    def follow(self, tile: str, work: Callable[[threading.Event], None]) -> None:
+        """``work(stop)`` in a thread of its own: what takes a tile through tasks of its own (Find
+        and apply: its search, its clouds' images, its Apply), the tile under way until it returns
+        (:meth:`busy`), ``stop`` set by Stop (:meth:`stop_follows`) and by what takes the tile
+        (:meth:`end`, which waits for it: Quit, a build, a deletion). Refused, as a task is, while
+        something else holds the tile's folder (``CLOUD_TILE_NOT_READY``), or while another
+        follow takes it (``CLOUD_NOT_NOW``). How it failed is the tile's last failure
+        (:meth:`failed`)."""
+        with self._lock:
+            taken = self._taken().get(tile)
+            if taken is not None:
+                raise OsxpError("CLOUD_TILE_NOT_READY", context={"tile": tile, "state": taken})
+            if tile in self._follows:
+                raise OsxpError("CLOUD_NOT_NOW", context={"tile": tile, "action": "apply"})
+            stop = threading.Event()
+            self._follows[tile] = stop
+            self._failed.pop(tile, None)
+
+        def body() -> None:
+            failure: BaseException | None = None
+            try:
+                work(stop)
+            except OsxpError as exc:
+                if exc.code != "SYS_CANCELLED":
+                    log.warning("following %s: %s", tile, exc.message)
+                    failure = exc
+            except Exception as exc:
+                log.exception("following %s failed", tile)
+                failure = exc
+            finally:
+                said = error_view(failure) if failure is not None else None
+                with self._lock:
+                    if said is not None:
+                        self._failed[tile] = Task(secrets.token_hex(6), tile, "apply", error=said)
+                    del self._follows[tile]
+
+        threading.Thread(target=body, name="cloud-follow", daemon=True).start()
+
+    def following(self) -> list[str]:
+        """The tiles a follow takes, in the order they were taken."""
+        with self._lock:
+            return list(self._follows)
+
+    def stop_follows(self) -> int:
+        """Stop every follow; how many."""
+        with self._lock:
+            stops = list(self._follows.values())
+        for stop in stops:
+            stop.set()
+        return len(stops)
+
+    def _led(self, tiles: Collection[str] | None) -> list[threading.Event]:
+        """The stops of the follows of ``tiles`` (of every tile: ``None``), the lock held."""
+        return [s for t, s in self._follows.items() if tiles is None or t in tiles]
 
     def _mine(self, tiles: Collection[str] | None) -> list[Task]:
         """The tasks of ``tiles`` (of every tile: ``None``), the lock held."""
@@ -200,26 +307,45 @@ class Tasks:
         return None
 
     def stop(self, task_id: str) -> bool:
-        """Stop the task ``task_id`` at its next step, when Stop ends it; whether it does."""
+        """Stop the task ``task_id`` at its next step, when Stop ends it; whether it does. A task
+        of a tile a follow takes stops the follow too, whichever Stop asked it (the cloud mode's,
+        a row's): its next step would have laid what was stopped (a review, 2026-11-15)."""
         with self._lock:
             task = self._tasks.get(task_id)
+            led = self._follows.get(task.tile) if task is not None else None
         if task is None or not task.stoppable:
             return False
+        if led is not None:
+            led.set()
         task.stop.set()
         return True
 
     def end(self, tiles: Collection[str] | None = None) -> None:
-        """Every task of ``tiles`` (of every tile: ``None``) ended before the caller takes their
-        folders: those Stop ends stopped, Apply and Restore waited for, which end what they began
-        (as long as they take, a few seconds a texture). Taking the folder is said first
-        (``taken``): a task asked meanwhile is refused (:meth:`start`)."""
+        """Every task and follow of ``tiles`` (of every tile: ``None``) ended before the caller
+        takes their folders: the follows and the tasks Stop ends stopped, Apply and Restore waited
+        for, which end what they began (as long as they take, a few seconds a texture). Taking
+        the folder is said first (``taken``): a task or a follow asked meanwhile is refused
+        (:meth:`start`, :meth:`follow`)."""
+        self._drain(tiles, stopping=lambda: True, follows=True)
+
+    def _drain(
+        self, tiles: Collection[str] | None, *, stopping: Callable[[], bool], follows: bool
+    ) -> None:
+        """Wait for the tasks of ``tiles``, what follows them and, with ``follows``, their
+        follows, to end, stopping them while ``stopping()`` says so (a follow first: it would
+        start its next step): the one loop of :meth:`end` and :meth:`settle`, which sleeps
+        between its looks."""
         while True:
             with self._lock:
                 mine, after = self._mine(tiles), self._after(tiles)
-            if not mine and not after:
+                led = self._led(tiles) if follows else []
+            if not mine and not after and not led:
                 return
-            for t in mine:
-                t.stop.set()
+            if stopping():
+                for stop in led:
+                    stop.set()
+                for t in mine:
+                    t.stop.set()
             time.sleep(0.05)
 
 

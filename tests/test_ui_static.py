@@ -8645,6 +8645,110 @@ def test_each_button_of_the_bar_takes_the_tiles_picked_it_applies_to() -> None:
     assert got["forgettable"] == [False, False, False, False, True, True, True]
 
 
+def test_find_clouds_takes_the_tiles_picked_the_engine_offers_it_on() -> None:
+    """Find clouds (a user's ask, 2026-11-12) takes a tile picked whose Clouds cell says so (the
+    engine's ``find``: never searched, nothing of it at work), never one a build holds; a tile
+    without a cell (Ortho4XP's, not its own folder) is not taken."""
+    got = _step1(
+        """(() => {
+          const t = (tile, by) =>
+            ({ tile, path: `/t/${tile}`, built_by: by, present: true, installed: false });
+          const picked = [t("+40+000", "osxp"), t("+41+000", "osxp"), t("+42+000", "osxp"),
+                          t("+43+000", "osxp"), t("+44+000", "ortho4xp")];
+          const cells = { "/t/+40+000": { find: true, apply: true },
+                          "/t/+41+000": { find: false, apply: true, forget: true },
+                          "/t/+42+000": { find: false, apply: false, forget: true },
+                          "/t/+43+000": { find: true, apply: true, forget: true } };
+          const names = (l) => l.map((e) => e.tile);
+          const take = m.bulkTargets(picked, new Set(["+43+000"]), 0, cells);
+          return {
+            take: names(take.clouds),
+            apply: names(take.cloudsApply),
+            forget: names(take.cloudsForget),
+            none: names(m.bulkTargets(picked, new Set(), 0).clouds),
+          };
+        })()"""
+    )
+    # Find and apply takes a tile searched whose found clouds wait too; Forget those with clouds
+    assert got == {
+        "take": ["+40+000"],
+        "apply": ["+40+000", "+41+000"],
+        "forget": ["+41+000", "+42+000"],
+        "none": [],
+    }
+
+
+def test_the_clouds_cell_and_the_searches_line_say_the_searches() -> None:
+    """What a search found waits for a look; a search waiting or under way is said in its row and
+    on the Library's line, how many wait after it; one that failed says why in its row."""
+    got = _step1(
+        """(() => {
+          const now = { tile: "+43+005", step: "find", phase: "drawing", progress: null };
+          const next = { tile: "+43+006", step: "find", phase: "waiting", progress: null };
+          const images = { tile: "+43+007", step: "images", phase: null, progress: null,
+                           images: 12 };
+          const lays = { tile: "+43+008", step: "apply", phase: "laying", progress: 0.5 };
+          const failed = { code: "CLOUD_TILE_NOT_READY",
+                           context: { tile: "+43+005", state: "not_whole" } };
+          return {
+            found: m.cloudsWords({ replaced: 1, to_apply: 0, found: 3 }),
+            nothing: m.cloudsWords({ found: 0, searched: true }),
+            never: m.cloudsWords({ found: 0, searched: false }),
+            zero: [{ searched: true, found: 0 }, { searched: false, found: 0 },
+                   { searched: true, found: 2 }, { searched: true, found: 0, replaced: 3 },
+                   { searched: true, found: 0, to_apply: 1 }].map(m.searchedNone),
+            waiting: m.cloudsWords({ found: 0, failed }, next),
+            failed: m.cloudsWords({ found: 0, failed }),
+            line: m.searchesLine([now, next]),
+            many: m.searchesLine([now, images, lays, next]),
+            moved: m.moved([now, next, images, lays], [{ ...now, step: "images", images: 30 },
+                                                       { ...images, images: 11 }, lays]),
+            images: m.searchWords(images),
+            reading: m.stepWords({ ...now, phase: "fetching", progress: 0.1, share: 0.62 }),
+            drawing: m.stepWords(now),
+            lays: m.searchWords(lays),
+            alone: m.searchesLine([next]),
+            none: m.searchesLine([]),
+            keys: ["library.clouds_found", "library.clouds_failed", "library.searches_one",
+                   "library.searches_waiting", "library.clouds_find", "library.clouds_find_help",
+                   "library.clouds_find_started", "library.clouds_find_left",
+                   "library.clouds_find_none", "library.searches_stop",
+                   "library.clouds_none_found", "library.act_clouds", "library.clouds_apply",
+                   "library.clouds_apply_help", "library.clouds_forget_picked",
+                   "library.clouds_forget_picked_help", "library.clouds_forget_n_title",
+                   "library.clouds_forgotten_n", "library.apply_title", "library.apply_text",
+                   "library.apply_go", "library.apply_started", "library.apply_left",
+                   "library.apply_none", "library.applying_images", "library.searches_head",
+                   "library.searches_one", "library.step_find", "library.step_images",
+                   "library.step_apply", "library.searches_long", "library.forgetting_n",
+                   "library.clouds_forgetting"]
+              .filter((k) => i.t(k) === k),
+          };
+        })()"""
+    )
+    assert len(got["found"]) == 2 and "3" in got["found"][1]
+    # a search that found nothing says so: its cell is otherwise the one of a tile never searched
+    assert len(got["nothing"]) == 1 and got["never"] == []
+    # its cell shows 0 where the clouds found are counted: searched, nothing found nor laid
+    assert got["zero"] == [True, False, False, False, False]
+    # a search waiting is said, not the failure before it
+    assert len(got["waiting"]) == 1 and got["waiting"][0] != got["failed"][0]
+    assert len(got["failed"]) == 1
+    assert "+43+005" in got["line"] and "1" in got["line"].split("·")[1]
+    assert "+43+006" not in got["alone"] and got["alone"] and got["none"] == ""
+    # several at work (Find and apply, several searches at once): each with its step, then how
+    # many wait (a user, 2026-11-15: "4 tiles at work" said nothing of what each did)
+    for tile in ("+43+005", "+43+007", "+43+008"):
+        assert tile in got["many"], tile
+    assert "+43+006" not in got["many"] and "12" in got["many"] and "50" in got["many"]
+    # a search with how far the whole of it is (the engine's share), nothing before it says
+    assert got["reading"].endswith("62 %") and not any(c.isdigit() for c in got["drawing"])
+    assert "12" in got["images"] and "50" in got["lays"]
+    # the cells read again, of the tiles whose work moved on alone (a user, 2026-11-15)
+    assert got["moved"] == ["+43+006", "+43+005", "+43+007"]
+    assert got["keys"] == []
+
+
 def test_the_bar_asks_before_it_deletes_or_takes_tiles_off_the_list() -> None:
     """Delete… and Remove from the list… on the tiles picked ask first, in one question: how many,
     the space the files take, how many X-Plane shows, and how many picked the action leaves
@@ -8736,12 +8840,12 @@ def test_a_zone_that_takes_no_square_adds_nothing_to_the_sizes() -> None:
     assert fetch.index("renderList();") < fetch.index("renderSizes();")
 
 
-def test_the_bar_s_actions_stand_in_three_groups_with_their_counts() -> None:
-    """The box and the count on a line, the actions on the next in three groups: X-Plane's two,
-    the tiles' own two, and off the list and Delete… apart at the right end; no blue button in
-    the bar. Each button says how many tiles it takes and nothing when it takes none, and a
-    group whose buttons are all hidden goes with them (eight buttons on one line were too many
-    to read, a user, 2026-10-16)."""
+def test_the_bar_s_actions_stand_in_four_groups_with_their_counts() -> None:
+    """The box and the count on a line, the actions on the next in four groups: X-Plane's two,
+    the tiles' own two, their clouds' three (a user, 2026-11-15), and off the list and Delete…
+    apart at the right end; no blue button in the bar. Each button says how many tiles it takes and
+    nothing when it takes none, and a group whose buttons are all hidden goes with them (eight
+    buttons on one line were too many to read, a user, 2026-10-16)."""
     html = (UI / INDEX_FILE).read_text(encoding="utf-8")
     bar = html[html.index('id="library-pick"') : html.index('id="library-filing"')]
     assert bar.index('class="library-pick-line"') < bar.index('class="library-acts"')
@@ -8751,10 +8855,26 @@ def test_the_bar_s_actions_stand_in_three_groups_with_their_counts() -> None:
     assert 'data-i18n="library.act_xplane"' in groups[0]
     assert 'id="library-act-tiles"' in groups[1] and 'data-i18n="library.act_tiles"' in groups[1]
     assert 'id="library-rebuild"' in groups[1] and 'id="library-file"' in groups[1]
-    assert 'library-act-end" id="library-act-end"' in groups[2]
-    assert 'id="library-forget"' in groups[2] and 'id="library-delete-picked"' in groups[2]
+    assert 'id="library-act-clouds"' in groups[2] and 'data-i18n="library.act_clouds"' in groups[2]
+    # the clouds' three in a menu (a user's choice, 2026-11-15: as buttons, they sent the end
+    # group to a second line), closed as an action starts, by a click elsewhere or Escape
+    assert '<details class="library-menu" id="library-clouds-menu">' in groups[2]
+    for b in ("find", "apply", "forget"):
+        assert f'id="library-clouds-{b}"' in groups[2], b
+    assert 'library-act-end" id="library-act-end"' in groups[3]
+    assert 'id="library-forget"' in groups[3] and 'id="library-delete-picked"' in groups[3]
     assert "btn-primary" not in bar
-    for b in ("add", "remove", "rebuild", "file", "forget", "delete-picked"):
+    for b in (
+        "add",
+        "remove",
+        "rebuild",
+        "file",
+        "clouds-find",
+        "clouds-apply",
+        "clouds-forget",
+        "forget",
+        "delete-picked",
+    ):
         assert f'<span class="library-act-n" id="library-{b}-n"></span></button>' in bar, b
     css = (UI / "styles.css").read_text(encoding="utf-8")
     assert ".library-act-end { margin-left: auto; }" in css
@@ -8785,13 +8905,16 @@ def test_the_show_menu_and_the_bar_s_actions_are_wired() -> None:
         "library-remove",
         "library-rebuild",
         "library-file",
+        "library-clouds-find",
+        "library-clouds-apply",
+        "library-clouds-forget",
         "library-forget",
         "library-delete-picked",
     ]
     assert [bar.index(f'id="{b}"') for b in order] == sorted(bar.index(f'id="{b}"') for b in order)
     assert 'class="btn btn-danger" id="library-delete-picked"' in bar
     assert '<dialog id="library-bulk-dialog"' in html and 'value="go" id="library-bulk-go"' in html
-    assert 'value="cancel" autofocus data-i18n="library.bulk_keep"' in html
+    assert 'value="cancel" autofocus id="library-bulk-keep" data-i18n="library.bulk_keep"' in html
     app_js = (UI / "app.js").read_text(encoding="utf-8")
     for listener in (
         '$("library-show").addEventListener("change"',
@@ -8803,10 +8926,16 @@ def test_the_show_menu_and_the_bar_s_actions_are_wired() -> None:
         assert listener in app_js, listener
     # the bar acts on the tiles picked that are shown; one hidden by a filter is left alone
     assert "const acted = pickedShown(shown);" in _function_body(app_js, "renderLibraryPick")
-    assert "bulkTargets(acted, building, activeJobs().length)" in (
+    assert "bulkTargets(acted, building, activeJobs().length, state.clouds || {})" in (
         _function_body(app_js, "renderLibraryPick")
     )
-    for flow_name in ("bulkLibraryAction", "fileLibraryTiles", "rebuildLibraryTiles"):
+    for flow_name in (
+        "bulkLibraryAction",
+        "fileLibraryTiles",
+        "rebuildLibraryTiles",
+        "findLibraryClouds",
+        "forgetPickedClouds",
+    ):
         assert "pickedShown(shownLibraryRows(libraryTiles(state.library)))" in (
             _function_body(app_js, flow_name)
         ), flow_name

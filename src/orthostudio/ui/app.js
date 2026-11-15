@@ -29,7 +29,7 @@ import { PHOTO_LOOKS, photoValues } from "./colour.js";
 import { TEXTURE_MB, ZONES_FORMAT, ZONE_ZL_MIN, normalizeZone, parseTile, tileName, validateZonesDocument, zoneTextureKeys } from "./geo.js";
 import { OLD_STORAGE_KEY, STORAGE_KEY, defaultLevels, excluding, groupsOf, levelOf, newFlightPlan, readSaved, restoredPlan, squaresOf, toSaved, withPlan, withoutPlan } from "./flightplan.js";
 import { createPlanMap, detailLabel, detailName } from "./map.js";
-import { createCloudMode } from "./clouds.js";
+import { createCloudMode, progressWords, taskWords } from "./clouds.js";
 import { colourPreview } from "./preview.js";
 import { defaultsKeepingFolders, profileDiffers, profileDiffersText, profileNameProblem, refusedValueText, renderSettingsView, sameValue, settingsSummary } from "./settings.js";
 import { bindFind, bindFindKeys, findForget } from "./find.js";
@@ -205,6 +205,13 @@ const state = {
   /** GET /api/clouds: the Library's Clouds cells by row path; ``null`` until first read, its
    * column's heading turning meanwhile. */
   clouds: null,
+  /** GET /api/cloud-searches: the cloud searches under way and waiting, in their order, read every
+   * second while there are some: the Library's line and its rows say them. */
+  searches: [],
+  /** The tiles whose clouds are being forgotten now (`forgetClouds`): their cell turns. */
+  forgetting: new Set(),
+  /** Forget… on the tiles picked under way, ``{i, n}`` (the ``i``-th of ``n``): its line says it. */
+  forgetRun: null,
   providers: [],
   settings: null,
   schema: null,
@@ -2541,7 +2548,7 @@ function routeFromHash() {
 // ------------------------------------------------------------------ status bar
 
 /** The engine API this page needs (orthostudio.api.app.API_LEVEL); a test keeps the two equal. */
-const PAGE_API_LEVEL = 54;
+const PAGE_API_LEVEL = 55;
 
 async function loadStatus() {
   try {
@@ -5463,27 +5470,86 @@ async function loadLibrarySizes() {
 
 /** The Library's Clouds cells, by row path, the engine's (``GET /api/clouds``): none when the
  * list does not come. */
-async function loadClouds() {
+async function loadClouds(tiles = null) {
   try {
-    const res = await api("GET", "/api/clouds");
-    state.clouds = res?.rows || {};
+    if (!tiles) {
+      const res = await api("GET", "/api/clouds");
+      state.clouds = res?.rows || {};
+    } else {
+      // the cells of these tiles alone, read again as their work moves on (``GET /api/cloud-searches``)
+      const res = await api("GET", `/api/clouds?tiles=${encodeURIComponent(tiles.join(","))}`);
+      state.clouds = { ...(state.clouds || {}), ...(res?.rows || {}) };
+    }
   } catch (_err) {
-    state.clouds = {};
+    if (!tiles) state.clouds = {};
   }
   renderLibrary();
 }
 
-/** What the Library's column says of a tile's clouds: those it holds replaced and those waiting
- * for Apply, in this order. */
-export function cloudsWords(c) {
+/** What the Library's column says of a tile's clouds: those it holds replaced, those waiting for
+ * Apply and those a search found that wait for a look, in this order, or that a search found none;
+ * then its search, under way or waiting (``search``, its entry in ``GET /api/cloud-searches``),
+ * else the tile's last failure, whatever failed (its search, its clouds' images, an Apply). */
+export function cloudsWords(c, search = null) {
   const out = [];
   if (c?.replaced > 0) out.push(t("library.clouds_replaced", { n: fmtInt(c.replaced) }));
   if (c?.to_apply > 0) out.push(t("library.clouds_to_apply", { n: fmtInt(c.to_apply) }));
+  if (c?.found > 0) out.push(t("library.clouds_found", { n: fmtInt(c.found) }));
+  else if (searchedNone(c)) out.push(t("library.clouds_none_found"));
+  if (search) out.push(searchWords(search));
+  else if (c?.failed) {
+    const [message] = codeText(c.failed.code, c.failed.context) || [c.failed.message || ""];
+    out.push(t("library.clouds_failed", { why: message }));
+  }
   return out;
+}
+
+/** Whether a tile's cell says a search found none: searched, nothing found, replaced or waiting
+ * for Apply. Its cell then shows 0 where it shows the clouds found, or it was the cell of a tile
+ * never searched (a user, 2026-11-15). */
+export function searchedNone(c) {
+  return Boolean(c?.searched) && !(c.found > 0) && !(c.replaced > 0) && !(c.to_apply > 0);
+}
+
+/** Where a tile Find or Find and apply took is (its entry in ``GET /api/cloud-searches``), as its
+ * cell's tooltip says it: its search or its Apply with its phase and share, or its clouds' images
+ * being got and how many. */
+export function searchWords(entry) {
+  if (entry.step === "images") return t("library.applying_images", { n: fmtInt(entry.images || 0) });
+  if (entry.step === "apply") return `${t("clouds.task.apply")} ${taskWords(entry)}`;
+  return `${t("clouds.task.find")} ${taskWords(entry)}`;
+}
+
+/** A tile's step in a word, as the searches line says it beside its name: its search and how far
+ * the whole of it is (``share``, the engine's), its clouds' images and how many, or laying and its
+ * share (a user's choice, 2026-11-15: in full, four tiles made the line too long; "search" alone
+ * said nothing of how far it was). The phase is its cell's tooltip's. */
+export function stepWords(entry) {
+  if (entry.step === "images") return t("library.step_images", { n: fmtInt(entry.images || 0) });
+  if (entry.step === "apply") return `${t("library.step_apply")}${progressWords(entry)}`;
+  return `${t("library.step_find")}${progressWords({ progress: entry.share })}`;
+}
+
+/** Whether a tile's entry waits for its search's turn, nothing of it running yet. */
+export function searchWaits(entry) {
+  return entry.step === "find" && entry.phase === "waiting";
+}
+
+/** The searches line (``GET /api/cloud-searches``): each tile at work and its step, then how many
+ * wait for their turn; "" when none runs or waits. "4 tiles at work" said nothing of what each did
+ * (a user, 2026-11-15). */
+export function searchesLine(searches) {
+  if (!searches?.length) return "";
+  const running = searches.filter((s) => !searchWaits(s));
+  const waiting = searches.length - running.length;
+  const out = running.map((s) => t("library.searches_one", { tile: s.tile, doing: stepWords(s) }));
+  if (waiting) out.push(t("library.searches_waiting", { n: fmtInt(waiting) }));
+  return `${t("library.searches_head")} ${out.join(" · ")}`;
 }
 
 async function loadLibrary() {
   loadClouds();
+  watchSearches();
   try {
     const rows = await api("GET", "/api/library");
     state.library = Array.isArray(rows) ? rows : [];
@@ -6241,11 +6307,21 @@ function cloudsCell(e) {
   // folder's; its counts on the cloud, what the tile holds replaced above, what waits for Apply
   // below, said in words in its tooltip. Its words in the cell sized the column by what it held,
   // and every other column moved as the Library opened (a user, 2026-11-07).
-  const said = cloudsWords(cell).join(" · ");
+  // its search, under way or waiting its turn (Find clouds): a spinner where the cloud is, or the
+  // cloud dimmed, its step said without its share (the table is drawn again at each step, not at
+  // each percent); a search that failed, the cloud in the danger's colour; what a search found and
+  // waits for a look, at the cloud's other corner, 0 there when a search found none
+  const search = state.searches?.find((x) => x.tile === e.tile) || null;
+  const forgetting = state.forgetting.has(e.tile);
+  const said = forgetting ? t("library.clouds_forgetting") : cloudsWords(cell, search && { ...search, progress: null }).join(" · ");
   const badge = (n, kind) => (n > 0 ? h("span", { class: `clouds-badge is-${kind}`, "aria-hidden": "true" }, fmtInt(n)) : null);
+  const running = forgetting || (search && !searchWaits(search));
+  const look = ["btn btn-icon clouds-open", search && !running ? "is-waiting" : "", !search && cell.failed ? "is-failed" : ""].filter(Boolean).join(" ");
   return h("td", { class: "library-clouds" }, h("div", null,
-    h("button", { type: "button", class: "btn btn-icon clouds-open", title: [said, t("library.clouds_help")].filter(Boolean).join("\n"), "aria-label": [`${t("library.clouds_open")} ${e.tile}`, said].filter(Boolean).join(": "), onclick: () => cloudMode?.open(e.tile) },
-      icon("cloud"), badge(cell.replaced, "replaced"), badge(cell.to_apply, "waiting")),
+    h("button", { type: "button", class: look, title: [said, t("library.clouds_help")].filter(Boolean).join("\n"), "aria-label": [`${t("library.clouds_open")} ${e.tile}`, said].filter(Boolean).join(": "), onclick: () => cloudMode?.open(e.tile) },
+      running ? h("span", { class: "spinner", "aria-hidden": "true" }) : icon("cloud"),
+      badge(cell.replaced, "replaced"), badge(cell.to_apply, "waiting"), badge(cell.found, "found"),
+      searchedNone(cell) ? h("span", { class: "clouds-badge is-found", "aria-hidden": "true" }, fmtInt(0)) : null),
     // its clouds forgotten from here, the question asked here
     cell.forget ? h("button", { type: "button", class: "btn btn-icon btn-danger btn-trash", title: t("library.clouds_forget_help"), "aria-label": `${t("library.clouds_forget")}: ${e.tile}`, onclick: () => forgetLibraryClouds(e) }, icon("bin")) : null));
 }
@@ -6622,21 +6698,33 @@ async function deleteLibraryTile(e) {
   await runLibraryChange(e, () => api("POST", req.path, req.body), (res) => toast(deletedMessage(res?.tile || e.tile, res?.freed_bytes, res?.warning)));
 }
 
-/** The trash of a row's Clouds cell: asks first, then the cloud mode's Forget, its own task
- * (`POST /api/clouds/{tile}/apply {action: "forget"}`), waited for: the original photos back in the
- * tile, its list of clouds erased with their images. A failure is said on the row's card. */
+/** The trash of a row's Clouds cell: asks first, then its clouds forgotten (`forgetClouds`). A
+ * failure is said on the row's card. */
 async function forgetLibraryClouds(e) {
   const question = { title: t("clouds.forget_title", { tile: e.tile }), body: [t("clouds.forget_text")], go: "delete", words: t("clouds.forget_go") };
   if (libraryBusy.has(libraryKey(e)) || !(await confirmBulk(question))) return;
-  const path = `/api/clouds/${encodeURIComponent(e.tile)}`;
-  await runLibraryChange(e, async () => {
+  await runLibraryChange(e, () => forgetClouds(e.tile));
+}
+
+/** The cloud mode's Forget of the tile, its own task (`POST /api/clouds/{tile}/apply {action:
+ * "forget"}`), waited for: the original photos back in the tile, its list of clouds erased with
+ * their images; how it failed thrown. The one way the Library forgets a tile's clouds, from a
+ * row's bin or the Clouds group's Forget…. */
+async function forgetClouds(tile) {
+  const path = `/api/clouds/${encodeURIComponent(tile)}`;
+  // its cell turns meanwhile: the original photos put back take seconds a tile (a user, 2026-11-15)
+  state.forgetting.add(tile);
+  renderLibrary();
+  try {
     await api("POST", `${path}/apply`, { action: "forget" });
     // what runs of the tile, nothing of it read: the mode's answer drew its picture (R3)
     let runs = await api("GET", `${path}/tasks`);
     for (; runs.busy; runs = await api("GET", `${path}/tasks`)) await new Promise((go) => setTimeout(go, 300));
     const failed = runs.failed;
     if (failed?.kind === "forget") throw new ApiError(409, { error: failed.error });
-  });
+  } finally {
+    state.forgetting.delete(tile);
+  }
 }
 
 /** "Remove from the list" (tiles imported from Ortho4XP): the Library forgets the tile, and its
@@ -6683,6 +6771,8 @@ function confirmBulk(question) {
   clear($("library-bulk-text")).append(...question.body.map((line) => h("p", null, line)));
   const go = $("library-bulk-go");
   go.textContent = question.words || (question.go === "delete" ? t("library.delete_confirm") : t("library.forget_go"));
+  // "Keep them" when tiles or clouds would go; the detector's question says Cancel (``keep``)
+  $("library-bulk-keep").textContent = question.keep || t("library.bulk_keep");
   go.classList.toggle("btn-danger", question.go === "delete");
   go.classList.toggle("btn-primary", question.go !== "delete");
   dialog.returnValue = "";
@@ -6739,6 +6829,179 @@ async function bulkLibraryAction(action) {
   else toast(t("library.forgotten_n", { n }));
 }
 
+/** "Find" and "Find and apply…" of the Clouds group (a user's ask, discussion 23, 2026-11-12;
+ * applying at once, 2026-11-15): a quick search of the clouds of each tile picked and shown that
+ * the engine offers it on (`bulkTargets`' ``clouds``, ``cloudsApply``), several at once
+ * (``POST /api/cloud-searches``); with ``apply``, asked first, the clouds a clear source was found
+ * under then replaced without a look, a tile searched before too. The detector is asked for first,
+ * as a tile's own search does. The searches go on whether or not the Library stays open; Quit
+ * forgets those waiting. */
+async function findLibraryClouds(apply = false) {
+  if (state.filing || state.bulk) return;
+  const picked = pickedShown(shownLibraryRows(libraryTiles(state.library)));
+  const take = bulkTargets(picked, tilesInBuilds(activeJobs()), activeJobs().length, state.clouds || {});
+  const go = apply ? take.cloudsApply : take.clouds;
+  if (!go.length) return;
+  const tiles = [...new Set(go.map((e) => e.tile))];
+  if (apply) {
+    const question = { title: t("library.apply_title", { n: fmtInt(tiles.length) }), body: [t("library.apply_text")], go: "apply", words: t("library.apply_go"), keep: t("clouds.cancel") };
+    if (!(await confirmBulk(question))) return;
+  }
+  let res;
+  try {
+    res = await askSearches(tiles, apply, false);
+  } catch (err) {
+    const e = err?.detail?.error;
+    if (e?.code !== "CLOUD_DETECTOR_ASK") return toast(errorMessage(err), "fail");
+    const question = { title: t("clouds.tool_title"), body: [t("clouds.tool_text", { mb: e.context?.mb })], go: "download", words: t("clouds.tool_go"), keep: t("clouds.cancel") };
+    if (!(await confirmBulk(question))) return;
+    try {
+      res = await askSearches(tiles, apply, true);
+    } catch (again) {
+      return toast(errorMessage(again), "fail");
+    }
+  }
+  toast(startedWords(res, apply));
+  await loadClouds();
+  watchSearches();
+}
+
+/** What Find or Find and apply's toast says of the engine's answer (``POST /api/cloud-searches``):
+ * how many tiles were taken, and how many were left aside. */
+export function startedWords(res, apply) {
+  const n = fmtInt(res?.started?.length || 0);
+  const left = fmtInt(res?.left?.length || 0);
+  if (!res?.started?.length) return apply ? t("library.apply_none") : t("library.clouds_find_none");
+  const said = apply ? t("library.apply_started", { n }) : t("library.clouds_find_started", { n });
+  if (!res?.left?.length) return said;
+  return `${said} ${apply ? t("library.apply_left", { n: left }) : t("library.clouds_find_left", { n: left })}`;
+}
+
+/** ``POST /api/cloud-searches`` for ``tiles``, the bar's buttons waiting meanwhile. */
+async function askSearches(tiles, apply, download) {
+  state.bulk = "clouds";
+  renderLibrary();
+  try {
+    return await api("POST", "/api/cloud-searches", { tiles, ...(apply ? { apply: true } : {}), ...(download ? { download: true } : {}) });
+  } finally {
+    state.bulk = null;
+    renderLibrary();
+  }
+}
+
+/** "Forget…" of the Clouds group: the clouds of the tiles picked and shown that have some
+ * (`bulkTargets`' ``cloudsForget``) forgotten, asked first in one question, one tile after the
+ * other (`forgetClouds`): the original photos back, the list erased. */
+async function forgetPickedClouds() {
+  if (state.filing || state.bulk) return;
+  const picked = pickedShown(shownLibraryRows(libraryTiles(state.library)));
+  const go = bulkTargets(picked, tilesInBuilds(activeJobs()), activeJobs().length, state.clouds || {}).cloudsForget;
+  if (!go.length) return;
+  const question = { title: t("library.clouds_forget_n_title", { n: fmtInt(go.length) }), body: [t("clouds.forget_text")], go: "delete", words: t("clouds.forget_go") };
+  if (!(await confirmBulk(question))) return;
+  const errors = clear($("library-errors"));
+  state.bulk = "forget-clouds";
+  let done = 0;
+  try {
+    for (const [i, e] of go.entries()) {
+      state.forgetRun = { i: i + 1, n: go.length };
+      renderForgetRun();
+      try {
+        await forgetClouds(e.tile);
+        done += 1;
+      } catch (err) {
+        errors.append(libraryErrorCard(err, e));
+      }
+    }
+  } finally {
+    state.bulk = null;
+    state.forgetRun = null;
+    renderForgetRun();
+    await loadLibrary();
+    showLibraryErrors();
+  }
+  if (done) toast(t("library.clouds_forgotten_n", { n: fmtInt(done) }));
+}
+
+/** The searches under way and waiting, read every second while there are some, one reading at a
+ * time (a reading asked during one follows it): the line is said again at each; the table is drawn
+ * again only when a tile's step or phase changes (its cell's words), and a tile's cell read again
+ * (`moved`), alone, when its work moves on, its search ended, a cloud's images in, its Apply
+ * ended, or it left the line: its counts follow the work (a user, 2026-11-15). Drawn every second,
+ * a tooltip under the pointer went away each time. */
+let searchesNext = null;
+let searchesReading = false;
+let searchesAgain = false;
+function watchSearches() {
+  if (searchesReading) {
+    searchesAgain = true;
+    return;
+  }
+  clearTimeout(searchesNext);
+  readSearches();
+}
+
+async function readSearches() {
+  searchesReading = true;
+  let list = state.searches;
+  try {
+    list = (await api("GET", "/api/cloud-searches"))?.searches || [];
+  } catch (_err) {
+    list = []; // an engine without them (mock, older), or gone: nothing said
+  }
+  const before = state.searches || [];
+  const shape = (all) => all.map((x) => `${x.tile}:${x.phase}`).join(",");
+  const counted = moved(before, list);
+  const redraw = shape(before) !== shape(list);
+  state.searches = list;
+  renderSearches();
+  if (counted.length) loadClouds(counted);
+  else if (redraw) renderLibrary();
+  searchesReading = false;
+  if (searchesAgain) {
+    searchesAgain = false;
+    readSearches();
+  } else if (list.length) searchesNext = setTimeout(readSearches, 1000);
+}
+
+/** The tiles whose work moved on between two readings of the searches (``before``, ``now``): their
+ * step or their clouds' images left changed, or they left the line; their cells say it. */
+export function moved(before, now) {
+  const step = (x) => `${x.step}:${x.images || 0}`;
+  const was = new Map((before || []).map((x) => [x.tile, step(x)]));
+  const out = (before || []).filter((x) => !(now || []).some((y) => y.tile === x.tile)).map((x) => x.tile);
+  for (const x of now || []) if (was.has(x.tile) && was.get(x.tile) !== step(x)) out.push(x.tile);
+  return out;
+}
+
+/** The line of Forget… on the tiles picked: which of how many is forgotten now. */
+function renderForgetRun() {
+  const run = state.forgetRun;
+  $("library-forgetting").hidden = !run;
+  setText($("library-forgetting-text"), run ? t("library.forgetting_n", { i: fmtInt(run.i), n: fmtInt(run.n) }) : "");
+}
+
+function renderSearches() {
+  const list = state.searches || [];
+  $("library-searches").hidden = !list.length;
+  $("library-searches-note").hidden = !list.length;
+  setText($("library-searches-text"), searchesLine(list));
+}
+
+/** "Stop": every search, those waiting too; a tile already searched keeps its clouds. */
+async function stopSearches() {
+  const stop = $("library-searches-stop");
+  stop.disabled = true;
+  try {
+    await api("POST", "/api/cloud-searches/stop");
+  } catch (err) {
+    toast(errorMessage(err), "fail");
+  } finally {
+    stop.disabled = false;
+  }
+  watchSearches();
+}
+
 /** "Find again…" (a tile OrthoStudio XP built whose folder was moved by hand, its disk here): the
  * user shows the tile's folder or the one holding it, and the Library and every X-Plane that showed
  * the tile follow (`POST /api/library/{name}/find`, the atelier's step 2, 2026-10-05). The dialog
@@ -6785,11 +7048,19 @@ function pickable(e, building) {
  * of a row on the tiles picked, 2026-10-16), by the rules of the row's own buttons: ``install``
  * the tiles here that X-Plane does not show, ``uninstall`` those it shows (an imported tile whose
  * files are gone keeps that way out), ``delete`` the tiles OrthoStudio XP built, only between
- * builds (``jobs``, how many run or wait), ``forget`` the others, and ``file`` those that may be
- * filed elsewhere or built again. ``building`` the tiles a build holds (`tilesInBuilds`). */
-export function bulkTargets(picked, building, jobs = 0) {
+ * builds (``jobs``, how many run or wait), ``forget`` the others, ``file`` those that may be
+ * filed elsewhere or built again, and those the Clouds group's buttons take, as the engine says
+ * in their Clouds cell (``cells``, by row path): ``clouds`` Find's (``find``: never searched,
+ * nothing of it at work), ``cloudsApply`` Find and apply's (``apply``: those, and those searched
+ * whose found clouds wait), ``cloudsForget`` Forget's (``forget``). ``building`` the tiles a build
+ * holds (`tilesInBuilds`). */
+export function bulkTargets(picked, building, jobs = 0, cells = {}) {
   const held = (e) => e.built_by === "osxp" && building.has(e.tile);
+  const cell = (e, key) => cells?.[e.path]?.[key] === true && !held(e);
   return {
+    clouds: picked.filter((e) => cell(e, "find")),
+    cloudsApply: picked.filter((e) => cell(e, "apply")),
+    cloudsForget: picked.filter((e) => cell(e, "forget")),
     install: picked.filter((e) => e.present !== false && !e.installed && !held(e)),
     uninstall: picked.filter((e) => e.installed && (e.present !== false || e.built_by !== "osxp") && !held(e)),
     delete: jobs ? [] : picked.filter((e) => e.built_by === "osxp" && !held(e)),
@@ -6851,7 +7122,7 @@ function renderLibraryPick(rows, shown) {
   // tiles are filed between builds: the button says why it waits (a review, 2026-10-05)
   const file = $("library-file");
   const waits = activeJobs().length > 0;
-  const take = bulkTargets(acted, building, activeJobs().length);
+  const take = bulkTargets(acted, building, activeJobs().length, state.clouds || {});
   const ours = rows.some((e) => e.built_by === "osxp");
   const busy = Boolean(state.filing) || Boolean(state.bulk);
   file.hidden = !ours;
@@ -6862,6 +7133,10 @@ function renderLibraryPick(rows, shown) {
   rebuild.hidden = !ours;
   rebuild.disabled = !take.file.length || busy || state.rebuilding;
   $("library-busy").hidden = !state.rebuildEstimating;
+  $("library-act-clouds").hidden = !ours;
+  $("library-clouds-find").disabled = !take.clouds.length || busy;
+  $("library-clouds-apply").disabled = !take.cloudsApply.length || busy;
+  $("library-clouds-forget").disabled = !take.cloudsForget.length || busy;
   $("library-add").disabled = !take.install.length || busy;
   $("library-remove").disabled = !take.uninstall.length || busy;
   const del = $("library-delete-picked");
@@ -6874,7 +7149,8 @@ function renderLibraryPick(rows, shown) {
   // each button says how many tiles it takes, nothing when it takes none; a group whose buttons
   // are all hidden goes with them
   const takes = { "library-add": take.install, "library-remove": take.uninstall, "library-rebuild": take.file,
-    "library-file": take.file, "library-forget": take.forget, "library-delete-picked": take.delete };
+    "library-file": take.file, "library-clouds-find": take.clouds, "library-clouds-apply": take.cloudsApply,
+    "library-clouds-forget": take.cloudsForget, "library-forget": take.forget, "library-delete-picked": take.delete };
   for (const [id, tiles] of Object.entries(takes)) {
     setText($(`${id}-n`), $(id).disabled ? "" : `(${fmtInt(tiles.length)})`);
   }
@@ -8245,6 +8521,24 @@ async function boot() {
   $("library-delete-picked").addEventListener("click", () => bulkLibraryAction("delete"));
   $("library-forget").addEventListener("click", () => bulkLibraryAction("forget"));
   $("library-filing-stop").addEventListener("click", stopFiling);
+  // the Clouds menu: closed as one of its actions starts, by a click elsewhere, or by Escape
+  const cloudsMenu = $("library-clouds-menu");
+  const fromMenu = (work) => () => {
+    cloudsMenu.open = false;
+    work();
+  };
+  $("library-clouds-find").addEventListener("click", fromMenu(() => findLibraryClouds(false)));
+  $("library-clouds-apply").addEventListener("click", fromMenu(() => findLibraryClouds(true)));
+  $("library-clouds-forget").addEventListener("click", fromMenu(forgetPickedClouds));
+  document.addEventListener("click", (ev) => {
+    if (cloudsMenu.open && !cloudsMenu.contains(ev.target)) cloudsMenu.open = false;
+  });
+  cloudsMenu.addEventListener("keydown", (ev) => {
+    if (ev.key !== "Escape" || !cloudsMenu.open) return;
+    cloudsMenu.open = false;
+    cloudsMenu.querySelector("summary").focus();
+  });
+  $("library-searches-stop").addEventListener("click", stopSearches);
   // The Library's sort stays from one visit to the next, a convenience of this browser only.
   try {
     const kept = JSON.parse(localStorage.getItem(LIBRARY_SORT_KEY) || "null");

@@ -94,6 +94,34 @@ MAX_CLOUDS = 200
 Phase = Callable[[str, int, int], None]
 
 
+SEARCH_SHARES: dict[str, tuple[float, float]] = {
+    "tool": (0.0, 0.0),
+    "drawing": (0.0, 0.02),
+    "looking": (0.02, 0.40),
+    "looking_fine": (0.40, 0.50),
+    "fetching": (0.50, 0.82),
+    "sources": (0.82, 0.98),
+    "coarser": (0.98, 1.0),
+}
+"""Where each phase of a search stands in the whole of it, from what each took on average (B14:
+reading the tile about two fifths, downloading the sources a third, judging them a fifth); the
+fine reading a search asks alone, the coarser levels when a cloud wants them. A second download,
+for the coarser levels, stands where the judging reached: a search's share never goes back
+(``Task.share``)."""
+
+
+def search_share(phase: str, done: int, total: int) -> float | None:
+    """How far a search is at ``phase``, ``done`` of ``total``, 0 to 1 (:data:`SEARCH_SHARES`);
+    ``None`` at a phase not its own. One share for the whole search: each phase's own count
+    starts from 0 again, and a share that fell back said nothing (a user, 2026-11-15)."""
+    span = SEARCH_SHARES.get(phase)
+    if span is None:
+        return None
+    start, end = span
+    part = min(1.0, done / total) if total else 0.0
+    return start + (end - start) * part
+
+
 def _quiet(_p: str, _d: int, _t: int) -> None:
     return None
 
@@ -787,10 +815,13 @@ def check(
     again: bool = False,
     cancel: threading.Event | None = None,
     phase: Phase = _quiet,
+    previews: bool = True,
 ) -> Check:
     """Get the images of the cloud ``cid`` (its ``rings``) from the source ``code`` of
     ``sources`` at the tile's sharpness, freeze them into parts, and judge them as the search
-    does."""
+    does; its preview made too (``previews``), which After shows until Apply lays it: about a
+    third of the work after the download (B14). Find and apply, which shows nothing before it
+    lays, goes without; the cloud mode makes one as it opens when it needs it (:func:`preview`)."""
     provider = sources.providers[code]
     textures = shown.textures
     c = {
@@ -877,7 +908,8 @@ def check(
     }
     # its preview made now, in the task, as After will show it: made by the page's reading, a
     # dozen of them took a reading 6.5 s (a user's 189 clouds, 2026-11-07)
-    preview(p, tile, entry, shown.built, sorted(entry_parts))
+    if previews:
+        preview(p, tile, entry, shown.built, sorted(entry_parts))
     return Check(j, entry)
 
 

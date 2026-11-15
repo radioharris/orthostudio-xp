@@ -180,10 +180,59 @@ def other_sources(tile: TileRef, own: str, registry: Mapping[str, Provider]) -> 
     }
 
 
-class SourcePieces:
-    """The pieces of some sources, fetched once and read from the disk after."""
+_TURNS: dict[str, threading.Lock] = {}
+_TURNS_LOCK = threading.Lock()
 
-    def __init__(self, chunks_root: Path, providers: Mapping[str, Provider]) -> None:
+
+class _Turn:
+    """One fetch's turn at the source ``code`` (:class:`SourcePieces` ``one_at_a_time``): taken in
+    a thread once no other search fetches from it (:meth:`take`), given back whatever ends the
+    fetch (:meth:`give_back`): done, stopped, or cancelled while it waited, a failure beside it in
+    the same search. Taken in a thread asyncio cannot stop, a turn it took after its fetch was
+    gone was never given back, and every later search waited on that source until a restart (a
+    review, 2026-11-15)."""
+
+    def __init__(self, code: str, cancel: threading.Event | None) -> None:
+        with _TURNS_LOCK:
+            self.lock = _TURNS.setdefault(code, threading.Lock())
+        self.cancel = cancel
+        self.state = threading.Lock()
+        self.held = False
+        self.gone = False
+
+    def take(self) -> bool:
+        """Wait for the turn; whether it is this fetch's (not when stopped, or gone meanwhile)."""
+        while not self.lock.acquire(timeout=0.2):
+            if self.gone or (self.cancel is not None and self.cancel.is_set()):
+                return False
+        with self.state:
+            if self.gone:  # the fetch went while the turn came: given back at once
+                self.lock.release()
+                return False
+            self.held = True
+        return True
+
+    def give_back(self) -> None:
+        """The fetch done or gone: its turn given back, now or as soon as :meth:`take` gets it."""
+        with self.state:
+            self.gone = True
+            if self.held:
+                self.held = False
+                self.lock.release()
+
+
+class SourcePieces:
+    """The pieces of some sources, fetched once and read from the disk after. ``one_at_a_time``:
+    a search's, or an outline's or a level's try (``clouds_router.sources_for``), whose fetch from
+    a source waits until no other one fetches from it, so that
+    searches at once ask each server no faster than one does (its ``max_in_flight`` and
+    ``server_req_per_s``: EOX refuses above about 60 requests a second, 2026-10-29); each reads
+    the tile meanwhile."""
+
+    def __init__(
+        self, chunks_root: Path, providers: Mapping[str, Provider], *, one_at_a_time: bool = False
+    ) -> None:
+        self.one_at_a_time = one_at_a_time
         self.providers = dict(providers)
         self.caches = {
             c: ParentCache(chunks_root, cache_name(p), fsync=False)
@@ -248,6 +297,17 @@ class SourcePieces:
             stop.set()
 
         async def one(code: str, keys: list[Key]) -> None:
+            if not self.one_at_a_time:
+                await fetch(code, keys)
+                return
+            turn = _Turn(code, cancel)
+            try:
+                if await asyncio.to_thread(turn.take):
+                    await fetch(code, keys)
+            finally:
+                turn.give_back()
+
+        async def fetch(code: str, keys: list[Key]) -> None:
             nonlocal done
             provider, cache = self.providers[code], self.caches[code]
 

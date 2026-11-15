@@ -877,7 +877,7 @@ affichées », its box over the rows' boxes and its words over the names: the ga
 cell's left padding), acting on the rows the search, the folder and *Show* leave, how many tiles are
 picked and their size on a line, then on the next the row's actions in three groups (eight
 buttons on one line were too many to read, a user, 2026-10-16): *X-Plane* with *Add* and *Remove*,
-*Tiles* with *Build again…* and *File elsewhere…*, and *Remove from the list…* and *Delete…* apart
+*Tiles* with *Build again…* and *File elsewhere…*, the *Clouds ▾* menu with *Find*, *Find and apply…* and *Forget…*, and *Remove from the list…* and *Delete…* apart
 at the right end (`.library-act-end`), no blue button among them; each button says how many tiles
 it takes, « Supprimer… (3) », and nothing when it is disabled (`library-…-n`), and a group whose
 buttons are all hidden goes with them. The actions take the tiles picked that are shown (`pickedShown`:
@@ -888,7 +888,16 @@ shown ones'), each taking those it applies to by the rules of the row's own butt
 (`bulkTargets`) and disabled when it takes none: *Add*
 (the tiles here X-Plane does not show), *Remove* (those it shows; an imported
 tile whose files are gone keeps that way out), *Build again…* and *File elsewhere…* (the tiles
-OrthoStudio XP built, in their place), *Remove from the list…* (« Retirer de la liste… », the
+OrthoStudio XP built, in their place), the Clouds menu (`#library-act-clouds`, hidden with the
+Tiles group: « Nuages ▾ », a `details` whose summary is a button of the bar and whose list opens
+over the table, closed as an action starts, by a click elsewhere or by Escape): *Find* (« Chercher », `#library-clouds-find`), *Find and apply…* (« Chercher et
+appliquer… », `#library-clouds-apply`, asked first) and *Forget…* (« Oublier… »,
+`#library-clouds-forget`, asked first, in the danger's colour), each taking the tiles whose Clouds
+cell says the engine takes them (`find`, `apply`, `forget`), never one a build holds; one request
+for all for the first two, `findLibraryClouds`, `POST /api/cloud-searches`, the detector asked for
+first in the bar's modal question (its way back says Cancel there, `keep`), each tile forgotten
+after the other for the third, `forgetPickedClouds`; their line under the bar, `#library-searches`,
+and their cells: `clouds.md` 1.2), *Remove from the list…* (« Retirer de la liste… », the
 tiles OrthoStudio XP did not build, `forgettable`) and *Delete…* (the tiles OrthoStudio XP built,
 only between builds, its tooltip then `library.delete_wait`). The buttons for one kind of tile are
 hidden when the list holds none. *Delete…* and *Remove from the list…* ask first, in one modal
