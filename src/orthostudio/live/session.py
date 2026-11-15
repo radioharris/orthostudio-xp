@@ -295,9 +295,10 @@ def prepare(options: Options, log: Log) -> Prepared:
     others = ortho_streamers(xp_dir)
     if others:
         verb, pronoun = ("is", "it") if len(others) == 1 else ("are", "them")
+        who = " and ".join(others)
         raise RefusedError(
-            f"{' and '.join(others)} {verb} running: quit {pronoun} first, only one program may "
-            "stream ortho to X-Plane"
+            f"{who[0].upper()}{who[1:]} {verb} running: quit {pronoun} first, only one program "
+            "may stream ortho to X-Plane"
         )
     try:
         check_folder(live_root(), custom_scenery=xp_dir / "Custom Scenery", create=True)

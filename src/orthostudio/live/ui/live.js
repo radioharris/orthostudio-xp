@@ -171,11 +171,15 @@ export function headline(status) {
   return [t("state.idle"), t("state.idle_lead"), ""];
 }
 
-/** The other programs streaming ortho that run (XPME, AutoOrtho), and that they must go. */
-function streamersRunning(names) {
-  if (names.length === 1) return t("checks.streamer_running", { name: names[0] });
+/** The other programs streaming ortho that run (XPME, AutoOrtho, another one Live does not name:
+ * scenery.ANOTHER_STREAMER), and that they must go. */
+function streamersRunning(given) {
+  const names = given.map((n) => (n === "another streamer" ? t("checks.another_streamer") : n));
   const last = names[names.length - 1];
-  return t("checks.streamers_running", { names: `${names.slice(0, -1).join(", ")} ${t("checks.and")} ${last}` });
+  const text = names.length === 1
+    ? t("checks.streamer_running", { name: last })
+    : t("checks.streamers_running", { names: `${names.slice(0, -1).join(", ")} ${t("checks.and")} ${last}` });
+  return text[0].toUpperCase() + text.slice(1);
 }
 
 /** A text saying there is no mesh: the folder of another tool's mesh gone when it is, as the
