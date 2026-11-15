@@ -458,19 +458,26 @@ most, added 2026-09-22), national ones for Luxembourg, the Netherlands (4), Spai
 - **In X-Plane.** To be seen (Q1). From the code: `XP11 + bathy` keeps X-Plane's water whole
   under the photo, but the photo layer is not drawn beyond 25 km, so from altitude the coast
   becomes a hard photo/water edge; `XP12` lets X-Plane 12's water use the photo as its colour,
-  at every distance.
+  at every distance. Seen on +21-083 (Bing ZL16, 2026-11-15): `XP11 + bathy` shows X-Plane 12's
+  clear water, even and lighter, the photo fading into it near the shore; `XP12` the photo's
+  colour over the sea of each masked texture, darker, with the photo's seabed, and a straight line
+  where a textured square meets X-Plane's plain water. Both are X-Plane 12's water: the labels
+  say what is seen, since "X-Plane 12's own water" for `XP12` led a user to take the clear water
+  for something else (a forum report, 2026-11-15).
 - **Cost.** None: same textures; only the DSF and `.ter` files change (DSF node about 2 s).
 - **Recommendation. Shown**, but the two options need the screenshots of Q1; until then keep
   `XP11 + bathy` preselected, the tested Ortho4XP default.
 - **Question.**
-  - EN: *Which water near the coast?* — **The photo laid over X-Plane's water, Ortho4XP's usual
-    look (recommended)** · X-Plane 12's own water, coloured by the photo. *Changes only the sea,
-    and very large lakes, close to the shore: how the photo's shallow-water colours mix with
-    X-Plane's waves and reflections, and whether they are still drawn from far away.*
-  - FR : *Quelle eau près des côtes ?* — **La photo posée sur l'eau d'X-Plane, l'aspect habituel
-    d'Ortho4XP (conseillé)** · L'eau d'X-Plane 12, colorée par la photo. *Ne change que la mer, et
-    les très grands lacs, près du rivage : la façon dont les couleurs de la photo se mêlent aux
-    vagues et aux reflets d'X-Plane, et si elles restent visibles de loin.*
+  - EN: *Which water near the coast?* — **X-Plane's clear water, the photo near the shores
+    (recommended)** · The photo's sea, with its seabed, darker (*a straight line at sea where the
+    photo ends*). *Changes only the sea, and very large lakes, close to the shore: how the photo's
+    shallow-water colours mix with X-Plane's waves and reflections, and whether they are still
+    drawn from far away.*
+  - FR : *Quelle eau près des côtes ?* — **L'eau claire d'X-Plane, la photo près des côtes
+    (conseillé)** · La mer de la photo, avec son fond, plus sombre (*un trait droit en mer là où
+    la photo s'arrête*). *Ne change que la mer, et les très grands lacs, près du rivage : la façon
+    dont les couleurs de la photo se mêlent aux vagues et aux reflets d'X-Plane, et si elles
+    restent visibles de loin.*
 - **Picture.** Two X-Plane screenshots of the same coast, same time and weather (Q1). This one
   cannot be produced from OrthoStudio XP's data.
 

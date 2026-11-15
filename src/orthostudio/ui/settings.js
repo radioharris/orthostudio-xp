@@ -326,7 +326,7 @@ export function questionChoices(id, settings, { providers = [], ownScenery = [] 
     case "water":
       return [
         { value: "XP11 + bathy", label: t("settings.q.water_xp11"), note: t("settings.q.water_xp11_note"), recommended: true },
-        { value: "XP12", label: t("settings.q.water_xp12") },
+        { value: "XP12", label: t("settings.q.water_xp12"), note: t("settings.q.water_xp12_note") },
       ];
     case "lakes": {
       const choices = [
