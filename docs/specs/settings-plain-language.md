@@ -848,6 +848,9 @@ and read 50 or more as 5; OrthoStudio XP refuses those, and until 1.0 it stopped
   2.30 GB) and adds one PNG per coastal texture.
 - **Recommendation. Removed** (always true): the saving is small, the `XP12` option depends on
   it, and the memory claim is unverified. Revisit after Q7.
+- **Hint.** Shown only when a settings file holds a value other than true: "OrthoStudio XP always
+  writes it inside the textures: the photo's sea needs it" (the `XP12` option's words since
+  2026-11-15).
 
 ### 3.13 `advanced.terrain_casts_shadows`
 
