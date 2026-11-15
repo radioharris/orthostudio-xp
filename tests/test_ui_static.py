@@ -8704,6 +8704,8 @@ def test_the_clouds_cell_and_the_searches_line_say_the_searches() -> None:
             moved: m.moved([now, next, images, lays], [{ ...now, step: "images", images: 30 },
                                                        { ...images, images: 11 }, lays]),
             images: m.searchWords(images),
+            reading: m.stepWords({ ...now, phase: "fetching", progress: 0.1, share: 0.62 }),
+            drawing: m.stepWords(now),
             lays: m.searchWords(lays),
             alone: m.searchesLine([next]),
             none: m.searchesLine([]),
@@ -8738,6 +8740,8 @@ def test_the_clouds_cell_and_the_searches_line_say_the_searches() -> None:
     for tile in ("+43+005", "+43+007", "+43+008"):
         assert tile in got["many"], tile
     assert "+43+006" not in got["many"] and "12" in got["many"] and "50" in got["many"]
+    # a search with how far the whole of it is (the engine's share), nothing before it says
+    assert got["reading"].endswith("62 %") and not any(c.isdigit() for c in got["drawing"])
     assert "12" in got["images"] and "50" in got["lays"]
     # the cells read again, of the tiles whose work moved on alone (a user, 2026-11-15)
     assert got["moved"] == ["+43+006", "+43+005", "+43+007"]

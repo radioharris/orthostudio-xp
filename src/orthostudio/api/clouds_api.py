@@ -35,7 +35,7 @@ from PIL import Image
 
 from orthostudio.clouds import cloudlist as cls
 from orthostudio.clouds import state
-from orthostudio.clouds.find import check, find, preview, screen
+from orthostudio.clouds.find import check, find, preview, screen, search_share
 from orthostudio.clouds.layer import RULE
 from orthostudio.clouds.laying import folder_lock, show
 from orthostudio.clouds.model import detector_bytes, detector_ready, ensure_detector
@@ -832,8 +832,9 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
         """Every search under way or waiting for its turn, and every tile Find and apply takes
         until its Apply has ended, in the order they were asked: what the Library's line says
         and its rows show. Each with its ``step``: ``find`` (its search, ``phase`` and
-        ``progress`` its task's), ``images`` (its clouds' images being got, ``images`` of them),
-        ``apply`` (its Apply's). Nothing of a tile is read."""
+        ``progress`` its task's, ``share`` how far the whole search is), ``images`` (its clouds'
+        images being got, ``images`` of them), ``apply`` (its Apply's). Nothing of a tile is
+        read."""
         tasks = engine.tasks.of()
         with engine.lock:
             applying = list(engine.applying)
@@ -851,6 +852,7 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
                     "step": "find" if find else "apply" if lays else "images",
                     "phase": task.phase if task else None,
                     "progress": task.view()["progress"] if task else None,
+                    "share": task.share if task else None,
                     "images": checks,
                 }
             )
@@ -911,7 +913,7 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
                 cls.merge_search(cl, found, shown, {"level": zl, "found": len(found)})
             engine.remember(tile, shown, classes)
 
-        return engine.tasks.start(tile.name, "find", run, then=then, undo=undo)
+        return engine.tasks.start(tile.name, "find", run, then=then, undo=undo, shares=search_share)
 
     def pick(
         tile: TileRef,

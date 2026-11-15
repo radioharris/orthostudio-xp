@@ -5516,13 +5516,14 @@ export function searchWords(entry) {
   return `${t("clouds.task.find")} ${taskWords(entry)}`;
 }
 
-/** A tile's step in a word, as the searches line says it beside its name: search, its clouds'
- * images and how many, or laying and its share; the phase is its cell's (a user's choice,
- * 2026-11-15: in full, four tiles made the line too long). */
+/** A tile's step in a word, as the searches line says it beside its name: its search and how far
+ * the whole of it is (``share``, the engine's), its clouds' images and how many, or laying and its
+ * share (a user's choice, 2026-11-15: in full, four tiles made the line too long; "search" alone
+ * said nothing of how far it was). The phase is its cell's tooltip's. */
 export function stepWords(entry) {
   if (entry.step === "images") return t("library.step_images", { n: fmtInt(entry.images || 0) });
   if (entry.step === "apply") return `${t("library.step_apply")}${progressWords(entry)}`;
-  return t("library.step_find");
+  return `${t("library.step_find")}${progressWords({ progress: entry.share })}`;
 }
 
 /** Whether a tile's entry waits for its search's turn, nothing of it running yet. */

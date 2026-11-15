@@ -272,3 +272,30 @@ def test_searches_at_once_fetch_from_one_source_one_after_the_other(
     assert b0 >= a1  # one after the other
     (_c0, c1), (d0, _d1) = both(False)
     assert d0 < c1  # a cloud's images (not a search) are not held back
+
+
+def test_a_search_says_how_far_the_whole_of_it_is_never_going_back() -> None:
+    # one share for the whole search (a user, 2026-11-15): each phase's count starts from 0 again
+    from orthostudio.clouds.find import search_share
+
+    tasks, seen = Tasks(), []
+
+    def run(t: Task) -> None:
+        for phase, done, total in (
+            ("drawing", 0, 0),
+            ("looking", 5, 10),
+            ("looking", 10, 10),
+            ("fetching", 0, 100),
+            ("fetching", 100, 100),
+            ("sources", 1, 2),
+            ("fetching", 3, 10),  # the coarser levels' download, after the judging
+            ("coarser", 50, 100),
+        ):
+            t.say(phase, done, total)
+            seen.append(round(t.share or 0.0, 3))
+
+    tasks.start("+43+005", "find", run, shares=search_share)
+    assert _ended(tasks, "+43+005")
+    assert seen == sorted(seen) and seen[0] == 0.0 and seen[-1] == 0.99
+    assert seen[1] == round(search_share("looking", 5, 10), 3)
+    assert search_share("laying", 1, 2) is None  # not a search's phase

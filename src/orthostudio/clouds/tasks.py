@@ -65,11 +65,19 @@ class Task:
     stop: threading.Event = field(default_factory=threading.Event)
     error: dict[str, Any] | None = None
     """How it failed (``OsxpError.to_dict``), once it has."""
+    shares: Callable[[str, int, int], float | None] | None = None
+    """How far the whole task is at a phase and its count, 0 to 1, when its kind can say it (a
+    search's, ``find.search_share``)."""
+    share: float | None = None
+    """How far the whole task is (:attr:`shares`), never going back."""
 
     def say(self, phase: str, done: int = 0, total: int = 0) -> None:
         if self.stoppable and self.stop.is_set():
             raise OsxpError("SYS_CANCELLED")
         self.phase, self.done, self.total = phase, done, total
+        now = self.shares(phase, done, total) if self.shares is not None else None
+        if now is not None and (self.share is None or now > self.share):
+            self.share = now
 
     def view(self) -> dict[str, Any]:
         progress = self.done / self.total if self.total else None
@@ -80,6 +88,7 @@ class Task:
             "cloud": self.cloud,
             "phase": self.phase,
             "progress": progress,
+            "share": self.share,
             "stoppable": self.stoppable,
             "error": self.error,
             "was": self.was,
@@ -111,6 +120,7 @@ class Tasks:
         then: Callable[[], None] | None = None,
         undo: Callable[[], None] | None = None,
         was: Mapping[str, Any] | None = None,
+        shares: Callable[[str, int, int], float | None] | None = None,
     ) -> Task:
         """Run ``run(task)`` in a thread once its turn comes (:func:`searches_at_once` searches
         for the app, :data:`CHECKS_AT_ONCE` reads of sources, Apply and Restore at once); the task
@@ -133,6 +143,7 @@ class Tasks:
             if same or kind not in possible("ready", under_way):
                 raise OsxpError("CLOUD_NOT_NOW", context={"tile": tile, "action": kind})
             task = Task(secrets.token_hex(6), tile, kind, cloud, kind not in WRITES, was)
+            task.shares = shares
             self._tasks[task.id] = task
             self._failed.pop(tile, None)
         gate = self._search if kind == "find" else None if kind in WRITES else self._checks
