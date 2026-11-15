@@ -187,7 +187,7 @@ The Plan's map, brought over the tile; the Plan's steps make way for the cloud p
   finest of the textures under the cloud down to ZL11 (`sources.COARSEST`; `View.allows` refuses
   another, `CLOUD_NOT_NOW`). A level chosen
   has every source, the tile's own too, judged under the cloud at that level, read there
-  (`find.screen`'s `finest`; ZL16, ZL15 and ZL14 all read at the search's ZL14 had said the same)
+  (`find.screen`'s `level`; ZL16, ZL15 and ZL14 all read at the search's ZL14 had said the same)
   as the search judges, the tile's own but at its sharpest, which is the tile's photo, in a task
   of the cloud's (`clouds_api.try_level`, `tried_under`, shared with an outline's try: "trying the
   sources"; a Stop heard between two windows read: as fine as ZL16 over a large cloud, a minute and

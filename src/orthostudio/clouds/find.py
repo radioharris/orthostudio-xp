@@ -459,11 +459,11 @@ def _cloud_box(p: Picture, rings: Sequence[Sequence[float]]) -> tuple[int, int, 
     return _box(p, rings, _band_px(p) + 4)
 
 
-def _reading_level(p: Picture, provider: Provider, finest: int | None = None) -> int:
+def _reading_level(p: Picture, provider: Provider, level: int | None = None) -> int:
     """The level a source is judged at: one finer than the picture's (the search's), or a
-    cloud's level (``finest``, its try: ZL16 judged on ZL16's pieces, where ZL16, ZL15 and ZL14
-    all were on the search's and said the same, a review, 2026-11-14); at most its finest."""
-    return min(p.zl + 1 if finest is None else finest, provider.max_zl)
+    cloud's ``level`` (its try: ZL16 judged on ZL16's pieces, where ZL16, ZL15 and ZL14 all were
+    on the search's and said the same, a review, 2026-11-14); at most its finest."""
+    return min(p.zl + 1 if level is None else level, provider.max_zl)
 
 
 def _cloudy(classes: np.ndarray) -> np.ndarray:
@@ -621,14 +621,15 @@ def screen(
     tops: Sequence[Mapping[str, int]],
     *,
     own: str | None = None,
-    coarser: bool = True,
-    finest: int | None = None,
+    level: int | None = None,
     cancel: threading.Event | None = None,
     phase: Phase = _quiet,
 ) -> list[dict[str, Judgement]]:
-    """Every source of ``sources`` but the tile's own (``own``) judged under each of ``clouds``
-    (their rings), read at :func:`_reading_level` (one level finer than the picture, the
-    search's; ``finest``, a cloud's level) and brought to the picture's level.
+    """Every source of ``sources`` but the tile's own (``own``: its code is the tile's photo)
+    judged under each of ``clouds`` (their rings), read at :func:`_reading_level` and brought to
+    the picture's level: the search's, one level finer than the picture, or a cloud's ``level``,
+    its try, where each source is read at that level alone (``Arc:12``, the tile's own source too
+    when it shows another photo there).
 
     Under a cloud no source is clear under so, each source, the tile's own too, is then read at
     every coarser level down to :data:`sources.COARSEST`, and a level showing another photo there
@@ -639,11 +640,11 @@ def screen(
     showing the same photo has the same clouds, only blurrier. A blurred photo is the cloud's
     source only where no sharp one is clear (``state._ranked``), so it is looked for there alone:
     looked for under every cloud, it took a search of 200 clouds from 47 s to 65 s, under none of
-    which it was wanted (B13). ``coarser`` False: not looked for (a cloud's level, its try)."""
+    which it was wanted (B13). Not looked for in a cloud's try, which is at one level."""
     band_px = _band_px(p)
     boxes = [_cloud_box(p, rings) for rings in clouds]
     dirty = _not_ground(classes, p.share)
-    levels = {c: _reading_level(p, pr, finest) for c, pr in sources.providers.items()}
+    levels = {c: _reading_level(p, pr, level) for c, pr in sources.providers.items()}
     out: list[dict[str, Judgement]] = [{} for _ in clouds]
 
     def judged(
@@ -711,7 +712,7 @@ def screen(
         judged({code: (levels[code], windows)}, lambda _j: True, "sources", n, len(codes))
     # every source, the tile's own too, at its coarser levels, under the clouds none clears
     wanting = [i for i, by in enumerate(out) if not any(j.answer == "clear" for j in by.values())]
-    if not coarser or not wanting:
+    if level is not None or not wanting:
         return out
     every = sorted(sources.providers)
     # each cloud's coarser levels of each source: below its reading, above the coarsest, where

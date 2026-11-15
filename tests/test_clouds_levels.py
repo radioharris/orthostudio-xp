@@ -203,7 +203,7 @@ def test_the_search_judges_a_coarser_level_only_where_it_shows_another_photo(
     out, _read = _screened(shows, monkeypatch)
     assert set(out) == {"A", "A:11"} and out["A"].answer == "cloudy"
     assert out["A:11"].answer == "clear"
-    assert set(_screened(shows, monkeypatch, coarser=False)[0]) == {"A"}
+    assert set(_screened(shows, monkeypatch, level=14)[0]) == {"A"}  # a try: its level alone
 
 
 def test_a_cloud_a_sharp_source_clears_is_not_looked_at_coarser(
@@ -248,8 +248,17 @@ def test_a_source_with_no_picture_at_its_level_is_judged_at_the_first_coarser_on
 def test_a_clouds_level_reads_every_source_at_that_level(monkeypatch: pytest.MonkeyPatch) -> None:
     # ZL16, ZL15 and ZL14 were all judged on the search's ZL14 and said the same (a review)
     shows = {("B", 16): _noise(4), ("A:12", 12): _noise(5)}
-    out, read = _screened(shows, monkeypatch, coarser=False, finest=16)
+    out, read = _screened(shows, monkeypatch, level=16)
     assert set(read) == {("B", 16), ("A:12", 12)} and set(out) == {"B", "A:12"}
+
+
+def test_a_clouds_try_leaves_out_the_tiles_photo_and_keeps_its_source_s_other_one(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # at its sharpest the tile's own source is the tile's photo; coarser, another photo of it
+    shows = {("O", 16): _noise(0), ("O:12", 12): _noise(5), ("B", 16): _noise(4)}
+    out, read = _screened(shows, monkeypatch, own="O", level=16)
+    assert ("O", 16) not in read and set(out) == {"B", "O:12"}
 
 
 def test_the_same_photo_is_told_at_the_coarser_sources_sharpness() -> None:

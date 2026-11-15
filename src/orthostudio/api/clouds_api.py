@@ -579,10 +579,9 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
         level: int | None = None,
     ) -> tuple[SourcePieces, list[dict[str, int]]]:
         """The sources judged under the tile's ``clouds`` (their rings), and each cloud's
-        ``tops`` (``sources.tops_under``): every other source covering the tile and its own
-        (``find.screen`` reads its own at its coarser levels alone, the search's); at a cloud's
-        ``level``, each by its code there (``sources.code_of``), its own but at its sharpest,
-        which is the tile's photo whatever it shows there."""
+        ``tops`` (``sources.tops_under``): every source covering the tile, its own too, at a
+        cloud's ``level`` each by its code there (``sources.code_of``). ``find.screen`` leaves out
+        the code that is the tile's photo."""
         registry = load_registry()
         under = tops_under(shown.textures, tops(shown.textures, registry))
         heights = [under(rings) for rings in clouds]
@@ -591,7 +590,7 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
             found[shown.provider] = registry[shown.provider]
         if level is not None:
             (mine,) = heights
-            codes = {code_of(base, level, mine) for base in found} - {shown.provider}
+            codes = {code_of(base, level, mine) for base in found}
             found = {k: pr for k in codes if (pr := resolve(k, registry)) is not None}
         return SourcePieces(default_chunks_root(), found, one_at_a_time=True), heights
 
@@ -616,9 +615,8 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
             classes,
             pieces,
             heights,
-            own=shown.provider if level is None else None,
-            coarser=level is None,
-            finest=level,
+            own=shown.provider,
+            level=level,
             cancel=task.stop,
             phase=task.say,
         )

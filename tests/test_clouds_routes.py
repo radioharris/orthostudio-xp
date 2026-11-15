@@ -331,12 +331,13 @@ async def test_a_clouds_level_judges_every_source_there_then_gets_the_best(
         return Check(Judgement("did_not_answer"))  # the source stays the cloud's, asked again
 
     def screen(p: Any, clouds: Any, classes: Any, pieces: Any, tops: Any, **k: Any) -> Any:
-        if k.get("finest") is None:  # the outline's try
+        if k.get("level") is None:  # the outline's try
             return [{"EOX": Judgement("clear", 70)}]
         if fail[0]:
             raise RuntimeError("stopped")
-        tried.append((set(pieces.providers), k["finest"]))
-        return [{code: Judgement("clear", 50) for code in pieces.providers}]
+        judged = set(pieces.providers) - {k["own"]}  # find.screen's rule: not the tile's photo
+        tried.append((judged, k["level"]))
+        return [{code: Judgement("clear", 50) for code in judged}]
 
     monkeypatch.setattr(clouds_api, "detector_ready", lambda: True)
     monkeypatch.setattr(clouds_api, "opencv_ready", lambda: True)

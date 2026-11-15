@@ -19,23 +19,23 @@ Two things make it usable here:
 
 The answer is an uncompressed float32 GeoTIFF: big-endian and tiled over the mosaic, but
 little-endian and in strips (a single void pixel) far outside it, over Cuba for one (measured
-2026-11-15). Pillow reads the tags of both but decodes the big-endian samples in the wrong byte
-order, so the pixels are read here, with numpy, in the byte order the file declares and from the
-offsets its tiles or strips give; the cell is written as a plain ``.hgt`` (big-endian int16,
+2026-11-15). Both are read by the GeoTIFF reader of the tiled sources (:mod:`orthostudio.dem.cog`),
+in the byte order the file declares (Pillow decodes big-endian samples in the wrong one); the
+cell is written as a plain ``.hgt`` (big-endian int16,
 ``-32768`` for the voids), the format the raster reader already knows.
 """
 
 from __future__ import annotations
 
-import math
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import numpy as np
 from numpy.typing import NDArray
 
+from orthostudio.dem import cog
 from orthostudio.meter import written
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle, types only
@@ -142,59 +142,37 @@ def hrdem_url(lat0: float, lon0: float, lat1: float, lon1: float, nx: int, ny: i
 
 
 def read_wcs_tiff(body: bytes) -> tuple[NDArray[np.float32], tuple[float, float, float, float]]:
-    """The raster of a WCS answer, with ``(lon, lat, dlon, dlat)`` of its first post's centre.
-
-    Pillow reads the tags of these files but decodes their big-endian samples in the wrong byte
-    order, so the pixels are read here: uncompressed float32, no predictor (checked on the
-    service's own answers), in the file's byte order, tiles and strips alike. Heights are
-    returned with the voids as :data:`HgtVoid`.
+    """The raster of a WCS answer, with ``(lon, lat, dlon, dlat)`` of its first post's centre,
+    read by the GeoTIFF reader of the tiled sources (:mod:`orthostudio.dem.cog`): tiles or strips,
+    in the byte order the file declares. Heights are returned with the voids as :data:`HgtVoid`.
     """
-    import io
-
-    from PIL import Image, TiffImagePlugin
-
-    with Image.open(io.BytesIO(body)) as im:
-        if not isinstance(im, TiffImagePlugin.TiffImageFile):
-            raise ValueError("the elevation service did not answer a TIFF")
-        tags: Any = im.tag_v2
-        width, height = im.size
-        scale = tags.get(33550)
-        tie = tags.get(33922)
-        if not scale or not tie or len(tie) < 6:
-            raise ValueError("the raster carries no ModelPixelScale/ModelTiepoint")
-        if int(tags.get(259, 1)) != 1 or int(tags.get(317, 1)) != 1:
-            raise ValueError("the raster is compressed or predicted, which this reader does not do")
-        if int(tags.get(258, (32,))[0]) != 32 or int(tags.get(339, (3,))[0]) != 3:
-            raise ValueError("the raster is not 32-bit floating point")
-        nodata = float(tags.get(42113, HgtVoid))
-        if tags.get(324) is not None:  # tiles
-            offsets, piece_w, piece_h = tags[324], int(tags[322]), int(tags[323])
-        elif tags.get(273) is not None:  # strips: pieces as wide as the raster
-            offsets, piece_w = tags[273], width
-            piece_h = min(int(tags.get(278, height)), height)
-        else:
-            raise ValueError("the raster says nowhere where its pixels are")
-    sample = "<f4" if body[:2] == b"II" else ">f4"
-    across = math.ceil(width / piece_w)
-    out = np.full((height, width), np.float32(HgtVoid), dtype=np.float32)
-    for i, offset in enumerate(offsets):
-        y0, x0 = (i // across) * piece_h, (i % across) * piece_w
-        rows, cols = min(piece_h, height - y0), min(piece_w, width - x0)
-        # a piece is stored row after row: a tile on the edge is padded and the last strip is
-        # cut short, so only the rows inside the raster are read, in either case
-        piece = np.frombuffer(body, dtype=sample, count=piece_w * rows, offset=int(offset))
-        out[y0 : y0 + rows, x0 : x0 + cols] = piece.reshape((rows, piece_w))[:, :cols]
+    where = "the elevation service's answer"
+    info = cog.read_header(body, path=where)
+    # every pixel, whatever its units: far outside the mosaic the answer is in Canada's Lambert
+    whole = cog.Window(
+        row0=0,
+        col0=0,
+        rows=info.height,
+        cols=info.width,
+        north=info.north,
+        west=info.west,
+        step_x=info.step_x,
+        step_y=info.step_y,
+    )
+    out = cog.read_window(
+        info, whole, lambda ranges: [body[o : o + n] for o, n in ranges], path=where
+    )
     out[~np.isfinite(out)] = np.float32(HgtVoid)
-    out[out == np.float32(nodata)] = np.float32(HgtVoid)
+    out[out == np.float32(info.nodata)] = np.float32(HgtVoid)
     # a lidar mosaic holds no height below the Dead Sea or above Everest: anything else is a void
     out[(out < -500.0) | (out > 9000.0)] = np.float32(HgtVoid)
     # the *centre* of the first post, as the raster reader computes it (``raster._read_gdal_like``):
     # the tie point names a pixel corner, and placing on corners shifts a block half a post
     return out, (
-        float(tie[3]) - float(tie[0]) * float(scale[0]) + 0.5 * float(scale[0]),
-        float(tie[4]) + float(tie[1]) * float(scale[1]) - 0.5 * float(scale[1]),
-        float(scale[0]),
-        float(scale[1]),
+        info.west + 0.5 * info.step_x,
+        info.north - 0.5 * info.step_y,
+        info.step_x,
+        info.step_y,
     )
 
 

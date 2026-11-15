@@ -176,9 +176,10 @@ Why it is worth a module of its own (`dem/hrdem.py`):
   tiled over the mosaic, little-endian and in strips far outside it (one void pixel in Canada's
   Lambert projection over Cuba, measured 2026-11-15, where a build stopped at the relief with
   "the raster is not tiled"). Pillow reads their tags but decodes the big-endian samples in the
-  wrong byte order, so `read_wcs_tiff` reads the pixels with numpy, in the byte order the file
-  declares, at the offsets its tiles or strips give. Read big-endian, that void pixel would be a
-  height of 0 m and the cell a flat patch of lidar; read right, the cell is `MISSING`.
+  wrong byte order, so `read_wcs_tiff` reads them with the GeoTIFF reader of the tiled sources
+  (`dem/cog.py` `read_header`, `read_window`: tiles or strips, in the byte order the file
+  declares). Read big-endian, that void pixel would be a height of 0 m and the cell a flat patch
+  of lidar; read right, the cell is `MISSING`.
 * **A window is served a post or two short** of what was asked (62 x 62 for 64 x 64, 999 x 1000
   for 1000 x 1000): each block is asked for with a post of margin and placed where **its own**
   geometry says, at the centre of its first post -- placing on the tie point's corner shifts a
