@@ -1,3 +1,5 @@
+# OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
+# Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """lldb command osxp_heap_dump: at malloc's abort, the history macOS kept (MallocStackLogging=1)
 of every heap block the crashing frame's registers point into: who allocated it, who freed it."""
 
