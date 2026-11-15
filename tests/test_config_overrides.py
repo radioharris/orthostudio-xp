@@ -21,6 +21,9 @@ from orthostudio.pipeline.build import OVERLAY_SETTINGS, BuildSpec
 from orthostudio.tilefiles import OSXP_PARAMETERS, TILE_PARAMETERS, tile_defaults
 
 NOT_EMITTED = {"default_website", "default_zl", "zone_list", "iterate", "clean_bad_geometries"}
+# where the defaults leave Ortho4XP's on purpose: the main airports made sharper, the Settings
+# page's recommended answer (2026-11-15)
+NOT_ORTHO4XP = {"cover_airports_with_highres": "ICAO"}
 
 
 def _spec(config: dict[str, object], tmp_path: Path) -> BuildSpec:
@@ -42,8 +45,8 @@ def test_default_overrides_reproduce_the_ortho4xp_tile_defaults(tmp_path: Path) 
     defaults = tile_defaults()
     for name, value in ov.items():
         if name in defaults:
-            assert cfg[name] == defaults[name], name
-            assert value == defaults[name], name
+            assert cfg[name] == NOT_ORTHO4XP.get(name, defaults[name]), name
+            assert value == NOT_ORTHO4XP.get(name, defaults[name]), name
     assert cfg["default_website"] == "BI" and cfg["default_zl"] == 14
     assert cfg["zone_list"] == [] and cfg["iterate"] == 0
 

@@ -1173,8 +1173,9 @@ identity (`setDraft`), since the parts left in place keep handlers that write in
 the caret and the window's scroll position survive a redraw (user report, 2026-09-14: an answer
 changed at the bottom brought the top of the screen back, since removing the focused answer made the
 browser lay out the half-drawn page). Nothing is saved before *Save*; *Undo my changes* goes back to
-the saved settings, *Default values* to the schema's defaults (Ortho4XP's, and OrthoStudio XP's own
-`overlays`), the X-Plane folder, the data folder, the SimBrief name, the places the map data comes
+the saved settings, *Default values* to the schema's defaults (Ortho4XP's, OrthoStudio XP's own
+`overlays`, and the main airports made sharper, the recommended answer, 2026-11-15), the X-Plane
+folder, the data folder, the SimBrief name, the places the map data comes
 from (a folder of one's own, a library's address and key) and the switch `relief.private_sources`
 set by hand (it turned off, and viewfinderpanoramas left the relief question, 2026-10-30) kept,
 since they are this computer's and its pilot's and no look of the tiles (the defaults emptied a
