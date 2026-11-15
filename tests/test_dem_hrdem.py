@@ -4,8 +4,8 @@
 
 A user of the X-Plane.Org page asked for other elevation sources, "especially for the US and
 Canada" (2026-09-18). The service answers float32 GeoTIFFs, big-endian tiles over the mosaic and
-little-endian strips far outside it; Pillow decodes the big-endian pixels in the wrong byte
-order, so they are read here; the cells are assembled from blocks and written as ``.hgt``.
+little-endian strips far outside it, read by the GeoTIFF reader of the tiled sources; the cells
+are assembled from blocks and written as ``.hgt``.
 Every test but the one marked ``network`` builds its own answers.
 """
 
@@ -193,6 +193,25 @@ def test_the_answer_far_outside_the_mosaic_is_an_empty_cell(tmp_path: Path) -> N
     opts = EnsureOptions(elevation_dir=tmp_path, download=download, memo=memo)
     assert ensure_elevation("HRDEM", 21, -83, opts).state is CellState.MISSING
     assert len(asked) == 1 and len(memo.misses) == 1
+
+
+def test_an_answer_that_is_no_raster_is_a_service_that_did_not_answer(tmp_path: Path) -> None:
+    """An exception report served with a 200 stopped the build; it is the service not answering:
+    the cell is missing this time, nothing is remembered, and the relief under it answers."""
+    from orthostudio.dem.hrdem import ProbeError
+    from orthostudio.dem.sources import CellState, EnsureOptions, NegativeMemo, ensure_elevation
+
+    report = b'<?xml version="1.0"?><ows:ExceptionReport><ows:Exception/></ows:ExceptionReport>'
+    with pytest.raises(ProbeError):
+        read_wcs_tiff(report)
+
+    def download(url: str) -> Download:
+        return Download(url, body=report, status=200)
+
+    memo = NegativeMemo(tmp_path / "misses.json")
+    opts = EnsureOptions(elevation_dir=tmp_path, download=download, memo=memo)
+    assert ensure_elevation("HRDEM", 21, -83, opts).state is CellState.MISSING
+    assert not memo.misses
 
 
 def _server(cover: np.ndarray, posts: int, lat: int, lon: int):

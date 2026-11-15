@@ -322,7 +322,7 @@ async def test_a_clouds_level_judges_every_source_there_then_gets_the_best(
     from orthostudio.clouds.find import Check, Judgement
 
     asked: list[tuple[str, int]] = []
-    tried: list[tuple[set[str], int | None]] = []
+    tried: list[tuple[set[str], int | None, str]] = []
     fail = [False]
 
     def check(*args: Any, **_k: Any) -> Check:
@@ -335,9 +335,8 @@ async def test_a_clouds_level_judges_every_source_there_then_gets_the_best(
             return [{"EOX": Judgement("clear", 70)}]
         if fail[0]:
             raise RuntimeError("stopped")
-        judged = set(pieces.providers) - {k["own"]}  # find.screen's rule: not the tile's photo
-        tried.append((judged, k["level"]))
-        return [{code: Judgement("clear", 50) for code in judged}]
+        tried.append((set(pieces.providers), k["level"], k["own"]))
+        return [{code: Judgement("clear", 50) for code in pieces.providers if code != k["own"]}]
 
     monkeypatch.setattr(clouds_api, "detector_ready", lambda: True)
     monkeypatch.setattr(clouds_api, "opencv_ready", lambda: True)
@@ -368,8 +367,10 @@ async def test_a_clouds_level_judges_every_source_there_then_gets_the_best(
         await _read(c)
     # every source, the tile's own (Bing) too, read at ZL11
     assert tried[0][1] == 11 and {"EOX:11", "BI:11"} <= tried[0][0]
-    # at ZL12, the tile's ZL12: EOX itself, and the tile's own Bing left out, its photo
-    assert tried[1][1] == 12 and "EOX" in tried[1][0] and "BI" not in tried[1][0]
+    # at ZL12, the tile's ZL12: EOX itself, and the tile's own Bing given as such, which
+    # find.screen leaves out there (its photo: test_clouds_levels)
+    assert tried[1][1] == 12 and "EOX" in tried[1][0] and "BI" in tried[1][0]
+    assert {own for _p, _l, own in tried} == {"BI"}
     assert row["level"] == 11 and row["source"].endswith(":11")
     assert (row["source"], 11) in asked  # the best there, its images got at ZL11
     assert {m["source"] for m in row["menu"]} >= {"EOX:11", "BI:11"}

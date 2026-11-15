@@ -241,7 +241,13 @@ def test_the_header_of_a_published_relief_fits_in_one_read() -> None:
 
 
 def coded_tiff(
-    values: np.ndarray, *, predictor: int, sample: str, fmt: int, order: str = "<"
+    values: np.ndarray,
+    *,
+    predictor: int,
+    sample: str,
+    fmt: int,
+    order: str = "<",
+    anchor: tuple[int, int] = (0, 0),
 ) -> bytes:
     """One strip of ``values``, deflated, written the way the TIFF rules say a predictor is.
 
@@ -267,6 +273,8 @@ def coded_tiff(
         body = raw.tobytes()
     blob = zlib.compress(body, 6)
     b = order
+    # the tie point names the pixel ``anchor``: the image's corner stays at WEST, NORTH
+    tie_place = (WEST + anchor[0] * STEP, NORTH - anchor[1] * STEP)
     entries = [
         (256, 4, 1, struct.pack(b + "I", cols)),
         (257, 4, 1, struct.pack(b + "I", rows)),
@@ -281,7 +289,7 @@ def coded_tiff(
         (317, 3, 1, struct.pack(b + "HH", predictor, 0)),
         (339, 3, 1, struct.pack(b + "HH", fmt, 0)),
         (33550, 12, 3, struct.pack(b + "3d", STEP, STEP, 0.0)),
-        (33922, 12, 6, struct.pack(b + "6d", 0.0, 0.0, 0.0, WEST, NORTH, 0.0)),
+        (33922, 12, 6, struct.pack(b + "6d", *anchor, 0.0, *tie_place, 0.0)),
         (34735, 3, 8, struct.pack(b + "8H", 1, 1, 0, 1, 2048, 0, 1, 4326)),
     ]
     ifd_at = 8 + len(blob)
@@ -366,3 +374,12 @@ def test_what_this_reader_does_not_decode_is_left_to_pillow() -> None:
     assert info.decodable
     lzw = info.__class__(**{**{f: getattr(info, f) for f in info.__slots__}, "compression": 5})
     assert not lzw.decodable
+
+
+@pytest.mark.parametrize("anchor", [(0, 0), (1, 1), (3, 2)])
+def test_the_tie_point_may_name_any_pixel(anchor: tuple[int, int]) -> None:
+    """The tie point ties a pixel to a place: whichever it names, the corner is where it is (the
+    raster reader's rule, ``raster._read_gdal_like``; GDAL writes the pixel (0, 0))."""
+    values = np.arange(12, dtype=np.float32).reshape(3, 4)
+    info = read_header(coded_tiff(values, predictor=1, sample="f4", fmt=3, anchor=anchor))
+    assert info.west == pytest.approx(WEST) and info.north == pytest.approx(NORTH)

@@ -19,10 +19,10 @@ Two things make it usable here:
 
 The answer is an uncompressed float32 GeoTIFF: big-endian and tiled over the mosaic, but
 little-endian and in strips (a single void pixel) far outside it, over Cuba for one (measured
-2026-11-15). Both are read by the GeoTIFF reader of the tiled sources (:mod:`orthostudio.dem.cog`),
-in the byte order the file declares (Pillow decodes big-endian samples in the wrong one); the
-cell is written as a plain ``.hgt`` (big-endian int16,
-``-32768`` for the voids), the format the raster reader already knows.
+2026-11-15). Both are read by the GeoTIFF reader of the tiled sources
+(:mod:`orthostudio.dem.cog`), in the byte order the file declares (Pillow decodes big-endian
+samples in the wrong one); the cell is written as a plain ``.hgt`` (big-endian int16, ``-32768``
+for the voids), the format the raster reader already knows.
 """
 
 from __future__ import annotations
@@ -36,6 +36,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from orthostudio.dem import cog
+from orthostudio.errors import OsxpError
 from orthostudio.meter import written
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle, types only
@@ -145,7 +146,18 @@ def read_wcs_tiff(body: bytes) -> tuple[NDArray[np.float32], tuple[float, float,
     """The raster of a WCS answer, with ``(lon, lat, dlon, dlat)`` of its first post's centre,
     read by the GeoTIFF reader of the tiled sources (:mod:`orthostudio.dem.cog`): tiles or strips,
     in the byte order the file declares. Heights are returned with the voids as :data:`HgtVoid`.
+    An answer that is no raster it reads (an exception report served with a 200) is a service
+    that did not answer: :class:`ProbeError`, nothing remembered, the relief laid under it used.
     """
+    try:
+        return _read_raster(body)
+    except OsxpError as exc:
+        if exc.code != "DEM_FILE_UNREADABLE":
+            raise
+        raise ProbeError(f"its answer is no raster ({exc})") from exc
+
+
+def _read_raster(body: bytes) -> tuple[NDArray[np.float32], tuple[float, float, float, float]]:
     where = "the elevation service's answer"
     info = cog.read_header(body, path=where)
     # every pixel, whatever its units: far outside the mosaic the answer is in Canada's Lambert

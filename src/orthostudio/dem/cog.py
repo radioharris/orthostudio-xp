@@ -143,10 +143,11 @@ def _bad(path: str, reason: str) -> OsxpError:
 
 
 def read_header(head: bytes, *, path: str = "<bytes>") -> TiffInfo:
-    """Read the first directory of a tiled GeoTIFF out of its first bytes.
+    """Read the first directory of a GeoTIFF out of its first bytes.
 
     ``head`` is the beginning of the file, :data:`HEADER_BYTES` of it or more. Classic TIFF and
-    BigTIFF are both read. A file that is not tiled, or not a single band of float32, raises
+    BigTIFF are both read, tiled or in strips, in either byte order. A file neither tiled nor in
+    strips, of more than one band, or of samples :data:`_SAMPLES` does not name, raises
     ``DEM_FILE_UNREADABLE`` rather than being half read.
     """
     if len(head) < 16:
@@ -247,8 +248,10 @@ def read_header(head: bytes, *, path: str = "<bytes>") -> TiffInfo:
         counts=tuple(int(v) for v in counts),
         step_x=float(scale[0]),
         step_y=float(scale[1]),
-        west=float(tie[3]),
-        north=float(tie[4]),
+        # the tie point ties a pixel (I, J) to a place: the first pixel's corner lies I and J
+        # pixels before it (GDAL writes (0, 0), which the raster reader takes as any other)
+        west=float(tie[3]) - float(tie[0]) * float(scale[0]),
+        north=float(tie[4]) + float(tie[1]) * float(scale[1]),
         epsg=epsg,
         nodata=nodata,
         compression=int(values(259, needed=False)[0]) if 259 in tags else 1,

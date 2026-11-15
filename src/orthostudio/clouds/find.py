@@ -629,7 +629,7 @@ def screen(
     judged under each of ``clouds`` (their rings), read at :func:`_reading_level` and brought to
     the picture's level: the search's, one level finer than the picture, or a cloud's ``level``,
     its try, where each source is read at that level alone (``Arc:12``, the tile's own source too
-    when it shows another photo there).
+    at a level coarser than its sharpest).
 
     Under a cloud no source is clear under so, each source, the tile's own too, is then read at
     every coarser level down to :data:`sources.COARSEST`, and a level showing another photo there
