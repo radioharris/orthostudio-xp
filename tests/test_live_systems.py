@@ -114,7 +114,7 @@ def test_the_other_programs_streaming_ortho_by_their_processes(monkeypatch, tmp_
         (["XplaneMapEnhanc"], ["XPME"]),  # Linux keeps 15 characters
         (["autoortho"], ["AutoOrtho"]),
         (["AutoOrtho.EXE", "XplaneMapEnhancement.exe"], ["XPME", "AutoOrtho"]),
-        (["orthostreamxp.exe"], ["OrthoStreamXP"]),  # Windows only
+        (["orthostreamxp.exe"], [scenery.ANOTHER_STREAMER]),  # Windows only, never named
         (["X-Plane", "OrthoStudio XP", "python3.14"], []),
     ):
         listed = {pid: (name, 0.0) for pid, name in enumerate(names, 10)}
@@ -290,3 +290,14 @@ def test_a_reset_on_windows_is_read_past(tmp_path):
         assert [kind for kind, *_ in gate.requests()] == ["LOAD"]  # read past the reset
     finally:
         gate.close()
+
+
+def test_another_streamer_is_said_in_the_page_s_words_never_by_its_name():
+    """The streamer found by its Windows process is never named (the user, 2026-11-15): the engine
+    says « another streamer », which the page says in its own language."""
+    from orthostudio.live.web import UI_DIR
+
+    live_js = (UI_DIR / "live.js").read_text(encoding="utf-8")
+    strings = (UI_DIR / "strings.js").read_text(encoding="utf-8")
+    assert f'n === "{scenery.ANOTHER_STREAMER}" ? t("checks.another_streamer")' in live_js
+    assert strings.count('"checks.another_streamer":') == 2  # English and French

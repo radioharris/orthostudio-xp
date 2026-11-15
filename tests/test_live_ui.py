@@ -170,6 +170,7 @@ def test_a_start_refused_beside_another_program_streaming_ortho(
     for others, said in (
         (["XPME"], "XPME is running: quit it first"),
         (["XPME", "AutoOrtho"], "XPME and AutoOrtho are running: quit them first"),
+        (["another streamer"], "Another streamer is running: quit it first"),  # never named
     ):
         monkeypatch.setattr(session, "ortho_streamers", lambda _xp, others=others: others)
         with pytest.raises(session.RefusedError, match=said):

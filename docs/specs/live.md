@@ -65,8 +65,9 @@ neutral texture, which takes seconds. They also delete the
 downloaded imagery. `--fresh` does not build the last departure ahead either.
 
 Quit any other program streaming ortho first: Live refuses to start beside XPME, AutoOrtho or
-OrthoStreamXP, found by their processes' names (XPME's window « XPlane Map Enhancement » and its
-server « XplaneMapEnhancement », AutoOrtho's « autoortho », OrthoStreamXP's « orthostreamxp.exe »)
+another streamer, found by their processes' names (XPME's window « XPlane Map Enhancement » and its
+server « XplaneMapEnhancement », AutoOrtho's « autoortho »; a third, on Windows, is found by its
+process and said « another streamer », never by its name, `scenery.ANOTHER_STREAMER`)
 or by the folders they mount (AutoOrtho's
 `z_ao_*` regions, the folder XPME's `XPME_*` packs link into): `scenery.ortho_streamers`.
 Start the streamer before X-Plane: X-Plane lists
