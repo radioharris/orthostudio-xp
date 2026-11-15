@@ -29,7 +29,7 @@ import { PHOTO_LOOKS, photoValues } from "./colour.js";
 import { TEXTURE_MB, ZONES_FORMAT, ZONE_ZL_MIN, normalizeZone, parseTile, tileName, validateZonesDocument, zoneTextureKeys } from "./geo.js";
 import { OLD_STORAGE_KEY, STORAGE_KEY, defaultLevels, excluding, groupsOf, levelOf, newFlightPlan, readSaved, restoredPlan, squaresOf, toSaved, withPlan, withoutPlan } from "./flightplan.js";
 import { createPlanMap, detailLabel, detailName } from "./map.js";
-import { createCloudMode, taskWords } from "./clouds.js";
+import { createCloudMode, progressWords, taskWords } from "./clouds.js";
 import { colourPreview } from "./preview.js";
 import { defaultsKeepingFolders, profileDiffers, profileDiffersText, profileNameProblem, refusedValueText, renderSettingsView, sameValue, settingsSummary } from "./settings.js";
 import { bindFind, bindFindKeys, findForget } from "./find.js";
@@ -5502,18 +5502,21 @@ export function searchedNone(c) {
 }
 
 /** Where a tile Find or Find and apply took is (its entry in ``GET /api/cloud-searches``), as its
- * cell says it: what it does, then its step (`stepWords`). */
+ * cell's tooltip says it: its search or its Apply with its phase and share, or its clouds' images
+ * being got and how many. */
 export function searchWords(entry) {
-  if (entry.step === "images") return stepWords(entry);
-  if (entry.step === "apply") return `${t("clouds.task.apply")} ${stepWords(entry)}`;
-  return `${t("clouds.task.find")} ${stepWords(entry)}`;
+  if (entry.step === "images") return t("library.applying_images", { n: fmtInt(entry.images || 0) });
+  if (entry.step === "apply") return `${t("clouds.task.apply")} ${taskWords(entry)}`;
+  return `${t("clouds.task.find")} ${taskWords(entry)}`;
 }
 
-/** A tile's step alone, as the searches line says it beside its name: its search's or its Apply's
- * phase and share, or its clouds' images being got and how many. */
+/** A tile's step in a word, as the searches line says it beside its name: search, its clouds'
+ * images and how many, or laying and its share; the phase is its cell's (a user's choice,
+ * 2026-11-15: in full, four tiles made the line too long). */
 export function stepWords(entry) {
-  if (entry.step === "images") return t("library.applying_images", { n: fmtInt(entry.images || 0) });
-  return taskWords(entry);
+  if (entry.step === "images") return t("library.step_images", { n: fmtInt(entry.images || 0) });
+  if (entry.step === "apply") return `${t("library.step_apply")}${progressWords(entry)}`;
+  return t("library.step_find");
 }
 
 /** Whether a tile's entry waits for its search's turn, nothing of it running yet. */
@@ -6941,6 +6944,7 @@ async function readSearches() {
 function renderSearches() {
   const list = state.searches || [];
   $("library-searches").hidden = !list.length;
+  $("library-searches-note").hidden = !list.length;
   setText($("library-searches-text"), searchesLine(list));
 }
 

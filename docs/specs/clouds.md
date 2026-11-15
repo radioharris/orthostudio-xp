@@ -71,9 +71,11 @@ and apply, nothing to lay; `busy`; else the tile's state).
 
 While searches run or wait, whoever asked them (the Library or a tile's mode), and while Find and
 apply works on a tile, until its Apply has ended, a line under the bar says each tile at work
-and its step, then how many wait ("Clouds: -02-050 reading the tile 40 % · -02-051 getting the
-images (12 cloud(s)) · 1 tile(s) waiting"; "4 tiles at work" said nothing of what each did, a
-user, 2026-11-15), with **Stop**, which stops every
+and its step in a word, then how many wait ("Clouds: -02-050 search · -02-051 images (12) ·
+-03-050 laying 40 % · 1 waiting"; "4 tiles at work" said nothing of what each did, and each
+step in full made the line too long, a user, 2026-11-15; the phase is in the tile's tooltip),
+a yellow note under it saying it takes minutes a tile and the whole processor, to avoid building
+or flying meanwhile (his ask, 2026-11-15; B14), with **Stop**, which stops every
 search, those waiting too, and what Find and apply does but an Apply under way, which ends what it
 began (`POST /api/cloud-searches/stop`): a tile searched keeps its clouds, one applied its Apply,
 the others are left as they were, their ticks kept. In the column, a tile whose search waits has

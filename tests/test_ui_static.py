@@ -8715,7 +8715,8 @@ def test_the_clouds_cell_and_the_searches_line_say_the_searches() -> None:
                    "library.clouds_forgotten_n", "library.apply_title", "library.apply_text",
                    "library.apply_go", "library.apply_started", "library.apply_left",
                    "library.apply_none", "library.applying_images", "library.searches_head",
-                   "library.searches_one"]
+                   "library.searches_one", "library.step_find", "library.step_images",
+                   "library.step_apply", "library.searches_long"]
               .filter((k) => i.t(k) === k),
           };
         })()"""

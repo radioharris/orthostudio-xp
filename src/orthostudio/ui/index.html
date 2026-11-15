@@ -406,6 +406,9 @@
         <span id="library-searches-text"></span>
         <button type="button" class="btn" id="library-searches-stop" data-i18n="library.searches_stop">Stop</button>
       </p>
+      <!-- while they run: it is long and takes the whole processor (a user, 2026-11-15; B14: some
+           two minutes a tile, four at once, ten cores of fourteen) -->
+      <p class="clouds-warning" id="library-searches-note" data-i18n="library.searches_long" hidden>This takes several minutes a tile and the whole processor: avoid building tiles or flying in X-Plane meanwhile.</p>
       <!-- Under the buttons, above the table: a refusal of File elsewhere showed under the last row,
            out of sight (app.js showLibraryErrors). -->
       <div id="library-errors" class="error-list library-errors" aria-live="polite"></div>
