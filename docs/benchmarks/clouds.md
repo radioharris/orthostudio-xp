@@ -269,4 +269,23 @@ read them), the searches' own times not comparable (the first downloaded its sou
 
 Since then a tile's images wait for those of the tile before (`Tasks.images_turn`, a review,
 2026-11-15): with four tiles' checks taking turns, the pictures kept for two, 400 checks drew 102
-pictures for 4 in the review's run, a drawing about 1.5 s (above). The four tiles not timed again.
+pictures for 4 in the review's run, a drawing about 1.5 s (above).
+
+Timed again that night (Apple M4 Pro, 48 GB), Find and apply on the same four tiles from the
+Library, the searches' line read every half second: -03-050 searched already (a run stopped at its
+images), the three others searched together; every source's pieces on the disk from the runs
+before. Each tile's images, from its first image under way to its last, one tile at a time, an
+Apply laying while the next tile gets its images:
+
+| Tile | Search | Waiting for the images' turn | Images | Apply | Clouds laid |
+|---|---|---|---|---|---|
+| -03-050 | searched before | 0 s | 91 s | 18 s | 200 |
+| -02-050 | 157 s | 0 s | 80 s | 85 s | 200 |
+| -03-051 | 237 s | 4 s | 76 s | 100 s | 200 |
+| -02-051 | 235 s | 84 s | 78 s | 46 s | 200 |
+
+The whole run took 453 s (not comparable with the runs above: there every tile was searched in
+the run, here three); the engine's memory peaked at 9.3 GB with
+the three searches and the first tile's images at once, then fell back to 4.6 GB. A Stop at the
+first tile's images, in the run before, ended everything within two seconds, the processor at
+0 % right after; the tile kept its 200 clouds found, none ticked, nothing laid.

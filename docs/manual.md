@@ -1,6 +1,6 @@
 # OrthoStudio XP manual: clouds and settings profiles
 
-What came with 1.4.0, step by step, with where to click. The rest of the app is described in the
+What came with 1.4.0 and since, step by step, with where to click. The rest of the app is described in the
 [README](../README.md) and in [how it works](how-it-works.md).
 
 - [Replacing the clouds of a tile](#replacing-the-clouds-of-a-tile)
@@ -155,6 +155,38 @@ and unticks the clouds; your list stays, to tick them again later. Deleting a ti
 of clouds: built again, it gets them back, as all the rest. To start again from nothing, **Forget
 the clouds** beside it, or the bin in the tile's Clouds cell in the Library, puts the original
 photos back and erases the tile's list of clouds with their images.
+
+### 8. Many tiles at once
+
+In the **Library**, tick the tiles, then open **Clouds** in the bar over the table:
+
+- **Find** runs the quick search on each tile ticked that was never searched, several at once
+  (four on a computer with 32 GB of memory or more, fewer below). A tile already searched is left
+  as it is, its clouds there to look at. Then open each tile's clouds, tick and **Apply** as above.
+- **Find and apply…** does the same, then replaces at once every cloud a clear source was found
+  under, without showing them first; a tile already searched is not searched again. It asks
+  first, since the tool sometimes takes pale ground or muddy water for a cloud: **Restore the
+  original photos**, in a tile's clouds, puts it back. A cloud it could not replace (its images
+  failed, or no source was clear enough at the tile's level) is left unticked, counted in the
+  tile's badge: open the tile to look at it, or run Find and apply again.
+- **Forget…** asks, then forgets the clouds of the tiles ticked, one after the other, as the bin
+  does: the original photos back and the lists of clouds erased. A line under the bar says which
+  of how many.
+
+While it works, a line under the bar says each tile at work and its step, then how many wait, with
+**Stop** for all of them, and a yellow note says it takes several minutes a tile and the whole
+processor: better not to build tiles or fly in X-Plane meanwhile. The searches run several at
+once; the images are got one tile at a time. In the Clouds column, a tile waiting has its cloud
+dimmed and one at work a spinner; a badge counts the clouds found that wait for your look (0 when
+a search found none, no badge when the tile was never searched), and the tooltip says the last
+failure, if any. The rest of the app can be used meanwhile.
+
+![The Library: four Amazon tiles ticked, the line "Clouds: -03-051 search 28 % · -03-050 images (54) · …" with Stop, the yellow note, a spinner in each tile's Clouds cell](images/manual/clouds-batch.png)
+
+**Stop**, or quitting the app, ends them all: a tile searched keeps its clouds, one still searching
+or waiting is not searched, and one stopped before its Apply is left as it was, nothing ticked.
+Four tiles of the Amazon, 200 clouds each, three of them never searched, took seven and a half
+minutes on an Apple M4 Pro.
 
 ## Settings profiles
 
