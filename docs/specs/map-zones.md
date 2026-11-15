@@ -420,7 +420,7 @@ not improvised.
   of the vertices, valid polygon or not), not its whole list: a request carrying an explicit
   `zones` list is validated whole, so a red zone near Geneva used to refuse an estimate for Cape
   Town. Checked in a browser against the real engine.
-- **The page's files are served with `Cache-Control: no-cache`** (`app.PAGE_CACHE_CONTROL`). A
+- **The page's files are served with `Cache-Control: no-cache`** (`guard.PAGE_CACHE_CONTROL`). A
   browser kept an old `geo.js` beside a new `map.js` after the update and the page did not start
   (an ES module importing a missing export). Revalidation is cheap on a local server; a browser
   that cached the files before this change needs one hard reload.

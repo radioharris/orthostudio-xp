@@ -766,7 +766,7 @@ own water, with its depth, which a tile of photos would only make worse. The Pla
 line of its own, and builds the others; open sea alone has nothing to build, and the Plan says so.
 A square with land whose region of X-Plane is not installed still stops the build, as before.
 *Delete the flight plan* takes it away with its squares; those you chose by hand stay. The plan is
-kept in the browser until then, with your levels and the squares you took out, and its squares are
+kept until then, in `page.json`, with your levels and the squares you took out, and its squares are
 computed again at each visit, so a new version's rules apply to it. Only your name goes to
 simbrief.com, only when you press the button. *Open a flight plan…*, beside it, takes a plan file
 instead, saved by Little Navmap (`.lnmpln`) or exported for X-Plane (`.fms`), which Little Navmap

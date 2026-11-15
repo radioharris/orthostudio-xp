@@ -27,7 +27,7 @@ import {
 } from "./i18n.js";
 import { PHOTO_LOOKS, photoValues } from "./colour.js";
 import { TEXTURE_MB, ZONES_FORMAT, ZONE_ZL_MIN, normalizeZone, parseTile, tileName, validateZonesDocument, zoneTextureKeys } from "./geo.js";
-import { STORAGE_KEY, defaultLevels, excluding, groupsOf, levelOf, newFlightPlan, readSaved, restoredPlan, squaresOf, toSaved, withPlan, withoutPlan } from "./flightplan.js";
+import { PLAN_KEY, defaultLevels, excluding, groupsOf, levelOf, newFlightPlan, readSaved, restoredPlan, squaresOf, toSaved, withPlan, withoutPlan } from "./flightplan.js";
 import { createPlanMap, detailLabel, detailName } from "./map.js";
 import { createCloudMode, progressWords, taskWords } from "./clouds.js";
 import { colourPreview } from "./preview.js";
@@ -36,7 +36,7 @@ import { bindFind, bindFindKeys, findForget } from "./find.js";
 import { bindZoom } from "./zoom.js";
 import { applyTextSize, bindTextSize, savedTextSize } from "./textsize.js";
 import { bindFrame, inFrame } from "./embed.js";
-import { pageKeep, pageKept } from "./kept.js";
+import { keepForThisVisit, pageKeep, pageKept } from "./kept.js";
 import { countryName, sourceAddressProblem, sourceGroups, sourceGroupTitle, sourceLabel, tilesNotCovered } from "./sources.js";
 
 // ------------------------------------------------------------------ constants
@@ -44,6 +44,7 @@ import { countryName, sourceAddressProblem, sourceGroups, sourceGroupTitle, sour
 // `location` is read only in a browser: node imports this module in the tests.
 const PARAMS = pageParams(typeof location === "undefined" ? "" : location.href);
 const MOCK = isOn(PARAMS.get("mock"));
+if (MOCK) keepForThisVisit(); // the demo never touches the pilot's own choices (kept.js)
 /** Options written after the route (`#plan?mock=1`), kept as the route changes: read once, since
  * moving to another screen rewrites the hash and would otherwise drop them on the next load. */
 const HASH_OPTIONS =
@@ -3536,7 +3537,7 @@ let flightPlanLoading = null;
 /** The plan kept between two visits, or taken away. */
 function setFlightPlanState(fp) {
   state.flightPlan = fp;
-  pageKeep(STORAGE_KEY, fp ? toSaved(fp) : null);
+  pageKeep(PLAN_KEY, fp ? toSaved(fp) : null);
 }
 
 /** No flight plan any more, its line taken off the map; the selection is the caller's. The kept
@@ -3547,11 +3548,6 @@ function forgetFlightPlan() {
   if (!had) return;
   showFlightPlanError(null);
   planMap?.routeChanged();
-}
-
-/** The plan kept between two visits, as text ("" when none). */
-function keptFlightPlan() {
-  return pageKept(STORAGE_KEY) || "";
 }
 
 /** What went wrong with the flight plan, said right under its button. */
@@ -3681,7 +3677,7 @@ function setFlightPlanAlong(on) {
  * page, before a restart) leaves the plan kept for the next visit.
  */
 async function restoreFlightPlan() {
-  const text = keptFlightPlan();
+  const text = pageKept(PLAN_KEY);
   const saved = text ? readSaved(text) : null;
   if (!saved) {
     if (text) setFlightPlanState(null); // not one this page wrote
@@ -3692,7 +3688,7 @@ async function restoreFlightPlan() {
   renderFlightPlan();
   try {
     const plan = await api("POST", "/api/flightplan", saved.route);
-    if (keptFlightPlan() !== text) return; // forgotten, or replaced, meanwhile
+    if (pageKept(PLAN_KEY) !== text) return; // forgotten, or replaced, meanwhile
     const fp = restoredPlan(plan, saved);
     const added = withPlan(state.tiles, fp, { cap: MAX_BUILD_TILES, building: tilesInBuilds(activeJobs()) });
     state.tiles = added.tiles;

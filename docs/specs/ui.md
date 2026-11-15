@@ -37,7 +37,8 @@ Overpass).
 | `vendor/maplibre/` | MapLibre GL 5.24.0 and its Leaflet bridge, for the street map's vector tiles; loaded only when that map is asked for |
 | `vendor/borders/` | the country borders of Natural Earth (`borders.json`, public domain, `README.md`), read the first time the map shows them |
 | `mock/*.json` | one file per API response, used by `?mock=1` and by the tests |
-| `__init__.py` | `ui_dir()`, `INDEX_FILE` and `STATIC_FILES` for `create_app` and the tests; nothing else |
+| `kept.js` | what the page keeps from one visit to the next, through its server (*What the page keeps*, below) |
+| `__init__.py` | `ui_dir()`, `INDEX_FILE` and `STATIC_FILES` for `create_app` and the tests, and `with_json`, which writes what a page starts from into it |
 
 Language: **English by default, whatever the browser's language** (the user's decision,
 `map-zones.md` 7.0.7); the switch in the top bar offers French and remembers a choice under
@@ -60,8 +61,10 @@ groups), the Library's order, the *For experts* band, the folder of the last pla
 plan of step 1 and the notes put away. The engine keeps them, in `$OSXP_HOME/page.json`, and
 writes them into the page as it serves it (`#page-kept`, `api/page_kept.py`); a change goes back at
 once with `PUT /api/page-kept` (`api.md`), one after the other in the order made (`kept.js`
-`pageKept`, `pageKeep`, the one place for the page's own choices). A file missing or unreadable
-keeps nothing, and the next change writes it whole again. The browser's storage kept them until
+`pageKept`, `pageKeep`, the one place for the page's own choices). A file missing, or not a
+page's, keeps nothing; one that cannot be read gives the visit the defaults and refuses every
+change, so that nothing kept is lost. The demo (`?mock=1`) neither reads nor writes them: its
+answers would have replaced the pilot's flight plan. The browser's storage kept them until
 2.2.0: in the app's frame the page is an iframe on the port after the frame's, and the web view of
 macOS keeps an iframe's storage only while the window is open, so every launch since the frame
 (2.0.0) started from nothing (a user lost the airports box at each start; measured 2026-11-15, the

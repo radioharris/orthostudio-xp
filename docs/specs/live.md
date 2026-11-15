@@ -270,7 +270,7 @@ suite keeps it off unless a test switches it on, `tests/conftest.py`):
   first start takes, once, what the pages had kept of their own. Each page keeps the rest of its
   choices through the program that serves it, the pages being iframes whose storage the web view
   of macOS forgets (`ui.md` 1, *What the page keeps*): Live's, the bar over its map, in
-  `live-page.json` (`web.LIVE_PAGE_FILE`). Quitting (the frame's Quit,
+  `live-page.json` (`page_kept.LIVE_PAGE_FILE`). Quitting (the frame's Quit,
   Cmd+Q, the app's menu and the Dock's, the close button on Windows and Linux) asks once while a
   build or a stream runs, in OrthoStudio XP's own dialog in the frame's page (`#quit-confirm`, put
   there from its page; `frame.js askQuit`, the words from `Frame.quit_words`, its Quit

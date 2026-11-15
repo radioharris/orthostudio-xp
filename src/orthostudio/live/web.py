@@ -42,8 +42,6 @@ if TYPE_CHECKING:
 UI_DIR = Path(__file__).resolve().parent / "ui"
 IDLE = "idle"  # orthostudio.live.control.IDLE, read here without loading Live before its window
 TITLE = "OrthoStudio XP Live"
-LIVE_PAGE_FILE = "live-page.json"
-"""What Live's page keeps from one visit to the next (``orthostudio.api.page_kept``)."""
 SIZE = (1180, 860)
 STARTS_WITHIN_S = 10.0
 QUIT_WHILE_STREAMING = {
@@ -127,7 +125,7 @@ def create_live_app(
         _GuardMiddleware,
         _RevalidatedStaticFiles,
     )
-    from orthostudio.api.page_kept import kept_page, page_kept_router
+    from orthostudio.api.page_kept import LIVE_PAGE_FILE, kept_page, page_kept_router
     from orthostudio.live.api import live_router
     from orthostudio.ui import ui_dir
 

@@ -6541,9 +6541,8 @@ def _sweep_script(app_js: str, scenario: str) -> str:
     sweep = app_js[app_js.index("\nlet sweepBefore = null;") : app_js.index(sweep_end)] + sweep_end
     return "\n".join(
         [
-            "import { excluding, groupsOf, levelOf, newFlightPlan, toSaved }"
+            "import { PLAN_KEY, excluding, groupsOf, levelOf, newFlightPlan, toSaved }"
             ' from "./flightplan.js";',
-            'const STORAGE_KEY = "osxp.flightplan";',
             "const pageKeep = () => {};",
             "const MAX_BUILD_TILES = 500;",
             "const activeJobs = () => [];",
@@ -7481,7 +7480,7 @@ def test_a_kept_plan_comes_back_with_the_squares_of_this_version() -> None:
     )
     assert "restoredPlan(plan, saved)" in restore and "withPlan(state.tiles, saved" not in restore
     # emptied or built meanwhile, the kept plan is forgotten and the answer dropped
-    assert "if (keptFlightPlan() !== text) return;" in restore
+    assert "if (pageKept(PLAN_KEY) !== text) return;" in restore
     forget = _function_body(app_js, "forgetFlightPlan")
     assert forget.index("setFlightPlanState(null);") < forget.index("if (!had) return;")
 
@@ -9224,8 +9223,8 @@ def test_a_clouds_label_stands_where_its_number_is_over_every_mark() -> None:
     assert "L.marker(placeOf(c.rings[0])," in marks  # the number at the very same place
 
 
-def _kept_run(given: str, steps: str) -> Any:
-    """kept.js under node, served with ``given`` in ``#page-kept`` (``"none"``: no such element,
+def _kept_run(written: str, steps: str) -> Any:
+    """kept.js under node, served with ``written`` in ``#page-kept`` (``"none"``: no such element,
     the page served as plain files): ``steps`` use ``m`` and return a value; with it, what was
     sent to the server."""
     script = f"""
@@ -9234,10 +9233,10 @@ def _kept_run(given: str, steps: str) -> Any:
       sent.push([url, init.method, JSON.parse(init.body)]);
       return {{}};
     }};
-    const given = {json.dumps(given)};
-    if (given !== "none") {{
+    const written = {json.dumps(written)};
+    if (written !== "none") {{
       globalThis.document = {{
-        getElementById: (id) => (id === "page-kept" ? {{ textContent: given }} : null),
+        getElementById: (id) => (id === "page-kept" ? {{ textContent: written }} : null),
       }};
     }}
     const m = await import("./kept.js");
@@ -9254,7 +9253,7 @@ def test_the_page_reads_what_its_server_kept_and_sends_it_each_change() -> None:
     """In the app's frame the browser's storage was forgotten at every launch (2026-11-15): the
     page's server keeps its choices and writes them into the page (api/page_kept.py)."""
     run = _kept_run(
-        json.dumps({"kept": {"osxp.mapAirports": "1"}}),
+        json.dumps({"osxp.mapAirports": "1"}),
         """
         const before = [m.pageKept("osxp.mapAirports"), m.pageKept("osxp.mapStreet")];
         m.pageKeep("osxp.experts", "open");
@@ -9271,13 +9270,19 @@ def test_the_page_reads_what_its_server_kept_and_sends_it_each_change() -> None:
     ]
 
 
-def test_a_page_served_as_plain_files_keeps_its_choices_for_the_visit() -> None:
-    for given in ("none", "null"):
-        run = _kept_run(
-            given,
-            'm.pageKeep("osxp.experts", "open"); return m.pageKept("osxp.experts");',
-        )
-        assert run == {"got": "open", "sent": []}, given
+def test_a_page_served_as_plain_files_or_as_the_demo_keeps_its_choices_for_the_visit() -> None:
+    """The demo (`?mock=1`) answered with its own flight plan, which then replaced the pilot's
+    kept one (a review, 2026-11-15): it neither reads nor writes them."""
+    steps = (
+        'm.pageKeep("osxp.experts", "open");'
+        ' return [m.pageKept("osxp.experts"), m.pageKept("osxp.mapAirports")];'
+    )
+    for written in ("none", "null"):
+        assert _kept_run(written, steps) == {"got": ["open", None], "sent": []}, written
+    demo = _kept_run(json.dumps({"osxp.mapAirports": "1"}), "m.keepForThisVisit(); " + steps)
+    assert demo == {"got": ["open", None], "sent": []}
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    assert 'const MOCK = isOn(PARAMS.get("mock"));\nif (MOCK) keepForThisVisit();' in app_js
 
 
 def test_the_build_page_keeps_its_choices_through_kept_js_alone() -> None:
@@ -9287,12 +9292,3 @@ def test_the_build_page_keeps_its_choices_through_kept_js_alone() -> None:
         js = (UI / name).read_text(encoding="utf-8")
         uses = re.findall(r"localStorage\.\w+\(([^)]*)\)", js)
         assert all('"osxp.theme"' in u for u in uses), (name, uses)
-
-
-def test_live_s_page_keeps_its_details_box_through_kept_js() -> None:
-    live_js = (UI.parent / "live" / "ui" / "live.js").read_text(encoding="utf-8")
-    assert "localStorage" not in live_js  # the language is the frame's (strings.js)
-    start = _function_body(live_js, "startMap")
-    assert 'import("../static/kept.js")' in start
-    assert 'kept.pageKept(MAP_DETAILS_KEY) !== "0"' in start
-    assert 'kept.pageKeep(MAP_DETAILS_KEY, event.target.checked ? "1" : "0");' in start

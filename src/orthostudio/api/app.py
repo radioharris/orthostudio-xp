@@ -2714,7 +2714,7 @@ def create_app(
         app.mount("/static", _RevalidatedStaticFiles(directory=str(ui)), name="static")
 
     @app.get("/", include_in_schema=False)
-    async def index() -> Any:
+    def index() -> Any:
         if ui is None or not (ui / "index.html").is_file():
             return _plain_error(
                 "SYS_RESOURCE_MISSING",

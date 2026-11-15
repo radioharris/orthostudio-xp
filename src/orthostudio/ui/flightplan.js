@@ -22,7 +22,7 @@
 export const ROUTE_ZL = 14;
 
 /** Where the page keeps the plan between two visits (kept.js). */
-export const STORAGE_KEY = "osxp.flightplan";
+export const PLAN_KEY = "osxp.flightplan";
 
 /** 2: the route and the pilot's choices, the squares computed again at each visit; 1 kept the
  * engine's answer whole, squares included. */
