@@ -381,6 +381,18 @@ def test_a_level_is_written_with_its_try_and_auto_leaves_no_trace() -> None:
     assert "level" not in c  # a list where no level is chosen is written as before
 
 
+def test_a_try_where_no_source_answered_writes_nothing() -> None:
+    """Offline, every source answers « did not answer »: the level written had left a ticked
+    cloud with no source (a review, 2026-11-15)."""
+    cl, c = _list()
+    c["chosen"] = "BI"
+    silent = {"EOX:12": Judgement("did_not_answer", 0), "BI:12": Judgement("refused", 0)}
+    assert not cloudlist.set_level(cl, c["id"], c["rings"], 12, silent)
+    assert not cloudlist.set_level(cl, c["id"], c["rings"], 12, {})
+    assert "level" not in c and c["chosen"] == "BI"
+    assert cloudlist.set_level(cl, c["id"], c["rings"], 12, {"EOX:12": Judgement("clear", 50)})
+
+
 def test_a_new_search_and_discard_bring_a_cloud_back_to_auto() -> None:
     # a level kept by a new search, its tries dropped, left the cloud with no source
     cl, c = _list()

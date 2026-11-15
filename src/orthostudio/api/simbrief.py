@@ -230,11 +230,12 @@ NO_PLAN = "no flight plan on file"
 def _refused(body: bytes | None) -> str:
     """Why SimBrief answered 400, from the status of its answer: a name it does not know
     ("Error: Unknown UserID"), or a known one with no plan ("Error: No flight plan on file for the
-    specified user", which Live said was an unknown user, 2026-11-14); else that status."""
+    specified user", which Live said was an unknown user, 2026-11-14); else that status. An answer
+    with no status to read is the unknown name, as every 400 was taken before."""
     try:
         status = str(json.loads(body or b"")["fetch"]["status"])
     except (ValueError, KeyError, TypeError):
-        return "HTTP 400"
+        return UNKNOWN_USER
     if "unknown user" in status.lower():
         return UNKNOWN_USER
     if "no flight plan" in status.lower():

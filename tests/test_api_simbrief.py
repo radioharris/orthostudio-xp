@@ -139,8 +139,9 @@ def test_a_known_name_with_no_plan_is_not_an_unknown_one() -> None:
     assert _refused(status("Error: Unknown UserID")) == "unknown user"
     assert _refused(status("Error: No flight plan on file for the specified user")) == NO_PLAN
     assert _refused(status("Error: Something new")) == "Error: Something new"
-    assert _refused(b"<html>Bad Request</html>") == "HTTP 400"
-    assert _refused(None) == "HTTP 400"
+    # no status to read: the unknown name, as every 400 was before (a review, 2026-11-15)
+    assert _refused(b"<html>Bad Request</html>") == "unknown user"
+    assert _refused(None) == "unknown user"
 
 
 @pytest.mark.anyio

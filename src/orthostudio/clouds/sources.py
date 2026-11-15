@@ -300,7 +300,7 @@ class SourcePieces:
             if not self.one_at_a_time:
                 await fetch(code, keys)
                 return
-            turn = _Turn(code, cancel)
+            turn = _Turn(level_of(code)[0], cancel)  # one turn per server, whatever its level
             try:
                 if await asyncio.to_thread(turn.take):
                     await fetch(code, keys)

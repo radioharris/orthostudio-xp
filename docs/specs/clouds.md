@@ -195,7 +195,7 @@ The Plan's map, brought over the tile; the Plan's steps make way for the cloud p
   what they have there are written together (`cloudlist.set_level`: a try stopped, refused or
   failed writes nothing, the cloud as it was), and the best there is ticked and its images got.
   Another source picked stays at that level ("I want to try EOX at ZL12": ZL12, then EOX); the
-  tile's own source keeps its line beside the level's. Discard, and a new search finding an
+  cloud's own source keeps its line beside the level's. Discard, and a new search finding an
   unticked cloud again, bring it back to Auto (`cloudlist._choose`); a ticked cloud keeps its
   level through a search, as it keeps its source; its line
   (1.5),

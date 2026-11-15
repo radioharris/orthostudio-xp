@@ -38,7 +38,7 @@ def airport_positions(apt: Path, icaos: Iterable[str] | None) -> dict:
     """{ICAO: (lat, lon)} of the airports found in ``apt`` (one pass over the file); every
     airport's with ``icaos`` None. Its datum, else the middle of its first runway, on land or on
     water, or its first helipad: a heliport has only helipads (EGLW: "X-Plane knows no airport",
-    a forum user, 2026-11-14), and Build's airport index takes them already."""
+    a forum user, 2026-11-14); Build's airport index takes them too, by another point of them."""
     wanted = None if icaos is None else {i.upper() for i in icaos}
     found: dict = {}
     current: str | None = None

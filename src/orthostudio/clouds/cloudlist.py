@@ -34,7 +34,7 @@ from shapely.geometry import Polygon
 from shapely.ops import unary_union
 from shapely.validation import make_valid
 
-from orthostudio.clouds.sources import COARSEST, JUDGED
+from orthostudio.clouds.sources import ASK_AGAIN, COARSEST, JUDGED
 from orthostudio.clouds.tile import (
     TileClouds,
     entry_problem,
@@ -285,19 +285,23 @@ def set_level(
     rings: Any,
     level: int | None,
     verdicts: Mapping[str, Any] | None = None,
-) -> None:
+) -> bool:
     """The level the sources of the cloud ``cid`` are read at (``None``: Auto, any), with what
     they have there (``verdicts``, its try, kept apart from the search's in ``tries``: Auto shows
     what the search found and what was taken), written together once the try is over (shown from
     its start by its task, ``state._asked``): a try stopped, refused or failed writes nothing (a
-    level kept without its try left a cloud with no source, a review, 2026-11-14). Its source is
-    then the best there. Nothing when the cloud left the list or changed outline meanwhile."""
+    level kept without its try left a cloud with no source, a review, 2026-11-14), nor one where
+    no source answered (offline, a review, 2026-11-15). Its source is then the best there.
+    Nothing when the cloud left the list or changed outline meanwhile. Whether it was written."""
     c = next((x for x in cl.clouds if x["id"] == cid), None)
     if c is None or c["rings"] != rings:
-        return
+        return False
+    if verdicts is not None and all(j.answer in ASK_AGAIN for j in verdicts.values()):
+        return False
     _choose(c, None, level)
     if verdicts:
         c["tries"] = {**c.get("tries", {}), **screening_of(verdicts)}
+    return True
 
 
 def _choose(c: dict[str, Any], chosen: str | None, level: int | None = None) -> None:

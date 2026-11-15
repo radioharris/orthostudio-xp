@@ -31,7 +31,7 @@ def test_levels_and_field_counts() -> None:
     assert len(Expert.model_fields) == 33
 
 
-def test_defaults_are_the_ortho4xp_defaults() -> None:
+def test_defaults_are_ortho4xp_s_but_the_airports() -> None:
     """Ortho4XP's defaults, but the airports: the page's recommended answer (2026-11-15)."""
     s = Settings()
     e, a, x = s.essential, s.advanced, s.expert

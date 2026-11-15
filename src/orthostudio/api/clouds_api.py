@@ -922,15 +922,19 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
         if shown is None:
             raise OsxpError("CLOUD_NOT_NOW", context={"tile": tile.name, "action": "level"})
         was = before.cloud(cid)
+        written: list[bool] = []
 
         def run(task: Task) -> None:
             verdicts = tried_under(task, tile, shown, rings, zl)
             with cls.update(tile) as cl:
-                cls.set_level(cl, cid, rings, zl, verdicts)
+                written.append(cls.set_level(cl, cid, rings, zl, verdicts))
 
         def then() -> None:
             """The best there taken, as an outline's: ticked when its state allows it, its
-            images got (the detector on this computer: the try ran it)."""
+            images got (the detector on this computer: the try ran it). Nothing when the level
+            was not written: a search changed the cloud meanwhile, or no source answered."""
+            if not any(written):
+                return
             if look(tile)[2].allows("tick", cid):
                 pick(tile, [cid], "tick", body={"download": True})
             else:
