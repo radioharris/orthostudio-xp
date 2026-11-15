@@ -14,11 +14,12 @@ what takes it ends those under way first (:meth:`end`).
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import secrets
 import threading
 import time
-from collections.abc import Callable, Collection, Mapping
+from collections.abc import Callable, Collection, Iterator, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -105,6 +106,7 @@ class Tasks:
         self._failed: dict[str, Task] = {}  # each tile's last failure, until its next task
         self._search = threading.Semaphore(searches)  # :func:`searches_at_once` for the app
         self._checks = threading.Semaphore(CHECKS_AT_ONCE)
+        self._images = threading.Semaphore(1)  # :meth:`images_turn`
         self._taken = taken
         self._following: dict[str, int] = {}
         """Per tile, the tasks ended whose follow-up runs (``then``): under way still
@@ -206,11 +208,27 @@ class Tasks:
         with self._lock:
             return bool(self._mine(tiles)) or self._after(tiles) or bool(self._led(tiles))
 
-    def settled(self, tile: str) -> bool:
-        """Whether the tile's tasks and what follows them have ended: what a follow waits for
-        between its steps, itself aside."""
-        with self._lock:
-            return not self._mine({tile}) and not self._after({tile})
+    def settle(self, tile: str, stop: threading.Event) -> bool:
+        """Wait for the tile's tasks and what follows them to end, those Stop ends stopped once
+        ``stop`` is set (an Apply ends what it began): what a follow waits for between its steps,
+        itself aside; whether ``stop`` was not set."""
+        self._drain({tile}, stopping=stop.is_set, follows=False)
+        return not stop.is_set()
+
+    @contextlib.contextmanager
+    def images_turn(self, stop: threading.Event) -> Iterator[bool]:
+        """A follow's turn to get its clouds' images, one follow at a time for the app: whether
+        it came before ``stop``. Their checks share the reads at once, and the picture each check
+        reads is kept for two tiles: with four tiles' checks taking turns, 400 checks drew 102
+        pictures for 4, about 1.5 s each (B14), in a review's run (2026-11-15)."""
+        got = False
+        while not stop.is_set() and not got:
+            got = self._images.acquire(timeout=0.25)
+        try:
+            yield got
+        finally:
+            if got:
+                self._images.release()
 
     def follow(self, tile: str, work: Callable[[threading.Event], None]) -> None:
         """``work(stop)`` in a thread of its own: what takes a tile through tasks of its own (Find
@@ -289,11 +307,16 @@ class Tasks:
         return None
 
     def stop(self, task_id: str) -> bool:
-        """Stop the task ``task_id`` at its next step, when Stop ends it; whether it does."""
+        """Stop the task ``task_id`` at its next step, when Stop ends it; whether it does. A task
+        of a tile a follow takes stops the follow too, whichever Stop asked it (the cloud mode's,
+        a row's): its next step would have laid what was stopped (a review, 2026-11-15)."""
         with self._lock:
             task = self._tasks.get(task_id)
+            led = self._follows.get(task.tile) if task is not None else None
         if task is None or not task.stoppable:
             return False
+        if led is not None:
+            led.set()
         task.stop.set()
         return True
 
@@ -303,15 +326,26 @@ class Tasks:
         for, which end what they began (as long as they take, a few seconds a texture). Taking
         the folder is said first (``taken``): a task or a follow asked meanwhile is refused
         (:meth:`start`, :meth:`follow`)."""
+        self._drain(tiles, stopping=lambda: True, follows=True)
+
+    def _drain(
+        self, tiles: Collection[str] | None, *, stopping: Callable[[], bool], follows: bool
+    ) -> None:
+        """Wait for the tasks of ``tiles``, what follows them and, with ``follows``, their
+        follows, to end, stopping them while ``stopping()`` says so (a follow first: it would
+        start its next step): the one loop of :meth:`end` and :meth:`settle`, which sleeps
+        between its looks."""
         while True:
             with self._lock:
-                mine, after, led = self._mine(tiles), self._after(tiles), self._led(tiles)
+                mine, after = self._mine(tiles), self._after(tiles)
+                led = self._led(tiles) if follows else []
             if not mine and not after and not led:
                 return
-            for stop in led:  # first: a follow would start its next step
-                stop.set()
-            for t in mine:
-                t.stop.set()
+            if stopping():
+                for stop in led:
+                    stop.set()
+                for t in mine:
+                    t.stop.set()
             time.sleep(0.05)
 
 

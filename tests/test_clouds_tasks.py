@@ -314,7 +314,7 @@ def test_a_follow_keeps_its_tile_under_way_and_ends_with_its_tasks() -> None:
 
     tasks.follow("+43+005", work)
     assert ran.wait(2) and tasks.busy("+43+005") and tasks.following() == ["+43+005"]
-    assert tasks.settled("+43+005")  # its own tasks: none
+    assert tasks.settle("+43+005", threading.Event())  # its own tasks: none
     with pytest.raises(OsxpError) as twice:
         tasks.follow("+43+005", work)
     assert twice.value.code == "CLOUD_NOT_NOW"
@@ -324,6 +324,51 @@ def test_a_follow_keeps_its_tile_under_way_and_ends_with_its_tasks() -> None:
     with pytest.raises(OsxpError) as held:
         tasks.follow("+43+005", work)
     assert held.value.code == "CLOUD_TILE_NOT_READY"
+
+
+def test_a_follow_stopped_waits_for_an_apply_without_spinning() -> None:
+    # stopped, a follow waits for its tile's Apply, which ends what it began: it looked again at
+    # once, a core at 100 % until the Apply ended (a review, 2026-11-15)
+    tasks, stop, release = Tasks(), threading.Event(), threading.Event()
+    tasks.start("+43+005", "apply", lambda _t: release.wait(5))
+    stop.set()
+    threading.Timer(1.0, release.set).start()
+    used = time.process_time()
+    assert not tasks.settle("+43+005", stop)
+    assert not tasks.busy("+43+005") and time.process_time() - used < 0.3
+
+
+def test_one_follow_at_a_time_gets_its_images_a_stopped_one_never() -> None:
+    # four follows at their images together drew each tile's picture 102 times for 4 (a review,
+    # 2026-11-15): one at a time; one stopped while it waits gives up at once
+    tasks, first, second = Tasks(), threading.Event(), threading.Event()
+    with tasks.images_turn(first) as mine:
+        assert mine
+        threading.Timer(0.3, second.set).start()
+        with tasks.images_turn(second) as theirs:
+            assert not theirs
+    with tasks.images_turn(threading.Event()) as next_one:
+        assert next_one
+
+
+def test_a_stop_of_a_tasks_tile_stops_the_follow_that_takes_it() -> None:
+    # Stop in the cloud mode stopped the search Find and apply began, then it applied the rest
+    # (a review, 2026-11-15)
+    tasks, started, ended = Tasks(), threading.Event(), threading.Event()
+
+    def work(stop: threading.Event) -> None:
+        task = tasks.start("+43+005", "find", lambda t: t.stop.wait(5))
+        started.set()
+        tasks.settle("+43+005", stop)
+        if stop.is_set():
+            ended.set()
+        assert task.stop.is_set()
+
+    tasks.follow("+43+005", work)
+    assert started.wait(2)
+    find = next(t for t in tasks.of("+43+005") if t.kind == "find")
+    assert tasks.stop(find.id)
+    assert ended.wait(2)
 
 
 def test_a_follow_that_fails_says_how_until_the_tiles_next_task() -> None:

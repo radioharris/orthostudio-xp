@@ -59,11 +59,14 @@ them starts, by a click elsewhere, or by Escape.
   one rule is `View.left_by`, which the cells and the request read). It asks first, since the detector sometimes takes pale ground or muddy water for a cloud:
   the clouds are replaced without a look, and Restore puts each tile back. Each tile is searched
   (when never searched), then every cloud a clear source was judged under is ticked, as Tick all
-  does, and its images got, then, once nothing of the tile runs, Apply lays what its question would
-  lay (`find_and_apply`: one path, each step once the one before has ended). It is a follow of the
-  tile's tasks (`Tasks.follow`, R7): the tile under way throughout, stopped by Stop, Quit, a build
-  or a deletion. Stopped, or not laid (an Apply refused: X-Plane running), the clouds it ticked are
-  unticked: the tile as before but for the images got, and no cloud left ticked whose preview the
+  does, and its images got, one tile at a time for the app (`Tasks.images_turn`: with four tiles'
+  checks taking turns, the pictures kept for two, 400 checks drew 102 pictures for 4), then, once
+  nothing of the tile runs, Apply lays what its question would lay (`find_and_apply`: one path, each
+  step once the one before has ended, `Tasks.settle`). It is a follow of the tile's tasks
+  (`Tasks.follow`, R7): the tile under way throughout, stopped by Stop, a Stop of one of its tasks,
+  Quit, a build or a deletion. Stopped, or not laid (an Apply refused: X-Plane running), the clouds
+  it ticked are unticked, however it ended: the tile as before but for the images got, and no cloud
+  left ticked whose preview the
   cloud mode would have to make as it opens (it gets the images without their preview, a third of
   the work after the download, B14; a review, 2026-11-15).
 - **Forget…** takes the tiles with clouds (`forget`), asks first in one question, and forgets each
@@ -610,9 +613,13 @@ the tile stays under way until it has run (`Tasks.busy`), so a page reading the 
 it again and sees the tick and its images. What takes a tile through tasks of its own without being one,
 Find and apply (1.2), is a follow of them (`Tasks.follow`): the tile under way until it returns, for
 the view, the Library, `.../tasks` and the engine kept up alike (`Tasks.busy`, the one rule); Stop
-sets its stop (`Tasks.stop_follows`), and what takes the tile stops and waits for it as for its
-tasks (`Tasks.end`: Quit, a build, a filing, a deletion); one at a time for a tile; how it failed
-is the tile's last failure.
+sets its stop (`Tasks.stop_follows`), as a Stop of one of its tile's tasks does (`Tasks.stop`, the
+cloud mode's: its next step would lay what was stopped), and what takes the tile stops and waits
+for it as for its tasks (`Tasks.end`: Quit, a build, a filing, a deletion); one at a time for a
+tile; how it failed is the tile's last failure. Between its steps it waits for the tile's tasks
+(`Tasks.settle`), with `Tasks.end` the one loop that waits for tasks (`Tasks._drain`), sleeping
+between its looks: an Apply it was stopped during kept a core busy until it ended (a review,
+2026-11-15).
 
 A tile's folder is never the tasks' and another's at once. While something else holds it (a build,
 from its job's start until it has finished the tile; its wait in the queue; a filing; a deletion),

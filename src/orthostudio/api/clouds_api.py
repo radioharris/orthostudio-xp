@@ -762,43 +762,40 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
     def find_and_apply(tile: TileRef, shown: TileClouds | None, stop: threading.Event) -> None:
         """Find and apply on one tile, as a follow of its tasks (``Tasks.follow``: the tile under
         way throughout, ``stop`` set by Stop, Quit, a build or a deletion): its search when it
-        was never searched (``shown``: what its folder showed), then every cloud Tick all takes
-        ticked (a clear source judged under it) and its images got without their preview, then
-        Apply as its question would lay it, each step once the one before has ended. Stopped, or
-        not laid (an Apply refused: X-Plane running), the clouds it ticked are unticked: the tile
-        as before but for the images got, and no cloud left ticked whose preview the mode would
-        have to make as it opens (a review, 2026-11-15)."""
+        was never searched (``shown``: what its folder showed), then, at its turn
+        (``Tasks.images_turn``: one tile at a time), every cloud Tick all takes ticked (a clear
+        source judged under it) and its images got without their preview, then Apply as its
+        question would lay it, each step once the one before has ended (``Tasks.settle``).
+        Stopped, or not laid (an Apply refused: X-Plane running), the clouds it ticked are
+        unticked, however it ended: the tile as before but for the images got, and no cloud left
+        ticked whose preview the mode would have to make as it opens (a review, 2026-11-15)."""
         if shown is not None:
             start_find(tile, shown, False)
-            if not settle(tile, stop):
+            if not engine.tasks.settle(tile.name, stop):
                 return
-        _folder, _shown, v = look(tile)
-        ticked = v.taken_by("tick")
-        if ticked:
-            pick(tile, ticked, "tick", body={"download": True}, before=v, previews=False)
+        ticked: list[str] = []
         laid = False
-        if settle(tile, stop):
+        try:
+            with engine.tasks.images_turn(stop) as mine:
+                if not mine:
+                    return
+                _folder, _shown, v = look(tile)
+                ticked = v.taken_by("tick")
+                if ticked:
+                    pick(tile, ticked, "tick", body={"download": True}, before=v, previews=False)
+                if not engine.tasks.settle(tile.name, stop):
+                    return
             folder, _shown, v = look(tile)
             if v.allows("apply") and v.asked:
                 task = start_writes(tile, folder, v, "apply")
-                settle(tile, stop)  # an Apply ends what it began, Stop or not
+                engine.tasks.settle(tile.name, stop)  # an Apply ends what it began, Stop or not
                 laid = task.error is None
-        if ticked and not laid:
-            with cls.update(tile) as cl:
-                for c in cl.clouds:
-                    if c["id"] in ticked and c["tick"]:
-                        cls.pick(cl, c["id"], "untick")
-
-    def settle(tile: TileRef, stop: threading.Event) -> bool:
-        """Wait for the tile's tasks and what follows them to end (``Tasks.settled``), each task
-        Stop ends stopped once ``stop`` is set (an Apply ends what it began); whether it was
-        not."""
-        while not engine.tasks.settled(tile.name):
-            if stop.is_set():
-                for t in engine.tasks.of(tile.name):
-                    engine.tasks.stop(t.id)
-            stop.wait(0.25)
-        return not stop.is_set()
+        finally:
+            if ticked and not laid:
+                with cls.update(tile) as cl:
+                    for c in cl.clouds:
+                        if c["id"] in ticked and c["tick"]:
+                            cls.pick(cl, c["id"], "untick")
 
     @router.get("/api/cloud-searches")
     def searches() -> dict[str, Any]:

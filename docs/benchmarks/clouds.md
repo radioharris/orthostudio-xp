@@ -266,3 +266,7 @@ read them), the searches' own times not comparable (the first downloaded its sou
 | -03-050 | 240 s | 62 s | 200 |
 | -03-051 | 245 s | 174 s | 200 |
 | The four | 1 017 s | 485 s | 800 |
+
+Since then a tile's images wait for those of the tile before (`Tasks.images_turn`, a review,
+2026-11-15): with four tiles' checks taking turns, the pictures kept for two, 400 checks drew 102
+pictures for 4 in the review's run, a drawing about 1.5 s (above). The four tiles not timed again.
