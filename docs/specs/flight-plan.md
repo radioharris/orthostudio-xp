@@ -159,8 +159,8 @@ the plan and whether the route's squares are wanted (`along`). Nothing else is h
 * **Deleting.** *Delete the flight plan* takes the plan's squares away, except those also chosen by
   hand. Step 1's trash empties the whole selection and takes the plan with it. Starting a build
   with the selection forgets the plan too: kept, the next visit would have chosen its squares again.
-* **Kept between visits.** What the pilot chose is saved in the browser's storage
-  (`osxp.flightplan`, version 2): the route and the radius its squares were chosen with, the two
+* **Kept between visits.** What the pilot chose is kept by the engine for the page
+  (`osxp.flightplan`, version 2; `ui.md` 1, *What the page keeps*): the route and the radius its squares were chosen with, the two
   levels, the squares taken out, the tick; never the squares. A reload sends the route to the
   engine (`POST /api/flightplan`), which computes the squares again, and they are chosen with the
   pilot's levels, exclusions and tick; SimBrief is not asked. Testing the corridor, the pilot
@@ -170,7 +170,8 @@ the plan and whether the route's squares are wanted (`along`). Nothing else is h
   a selection emptied or built meanwhile forgets the kept plan and the answer is dropped; an
   engine that cannot answer (older than the page, before a restart) leaves the plan kept for the
   next visit. Anything else found there is dropped, version 1 (the engine's answer whole)
-  included, and the first version's `osxp.route` is cleared.
+  included. The first version's `osxp.route`, cleared from the browser's storage until 2.2.0, is
+  never read.
 * **One request at a time.** The button is busy while the plan is read; a second click does
   nothing. What went wrong is said right under it, in the page's words for the code.
 

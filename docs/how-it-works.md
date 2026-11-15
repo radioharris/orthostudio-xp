@@ -570,6 +570,10 @@ one when the app starts.
   airports.sqlite  X-Plane's airports and the box of their runways, for the Plan's search, its map
                    and its count of the airports made sharper
   update.json      the latest version GitHub named, and when it was asked (once a day at most)
+  page.json        what the page keeps from one visit to the next: the map's boxes, the
+                   Library's order, the flight plan of step 1...
+  live-page.json   the same for Live's page
+  frame.json       the language, the theme, the text size and the zoom of the app's window
   clouds/+46+006.json  the clouds of a tile you looked at: found or outlined, ticked, their source,
                    and those laid in the tile
   models/clouds-detector-1/  the cloud detector (64 MB) and  libs/opencv-<version>/  OpenCV,
@@ -762,7 +766,7 @@ own water, with its depth, which a tile of photos would only make worse. The Pla
 line of its own, and builds the others; open sea alone has nothing to build, and the Plan says so.
 A square with land whose region of X-Plane is not installed still stops the build, as before.
 *Delete the flight plan* takes it away with its squares; those you chose by hand stay. The plan is
-kept in the browser until then, with your levels and the squares you took out, and its squares are
+kept until then, in `page.json`, with your levels and the squares you took out, and its squares are
 computed again at each visit, so a new version's rules apply to it. Only your name goes to
 simbrief.com, only when you press the button. *Open a flight plan…*, beside it, takes a plan file
 instead, saved by Little Navmap (`.lnmpln`) or exported for X-Plane (`.fms`), which Little Navmap

@@ -125,6 +125,7 @@ def create_live_app(
         _GuardMiddleware,
         _RevalidatedStaticFiles,
     )
+    from orthostudio.api.page_kept import LIVE_PAGE_FILE, kept_page, page_kept_router
     from orthostudio.live.api import live_router
     from orthostudio.ui import ui_dir
 
@@ -133,12 +134,13 @@ def create_live_app(
     app.include_router(live_router(control, front=front, seen=seen))
     app.include_router(_map_router(map_fetch))
     app.include_router(_airports_router())
+    app.include_router(page_kept_router(LIVE_PAGE_FILE))
     app.mount("/static", _RevalidatedStaticFiles(directory=ui_dir()), name="static")
     app.mount("/live", _RevalidatedStaticFiles(directory=UI_DIR), name="live")
 
     @app.get("/", include_in_schema=False)
-    def index() -> FileResponse:
-        return FileResponse(UI_DIR / "index.html", headers={"Cache-Control": PAGE_CACHE_CONTROL})
+    def index() -> Any:
+        return kept_page(UI_DIR / "index.html", LIVE_PAGE_FILE)  # with what the page keeps
 
     @app.get("/welcome", include_in_schema=False)
     def welcome() -> FileResponse:

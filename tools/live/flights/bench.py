@@ -601,7 +601,7 @@ def create_app(runner: Runner, results: Path = fly.RESULTS) -> Any:
     from fastapi import Body, FastAPI, HTTPException
     from fastapi.responses import FileResponse
 
-    from orthostudio.api.app import (
+    from orthostudio.api.guard import (
         DEFAULT_ALLOWED_HOSTS,
         PAGE_CACHE_CONTROL,
         _GuardMiddleware,

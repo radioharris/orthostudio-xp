@@ -1435,8 +1435,9 @@ async def test_library_installed_is_read_against_the_given_xplane(
 @pytest.mark.anyio
 async def test_the_page_files_are_revalidated_on_every_load(tmp_path: Path) -> None:
     """An old ``geo.js`` cached next to a new ``map.js`` stopped the page after an update: the
-    page's files carry ``Cache-Control: no-cache`` (``app.PAGE_CACHE_CONTROL``)."""
-    from orthostudio.api.app import PAGE_CACHE_CONTROL, create_app
+    page's files carry ``Cache-Control: no-cache`` (``guard.PAGE_CACHE_CONTROL``)."""
+    from orthostudio.api.app import create_app
+    from orthostudio.api.guard import PAGE_CACHE_CONTROL
     from orthostudio.api.jobs import JobManager
     from orthostudio.ui import ui_dir
 
