@@ -119,3 +119,21 @@ def test_a_file_that_cannot_be_read_is_a_first_visit(tmp_path: Path) -> None:
     # only what a page could have written is read
     path.write_text('{"osxp.a": "1", "other": "2", "osxp.b": 3}', encoding="utf-8")
     assert load_kept(path) == {"osxp.a": "1"}
+
+
+@pytest.mark.anyio
+async def test_live_s_page_keeps_its_choices_in_a_file_of_its_own(home: Path) -> None:
+    """Live's page is an iframe of the frame too, served by the app's own program: it keeps its
+    choices the same way, in ``live-page.json``, never in OrthoStudio XP's engine's file."""
+    from orthostudio.live.web import UI_DIR, create_live_app
+
+    assert (UI_DIR / "index.html").read_text(encoding="utf-8").count(KEPT_MARK) == 1
+    async with client_for(create_live_app(None)) as c:
+        assert _given((await c.get("/")).text) == {"kept": None}
+        r = await c.put("/api/page-kept", json={"values": {"osxp.live.mapDetails": "0"}})
+        assert r.status_code == 200, r.text
+        assert _given((await c.get("/")).text) == {"kept": {"osxp.live.mapDetails": "0"}}
+    assert json.loads((home / "live-page.json").read_text(encoding="utf-8")) == {
+        "osxp.live.mapDetails": "0"
+    }
+    assert not (home / "page.json").exists()

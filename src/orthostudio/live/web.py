@@ -42,6 +42,9 @@ if TYPE_CHECKING:
 UI_DIR = Path(__file__).resolve().parent / "ui"
 IDLE = "idle"  # orthostudio.live.control.IDLE, read here without loading Live before its window
 TITLE = "OrthoStudio XP Live"
+LIVE_PAGE_FILE = "live-page.json"
+"""What Live's page keeps from one visit to the next (``orthostudio.api.page_kept``): a file of its
+own, since this program and OrthoStudio XP's engine are two."""
 SIZE = (1180, 860)
 STARTS_WITHIN_S = 10.0
 QUIT_WHILE_STREAMING = {
@@ -117,13 +120,19 @@ def create_live_app(
     ``/static``. ``map_fetch`` replaces the base map's upstream fetch, for the tests; ``front``
     and ``seen``: :func:`orthostudio.live.api.live_router`'s."""
     from fastapi import FastAPI
-    from fastapi.responses import FileResponse
+    from fastapi.responses import FileResponse, Response
 
     from orthostudio.api.guard import (
         DEFAULT_ALLOWED_HOSTS,
         PAGE_CACHE_CONTROL,
         _GuardMiddleware,
         _RevalidatedStaticFiles,
+    )
+    from orthostudio.api.page_kept import (
+        load_kept,
+        page_kept_path,
+        page_kept_router,
+        page_with_kept,
     )
     from orthostudio.live.api import live_router
     from orthostudio.ui import ui_dir
@@ -133,12 +142,16 @@ def create_live_app(
     app.include_router(live_router(control, front=front, seen=seen))
     app.include_router(_map_router(map_fetch))
     app.include_router(_airports_router())
+    # what the page keeps from one visit to the next, as OrthoStudio XP's does (api/page_kept.py)
+    app.include_router(page_kept_router(lambda: page_kept_path(LIVE_PAGE_FILE)))
     app.mount("/static", _RevalidatedStaticFiles(directory=ui_dir()), name="static")
     app.mount("/live", _RevalidatedStaticFiles(directory=UI_DIR), name="live")
 
     @app.get("/", include_in_schema=False)
-    def index() -> FileResponse:
-        return FileResponse(UI_DIR / "index.html", headers={"Cache-Control": PAGE_CACHE_CONTROL})
+    def index() -> Response:
+        html = (UI_DIR / "index.html").read_text(encoding="utf-8")
+        page = page_with_kept(html, load_kept(page_kept_path(LIVE_PAGE_FILE)))
+        return Response(page, media_type="text/html", headers={"Cache-Control": PAGE_CACHE_CONTROL})
 
     @app.get("/welcome", include_in_schema=False)
     def welcome() -> FileResponse:

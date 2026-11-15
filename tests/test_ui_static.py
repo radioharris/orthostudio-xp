@@ -9313,3 +9313,12 @@ def test_the_build_page_keeps_its_choices_through_kept_js_alone() -> None:
         js = (UI / name).read_text(encoding="utf-8")
         uses = re.findall(r"localStorage\.\w+\(([^)]*)\)", js)
         assert all('"osxp.theme"' in u for u in uses), (name, uses)
+
+
+def test_live_s_page_keeps_its_details_box_through_kept_js() -> None:
+    live_js = (UI.parent / "live" / "ui" / "live.js").read_text(encoding="utf-8")
+    assert "localStorage" not in live_js  # the language is the frame's (strings.js)
+    start = _function_body(live_js, "startMap")
+    assert 'import("../static/kept.js")' in start
+    assert 'kept.pageKept(MAP_DETAILS_KEY) !== "0"' in start
+    assert 'kept.pageKeep(MAP_DETAILS_KEY, event.target.checked ? "1" : "0");' in start

@@ -1529,31 +1529,24 @@ function drawOwnLegend(kinds) {
 
 async function startMap() {
   if (typeof L === "undefined") return; // Leaflet did not load: the rest of the page works
+  let kept; // what the page keeps from one visit to the next (static/kept.js)
   try {
     // loaded here, not with the page: the map's modules read OrthoStudio XP's own (static/geo.js)
-    const { createLiveMap } = await import("./livemap.js");
-    liveMap = createLiveMap($("live-map"), { api, info: $("map-info"), ownKinds: drawOwnLegend });
+    const [map, keptModule] = await Promise.all([import("./livemap.js"), import("../static/kept.js")]);
+    kept = keptModule;
+    liveMap = map.createLiveMap($("live-map"), { api, info: $("map-info"), ownKinds: drawOwnLegend });
   } catch (_e) {
     liveMap = null;
     return;
   }
   $("map-follow").addEventListener("change", (event) => liveMap.setFollow(event.target.checked));
-  // the bar over the map: shown unless hidden once, as remembered in this window
-  let details = true;
-  try {
-    details = localStorage.getItem(MAP_DETAILS_KEY) !== "0";
-  } catch (_e) {
-    // storage may be unavailable: shown
-  }
+  // the bar over the map: shown unless hidden once, kept by the engine (static/kept.js)
+  const details = kept.pageKept(MAP_DETAILS_KEY) !== "0";
   $("map-details").checked = details;
   liveMap.setDetails(details);
   $("map-details").addEventListener("change", (event) => {
     liveMap.setDetails(event.target.checked);
-    try {
-      localStorage.setItem(MAP_DETAILS_KEY, event.target.checked ? "1" : "0");
-    } catch (_e) {
-      // not remembered: shown again next time
-    }
+    kept.pageKeep(MAP_DETAILS_KEY, event.target.checked ? "1" : "0");
   });
   $("live-map").addEventListener("live-map-follow", (event) => {
     $("map-follow").checked = event.detail;

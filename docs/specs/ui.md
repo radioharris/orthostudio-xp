@@ -66,8 +66,11 @@ the web view of macOS keeps an iframe's storage only while the window is open, s
 since the frame (2.0.0) started from nothing (a user lost the airports box at each start; measured
 2026-11-15, the same page keeping its value as the window's own page and losing it in an iframe on
 the next port). The first visit after takes what the browser still holds, key by key, once.
-Served as plain files, with no engine, the page keeps its choices for the visit alone. The
-language, the theme, the text size and the zoom are the frame's, for both pages
+Served as plain files, with no engine, the page keeps its choices for the visit alone. Live's
+page keeps its one choice, the bar over its map (*Details*, `osxp.live.mapDetails`), the same way
+in `live-page.json`: its program is another than the engine's, and two programs never write one
+file (`live/web.py`). The language, the theme, the text size and the zoom are the frame's, for
+both pages
 (`orthostudio.live.frame`, `frame.json`), and stay in the browser's storage outside the frame.
 
 **Text styles**, as in a word processor's template (a user found eleven sizes of text and titles

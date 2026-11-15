@@ -49,10 +49,13 @@ MAX_VALUE_CHARS = 256 * 1024  # a long flight plan is a few tens of kB
 MAX_KEYS = 100  # the page has 17 today
 
 
-def page_kept_path() -> Path:
+def page_kept_path(name: str = PAGE_FILE) -> Path:
+    """The file of a page's choices: OrthoStudio XP's (``page.json``), or Live's, whose page is
+    served by another program (``orthostudio.live.web.LIVE_PAGE_FILE``): two programs never write
+    one file."""
     from orthostudio.home import osxp_home
 
-    return osxp_home() / PAGE_FILE
+    return osxp_home() / name
 
 
 def load_kept(path: Path) -> dict[str, str] | None:

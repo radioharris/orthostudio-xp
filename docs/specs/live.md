@@ -269,8 +269,9 @@ suite keeps it off unless a test switches it on, `tests/conftest.py`):
   the pilot chose is kept in `frame.json` and written into the frame's page as it is served; the
   first start takes, once, what the pages had kept of their own. The web view of macOS keeps a
   page's storage only while the window is open when that page is an iframe, as both pages are
-  here: OrthoStudio XP's page keeps the rest of its choices through its engine (`page.json`,
-  `ui.md` 1, *What the page keeps*, 2026-11-15). Quitting (the frame's Quit,
+  here: each page keeps the rest of its choices through the program that serves it, OrthoStudio
+  XP's in `page.json`, Live's (the bar over its map, *Details*) in `live-page.json`
+  (`web.LIVE_PAGE_FILE`; `ui.md` 1, *What the page keeps*, 2026-11-15). Quitting (the frame's Quit,
   Cmd+Q, the app's menu and the Dock's, the close button on Windows and Linux) asks once while a
   build or a stream runs, in OrthoStudio XP's own dialog in the frame's page (`#quit-confirm`, put
   there from its page; `frame.js askQuit`, the words from `Frame.quit_words`, its Quit
