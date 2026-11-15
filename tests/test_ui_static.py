@@ -3827,7 +3827,7 @@ def test_the_plan_sums_up_the_settings_in_words() -> None:
     assert got == [
         "main airports sharper (Very sharp · ZL18)",
         "coast fading gradually over about 100 m",
-        "photo over X-Plane's water",
+        "X-Plane's clear water",
         "X-Plane 12 relief",
         "no overlays from OrthoStudio XP",
     ]
