@@ -631,6 +631,11 @@ class View:
             failed=failed,
         )
 
+    def taken_by(self, action: str) -> list[str]:
+        """The clouds an action asked of every cloud takes, each whose state allows it: Tick all,
+        Untick all, and Find and apply's ticks."""
+        return [s.cloud["id"] for s in self.clouds if self.allows(action, s.cloud["id"])]
+
     def left_by(self, action: str) -> str | None:
         """Why the Library's Find (``find``) or Find and apply (``apply``) leaves the tile, ``None``
         when it takes it: the one rule of both, for its cell and its request. Find takes a tile

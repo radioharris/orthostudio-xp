@@ -1626,8 +1626,11 @@ async def test_stop_ends_find_and_apply_before_its_apply(
         stopped = (await c.post("/api/cloud-searches/stop")).json()
         await _no_search(c)
         await anyio.sleep(0.6)  # what follows would have applied by now
-    # its images' task stopped, nothing applied: its tick kept, as after Tick all in its mode
-    assert stopped == {"stopped": 1} and laid == []
+    with cloudlist.update(TILE) as cl:
+        ticked = [x["id"] for x in cl.clouds if x["tick"]]
+    # its images' task stopped, nothing applied, what it ticked unticked: the tile as before, no
+    # cloud left ticked whose preview its mode would have to make as it opens (a review)
+    assert stopped == {"stopped": 1} and laid == [] and ticked == []
 
 
 @pytest.mark.anyio
@@ -1666,3 +1669,73 @@ async def test_find_and_apply_gets_images_without_previews_a_tick_with(
                 break
             await anyio.sleep(0.01)
     assert asked == [False, True]
+
+
+async def _at_images(c: Any, asking: Any) -> None:
+    for _ in range(400):
+        s = await _searches(c)
+        if asking.is_set() and s and s[0]["step"] == "images":
+            return
+        await anyio.sleep(0.01)
+    raise AssertionError(f"not at its images: {s}")
+
+
+@pytest.mark.anyio
+async def test_quit_ends_find_and_apply_before_its_apply(
+    app: Any, ready: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Quit ended the tasks but not Find and apply, which then laid the clouds whose images had
+    # come, the process leaving in the middle of it (a review, 2026-11-15)
+    import threading
+
+    from orthostudio.clouds.find import Check
+
+    _found_with_images(ready)  # one cloud with its images
+    with cloudlist.update(TILE) as cl:  # another, its images not got yet
+        cl.add("found", _ring(), screening={"EOX": {"answer": "clear", "fit": 70}})
+    asking = threading.Event()
+
+    def check(*_a: Any, cancel: Any = None, **_k: Any) -> Check:
+        asking.set()
+        while not cancel.wait(0.02):
+            pass
+        raise OsxpError("SYS_CANCELLED")
+
+    _searching(monkeypatch)
+    laid: list[int] = []
+    monkeypatch.setattr(clouds_api, "check", check)
+    monkeypatch.setattr(clouds_api, "show", lambda *a, **k: laid.append(1))
+    engine = app.state.orthostudio["clouds"]
+    async with client_for(app) as c:
+        await c.post("/api/cloud-searches", json={"tiles": ["+43+005"], "apply": True})
+        await _at_images(c, asking)
+        await anyio.to_thread.run_sync(engine.tasks.end)  # what Quit does
+        busy = engine.tasks.busy()
+        await anyio.sleep(0.6)
+    with cloudlist.update(TILE) as cl:
+        ticked = [x["id"] for x in cl.clouds if x["tick"]]
+    assert busy is False and laid == [] and ticked == []
+
+
+@pytest.mark.anyio
+async def test_an_apply_find_and_apply_could_not_lay_is_said_in_the_tiles_cell(
+    app: Any, ready: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # X-Plane running, every Apply was refused after minutes of work and the Library said nothing
+    # (a review, 2026-11-15): the cell says the tile's last failure, whatever failed
+    with Library(default_library_path()) as lib:
+        own = lib.register(TILE, "BI", 12, ready, "osxp")
+    _found_with_images(ready)
+
+    def refused(*_a: Any, **_k: Any) -> None:
+        raise OsxpError("CLOUD_XPLANE_RUNNING", context={"tile": TILE.name})
+
+    _searching(monkeypatch)
+    monkeypatch.setattr(clouds_api, "show", refused)
+    async with client_for(app) as c:
+        await c.post("/api/cloud-searches", json={"tiles": ["+43+005"], "apply": True})
+        await _no_search(c)
+        cell = (await c.get("/api/clouds")).json()["rows"][str(own.path)]
+    with cloudlist.update(TILE) as cl:
+        ticked = [x["id"] for x in cl.clouds if x["tick"]]
+    assert cell["failed"]["code"] == "CLOUD_XPLANE_RUNNING" and ticked == []

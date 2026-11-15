@@ -109,6 +109,9 @@ class Tasks:
         self._following: dict[str, int] = {}
         """Per tile, the tasks ended whose follow-up runs (``then``): under way still
         (:meth:`busy`)."""
+        self._follows: dict[str, threading.Event] = {}
+        """Per tile, in the order they were taken, what takes it through tasks of its own without
+        being one (:meth:`follow`: Find and apply), with what stops it."""
 
     def start(
         self,
@@ -195,12 +198,74 @@ class Tasks:
             return self._of(tile)
 
     def busy(self, tile: str | None = None) -> bool:
-        """Whether anything of ``tile`` (of any tile: ``None``) is under way: a task, or what
-        follows one (an outline's tick and images, between its end and their own task). The one
-        rule, for the cloud mode's view, :meth:`end` and the engine kept up for its tasks."""
+        """Whether anything of ``tile`` (of any tile: ``None``) is under way: a task, what
+        follows one (an outline's tick and images, between its end and their own task), or a
+        follow (:meth:`follow`). The one rule, for the cloud mode's view, the Library, :meth:`end`
+        and the engine kept up for its tasks."""
         tiles = None if tile is None else {tile}
         with self._lock:
-            return bool(self._mine(tiles)) or self._after(tiles)
+            return bool(self._mine(tiles)) or self._after(tiles) or bool(self._led(tiles))
+
+    def settled(self, tile: str) -> bool:
+        """Whether the tile's tasks and what follows them have ended: what a follow waits for
+        between its steps, itself aside."""
+        with self._lock:
+            return not self._mine({tile}) and not self._after({tile})
+
+    def follow(self, tile: str, work: Callable[[threading.Event], None]) -> None:
+        """``work(stop)`` in a thread of its own: what takes a tile through tasks of its own (Find
+        and apply: its search, its clouds' images, its Apply), the tile under way until it returns
+        (:meth:`busy`), ``stop`` set by Stop (:meth:`stop_follows`) and by what takes the tile
+        (:meth:`end`, which waits for it: Quit, a build, a deletion). Refused, as a task is, while
+        something else holds the tile's folder (``CLOUD_TILE_NOT_READY``), or while another
+        follow takes it (``CLOUD_NOT_NOW``). How it failed is the tile's last failure
+        (:meth:`failed`)."""
+        with self._lock:
+            taken = self._taken().get(tile)
+            if taken is not None:
+                raise OsxpError("CLOUD_TILE_NOT_READY", context={"tile": tile, "state": taken})
+            if tile in self._follows:
+                raise OsxpError("CLOUD_NOT_NOW", context={"tile": tile, "action": "apply"})
+            stop = threading.Event()
+            self._follows[tile] = stop
+            self._failed.pop(tile, None)
+
+        def body() -> None:
+            failure: BaseException | None = None
+            try:
+                work(stop)
+            except OsxpError as exc:
+                if exc.code != "SYS_CANCELLED":
+                    log.warning("following %s: %s", tile, exc.message)
+                    failure = exc
+            except Exception as exc:
+                log.exception("following %s failed", tile)
+                failure = exc
+            finally:
+                said = error_view(failure) if failure is not None else None
+                with self._lock:
+                    if said is not None:
+                        self._failed[tile] = Task(secrets.token_hex(6), tile, "apply", error=said)
+                    del self._follows[tile]
+
+        threading.Thread(target=body, name="cloud-follow", daemon=True).start()
+
+    def following(self) -> list[str]:
+        """The tiles a follow takes, in the order they were taken."""
+        with self._lock:
+            return list(self._follows)
+
+    def stop_follows(self) -> int:
+        """Stop every follow; how many."""
+        with self._lock:
+            stops = list(self._follows.values())
+        for stop in stops:
+            stop.set()
+        return len(stops)
+
+    def _led(self, tiles: Collection[str] | None) -> list[threading.Event]:
+        """The stops of the follows of ``tiles`` (of every tile: ``None``), the lock held."""
+        return [s for t, s in self._follows.items() if tiles is None or t in tiles]
 
     def _mine(self, tiles: Collection[str] | None) -> list[Task]:
         """The tasks of ``tiles`` (of every tile: ``None``), the lock held."""
@@ -233,15 +298,18 @@ class Tasks:
         return True
 
     def end(self, tiles: Collection[str] | None = None) -> None:
-        """Every task of ``tiles`` (of every tile: ``None``) ended before the caller takes their
-        folders: those Stop ends stopped, Apply and Restore waited for, which end what they began
-        (as long as they take, a few seconds a texture). Taking the folder is said first
-        (``taken``): a task asked meanwhile is refused (:meth:`start`)."""
+        """Every task and follow of ``tiles`` (of every tile: ``None``) ended before the caller
+        takes their folders: the follows and the tasks Stop ends stopped, Apply and Restore waited
+        for, which end what they began (as long as they take, a few seconds a texture). Taking
+        the folder is said first (``taken``): a task or a follow asked meanwhile is refused
+        (:meth:`start`, :meth:`follow`)."""
         while True:
             with self._lock:
-                mine, after = self._mine(tiles), self._after(tiles)
-            if not mine and not after:
+                mine, after, led = self._mine(tiles), self._after(tiles), self._led(tiles)
+            if not mine and not after and not led:
                 return
+            for stop in led:  # first: a follow would start its next step
+                stop.set()
             for t in mine:
                 t.stop.set()
             time.sleep(0.05)

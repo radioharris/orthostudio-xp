@@ -28,8 +28,8 @@ instead of 21, 18 % less surface.
   (`tools/clouds/export_detector.py`).
 - Downloaded where the environment has no OpenCV (Mac, 2026-11-03): 48 MB from PyPI in 3.3 s.
 - Memory, +24-102 at the finer level (12 805 x 11 652 pixels): the answers kept one row of
-  patches at a time, the search's peak 2.8 GB reading once, 3.6 GB with the finer reading. One
-  search at a time for the app (`clouds.md` R7).
+  patches at a time, the search's peak 2.8 GB reading once, 3.6 GB with the finer reading. As many
+  searches at once as the computer's memory holds, four at most (`clouds.md` R7, B14).
 
 ## B3. Outlines that touch themselves (Mac, 2026-11-05)
 

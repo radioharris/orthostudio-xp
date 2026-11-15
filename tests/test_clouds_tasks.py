@@ -299,3 +299,87 @@ def test_a_search_says_how_far_the_whole_of_it_is_never_going_back() -> None:
     assert seen == sorted(seen) and seen[0] == 0.0 and seen[-1] == 0.99
     assert seen[1] == round(search_share("looking", 5, 10), 3)
     assert search_share("laying", 1, 2) is None  # not a search's phase
+
+
+def test_a_follow_keeps_its_tile_under_way_and_ends_with_its_tasks() -> None:
+    # Find and apply is a follow of the tile's tasks (a review, 2026-11-15): one rule of "under
+    # way" for the view, the Library, the engine kept up and what takes the tile (Quit, a build)
+    tasks, taken = Tasks(taken=lambda: taken), {}
+    ran, stopped = threading.Event(), []
+
+    def work(stop: threading.Event) -> None:
+        ran.set()
+        stop.wait(10)
+        stopped.append(stop.is_set())
+
+    tasks.follow("+43+005", work)
+    assert ran.wait(2) and tasks.busy("+43+005") and tasks.following() == ["+43+005"]
+    assert tasks.settled("+43+005")  # its own tasks: none
+    with pytest.raises(OsxpError) as twice:
+        tasks.follow("+43+005", work)
+    assert twice.value.code == "CLOUD_NOT_NOW"
+    tasks.end({"+43+005"})  # what Quit, a build or a deletion does: stopped and waited for
+    assert stopped == [True] and not tasks.busy("+43+005") and tasks.following() == []
+    taken["+43+005"] = "in_build"
+    with pytest.raises(OsxpError) as held:
+        tasks.follow("+43+005", work)
+    assert held.value.code == "CLOUD_TILE_NOT_READY"
+
+
+def test_a_follow_that_fails_says_how_until_the_tiles_next_task() -> None:
+    tasks = Tasks()
+
+    def fails(_stop: threading.Event) -> None:
+        raise OsxpError("CLOUD_XPLANE_RUNNING", context={"tile": "+43+005"})
+
+    tasks.follow("+43+005", fails)
+    end = time.monotonic() + 2
+    while tasks.busy("+43+005") and time.monotonic() < end:
+        time.sleep(0.02)
+    failed = tasks.failed("+43+005")
+    assert failed is not None and failed.error["code"] == "CLOUD_XPLANE_RUNNING"
+
+
+def test_a_searchs_turn_at_a_source_is_given_back_when_a_failure_beside_it_ends_its_fetch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # another search holds B; this one's fetch from A fails, which cancels its wait for B: the turn
+    # its waiting thread took later was never given back, every later search then waiting on B
+    # until a restart (a review, 2026-11-15)
+    from types import SimpleNamespace
+
+    from orthostudio.clouds import sources
+
+    class Failing:
+        def __init__(self, **_k: object) -> None:
+            pass
+
+        async def __aenter__(self) -> Failing:
+            return self
+
+        async def __aexit__(self, *_a: object) -> None:
+            return None
+
+        async def fetch_many(self, requests: object, **_k: object) -> None:
+            if next(iter(requests)).host_group == "A":  # type: ignore[call-overload]
+                raise OSError("disk gone")
+
+    monkeypatch.setattr(sources, "Fetcher", Failing)
+    monkeypatch.setattr(sources, "tile_url", lambda p, *k: "http://x")
+    pieces = sources.SourcePieces.__new__(sources.SourcePieces)
+    pieces.one_at_a_time, pieces.failed = True, {}
+    pieces.providers = {
+        c: SimpleNamespace(
+            code=c, max_in_flight=1, server_req_per_s=1, pushback_status=(), headers={}
+        )
+        for c in ("A", "B")
+    }
+    pieces.caches = {c: SimpleNamespace(lookup=lambda *k: None, put=lambda *a: None) for c in "AB"}
+    with sources._TURNS_LOCK:
+        held = sources._TURNS.setdefault("B", threading.Lock())
+    held.acquire()
+    threading.Timer(0.5, held.release).start()  # the other search ends
+    with pytest.raises(OSError):
+        pieces.fetch({"A": [(1, 2, 3)], "B": [(1, 2, 3)]}, cancel=threading.Event())
+    time.sleep(1.0)
+    assert not sources._TURNS["B"].locked()

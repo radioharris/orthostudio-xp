@@ -5489,7 +5489,7 @@ async function loadClouds(tiles = null) {
 /** What the Library's column says of a tile's clouds: those it holds replaced, those waiting for
  * Apply and those a search found that wait for a look, in this order, or that a search found none;
  * then its search, under way or waiting (``search``, its entry in ``GET /api/cloud-searches``),
- * else how its last one failed. */
+ * else the tile's last failure, whatever failed (its search, its clouds' images, an Apply). */
 export function cloudsWords(c, search = null) {
   const out = [];
   if (c?.replaced > 0) out.push(t("library.clouds_replaced", { n: fmtInt(c.replaced) }));
