@@ -1624,3 +1624,41 @@ async def test_stop_ends_find_and_apply_before_its_apply(
         await anyio.sleep(0.6)  # what follows would have applied by now
     # its images' task stopped, nothing applied: its tick kept, as after Tick all in its mode
     assert stopped == {"stopped": 1} and laid == []
+
+
+@pytest.mark.anyio
+async def test_find_and_apply_gets_images_without_previews_a_tick_with(
+    app: Any, ready: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # a preview is After's, a third of the work once the pieces are there (B14): Find and apply,
+    # which shows nothing before it lays, goes without; a tick in the cloud mode makes it
+    from orthostudio.clouds.find import Check, Judgement
+
+    cid = _found_with_images(ready)
+    with cloudlist.update(TILE) as cl:  # its images not got yet: asked for once it is ticked
+        next(c for c in cl.clouds if c["id"] == cid)["checks"] = {}
+    asked: list[bool] = []
+
+    def check(*_a: Any, previews: bool = True, **_k: Any) -> Check:
+        asked.append(previews)
+        return Check(Judgement("no_picture"))
+
+    _searching(monkeypatch)
+    monkeypatch.setattr(clouds_api, "check", check)
+    monkeypatch.setattr(clouds_api, "show", lambda *a, **k: None)
+    async with client_for(app) as c:
+        await c.post("/api/cloud-searches", json={"tiles": ["+43+005"], "apply": True})
+        await _no_search(c)
+        with cloudlist.update(TILE) as cl:  # unticked, its images asked again by a tick
+            again = next(x for x in cl.clouds if x["id"] == cid)
+            again["tick"], again["checks"] = False, {}
+        r = await c.post("/api/clouds/+43+005/picks", json={"action": "tick", "id": cid})
+        assert r.status_code == 200, r.text
+        for _ in range(400):
+            if (
+                len(asked) == 2
+                and not (await c.get(f"/api/clouds/{TILE.name}/tasks")).json()["busy"]
+            ):
+                break
+            await anyio.sleep(0.01)
+    assert asked == [False, True]

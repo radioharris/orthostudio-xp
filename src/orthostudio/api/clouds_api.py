@@ -649,6 +649,7 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
         again: bool = False,
         unasked: bool = False,
         before: state.View | None = None,
+        previews: bool = True,
     ) -> None:
         """Getting the images of the clouds ``ids`` (of every cloud: ``None``) whose state offers
         it (``check``), the detector asked for first (``body``): the one way it starts, after a
@@ -656,7 +657,8 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
         its source asked again), or a check that turned the cloud to a source never asked
         (``unasked``, ``CloudState.unasked``). Of several, one refused leaves the others go.
         Each cloud is shown and counted meanwhile as it was ``before`` (the view the user's
-        click was made on; else now)."""
+        click was made on; else now). ``previews``: each cloud's preview made with its images
+        (``find.check``), but for Find and apply, which shows nothing before it lays."""
         _folder, shown, v = look(tile)
         asked = [s.cloud["id"] for s in v.clouds] if ids is None else list(ids)
         offered = [i for i in asked if v.allows("check", i)]
@@ -669,7 +671,7 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
             try:
                 then = was.cloud(cid)
                 seen = {"row": then.row, "lays": then.lays}
-                _get_images(tile, shown, v.cloud(cid), again=again, was=seen)
+                _get_images(tile, shown, v.cloud(cid), again=again, was=seen, previews=previews)
             except OsxpError:
                 if len(offered) == 1:
                     raise
@@ -681,6 +683,7 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
         *,
         again: bool,
         was: Mapping[str, Any],
+        previews: bool,
     ) -> None:
         """:func:`get_images` of the cloud ``s``: its task."""
         cid = s.cloud["id"]
@@ -708,13 +711,14 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
                 again=again,
                 cancel=task.stop,
                 phase=task.say,
+                previews=previews,
             )
             with cls.update(tile) as cl:
                 cls.record_check(cl, cid, code, rings, got)
 
         def then() -> None:
             """Its source answered worse there: the next one's images, when never asked."""
-            get_images(tile, [cid], {"download": True}, unasked=True)
+            get_images(tile, [cid], {"download": True}, unasked=True, previews=previews)
 
         engine.tasks.start(tile.name, "check", run, cloud=cid, then=then, was=was)
 
@@ -802,7 +806,7 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
             _folder, _shown, v = look(tile)
             ids = [s.cloud["id"] for s in v.clouds if "tick" in s.actions]
             if ids and v.allows("tick") and not stop.is_set():
-                pick(tile, ids, "tick", body={"download": True}, before=v)
+                pick(tile, ids, "tick", body={"download": True}, before=v, previews=False)
             while engine.tasks.busy(tile.name) and not stop.wait(0.25):
                 pass
             if stop.is_set():
@@ -913,16 +917,18 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
         source: str | None = None,
         body: Mapping[str, Any] | None = None,
         before: state.View | None = None,
+        previews: bool = True,
     ) -> None:
         """A tick, an untick or a source kept, of the clouds ``ids``, then the images got of
-        those whose state asks them: the one way a cloud is ticked by the user, Tick all, or once
-        an outline's sources are tried. Kept whatever is said of the detector: asked for
-        (``CLOUD_DETECTOR_ASK``), the page asks, and on yes asks the images (``then``); on no,
-        the cloud waits for them. ``before``: the view the click was made on."""
+        those whose state asks them: the one way a cloud is ticked by the user, Tick all, Find
+        and apply (without ``previews``, :func:`get_images`), or once an outline's sources are
+        tried. Kept whatever is said of the detector: asked for (``CLOUD_DETECTOR_ASK``), the page
+        asks, and on yes asks the images (``then``); on no, the cloud waits for them.
+        ``before``: the view the click was made on."""
         with cls.update(tile) as cl:
             for cid in ids:
                 cls.pick(cl, cid, action, source)
-        get_images(tile, ids, body, before=before)
+        get_images(tile, ids, body, before=before, previews=previews)
 
     def try_level(
         tile: TileRef,

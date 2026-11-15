@@ -240,3 +240,29 @@ searched one after the other from the Library's Find, an isolated home, the step
 About half a search is spent waiting on the network, its processor nearly idle: searches run
 several at once since (`tasks.searches_at_once`), each fetch from a source after another search's
 (`SourcePieces(one_at_a_time=True)`). The engine held 3.6 GB once the five were searched.
+
+Forty clouds of -02-050 got again one at a time after it was applied, each from the source laid
+(EOX at ZL14), its pieces downloaded into an empty folder, its preview made again:
+
+| Clouds | Download | Layers made and judged | Preview | Total |
+|---|---|---|---|---|
+| The 40 (the 10 largest, 30 others) | 69.2 s | 18.9 s | 8.4 s | 96.5 s |
+| The largest (1 670 km²) | 23.4 s | 7.8 s | 4.2 s | 35.3 s |
+
+In Find and apply the pieces are mostly on the disk already, the search having read the same
+source at the same level to judge it, and the work after the download kept 10.5 of 14 cores busy
+with three clouds at once: the preview, a third of that work, is not made there since
+(`find.check(previews=False)`), the cloud mode making one as it opens when it needs it.
+
+Find and apply on the four Amazon tiles twice, each from its tile's step to the next read on the
+searches' line (a tile's image step counts its wait for the three reads at once), the second run
+after Forget, without previews; the pieces under the clouds on the disk in both (the searches had
+read them), the searches' own times not comparable (the first downloaded its sources):
+
+| Tile | Images, with previews | Images, without | Clouds laid |
+|---|---|---|---|
+| -02-050 | 289 s | 75 s | 200 |
+| -02-051 | 243 s | 174 s | 200 |
+| -03-050 | 240 s | 62 s | 200 |
+| -03-051 | 245 s | 174 s | 200 |
+| The four | 1 017 s | 485 s | 800 |

@@ -787,10 +787,13 @@ def check(
     again: bool = False,
     cancel: threading.Event | None = None,
     phase: Phase = _quiet,
+    previews: bool = True,
 ) -> Check:
     """Get the images of the cloud ``cid`` (its ``rings``) from the source ``code`` of
     ``sources`` at the tile's sharpness, freeze them into parts, and judge them as the search
-    does."""
+    does; its preview made too (``previews``), which After shows until Apply lays it: about a
+    third of the work after the download (B14). Find and apply, which shows nothing before it
+    lays, goes without; the cloud mode makes one as it opens when it needs it (:func:`preview`)."""
     provider = sources.providers[code]
     textures = shown.textures
     c = {
@@ -877,7 +880,8 @@ def check(
     }
     # its preview made now, in the task, as After will show it: made by the page's reading, a
     # dozen of them took a reading 6.5 s (a user's 189 clouds, 2026-11-07)
-    preview(p, tile, entry, shown.built, sorted(entry_parts))
+    if previews:
+        preview(p, tile, entry, shown.built, sorted(entry_parts))
     return Check(j, entry)
 
 
