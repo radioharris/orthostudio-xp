@@ -8705,7 +8705,7 @@ def test_the_clouds_cell_and_the_searches_line_say_the_searches() -> None:
             lays: m.searchWords(lays),
             alone: m.searchesLine([next]),
             none: m.searchesLine([]),
-            keys: ["library.clouds_found", "library.clouds_failed", "library.searches_now",
+            keys: ["library.clouds_found", "library.clouds_failed", "library.searches_one",
                    "library.searches_waiting", "library.clouds_find", "library.clouds_find_help",
                    "library.clouds_find_started", "library.clouds_find_left",
                    "library.clouds_find_none", "library.searches_stop",
@@ -8714,7 +8714,8 @@ def test_the_clouds_cell_and_the_searches_line_say_the_searches() -> None:
                    "library.clouds_forget_picked_help", "library.clouds_forget_n_title",
                    "library.clouds_forgotten_n", "library.apply_title", "library.apply_text",
                    "library.apply_go", "library.apply_started", "library.apply_left",
-                   "library.apply_none", "library.applying_images", "library.searches_many"]
+                   "library.apply_none", "library.applying_images", "library.searches_head",
+                   "library.searches_one"]
               .filter((k) => i.t(k) === k),
           };
         })()"""
@@ -8729,8 +8730,11 @@ def test_the_clouds_cell_and_the_searches_line_say_the_searches() -> None:
     assert len(got["failed"]) == 1
     assert "+43+005" in got["line"] and "1" in got["line"].split("·")[1]
     assert "+43+006" not in got["alone"] and got["alone"] and got["none"] == ""
-    # several at work (Find and apply, several searches at once): how many, then how many wait
-    assert "3" in got["many"].split("·")[0] and "+43+005" not in got["many"]
+    # several at work (Find and apply, several searches at once): each with its step, then how
+    # many wait (a user, 2026-11-15: "4 tiles at work" said nothing of what each did)
+    for tile in ("+43+005", "+43+007", "+43+008"):
+        assert tile in got["many"], tile
+    assert "+43+006" not in got["many"] and "12" in got["many"] and "50" in got["many"]
     assert "12" in got["images"] and "50" in got["lays"]
     assert got["keys"] == []
 

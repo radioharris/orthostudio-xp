@@ -5501,12 +5501,19 @@ export function searchedNone(c) {
   return Boolean(c?.searched) && !(c.found > 0) && !(c.replaced > 0) && !(c.to_apply > 0);
 }
 
-/** Where a tile Find or Find and apply took is (its entry in ``GET /api/cloud-searches``): its
- * search and its step, its clouds' images being got and how many, or its Apply. */
+/** Where a tile Find or Find and apply took is (its entry in ``GET /api/cloud-searches``), as its
+ * cell says it: what it does, then its step (`stepWords`). */
 export function searchWords(entry) {
+  if (entry.step === "images") return stepWords(entry);
+  if (entry.step === "apply") return `${t("clouds.task.apply")} ${stepWords(entry)}`;
+  return `${t("clouds.task.find")} ${stepWords(entry)}`;
+}
+
+/** A tile's step alone, as the searches line says it beside its name: its search's or its Apply's
+ * phase and share, or its clouds' images being got and how many. */
+export function stepWords(entry) {
   if (entry.step === "images") return t("library.applying_images", { n: fmtInt(entry.images || 0) });
-  if (entry.step === "apply") return `${t("clouds.task.apply")} ${taskWords(entry)}`;
-  return `${t("clouds.task.find")} ${taskWords(entry)}`;
+  return taskWords(entry);
 }
 
 /** Whether a tile's entry waits for its search's turn, nothing of it running yet. */
@@ -5514,17 +5521,16 @@ export function searchWaits(entry) {
   return entry.step === "find" && entry.phase === "waiting";
 }
 
-/** The searches line (``GET /api/cloud-searches``): the tile at work and where it is, or how many
- * are (several at once), then how many wait for their turn; "" when none runs or waits. */
+/** The searches line (``GET /api/cloud-searches``): each tile at work and its step, then how many
+ * wait for their turn; "" when none runs or waits. "4 tiles at work" said nothing of what each did
+ * (a user, 2026-11-15). */
 export function searchesLine(searches) {
   if (!searches?.length) return "";
   const running = searches.filter((s) => !searchWaits(s));
   const waiting = searches.length - running.length;
-  const out = [];
-  if (running.length === 1) out.push(t("library.searches_now", { tile: running[0].tile, doing: searchWords(running[0]) }));
-  else if (running.length) out.push(t("library.searches_many", { n: fmtInt(running.length) }));
+  const out = running.map((s) => t("library.searches_one", { tile: s.tile, doing: stepWords(s) }));
   if (waiting) out.push(t("library.searches_waiting", { n: fmtInt(waiting) }));
-  return out.join(" · ");
+  return `${t("library.searches_head")} ${out.join(" · ")}`;
 }
 
 async function loadLibrary() {
