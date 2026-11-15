@@ -323,8 +323,8 @@ white at 28 % opacity: installed and selected tiles carry the colour).
   river at zoom 10). The legend's line is then dimmed and says "Zoom out to see them." on hover
   (it read "Country borders (zoom out to see them)" until a user asked for the brackets to go,
   2026-09-26).
-- **Switch**: a checkbox in the legend, on by default, remembered in `localStorage`
-  (`osxp.mapBorders`); the legend keeps the keyboard focus on it when it is rebuilt. A file
+- **Switch**: a checkbox in the legend, on by default, remembered (`osxp.mapBorders`, `ui.md` 1,
+  *What the page keeps*); the legend keeps the keyboard focus on it when it is rebuilt. A file
   that cannot be read (OrthoStudio XP being restarted, for instance) leaves the rest of the map
   working and the legend reading "Country borders unavailable for now (trying again by itself)": it
   is read again after 5 s, 15 s, 1 min, then every 5 min (`bordersRetryDelay`) while the borders are

@@ -1540,7 +1540,7 @@ async function startMap() {
     return;
   }
   $("map-follow").addEventListener("change", (event) => liveMap.setFollow(event.target.checked));
-  // the bar over the map: shown unless hidden once, kept by the engine (static/kept.js)
+  // the bar over the map: shown unless hidden once, kept by the page's server (static/kept.js)
   const details = kept.pageKept(MAP_DETAILS_KEY) !== "0";
   $("map-details").checked = details;
   liveMap.setDetails(details);

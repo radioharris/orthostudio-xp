@@ -9224,16 +9224,12 @@ def test_a_clouds_label_stands_where_its_number_is_over_every_mark() -> None:
     assert "L.marker(placeOf(c.rings[0])," in marks  # the number at the very same place
 
 
-def _kept_run(given: Any, browser: dict[str, str], steps: str) -> Any:
+def _kept_run(given: str, steps: str) -> Any:
     """kept.js under node, served with ``given`` in ``#page-kept`` (``"none"``: no such element,
-    the page served as plain files), the browser's storage holding ``browser``: ``steps`` use
-    ``m`` and return a value; with it, what was sent to the engine and read from the browser."""
+    the page served as plain files): ``steps`` use ``m`` and return a value; with it, what was
+    sent to the server."""
     script = f"""
-    const sent = [], asked = [];
-    const browser = {json.dumps(browser)};
-    globalThis.localStorage = {{
-      getItem: (k) => {{ asked.push(k); return k in browser ? browser[k] : null; }},
-    }};
+    const sent = [];
     globalThis.fetch = async (url, init) => {{
       sent.push([url, init.method, JSON.parse(init.body)]);
       return {{}};
@@ -9247,24 +9243,24 @@ def _kept_run(given: Any, browser: dict[str, str], steps: str) -> Any:
     const m = await import("./kept.js");
     const got = await (async () => {{ {steps} }})();
     for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
-    process.stdout.write(JSON.stringify({{ got, sent, asked }}));
+    process.stdout.write(JSON.stringify({{ got, sent }}));
     """
     if NODE is None:
         pytest.skip("node is not installed")
     return _run_node(script)
 
 
-def test_the_page_reads_what_the_engine_kept_and_sends_it_each_change() -> None:
+def test_the_page_reads_what_its_server_kept_and_sends_it_each_change() -> None:
     """In the app's frame the browser's storage was forgotten at every launch (2026-11-15): the
-    engine keeps the page's choices and writes them into the page (api/page_kept.py)."""
+    page's server keeps its choices and writes them into the page (api/page_kept.py)."""
     run = _kept_run(
         json.dumps({"kept": {"osxp.mapAirports": "1"}}),
-        {"osxp.mapStreet": "1"},
         """
         const before = [m.pageKept("osxp.mapAirports"), m.pageKept("osxp.mapStreet")];
         m.pageKeep("osxp.experts", "open");
         m.pageKeep("osxp.experts", "open");  // the same again: nothing to send
         m.pageKeep("osxp.mapAirports", null);
+        m.pageKeep("osxp.mapStreet", null);  // never kept: nothing to forget
         return [...before, m.pageKept("osxp.experts"), m.pageKept("osxp.mapAirports")];
         """,
     )
@@ -9273,43 +9269,21 @@ def test_the_page_reads_what_the_engine_kept_and_sends_it_each_change() -> None:
         ["/api/page-kept", "PUT", {"values": {"osxp.experts": "open"}}],
         ["/api/page-kept", "PUT", {"values": {"osxp.mapAirports": None}}],
     ]
-    assert run["asked"] == []  # the browser is no longer read once the engine keeps something
-
-
-def test_the_first_visit_takes_what_the_browser_still_holds_once() -> None:
-    run = _kept_run(
-        json.dumps({"kept": None}),
-        {"osxp.librarySort": '{"key":"zl","dir":-1}', "osxp.flightplan": "plan"},
-        """
-        const sort = m.pageKept("osxp.librarySort");
-        m.pageKeep("osxp.flightplan", null);  // forgotten before it was read
-        const again = m.pageKept("osxp.librarySort");
-        return [sort, again, m.pageKept("osxp.flightplan"), m.pageKept("osxp.none")];
-        """,
-    )
-    assert run["got"] == ['{"key":"zl","dir":-1}', '{"key":"zl","dir":-1}', None, None]
-    assert run["sent"] == [
-        ["/api/page-kept", "PUT", {"values": {"osxp.librarySort": '{"key":"zl","dir":-1}'}}],
-        ["/api/page-kept", "PUT", {"values": {"osxp.flightplan": None}}],
-    ]
-    assert run["asked"] == ["osxp.librarySort", "osxp.none"]  # each once, the forgotten one never
 
 
 def test_a_page_served_as_plain_files_keeps_its_choices_for_the_visit() -> None:
     for given in ("none", "null"):
         run = _kept_run(
             given,
-            {"osxp.mapAirports": "1"},
-            'm.pageKeep("osxp.experts", "open");'
-            ' return [m.pageKept("osxp.experts"), m.pageKept("osxp.mapAirports")];',
+            'm.pageKeep("osxp.experts", "open"); return m.pageKept("osxp.experts");',
         )
-        assert run == {"got": ["open", None], "sent": [], "asked": []}, given
+        assert run == {"got": "open", "sent": []}, given
 
 
 def test_the_build_page_keeps_its_choices_through_kept_js_alone() -> None:
     """One place: the language, the theme, the text size and the zoom are the frame's and stay in
     their own modules; every other choice of the page goes through kept.js."""
-    for name in ("app.js", "map.js", "flightplan.js", "clouds.js", "settings.js", "find.js"):
+    for name in ("app.js", "map.js", "flightplan.js", "kept.js", "clouds.js", "settings.js"):
         js = (UI / name).read_text(encoding="utf-8")
         uses = re.findall(r"localStorage\.\w+\(([^)]*)\)", js)
         assert all('"osxp.theme"' in u for u in uses), (name, uses)

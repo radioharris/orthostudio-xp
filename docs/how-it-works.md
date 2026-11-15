@@ -571,9 +571,9 @@ one when the app starts.
                    and its count of the airports made sharper
   update.json      the latest version GitHub named, and when it was asked (once a day at most)
   page.json        what the page keeps from one visit to the next: the map's boxes, the
-                   Library's order, the flight plan of step 1...;  live-page.json  the same for
-                   Live's page;  frame.json  the language, the theme, the text size and the zoom
-                   of the app's window
+                   Library's order, the flight plan of step 1...
+  live-page.json   the same for Live's page
+  frame.json       the language, the theme, the text size and the zoom of the app's window
   clouds/+46+006.json  the clouds of a tile you looked at: found or outlined, ticked, their source,
                    and those laid in the tile
   models/clouds-detector-1/  the cloud detector (64 MB) and  libs/opencv-<version>/  OpenCV,

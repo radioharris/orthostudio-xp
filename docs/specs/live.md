@@ -267,11 +267,10 @@ suite keeps it off unless a test switches it on, `tests/conftest.py`):
   theme, the text size and the room the foot takes. The zoom is the
   window's (`FrameTools` is a `PageTools`), its keys typed in a page passed on to the frame. What
   the pilot chose is kept in `frame.json` and written into the frame's page as it is served; the
-  first start takes, once, what the pages had kept of their own. The web view of macOS keeps a
-  page's storage only while the window is open when that page is an iframe, as both pages are
-  here: each page keeps the rest of its choices through the program that serves it, OrthoStudio
-  XP's in `page.json`, Live's (the bar over its map, *Details*) in `live-page.json`
-  (`web.LIVE_PAGE_FILE`; `ui.md` 1, *What the page keeps*, 2026-11-15). Quitting (the frame's Quit,
+  first start takes, once, what the pages had kept of their own. Each page keeps the rest of its
+  choices through the program that serves it, the pages being iframes whose storage the web view
+  of macOS forgets (`ui.md` 1, *What the page keeps*): Live's, the bar over its map, in
+  `live-page.json` (`web.LIVE_PAGE_FILE`). Quitting (the frame's Quit,
   Cmd+Q, the app's menu and the Dock's, the close button on Windows and Linux) asks once while a
   build or a stream runs, in OrthoStudio XP's own dialog in the frame's page (`#quit-confirm`, put
   there from its page; `frame.js askQuit`, the words from `Frame.quit_words`, its Quit
@@ -1580,7 +1579,7 @@ Over it, Live's layers:
   textures over the ZL16 ones do not add their colours up, which first made them look darker
   than they are. The regions' shade is
   shown only up to zoom 6. The texture under the pointer is told in a bar over the map's top, one
-  line or two, which the header's "Details" box hides (remembered in the window's storage), and
+  line or two, which the header's "Details" box hides (kept in `live-page.json`), and
   told again when it changes while the pointer rests on it; a tooltip, and then a line below
   the map, were too present (the user): `GET /api/live/map/texture?lat&lon`,
   the smallest texture there, said sharpness first ("Photos of ZL17: 83 cm a pixel · a tile of

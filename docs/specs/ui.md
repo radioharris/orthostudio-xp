@@ -60,18 +60,19 @@ groups), the Library's order, the *For experts* band, the folder of the last pla
 plan of step 1 and the notes put away. The engine keeps them, in `$OSXP_HOME/page.json`, and
 writes them into the page as it serves it (`#page-kept`, `api/page_kept.py`); a change goes back at
 once with `PUT /api/page-kept` (`api.md`), one after the other in the order made (`kept.js`
-`pageKept`, `pageKeep`, the one place of the page that keeps anything). The browser's storage
-kept them until 2.2.0: in the app's frame the page is an iframe on the port after the frame's, and
-the web view of macOS keeps an iframe's storage only while the window is open, so every launch
-since the frame (2.0.0) started from nothing (a user lost the airports box at each start; measured
-2026-11-15, the same page keeping its value as the window's own page and losing it in an iframe on
-the next port). The first visit after takes what the browser still holds, key by key, once.
-Served as plain files, with no engine, the page keeps its choices for the visit alone. Live's
-page keeps its one choice, the bar over its map (*Details*, `osxp.live.mapDetails`), the same way
-in `live-page.json`: its program is another than the engine's, and two programs never write one
-file (`live/web.py`). The language, the theme, the text size and the zoom are the frame's, for
-both pages
-(`orthostudio.live.frame`, `frame.json`), and stay in the browser's storage outside the frame.
+`pageKept`, `pageKeep`, the one place for the page's own choices). A file missing or unreadable
+keeps nothing, and the next change writes it whole again. The browser's storage kept them until
+2.2.0: in the app's frame the page is an iframe on the port after the frame's, and the web view of
+macOS keeps an iframe's storage only while the window is open, so every launch since the frame
+(2.0.0) started from nothing (a user lost the airports box at each start; measured 2026-11-15, the
+same page keeping its value as the window's own page and losing it in an iframe on the next port).
+That storage is no longer read: 2.2.0 starts once from the defaults, which the app's window had
+done at every launch. Served as plain files, with nothing to keep them, the page keeps its choices
+for the visit alone. Live's page keeps its one choice, the bar over its map (*Details*,
+`osxp.live.mapDetails`), the same way, in `live-page.json` (`live/web.py`): its server is the
+app's own program, and two programs never write one file. The language, the theme, the text size
+and the zoom are the frame's, for both pages (`orthostudio.live.frame`, `frame.json`), and stay in
+the browser's storage outside the frame.
 
 **Text styles**, as in a word processor's template (a user found eleven sizes of text and titles
 standing 0 to 14px above their text, and asked for one style per kind of text, 2026-09-21). Every

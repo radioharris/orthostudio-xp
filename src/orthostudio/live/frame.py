@@ -269,10 +269,9 @@ def frame_page(given: dict[str, Any]) -> bytes:
     the theme, Quit, the text size and the zoom are written once, in OrthoStudio XP's page. The
     frame had copies of them, and a change to OrthoStudio XP's Quit left its own behind (the user:
     « pourquoi c'est pas le même bouton ??? », 2026-10-04)."""
-    html = (FRAME_DIR / "frame.html").read_text(encoding="utf-8")
-    literal = json.dumps(given).replace("</", "<\\/").replace("<!--", "<\\!--")
-    html = html.replace(GIVEN, GIVEN.replace("{}", literal))
-    from orthostudio.ui import ui_dir
+    from orthostudio.ui import ui_dir, with_json
+
+    html = with_json((FRAME_DIR / "frame.html").read_text(encoding="utf-8"), GIVEN, given)
 
     try:
         osxp = (ui_dir() / "index.html").read_text(encoding="utf-8")

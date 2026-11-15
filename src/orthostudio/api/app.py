@@ -38,7 +38,6 @@ from orthostudio.api.guard import (
     ALLOWED_FETCH_SITES,
     DEFAULT_ALLOWED_HOSTS,
     MAX_BODY_BYTES,
-    PAGE_CACHE_CONTROL,
     _GuardMiddleware,
     _plain_error,
     _RevalidatedStaticFiles,
@@ -68,7 +67,7 @@ from orthostudio.api.models import (
     SourceTestRequest,
     UninstallRequest,
 )
-from orthostudio.api.page_kept import load_kept, page_kept_path, page_kept_router, page_with_kept
+from orthostudio.api.page_kept import kept_page, page_kept_router
 from orthostudio.api.presence import Presence
 from orthostudio.api.serve import package_root
 from orthostudio.api.simbrief import simbrief_router
@@ -2723,9 +2722,6 @@ def create_app(
                 "Use the API (/api/status) or reinstall OrthoStudio XP.",
                 status=503,
             )
-        # with what the page keeps from one visit to the next (orthostudio.api.page_kept)
-        html = (ui / "index.html").read_text(encoding="utf-8")
-        page = page_with_kept(html, load_kept(page_kept_path()))
-        return Response(page, media_type="text/html", headers={"Cache-Control": PAGE_CACHE_CONTROL})
+        return kept_page(ui / "index.html")  # with what the page keeps (api/page_kept.py)
 
     return app
