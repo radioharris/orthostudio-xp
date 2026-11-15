@@ -42,8 +42,10 @@ read before stay meanwhile. Its words are read of a tile with a list or clouds l
 (`clouds/`); no other tile's textures are read. What the tile holds is counted from its folder
 (2.1).
 
-**The Clouds group** (a user's ask, discussion 23, 2026-11-12; his group, 2026-11-15): three
-buttons of the bar over the table, after Tiles, each with how many tiles it takes.
+**The Clouds menu** (a user's ask, discussion 23, 2026-11-12; his menu, 2026-11-15): « Nuages ▾ »
+in the bar over the table, after Tiles, three actions under it, each with how many tiles it takes
+(as three buttons they sent Remove from the list and Delete to a second line). It closes as one of
+them starts, by a click elsewhere, or by Escape.
 
 - **Find** takes the tiles picked and shown whose cell says so (`find`, `View.left_by`): never
   searched, and a search allowed now (nothing of it at work, nothing else holding its folder); a

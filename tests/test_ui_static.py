@@ -8842,6 +8842,9 @@ def test_the_bar_s_actions_stand_in_four_groups_with_their_counts() -> None:
     assert 'id="library-act-tiles"' in groups[1] and 'data-i18n="library.act_tiles"' in groups[1]
     assert 'id="library-rebuild"' in groups[1] and 'id="library-file"' in groups[1]
     assert 'id="library-act-clouds"' in groups[2] and 'data-i18n="library.act_clouds"' in groups[2]
+    # the clouds' three in a menu (a user's choice, 2026-11-15: as buttons, they sent the end
+    # group to a second line), closed as an action starts, by a click elsewhere or Escape
+    assert '<details class="library-menu" id="library-clouds-menu">' in groups[2]
     for b in ("find", "apply", "forget"):
         assert f'id="library-clouds-{b}"' in groups[2], b
     assert 'library-act-end" id="library-act-end"' in groups[3]

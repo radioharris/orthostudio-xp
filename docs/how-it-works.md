@@ -385,8 +385,8 @@ Deleting a tile keeps its list of clouds: built again, it gets them back. *Forge
 the bin in the Library's Clouds cell) puts the photos back and erases the tile's list, to start from
 nothing.
 
-With many tiles built, tick them in the Library and use the *Clouds* group of the bar over the
-table. *Find* runs the quick search on each tile never searched, several at once (four on a
+With many tiles built, tick them in the Library and open the *Clouds ▾* menu of the bar over
+the table. *Find* runs the quick search on each tile never searched, several at once (four on a
 computer of 32 GB or more; a tile already searched is left as it is, its clouds there to look at):
 then open each tile's clouds, tick and *Apply* as above. *Find and apply…* does the same, then
 replaces at once the clouds a clear source was found under, without showing them first, a tile

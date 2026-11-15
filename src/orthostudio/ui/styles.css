@@ -756,6 +756,17 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 }
 .clouds-badge.is-replaced { top: -5px; background: var(--accent); color: var(--accent-fg); }
 .clouds-badge.is-waiting { bottom: -5px; background: var(--warn-soft); color: var(--warn); box-shadow: inset 0 0 0 1px var(--warn); }
+/* The bar's Clouds menu (a user's choice, 2026-11-15): its summary a button of the bar, its three
+   actions in a list under it, over the table, the widest setting their width. */
+.library-menu { position: relative; }
+.library-menu > summary { display: inline-flex; align-items: center; gap: 6px; list-style: none; user-select: none; }
+.library-menu > summary::-webkit-details-marker { display: none; }
+.library-menu-arrow { font-size: var(--fs-3); color: var(--fg-2); }
+.library-menu > .library-menu-list {
+  top: 100%; bottom: auto; min-width: 0; margin: 6px 0 0; padding: 6px;
+  display: grid; gap: 6px;
+}
+.library-menu-list > .btn { text-align: left; white-space: nowrap; }
 /* What a search found and waits for a look, at the cloud's other corner, quiet; a search waiting
    its turn dims the cloud, one under way takes its place as a spinner, one that failed shows it in
    the danger's colour (Find clouds, a user's ask, 2026-11-12). */

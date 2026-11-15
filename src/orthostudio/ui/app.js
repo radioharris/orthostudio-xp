@@ -8471,9 +8471,23 @@ async function boot() {
   $("library-delete-picked").addEventListener("click", () => bulkLibraryAction("delete"));
   $("library-forget").addEventListener("click", () => bulkLibraryAction("forget"));
   $("library-filing-stop").addEventListener("click", stopFiling);
-  $("library-clouds-find").addEventListener("click", () => findLibraryClouds(false));
-  $("library-clouds-apply").addEventListener("click", () => findLibraryClouds(true));
-  $("library-clouds-forget").addEventListener("click", forgetPickedClouds);
+  // the Clouds menu: closed as one of its actions starts, by a click elsewhere, or by Escape
+  const cloudsMenu = $("library-clouds-menu");
+  const fromMenu = (work) => () => {
+    cloudsMenu.open = false;
+    work();
+  };
+  $("library-clouds-find").addEventListener("click", fromMenu(() => findLibraryClouds(false)));
+  $("library-clouds-apply").addEventListener("click", fromMenu(() => findLibraryClouds(true)));
+  $("library-clouds-forget").addEventListener("click", fromMenu(forgetPickedClouds));
+  document.addEventListener("click", (ev) => {
+    if (cloudsMenu.open && !cloudsMenu.contains(ev.target)) cloudsMenu.open = false;
+  });
+  cloudsMenu.addEventListener("keydown", (ev) => {
+    if (ev.key !== "Escape" || !cloudsMenu.open) return;
+    cloudsMenu.open = false;
+    cloudsMenu.querySelector("summary").focus();
+  });
   $("library-searches-stop").addEventListener("click", stopSearches);
   // The Library's sort stays from one visit to the next, a convenience of this browser only.
   try {

@@ -373,15 +373,21 @@
             <button type="button" class="btn" id="library-rebuild" data-i18n-title="library.rebuild_help" title="Build the tiles picked again with today's version and settings, without going through the Plan. What the data folder already holds is reused."><span data-i18n="library.rebuild">Build again…</span><span class="library-act-n" id="library-rebuild-n"></span></button>
             <button type="button" class="btn" id="library-file"><span data-i18n="library.file">File elsewhere…</span><span class="library-act-n" id="library-file-n"></span></button>
           </div>
-          <!-- the clouds of the tiles picked (a user's ask, 2026-11-12, his group, 2026-11-15): a
-               quick search of each never searched, several at once, each then looked at and applied
-               in its own cloud mode; the same, then the clouds a clear source was found under
-               replaced at once, without a look (asked first); their clouds forgotten (asked first) -->
+          <!-- the clouds of the tiles picked (a user's ask, 2026-11-12; his menu, 2026-11-15: three
+               more buttons in the bar sent Remove from the list and Delete to a second line): a
+               quick search of each never searched, several at once, each then looked at and
+               applied in its own cloud mode; the same, then the clouds a clear source was found
+               under replaced at once, without a look (asked first); their clouds forgotten (asked
+               first). A menu over the bar, closed by its own click, one elsewhere or Escape -->
           <div class="library-act" id="library-act-clouds" role="group" aria-labelledby="library-act-clouds-name">
-            <span class="library-act-name" id="library-act-clouds-name" data-i18n="library.act_clouds">Clouds</span>
-            <button type="button" class="btn" id="library-clouds-find" data-i18n-title="library.clouds_find_help" title="Search the clouds of the tiles picked that were never searched, several at once (quick search). You then check each tile and apply as usual."><span data-i18n="library.clouds_find">Find</span><span class="library-act-n" id="library-clouds-find-n"></span></button>
-            <button type="button" class="btn" id="library-clouds-apply" data-i18n-title="library.clouds_apply_help" title="Search the clouds of the tiles picked and replace them at once with the best clear source, without showing them first; a tile already searched has the clouds found replaced. Restore the original photos undoes it, tile by tile."><span data-i18n="library.clouds_apply">Find and apply…</span><span class="library-act-n" id="library-clouds-apply-n"></span></button>
-            <button type="button" class="btn btn-danger" id="library-clouds-forget" data-i18n-title="library.clouds_forget_picked_help" title="Put back the original photos of the tiles picked and erase their lists of clouds (asks first)."><span data-i18n="library.clouds_forget_picked">Forget…</span><span class="library-act-n" id="library-clouds-forget-n"></span></button>
+            <details class="library-menu" id="library-clouds-menu">
+              <summary class="btn" id="library-act-clouds-name"><span data-i18n="library.act_clouds">Clouds</span><span class="library-menu-arrow" aria-hidden="true">▾</span></summary>
+              <div class="popover library-menu-list">
+                <button type="button" class="btn" id="library-clouds-find" data-i18n-title="library.clouds_find_help" title="Search the clouds of the tiles picked that were never searched, several at once (quick search). You then check each tile and apply as usual."><span data-i18n="library.clouds_find">Find</span><span class="library-act-n" id="library-clouds-find-n"></span></button>
+                <button type="button" class="btn" id="library-clouds-apply" data-i18n-title="library.clouds_apply_help" title="Search the clouds of the tiles picked and replace them at once with the best clear source, without showing them first; a tile already searched has the clouds found replaced. Restore the original photos undoes it, tile by tile."><span data-i18n="library.clouds_apply">Find and apply…</span><span class="library-act-n" id="library-clouds-apply-n"></span></button>
+                <button type="button" class="btn btn-danger" id="library-clouds-forget" data-i18n-title="library.clouds_forget_picked_help" title="Put back the original photos of the tiles picked and erase their lists of clouds (asks first)."><span data-i18n="library.clouds_forget_picked">Forget…</span><span class="library-act-n" id="library-clouds-forget-n"></span></button>
+              </div>
+            </details>
           </div>
           <div class="library-act library-act-end" id="library-act-end" role="group" data-i18n-aria-label="library.act_end" aria-label="Off the list">
             <button type="button" class="btn" id="library-forget" data-i18n-title="library.forget_picked_help" title="The Ortho4XP tiles picked leave this list, taken out of X-Plane first. Their files stay where Ortho4XP put them."><span data-i18n="library.forget_picked">Remove from the list…</span><span class="library-act-n" id="library-forget-n"></span></button>
