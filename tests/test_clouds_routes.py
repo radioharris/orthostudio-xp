@@ -34,7 +34,10 @@ NAME = "1488_2096_BI12"
 
 
 @pytest.fixture
-def app(home: Path):  # type: ignore[no-untyped-def]
+def app(home: Path, monkeypatch: pytest.MonkeyPatch):  # type: ignore[no-untyped-def]
+    # one search at a time, whatever the memory of the computer the tests run on: the order
+    # they run in is the tests' to say (several at once: ``test_clouds_tasks.py``)
+    monkeypatch.setattr(clouds_api, "searches_at_once", lambda: 1)
     mgr = JobManager(jobs_dir=home / "jobs", build=FakeBuild(), env_factory=lambda specs: None)
     application = create_app(
         env_factory=None, jobs=mgr, airports=FakeIndex(), settings_path=home / "config.toml"
@@ -407,7 +410,7 @@ async def test_the_library_cell_is_offered_on_the_tiles_own_folder_only(
         lib.register(TILE, "BI", 12, elsewhere, "ortho4xp")
     async with client_for(app) as c:
         rows = (await c.get("/api/clouds")).json()["rows"]
-    assert rows == {str(own.path): state.library_cell(find=True)}  # never searched
+    assert rows == {str(own.path): state.library_cell(find=True, apply=True)}  # never searched
 
 
 @pytest.mark.anyio
@@ -1509,3 +1512,115 @@ async def test_find_clouds_refuses_a_body_without_tiles(app: Any, ready: Path) -
         for body in ({}, {"tiles": "+43+005"}, {"tiles": [5]}):
             r = await c.post("/api/cloud-searches", json=body)
             assert r.json()["error"]["code"] == "CLOUD_INVALID", body
+
+
+# -- Find and apply (a user's choice, 2026-11-15) -------------------------------------------------
+
+
+def _found_with_images(folder: Path) -> str:
+    """A tile searched before: one cloud found, unticked, EOX judged clear under it and its images
+    got (an entry standing on the tile's texture)."""
+    from orthostudio.clouds.sources import JUDGED
+    from orthostudio.clouds.tile import file_digest, part_path
+
+    held = read_tile(folder)
+    assert held is not None
+    loose = part_path("p" * 64)
+    loose.parent.mkdir(parents=True, exist_ok=True)
+    loose.write_bytes(b"a part")
+    digest = file_digest(loose)
+    loose.rename(part_path(digest))
+    with cloudlist.update(TILE) as cl:
+        cl.search = {"level": 12, "found": 1}
+        c = cl.add("found", _ring(), screening={"EOX": {"answer": "clear", "fit": 70}})
+        entry = {
+            "id": c["id"],
+            "source": "EOX",
+            "match": [[1, 1, 1], [0, 0, 0]],
+            "rings": _ring(),
+            "parts": {NAME: [12, digest]},
+            "plain": {NAME: held.plain(NAME)},
+        }
+        c["checks"] = {"EOX": {"answer": "clear", "fit": 70, "entry": entry, "judged": JUDGED}}
+        return str(c["id"])
+
+
+@pytest.mark.anyio
+async def test_find_and_apply_lays_the_clouds_a_search_found_before(
+    app: Any, ready: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cid = _found_with_images(ready)
+    _searching(monkeypatch)
+    laid: list[int] = []
+    monkeypatch.setattr(
+        clouds_api, "show", lambda tile, folder, asked, **k: laid.append(len(asked))
+    )
+    async with client_for(app) as c:
+        found = await c.post("/api/cloud-searches", json={"tiles": ["+43+005"]})
+        r = await c.post("/api/cloud-searches", json={"tiles": ["+43+005"], "apply": True})
+        assert r.status_code == 200, r.text
+        await _no_search(c)
+        again = await c.post("/api/cloud-searches", json={"tiles": ["+43+005"], "apply": True})
+    with cloudlist.update(TILE) as cl:
+        ticked = [c["id"] for c in cl.clouds if c["tick"]]
+    # Find leaves a tile searched; Find and apply takes it, without a search: its cloud ticked
+    # (a clear source judged under it), then laid once nothing of it ran
+    assert found.json() == {"started": [], "left": [{"tile": "+43+005", "why": "searched"}]}
+    assert r.json() == {"started": ["+43+005"], "left": []}
+    assert laid == [1] and ticked == [cid]
+    # laid (the fake one), it is still ticked and planned: busy no more, Find and apply takes it
+    # again as long as Apply lays something; the real Apply's tile holds it then
+    assert again.json()["started"] == ["+43+005"]
+
+
+@pytest.mark.anyio
+async def test_find_and_apply_searches_first_and_lays_nothing_when_none_is_found(
+    app: Any, ready: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    order = _searching(monkeypatch)
+    laid: list[int] = []
+    monkeypatch.setattr(clouds_api, "show", lambda *a, **k: laid.append(1))
+    async with client_for(app) as c:
+        r = await c.post("/api/cloud-searches", json={"tiles": ["+43+005"], "apply": True})
+        await _no_search(c)
+        line = (await _read(c))["line"]["key"]
+    assert r.json() == {"started": ["+43+005"], "left": []}
+    assert order[:1] == ["+43+005"] and laid == [] and line == "clouds.none_found"
+
+
+@pytest.mark.anyio
+async def test_stop_ends_find_and_apply_before_its_apply(
+    app: Any, ready: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import threading
+
+    from orthostudio.clouds.find import Check
+
+    cid = _found_with_images(ready)
+    with cloudlist.update(TILE) as cl:  # its images not got yet: asked for once it is ticked
+        next(c for c in cl.clouds if c["id"] == cid)["checks"] = {}
+    asking = threading.Event()
+
+    def check(*_a: Any, cancel: Any = None, **_k: Any) -> Check:
+        asking.set()
+        while not cancel.wait(0.02):
+            pass
+        raise OsxpError("SYS_CANCELLED")
+
+    _searching(monkeypatch)
+    laid: list[int] = []
+    monkeypatch.setattr(clouds_api, "check", check)
+    monkeypatch.setattr(clouds_api, "show", lambda *a, **k: laid.append(1))
+    async with client_for(app) as c:
+        await c.post("/api/cloud-searches", json={"tiles": ["+43+005"], "apply": True})
+        for _ in range(400):
+            s = await _searches(c)
+            if asking.is_set() and s and s[0]["step"] == "images":
+                break
+            await anyio.sleep(0.01)
+        assert s[0]["step"] == "images" and s[0]["images"] == 1, s
+        stopped = (await c.post("/api/cloud-searches/stop")).json()
+        await _no_search(c)
+        await anyio.sleep(0.6)  # what follows would have applied by now
+    # its images' task stopped, nothing applied: its tick kept, as after Tick all in its mode
+    assert stopped == {"stopped": 1} and laid == []

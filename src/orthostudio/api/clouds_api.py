@@ -49,7 +49,7 @@ from orthostudio.clouds.sources import (
     tops,
     tops_under,
 )
-from orthostudio.clouds.tasks import Task, Tasks, error_view, standing
+from orthostudio.clouds.tasks import Task, Tasks, error_view, searches_at_once, standing
 from orthostudio.clouds.tile import (
     TileClouds,
     clouds_dir,
@@ -116,7 +116,11 @@ class CloudEngine:
 
     def __init__(self, hooks: CloudHooks) -> None:
         self.hooks = hooks
-        self.tasks = Tasks(taken=hooks.taken)
+        self.tasks = Tasks(taken=hooks.taken, searches=searches_at_once())
+        self.applying: dict[str, threading.Event] = {}
+        """The tiles Find and apply takes, in their order, from its ask until their Apply has
+        ended, each with what stops it (``clouds_router.find_many``); under :attr:`lock`."""
+        self.lock = threading.Lock()
         self._pictures: dict[tuple[str, str], Picture] = {}
         self._drawing: dict[tuple[str, str], threading.Lock] = {}
         self._classes: dict[tuple[str, str], np.ndarray] = {}
@@ -285,9 +289,19 @@ class CloudEngine:
         with self._lock:
             return self._classes.get((tile.name, shown.built))
 
+    def leave(self, tile: TileRef, stop: threading.Event) -> None:
+        """Find and apply done with the tile, when ``stop`` is still what takes it."""
+        with self.lock:
+            if self.applying.get(tile.name) is stop:
+                del self.applying[tile.name]
+
     def let_go(self, tile: TileRef) -> None:
-        """A tile about to be deleted: its tasks ended (an Apply ends what it began before its
-        folder goes), what is kept of it in memory dropped."""
+        """A tile about to be deleted: Find and apply stopped on it, its tasks ended (an Apply
+        ends what it began before its folder goes), what is kept of it in memory dropped."""
+        with self.lock:
+            stop = self.applying.pop(tile.name, None)
+        if stop is not None:
+            stop.set()
         self.tasks.end({tile.name})
         with self._lock:
             for kept in (self._pictures, self._classes, self._asked, self._given):
@@ -407,6 +421,14 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
         task.say("drawing")
         return engine.drawn(tile, shown, map_level(tile, shown.textures))[1]
 
+    def under_way(name: str) -> bool:
+        """Whether something of the tile ``name`` is at work: a task, what follows one (an
+        outline's tick and images), or Find and apply, from its ask until its Apply has ended
+        (``engine.applying``)."""
+        with engine.lock:
+            applying = name in engine.applying
+        return applying or engine.tasks.busy(name)
+
     def look(tile: TileRef) -> tuple[Path, TileClouds | None, state.View]:
         """The tile's folder, what it shows (``None`` in a state its folder is not read in) and
         its view, of its list knowing what the folder shows (``cloudlist.knowing``)."""
@@ -419,9 +441,10 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
             tool=opencv_ready(),
         )
         tasks = [t.view() for t in engine.tasks.of(tile.name)]
-        under_way = engine.tasks.busy(tile.name)  # what follows a task too
         heights = tops(shown.textures, load_registry()) if shown is not None else None
-        view = state.view(cls.knowing(tile, shown), shown, tile, st, tasks, under_way, heights)
+        view = state.view(
+            cls.knowing(tile, shown), shown, tile, st, tasks, under_way(tile.name), heights
+        )
         return folder, shown, view
 
     def opened(
@@ -557,15 +580,13 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
                 if not is_own_folder(r.tile, r.path, custom_scenery=cs):
                     continue
                 name = r.tile.name
+                last = engine.tasks.failed(name)
+                failed = last.error if last is not None and last.kind == "find" else None
                 if name in lists or clouds_dir(r.path).is_dir():
-                    cell = look(r.tile)[2].library()
+                    out[str(r.path)] = look(r.tile)[2].library(failed)
                 else:
-                    free = name not in taken and not engine.tasks.busy(name)
-                    cell = state.library_cell(find=free)
-                failed = engine.tasks.failed(name)
-                if failed is not None and failed.kind == "find":
-                    cell["failed"] = failed.error
-                out[str(r.path)] = cell
+                    free = name not in taken and not under_way(name)
+                    out[str(r.path)] = state.unread_cell(free, failed)
         return {"rows": out}
 
     def sources_for(
@@ -589,7 +610,7 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
             (mine,) = heights
             codes = {code_of(base, level, mine) for base in found} - {shown.provider}
             found = {k: pr for k in codes if (pr := resolve(k, registry)) is not None}
-        return SourcePieces(default_chunks_root(), found), heights
+        return SourcePieces(default_chunks_root(), found, one_at_a_time=True), heights
 
     def tried_under(
         task: Task,
@@ -710,59 +731,150 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
 
     @router.post("/api/cloud-searches")
     def find_many(body: Annotated[dict[str, Any], Body()]) -> dict[str, Any]:
-        """The Library's Find clouds: a quick search of each tile ``tiles`` names that its view
-        allows (:attr:`state.View.searchable`: never searched, a search allowed now), one after
-        the other as every search (one at a time for the app, ``Tasks``); each other one left,
-        with why: ``searched``, ``busy`` (a task of it runs), else its state. The detector is
-        asked for once, before any starts (``download``, as a tile's search)."""
+        """The Library's Find and Find and apply (``apply``) on the tiles ``tiles`` names, each
+        one its view takes (:meth:`state.View.left_by`, the one rule; each other one left with
+        why): a quick search of each never searched, as many at once as the app runs them
+        (``Tasks``); with ``apply``, each then applied (:func:`apply_found`), a searched one
+        without a search. The detector is asked for once, before any starts (``download``)."""
         names = body.get("tiles")
         if not isinstance(names, list) or not all(isinstance(n, str) for n in names):
             raise OsxpError(
                 "CLOUD_INVALID", context={"tile": "", "cloud": "", "reason": "no tiles named"}
             )
-        go: list[tuple[TileRef, TileClouds]] = []
+        action = "apply" if body.get("apply") else "find"
+        go: list[tuple[TileRef, TileClouds, bool]] = []  # the tile, its folder, never searched
         left: list[dict[str, str]] = []
         for name in dict.fromkeys(names):
             tile = _tile_of(name)
             _folder, shown, v = look(tile)
-            if v.searchable:
-                assert shown is not None  # a view allowing a search has its folder read
-                go.append((tile, shown))
-            elif v.search is not None:
-                left.append({"tile": tile.name, "why": "searched"})
-            elif state.TILE_STATES[v.state].allows:  # its state allows one: a task of it runs
-                left.append({"tile": tile.name, "why": "busy"})
+            why = v.left_by(action)
+            if why is None:
+                assert shown is not None  # a view taking it has its folder read
+                go.append((tile, shown, v.search is None))
             else:
-                left.append({"tile": tile.name, "why": v.state})
+                left.append({"tile": tile.name, "why": why})
         if go:
             _detector_said(body)
         started: list[str] = []
-        for tile, shown in go:
+        for tile, shown, fresh in go:
             try:
-                start_find(tile, shown, False)
+                if action == "apply":
+                    take_to_apply(tile, shown if fresh else None)
+                else:
+                    start_find(tile, shown, False)
                 started.append(tile.name)
             except OsxpError as exc:  # taken or started meanwhile
                 left.append({"tile": tile.name, "why": exc.code})
         return {"started": started, "left": left}
 
+    def take_to_apply(tile: TileRef, shown: TileClouds | None) -> None:
+        """Find and apply takes the tile, searched first when ``shown`` (what its folder showed),
+        :func:`apply_found` after in a thread of its own; in ``engine.applying`` from now until
+        its Apply has ended, or what came before ended otherwise (a search stopped or failed,
+        nothing to lay). ``CLOUD_NOT_NOW`` when another ask took it meanwhile."""
+        stop = threading.Event()
+        with engine.lock:
+            if tile.name in engine.applying:
+                raise OsxpError("CLOUD_NOT_NOW", context={"tile": tile.name, "action": "apply"})
+            engine.applying[tile.name] = stop
+
+        def follow() -> None:
+            threading.Thread(target=apply_found, args=(tile, stop), daemon=True).start()
+
+        try:
+            if shown is None:
+                follow()
+            else:  # then: in a thread, as what follows a task counts it busy until it returns
+                start_find(tile, shown, False, then=follow, undo=lambda: engine.leave(tile, stop))
+        except OsxpError:
+            engine.leave(tile, stop)
+            raise
+
+    def apply_found(tile: TileRef, stop: threading.Event) -> None:
+        """Find and apply on a searched tile: every cloud a tick takes ticked (a clear source
+        judged under it: Tick all's own way, :func:`pick`) and its images got, then, once nothing
+        of the tile runs, Apply as its question would lay it (:func:`start_writes`). Nothing
+        more once ``stop`` is set (Stop, a deletion), nor when the tile is taken meanwhile (a
+        build: its view allows nothing then); a cloud whose images did not come stays ticked,
+        waiting, as after Tick all in its mode."""
+        started = False
+        try:
+            _folder, _shown, v = look(tile)
+            ids = [s.cloud["id"] for s in v.clouds if "tick" in s.actions]
+            if ids and v.allows("tick") and not stop.is_set():
+                pick(tile, ids, "tick", body={"download": True}, before=v)
+            while engine.tasks.busy(tile.name) and not stop.wait(0.25):
+                pass
+            if stop.is_set():
+                return
+            folder, _shown, v = look(tile)
+            if v.allows("apply") and v.asked:
+                end = lambda: engine.leave(tile, stop)  # noqa: E731
+                start_writes(tile, folder, v, "apply", then=end, undo=end)
+                started = True
+        except OsxpError as exc:
+            log.warning("Find and apply of %s: %s", tile.name, exc.message)
+        except Exception:
+            log.exception("Find and apply of %s failed", tile.name)
+        finally:
+            if not started:
+                engine.leave(tile, stop)
+
     @router.get("/api/cloud-searches")
     def searches() -> dict[str, Any]:
-        """Every search under way or waiting for its turn, in the order they were asked: what the
-        Library's line says and its rows show while they run. Nothing of a tile is read."""
-        found = [t.view() for t in engine.tasks.of() if t.kind == "find"]
-        return {"searches": [{k: t[k] for k in ("id", "tile", "phase", "progress")} for t in found]}
+        """Every search under way or waiting for its turn, and every tile Find and apply takes
+        until its Apply has ended, in the order they were asked: what the Library's line says
+        and its rows show. Each with its ``step``: ``find`` (its search, ``phase`` and
+        ``progress`` its task's), ``images`` (its clouds' images being got, ``images`` of them),
+        ``apply`` (its Apply's). Nothing of a tile is read."""
+        tasks = engine.tasks.of()
+        with engine.lock:
+            applying = list(engine.applying)
+        found = [t.tile for t in tasks if t.kind == "find"]
+        out = []
+        for name in dict.fromkeys([*applying, *found]):
+            mine = [t for t in tasks if t.tile == name]
+            find = next((t for t in mine if t.kind == "find"), None)
+            lays = next((t for t in mine if t.kind == "apply"), None)
+            checks = sum(1 for t in mine if t.kind == "check")
+            task = find or lays
+            out.append(
+                {
+                    "tile": name,
+                    "step": "find" if find else "apply" if lays else "images",
+                    "phase": task.phase if task else None,
+                    "progress": task.view()["progress"] if task else None,
+                    "images": checks,
+                }
+            )
+        return {"searches": out}
 
     @router.post("/api/cloud-searches/stop")
     def stop_searches() -> dict[str, Any]:
-        """Stop every search, those waiting for their turn too: a tile searched keeps its clouds,
-        the others are left as they were."""
-        return {
-            "stopped": sum(engine.tasks.stop(t.id) for t in engine.tasks.of() if t.kind == "find")
-        }
+        """Stop every search, those waiting for their turn too, and what Find and apply does but
+        an Apply under way, which ends what it began: a tile searched keeps its clouds, one
+        applied its Apply; the others are left as they were, their ticks kept."""
+        with engine.lock:
+            stops = dict(engine.applying)
+        for stop in stops.values():
+            stop.set()
+        ended = 0
+        for t in engine.tasks.of():
+            if t.kind == "find" or (t.tile in stops and t.kind == "check"):
+                ended += engine.tasks.stop(t.id)
+        return {"stopped": ended}
 
-    def start_find(tile: TileRef, shown: TileClouds, fine: bool) -> Task:
+    def start_find(
+        tile: TileRef,
+        shown: TileClouds,
+        fine: bool,
+        *,
+        then: Callable[[], None] | None = None,
+        undo: Callable[[], None] | None = None,
+    ) -> Task:
         """A search of the tile at the map's level, a level finer too when ``fine``: its task, the
-        one way a search starts, from its mode or from the Library."""
+        one way a search starts, from its mode or from the Library (``then``, ``undo``:
+        ``Tasks.start``'s)."""
 
         def run(task: Task) -> None:
             p = begin(task, tile, shown)
@@ -792,7 +904,7 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
                 cls.merge_search(cl, found, shown, {"level": zl, "found": len(found)})
             engine.remember(tile, shown, classes)
 
-        return engine.tasks.start(tile.name, "find", run)
+        return engine.tasks.start(tile.name, "find", run, then=then, undo=undo)
 
     def pick(
         tile: TileRef,
@@ -954,11 +1066,25 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
         and its files erased)."""
         action, _cid, _source = _body_of(_tile_of(name), body, state.WRITES)
         tile, folder, _shown, v = opened(name, action)
-        laid = v.asked if action == "apply" else []
         # laid with OpenCV, asked for as a search asks for it: without it, Apply said "check the
         # internet connection" (a review, 2026-11-07)
-        if laid:
+        if action == "apply" and v.asked:
             _detector_said(body)
+        return {"task": start_writes(tile, folder, v, action).view()}
+
+    def start_writes(
+        tile: TileRef,
+        folder: Path,
+        v: state.View,
+        action: str,
+        *,
+        then: Callable[[], None] | None = None,
+        undo: Callable[[], None] | None = None,
+    ) -> Task:
+        """Apply, Restore or Forget of the tile as its view ``v`` has them: its task, the one way
+        each starts, from its mode, the Library's bin or Find and apply (``then``, ``undo``:
+        ``Tasks.start``'s)."""
+        laid = v.asked if action == "apply" else []
         # Restore brings every cloud back as photographed: those ticked when it was asked are
         # unticked once it is done, the draft then empty; one ticked meanwhile stays so
         ticked = [s.cloud["id"] for s in v.clouds if s.cloud["tick"]] if action == "restore" else []
@@ -988,8 +1114,7 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
             if action == "forget":  # its folder as the build made it: the rest of it forgotten
                 cls.erase(tile)
 
-        task = engine.tasks.start(tile.name, action, run)
-        return {"task": task.view()}
+        return engine.tasks.start(tile.name, action, run, then=then, undo=undo)
 
     @router.get("/api/clouds/{name}/files/{file}")
     def files(name: str, file: str) -> FileResponse:

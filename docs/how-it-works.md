@@ -385,17 +385,19 @@ Deleting a tile keeps its list of clouds: built again, it gets them back. *Forge
 the bin in the Library's Clouds cell) puts the photos back and erases the tile's list, to start from
 nothing.
 
-With many tiles built, tick them in the Library and click *Find clouds* in the bar over the table:
-the quick search runs on each tile never searched, one after the other (a tile already searched is
-left as it is, its clouds there to look at). A line under the bar says the tile being searched and
-how many wait, with *Stop* for all of them; the searches go on while you use the rest of the app.
-In the Clouds column, a tile waiting has its cloud dimmed, the one being searched a spinner, and a
-quiet badge at the cloud's right corner counts the clouds found that wait for your look, 0 when a
-search found none (no badge: never searched). Then open
-each tile's clouds, tick and *Apply* as above: Apply stays tile by tile, after a look, since the
-detector sometimes takes pale ground or muddy water for a cloud. Quitting stops the searches: the
-tiles searched keep their clouds, those still waiting are not searched. Details:
-`docs/specs/clouds.md`.
+With many tiles built, tick them in the Library and use the *Clouds* group of the bar over the
+table. *Find* runs the quick search on each tile never searched, several at once (four on a
+computer of 32 GB or more; a tile already searched is left as it is, its clouds there to look at):
+then open each tile's clouds, tick and *Apply* as above. *Find and apply…* does the same, then
+replaces at once the clouds a clear source was found under, without showing them first, a tile
+searched before included: it asks first, since the detector sometimes takes pale ground or muddy
+water for a cloud, and *Restore the original photos* puts a tile back. *Forget…* forgets the clouds
+of the tiles ticked, asked first. A line under the bar says the tiles at work and how many wait,
+with *Stop* for all of them; the work goes on while you use the rest of the app. In the Clouds
+column, a tile waiting has its cloud dimmed, one at work a spinner, and a quiet badge at the
+cloud's right corner counts the clouds found that wait for your look, 0 when a search found none
+(no badge: never searched). Quitting stops the searches: the tiles searched keep their clouds,
+those still waiting are not searched. Details: `docs/specs/clouds.md`.
 
 A tile filed elsewhere that you build again is built in the workshop, beside the cache, then put
 back in its folder in place of the old version: moved there at once on the workshop's disk, copied

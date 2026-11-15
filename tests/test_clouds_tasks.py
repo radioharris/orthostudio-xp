@@ -1,8 +1,9 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""The engine's cloud tasks (``clouds.md`` R7): one search at a time, a task stopped while it
-waits for its turn ends at once, and one that fails says how until the tile's next task; one of
-each kind for a cloud or a tile; none while something else holds the tile's folder, and what
+"""The engine's cloud tasks (``clouds.md`` R7): as many searches at once as the memory holds,
+each fetching from a source after another's; a task stopped while it waits for its turn ends at
+once, and one that fails says how until the tile's next task; one of each kind for a cloud or a
+tile; none while something else holds the tile's folder, and what
 takes it waits for those under way to end, an Apply ending what it began."""
 
 from __future__ import annotations
@@ -190,3 +191,84 @@ def test_a_tile_stays_under_way_while_what_follows_its_task_runs() -> None:
     go.set()
     tasks.end({"+43+005"})  # what takes the tile waits for it too
     assert not tasks.busy("+43+005")
+
+
+# -- several searches at once (a user's choice, 2026-11-15) ---------------------------------------
+
+
+def test_searches_at_once_follow_the_computers_memory(monkeypatch: pytest.MonkeyPatch) -> None:
+    from orthostudio.clouds import tasks as tasks_module
+
+    got = {}
+    for gb in (None, 4, 8, 16, 24, 32, 48, 128):
+        mb = None if gb is None else gb * 1024
+        monkeypatch.setattr(tasks_module, "physical_memory_mb", lambda mb=mb: mb)
+        got[gb] = tasks_module.searches_at_once()
+    # four from 32 GB (each search holds up to 3.6 GB), one per 8 GB below, one when unknown
+    assert got == {None: 1, 4: 1, 8: 1, 16: 2, 24: 3, 32: 4, 48: 4, 128: 4}
+
+
+def test_searches_run_as_many_at_once_as_given_the_next_waiting() -> None:
+    tasks, go = Tasks(searches=2), threading.Event()
+    first = tasks.start("+43+005", "find", lambda t: (t.say("looking"), go.wait(10)))
+    second = tasks.start("+44+005", "find", lambda t: (t.say("looking"), go.wait(10)))
+    third = tasks.start("+45+005", "find", lambda t: t.say("looking"))
+    end = time.monotonic() + 2
+    while time.monotonic() < end and "waiting" in (first.phase, second.phase):
+        time.sleep(0.02)
+    assert (first.phase, second.phase, third.phase) == ("looking", "looking", "waiting")
+    go.set()
+    for tile in ("+43+005", "+44+005", "+45+005"):
+        assert _ended(tasks, tile)
+
+
+def test_searches_at_once_fetch_from_one_source_one_after_the_other(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # two searches asking EOX at once would ask it twice as fast as one: EOX refuses above about
+    # 60 requests a second (2026-10-29); each search's fetch from a source waits for the other's
+    import asyncio
+
+    from orthostudio.clouds import sources
+    from orthostudio.imagery.providers import load_registry
+
+    spans: list[tuple[float, float]] = []
+
+    class Slow:
+        def __init__(self, **_k: object) -> None:
+            pass
+
+        async def __aenter__(self) -> Slow:
+            return self
+
+        async def __aexit__(self, *_a: object) -> None:
+            return None
+
+        async def fetch_many(self, requests: object, **_k: object) -> None:
+            start = time.monotonic()
+            await asyncio.sleep(0.3)
+            spans.append((start, time.monotonic()))
+
+    monkeypatch.setattr(sources, "Fetcher", Slow)
+    eox = {"EOX": load_registry()["EOX"]}
+
+    def both(alone: bool) -> list[tuple[float, float]]:
+        spans.clear()
+        runs = [
+            threading.Thread(
+                target=lambda k=k: sources.SourcePieces(
+                    tmp_path / f"c{k}", eox, one_at_a_time=alone
+                ).fetch({"EOX": [(k, k, 12)]})
+            )
+            for k in (1, 2)
+        ]
+        for r in runs:
+            r.start()
+        for r in runs:
+            r.join(10)
+        return sorted(spans)
+
+    (_a0, a1), (b0, _b1) = both(True)
+    assert b0 >= a1  # one after the other
+    (_c0, c1), (d0, _d1) = both(False)
+    assert d0 < c1  # a cloud's images (not a search) are not held back

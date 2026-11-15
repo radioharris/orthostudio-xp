@@ -180,10 +180,32 @@ def other_sources(tile: TileRef, own: str, registry: Mapping[str, Provider]) -> 
     }
 
 
-class SourcePieces:
-    """The pieces of some sources, fetched once and read from the disk after."""
+_TURNS: dict[str, threading.Lock] = {}
+_TURNS_LOCK = threading.Lock()
 
-    def __init__(self, chunks_root: Path, providers: Mapping[str, Provider]) -> None:
+
+def _take_turn(code: str, cancel: threading.Event | None) -> bool:
+    """The source ``code``'s turn to be fetched from, once no other search fetches from it
+    (:class:`SourcePieces` ``one_at_a_time``); ``False`` when stopped meanwhile."""
+    with _TURNS_LOCK:
+        turn = _TURNS.setdefault(code, threading.Lock())
+    while not turn.acquire(timeout=0.2):
+        if cancel is not None and cancel.is_set():
+            return False
+    return True
+
+
+class SourcePieces:
+    """The pieces of some sources, fetched once and read from the disk after. ``one_at_a_time``:
+    a search's, whose fetch from a source waits until no other search fetches from it, so that
+    searches at once ask each server no faster than one does (its ``max_in_flight`` and
+    ``server_req_per_s``: EOX refuses above about 60 requests a second, 2026-10-29); each reads
+    the tile meanwhile."""
+
+    def __init__(
+        self, chunks_root: Path, providers: Mapping[str, Provider], *, one_at_a_time: bool = False
+    ) -> None:
+        self.one_at_a_time = one_at_a_time
         self.providers = dict(providers)
         self.caches = {
             c: ParentCache(chunks_root, cache_name(p), fsync=False)
@@ -248,6 +270,15 @@ class SourcePieces:
             stop.set()
 
         async def one(code: str, keys: list[Key]) -> None:
+            if self.one_at_a_time and not await asyncio.to_thread(_take_turn, code, cancel):
+                return
+            try:
+                await fetch(code, keys)
+            finally:
+                if self.one_at_a_time:
+                    _TURNS[code].release()
+
+        async def fetch(code: str, keys: list[Key]) -> None:
             nonlocal done
             provider, cache = self.providers[code], self.caches[code]
 

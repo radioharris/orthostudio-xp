@@ -66,6 +66,7 @@ __all__ = [
     "source_of",
     "tile_state",
     "tried",
+    "unread_cell",
     "view",
 ]
 
@@ -617,22 +618,36 @@ class View:
             },
         }
 
-    def library(self) -> dict[str, Any]:
-        """The Library's Clouds cell."""
+    def library(self, failed: Mapping[str, Any] | None = None) -> dict[str, Any]:
+        """The Library's Clouds cell, ``failed`` how its last search failed."""
         return library_cell(
             self.counts["held"],
             self.to_apply,
             self.allows("forget"),
             found=sum(1 for s in self.clouds if s.row == "found"),
-            find=self.searchable,
+            find=self.left_by("find") is None,
+            apply=self.left_by("apply") is None,
             searched=self.search is not None,
+            failed=failed,
         )
 
-    @property
-    def searchable(self) -> bool:
-        """Whether the Library's Find clouds takes the tile: never searched (a tile searched is
-        left as it is, a user's choice, 2026-11-14) and a search allowed now."""
-        return self.search is None and self.allows("find")
+    def left_by(self, action: str) -> str | None:
+        """Why the Library's Find (``find``) or Find and apply (``apply``) leaves the tile, ``None``
+        when it takes it: the one rule of both, for its cell and its request. Find takes a tile
+        never searched (one searched is left as it is, a user's choice, 2026-11-14), Find and
+        apply that and a searched one with a cloud a tick takes (a clear source judged under it)
+        or something Apply lays (his choice, 2026-11-15); each while nothing of the tile is at
+        work, nothing else holding its folder. Else: its state, ``busy``, then ``searched`` (Find)
+        or ``nothing`` to lay (Find and apply)."""
+        if not TILE_STATES[self.state].allows:
+            return self.state
+        if self.busy:
+            return "busy"
+        if self.search is None and self.allows("find"):
+            return None
+        if action == "apply" and (self.allows("tick") or self.allows("apply")):
+            return None
+        return "nothing" if action == "apply" else "searched"
 
 
 def library_cell(
@@ -642,25 +657,35 @@ def library_cell(
     *,
     found: int = 0,
     find: bool = False,
+    apply: bool = False,
     searched: bool = False,
     failed: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """The Library's Clouds cell of a tile: the clouds it shows replaced, what Apply changes (the
     page says them in its own words, every one of them written out for the words' check), whether
     its clouds may be forgotten (``forget``: its row offers it, the cloud mode asks), the clouds
-    a search found that wait for a look (``found``: unticked), whether the Library's Find clouds
-    takes it (``find``, :attr:`View.searchable`), whether a search was made (``searched``: one that
-    found nothing says so) and how its last search failed (``failed``, the error, until its next
-    task)."""
+    a search found that wait for a look (``found``: unticked), whether the Library's Find and
+    Find and apply take it (``find``, ``apply``: :meth:`View.left_by`), whether a search was made
+    (``searched``: one that found nothing says so) and how its last search failed (``failed``, the
+    error, until its next task)."""
     return {
         "replaced": replaced,
         "to_apply": to_apply,
         "forget": forget,
         "found": found,
         "find": find,
+        "apply": apply,
         "searched": searched,
         "failed": failed,
     }
+
+
+def unread_cell(free: bool, failed: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    """The Clouds cell of a tile with no list and no clouds laid, its folder not read (no other
+    tile's textures are read for the column): never searched, so Find and Find and apply take it
+    while it is ``free`` (nothing holding its folder, nothing of it at work), its state judged
+    as they start (:meth:`View.left_by`)."""
+    return library_cell(find=free, apply=free, failed=failed)
 
 
 def _k(key: str, **params: Any) -> dict[str, Any]:

@@ -8655,16 +8655,27 @@ def test_find_clouds_takes_the_tiles_picked_the_engine_offers_it_on() -> None:
             ({ tile, path: `/t/${tile}`, built_by: by, present: true, installed: false });
           const picked = [t("+40+000", "osxp"), t("+41+000", "osxp"), t("+42+000", "osxp"),
                           t("+43+000", "osxp"), t("+44+000", "ortho4xp")];
-          const cells = { "/t/+40+000": { find: true }, "/t/+41+000": { find: false },
-                          "/t/+43+000": { find: true } };
+          const cells = { "/t/+40+000": { find: true, apply: true },
+                          "/t/+41+000": { find: false, apply: true, forget: true },
+                          "/t/+42+000": { find: false, apply: false, forget: true },
+                          "/t/+43+000": { find: true, apply: true, forget: true } };
           const names = (l) => l.map((e) => e.tile);
+          const take = m.bulkTargets(picked, new Set(["+43+000"]), 0, cells);
           return {
-            take: names(m.bulkTargets(picked, new Set(["+43+000"]), 0, cells).clouds),
+            take: names(take.clouds),
+            apply: names(take.cloudsApply),
+            forget: names(take.cloudsForget),
             none: names(m.bulkTargets(picked, new Set(), 0).clouds),
           };
         })()"""
     )
-    assert got == {"take": ["+40+000"], "none": []}
+    # Find and apply takes a tile searched whose found clouds wait too; Forget those with clouds
+    assert got == {
+        "take": ["+40+000"],
+        "apply": ["+40+000", "+41+000"],
+        "forget": ["+41+000", "+42+000"],
+        "none": [],
+    }
 
 
 def test_the_clouds_cell_and_the_searches_line_say_the_searches() -> None:
@@ -8672,8 +8683,11 @@ def test_the_clouds_cell_and_the_searches_line_say_the_searches() -> None:
     on the Library's line, how many wait after it; one that failed says why in its row."""
     got = _step1(
         """(() => {
-          const now = { tile: "+43+005", phase: "drawing", progress: null };
-          const next = { tile: "+43+006", phase: "waiting", progress: null };
+          const now = { tile: "+43+005", step: "find", phase: "drawing", progress: null };
+          const next = { tile: "+43+006", step: "find", phase: "waiting", progress: null };
+          const images = { tile: "+43+007", step: "images", phase: null, progress: null,
+                           images: 12 };
+          const lays = { tile: "+43+008", step: "apply", phase: "laying", progress: 0.5 };
           const failed = { code: "CLOUD_TILE_NOT_READY",
                            context: { tile: "+43+005", state: "not_whole" } };
           return {
@@ -8686,13 +8700,21 @@ def test_the_clouds_cell_and_the_searches_line_say_the_searches() -> None:
             waiting: m.cloudsWords({ found: 0, failed }, next),
             failed: m.cloudsWords({ found: 0, failed }),
             line: m.searchesLine([now, next]),
+            many: m.searchesLine([now, images, lays, next]),
+            images: m.searchWords(images),
+            lays: m.searchWords(lays),
             alone: m.searchesLine([next]),
             none: m.searchesLine([]),
             keys: ["library.clouds_found", "library.clouds_failed", "library.searches_now",
                    "library.searches_waiting", "library.clouds_find", "library.clouds_find_help",
                    "library.clouds_find_started", "library.clouds_find_left",
                    "library.clouds_find_none", "library.searches_stop",
-                   "library.clouds_none_found"]
+                   "library.clouds_none_found", "library.act_clouds", "library.clouds_apply",
+                   "library.clouds_apply_help", "library.clouds_forget_picked",
+                   "library.clouds_forget_picked_help", "library.clouds_forget_n_title",
+                   "library.clouds_forgotten_n", "library.apply_title", "library.apply_text",
+                   "library.apply_go", "library.apply_started", "library.apply_left",
+                   "library.apply_none", "library.applying_images", "library.searches_many"]
               .filter((k) => i.t(k) === k),
           };
         })()"""
@@ -8707,6 +8729,9 @@ def test_the_clouds_cell_and_the_searches_line_say_the_searches() -> None:
     assert len(got["failed"]) == 1
     assert "+43+005" in got["line"] and "1" in got["line"].split("·")[1]
     assert "+43+006" not in got["alone"] and got["alone"] and got["none"] == ""
+    # several at work (Find and apply, several searches at once): how many, then how many wait
+    assert "3" in got["many"].split("·")[0] and "+43+005" not in got["many"]
+    assert "12" in got["images"] and "50" in got["lays"]
     assert got["keys"] == []
 
 
@@ -8801,12 +8826,12 @@ def test_a_zone_that_takes_no_square_adds_nothing_to_the_sizes() -> None:
     assert fetch.index("renderList();") < fetch.index("renderSizes();")
 
 
-def test_the_bar_s_actions_stand_in_three_groups_with_their_counts() -> None:
-    """The box and the count on a line, the actions on the next in three groups: X-Plane's two,
-    the tiles' own two, and off the list and Delete… apart at the right end; no blue button in
-    the bar. Each button says how many tiles it takes and nothing when it takes none, and a
-    group whose buttons are all hidden goes with them (eight buttons on one line were too many
-    to read, a user, 2026-10-16)."""
+def test_the_bar_s_actions_stand_in_four_groups_with_their_counts() -> None:
+    """The box and the count on a line, the actions on the next in four groups: X-Plane's two,
+    the tiles' own two, their clouds' three (a user, 2026-11-15), and off the list and Delete…
+    apart at the right end; no blue button in the bar. Each button says how many tiles it takes and
+    nothing when it takes none, and a group whose buttons are all hidden goes with them (eight
+    buttons on one line were too many to read, a user, 2026-10-16)."""
     html = (UI / INDEX_FILE).read_text(encoding="utf-8")
     bar = html[html.index('id="library-pick"') : html.index('id="library-filing"')]
     assert bar.index('class="library-pick-line"') < bar.index('class="library-acts"')
@@ -8816,10 +8841,23 @@ def test_the_bar_s_actions_stand_in_three_groups_with_their_counts() -> None:
     assert 'data-i18n="library.act_xplane"' in groups[0]
     assert 'id="library-act-tiles"' in groups[1] and 'data-i18n="library.act_tiles"' in groups[1]
     assert 'id="library-rebuild"' in groups[1] and 'id="library-file"' in groups[1]
-    assert 'library-act-end" id="library-act-end"' in groups[2]
-    assert 'id="library-forget"' in groups[2] and 'id="library-delete-picked"' in groups[2]
+    assert 'id="library-act-clouds"' in groups[2] and 'data-i18n="library.act_clouds"' in groups[2]
+    for b in ("find", "apply", "forget"):
+        assert f'id="library-clouds-{b}"' in groups[2], b
+    assert 'library-act-end" id="library-act-end"' in groups[3]
+    assert 'id="library-forget"' in groups[3] and 'id="library-delete-picked"' in groups[3]
     assert "btn-primary" not in bar
-    for b in ("add", "remove", "rebuild", "file", "forget", "delete-picked"):
+    for b in (
+        "add",
+        "remove",
+        "rebuild",
+        "file",
+        "clouds-find",
+        "clouds-apply",
+        "clouds-forget",
+        "forget",
+        "delete-picked",
+    ):
         assert f'<span class="library-act-n" id="library-{b}-n"></span></button>' in bar, b
     css = (UI / "styles.css").read_text(encoding="utf-8")
     assert ".library-act-end { margin-left: auto; }" in css
@@ -8851,6 +8889,8 @@ def test_the_show_menu_and_the_bar_s_actions_are_wired() -> None:
         "library-rebuild",
         "library-file",
         "library-clouds-find",
+        "library-clouds-apply",
+        "library-clouds-forget",
         "library-forget",
         "library-delete-picked",
     ]
@@ -8877,6 +8917,7 @@ def test_the_show_menu_and_the_bar_s_actions_are_wired() -> None:
         "fileLibraryTiles",
         "rebuildLibraryTiles",
         "findLibraryClouds",
+        "forgetPickedClouds",
     ):
         assert "pickedShown(shownLibraryRows(libraryTiles(state.library)))" in (
             _function_body(app_js, flow_name)

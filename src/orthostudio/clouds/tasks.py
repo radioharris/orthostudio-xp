@@ -2,13 +2,14 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """The engine's cloud tasks: a search, getting a cloud's images, trying an outline's sources,
 Apply and Restore (``clouds.md`` R7). Each runs in a thread of its own and ends whether or not a
-page is open; it writes its result at its end, so a page that went away loses nothing. One search
-at a time for the whole app (a search holds gigabytes, B2), a few reads of a cloud's sources at
-once, Apply and Restore at once (never behind another tile's reads); one of each kind for a
-cloud, or for a tile. Each says its phase and how far it is; Stop ends it at its next step, the
-list left as it was, except Apply and Restore, which write a tile's textures and end what they
-began. A tile's folder is never the tasks' and another's at once: none starts while something
-else holds it (a build, a filing), and what takes it ends those under way first (:meth:`end`).
+page is open; it writes its result at its end, so a page that went away loses nothing. A few
+searches at once for the whole app, as many as its memory holds (:func:`searches_at_once`: a
+search holds gigabytes, B2), a few reads of a cloud's sources at once, Apply and Restore at once
+(never behind another tile's reads); one of each kind for a cloud, or for a tile. Each says its
+phase and how far it is; Stop ends it at its next step, the list left as it was, except Apply and
+Restore, which write a tile's textures and end what they began. A tile's folder is never the
+tasks' and another's at once: none starts while something else holds it (a build, a filing), and
+what takes it ends those under way first (:meth:`end`).
 """
 
 from __future__ import annotations
@@ -24,12 +25,24 @@ from typing import Any
 from orthostudio.clouds.state import WRITES, possible
 from orthostudio.errors import OsxpError, wrap
 from orthostudio.home import data_root_missing
+from orthostudio.machine import physical_memory_mb
 
-__all__ = ["Task", "Tasks", "error_view", "standing"]
+__all__ = ["Task", "Tasks", "error_view", "searches_at_once", "standing"]
 
 log = logging.getLogger(__name__)
 
 CHECKS_AT_ONCE = 3
+SEARCHES_AT_MOST = 4
+"""Searches at once on a computer of 32 GB or more (a user's choice, 2026-11-15): a search reads
+for about half its time and waits on the network for the other half (B14), and holds up to 3.6
+GB (B2)."""
+
+
+def searches_at_once() -> int:
+    """How many searches run at once: :data:`SEARCHES_AT_MOST`, one per 8 GB of the computer's
+    memory below 32 GB (two on 16 GB), one when it does not say."""
+    mb = physical_memory_mb()
+    return 1 if mb is None else max(1, min(SEARCHES_AT_MOST, mb // 8192))
 
 
 @dataclass(eq=False)
@@ -77,11 +90,11 @@ class Tasks:
     """The tasks running and waiting. ``taken``: the tiles whose folder something else holds,
     each with the state that says it (``state.TILE_STATES``: built, queued, filed, deleted)."""
 
-    def __init__(self, taken: Callable[[], Mapping[str, str]] = dict) -> None:
+    def __init__(self, taken: Callable[[], Mapping[str, str]] = dict, searches: int = 1) -> None:
         self._lock = threading.Lock()
         self._tasks: dict[str, Task] = {}
         self._failed: dict[str, Task] = {}  # each tile's last failure, until its next task
-        self._search = threading.Semaphore(1)
+        self._search = threading.Semaphore(searches)  # :func:`searches_at_once` for the app
         self._checks = threading.Semaphore(CHECKS_AT_ONCE)
         self._taken = taken
         self._following: dict[str, int] = {}
@@ -99,9 +112,9 @@ class Tasks:
         undo: Callable[[], None] | None = None,
         was: Mapping[str, Any] | None = None,
     ) -> Task:
-        """Run ``run(task)`` in a thread once its turn comes (one search at a time for the app,
-        :data:`CHECKS_AT_ONCE` reads of sources, Apply and Restore at once); the task is
-        forgotten at its end, then ``then()`` runs when it ended neither stopped nor failed (what
+        """Run ``run(task)`` in a thread once its turn comes (:func:`searches_at_once` searches
+        for the app, :data:`CHECKS_AT_ONCE` reads of sources, Apply and Restore at once); the task
+        is forgotten at its end, then ``then()`` runs when it ended neither stopped nor failed (what
         follows it, seeing it ended); else ``undo()`` first, what was begun for it, whether it ran
         or not (an outline stopped while it waited for its turn stayed in the list, a review,
         2026-11-07). Refused while something else holds the tile's folder

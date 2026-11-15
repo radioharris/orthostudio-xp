@@ -224,3 +224,19 @@ brought to ZL11 its cumulus still at 3 to 26 % (`find._classified`).
 The machine was not at rest throughout (Spotlight indexing): the kept rule did no other work than
 the search without it where no cloud wanted a coarser level, and the spread of those runs is that.
 
+
+## B14. Where a quick search spends its time (Mac, 2026-11-15)
+
+Five tiles built at ZL16 from Bing with the default settings (four in the Amazon, one off Cuba),
+searched one after the other from the Library's Find, an isolated home, the steps read from
+`GET /api/cloud-searches` every half second:
+
+| Tile | Clouds | Drawing | Reading (detector) | Sources fetched | Sources judged | Total |
+|---|---|---|---|---|---|---|
+| -02-050 | 200 | 1.5 s | 28 s | 39 s | 23 s | 92 s |
+| -03-050 | 200 | 1.5 s | 23.5 s | 23 s | 5.6 s | 53 s |
+| +21-083 | 4 | 1 s | 11 s | 0.5 s | 0 s | 12 s |
+
+About half a search is spent waiting on the network, its processor nearly idle: searches run
+several at once since (`tasks.searches_at_once`), each fetch from a source after another search's
+(`SourcePieces(one_at_a_time=True)`). The engine held 3.6 GB once the five were searched.
