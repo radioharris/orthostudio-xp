@@ -34,7 +34,7 @@
      "description": "Higher-resolution imagery over airports.",
      "properties": {
       "mode": {
-       "default": "off",
+       "default": "icao",
        "description": "When set, textures above airports will be upgraded to a higher zoomlevel, the imagery being the same as the one they would otherwise receive. Can be limited to airports with an ICAO code for tiles with so many airports. Exceptional: use \"Existing\" to (try to) derive custom zl zones from the textures directory of an existing tile.",
        "enum": [
         "off",

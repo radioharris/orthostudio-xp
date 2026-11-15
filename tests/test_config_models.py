@@ -32,6 +32,7 @@ def test_levels_and_field_counts() -> None:
 
 
 def test_defaults_are_the_ortho4xp_defaults() -> None:
+    """Ortho4XP's defaults, but the airports: the page's recommended answer (2026-11-15)."""
     s = Settings()
     e, a, x = s.essential, s.advanced, s.expert
     assert (e.provider, e.zoom_level, e.water_rendering, e.xplane_dir, e.data_dir) == (
@@ -41,7 +42,7 @@ def test_defaults_are_the_ortho4xp_defaults() -> None:
         None,
         None,
     )
-    assert (e.airports.mode, e.airports.zoom_level, e.airports.extent_km) == ("off", 18, 1.0)
+    assert (e.airports.mode, e.airports.zoom_level, e.airports.extent_km) == ("icao", 18, 1.0)
     assert (e.coast_transition.profile, e.coast_transition.width_m) == ("sand", 100.0)
     assert (e.relief.source, e.relief.file, e.relief.fill_nodata) == ("auto", "", "nearest")
     assert (a.curvature_tol, a.limit_tris, a.road_level, a.min_area, a.max_area) == (

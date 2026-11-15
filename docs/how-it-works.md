@@ -459,8 +459,9 @@ over North America, Canada's lidar or the ANADEM terrain of South America over C
 own file), and whether OrthoStudio XP adds
 X-Plane's
 roads, forests and buildings. Three presets answer several questions at once; every other setting is
-under *For experts*, with its name in Ortho4XP. The Plan recalls the answers in one sentence before
-you build, and works out the cost by itself as you choose: disk space, download and time, with
+under *For experts*, with its name in Ortho4XP. A new install, and *Default values*, start with the
+main airports made sharper, the answer the page recommends, where Ortho4XP leaves them as the rest.
+The Plan recalls the answers in one sentence before you build, and works out the cost by itself as you choose: disk space, download and time, with
 nothing to press first. *Build* waits only when the disk cannot hold the build, and says so.
 The photos of the airports made sharper count too: for a tile built before, from their outline in
 its OpenStreetMap data; for a tile never built, from X-Plane's own list of airports, their runways

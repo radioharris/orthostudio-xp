@@ -89,7 +89,7 @@ Findings that change what the page may say (details in section 6):
 |---:|---|---|---|---|---|
 | 1 | `essential.provider` | `default_website` | `BI` | Shown | Whose aerial photos |
 | 2 | `essential.zoom_level` | `default_zl` | 16 | Shown | Detail on the ground |
-| 3 | `essential.airports.mode` | `cover_airports_with_highres` | `off` | Shown | More detail around airports |
+| 3 | `essential.airports.mode` | `cover_airports_with_highres` | `icao` | Shown | More detail around airports |
 | 4 | `essential.airports.zoom_level` | `cover_zl` | 18 | Folded | Detail level at airports |
 | 5 | `essential.airports.extent_km` | `cover_extent` | 1 km | Folded | Margin around airports |
 | 6 | `essential.coast_transition.profile` | `masking_mode` | `sand` | Shown (`3steps` folded) | How the coast fades into the sea |
@@ -292,7 +292,7 @@ most, added 2026-09-22), national ones for Luxembourg, the Netherlands (4), Spai
 
 ### 2.3 `essential.airports.mode`
 
-`cover_airports_with_highres` (`False` / `True` / `ICAO` / `Existing`) · `off` · `off`, `on`,
+`cover_airports_with_highres` (`False` / `True` / `ICAO` / `Existing`) · `icao` · `off`, `on`,
 `icao`, `existing`.
 
 - **Does.** For each airport of the tile's OSM data, the bounding rectangle of its outline is
@@ -319,10 +319,13 @@ most, added 2026-09-22), national ones for Luxembourg, the Netherlands (4), Spai
   | `+39+003` Mallorca east (6, 2) | +8, +0.09 GB | +13, +0.15 GB | +29, +0.32 GB |
 
   About 0.1 GB per ICAO airport at ZL18, and about 4 MB of download per extra texture (256
-  Bing tiles at the 16 kB measured at ZL16; estimate). The plan does not count them yet
-  (section 8). A change rebuilds the DSF and downloads the new textures only.
+  Bing tiles at the 16 kB measured at ZL16; estimate). The Plan counts them since 1.1.0
+  (`estimate._airport_zones`, section 8). A change rebuilds the DSF and downloads the new
+  textures only.
 - **Recommendation. Shown.** The recommended answer deviates from Ortho4XP, whose default is off:
   sharp airports are what a VFR pilot sees most closely, and the cost is bounded and shown.
+  It is the default too since 2026-11-15: a new install and *Default values* ticked *No* just
+  below the recommended answer, the one question of the page where the two differed.
 - **Question.**
   - EN: *More detail around airports?* — **Around the main airports, those with an ICAO code:
     Very sharp · ZL18 (recommended)** · Around every airfield OpenStreetMap knows: Very sharp ·
@@ -1283,7 +1286,8 @@ No Ortho4XP name · `maquify_2_green_key.dcl` · one of 67 names (`orthostudio/d
 ## 5. Presets
 
 Three presets set the values below; everything not listed keeps the Ortho4XP default. The only
-deviation of **Recommended** from Ortho4XP is the airport cover.
+deviation of **Recommended** from Ortho4XP is the airport cover, which is the default too since
+2026-11-15 (2.3).
 
 | Setting | Recommended | Best quality | Light on disk |
 |---|---|---|---|
@@ -1533,7 +1537,9 @@ Not settings wording, but the page will meet them:
   (`pipeline/build.py:754-765`).
 - **The plan ignores the airport cover** until a DSF exists: `estimate._tile_textures` counts the
   tile and its zones only (`estimate.py:274-298`). With `icao` preselected, the page would
-  underestimate disk and download by up to 60 % on a tile like `+50+008`.
+  underestimate disk and download by up to 60 % on a tile like `+50+008`. Closed in 1.1.0
+  (2026-10-15): `estimate._airport_zones` counts them from the tile's map data, or from
+  X-Plane's airport list for a tile never built.
 - **`masks_use_dem_too` and `masks_custom_extent`** silently switched the masks stage to Ortho4XP
   (`pipeline/native.py:143-146`), with another relief source in the first case and a known crash
   in the second. Addressed by decision 0009 (2026-09-14): a build with either set stops before it

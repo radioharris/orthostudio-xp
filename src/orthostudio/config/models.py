@@ -64,12 +64,17 @@ def _field(default: Any, level: str, ortho4xp: str | None, unit: str, **kw: Any)
 
 
 class AirportCoverage(BaseModel):
-    """Ortho4XP ``cover_airports_with_highres`` / ``cover_zl`` / ``cover_extent``."""
+    """Ortho4XP ``cover_airports_with_highres`` / ``cover_zl`` / ``cover_extent``.
+
+    ``mode`` starts on the answer the Settings page recommends, the airports with an ICAO code,
+    where Ortho4XP leaves them as the rest: a new install and *Default values* ticked "No" there,
+    just below the recommended answer (2026-11-15).
+    """
 
     model_config = _FROZEN
 
     mode: Literal["off", "on", "icao", "existing"] = _field(
-        "off", "essential", "cover_airports_with_highres", ""
+        "icao", "essential", "cover_airports_with_highres", ""
     )
     zoom_level: int = _field(18, "essential", "cover_zl", "ZL", ge=14, le=20)
     extent_km: float = _field(1.0, "essential", "cover_extent", "km", ge=0)

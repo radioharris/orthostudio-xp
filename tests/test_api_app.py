@@ -1608,10 +1608,12 @@ async def test_the_plan_answers_without_x_planes_airport_list(
     body = {"tiles": ["+43+005"], "provider": "BI", "zoom_level": 14}
     try:
         async with client_for(app) as c:
+            s = (await c.get("/api/settings")).json()
+            s["essential"]["airports"]["mode"] = "off"
+            assert (await c.put("/api/settings", json=s)).status_code == 200
             r = await c.post("/api/plan", json=body)
             assert r.status_code == 200, r.text
             assert asked == [], "airports not made sharper: the list is not asked"
-            s = (await c.get("/api/settings")).json()
             s["essential"]["airports"]["mode"] = "icao"
             assert (await c.put("/api/settings", json=s)).status_code == 200
             r = await c.post("/api/plan", json=body)
