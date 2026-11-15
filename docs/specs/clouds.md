@@ -62,7 +62,9 @@ them starts, by a click elsewhere, or by Escape.
   does, and its images got, then, once nothing of the tile runs, Apply lays what its question would
   lay (`apply_found`). A cloud whose images do not come stays ticked, waiting, as after Tick all.
 - **Forget…** takes the tiles with clouds (`forget`), asks first in one question, and forgets each
-  as a row's bin does, one after the other.
+  as a row's bin does, one after the other, a line under the bar saying which of how many
+  ("Forgetting the clouds: 2 of 5"); the cell of a tile whose clouds are being forgotten turns,
+  from either (the photos put back take seconds a tile, a user, 2026-11-15).
 
 Searches run several at once (R7: four on a computer of 32 GB or more, his choice, 2026-11-15; one
 per 8 GB below). The detector is asked for once, before any starts, as a tile's search asks it. The

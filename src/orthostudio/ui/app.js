@@ -208,6 +208,10 @@ const state = {
   /** GET /api/cloud-searches: the cloud searches under way and waiting, in their order, read every
    * second while there are some: the Library's line and its rows say them. */
   searches: [],
+  /** The tiles whose clouds are being forgotten now (`forgetClouds`): their cell turns. */
+  forgetting: new Set(),
+  /** Forget… on the tiles picked under way, ``{i, n}`` (the ``i``-th of ``n``): its line says it. */
+  forgetRun: null,
   providers: [],
   settings: null,
   schema: null,
@@ -6308,9 +6312,10 @@ function cloudsCell(e) {
   // each percent); a search that failed, the cloud in the danger's colour; what a search found and
   // waits for a look, at the cloud's other corner, 0 there when a search found none
   const search = state.searches?.find((x) => x.tile === e.tile) || null;
-  const said = cloudsWords(cell, search && { ...search, progress: null }).join(" · ");
+  const forgetting = state.forgetting.has(e.tile);
+  const said = forgetting ? t("library.clouds_forgetting") : cloudsWords(cell, search && { ...search, progress: null }).join(" · ");
   const badge = (n, kind) => (n > 0 ? h("span", { class: `clouds-badge is-${kind}`, "aria-hidden": "true" }, fmtInt(n)) : null);
-  const running = search && !searchWaits(search);
+  const running = forgetting || (search && !searchWaits(search));
   const look = ["btn btn-icon clouds-open", search && !running ? "is-waiting" : "", !search && cell.failed ? "is-failed" : ""].filter(Boolean).join(" ");
   return h("td", { class: "library-clouds" }, h("div", null,
     h("button", { type: "button", class: look, title: [said, t("library.clouds_help")].filter(Boolean).join("\n"), "aria-label": [`${t("library.clouds_open")} ${e.tile}`, said].filter(Boolean).join(": "), onclick: () => cloudMode?.open(e.tile) },
@@ -6707,12 +6712,19 @@ async function forgetLibraryClouds(e) {
  * row's bin or the Clouds group's Forget…. */
 async function forgetClouds(tile) {
   const path = `/api/clouds/${encodeURIComponent(tile)}`;
-  await api("POST", `${path}/apply`, { action: "forget" });
-  // what runs of the tile, nothing of it read: the mode's answer drew its picture (R3)
-  let runs = await api("GET", `${path}/tasks`);
-  for (; runs.busy; runs = await api("GET", `${path}/tasks`)) await new Promise((go) => setTimeout(go, 300));
-  const failed = runs.failed;
-  if (failed?.kind === "forget") throw new ApiError(409, { error: failed.error });
+  // its cell turns meanwhile: the original photos put back take seconds a tile (a user, 2026-11-15)
+  state.forgetting.add(tile);
+  renderLibrary();
+  try {
+    await api("POST", `${path}/apply`, { action: "forget" });
+    // what runs of the tile, nothing of it read: the mode's answer drew its picture (R3)
+    let runs = await api("GET", `${path}/tasks`);
+    for (; runs.busy; runs = await api("GET", `${path}/tasks`)) await new Promise((go) => setTimeout(go, 300));
+    const failed = runs.failed;
+    if (failed?.kind === "forget") throw new ApiError(409, { error: failed.error });
+  } finally {
+    state.forgetting.delete(tile);
+  }
 }
 
 /** "Remove from the list" (tiles imported from Ortho4XP): the Library forgets the tile, and its
@@ -6889,10 +6901,11 @@ async function forgetPickedClouds() {
   if (!(await confirmBulk(question))) return;
   const errors = clear($("library-errors"));
   state.bulk = "forget-clouds";
-  renderLibrary();
   let done = 0;
   try {
-    for (const e of go) {
+    for (const [i, e] of go.entries()) {
+      state.forgetRun = { i: i + 1, n: go.length };
+      renderForgetRun();
       try {
         await forgetClouds(e.tile);
         done += 1;
@@ -6902,6 +6915,8 @@ async function forgetPickedClouds() {
     }
   } finally {
     state.bulk = null;
+    state.forgetRun = null;
+    renderForgetRun();
     await loadLibrary();
     showLibraryErrors();
   }
@@ -6957,6 +6972,13 @@ export function moved(before, now) {
   const out = (before || []).filter((x) => !(now || []).some((y) => y.tile === x.tile)).map((x) => x.tile);
   for (const x of now || []) if (was.has(x.tile) && was.get(x.tile) !== step(x)) out.push(x.tile);
   return out;
+}
+
+/** The line of Forget… on the tiles picked: which of how many is forgotten now. */
+function renderForgetRun() {
+  const run = state.forgetRun;
+  $("library-forgetting").hidden = !run;
+  setText($("library-forgetting-text"), run ? t("library.forgetting_n", { i: fmtInt(run.i), n: fmtInt(run.n) }) : "");
 }
 
 function renderSearches() {
