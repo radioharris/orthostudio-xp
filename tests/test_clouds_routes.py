@@ -1549,16 +1549,25 @@ def _found_with_images(folder: Path) -> str:
         return str(c["id"])
 
 
+def _laying(monkeypatch: pytest.MonkeyPatch) -> list[list[str]]:
+    """Apply faked: the clouds of each, by id, which the tile then holds replaced."""
+    laid: list[list[str]] = []
+
+    def show(_tile: Any, _folder: Any, asked: Any, **_k: Any) -> None:
+        laid.append([e["id"] for group in asked for e in group])
+
+    monkeypatch.setattr(clouds_api, "show", show)
+    monkeypatch.setattr(clouds_api, "held_by_id", lambda _s: {i: {} for g in laid for i in g})
+    return laid
+
+
 @pytest.mark.anyio
 async def test_find_and_apply_lays_the_clouds_a_search_found_before(
     app: Any, ready: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     cid = _found_with_images(ready)
     _searching(monkeypatch)
-    laid: list[int] = []
-    monkeypatch.setattr(
-        clouds_api, "show", lambda tile, folder, asked, **k: laid.append(len(asked))
-    )
+    laid = _laying(monkeypatch)
     async with client_for(app) as c:
         found = await c.post("/api/cloud-searches", json={"tiles": ["+43+005"]})
         r = await c.post("/api/cloud-searches", json={"tiles": ["+43+005"], "apply": True})
@@ -1571,10 +1580,58 @@ async def test_find_and_apply_lays_the_clouds_a_search_found_before(
     # (a clear source judged under it), then laid once nothing of it ran
     assert found.json() == {"started": [], "left": [{"tile": "+43+005", "why": "searched"}]}
     assert r.json() == {"started": ["+43+005"], "left": []}
-    assert laid == [1] and ticked == [cid]
+    assert laid == [[cid]] and ticked == [cid]
     # laid (the fake one), it is still ticked and planned: busy no more, Find and apply takes it
     # again as long as Apply lays something; the real Apply's tile holds it then
     assert again.json()["started"] == ["+43+005"]
+
+
+@pytest.mark.anyio
+async def test_find_and_apply_unticks_a_cloud_its_apply_did_not_lay(
+    app: Any, ready: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # a cloud whose source had nothing at the tile's level stayed ticked once the other was laid:
+    # unseen in the Library, never taken again by Find and apply (a review, 2026-11-15)
+    from orthostudio.clouds.find import Check, Judgement
+
+    cid = _found_with_images(ready)
+    with cloudlist.update(TILE) as cl:
+        other = cl.add("found", _ring(), screening={"EOX": {"answer": "clear", "fit": 70}})["id"]
+    _searching(monkeypatch)
+    monkeypatch.setattr(clouds_api, "check", lambda *a, **k: Check(Judgement("no_picture")))
+    laid = _laying(monkeypatch)
+    async with client_for(app) as c:
+        await c.post("/api/cloud-searches", json={"tiles": ["+43+005"], "apply": True})
+        await _no_search(c)
+    with cloudlist.update(TILE) as cl:
+        ticks = {x["id"]: x["tick"] for x in cl.clouds}
+    assert laid == [[cid]] and ticks == {cid: True, other: False}
+
+
+@pytest.mark.anyio
+async def test_a_stop_heard_after_the_images_lays_nothing(
+    app: Any, ready: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Stop or Quit heard as the tile was read before its Apply: the Apply ran all the same (a
+    # review, 2026-11-15)
+    cid = _found_with_images(ready)
+    _searching(monkeypatch)
+    laid = _laying(monkeypatch)
+    tasks = app.state.orthostudio["clouds"].tasks
+    settle = tasks.settle
+
+    def settled_then_stopped(tile: str, stop: Any) -> bool:
+        went = settle(tile, stop)
+        tasks.stop_follows()
+        return went
+
+    monkeypatch.setattr(tasks, "settle", settled_then_stopped)
+    async with client_for(app) as c:
+        await c.post("/api/cloud-searches", json={"tiles": ["+43+005"], "apply": True})
+        await _no_search(c)
+    with cloudlist.update(TILE) as cl:
+        ticked = [x["id"] for x in cl.clouds if x["tick"]]
+    assert laid == [] and ticked == [] and cid
 
 
 @pytest.mark.anyio

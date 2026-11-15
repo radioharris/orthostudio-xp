@@ -55,6 +55,7 @@ from orthostudio.clouds.tasks import Task, Tasks, error_view, searches_at_once, 
 from orthostudio.clouds.tile import (
     TileClouds,
     clouds_dir,
+    held_by_id,
     is_own_folder,
     listed,
     own_folder,
@@ -765,16 +766,17 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
         was never searched (``shown``: what its folder showed), then, at its turn
         (``Tasks.images_turn``: one tile at a time), every cloud Tick all takes ticked (a clear
         source judged under it) and its images got without their preview, then Apply as its
-        question would lay it, each step once the one before has ended (``Tasks.settle``).
-        Stopped, or not laid (an Apply refused: X-Plane running), the clouds it ticked are
-        unticked, however it ended: the tile as before but for the images got, and no cloud left
-        ticked whose preview the mode would have to make as it opens (a review, 2026-11-15)."""
+        question would lay it, each step once the one before has ended (``Tasks.settle``), not
+        once stopped. However it ended, each cloud it ticked that the tile does not hold replaced
+        is unticked (stopped, an Apply refused: X-Plane running, or a cloud whose images failed,
+        or whose sources were all worse at the tile's level): seen again in the Library as found
+        and taken by the next Find and apply, never ticked unseen with a preview the mode would
+        have to make as it opens (reviews, 2026-11-15)."""
         if shown is not None:
             start_find(tile, shown, False)
             if not engine.tasks.settle(tile.name, stop):
                 return
         ticked: list[str] = []
-        laid = False
         try:
             with engine.tasks.images_turn(stop) as mine:
                 if not mine:
@@ -786,15 +788,15 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
                 if not engine.tasks.settle(tile.name, stop):
                     return
             folder, _shown, v = look(tile)
-            if v.allows("apply") and v.asked:
-                task = start_writes(tile, folder, v, "apply")
+            if v.allows("apply") and v.asked and not stop.is_set():
+                start_writes(tile, folder, v, "apply")
                 engine.tasks.settle(tile.name, stop)  # an Apply ends what it began, Stop or not
-                laid = task.error is None
         finally:
-            if ticked and not laid:
+            if ticked:
+                holds = held_by_id(look(tile)[1])
                 with cls.update(tile) as cl:
                     for c in cl.clouds:
-                        if c["id"] in ticked and c["tick"]:
+                        if c["id"] in ticked and c["tick"] and c["id"] not in holds:
                             cls.pick(cl, c["id"], "untick")
 
     @router.get("/api/cloud-searches")
