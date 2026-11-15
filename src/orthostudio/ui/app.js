@@ -5466,12 +5466,18 @@ async function loadLibrarySizes() {
 
 /** The Library's Clouds cells, by row path, the engine's (``GET /api/clouds``): none when the
  * list does not come. */
-async function loadClouds() {
+async function loadClouds(tiles = null) {
   try {
-    const res = await api("GET", "/api/clouds");
-    state.clouds = res?.rows || {};
+    if (!tiles) {
+      const res = await api("GET", "/api/clouds");
+      state.clouds = res?.rows || {};
+    } else {
+      // the cells of these tiles alone, read again as their work moves on (``GET /api/cloud-searches``)
+      const res = await api("GET", `/api/clouds?tiles=${encodeURIComponent(tiles.join(","))}`);
+      state.clouds = { ...(state.clouds || {}), ...(res?.rows || {}) };
+    }
   } catch (_err) {
-    state.clouds = {};
+    if (!tiles) state.clouds = {};
   }
   renderLibrary();
 }
@@ -6903,9 +6909,10 @@ async function forgetPickedClouds() {
 
 /** The searches under way and waiting, read every second while there are some, one reading at a
  * time (a reading asked during one follows it): the line is said again at each; the table is drawn
- * again only when a search starts, waits no more or goes to its next step (its cell's words), and a
- * tile's cell read again once its search ended (its counts). Drawn every second, a tooltip under
- * the pointer went away each time. */
+ * again only when a tile's step or phase changes (its cell's words), and a tile's cell read again
+ * (`moved`), alone, when its work moves on, its search ended, a cloud's images in, its Apply
+ * ended, or it left the line: its counts follow the work (a user, 2026-11-15). Drawn every second,
+ * a tooltip under the pointer went away each time. */
 let searchesNext = null;
 let searchesReading = false;
 let searchesAgain = false;
@@ -6926,19 +6933,29 @@ async function readSearches() {
   } catch (_err) {
     list = []; // an engine without them (mock, older), or gone: nothing said
   }
-  const shape = (all) => all.map((x) => `${x.tile}:${x.phase}`).join(",");
   const before = state.searches || [];
-  const ended = before.some((x) => !list.some((y) => y.tile === x.tile));
-  const moved = shape(before) !== shape(list);
+  const shape = (all) => all.map((x) => `${x.tile}:${x.phase}`).join(",");
+  const counted = moved(before, list);
+  const redraw = shape(before) !== shape(list);
   state.searches = list;
   renderSearches();
-  if (ended) loadClouds();
-  else if (moved) renderLibrary();
+  if (counted.length) loadClouds(counted);
+  else if (redraw) renderLibrary();
   searchesReading = false;
   if (searchesAgain) {
     searchesAgain = false;
     readSearches();
   } else if (list.length) searchesNext = setTimeout(readSearches, 1000);
+}
+
+/** The tiles whose work moved on between two readings of the searches (``before``, ``now``): their
+ * step or their clouds' images left changed, or they left the line; their cells say it. */
+export function moved(before, now) {
+  const step = (x) => `${x.step}:${x.images || 0}`;
+  const was = new Map((before || []).map((x) => [x.tile, step(x)]));
+  const out = (before || []).filter((x) => !(now || []).some((y) => y.tile === x.tile)).map((x) => x.tile);
+  for (const x of now || []) if (was.has(x.tile) && was.get(x.tile) !== step(x)) out.push(x.tile);
+  return out;
 }
 
 function renderSearches() {

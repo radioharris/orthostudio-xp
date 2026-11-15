@@ -87,8 +87,10 @@ its tooltip: its cell was otherwise the one of a tile never searched (a user, 20
 that failed has its cloud in the danger's colour and says why in its tooltip (`failed`, until the
 tile's next task). The page reads the searches every second while there are some
 (`GET /api/cloud-searches`, nothing of a tile read), draws the table again only when a tile's step
-changes (drawn every second, a tooltip under the pointer went away each time), and reads a tile's
-cell again once it leaves the line. The searches go on whether or not the Library stays open; Quit
+changes (drawn every second, a tooltip under the pointer went away each time), and reads again the
+cell of a tile alone (`GET /api/clouds?tiles=`) when its work moves on, its search ended, a cloud's
+images in, its Apply ended, or it left the line: its counts follow the work (a user, 2026-11-15);
+the clouds a search finds come at its end, its list written then. The searches go on whether or not the Library stays open; Quit
 stops them, a tile searched keeping its clouds and those waiting forgotten (his choice,
 2026-11-14).
 
@@ -760,7 +762,7 @@ Earth, around no ground or off the tile, `cloudlist.outline_problem`), `CLOUD_DE
 
 | Route | What |
 |---|---|
-| `GET /api/clouds` | The Library's column: by row path, the rows it is offered on (1.2), what the tile holds and what waits (`replaced`, `to_apply`), the clouds found waiting for a look (`found`), whether its clouds may be forgotten (`forget`), whether Find clouds takes it (`find`), whether a search was made (`searched`) and how its last search failed (`failed`) |
+| `GET /api/clouds` | `?tiles=` (comma-separated: those alone). The Library's column: by row path, the rows it is offered on (1.2), what the tile holds and what waits (`replaced`, `to_apply`), the clouds found waiting for a look (`found`), whether its clouds may be forgotten (`forget`), whether Find clouds takes it (`find`), whether a search was made (`searched`) and how its last search failed (`failed`) |
 | `POST /api/cloud-searches` | `{tiles, apply?, download?}`: Find (1.2), a quick search of each tile its view takes (`View.left_by`), several at once; with `apply`, Find and apply, a tile searched before whose found clouds wait too, each applied once searched; answers `{started, left}`, each tile left with why: `searched` (`nothing` with `apply`), `busy`, else its state (`not_built`, `in_build`...); `CLOUD_DETECTOR_ASK` before any starts, as a tile's search (API level 55) |
 | `GET /api/cloud-searches` | `{searches}`: every search under way or waiting, and every tile Find and apply takes until its Apply has ended, in their order, `{tile, step, phase, progress, images}`: `step` `find`, `images` (`images`: how many of its clouds' images are being got) or `apply`; nothing of a tile read |
 | `POST /api/cloud-searches/stop` | Stops every search, those waiting too, and what Find and apply does but an Apply under way |

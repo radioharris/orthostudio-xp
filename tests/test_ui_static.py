@@ -8701,6 +8701,8 @@ def test_the_clouds_cell_and_the_searches_line_say_the_searches() -> None:
             failed: m.cloudsWords({ found: 0, failed }),
             line: m.searchesLine([now, next]),
             many: m.searchesLine([now, images, lays, next]),
+            moved: m.moved([now, next, images, lays], [{ ...now, step: "images", images: 30 },
+                                                       { ...images, images: 11 }, lays]),
             images: m.searchWords(images),
             lays: m.searchWords(lays),
             alone: m.searchesLine([next]),
@@ -8737,6 +8739,8 @@ def test_the_clouds_cell_and_the_searches_line_say_the_searches() -> None:
         assert tile in got["many"], tile
     assert "+43+006" not in got["many"] and "12" in got["many"] and "50" in got["many"]
     assert "12" in got["images"] and "50" in got["lays"]
+    # the cells read again, of the tiles whose work moved on alone (a user, 2026-11-15)
+    assert got["moved"] == ["+43+006", "+43+005", "+43+007"]
     assert got["keys"] == []
 
 

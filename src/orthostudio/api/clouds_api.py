@@ -558,16 +558,19 @@ def clouds_router(hooks: CloudHooks) -> tuple[APIRouter, CloudEngine]:
         }
 
     @router.get("/api/clouds")
-    def library_column() -> dict[str, Any]:
+    def library_column(tiles: str | None = None) -> dict[str, Any]:
         """The Library's Clouds cell of each row it is offered on, by the row's path: a tile
-        OrthoStudio XP built, the row its own folder. Its words are read of a tile with a list or
-        clouds laid in its folder only: no other tile's textures are read. A tile without either
-        was never searched: Find clouds takes it while nothing holds it and nothing of it runs,
-        its state judged as the search starts (:func:`find_many`)."""
+        OrthoStudio XP built, the row its own folder; of the tiles ``tiles`` names alone
+        (comma-separated), the cells the page reads again as Find and Find and apply move on, so
+        that their counts follow the work. Its words are read of a tile with a list or clouds
+        laid in its folder only: no other tile's textures are read. A tile without either was
+        never searched: Find clouds takes it while nothing holds it and nothing of it runs, its
+        state judged as the search starts (:func:`find_many`)."""
         lists = listed()
+        named = None if tiles is None else set(tiles.split(","))
         try:
             with Library(default_library_path()) as lib:
-                rows = lib.list(kind="ortho")
+                rows = [r for r in lib.list(kind="ortho") if named is None or r.tile.name in named]
         except Exception:  # no library, no cell
             return {"rows": {}}
         cs = hooks.custom_scenery()

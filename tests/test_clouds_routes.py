@@ -411,6 +411,10 @@ async def test_the_library_cell_is_offered_on_the_tiles_own_folder_only(
     async with client_for(app) as c:
         rows = (await c.get("/api/clouds")).json()["rows"]
     assert rows == {str(own.path): state.library_cell(find=True, apply=True)}  # never searched
+    async with client_for(app) as c:  # the cells of the tiles named alone
+        alone = (await c.get("/api/clouds", params={"tiles": "+43+005,+44+005"})).json()["rows"]
+        none = (await c.get("/api/clouds", params={"tiles": "+44+005"})).json()["rows"]
+    assert alone == rows and none == {}
 
 
 @pytest.mark.anyio
