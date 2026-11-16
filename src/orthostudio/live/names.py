@@ -53,6 +53,8 @@ Entry = tuple[str, float, float, int, int, int]
 RING = 1  # squares made round X-Plane's window: the next column's are there before X-Plane loads it
 KEEP = 2  # squares farther than this from X-Plane's window lose their files
 TER_KINDS = (("", 1), ("_water_overlay", 2), ("_sea_overlay", 4))  # the .ter files of a texture
+SEA_OVERLAY_TER = "_sea_overlay.ter"
+"""The end of a terrain file's name laying the photo on water with a mask, which takes the decal."""
 OTHER = 8  # a .ter of another kind: its name kept apart (:attr:`RegionTextures.others`)
 MASK_RE = re.compile(r"^(\d+)_(\d+)_ZL(\d{2})\.png$")  # a water mask: a sea overlay's border
 RELEASE_BATCH = 4  # squares taken away at once, between the squares X-Plane will need
@@ -423,15 +425,22 @@ class SquareWaitError(Exception):
     (orthostudio.live.region.set_zooms); made a moment later, once it is built at the new one."""
 
 
-def with_decal(ter: bytes, decal: str) -> bytes:
-    """A ``.ter`` file with the land's decal Live's settings choose: its ``DECAL_LIB`` line naming
-    ``lib/g10/decals/<decal>``, or gone when ``decal`` is empty. A file with no such line (the sea,
-    the water's overlays) is left as it is: decals go on the land only."""
+def with_decal(ter: bytes, decal: str, *, sea: bool = False) -> bytes:
+    """A ``.ter`` file with the decal Live's settings choose: its ``DECAL_LIB`` line naming
+    ``lib/g10/decals/<decal>``, or gone when ``decal`` is empty. ``sea``: the photo laid on the
+    water with a mask (``_sea_overlay``: the sea, and lakes and rivers where the mesh fades them
+    as the sea), which takes it too, its line put before ``WET`` as Build's pack puts it, so that
+    the grain goes on where the photo does rather than stopping at the shore (2026-11-16). Any
+    other file with no such line (the water's overlays without a mask) is left as it is."""
     from orthostudio.decals import decal_lib
 
     lines = ter.split(b"\n")
     if not any(line.startswith(b"DECAL_LIB ") for line in lines):
-        return ter
+        if not (sea and decal):
+            return ter
+        from orthostudio.textures.ter import with_decal as with_decal_line
+
+        return with_decal_line(ter.decode("latin-1"), decal).encode("latin-1")
     out = []
     for line in lines:
         if line.startswith(b"DECAL_LIB "):
@@ -495,11 +504,14 @@ def _night_inodes(pack: Path) -> set[tuple[int, int]]:
     return out
 
 
-def _ter_text(text: bytes, decal: str | None, lit: str | None, night: bool) -> bytes:
-    """A ``.ter`` file as the pack has it: the decal Live's settings choose, and its night texture
-    when the night lights are on (``lit``: the land's; None for the water's files)."""
+def _ter_text(
+    text: bytes, decal: str | None, lit: str | None, night: bool, *, sea: bool = False
+) -> bytes:
+    """A ``.ter`` file as the pack has it: the decal Live's settings choose (on the photo laid on
+    the sea too, ``sea``: :func:`with_decal`), and its night texture when the night lights are on
+    (``lit``: the land's; None for the water's files)."""
     if decal is not None:
-        text = with_decal(text, decal)
+        text = with_decal(text, decal, sea=sea)
     return with_night(text, lit) if night else text
 
 
@@ -606,13 +618,15 @@ def run_ops(pack_dir: str, ops: Sequence[tuple]) -> dict:
                     with open(op[1], "rb") as f:
                         text = f.read()
                     lit, night = (op[4], op[5]) if len(op) > 5 else (None, False)
-                    _write_new(op[2], _ter_text(text, op[3], lit, night))
+                    sea = op[2].endswith(SEA_OVERLAY_TER)
+                    _write_new(op[2], _ter_text(text, op[3], lit, night, sea=sea))
                     placed += 1
             elif kind == "make":  # a region naming its terrain files: made from the name
                 if not os.path.lexists(op[2]):
                     ter = made_ter(os.path.basename(op[2]))
                     lit, night = (op[4], op[5]) if len(op) > 5 else (None, False)
-                    _write_new(op[2], _ter_text(ter, op[3], lit, night))
+                    sea = op[2].endswith(SEA_OVERLAY_TER)
+                    _write_new(op[2], _ter_text(ter, op[3], lit, night, sea=sea))
                     placed += 1
             elif kind == "night":  # a night texture's name, black until it is built
                 if not os.path.lexists(op[1]):

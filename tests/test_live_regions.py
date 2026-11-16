@@ -383,7 +383,10 @@ def test_a_new_decal_makes_the_pack_s_terrain_files_again(tmp_path: Path) -> Non
     assert (terrain / "a.ter").exists() and not (pack / DECAL_RECORD).exists()
     set_decal(pack, "grass_and_stony_dirt_1.dcl", log=said.append)
     assert not (terrain / "a.ter").exists() and terrain.is_dir()
-    assert json.loads((pack / DECAL_RECORD).read_text()) == {"decal": "grass_and_stony_dirt_1.dcl"}
+    assert json.loads((pack / DECAL_RECORD).read_text()) == {
+        "decal": "grass_and_stony_dirt_1.dcl",
+        "on_sea": True,
+    }
     (terrain / "b.ter").write_text("made since\n")
     set_decal(pack, "grass_and_stony_dirt_1.dcl", log=said.append)
     assert (terrain / "b.ter").exists()
@@ -391,7 +394,32 @@ def test_a_new_decal_makes_the_pack_s_terrain_files_again(tmp_path: Path) -> Non
     assert (terrain / "b.ter").exists()
     set_decal(pack, "", log=said.append)
     assert not (terrain / "b.ter").exists()
-    assert json.loads((pack / DECAL_RECORD).read_text()) == {"decal": ""}
+    assert json.loads((pack / DECAL_RECORD).read_text()) == {"decal": "", "on_sea": True}
+
+
+def test_a_pack_made_before_the_sea_took_the_decal_makes_its_terrain_files_again(
+    tmp_path: Path,
+) -> None:
+    """A record of before the sea's photo took the decal makes the .ter files again once, at a
+    start with X-Plane not running; with no decal chosen there is nothing to add, nothing done."""
+    from orthostudio.live.region import DECAL_RECORD, set_decal
+
+    pack = tmp_path / "pack"
+    terrain = pack / "terrain"
+    terrain.mkdir(parents=True)
+    (terrain / "a.ter").write_text("made before\n")
+    (pack / DECAL_RECORD).parent.mkdir(parents=True)
+    (pack / DECAL_RECORD).write_text(json.dumps({"decal": "maquify_2_green_key.dcl"}))
+    set_decal(pack, "maquify_2_green_key.dcl", log=lambda _: None, xplane_running=lambda: True)
+    assert (terrain / "a.ter").exists()
+    set_decal(pack, "maquify_2_green_key.dcl", log=lambda _: None)
+    assert not (terrain / "a.ter").exists()
+    (terrain / "b.ter").write_text("made since\n")
+    set_decal(pack, "maquify_2_green_key.dcl", log=lambda _: None)
+    assert (terrain / "b.ter").exists()
+    (pack / DECAL_RECORD).write_text(json.dumps({"decal": ""}))
+    set_decal(pack, "", log=lambda _: None)
+    assert (terrain / "b.ter").exists()
 
 
 def test_live_s_decal_is_one_of_osxp_s() -> None:

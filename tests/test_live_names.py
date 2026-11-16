@@ -525,8 +525,8 @@ TER_SEA = (
 
 
 def test_a_land_terrain_file_takes_the_decal_live_chooses() -> None:
-    """The DECAL_LIB line names the decal of Live's settings, or goes with none; the sea's file,
-    which has no such line, is left as it is (decals on the land only)."""
+    """The DECAL_LIB line names the decal of Live's settings, or goes with none; a water file with
+    no such line is left as it is unless it lays the photo on the sea (the next test)."""
     from orthostudio.live.names import with_decal
 
     out = with_decal(TER_LAND, "grass_and_stony_dirt_1.dcl")
@@ -536,6 +536,51 @@ def test_a_land_terrain_file_takes_the_decal_live_chooses() -> None:
     assert b"DECAL_LIB" not in with_decal(TER_LAND, "")
     assert with_decal(TER_LAND, "").count(b"\n") == TER_LAND.count(b"\n") - 1
     assert with_decal(TER_SEA, "grass_and_stony_dirt_1.dcl") == TER_SEA
+
+
+TER_SEA_MASKED = (
+    b"A\n800\nTERRAIN\n\nLOAD_CENTER 49.63918 -125.11230 6336 4096\n"
+    b"BASE_TEX_NOWRAP ../textures/22320_9984_BI16.dds\n"
+    b"LOAD_CENTER_BORDER 49.63918 -125.11230 6336 1024\n"
+    b"BORDER_TEX ../textures/22320_9984_ZL16.png\nWET\nNO_SHADOW\n"
+)
+
+
+def test_the_photo_laid_on_the_sea_takes_the_decal_too() -> None:
+    """The sea's photo file (``sea``) gets the DECAL_LIB line before WET, where Build's pack puts
+    it, so that the grain goes on with the photo past the shore; none chosen leaves it as it is,
+    and the water's overlays without a mask never get one."""
+    from orthostudio.live.names import with_decal
+
+    out = with_decal(TER_SEA_MASKED, "maquify_2_green_key.dcl", sea=True)
+    assert out == TER_SEA_MASKED.replace(
+        b"WET\n", b"DECAL_LIB lib/g10/decals/maquify_2_green_key.dcl\nWET\n"
+    )
+    assert with_decal(out, "grass_and_stony_dirt_1.dcl", sea=True).count(b"DECAL_LIB") == 1
+    assert with_decal(TER_SEA_MASKED, "", sea=True) == TER_SEA_MASKED
+    assert with_decal(out, "", sea=True) == TER_SEA_MASKED
+    assert with_decal(TER_SEA, "maquify_2_green_key.dcl") == TER_SEA
+
+
+def test_live_s_own_sea_files_are_made_with_the_decal(tmp_path: Path) -> None:
+    """A ("make", ...) operation gives the sea's photo file of Live's own mesh the decal, the
+    water's overlay without a mask none, the land its own."""
+    from orthostudio.live.names import run_ops
+
+    terrain = tmp_path / "terrain"
+    terrain.mkdir()
+    names = (
+        "22320_9984_BI16.ter",
+        "22320_9984_BI16_sea_overlay.ter",
+        "22320_9984_BI16_water_overlay.ter",
+    )
+    ops = [("make", "", str(terrain / n), "grass_and_stony_dirt_1.dcl") for n in names]
+    result = run_ops(str(tmp_path), ops)
+    assert not result["errors"]
+    land, sea, water = ((terrain / n).read_bytes() for n in names)
+    assert b"DECAL_LIB lib/g10/decals/grass_and_stony_dirt_1.dcl\nNO_ALPHA" in land
+    assert b"DECAL_LIB lib/g10/decals/grass_and_stony_dirt_1.dcl\nWET" in sea
+    assert b"DECAL_LIB" not in water
 
 
 def test_a_square_s_terrain_files_are_written_with_the_decal(tmp_path: Path) -> None:
@@ -609,4 +654,7 @@ def test_a_region_that_names_its_terrain_files(tmp_path: Path) -> None:
     )
     assert done["placed"] == 2 and not done["errors"]
     assert b"DECAL_LIB lib/g10/decals/grass_and_stony_dirt_1.dcl\n" in land.read_bytes()
-    assert sea.read_bytes() == made_ter(sea.name)  # the sea takes no decal
+    # the sea's photo takes the decal too, before WET (2026-11-16)
+    assert sea.read_bytes() == made_ter(sea.name).replace(
+        b"WET\n", b"DECAL_LIB lib/g10/decals/grass_and_stony_dirt_1.dcl\nWET\n"
+    )

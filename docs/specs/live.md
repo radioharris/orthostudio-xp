@@ -395,6 +395,18 @@ zoom, and possible only on APFS, whose clones cost nothing. Measured then with L
 Checked against 80 of Europe's DSFs taken at random: the 30,540 `.ter` they name are all made with
 their square (`evict.tiles_of`, a texture on a square's edge made for both).
 
+**The decal in the `.ter` files** (`names.with_decal`, applied by `run_ops` to the `ter` and `make`
+operations). The land's files name the decal of Live's settings (`LiveSettings.decal`,
+`maquify_2_green_key.dcl` by default; empty: none) on their `DECAL_LIB` line. Since 2026-11-16 the
+photo laid on water with a mask (`*_sea_overlay.ter`: the sea, and lakes and rivers where the mesh
+fades them as the sea) takes it too, its line put before `WET` as Build's pack puts it with
+*Fine ground detail on the sea too*: without it the grain stops at the shore while the photo goes on
+over the water (seen in Build at Black Lake, +49-126, 2026-11-15). The water's overlays without a mask
+(`*_water_overlay.ter`) take none. `region.set_decal` records the decal and `on_sea`
+(`_live/decal.json`, `DECAL_ON_SEA`): a pack whose record says another decal, or not `on_sea`, has
+its `.ter` files taken away at the next start with X-Plane not running, made again as X-Plane comes;
+with no decal chosen nothing is made again.
+
 Which files a square takes comes from the regions' textures (`names.RegionTextures`), each
 region's listed from its `terrain` folder once and kept in a list of its own, in Live's folder
 (`regions/.lists`, named after the region's folder and its whole path: `names.one_region`). A start
