@@ -42,10 +42,10 @@ __all__ = [
     "three_steps_widths",
 ]
 
-MaskingMode = Literal["sand", "rocks", "3steps"]
+MaskingMode = Literal["sand", "rocks", "3steps", "soft"]
 MasksWidth = float | int | list[float] | tuple[float, ...]
 
-MASKING_MODES: tuple[str, ...] = ("sand", "rocks", "3steps")
+MASKING_MODES: tuple[str, ...] = ("sand", "rocks", "3steps", "soft")
 
 WATER_TRANSITION: tuple[int, ...] = (
     0, 0, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 6, 6, 6, 7, 7, 7, 8,
@@ -178,6 +178,10 @@ def halo_px(
     elif masking_mode == "3steps":
         needed = _three_steps_reach(three_steps_widths(_sequence(masks_width), lat, mask_zl))
         needed += pil_blur_support(2)
+    elif masking_mode == "soft":
+        # the band reaches masks_width into the water, and the width of the water is read
+        # over as much again
+        needed = 2 * math.ceil(float(_scalar(masks_width)) / _pxscal(lat, mask_zl)) + 1
     else:
         needed = 0
     if distance_masks_too:
@@ -338,4 +342,35 @@ def blur_mask(
     if masking_mode == "3steps":
         widths = three_steps_widths(_sequence(masks_width), lat, mask_zl)
         return three_steps_blur(pre, widths, sea_level, mask_zl)
+    if masking_mode == "soft":
+        px = _pxscal(lat, mask_zl)
+        return soft_blur(pre, float(_scalar(masks_width)) / px)
     return np.array(pre)
+
+
+def soft_blur(pre: NDArray[np.uint8], band_px: float) -> NDArray[np.uint8]:
+    """OrthoStudio XP's ``soft`` profile (a trial, 2026-11-15, made progressive 2026-11-16).
+
+    From the bank, the photo grows more and more transparent, fast at first and then slowly
+    (``(1 - t)²``, as ``sand`` falls), down to the water's own level (``sea_level`` inland, 0 at
+    sea and on lakes faded like it) over ``band_px``, or over the water's local half-width when
+    that is narrower: a river narrower than twice the band fades from each bank to its middle,
+    which X-Plane's water alone draws, so it is never covered from bank to bank by the photo.
+    On water wider than twice the band it is ``sand``'s fade.
+    """
+    from scipy import ndimage
+
+    if band_px <= 0:
+        return np.array(pre)
+    water = pre < 255
+    if not water.any():
+        return np.array(pre)
+    d = ndimage.distance_transform_edt(water)  # pixels to the nearest land
+    reach = int(math.ceil(band_px))
+    half = ndimage.maximum_filter(d, size=2 * reach + 1)  # the local half-width, up to the band
+    band = np.minimum(band_px, half)
+    t = np.clip(d / np.maximum(band, 1e-6), 0.0, 1.0)
+    photo = (1.0 - t) ** 2
+    level = pre.astype(np.float64)
+    out = np.where(water, level + (255.0 - level) * photo, 255.0)
+    return np.clip(np.rint(out), 0, 255).astype(np.uint8)

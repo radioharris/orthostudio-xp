@@ -311,6 +311,7 @@ export function questionChoices(id, settings, { providers = [], ownScenery = [] 
       const choices = [
         { value: "sand", label: t("settings.q.coast_sand"), recommended: true },
         { value: "rocks", label: t("settings.q.coast_rocks") },
+        { value: "soft", label: t("settings.q.coast_soft") },
       ];
       return withCurrent(choices, value("essential.coast_transition.profile"), t("settings.q.coast_3steps"));
     }
@@ -456,6 +457,7 @@ export function settingsSummary(settings) {
   const ct = e.coast_transition || {};
   if (ct.profile === "3steps") parts.push(t("plan.s.coast_3steps"));
   else if (ct.profile === "rocks") parts.push(t("plan.s.coast_rocks", { n: fmtNum(Number(ct.width_m), 1) }));
+  else if (ct.profile === "soft") parts.push(t("plan.s.coast_soft", { n: fmtNum(Number(ct.width_m), 1) }));
   else parts.push(t("plan.s.coast_sand", { n: fmtNum(Number(ct.width_m), 1) }));
   parts.push(e.water_rendering === "XP12" ? t("plan.s.water_xp12") : t("plan.s.water_xp11"));
   const relief = e.relief?.source;
