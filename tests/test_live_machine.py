@@ -92,11 +92,36 @@ def test_a_computer_whose_memory_cannot_be_read_counts_as_small(
     assert machine.share().sharp_builds == 1
 
 
+def test_the_memory_counts_as_installed(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Windows says a little less than is installed (17,159,348,224 bytes on a PC of 16 GB, the
+    campaign of 2026-11-16): counted in whole GB rounded up, 16 GB flies with two textures at once
+    and 32 GB is not told it is short for ZL17 and ZL19."""
+    said = {"bytes": 17_159_348_224}
+
+    class Kernel32:
+        def GlobalMemoryStatusEx(self, status: object) -> int:  # noqa: N802 (Windows' name)
+            status._obj.ullTotalPhys = said["bytes"]  # type: ignore[attr-defined]
+            return 1
+
+    monkeypatch.delattr(machine.os, "sysconf", raising=False)
+    monkeypatch.setattr(machine, "WINDOWS", True)
+    monkeypatch.setattr(
+        ctypes, "windll", type("WinDLL", (), {"kernel32": Kernel32()})(), raising=False
+    )
+    assert machine.memory_gb() == 16.0
+    assert machine.flight_encodes(8, machine.memory_gb()) == 2
+    said["bytes"] = int(31.9 * 2**30)
+    assert machine.memory_gb() == 32.0
+    assert not machine.short_for_sharp(machine.memory_gb())
+    said["bytes"] = 16 * 2**30 + 1  # one byte over: still 16
+    assert machine.memory_gb() == 16.0
+
+
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows only")
 def test_windows_memory_for_real() -> None:
     status = machine._windows_memory_status()
     assert status is not None and status.ullTotalPhys > 0
-    assert machine.memory_gb() == status.ullTotalPhys / 2**30
+    assert machine.memory_gb() == machine._whole_gb(status.ullTotalPhys)
 
 
 def test_the_log_says_the_share_and_warns_below_32_gb(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -37,6 +37,7 @@ from __future__ import annotations
 import contextlib
 import ctypes
 import ctypes.util
+import math
 import os
 import sys
 import threading
@@ -72,13 +73,23 @@ def machine() -> tuple[int, float]:
 def memory_gb() -> float | None:
     """The memory installed, GB, or None where the system does not say. OrthoStudio XP's own
     reading (``pipeline.build.physical_memory_mb``) is not imported: its module loads PROJ, which
-    must not be open in Live's process before its fork server starts (``pools``)."""
+    must not be open in Live's process before its fork server starts (``pools``). In whole GB
+    rounded up, as installed: the system keeps a little for itself, and Windows said 15.98 GB for
+    16 (17,159,348,224 bytes), which gave one texture at once in flight instead of two, and 31.9
+    GB for 32, which warned that ZL17 and ZL19 want 32 GB (a campaign, 2026-11-16); OrthoStudio
+    XP's cloud searches count it so too (``clouds.tasks.searches_at_once``)."""
     try:
         pages, size = os.sysconf("SC_PHYS_PAGES"), os.sysconf("SC_PAGE_SIZE")
     except (ValueError, OSError, AttributeError):  # Windows has no sysconf
         status = _windows_memory_status()
-        return None if status is None else status.ullTotalPhys / 2**30
-    return pages * size / 2**30 if pages > 0 and size > 0 else None
+        return None if status is None else _whole_gb(status.ullTotalPhys)
+    return _whole_gb(pages * size) if pages > 0 and size > 0 else None
+
+
+def _whole_gb(total_bytes: int) -> float:
+    """``total_bytes`` in GB, rounded up to a whole GB (a thousandth less first, so that a
+    system saying one byte over 16 GB does not count 17)."""
+    return float(math.ceil(total_bytes / 2**30 - 0.001))
 
 
 class _MemoryStatus(ctypes.Structure):

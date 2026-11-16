@@ -1085,7 +1085,9 @@ X-Plane's French menu says it.
   apart, which is not measured. On a smaller computer the log and the window say so, in the
   checks and under the zooms; the choice stays the pilot's. The memory is read with `sysconf`
   (macOS, Linux) or `GlobalMemoryStatusEx` (Windows), not through OrthoStudio XP's own reading,
-  whose module loads PROJ before the fork server starts. `OSXP_LIVE_MACHINE="8,16"` gives Live the
+  whose module loads PROJ before the fork server starts, and counted in whole GB rounded up, as
+  installed: Windows says 15.98 GB for 16, which gave one texture at once in flight, and 31.9 for
+  32, which warned short of memory for ZL17 and ZL19 (2026-11-16). `OSXP_LIVE_MACHINE="8,16"` gives Live the
   share of a computer with 8 cores and 16 GB, to try it on a larger one: X-Plane keeps the whole
   computer.
 - **Short of memory in flight** (`machine.memory_pressure`, read every second without a process
