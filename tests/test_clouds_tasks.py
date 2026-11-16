@@ -208,6 +208,18 @@ def test_searches_at_once_follow_the_computers_memory(monkeypatch: pytest.Monkey
     assert got == {None: 1, 4: 1, 8: 1, 16: 2, 24: 3, 32: 4, 48: 4, 128: 4}
 
 
+def test_searches_at_once_count_the_memory_as_installed(monkeypatch: pytest.MonkeyPatch) -> None:
+    from orthostudio.clouds import tasks as tasks_module
+
+    got = {}
+    # what the system says is a little less than installed: Windows on the 16 GB Shadow said
+    # 16,364 MB (2026-11-16); a 32 GB and an 8 GB computer alike
+    for mb in (16364, 32604, 8150, 15000):
+        monkeypatch.setattr(tasks_module, "physical_memory_mb", lambda mb=mb: mb)
+        got[mb] = tasks_module.searches_at_once()
+    assert got == {16364: 2, 32604: 4, 8150: 1, 15000: 1}
+
+
 def test_searches_run_as_many_at_once_as_given_the_next_waiting() -> None:
     tasks, go = Tasks(searches=2), threading.Event()
     first = tasks.start("+43+005", "find", lambda t: (t.say("looking"), go.wait(10)))

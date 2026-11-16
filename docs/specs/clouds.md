@@ -593,7 +593,8 @@ at the map's level, said `drawing` while it is drawn or waited for, not left on 
 turn" (the 20 s a Windows server drew a tile as its mode opened, a campaign, 2026-11-08). Four
 searches at once for the app, one per 8 GB of the computer's memory below 32 GB (a search holds up
 to 3.6 GB, B2; it reads for about half its time and waits on the network for the other half, B14;
-`tasks.searches_at_once`, a user's choice, 2026-11-15); each search's fetch from a source waits
+`tasks.searches_at_once`, a user's choice, 2026-11-15), the memory counted in whole GB rounded up,
+as installed (Windows says 16,364 MB for 16 GB: one search, a campaign, 2026-11-16); each search's fetch from a source waits
 until no other search fetches from it, so that searches at once ask a server no faster than one
 does (`SourcePieces(one_at_a_time=True)`, an outline's or a level's try too: EOX refuses above
 about 60 requests a second; the turn given back whatever ends the fetch, a failure beside it

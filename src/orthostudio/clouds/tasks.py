@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import math
 import secrets
 import threading
 import time
@@ -41,9 +42,11 @@ GB (B2)."""
 
 def searches_at_once() -> int:
     """How many searches run at once: :data:`SEARCHES_AT_MOST`, one per 8 GB of the computer's
-    memory below 32 GB (two on 16 GB), one when it does not say."""
+    memory below 32 GB (two on 16 GB), one when it does not say. The memory counts in whole GB
+    rounded up, as installed: the system keeps a little of it for itself (Windows says 16,364 MB
+    for 16 GB, which counted one search, a campaign, 2026-11-16)."""
     mb = physical_memory_mb()
-    return 1 if mb is None else max(1, min(SEARCHES_AT_MOST, mb // 8192))
+    return 1 if mb is None else max(1, min(SEARCHES_AT_MOST, math.ceil(mb / 1024) // 8))
 
 
 @dataclass(eq=False)
