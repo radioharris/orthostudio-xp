@@ -465,6 +465,21 @@ unpacked in Live's folder as
 `default_sources`: a square it has takes its DSF (a DSF another region has already stays that
 region's), AutoOrtho's serves the squares it has not.
 
+**Installed and updated whole** (`osxpregions.Installer`, 2026-11-16). A region is made whole in
+its stage, `.z_osxp_<id>.new` beside the region's folder (the folder a link leads to, for one on
+another disk: on its disk), its zips unpacked one at a time in the list's order, each recorded in
+the stage's `.live-install.json`. Once all are there, its marker is written in the stage and the
+stage takes the region's place: the region of before renamed `.z_osxp_<id>.old`, the stage renamed
+in, the old one deleted. An update does the same as soon as one zip of the mesh changed
+(`made_whole`): every bake makes every zip again, and a mesh unpacked over the one of before left
+its files behind (masks no DSF names, the lists of zips gone) and, stopped halfway, a mix of both
+in use. A stage is kept for the next try only while each zip it holds is still the list's as it
+was (`_staged`), else started again. Night grids, or overlays alone, added to a region whose mesh
+did not change go into it in place, the marker recording them. On Windows a folder X-Plane holds
+open cannot be renamed: the region of before is put back, the stage kept whole, and the next
+install downloads nothing and only swaps. The disk holds what the update unpacks, the region of
+before still on it.
+
 **Another tool's mesh** (`scenery.other_mesh`, 2026-11-14): a folder chosen in the Settings
 (`LiveSettings.other_mesh`, empty: none), last in `default_sources` after `base_sources` (Live's
 regions, AutoOrtho's in X-Plane, those Live installed), its roads last in

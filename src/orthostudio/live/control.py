@@ -815,8 +815,8 @@ class LiveControl:
     def regions(self, *, fetch: bool = False) -> dict[str, Any]:
         """OrthoStudio XP's regions as the page lists them: those installed (:func:`our_regions`,
         their size on the disk and where), then every region of the host's list with what it
-        downloads (the overlays only when the pilot takes them), whether it is installed and how
-        many of its zips changed since; the install under way. With ``fetch`` (the page's own
+        downloads (the overlays only when the pilot takes them), whether it is installed and what
+        an update of it downloads (the region whole once its mesh changed); the install under way. With ``fetch`` (the page's own
         request, not its status), the host's list is read again in the background when old."""
         with self._lock:
             reading = self._catalog_thread is not None and self._catalog_thread.is_alive()
@@ -859,7 +859,7 @@ class LiveControl:
 
     def install_region(self, region_id: str) -> None:
         """Download and install one of OrthoStudio XP's regions into Live's folder, or update one
-        (only its zips that changed), in the background. One at a time; a region new while Live
+        (whole, beside the one installed, which it replaces), in the background. One at a time; a region new while Live
         streams is used from the next start, and one installed is not updated then: the pack
         reads its files."""
         self._stop_night_grids()

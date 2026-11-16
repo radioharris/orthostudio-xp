@@ -14,10 +14,16 @@ too), its overlays into the one overlay pack, ``regions/y_osxp_overlays``, unles
 "Never" to them. Each zip is downloaded into ``regions/.download/osxp_<id>`` (resumed with an
 HTTP range after a cut), checked (its size and SHA-256), unpacked file by file, each file in place
 whole or not at all, and deleted. The zips are unpacked in the list's order whatever order they
-arrive in: a mask two neighbouring zips both hold is the same file on every computer. The
-region's marker, which makes Live use it, is written last: until then a start does not see it.
-The marker keeps every zip's SHA-256: once a zip of the bucket is made again (a mistake mended),
-only the zips whose SHA-256 changed are downloaded again.
+arrive in: a mask two neighbouring zips both hold is the same file on every computer.
+
+A region is made whole beside its place, in ``.z_osxp_<id>.new`` (the stage, a hidden folder on
+the disk the region is on), and put in place with one rename once its marker, which makes Live use
+it, is written: until then a start does not see it. An update does the same as soon as one zip of
+its mesh changed (every bake makes every zip again): the region of before stays whole and in use
+until the new one takes its place, and is then deleted with all it held, so that no file of the
+mesh of before stays behind (2026-11-16). A stopped install goes on in its stage; a stage holding a
+zip the list no longer has as it was is started again. Night grids added to a region whose mesh did
+not change are unpacked into it in place, as nothing else changes.
 """
 
 from __future__ import annotations
@@ -217,13 +223,56 @@ def _write(path: Path, doc: dict) -> None:
     replace_file(tmp, path)
 
 
+def _real(root: Path, region: str) -> Path:
+    """The region's folder where it really is: the folder a link leads to, for one elsewhere."""
+    folder = mesh_dir(root, region)
+    return folder.resolve() if folder.is_symlink() else folder
+
+
+def stage_dir(root: Path, region: str) -> Path:
+    """Where the region is made whole before it takes its place: beside it, on its disk, hidden
+    (no ``z_osxp_`` name: no start takes it for a region)."""
+    real = _real(root, region)
+    return real.with_name(f".{real.name}.new")
+
+
+def _old_dir(real: Path) -> Path:
+    """Where the region of before goes for the moment its successor takes its place."""
+    return real.with_name(f".{real.name}.old")
+
+
+def _installed_zips(root: Path, region: str) -> dict[str, str] | None:
+    """The zips the installed region was made of, {path: SHA-256}; None: not installed."""
+    marker = _read(mesh_dir(root, region) / MARKER)
+    return (marker.get("zips") or {}) if marker else None
+
+
+def made_whole(root: Path, region: OsxpRegion) -> bool:
+    """Whether an install makes the region whole in its stage: not installed, or one zip of its
+    mesh changed since. False: only night grids or overlays to add, in place."""
+    have = _installed_zips(root, region.id)
+    return have is None or any(have.get(z.path) != z.sha256 for z in region.mesh)
+
+
+def _staged(root: Path, region: OsxpRegion) -> dict[str, str]:
+    """The zips a stopped install unpacked into the region's stage, {path: SHA-256}, when each is
+    still one of the list as it was; else none, the stage to be started again: a zip the list no
+    longer has, or made again since, would leave its files in the region."""
+    step = _read(stage_dir(root, region.id) / STEP).get("zips") or {}
+    listed = {z.path: z.sha256 for z in (*region.mesh, *region.night)}
+    return step if all(listed.get(p) == s for p, s in step.items()) else {}
+
+
 def to_fetch(root: Path, region: OsxpRegion, overlays: bool) -> tuple[list[Zip], list[Zip]]:
-    """The mesh zips and overlay zips not installed yet, or changed in the bucket since; the night
-    grids' zips with the mesh's, unpacked into the region's folder as they are."""
-    marker = _read(mesh_dir(root, region.id) / MARKER)
-    step = _read(mesh_dir(root, region.id) / STEP)
-    have = {**(marker.get("zips") or {}), **(step.get("zips") or {})}
-    mesh = [z for z in (*region.mesh, *region.night) if have.get(z.path) != z.sha256]
+    """The mesh zips and overlay zips an install downloads. A region made whole
+    (:func:`made_whole`): every zip of its mesh and its night grids but those its stage holds
+    already; else the night grids it has not got, or that changed since. The overlays not
+    installed, or changed since."""
+    if made_whole(root, region):
+        staged = _staged(root, region)
+        mesh = [z for z in (*region.mesh, *region.night) if staged.get(z.path) != z.sha256]
+    else:
+        mesh = night_to_fetch(root, region)
     record = _read(overlay_pack(root) / OVERLAY_RECORD)
     ovl = [z for z in region.overlays if record.get(z.path) != z.sha256] if overlays else []
     return mesh, ovl
@@ -232,11 +281,9 @@ def to_fetch(root: Path, region: OsxpRegion, overlays: bool) -> tuple[list[Zip],
 def night_to_fetch(root: Path, region: OsxpRegion) -> list[Zip]:
     """The night grids' zips of a region installed whole that it has not got yet, or that changed
     in the bucket since: a region installed before Live lit its towns (2.0) has none."""
-    folder = mesh_dir(root, region.id)
-    if not (folder / MARKER).is_file():
+    have = _installed_zips(root, region.id)
+    if have is None:
         return []
-    marker, step = _read(folder / MARKER), _read(folder / STEP)
-    have = {**(marker.get("zips") or {}), **(step.get("zips") or {})}
     return [z for z in region.night if have.get(z.path) != z.sha256]
 
 
@@ -275,6 +322,8 @@ def remove(root: Path, region: str, squares: Sequence[tuple[int, int]], log: Log
     """A region deleted from the disk (the folder a link leads to too), its overlays out of the
     overlay pack, and what an install of it left behind."""
     folder = mesh_dir(root, region)
+    for left in (stage_dir(root, region), _old_dir(_real(root, region))):
+        shutil.rmtree(left, ignore_errors=True)
     if folder.is_symlink():
         target = folder.resolve()
         folder.unlink()
@@ -396,8 +445,11 @@ class Installer:
         region = self.region
         folder = mesh_dir(self.root, region.id)
         pack = overlay_pack(self.root)
+        whole = not self.night_only and made_whole(self.root, region)
+        stage = stage_dir(self.root, region.id)
+        ovl: list[Zip] = []
         if self.night_only:
-            mesh, ovl = night_to_fetch(self.root, region), []
+            mesh = night_to_fetch(self.root, region)
         else:
             mesh, ovl = to_fetch(self.root, region, self.with_overlays)
         todo = [*mesh, *ovl]
@@ -406,42 +458,68 @@ class Installer:
             zips=len(todo),
             phase="downloading" if todo else "done",
         )
-        if not todo:
+        if not todo and not whole:
             if not self.night_only:
                 self.log(f"OrthoStudio XP's region {region.id} is up to date")
             return
-        folder.mkdir(parents=True, exist_ok=True)
+        # the region made whole: in its stage, started again unless it holds this list's zips; else
+        # the night grids alone, into the region in place
+        step: dict[str, dict[str, str]] = {"zips": {}}
+        if whole:
+            step["zips"] = dict(_staged(self.root, region))
+            if not step["zips"]:
+                shutil.rmtree(stage, ignore_errors=True)
+            stage.mkdir(parents=True, exist_ok=True)
+        dest = stage if whole else folder
+        if todo:
+            self._fetch_all(region, mesh, ovl, dest, pack, step, whole)
+        self._finish(folder, stage, step, whole)
+
+    def _fetch_all(
+        self,
+        region: OsxpRegion,
+        mesh: list[Zip],
+        ovl: list[Zip],
+        dest: Path,
+        pack: Path,
+        step: dict[str, dict[str, str]],
+        whole: bool,
+    ) -> None:
+        """``mesh`` downloaded and unpacked into ``dest`` (and recorded in the stage's step, for a
+        region made whole), ``ovl`` into the overlay pack, a few downloads at a time, the zips
+        unpacked one at a time in the list's order."""
+        todo = [*mesh, *ovl]
         pack.mkdir(parents=True, exist_ok=True)
         self.download.mkdir(parents=True, exist_ok=True)
         need = sum(z.unpacked for z in todo) + max(z.size for z in todo) + SPARE_BYTES
-        free = shutil.disk_usage(folder.resolve()).free
+        free = shutil.disk_usage(dest.resolve()).free
         if free < need:
             raise InstallError(
-                f"{need / 1e9:.0f} GB needed on the disk of {folder.resolve()}, "
+                f"{need / 1e9:.0f} GB needed on the disk of {dest.resolve()}, "
                 f"{free / 1e9:.0f} GB free"
             )
         had = self._have_bytes(todo)
         with self.lock:  # what an earlier try downloaded counts whole, not in the pace
             self.progress.done_bytes += had
             self.rate.samples.clear()
-        update = (folder / MARKER).exists()
         size = sum(z.size for z in todo) / 1e9
+        if not whole:
+            verb = "adding to"
+        elif (mesh_dir(self.root, region.id) / MARKER).exists():
+            verb = "updating"
+        else:
+            verb = "installing"
         if self.night_only:
             self.log(
                 f"the night lights' grids of OrthoStudio XP's region {region.id}: "
-                f"{sum(z.size for z in todo) / 1e6:.1f} MB, into {folder.resolve()}"
+                f"{sum(z.size for z in todo) / 1e6:.1f} MB, into {dest.resolve()}"
             )
         else:
             self.log(
-                f"{'updating' if update else 'installing'} OrthoStudio XP's region {region.id}: "
+                f"{verb} OrthoStudio XP's region {region.id}: "
                 f"{len(mesh)} mesh zips, {len(ovl)} overlay zips, {size:.1f} GB, into "
-                f"{folder.resolve()}"
+                f"{dest.resolve()}"
             )
-        # the night grids alone keep their record to themselves: an update the pilot stopped
-        # keeps its step for the next one
-        step = {"zips": {}} if self.night_only else _read(folder / STEP)
-        step.setdefault("zips", {})
-
         rank = {z.path: i for i, z in enumerate(todo)}
 
         def one(z: Zip) -> None:
@@ -462,10 +540,10 @@ class Installer:
                     record[z.path] = z.sha256
                     _write(pack / OVERLAY_RECORD, record)
                 else:
-                    unpack(path, folder, self.stop)
+                    unpack(path, dest, self.stop)
                     step["zips"][z.path] = z.sha256
-                    if not self.night_only:
-                        _write(folder / STEP, step)
+                    if whole:
+                        _write(dest / STEP, step)
                 path.unlink()
                 with self.lock:
                     self.progress.unpacked += 1
@@ -486,7 +564,6 @@ class Installer:
             real = [e for e in errors if not isinstance(e, CancelledError)]
             if real or errors:
                 raise (real or errors)[0]
-        self._finish(folder, step, update)
 
     def _have_bytes(self, todo: Sequence[Zip]) -> int:
         total = 0
@@ -549,50 +626,66 @@ class Installer:
             raise InstallError(f"{z.name} came damaged (its SHA-256 differs): install again")
         return path
 
-    def _drop_terrain(self, folder: Path) -> None:
-        """A region of before brought to zips that name their terrain files: once each of its zips
-        has its list, the ``terrain`` folder of before is taken away, Live then making the files
-        from their names (:data:`orthostudio.live.names.TERRAIN_LISTS`). Renamed first, so that a
-        stop on the way leaves no folder half there to read."""
-        from orthostudio.live.names import TERRAIN_LISTS
+    def _swap(self, folder: Path, stage: Path) -> None:
+        """The stage put in the region's place with one rename, the region of before renamed aside
+        first and deleted after: a start finds the one or the other, whole. A folder X-Plane holds
+        open (Windows) cannot be renamed: the region of before is left as it was, and the stage,
+        whole, waits for the next install, which only puts it in place."""
+        real = _real(self.root, self.region.id)
+        old = _old_dir(real)
+        shutil.rmtree(old, ignore_errors=True)  # one an earlier swap could not delete
+        try:
+            if real.exists():
+                os.rename(real, old)
+            try:
+                os.rename(stage, real)
+            except OSError:
+                if old.exists() and not real.exists():
+                    os.rename(old, real)
+                raise
+        except OSError as e:
+            raise InstallError(
+                f"{folder.name} is in use, by X-Plane perhaps: close it, then click Install again, "
+                f"which downloads nothing more ({e})"
+            ) from e
+        shutil.rmtree(old, ignore_errors=True)
 
-        old, gone = folder / "terrain", folder / ".terrain-old"
-        shutil.rmtree(gone, ignore_errors=True)  # one a stop left
-        lists = {p.stem for p in (folder / TERRAIN_LISTS).glob("*.txt")}
-        if not old.is_dir() or lists != {z.name.removesuffix(".zip") for z in self.region.mesh}:
-            return
-        replace_file(old, gone)
-        shutil.rmtree(gone, ignore_errors=True)
-        self.log("  its terrain files of before taken away: made from their names now")
-
-    def _finish(self, folder: Path, step: dict, update: bool) -> None:
-        """Every zip unpacked: the marker, which makes Live use the region, written last."""
+    def _finish(
+        self, folder: Path, stage: Path, step: dict[str, dict[str, str]], whole: bool
+    ) -> None:
+        """Every zip unpacked. Night grids or overlays added in place: the marker records them,
+        nothing else changes. A region made whole: its marker, which makes Live use it, written in
+        its stage, the stage put in its place, the region of before deleted."""
         region = self.region
-        marker = _read(folder / MARKER)
-        zips = {**(marker.get("zips") or {}), **step["zips"]}
         sizes = {z.path: z.unpacked for z in (*region.mesh, *region.night)}
-        if self.night_only:  # the region as it was, its grids recorded: nothing to set up again
+        if not whole:
+            marker = _read(folder / MARKER)
+            zips = {**(marker.get("zips") or {}), **step["zips"]}
             size = sum(sizes.get(p, 0) for p in zips)
             _write(folder / MARKER, {**marker, "zips": zips, "size": size})
             # its zips deleted as unpacked; an update the pilot stopped keeps what it downloaded
             # there to go on from it (the review of 2026-11-11)
             with contextlib.suppress(OSError):
                 self.download.rmdir()
-            self.log(f"OrthoStudio XP's region {region.id}: its night lights' grids installed")
+            if self.night_only:
+                self.log(f"OrthoStudio XP's region {region.id}: its night lights' grids installed")
+            else:
+                self.log(f"OrthoStudio XP's region {region.id} updated")
             return
+        update = (folder / MARKER).exists()
         _write(
-            folder / MARKER,
+            stage / MARKER,
             {
                 "id": region.id,
                 "release": region.release,
                 "installed": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
                 "source": "osxp",
-                "size": sum(sizes.get(p, 0) for p in zips),
-                "zips": zips,
+                "size": sum(sizes.get(p, 0) for p in step["zips"]),
+                "zips": step["zips"],
             },
         )
-        (folder / STEP).unlink(missing_ok=True)
-        self._drop_terrain(folder)
+        self._swap(folder, stage)
+        (folder / STEP).unlink(missing_ok=True)  # kept till then: a swap refused goes on from it
         now = time.time()
         for sub in ("Earth nav data", "terrain", "terrain-lists"):  # what the set-up compares
             with contextlib.suppress(OSError):

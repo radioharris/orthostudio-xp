@@ -382,8 +382,12 @@ stopped, a file cut off included. A region is used from the next start, never ha
 roads, forests and buildings come with it, unless "Roads, forests and buildings" says "No".
 Once installed, a region shows its size on the disk and **Delete** (click twice). When a region
 is made again on the server, the panel says an update is available and how much it downloads,
-and offers **Update**: only
-those are downloaded again. Updating and deleting wait until Live is stopped. A region installed
+and offers **Update**: the region comes again whole, beside the one installed, which Live keeps
+using until the new one is complete and takes its place; the one of before is then deleted,
+nothing of it left behind. The disk holds both meanwhile. Stopped, an update goes on where it
+stopped, and the region of before stays as it was. On Windows, a region X-Plane holds open cannot
+be replaced: the panel says so; close X-Plane and click **Update** again, which downloads nothing
+more. Updating and deleting wait until Live is stopped. A region installed
 with 2.0, before the night lights, gets their grids by itself, a few megabytes (Europe 11.6 MB), as the
 window opens: no Update to click. A region may sit on another disk, linked from Live's folder: the
 panel says where each one is.

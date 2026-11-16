@@ -134,6 +134,7 @@ def test_a_region_installed_whole(tmp_path: Path, world, monkeypatch) -> None:
     assert marker["zips"] == {z.path: z.sha256 for z in region.mesh}
     assert marker["size"] == region.unpacked
     assert not (folder / osxpregions.STEP).exists()
+    assert not osxpregions.stage_dir(tmp_path, "eur").exists()  # made whole there, then moved
     assert not (tmp_path / "regions" / ".download" / "osxp_eur").exists()  # the zips deleted
     assert any(r is not None and r.startswith("bytes=") for _, r in host.asked)  # resumed
     assert osxpregions.to_fetch(tmp_path, region, True) == ([], [])
@@ -155,24 +156,53 @@ def test_a_fault_of_the_host_is_tried_again_as_a_cut_line_is(
     assert URL not in inst.progress.error
 
 
-def test_only_the_zips_mended_come_again(tmp_path: Path, world) -> None:
+def mended(files: dict, region: OsxpRegion, which: int, content: dict[str, bytes]):
+    """The world with its zip ``which`` made again with ``content``: (files, region)."""
+    path = region.mesh[which].path
+    data = zip_of(path.rsplit("/", 1)[-1].removesuffix(".zip"), content)
+    mesh = list(region.mesh)
+    mesh[which] = entry(path, data)
+    return {**files, path: data}, dataclasses.replace(region, mesh=tuple(mesh))
+
+
+def test_a_mended_zip_brings_the_region_whole_and_nothing_of_before_stays(
+    tmp_path: Path, world
+) -> None:
+    """One zip of the mesh made again: the region is downloaded whole into its stage and takes
+    the place of the one of before, so that no file of the mesh of before stays behind (Live's
+    light world, 2026-11-16: every bake makes every zip again). Its night grids come again with
+    it."""
     files, region = world
+    night = zip_of("night_eur", {"night/+45+005.png": b"grid a"})
+    files = {**files, "eur/night-zips/night_eur.zip": night}
+    region = dataclasses.replace(region, night=(entry("eur/night-zips/night_eur.zip", night),))
     install(tmp_path, region, Host(files))
-    mended = zip_of(
-        "z_osxp_eur_+46+005",
-        {"Earth nav data/+40+000/+46+005.dsf": b"dsf B" * 400, "terrain/b.ter": b"ter B"},
+    folder = osxpregions.mesh_dir(tmp_path, "eur")
+    assert (folder / "terrain/b.ter").read_bytes() == b"ter b"
+    files, region = mended(
+        files,
+        region,
+        1,
+        {"Earth nav data/+40+000/+46+005.dsf": b"dsf B" * 400, "terrain/b2.ter": b"ter B"},
     )
-    files = {**files, "eur/zips/z_osxp_eur_+46+005.zip": mended}
-    region = dataclasses.replace(
-        region, mesh=(region.mesh[0], entry("eur/zips/z_osxp_eur_+46+005.zip", mended))
-    )
+    assert osxpregions.made_whole(tmp_path, region)
+    mesh, _ = osxpregions.to_fetch(tmp_path, region, True)
+    assert mesh == [*region.mesh, *region.night]
     host = Host(files)
     inst, lines = install(tmp_path, region, host)
     assert inst.progress.phase == "done", lines
-    assert [k for k, _ in host.asked] == ["eur/zips/z_osxp_eur_+46+005.zip"]
-    folder = osxpregions.mesh_dir(tmp_path, "eur")
-    assert (folder / "terrain/b.ter").read_bytes() == b"ter B"
-    assert (folder / "terrain/a.ter").read_bytes() == b"ter a"  # the other zip's, kept
+    assert sorted(k for k, _ in host.asked) == sorted(z.path for z in (*region.mesh, *region.night))
+    assert (folder / "terrain/b2.ter").read_bytes() == b"ter B"
+    assert not (folder / "terrain/b.ter").exists()  # the zip of before's file, gone
+    assert (folder / "terrain/a.ter").read_bytes() == b"ter a"
+    assert (folder / "night/+45+005.png").read_bytes() == b"grid a"
+    marker = json.loads((folder / aoregions.MARKER).read_text())
+    assert marker["zips"] == {z.path: z.sha256 for z in (*region.mesh, *region.night)}
+    assert marker["size"] == region.unpacked
+    left = sorted(p.name for p in folder.parent.iterdir() if p.name.startswith("."))
+    assert left == [".download", ".lists"]  # no stage, no region of before
+    assert not (folder.parent / ".download" / "osxp_eur").exists()  # nor its zips
+    assert osxpregions.to_fetch(tmp_path, region, True) == ([], [])
 
 
 def test_without_overlays_and_a_damaged_file(tmp_path: Path, world) -> None:
@@ -181,7 +211,7 @@ def test_without_overlays_and_a_damaged_file(tmp_path: Path, world) -> None:
     inst, lines = install(tmp_path, region, Host(damaged), overlays=False)
     assert inst.progress.phase == "failed" and "damaged" in inst.progress.error
     folder = osxpregions.mesh_dir(tmp_path, "eur")
-    assert not (folder / aoregions.MARKER).exists()  # not used: not whole
+    assert not folder.exists()  # not used: not whole, in its stage
     assert osxpregions.to_fetch(tmp_path, region, False) == ([region.mesh[1]], [])  # the rest kept
     inst, lines = install(tmp_path, region, Host(files), overlays=False)
     assert inst.progress.phase == "done", lines
@@ -196,8 +226,12 @@ def test_a_key_refused_and_a_region_deleted(tmp_path: Path, world) -> None:
     inst.run()
     assert inst.progress.phase == "failed" and "key" in inst.progress.error
     install(tmp_path, region, Host(files))
+    stage = osxpregions.stage_dir(tmp_path, "eur")  # an update stopped halfway
+    stage.mkdir()
+    (stage / "x.dsf").write_bytes(b"half")
     osxpregions.remove(tmp_path, "eur", [(45, 5), (46, 5)], log=lines.append)
     assert not osxpregions.mesh_dir(tmp_path, "eur").exists()
+    assert not stage.exists()
     pack = osxpregions.overlay_pack(tmp_path)
     assert not (pack / "Earth nav data/+40+000/+45+005.dsf").exists()
     assert json.loads((pack / osxpregions.OVERLAY_RECORD).read_text()) == {}
@@ -274,42 +308,102 @@ def test_a_mask_two_zips_hold_is_the_later_zip_s_whatever_comes_first(tmp_path: 
     assert (folder / mask).read_bytes() == b"mask of the second"
 
 
-def test_a_region_brought_to_zips_that_name_their_terrain(tmp_path: Path, world) -> None:
-    """The terrain folder of before goes once every zip lists its files, not while one zip of
-    before is left (2026-10-19)."""
+def test_an_update_stopped_halfway_leaves_the_region_of_before_whole(tmp_path: Path, world) -> None:
+    """Both zips made again, the second one damaged on the way: the region of before is untouched
+    and still the one Live uses; the next install goes on in the stage with the second zip alone."""
     files, region = world
     install(tmp_path, region, Host(files))
     folder = osxpregions.mesh_dir(tmp_path, "eur")
-
-    def listing(stem: str, ter: str) -> bytes:
-        return zip_of(
-            stem,
-            {
-                "Earth nav data/+40+000/x.dsf": b"7z" * 300,
-                f"terrain-lists/{stem}.txt": ter.encode(),
-            },
-        )
-
-    new_a = listing("z_osxp_eur_+45+005", "a.ter\n")
-    files = {**files, "eur/zips/z_osxp_eur_+45+005.zip": new_a}
-    region = dataclasses.replace(
-        region, mesh=(entry("eur/zips/z_osxp_eur_+45+005.zip", new_a), region.mesh[1])
-    )
-    inst, lines = install(tmp_path, region, Host(files))
+    before = (folder / aoregions.MARKER).read_text()
+    files, region = mended(files, region, 0, {"terrain/a.ter": b"ter A"})
+    files, region = mended(files, region, 1, {"terrain/b.ter": b"ter B"})
+    damaged = {**files, region.mesh[1].path: b"x" * region.mesh[1].size}
+    inst, lines = install(tmp_path, region, Host(damaged))
+    assert inst.progress.phase == "failed" and "damaged" in inst.progress.error
+    assert (folder / aoregions.MARKER).read_text() == before
+    assert (folder / "terrain/a.ter").read_bytes() == b"ter a"  # the region of before, whole
+    assert (folder / "Earth nav data/+40+000/+46+005.dsf").exists()
+    assert osxpregions.to_fetch(tmp_path, region, True) == ([region.mesh[1]], [])
+    host = Host(files)
+    inst, lines = install(tmp_path, region, host)
     assert inst.progress.phase == "done", lines
-    assert (folder / "terrain/b.ter").read_bytes() == b"ter b"  # the other zip still of before
-    new_b = listing("z_osxp_eur_+46+005", "b.ter\n")
-    files = {**files, "eur/zips/z_osxp_eur_+46+005.zip": new_b}
-    region = dataclasses.replace(
-        region, mesh=(region.mesh[0], entry("eur/zips/z_osxp_eur_+46+005.zip", new_b))
-    )
-    inst, lines = install(tmp_path, region, Host(files))
+    assert [k for k, _ in host.asked] == [region.mesh[1].path]
+    assert (folder / "terrain/a.ter").read_bytes() == b"ter A"
+    assert (folder / "terrain/b.ter").read_bytes() == b"ter B"
+    assert not (folder / "Earth nav data").exists()  # the mesh of before's DSFs, gone
+
+
+def test_a_stage_holding_a_zip_made_again_since_is_started_again(tmp_path: Path, world) -> None:
+    """An install stopped with the first zip in its stage; the first zip made again on the server
+    before the next try: the stage is started again, so that a file only the zip of before held
+    does not end in the region."""
+    files, region = world
+    damaged = {**files, region.mesh[1].path: b"x" * region.mesh[1].size}
+    inst, _ = install(tmp_path, region, Host(damaged))
+    assert inst.progress.phase == "failed"
+    stage = osxpregions.stage_dir(tmp_path, "eur")
+    assert (stage / "terrain/a.ter").exists()
+    files, region = mended(files, region, 0, {"terrain/a2.ter": b"ter A"})
+    host = Host(files)
+    inst, lines = install(tmp_path, region, host)
     assert inst.progress.phase == "done", lines
-    assert not (folder / "terrain").exists() and not (folder / ".terrain-old").exists()
-    assert sorted(p.name for p in (folder / "terrain-lists").iterdir()) == [
-        "z_osxp_eur_+45+005.txt",
-        "z_osxp_eur_+46+005.txt",
-    ]
+    folder = osxpregions.mesh_dir(tmp_path, "eur")
+    assert (folder / "terrain/a2.ter").read_bytes() == b"ter A"
+    assert not (folder / "terrain/a.ter").exists()
+    assert (folder / "terrain/b.ter").read_bytes() == b"ter b"
+
+
+def test_a_region_in_use_waits_for_the_next_install_to_take_its_place(
+    tmp_path: Path, world, monkeypatch
+) -> None:
+    """Windows does not rename a folder X-Plane holds open: the region of before stays as it was
+    and in use, the new one whole in its stage; the next install downloads nothing and only puts
+    it in place."""
+    files, region = world
+    install(tmp_path, region, Host(files))
+    folder = osxpregions.mesh_dir(tmp_path, "eur")
+    files, region = mended(files, region, 1, {"terrain/b.ter": b"ter B"})
+    rename = os.rename
+
+    def held(src, dst):
+        if Path(src) == folder:
+            raise PermissionError(32, "in use by another process")
+        rename(src, dst)
+
+    monkeypatch.setattr(osxpregions.os, "rename", held)
+    inst, lines = install(tmp_path, region, Host(files))
+    assert inst.progress.phase == "failed" and "in use" in inst.progress.error
+    assert (folder / "terrain/b.ter").read_bytes() == b"ter b"  # the region of before, in use
+    assert (folder / aoregions.MARKER).exists()
+    monkeypatch.setattr(osxpregions.os, "rename", rename)
+    host = Host(files)
+    inst, lines = install(tmp_path, region, host)
+    assert inst.progress.phase == "done", lines
+    assert host.asked == []
+    assert (folder / "terrain/b.ter").read_bytes() == b"ter B"
+    assert not osxpregions.stage_dir(tmp_path, "eur").exists()
+    assert not (folder / osxpregions.STEP).exists()
+
+
+def test_a_region_on_another_disk_is_made_whole_beside_it(tmp_path: Path, world) -> None:
+    """A region linked from Live's folder to a folder on another disk: made whole beside that
+    folder, on its disk, and put in its place there; the link still leads to it."""
+    files, region = world
+    elsewhere = tmp_path / "other disk" / "z_osxp_eur"
+    elsewhere.parent.mkdir()
+    root = tmp_path / "live"
+    install(root, region, Host(files))
+    folder = osxpregions.mesh_dir(root, "eur")
+    folder.rename(elsewhere)
+    folder.symlink_to(elsewhere, target_is_directory=True)
+    assert osxpregions.stage_dir(root, "eur") == elsewhere.with_name(".z_osxp_eur.new")
+    files, region = mended(files, region, 1, {"terrain/b2.ter": b"ter B"})
+    inst, lines = install(root, region, Host(files))
+    assert inst.progress.phase == "done", lines
+    assert folder.is_symlink() and folder.resolve() == elsewhere.resolve()
+    assert (elsewhere / "terrain/b2.ter").read_bytes() == b"ter B"
+    assert not (elsewhere / "terrain/b.ter").exists()
+    assert sorted(p.name for p in elsewhere.parent.iterdir()) == ["z_osxp_eur"]
 
 
 def test_a_region_s_night_grids_come_with_it_and_alone_later(tmp_path: Path, world) -> None:
