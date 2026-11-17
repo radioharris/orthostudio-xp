@@ -76,6 +76,7 @@ from .region import (
     night_on,
     region_version,
     sources_of_pack,
+    water_record,
 )
 from .rings import (
     AIRPORT_ZOOM,
@@ -583,6 +584,9 @@ class Streamer:
                 # then on again, squares flown meanwhile stayed without night for good (the review
                 # of 2026-11-11)
                 night=night_on(pack_dir),
+                # the same for the water: what the pack's record says its terrain files name
+                water=water_record(pack_dir),
+                watered=self._watered,
             )
             self.names.yielding = self.yielding
         self.night = night  # the night textures of the textures built (orthostudio.live.nightwork)
@@ -706,7 +710,13 @@ class Streamer:
         if name in self.built:
             self.built[name] = level
             self.copied_up.discard(name)  # its file written again: no copy there any more
+            self.water.pop(name, None)  # made again at its size: said by _watered
             self._night_follows(name, level)
+
+    def _watered(self, name: str, level: int) -> None:
+        """Under ``self.lock``: a texture's water photo holds its land's photo, from ``level``, as
+        its square's files found or made it (orthostudio.live.names): counted (evict.usage)."""
+        self.water[name] = level
 
     def _fitting(self, name: str) -> bool:
         """Whether a texture is being set to a new zoom's size: not written meanwhile."""

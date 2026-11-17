@@ -287,3 +287,23 @@ def drop(land: Path) -> None:
     for name in (water_name(land.name), mask_name(land.name)):
         with contextlib.suppress(FileNotFoundError):
             os.unlink(land.with_name(name))
+
+
+def ter_text(text: bytes, water: tuple) -> bytes:
+    """A water terrain file of Live's mesh, as its name makes it, naming what its water takes:
+    ``("photo", name, side)``, its water photo as its photo (``BASE_TEX_NOWRAP``), its side on
+    the ``LOAD_CENTER`` line, and no border, its alpha the mask (the module's docstring);
+    ``("border", name)``, the land's photo with that border, one of the two greys of rivers and
+    lakes, the whole file. The other lines (``WET``, ``NO_SHADOW``...) as they are."""
+    out = []
+    for line in text.split(b"\n"):
+        if line.startswith((b"LOAD_CENTER_BORDER ", b"BORDER_TEX ")):
+            continue
+        if water[0] == "photo" and line.startswith(b"BASE_TEX"):
+            line = f"BASE_TEX_NOWRAP ../textures/{water[1]}".encode("ascii")
+        elif water[0] == "photo" and line.startswith(b"LOAD_CENTER "):
+            line = b" ".join([*line.split(b" ")[:-1], str(water[2]).encode("ascii")])
+        out.append(line)
+        if water[0] == "border" and line.startswith(b"BASE_TEX"):
+            out.append(f"BORDER_TEX ../textures/{water[1]}".encode("ascii"))
+    return b"\n".join(out)

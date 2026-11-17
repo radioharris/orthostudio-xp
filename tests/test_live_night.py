@@ -1246,7 +1246,9 @@ class NightDiskTest(unittest.TestCase):
         said = []
         night = SimpleNamespace(back_to_black=lambda name: said.append(("black", name)))
         night.built = lambda name, level: said.append(("built", name, level))
-        s = SimpleNamespace(built={"a.dds": 0}, night=night, log=print, copied_up={"a.dds"})
+        s = SimpleNamespace(
+            built={"a.dds": 0}, night=night, log=print, copied_up={"a.dds"}, water={"a.dds": 0}
+        )
         s._night_follows = lambda name, level: Streamer._night_follows(s, name, level)
         Streamer._refit(s, "a.dds", 1)
         self.assertEqual((s.built, s.copied_up), ({"a.dds": 1}, set()))  # written again: no copy

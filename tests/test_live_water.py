@@ -2,7 +2,8 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """The water of Live's own mesh (orthostudio.live.waterphoto): the setting for rivers and lakes,
 the pack's record of what its terrain files name, the two borders, the water photo made from its
-land and following it, and the disk it takes."""
+land and following it, the disk it takes, and the squares' files: what their water terrain files
+name, made before them, and taken away with them."""
 
 from __future__ import annotations
 
@@ -435,3 +436,222 @@ def test_a_water_photo_is_never_taken_for_a_texture(tmp_path: Path) -> None:
     make(land, 0)
     assert _textures_by_zoom(pack) == {16: [land.name]}
     assert _layout_plan(pack, Zooms(15, 18)) == {16: [(land.name, 1)]}
+
+
+# --- the squares' files -------------------------------------------------------------------------
+
+
+def named_files(pack: Path) -> set[str]:
+    """Every file the pack's terrain files name in its ``textures``."""
+    out = set()
+    for ter in (pack / "terrain").iterdir():
+        for line in ter.read_text(encoding="ascii").splitlines():
+            if line.startswith(("BASE_TEX", "BORDER_TEX")):
+                out.add(line.split("../textures/")[1])
+    return out
+
+
+def ter_of(pack: Path, name: str, kind: str = "") -> str:
+    return (pack / "terrain" / f"{name}{kind}.ter").read_text(encoding="ascii")
+
+
+def test_what_the_water_terrain_files_name() -> None:
+    """The sea's names its water photo, its side on LOAD_CENTER, no border; rivers and lakes the
+    even grey, their water photo with soft banks, or the border of X-Plane's water alone without
+    a mask; the rest of each file as its name makes it."""
+    from orthostudio.live.names import made_ter
+    from orthostudio.live.waterphoto import ter_text
+
+    sea = made_ter("19024_33744_BI16_sea_overlay.ter")
+    river = made_ter("19024_33744_BI16_water_overlay.ter")
+    head = b"A\n800\nTERRAIN\n\nLOAD_CENTER 59.99899 5.40527 4892 "
+    photo = ("photo", "19024_33744_BI16_water.dds", 2048)
+    named = head + b"2048\nBASE_TEX_NOWRAP ../textures/19024_33744_BI16_water.dds\nWET\nNO_SHADOW\n"
+    assert ter_text(sea, photo) == named
+    assert ter_text(river, photo) == named  # soft banks: the sea's own way
+    for border in (EVEN_BORDER, NO_BORDER):
+        assert ter_text(river, ("border", border)) == (
+            head + b"4096\nBASE_TEX_NOWRAP ../textures/19024_33744_BI16.dds\n"
+            b"BORDER_TEX ../textures/" + border.encode() + b"\nWET\nNO_SHADOW\n"
+        )
+    assert ter_text(sea, ("photo", "x_water.dds", 1024)).startswith(head + b"1024\n")
+
+
+@pytest.mark.parametrize("rivers_fade", [False, True])
+def test_a_square_of_live_s_mesh_names_its_water_photos(tmp_path: Path, rivers_fade: bool) -> None:
+    """Every water terrain file as the record says, never one naming a file not there: the water
+    photos and their masks made first, a river's mask from rivers/textures; none for the land."""
+    pack = live_pack(tmp_path)
+    set_water(pack, rivers_fade, log=quiet)
+    names = live_names(pack, water=water_record(pack))
+    names.make(TILE)
+    textures = pack / "textures"
+    assert named_files(pack) <= {p.name for p in textures.iterdir()}
+    photo = {SEA, BOTH} | ({RIVER} if rivers_fade else set())
+    for name in KINDS:
+        has = (textures / water_name(f"{name}.dds")).exists()
+        assert has == (name in photo), name
+        assert (textures / mask_name(f"{name}.dds")).exists() == (name in photo), name
+    for name in (SEA, BOTH):
+        assert f"../textures/{name}_water.dds" in ter_of(pack, name, "_sea_overlay")
+        assert "LOAD_CENTER" in ter_of(pack, name, "_sea_overlay")
+        assert "BORDER" not in ter_of(pack, name, "_sea_overlay")
+    rivers = {name: ter_of(pack, name, "_water_overlay") for name in (RIVER, BOTH, BARE)}
+    if rivers_fade:
+        assert f"../textures/{RIVER}_water.dds" in rivers[RIVER]
+        assert f"../textures/{BOTH}_water.dds" in rivers[BOTH]
+        assert f"BORDER_TEX ../textures/{NO_BORDER}" in rivers[BARE]  # no mask: as before
+    else:
+        for name, text in rivers.items():
+            assert f"BASE_TEX_NOWRAP ../textures/{name}.dds" in text  # the land's photo
+            assert f"BORDER_TEX ../textures/{EVEN_BORDER}" in text
+            assert "_water.dds" not in text
+    assert "_water.dds" not in ter_of(pack, LAND) and "BORDER" not in ter_of(pack, LAND)
+
+
+def test_the_water_photos_are_made_before_the_terrain_files_naming_them(tmp_path: Path) -> None:
+    """In the first operations, with the textures set to their size: the masks, then the textures,
+    then the water photos; the terrain files after, once they are all there."""
+    pack = live_pack(tmp_path)
+    set_water(pack, True, log=quiet)
+    names = live_names(pack, water=water_record(pack))
+    calls: list[list[str]] = []
+    real = names._run_ops
+    names._run_ops = lambda ops: calls.append([op[0] for op in ops]) or real(ops)
+    names.make(TILE)
+    first, then = calls
+    assert set(first) == {"file", "fit", "water"} and "make" in then and "water" not in then
+    assert first.index("water") > max(i for i, kind in enumerate(first) if kind == "fit")
+    assert max(i for i, kind in enumerate(first) if kind == "file") < first.index("fit")
+
+
+def test_a_square_of_a_region_of_before_or_of_autoortho_is_as_it_was(tmp_path: Path) -> None:
+    """The record of before (None): the sea's terrain file names its mask, as its name makes it;
+    an AutoOrtho region's terrain files are copied as they are, whatever the record."""
+    from live_helpers import make_source
+    from orthostudio.live.names import made_ter
+
+    pack = live_pack(tmp_path)
+    live_names(pack).make(TILE)  # no record: the files of before
+    sea = pack / "terrain" / f"{SEA}_sea_overlay.ter"
+    assert sea.read_bytes() == made_ter(sea.name)
+    assert (pack / "textures" / mask_name(f"{SEA}.dds")).exists()
+    assert not any(p.name.endswith("_water.dds") for p in (pack / "textures").iterdir())
+    ao = tmp_path / "ao"
+    ao.mkdir()
+    src = make_source(ao, tile=TILE, textures=(SEA,))
+    ao_pack = ao / "pack"
+    setup_region(src, ao_pack, log=quiet)
+    set_water(ao_pack, True, log=quiet)
+    live_names(ao_pack, water=water_record(ao_pack)).make(TILE)
+    for ter in (f"{SEA}.ter", f"{SEA}_water_overlay.ter"):
+        assert (ao_pack / "terrain" / ter).read_bytes() == (src / "terrain" / ter).read_bytes()
+    assert not any(p.name.endswith("_water.dds") for p in (ao_pack / "textures").iterdir())
+
+
+def test_a_land_built_before_its_square_gets_its_water_photo_with_it(tmp_path: Path) -> None:
+    """Built before its square's files (far ahead, or before the water photos): its water photo
+    made from it as the square is made, said to the streamer; one being built gets its placeholder,
+    and the build makes it."""
+    pack = live_pack(tmp_path)
+    set_water(pack, False, log=quiet)
+    land = land_file(pack, SEA, 2, 0, water=False)  # its mask as the square will copy it
+    told: dict[str, int] = {}
+    names = live_names(
+        pack,
+        water=water_record(pack),
+        level_of={land.name: 2}.get,
+        building=lambda name: name == f"{BOTH}.dds",
+        watered=told.__setitem__,
+    )
+    names.make(TILE)
+    water = land.with_name(water_name(land.name))
+    assert told == {land.name: 2}
+    assert not os.path.samefile(water, WaterPool(pack).path(1))
+    assert water_levels(water, 3)[0][:, 8:].tobytes() == levels_from(land, 3, 0)[0]
+    both = pack / "textures" / water_name(f"{BOTH}.dds")
+    assert os.path.samefile(both, WaterPool(pack).path(1))  # its build makes it
+    told.clear()
+    names.make(TILE)  # made again (a square made again): said again, not made again
+    assert told == {land.name: 2}
+
+
+def test_a_water_photo_made_stays_with_its_texture_when_its_square_goes(tmp_path: Path) -> None:
+    """Taken away with its square, a water photo goes with its mask while it holds no photo; one
+    made stays with its mask, as its texture built does, or each flight back over the same water
+    would have it made again."""
+    pack = live_pack(tmp_path)
+    set_water(pack, False, log=quiet)
+    names = live_names(pack, water=water_record(pack), busy=lambda name: name == f"{SEA}.dds")
+    names.make(TILE)
+    textures = pack / "textures"
+    sea = textures / f"{SEA}.dds"
+    sea.unlink()
+    write_sparse(sea, 0, [land_block(k) * (n // 8) for k, (_, n) in enumerate(dds.mip_layout())])
+    make(sea, 0)
+    names.done.add(TILE)
+    names.take_away(TILE)
+    assert (textures / water_name(sea.name)).exists() and (textures / mask_name(sea.name)).exists()
+    both = textures / water_name(f"{BOTH}.dds")
+    assert not both.exists() and not (textures / mask_name(f"{BOTH}.dds")).exists()
+    assert not (pack / "terrain" / f"{SEA}_sea_overlay.ter").exists()
+
+
+def test_the_streamer_follows_the_record_and_counts_what_its_squares_make(tmp_path: Path) -> None:
+    """Its squares' files name what the record says; a water photo made is counted, saved with the
+    textures' record and read back; a texture made neutral takes its water photo back to the
+    placeholder, or away with its mask once on no square made."""
+    from orthostudio.live.cache import ChunkCache
+    from orthostudio.live.pack import load_built
+    from orthostudio.live.streamer import Streamer
+
+    pack = live_pack(tmp_path)
+    set_water(pack, True, log=quiet)
+    land = land_file(pack, SEA, 0, 0, water=False)
+    cache = ChunkCache(tmp_path / "c.sqlite")
+    try:
+        s = Streamer(pack, cache, lambda on_piece: None, log=quiet)
+        assert s.names.water == WaterRecord(rivers_fade=True)
+        s.built[land.name] = 0
+        s.names.make(TILE)
+        assert s.water == {land.name: 0}
+        s.save()
+        assert load_built(pack)["water"] == {land.name: 0}
+        again = Streamer(pack, cache, lambda on_piece: None, log=quiet)
+        assert again.water == {land.name: 0}
+        assert s.disk_used() > s.disk_used({}) > 0  # its water photo
+        s.names.done.add(TILE)
+        s._neutral(land.name)
+        assert os.path.samefile(land.with_name(water_name(land.name)), WaterPool(pack).path(1))
+        assert s.water == {}
+        s.names.done.discard(TILE)
+        make_again = land_file(pack, SEA, 0, 0, water=False)
+        make(make_again, 0)
+        s._neutral(land.name)  # on no square made: gone, its mask too
+        assert not land.exists() and not land.with_name(water_name(land.name)).exists()
+        assert not land.with_name(mask_name(land.name)).exists()
+    finally:
+        cache.close()
+
+
+def test_a_build_that_missed_its_water_photo_s_name_makes_it_after(tmp_path: Path) -> None:
+    """The water photo's name made after the build looked for it, before the streamer heard of the
+    build: made from the land just built, counted; a failure said once."""
+    from orthostudio.live.cache import ChunkCache
+    from orthostudio.live.streamer import Streamer
+
+    pack = live_pack(tmp_path)
+    set_water(pack, False, log=quiet)
+    land = land_file(pack, SEA, 0, 0)
+    said: list[str] = []
+    cache = ChunkCache(tmp_path / "c.sqlite")
+    try:
+        s = Streamer(pack, cache, lambda on_piece: None, log=said.append)
+        s._water_built(land.name, 0, None)
+        assert s.water == {land.name: 0}
+        assert not os.path.samefile(land.with_name(water_name(land.name)), WaterPool(pack).path(1))
+        s._water_built(land.name, 0, "OSError: no")
+        s._water_built(land.name, 0, "OSError: no")
+        assert s.water == {} and sum("could not be made" in line for line in said) == 1
+    finally:
+        cache.close()
