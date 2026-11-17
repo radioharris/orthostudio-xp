@@ -106,6 +106,49 @@ def _airports_router() -> Any:
     return router
 
 
+ERRORS_KEPT = 200
+"""Different errors written in the log in one window's life, at most: the page asks for its status
+every second, and an error that keeps coming back is written once, not each second."""
+
+
+def _errors_in_the_log(app: Any, control: LiveControl) -> None:
+    """Every error Live's server answers (500 and above) written in Live's log, so in LogLive.txt:
+    what was asked, why, and for an error no route expected its traceback. Before this nothing kept
+    them on Windows, where the app's window has no console: a pilot saw « Live does not answer:
+    HTTP 500 » and a blank Settings page, and the LogLive.txt and serve.log he sent said nothing
+    (discussion 32, 2026-11-17). The page now shows the error's own words instead of « HTTP 500 »
+    (live.js reads ``detail``). Each different error once, at most :data:`ERRORS_KEPT`."""
+    import traceback
+
+    from fastapi.exception_handlers import http_exception_handler
+    from fastapi.responses import JSONResponse
+    from starlette.exceptions import HTTPException
+
+    written: set[str] = set()
+    lock = threading.Lock()
+
+    def write(request: Any, why: str, trace: str = "") -> None:
+        asked = f"{request.method} {request.url.path}"
+        with lock:
+            if f"{asked} {why}" in written or len(written) >= ERRORS_KEPT:
+                return
+            written.add(f"{asked} {why}")
+        said = f"Live's server could not answer {asked}: {why}"
+        control.log(f"{said}\n{trace}" if trace else said)
+
+    @app.exception_handler(HTTPException)
+    async def refused(request: Any, exc: HTTPException) -> Any:
+        if exc.status_code >= 500:  # a failure Live says itself (« X-Plane could not be started »)
+            write(request, str(exc.detail))
+        return await http_exception_handler(request, exc)
+
+    @app.exception_handler(Exception)
+    async def unexpected(request: Any, exc: Exception) -> Any:
+        why = f"{type(exc).__name__}: {exc}"
+        write(request, why, "".join(traceback.format_exception(exc)).rstrip())
+        return JSONResponse({"detail": why}, status_code=500)
+
+
 def create_live_app(
     control: LiveControl,
     map_fetch: Any = None,
@@ -131,6 +174,7 @@ def create_live_app(
 
     app = FastAPI(title=TITLE, docs_url=None, redoc_url=None, openapi_url=None)
     app.add_middleware(_GuardMiddleware, allowed_hosts=DEFAULT_ALLOWED_HOSTS)
+    _errors_in_the_log(app, control)
     app.include_router(live_router(control, front=front, seen=seen))
     app.include_router(_map_router(map_fetch))
     app.include_router(_airports_router())

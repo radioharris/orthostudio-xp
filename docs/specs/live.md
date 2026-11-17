@@ -104,6 +104,13 @@ modules, English and French, English unless the switch chose French, as OrthoStu
     step from the click's "starting": the checks, the region's pack, the user's own tiles, the
     overlays, the plugin and its airports, the computer's share, the
     season, the photos' store opened, the regions' textures read.
+  - Every error Live's server answers (500 and above) is written there (`web._errors_in_the_log`):
+    `Live's server could not answer GET /api/live/status: <why>`, with the traceback for an error
+    no route expected, each different one once in a window's life (200 at most: the page asks
+    for its status every second). The page shows its words (`detail`) instead of « HTTP 500 ». A
+    refusal (4xx) is not written. Before, nothing kept them on Windows, where the app's window has
+    no console: a pilot saw « Live does not answer: HTTP 500 » and a blank Settings page, and the
+    LogLive.txt and serve.log he sent said nothing (discussion 32, 2026-11-17).
   - The runs before go to `log` in Live's folder, `LogLive <start>.txt`, the last 10.
   - Without an X-Plane folder Live can write in, it is in Live's folder. With `OSXP_HOME` set (a
     test window), it is always there, never in the user's X-Plane.

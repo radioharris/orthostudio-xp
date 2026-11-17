@@ -542,7 +542,8 @@ To switch Live off, put `enabled = false` in `live.toml`, in OrthoStudio XP's ow
   `z_osxp_live` and `y_osxp_live_overlays`: they are links, and deleting them deletes nothing in
   Live's folder. X-Plane drops their lines at its next start.
 - Live keeps its log in `LogLive.txt`, at the top of your X-Plane folder, beside X-Plane's own
-  `Log.txt`: send both when something went wrong. It is written again each time Live's window
+  `Log.txt`: send both when something went wrong. An error of Live itself is written there too,
+  with its details, and the window shows its words. It is written again each time Live's window
   opens, so send it before opening Live again; the ten before are kept in Live's `log` folder.
   The window's Log has a button that shows it in the Finder (File Explorer on Windows).
 - Live works with the X-Plane that Build uses: the one named under *Where is X-Plane 12 installed?*,
