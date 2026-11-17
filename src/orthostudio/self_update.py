@@ -672,13 +672,14 @@ if ! mkdir "$aside" || ! mv "$app" "$aside/"; then
   rm -rf "$(dirname "$staged")"; failed replace; reopen; exit 1
 fi
 if mv "$staged" "$app"; then
-  rm -rf "$(dirname "$staged")"
   say "installed"
+  reopen
+  rm -rf "$(dirname "$staged")"  # the old app, after: its removal took 3 s of the app's absence
 else
   mv "$aside/$(basename "$app")" "$app" || say "the old app is in $aside"
   failed replace
+  reopen
 fi
-reopen
 """
 
 
