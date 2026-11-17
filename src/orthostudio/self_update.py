@@ -543,41 +543,29 @@ def stage_folder(
         raise
 
 
-def tidy(home: Path, here: Here | None) -> None:
-    """What earlier tries left, taken away when the engine starts: the hidden folders beside the
-    app (a try the app's quit cut short, a copy ``ditto`` finished alone), and the files of the
-    ``update`` folder but the record of the last try: the installer Windows ran, its log, a
-    download kept for a try that failed (the next try downloads it again)."""
-    if here is not None and here.system in ("macos", "linux"):
-        _tidy_staging(here.place)
-    _tidy(home / UPDATE_DIR, keep=None)
-
-
-def _tidy_staging(app: Path) -> None:
-    """The hidden folders beside the app that an earlier try left (the app ended in the middle)."""
-    with contextlib.suppress(OSError):
-        for entry in app.parent.iterdir():
-            if entry.name.startswith(STAGING_PREFIX) and entry.is_dir():
-                shutil.rmtree(entry, ignore_errors=True)
+def tidy(home: Path, here: Here | None, *, keep: str | None = None) -> None:
+    """What earlier tries left: the hidden folders beside the app (a try the app's quit cut
+    short, a copy ``ditto`` finished alone), and the files of the ``update`` folder but the record
+    of the last try and ``keep`` (with its ``.part``), the installer of the try under way: the
+    installer Windows ran and its log, another version's installer, a download kept for a try that
+    failed. Done when the engine first answers the page about updates, and as a try starts."""
+    if here is not None:
+        with contextlib.suppress(OSError):
+            for entry in here.place.parent.iterdir():
+                if entry.name.startswith(STAGING_PREFIX) and entry.is_dir():
+                    shutil.rmtree(entry, ignore_errors=True)
+    kept = {PENDING_NAME} | ({keep, keep + ".part"} if keep else set())
+    try:
+        entries = list((home / UPDATE_DIR).iterdir())
+    except OSError:
+        return
+    for entry in entries:
+        if entry.name not in kept and entry.is_file():
+            with contextlib.suppress(OSError):
+                entry.unlink()
 
 
 # -- the last try ---------------------------------------------------------------------------------
-
-
-def _tidy(folder: Path, keep: str | None) -> None:
-    """The files of earlier tries out of ``folder``, but the record of the last try and ``keep``
-    (and its ``.part``): an installer is kept after a failure, for the next try, until another
-    version's takes its place or the engine starts again."""
-    try:
-        entries = list(folder.iterdir())
-    except OSError:
-        return
-    kept = {PENDING_NAME} | ({keep, keep + ".part"} if keep else set())
-    for entry in entries:
-        if entry.name in kept or not entry.is_file():
-            continue
-        with contextlib.suppress(OSError):
-            entry.unlink()
 
 
 def _pending(home: Path) -> Path:
@@ -636,7 +624,9 @@ def swap_script(
     ``wait_s`` at most, else gives up with the old app untouched and the copy taken away. macOS's
     ``pgrep`` leaves out its own ancestors unless asked (``-a``), and the engine that starts the
     script and the window that started the engine are just those: without ``-a`` the script swapped
-    the apps at once, the old one still running (found in review, 2026-11-17). It moves
+    the apps at once, the old one still running (found in review, 2026-11-17). On Linux ``-a``
+    lists the command lines, which go nowhere. Only ``pgrep``'s « none » lets the script go on: an
+    error of it gives up as an app that does not quit does, the old app untouched. It moves
     the old app into a hidden folder beside it, then the new one into its place: two renames on
     the same disk, an instant without an app. A failure puts the old app back. It opens the app
     either way (``reopen``, :func:`_reopen` by default; tests pass another command), writes what
@@ -664,12 +654,16 @@ failed() {{
 }}
 reopen() {{ {opens} >> "$log" 2>&1 || say "could not open $app"; }}
 
-# macOS's pgrep leaves out its ancestors, the engine and the window that started this script
-if [ "$(uname)" = Darwin ]; then look="pgrep -a -f"; else look="pgrep -f"; fi
 say "waiting for {APP_NAME} to quit"
 tries=0
-while $look "$mine" > /dev/null; do
-  if [ "$tries" -ge {wait_s * 5} ]; then rm -rf "$(dirname "$staged")"; failed not_quit; exit 1; fi
+while true; do
+  # -a: macOS's pgrep leaves out its ancestors, the engine and the window that started this
+  pgrep -a -f "$mine" > /dev/null 2>&1
+  found=$?
+  [ "$found" -eq 1 ] && break  # nothing runs from the app any more
+  if [ "$found" -ne 0 ] || [ "$tries" -ge {wait_s * 5} ]; then
+    rm -rf "$(dirname "$staged")"; failed not_quit; exit 1
+  fi
   sleep 0.2
   tries=$((tries + 1))
 done
@@ -808,14 +802,15 @@ class Installer:
     States: ``idle``; ``ask``, a build or Live running that the app's quitting would stop
     (``running`` says which), asked when the try is started and again just before the hand-over,
     the page putting the question and starting again with ``force`` (a download already made is
-    kept; nothing else is: a « Not now » leaves no trace); ``preparing``, ``done`` of ``total``
-    bytes, what the app does while it is still open: the download, then on macOS and Linux the new
-    app made ready beside the old one (its share of ``total`` is the size of the app as installed,
-    the new one's near enough, so that the bar never goes back); ``starting``, what puts the new
-    version in place being started: on Windows that is the installer, which Windows checks before
-    it lets a program it never saw start, 12 to 18 s on a Shadow PC (measured on 2026-11-17), with
-    nothing to count; ``installing``, handed over, the app quitting; ``failed`` (``reason``,
-    :data:`REASONS`), the try also kept for the next start.
+    kept; nothing else of the try is); ``preparing``, ``done``
+    of ``total`` bytes, what the app does while it is still open: the download, then on macOS
+    and Linux the new app made ready beside the old one (its share of ``total`` is the size of
+    the app as installed, the new one's near enough, so that the bar never goes back);
+    ``starting``, what puts the new version in place being started: on Windows that is the
+    installer, which Windows checks before it lets a program it never saw start, 12 to 18 s on a
+    Shadow PC (measured on 2026-11-17), with nothing to count; ``installing``, handed over, the
+    app quitting; ``failed`` (``reason``, :data:`REASONS`), the try also kept for the next
+    start.
     """
 
     def __init__(
@@ -860,25 +855,23 @@ class Installer:
         with self._lock:
             return self._state["state"] in UNDER_WAY
 
-    def _asks(self, version: str, force: bool) -> bool:
-        """Whether the try stops to ask first: something runs that the user did not agree to
-        stop. The question is the page's; the try leaves no trace (its download stays, for the
-        next)."""
+    def _asked(self, force: bool) -> Running | None:
+        """What the app's quitting would stop, which the user did not agree to stop (``force``
+        says they did): asked outside the lock, Live taking up to 1.5 s to answer."""
+        if force:
+            return None
         running = self._running()
-        if force or not running.any():
-            return False
-        with contextlib.suppress(OSError):
-            _pending(self.home).unlink()
-        self._set(state="ask", version=version, running=running.said())
-        return True
+        return running if running.any() else None
 
     def start(self, version: str, *, force: bool) -> None:
         """Start a try at ``version``, or say what it would stop (``ask``); nothing while one is
         under way already."""
-        if self.busy() or self._asks(version, force):
-            return
+        running = self._asked(force)
         with self._lock:
             if self._state["state"] in UNDER_WAY:
+                return
+            if running is not None:
+                self._state = {"state": "ask", "version": version, "running": running.said()}
                 return
             self._cancel.clear()
             self._state = {"state": "preparing", "version": version, "done": 0, "total": 0}
@@ -912,17 +905,13 @@ class Installer:
             if facts is None:
                 raise UpdateError("release", f"none of {names} with its size and SHA-256")
             name, size, sha256 = facts
-            _tidy(self.home / UPDATE_DIR, keep=name)
+            tidy(self.home, here, keep=name)
             beside = here.system in ("macos", "linux")
             copy = tree_bytes(here.place) if beside else 0
             total = size + copy
 
             def progress(done: int) -> None:
-                with self._lock:
-                    if self._state["state"] == "preparing":
-                        self._state = {
-                            "state": "preparing", "version": version, "done": done, "total": total,
-                        }  # fmt: skip
+                self._set(state="preparing", version=version, done=done, total=total)
 
             progress(0)
             dest = self.home / UPDATE_DIR / name
@@ -943,13 +932,22 @@ class Installer:
                     progress=lambda share: progress(size + int(copy * share)),
                     cancelled=self._cancel.is_set,
                 )
-            if self._asks(version, force):  # started while it prepared
+            # asked again: a build or Live started while it prepared; a Cancel answered yes is
+            # honoured, and none is answered after
+            running = None if self._cancel.is_set() else self._asked(force)
+            with self._lock:
+                cancelled = self._cancel.is_set()
+                if not cancelled and running is not None:
+                    self._state = {"state": "ask", "version": version, "running": running.said()}
+                elif not cancelled:
+                    self._state = {"state": "starting", "version": version}
+            if cancelled:
+                raise InstallCancelledError
+            if running is not None:  # the question is the page's: nothing of this try is kept
                 _discard(staged)
+                with contextlib.suppress(OSError):
+                    _pending(self.home).unlink()
                 return
-            with self._lock:  # a Cancel answered yes is honoured, and none is answered after
-                if self._cancel.is_set():
-                    raise InstallCancelledError
-                self._state = {"state": "starting", "version": version}
             (self._hand or hand_over)(
                 here, dest, version, home=self.home, log=self.log, staged=staged
             )

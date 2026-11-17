@@ -419,7 +419,7 @@ def _staged(app: Path, version: str = "2.3.0") -> Path:
 def _run_script(tmp_path: Path, app: Path, staged: Path, wait_s: int = 5) -> Path:
     """The script, run as the app runs it, reopening by a mark rather than by ``open``."""
     reopened = tmp_path / "reopened"
-    script = tmp_path / "install.sh"
+    script = tmp_path / "swap.sh"
     script.write_text(
         self_update.swap_script(
             app=app,
@@ -502,6 +502,34 @@ def test_the_script_waits_for_the_app_that_started_it(tmp_path: Path) -> None:
         time.sleep(0.05)
     assert seen.read_text() == "2.2.0"  # the old app in place until the engine was gone
     assert reopened.exists() and _version_of(app) == "2.3.0"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="bash")
+def test_a_pgrep_that_fails_counts_as_an_app_that_does_not_quit(tmp_path: Path) -> None:
+    """An error of pgrep (an option it does not know, none on the system) must not read as « no
+    app running »: the apps would be swapped under a running one."""
+    app = _mac_app(tmp_path / "Applications")
+    staged = _staged(app)
+    tools = tmp_path / "tools"
+    tools.mkdir()
+    (tools / "pgrep").write_text("#!/bin/sh\nexit 2\n")
+    os.chmod(tools / "pgrep", 0o755)
+    script = tmp_path / "swap.sh"
+    reopened = tmp_path / "reopened"
+    script.write_text(
+        self_update.swap_script(
+            app=app,
+            staged=staged,
+            version="2.3.0",
+            pending=tmp_path / "pending.json",
+            log=tmp_path / "serve.log",
+            reopen=("touch", str(reopened)),
+        )
+    )
+    env = {**os.environ, "PATH": f"{tools}:{os.environ['PATH']}"}
+    subprocess.run(["/bin/bash", str(script)], check=False, env=env, timeout=30)
+    assert _version_of(app) == "2.2.0" and not reopened.exists()
+    assert json.loads((tmp_path / "pending.json").read_text())["reason"] == "not_quit"
 
 
 @pytest.mark.skipif(sys.platform == "win32" or os.geteuid() == 0, reason="POSIX modes, not root")
@@ -598,7 +626,7 @@ def test_the_script_swaps_the_new_folder_in_and_starts_it(tmp_path: Path) -> Non
     staged = _linux_folder(staging, version="2.3.0")
     started = tmp_path / "started"
     (staged / "orthostudio-xp").write_text(f"#!/bin/sh\ntouch '{started}'\nsleep 30\n")
-    script = tmp_path / "install.sh"
+    script = tmp_path / "swap.sh"
     script.write_text(
         self_update.swap_script(
             app=folder,
@@ -934,7 +962,7 @@ async def test_the_page_is_asked_first_then_the_engine_quits_as_for_quit(
             assert r.json()["running"] == {"build": True, "live": False, "flying": False}
             assert handed == []
             # Live at work, X-Plane running: said too, from Live's own status
-            live = {"state": "streaming", "checks": {"xplane_running": True}}
+            live = {"state": "streaming", "busy": True, "checks": {"xplane_running": True}}
             monkeypatch.setattr(app_module, "_live_status", lambda: live)
             r = await c.post("/api/update/install", json={})
             assert r.json()["running"] == {"build": True, "live": True, "flying": True}
@@ -949,6 +977,46 @@ async def test_the_page_is_asked_first_then_the_engine_quits_as_for_quit(
             assert (await c.get("/api/update/install")).json()["state"] == "installing"
             assert job.wait(30) and job.status == "cancelled"
     finally:
+        mgr.close()
+
+
+def test_a_live_that_listens_and_does_not_answer_counts_as_busy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Asking costs a question; not asking could stop a flight."""
+    from orthostudio.live import app_start
+
+    monkeypatch.setattr(app_start, "live_listening", lambda port=0: True)
+    monkeypatch.setattr(app_start, "_ask_live", lambda *a, **kw: None)
+    assert app_start.live_status() == {"busy": True}
+    assert app_start.live_state() == "off"  # what the Build page's Live button says, as before
+    monkeypatch.setattr(app_start, "live_listening", lambda port=0: False)
+    assert app_start.live_status() is None
+
+
+@pytest.mark.anyio
+async def test_the_engine_takes_away_what_earlier_tries_left(home: Path, newer: None) -> None:
+    here = Here("macos", "arm64", home / "apps" / "OrthoStudio XP.app")
+    left = home / "apps" / (self_update.STAGING_PREFIX + "old") / "OrthoStudio XP.app"
+    left.mkdir(parents=True)
+    (home / self_update.UPDATE_DIR).mkdir()
+    (home / self_update.UPDATE_DIR / "setup.log").write_text("old")
+    import orthostudio.self_update as module
+
+    original = module.installed_here
+    module.installed_here = lambda: here  # type: ignore[assignment]
+    app, mgr = _app(home, shutdown=lambda: None)
+    try:
+        async with client_for(app) as c:
+            assert (await c.get("/api/update")).json()["installable"]
+            for _ in range(100):
+                if not left.parent.exists():
+                    break
+                await asyncio.sleep(0.05)
+            assert not left.parent.exists()
+            assert list((home / self_update.UPDATE_DIR).iterdir()) == []
+    finally:
+        module.installed_here = original
         mgr.close()
 
 

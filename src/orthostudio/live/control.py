@@ -434,6 +434,7 @@ class LiveControl:
         return {
             "api": API,
             "state": state,
+            "busy": self.busy(),  # a stream or a region's install: what quitting Live stops
             "relayout": state == STARTING and self._relayout_due(),
             "error": error,
             "stream": report,

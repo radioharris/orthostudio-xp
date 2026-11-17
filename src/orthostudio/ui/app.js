@@ -2689,6 +2689,8 @@ function renderWindowNote() {
 
 const UPDATE_DISMISSED_KEY = "osxp.updateDismissed";
 const UPDATE_POLL_MS = 500;
+/** The states of a try going on (orthostudio/self_update.py UNDER_WAY). */
+const UPDATE_UNDER_WAY = ["preparing", "starting", "installing"];
 let updateTimer = 0;
 
 /**
@@ -2711,7 +2713,7 @@ async function loadUpdate() {
   if (state.update?.installable && !state.updateTry) {
     // a try under way, started by another page or before this one was loaded: followed here too
     const now = await api("GET", "/api/update/install").catch(() => null);
-    if (now && (now.state === "preparing" || now.state === "starting")) await onUpdateState(now);
+    if (now && UPDATE_UNDER_WAY.includes(now.state)) await onUpdateState(now);
   }
 }
 
@@ -2721,7 +2723,7 @@ async function loadUpdate() {
  * or handed over while the app quits. */
 function updatePhase() {
   const now = state.updateTry?.state;
-  return ["preparing", "starting", "installing"].includes(now) ? now : "offer";
+  return UPDATE_UNDER_WAY.includes(now) ? now : "offer";
 }
 
 function renderUpdateNote() {
@@ -2843,9 +2845,9 @@ function followUpdate() {
     try {
       now = await api("GET", "/api/update/install");
     } catch (_err) {
-      // a request lost is asked again; the engine gone, the page says so (in the install's
-      // words when it installs), and there is nothing left to ask
-      if ($("stopped").hidden && state.updateTry?.state !== "installing") followUpdate();
+      // a request lost while it prepares is asked again; once handed over, the engine goes, and
+      // the page says so in the install's words
+      if ($("stopped").hidden && state.updateTry?.state === "preparing") followUpdate();
       return;
     }
     await onUpdateState(now);
@@ -3146,8 +3148,9 @@ function showEngineGone() {
   clearInterval(jobsTimer);
   clearInterval(presenceTimer);
   const text = $("stopped").querySelector("p");
-  // gone to install a new version: it comes back by itself (orthostudio/self_update.py)
-  const installing = state.updateTry?.state === "installing";
+  // gone to install a new version, which comes back by itself (orthostudio/self_update.py): the
+  // state the page saw last may be the start, the quit lasting a fraction of its polling's period
+  const installing = ["starting", "installing"].includes(state.updateTry?.state);
   text.dataset.i18n = installing ? "app.update_reopens" : "quit.gone_text";
   text.textContent = installing ? t("app.update_reopens") : t("quit.gone_text");
   $("stopped").hidden = false;

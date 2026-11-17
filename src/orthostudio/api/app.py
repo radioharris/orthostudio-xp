@@ -1201,7 +1201,10 @@ def create_app(
                     loop.call_soon_threadsafe(loop.call_later, 0.3, shutdown)
 
             here = self_update.installed_here() if shutdown is not None else None
-            self_update.tidy(osxp_home(), here)
+            # aside, never on the loop: a copy left whole beside the app is 300 MB to take away
+            threading.Thread(
+                target=self_update.tidy, args=(osxp_home(), here), name="update-tidy", daemon=True
+            ).start()
             state["update"] = self_update.Installer(
                 home=osxp_home(),
                 here=here,
@@ -1213,10 +1216,11 @@ def create_app(
         return installer
 
     def what_quitting_stops() -> self_update.Running:
-        """What the app's quitting would stop now: a build running or waiting, Live at work, and
-        whether X-Plane flies with it, which Live's own status says and the page's question too."""
+        """What the app's quitting would stop now: a build running or waiting, Live at work (a
+        stream, or a region's install), and whether X-Plane flies with it, which Live's own status
+        says and the page's question too."""
         live = _live_status() or {}
-        at_work = live.get("state", "idle") != "idle"
+        at_work = bool(live.get("busy"))
         checks = live.get("checks")
         flying = at_work and isinstance(checks, dict) and bool(checks.get("xplane_running"))
         return self_update.Running(build=manager.active() is not None, live=at_work, flying=flying)

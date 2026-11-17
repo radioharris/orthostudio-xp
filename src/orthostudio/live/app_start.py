@@ -71,12 +71,13 @@ def _ask_live(
 
 
 def live_status(port: int = LIVE_PORT) -> dict[str, Any] | None:
-    """The Live window's status (``GET /api/live/status``: its ``state``, its ``checks``); None
-    without a Live window."""
+    """The Live window's status (``GET /api/live/status``: its ``state``, whether it is ``busy``,
+    its ``checks``); None without a Live window. A Live that listens and does not answer is taken
+    as busy: asking costs a question, not asking could stop a flight."""
     if not live_listening(port):
         return None
     status = _ask_live("status", port=port)
-    return status if isinstance(status, dict) else None
+    return status if isinstance(status, dict) else {"busy": True}
 
 
 def live_state(port: int = LIVE_PORT) -> str:
