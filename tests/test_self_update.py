@@ -19,6 +19,7 @@ import plistlib
 import shutil
 import subprocess
 import sys
+import tarfile
 import tempfile
 import threading
 import time
@@ -77,13 +78,39 @@ def test_an_app_installed_by_its_installer_can_replace_itself(tmp_path: Path) ->
     assert here == Here("windows", "x64", folder)
 
 
+def _linux_folder(parent: Path, *, version: str = "2.2.0", name: str = "OrthoStudio-XP") -> Path:
+    """A folder laid out as the Linux archive's: its Python, its launcher, its install.sh."""
+    folder = parent / name
+    package = folder / "python" / "lib" / "python3.14" / "site-packages" / "orthostudio"
+    package.mkdir(parents=True)
+    (package / "__init__.py").write_text(f'"""x"""\n\n__version__ = "{version}"\n')
+    (folder / "python" / "bin").mkdir()
+    (folder / "python" / "bin" / "python3.14").write_text("")
+    os.symlink("python3.14", folder / "python" / "bin" / "python3")
+    for name_ in ("orthostudio-xp", "install.sh"):
+        (folder / name_).write_text("#!/bin/sh\n")
+        os.chmod(folder / name_, 0o755)
+    return folder
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX links")
+def test_a_linux_folder_extracted_from_the_release_can_replace_itself(tmp_path: Path) -> None:
+    folder = _linux_folder(tmp_path / "apps")
+    python = str(folder / "python" / "bin" / "python3")
+    here = self_update.installed_here(python, system="linux", machine="x86_64")
+    assert here == Here("linux", "x86_64", folder)
+    assert self_update.installed_here(python, system="linux", machine="aarch64") is None
+    (folder / "install.sh").unlink()  # not the release's folder
+    assert self_update.installed_here(python, system="linux", machine="x86_64") is None
+
+
 def test_what_cannot_replace_itself_keeps_the_link(tmp_path: Path) -> None:
     """A checkout, Linux, the Windows zip (no uninstaller: its user put it where he wanted), an app
     of another identifier, an app macOS runs from a read-only copy until it is moved, an app on a
     machine the release has no installer for: the banner keeps its link."""
     app = _mac_app(tmp_path / "Applications")
     python = _python_of(app)
-    assert self_update.installed_here(python, system="linux") is None
+    assert self_update.installed_here(python, system="linux") is None  # a Mac app's layout
     assert self_update.installed_here(python, system="darwin", machine="ppc") is None
     checkout = str(tmp_path / ".venv" / "bin" / "python")
     assert self_update.installed_here(checkout, system="darwin") is None
@@ -118,7 +145,12 @@ def test_the_installer_downloaded_is_the_release_s_own() -> None:
     finally:
         sys.path.remove(str(PACKAGE))
     assert self_update.BUNDLE_ID == build.BUNDLE_ID
-    for system, machine in (("macos", "arm64"), ("macos", "x86_64"), ("windows", "x64")):
+    for system, machine in (
+        ("macos", "arm64"),
+        ("macos", "x86_64"),
+        ("windows", "x64"),
+        ("linux", "x86_64"),
+    ):
         target = build.Target(system=system, machine=machine)  # type: ignore[call-arg]
         here = Here(system, machine, Path("/x"))
         assert self_update.installer_name("2.3.0", here) == build.artefact_name("2.3.0", target)
@@ -380,7 +412,7 @@ def _run_script(tmp_path: Path, app: Path, staged: Path, wait_s: int = 5) -> Pat
     reopened = tmp_path / "reopened"
     script = tmp_path / "install.sh"
     script.write_text(
-        self_update.mac_script(
+        self_update.swap_script(
             app=app,
             staged=staged,
             version="2.3.0",
@@ -404,7 +436,7 @@ def test_the_script_swaps_the_new_app_in_and_opens_it(tmp_path: Path) -> None:
     assert "installed" in (tmp_path / "serve.log").read_text()
 
 
-@on_a_mac
+@pytest.mark.skipif(sys.platform == "win32", reason="bash and pgrep")
 def test_an_app_that_does_not_quit_is_left_as_it_is(tmp_path: Path) -> None:
     """Something still runs from the app after the wait: nothing is touched, nothing opened, the
     new app made ready taken away."""
@@ -412,7 +444,7 @@ def test_an_app_that_does_not_quit_is_left_as_it_is(tmp_path: Path) -> None:
     staged = _staged(app)
     # a process whose command line starts with the app's path, as the app's Python's does (a copy
     # of a system program does not run outside its folder)
-    sleeper = app / "Contents" / "MacOS" / "sleeper"
+    sleeper = app / "python" / "bin" / "sleeper"  # anywhere in it: a Linux folder has no Contents
     running = subprocess.Popen([str(sleeper), "60"], executable="/bin/sleep")
     try:
         time.sleep(0.2)
@@ -442,15 +474,103 @@ def test_the_script_names_the_app_by_its_path_alone() -> None:
     """``pgrep -f`` reads a regular expression: the app's path is matched as itself, from the
     start of a command line, so that the script's own does not count."""
     assert self_update._ere("/A/OrthoStudio XP (2).app") == "/A/OrthoStudio XP \\(2\\)\\.app"
-    script = self_update.mac_script(
+    script = self_update.swap_script(
         app=Path("/Applications/OrthoStudio XP.app"),
         staged=Path("/Applications/.osxp-update.x/OrthoStudio XP.app"),
         version="2.3.0",
         pending=Path("/h/u/pending.json"),
         log=Path("/l/serve.log"),
     )
-    assert "mine='^/Applications/OrthoStudio XP\\.app/Contents/'" in script
+    assert "mine='^/Applications/OrthoStudio XP\\.app/'" in script
     assert "open '/Applications/OrthoStudio XP.app'" in script
+
+
+# -- the new folder made ready, then swapped in, on Linux, for real --------------------------------
+
+
+def _archive(tmp_path: Path, version: str, *, extra: str | None = None) -> Path:
+    """The release's archive as tools/package/build.py writes it: one folder, OrthoStudio-XP."""
+    source = _linux_folder(tmp_path / f"src-{version}", version=version)
+    (source / "big").write_bytes(os.urandom(2_000_000))
+    archive = tmp_path / f"OrthoStudio-XP-{version}-linux-x86_64.tar.gz"
+    with tarfile.open(archive, "w:gz") as tar:
+        tar.add(source, arcname="OrthoStudio-XP")
+        if extra is not None:
+            stray = tmp_path / "stray"
+            stray.write_text("x")
+            tar.add(stray, arcname=extra)
+    return archive
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX links and modes")
+def test_the_new_folder_is_made_ready_beside_the_old_one(tmp_path: Path) -> None:
+    """Under the old folder's own name, links and modes kept, the bar told the share read."""
+    folder = _linux_folder(tmp_path / "apps", name="OrthoStudio XP mine")
+    shares: list[float] = []
+    staged = self_update.stage_folder(
+        _archive(tmp_path, "2.3.0"), folder, "2.3.0", progress=shares.append
+    )
+    assert staged.name == folder.name and staged.parent.parent == folder.parent
+    assert staged.parent.name.startswith(self_update.STAGING_PREFIX)
+    assert self_update._folder_version(staged) == "2.3.0"
+    assert self_update._folder_version(folder) == "2.2.0"
+    assert os.readlink(staged / "python" / "bin" / "python3") == "python3.14"
+    assert os.access(staged / "orthostudio-xp", os.X_OK)
+    assert (staged / "big").stat().st_size == 2_000_000
+    assert shares[-1] == 1.0 and shares == sorted(shares)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX links and modes")
+@pytest.mark.parametrize("trouble", ["version", "outside", "not an archive", "cancel"])
+def test_a_wrong_archive_or_a_cancel_leaves_nothing(tmp_path: Path, trouble: str) -> None:
+    folder = _linux_folder(tmp_path / "apps")
+    archive = _archive(
+        tmp_path,
+        "2.4.0" if trouble == "version" else "2.3.0",
+        extra="elsewhere/x" if trouble == "outside" else None,
+    )
+    if trouble == "not an archive":
+        archive.write_bytes(b"not an archive")
+    if trouble == "cancel":
+        with pytest.raises(InstallCancelledError):
+            self_update.stage_folder(archive, folder, "2.3.0", cancelled=lambda: True)
+    else:
+        with pytest.raises(UpdateError) as caught:
+            self_update.stage_folder(archive, folder, "2.3.0")
+        assert caught.value.reason == "damaged"
+    assert sorted(p.name for p in folder.parent.iterdir()) == [folder.name]
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="bash")
+def test_the_script_swaps_the_new_folder_in_and_starts_it(tmp_path: Path) -> None:
+    """Its launcher started apart, the script ending at once: it serves the page until the app
+    quits."""
+    folder = _linux_folder(tmp_path / "apps")
+    staging = Path(tempfile.mkdtemp(prefix=self_update.STAGING_PREFIX, dir=folder.parent))
+    staged = _linux_folder(staging, version="2.3.0")
+    started = tmp_path / "started"
+    (staged / "orthostudio-xp").write_text(f"#!/bin/sh\ntouch '{started}'\nsleep 30\n")
+    script = tmp_path / "install.sh"
+    script.write_text(
+        self_update.swap_script(
+            app=folder,
+            staged=staged,
+            version="2.3.0",
+            pending=tmp_path / "pending.json",
+            log=tmp_path / "serve.log",
+        )
+    )
+    began = time.monotonic()
+    subprocess.run(["/bin/bash", str(script)], check=True, timeout=20)
+    assert time.monotonic() - began < 10  # not held by the app it started
+    for _ in range(100):
+        if started.exists():
+            break
+        time.sleep(0.05)
+    assert started.exists()
+    assert self_update._folder_version(folder) == "2.3.0"
+    assert sorted(p.name for p in folder.parent.iterdir()) == [folder.name]
+    subprocess.run(["pkill", "-f", f"^/bin/sh {folder}/orthostudio-xp"], check=False)
 
 
 # -- one try, as the page follows it --------------------------------------------------------------

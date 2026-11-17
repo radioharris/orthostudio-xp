@@ -529,14 +529,15 @@ where there is no icon to show that it runs, it still stops by itself five minut
 page closed, with no build running or waiting.
 
 **A new version.** When a newer OrthoStudio XP is out, a line at the top of the page says so. On
-macOS and Windows, *Install and relaunch* installs it: a bar shows the installation while the app
+macOS, Windows and Linux, *Install and relaunch* installs it: a bar shows the installation while the app
 is still open, then OrthoStudio XP quits, puts the new version in place of the old one and opens
 again by itself a few seconds later, your tiles and settings kept. While a build or Live runs, it asks first, as *Quit* does: installing stops them,
 what is already built is kept, and X-Plane flies on over the photos already made. *Cancel*, beside the
 bar, stops it. An install that did not complete says why on the same line, the next time the app
-opens, and the old version is still there. On Linux, where you put the app's folder yourself, and
-where the app cannot replace itself (an account of a Mac that is not an administrator's, the
-Windows zip), the line links to the release page instead, where you download the installer.
+opens, and the old version is still there. On Linux the new version takes the place of the folder
+you extracted, under its name, and opens in your browser as before. Where the app cannot replace
+itself (an account of a Mac that is not an administrator's, the Windows zip, a Linux folder you
+cannot write), the line links to the release page instead, where you download the installer.
 *What's new* opens that page too, and *Not now* hides the line until the next version. The check
 asks GitHub once a day at most, and Settings can turn it off.
 

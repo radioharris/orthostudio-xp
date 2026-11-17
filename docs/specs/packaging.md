@@ -322,8 +322,10 @@ Gatekeeper again. Where the app can replace itself, the banner's *Install and re
   `AppTranslocation` (macOS runs a downloaded app from a read-only copy until it is moved), and
   whose folder and itself can be written (the Applications folder of an account that is not an
   administrator's cannot); on Windows the folder around the Python holding Inno Setup's
-  `unins000.exe` (the zip has none) and writable; and an engine `osxp serve` started, which can
-  quit. Elsewhere, Linux included, the banner keeps its link.
+  `unins000.exe` (the zip has none) and writable; on Linux the extracted folder around the Python
+  (`<folder>/python/bin`) holding `orthostudio-xp` and `install.sh`, it and the folder above it
+  writable, on x86_64; and an engine `osxp serve` started, which can quit. Elsewhere the banner
+  keeps its link.
 - **The file**: the installer of this app (`installer_name`, which a test keeps equal to
   `build.artefact_name`: the same machine, an Intel app under Rosetta taking the Intel one),
   downloaded from this repository's release only, the address built by the engine, into
@@ -359,6 +361,15 @@ Gatekeeper again. Where the app can replace itself, the banner's *Install and re
   installed from a browser's download and opened once with *Open Anyway*: macOS neither stopped nor
   asked about an app without a signature that replaces itself, and the copy, made from a file no
   browser downloaded, carries no quarantine and opened without *Open Anyway*.
+- **Linux** (asked on 2026-11-17, « Ça va marcher sous Linux? »): as on macOS, for the folder the
+  user extracted. While the app is open the release's archive is extracted into a hidden folder
+  beside it, under the old folder's name (`stage_folder`: every entry inside its one folder
+  `OrthoStudio-XP`, tarfile's `data` filter refusing what would land outside it, the bar counting
+  the archive's bytes read; the launcher and the version checked). The same script then waits for
+  the app to quit, swaps the two folders and starts the new launcher apart (it serves the page
+  until the app quits, and opens it in the browser as ever). The menu entry `install.sh` wrote
+  names the folder, which keeps its path. Checked by the tests alone: there is no Linux desktop
+  here to try it on.
 - **Windows**: the bar counts the download; then the installer itself, `/SILENT /SUPPRESSMSGBOXES
   /NORESTART /DIR=<the app's folder> /LOG=<update/setup.log> /RELAUNCH=1` (`windows_command`),
   detached from the app: Windows replaces no file a running app holds, so it works once the app
@@ -473,5 +484,6 @@ varied kinds flown over in X-Plane).
 - Windows and Linux on ARM.
 - The Intel app checked on an Intel Mac: the release workflow checks it under Rosetta only. A user
   installed the Intel app of 0.1.19 on an Intel Mac under macOS 15.8 (GitHub issue 4).
-- The app's own update on Linux, and on a Mac account that is not an administrator's (macOS
-  could ask for an administrator's password): the banner links to the release page there.
+- The app's own update on a Mac account that is not an administrator's (macOS could ask for an
+  administrator's password), and the Linux one tried on a real Linux desktop: the banner links to
+  the release page on such a Mac.

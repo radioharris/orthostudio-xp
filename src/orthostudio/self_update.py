@@ -14,19 +14,25 @@ version opens by itself.
 - macOS: the app of the disk image is copied beside the old one, in a hidden folder of the same
   folder (:func:`stage_app`), while the app is still open: the bar counts the copy after the
   download. A shell script run by the system's ``/bin/bash`` then waits until nothing runs from the
-  old app, swaps the two by two renames, and opens the new one (:func:`mac_script`); a failure puts
+  old app, swaps the two by two renames, and opens the new one (:func:`swap_script`); a failure puts
   the old one back and opens it. The copy was first made by the script once the app had quit: 30 s
   with no window and half an app in Applications (measured on 2026-11-17, a 2.2.0rc1 updating
   itself to 2.2.0). Tried the same day: macOS neither stops nor asks about an app without a
   signature that replaces itself, and the copy, made from a file no browser downloaded, opens
   without Gatekeeper's *Open Anyway*.
+- Linux: the same as macOS, for the folder the user extracted (``OrthoStudio-XP``): the new one is
+  extracted from the release's archive into a hidden folder beside it while the app is open
+  (:func:`stage_folder`), then the script swaps the two folders and starts the new one, which
+  opens its page in the browser as ever. Asked for on 2026-11-17, and checked by the tests alone:
+  there is no Linux desktop here to try it on.
 - Windows: the installer itself, run without its pages into the folder the app runs from
   (:func:`windows_command`): Windows replaces no file a running app holds, so it does its work
   once the app has quit, its own progress showing. It stops what still runs as on any install
   (``tools/package/stop_running.pas``) and starts the app at its end.
-- Linux, the Windows zip, and an app that cannot be written where it is (a Mac account that is not
-  an administrator, an app opened from its disk image or from where the browser left it): the
-  banner keeps its link, as before (:func:`installed_here` is ``None``).
+- The Windows zip, and an app that cannot be written where it is (a Mac account that is not an
+  administrator, an app opened from its disk image or from where the browser left it, a Linux
+  folder of another user's): the banner keeps its link, as before (:func:`installed_here` is
+  ``None``).
 
 The last try is kept in ``update/pending.json`` until the version it installs starts: a try that
 did not end there is said in the banner with why (:func:`last_try`), and the user is not left
@@ -43,11 +49,13 @@ import logging
 import os
 import platform
 import plistlib
+import re
 import shlex
 import shutil
 import stat
 import subprocess
 import sys
+import tarfile
 import tempfile
 import threading
 import time
@@ -76,8 +84,9 @@ __all__ = [
     "installed_here",
     "installer_name",
     "last_try",
-    "mac_script",
     "stage_app",
+    "stage_folder",
+    "swap_script",
     "windows_command",
 ]
 
@@ -86,6 +95,9 @@ BUNDLE_ID = "org.orthostudio-xp.app"
 """The macOS app's identifier (``tools/package/build.py`` ``BUNDLE_ID``; a test keeps the two
 equal): a disk image whose app has another is not put in place."""
 FILE_STEM = "OrthoStudio-XP"
+LINUX_LAUNCHER = "orthostudio-xp"
+"""What starts the Linux app, at the top of its folder (``tools/package/build.py``), beside
+``install.sh``: a folder without them is not the release's, and is not replaced."""
 WINDOWS_UNINSTALLER = "unins000.exe"
 """What Inno Setup leaves in the folder it installed: the zip's folder has none, and is not
 replaced (its user put it where he wanted, by hand)."""
@@ -135,24 +147,28 @@ class Here:
     """An installed OrthoStudio XP that can replace itself."""
 
     system: str
-    """``"macos"`` or ``"windows"``."""
+    """``"macos"``, ``"windows"`` or ``"linux"``."""
     machine: str
-    """``"arm64"`` or ``"x86_64"`` on macOS, ``"x64"`` on Windows: the installer of the same app."""
+    """``"arm64"`` or ``"x86_64"`` on macOS, ``"x64"`` on Windows, ``"x86_64"`` on Linux: the
+    installer of the same app."""
     place: Path
-    """The app (``…/OrthoStudio XP.app``) on macOS, its installation folder on Windows."""
+    """The app (``…/OrthoStudio XP.app``) on macOS, its folder on Windows and Linux."""
 
 
 def installed_here(
     executable: str | None = None, *, system: str | None = None, machine: str | None = None
 ) -> Here | None:
     """This OrthoStudio XP when it was installed by its installer and can be replaced where it is;
-    ``None`` for a checkout, Linux, the Windows zip, or an app that cannot be written.
+    ``None`` for a checkout, the Windows zip, or an app that cannot be written.
 
     macOS: the app around the Python that runs (``<app>/Contents/Resources/python/bin``), whose
     identifier is :data:`BUNDLE_ID`, not under ``AppTranslocation`` (macOS runs a downloaded app
     from a read-only copy until it is moved), and whose folder and itself can be written: the
     Applications folder of a Mac account that is not an administrator cannot. Windows: the folder
     around the Python (``<folder>\\python``), holding :data:`WINDOWS_UNINSTALLER` and writable.
+    Linux: the extracted folder around the Python (``<folder>/python/bin``), holding
+    :data:`LINUX_LAUNCHER` and ``install.sh``, it and the folder above it writable, on a machine
+    the release has an archive for.
     """
     executable = sys.executable if executable is None else executable
     system = sys.platform if system is None else system
@@ -183,6 +199,21 @@ def installed_here(
         if not os.access(folder, os.W_OK):
             return None
         return Here("windows", "x64", folder)
+    if system.startswith("linux"):
+        if len(python.parents) < 3:
+            return None
+        top = python.parents[2]
+        if (
+            python.parent != top / "python" / "bin"
+            or not (top / LINUX_LAUNCHER).is_file()
+            or not (top / "install.sh").is_file()
+        ):
+            return None
+        if not (os.access(top, os.W_OK) and os.access(top.parent, os.W_OK)):
+            return None
+        if (machine or platform.machine()) != "x86_64":
+            return None
+        return Here("linux", "x86_64", top)
     return None
 
 
@@ -203,7 +234,7 @@ def _bundle_facts(app: Path) -> tuple[str | None, str | None]:
 
 def installer_name(version: str, here: Here) -> str:
     """The release's file for this app (``tools/package/build.py`` ``artefact_name``)."""
-    suffix = ".dmg" if here.system == "macos" else "-setup.exe"
+    suffix = {"macos": ".dmg", "windows": "-setup.exe", "linux": ".tar.gz"}[here.system]
     return f"{FILE_STEM}-{version}-{here.system}-{here.machine}{suffix}"
 
 
@@ -416,6 +447,70 @@ def stage_app(
             mount.rmdir()
 
 
+_VERSION_LINE = re.compile(r'^__version__ = "([^"]+)"', re.MULTILINE)
+
+
+def _folder_version(folder: Path) -> str | None:
+    """The version of the Linux app in ``folder``, read from its package as it is written there."""
+    for init in folder.glob("python/lib/python3*/site-packages/orthostudio/__init__.py"):
+        try:
+            found = _VERSION_LINE.search(init.read_text(encoding="utf-8"))
+        except OSError:
+            return None
+        return found.group(1) if found else None
+    return None
+
+
+def stage_folder(
+    archive: Path,
+    folder: Path,
+    version: str,
+    *,
+    progress: Callable[[float], None] = lambda share: None,
+    cancelled: Callable[[], bool] = lambda: False,
+) -> Path:
+    """The Linux app of the release's archive, extracted into a hidden folder beside ``folder``
+    (the same disk: the swap is then two renames) while the old app still runs, under the old
+    folder's name; the new folder's path.
+
+    Every entry must lie in the archive's one folder (:data:`FILE_STEM`), and tarfile's ``data``
+    filter refuses what would land outside it; the bar counts the archive's bytes read. The new
+    folder must hold the launcher and the version asked. Nothing is left beside ``folder`` when it
+    fails or is cancelled."""
+    size = max(1, archive.stat().st_size)
+    staging: Path | None = None
+    try:
+        try:
+            staging = Path(tempfile.mkdtemp(prefix=STAGING_PREFIX, dir=folder.parent))
+        except OSError as exc:
+            raise UpdateError("replace", str(exc)) from exc
+        try:
+            with archive.open("rb") as raw, tarfile.open(fileobj=raw, mode="r:gz") as tar:
+                for member in tar:
+                    if cancelled():
+                        raise InstallCancelledError
+                    if member.name.split("/", 1)[0] != FILE_STEM:
+                        raise UpdateError("damaged", f"{member.name} is outside {FILE_STEM}")
+                    tar.extract(member, staging, filter="data")
+                    progress(min(0.99, raw.tell() / size))
+        except (tarfile.TarError, EOFError) as exc:
+            raise UpdateError("damaged", f"the archive cannot be read: {exc}") from exc
+        except OSError as exc:
+            full = exc.errno == errno.ENOSPC
+            raise UpdateError("room" if full else "replace", str(exc)) from exc
+        staged = staging / folder.name
+        if staged.name != FILE_STEM:
+            (staging / FILE_STEM).rename(staged)
+        if not (staged / LINUX_LAUNCHER).is_file() or _folder_version(staged) != version:
+            raise UpdateError("damaged", f"the archive holds no {APP_NAME} {version}")
+        progress(1.0)
+        return staged
+    except BaseException:
+        if staging is not None:
+            shutil.rmtree(staging, ignore_errors=True)
+        raise
+
+
 def _tidy_staging(app: Path) -> None:
     """The hidden folders beside the app that an earlier try left (the app ended in the middle)."""
     with contextlib.suppress(OSError):
@@ -481,7 +576,7 @@ def _ere(text: str) -> str:
     return "".join("\\" + c if c in ".[]()*+?{}|^$\\" else c for c in text)
 
 
-def mac_script(
+def swap_script(
     *,
     app: Path,
     staged: Path,
@@ -491,18 +586,18 @@ def mac_script(
     wait_s: int = QUIT_WAIT_S,
     reopen: Sequence[str] | None = None,
 ) -> str:
-    """The shell script that puts ``staged``, the new app made ready beside it, in the place of
-    ``app`` once the app has quit.
+    """The shell script that puts ``staged``, the new app made ready beside it (the macOS app, the
+    Linux folder), in the place of ``app`` once the app has quit.
 
     It waits until no process runs from ``app`` (the app's window, its engine, Live, Triangle4XP),
     ``wait_s`` at most, else gives up with the old app untouched and the copy taken away. It moves
     the old app into a hidden folder beside it, then the new one into its place: two renames on
     the same disk, an instant without an app. A failure puts the old app back. It opens the app
-    either way (``reopen``, ``open <app>`` by default; tests pass another command), writes what
+    either way (``reopen``, :func:`_reopen` by default; tests pass another command), writes what
     went wrong in ``pending`` for the next start's banner, and its steps in ``log``,
     ``serve.log``."""
     q = shlex.quote
-    opens = " ".join(q(part) for part in (reopen or ("open", str(app))))
+    opens = " ".join(q(part) for part in (reopen or _reopen(app)))
     return f"""#!/bin/bash
 # {APP_NAME} {version}, put in place of the app that made it ready (orthostudio/self_update.py).
 app={q(str(app))}
@@ -510,7 +605,7 @@ staged={q(str(staged))}
 version={q(version)}
 pending={q(str(pending))}
 log={q(str(log))}
-mine={q("^" + _ere(str(app)) + "/Contents/")}
+mine={q("^" + _ere(str(app)) + "/")}
 
 say() {{
   printf -- '--- %s {APP_NAME} update to %s: %s\\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$version" \\
@@ -545,6 +640,16 @@ reopen
 """
 
 
+def _reopen(app: Path) -> tuple[str, ...]:
+    """What opens the app the script put in place: the Finder's ``open`` for a macOS app; for a
+    Linux folder its launcher, started apart and left to run (it serves the page until the app
+    quits), the script ending at once."""
+    if app.suffix == ".app":
+        return ("open", str(app))
+    launcher = shlex.quote(str(app / LINUX_LAUNCHER))
+    return ("/bin/sh", "-c", f"{launcher} > /dev/null 2>&1 < /dev/null &")
+
+
 def windows_command(setup: Path, folder: Path, log: Path) -> list[str]:
     """The installer run by the app's update: its progress alone (``/SILENT``: no page, the page
     asked the questions), its boxes answered as by default (``/SUPPRESSMSGBOXES``: stop a build or a
@@ -577,15 +682,15 @@ def hand_over(
     staged: Path | None = None,
 ) -> None:
     """Start what puts the new version in place, in a process of its own that outlives the app:
-    on macOS the script that swaps ``staged`` in (the disk image no longer needed), on Windows the
-    installer. Raises :class:`UpdateError` ``start`` when it cannot be started."""
+    on macOS and Linux the script that swaps ``staged`` in (the downloaded file no longer needed),
+    on Windows the installer. Raises :class:`UpdateError` ``start`` when it cannot be started."""
     try:
-        if here.system == "macos":
+        if here.system in ("macos", "linux"):
             if staged is None:
                 raise UpdateError("start", "no new app made ready")
             script = installer.parent / SCRIPT_NAME
             script.write_text(
-                mac_script(
+                swap_script(
                     app=here.place,
                     staged=staged,
                     version=version,
@@ -650,8 +755,9 @@ class Installer:
     asked by the page while it works (:meth:`status`).
 
     States: ``idle``; ``preparing``, ``done`` of ``total`` bytes, what the app does while it is
-    still open: the download, then on macOS the copy of the new app (its share of ``total`` is the
-    size of the app as installed, the new one's near enough, so that the bar never goes back);
+    still open: the download, then on macOS and Linux the new app made ready beside the old one
+    (its share of ``total`` is the size of the app as installed, the new one's near enough, so
+    that the bar never goes back);
     ``ask``, ready while a build or Live runs that the user did not agree to stop (``running`` says
     which: the page asks, and starts again with ``force``, the download kept); ``starting``, what
     puts the new version in place being started: on Windows that is the installer, which Windows
@@ -737,13 +843,13 @@ class Installer:
             _write_pending(self.home, version)
             name = installer_name(version, here)
             _tidy(self.home / UPDATE_DIR, keep=name)
-            if here.system == "macos":
+            if here.system in ("macos", "linux"):
                 _tidy_staging(here.place)
             facts = (self._facts or asset_facts)(version, name)
             if facts is None:
                 raise UpdateError("release", f"no {name} with its size and SHA-256 in the release")
             size, sha256 = facts
-            copy = tree_bytes(here.place) if here.system == "macos" else 0
+            copy = tree_bytes(here.place) if here.system in ("macos", "linux") else 0
             total = size + copy
 
             def progress(done: int) -> None:
@@ -759,8 +865,9 @@ class Installer:
                 progress=progress,
                 cancelled=self._cancel.is_set,
             )
-            if here.system == "macos":
-                staged = (self._stage or stage_app)(
+            if here.system in ("macos", "linux"):
+                made_ready = stage_app if here.system == "macos" else stage_folder
+                staged = (self._stage or made_ready)(
                     dest,
                     here.place,
                     version,
