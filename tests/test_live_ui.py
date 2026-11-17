@@ -1363,11 +1363,18 @@ class FakeInstaller:
     """An install that downloads until it is stopped."""
 
     def __init__(
-        self, root: Path, region, overlays: bool = True, log=print, night_only: bool = False
+        self,
+        root: Path,
+        region,
+        overlays: bool = True,
+        log=print,
+        night_only: bool = False,
+        rivers: bool = False,
     ) -> None:
         self.region = region
         self.overlays = overlays
         self.night_only = night_only
+        self.rivers = rivers
         self.stopped = threading.Event()
         self.phase = "downloading"
 
@@ -1423,6 +1430,7 @@ def test_the_regions_the_page_lists(home: Path, tmp_path: Path) -> None:
         "unpacked": 20,
         "changed": 0,
         "changed_bytes": 13,
+        "rivers_bytes": 0,
     }
     c.install_region("eur")
     assert c._installer.overlays  # the pilot takes X-Plane's roads: they come with it
@@ -1538,6 +1546,104 @@ async def test_the_regions_api(home: Path, tmp_path: Path) -> None:
         await client.post("/api/live/regions/cancel")
         wait_for(lambda: c.regions()["install"]["phase"] == "cancelled")
         assert (await client.delete("/api/live/regions/eur")).status_code == 409  # not installed
+
+
+# --- the river masks (2026-11-17) ---------------------------------------------------------------
+
+
+def rivers_catalog() -> dict:
+    """Europe and North America, each with a river zip beside its mesh zip."""
+    from orthostudio.live.osxpregions import OsxpRegion, Zip
+
+    return {
+        "eur": OsxpRegion(
+            "eur",
+            "2026-11-17",
+            (Zip("eur/zips/z_osxp_eur_+45+005.zip", 10, "a" * 64, 17),),
+            (Zip("eur/overlay-zips/y_osxp_eur_+45+005.zip", 3, "b" * 64, 3),),
+            rivers=(Zip("eur/zips/rivers/z_osxp_eur_+45+005.zip", 4, "r" * 64, 6),),
+        ),
+        "na": OsxpRegion(
+            "na",
+            "2026-11-17",
+            (Zip("na/zips/z_osxp_na_+40-100.zip", 20, "c" * 64, 34),),
+            rivers=(Zip("na/zips/rivers/z_osxp_na_+40-100.zip", 5, "s" * 64, 7),),
+        ),
+    }
+
+
+def put_region(region, *, mesh_as_listed: bool = True, rivers: bool = False) -> Path:
+    """A region installed in Live's folder: its marker recording its mesh zips (as listed, or of a
+    bake before), and its river masks with their zips where ``rivers``."""
+    from orthostudio.live import aoregions, osxpregions
+    from orthostudio.live.pack import live_root
+
+    folder = osxpregions.mesh_dir(live_root(), region.id)
+    folder.mkdir(parents=True)
+    zips = {z.path: z.sha256 if mesh_as_listed else "0" * 64 for z in region.mesh}
+    if rivers:
+        (folder / "rivers" / "textures").mkdir(parents=True)
+        zips.update({z.path: z.sha256 for z in region.rivers})
+    (folder / aoregions.MARKER).write_text(json.dumps({"size": 17, "zips": zips}))
+    return folder
+
+
+def rivers_control(chosen: dict, installer=FakeInstaller) -> LiveControl:
+    catalog = rivers_catalog()
+    return LiveControl(
+        checks=checks(),
+        settings=lambda: LiveSettings(**chosen),
+        echo=lambda _: None,
+        catalog=lambda root: catalog,
+        installer=installer,
+    )
+
+
+def test_the_regions_sizes_and_updates_follow_the_rivers_setting(home: Path) -> None:
+    """Even: a region's river masks are not counted, and the Settings' question says what soft
+    banks would download for the regions installed (rivers_bytes). Soft banks: counted, and a
+    region installed without them shows its update. Once installed they count whatever the
+    setting: in its size, and in its update when they change."""
+    import dataclasses
+
+    chosen = {"overlays": "off"}
+    c = rivers_control(chosen)
+    catalog = c._catalog_of(None)
+    put_region(catalog["eur"])
+    c.regions(fetch=True)
+    wait_for(lambda: len(c.regions()["list"]) == 2)
+
+    def listed() -> dict:
+        return {r["id"]: r for r in c.regions()["list"]}
+
+    eur, na = listed()["eur"], listed()["na"]
+    assert (eur["download"], eur["unpacked"], eur["changed"], eur["rivers_bytes"]) == (10, 17, 0, 4)
+    assert (na["download"], na["unpacked"], na["rivers_bytes"]) == (20, 34, 0)  # not installed
+    chosen["rivers_fade"] = True
+    eur, na = listed()["eur"], listed()["na"]
+    assert (eur["download"], eur["unpacked"], eur["changed"]) == (14, 23, 1)
+    assert eur["changed_bytes"] == eur["rivers_bytes"] == 4
+    assert (na["download"], na["unpacked"]) == (25, 41)
+    # installed: even again, they stay part of the region, and nothing more to download
+    from orthostudio.live import osxpregions
+    from orthostudio.live.pack import live_root
+
+    folder = osxpregions.mesh_dir(live_root(), "eur")
+    (folder / "rivers" / "textures").mkdir(parents=True)
+    marker = json.loads((folder / ".live-region.json").read_text())
+    marker["zips"]["eur/zips/rivers/z_osxp_eur_+45+005.zip"] = "r" * 64
+    (folder / ".live-region.json").write_text(json.dumps(marker))
+    chosen["rivers_fade"] = False
+    eur = listed()["eur"]
+    assert (eur["download"], eur["changed"], eur["rivers_bytes"]) == (14, 0, 0)
+    # their zip made again: the update brings it, the setting even
+    river = dataclasses.replace(catalog["eur"].rivers[0], sha256="R" * 64)
+    catalog["eur"] = dataclasses.replace(catalog["eur"], rivers=(river,))
+    eur = listed()["eur"]
+    assert (eur["changed"], eur["changed_bytes"]) == (1, 4)
+    c.install_region("eur")
+    assert c._installer.rivers is False  # the setting's, the installer taking them by wanted
+    c.cancel_install()
 
 
 def test_the_overlays_setting(home: Path) -> None:

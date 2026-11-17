@@ -818,9 +818,12 @@ class LiveControl:
     def regions(self, *, fetch: bool = False) -> dict[str, Any]:
         """OrthoStudio XP's regions as the page lists them: those installed (:func:`our_regions`,
         their size on the disk and where), then every region of the host's list with what it
-        downloads (the overlays only when the pilot takes them), whether it is installed and how
-        many of its zips changed since; the install under way. With ``fetch`` (the page's own
-        request, not its status), the host's list is read again in the background when old."""
+        downloads (``osxpregions.wanted``: its river masks only with soft banks or once it has
+        them; the overlays only when the pilot takes them), whether it is installed, how many of
+        its zips an update brings and what it downloads, and what soft banks would download for it
+        (``rivers_bytes``: its river masks it has not, the Settings' question sums them); the
+        install under way. With ``fetch`` (the page's own request, not its status), the host's
+        list is read again in the background when old."""
         with self._lock:
             reading = self._catalog_thread is not None and self._catalog_thread.is_alive()
             stale = time.monotonic() - self._catalog_at > CATALOG_S
@@ -833,7 +836,8 @@ class LiveControl:
             installer = None if self._quiet else self._installer
         root = live_root()
         mine = osxpregions.installed(root)
-        overlays = self._settings().overlays != "off"
+        settings = self._settings()
+        overlays, rivers = settings.overlays != "off", settings.rivers_fade
         listed = []
         for region_id in REGION_NAMES:
             region = (catalog or {}).get(region_id)
@@ -841,16 +845,24 @@ class LiveControl:
                 continue
             item: dict[str, Any] = {"id": region_id, "installed": region_id in mine}
             if region is not None:
-                mesh, ovl = osxpregions.to_fetch(root, region, overlays)
+                installed = region_id in mine
+                mesh, ovl = osxpregions.to_fetch(root, region, overlays, rivers)
                 mesh = [z for z in mesh if z not in region.night]  # those come by themselves
-                item["download"] = region.mesh_size + (
-                    sum(z.size for z in region.overlays) if overlays else 0
+                want = osxpregions.wanted(root, region, rivers) + (
+                    region.overlays if overlays else ()
                 )
-                item["unpacked"] = region.unpacked + (
-                    sum(z.unpacked for z in region.overlays) if overlays else 0
-                )
-                item["changed"] = len(mesh) + len(ovl) if region_id in mine else 0
+                item["download"] = sum(z.size for z in want)
+                item["unpacked"] = sum(z.unpacked for z in want)
+                # zips downloaded already but not recorded count too: an update has them to put
+                # in place (river masks whose swap Windows refused), with nothing to download
+                changed = osxpregions.not_installed(root, region, rivers)
+                changed = [z for z in changed if z not in region.night]
+                item["changed"] = len(changed) + len(ovl) if installed else 0
                 item["changed_bytes"] = sum(z.size for z in (*mesh, *ovl))
+                adds, _ = osxpregions.to_fetch(root, region, False, rivers=True)
+                item["rivers_bytes"] = (
+                    sum(z.size for z in adds if z in region.rivers) if installed else 0
+                )
             listed.append(item)
         progress = installer.snapshot() if installer is not None else None
         return {
@@ -871,8 +883,13 @@ class LiveControl:
         if region is None:
             raise session.RefusedError(f"no region {region_id!r} in the list of Live's regions")
         installed = region_id in osxpregions.installed(live_root())
+        settings = self._settings()
         installer = self._installer_of(
-            live_root(), region, overlays=self._settings().overlays != "off", log=self.log
+            live_root(),
+            region,
+            overlays=settings.overlays != "off",
+            log=self.log,
+            rivers=settings.rivers_fade,
         )
         thread = threading.Thread(target=installer.run, name="live-region-install", daemon=True)
         # one check and one taking: the night grids' own download, started from the list's read
