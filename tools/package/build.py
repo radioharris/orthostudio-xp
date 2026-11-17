@@ -442,6 +442,8 @@ Filename: "{run}"; Parameters: "-B -m orthostudio.warmup"; WorkingDir: "{{app}}"
 ; at a start on a cloud PC (2026-10-03). Five minutes at most; what is left, Live's window reads.
 Filename: "{run}"; Parameters: "-B -m orthostudio.live lists --limit 300"; WorkingDir: "{{app}}"; StatusMsg: "Reading the regions of {APP_NAME} Live..."; Flags: runhidden waituntilterminated
 Filename: "{run}"; Parameters: "-m {ENTRY_MODULE}"; WorkingDir: "{{app}}"; Description: "{{cm:LaunchProgram,{APP_NAME}}}"; Flags: nowait postinstall skipifsilent
+; the app's own update, which runs this installer silently and asks for the app again (RelaunchAsked)
+Filename: "{run}"; Parameters: "-m {ENTRY_MODULE}"; WorkingDir: "{{app}}"; Flags: nowait; Check: RelaunchAsked
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{{app}}\\python"

@@ -311,6 +311,54 @@ browser's start), it counts from its own code. The page's first `POST /api/prese
 
 `doctor --json` is as it was: the checks' times stay out of its document.
 
+**The app's own update** (`self_update.py`; the user, 2026-11-17: « on peut pas faire une
+installation automatique ? »). The banner of a new version (`update.py`) linked to the release page
+alone: the user downloaded the installer, quit the app, replaced it, and on macOS opened it past
+Gatekeeper again. Where the app can replace itself, the banner's *Install and relaunch* does it
+(`POST /api/update/install`, `api.md`):
+
+- **Which app can** (`self_update.installed_here`): on macOS the app around the Python that runs
+  (`<app>/Contents/Resources/python/bin`), whose identifier is `BUNDLE_ID`, not under
+  `AppTranslocation` (macOS runs a downloaded app from a read-only copy until it is moved), and
+  whose folder and itself can be written (the Applications folder of an account that is not an
+  administrator's cannot); on Windows the folder around the Python holding Inno Setup's
+  `unins000.exe` (the zip has none) and writable; and an engine `osxp serve` started, which can
+  quit. Elsewhere, Linux included, the banner keeps its link.
+- **The file**: the installer of this app (`installer_name`, which a test keeps equal to
+  `build.artefact_name`: the same machine, an Intel app under Rosetta taking the Intel one),
+  downloaded from this repository's release only, the address built by the engine, into
+  `$OSXP_HOME/update/`; kept only when it has the size and the SHA-256 GitHub's API gives for the
+  release's file (`assets[].digest`), so that a download cut short or changed on its way is never
+  installed. A file there and right is not downloaded again, and the files of another version go.
+- **Handed over, the app quits**: Live asked to quit as the Windows installer asks it
+  (`/api/live/quit`, `force`: X-Plane flies on over what is built), the builds cancelled, the
+  engine stopped; the app's window goes with its engine. Before, the page asks while a build runs
+  or waits or Live is at work, in the words of Quit's question; something started while the file
+  downloaded is asked about then (`ask`).
+- **macOS**: a script written beside the file and run by the system's `/bin/bash`, in a session of
+  its own (`mac_script`), nothing of the app it replaces. It waits until no process runs from the
+  app (`pgrep -f` on the app's path, from the start of a command line: the app's Python, Live,
+  Triangle4XP), two minutes at most, else gives up with nothing touched; mounts the image, checks
+  that its app is `BUNDLE_ID` at the version asked, moves the old app into a folder of its own
+  beside it (the same disk: a rename), copies the new one in its place with `ditto` and reads its
+  version back, then opens it. Any failure puts the old app back and opens it. Tried on a Mac
+  with macOS 26 on 2026-11-17, the app of 0.1.21 then of 2.1.2 updating itself to 2.2.0, both
+  installed from a browser's download and opened once with *Open Anyway*: macOS neither stopped nor
+  asked about an app without a signature that replaces itself, and the copy, made from a file no
+  browser downloaded, carries no quarantine and opened without *Open Anyway*.
+- **Windows**: the installer itself, `/SILENT /SUPPRESSMSGBOXES /NORESTART /DIR=<the app's folder>
+  /LOG=<update/setup.log> /RELAUNCH=1` (`windows_command`), detached from the app: its progress
+  shows, no page, its questions answered as by default (stop a build or a stream still running,
+  which the page asked about). It stops what still runs as on any install (`stop_running.pas`),
+  and its `[Run]` entry checked by `RelaunchAsked` (`/RELAUNCH=1` in a silent install) starts the
+  app at its end, where a user installing by hand ticks the last page's box.
+- **The last try** (`update/pending.json`): written as a try starts, with its reason when it fails
+  (`REASONS`: the release's file, the download, a damaged file or image, a full disk, the hand-over,
+  an app that did not quit, an app that could not be replaced), removed by *Cancel*. The version it
+  names starting removes it; until then `GET /api/update` says it (`last_try`), `unfinished` when
+  no reason was written (the Windows installer stopped, the app ended in the middle), and the
+  banner says why beside its buttons.
+
 ## 5. The build (`tools/package/build.py`)
 
 Run on the system the installer is for, after Triangle4XP is built; Inno Setup 6 for Windows.
@@ -410,4 +458,5 @@ varied kinds flown over in X-Plane).
 - Windows and Linux on ARM.
 - The Intel app checked on an Intel Mac: the release workflow checks it under Rosetta only. A user
   installed the Intel app of 0.1.19 on an Intel Mac under macOS 15.8 (GitHub issue 4).
-- Automatic updates: a new version is installed over the old one.
+- The app's own update on Linux, and on a Mac account that is not an administrator's (macOS
+  could ask for an administrator's password): the banner links to the release page there.

@@ -416,7 +416,8 @@ class Expert(BaseModel):
         hint=(
             "Asks GitHub once a day which version of OrthoStudio XP is the latest, and says so at "
             "the top of the page when it is newer than this one. GitHub then sees this computer's "
-            "address, as the imagery servers do. Nothing is downloaded or installed."
+            "address, as the imagery servers do. Nothing is downloaded or installed unless you "
+            "ask."
         ),
     )
     build_memory: Literal["high", "medium", "low"] = _field(

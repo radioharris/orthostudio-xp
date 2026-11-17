@@ -30,7 +30,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from pydantic import ValidationError
 
-from orthostudio import __version__, config, update
+from orthostudio import __version__, config, self_update, update
 from orthostudio.airports import default_index as default_airport_index
 from orthostudio.api.basemap import basemap_router
 from orthostudio.api.clouds_api import CloudHooks, clouds_router
@@ -66,6 +66,7 @@ from orthostudio.api.models import (
     SourceRequest,
     SourceTestRequest,
     UninstallRequest,
+    UpdateInstallRequest,
 )
 from orthostudio.api.page_kept import kept_page, page_kept_router
 from orthostudio.api.presence import Presence
@@ -167,7 +168,7 @@ __all__ = [
     "sse_message",
 ]
 
-API_LEVEL = 55
+API_LEVEL = 56
 """What this engine's API offers, for the page: 1 = P2b, 2 = zones (``/api/zones``) and the base map
 (``/api/map``), 3 = deleting a tile (``POST /api/library/{name}/delete``) and the sizes of the
 library, 4 = the disk space of the Library (``GET /api/disk``, ``POST /api/clean``), 5 = clearing
@@ -229,7 +230,8 @@ spinner from its task's start to its end), 53 = ``named`` in ``/api/profiles`` (
 name, from the second one on), 54 = a cloud's level (``level``, ``levels`` in its row, ``base``
 and ``level`` in its menu, the ``level`` pick) and ``short`` in ``GET /api/providers``, 55 =
 the Library's Find clouds (``/api/cloud-searches``; ``found``, ``find`` and ``failed`` in a
-Clouds cell). A page
+Clouds cell), 56 = the app's own update (``/api/update/install``; ``installable`` and
+``last_try`` in ``GET /api/update``). A page
 served by an engine older than itself (a ``osxp serve`` started before an update: the page's files
 are read from disk at each load, the routes were imported at start) asks the user to restart
 OrthoStudio XP instead of showing "Not Found"."""
@@ -891,6 +893,64 @@ def _find_pack(name: str, path: str | None = None) -> tuple[Path, Any]:
     return entry.path, entry.tile
 
 
+LIVE_ASK_TIMEOUT_S = 1.5
+"""How long the engine waits for Live's own server, on the loopback, when it asks it something."""
+
+
+def _live_url(path: str) -> str | None:
+    """Live's own server (``orthostudio.live.app_start.LIVE_PORT``); ``None`` without Live."""
+    try:
+        from orthostudio.live.app_start import LIVE_PORT
+    except ImportError:
+        return None
+    return f"http://127.0.0.1:{LIVE_PORT}{path}"
+
+
+def _live_at_work() -> bool:
+    """Whether OrthoStudio XP Live is at work (its state is not ``idle``): the app's update stops
+    it, and the page asks first. No answer is a Live that does not run."""
+    import urllib.request
+
+    url = _live_url("/api/live/status")
+    if url is None:
+        return False
+    try:
+        with urllib.request.urlopen(url, timeout=LIVE_ASK_TIMEOUT_S) as answer:
+            doc = json.load(answer)
+    except (OSError, ValueError):
+        return False
+    return isinstance(doc, dict) and doc.get("state", "idle") != "idle"
+
+
+def _xplane_running_now() -> bool:
+    """Whether X-Plane runs, which the question before the update says while Live is at work."""
+    from orthostudio.install.xplane import xplane_running
+
+    try:
+        return bool(xplane_running())
+    except Exception:  # a question that cannot be answered says the lesser thing
+        return False
+
+
+def _ask_live_to_quit() -> None:
+    """Live asked to quit for the app's update, as the Windows installer asks it
+    (``tools/package/stop_running.pas``): a stream stops without waiting for X-Plane, which flies on
+    over what is built, and Live's window goes (``orthostudio.live.control.Control.quit``)."""
+    import urllib.request
+
+    url = _live_url("/api/live/quit")
+    if url is None:
+        return
+    request = urllib.request.Request(
+        url,
+        data=json.dumps({"force": True}).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with contextlib.suppress(OSError), urllib.request.urlopen(request, timeout=LIVE_ASK_TIMEOUT_S):
+        pass
+
+
 def create_app(
     *,
     env_factory: Callable[..., Any] | None = BuildEnv.create,
@@ -904,6 +964,7 @@ def create_app(
     reveal: Callable[[Path], None] | None = None,
     source_fetch: TileFetch | None = None,
     folder_dialog: Callable[[str, Path | None], Path | None] | None = None,
+    updater: self_update.Installer | None = None,
 ) -> FastAPI:
     """The application (spec section 2). ``jobs`` defaults to a manager on ``env_factory``.
 
@@ -912,7 +973,8 @@ def create_app(
     without it the page cannot quit OrthoStudio XP); ``reveal`` shows a path in the file manager
     (tests pass a recorder); ``source_fetch`` asks for the tile of a source the user tries
     (tests pass a stub, so that no request leaves the machine); ``folder_dialog`` asks for a folder
-    in the platform's own dialog (tests pass a stub: no dialog opens).
+    in the platform's own dialog (tests pass a stub: no dialog opens); ``updater`` installs a newer
+    version from the page (tests pass one with doubles: nothing is downloaded or handed over).
     """
     app = FastAPI(title="osxp", version=__version__, docs_url=None, redoc_url=None)
     app.add_middleware(_GuardMiddleware, allowed_hosts=tuple(allowed_hosts))
@@ -1147,14 +1209,120 @@ def create_app(
 
     # -- status, providers -------------------------------------------------------------------
 
+    updating: dict[str, self_update.Installer] = {}
+    if updater is not None:
+        updating["it"] = updater
+
+    def update_installer() -> self_update.Installer:
+        """The page's *Install and relaunch* (``orthostudio.self_update``), made at its first use:
+        the home it writes in is read then, as every other path of the engine is. Only an engine
+        that ``osxp serve`` started can quit for it, and only an app its installer put in place,
+        where it can be written, can be replaced."""
+        if "it" not in updating:
+            from orthostudio.desktop import log_path
+
+            loop = asyncio.get_running_loop()
+
+            def quit_app() -> None:
+                # Live first, as the Windows installer asks it (stop_running.pas): its pack's line
+                # is unchecked as it goes; then the builds, then the engine, as POST /api/quit does
+                _ask_live_to_quit()
+                manager.cancel_all()
+                clouds.tasks.end()
+                if shutdown is not None:
+                    loop.call_soon_threadsafe(loop.call_later, 0.3, shutdown)
+
+            updating["it"] = self_update.Installer(
+                home=osxp_home(),
+                here=self_update.installed_here() if shutdown is not None else None,
+                log=log_path(),
+                running=what_quitting_stops,
+                quit_app=quit_app,
+            )
+        return updating["it"]
+
+    def what_quitting_stops() -> self_update.Running:
+        """What the app's quitting would stop now: a build running or waiting, Live at work, and
+        whether X-Plane flies with it, which the page's question says."""
+        live = _live_at_work()
+        flying = live and _xplane_running_now()
+        return self_update.Running(build=manager.active() is not None, live=live, flying=flying)
+
     @app.get("/api/update")
     async def update_check() -> dict[str, Any]:
         """Whether a newer OrthoStudio XP has been published (``orthostudio.update``): GitHub is
-        asked at most once a day, and not at all when the setting says no."""
+        asked at most once a day, and not at all when the setting says no. ``installable``: this
+        app can install it from the page (``orthostudio.self_update``); ``last_try``: the last try
+        that did not, and why, until the version it tried starts."""
+        installer = update_installer()
+        installable = installer.here is not None
+        tried = None if installer.busy() else self_update.last_try(osxp_home(), __version__)
         if not settings().expert.check_updates:
-            return {"current": __version__, "latest": None, "url": None, "available": False}
+            return {
+                "current": __version__,
+                "latest": None,
+                "url": None,
+                "available": False,
+                "installable": installable,
+                "last_try": tried,
+            }
         path = osxp_home() / update.CACHE_NAME
-        return await asyncio.to_thread(update.check, __version__, path=path)
+        answer = await asyncio.to_thread(update.check, __version__, path=path)
+        return {**answer, "installable": installable, "last_try": tried}
+
+    @app.post("/api/update/install", status_code=202)
+    async def update_install(req: UpdateInstallRequest) -> Any:
+        """*Install and relaunch*: the newer version downloaded, handed over, and the app quits
+        (``orthostudio.self_update``). Asks first, 409 ``SYS_BUSY`` with what runs in its
+        ``context``, while a build or Live runs, unless ``force``: the page has asked."""
+        installer = update_installer()
+        if installer.here is None:
+            return _plain_error(
+                "SYS_UPDATE_NOT_HERE",
+                "This OrthoStudio XP cannot install a new version by itself here.",
+                "Download the new version from its release page and install it.",
+                status=409,
+            )
+        latest = None
+        if settings().expert.check_updates:
+            path = osxp_home() / update.CACHE_NAME
+            answer = await asyncio.to_thread(update.check, __version__, path=path)
+            latest = answer["latest"] if answer["available"] else None
+        if latest is None:
+            return _plain_error(
+                "SYS_UPDATE_NONE",
+                f"No version newer than {__version__} is known.",
+                "Nothing to install.",
+                status=409,
+            )
+        running = await asyncio.to_thread(what_quitting_stops)
+        if running.any() and not req.force:
+            return _plain_error(
+                "SYS_BUSY",
+                "Installing the new version quits OrthoStudio XP, which stops what runs.",
+                "Confirm that it may stop.",
+                status=409,
+                context={"build": running.build, "live": running.live, "flying": running.flying},
+            )
+        if not installer.start(latest, force=req.force):
+            return _plain_error(
+                "SYS_BUSY",
+                "The new version is being installed already.",
+                "Wait for it.",
+                status=409,
+                context={"update": True},
+            )
+        return installer.status()
+
+    @app.get("/api/update/install")
+    async def update_install_state() -> dict[str, Any]:
+        """Where the page's *Install and relaunch* is (``self_update.Installer.status``)."""
+        return update_installer().status()
+
+    @app.delete("/api/update/install")
+    async def update_install_cancel() -> dict[str, Any]:
+        """The page's *Cancel* while the new version downloads."""
+        return {"cancelled": update_installer().cancel()}
 
     @app.get("/api/status")
     async def status(request: Request) -> dict[str, Any]:

@@ -3,7 +3,8 @@
 """Whether a newer OrthoStudio XP has been published: GitHub is asked at most once a day.
 
 Nothing is downloaded or installed here. The page says that a version exists and links to its
-release page, where the notes and the installers are, and the user installs it as before. Until
+release page, where the notes and the installers are; where the app can replace itself, the page's
+*Install and relaunch* installs it (:mod:`orthostudio.self_update`). Until
 now a user who did not read the forum stayed on the version he had, with bugs fixed since, and
 nothing told him: a settings save that changed the source of a build under him, fixed in 0.1.9,
 is one of them.

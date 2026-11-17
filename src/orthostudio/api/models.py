@@ -32,6 +32,7 @@ __all__ = [
     "ProfileRenameRequest",
     "ProfileRequest",
     "UninstallRequest",
+    "UpdateInstallRequest",
     "ZoneModel",
     "tile_error",
 ]
@@ -221,6 +222,12 @@ class QuitRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     force: bool = False
     """Stop a running build too (the page asks first)."""
+
+
+class UpdateInstallRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    force: bool = False
+    """Stop a build or Live at work too, which the app's quitting stops (the page asks first)."""
 
 
 class ChooseFolderRequest(BaseModel):
