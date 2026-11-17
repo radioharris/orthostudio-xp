@@ -544,11 +544,9 @@ def built_files(pack: Path) -> list[str]:
     texture or one of its copies. Read once, when Live's record of its textures was lost
     (orthostudio.live.pack.load_built): what it named stayed on the disk, uncounted, never made
     neutral again nor taken away with its square (the review of 2026-11-17)."""
-    from .geo import parse_texture_name
-
     neutral = _neutral_inodes(pack)
     out = []
-    with os.scandir(pack / "textures") as entries:
+    with contextlib.suppress(FileNotFoundError), os.scandir(pack / "textures") as entries:
         for entry in entries:
             if not entry.name.endswith(".dds") or parse_texture_name(entry.name) is None:
                 continue

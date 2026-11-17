@@ -97,13 +97,17 @@ def test_the_streamer_starts_on_a_record_found_empty_and_frees_what_it_named(
     neutral = next((pack / "_live").glob("neutral*.dds"))
     built.unlink(missing_ok=True)
     shutil.copyfile(neutral, built)  # a file of its own: something built in it
+    named = pack / "textures" / f"{names[1]}.dds"
+    named.unlink(missing_ok=True)
+    os.link(neutral, named)  # a name of the neutral texture: nothing built
+    assert built_files(pack) == [built.name]
     (pack / MARKER).write_text("")
     lines: list[str] = []
     cache = ChunkCache(tmp_path / "c.sqlite")
     try:
         s = Streamer(pack, cache, lambda on_piece: None, log=lines.append)
         assert s.built == {} and s.stale == {built.name: 0}
-        said = "Live's record of its textures did not read (empty): its 1 textures built again"
+        said = "Live's record of its textures did not read (empty): 1 textures built before"
         assert any(line.startswith(said) for line in lines), lines
         assert s.drop_stale(budget_s=10) == 1
         assert built_files(pack) == [] and s.stale == {}

@@ -465,11 +465,10 @@ class Streamer:
             n: lv for n, lv in self.meta.get("stale", {}).items() if isinstance(lv, int)
         }
         if lost:  # what it named, on the disk still: uncounted, never freed otherwise
-            orphans = built_files(pack_dir)
-            self.stale.update(dict.fromkeys(orphans, 0))  # their level unknown, never read
+            n = self._make_stale(dict.fromkeys(built_files(pack_dir), 0))  # level read nowhere
             log(
-                f"{lost[0]}: its {len(orphans)} textures built again as X-Plane needs them, "
-                "the others made neutral again"
+                f"{lost[0]}: {n} textures built before counted stale, built again as X-Plane "
+                "needs them, the others made neutral again"
             )
         recorded = self.meta.get("look")
         was = Look(*recorded) if isinstance(recorded, list) and len(recorded) == 5 else Look()
@@ -600,8 +599,9 @@ class Streamer:
 
     def _make_stale(self, only: dict[str, int] | None = None) -> int:
         """Every texture built (or those of ``only``) forgotten as built, its file kept until
-        built again or made neutral (:meth:`drop_stale`): built in another season, or from photos
-        below the floor. Under ``self.lock`` once the streamer runs. Returns how many."""
+        built again or made neutral (:meth:`drop_stale`): built in another season, from photos
+        below the floor, or named by a record lost. Under ``self.lock`` once the streamer runs.
+        Returns how many."""
         names = dict(self.built) if only is None else only
         self.stale.update(names)
         for name in names:
@@ -1791,22 +1791,18 @@ class Streamer:
         lit = self._lit()  # the stale ones' too: their night is on the disk until put back black
         try:
             meta = load_built(self.pack_dir)
-        except OSError as e:  # held by another program: as a stop between two saves, never fatal
-            self.log(f"  Live's record of its textures not saved ({e}): saved whole next time")
-            return
-        meta["look"] = list(look.values())  # what the textures recorded are built in
-        meta["season"] = season
-        meta["stale"] = stale
-        meta["photo_floor"] = PHOTO_FLOOR_RULE  # the textures recorded follow the floors
-        if self.screen is not None:
-            meta["screen"] = self.screen
-        meta["textures"] = textures
-        meta["seen"] = seen
-        meta.pop("grown", None)  # a pack's record from when textures grew
-        meta["patchy"] = patchy
-        meta["lit"], meta["copied"] = lit, copied  # what their files hold besides (evict.usage)
-        meta["updated"] = meta["copied_with"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
-        try:
+            meta["look"] = list(look.values())  # what the textures recorded are built in
+            meta["season"] = season
+            meta["stale"] = stale
+            meta["photo_floor"] = PHOTO_FLOOR_RULE  # the textures recorded follow the floors
+            if self.screen is not None:
+                meta["screen"] = self.screen
+            meta["textures"] = textures
+            meta["seen"] = seen
+            meta.pop("grown", None)  # a pack's record from when textures grew
+            meta["patchy"] = patchy
+            meta["lit"], meta["copied"] = lit, copied  # what their files hold besides (evict.usage)
+            meta["updated"] = meta["copied_with"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
             size = save_built(self.pack_dir, meta)
         except OSError as e:  # held by another program: as a stop between two saves, never fatal
             self.log(f"  Live's record of its textures not saved ({e}): saved whole next time")

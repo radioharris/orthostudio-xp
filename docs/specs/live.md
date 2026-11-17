@@ -1255,8 +1255,10 @@ X-Plane's French menu says it.
   not a table, not text) is read as none (`pack.load_built`), and the streamer starts without it.
   The textures it named are on the disk still, uncounted, and nothing else would take them away:
   the streamer finds them once (`names.built_files`: a file that no longer leads to the neutral
-  texture) and counts them stale, as after a season's change. Those X-Plane needs are built
-  again, the others made neutral again bit by bit (`drop_stale`); the log says how many. Before
+  texture) and counts them stale at level 0, a level nothing reads, as after a season's change.
+  Those X-Plane needs are built again, the others made neutral again bit by bit (`drop_stale`),
+  or removed where their square is not made; the log says how many. A start removes the record's
+  half written files (`remove_temps`). Before
   2.2.1 a damaged record raised: every request of the window reads it (the disk of the textures
   in `checks`), so the window answered « HTTP 500 » to all of them and showed a blank Settings
   page, the streamer could not start, and reinstalling did nothing, the record being in Live's

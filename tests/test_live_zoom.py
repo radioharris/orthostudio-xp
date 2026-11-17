@@ -1220,5 +1220,10 @@ def test_a_neutral_name_made_neutral_again_and_a_stopped_live_s_files_leave_noth
     left = textures / f"{TEMP_PREFIX}4980-{NAMES[1]}.dds"
     left.write_bytes(b"half written")
     before = {p.name for p in textures.iterdir()} - {left.name}
-    assert remove_temps(pack) == 1
+    record = pack / "_live" / "ortho.json"
+    for half in ("ortho.json.tmp-4980-1a2b3c4d", "ortho.tmp"):  # its own, as 2.2.1 and before
+        (record.parent / half).write_text('{"textures": {')
+    record.write_text("{}")
+    assert remove_temps(pack) == 3
     assert {p.name for p in textures.iterdir()} == before
+    assert record.exists() and not list(record.parent.glob("ortho*tmp*"))

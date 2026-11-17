@@ -346,11 +346,17 @@ def remove_temps(pack_dir: Path) -> int:
     """The files a Live stopped in the middle of a write left beside the textures, removed: at a
     start, before anything writes there (the next writes' own names are the same kind). The
     night textures' too, and the roads' half written (``.<square>.<pid>.tmp``) and their locks,
-    none of which a start finds in use (the review of 2026-11-11)."""
+    none of which a start finds in use (the review of 2026-11-11). The record of the textures
+    built's too (``ortho.json.tmp-…``, ``ortho.tmp`` before 2.2.1)."""
     from .nightwork import ROADS_FOLDER
+    from .pack import MARKER
 
     removed = 0
     for folder, gone in (
+        (
+            pack_dir / MARKER.parent,
+            lambda n: n.startswith(f"{MARKER.name}.tmp-") or n == MARKER.with_suffix(".tmp").name,
+        ),
         (pack_dir / "textures", lambda n: n.startswith(TEMP_PREFIX)),
         (pack_dir / NIGHT_FOLDER, lambda n: n.startswith(TEMP_PREFIX)),
         (
