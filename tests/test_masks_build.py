@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from orthostudio.imagery.grid import tile_to_wgs84
+from orthostudio.imagery.grid import texture_at, tile_to_wgs84
 from orthostudio.masks.build import (
     MASKS_INDEX_FORMAT,
     CellJob,
@@ -187,3 +187,24 @@ def test_pre_mask_margin_changes_nothing_inside_the_cell() -> None:
     wide = pre_mask(8432, 6000, tris, extents, mask_zl=ZL, sea_level=99, margin=64)
     tight = pre_mask(8432, 6000, tris, extents, mask_zl=ZL, sea_level=99, margin=16)
     assert np.array_equal(wide[64:-64, 64:-64], tight[16:-16, 16:-16])
+
+
+def test_two_rows_of_squares_make_a_soft_mask_they_share_the_same(tmp_path: Path) -> None:
+    """A mask cell across the line between two rows of squares is made by the square on each
+    side, each from the two meshes: the ``soft`` fade counts its width at the cell, not at the
+    square, so both write the very same bytes (a region's zips held 1,947 masks of one name that
+    differed, each square counting at its own middle, Europe, 2026-11-17)."""
+    south, north = TileRef(43, 5), TileRef(44, 5)
+    cell = texture_at(44.0, 5.5, ZL, "")
+    straddling = (cell.til_x, cell.til_y)
+    above = (cell.til_x, cell.til_y - 16)
+    meshes = {south: _sea_mesh([straddling]), north: _sea_mesh([above])}
+    for tile in (south, north):
+        build_masks(
+            tmp_path / tile.name, meshes, tile, masking_mode="soft", masks_width=100, workers=1
+        )
+    name = mask_file_name(*straddling)
+    made = [(tmp_path / tile.name / name).read_bytes() for tile in (south, north)]
+    assert made[0] == made[1]
+    mask = np.array(Image.open(tmp_path / south.name / name))
+    assert len(set(np.unique(mask).tolist())) > 2  # a real band, not a hard edge

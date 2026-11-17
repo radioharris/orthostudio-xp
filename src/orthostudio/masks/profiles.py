@@ -1,6 +1,7 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""The three shoreline transition profiles: ``sand``, ``rocks`` and ``3steps``.
+"""The shoreline transition profiles: Ortho4XP's ``sand``, ``rocks`` and ``3steps``, and
+OrthoStudio XP's ``soft``.
 
 Spec: ``docs/specs/masks-build.md`` sections 2 and 4. Origin: ``O4_Mask_Utils.py:648-813``
 (``blur_mask``) and ``:69-71`` (the grey level of inland water).
@@ -8,7 +9,8 @@ Spec: ``docs/specs/masks-build.md`` sections 2 and 4. Origin: ``O4_Mask_Utils.py
 ``sand`` and ``rocks`` are reproduced bit for bit, including Ortho4XP's uint8 truncation between
 the two passes of the separable hat convolution; ``3steps`` replaces dozens of
 blur-and-threshold dilations with one Euclidean distance transform and the same value ladder
-(the profile only ever depended on the distance to the water boundary).
+(the profile only ever depended on the distance to the water boundary). ``soft`` counts its
+width at the middle of the mask cell, the others at the middle of the square, as Ortho4XP does.
 """
 
 from __future__ import annotations
@@ -22,7 +24,7 @@ from numpy.typing import NDArray
 from PIL import Image, ImageFilter
 
 from orthostudio.errors import OsxpError
-from orthostudio.imagery.grid import webmercator_pixel_size
+from orthostudio.imagery.grid import TEXTURE_TILES, tile_to_wgs84, webmercator_pixel_size
 from orthostudio.masks.distance import edt_px, pil_blur_reach, pil_blur_support
 
 __all__ = [
@@ -32,12 +34,14 @@ __all__ = [
     "MasksWidth",
     "blur_mask",
     "blur_widths",
+    "cell_latitude",
     "halo_px",
     "rocks_blur",
     "rocks_width",
     "sand_blur",
     "sand_width",
     "sea_level_for",
+    "soft_width",
     "three_steps_blur",
     "three_steps_widths",
 ]
@@ -79,6 +83,27 @@ def sea_level_for(ratio_water: float) -> int:
 
 def _pxscal(lat: int, mask_zl: int) -> float:
     return webmercator_pixel_size(lat + 0.5, mask_zl)
+
+
+def cell_latitude(til_y: int, mask_zl: int) -> float:
+    """Latitude of the middle of the mask cell whose top row of ``mask_zl`` tiles is ``til_y``."""
+    return tile_to_wgs84(0, til_y + TEXTURE_TILES / 2, mask_zl)[0]
+
+
+def soft_width(masks_width: float, cell_lat: float, mask_zl: int) -> float:
+    """``soft``'s band in pixels: ``masks_width`` metres at the middle of the mask cell
+    (:func:`cell_latitude`), not of the square. A cell across the line between two rows of
+    squares is made by the square on each side: counted at each square's middle, a degree of
+    latitude apart, their bands differed (1.7 % at 44 degrees north, 3 % at 61) and their masks
+    of one name too (1,947 in Europe's zips, 2026-11-17); counted at the cell, both make the same
+    bytes."""
+    return float(masks_width) / webmercator_pixel_size(cell_lat, mask_zl)
+
+
+def _at_cell(cell_lat: float | None) -> float:
+    if cell_lat is None:
+        raise ValueError("the soft profile counts its width at the mask cell: give cell_lat")
+    return cell_lat
 
 
 def sand_width(masks_width: float, lat: int, mask_zl: int) -> int:
@@ -157,8 +182,10 @@ def halo_px(
     *,
     distance_masks_too: bool = False,
     full_margin: int = 1024,
+    cell_lat: float | None = None,
 ) -> int:
-    """Working margin the profile actually needs, at most ``full_margin``.
+    """Working margin the profile actually needs, at most ``full_margin``; ``cell_lat``: the
+    latitude of the cell's middle, where ``soft`` counts its width (:func:`soft_width`).
 
     ``sand`` is a convolution with a hat kernel of half-width ``blur_width - 1``, so a pixel
     of the final image can only depend on input pixels within that distance: the 1024 px
@@ -181,7 +208,7 @@ def halo_px(
     elif masking_mode == "soft":
         # the band reaches masks_width into the water, and the width of the water is read
         # over as much again
-        needed = 2 * math.ceil(float(_scalar(masks_width)) / _pxscal(lat, mask_zl)) + 1
+        needed = 2 * math.ceil(soft_width(_scalar(masks_width), _at_cell(cell_lat), mask_zl)) + 1
     else:
         needed = 0
     if distance_masks_too:
@@ -331,8 +358,10 @@ def blur_mask(
     lat: int,
     mask_zl: int,
     sea_level: int,
+    cell_lat: float | None = None,
 ) -> NDArray[np.uint8]:
-    """``blur_mask`` of Ortho4XP (``O4_Mask_Utils.py:648-813``), profile by profile."""
+    """``blur_mask`` of Ortho4XP (``O4_Mask_Utils.py:648-813``), profile by profile; ``soft``
+    counts its width at ``cell_lat``, the middle of the cell (:func:`soft_width`)."""
     if masking_mode == "sand":
         width = sand_width(_scalar(masks_width), lat, mask_zl)
         return sand_blur(pre, width) if width else np.array(pre)
@@ -343,8 +372,7 @@ def blur_mask(
         widths = three_steps_widths(_sequence(masks_width), lat, mask_zl)
         return three_steps_blur(pre, widths, sea_level, mask_zl)
     if masking_mode == "soft":
-        px = _pxscal(lat, mask_zl)
-        return soft_blur(pre, float(_scalar(masks_width)) / px)
+        return soft_blur(pre, soft_width(_scalar(masks_width), _at_cell(cell_lat), mask_zl))
     return np.array(pre)
 
 

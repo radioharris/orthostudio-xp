@@ -82,8 +82,11 @@ from orthostudio.masks import CellJob, CellResult, MasksIndex, build_cell, build
 * `pre_mask(til_x, til_y, tris, extents, *, mask_zl, sea_level, margin) -> np.uint8`
   draws the Ortho4XP image; `margin` is the working margin (1024 in Ortho4XP, `halo_px` here).
 * `halo_px(masking_mode, masks_width, lat, mask_zl, *, distance_masks_too=False,
-  full_margin=1024)` (in `profiles.py`) is that margin.
-* `blur_mask(pre, *, masking_mode, masks_width, lat, mask_zl, sea_level) -> np.uint8`.
+  full_margin=1024, cell_lat=None)` (in `profiles.py`) is that margin.
+* `blur_mask(pre, *, masking_mode, masks_width, lat, mask_zl, sea_level, cell_lat=None)
+  -> np.uint8`. `lat` is the square's, where Ortho4XP's three profiles count their width (its
+  middle, `lat + 0.5`); `cell_lat` the middle of the cell (`cell_latitude(til_y, mask_zl)`),
+  where `soft` counts its own (section 7).
 * `distance_mask(pre, *, mask_zl, margin) -> np.uint8 (4096, 4096)`.
 * `build_cell(...) -> CellResult(mask: np.ndarray | None, dist: np.ndarray | None)`.
 * `build_masks(out_dir, meshes, tile, *, mask_zl, masks_width, masking_mode,
@@ -291,6 +294,16 @@ pre-mask of 6000_8432, 14.3 M of the 37.7 M pixels have an exact sum that is a m
 * The working margin is cropped to what the profile can reach (`halo_px`, at most 1024), for
   every profile.
 * A process pool instead of 4 GIL-bound threads.
+* A fourth profile, `soft` (OrthoStudio XP's own, 2026-11-16): from the bank the photo grows
+  transparent as `(1 - t)²`, as `sand` falls, down to the water's own level, over `masks_width`
+  or over the water's local half-width where that is narrower, so that a river narrower than
+  twice the width fades from each bank to its middle instead of being covered from bank to bank.
+  Its width is counted in pixels at the middle of the mask cell (`soft_width`), not of the
+  square as Ortho4XP's profiles count theirs, and so is its working margin: a cell across the
+  line between two rows of squares is made by the square on each side, and counted at each
+  square's middle their two masks of one name differed (1,947 in Europe's zips, 2026-11-17, the
+  bands 1.7 % apart at 44 degrees north); counted at the cell they are the same bytes
+  (`test_two_rows_of_squares_make_a_soft_mask_they_share_the_same`).
 
 ## 8. Not there yet (blocking questions, least engaging option implemented)
 

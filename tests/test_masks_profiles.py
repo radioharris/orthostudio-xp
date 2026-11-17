@@ -15,6 +15,7 @@ from orthostudio.masks.profiles import (
     _hat_kernel,
     blur_mask,
     blur_widths,
+    cell_latitude,
     halo_px,
     rocks_width,
     sand_blur,
@@ -119,6 +120,17 @@ def test_halo_is_the_reach_of_the_profile() -> None:
     assert halo_px("rocks", 100, LAT, ZL) == 35
     assert halo_px("3steps", [100, 200, 100], LAT, ZL) == 57
     assert halo_px("rocks", 30000, LAT, ZL) == 1024  # capped at the Ortho4XP margin
+
+
+def test_soft_counts_its_width_at_the_cell() -> None:
+    """``soft``'s margin depends on the cell's latitude alone, whichever square makes the cell,
+    and is not counted without it."""
+    cell = cell_latitude(5952, ZL)  # the cell across 44 degrees north
+    assert 43.8 < cell < 44.2
+    south, north = (halo_px("soft", 100, lat, ZL, cell_lat=cell) for lat in (43, 44))
+    assert south == north
+    with pytest.raises(ValueError, match="cell_lat"):
+        halo_px("soft", 100, LAT, ZL)
 
 
 def test_rocks_crop_matches_full_margin() -> None:
