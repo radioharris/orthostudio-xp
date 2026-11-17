@@ -1291,7 +1291,7 @@ export async function mockApi(method, path, body, options = {}) {
     };
   }
   if (p === "/api/update/install") {
-    // Install and relaunch, in the mock: 4 s of preparing, then the app "quits". `fail=update-busy`
+    // Install and relaunch, in the mock: 4 s of preparing, 2 s of starting, then the app "quits". `fail=update-busy`
     // answers as for a build and Live flying, until the page confirms.
     const total = 74949673;
     if (method === "POST") {
@@ -1310,7 +1310,8 @@ export async function mockApi(method, path, body, options = {}) {
     }
     if (!mockUpdate.version) return { state: "idle" };
     const done = Math.min(total, Math.round(((Date.now() - mockUpdate.started) / 4000) * total));
-    if (done >= total) return { state: "installing", version: mockUpdate.version };
+    if (Date.now() - mockUpdate.started > 6000) return { state: "installing", version: mockUpdate.version };
+    if (done >= total) return { state: "starting", version: mockUpdate.version };
     return { state: "preparing", version: mockUpdate.version, done, total };
   }
   if (p === "/api/flightplan/simbrief") {
@@ -2711,10 +2712,12 @@ async function loadUpdate() {
 }
 
 /** Where the banner is: offering the version, preparing it (its one bar, the same for everyone:
- * the download, then on macOS the copy of the new app), or handed over while the app quits. */
+ * the download, then on macOS the copy of the new app), starting what installs it (on Windows the
+ * installer, which Windows checks before it lets it start: 12 s and more, with nothing to count),
+ * or handed over while the app quits. */
 function updatePhase() {
   const now = state.updateTry?.state;
-  return now === "preparing" || now === "installing" ? now : "offer";
+  return ["preparing", "starting", "installing"].includes(now) ? now : "offer";
 }
 
 function renderUpdateNote() {
@@ -2758,6 +2761,7 @@ function updateNoteParts(u, phase) {
       h("button", { type: "button", class: "btn", onclick: cancelUpdate }, t("app.update_cancel")),
     ];
   }
+  if (phase === "starting") return [t("app.update_starting")];
   if (phase === "installing") return [t("app.update_installing", { version })];
   const parts = [t("app.update_available", { version: u.latest, current: u.current })];
   const tried = u.last_try;

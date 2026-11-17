@@ -653,9 +653,11 @@ class Installer:
     still open: the download, then on macOS the copy of the new app (its share of ``total`` is the
     size of the app as installed, the new one's near enough, so that the bar never goes back);
     ``ask``, ready while a build or Live runs that the user did not agree to stop (``running`` says
-    which: the page asks, and starts again with ``force``, the download kept); ``installing``,
-    handed over, the app quitting; ``failed`` (``reason``, :data:`REASONS`), the try also kept for
-    the next start.
+    which: the page asks, and starts again with ``force``, the download kept); ``starting``, what
+    puts the new version in place being started: on Windows that is the installer, which Windows
+    checks before it lets a program it never saw start, 12 to 18 s on a Shadow PC (measured on
+    2026-11-17), with nothing to count; ``installing``, handed over, the app quitting; ``failed``
+    (``reason``, :data:`REASONS`), the try also kept for the next start.
     """
 
     def __init__(
@@ -698,12 +700,12 @@ class Installer:
 
     def busy(self) -> bool:
         with self._lock:
-            return self._state["state"] in ("preparing", "installing")
+            return self._state["state"] in ("preparing", "starting", "installing")
 
     def start(self, version: str, *, force: bool) -> bool:
         """Start a try at ``version``; ``False`` while one is under way already."""
         with self._lock:
-            if self._state["state"] in ("preparing", "installing"):
+            if self._state["state"] in ("preparing", "starting", "installing"):
                 return False
             self._cancel.clear()
             self._state = {"state": "preparing", "version": version, "done": 0, "total": 0}
@@ -771,6 +773,7 @@ class Installer:
                 asked = {"build": running.build, "live": running.live, "flying": running.flying}
                 self._set(state="ask", version=version, running=asked)
                 return
+            self._set(state="starting", version=version)
             (self._hand or hand_over)(
                 here, dest, version, home=self.home, log=self.log, staged=staged
             )

@@ -520,9 +520,12 @@ def test_a_try_downloads_makes_ready_hands_over_then_quits(tmp_path: Path) -> No
     seen: list[tuple[int, int]] = []
     real_set = installer._set
 
+    states: list[str] = []
+
     def watch(**state: Any) -> None:
         if state.get("state") == "preparing":
             seen.append((state["done"], state["total"]))
+        states.append(state["state"])
         real_set(**state)
 
     installer._set = watch  # type: ignore[method-assign]
@@ -533,6 +536,8 @@ def test_a_try_downloads_makes_ready_hands_over_then_quits(tmp_path: Path) -> No
     assert d.calls == [f"fetch {name}", f"stage {name}", f"hand {name} .osxp-update.t", "quit"]
     # one bar: the download's 100 bytes then the copy's 300 (the app as installed), never back
     assert seen == [(0, 400), (100, 400), (250, 400), (400, 400)]
+    # what installs it starting is said apart: on Windows, Windows checks the installer first
+    assert [s for s in states if s != "preparing"] == ["starting", "installing"]
     assert _pending(tmp_path)["version"] == "2.3.0" and "reason" not in _pending(tmp_path)
 
 

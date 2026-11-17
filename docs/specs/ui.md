@@ -1707,8 +1707,11 @@ opens again by itself, and what installing stops, in the words of Quit's questio
 the focus), then posts again with `force`. The line then follows the try every 0.5 s
 (`followUpdate`, `GET /api/update/install`): one bar, the same for everyone, "Installing 2.3.0:
 63%" with *Cancel* (the bytes of the download, then on macOS of the copy of the new app; only the
-words and the bar change in place, so a click is not lost to a new button), then "OrthoStudio XP
-quits, then opens again by itself in version 2.3.0. Your tiles and settings are kept." A try that
+words and the bar change in place, so a click is not lost to a new button), then "Starting the
+installation…" while what installs it starts (an instant on macOS; on Windows the installer, which
+Windows checks before it lets a program it never saw start: the bar stayed at 100% for 12 s on a
+Shadow PC, 2026-11-17), then "OrthoStudio XP quits, then opens again by itself in version 2.3.0.
+Your tiles and settings are kept." A try that
 fails, or that `ask`s about something started meanwhile, goes back to the line, which says why the
 last install did not complete (`last_try`, `app.update_why.*`), at the next start too. The engine
 gone while it installs, the *stopped* screen says that it installs and opens again by itself

@@ -337,7 +337,12 @@ Gatekeeper again. Where the app can replace itself, the banner's *Install and re
   downloaded is asked about then (`ask`).
 - **One bar, the same for everyone** (the user, 2026-11-17: « pas d'usine à gaz. Le même affichage
   pour tout le monde »): *Installing 2.3.0: 63%*, the bytes of what the app does while it is still
-  open, *Cancel* beside it; then the app quits and the new version opens by itself.
+  open, *Cancel* beside it; then *Starting the installation…* while what installs it starts; then
+  the app quits and the new version opens by itself. On Windows that start waits for Windows'
+  check of a program it never saw: measured on a Shadow PC on 2026-11-17 with the app's Python and
+  its options, starting the setup took 1.2 s for one already run there and 17.7 s for one never run
+  there (Smart App Control in evaluation; the download's folder excluded from Defender), the
+  download 1 s; the bar stood at 100% for 12 s before this line said so.
 - **macOS**: while the app is open, the image is mounted on a folder of the system's temporary
   folder (macOS refuses a mount point on another disk), its app checked (`BUNDLE_ID` at the version
   asked) and copied by `ditto` into a hidden folder beside the old app (`.osxp-update.*`, the same
