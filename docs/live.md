@@ -341,6 +341,19 @@ decal's: the terrain files flown already are made again as X-Plane comes. The fi
 the update makes the water photos of the textures already built round the start, a few seconds
 more, once.
 
+**Soft banks downloads the masks of rivers and lakes.** The regions of the new mesh keep them
+apart, and only Soft banks downloads them: for Europe, about 3.2 GB more (an estimate from the
+bake of 17 November 2026), 228,000 small files. Under « Soft banks », the Settings say how much
+they add to download for your regions. Choose Soft banks and click Save: Live downloads them region
+after region, with the bar and the Stop of « The mesh, by region », while Live streams too; they
+are used from the next start. A region whose mesh changed since you installed it shows **Update**
+instead, which brings it whole, its river masks included. A stopped or failed download leaves the
+region as it was, never half of its rivers faded; **Update** goes on from where it stopped. Once
+downloaded, the masks stay part of the region: choosing Even again leaves them on the disk,
+unused, and choosing Soft banks again downloads nothing; a region's update brings their new
+version too, and its size on the disk counts them. A region you install afterwards comes with them
+while Soft banks is chosen.
+
 ## Imagery sources, your own tiles, roads and forests
 
 **Sources.** OrthoStudio XP's: Bing Maps, Esri, EOX, the countries' own (Spain's PNOA, the
@@ -409,7 +422,8 @@ OrthoStudio XP's server, a few files at a time, checks each one and unpacks it a
 whole; the bar shows the download, and the line under it the gigabytes downloaded and the pace in
 megabytes a second over the last few seconds. **Stop** stops it, and **Install** again goes on where it
 stopped, a file cut off included. A region is used from the next start, never half installed. Its
-roads, forests and buildings come with it, unless "Roads, forests and buildings" says "No".
+roads, forests and buildings come with it, unless "Roads, forests and buildings" says "No", and
+its masks of rivers and lakes once you chose Soft banks (see « The sea, rivers and lakes »).
 Once installed, a region shows its size on the disk and **Delete** (click twice). When a region
 is made again on the server, the panel says an update is available and how much it downloads,
 and offers **Update**: only

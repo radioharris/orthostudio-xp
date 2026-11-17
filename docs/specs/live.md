@@ -972,10 +972,10 @@ The sea and lakes over 200 km² are sea for the mesh and keep their masks either
 bake (branch `mesh-rivers`, engine branch `rivers-apart`, `inland_apart`) gives inland water its
 own overlay terrain, `<texture>_water_overlay.ter`, its points carrying the photo's (s, t) in planes
 7 and 8 as the sea's do. The masks of textures with rivers and lakes alone come in a region's
-`rivers/textures/<y>_<x>_ZL<z>.png` (separate zips, not yet made); those of textures with any sea
-stay in `textures/` and serve both terrains (`names.RIVER_MASKS`). The two borders are written into
-the pack's `textures` at each start (`region.write_borders`), names of Live's own that no region
-uses, never taken for a mask or a texture.
+`rivers/textures/<y>_<x>_ZL<z>.png`, zips of their own downloaded only with soft banks (below);
+those of textures with any sea stay in `textures/` and serve both terrains (`names.RIVER_MASKS`).
+The two borders are written into the pack's `textures` at each start (`region.write_borders`),
+names of Live's own that no region uses, never taken for a mask or a texture.
 
 **The setting and the record.** `LiveSettings.rivers_fade`, off by default (the user,
 2026-11-17), the window's « Rivers and lakes »: « Even (recommended) » or « Soft banks ». The pack
@@ -986,6 +986,62 @@ photos and the masks of the pack's `textures` taken away, made again per square 
 not while X-Plane runs, which may be reading them: at the next start then. The squares' files and
 the builder follow the record, never the settings (`region.water_record`, as `night_on`): a pack
 whose record is of before keeps naming the masks until then.
+
+**The river masks, downloaded with soft banks** (`osxpregions`, 2026-11-17). The bake packs
+beside each mesh zip `zips/<region>_<label>.zip` a river zip `zips/rivers/<region>_<label>.zip`
+of the same name and top folder, holding `<region>_<label>/rivers/textures/<mask>`; the host's
+list names them in a kind of their own, `rivers`, with the four fields of every zip. Measured on 28
+squares (Geneva and Vancouver Island): mesh zips 522 MB with 1,180 sea masks, river zips 37 MB
+with 3,732 masks; estimated for Europe from the bake of 2026-11-17, about 3.2 GB of 14.6 and
+228,000 files. So they come only to those who choose soft banks.
+- **The list.** Every Live since 2.0 reads each kind it knows with `Zip(**z)`, strict, and leaves
+  a kind it does not know aside (read in the tags v2.0.0 to v2.2.0): an older Live reads the list
+  with rivers as before. A field added to a zip entry would make it refuse the whole list and keep
+  its old one for good, so a new kind never adds a field to another's.
+- **What a region wants** (`wanted`, the one rule of the install, the update, the window's sizes
+  and its update counts): its mesh, its night grids, and its river zips when soft banks is chosen
+  or the region has its `rivers` folder already. Once downloaded they are part of the region (the
+  user, 2026-11-17): even again leaves them on the disk, recorded and unused, its terrain files
+  naming the even grey; soft banks again downloads nothing; an update brings their new version
+  whatever the setting; the region's size counts them. No button deletes them for now.
+- **All or nothing.** They are unpacked into `.rivers.new` in the region's folder, as into the
+  region (`.rivers.new/rivers/textures/...`), each recorded in the stage's own
+  `.live-install.json`; once it holds every river zip of the list, `.rivers.new/rivers` takes the
+  place of `rivers` with one rename (those of before renamed `.rivers.old` first, deleted after),
+  then the marker records them, last (`Installer._put_rivers`). A stop, a damaged zip or a full
+  disk leaves the region's rivers as they were, faded or even in one piece, never half; the next
+  try goes on in the stage, started again when it holds a zip the list no longer has as it was
+  (`_rivers_staged`). The marker's river zips count all together or not at all, and only while
+  `rivers` is there (`recorded`): one made again, they all come again into the stage (a bake makes
+  every zip again anyway).
+- **Windows** does not rename a folder a program holds open: those of before stay in place, the
+  stage whole; the error says to close X-Plane and try again, which downloads nothing more. Until
+  then the region shows its update (`not_installed`: zips the marker does not record, downloaded
+  or not).
+- **The disk.** Each zip's files are counted at whole 4 KiB blocks (`disk_need`, from the zip's
+  own directory, as the list counts no files), checked before each zip with 2 GB left
+  (`Installer._room`), after the count of the list's bytes at the start: a mask averages 10 KB,
+  and Europe's would take about 0.45 GB more than their bytes (an estimate). A zip downloads to its
+  path below the region, `regions/.download/osxp_<id>/zips/rivers/<name>` (`Zip.local`): a river
+  zip has its mesh zip's name.
+- **Chosen later** (`LiveControl.rivers_chosen`, from the Settings' save, `PUT /api/live/
+  settings` turning `rivers_fade` on): for each region installed whose mesh zips are the list's
+  (`mesh_changed`), its river zips alone (`rivers_to_add`), region after region, in the installs'
+  one place with its bar and Stop, which ends the whole round; overlays left, the region's set-up,
+  its list of textures and its date untouched, the marker recording what came. A region whose mesh
+  changed gets nothing alone: it shows its update, which brings it whole, river masks in. An
+  install under way keeps its place (the river masks then come with Update); the night grids'
+  own download gives way. It runs while Live streams too, but never puts river masks over those a
+  region has while Live streams: that waits for Update, with Live stopped.
+- **Used from the next start.** `Names` reads which regions hold `rivers` as the stream starts
+  (`river_masks`): masks put in place meanwhile are not taken square by square, or one flight
+  would show X-Plane's water alone on the squares before them and faded banks after, and the
+  squares kept would stay so. The region's fingerprint counts the `rivers` folder's time where it
+  has one (`region._fingerprints`; a region without one keeps its fingerprints of before), so the
+  next start with X-Plane not running sets the region up again and its terrain files are made anew.
+- **The window.** Each region of the list carries `rivers_bytes`, what its river masks would
+  download for a region installed that has not got them; « Soft banks » says their sum, « … and
+  1.2 GB more to download for your regions. », its plain words alone once they are there.
 
 **It ships with the new world bake.** Today's installed regions of Live's mesh have no
 `_water_overlay` of their own: every water body is a `_sea_overlay` with a mask, so every one gets
