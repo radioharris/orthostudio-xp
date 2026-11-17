@@ -7,6 +7,7 @@ the one overlay pack that goes with it."""
 
 from __future__ import annotations
 
+import re
 import struct
 from pathlib import Path
 
@@ -79,7 +80,7 @@ def test_the_folder_taken_by_what_it_holds(tmp_path: Path) -> None:
     found = other_mesh(folder)
     assert found.meshes == [eur]
     assert found.overlays == [eur_roads]
-    assert found.refused == [
+    assert sorted(found.refused) == [  # Windows orders the folders without their case
         ("HD_Mesh", "no_photos"),
         ("Virtual_mount", "no_terrain"),
         ("zOrtho4XP_+45+005", "photos"),
@@ -362,7 +363,8 @@ def test_a_start_names_the_folder_it_could_not_link(tmp_path: Path, monkeypatch)
 
     monkeypatch.setattr(region, "setup_region", refused)
     monkeypatch.setattr(session.sys, "platform", "win32")
-    with pytest.raises(session.RefusedError, match=f"another tool's mesh, {folder}, on a network"):
+    said = re.escape(f"another tool's mesh, {folder}, on a network")  # a Windows path's backslashes
+    with pytest.raises(session.RefusedError, match=said):
         session.prepare(options, log=lambda _: None)
     monkeypatch.setattr(session.sys, "platform", "darwin")
     with pytest.raises(OsxpError):

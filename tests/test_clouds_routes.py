@@ -1577,17 +1577,20 @@ async def test_find_and_apply_lays_the_clouds_a_search_found_before(
         r = await c.post("/api/cloud-searches", json={"tiles": ["+43+005"], "apply": True})
         assert r.status_code == 200, r.text
         await _no_search(c)
+        first = [list(ids) for ids in laid]
         again = await c.post("/api/cloud-searches", json={"tiles": ["+43+005"], "apply": True})
+        await _no_search(c)  # its Apply done before the list is read, on every system
     with cloudlist.update(TILE) as cl:
         ticked = [c["id"] for c in cl.clouds if c["tick"]]
     # Find leaves a tile searched; Find and apply takes it, without a search: its cloud ticked
     # (a clear source judged under it), then laid once nothing of it ran
     assert found.json() == {"started": [], "left": [{"tile": "+43+005", "why": "searched"}]}
     assert r.json() == {"started": ["+43+005"], "left": []}
-    assert laid == [[cid]] and ticked == [cid]
+    assert first == [[cid]] and ticked == [cid]
     # laid (the fake one), it is still ticked and planned: busy no more, Find and apply takes it
     # again as long as Apply lays something; the real Apply's tile holds it then
     assert again.json()["started"] == ["+43+005"]
+    assert laid == [[cid], [cid]]
 
 
 @pytest.mark.anyio
