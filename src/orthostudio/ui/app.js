@@ -718,6 +718,9 @@ async function mockProfilesRoute(p, method, body) {
   throw mockError(404, "SYS_NOT_FOUND", `No route ${method} ${p}.`, "");
 }
 
+/** Install and relaunch in the mock: the version being installed, and since when. */
+const mockUpdate = { version: null, started: 0 };
+
 function mockError(status, code, message, remedy) {
   return new ApiError(status, { error: { code, severity: "blocking", action: "stop", message, remedy, context: {} } });
 }
@@ -1275,11 +1278,39 @@ export async function mockApi(method, path, body, options = {}) {
   if (p === "/api/update") {
     // `?mock=1&update=0.1.10`: that version is out, so the banner can be seen without a release.
     // The link stays on the page: its files carry no address outside it (test_no_external_url),
-    // and the engine is the one that knows GitHub's.
+    // and the engine is the one that knows GitHub's. `update_failed=<reason>`: its last try did
+    // not install it, for that reason (orthostudio/self_update.py REASONS).
     const current = (await mockFile("status")).version;
     const latest = PARAMS.get("update") || null;
     const available = Boolean(latest) && latest !== current;
-    return { current, latest, url: available ? `#release-${latest}` : null, available };
+    const failed = PARAMS.get("update_failed");
+    return {
+      current, latest, url: available ? `#release-${latest}` : null, available,
+      installable: available,
+      last_try: available && failed && !mockUpdate.version ? { version: latest, reason: failed } : null,
+    };
+  }
+  if (p === "/api/update/install") {
+    // Install and relaunch, in the mock: 4 s of preparing, 2 s of starting, then the app "quits".
+    // `fail=update-busy` asks first, as for a build and Live flying, until the page confirms.
+    const total = 74949673;
+    if (method === "POST") {
+      if (MOCK_FAIL === "update-busy" && !body?.force) {
+        return { state: "ask", version: PARAMS.get("update"), running: { build: true, live: true, flying: true } };
+      }
+      mockUpdate.version = PARAMS.get("update");
+      mockUpdate.started = Date.now();
+    }
+    if (method === "DELETE") {
+      const cancelled = Boolean(mockUpdate.version);
+      mockUpdate.version = null;
+      return { cancelled };
+    }
+    if (!mockUpdate.version) return { state: "idle" };
+    const done = Math.min(total, Math.round(((Date.now() - mockUpdate.started) / 4000) * total));
+    if (Date.now() - mockUpdate.started > 6000) return { state: "installing", version: mockUpdate.version };
+    if (done >= total) return { state: "starting", version: mockUpdate.version };
+    return { state: "preparing", version: mockUpdate.version, done, total };
   }
   if (p === "/api/flightplan/simbrief") {
     // A plan as the engine answers it (mock/flightplan.json, computed by orthostudio.flightplan on
@@ -2550,7 +2581,7 @@ function routeFromHash() {
 // ------------------------------------------------------------------ status bar
 
 /** The engine API this page needs (orthostudio.api.app.API_LEVEL); a test keeps the two equal. */
-const PAGE_API_LEVEL = 55;
+const PAGE_API_LEVEL = 56;
 
 async function loadStatus() {
   try {
@@ -2657,13 +2688,20 @@ function renderWindowNote() {
 }
 
 const UPDATE_DISMISSED_KEY = "osxp.updateDismissed";
+const UPDATE_POLL_MS = 500;
+/** The states of a try going on (orthostudio/self_update.py UNDER_WAY). */
+const UPDATE_UNDER_WAY = ["preparing", "starting", "installing"];
+let updateTimer = 0;
 
 /**
- * A newer version, said once at the top of the page with a link to its release page, where the
- * notes and the installers are. Nothing is downloaded or installed: a user who did not read the
- * forum stayed on the version he had, with bugs fixed since, and nothing told him (2026-09-21).
- * "Not now" hides it until the next version; the engine asks GitHub at most once a day, and not
- * at all when Settings say no (orthostudio/update.py).
+ * A newer version, said once at the top of the page. Where the app can replace itself (macOS,
+ * Windows and Linux, installed from the release: `installable`), *Install and relaunch*
+ * downloads it, makes it ready, hands it over and quits, and the new version opens by itself
+ * (orthostudio/self_update.py; the user, 2026-11-17); elsewhere a link to its release page, where
+ * the notes and the installers are.
+ * A user who did not read the forum stayed on the version he had, with bugs fixed since, and
+ * nothing told him (2026-09-21). "Not now" hides it until the next version; the engine asks GitHub
+ * at most once a day, and not at all when Settings say no (orthostudio/update.py).
  */
 async function loadUpdate() {
   try {
@@ -2672,36 +2710,178 @@ async function loadUpdate() {
     return; // no answer, or an engine older than the question: there is nothing to say
   }
   renderUpdateNote();
+  if (state.update?.installable && !state.updateTry) {
+    // a try under way, started by another page or before this one was loaded: followed here too
+    const now = await api("GET", "/api/update/install").catch(() => null);
+    if (now && UPDATE_UNDER_WAY.includes(now.state)) await onUpdateState(now);
+  }
+}
+
+/** Where the banner is: offering the version, preparing it (its one bar, the same for everyone:
+ * the download, then on macOS and Linux the new app made ready), starting what installs it (on Windows the
+ * installer, which Windows checks before it lets it start: 12 s and more, with nothing to count),
+ * or handed over while the app quits. */
+function updatePhase() {
+  const now = state.updateTry?.state;
+  return UPDATE_UNDER_WAY.includes(now) ? now : "offer";
 }
 
 function renderUpdateNote() {
   const u = state.update;
+  const phase = updatePhase();
   const dismissed = pageKept(UPDATE_DISMISSED_KEY);
-  if (!u?.available || !u.url || dismissed === u.latest) {
+  if (phase === "offer" && (!u?.available || !u.url || dismissed === u.latest)) {
     if ($("update-note")) {
       $("update-note").remove();
       measureMapTop();
     }
     return;
   }
-  if ($("update-note")) return;
-  const note = h("p", { id: "update-note", class: "window-note update-note", role: "status" });
+  const tried = u?.last_try;
+  // its language too: drawn at the start, before the page knows it, it stayed in English on a
+  // French page, and a change of language draws it again (rerenderAll)
+  const said = phase === "offer" ? `${u.latest} ${tried?.version || ""} ${tried?.reason || ""}` : "";
+  const key = `${language()} ${phase} ${said}`;
+  let note = $("update-note");
+  if (note && note.dataset.phase === key) {
+    if (phase === "preparing") showUpdateProgress();
+    return; // the same buttons: a click under way is not lost to a new one
+  }
+  const fresh = !note;
+  if (fresh) note = h("p", { id: "update-note", class: "window-note update-note", role: "status" });
+  note.dataset.phase = key;
+  clear(note).append(...updateNoteParts(u, phase));
+  if (fresh) $("main").prepend(note);
+  if (phase === "preparing") showUpdateProgress();
+  measureMapTop(); // it sits above the map and pushes it down
+}
+
+function updateNoteParts(u, phase) {
+  const version = state.updateTry?.version || u?.latest || "";
+  if (phase === "preparing") {
+    return [
+      h("span", { id: "update-progress" }),
+      " ",
+      h("span", { class: "progress update-bar", "aria-hidden": "true" }, h("span", { id: "update-bar" })),
+      " ",
+      h("button", { type: "button", class: "btn", onclick: cancelUpdate }, t("app.update_cancel")),
+    ];
+  }
+  if (phase === "starting") return [t("app.update_starting")];
+  if (phase === "installing") return [t("app.update_installing", { version })];
+  const parts = [t("app.update_available", { version: u.latest, current: u.current })];
+  const tried = u.last_try;
+  if (tried && tried.version === u.latest) {
+    const why = tOpt(`app.update_why.${tried.reason}`) ?? t("app.update_why.unfinished");
+    parts.push(" ", t("app.update_failed", { version: tried.version, why }));
+  }
   const later = () => {
     pageKeep(UPDATE_DISMISSED_KEY, u.latest);
-    note.remove();
+    $("update-note")?.remove();
     measureMapTop();
   };
-  note.append(
-    t("app.update_available", { version: u.latest, current: u.current }),
-    " ",
-    // A link, not a button calling window.open: the window hands a clicked target="_blank" link
-    // to the system's browser (pywebview, OPEN_EXTERNAL_LINKS_IN_BROWSER), and only a link.
-    h("a", { class: "btn btn-primary", href: u.url, target: "_blank", rel: "noopener" }, t("app.update_open")),
+  parts.push(" ");
+  if (u.installable) {
+    const install = h("button", { type: "button", class: "btn btn-primary", onclick: () => installUpdate(false) }, t("app.update_install"));
+    parts.push(install, " ");
+  }
+  // A link, not a button calling window.open: the window hands a clicked target="_blank" link
+  // to the system's browser (pywebview, OPEN_EXTERNAL_LINKS_IN_BROWSER), and only a link.
+  const notes = u.installable ? t("app.update_notes") : t("app.update_open");
+  parts.push(
+    h("a", { class: u.installable ? "btn" : "btn btn-primary", href: u.url, target: "_blank", rel: "noopener" }, notes),
     " ",
     h("button", { type: "button", class: "btn", onclick: later }, t("app.update_later")),
   );
-  $("main").prepend(note);
-  measureMapTop(); // it sits above the map and pushes it down
+  return parts;
+}
+
+/** The bar and its words: the bytes the engine counted, of all it does while the app is open. */
+function showUpdateProgress() {
+  const now = state.updateTry || {};
+  const percent = now.total > 0 ? Math.floor((100 * (now.done || 0)) / now.total) : 0;
+  const version = now.version || state.update?.latest || "";
+  $("update-progress").textContent = t("app.update_preparing", { version, percent });
+  $("update-bar").style.width = `${percent}%`;
+}
+
+/** *Install and relaunch*: the engine answers the try's state, `ask` first while a build or Live
+ * runs that the app's quitting stops (orthostudio/self_update.py Installer), then the page
+ * follows it until the app quits. */
+async function installUpdate(force) {
+  let now;
+  try {
+    now = await api("POST", "/api/update/install", { force });
+  } catch (err) {
+    toast(errorMessage(err), "fail");
+    return;
+  }
+  await onUpdateState(now);
+}
+
+/** What the page does with the try's state, answered to its click or to its following. */
+async function onUpdateState(now) {
+  if (now.state === "ask") {
+    // asked when the try starts, and again if a build or Live started while it prepared
+    state.updateTry = null;
+    renderUpdateNote();
+    if (await confirmUpdate(now.running)) await installUpdate(true);
+    return;
+  }
+  if (now.state === "failed" || now.state === "idle") {
+    state.updateTry = null;
+    await loadUpdate(); // the banner again, saying why when it failed
+    return;
+  }
+  state.updateTry = now;
+  renderUpdateNote();
+  if (now.state !== "installing") followUpdate();
+}
+
+function followUpdate() {
+  clearTimeout(updateTimer);
+  updateTimer = setTimeout(async () => {
+    let now;
+    try {
+      now = await api("GET", "/api/update/install");
+    } catch (_err) {
+      // a request lost while it prepares is asked again; once handed over, the engine goes, and
+      // the page says so in the install's words
+      if ($("stopped").hidden && state.updateTry?.state === "preparing") followUpdate();
+      return;
+    }
+    await onUpdateState(now);
+  }, UPDATE_POLL_MS);
+}
+
+async function cancelUpdate() {
+  try {
+    await api("DELETE", "/api/update/install");
+  } catch (err) {
+    toast(errorMessage(err), "fail");
+  }
+}
+
+/** The question before installing while something runs: what the app's quitting stops, in the
+ * words of Quit's question. */
+function confirmUpdate(running) {
+  const dialog = $("update-confirm");
+  if (dialog.open) return Promise.resolve(false);
+  $("update-confirm-title").textContent = t("update.title", { version: state.update?.latest || "" });
+  const lines = [t("update.text")];
+  if (running?.build) lines.push(t("update.build"));
+  if (running?.live) lines.push(running.flying ? t("update.flying") : t("update.live"));
+  clear($("update-confirm-text")).append(...lines.map((line) => h("p", null, line)));
+  dialog.returnValue = "";
+  dialog.onkeydown = (ev) => {
+    if (ev.key !== "Escape") return;
+    ev.preventDefault();
+    dialog.close();
+  };
+  return new Promise((resolve) => {
+    dialog.addEventListener("close", () => resolve(dialog.returnValue === "install"), { once: true });
+    dialog.showModal();
+  });
 }
 
 /** The checks the doctor failed, by name. Something OrthoStudio XP needs is not working, and a
@@ -2968,8 +3148,11 @@ function showEngineGone() {
   clearInterval(jobsTimer);
   clearInterval(presenceTimer);
   const text = $("stopped").querySelector("p");
-  text.dataset.i18n = "quit.gone_text";
-  text.textContent = t("quit.gone_text");
+  // gone to install a new version, which comes back by itself (orthostudio/self_update.py): the
+  // state the page saw last may be the start, the quit lasting a fraction of its polling's period
+  const installing = ["starting", "installing"].includes(state.updateTry?.state);
+  text.dataset.i18n = installing ? "app.update_reopens" : "quit.gone_text";
+  text.textContent = installing ? t("app.update_reopens") : t("quit.gone_text");
   $("stopped").hidden = false;
 }
 
@@ -8228,6 +8411,7 @@ function rerenderAll() {
   // the yellow banner too: it stayed in the other language until the next status (a campaign,
   // 2026-10-25)
   renderEngineBanner();
+  renderUpdateNote();
   renderProviders();
   renderTiles();
   renderPlanPanel();

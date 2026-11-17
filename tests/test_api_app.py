@@ -1567,6 +1567,9 @@ async def test_the_page_is_told_when_a_newer_version_is_out(
             "latest": "999.0.0",
             "url": "https://github.com/radioharris/orthostudio-xp/releases/tag/v999.0.0",
             "available": True,
+            # an engine osxp serve did not start, from a checkout: the link alone
+            "installable": False,
+            "last_try": None,
         }
         assert (home / update.CACHE_NAME).is_file()
 

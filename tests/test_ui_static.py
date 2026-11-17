@@ -5611,15 +5611,18 @@ def test_the_mock_takes_an_imported_tile_off_the_list_like_the_engine() -> None:
 
 def test_the_page_says_when_a_newer_version_is_out() -> None:
     """A user who did not read the forum stayed on the version he had, with bugs fixed since, and
-    nothing told him (2026-09-21). One line at the top, with a link to the release page; nothing
-    is downloaded or installed, and "Not now" hides it until the next version."""
+    nothing told him (2026-09-21). One line at the top, with a link to the release page, and where
+    the app can replace itself *Install and relaunch* (2026-11-17); "Not now" hides it until the
+    next version."""
     app_js = (UI / "app.js").read_text(encoding="utf-8")
     load = _function_body(app_js, "loadUpdate")
     assert 'api("GET", "/api/update")' in load
     # asked once the page is up, and never waited for: a slow GitHub must not hold the page back
     boot = _function_body(app_js, "boot")
     assert "loadUpdate();" in boot and "await loadUpdate" not in boot
-    note = _function_body(app_js, "renderUpdateNote")
+    note = _function_body(app_js, "renderUpdateNote") + _function_body(app_js, "updateNoteParts")
+    # the button only where the engine says the app can replace itself
+    assert "if (u.installable)" in note and "installUpdate(false)" in note
     # a link, not window.open: the window hands only a clicked target="_blank" link to the
     # system's browser
     assert 'h("a", {' in note and 'target: "_blank"' in note and 'rel: "noopener"' in note
@@ -5632,6 +5635,9 @@ def test_the_page_says_when_a_newer_version_is_out() -> None:
             "app.update_available",
             "app.update_open",
             "app.update_later",
+            "app.update_install",
+            "app.update_notes",
+            "app.update_installing",
             "settings.x.group_app",
             "settings.x.check_updates",
             "settings.x.check_updates_hint",

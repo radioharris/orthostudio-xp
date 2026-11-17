@@ -145,7 +145,7 @@ the sources with their maximum zoom level.
 | `ovl_exclude_pol` | list of int or str | - | `[0]` | `ovl_exclude_pol` | Indices of polygon types which one would like to left aside in the extraction of overlays. [...] |
 | `ovl_exclude_net` | list of int or str | - | `[]` | `ovl_exclude_net` | Indices of road types which one would like to left aside in the extraction of overlays. [...] |
 | `build_memory` | `high` \| `medium` \| `low` | - | `medium` | – | OrthoStudio XP's own ("Memory for building"): the share of the computer's memory a build may reserve, 80, 70 or 60 % (`pipeline-build.md` 4), never more than what is free when a step starts, a tenth always left to the system. Not a tile setting: no key changes. Every computer reserved 60 % up to 1.2.1. |
-| `check_updates` | bool | - | `true` | – | OrthoStudio XP's own: asks GitHub once a day which version is the latest, and says at the top of the page when it is newer than this one (`GET /api/update`). GitHub then sees the computer's address, as the imagery servers do; nothing is downloaded or installed. |
+| `check_updates` | bool | - | `true` | – | OrthoStudio XP's own: asks GitHub once a day which version is the latest, and says at the top of the page when it is newer than this one (`GET /api/update`). GitHub then sees the computer's address, as the imagery servers do; nothing is downloaded or installed unless the user asks (*Install and relaunch*, `orthostudio.self_update`). |
 
 Where a hint is abbreviated with "[...]" above, the code carries the full text.
 

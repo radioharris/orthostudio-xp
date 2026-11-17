@@ -695,6 +695,18 @@
   </form>
 </dialog>
 
+<!-- Install a newer version and relaunch while a build or Live runs (app.js confirmUpdate). -->
+<dialog id="update-confirm" class="dialog" role="alertdialog" aria-labelledby="update-confirm-title" aria-describedby="update-confirm-text">
+  <form method="dialog">
+    <h2 class="dialog-title" id="update-confirm-title">Install and relaunch?</h2>
+    <div class="dialog-text" id="update-confirm-text"></div>
+    <div class="dialog-actions">
+      <button type="submit" class="btn" value="stay" autofocus data-i18n="app.update_later">Not now</button>
+      <button type="submit" class="btn btn-primary" value="install" data-i18n="app.update_install">Install and relaunch</button>
+    </div>
+  </form>
+</dialog>
+
 <!-- A question another part of the app asks before a build (app.js askedBeforeBuild). -->
 <dialog id="build-question" class="dialog" role="alertdialog" aria-labelledby="build-question-title" aria-describedby="build-question-text">
   <form method="dialog">

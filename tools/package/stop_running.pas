@@ -143,3 +143,11 @@ begin
   if not Result then
     SuppressibleMsgBox(Message, mbError, MB_OK, IDOK);
 end;
+
+// The app's own update runs this installer without its pages (orthostudio/self_update.py
+// windows_command), the app quitting meanwhile, and asks it to start the app again at its end: a
+// user installing by hand ticks that box on the last page, which a silent install never shows.
+function RelaunchAsked(): Boolean;
+begin
+  Result := WizardSilent and (ExpandConstant('{param:RELAUNCH|0}') = '1');
+end;

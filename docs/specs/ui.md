@@ -1693,6 +1693,33 @@ cancelled too; *Stay* has the focus), then
 `POST /api/quit` (`force` when a job runs) and covers the page with "OrthoStudio XP is stopped. You
 can close this tab. To use OrthoStudio XP again, open the OrthoStudio XP app."
 
+**A new version** (`loadUpdate`, `renderUpdateNote`; 2026-09-21, then *Install and relaunch* on
+2026-11-17): a line at the top of the page, above the map, when `GET /api/update` says a newer
+version is out: "OrthoStudio XP 2.3.0 is out (this one is 2.2.0)." Where the app can replace itself
+(`installable`), *Install and relaunch* (primary), *What's new* (a link to the release page) and
+*Not now*; elsewhere *What's new, and download* (the link, primary) and *Not now*. The link is a
+link, not `window.open`: the window hands a clicked `target="_blank"` link to the system's
+browser, and only a link. *Not now* puts it away for that version (`osxp.updateDismissed`, the
+page's kept values). *Install and relaunch* posts `POST /api/update/install`; its answer `ask`,
+whose `running` says a build, Live or Live flying with X-Plane runs, asks first in a modal dialog
+(`confirmUpdate`: "Install 2.3.0 and relaunch?", that OrthoStudio XP quits while it installs then
+opens again by itself, and what installing stops, in the words of Quit's question; *Not now* has
+the focus), then posts again with `force`. The line then follows the try every 0.5 s
+(`followUpdate`, `GET /api/update/install`): one bar, the same for everyone, "Installing 2.3.0:
+63%" with *Cancel* (the bytes of the download, then on macOS and Linux of the new app made ready; only the
+words and the bar change in place, so a click is not lost to a new button), then "Starting the
+installation…" while what installs it starts (an instant on macOS; on Windows the installer, which
+Windows checks before it lets a program it never saw start: the bar stayed at 100% for 12 s on a
+Shadow PC, 2026-11-17), then "OrthoStudio XP quits, then opens again by itself in version 2.3.0.
+Your tiles and settings are kept." A try that
+fails, or that `ask`s about something started meanwhile, goes back to the line, which says why the
+last install did not complete (`last_try`, `app.update_why.*`), at the next start too. A page
+loaded while a try is under way (another page started it, or this one was reloaded) follows it
+too, and a request lost does not stop the following. The engine
+gone while it installs, the *stopped* screen says that it installs and opens again by itself
+rather than how to start it. In the mock, `update=2.3.0` makes that version out, installable, with
+4 s of the bar; `update_failed=<reason>` its last try failed; `fail=update-busy` asks first.
+
 **The line under a job's title** gives the provider and the zoom level, the relief the tiles are
 built on (`relief` of the job: *X-Plane relief*, *Copernicus relief*, *USGS relief*, *USGS relief,
 1"*, the lidar or ANADEM, *own relief file*; nothing from an engine that does not say), then

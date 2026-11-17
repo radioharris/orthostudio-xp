@@ -1405,6 +1405,8 @@ html.in-frame .statusbar { padding-right: var(--frame-foot-w, 236px); min-height
   background: var(--bg-3); color: var(--fg-2); border: 1px solid var(--line);
 }
 .window-note code { margin: 0 4px; overflow-wrap: anywhere; }
+/* the bar of Install and relaunch (app.js showUpdateProgress), in the line of its words */
+.update-note .update-bar { display: inline-block; width: 12em; max-width: 40%; vertical-align: middle; }
 
 .engine-outdated {
   margin: 0 0 var(--block-gap); padding: 10px 14px; border-radius: var(--radius); font-weight: 600;

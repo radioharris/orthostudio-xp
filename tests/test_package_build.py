@@ -84,6 +84,27 @@ def test_the_windows_installer_opens_the_app_s_code_before_its_first_start() -> 
     assert "StatusMsg:" in runs[warm] and "skipifsilent" not in runs[warm]
 
 
+def test_the_windows_installer_starts_the_app_again_after_the_app_s_own_update() -> None:
+    """The app's update runs the installer without its pages (``orthostudio.self_update``), where
+    the last page's box that starts the app never shows: the app is started at the end when the
+    command line asks for it, and only then, the user installing by hand keeping his box."""
+    script = build.inno_setup_script(
+        "2.3.0", Path("/b"), Path("/i.ico"), Path("/o"), "out", Path("/w") / build.WEBVIEW2_EXE
+    )
+    runs = script[script.index("\n[Run]\n") :].split("\n\n[", 1)[0].splitlines()
+    starts = [line for line in runs if f'Parameters: "-m {build.ENTRY_MODULE}"' in line]
+    assert len(starts) == 2
+    assert "postinstall skipifsilent" in starts[0]
+    assert "Check: RelaunchAsked" in starts[1] and "nowait" in starts[1]
+    assert "postinstall" not in starts[1]
+    asked = script[script.index("function RelaunchAsked") :]
+    assert "WizardSilent" in asked and "{param:RELAUNCH|0}" in asked
+    from orthostudio import self_update
+
+    command = self_update.windows_command(Path("s.exe"), Path("C:/OSXP"), Path("l.txt"))
+    assert "/RELAUNCH=1" in command and "/SILENT" in command
+
+
 def test_the_windows_installer_reads_live_s_regions_before_its_first_start() -> None:
     """Listing Europe's files took 57 s at a start on a cloud PC (2026-10-03): the setup reads the
     regions already there into their lists, five minutes at most, before the app starts."""
@@ -463,7 +484,10 @@ _FROM_THE_DOCUMENTATION = """
     usertemplates commontemplates autopf autopf32 autopf64 autocf autocf32 autocf64 autoappdata
     autodesktop autodocs autofonts autoprograms autostartmenu autostartup autotemplates
     language cmd computername drive groupname hwnd wizardhwnd log srcexe uninstallexe
-    sysuserinfoname sysuserinfoorg userinfoname userinfoorg userinfoserial username"""
+    sysuserinfoname sysuserinfoorg userinfoname userinfoorg userinfoserial username
+    param"""
+# {param:Name|Default}, a parameter of the command line, which the app's own update passes
+# (RELAUNCH, tools/package/stop_running.pas RelaunchAsked)
 INNO_CONSTANTS = frozenset(_FROM_THE_DOCUMENTATION.split())
 
 

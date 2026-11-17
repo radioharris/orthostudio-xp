@@ -311,6 +311,91 @@ browser's start), it counts from its own code. The page's first `POST /api/prese
 
 `doctor --json` is as it was: the checks' times stay out of its document.
 
+**The app's own update** (`self_update.py`; the user, 2026-11-17: « on peut pas faire une
+installation automatique ? »). The banner of a new version (`update.py`) linked to the release page
+alone: the user downloaded the installer, quit the app, replaced it, and on macOS opened it past
+Gatekeeper again. Where the app can replace itself, the banner's *Install and relaunch* does it
+(`POST /api/update/install`, `api.md`):
+
+- **Which app can** (`self_update.installed_here`): on macOS the app around the Python that runs
+  (`<app>/Contents/Resources/python/bin`), whose identifier is `BUNDLE_ID`, not under
+  `AppTranslocation` (macOS runs a downloaded app from a read-only copy until it is moved), and
+  whose folder and itself can be written (the Applications folder of an account that is not an
+  administrator's cannot); on Windows the folder around the Python holding Inno Setup's
+  `unins000.exe` (the zip has none) and writable; on Linux the extracted folder around the Python
+  (`<folder>/python/bin`) holding `orthostudio-xp` and `install.sh`, it and the folder above it
+  writable, on x86_64; and an engine `osxp serve` started, which can quit. Elsewhere the banner
+  keeps its link.
+- **The file**: the installer of this app, the first of the names it takes that the release has
+  (`installer_names`, whose first a test keeps equal to `build.artefact_name`: the same machine,
+  an Intel app under Rosetta taking the Intel one; Linux's `.tar.gz`, then the `.tar.xz` planned,
+  the name being chosen by the version that downloads it), downloaded from this repository's
+  release only, the address built by the engine, into `$OSXP_HOME/update/`; kept only when it has
+  the size and the SHA-256 GitHub's API gives for the release's file (`assets[].digest`), so that a
+  download cut short or changed on its way is never installed. A file there and right is not
+  downloaded again.
+- **Handed over, the app quits**: Live asked to quit as the Windows installer asks it
+  (`live/app_start.ask_live_to_quit`, `force`: X-Plane flies on over what is built), then what
+  `POST /api/quit` stops (`stop_work`: the builds, the clouds' tasks), then the engine; the app's
+  window goes with its engine. The try asks first (`ask`), when it starts and again just before
+  the hand-over, while a build runs or waits or Live is at work (its status's `busy`: a stream,
+  or a region's install; a Live that listens and does not answer counts as busy), and whether
+  X-Plane runs; the page puts it in the words of Quit's question, and a « Not now » leaves
+  nothing of the try.
+- **One bar, the same for everyone** (the user, 2026-11-17: « pas d'usine à gaz. Le même affichage
+  pour tout le monde »): *Installing 2.3.0: 63%*, the bytes of what the app does while it is still
+  open, *Cancel* beside it; then *Starting the installation…* while what installs it starts; then
+  the app quits and the new version opens by itself. On Windows that start waits for Windows'
+  check of a program it never saw: measured on a Shadow PC on 2026-11-17 with the app's Python and
+  its options, starting the setup took 1.2 s for one already run there and 17.7 s for one never run
+  there (Smart App Control in evaluation; the download's folder excluded from Defender), the
+  download 1 s; the bar stood at 100% for 12 s before this line said so.
+- **macOS**: while the app is open, the image is mounted on a folder of the system's temporary
+  folder (macOS refuses a mount point on another disk), its app checked (`BUNDLE_ID` at the version
+  asked) and copied by `ditto` into a hidden folder beside the old app (`.osxp-update.*`, the same
+  disk), the bar counting the bytes written there; the copy is checked again and the image let go
+  (`stage_app`). Then a script run by the system's `/bin/bash`, in a session of its own
+  (`swap_script`, `update/swap.sh`), waits until no process runs from the app (`pgrep -f` on the
+  app's path, from the start of a command line: the app's Python, Live, Triangle4XP; `pgrep -a`,
+  macOS's pgrep leaving out its ancestors otherwise, the engine that started it and the window
+  being just those, which the script first did not see: found in review, 2026-11-17; an error of
+  pgrep counting as an app that does not quit), two minutes at most, else gives up
+  with the old app untouched and the copy taken away; moves the old app into the hidden folder and
+  the new one into its place, two renames, and opens it. A failure puts the old app back and opens
+  it. The script first did the copy itself once the app had quit: on 2026-11-17, a 2.2.0rc1 built
+  from the branch updating itself to the release's 2.2.0, the app was gone 32 s, 30 of them copying
+  307 MB out of the compressed image, with half an app in Applications meanwhile. Tried on a Mac
+  with macOS 26 the same day, the app of 0.1.21 then of 2.1.2 updating itself to 2.2.0, both
+  installed from a browser's download and opened once with *Open Anyway*: macOS neither stopped nor
+  asked about an app without a signature that replaces itself, and the copy, made from a file no
+  browser downloaded, carries no quarantine and opened without *Open Anyway*.
+- **Linux** (asked on 2026-11-17, « Ça va marcher sous Linux? »): as on macOS, for the folder the
+  user extracted. While the app is open the release's archive is extracted into a hidden folder
+  beside it, under the old folder's name (`stage_folder`: every entry inside its one folder
+  `OrthoStudio-XP`, tarfile's `data` filter refusing what would land outside it, the bar counting
+  the archive's bytes read; the launcher and the version checked). The same script then waits for
+  the app to quit, swaps the two folders and starts the new launcher apart (it serves the page
+  until the app quits, and opens it in the browser as ever). The menu entry `install.sh` wrote
+  names the folder, which keeps its path. Checked by the tests alone: there is no Linux desktop
+  here to try it on.
+- **Windows**: the bar counts the download; then the installer itself, `/SILENT /SUPPRESSMSGBOXES
+  /NORESTART /DIR=<the app's folder> /LOG=<update/setup.log> /RELAUNCH=1` (`windows_command`),
+  detached from the app: Windows replaces no file a running app holds, so it works once the app
+  has quit, its own progress showing, no page, its questions answered as by default (stop a build or a stream still running,
+  which the page asked about). It stops what still runs as on any install (`stop_running.pas`),
+  and its `[Run]` entry checked by `RelaunchAsked` (`/RELAUNCH=1` in a silent install) starts the
+  app at its end, where a user installing by hand ticks the last page's box.
+- **What tries leave** (`tidy`, aside when the engine first answers the page about updates, and
+  as a try starts): the hidden folders beside the app (a quit during the copy), and the files of
+  `update/` but `pending.json` and the try's own installer (the installer Windows ran and its log,
+  another version's installer, a download kept for a failed try).
+- **The last try** (`update/pending.json`): written as a try starts, with its reason when it fails
+  (`REASONS`: the release's file, the download, a damaged file or image, a full disk, the hand-over,
+  an app that did not quit, an app that could not be replaced), removed by *Cancel* and by a
+  question answered « Not now » before the hand-over. The version it names starting removes it; until then `GET /api/update` says it (`last_try`), `unfinished` when
+  no reason was written (the Windows installer stopped, the app ended in the middle), and the
+  banner says why beside its buttons.
+
 ## 5. The build (`tools/package/build.py`)
 
 Run on the system the installer is for, after Triangle4XP is built; Inno Setup 6 for Windows.
@@ -410,4 +495,6 @@ varied kinds flown over in X-Plane).
 - Windows and Linux on ARM.
 - The Intel app checked on an Intel Mac: the release workflow checks it under Rosetta only. A user
   installed the Intel app of 0.1.19 on an Intel Mac under macOS 15.8 (GitHub issue 4).
-- Automatic updates: a new version is installed over the old one.
+- The app's own update on a Mac account that is not an administrator's (macOS could ask for an
+  administrator's password), and the Linux one tried on a real Linux desktop: the banner links to
+  the release page on such a Mac.
