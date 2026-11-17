@@ -1291,14 +1291,12 @@ export async function mockApi(method, path, body, options = {}) {
     };
   }
   if (p === "/api/update/install") {
-    // Install and relaunch, in the mock: 4 s of preparing, 2 s of starting, then the app "quits". `fail=update-busy`
-    // answers as for a build and Live flying, until the page confirms.
+    // Install and relaunch, in the mock: 4 s of preparing, 2 s of starting, then the app "quits".
+    // `fail=update-busy` asks first, as for a build and Live flying, until the page confirms.
     const total = 74949673;
     if (method === "POST") {
       if (MOCK_FAIL === "update-busy" && !body?.force) {
-        const busy = mockError(409, "SYS_BUSY", "Installing the new version quits OrthoStudio XP, which stops what runs.", "Confirm that it may stop.");
-        busy.detail.error.context = { build: true, live: true, flying: true };
-        throw busy;
+        return { state: "ask", version: PARAMS.get("update"), running: { build: true, live: true, flying: true } };
       }
       mockUpdate.version = PARAMS.get("update");
       mockUpdate.started = Date.now();
@@ -2694,10 +2692,11 @@ const UPDATE_POLL_MS = 500;
 let updateTimer = 0;
 
 /**
- * A newer version, said once at the top of the page. Where the app can replace itself (macOS and
- * Windows, installed by their installer: `installable`), *Install and relaunch* downloads it,
- * hands it over and quits, and the new version opens by itself (orthostudio/self_update.py; the
- * user, 2026-11-17); elsewhere a link to its release page, where the notes and the installers are.
+ * A newer version, said once at the top of the page. Where the app can replace itself (macOS,
+ * Windows and Linux, installed from the release: `installable`), *Install and relaunch*
+ * downloads it, makes it ready, hands it over and quits, and the new version opens by itself
+ * (orthostudio/self_update.py; the user, 2026-11-17); elsewhere a link to its release page, where
+ * the notes and the installers are.
  * A user who did not read the forum stayed on the version he had, with bugs fixed since, and
  * nothing told him (2026-09-21). "Not now" hides it until the next version; the engine asks GitHub
  * at most once a day, and not at all when Settings say no (orthostudio/update.py).
@@ -2709,10 +2708,15 @@ async function loadUpdate() {
     return; // no answer, or an engine older than the question: there is nothing to say
   }
   renderUpdateNote();
+  if (state.update?.installable && !state.updateTry) {
+    // a try under way, started by another page or before this one was loaded: followed here too
+    const now = await api("GET", "/api/update/install").catch(() => null);
+    if (now && (now.state === "preparing" || now.state === "starting")) await onUpdateState(now);
+  }
 }
 
 /** Where the banner is: offering the version, preparing it (its one bar, the same for everyone:
- * the download, then on macOS the copy of the new app), starting what installs it (on Windows the
+ * the download, then on macOS and Linux the new app made ready), starting what installs it (on Windows the
  * installer, which Windows checks before it lets it start: 12 s and more, with nothing to count),
  * or handed over while the app quits. */
 function updatePhase() {
@@ -2799,22 +2803,37 @@ function showUpdateProgress() {
   $("update-bar").style.width = `${percent}%`;
 }
 
-/** *Install and relaunch*: asked first while a build or Live runs, which the app's quitting
- * stops (the engine's 409 says which), then followed until the app quits. */
+/** *Install and relaunch*: the engine answers the try's state, `ask` first while a build or Live
+ * runs that the app's quitting stops (orthostudio/self_update.py Installer), then the page
+ * follows it until the app quits. */
 async function installUpdate(force) {
+  let now;
   try {
-    state.updateTry = await api("POST", "/api/update/install", { force });
+    now = await api("POST", "/api/update/install", { force });
   } catch (err) {
-    const e = errorDetail(err);
-    if (e?.code === "SYS_BUSY" && e.context && !e.context.update) {
-      if (await confirmUpdate(e.context)) await installUpdate(true);
-      return;
-    }
     toast(errorMessage(err), "fail");
     return;
   }
+  await onUpdateState(now);
+}
+
+/** What the page does with the try's state, answered to its click or to its following. */
+async function onUpdateState(now) {
+  if (now.state === "ask") {
+    // asked when the try starts, and again if a build or Live started while it prepared
+    state.updateTry = null;
+    renderUpdateNote();
+    if (await confirmUpdate(now.running)) await installUpdate(true);
+    return;
+  }
+  if (now.state === "failed" || now.state === "idle") {
+    state.updateTry = null;
+    await loadUpdate(); // the banner again, saying why when it failed
+    return;
+  }
+  state.updateTry = now;
   renderUpdateNote();
-  followUpdate();
+  if (now.state !== "installing") followUpdate();
 }
 
 function followUpdate() {
@@ -2824,23 +2843,12 @@ function followUpdate() {
     try {
       now = await api("GET", "/api/update/install");
     } catch (_err) {
-      return; // the engine gone: the page says so, in the install's words when it installs
-    }
-    state.updateTry = now;
-    if (now.state === "ask") {
-      // a build or Live started while it downloaded: asked now, the file kept for the next try
-      state.updateTry = null;
-      renderUpdateNote();
-      if (await confirmUpdate(now.running)) await installUpdate(true);
+      // a request lost is asked again; the engine gone, the page says so (in the install's
+      // words when it installs), and there is nothing left to ask
+      if ($("stopped").hidden && state.updateTry?.state !== "installing") followUpdate();
       return;
     }
-    if (now.state === "failed" || now.state === "idle") {
-      state.updateTry = null;
-      await loadUpdate(); // the banner again, saying why when it failed
-      return;
-    }
-    renderUpdateNote();
-    if (now.state !== "installing") followUpdate();
+    await onUpdateState(now);
   }, UPDATE_POLL_MS);
 }
 

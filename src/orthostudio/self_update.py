@@ -67,7 +67,7 @@ from pathlib import Path
 from typing import Any
 
 from orthostudio import update
-from orthostudio.fsutil import NO_CONSOLE_WINDOW
+from orthostudio.fsutil import NO_CONSOLE_WINDOW, atomic_write_text
 from orthostudio.net import USER_AGENT
 
 __all__ = [
@@ -82,11 +82,12 @@ __all__ = [
     "download",
     "download_url",
     "installed_here",
-    "installer_name",
+    "installer_names",
     "last_try",
     "stage_app",
     "stage_folder",
     "swap_script",
+    "tidy",
     "windows_command",
 ]
 
@@ -103,13 +104,15 @@ WINDOWS_UNINSTALLER = "unins000.exe"
 replaced (its user put it where he wanted, by hand)."""
 UPDATE_DIR = "update"
 PENDING_NAME = "pending.json"
-SCRIPT_NAME = "install.sh"
+SCRIPT_NAME = "swap.sh"
 SETUP_LOG_NAME = "setup.log"
 STAGING_PREFIX = ".osxp-update."
 """The hidden folder beside the app where the new one is made ready, then the old one put aside."""
 QUIT_WAIT_S = 120
-"""How long the macOS script waits for the app to quit before giving up, the old app untouched.
+"""How long the swap script waits for the app to quit before giving up, the old app untouched.
 The app stops a build or a stream on its way out, which takes seconds."""
+UNDER_WAY = ("preparing", "starting", "installing")
+"""The states of a try that is going on: one at a time, and the page follows it."""
 CHUNK = 1024 * 1024
 TIMEOUT_S = 30.0
 HDIUTIL_TIMEOUT_S = 120.0
@@ -140,6 +143,21 @@ class InstallCancelledError(Exception):
 
 
 # -- where the app is -----------------------------------------------------------------------------
+
+
+def _can_write(folder: Path) -> bool:
+    """Whether files can be made in ``folder``. On Windows a file is tried: ``os.access`` reads
+    the read-only flag alone, not the folder's permissions, and would offer the update to an app a
+    user installed in Program Files as an administrator, whose installer then fails without its
+    rights, the app gone. Elsewhere the modes say it (and nothing is written inside a macOS app
+    at each start)."""
+    if sys.platform != "win32":
+        return os.access(folder, os.W_OK)
+    try:
+        with tempfile.TemporaryFile(dir=folder):
+            return True
+    except OSError:
+        return False
 
 
 @dataclass(frozen=True)
@@ -186,7 +204,7 @@ def installed_here(
             return None
         if _bundle_facts(app)[0] != BUNDLE_ID:
             return None
-        if not (os.access(app, os.W_OK) and os.access(app.parent, os.W_OK)):
+        if not (_can_write(app) and _can_write(app.parent)):
             return None
         mac = machine or platform.machine()
         if mac not in ("arm64", "x86_64"):
@@ -196,7 +214,7 @@ def installed_here(
         folder = python.parent.parent
         if python.parent.name.lower() != "python" or not (folder / WINDOWS_UNINSTALLER).is_file():
             return None
-        if not os.access(folder, os.W_OK):
+        if not _can_write(folder):
             return None
         return Here("windows", "x64", folder)
     if system.startswith("linux"):
@@ -209,7 +227,7 @@ def installed_here(
             or not (top / "install.sh").is_file()
         ):
             return None
-        if not (os.access(top, os.W_OK) and os.access(top.parent, os.W_OK)):
+        if not (_can_write(top) and _can_write(top.parent)):
             return None
         if (machine or platform.machine()) != "x86_64":
             return None
@@ -232,10 +250,16 @@ def _bundle_facts(app: Path) -> tuple[str | None, str | None]:
     )
 
 
-def installer_name(version: str, here: Here) -> str:
-    """The release's file for this app (``tools/package/build.py`` ``artefact_name``)."""
-    suffix = {"macos": ".dmg", "windows": "-setup.exe", "linux": ".tar.gz"}[here.system]
-    return f"{FILE_STEM}-{version}-{here.system}-{here.machine}{suffix}"
+SUFFIXES = {"macos": (".dmg",), "windows": ("-setup.exe",), "linux": (".tar.gz", ".tar.xz")}
+"""The installers this app can install, by system, in the order they are looked for: Linux's
+archive may become a ``.tar.xz`` (a smaller installer, planned), which an app of today must still
+take, the name being chosen by the version that downloads it."""
+
+
+def installer_names(version: str, here: Here) -> tuple[str, ...]:
+    """The release's files this app can install (``tools/package/build.py`` ``artefact_name``)."""
+    stem = f"{FILE_STEM}-{version}-{here.system}-{here.machine}"
+    return tuple(stem + suffix for suffix in SUFFIXES[here.system])
 
 
 def download_url(version: str, name: str) -> str:
@@ -244,9 +268,11 @@ def download_url(version: str, name: str) -> str:
     return f"https://github.com/{update.REPOSITORY}/releases/download/v{version}/{name}"
 
 
-def asset_facts(version: str, name: str, *, timeout: float = TIMEOUT_S) -> tuple[int, str] | None:
-    """The size and the SHA-256 GitHub gives for the release's file ``name``; ``None`` without an
-    answer, or when the release has no such file, or GitHub gives no SHA-256 for it.
+def asset_facts(
+    version: str, names: Sequence[str], *, timeout: float = TIMEOUT_S
+) -> tuple[str, int, str] | None:
+    """The first of ``names`` the release has, with the size and the SHA-256 GitHub gives for it;
+    ``None`` without an answer, or when the release has none of them, or GitHub gives no SHA-256.
 
     Without the two nothing is installed: they are what tells the release's file from a download
     cut short or changed on its way."""
@@ -260,8 +286,11 @@ def asset_facts(version: str, name: str, *, timeout: float = TIMEOUT_S) -> tuple
     except (urllib.error.URLError, OSError, ValueError):
         return None
     assets = doc.get("assets") if isinstance(doc, dict) else None
-    for asset in assets if isinstance(assets, list) else []:
-        if not isinstance(asset, dict) or asset.get("name") != name:
+    listed = assets if isinstance(assets, list) else []
+    by_name = {a.get("name"): a for a in listed if isinstance(a, dict)}
+    for name in names:
+        asset = by_name.get(name)
+        if asset is None:
             continue
         size, digest = asset.get("size"), asset.get("digest")
         if not isinstance(size, int) or size <= 0 or not isinstance(digest, str):
@@ -269,7 +298,7 @@ def asset_facts(version: str, name: str, *, timeout: float = TIMEOUT_S) -> tuple
         kind, _, value = digest.partition(":")
         if kind != "sha256" or len(value) != 64:
             return None
-        return size, value.lower()
+        return name, size, value.lower()
     return None
 
 
@@ -323,13 +352,16 @@ def download(
     except OSError as exc:  # urllib's errors are OSErrors, a full disk too
         part.unlink(missing_ok=True)
         raise UpdateError("room" if exc.errno == errno.ENOSPC else "download", str(exc)) from exc
-    if done != size or digest.hexdigest() != sha256:
+    if done < size:  # the connection ended early, with no error: a cut, not a damaged file
+        part.unlink(missing_ok=True)
+        raise UpdateError("download", f"{done} of {size} bytes")
+    if digest.hexdigest() != sha256:
         part.unlink(missing_ok=True)
         raise UpdateError("damaged", f"{done} bytes of SHA-256 {digest.hexdigest()}")
     os.replace(part, dest)
 
 
-# -- the new app made ready, on macOS -------------------------------------------------------------
+# -- the new app made ready beside the old one, on macOS and Linux --------------------------------
 
 
 def tree_bytes(top: Path) -> int:
@@ -485,7 +517,7 @@ def stage_folder(
         except OSError as exc:
             raise UpdateError("replace", str(exc)) from exc
         try:
-            with archive.open("rb") as raw, tarfile.open(fileobj=raw, mode="r:gz") as tar:
+            with archive.open("rb") as raw, tarfile.open(fileobj=raw, mode="r:*") as tar:
                 for member in tar:
                     if cancelled():
                         raise InstallCancelledError
@@ -511,6 +543,16 @@ def stage_folder(
         raise
 
 
+def tidy(home: Path, here: Here | None) -> None:
+    """What earlier tries left, taken away when the engine starts: the hidden folders beside the
+    app (a try the app's quit cut short, a copy ``ditto`` finished alone), and the files of the
+    ``update`` folder but the record of the last try: the installer Windows ran, its log, a
+    download kept for a try that failed (the next try downloads it again)."""
+    if here is not None and here.system in ("macos", "linux"):
+        _tidy_staging(here.place)
+    _tidy(home / UPDATE_DIR, keep=None)
+
+
 def _tidy_staging(app: Path) -> None:
     """The hidden folders beside the app that an earlier try left (the app ended in the middle)."""
     with contextlib.suppress(OSError):
@@ -522,16 +564,17 @@ def _tidy_staging(app: Path) -> None:
 # -- the last try ---------------------------------------------------------------------------------
 
 
-def _tidy(folder: Path, keep: str) -> None:
+def _tidy(folder: Path, keep: str | None) -> None:
     """The files of earlier tries out of ``folder``, but the record of the last try and ``keep``
     (and its ``.part``): an installer is kept after a failure, for the next try, until another
-    version's takes its place."""
+    version's takes its place or the engine starts again."""
     try:
         entries = list(folder.iterdir())
     except OSError:
         return
+    kept = {PENDING_NAME} | ({keep, keep + ".part"} if keep else set())
     for entry in entries:
-        if entry.name in (PENDING_NAME, keep, keep + ".part") or not entry.is_file():
+        if entry.name in kept or not entry.is_file():
             continue
         with contextlib.suppress(OSError):
             entry.unlink()
@@ -548,7 +591,7 @@ def _write_pending(home: Path, version: str, reason: str | None = None) -> None:
     path = _pending(home)
     with contextlib.suppress(OSError):
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(doc), encoding="utf-8")
+        atomic_write_text(path, json.dumps(doc))
 
 
 def last_try(home: Path, current: str) -> dict[str, str] | None:
@@ -590,7 +633,10 @@ def swap_script(
     Linux folder), in the place of ``app`` once the app has quit.
 
     It waits until no process runs from ``app`` (the app's window, its engine, Live, Triangle4XP),
-    ``wait_s`` at most, else gives up with the old app untouched and the copy taken away. It moves
+    ``wait_s`` at most, else gives up with the old app untouched and the copy taken away. macOS's
+    ``pgrep`` leaves out its own ancestors unless asked (``-a``), and the engine that starts the
+    script and the window that started the engine are just those: without ``-a`` the script swapped
+    the apps at once, the old one still running (found in review, 2026-11-17). It moves
     the old app into a hidden folder beside it, then the new one into its place: two renames on
     the same disk, an instant without an app. A failure puts the old app back. It opens the app
     either way (``reopen``, :func:`_reopen` by default; tests pass another command), writes what
@@ -618,9 +664,11 @@ failed() {{
 }}
 reopen() {{ {opens} >> "$log" 2>&1 || say "could not open $app"; }}
 
+# macOS's pgrep leaves out its ancestors, the engine and the window that started this script
+if [ "$(uname)" = Darwin ]; then look="pgrep -a -f"; else look="pgrep -f"; fi
 say "waiting for {APP_NAME} to quit"
 tries=0
-while pgrep -f "$mine" > /dev/null; do
+while $look "$mine" > /dev/null; do
   if [ "$tries" -ge {wait_s * 5} ]; then rm -rf "$(dirname "$staged")"; failed not_quit; exit 1; fi
   sleep 0.2
   tries=$((tries + 1))
@@ -749,21 +797,25 @@ class Running:
     def any(self) -> bool:
         return self.build or self.live
 
+    def said(self) -> dict[str, bool]:
+        return {"build": self.build, "live": self.live, "flying": self.flying}
+
 
 class Installer:
     """The page's *Install and relaunch*: one try at a time, in a thread of its own, its state
     asked by the page while it works (:meth:`status`).
 
-    States: ``idle``; ``preparing``, ``done`` of ``total`` bytes, what the app does while it is
-    still open: the download, then on macOS and Linux the new app made ready beside the old one
-    (its share of ``total`` is the size of the app as installed, the new one's near enough, so
-    that the bar never goes back);
-    ``ask``, ready while a build or Live runs that the user did not agree to stop (``running`` says
-    which: the page asks, and starts again with ``force``, the download kept); ``starting``, what
-    puts the new version in place being started: on Windows that is the installer, which Windows
-    checks before it lets a program it never saw start, 12 to 18 s on a Shadow PC (measured on
-    2026-11-17), with nothing to count; ``installing``, handed over, the app quitting; ``failed``
-    (``reason``, :data:`REASONS`), the try also kept for the next start.
+    States: ``idle``; ``ask``, a build or Live running that the app's quitting would stop
+    (``running`` says which), asked when the try is started and again just before the hand-over,
+    the page putting the question and starting again with ``force`` (a download already made is
+    kept; nothing else is: a « Not now » leaves no trace); ``preparing``, ``done`` of ``total``
+    bytes, what the app does while it is still open: the download, then on macOS and Linux the new
+    app made ready beside the old one (its share of ``total`` is the size of the app as installed,
+    the new one's near enough, so that the bar never goes back); ``starting``, what puts the new
+    version in place being started: on Windows that is the installer, which Windows checks before
+    it lets a program it never saw start, 12 to 18 s on a Shadow PC (measured on 2026-11-17), with
+    nothing to count; ``installing``, handed over, the app quitting; ``failed`` (``reason``,
+    :data:`REASONS`), the try also kept for the next start.
     """
 
     def __init__(
@@ -774,14 +826,14 @@ class Installer:
         log: Path,
         running: Callable[[], Running],
         quit_app: Callable[[], None],
-        facts: Callable[[str, str], tuple[int, str] | None] | None = None,
+        facts: Callable[[str, Sequence[str]], tuple[str, int, str] | None] | None = None,
         fetch: Callable[..., None] | None = None,
         stage: Callable[..., Path] | None = None,
         hand: Callable[..., None] | None = None,
     ) -> None:
         """``facts``, ``fetch``, ``stage`` and ``hand`` replace :func:`asset_facts`,
-        :func:`download`, :func:`stage_app` and :func:`hand_over` (tests pass doubles); left out,
-        the module's own are read at each use."""
+        :func:`download`, :func:`stage_app` or :func:`stage_folder`, and :func:`hand_over` (tests
+        pass doubles); left out, the module's own are read at each use."""
         self.home = home
         self.here = here
         self.log = log
@@ -806,27 +858,41 @@ class Installer:
 
     def busy(self) -> bool:
         with self._lock:
-            return self._state["state"] in ("preparing", "starting", "installing")
+            return self._state["state"] in UNDER_WAY
 
-    def start(self, version: str, *, force: bool) -> bool:
-        """Start a try at ``version``; ``False`` while one is under way already."""
+    def _asks(self, version: str, force: bool) -> bool:
+        """Whether the try stops to ask first: something runs that the user did not agree to
+        stop. The question is the page's; the try leaves no trace (its download stays, for the
+        next)."""
+        running = self._running()
+        if force or not running.any():
+            return False
+        with contextlib.suppress(OSError):
+            _pending(self.home).unlink()
+        self._set(state="ask", version=version, running=running.said())
+        return True
+
+    def start(self, version: str, *, force: bool) -> None:
+        """Start a try at ``version``, or say what it would stop (``ask``); nothing while one is
+        under way already."""
+        if self.busy() or self._asks(version, force):
+            return
         with self._lock:
-            if self._state["state"] in ("preparing", "starting", "installing"):
-                return False
+            if self._state["state"] in UNDER_WAY:
+                return
             self._cancel.clear()
             self._state = {"state": "preparing", "version": version, "done": 0, "total": 0}
             self._thread = threading.Thread(
                 target=self._run, args=(version, force), name="self-update", daemon=True
             )
             self._thread.start()
-        return True
 
     def cancel(self) -> bool:
         """The page's *Cancel*, while it prepares: nothing kept, nothing said next time."""
         with self._lock:
             if self._state["state"] != "preparing":
                 return False
-        self._cancel.set()
+            self._cancel.set()
         return True
 
     def join(self, timeout: float | None = None) -> None:
@@ -841,19 +907,22 @@ class Installer:
             if here is None:
                 raise UpdateError("start", "this app cannot replace itself")
             _write_pending(self.home, version)
-            name = installer_name(version, here)
-            _tidy(self.home / UPDATE_DIR, keep=name)
-            if here.system in ("macos", "linux"):
-                _tidy_staging(here.place)
-            facts = (self._facts or asset_facts)(version, name)
+            names = installer_names(version, here)
+            facts = (self._facts or asset_facts)(version, names)
             if facts is None:
-                raise UpdateError("release", f"no {name} with its size and SHA-256 in the release")
-            size, sha256 = facts
-            copy = tree_bytes(here.place) if here.system in ("macos", "linux") else 0
+                raise UpdateError("release", f"none of {names} with its size and SHA-256")
+            name, size, sha256 = facts
+            _tidy(self.home / UPDATE_DIR, keep=name)
+            beside = here.system in ("macos", "linux")
+            copy = tree_bytes(here.place) if beside else 0
             total = size + copy
 
             def progress(done: int) -> None:
-                self._set(state="preparing", version=version, done=done, total=total)
+                with self._lock:
+                    if self._state["state"] == "preparing":
+                        self._state = {
+                            "state": "preparing", "version": version, "done": done, "total": total,
+                        }  # fmt: skip
 
             progress(0)
             dest = self.home / UPDATE_DIR / name
@@ -865,7 +934,7 @@ class Installer:
                 progress=progress,
                 cancelled=self._cancel.is_set,
             )
-            if here.system in ("macos", "linux"):
+            if beside:
                 made_ready = stage_app if here.system == "macos" else stage_folder
                 staged = (self._stage or made_ready)(
                     dest,
@@ -874,13 +943,13 @@ class Installer:
                     progress=lambda share: progress(size + int(copy * share)),
                     cancelled=self._cancel.is_set,
                 )
-            running = self._running()
-            if running.any() and not force:
+            if self._asks(version, force):  # started while it prepared
                 _discard(staged)
-                asked = {"build": running.build, "live": running.live, "flying": running.flying}
-                self._set(state="ask", version=version, running=asked)
                 return
-            self._set(state="starting", version=version)
+            with self._lock:  # a Cancel answered yes is honoured, and none is answered after
+                if self._cancel.is_set():
+                    raise InstallCancelledError
+                self._state = {"state": "starting", "version": version}
             (self._hand or hand_over)(
                 here, dest, version, home=self.home, log=self.log, staged=staged
             )

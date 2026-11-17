@@ -333,10 +333,12 @@ Gatekeeper again. Where the app can replace itself, the banner's *Install and re
   release's file (`assets[].digest`), so that a download cut short or changed on its way is never
   installed. A file there and right is not downloaded again, and the files of another version go.
 - **Handed over, the app quits**: Live asked to quit as the Windows installer asks it
-  (`/api/live/quit`, `force`: X-Plane flies on over what is built), the builds cancelled, the
-  engine stopped; the app's window goes with its engine. Before, the page asks while a build runs
-  or waits or Live is at work, in the words of Quit's question; something started while the file
-  downloaded is asked about then (`ask`).
+  (`live/app_start.ask_live_to_quit`, `force`: X-Plane flies on over what is built), then what
+  `POST /api/quit` stops (`stop_work`: the builds, the clouds' tasks), then the engine; the app's
+  window goes with its engine. The try asks first (`ask`), when it starts and again just before
+  the hand-over, while a build runs or waits or Live is at work, as Live's own status says (and
+  whether X-Plane runs); the page puts it in the words of Quit's question, and a « Not now »
+  leaves no trace.
 - **One bar, the same for everyone** (the user, 2026-11-17: « pas d'usine à gaz. Le même affichage
   pour tout le monde »): *Installing 2.3.0: 63%*, the bytes of what the app does while it is still
   open, *Cancel* beside it; then *Starting the installation…* while what installs it starts; then
@@ -350,8 +352,10 @@ Gatekeeper again. Where the app can replace itself, the banner's *Install and re
   asked) and copied by `ditto` into a hidden folder beside the old app (`.osxp-update.*`, the same
   disk), the bar counting the bytes written there; the copy is checked again and the image let go
   (`stage_app`). Then a script run by the system's `/bin/bash`, in a session of its own
-  (`mac_script`), waits until no process runs from the app (`pgrep -f` on the app's path, from the
-  start of a command line: the app's Python, Live, Triangle4XP), two minutes at most, else gives up
+  (`swap_script`, `update/swap.sh`), waits until no process runs from the app (`pgrep -f` on the
+  app's path, from the start of a command line: the app's Python, Live, Triangle4XP; on macOS
+  `pgrep -a`, its ancestors included, the engine that started it and the window being just those,
+  which the script first did not see: found in review, 2026-11-17), two minutes at most, else gives up
   with the old app untouched and the copy taken away; moves the old app into the hidden folder and
   the new one into its place, two renames, and opens it. A failure puts the old app back and opens
   it. The script first did the copy itself once the app had quit: on 2026-11-17, a 2.2.0rc1 built
@@ -377,6 +381,12 @@ Gatekeeper again. Where the app can replace itself, the banner's *Install and re
   which the page asked about). It stops what still runs as on any install (`stop_running.pas`),
   and its `[Run]` entry checked by `RelaunchAsked` (`/RELAUNCH=1` in a silent install) starts the
   app at its end, where a user installing by hand ticks the last page's box.
+- **What tries leave** (`tidy`, when the engine starts): the hidden folders beside the app (a
+  quit during the copy), and the files of `update/` but `pending.json` (the installer Windows ran
+  and its log, a download kept for a failed try). A try also takes away another version's
+  installer.
+- **Which file**: the first of the names this app takes (`installer_names`: Linux's `.tar.gz`,
+  then `.tar.xz`, planned) that the release has, chosen by the version that downloads it.
 - **The last try** (`update/pending.json`): written as a try starts, with its reason when it fails
   (`REASONS`: the release's file, the download, a damaged file or image, a full disk, the hand-over,
   an app that did not quit, an app that could not be replaced), removed by *Cancel*. A try takes

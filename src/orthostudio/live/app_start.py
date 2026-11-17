@@ -53,11 +53,13 @@ def live_listening(port: int = LIVE_PORT) -> bool:
         return False
 
 
-def _ask_live(path: str, *, post: bool = False, port: int = LIVE_PORT) -> Any:
+def _ask_live(
+    path: str, *, post: bool = False, body: dict[str, Any] | None = None, port: int = LIVE_PORT
+) -> Any:
     """The Live window's API, from another process of the app; None when it does not answer."""
     request = urllib.request.Request(
         f"http://127.0.0.1:{port}/api/live/{path}",
-        data=b"{}" if post else None,
+        data=json.dumps(body or {}).encode("utf-8") if post else None,
         headers={"Content-Type": "application/json"} if post else {},
         method="POST" if post else "GET",
     )
@@ -68,12 +70,26 @@ def _ask_live(path: str, *, post: bool = False, port: int = LIVE_PORT) -> Any:
         return None
 
 
+def live_status(port: int = LIVE_PORT) -> dict[str, Any] | None:
+    """The Live window's status (``GET /api/live/status``: its ``state``, its ``checks``); None
+    without a Live window."""
+    if not live_listening(port):
+        return None
+    status = _ask_live("status", port=port)
+    return status if isinstance(status, dict) else None
+
+
 def live_state(port: int = LIVE_PORT) -> str:
     """``off`` without a Live window, else its stream's state (``idle``, ``streaming``...)."""
-    if not live_listening(port):
-        return "off"
-    status = _ask_live("status", port=port)
-    return status.get("state", "off") if isinstance(status, dict) else "off"
+    status = live_status(port)
+    return str(status.get("state", "off")) if status is not None else "off"
+
+
+def ask_live_to_quit(port: int = LIVE_PORT) -> None:
+    """The app being updated from its own page (``orthostudio.self_update``): Live asked to quit
+    at once, as the Windows installer asks it (``tools/package/stop_running.pas``): a stream stops
+    without waiting for X-Plane, which flies on over what is built, and Live's window goes."""
+    _ask_live("quit", post=True, body={"force": True}, port=port)
 
 
 def _detached(args: list[str], env: dict[str, str] | None = None) -> None:

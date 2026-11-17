@@ -893,62 +893,23 @@ def _find_pack(name: str, path: str | None = None) -> tuple[Path, Any]:
     return entry.path, entry.tile
 
 
-LIVE_ASK_TIMEOUT_S = 1.5
-"""How long the engine waits for Live's own server, on the loopback, when it asks it something."""
-
-
-def _live_url(path: str) -> str | None:
-    """Live's own server (``orthostudio.live.app_start.LIVE_PORT``); ``None`` without Live."""
+def _live_status() -> dict[str, Any] | None:
+    """OrthoStudio XP Live's status, which says whether it is at work and whether X-Plane runs
+    (``orthostudio.live.app_start.live_status``); None without Live."""
     try:
-        from orthostudio.live.app_start import LIVE_PORT
+        from orthostudio.live.app_start import live_status
     except ImportError:
         return None
-    return f"http://127.0.0.1:{LIVE_PORT}{path}"
-
-
-def _live_at_work() -> bool:
-    """Whether OrthoStudio XP Live is at work (its state is not ``idle``): the app's update stops
-    it, and the page asks first. No answer is a Live that does not run."""
-    import urllib.request
-
-    url = _live_url("/api/live/status")
-    if url is None:
-        return False
-    try:
-        with urllib.request.urlopen(url, timeout=LIVE_ASK_TIMEOUT_S) as answer:
-            doc = json.load(answer)
-    except (OSError, ValueError):
-        return False
-    return isinstance(doc, dict) and doc.get("state", "idle") != "idle"
-
-
-def _xplane_running_now() -> bool:
-    """Whether X-Plane runs, which the question before the update says while Live is at work."""
-    from orthostudio.install.xplane import xplane_running
-
-    try:
-        return bool(xplane_running())
-    except Exception:  # a question that cannot be answered says the lesser thing
-        return False
+    return live_status()
 
 
 def _ask_live_to_quit() -> None:
-    """Live asked to quit for the app's update, as the Windows installer asks it
-    (``tools/package/stop_running.pas``): a stream stops without waiting for X-Plane, which flies on
-    over what is built, and Live's window goes (``orthostudio.live.control.Control.quit``)."""
-    import urllib.request
-
-    url = _live_url("/api/live/quit")
-    if url is None:
+    """Live asked to quit for the app's update (``orthostudio.live.app_start.ask_live_to_quit``)."""
+    try:
+        from orthostudio.live.app_start import ask_live_to_quit
+    except ImportError:
         return
-    request = urllib.request.Request(
-        url,
-        data=json.dumps({"force": True}).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-    with contextlib.suppress(OSError), urllib.request.urlopen(request, timeout=LIVE_ASK_TIMEOUT_S):
-        pass
+    ask_live_to_quit()
 
 
 def create_app(
@@ -1209,44 +1170,56 @@ def create_app(
 
     # -- status, providers -------------------------------------------------------------------
 
-    updating: dict[str, self_update.Installer] = {}
+    def stop_work() -> list[str]:
+        """What quitting stops before the engine goes, for ``POST /api/quit`` and the app's
+        update alike: the builds, the waiting ones first so that none starts when the running one
+        stops (``JobManager.cancel_all``), and what runs of the clouds (an Apply ends what it
+        began). The ids of the builds cancelled."""
+        cancelled = manager.cancel_all()
+        clouds.tasks.end()
+        return cancelled
+
     if updater is not None:
-        updating["it"] = updater
+        state["update"] = updater
 
     def update_installer() -> self_update.Installer:
         """The page's *Install and relaunch* (``orthostudio.self_update``), made at its first use:
-        the home it writes in is read then, as every other path of the engine is. Only an engine
-        that ``osxp serve`` started can quit for it, and only an app its installer put in place,
-        where it can be written, can be replaced."""
-        if "it" not in updating:
+        the home it writes in is read then, as every other path of the engine is, and what earlier
+        tries left is taken away. Only an engine that ``osxp serve`` started can quit for it, and
+        only an app its installer put in place, where it can be written, can be replaced."""
+        if "update" not in state:
             from orthostudio.desktop import log_path
 
             loop = asyncio.get_running_loop()
 
             def quit_app() -> None:
                 # Live first, as the Windows installer asks it (stop_running.pas): its pack's line
-                # is unchecked as it goes; then the builds, then the engine, as POST /api/quit does
+                # is unchecked as it goes; then what POST /api/quit stops, then the engine
                 _ask_live_to_quit()
-                manager.cancel_all()
-                clouds.tasks.end()
+                stop_work()
                 if shutdown is not None:
                     loop.call_soon_threadsafe(loop.call_later, 0.3, shutdown)
 
-            updating["it"] = self_update.Installer(
+            here = self_update.installed_here() if shutdown is not None else None
+            self_update.tidy(osxp_home(), here)
+            state["update"] = self_update.Installer(
                 home=osxp_home(),
-                here=self_update.installed_here() if shutdown is not None else None,
+                here=here,
                 log=log_path(),
                 running=what_quitting_stops,
                 quit_app=quit_app,
             )
-        return updating["it"]
+        installer: self_update.Installer = state["update"]
+        return installer
 
     def what_quitting_stops() -> self_update.Running:
         """What the app's quitting would stop now: a build running or waiting, Live at work, and
-        whether X-Plane flies with it, which the page's question says."""
-        live = _live_at_work()
-        flying = live and _xplane_running_now()
-        return self_update.Running(build=manager.active() is not None, live=live, flying=flying)
+        whether X-Plane flies with it, which Live's own status says and the page's question too."""
+        live = _live_status() or {}
+        at_work = live.get("state", "idle") != "idle"
+        checks = live.get("checks")
+        flying = at_work and isinstance(checks, dict) and bool(checks.get("xplane_running"))
+        return self_update.Running(build=manager.active() is not None, live=at_work, flying=flying)
 
     @app.get("/api/update")
     async def update_check() -> dict[str, Any]:
@@ -1255,26 +1228,21 @@ def create_app(
         app can install it from the page (``orthostudio.self_update``); ``last_try``: the last try
         that did not, and why, until the version it tried starts."""
         installer = update_installer()
-        installable = installer.here is not None
+        answer: dict[str, Any] = {
+            "current": __version__, "latest": None, "url": None, "available": False,
+        }  # fmt: skip
+        if settings().expert.check_updates:
+            path = osxp_home() / update.CACHE_NAME
+            answer = await asyncio.to_thread(update.check, __version__, path=path)
         tried = None if installer.busy() else self_update.last_try(osxp_home(), __version__)
-        if not settings().expert.check_updates:
-            return {
-                "current": __version__,
-                "latest": None,
-                "url": None,
-                "available": False,
-                "installable": installable,
-                "last_try": tried,
-            }
-        path = osxp_home() / update.CACHE_NAME
-        answer = await asyncio.to_thread(update.check, __version__, path=path)
-        return {**answer, "installable": installable, "last_try": tried}
+        return {**answer, "installable": installer.here is not None, "last_try": tried}
 
     @app.post("/api/update/install", status_code=202)
     async def update_install(req: UpdateInstallRequest) -> Any:
-        """*Install and relaunch*: the newer version downloaded, handed over, and the app quits
-        (``orthostudio.self_update``). Asks first, 409 ``SYS_BUSY`` with what runs in its
-        ``context``, while a build or Live runs, unless ``force``: the page has asked."""
+        """*Install and relaunch*: the newer version downloaded, made ready, handed over, and the
+        app quits (``orthostudio.self_update``). The try's state is the answer: ``ask`` while a
+        build or Live runs that the app's quitting would stop, unless ``force`` (the page has
+        asked); a try already under way goes on, and its state is the answer."""
         installer = update_installer()
         if installer.here is None:
             return _plain_error(
@@ -1295,23 +1263,8 @@ def create_app(
                 "Nothing to install.",
                 status=409,
             )
-        running = await asyncio.to_thread(what_quitting_stops)
-        if running.any() and not req.force:
-            return _plain_error(
-                "SYS_BUSY",
-                "Installing the new version quits OrthoStudio XP, which stops what runs.",
-                "Confirm that it may stop.",
-                status=409,
-                context={"build": running.build, "live": running.live, "flying": running.flying},
-            )
-        if not installer.start(latest, force=req.force):
-            return _plain_error(
-                "SYS_BUSY",
-                "The new version is being installed already.",
-                "Wait for it.",
-                status=409,
-                context={"update": True},
-            )
+        # asking Live whether it is at work takes up to 1.5 s: never on the loop
+        await asyncio.to_thread(installer.start, latest, force=req.force)
         return installer.status()
 
     @app.get("/api/update/install")
@@ -1321,7 +1274,7 @@ def create_app(
 
     @app.delete("/api/update/install")
     async def update_install_cancel() -> dict[str, Any]:
-        """The page's *Cancel* while the new version downloads."""
+        """The page's *Cancel* while the new version is made ready."""
         return {"cancelled": update_installer().cancel()}
 
     @app.get("/api/status")
@@ -1451,9 +1404,7 @@ def create_app(
                 "Wait for the build to finish, or confirm that it may stop.",
                 status=409,
             )
-        # the queued builds first, so that none starts when the running one stops
-        cancelled = manager.cancel_all() if active is not None else []
-        await asyncio.to_thread(clouds.tasks.end)  # an Apply ends what it began
+        cancelled = await asyncio.to_thread(stop_work)
         active_id = None if active is None else active.id
         # after the answer has left: the page learns that OrthoStudio XP is stopping
         asyncio.get_running_loop().call_later(0.3, shutdown)

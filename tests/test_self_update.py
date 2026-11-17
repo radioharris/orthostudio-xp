@@ -105,7 +105,7 @@ def test_a_linux_folder_extracted_from_the_release_can_replace_itself(tmp_path: 
 
 
 def test_what_cannot_replace_itself_keeps_the_link(tmp_path: Path) -> None:
-    """A checkout, Linux, the Windows zip (no uninstaller: its user put it where he wanted), an app
+    """A checkout, the Windows zip (no uninstaller: its user put it where he wanted), an app
     of another identifier, an app macOS runs from a read-only copy until it is moved, an app on a
     machine the release has no installer for: the banner keeps its link."""
     app = _mac_app(tmp_path / "Applications")
@@ -153,7 +153,14 @@ def test_the_installer_downloaded_is_the_release_s_own() -> None:
     ):
         target = build.Target(system=system, machine=machine)  # type: ignore[call-arg]
         here = Here(system, machine, Path("/x"))
-        assert self_update.installer_name("2.3.0", here) == build.artefact_name("2.3.0", target)
+        names = self_update.installer_names("2.3.0", here)
+        assert names[0] == build.artefact_name("2.3.0", target)
+    # Linux's archive may become a .tar.xz: an app of today takes it too
+    linux = self_update.installer_names("2.3.0", Here("linux", "x86_64", Path("/x")))
+    assert linux == (
+        "OrthoStudio-XP-2.3.0-linux-x86_64.tar.gz",
+        "OrthoStudio-XP-2.3.0-linux-x86_64.tar.xz",
+    )
     assert self_update.download_url("2.3.0", "f.dmg") == (
         "https://github.com/radioharris/orthostudio-xp/releases/download/v2.3.0/f.dmg"
     )
@@ -197,20 +204,22 @@ def test_the_size_and_sha256_come_from_the_release(monkeypatch: pytest.MonkeyPat
         return _Answer(json.dumps(release).encode())
 
     monkeypatch.setattr(self_update.urllib.request, "urlopen", answer)
-    assert self_update.asset_facts("2.3.0", "f.dmg") == (1234, digest)
+    assert self_update.asset_facts("2.3.0", ["f.dmg"]) == ("f.dmg", 1234, digest)
     assert asked == ["https://api.github.com/repos/radioharris/orthostudio-xp/releases/tags/v2.3.0"]
+    # the first of the names the release has
+    assert self_update.asset_facts("2.3.0", ["f.tar.gz", "f.dmg"]) == ("f.dmg", 1234, digest)
     # no such file, no SHA-256, another kind of digest: nothing to check against, nothing installed
-    assert self_update.asset_facts("2.3.0", "g.dmg") is None
+    assert self_update.asset_facts("2.3.0", ["g.dmg"]) is None
     release["assets"] = [{"name": "f.dmg", "size": 1234}]
-    assert self_update.asset_facts("2.3.0", "f.dmg") is None
+    assert self_update.asset_facts("2.3.0", ["f.dmg"]) is None
     release["assets"] = [{"name": "f.dmg", "size": 1234, "digest": "md5:abc"}]
-    assert self_update.asset_facts("2.3.0", "f.dmg") is None
+    assert self_update.asset_facts("2.3.0", ["f.dmg"]) is None
 
     def offline(request: Any, timeout: float) -> _Answer:
         raise OSError("no network")
 
     monkeypatch.setattr(self_update.urllib.request, "urlopen", offline)
-    assert self_update.asset_facts("2.3.0", "f.dmg") is None
+    assert self_update.asset_facts("2.3.0", ["f.dmg"]) is None
 
 
 # -- the download ---------------------------------------------------------------------------------
@@ -286,7 +295,7 @@ def test_a_download_cut_or_refused_says_so(tmp_path: Path, served: dict[str, Any
     dest = tmp_path / "f.dmg"
     with pytest.raises(UpdateError) as caught:
         self_update.download(served["url"], dest, size=len(body), sha256=_sha(body))
-    assert caught.value.reason in ("download", "damaged")
+    assert caught.value.reason == "download"  # a cut, not a damaged file
     assert list(tmp_path.iterdir()) == []
     with pytest.raises(UpdateError) as caught:
         self_update.download(served["url"] + "x", dest, size=len(body), sha256=_sha(body))
@@ -456,6 +465,45 @@ def test_an_app_that_does_not_quit_is_left_as_it_is(tmp_path: Path) -> None:
     assert json.loads((tmp_path / "pending.json").read_text())["reason"] == "not_quit"
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="bash and pgrep")
+def test_the_script_waits_for_the_app_that_started_it(tmp_path: Path) -> None:
+    """The engine starts the script: it and the window are the script's ancestors, which macOS's
+    pgrep leaves out unless asked. The script swapped the apps at once, the old one running
+    (found in review, 2026-11-17)."""
+    app = _mac_app(tmp_path / "Applications")
+    staged = _staged(app)
+    script = tmp_path / "swap.sh"
+    reopened = tmp_path / "reopened"
+    script.write_text(
+        self_update.swap_script(
+            app=app,
+            staged=staged,
+            version="2.3.0",
+            pending=tmp_path / "pending.json",
+            log=tmp_path / "serve.log",
+            reopen=("touch", str(reopened)),
+        )
+    )
+    seen = tmp_path / "seen"
+    version = app / "Contents" / "Resources" / "version.txt"
+    # the "engine": a process run from the app, which starts the script and lives on 1.5 s
+    engine = subprocess.Popen(
+        [
+            str(app / "Contents" / "Resources" / "python" / "bin" / "python3"),
+            "-c",
+            f"/bin/bash '{script}' & sleep 1.5; cat '{version}' > '{seen}'",
+        ],
+        executable="/bin/bash",
+    )
+    engine.wait(timeout=20)
+    for _ in range(200):
+        if reopened.exists():
+            break
+        time.sleep(0.05)
+    assert seen.read_text() == "2.2.0"  # the old app in place until the engine was gone
+    assert reopened.exists() and _version_of(app) == "2.3.0"
+
+
 @pytest.mark.skipif(sys.platform == "win32" or os.geteuid() == 0, reason="POSIX modes, not root")
 def test_an_app_that_cannot_be_replaced_stays_and_opens(tmp_path: Path) -> None:
     """Its folder could be written when the page asked, and no longer can."""
@@ -577,17 +625,18 @@ def test_the_script_swaps_the_new_folder_in_and_starts_it(tmp_path: Path) -> Non
 
 
 class _Doubles:
-    """What the installer reaches outside: GitHub, the download, the copy, the hand-over, the
-    app's quit."""
+    """What the installer reaches outside: GitHub, the download, the copy, the hand-over, what the
+    app's quitting would stop, the app's quit."""
 
-    def __init__(self, *, facts: tuple[int, str] | None = (100, "ab" * 32)) -> None:
-        self.facts = facts
-        self.running = Running(build=False, live=False, flying=False)
+    def __init__(self, *, found: bool = True) -> None:
+        self.found = found
+        self.running = [Running(build=False, live=False, flying=False)]  # one per question
         self.calls: list[str] = []
-        self.seen: list[tuple[int, int]] = []
         self.fetch_error: BaseException | None = None
         self.stage_error: BaseException | None = None
         self.hand_error: BaseException | None = None
+        self.on_stage: Any = None
+        self.told: Any = lambda: None  # called after each progress the doubles report
 
     def installer(self, home: Path) -> Installer:
         app = home / "OrthoStudio XP.app"
@@ -597,13 +646,16 @@ class _Doubles:
             home=home,
             here=Here("macos", "arm64", app),
             log=home / "serve.log",
-            running=lambda: self.running,
+            running=self.asked,
             quit_app=lambda: self.calls.append("quit"),
-            facts=lambda version, name: self.facts,
+            facts=lambda version, names: (names[0], 100, "ab" * 32) if self.found else None,
             fetch=self.fetch,
             stage=self.stage,
             hand=self.hand,
         )
+
+    def asked(self) -> Running:
+        return self.running.pop(0) if len(self.running) > 1 else self.running[0]
 
     def fetch(self, url: str, dest: Path, **kw: Any) -> None:
         self.calls.append(f"fetch {url.rsplit('/', 1)[-1]}")
@@ -613,13 +665,18 @@ class _Doubles:
                     time.sleep(0.01)
             raise self.fetch_error
         kw["progress"](kw["size"])
+        self.told()
 
     def stage(self, image: Path, app: Path, version: str, **kw: Any) -> Path:
         self.calls.append(f"stage {image.name}")
         if self.stage_error is not None:
             raise self.stage_error
         kw["progress"](0.5)
+        self.told()
         kw["progress"](1.0)
+        self.told()
+        if self.on_stage is not None:
+            self.on_stage()
         staging = app.parent / (self_update.STAGING_PREFIX + "t")
         staging.mkdir()
         return staging / app.name
@@ -634,51 +691,89 @@ def _pending(home: Path) -> dict[str, Any]:
     return json.loads((home / self_update.UPDATE_DIR / self_update.PENDING_NAME).read_text())
 
 
+BUSY = Running(build=True, live=True, flying=True)
+FREE = Running(build=False, live=False, flying=False)
+
+
 def test_a_try_downloads_makes_ready_hands_over_then_quits(tmp_path: Path) -> None:
     d = _Doubles()
     installer = d.installer(tmp_path)
     seen: list[tuple[int, int]] = []
-    real_set = installer._set
 
-    states: list[str] = []
+    def told() -> None:
+        now = installer.status()
+        seen.append((now["done"], now["total"]))
 
-    def watch(**state: Any) -> None:
-        if state.get("state") == "preparing":
-            seen.append((state["done"], state["total"]))
-        states.append(state["state"])
-        real_set(**state)
-
-    installer._set = watch  # type: ignore[method-assign]
-    assert installer.start("2.3.0", force=False)
+    d.told = told
+    installer.start("2.3.0", force=False)
     installer.join(10)
     assert installer.status() == {"state": "installing", "version": "2.3.0"}
     name = "OrthoStudio-XP-2.3.0-macos-arm64.dmg"
     assert d.calls == [f"fetch {name}", f"stage {name}", f"hand {name} .osxp-update.t", "quit"]
     # one bar: the download's 100 bytes then the copy's 300 (the app as installed), never back
-    assert seen == [(0, 400), (100, 400), (250, 400), (400, 400)]
-    # what installs it starting is said apart: on Windows, Windows checks the installer first
-    assert [s for s in states if s != "preparing"] == ["starting", "installing"]
+    assert seen == [(100, 400), (250, 400), (400, 400)]
     assert _pending(tmp_path)["version"] == "2.3.0" and "reason" not in _pending(tmp_path)
 
 
-def test_what_starts_meanwhile_is_asked_about(tmp_path: Path) -> None:
-    """A build or Live started meanwhile, which the user did not agree to stop: the download is
-    kept, the copy taken away, the page asks, and the try goes on once the user said yes."""
+def test_what_installs_it_starting_is_said_apart(tmp_path: Path) -> None:
+    """Between the bar and the app's quit: on Windows, Windows checks the installer first."""
     d = _Doubles()
-    d.running = Running(build=True, live=True, flying=True)
     installer = d.installer(tmp_path)
-    assert installer.start("2.3.0", force=False)
+    during: list[str] = []
+    real_hand = d.hand
+
+    def hand(*args: Any, **kw: Any) -> None:
+        during.append(installer.status()["state"])
+        real_hand(*args, **kw)
+
+    installer._hand = hand
+    installer.start("2.3.0", force=False)
     installer.join(10)
+    assert during == ["starting"] and installer.status()["state"] == "installing"
+
+
+def test_what_runs_is_asked_about_first_and_a_not_now_leaves_nothing(tmp_path: Path) -> None:
+    """A build or Live at work when the try starts: nothing is downloaded, the page asks; « Not
+    now » leaves no trace, not even a try said at the next start."""
+    d = _Doubles()
+    d.running = [BUSY]
+    installer = d.installer(tmp_path)
+    installer.start("2.3.0", force=False)
     assert installer.status() == {
         "state": "ask",
         "version": "2.3.0",
         "running": {"build": True, "live": True, "flying": True},
     }
-    assert "quit" not in d.calls and not any(c.startswith("hand") for c in d.calls)
-    assert not (tmp_path / (self_update.STAGING_PREFIX + "t")).exists()
-    assert installer.start("2.3.0", force=True)
+    assert d.calls == [] and self_update.last_try(tmp_path, "2.2.0") is None
+    installer.start("2.3.0", force=True)  # the user said yes
     installer.join(10)
     assert installer.status()["state"] == "installing" and d.calls[-1] == "quit"
+
+
+def test_what_starts_while_it_prepares_is_asked_about_before_the_hand_over(tmp_path: Path) -> None:
+    """Free when the try started, busy when it is ready: asked again, nothing handed over, the copy
+    taken away and the try not said at the next start; the download kept for the yes."""
+    d = _Doubles()
+    d.running = [FREE, BUSY]
+    installer = d.installer(tmp_path)
+    installer.start("2.3.0", force=False)
+    installer.join(10)
+    assert installer.status()["state"] == "ask"
+    assert not any(c.startswith("hand") for c in d.calls) and "quit" not in d.calls
+    assert not (tmp_path / (self_update.STAGING_PREFIX + "t")).exists()
+    assert self_update.last_try(tmp_path, "2.2.0") is None
+
+
+def test_a_cancel_answered_yes_is_honoured_at_the_end_of_the_copy(tmp_path: Path) -> None:
+    """*Cancel* clicked while the copy ends: the app does not quit and install all the same."""
+    d = _Doubles()
+    installer = d.installer(tmp_path)
+    d.on_stage = installer.cancel  # answered while it is still preparing
+    installer.start("2.3.0", force=False)
+    installer.join(10)
+    assert installer.status() == {"state": "idle"}
+    assert not any(c.startswith("hand") for c in d.calls) and "quit" not in d.calls
+    assert not (tmp_path / (self_update.STAGING_PREFIX + "t")).exists()
 
 
 @pytest.mark.parametrize(
@@ -695,7 +790,7 @@ def test_what_starts_meanwhile_is_asked_about(tmp_path: Path) -> None:
 def test_a_try_that_fails_says_why_now_and_at_the_next_start(
     tmp_path: Path, trouble: str, reason: str
 ) -> None:
-    d = _Doubles(facts=None if trouble == "no facts" else (100, "ab" * 32))
+    d = _Doubles(found=trouble != "no facts")
     if trouble in ("download", "damaged"):
         d.fetch_error = UpdateError(trouble)
     if trouble == "copy":
@@ -718,9 +813,11 @@ def test_cancel_stops_the_try_and_forgets_it(tmp_path: Path) -> None:
     d = _Doubles()
     d.fetch_error = InstallCancelledError()
     installer = d.installer(tmp_path)
-    assert installer.start("2.3.0", force=False)
+    installer.start("2.3.0", force=False)
     time.sleep(0.05)
-    assert installer.busy() and not installer.start("2.3.0", force=False)  # one at a time
+    assert installer.busy()
+    installer.start("2.3.0", force=False)  # one at a time: the try goes on
+    assert installer.status()["state"] == "preparing"
     assert installer.cancel()
     installer.join(10)
     assert installer.status() == {"state": "idle"}
@@ -728,22 +825,31 @@ def test_cancel_stops_the_try_and_forgets_it(tmp_path: Path) -> None:
     assert not installer.cancel()  # nothing is under way now
 
 
-def test_what_earlier_tries_left_goes(tmp_path: Path) -> None:
-    """Another version's installer, an old script, and a new app made ready by a try the app's end
-    cut short."""
+def test_what_earlier_tries_left_goes_when_the_engine_starts(tmp_path: Path) -> None:
+    """The installer Windows ran and its log, a download kept for a failed try, an old script,
+    and a new app made ready that a quit cut short: gone; the record of the last try kept."""
+    folder = tmp_path / self_update.UPDATE_DIR
+    folder.mkdir()
+    for name in ("OrthoStudio-XP-2.2.5-windows-x64-setup.exe", "setup.log", "swap.sh"):
+        (folder / name).write_text("old")
+    (folder / self_update.PENDING_NAME).write_text("{}")
+    left = tmp_path / "apps" / (self_update.STAGING_PREFIX + "old") / "OrthoStudio XP.app"
+    left.mkdir(parents=True)
+    self_update.tidy(tmp_path, Here("macos", "arm64", tmp_path / "apps" / "OrthoStudio XP.app"))
+    assert sorted(p.name for p in folder.iterdir()) == [self_update.PENDING_NAME]
+    assert not left.parent.exists()
+
+
+def test_a_try_takes_away_another_version_s_installer(tmp_path: Path) -> None:
     folder = tmp_path / self_update.UPDATE_DIR
     folder.mkdir()
     (folder / "OrthoStudio-XP-2.2.5-macos-arm64.dmg").write_text("old")
-    (folder / "install.sh").write_text("old")
-    left = tmp_path / (self_update.STAGING_PREFIX + "old") / "OrthoStudio XP.app"
-    left.mkdir(parents=True)
     d = _Doubles()
     d.fetch_error = UpdateError("download")
     installer = d.installer(tmp_path)
     installer.start("2.3.0", force=True)
     installer.join(10)
     assert sorted(p.name for p in folder.iterdir()) == [self_update.PENDING_NAME]
-    assert not left.parent.exists()
 
 
 # -- the engine's routes --------------------------------------------------------------------------
@@ -760,9 +866,8 @@ class _Recorder:
     def busy(self) -> bool:
         return False
 
-    def start(self, version: str, *, force: bool) -> bool:
+    def start(self, version: str, *, force: bool) -> None:
         self.started.append((version, force))
-        return True
 
     def status(self) -> dict[str, Any]:
         return {"state": "preparing", "version": "999.0.0", "done": 0, "total": 0}
@@ -774,7 +879,7 @@ class _Recorder:
 
 @pytest.fixture
 def newer(monkeypatch: pytest.MonkeyPatch) -> None:
-    """GitHub names 999.0.0, and Live is not at work: nothing leaves the machine."""
+    """GitHub names 999.0.0, and no Live answers: nothing leaves the machine."""
     from orthostudio import update
     from orthostudio.api import app as app_module
 
@@ -784,53 +889,88 @@ def newer(monkeypatch: pytest.MonkeyPatch) -> None:
         "check",
         lambda current, *, path: real_check(current, path=path, fetch=lambda: "999.0.0"),
     )
-    monkeypatch.setattr(app_module, "_live_at_work", lambda: False)
+    monkeypatch.setattr(app_module, "_live_status", lambda: None)
 
 
 @pytest.mark.anyio
-async def test_the_page_installs_a_newer_version_and_asks_first_while_a_build_runs(
+async def test_the_page_is_asked_first_then_the_engine_quits_as_for_quit(
     home: Path, newer: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """The engine's own installer: asked first while a build runs, and while Live flies (what
+    Live's status says); after the yes, handed over, Live asked to quit, the builds cancelled and
+    the engine stopped, as the Windows installer and the page's Quit make it do."""
     from orthostudio.api import app as app_module
 
-    here = Here("macos", "arm64", home / "OrthoStudio XP.app")
-    recorder = _Recorder(here)
-    app, mgr = _app(home, shutdown=lambda: None, updater=recorder, build=FakeBuild(delay_s=0.5))
+    asked: list[str] = []
+    handed: list[str] = []
+    monkeypatch.setattr(app_module, "_ask_live_to_quit", lambda: asked.append("live"))
+    here = Here("macos", "arm64", home / "A.app")
+    monkeypatch.setattr(self_update, "installed_here", lambda: here)
+    monkeypatch.setattr(
+        self_update, "asset_facts", lambda version, names: (names[0], 3, _sha(b"abc"))
+    )
+
+    def fetch(url: str, dest: Path, **kw: Any) -> None:
+        handed.append("fetched")
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(b"abc")
+
+    monkeypatch.setattr(self_update, "download", fetch)
+    monkeypatch.setattr(self_update, "stage_app", lambda image, app, version, **kw: home / "n.app")
+    monkeypatch.setattr(
+        self_update, "hand_over", lambda here, installer, version, **kw: handed.append(version)
+    )
+    stopped = threading.Event()
+    app, mgr = _app(home, shutdown=stopped.set, build=FakeBuild(delay_s=0.5))
     try:
         async with client_for(app) as c:
             answer = (await c.get("/api/update")).json()
             assert answer["available"] and answer["installable"] and answer["last_try"] is None
-
-            # a build runs: asked first, with what runs, and nothing started
+            # a build runs: asked first, with what runs, and nothing done
             job = mgr.start([make_spec("+46+006", home=home)])
             r = await c.post("/api/update/install", json={})
-            assert r.status_code == 409, r.text
-            error = r.json()["error"]
-            assert error["code"] == "SYS_BUSY"
-            assert error["context"] == {"build": True, "live": False, "flying": False}
-            assert recorder.started == []
-            # Live at work with X-Plane flying is said too
-            monkeypatch.setattr(app_module, "_live_at_work", lambda: True)
-            monkeypatch.setattr(app_module, "_xplane_running_now", lambda: True)
+            assert r.status_code == 202, r.text
+            assert r.json()["state"] == "ask"
+            assert r.json()["running"] == {"build": True, "live": False, "flying": False}
+            assert handed == []
+            # Live at work, X-Plane running: said too, from Live's own status
+            live = {"state": "streaming", "checks": {"xplane_running": True}}
+            monkeypatch.setattr(app_module, "_live_status", lambda: live)
             r = await c.post("/api/update/install", json={})
-            assert r.json()["error"]["context"] == {"build": True, "live": True, "flying": True}
+            assert r.json()["running"] == {"build": True, "live": True, "flying": True}
             # the user said yes
             r = await c.post("/api/update/install", json={"force": True})
             assert r.status_code == 202, r.text
-            assert recorder.started == [("999.0.0", True)]
+            for _ in range(100):
+                if stopped.is_set():
+                    break
+                await asyncio.sleep(0.05)
+            assert stopped.is_set() and handed == ["fetched", "999.0.0"] and asked == ["live"]
+            assert (await c.get("/api/update/install")).json()["state"] == "installing"
+            assert job.wait(30) and job.status == "cancelled"
+    finally:
+        mgr.close()
+
+
+@pytest.mark.anyio
+async def test_cancel_reaches_the_try(home: Path, newer: None) -> None:
+    recorder = _Recorder(Here("macos", "arm64", home / "OrthoStudio XP.app"))
+    app, mgr = _app(home, shutdown=lambda: None, updater=recorder)
+    try:
+        async with client_for(app) as c:
+            r = await c.post("/api/update/install", json={"force": True})
+            assert r.status_code == 202 and recorder.started == [("999.0.0", True)]
             assert (await c.get("/api/update/install")).json()["state"] == "preparing"
             assert (await c.delete("/api/update/install")).json() == {"cancelled": True}
             assert recorder.cancelled == 1
-            mgr.cancel_all()
-            assert job.wait(30)
     finally:
         mgr.close()
 
 
 @pytest.mark.anyio
 async def test_an_app_that_cannot_replace_itself_keeps_its_link(home: Path, newer: None) -> None:
-    """A checkout, Linux, the zip, an app that cannot be written; or an engine the page cannot
-    stop (not started by osxp serve): no button, and the route refuses."""
+    """A checkout, the zip, an app that cannot be written; or an engine the page cannot stop
+    (not started by osxp serve): no button, and the route refuses."""
     for kwargs in ({"updater": _Recorder(None), "shutdown": lambda: None}, {}):
         app, mgr = _app(home, **kwargs)
         try:
@@ -855,7 +995,7 @@ async def test_nothing_newer_nothing_installed(home: Path, monkeypatch: pytest.M
         "check",
         lambda current, *, path: real_check(current, path=path, fetch=lambda: __version__),
     )
-    monkeypatch.setattr(app_module, "_live_at_work", lambda: False)
+    monkeypatch.setattr(app_module, "_live_status", lambda: None)
     recorder = _Recorder(Here("macos", "arm64", home / "OrthoStudio XP.app"))
     app, mgr = _app(home, shutdown=lambda: None, updater=recorder)
     try:
@@ -878,47 +1018,5 @@ async def test_the_banner_says_why_the_last_try_failed(home: Path, newer: None) 
         async with client_for(app) as c:
             answer = (await c.get("/api/update")).json()
             assert answer["last_try"] == {"version": "999.0.0", "reason": "replace"}
-    finally:
-        mgr.close()
-
-
-@pytest.mark.anyio
-async def test_the_engine_quits_for_the_update_as_it_does_for_quit(
-    home: Path, newer: None, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Handed over, the engine asks Live to quit, cancels the builds and stops, as the Windows
-    installer and the page's Quit make it do: the app's window goes with it."""
-    from orthostudio.api import app as app_module
-
-    asked: list[str] = []
-    monkeypatch.setattr(app_module, "_ask_live_to_quit", lambda: asked.append("live"))
-    here = Here("macos", "arm64", home / "A.app")
-    monkeypatch.setattr(self_update, "installed_here", lambda: here)
-    monkeypatch.setattr(self_update, "asset_facts", lambda version, name: (3, _sha(b"abc")))
-
-    def fetch(url: str, dest: Path, **kw: Any) -> None:
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        dest.write_bytes(b"abc")
-
-    handed: list[str] = []
-    monkeypatch.setattr(self_update, "download", fetch)
-    monkeypatch.setattr(self_update, "stage_app", lambda image, app, version, **kw: home / "n.app")
-    monkeypatch.setattr(
-        self_update, "hand_over", lambda here, installer, version, **kw: handed.append(version)
-    )
-    stopped = threading.Event()
-    app, mgr = _app(home, shutdown=stopped.set)
-    try:
-        async with client_for(app) as c:
-            # the installer is made at the first question, with the doubles above as defaults
-            assert (await c.get("/api/update")).json()["installable"]
-            r = await c.post("/api/update/install", json={})
-            assert r.status_code == 202, r.text
-            for _ in range(100):
-                if stopped.is_set():
-                    break
-                await asyncio.sleep(0.05)
-            assert stopped.is_set() and handed == ["999.0.0"] and asked == ["live"]
-            assert (await c.get("/api/update/install")).json()["state"] == "installing"
     finally:
         mgr.close()
