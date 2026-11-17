@@ -196,6 +196,7 @@ function blocking(checks) {
   if (!checks.xplane) return t("checks.xplane_missing", { problem: checks.xplane_problem || "" });
   if (checks.folder_problem) return t("checks.folder_problem", { problem: checks.folder_problem });
   if (checks.ortho_streamers?.length) return streamersRunning(checks.ortho_streamers);
+  if (checks.installing) return t("checks.installing");
   if (!checks.mesh_found && !checks.region_ready) return t(noMesh("checks.mesh_missing", checks), { path: checks.mesh });
   if (checks.xplane_running && !checks.installed) return t("checks.xplane_running_late");
   return null;
@@ -667,7 +668,7 @@ function drawRegions(status) {
   const listed = new Map((regions.list || []).map((r) => [r.id, r]));
   const ids = REGION_ORDER.filter((id) => ours.has(id) || listed.has(id));
   const install = regions.install;
-  const running = install && !["done", "failed", "cancelled"].includes(install.phase);
+  const running = install && !["done", "waiting", "failed", "cancelled"].includes(install.phase);
   const idle = status.state === "idle";
   $("regions-loading").hidden = listed.size > 0 || Boolean(regions.error);
   $("regions-error").hidden = !regions.error;
@@ -698,7 +699,9 @@ function drawRegions(status) {
       const busy = install && install.region === id;
       if (mine) {
         size.textContent = mine.size ? t("regions.size", { gb: gb(mine.size) }) : "";
-        state.textContent = r.changed ? t("regions.changed", { gb: gb(r.changed_bytes) })
+        // an update whole in its stage: put in place at the next start with X-Plane closed
+        state.textContent = r.waiting ? t("regions.waiting")
+          : r.changed ? t("regions.changed", { gb: gb(r.changed_bytes) })
           : t("regions.installed");
       } else if (r.download) {
         size.textContent = t("regions.sizes", { download: gb(r.download), disk: gb(r.unpacked) });
@@ -771,6 +774,7 @@ function drawRegions(status) {
         total: gb(install.total_bytes), mbs: number(pace, 1), unpacked: install.unpacked, zips: install.zips });
     } else if (install.phase === "failed") line.textContent = t("regions.failed", { error: install.error });
     else if (install.phase === "cancelled") line.textContent = t("regions.cancelled");
+    else if (install.phase === "waiting") line.textContent = t("regions.waiting");
     else line.textContent = t("regions.done");
     if ($("region-bar")) {
       const share = install.total_bytes ? install.done_bytes / install.total_bytes : 0;

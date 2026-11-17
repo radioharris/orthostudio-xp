@@ -126,6 +126,7 @@ export const STRINGS = {
     "checks.xplane_running_late":
       "X-Plane is running: quit it, start Live, then X-Plane (it looks at its scenery only when it starts).",
     "checks.xplane_stopped": "X-Plane is not running",
+    "checks.installing": "A region is being downloaded or installed: start once it is done, or stop it in Settings.",
     "checks.mesh": "Regions installed: {path}",
     "checks.own_tiles": "Your own tiles: {tiles}. X-Plane shows them, and Live downloads nothing there.",
     "checks.own_squares": "{n} tiles",
@@ -198,6 +199,7 @@ export const STRINGS = {
     "regions.failed": "Stopped: {error}. Install again to go on from there.",
     "regions.cancelled": "Stopped. Install again to go on from there.",
     "regions.done": "Installed: used from the next start.",
+    "regions.waiting": "Update ready: it takes its place at Live's next start with X-Plane closed.",
     "regions.confirm_remove": "Sure? Delete {name}",
     "regions.installed": "Installed",
     "region.eur": "Europe",
@@ -561,6 +563,7 @@ export const STRINGS = {
     "checks.xplane_running_late":
       "X-Plane tourne : quittez-le, démarrez Live, puis X-Plane (il ne regarde ses scènes qu'à son démarrage).",
     "checks.xplane_stopped": "X-Plane n'est pas lancé",
+    "checks.installing": "Une région est en cours de téléchargement ou d'installation : démarrez une fois terminé, ou arrêtez-la dans les Réglages.",
     "checks.mesh": "Régions installées : {path}",
     "checks.own_tiles": "Vos propres tuiles : {tiles}. X-Plane les affiche, et Live n'y télécharge rien.",
     "checks.own_squares": "{n} tuiles",
@@ -633,6 +636,7 @@ export const STRINGS = {
     "regions.failed": "Arrêté : {error}. Relancez l'installation pour reprendre là où elle s'est arrêtée.",
     "regions.cancelled": "Arrêté. Relancez l'installation pour reprendre là où elle s'est arrêtée.",
     "regions.done": "Installée : utilisée dès le prochain démarrage.",
+    "regions.waiting": "Mise à jour prête : elle prend sa place au prochain démarrage de Live, X-Plane fermé.",
     "regions.confirm_remove": "Sûr ? Supprimer {name}",
     "regions.installed": "Installée",
     "region.eur": "Europe",
