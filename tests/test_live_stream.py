@@ -441,7 +441,7 @@ class MissingPieceTest(unittest.TestCase):
         2026-11-11)."""
         from unittest import mock
 
-        from orthostudio.live import filesystem
+        from orthostudio import fsutil
 
         said = []
         with tempfile.TemporaryDirectory() as tmp:
@@ -450,7 +450,7 @@ class MissingPieceTest(unittest.TestCase):
             record = s.pack_dir / "_live" / "ortho.json"
             before = record.read_text() if record.exists() else None
             refused = PermissionError(13, "The process cannot access the file")
-            with mock.patch.object(filesystem, "replace", side_effect=refused):  # pack.save_built
+            with mock.patch.object(fsutil, "replace", side_effect=refused):  # pack.save_built
                 s.save()
             self.assertTrue(any("not saved" in m for m in said), said)
             self.assertEqual(record.read_text() if record.exists() else None, before)

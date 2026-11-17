@@ -9,15 +9,18 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 from pathlib import Path
 
 import pytest
 
 import test_api_fakes as fakes
 from live_helpers import make_source
-from orthostudio.live import filesystem, session
+from orthostudio import fsutil
+from orthostudio.live import session
 from orthostudio.live.cache import ChunkCache
 from orthostudio.live.control import LiveControl
+from orthostudio.live.names import built_files
 from orthostudio.live.pack import MARKER, load_built, save_built
 from orthostudio.live.region import setup_region
 from orthostudio.live.streamer import Streamer
@@ -44,7 +47,6 @@ def test_a_record_that_does_not_read_is_read_as_none(
     heard: list[str] = []
     assert load_built(tmp_path, damaged=heard.append) == {}
     assert len(heard) == 1 and why in heard[0], heard
-    assert "built again" in heard[0]
     assert load_built(tmp_path) == {}  # nobody to tell: none all the same
 
 
@@ -66,41 +68,51 @@ def test_the_record_is_on_the_disk_before_it_takes_its_name(
         order.append("fsync")
         fsync(fd)
 
-    real_replace = filesystem.replace
+    real_replace = fsutil.replace
 
     def renamed(src: Path, dst: Path) -> None:
         order.append("replace")
         real_replace(src, dst)
 
     monkeypatch.setattr(os, "fsync", synced)
-    monkeypatch.setattr(filesystem, "replace", renamed)
+    monkeypatch.setattr(fsutil, "replace", renamed)
     meta = {"textures": {"23296_33152_BI16.dds": 0}, "seen": {}}
     size = save_built(tmp_path, meta)
-    assert order == ["fsync", "replace"]
+    assert order[:2] == ["fsync", "replace"]  # then its folder's, on a Mac or Linux
     assert size == len((tmp_path / MARKER).read_text(encoding="utf-8"))
     assert load_built(tmp_path) == meta
     assert sorted(p.name for p in (tmp_path / MARKER).parent.iterdir()) == ["ortho.json"]
 
 
-def test_the_streamer_starts_on_a_record_found_empty_and_saves_it_whole(tmp_path: Path) -> None:
-    names = ("23296_33152_BI16",)
+def test_the_streamer_starts_on_a_record_found_empty_and_frees_what_it_named(
+    tmp_path: Path,
+) -> None:
+    """The textures the lost record named stay on the disk: counted stale, as after a season's
+    change, they are made neutral again (or built again where X-Plane needs them); otherwise
+    nothing counted them nor took them away (the review of 2026-11-17)."""
+    names = ("23296_33152_BI16", "23296_33168_BI16")
     pack = tmp_path / "pack"
     setup_region(make_source(tmp_path, tile=(45, 6), textures=names), pack, log=lambda _: None)
-    (pack / MARKER).parent.mkdir(exist_ok=True)
+    built = pack / "textures" / f"{names[0]}.dds"
+    neutral = next((pack / "_live").glob("neutral*.dds"))
+    built.unlink(missing_ok=True)
+    shutil.copyfile(neutral, built)  # a file of its own: something built in it
     (pack / MARKER).write_text("")
     lines: list[str] = []
     cache = ChunkCache(tmp_path / "c.sqlite")
     try:
         s = Streamer(pack, cache, lambda on_piece: None, log=lines.append)
-        assert s.built == {}
-        assert any("did not read (empty)" in line for line in lines), lines
-        s.built = {f"{names[0]}.dds": 2}
+        assert s.built == {} and s.stale == {built.name: 0}
+        said = "Live's record of its textures did not read (empty): its 1 textures built again"
+        assert any(line.startswith(said) for line in lines), lines
+        assert s.drop_stale(budget_s=10) == 1
+        assert built_files(pack) == [] and s.stale == {}
+        s.built = {f"{names[1]}.dds": 2}
         s.save()
     finally:
         cache.close()
-    assert json.loads((pack / MARKER).read_text(encoding="utf-8"))["textures"] == {
-        f"{names[0]}.dds": 2
-    }
+    saved = json.loads((pack / MARKER).read_text(encoding="utf-8"))
+    assert saved["textures"] == {f"{names[1]}.dds": 2} and saved["stale"] == {}
 
 
 @pytest.mark.anyio

@@ -25,6 +25,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from orthostudio.fsutil import atomic_write_text, open_read
 from orthostudio.home import osxp_home
 from orthostudio.live.filesystem import abilities
 
@@ -87,49 +88,29 @@ def default_cache_path() -> Path:
 def load_built(pack_dir: Path, damaged: Callable[[str], object] | None = None) -> dict[str, Any]:
     """Live's record of the textures it built (:data:`MARKER`), {} when there is none.
 
-    A record that does not read (empty, cut short, not a table) is read as none, and ``damaged``
-    hears why: every request of the window read it, so one bad file answered them all with an
-    error, « Live does not answer: HTTP 500 » and a blank Settings page, the app reinstalled and
-    the computer restarted in vain (discussion 32, 2026-11-17: the record was empty).
-    The textures it named are then built again as X-Plane needs them, and the streamer's next
-    save writes a whole record over it (:func:`save_built`)."""
-    path = pack_dir / MARKER
-    text: str | None = None
+    A record that does not read (empty, cut short, not a table, not text) is read as none, and
+    ``damaged`` hears why: every request of the window reads it, and one found empty answered
+    them all with an error (discussion 32, docs/specs/live.md)."""
     try:
-        text = path.read_text(encoding="utf-8")
+        with open_read(pack_dir / MARKER) as f:  # Windows: never in the instant of a save
+            text = f.read().decode("utf-8")
+        meta: Any = json.loads(text) if text.strip() else "empty"
     except FileNotFoundError:
         return {}
-    except UnicodeDecodeError as e:
-        meta: Any = e
-    else:
-        try:
-            meta = json.loads(text)
-        except ValueError as e:
-            meta = e
+    except ValueError as e:  # not JSON, or not text (UnicodeDecodeError is a ValueError)
+        meta = e
     if isinstance(meta, dict):
         return meta
     if damaged is not None:
-        why = "empty" if text is not None and not text.strip() else str(meta)[:120]
-        damaged(f"Live's record of its textures did not read ({why}): its textures built again")
+        damaged(f"Live's record of its textures did not read ({str(meta)[:120]})")
     return {}
 
 
 def save_built(pack_dir: Path, meta: dict[str, Any]) -> int:
-    """Live's record of its textures written whole, its bytes on the disk before it takes the
-    record's name: a rename can reach the disk before the data of the file it names (NTFS, APFS),
-    and a computer stopped in between left the record empty, which stopped Live's window until
-    :func:`load_built` read it as none (discussion 32, 2026-11-17). Returns its size."""
-    import os
-
-    from orthostudio.live.filesystem import replace
-
+    """Live's record of its textures written whole, its bytes flushed to the disk before it takes
+    the record's name (docs/specs/live.md). Returns its size."""
     text = json.dumps(meta)
-    tmp = pack_dir / MARKER.with_suffix(".tmp")
-    with open(tmp, "w", encoding="utf-8") as f:
-        f.write(text)
-        f.flush()
-        os.fsync(f.fileno())
-    replace(tmp, pack_dir / MARKER)
+    atomic_write_text(pack_dir / MARKER, text, fsync=True)
     return len(text)
 
 

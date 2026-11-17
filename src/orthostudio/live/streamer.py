@@ -62,7 +62,16 @@ from .geo import bearing_deg, haversine_m, parse_texture_name
 from .look import DEFAULT_LOOKS, Look
 from .mapdata import route_points, shown
 from .meshmap import REGION_NAMES, REGION_NAMES_FR, region_of
-from .names import KEEP, RING, Entry, Names, RegionTextures, SquareTextures, squares_round
+from .names import (
+    KEEP,
+    RING,
+    Entry,
+    Names,
+    RegionTextures,
+    SquareTextures,
+    built_files,
+    squares_round,
+)
 from .nightwork import ROADS_KEPT_MB, NightWork
 from .pack import copies_in, load_built, save_built
 from .region import (
@@ -431,7 +440,8 @@ class Streamer:
         # (orthostudio.live.texture.copy_up), so that X-Plane never reads the neutral colour there
         self.to_copy: set[str] = set()
         self.cruising = False  # high enough that no 8192 px level gets its photos (_cruise_height)
-        self.meta = load_built(pack_dir, damaged=log)
+        lost: list[str] = []  # why the record did not read, when it did not
+        self.meta = load_built(pack_dir, damaged=lost.append)
         self.built: dict[str, int] = dict(self.meta.get("textures", {}))
         # recorded with them: on the disk until their file is written again (evict.usage)
         self.copied_up: set[str] = set(copies_in(self.meta))
@@ -454,6 +464,13 @@ class Streamer:
         self.stale: dict[str, int] = {
             n: lv for n, lv in self.meta.get("stale", {}).items() if isinstance(lv, int)
         }
+        if lost:  # what it named, on the disk still: uncounted, never freed otherwise
+            orphans = built_files(pack_dir)
+            self.stale.update(dict.fromkeys(orphans, 0))  # their level unknown, never read
+            log(
+                f"{lost[0]}: its {len(orphans)} textures built again as X-Plane needs them, "
+                "the others made neutral again"
+            )
         recorded = self.meta.get("look")
         was = Look(*recorded) if isinstance(recorded, list) and len(recorded) == 5 else Look()
         if was != self.look and self.built:  # a pack of before the seasons: its photos as delivered
@@ -1772,7 +1789,11 @@ class Streamer:
             look, season = self.look, self.season
             copied = sorted(n for n in self.copied_up if n in textures)
         lit = self._lit()  # the stale ones' too: their night is on the disk until put back black
-        meta = load_built(self.pack_dir)
+        try:
+            meta = load_built(self.pack_dir)
+        except OSError as e:  # held by another program: as a stop between two saves, never fatal
+            self.log(f"  Live's record of its textures not saved ({e}): saved whole next time")
+            return
         meta["look"] = list(look.values())  # what the textures recorded are built in
         meta["season"] = season
         meta["stale"] = stale
