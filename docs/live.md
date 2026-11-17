@@ -20,6 +20,7 @@ design and the measurements behind it are in [specs/live.md](specs/live.md) and
 - [The season](#the-season)
 - [Ground grain up close (decals)](#ground-grain-up-close-decals)
 - [Towns at night](#towns-at-night)
+- [The sea, rivers and lakes](#the-sea-rivers-and-lakes)
 - [Imagery sources, your own tiles, roads and forests](#imagery-sources-your-own-tiles-roads-and-forests)
 - [The mesh, by region](#the-mesh-by-region)
 - [What happens while you fly](#what-happens-while-you-fly)
@@ -181,7 +182,8 @@ itself. Prepare brings the map to the departure, as close as a flight's start.
 **The Settings tab**, the most needed first: the X-Plane folder (one setting with Build's), the
 mesh's regions, Live's disk space (with what the textures and the imagery take, and a button to
 delete either) and Live's folder; then what the flight shows: the roads, forests and buildings,
-your own tiles, the season, the night lights, the ground grain up close; then the flight plan and
+your own tiles, the season, the night lights, rivers and lakes, the ground grain up close; then
+the flight plan and
 what the app opens on. They apply with Save, at the next start.
 
 ![Live's Settings: where X-Plane is installed, the mesh by region with what each downloads and an Install button, the disk space, the season and the night lights](images/live/settings.png)
@@ -310,6 +312,34 @@ them are deleted. A change between on and off takes effect at the next start wit
 running, as the decal's: the terrain files flown already are made again as X-Plane comes. So does
 the night itself after an update from a version without it: Live started while X-Plane runs
 lights nothing until then.
+
+## The sea, rivers and lakes
+
+Near the shore, Live's photo fades into X-Plane's water, so that the sea shows X-Plane's waves and
+reflections and the beach the photo's sand. Each texture with water has a mask saying where. Given
+to X-Plane beside the photo, that mask came a few seconds after it: for 2 to 5 s each time a new
+photo appeared, the water showed large light triangles. Live now gives the water a photo of its
+own, the « water photo », with the mask inside it: X-Plane has both at once, and the triangles are
+gone (measured on the Rhône, X-Plane started cold, 2026-11-17). The water photo is half the side
+of the land's, 2048 px at most, which looks the same at the bank; Live makes it from the land's
+own photo, so the bank keeps its colours and the season's, and it counts in Live's disk space
+(about 5.6 MB a sharp one).
+
+**Rivers and lakes** (the Settings tab): how the photo meets their water.
+
+- **Even (recommended)**: the photo lies evenly see-through over rivers and lakes, as with
+  AutoOrtho and XPME: no mask, no water photo for them.
+- **Soft banks**: the photo fades into the water near their banks, as on the sea. For that Live
+  adds one more image on every river and lake: graphics memory goes up, by up to 3 GB over
+  regions full of water (measured over Stockholm, with every water body faded).
+
+The sea, and lakes over 200 km², always fade softly. The choice applies to the regions of the new
+mesh, whose rivers and lakes are drawn apart from the sea: update them in « The mesh, by region ».
+Regions installed before have every water body drawn as the sea, so each gets its water photo
+whatever the choice. A new choice takes effect at the next start with X-Plane not running, as the
+decal's: the terrain files flown already are made again as X-Plane comes. The first start after
+the update makes the water photos of the textures already built round the start, a few seconds
+more, once.
 
 ## Imagery sources, your own tiles, roads and forests
 

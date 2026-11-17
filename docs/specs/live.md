@@ -892,6 +892,114 @@ Shadow), two pairs of night flights at Nice with Live's own night textures, the 
 a core more in flight, 0.52 of it the night's process (2026-11-11; the Mac: frame times the same,
 0.06 of a core more).
 
+## Water
+
+**Why a water photo** (`orthostudio/live/waterphoto.py`). The water overlays of Live's mesh fade
+the photo into X-Plane's water near the shore, through a mask of each texture (`<y>_<x>_ZL<z>.png`,
+built at ZL14). Given to X-Plane as their `BORDER_TEX`, a PNG beside the photo, the mask reaches
+X-Plane after the photo: for 2 to 2.5 s at a cold start, 2 to 5 s in Live each time a new photo
+appears, the water shows large light triangle wedges. Measured on the bench, the user's camera on
+the Rhône, X-Plane cold (2026-11-17):
+
+| how the mask is given | the wedges |
+|---|---|
+| imprinted in the photo's alpha (Build's way) | none, right from 0 s |
+| a separate mask PNG (`BORDER_TEX`, Live until now) | 2 s |
+| a separate mask as a DDS | 2.5 s: the format does not help |
+| a separate « water photo », BC3, the mask imprinted as its alpha, the overlay's `BASE_TEX`, no `BORDER_TEX` | none, right from 0 s, at 4096, 2048, 1024 and 512 px |
+
+Close at the bank, 512 and 1024 px leave a straight line; 2048 is clean. At ZL17/19, a water photo
+of 2048 px (3.3 m a pixel on the ZL16 grid's textures) looks the same as one half the land's side.
+So **2048 px at most**, whatever the zoom.
+
+**The water photo.** `<texture>_water.dds` beside the land texture in the pack's `textures`: BC3
+(DXT5), its own layout and header, 16 bytes a block, every level down to 1 x 1
+(`waterphoto.layout`, `header`); 5,592,560 bytes at 2048 px, about 1.4 MB at 1024. Its sharpest
+level is `max(1, file_top + 1)` counted as a texture's (`water_top`): 2048 px for a 4096 or an
+8192 px land file, 1024 for a 2048 px one. It holds its levels from `max(level + 1, water_top)`
+down, `level` the one its land is built from, and a hole above (`first_level`): X-Plane counts
+each file's levels from its top, so where it reads the land's level `level` it reads the water's
+`level + 1`. Its colours are the land's own BC1 blocks of those levels, as the land's file holds
+them: Live leaves every BC1 block in four-colour mode (`imaging.four_colour`), which is how BC3
+reads the colour half of its blocks, so the water has the land's very colours, the season's
+included, and the bank never changes colour; nothing is encoded twice; and it can be made from
+its land's file at any time (`waterphoto.make`). Its alpha is the mask, resized bilinear to its
+sharpest level, each smaller level the average of four texels. Made in 36 to 47 ms at 2048 px from
+a 4096 px land and a mask of Europe's region, 16 ms of it the alpha's encoding (ISPC); 3 to 7 ms
+from a land built from 256 px (the Mac, 2026-11-17). The prototype (branch `water-photo-proto`,
+08a655c3) encoded the land's image again instead: 43 ms against 291 ms for the 4096 px land photo,
+and colours that could differ from the land's at the bank.
+
+Before it holds a photo, a water photo is a name (a hard link) of the **placeholder** of its size,
+`_live/water-<side>.dds`: its header, then a hole, which reads as zeros, alpha 0, X-Plane's water
+alone (`names.WaterPool`, with copies past a disk's names per file, as the neutral texture's).
+
+**When it is made, and how it follows its land.**
+- The squares' files decide which textures have one (`Names._water_mask`, below) and make, in a
+  square's first operations, before any terrain file naming them: the masks copied from the
+  region, the textures set to the zoom's size, then each water photo: made from its land right
+  there where the land is built already (built before its square was made, before the water
+  photos, or set to a new zoom), else the placeholder (`("water", ...)` in `names.run_ops`).
+- A build makes it from the file just written (`texture.build_job`), whenever the texture has one;
+  a name made between the build's look and the streamer hearing of the build is made then
+  (`Streamer._water_built`).
+- Made coarser by the disk budget, or set to a new zoom (`texture.downgrade`, `resize`), it is made
+  again from the land's file (at the new size for a zoom); made neutral, back to the placeholder of
+  its size (`waterphoto.follow`); a land's 8192 px copy (`copy_up`) leaves it as it is.
+- Taken away with its square (`("drop_water", ...)`), it goes with its mask only while it holds no
+  photo: one made stays with its texture, as a night texture made does, and goes with it when the
+  texture is made neutral on no square made (`Streamer._neutral`, `waterphoto.drop`).
+- A water photo that cannot be made (its mask gone) never fails its land: it stays or goes back to
+  the placeholder, and the log says it once.
+- **Disk.** The textures' record keeps the level each water photo follows (`water` in
+  `_live/ortho.json`, as `lit`), a stale texture's too; Live's disk budget and the window's sizes
+  count them (`evict.water_bytes`, `usage`), a texture made coarser freeing what its water photo
+  held; a reset of the textures forgets them, their water photos back to the placeholder.
+
+**What the water terrain files name** (`names.Names._water_ter`, `waterphoto.ter_text`), for the
+regions of Live's own mesh alone, those whose terrain files are named in `terrain-lists` and made
+from their name (the `make` operation): AutoOrtho's regions and another tool's mesh keep their
+copied `.ter` files untouched.
+
+| terrain file | what it names |
+|---|---|
+| `<texture>_sea_overlay.ter` | `BASE_TEX_NOWRAP ../textures/<texture>_water.dds`, `LOAD_CENTER` with the water photo's side, no `LOAD_CENTER_BORDER` nor `BORDER_TEX`; its other lines as before (`WET`, `NO_SHADOW`) |
+| `<texture>_water_overlay.ter`, rivers and lakes even (the default) | the land's photo, `BORDER_TEX ../textures/osxp_rivers_even.png`: uniform grey 150, in X-Plane the same look as XPME's `ratio_water` 0.25; no mask |
+| `<texture>_water_overlay.ter`, soft banks, the texture's mask in its region | its water photo, as the sea's |
+| `<texture>_water_overlay.ter`, soft banks, no mask | the land's photo, `BORDER_TEX ../textures/osxp_rivers_none.png`: all 0, X-Plane's water alone, as before |
+
+The sea and lakes over 200 km² are sea for the mesh and keep their masks either way. The new world
+bake (branch `mesh-rivers`, engine branch `rivers-apart`, `inland_apart`) gives inland water its
+own overlay terrain, `<texture>_water_overlay.ter`, its points carrying the photo's (s, t) in planes
+7 and 8 as the sea's do. The masks of textures with rivers and lakes alone come in a region's
+`rivers/textures/<y>_<x>_ZL<z>.png` (separate zips, not yet made); those of textures with any sea
+stay in `textures/` and serve both terrains (`names.RIVER_MASKS`). The two borders are written into
+the pack's `textures` at each start (`region.write_borders`), names of Live's own that no region
+uses, never taken for a mask or a texture.
+
+**The setting and the record.** `LiveSettings.rivers_fade`, off by default (the user,
+2026-11-17), the window's « Rivers and lakes »: « Even (recommended) » or « Soft banks ». The pack
+records what its water terrain files name, `_live/water.json`: `rivers_fade` and `water_photos`
+(`region.WATER_PHOTOS`, 1). At each start (`region.set_water`, beside `set_night`), a record that
+differs, a pack made before the water photos included (once), has the terrain files, the water
+photos and the masks of the pack's `textures` taken away, made again per square as X-Plane comes;
+not while X-Plane runs, which may be reading them: at the next start then. The squares' files and
+the builder follow the record, never the settings (`region.water_record`, as `night_on`): a pack
+whose record is of before keeps naming the masks until then.
+
+**It ships with the new world bake.** Today's installed regions of Live's mesh have no
+`_water_overlay` of their own: every water body is a `_sea_overlay` with a mask, so every one gets
+a water photo, whatever the rivers' setting, which changes nothing there. That is the prototype's
+measured worst case, a ten-minute flight from Stockholm with 6,111 water photos, against Live
+without them: the same frame rate (38 against 37), Live's queue as often empty (92 %), Live's
+processor +20 %, its writes +43 % (1.70 to 2.43 GB), X-Plane's memory with its graphics +3 GB.
+With rivers apart and even by default, those of rivers and lakes are not made.
+
+The first start after the update, and the first after a change of the setting or of the zoom,
+makes in its squares' process the water photos of the textures already built round the start,
+before X-Plane goes: 3 to 7 ms each for the far ones, 36 to 47 ms for the sharp ones near the
+start; made once, they stay.
+
 ## The user's own tiles
 
 For each 1-degree square, X-Plane draws the ground of the first pack of `scenery_packs.ini` holding
