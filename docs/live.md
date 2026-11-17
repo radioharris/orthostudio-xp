@@ -426,15 +426,24 @@ roads, forests and buildings come with it, unless "Roads, forests and buildings"
 its masks of rivers and lakes once you chose Soft banks (see « The sea, rivers and lakes »).
 Once installed, a region shows its size on the disk and **Delete** (click twice). When a region
 is made again on the server, the panel says an update is available and how much it downloads,
-and offers **Update**: the region comes again whole, beside the one installed, which Live keeps
-using until the new one is complete and takes its place; the one of before is then deleted,
-nothing of it left behind. The disk holds both meanwhile. Stopped, an update goes on where it
-stopped, and the region of before stays as it was. On Windows, a region X-Plane holds open cannot
-be replaced: the panel says so; close X-Plane and click **Update** again, which downloads nothing
-more. Updating and deleting wait until Live is stopped. A region installed
-with 2.0, before the night lights, gets their grids by itself, a few megabytes (Europe 11.6 MB), as the
-window opens: no Update to click. A region may sit on another disk, linked from Live's folder: the
-panel says where each one is.
+and offers **Update**: the region comes again whole, its masks of rivers and lakes and its night
+grids with it, beside the one installed, which Live keeps using until the new one is complete and
+takes its place in one go; the one of before is then deleted, nothing of it left behind, and the
+update's roads, forests and buildings are put in only then. The disk holds both meanwhile.
+Stopped, an update goes on where it stopped, and the region of before stays as it was; so does a
+computer stopped or a power cut in the middle, put right the next time Live opens or starts. A
+region changes only with Live stopped and X-Plane closed: with X-Plane open, the update, once
+complete, waits, the panel saying "Update ready", and Live puts it in place at its next start with
+X-Plane closed, before anything else; with X-Plane open, that start flies the region of before.
+A region that changed since Live last started does not start Live while X-Plane is open, which
+may be reading the region of before: quit X-Plane, then start. On Windows, a region another program holds open cannot be replaced: the panel says so; close it
+and click **Update** again, which downloads nothing more. While a region is being downloaded or
+installed, Start waits, the window saying why. Updating and deleting wait until Live is stopped.
+A region installed with 2.0, before the night lights, gets their grids by itself, a few megabytes
+(Europe 11.6 MB), as the window opens: no Update to click. A region may sit on another disk,
+linked from Live's folder: the panel says where each one is. Live reads the regions of the light
+mesh, made in November 2026, from a list of their own: the Lives up to 2.2 keep the world of
+before, and the two never mix.
 
 A region AutoOrtho installed on its own is still recognised, and left as it is; Live no longer
 offers to install AutoOrtho's. In a terminal, `python -m orthostudio.live regions list`,

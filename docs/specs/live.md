@@ -451,7 +451,14 @@ program holding it) is skipped and said, as a stop between two saves would leave
 The pack records its regions (`sources` in `_live/region.json`): one installed since is merged in
 at the next start, the textures built kept; one taken away sets the pack up again. A region
 installed again or updated (its folders' times, `fingerprints`) sets the pack up again too, never
-under a running X-Plane: DSFs of before beside `.ter` files of now must not meet. A region gone
+under a running X-Plane: DSFs of before beside `.ter` files of now must not meet; a start with
+X-Plane running on such a region is refused. Set up again, the pack deletes the textures built
+that no square of its regions names any more (`region._drop_unnamed`, read from the regions'
+lists), with their night textures and water photos, and forgets them in its record (`textures`,
+`seen`, `stale`, `lit`, `water`, `patchy`, `copied`); every water photo goes with the neutral
+textures and is forgotten too (`_forget_water`), and a night texture whose texture is gone
+(`_drop_orphan_nights`): kept, they took Live's space for good. The files every square may name
+(`water_transition.png`) are placed again where the region's is not the pack's any more. A region gone
 (its `terrain` folder) stops Live from starting, where the pack once held every file its DSFs name
 (2026-09-30). And a pack left in Custom Scenery by a Live that stopped without taking it out (a
 crash, the computer restarted) is taken out by the plugin as X-Plane starts, when nothing listens
@@ -472,20 +479,61 @@ unpacked in Live's folder as
 `default_sources`: a square it has takes its DSF (a DSF another region has already stays that
 region's), AutoOrtho's serves the squares it has not.
 
-**Installed and updated whole** (`osxpregions.Installer`, 2026-11-16). A region is made whole in
-its stage, `.z_osxp_<id>.new` beside the region's folder (the folder a link leads to, for one on
-another disk: on its disk), its zips unpacked one at a time in the list's order, each recorded in
-the stage's `.live-install.json`. Once all are there, its marker is written in the stage and the
-stage takes the region's place: the region of before renamed `.z_osxp_<id>.old`, the stage renamed
-in, the old one deleted. An update does the same as soon as one zip of the mesh changed
-(`made_whole`): every bake makes every zip again, and a mesh unpacked over the one of before left
-its files behind (masks no DSF names, the lists of zips gone) and, stopped halfway, a mix of both
-in use. A stage is kept for the next try only while each zip it holds is still the list's as it
-was (`_staged`), else started again. Night grids, or overlays alone, added to a region whose mesh
-did not change go into it in place, the marker recording them. On Windows a folder X-Plane holds
-open cannot be renamed: the region of before is put back, the stage kept whole, and the next
-install downloads nothing and only swaps. The disk holds what the update unpacks, the region of
-before still on it.
+**The list of the light mesh** (`osxpregions.MANIFEST`, 2026-11-18). Live reads its regions from
+`manifest-2.json` on its host (the same address and token), never `manifest.json`, the world of
+2026-11-01 that every Live up to 2.2 reads and that a new world never replaces. The mesh and river
+zips of a bake are in a folder of its date, `<region>/<release>/zips/<name>.zip` and
+`<region>/<release>/zips/rivers/<name>.zip`; the overlay and night zips keep
+`<region>/overlay-zips/` and `<region>/night-zips/`. Live keeps the list it read in
+`regions/osxp-catalog-2.json`: `osxp-catalog.json` is a Live up to 2.2's own, on the same folder,
+and never sees this world. Every zip is keyed by its path and SHA-256, as before; a kind Live does
+not know is left aside, and every Live since 2.0 leaves `rivers` aside.
+
+**Installed and updated whole** (`osxpregions.Installer`, 2026-11-18). A region is made whole in
+its stage, `.z_osxp_<id>.new` beside the region's folder (the folder a link or a Windows junction
+leads to, for one on another disk: on its disk, `filesystem.is_folder_link`): its mesh, its night
+grids and its river masks where it wants them (`wanted`: soft banks chosen, or the region has
+them already), unpacked one at a time in the list's order, each recorded in the stage's
+`.live-install.json`. Once all are there, its marker is written in the stage, and the stage takes
+the region's place (`put_in_place`): the region of before renamed `.z_osxp_<id>.old`, the stage
+renamed in, the old one deleted, one rename helper tried again a moment on Windows
+(`filesystem.replace`), the marker and every record written whole and flushed to the disk
+(`fsutil.atomic_write_text`, fsync). An update does the same as soon as the mesh the region holds
+is not the list's (`made_whole`): a zip made again (a single mended zip brings the region whole,
+every bake making every zip again), or one the list no longer has, which also catches a region a
+Live up to 2.2 updated in place, its marker naming zips gone. A stage is kept for the next try
+while each zip it holds is still the list's as it was (`_staged`), else started again; river
+masks it holds that the region no longer wants (Even chosen meanwhile) are taken out of it, its
+mesh kept. The update's overlays are downloaded with it and wait in the download folder, named in
+the stage's record, then its marker's (`overlays_waiting`), and are unpacked only once the region
+is in place: new roads never stand on the mesh of before.
+
+A region installed already changes only with Live stopped and X-Plane not running
+(`Installer.may_swap`, `LiveControl._may_swap`): else its stage, whole, waits (the install's phase
+`waiting`, the page's `waiting` and « Update ready »), and Live's next start with X-Plane not
+running puts it in place before anything reads the regions (`osxpregions.settle` in
+`session.prepare`); with X-Plane running, that start flies the region of before and the stage
+keeps waiting. A region not installed yet takes its place as soon as it is whole: nothing reads
+it. A start with X-Plane running on a region that changed since the pack was set up
+(`region.changed_regions`) is refused, as a new zoom is: X-Plane may be reading the DSFs of
+before. While a region is downloaded or installed (not the night grids' own download), Start is
+refused by the server and greyed in the window (`LiveControl.installing`, `checks.installing`).
+
+What a stop or a power cut leaves is made right (`settle`) at an install's start, as Live's window
+opens and at Live's start: a region renamed aside whose successor never took its place is put
+back; a region of before left beside its successor is deleted; at a start or an install that may,
+a whole stage is put in place. The page counts an update by what the region's marker does not
+record (`not_installed`), so that a whole stage waiting keeps its Update, which downloads nothing
+and only puts it in place. Each zip is downloaded under a name holding its SHA-256
+(`Zip.download`): a part of a zip made again since is deleted at the next install instead of
+being resumed into a damaged file, and a river zip never meets its mesh zip of the same name. A
+zip that cannot be unpacked is deleted, downloaded again the next time. The room the whole install
+needs is checked before its first byte, disk by disk (the region's, the overlay pack's, the
+download folder's), and again before each zip, each file counted as a whole block (`_room`).
+Night grids alone, or river masks alone (« Water »), added to a region whose mesh did not change go
+into it in place, the marker recording them. Deleting a region renames it aside first, then
+deletes it, its stage and its downloads: a folder held open is not touched at all; a region of
+which a stop left only its stage or the region of before is deleted too (`present`).
 
 **Another tool's mesh** (`scenery.other_mesh`, 2026-11-14): a folder chosen in the Settings
 (`LiveSettings.other_mesh`, empty: none), last in `default_sources` after `base_sources` (Live's
@@ -1019,16 +1067,20 @@ with 3,732 masks; estimated for Europe from the bake of 2026-11-17, about 3.2 GB
   user, 2026-11-17): even again leaves them on the disk, recorded and unused, its terrain files
   naming the even grey; soft banks again downloads nothing; an update brings their new version
   whatever the setting; the region's size counts them. No button deletes them for now.
-- **All or nothing.** They are unpacked into `.rivers.new` in the region's folder, as into the
-  region (`.rivers.new/rivers/textures/...`), each recorded in the stage's own
-  `.live-install.json`; once it holds every river zip of the list, `.rivers.new/rivers` takes the
+- **All or nothing.** With the region's install or update, they come in its stage with its mesh
+  and night grids, and take their place with it in one rename. Alone, the region's mesh the
+  list's, they are unpacked into `.rivers.new` in the region's folder, as into the region
+  (`.rivers.new/rivers/textures/...`), each recorded in the stage's own `.live-install.json`; once
+  it holds every river zip of the list, `.rivers.new/rivers` takes the
   place of `rivers` with one rename (those of before renamed `.rivers.old` first, deleted after),
   then the marker records them, last (`Installer._put_rivers`). A stop, a damaged zip or a full
   disk leaves the region's rivers as they were, faded or even in one piece, never half; the next
   try goes on in the stage, started again when it holds a zip the list no longer has as it was
   (`_rivers_staged`). The marker's river zips count all together or not at all, and only while
   `rivers` is there (`recorded`): one made again, they all come again into the stage (a bake makes
-  every zip again anyway).
+  every zip again anyway). A `.rivers.new` the region no longer wants (Even chosen again before it
+  was whole) is deleted at the next install, and one of a region whose mesh changed: its update
+  brings them.
 - **Windows** does not rename a folder a program holds open: those of before stay in place, the
   stage whole; the error says to close X-Plane and try again, which downloads nothing more. Until
   then the region shows its update (`not_installed`: zips the marker does not record, downloaded
@@ -1036,12 +1088,12 @@ with 3,732 masks; estimated for Europe from the bake of 2026-11-17, about 3.2 GB
 - **The disk.** Each zip's files are counted at whole 4 KiB blocks (`disk_need`, from the zip's
   own directory, as the list counts no files), checked before each zip with 2 GB left
   (`Installer._room`), after the count of the list's bytes at the start: a mask averages 10 KB,
-  and Europe's would take about 0.45 GB more than their bytes (an estimate). A zip downloads to its
-  path below the region, `regions/.download/osxp_<id>/zips/rivers/<name>` (`Zip.local`): a river
-  zip has its mesh zip's name.
+  and Europe's would take about 0.45 GB more than their bytes (an estimate). A zip downloads under
+  a name holding its SHA-256, `regions/.download/osxp_<id>/<sha256 16>-<name>` (`Zip.download`): a
+  river zip has its mesh zip's name.
 - **Chosen later** (`LiveControl.rivers_chosen`, from the Settings' save, `PUT /api/live/
   settings` turning `rivers_fade` on): for each region installed whose mesh zips are the list's
-  (`mesh_changed`), its river zips alone (`rivers_to_add`), region after region, in the installs'
+  (`made_whole`), its river zips alone (`rivers_to_add`), region after region, in the installs'
   one place with its bar and Stop, which ends the whole round; overlays left, the region's set-up,
   its list of textures and its date untouched, the marker recording what came. A region whose mesh
   changed gets nothing alone: it shows its update, which brings it whole, river masks in. An
