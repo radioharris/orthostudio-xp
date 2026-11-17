@@ -161,8 +161,8 @@ Its guide, with the steps of a flight, the window and the measurements:
   ([New issue](https://github.com/radioharris/orthostudio-xp/issues/new/choose)) and choose "A
   problem with Build" or "A problem with Live". Its form asks for what helps find the cause: the
   version, your system, what you did and what you saw, a screenshot, and the log: `serve.log` for
-  Build, `LogLive.txt` of that flight for Live (where to find it, the ones before too, is in the
-  form). The issues are kept for what goes wrong.
+  Build, `LogLive.txt` of that flight for Live, which holds Live's own errors too (where to find
+  it, the ones before too, is in the form). The issues are kept for what goes wrong.
 - **An idea or a request**: start a discussion in
   [Ideas](https://github.com/radioharris/orthostudio-xp/discussions/categories/ideas). Its form asks
   whether it is for Build or Live, what you would like, why, how you do it today, and examples.

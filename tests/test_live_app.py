@@ -500,3 +500,48 @@ def test_the_new_pages_parse_and_say_everything_in_both_languages() -> None:
     used |= set(re.findall(r'data-i18n="([\w.]+)"', (UI_DIR / "index.html").read_text()))
     assert {"welcome.title", "home.title", "action.osxp"} <= used
     assert used <= set(keys["en"]) and used <= set(keys["fr"]), sorted(used - set(keys["fr"]))
+
+
+@pytest.mark.anyio
+async def test_an_error_of_live_s_server_is_written_in_its_log(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Discussion 32: a pilot on Windows saw « Live does not answer: HTTP 500 » and his LogLive.txt
+    said nothing. Every error the server answers (500 and above) is written in Live's log, the
+    file's too, each different one once; an unexpected one with its traceback, and the page gets
+    its words (``detail``) instead of a bare 500. A refusal (4xx) is not an error of Live."""
+    import httpx
+    from fastapi import HTTPException
+
+    lines: list[str] = []
+    control = LiveControl(echo=lines.append)
+
+    def status() -> dict:
+        raise RuntimeError("the regions cannot be read")
+
+    monkeypatch.setattr(control, "status", status)
+    app = create_live_app(control)
+
+    @app.get("/api/live/test-refusals/{code}")
+    def refusal(code: int) -> dict:
+        raise HTTPException(code, f"refused with {code}")
+
+    transport = httpx.ASGITransport(app=app, raise_app_exceptions=False)
+    async with httpx.AsyncClient(transport=transport, base_url="http://127.0.0.1") as client:
+        for _ in range(3):  # the page asks every second: written once
+            r = await client.get("/api/live/status")
+            assert r.status_code == 500
+            assert r.json() == {"detail": "RuntimeError: the regions cannot be read"}
+        r = await client.get("/api/live/test-refusals/500")
+        assert (r.status_code, r.json()) == (500, {"detail": "refused with 500"})
+        r = await client.get("/api/live/test-refusals/409")
+        assert (r.status_code, r.json()) == (409, {"detail": "refused with 409"})
+    text = "\n".join(lines)
+    said = (
+        "Live's server could not answer GET /api/live/status: "
+        "RuntimeError: the regions cannot be read"
+    )
+    assert text.count(said) == 1
+    assert "Traceback (most recent call last)" in text and "in status" in text
+    assert "could not answer GET /api/live/test-refusals/500: refused with 500" in text
+    assert "409" not in text
