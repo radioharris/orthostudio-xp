@@ -503,15 +503,17 @@ function diskUsed(status) {
   return { textures, imagery, total: textures + imagery };
 }
 
-/** Disk space: what Live takes now, of the two, and whether they can be deleted. */
+/** Disk space: what Live takes now, of the two, and whether they can be deleted. « Stop Live to
+ * delete » only while Live runs (starting or streaming): while it deletes, stops or waits for
+ * X-Plane to quit there is nothing to stop, and the state above says what it does. */
 function drawDisk(status) {
   const used = diskUsed(status);
   $("disk-now").textContent = t("disk.now", {
     gb: gb(used.total), textures: gb(used.textures), imagery: gb(used.imagery),
   });
-  const idle = status.state === "idle";
-  $("delete-btn").disabled = !idle;
-  $("delete-help").textContent = idle ? "" : t("disk.delete_streaming");
+  const running = status.state === "starting" || status.state === "streaming";
+  $("delete-btn").disabled = status.state !== "idle";
+  $("delete-help").textContent = running ? t("disk.delete_streaming") : "";
 }
 
 /** The file manager's name for a Show button: Finder, File Explorer, or the Linux folder. */
