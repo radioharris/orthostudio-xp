@@ -179,3 +179,9 @@
 
 /* the foot holds OrthoStudio XP's text size and zoom alone: on its right, as in its page */
 .live-statusbar { justify-content: flex-end; }
+
+/* the rivers question's two looks, side by side under their choices: the same camera over the
+   Rhône by Geneva, Live with each setting (the bench of 2026-11-17), so the pilot sees the
+   difference before reading it */
+.choice-shot { display: block; width: 240px; max-width: 100%; height: auto; margin-top: 6px;
+  border-radius: var(--radius); }

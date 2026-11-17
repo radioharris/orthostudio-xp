@@ -892,6 +892,175 @@ Shadow), two pairs of night flights at Nice with Live's own night textures, the 
 a core more in flight, 0.52 of it the night's process (2026-11-11; the Mac: frame times the same,
 0.06 of a core more).
 
+## Water
+
+**Why a water photo** (`orthostudio/live/waterphoto.py`). The water overlays of Live's mesh fade
+the photo into X-Plane's water near the shore, through a mask of each texture (`<y>_<x>_ZL<z>.png`,
+built at ZL14). Given to X-Plane as their `BORDER_TEX`, a PNG beside the photo, the mask reaches
+X-Plane after the photo: for 2 to 2.5 s at a cold start, 2 to 5 s in Live each time a new photo
+appears, the water shows large light triangle wedges. Measured on the bench, the user's camera on
+the Rhône, X-Plane cold (2026-11-17):
+
+| how the mask is given | the wedges |
+|---|---|
+| imprinted in the photo's alpha (Build's way) | none, right from 0 s |
+| a separate mask PNG (`BORDER_TEX`, Live until now) | 2 s |
+| a separate mask as a DDS | 2.5 s: the format does not help |
+| a separate « water photo », BC3, the mask imprinted as its alpha, the overlay's `BASE_TEX`, no `BORDER_TEX` | none, right from 0 s, at 4096, 2048, 1024 and 512 px |
+
+Close at the bank, 512 and 1024 px leave a straight line; 2048 is clean. At ZL17/19, a water photo
+of 2048 px (3.3 m a pixel on the ZL16 grid's textures) looks the same as one half the land's side.
+So **2048 px at most**, whatever the zoom.
+
+**The water photo.** `<texture>_water.dds` beside the land texture in the pack's `textures`: BC3
+(DXT5), its own layout and header, 16 bytes a block, every level down to 1 x 1
+(`waterphoto.layout`, `header`); 5,592,560 bytes at 2048 px, about 1.4 MB at 1024. Its sharpest
+level is `max(1, file_top + 1)` counted as a texture's (`water_top`): 2048 px for a 4096 or an
+8192 px land file, 1024 for a 2048 px one. It holds its levels from `max(level + 1, water_top)`
+down, `level` the one its land is built from, and a hole above (`first_level`): X-Plane counts
+each file's levels from its top, so where it reads the land's level `level` it reads the water's
+`level + 1`. Its colours are the land's own BC1 blocks of those levels, as the land's file holds
+them: Live leaves every BC1 block in four-colour mode (`imaging.four_colour`), which is how BC3
+reads the colour half of its blocks, so the water has the land's very colours, the season's
+included, and the bank never changes colour; nothing is encoded twice; and it can be made from
+its land's file at any time (`waterphoto.make`). Its alpha is the mask, resized bilinear to its
+sharpest level, each smaller level the average of four texels. Made in 36 to 47 ms at 2048 px from
+a 4096 px land and a mask of Europe's region, 16 ms of it the alpha's encoding (ISPC); 3 to 7 ms
+from a land built from 256 px (the Mac, 2026-11-17). The prototype (branch `water-photo-proto`,
+08a655c3) encoded the land's image again instead: 43 ms against 291 ms for the 4096 px land photo,
+and colours that could differ from the land's at the bank.
+
+Before it holds a photo, a water photo is a name (a hard link) of the **placeholder** of its size,
+`_live/water-<side>.dds`: its header, then a hole, which reads as zeros, alpha 0, X-Plane's water
+alone (`names.WaterPool`, with copies past a disk's names per file, as the neutral texture's).
+
+**When it is made, and how it follows its land.**
+- The squares' files decide which textures have one (`Names._water_mask`, below) and make, in a
+  square's first operations, before any terrain file naming them: the masks copied from the
+  region, the textures set to the zoom's size, then each water photo: made from its land right
+  there where the land is built already (built before its square was made, before the water
+  photos, or set to a new zoom), else the placeholder (`("water", ...)` in `names.run_ops`).
+- A build makes it from the file just written (`texture.build_job`), whenever the texture has one;
+  a name made between the build's look and the streamer hearing of the build is made then
+  (`Streamer._water_built`).
+- Made coarser by the disk budget, or set to a new zoom (`texture.downgrade`, `resize`), it is made
+  again from the land's file (at the new size for a zoom); made neutral, back to the placeholder of
+  its size (`waterphoto.follow`); a land's 8192 px copy (`copy_up`) leaves it as it is.
+- Taken away with its square (`("drop_water", ...)`), it goes with its mask only while it holds no
+  photo: one made stays with its texture, as a night texture made does, and goes with it when the
+  texture is made neutral on no square made (`Streamer._neutral`, `waterphoto.drop`).
+- A water photo that cannot be made (its mask gone) never fails its land: it stays or goes back to
+  the placeholder, and the log says it once.
+- **Disk.** The textures' record keeps the level each water photo follows (`water` in
+  `_live/ortho.json`, as `lit`), a stale texture's too; Live's disk budget and the window's sizes
+  count them (`evict.water_bytes`, `usage`), a texture made coarser freeing what its water photo
+  held; a reset of the textures forgets them, their water photos back to the placeholder.
+
+**What the water terrain files name** (`names.Names._water_ter`, `waterphoto.ter_text`), for the
+regions of Live's own mesh alone, those whose terrain files are named in `terrain-lists` and made
+from their name (the `make` operation): AutoOrtho's regions and another tool's mesh keep their
+copied `.ter` files untouched.
+
+| terrain file | what it names |
+|---|---|
+| `<texture>_sea_overlay.ter` | `BASE_TEX_NOWRAP ../textures/<texture>_water.dds`, `LOAD_CENTER` with the water photo's side, no `LOAD_CENTER_BORDER` nor `BORDER_TEX`; its other lines as before (`WET`, `NO_SHADOW`) |
+| `<texture>_water_overlay.ter`, rivers and lakes even (the default) | the land's photo, `BORDER_TEX ../textures/osxp_rivers_even.png`: uniform grey 150, in X-Plane the same look as XPME's `ratio_water` 0.25; no mask |
+| `<texture>_water_overlay.ter`, soft banks, the texture's mask in its region | its water photo, as the sea's |
+| `<texture>_water_overlay.ter`, soft banks, no mask | the land's photo, `BORDER_TEX ../textures/osxp_rivers_none.png`: all 0, X-Plane's water alone, as before |
+
+The sea and lakes over 200 km² are sea for the mesh and keep their masks either way. The new world
+bake (branch `mesh-rivers`, engine branch `rivers-apart`, `inland_apart`) gives inland water its
+own overlay terrain, `<texture>_water_overlay.ter`, its points carrying the photo's (s, t) in planes
+7 and 8 as the sea's do. The masks of textures with rivers and lakes alone come in a region's
+`rivers/textures/<y>_<x>_ZL<z>.png`, zips of their own downloaded only with soft banks (below);
+those of textures with any sea stay in `textures/` and serve both terrains (`names.RIVER_MASKS`).
+The two borders are written into the pack's `textures` at each start (`region.write_borders`),
+names of Live's own that no region uses, never taken for a mask or a texture.
+
+**The setting and the record.** `LiveSettings.rivers_fade`, off by default (the user,
+2026-11-17), the window's « Rivers and lakes »: « Even (recommended) » or « Soft banks ». The pack
+records what its water terrain files name, `_live/water.json`: `rivers_fade` and `water_photos`
+(`region.WATER_PHOTOS`, 1). At each start (`region.set_water`, beside `set_night`), a record that
+differs, a pack made before the water photos included (once), has the terrain files, the water
+photos and the masks of the pack's `textures` taken away, made again per square as X-Plane comes;
+not while X-Plane runs, which may be reading them: at the next start then. The squares' files and
+the builder follow the record, never the settings (`region.water_record`, as `night_on`): a pack
+whose record is of before keeps naming the masks until then.
+
+**The river masks, downloaded with soft banks** (`osxpregions`, 2026-11-17). The bake packs
+beside each mesh zip `zips/<region>_<label>.zip` a river zip `zips/rivers/<region>_<label>.zip`
+of the same name and top folder, holding `<region>_<label>/rivers/textures/<mask>`; the host's
+list names them in a kind of their own, `rivers`, with the four fields of every zip. Measured on 28
+squares (Geneva and Vancouver Island): mesh zips 522 MB with 1,180 sea masks, river zips 37 MB
+with 3,732 masks; estimated for Europe from the bake of 2026-11-17, about 3.2 GB of 14.6 and
+228,000 files. So they come only to those who choose soft banks.
+- **The list.** Every Live since 2.0 reads each kind it knows with `Zip(**z)`, strict, and leaves
+  a kind it does not know aside (read in the tags v2.0.0 to v2.2.0): an older Live reads the list
+  with rivers as before. A field added to a zip entry would make it refuse the whole list and keep
+  its old one for good, so a new kind never adds a field to another's.
+- **What a region wants** (`wanted`, the one rule of the install, the update, the window's sizes
+  and its update counts): its mesh, its night grids, and its river zips when soft banks is chosen
+  or the region has its `rivers` folder already. Once downloaded they are part of the region (the
+  user, 2026-11-17): even again leaves them on the disk, recorded and unused, its terrain files
+  naming the even grey; soft banks again downloads nothing; an update brings their new version
+  whatever the setting; the region's size counts them. No button deletes them for now.
+- **All or nothing.** They are unpacked into `.rivers.new` in the region's folder, as into the
+  region (`.rivers.new/rivers/textures/...`), each recorded in the stage's own
+  `.live-install.json`; once it holds every river zip of the list, `.rivers.new/rivers` takes the
+  place of `rivers` with one rename (those of before renamed `.rivers.old` first, deleted after),
+  then the marker records them, last (`Installer._put_rivers`). A stop, a damaged zip or a full
+  disk leaves the region's rivers as they were, faded or even in one piece, never half; the next
+  try goes on in the stage, started again when it holds a zip the list no longer has as it was
+  (`_rivers_staged`). The marker's river zips count all together or not at all, and only while
+  `rivers` is there (`recorded`): one made again, they all come again into the stage (a bake makes
+  every zip again anyway).
+- **Windows** does not rename a folder a program holds open: those of before stay in place, the
+  stage whole; the error says to close X-Plane and try again, which downloads nothing more. Until
+  then the region shows its update (`not_installed`: zips the marker does not record, downloaded
+  or not).
+- **The disk.** Each zip's files are counted at whole 4 KiB blocks (`disk_need`, from the zip's
+  own directory, as the list counts no files), checked before each zip with 2 GB left
+  (`Installer._room`), after the count of the list's bytes at the start: a mask averages 10 KB,
+  and Europe's would take about 0.45 GB more than their bytes (an estimate). A zip downloads to its
+  path below the region, `regions/.download/osxp_<id>/zips/rivers/<name>` (`Zip.local`): a river
+  zip has its mesh zip's name.
+- **Chosen later** (`LiveControl.rivers_chosen`, from the Settings' save, `PUT /api/live/
+  settings` turning `rivers_fade` on): for each region installed whose mesh zips are the list's
+  (`mesh_changed`), its river zips alone (`rivers_to_add`), region after region, in the installs'
+  one place with its bar and Stop, which ends the whole round; overlays left, the region's set-up,
+  its list of textures and its date untouched, the marker recording what came. A region whose mesh
+  changed gets nothing alone: it shows its update, which brings it whole, river masks in. An
+  install under way keeps its place (the river masks then come with Update); the night grids'
+  own download gives way. It runs while Live streams too, but never puts river masks over those a
+  region has while Live streams: that waits for Update, with Live stopped.
+- **Used from the next start.** `Names` reads which regions hold `rivers` as the stream starts
+  (`river_masks`): masks put in place meanwhile are not taken square by square, or one flight
+  would show X-Plane's water alone on the squares before them and faded banks after, and the
+  squares kept would stay so. The region's fingerprint counts the `rivers` folder's time where it
+  has one (`region._fingerprints`; a region without one keeps its fingerprints of before), so the
+  next start with X-Plane not running sets the region up again and its terrain files are made anew.
+- **The window.** Each region of the list carries `rivers_bytes`, what its river masks would
+  download for a region installed that has not got them; « Soft banks » says their sum, « … and
+  1.2 GB more to download for your regions. », its plain words alone once they are there.
+
+**It ships with the new world bake.** Today's installed regions of Live's mesh have no
+`_water_overlay` of their own: every water body is a `_sea_overlay` with a mask, so every one gets
+a water photo, whatever the rivers' setting, which changes nothing there. That is the prototype's
+measured worst case, a ten-minute flight from Stockholm with 6,111 water photos, against Live
+without them: the same frame rate (38 against 37), Live's queue as often empty (92 %), Live's
+processor +20 %, its writes +43 % (1.70 to 2.43 GB), X-Plane's memory with its graphics +3 GB.
+With rivers apart and even by default, those of rivers and lakes are not made.
+
+Measured on the new mesh (Stockholm's two squares baked with rivers apart, the same flight, one
+each, the computer at rest, 2026-11-17): even and soft banks both 41 frames a second; X-Plane's
+memory with its graphics 13.2 GB even, 13.9 GB soft banks (+0.7 GB, the figure the window gives),
+against 12.3 GB for Live before; Live's processor 0.15 core either way.
+
+The first start after the update, and the first after a change of the setting or of the zoom,
+makes in its squares' process the water photos of the textures already built round the start,
+before X-Plane goes: 3 to 7 ms each for the far ones, 36 to 47 ms for the sharp ones near the
+start; made once, they stay.
+
 ## The user's own tiles
 
 For each 1-degree square, X-Plane draws the ground of the first pack of `scenery_packs.ini` holding

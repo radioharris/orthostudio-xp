@@ -257,8 +257,10 @@ def _file_top(path: Path, expected: int) -> int:
         return expected
 
 
-def _levels_from(path: Path, level: int, file_top: int) -> list[bytes]:
-    """Levels ``level`` down to 1 x 1 of a file whose sharpest level is ``file_top``."""
+def levels_from(path: Path, level: int, file_top: int) -> list[bytes]:
+    """Levels ``level`` down to 1 x 1 of a file whose sharpest level is ``file_top``: what a texture
+    keeps when made coarser or set to another size, and the colours of its water photo
+    (``orthostudio.live.waterphoto.make``)."""
     layout = dds.level_layout(file_top)
     with open(path, "rb") as f:
         f.seek(layout[level - file_top][0])
@@ -272,7 +274,8 @@ def _levels_from(path: Path, level: int, file_top: int) -> list[bytes]:
 
 def to_neutral(path: Path, neutral: Path) -> None:
     """``path`` made a name of the neutral texture again, atomically: a hard link, else (a file
-    with as many names as its disk allows, a disk without links) a clone or a copy."""
+    with as many names as its disk allows, a disk without links) a clone or a copy. Its water
+    photo, if it has one, back to the placeholder (``waterphoto.follow``)."""
     from .clone import clone_or_copy
 
     tmp = path.with_name(f".live-tmp-{os.getpid()}-{path.name}")
@@ -285,18 +288,22 @@ def to_neutral(path: Path, neutral: Path) -> None:
             raise
         clone_or_copy(str(neutral), str(tmp))
     replace(tmp, path)
+    from . import waterphoto
+
+    waterphoto.follow(path, None)
 
 
-def downgrade(path: Path, level: int, neutral: Path, file_top: int = 0) -> None:
+def downgrade(path: Path, level: int, neutral: Path, file_top: int = 0) -> int | None:
     """Make a built texture coarser in place of downloading: keep its levels from ``level`` down
     (they are in the file already) over a clone of the neutral texture of its size, the file's
-    size unchanged; past level 4, the neutral texture itself (:func:`to_neutral`)."""
+    size unchanged; past level 4, the neutral texture itself (:func:`to_neutral`). Its water photo
+    follows (``waterphoto.follow``): the level it is made from now, None where it has none."""
     if level > 4:
         to_neutral(path, neutral)
-        return
+        return None
     actual = _file_top(path, file_top)  # set to the zoom here if it was not yet
     level = max(level, file_top, actual)  # never sharper than the new file, nor than the old one
-    levels = _levels_from(path, level, actual)
+    levels = levels_from(path, level, actual)
     write_sparse(
         path,
         level,
@@ -305,24 +312,31 @@ def downgrade(path: Path, level: int, neutral: Path, file_top: int = 0) -> None:
         file_top=file_top,
         copy_above=needs_copy(level, file_top),
     )
+    from . import waterphoto
+
+    return waterphoto.follow(path, level)
 
 
 def copy_up(path: Path, neutral: Path, file_top: int = -1) -> None:
     """The 8192 px level of a texture built from its 4096 px one made the copy of that one, the
-    levels kept, nothing downloaded: until its photos come (the module's docstring)."""
-    levels = _levels_from(path, 0, _file_top(path, file_top))  # a file not yet set to the zoom too
+    levels kept, nothing downloaded: until its photos come (the module's docstring). Its water
+    photo stays as it is: it begins two levels lower (``waterphoto.first_level``)."""
+    levels = levels_from(path, 0, _file_top(path, file_top))  # a file not yet set to the zoom too
     write_sparse(path, 0, levels, base=neutral, file_top=file_top, copy_above=True, keep_from=0)
 
 
 def resize(path: Path, built: int, old_top: int, new_top: int, neutral: Path) -> int:
     """A built texture in a file of another size, for another zoom: its levels from ``built`` down
-    kept, those sharper than the new file's own dropped, nothing downloaded. Returns the level it
-    is built to now."""
+    kept, those sharper than the new file's own dropped, nothing downloaded; its water photo made
+    again at the new file's (``waterphoto.follow``). Returns the level it is built to now."""
     keep = max(built, new_top)
-    levels = _levels_from(path, keep, old_top)
+    levels = levels_from(path, keep, old_top)
     write_sparse(
         path, keep, levels, base=neutral, file_top=new_top, copy_above=needs_copy(keep, new_top)
     )
+    from . import waterphoto
+
+    waterphoto.follow(path, keep)
     return keep
 
 
@@ -419,13 +433,16 @@ def encode_levels(img, tint_top: bool = False, look=None, top: int | None = None
     return [look_blocks(encode_bc1(level), look) for level in levels]
 
 
-def build_job(job) -> tuple[str, int, int, int]:
+def build_job(job) -> tuple[str, int, int, int, int | str | None]:
     """Worker: (name, top level, pieces, parents, path[, base[, file top[, tint[, built[, look]]]]])
-    -> (name, top level, from parent, blank). ``base``: the neutral texture the file starts from,
-    of the file's size; ``file top``: the file's sharpest level (see ``write_sparse``); ``tint``:
-    the test of the 8192 px, their level pink (:func:`encode_levels`); ``built``: the level the
-    file holds already, kept below a sharper build (``write_sparse``'s ``keep_from``); ``look``:
-    the season's five values, or None for the photos as delivered."""
+    -> (name, top level, from parent, blank, water). ``base``: the neutral texture the file
+    starts from, of the file's size; ``file top``: the file's sharpest level (see
+    ``write_sparse``); ``tint``: the test of the 8192 px, their level pink
+    (:func:`encode_levels`); ``built``: the level the file holds already, kept below a sharper
+    build (``write_sparse``'s ``keep_from``); ``look``: the season's five values, or None for the
+    photos as delivered. ``water``: its water photo made
+    again from the file just written (``waterphoto.make``), the level it follows, None where the
+    texture has none, or why it could not be made: never the land's build failed for it."""
     name, level, pieces, parents, path = job[:5]
     base = Path(job[5]) if len(job) > 5 and job[5] else None
     file_top = job[6] if len(job) > 6 else 0
@@ -444,4 +461,11 @@ def build_job(job) -> tuple[str, int, int, int]:
         copy_above=needs_copy(level, file_top),
         keep_from=built,
     )
-    return name, level, from_parent, blank
+    from . import waterphoto
+
+    water: int | str | None
+    try:
+        water = waterphoto.make(Path(path), level)
+    except Exception as e:  # said by the streamer; the land is built all the same
+        water = f"{type(e).__name__}: {e}"
+    return name, level, from_parent, blank, water

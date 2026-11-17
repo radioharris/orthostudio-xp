@@ -177,9 +177,14 @@ def sources_of_pack(pack_dir: Path) -> list[Path]:
 
 
 def _textures_by_zoom(pack_dir: Path) -> dict[int, list[str]]:
+    """The pack's textures by their zoom: not their water photos, whose names are read as theirs
+    (orthostudio.live.waterphoto.is_water_name), and which follow them."""
+    from .waterphoto import is_water_name
+
     out: dict[int, list[str]] = defaultdict(list)
     for entry in os.scandir(pack_dir / "textures"):
-        if entry.name.endswith(".dds") and not entry.name.startswith("."):
+        name = entry.name
+        if name.endswith(".dds") and not name.startswith(".") and not is_water_name(name):
             tex = parse_texture_name(entry.name)
             if tex is not None:
                 out[tex.zoom].append(entry.name)
@@ -584,8 +589,12 @@ def _shared_files(sources: Sequence[Path], textures: Path) -> tuple[int, int]:
 def _fingerprints(sources: Sequence[Path]) -> dict[str, list[int]]:
     """What changes when a region is installed again or updated: its folders' times. The pack
     takes the files its DSFs name from the regions while Live streams (orthostudio.live.names),
-    so DSFs of before beside ``.ter`` files of now must not meet."""
-    from .names import terrain_folder
+    so DSFs of before beside ``.ter`` files of now must not meet. Its river masks' folder too,
+    where it has one (2026-11-17): put in place or made again, it changes what the terrain files
+    of its rivers name with soft banks, and squares made before must not keep X-Plane's water
+    alone beside faded ones. Only where it has one, so that every pack of before keeps its
+    fingerprints and is not set up again for nothing."""
+    from .names import RIVER_MASKS, terrain_folder
 
     out = {}
     for source in sources:
@@ -595,6 +604,8 @@ def _fingerprints(sources: Sequence[Path]) -> dict[str, list[int]]:
                 times.append(os.stat(source / sub).st_mtime_ns)
             except OSError:
                 times.append(0)
+        with contextlib.suppress(OSError):
+            times.append(os.stat(source / RIVER_MASKS.parts[0]).st_mtime_ns)
         out[str(source)] = times
     return out
 
@@ -696,6 +707,131 @@ def _forget_lit(pack_dir: Path) -> None:
     meta = load_built(pack_dir)
     if meta.get("lit"):
         meta["lit"] = {}
+        save_built(pack_dir, meta)
+
+
+WATER_RECORD = "_live/water.json"
+"""What the water terrain files of the pack name (:func:`set_water`)."""
+
+WATER_PHOTOS = 1
+"""The water photos' version (orthostudio.live.waterphoto) the pack's terrain files name: a pack
+whose record says another, or none (made before them), has its terrain files and water photos made
+again once."""
+
+
+@dataclass(frozen=True)
+class WaterRecord:
+    """What the water terrain files of Live's own mesh in the pack name: a water photo for the
+    sea's, and for rivers and lakes too where ``rivers_fade`` (``LiveSettings.rivers_fade``)."""
+
+    rivers_fade: bool = False
+
+
+def water_record(pack_dir: Path) -> WaterRecord | None:
+    """What the pack's water terrain files name (:func:`set_water`); None for files made before the
+    water photos, which name the masks: the squares made meanwhile follow them, until a start with
+    X-Plane not running makes them all again. What the pack's files say, not the settings, as
+    :func:`night_on`: a change while X-Plane ran must not leave squares of two kinds."""
+    try:
+        data = json.loads((pack_dir / WATER_RECORD).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(data, dict) or data.get("water_photos") != WATER_PHOTOS:
+        return None
+    return WaterRecord(rivers_fade=bool(data.get("rivers_fade")))
+
+
+def write_borders(pack_dir: Path) -> None:
+    """The two borders of rivers and lakes in the pack's ``textures``, at each start, written only
+    where missing or not as they should be (orthostudio.live.waterphoto.borders). Never into a
+    folder that is a link: a pack of before's, the region's own."""
+    from .waterphoto import borders
+
+    textures = pack_dir / "textures"
+    if is_folder_link(textures) or not textures.is_dir():
+        return
+    for name, data in borders().items():
+        path = textures / name
+        try:
+            if path.read_bytes() == data:
+                continue
+        except OSError:
+            pass
+        tmp = path.with_name(f"{TEMP_PREFIX}{os.getpid()}-{name}")
+        tmp.write_bytes(data)
+        replace_file(tmp, path)
+
+
+def set_water(
+    pack_dir: Path,
+    rivers_fade: bool,
+    log: Callable[[str], None] = print,
+    xplane_running: Callable[[], bool] = lambda: False,
+) -> None:
+    """The pack's terrain files made again when what their water should name is not what they
+    name (:func:`water_record`), as :func:`set_night` does: Live's settings turned soft banks on
+    rivers and lakes on or off, or the pack was made before the water photos (once). Not while
+    X-Plane runs, which may be reading them: at the next start then. The water photos and the masks
+    go with them, made again per square as X-Plane comes: a river's mask, copied for its water
+    photo, is no use once its banks are even, and every water photo is made again from its land
+    (orthostudio.live.names). The two borders are written at each start (:func:`write_borders`)."""
+    textures = pack_dir / "textures"
+    if is_folder_link(textures):  # a pack of before, not made per square yet: X-Plane was running
+        return
+    write_borders(pack_dir)
+    was = water_record(pack_dir)
+    wanted = WaterRecord(rivers_fade=rivers_fade)
+    if was == wanted:
+        return
+    what = (
+        "water photos for the water that fades"
+        if was is None
+        else f"rivers and lakes {'faded at their banks' if rivers_fade else 'evenly see-through'}"
+    )
+    terrain = pack_dir / "terrain"
+    if terrain.is_dir() and next(terrain.glob("*.ter"), None) is not None:
+        if xplane_running():
+            log(
+                f"{what}: the terrain files made already stay as they are until Live's next start "
+                "with X-Plane not running"
+            )
+            return
+        removed = _remove_tree(terrain, log, "terrain files")
+        terrain.mkdir(exist_ok=True)
+        log(f"{what}: {removed} terrain files made again as X-Plane comes")
+    gone = _drop_water(pack_dir)
+    if gone:
+        log(f"  {gone} water photos and masks deleted, made again with their squares")
+    record = pack_dir / WATER_RECORD
+    record.parent.mkdir(parents=True, exist_ok=True)
+    record.write_text(
+        json.dumps({"rivers_fade": rivers_fade, "water_photos": WATER_PHOTOS}), encoding="utf-8"
+    )
+    _forget_water(pack_dir)
+
+
+def _drop_water(pack_dir: Path) -> int:
+    """The pack's water photos and water masks deleted: no terrain file names them any more."""
+    from .names import MASK_RE
+    from .waterphoto import is_water_name
+
+    gone = 0
+    with contextlib.suppress(FileNotFoundError, NotADirectoryError):
+        for entry in os.scandir(pack_dir / "textures"):
+            if is_water_name(entry.name) or MASK_RE.match(entry.name):
+                with contextlib.suppress(FileNotFoundError):
+                    os.unlink(entry.path)
+                    gone += 1
+    return gone
+
+
+def _forget_water(pack_dir: Path) -> None:
+    """The textures' record without water photos (orthostudio.live.evict.usage)."""
+    from .pack import load_built, save_built
+
+    meta = load_built(pack_dir)
+    if meta.get("water"):
+        meta["water"] = {}
         save_built(pack_dir, meta)
 
 
@@ -826,9 +962,11 @@ def reset_built(pack_dir: Path, log: Callable[[str], None] = print) -> int:
     Only the textures the streamer recorded as built are touched (``_live/ortho.json``), so a reset
     takes seconds; those built in another season and not made neutral yet too (``stale``). Their
     night textures are black again too: one made before stayed over the neutral texture until its
-    texture was built again at night."""
-    from .names import NeutralPool, NightPool, night_name
+    texture was built again at night. Their water photos are back to X-Plane's water alone, made
+    again from them once built (orthostudio.live.waterphoto)."""
+    from .names import NeutralPool, NightPool, WaterPool, night_name
     from .pack import load_built, save_built
+    from .waterphoto import water_name, water_top
 
     meta = load_built(pack_dir)
     built = {**meta.get("stale", {}), **meta.get("textures", {})}
@@ -836,12 +974,17 @@ def reset_built(pack_dir: Path, log: Callable[[str], None] = print) -> int:
     pool = NeutralPool(pack_dir)
     nights: NightPool | None = None
     lit_too = meta.get("lit") if isinstance(meta.get("lit"), dict) else {}
-    for name in {**built, **lit_too}:  # a night lit over a neutral texture too (Windows refused)
+    water_too = meta.get("water") if isinstance(meta.get("water"), dict) else {}
+    waters = WaterPool(pack_dir)
+    for name in {**built, **lit_too, **water_too}:  # a night lit over a neutral texture too
         path = pack_dir / "textures" / name
         tex = parse_texture_name(name)
         top = 0 if tex is None else _laid_out_top(zooms, layout, tex.zoom)
         if name in built and path.exists():
             pool.replace(top, path)
+        water = path.with_name(water_name(name))
+        if name in water_too and water.exists():
+            waters.replace(water_top(top), water)
         lit = pack_dir / NIGHT_FOLDER / night_name(name)
         if lit.exists():
             nights = nights or NightPool(pack_dir)
@@ -849,6 +992,7 @@ def reset_built(pack_dir: Path, log: Callable[[str], None] = print) -> int:
     if meta:
         meta["textures"], meta["seen"], meta["patchy"], meta["stale"] = {}, {}, [], {}
         meta["lit"], meta["copied"] = {}, []  # their nights black, their copies gone
+        meta["water"] = {}  # their water photos X-Plane's water alone
         meta.pop("grown", None)
         save_built(pack_dir, meta)
     from .nightwork import ROADS_FOLDER

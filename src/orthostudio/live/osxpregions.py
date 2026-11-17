@@ -18,6 +18,16 @@ arrive in: a mask two neighbouring zips both hold is the same file on every comp
 region's marker, which makes Live use it, is written last: until then a start does not see it.
 The marker keeps every zip's SHA-256: once a zip of the bucket is made again (a mistake mended),
 only the zips whose SHA-256 changed are downloaded again.
+
+A region's river masks (``rivers`` in the manifest, 2026-11-17) are the masks of its textures whose
+water is only rivers and lakes, which Live reads only when the pilot chose soft banks
+(``LiveSettings.rivers_fade``): Europe's about 3.2 GB of its 14.6, some 228,000 files, so they come
+only with soft banks, or once the region has them (:func:`wanted`). They are unpacked into a stage
+beside them, ``.rivers.new`` in the region's folder, and put in place as ``rivers`` with one rename
+once every one is there, then recorded in the marker: a stop or a full disk on the way leaves the
+region's rivers as they were, never half of them faded. Chosen while the region's mesh is the
+list's, they come alone, in place, the rest of the region untouched (:func:`rivers_to_add`); once
+there they stay, whatever the setting, and an update brings their new version with the region.
 """
 
 from __future__ import annotations
@@ -61,6 +71,14 @@ PASSING = frozenset({429, 500, 502, 503, 504})
 2026-11-14 a single 500 stopped the whole install, the pilot left to click Install again."""
 DOWNLOADS = 3  # at a time: one stream from the host is not the pilot's whole line
 SPARE_BYTES = 2 * 10**9
+RIVERS = "rivers"  # a region's river masks, rivers/textures (orthostudio.live.names.RIVER_MASKS)
+RIVERS_STAGE = ".rivers.new"  # in the region's folder: its river masks until all are there
+RIVERS_OLD = ".rivers.old"  # in the region's folder: those of before, for the moment of the swap
+BLOCK = 4096
+"""What a file takes on the disk at least, rounded up to it: APFS's, NTFS's and ext4's block. A
+river zip's masks average 10 KB (3,732 in 37 MB over Geneva and Vancouver Island, 2026-11-17):
+counted at their bytes, Europe's 228,000 would take about half a block each more than said, some
+0.45 GB (an estimate)."""
 
 Log = Callable[[str], None]
 
@@ -80,6 +98,13 @@ class Zip:
     def name(self) -> str:
         return self.path.rsplit("/", 1)[-1]
 
+    @property
+    def local(self) -> str:
+        """Its path in the bucket below its region (``zips/rivers/z_osxp_eur_+30+016.zip``), where
+        it is downloaded and how the errors name it: a river zip has its mesh zip's name, beside
+        it (2026-11-17), and two kinds' zips of one name never meet."""
+        return self.path.split("/", 1)[-1]
+
 
 @dataclass(frozen=True)
 class OsxpRegion:
@@ -90,18 +115,9 @@ class OsxpRegion:
     # the night lights' density grids of its squares (orthostudio.live.nightwork), unpacked into
     # the region's folder as its mesh zips are: ``night/<square>.png``
     night: tuple[Zip, ...] = ()
-
-    @property
-    def size(self) -> int:
-        return sum(z.size for z in (*self.mesh, *self.night, *self.overlays))
-
-    @property
-    def mesh_size(self) -> int:
-        return sum(z.size for z in (*self.mesh, *self.night))
-
-    @property
-    def unpacked(self) -> int:
-        return sum(z.unpacked for z in (*self.mesh, *self.night))
+    # its river masks, one zip beside each mesh zip that has any: ``rivers/textures/<mask>``, put
+    # in place whole (the module's docstring); which of them a region wants: :func:`wanted`
+    rivers: tuple[Zip, ...] = ()
 
 
 @functools.cache
@@ -127,6 +143,10 @@ def _client(token: str):
 
 
 def parse_manifest(doc: dict) -> dict[str, OsxpRegion]:
+    """The regions of the host's list, each kind of zip read by its name: a kind this Live does not
+    know is left aside, as every Live since 2.0 does (``rivers``, 2026-11-17). A zip entry has
+    its four fields and no other: ``Zip(**z)`` refuses one more, and a Live refusing the list keeps
+    the one it had for good. A kind added never adds a field to the zips of another."""
     made = str(doc.get("made", ""))
     out = {}
     for region_id, kinds in (doc.get("regions") or {}).items():
@@ -136,6 +156,7 @@ def parse_manifest(doc: dict) -> dict[str, OsxpRegion]:
             tuple(Zip(**z) for z in kinds.get("mesh", ())),
             tuple(Zip(**z) for z in kinds.get("overlays", ())),
             tuple(Zip(**z) for z in kinds.get("night", ())),
+            tuple(Zip(**z) for z in kinds.get("rivers", ())),
         )
     return out
 
@@ -217,16 +238,93 @@ def _write(path: Path, doc: dict) -> None:
     replace_file(tmp, path)
 
 
-def to_fetch(root: Path, region: OsxpRegion, overlays: bool) -> tuple[list[Zip], list[Zip]]:
-    """The mesh zips and overlay zips not installed yet, or changed in the bucket since; the night
-    grids' zips with the mesh's, unpacked into the region's folder as they are."""
-    marker = _read(mesh_dir(root, region.id) / MARKER)
-    step = _read(mesh_dir(root, region.id) / STEP)
-    have = {**(marker.get("zips") or {}), **(step.get("zips") or {})}
-    mesh = [z for z in (*region.mesh, *region.night) if have.get(z.path) != z.sha256]
+def has_rivers(root: Path, region: str) -> bool:
+    """Whether the region holds its river masks: put in place only whole (the module's docstring),
+    and kept once there, whatever the setting."""
+    return (mesh_dir(root, region) / RIVERS).is_dir()
+
+
+def wanted(root: Path, region: OsxpRegion, rivers: bool) -> tuple[Zip, ...]:
+    """The zips a region wants in its folder: its mesh, its night grids, and its river masks when
+    the pilot chose soft banks (``rivers``, ``LiveSettings.rivers_fade``) or the region has them
+    already. Once downloaded they are part of the region: going back to even rivers and lakes
+    leaves them there, unused, so that soft banks chosen again downloads nothing (the user,
+    2026-11-17), and an update of the region brings their new version with it, whatever the
+    setting. The one rule of what an install, an update, the sizes and the update counts take."""
+    keep = rivers or has_rivers(root, region.id)
+    return (*region.mesh, *region.night, *(region.rivers if keep else ()))
+
+
+def recorded(root: Path, region: OsxpRegion) -> dict[str, str]:
+    """The zips the region's marker records as installed, {path: SHA-256}. Its river zips count
+    all together or not at all: only while its ``rivers`` folder is there and each is the list's as
+    it was. One of them made again, they all come again into the stage, which is put in place
+    whole: a ``rivers`` folder is the list's whole or of before whole, and a bake makes every zip
+    again anyway."""
+    zips = dict(_read(mesh_dir(root, region.id) / MARKER).get("zips") or {})
+    whole = has_rivers(root, region.id) and all(zips.get(z.path) == z.sha256 for z in region.rivers)
+    if not whole:
+        for z in region.rivers:
+            zips.pop(z.path, None)
+    return zips
+
+
+def _rivers_staged(root: Path, region: OsxpRegion) -> dict[str, str]:
+    """The river zips a stopped download unpacked into the region's river stage, {path: SHA-256},
+    when the stage still holds them and each is the list's as it was; else none, the stage to be
+    started again: a zip made again since would leave masks of before among the new ones."""
+    stage = mesh_dir(root, region.id) / RIVERS_STAGE
+    if not (stage / RIVERS).is_dir():
+        return {}
+    step = _read(stage / STEP).get("zips") or {}
+    listed = {z.path: z.sha256 for z in region.rivers}
+    return step if all(listed.get(p) == s for p, s in step.items()) else {}
+
+
+def not_installed(root: Path, region: OsxpRegion, rivers: bool) -> list[Zip]:
+    """The zips the region wants (:func:`wanted`) that its marker does not record as installed:
+    downloaded already or not, an update of it has them to bring."""
+    have = recorded(root, region)
+    return [z for z in wanted(root, region, rivers) if have.get(z.path) != z.sha256]
+
+
+def to_fetch(
+    root: Path, region: OsxpRegion, overlays: bool, rivers: bool = False
+) -> tuple[list[Zip], list[Zip]]:
+    """The zips of the region's folder (:func:`wanted`: its mesh, night grids and river masks) and
+    the overlay zips an install downloads: not installed yet, or changed in the bucket since, and
+    not unpacked already by an install that stopped. The overlays only with ``overlays``, as the
+    river masks only where :func:`wanted` takes them."""
+    folder = mesh_dir(root, region.id)
+    have = {
+        **recorded(root, region),
+        **(_read(folder / STEP).get("zips") or {}),
+        **_rivers_staged(root, region),
+    }
+    mesh = [z for z in wanted(root, region, rivers) if have.get(z.path) != z.sha256]
     record = _read(overlay_pack(root) / OVERLAY_RECORD)
     ovl = [z for z in region.overlays if record.get(z.path) != z.sha256] if overlays else []
     return mesh, ovl
+
+
+def mesh_changed(root: Path, region: OsxpRegion) -> bool:
+    """Whether an install changes the region's mesh: not installed whole, or one zip of its mesh
+    changed since (the test branch region-swap's ``made_whole`` makes). False: night grids, river
+    masks or overlays to add alone, the rest of the region as it was."""
+    marker = _read(mesh_dir(root, region.id) / MARKER)
+    if not marker:
+        return True
+    have = marker.get("zips") or {}
+    return any(have.get(z.path) != z.sha256 for z in region.mesh)
+
+
+def rivers_to_add(root: Path, region: OsxpRegion) -> list[Zip]:
+    """The river zips soft banks downloads alone for a region installed whole whose mesh is the
+    list's; none for one whose mesh changed: its update brings the region whole, rivers in."""
+    if mesh_changed(root, region):
+        return []
+    mesh, _ = to_fetch(root, region, False, rivers=True)
+    return [z for z in mesh if z in region.rivers]
 
 
 def night_to_fetch(root: Path, region: OsxpRegion) -> list[Zip]:
@@ -238,6 +336,13 @@ def night_to_fetch(root: Path, region: OsxpRegion) -> list[Zip]:
     marker, step = _read(folder / MARKER), _read(folder / STEP)
     have = {**(marker.get("zips") or {}), **(step.get("zips") or {})}
     return [z for z in region.night if have.get(z.path) != z.sha256]
+
+
+def disk_need(path: Path) -> int:
+    """The room a zip's files take once unpacked: each rounded up to a whole block (:data:`BLOCK`),
+    from the zip's own directory, as the list gives no count of files."""
+    with zipfile.ZipFile(path) as zf:
+        return sum(-(-i.file_size // BLOCK) * BLOCK for i in zf.infolist() if not i.is_dir())
 
 
 def unpack(path: Path, dest: Path, stop: threading.Event | None = None) -> int:
@@ -303,8 +408,15 @@ def remove(root: Path, region: str, squares: Sequence[tuple[int, int]], log: Log
 class Installer:
     """Downloads a region's zips (a few at a time) and unpacks each as soon as it is whole.
     :meth:`run` blocks; :meth:`cancel` stops it at the next megabyte, and the next install goes on
-    from there. ``night_only``: a region installed already given its night grids alone
-    (:func:`night_to_fetch`), its mesh and its record of the set-up left as they are."""
+    from there. ``rivers``: the pilot chose soft banks, the region's river masks come with it
+    (:func:`wanted`). ``night_only``: a region installed already given its night grids alone
+    (:func:`night_to_fetch`), its mesh, its river masks and its record of the set-up left as they
+    are.
+
+    Where the region's mesh does not change (:func:`mesh_changed`), what comes is added in place:
+    the marker records it, the region's set-up and its list of textures stay as they were; river
+    masks put in place change only the time of their folder, which the next start's set-up
+    compares (``region._fingerprints``)."""
 
     def __init__(
         self,
@@ -316,11 +428,13 @@ class Installer:
         host: tuple[str, str] | None = None,
         log: Log = print,
         night_only: bool = False,
+        rivers: bool = False,
     ):
         self.root = root
         self.region = region
         self.with_overlays = overlays
         self.night_only = night_only
+        self.rivers = rivers
         self.host = host or shipped_host()
         self.client = client
         self.log = log
@@ -399,17 +513,46 @@ class Installer:
         if self.night_only:
             mesh, ovl = night_to_fetch(self.root, region), []
         else:
-            mesh, ovl = to_fetch(self.root, region, self.with_overlays)
+            mesh, ovl = to_fetch(self.root, region, self.with_overlays, self.rivers)
+            if not _rivers_staged(self.root, region):  # none, or one of zips made again since
+                shutil.rmtree(folder / RIVERS_STAGE, ignore_errors=True)
+        whole = not self.night_only and mesh_changed(self.root, region)
         todo = [*mesh, *ovl]
         self._set(
             total_bytes=sum(z.size for z in todo),
             zips=len(todo),
             phase="downloading" if todo else "done",
         )
-        if not todo:
+        # nothing to download but zips unpacked and not recorded yet (river masks whose swap was
+        # refused, a stop before the marker): only the end's work left
+        left = [] if self.night_only else not_installed(self.root, region, self.rivers)
+        if not todo and not left:
             if not self.night_only:
                 self.log(f"OrthoStudio XP's region {region.id} is up to date")
             return
+        # the night grids alone keep their record to themselves: an update the pilot stopped
+        # keeps its step for the next one
+        step = {"zips": {}} if self.night_only else _read(folder / STEP)
+        step.setdefault("zips", {})
+        if todo:
+            self._fetch_all(region, mesh, ovl, folder, pack, step, whole)
+        self._finish(folder, step, whole)
+
+    def _fetch_all(
+        self,
+        region: OsxpRegion,
+        mesh: list[Zip],
+        ovl: list[Zip],
+        folder: Path,
+        pack: Path,
+        step: dict[str, dict[str, str]],
+        whole: bool,
+    ) -> None:
+        """``mesh`` downloaded and unpacked into the region's folder, its river masks into their
+        stage, each recorded (the region's step, the stage's), ``ovl`` into the overlay pack: a few
+        downloads at a time, the zips unpacked one at a time in the list's order."""
+        todo = [*mesh, *ovl]
+        stage = folder / RIVERS_STAGE
         folder.mkdir(parents=True, exist_ok=True)
         pack.mkdir(parents=True, exist_ok=True)
         self.download.mkdir(parents=True, exist_ok=True)
@@ -424,24 +567,26 @@ class Installer:
         with self.lock:  # what an earlier try downloaded counts whole, not in the pace
             self.progress.done_bytes += had
             self.rate.samples.clear()
-        update = (folder / MARKER).exists()
         size = sum(z.size for z in todo) / 1e9
+        rivers = [z for z in mesh if z in region.rivers]
         if self.night_only:
             self.log(
                 f"the night lights' grids of OrthoStudio XP's region {region.id}: "
                 f"{sum(z.size for z in todo) / 1e6:.1f} MB, into {folder.resolve()}"
             )
         else:
+            if not whole:
+                verb = "adding to"
+            elif (folder / MARKER).exists():
+                verb = "updating"
+            else:
+                verb = "installing"
             self.log(
-                f"{'updating' if update else 'installing'} OrthoStudio XP's region {region.id}: "
-                f"{len(mesh)} mesh zips, {len(ovl)} overlay zips, {size:.1f} GB, into "
+                f"{verb} OrthoStudio XP's region {region.id}: {len(mesh) - len(rivers)} mesh "
+                f"zips, {len(rivers)} river zips, {len(ovl)} overlay zips, {size:.1f} GB, into "
                 f"{folder.resolve()}"
             )
-        # the night grids alone keep their record to themselves: an update the pilot stopped
-        # keeps its step for the next one
-        step = {"zips": {}} if self.night_only else _read(folder / STEP)
-        step.setdefault("zips", {})
-
+        staged = {"zips": dict(_rivers_staged(self.root, region))}
         rank = {z.path: i for i, z in enumerate(todo)}
 
         def one(z: Zip) -> None:
@@ -457,11 +602,19 @@ class Installer:
                     raise CancelledError
                 self._set(phase="unpacking")
                 if z in ovl:
+                    self._room(z, path, pack)
                     unpack(path, pack, self.stop)
                     record = _read(pack / OVERLAY_RECORD)
                     record[z.path] = z.sha256
                     _write(pack / OVERLAY_RECORD, record)
+                elif z in rivers:  # into their stage, as into the region: rivers/textures/...
+                    stage.mkdir(exist_ok=True)
+                    self._room(z, path, stage)
+                    unpack(path, stage, self.stop)
+                    staged["zips"][z.path] = z.sha256
+                    _write(stage / STEP, staged)
                 else:
+                    self._room(z, path, folder)
                     unpack(path, folder, self.stop)
                     step["zips"][z.path] = z.sha256
                     if not self.night_only:
@@ -486,20 +639,33 @@ class Installer:
             real = [e for e in errors if not isinstance(e, CancelledError)]
             if real or errors:
                 raise (real or errors)[0]
-        self._finish(folder, step, update)
+
+    def _room(self, z: Zip, path: Path, dest: Path) -> None:
+        """Room on the disk of ``dest`` for the zip's files, each a whole block at least
+        (:func:`disk_need`), and SPARE_BYTES left: a full disk stops the install before the zip,
+        never inside it. Checked at each zip, as the start's count reads only the list's bytes and
+        the streamer may write meanwhile."""
+        need = disk_need(path) + SPARE_BYTES
+        free = shutil.disk_usage(dest.resolve()).free
+        if free < need:
+            raise InstallError(
+                f"{need / 1e9:.1f} GB needed on the disk of {dest.resolve()} for {z.local}, "
+                f"{free / 1e9:.1f} GB free"
+            )
 
     def _have_bytes(self, todo: Sequence[Zip]) -> int:
         total = 0
         for z in todo:
             with contextlib.suppress(OSError):
-                total += min(z.size, (self.download / z.name).stat().st_size)
+                total += min(z.size, (self.download / z.local).stat().st_size)
         return total
 
     def _fetch(self, z: Zip) -> Path:
         """``z`` whole in the download folder, resumed where an earlier try stopped, checked."""
         import httpx
 
-        path = self.download / z.name
+        path = self.download / z.local
+        path.parent.mkdir(parents=True, exist_ok=True)
         for attempt in range(ATTEMPTS):
             have = path.stat().st_size if path.exists() else 0
             if have > z.size:
@@ -519,7 +685,7 @@ class Installer:
                     elif r.status_code in PASSING:
                         r.raise_for_status()  # an httpx.HTTPError: tried again below
                     elif r.status_code not in (200, 206):
-                        raise InstallError(f"{z.name}: HTTP {r.status_code}")
+                        raise InstallError(f"{z.local}: HTTP {r.status_code}")
                     with open(path, "ab" if have else "wb") as f:
                         for chunk in r.iter_bytes():  # as it comes: a cut loses nothing
                             if self.stop.is_set():
@@ -534,11 +700,11 @@ class Installer:
                         if isinstance(e, httpx.HTTPStatusError)
                         else e
                     )
-                    raise InstallError(f"{z.name}: {said}") from e
+                    raise InstallError(f"{z.local}: {said}") from e
                 _pause(attempt)
         size = path.stat().st_size
         if size != z.size:
-            raise InstallError(f"{z.name}: {size} bytes, not {z.size}")
+            raise InstallError(f"{z.local}: {size} bytes, not {z.size}")
         h = hashlib.sha256()
         with open(path, "rb") as f:
             while block := f.read(CHUNK):
@@ -546,7 +712,7 @@ class Installer:
         if h.hexdigest() != z.sha256:
             path.unlink()
             self._add(-size)
-            raise InstallError(f"{z.name} came damaged (its SHA-256 differs): install again")
+            raise InstallError(f"{z.local} came damaged (its SHA-256 differs): install again")
         return path
 
     def _drop_terrain(self, folder: Path) -> None:
@@ -565,21 +731,80 @@ class Installer:
         shutil.rmtree(gone, ignore_errors=True)
         self.log("  its terrain files of before taken away: made from their names now")
 
-    def _finish(self, folder: Path, step: dict, update: bool) -> None:
-        """Every zip unpacked: the marker, which makes Live use the region, written last."""
+    def _rivers_whole(self) -> bool:
+        """Whether the river stage holds every river zip of the list: what to put in place."""
+        listed = {z.path: z.sha256 for z in self.region.rivers}
+        return bool(listed) and _rivers_staged(self.root, self.region) == listed
+
+    def _put_rivers(self, folder: Path) -> dict[str, str]:
+        """The river masks of the stage put in place with one rename once it holds every river zip
+        of the list, those of before renamed aside first and deleted after: a start finds the ones
+        or the others, whole. Returns the zips put in place, {path: SHA-256}, which the marker then
+        records; none while the stage is not whole (a stop, or rivers not wanted any more), kept
+        for the next time. Windows does not rename a folder a program holds open: those of before
+        stay as they were, the stage whole for the next try, which only puts it in place."""
+        if not self._rivers_whole():
+            return {}
+        staged = _rivers_staged(self.root, self.region)
+        real, old = folder / RIVERS, folder / RIVERS_OLD
+        shutil.rmtree(old, ignore_errors=True)  # one an earlier swap could not delete
+        try:  # renames tried again a moment on Windows (filesystem.replace)
+            if real.exists():
+                replace_file(real, old)
+            try:
+                replace_file(folder / RIVERS_STAGE / RIVERS, real)
+            except OSError:
+                if old.exists() and not real.exists():
+                    replace_file(old, real)
+                raise
+        except OSError as e:
+            raise InstallError(
+                f"the river masks of {self.region.id} are in use, by X-Plane perhaps: close it, "
+                f"then try again, which downloads nothing more ({e})"
+            ) from e
+        now = time.time()
+        with contextlib.suppress(OSError):  # what the next start's set-up compares
+            os.utime(real, (now, now))
+        shutil.rmtree(old, ignore_errors=True)
+        return staged
+
+    def _finish(self, folder: Path, step: dict[str, dict[str, str]], whole: bool) -> None:
+        """Every zip unpacked: the river masks put in place whole (:meth:`_put_rivers`), then the
+        marker, which makes Live use the region, written last. Night grids, river masks or
+        overlays added to a region whose mesh did not change: the marker records them, nothing
+        else of the region changes. ``night_only`` leaves the river masks alone: it runs while
+        Live streams, which reads them."""
         region = self.region
         marker = _read(folder / MARKER)
-        zips = {**(marker.get("zips") or {}), **step["zips"]}
-        sizes = {z.path: z.unpacked for z in (*region.mesh, *region.night)}
-        if self.night_only:  # the region as it was, its grids recorded: nothing to set up again
+        put = {} if self.night_only else self._put_rivers(folder)
+        zips = {**(marker.get("zips") or {}), **step["zips"], **put}
+        sizes = {z.path: z.unpacked for z in (*region.mesh, *region.night, *region.rivers)}
+        if not whole:  # the region as it was, what came recorded: nothing to set up again
             size = sum(sizes.get(p, 0) for p in zips)
             _write(folder / MARKER, {**marker, "zips": zips, "size": size})
-            # its zips deleted as unpacked; an update the pilot stopped keeps what it downloaded
-            # there to go on from it (the review of 2026-11-11)
-            with contextlib.suppress(OSError):
-                self.download.rmdir()
-            self.log(f"OrthoStudio XP's region {region.id}: its night lights' grids installed")
+            if put:
+                shutil.rmtree(folder / RIVERS_STAGE, ignore_errors=True)
+            if self.night_only:
+                # its zips deleted as unpacked; an update the pilot stopped keeps what it
+                # downloaded there to go on from it (the review of 2026-11-11)
+                for kind in self.download.glob("*"):
+                    with contextlib.suppress(OSError):  # its kinds' folders, only those empty
+                        kind.rmdir()
+                with contextlib.suppress(OSError):
+                    self.download.rmdir()
+                self.log(f"OrthoStudio XP's region {region.id}: its night lights' grids installed")
+                return
+            (folder / STEP).unlink(missing_ok=True)
+            shutil.rmtree(self.download, ignore_errors=True)
+            if put:
+                self.log(
+                    f"OrthoStudio XP's region {region.id}: its river masks installed, used from "
+                    "Live's next start"
+                )
+            else:
+                self.log(f"OrthoStudio XP's region {region.id} updated")
             return
+        update = (folder / MARKER).exists()
         _write(
             folder / MARKER,
             {
@@ -592,6 +817,8 @@ class Installer:
             },
         )
         (folder / STEP).unlink(missing_ok=True)
+        if put:
+            shutil.rmtree(folder / RIVERS_STAGE, ignore_errors=True)
         self._drop_terrain(folder)
         now = time.time()
         for sub in ("Earth nav data", "terrain", "terrain-lists"):  # what the set-up compares

@@ -54,7 +54,7 @@ from concurrent.futures import Future, ProcessPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import dds, machine, pools, writes
+from . import dds, evict, machine, pools, writes
 from .cache import IMAGE, NO_IMAGERY, ChunkCache, Key
 from .evict import EVICT_SAFE_KM, TARGET, XPlaneWindow, pick, tiles_of, usage, xplane_tiles
 from .flightplan import MOVING_MS, FlightPlan, last_plan
@@ -83,6 +83,7 @@ from .region import (
     night_on,
     region_version,
     sources_of_pack,
+    water_record,
 )
 from .rings import (
     AIRPORT_ZOOM,
@@ -102,6 +103,7 @@ from .texture import (
     pieces_of,
     worker_ignores_ctrl_c,
 )
+from .waterphoto import is_water_name
 
 PLACEHOLDER_KM = 300.0  # every texture within this has at least its 256 px level
 LOAD_KM = (
@@ -445,6 +447,15 @@ class Streamer:
         self.built: dict[str, int] = dict(self.meta.get("textures", {}))
         # recorded with them: on the disk until their file is written again (evict.usage)
         self.copied_up: set[str] = set(copies_in(self.meta))
+        # the water photos holding a photo (orthostudio.live.waterphoto), by the level of the land
+        # they follow, a stale texture's too: on the disk with it (evict.usage)
+        water = self.meta.get("water")
+        self.water: dict[str, int] = {
+            n: lv
+            for n, lv in (water if isinstance(water, dict) else {}).items()
+            if isinstance(lv, int)
+        }
+        self._water_said = False  # a water photo that could not be made, said once
         self.built_version = 0  # one more at each change of built: the window's map
         # built without pieces that did not come: when to build them again, and how many times
         self.patchy: dict[str, tuple[float, int]] = {
@@ -520,7 +531,9 @@ class Streamer:
             TextureIndex(region=region)
             if region is not None
             else TextureIndex(
-                e.name for e in os.scandir(pack_dir / "textures") if e.name.endswith(".dds")
+                e.name
+                for e in os.scandir(pack_dir / "textures")
+                if e.name.endswith(".dds") and not is_water_name(e.name)
             )
         )
         others = region.others if region is not None else None  # the rest of it freed
@@ -585,6 +598,9 @@ class Streamer:
                 # then on again, squares flown meanwhile stayed without night for good (the review
                 # of 2026-11-11)
                 night=night_on(pack_dir),
+                # the same for the water: what the pack's record says its terrain files name
+                water=water_record(pack_dir),
+                watered=self._watered,
             )
             self.names.yielding = self.yielding
         self.night = night  # the night textures of the textures built (orthostudio.live.nightwork)
@@ -676,12 +692,18 @@ class Streamer:
         from every square made), and its night black again or gone with it: one way for the disk
         budget and a season's change. Raises ``OSError`` for the day file; the night's is said and
         left (Windows refusing a file X-Plane holds open), the day texture neutral all the same."""
+        from . import waterphoto
+
         path = self.pack_dir / "textures" / name
         held = self.names is not None and self.names.holds(name)
         if held:
             self.names.pool.replace(self.top_of(name), path)  # type: ignore[union-attr]
+            waterphoto.follow(path, None)  # its water photo back to X-Plane's water alone
         else:
             path.unlink(missing_ok=True)
+            waterphoto.drop(path)  # and its mask: no square names them
+        with self.lock:
+            self.water.pop(name, None)
         if self.night is not None:
             try:
                 self.night.back_to_black(name)
@@ -703,7 +725,13 @@ class Streamer:
         if name in self.built:
             self.built[name] = level
             self.copied_up.discard(name)  # its file written again: no copy there any more
+            self.water.pop(name, None)  # made again at its size: said by _watered
             self._night_follows(name, level)
+
+    def _watered(self, name: str, level: int) -> None:
+        """Under ``self.lock``: a texture's water photo holds its land's photo, from ``level``, as
+        its square's files found or made it (orthostudio.live.names): counted (evict.usage)."""
+        self.water[name] = level
 
     def _fitting(self, name: str) -> bool:
         """Whether a texture is being set to a new zoom's size: not written meanwhile."""
@@ -1287,7 +1315,10 @@ class Streamer:
         self, fut: Future, name: str, level: int, patched: bool = False, gen: int | None = None
     ) -> None:
         try:
-            fut.result()
+            got = fut.result()
+            self._water_built(
+                name, level, got[4] if isinstance(got, tuple) and len(got) > 4 else None
+            )
             with self.lock:  # the status line and the save copy them whole, from the main thread
                 if gen is not None and gen != self.look_gen:  # encoded in the season before
                     self.stale[name] = level
@@ -1311,6 +1342,33 @@ class Streamer:
         finally:
             with self.lock:
                 self.in_flight.pop(name, None)
+
+    def _water_built(self, name: str, level: int, water: int | str | None) -> None:
+        """A texture's water photo as its build left it (``texture.build_job``): recorded with the
+        level it follows, or not, and why it could not be made said once. Its name made between
+        the build's look for it and now (its square's files, ``orthostudio.live.names``) is made
+        here, from the land just built: rare, never left empty while the land holds a photo."""
+        from . import waterphoto
+
+        if isinstance(water, str):
+            if not self._water_said:
+                self._water_said = True
+                self.log(
+                    f"  the water photo of {name} could not be made ({water}): its water shows "
+                    "X-Plane's alone (said once)"
+                )
+            water = None
+        elif water is None:
+            land = self.pack_dir / "textures" / name
+            if os.path.lexists(land.with_name(waterphoto.water_name(name))):
+                water = waterphoto.follow(land, level)
+        if water is not None:
+            writes.add("water photos", evict.water_bytes(level, self.top_of(name)))
+        with self.lock:
+            if water is None:
+                self.water.pop(name, None)
+            else:
+                self.water[name] = water
 
     def build_loop(self) -> None:
         try:
@@ -1707,15 +1765,23 @@ class Streamer:
             behind=self.behind,
             lit=self._lit(),
             copied=self.copied_up,
+            water=self._water_now(),
         )
         for name, level in picks[:EVICT_BATCH]:
             path = self.pack_dir / "textures" / name
+            if self._fitting(name):  # its square's files set it, and its water photo, meanwhile
+                continue
             try:
                 if level >= NEUTRAL_LEVEL and self.names is not None:
                     self._neutral(name)
                 else:
                     top = dds.read_top(path)  # the file's size from its header: it keeps it
-                    downgrade(path, level, self.pack_dir / neutral_file(top), file_top=top)
+                    water = downgrade(path, level, self.pack_dir / neutral_file(top), file_top=top)
+                    with self.lock:
+                        if water is None:
+                            self.water.pop(name, None)
+                        else:
+                            self.water[name] = water
                     self._night_follows(name, level)
                     if level <= 4:
                         from .texture import needs_copy
@@ -1774,10 +1840,20 @@ class Streamer:
         """The night textures the disk counts, by level (orthostudio.live.nightwork)."""
         return {} if self.night is None else self.night.counted()
 
+    def _water_now(self) -> dict[str, int]:
+        """The water photos the disk counts, by the level they follow, a copy: the squares'
+        thread changes them meanwhile."""
+        with self.lock:
+            return dict(self.water)
+
     def disk_used(self, built: dict[str, int] | None = None) -> int:
         """The disk of the textures built, as their files hold them (evict.usage)."""
         return usage(
-            self.built if built is None else built, self.top_of, self._lit(), self.copied_up
+            self.built if built is None else built,
+            self.top_of,
+            self._lit(),
+            self.copied_up,
+            self._water_now(),
         )
 
     def save(self) -> None:
@@ -1788,6 +1864,7 @@ class Streamer:
             stale = dict(self.stale)
             look, season = self.look, self.season
             copied = sorted(n for n in self.copied_up if n in textures)
+            water = dict(self.water)
         lit = self._lit()  # the stale ones' too: their night is on the disk until put back black
         try:
             meta = load_built(self.pack_dir)
@@ -1802,6 +1879,7 @@ class Streamer:
             meta.pop("grown", None)  # a pack's record from when textures grew
             meta["patchy"] = patchy
             meta["lit"], meta["copied"] = lit, copied  # what their files hold besides (evict.usage)
+            meta["water"] = water
             meta["updated"] = meta["copied_with"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
             size = save_built(self.pack_dir, meta)
         except OSError as e:  # held by another program: as a stop between two saves, never fatal

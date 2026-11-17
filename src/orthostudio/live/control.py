@@ -137,6 +137,7 @@ def options_for(settings: LiveSettings) -> session.Options:
         own_tiles=settings.own_tiles,
         night=settings.night,
         night_light=settings.night_light,
+        rivers_fade=settings.rivers_fade,
     )
 
 
@@ -196,12 +197,14 @@ def _same_folder(one: str, other: str | None) -> bool:
 
 def _textures_bytes(pack: Path) -> int:
     """The disk of the textures built, Live stopped: as the streamer counts it, from its record
-    (evict.usage), the night textures and the 8192 px copies with them; without them the figure
-    fell by nearly half on Windows as Live stopped (the review of 2026-11-11)."""
+    (evict.usage), the night textures, the 8192 px copies and the water photos with them; without
+    them the figure fell by nearly half on Windows as Live stopped (the review of 2026-11-11)."""
     meta = load_built(pack)
     lit = meta.get("lit")
     lit = lit if isinstance(lit, dict) and night_on(pack) else {}  # lights off: their files gone
-    return usage(meta.get("textures", {}), file_tops(pack), lit, copies_in(meta))
+    water = meta.get("water")
+    water = water if isinstance(water, dict) else {}
+    return usage(meta.get("textures", {}), file_tops(pack), lit, copies_in(meta), water)
 
 
 def gather_checks() -> dict[str, Any]:
@@ -372,6 +375,10 @@ class LiveControl:
         # the pilot's own install goes first (:meth:`_fetch_night_grids`)
         self._quiet = False
         self._night_thread: threading.Thread | None = None
+        # the river masks soft banks brings, region after region, in the installs' one place and
+        # seen on the page (:meth:`rivers_chosen`); its Stop ends the whole round
+        self._rivers_thread: threading.Thread | None = None
+        self._rivers_stop = threading.Event()
         # the window's "Prepare": a departure for the running stream, and SimBrief's suggestion
         self._resolve = resolve
         self._simbrief = simbrief
@@ -816,9 +823,12 @@ class LiveControl:
     def regions(self, *, fetch: bool = False) -> dict[str, Any]:
         """OrthoStudio XP's regions as the page lists them: those installed (:func:`our_regions`,
         their size on the disk and where), then every region of the host's list with what it
-        downloads (the overlays only when the pilot takes them), whether it is installed and how
-        many of its zips changed since; the install under way. With ``fetch`` (the page's own
-        request, not its status), the host's list is read again in the background when old."""
+        downloads (``osxpregions.wanted``: its river masks only with soft banks or once it has
+        them; the overlays only when the pilot takes them), whether it is installed, how many of
+        its zips an update brings and what it downloads, and what soft banks would download for it
+        (``rivers_bytes``: its river masks it has not, the Settings' question sums them); the
+        install under way. With ``fetch`` (the page's own request, not its status), the host's
+        list is read again in the background when old."""
         with self._lock:
             reading = self._catalog_thread is not None and self._catalog_thread.is_alive()
             stale = time.monotonic() - self._catalog_at > CATALOG_S
@@ -831,7 +841,8 @@ class LiveControl:
             installer = None if self._quiet else self._installer
         root = live_root()
         mine = osxpregions.installed(root)
-        overlays = self._settings().overlays != "off"
+        settings = self._settings()
+        overlays, rivers = settings.overlays != "off", settings.rivers_fade
         listed = []
         for region_id in REGION_NAMES:
             region = (catalog or {}).get(region_id)
@@ -839,16 +850,24 @@ class LiveControl:
                 continue
             item: dict[str, Any] = {"id": region_id, "installed": region_id in mine}
             if region is not None:
-                mesh, ovl = osxpregions.to_fetch(root, region, overlays)
+                installed = region_id in mine
+                mesh, ovl = osxpregions.to_fetch(root, region, overlays, rivers)
                 mesh = [z for z in mesh if z not in region.night]  # those come by themselves
-                item["download"] = region.mesh_size + (
-                    sum(z.size for z in region.overlays) if overlays else 0
+                want = osxpregions.wanted(root, region, rivers) + (
+                    region.overlays if overlays else ()
                 )
-                item["unpacked"] = region.unpacked + (
-                    sum(z.unpacked for z in region.overlays) if overlays else 0
-                )
-                item["changed"] = len(mesh) + len(ovl) if region_id in mine else 0
+                item["download"] = sum(z.size for z in want)
+                item["unpacked"] = sum(z.unpacked for z in want)
+                # zips downloaded already but not recorded count too: an update has them to put
+                # in place (river masks whose swap Windows refused), with nothing to download
+                changed = osxpregions.not_installed(root, region, rivers)
+                changed = [z for z in changed if z not in region.night]
+                item["changed"] = len(changed) + len(ovl) if installed else 0
                 item["changed_bytes"] = sum(z.size for z in (*mesh, *ovl))
+                adds, _ = osxpregions.to_fetch(root, region, False, rivers=True)
+                item["rivers_bytes"] = (
+                    sum(z.size for z in adds if z in region.rivers) if installed else 0
+                )
             listed.append(item)
         progress = installer.snapshot() if installer is not None else None
         return {
@@ -869,8 +888,13 @@ class LiveControl:
         if region is None:
             raise session.RefusedError(f"no region {region_id!r} in the list of Live's regions")
         installed = region_id in osxpregions.installed(live_root())
+        settings = self._settings()
         installer = self._installer_of(
-            live_root(), region, overlays=self._settings().overlays != "off", log=self.log
+            live_root(),
+            region,
+            overlays=settings.overlays != "off",
+            log=self.log,
+            rivers=settings.rivers_fade,
         )
         thread = threading.Thread(target=installer.run, name="live-region-install", daemon=True)
         # one check and one taking: the night grids' own download, started from the list's read
@@ -880,6 +904,8 @@ class LiveControl:
                 raise session.RefusedError(
                     "the night lights' grids are being downloaded: try again in a moment"
                     if self._install_thread is self._night_thread
+                    else "the river masks are being downloaded: one install at a time"
+                    if self._install_thread is self._rivers_thread
                     else "a region is being installed: one at a time"
                 )
             if self._state != IDLE and installed:
@@ -888,10 +914,72 @@ class LiveControl:
         thread.start()
 
     def cancel_install(self) -> None:
+        """The window's Stop: the install under way, and the round of river masks it is part of."""
+        self._rivers_stop.set()
         with self._lock:
             installer = None if self._quiet else self._installer
         if installer is not None:
             installer.cancel()
+
+    def rivers_chosen(self) -> bool:
+        """Soft banks saved in the Settings: the river masks of each region installed whose mesh
+        is the list's, and that has not got them, downloaded alone (``osxpregions.rivers_to_add``),
+        one region after the other, in the installs' one place with its line on the page; a region
+        whose mesh changed shows its update, which brings it whole, rivers in. While Live streams
+        too: the stream reads a region's river masks only from its next start, the region's set-up
+        made again then (``region._fingerprints``); never put in place over those a region has
+        while Live streams, which may be reading them: that waits for Update. The night grids' own
+        download gives way; an install under way keeps its place, and the regions then show
+        Update. False when nothing started."""
+        self._stop_night_grids()
+        thread = threading.Thread(target=self._rivers, name="live-rivers", daemon=True)
+        with self._lock:
+            if self._install_thread is not None and self._install_thread.is_alive():
+                busy = True
+            else:
+                busy = False
+                self._rivers_stop.clear()
+                self._install_thread = self._rivers_thread = thread
+                self._quiet = False
+        if busy:
+            self.log("the river masks come with Update once the install under way is done")
+            return False
+        thread.start()
+        return True
+
+    def _rivers(self) -> None:
+        root = live_root()
+        with self._lock:
+            catalog = self._catalog
+        if catalog is None:  # the list not read yet: read here, the place held meanwhile
+            try:
+                catalog = self._catalog_of(root)
+            except Exception as e:
+                self.log(f"the river masks wait for the list of regions: {e}")
+                return
+            with self._lock:
+                self._catalog, self._catalog_error = catalog, None
+                self._catalog_at = time.monotonic()
+        for region_id in REGION_NAMES:
+            region = catalog.get(region_id)
+            try:
+                if region is None or region_id not in osxpregions.installed(root):
+                    continue
+                if not osxpregions.rivers_to_add(root, region):
+                    continue
+                if self._state != IDLE and osxpregions.has_rivers(root, region_id):
+                    continue
+            except OSError as e:  # its folder unreadable this moment: its Update stays offered
+                self.log(f"the river masks of {region_id} wait: {e}")
+                continue
+            installer = self._installer_of(root, region, overlays=False, log=self.log, rivers=True)
+            with self._lock:
+                if self._rivers_stop.is_set():
+                    return
+                self._installer = installer
+            installer.run()
+            if installer.snapshot().get("phase") != "done":
+                return
 
     def remove_region(self, region_id: str) -> None:
         """Delete one of OrthoStudio XP's regions from the disk, with its overlays. Not while Live
@@ -907,7 +995,7 @@ class LiveControl:
             if self._state != IDLE:
                 raise session.RefusedError("Live is streaming: stop it first")
             if running is not None and (
-                running is self._night_thread
+                running in (self._night_thread, self._rivers_thread)  # any region, one by one
                 or (self._installer is not None and self._installer.region.id == region_id)
             ):
                 raise session.RefusedError("this region is being installed: stop that first")

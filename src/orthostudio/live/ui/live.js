@@ -779,6 +779,15 @@ function drawRegions(status) {
   }
 }
 
+/** The « Soft banks » answer, with what it downloads for the regions installed: their river masks
+ * they have not got (each region's rivers_bytes, orthostudio/live/control.py); its words alone once
+ * they have them, kept whatever the answer. */
+function drawRivers(status) {
+  const bytes = (status.regions?.list || []).reduce((sum, r) => sum + (r.rivers_bytes || 0), 0);
+  const text = bytes > 0 ? t("rivers.soft_note_download", { size: amount(bytes) }) : t("rivers.soft_note");
+  if ($("rivers-soft-note").textContent !== text) $("rivers-soft-note").textContent = text;
+}
+
 function draw(status) {
   last = status;
   tellFrame?.(); // its state, which the app's frame says beside Live's name (embed.js)
@@ -793,6 +802,7 @@ function draw(status) {
   drawXplane(status);
   drawLogFile(status);
   drawRegions(status);
+  drawRivers(status);
   liveMap?.update({ ...status, providers });
   if (status.decals) decalList = status.decals;
   if (saved === null) {
@@ -1180,6 +1190,9 @@ function fillSettings(settings) {
   for (const input of document.querySelectorAll('input[name="night"]')) {
     input.checked = input.value === nightChoice(settings);
   }
+  for (const input of document.querySelectorAll('input[name="rivers_fade"]')) {
+    input.checked = input.value === (settings.rivers_fade ? "soft" : "even");
+  }
   drawSimbrief();
   drawMemory();
   drawZooms();
@@ -1210,6 +1223,8 @@ function formSettings() {
     own_tiles: document.querySelector('input[name="own_tiles"]:checked')?.value || saved?.own_tiles || "first",
     night: nightChosen() !== "off",
     night_light: nightChosen() === "off" ? (saved?.night_light || "normal") : nightChosen(),
+    rivers_fade: (document.querySelector('input[name="rivers_fade"]:checked')?.value
+      || (saved?.rivers_fade ? "soft" : "even")) === "soft",
     decal: $("set-decal").options.length ? $("set-decal").value : (saved?.decal ?? LIVE_DECAL),
     season: seasonChosen(),
     seasons: seasonLooks || saved?.seasons,
