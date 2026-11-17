@@ -254,7 +254,7 @@ def relayout(
     ``workers``: the processes sharing the textures, this computer's encoders at a start (X-Plane
     not running): one alone took 41 to 67 s for 44,305 textures on a Mac (the user: « c'est
     long », 2026-10-10). A pool that cannot start, the textures are laid out here, one by one."""
-    from .pack import MARKER, load_built
+    from .pack import load_built, save_built
 
     marker = pack_dir / REGION_MARKER
     meta = json.loads(marker.read_text())
@@ -292,9 +292,7 @@ def relayout(
     built.update(levels)
     if built_meta:
         built_meta.pop("grown", None)  # every file at its size now: nothing grows any more
-        tmp = pack_dir / MARKER.with_suffix(".tmp")
-        tmp.write_text(json.dumps(built_meta))
-        replace_file(tmp, pack_dir / MARKER)
+        save_built(pack_dir, built_meta)
     meta["zooms"] = asdict(zooms)
     meta["layout"] = LAYOUT_FIXED
     marker.write_text(json.dumps(meta))
@@ -348,11 +346,17 @@ def remove_temps(pack_dir: Path) -> int:
     """The files a Live stopped in the middle of a write left beside the textures, removed: at a
     start, before anything writes there (the next writes' own names are the same kind). The
     night textures' too, and the roads' half written (``.<square>.<pid>.tmp``) and their locks,
-    none of which a start finds in use (the review of 2026-11-11)."""
+    none of which a start finds in use (the review of 2026-11-11). The record of the textures
+    built's too (``ortho.json.tmp-…``, ``ortho.tmp`` before 2.2.1)."""
     from .nightwork import ROADS_FOLDER
+    from .pack import MARKER
 
     removed = 0
     for folder, gone in (
+        (
+            pack_dir / MARKER.parent,
+            lambda n: n.startswith(f"{MARKER.name}.tmp-") or n == MARKER.with_suffix(".tmp").name,
+        ),
         (pack_dir / "textures", lambda n: n.startswith(TEMP_PREFIX)),
         (pack_dir / NIGHT_FOLDER, lambda n: n.startswith(TEMP_PREFIX)),
         (
@@ -687,14 +691,12 @@ def set_night(
 
 def _forget_lit(pack_dir: Path) -> None:
     """The textures' record without night textures holding lights (orthostudio.live.evict.usage)."""
-    from .pack import MARKER, load_built
+    from .pack import load_built, save_built
 
     meta = load_built(pack_dir)
     if meta.get("lit"):
         meta["lit"] = {}
-        tmp = pack_dir / MARKER.with_suffix(".tmp")
-        tmp.write_text(json.dumps(meta))
-        replace_file(tmp, pack_dir / MARKER)
+        save_built(pack_dir, meta)
 
 
 def _drop_night(pack_dir: Path, log: Callable[[str], None]) -> None:
@@ -826,7 +828,7 @@ def reset_built(pack_dir: Path, log: Callable[[str], None] = print) -> int:
     night textures are black again too: one made before stayed over the neutral texture until its
     texture was built again at night."""
     from .names import NeutralPool, NightPool, night_name
-    from .pack import MARKER, load_built
+    from .pack import load_built, save_built
 
     meta = load_built(pack_dir)
     built = {**meta.get("stale", {}), **meta.get("textures", {})}
@@ -848,9 +850,7 @@ def reset_built(pack_dir: Path, log: Callable[[str], None] = print) -> int:
         meta["textures"], meta["seen"], meta["patchy"], meta["stale"] = {}, {}, [], {}
         meta["lit"], meta["copied"] = {}, []  # their nights black, their copies gone
         meta.pop("grown", None)
-        tmp = pack_dir / MARKER.with_suffix(".tmp")
-        tmp.write_text(json.dumps(meta))
-        replace_file(tmp, pack_dir / MARKER)
+        save_built(pack_dir, meta)
     from .nightwork import ROADS_FOLDER
 
     _remove_tree(pack_dir / ROADS_FOLDER, lambda _: None, "roads")  # the night's, read again

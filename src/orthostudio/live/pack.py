@@ -21,9 +21,11 @@ Linux. ``_live/ortho.json`` in the pack records the level each texture is built 
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from orthostudio.fsutil import atomic_write_text, open_read
 from orthostudio.home import osxp_home
 from orthostudio.live.filesystem import abilities
 
@@ -83,9 +85,33 @@ def default_cache_path() -> Path:
     return live_root() / "chunks.sqlite"
 
 
-def load_built(pack_dir: Path) -> dict[str, Any]:
-    path = pack_dir / MARKER
-    return json.loads(path.read_text()) if path.exists() else {}
+def load_built(pack_dir: Path, damaged: Callable[[str], object] | None = None) -> dict[str, Any]:
+    """Live's record of the textures it built (:data:`MARKER`), {} when there is none.
+
+    A record that does not read (empty, cut short, not a table, not text) is read as none, and
+    ``damaged`` hears why: every request of the window reads it, and one found empty answered
+    them all with an error (discussion 32, docs/specs/live.md)."""
+    try:
+        with open_read(pack_dir / MARKER) as f:  # Windows: never in the instant of a save
+            text = f.read().decode("utf-8")
+        meta: Any = json.loads(text) if text.strip() else "empty"
+    except FileNotFoundError:
+        return {}
+    except ValueError as e:  # not JSON, or not text (UnicodeDecodeError is a ValueError)
+        meta = e
+    if isinstance(meta, dict):
+        return meta
+    if damaged is not None:
+        damaged(f"Live's record of its textures did not read ({str(meta)[:120]})")
+    return {}
+
+
+def save_built(pack_dir: Path, meta: dict[str, Any]) -> int:
+    """Live's record of its textures written whole, its bytes flushed to the disk before it takes
+    the record's name (docs/specs/live.md). Returns its size."""
+    text = json.dumps(meta)
+    atomic_write_text(pack_dir / MARKER, text, fsync=True)
+    return len(text)
 
 
 def copies_in(meta: dict[str, Any]) -> list[str]:

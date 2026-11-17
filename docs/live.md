@@ -553,6 +553,9 @@ To switch Live off, put `enabled = false` in `live.toml`, in OrthoStudio XP's ow
 - If Live stops, X-Plane goes on flying over what is on the disk. If the streamer stops on an
   error, the window says so with the error, and the plugin lets X-Plane go on.
 - If a texture comes late, X-Plane shows it a little blurry and sharpens it at its next ring.
+- If the computer stopped while Live was saving the list of the textures it built (a power cut,
+  a crash), Live starts with no list: `LogLive.txt` says so, and the textures around the aircraft
+  are built again as X-Plane needs them. Nothing to delete by hand.
 - If the photo source refuses your connection (access denied), Live says so under the source and
   the textures read "Downloads refused": stop Live, choose another source, start it again.
 - Quit X-Plane before Stop: Live unchecks its scenery when it stops, and waits for X-Plane to quit

@@ -539,6 +539,24 @@ def _neutral_inodes(pack: Path) -> set[tuple[int, int]]:
     return out
 
 
+def built_files(pack: Path) -> list[str]:
+    """The textures whose file holds something built: their name no longer leads to the neutral
+    texture or one of its copies. Read once, when Live's record of its textures was lost
+    (orthostudio.live.pack.load_built): what it named stayed on the disk, uncounted, never made
+    neutral again nor taken away with its square (the review of 2026-11-17)."""
+    neutral = _neutral_inodes(pack)
+    out = []
+    with contextlib.suppress(FileNotFoundError), os.scandir(pack / "textures") as entries:
+        for entry in entries:
+            if not entry.name.endswith(".dds") or parse_texture_name(entry.name) is None:
+                continue
+            with contextlib.suppress(OSError):
+                st = os.stat(entry.path)  # a DirEntry's has no inode on Windows
+                if (st.st_dev, st.st_ino) not in neutral:
+                    out.append(entry.name)
+    return out
+
+
 def _neutral_tops(pack: Path) -> dict[tuple[int, int], int]:
     """(device, inode) of the neutral texture and its copies, each with its sharpest level."""
     from . import dds

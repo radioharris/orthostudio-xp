@@ -1248,6 +1248,22 @@ X-Plane's French menu says it.
   with a rollback journal. Not the photos of the 4096 and 8192 px levels (`UNCACHED_FROM`): the
   texture built holds them, and one built again after being made coarser downloads them again.
 
+  The record is written whole (`pack.save_built`, through `fsutil.atomic_write_text`): to a
+  temporary file flushed to the disk (`fsync`), then renamed over the old one. Without the flush,
+  a rename can reach the disk before the data of the file it names (NTFS, APFS): a computer
+  stopped in between can leave the record empty. A record that does not read (empty, cut short,
+  not a table, not text) is read as none (`pack.load_built`), and the streamer starts without it.
+  The textures it named are on the disk still, uncounted, and nothing else would take them away:
+  the streamer finds them once (`names.built_files`: a file that no longer leads to the neutral
+  texture) and counts them stale at level 0, a level nothing reads, as after a season's change.
+  Those X-Plane needs are built again, the others made neutral again bit by bit (`drop_stale`),
+  or removed where their square is not made; the log says how many. A start removes the record's
+  half written files (`remove_temps`). Before
+  2.2.1 a damaged record raised: every request of the window reads it (the disk of the textures
+  in `checks`), so the window answered « HTTP 500 » to all of them and showed a blank Settings
+  page, the streamer could not start, and reinstalling did nothing, the record being in Live's
+  folder (discussion 32, 2026-11-17).
+
   **Disk writes** (the test pair of 2026-09-28, LFBO north-west, 15 minutes at 3,000 ft and
   230 kt, ZL17/19, both caches cold): Live wrote about 25 GB for its whole flight, AutoOrtho
   8 GB. AutoOrtho builds each texture in memory as X-Plane reads it and mostly keeps its JPEGs,

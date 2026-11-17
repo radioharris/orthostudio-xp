@@ -20,7 +20,7 @@ from typing import Any
 
 from . import dds
 from .geo import parse_texture_name
-from .pack import load_built
+from .pack import MARKER, load_built
 
 MAX_TEXTURES = 15_000  # the most rectangles one answer holds, the sharpest first
 ROUTE_POINTS = 400  # a route's points, at most, as the map draws it
@@ -78,7 +78,7 @@ def _built(pack: Path) -> list[Row]:
     """The pack's record, read again only once the streamer has saved it since."""
     from .region import REGION_MARKER
 
-    marker = pack / "_live" / "ortho.json"
+    marker = pack / MARKER
     try:
         mtime = marker.stat().st_mtime
     except OSError:
