@@ -5,20 +5,25 @@
 The banner of a new version (:mod:`orthostudio.update`) had a link to the release page alone: the
 user downloaded the installer, quit the app, replaced it and, on macOS, opened it past Gatekeeper
 once more (the user, 2026-11-17: « on peut pas faire une installation automatique ? »). Where the
-app can replace itself, the banner now installs the new version: the installer of this system is
-downloaded from the release, checked against the size and the SHA-256 GitHub gives for it, handed
-over to what puts it in place, and the app quits; the new version opens by itself.
+app can replace itself, the banner now installs the new version. The installer of this system is
+downloaded from the release and checked against the size and the SHA-256 GitHub gives for it; the
+app makes ready what it can while it is still open, one bar for everyone (« Le même affichage pour
+tout le monde »); then it hands over to what puts the new version in place, and quits; the new
+version opens by itself.
 
-- macOS: a shell script written beside the download and run by the system's ``/bin/bash``, nothing
-  of the app it replaces (:func:`mac_script`). It waits until nothing runs from the app any more,
-  mounts the disk image, checks the app in it, puts the old app aside in its own folder, copies the
-  new one in its place and opens it; any failure puts the old app back and opens that. Tried on a
-  Mac on 2026-11-17: an app without a signature that replaces itself is neither stopped nor asked
-  about by macOS, and the copy, made from a file no browser downloaded, opens without Gatekeeper's
-  *Open Anyway*.
-- Windows: the installer itself, run without its pages (its progress shows; the page asked the
-  questions) into the folder the app runs from (:func:`windows_command`). It stops what still runs
-  as on any install (``tools/package/stop_running.pas``) and starts the app at its end.
+- macOS: the app of the disk image is copied beside the old one, in a hidden folder of the same
+  folder (:func:`stage_app`), while the app is still open: the bar counts the copy after the
+  download. A shell script run by the system's ``/bin/bash`` then waits until nothing runs from the
+  old app, swaps the two by two renames, and opens the new one (:func:`mac_script`); a failure puts
+  the old one back and opens it. The copy was first made by the script once the app had quit: 30 s
+  with no window and half an app in Applications (measured on 2026-11-17, a 2.2.0rc1 updating
+  itself to 2.2.0). Tried the same day: macOS neither stops nor asks about an app without a
+  signature that replaces itself, and the copy, made from a file no browser downloaded, opens
+  without Gatekeeper's *Open Anyway*.
+- Windows: the installer itself, run without its pages into the folder the app runs from
+  (:func:`windows_command`): Windows replaces no file a running app holds, so it does its work
+  once the app has quit, its own progress showing. It stops what still runs as on any install
+  (``tools/package/stop_running.pas``) and starts the app at its end.
 - Linux, the Windows zip, and an app that cannot be written where it is (a Mac account that is not
   an administrator, an app opened from its disk image or from where the browser left it): the
   banner keeps its link, as before (:func:`installed_here` is ``None``).
@@ -39,8 +44,11 @@ import os
 import platform
 import plistlib
 import shlex
+import shutil
+import stat
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import urllib.error
@@ -59,7 +67,9 @@ __all__ = [
     "QUIT_WAIT_S",
     "REASONS",
     "Here",
+    "InstallCancelledError",
     "Installer",
+    "UpdateError",
     "asset_facts",
     "download",
     "download_url",
@@ -67,6 +77,7 @@ __all__ = [
     "installer_name",
     "last_try",
     "mac_script",
+    "stage_app",
     "windows_command",
 ]
 
@@ -82,11 +93,14 @@ UPDATE_DIR = "update"
 PENDING_NAME = "pending.json"
 SCRIPT_NAME = "install.sh"
 SETUP_LOG_NAME = "setup.log"
+STAGING_PREFIX = ".osxp-update."
+"""The hidden folder beside the app where the new one is made ready, then the old one put aside."""
 QUIT_WAIT_S = 120
 """How long the macOS script waits for the app to quit before giving up, the old app untouched.
 The app stops a build or a stream on its way out, which takes seconds."""
-CHUNK = 256 * 1024
+CHUNK = 1024 * 1024
 TIMEOUT_S = 30.0
+HDIUTIL_TIMEOUT_S = 120.0
 RELEASE_API = f"https://api.github.com/repos/{update.REPOSITORY}/releases/tags/v{{version}}"
 
 log = logging.getLogger(__name__)
@@ -109,8 +123,8 @@ class UpdateError(Exception):
         self.reason = reason
 
 
-class DownloadCancelledError(Exception):
-    """The download stopped by the page's *Cancel*: not a failure, nothing kept."""
+class InstallCancelledError(Exception):
+    """The page's *Cancel*: not a failure, nothing kept."""
 
 
 # -- where the app is -----------------------------------------------------------------------------
@@ -154,11 +168,7 @@ def installed_here(
             or "/AppTranslocation/" in str(app)
         ):
             return None
-        try:
-            info = plistlib.loads((app / "Contents" / "Info.plist").read_bytes())
-        except (OSError, ValueError, plistlib.InvalidFileException):
-            return None
-        if not isinstance(info, dict) or info.get("CFBundleIdentifier") != BUNDLE_ID:
+        if _bundle_facts(app)[0] != BUNDLE_ID:
             return None
         if not (os.access(app, os.W_OK) and os.access(app.parent, os.W_OK)):
             return None
@@ -174,6 +184,21 @@ def installed_here(
             return None
         return Here("windows", "x64", folder)
     return None
+
+
+def _bundle_facts(app: Path) -> tuple[str | None, str | None]:
+    """The identifier and the version of a macOS app, ``None`` for what cannot be read."""
+    try:
+        info = plistlib.loads((app / "Contents" / "Info.plist").read_bytes())
+    except (OSError, ValueError, plistlib.InvalidFileException):
+        return None, None
+    if not isinstance(info, dict):
+        return None, None
+    ident, version = info.get("CFBundleIdentifier"), info.get("CFBundleShortVersionString")
+    return (
+        ident if isinstance(ident, str) else None,
+        version if isinstance(version, str) else None,
+    )
 
 
 def installer_name(version: str, here: Here) -> str:
@@ -254,17 +279,14 @@ def download(
         with opener(request, timeout=timeout) as answer, part.open("wb") as out:
             while chunk := answer.read(CHUNK):
                 if cancelled():
-                    raise DownloadCancelledError
+                    raise InstallCancelledError
                 done += len(chunk)
                 if done > size:
                     raise UpdateError("damaged", f"more than the {size} bytes GitHub gives")
                 out.write(chunk)
                 digest.update(chunk)
                 progress(done)
-    except DownloadCancelledError:
-        part.unlink(missing_ok=True)
-        raise
-    except UpdateError:
+    except (InstallCancelledError, UpdateError):
         part.unlink(missing_ok=True)
         raise
     except OSError as exc:  # urllib's errors are OSErrors, a full disk too
@@ -274,6 +296,135 @@ def download(
         part.unlink(missing_ok=True)
         raise UpdateError("damaged", f"{done} bytes of SHA-256 {digest.hexdigest()}")
     os.replace(part, dest)
+
+
+# -- the new app made ready, on macOS -------------------------------------------------------------
+
+
+def tree_bytes(top: Path) -> int:
+    """The bytes of the files under ``top``, links not followed: what a copy of it writes."""
+    total = 0
+    for root, _dirs, files in os.walk(top):
+        for name in files:
+            with contextlib.suppress(OSError):
+                st = os.lstat(os.path.join(root, name))
+                if stat.S_ISREG(st.st_mode):
+                    total += st.st_size
+    return total
+
+
+def _copy_app(
+    source: Path,
+    dest: Path,
+    *,
+    progress: Callable[[float], None],
+    cancelled: Callable[[], bool],
+) -> None:
+    """``source`` copied to ``dest`` by ``ditto``, macOS's own copy (links, modes, times and
+    attributes kept, as the Finder copies an app), ``progress`` told the share of its bytes
+    already written there every half second: the bar counts what is copied, not a guess of the
+    time. 30 s for the 307 MB of 2.2.0 out of its compressed image (2026-11-17)."""
+    total = max(1, tree_bytes(source))
+    copying = subprocess.Popen(
+        ["ditto", str(source), str(dest)],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+        creationflags=NO_CONSOLE_WINDOW,
+    )
+    try:
+        while copying.poll() is None:
+            if cancelled():
+                raise InstallCancelledError
+            progress(min(0.99, tree_bytes(dest) / total))
+            time.sleep(0.5)
+    finally:
+        if copying.poll() is None:
+            copying.kill()
+            copying.wait()
+    said = copying.stderr.read().decode("utf-8", "replace") if copying.stderr else ""
+    if copying.returncode != 0:
+        full = "No space left" in said
+        raise UpdateError("room" if full else "replace", said.strip() or "ditto failed")
+    progress(1.0)
+
+
+def stage_app(
+    image: Path,
+    app: Path,
+    version: str,
+    *,
+    progress: Callable[[float], None] = lambda share: None,
+    cancelled: Callable[[], bool] = lambda: False,
+) -> Path:
+    """The app of the disk image ``image``, copied into a hidden folder beside ``app`` (the same
+    disk: the swap is then two renames) while the old app still runs; the new app's path.
+
+    The image is mounted on a folder of the system's temporary folder (macOS refuses a mount point
+    on another disk), its app checked (:data:`BUNDLE_ID` at ``version``) before and after the copy,
+    and the image let go whatever happens. Nothing is left beside ``app`` when it fails or is
+    cancelled."""
+    mount = Path(tempfile.mkdtemp(prefix="osxp-update."))
+    staging: Path | None = None
+    try:
+        attach = [
+            "hdiutil", "attach", "-nobrowse", "-readonly", "-noautoopen",
+            "-mountpoint", str(mount), str(image),
+        ]  # fmt: skip
+        try:
+            subprocess.run(
+                attach,
+                check=True,
+                capture_output=True,
+                timeout=HDIUTIL_TIMEOUT_S,
+                creationflags=NO_CONSOLE_WINDOW,
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            raise UpdateError("damaged", f"the disk image does not mount: {exc}") from exc
+        try:
+            new = mount / f"{APP_NAME}.app"
+            if _bundle_facts(new) != (BUNDLE_ID, version):
+                raise UpdateError("damaged", f"the disk image holds no {APP_NAME} {version}")
+            try:
+                staging = Path(tempfile.mkdtemp(prefix=STAGING_PREFIX, dir=app.parent))
+            except OSError as exc:
+                raise UpdateError("replace", str(exc)) from exc
+            staged = staging / app.name
+            _copy_app(new, staged, progress=progress, cancelled=cancelled)
+            if _bundle_facts(staged) != (BUNDLE_ID, version):
+                raise UpdateError("replace", "the copy does not read as the new version")
+        finally:
+            detach = ["hdiutil", "detach", str(mount), "-quiet"]
+            for command in (detach, [*detach, "-force"]):
+                try:
+                    subprocess.run(
+                        command,
+                        check=True,
+                        capture_output=True,
+                        timeout=HDIUTIL_TIMEOUT_S,
+                        creationflags=NO_CONSOLE_WINDOW,
+                    )
+                    break
+                except (OSError, subprocess.SubprocessError):
+                    continue
+        return staged
+    except BaseException:
+        if staging is not None:
+            shutil.rmtree(staging, ignore_errors=True)
+        raise
+    finally:
+        with contextlib.suppress(OSError):
+            mount.rmdir()
+
+
+def _tidy_staging(app: Path) -> None:
+    """The hidden folders beside the app that an earlier try left (the app ended in the middle)."""
+    with contextlib.suppress(OSError):
+        for entry in app.parent.iterdir():
+            if entry.name.startswith(STAGING_PREFIX) and entry.is_dir():
+                shutil.rmtree(entry, ignore_errors=True)
+
+
+# -- the last try ---------------------------------------------------------------------------------
 
 
 def _tidy(folder: Path, keep: str) -> None:
@@ -289,9 +440,6 @@ def _tidy(folder: Path, keep: str) -> None:
             continue
         with contextlib.suppress(OSError):
             entry.unlink()
-
-
-# -- the last try ---------------------------------------------------------------------------------
 
 
 def _pending(home: Path) -> Path:
@@ -336,30 +484,29 @@ def _ere(text: str) -> str:
 def mac_script(
     *,
     app: Path,
-    image: Path,
+    staged: Path,
     version: str,
     pending: Path,
     log: Path,
     wait_s: int = QUIT_WAIT_S,
     reopen: Sequence[str] | None = None,
 ) -> str:
-    """The shell script that puts the app of the disk image ``image`` in the place of ``app``.
+    """The shell script that puts ``staged``, the new app made ready beside it, in the place of
+    ``app`` once the app has quit.
 
     It waits until no process runs from ``app`` (the app's window, its engine, Live, Triangle4XP),
-    ``wait_s`` at most, else gives up with the old app untouched. It mounts the image, checks that
-    its app is OrthoStudio XP at ``version``, moves the old app into a folder of its own beside it
-    (the same disk: a move is a rename), copies the new one into its place with ``ditto`` and reads
-    its version back. Any failure puts the old app back. It opens the app either way (``reopen``,
-    ``open <app>`` by default; tests pass another command), writes what went wrong in ``pending``
-    for the next start's banner, and its steps in ``log``, ``serve.log``.
-    """
+    ``wait_s`` at most, else gives up with the old app untouched and the copy taken away. It moves
+    the old app into a hidden folder beside it, then the new one into its place: two renames on
+    the same disk, an instant without an app. A failure puts the old app back. It opens the app
+    either way (``reopen``, ``open <app>`` by default; tests pass another command), writes what
+    went wrong in ``pending`` for the next start's banner, and its steps in ``log``,
+    ``serve.log``."""
     q = shlex.quote
     opens = " ".join(q(part) for part in (reopen or ("open", str(app))))
-    plist = "/usr/libexec/PlistBuddy"
     return f"""#!/bin/bash
-# {APP_NAME} {version}, put in place of the app that downloaded it (orthostudio/self_update.py).
+# {APP_NAME} {version}, put in place of the app that made it ready (orthostudio/self_update.py).
 app={q(str(app))}
-image={q(str(image))}
+staged={q(str(staged))}
 version={q(version)}
 pending={q(str(pending))}
 log={q(str(log))}
@@ -375,45 +522,23 @@ failed() {{
     > "$pending"
 }}
 reopen() {{ {opens} >> "$log" 2>&1 || say "could not open $app"; }}
-read_key() {{ {plist} -c "Print :$1" "$2/Contents/Info.plist" 2>/dev/null; }}
-detach() {{
-  hdiutil detach "$mount" -quiet || hdiutil detach -force "$mount" -quiet
-  rmdir "$mount" 2>/dev/null
-}}
 
 say "waiting for {APP_NAME} to quit"
 tries=0
 while pgrep -f "$mine" > /dev/null; do
-  if [ "$tries" -ge {wait_s * 5} ]; then failed not_quit; exit 1; fi
+  if [ "$tries" -ge {wait_s * 5} ]; then rm -rf "$(dirname "$staged")"; failed not_quit; exit 1; fi
   sleep 0.2
   tries=$((tries + 1))
 done
-mount=$(mktemp -d "${{TMPDIR:-/tmp}}/osxp-update.XXXXXX") || {{ failed replace; reopen; exit 1; }}
-if ! hdiutil attach -nobrowse -readonly -noautoopen -mountpoint "$mount" "$image" > /dev/null; then
-  rmdir "$mount"; failed damaged; reopen; exit 1
+aside="$(dirname "$staged")/old"
+if ! mkdir "$aside" || ! mv "$app" "$aside/"; then
+  rm -rf "$(dirname "$staged")"; failed replace; reopen; exit 1
 fi
-new="$mount/{APP_NAME}.app"
-ident=$(read_key CFBundleIdentifier "$new")
-found=$(read_key CFBundleShortVersionString "$new")
-if [ "$ident" != {q(BUNDLE_ID)} ] || [ "$found" != "$version" ]; then
-  detach; failed damaged; reopen; exit 1
-fi
-aside=$(mktemp -d "$(dirname "$app")/.osxp-update.XXXXXX") || {{
-  detach; failed replace; reopen; exit 1
-}}
-if ! mv "$app" "$aside/"; then
-  rmdir "$aside"; detach; failed replace; reopen; exit 1
-fi
-old="$aside/$(basename "$app")"
-if ditto "$new" "$app" && [ "$(read_key CFBundleShortVersionString "$app")" = "$version" ]; then
-  detach
-  rm -rf "$aside"
-  rm -f "$image"
+if mv "$staged" "$app"; then
+  rm -rf "$(dirname "$staged")"
   say "installed"
 else
-  rm -rf "$app"
-  if mv "$old" "$app"; then rmdir "$aside"; else say "the old app is in $aside"; fi
-  detach
+  mv "$aside/$(basename "$app")" "$app" || say "the old app is in $aside"
   failed replace
 fi
 reopen
@@ -442,16 +567,27 @@ def _clean_env() -> dict[str, str]:
     return {k: v for k, v in os.environ.items() if not k.startswith("PYTHON")}
 
 
-def hand_over(here: Here, installer: Path, version: str, *, home: Path, log: Path) -> None:
-    """Start what puts ``installer`` in place, in a process of its own that outlives the app.
-    Raises :class:`UpdateError` ``start`` when it cannot be started."""
+def hand_over(
+    here: Here,
+    installer: Path,
+    version: str,
+    *,
+    home: Path,
+    log: Path,
+    staged: Path | None = None,
+) -> None:
+    """Start what puts the new version in place, in a process of its own that outlives the app:
+    on macOS the script that swaps ``staged`` in (the disk image no longer needed), on Windows the
+    installer. Raises :class:`UpdateError` ``start`` when it cannot be started."""
     try:
         if here.system == "macos":
+            if staged is None:
+                raise UpdateError("start", "no new app made ready")
             script = installer.parent / SCRIPT_NAME
             script.write_text(
                 mac_script(
                     app=here.place,
-                    image=installer,
+                    staged=staged,
                     version=version,
                     pending=_pending(home),
                     log=log,
@@ -469,6 +605,7 @@ def hand_over(here: Here, installer: Path, version: str, *, home: Path, log: Pat
                 start_new_session=True,
                 close_fds=True,
             )
+            installer.unlink(missing_ok=True)
             return
         command = windows_command(installer, here.place, installer.parent / SETUP_LOG_NAME)
         detached = 0x00000008 | 0x00000200  # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
@@ -510,12 +647,15 @@ class Running:
 
 class Installer:
     """The page's *Install and relaunch*: one try at a time, in a thread of its own, its state
-    asked by the page while it downloads (:meth:`status`).
+    asked by the page while it works (:meth:`status`).
 
-    States: ``idle``; ``downloading`` (``done`` of ``total`` bytes); ``ask``, the file ready while
-    a build or Live runs that the user did not agree to stop (``running`` says which: the page
-    asks, and starts again with ``force``, the file kept); ``installing``, handed over, the app
-    quitting; ``failed`` (``reason``, :data:`REASONS`), the try also kept for the next start.
+    States: ``idle``; ``preparing``, ``done`` of ``total`` bytes, what the app does while it is
+    still open: the download, then on macOS the copy of the new app (its share of ``total`` is the
+    size of the app as installed, the new one's near enough, so that the bar never goes back);
+    ``ask``, ready while a build or Live runs that the user did not agree to stop (``running`` says
+    which: the page asks, and starts again with ``force``, the download kept); ``installing``,
+    handed over, the app quitting; ``failed`` (``reason``, :data:`REASONS`), the try also kept for
+    the next start.
     """
 
     def __init__(
@@ -528,10 +668,12 @@ class Installer:
         quit_app: Callable[[], None],
         facts: Callable[[str, str], tuple[int, str] | None] | None = None,
         fetch: Callable[..., None] | None = None,
+        stage: Callable[..., Path] | None = None,
         hand: Callable[..., None] | None = None,
     ) -> None:
-        """``facts``, ``fetch`` and ``hand`` replace :func:`asset_facts`, :func:`download` and
-        :func:`hand_over` (tests pass doubles); left out, the module's own are read at each use."""
+        """``facts``, ``fetch``, ``stage`` and ``hand`` replace :func:`asset_facts`,
+        :func:`download`, :func:`stage_app` and :func:`hand_over` (tests pass doubles); left out,
+        the module's own are read at each use."""
         self.home = home
         self.here = here
         self.log = log
@@ -539,6 +681,7 @@ class Installer:
         self._quit_app = quit_app
         self._facts = facts
         self._fetch = fetch
+        self._stage = stage
         self._hand = hand
         self._lock = threading.Lock()
         self._cancel = threading.Event()
@@ -555,15 +698,15 @@ class Installer:
 
     def busy(self) -> bool:
         with self._lock:
-            return self._state["state"] in ("downloading", "installing")
+            return self._state["state"] in ("preparing", "installing")
 
     def start(self, version: str, *, force: bool) -> bool:
-        """Start a try at ``version``; ``False`` while one downloads or installs already."""
+        """Start a try at ``version``; ``False`` while one is under way already."""
         with self._lock:
-            if self._state["state"] in ("downloading", "installing"):
+            if self._state["state"] in ("preparing", "installing"):
                 return False
             self._cancel.clear()
-            self._state = {"state": "downloading", "version": version, "done": 0, "total": 0}
+            self._state = {"state": "preparing", "version": version, "done": 0, "total": 0}
             self._thread = threading.Thread(
                 target=self._run, args=(version, force), name="self-update", daemon=True
             )
@@ -571,9 +714,9 @@ class Installer:
         return True
 
     def cancel(self) -> bool:
-        """The page's *Cancel*, while the file downloads: nothing kept, nothing said next time."""
+        """The page's *Cancel*, while it prepares: nothing kept, nothing said next time."""
         with self._lock:
-            if self._state["state"] != "downloading":
+            if self._state["state"] != "preparing":
                 return False
         self._cancel.set()
         return True
@@ -585,21 +728,26 @@ class Installer:
 
     def _run(self, version: str, force: bool) -> None:
         here = self.here
+        staged: Path | None = None
         try:
             if here is None:
                 raise UpdateError("start", "this app cannot replace itself")
             _write_pending(self.home, version)
             name = installer_name(version, here)
             _tidy(self.home / UPDATE_DIR, keep=name)
+            if here.system == "macos":
+                _tidy_staging(here.place)
             facts = (self._facts or asset_facts)(version, name)
             if facts is None:
                 raise UpdateError("release", f"no {name} with its size and SHA-256 in the release")
             size, sha256 = facts
-            self._set(state="downloading", version=version, done=0, total=size)
+            copy = tree_bytes(here.place) if here.system == "macos" else 0
+            total = size + copy
 
             def progress(done: int) -> None:
-                self._set(state="downloading", version=version, done=done, total=size)
+                self._set(state="preparing", version=version, done=done, total=total)
 
+            progress(0)
             dest = self.home / UPDATE_DIR / name
             (self._fetch or download)(
                 download_url(version, name),
@@ -609,24 +757,45 @@ class Installer:
                 progress=progress,
                 cancelled=self._cancel.is_set,
             )
+            if here.system == "macos":
+                staged = (self._stage or stage_app)(
+                    dest,
+                    here.place,
+                    version,
+                    progress=lambda share: progress(size + int(copy * share)),
+                    cancelled=self._cancel.is_set,
+                )
             running = self._running()
             if running.any() and not force:
+                _discard(staged)
                 asked = {"build": running.build, "live": running.live, "flying": running.flying}
                 self._set(state="ask", version=version, running=asked)
                 return
-            (self._hand or hand_over)(here, dest, version, home=self.home, log=self.log)
+            (self._hand or hand_over)(
+                here, dest, version, home=self.home, log=self.log, staged=staged
+            )
             log.info("update to %s handed over (%s): the app quits", version, dest.name)
             self._set(state="installing", version=version)
             self._quit_app()
-        except DownloadCancelledError:
+        except InstallCancelledError:
+            _discard(staged)
             with contextlib.suppress(OSError):
                 _pending(self.home).unlink()
             self._set(state="idle")
         except UpdateError as exc:
+            _discard(staged)
             log.warning("update to %s not installed: %s (%s)", version, exc.reason, exc)
             _write_pending(self.home, version, exc.reason)
             self._set(state="failed", version=version, reason=exc.reason, detail=str(exc))
         except Exception as exc:  # never a try that says nothing
+            _discard(staged)
             log.exception("update to %s not installed", version)
             _write_pending(self.home, version, "start")
             self._set(state="failed", version=version, reason="start", detail=repr(exc))
+
+
+def _discard(staged: Path | None) -> None:
+    """The new app made ready, and its hidden folder, taken away: a try that stops leaves nothing
+    beside the app."""
+    if staged is not None:
+        shutil.rmtree(staged.parent, ignore_errors=True)

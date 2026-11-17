@@ -1705,14 +1705,15 @@ whose `context` says a build, Live or Live flying with X-Plane runs asks first i
 (`confirmUpdate`: "Install 2.3.0 and relaunch?", that OrthoStudio XP quits while it installs then
 opens again by itself, and what installing stops, in the words of Quit's question; *Not now* has
 the focus), then posts again with `force`. The line then follows the try every 0.5 s
-(`followUpdate`, `GET /api/update/install`): "Downloading 2.3.0: 42%" with *Cancel* (only the
-percentage changes in place, so a click is not lost to a new button), then "Installing 2.3.0:
-OrthoStudio XP quits, then opens again by itself. Your tiles and settings are kept." A try that
+(`followUpdate`, `GET /api/update/install`): one bar, the same for everyone, "Installing 2.3.0:
+63%" with *Cancel* (the bytes of the download, then on macOS of the copy of the new app; only the
+words and the bar change in place, so a click is not lost to a new button), then "OrthoStudio XP
+quits, then opens again by itself in version 2.3.0. Your tiles and settings are kept." A try that
 fails, or that `ask`s about something started meanwhile, goes back to the line, which says why the
 last install did not complete (`last_try`, `app.update_why.*`), at the next start too. The engine
 gone while it installs, the *stopped* screen says that it installs and opens again by itself
 rather than how to start it. In the mock, `update=2.3.0` makes that version out, installable, with
-a download of 4 s; `update_failed=<reason>` its last try failed; `fail=update-busy` asks first.
+4 s of the bar; `update_failed=<reason>` its last try failed; `fail=update-busy` asks first.
 
 **The line under a job's title** gives the provider and the zoom level, the relief the tiles are
 built on (`relief` of the job: *X-Plane relief*, *Copernicus relief*, *USGS relief*, *USGS relief,

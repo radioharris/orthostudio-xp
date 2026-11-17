@@ -335,26 +335,36 @@ Gatekeeper again. Where the app can replace itself, the banner's *Install and re
   engine stopped; the app's window goes with its engine. Before, the page asks while a build runs
   or waits or Live is at work, in the words of Quit's question; something started while the file
   downloaded is asked about then (`ask`).
-- **macOS**: a script written beside the file and run by the system's `/bin/bash`, in a session of
-  its own (`mac_script`), nothing of the app it replaces. It waits until no process runs from the
-  app (`pgrep -f` on the app's path, from the start of a command line: the app's Python, Live,
-  Triangle4XP), two minutes at most, else gives up with nothing touched; mounts the image, checks
-  that its app is `BUNDLE_ID` at the version asked, moves the old app into a folder of its own
-  beside it (the same disk: a rename), copies the new one in its place with `ditto` and reads its
-  version back, then opens it. Any failure puts the old app back and opens it. Tried on a Mac
-  with macOS 26 on 2026-11-17, the app of 0.1.21 then of 2.1.2 updating itself to 2.2.0, both
+- **One bar, the same for everyone** (the user, 2026-11-17: « pas d'usine à gaz. Le même affichage
+  pour tout le monde »): *Installing 2.3.0: 63%*, the bytes of what the app does while it is still
+  open, *Cancel* beside it; then the app quits and the new version opens by itself.
+- **macOS**: while the app is open, the image is mounted on a folder of the system's temporary
+  folder (macOS refuses a mount point on another disk), its app checked (`BUNDLE_ID` at the version
+  asked) and copied by `ditto` into a hidden folder beside the old app (`.osxp-update.*`, the same
+  disk), the bar counting the bytes written there; the copy is checked again and the image let go
+  (`stage_app`). Then a script run by the system's `/bin/bash`, in a session of its own
+  (`mac_script`), waits until no process runs from the app (`pgrep -f` on the app's path, from the
+  start of a command line: the app's Python, Live, Triangle4XP), two minutes at most, else gives up
+  with the old app untouched and the copy taken away; moves the old app into the hidden folder and
+  the new one into its place, two renames, and opens it. A failure puts the old app back and opens
+  it. The script first did the copy itself once the app had quit: on 2026-11-17, a 2.2.0rc1 built
+  from the branch updating itself to the release's 2.2.0, the app was gone 32 s, 30 of them copying
+  307 MB out of the compressed image, with half an app in Applications meanwhile. Tried on a Mac
+  with macOS 26 the same day, the app of 0.1.21 then of 2.1.2 updating itself to 2.2.0, both
   installed from a browser's download and opened once with *Open Anyway*: macOS neither stopped nor
   asked about an app without a signature that replaces itself, and the copy, made from a file no
   browser downloaded, carries no quarantine and opened without *Open Anyway*.
-- **Windows**: the installer itself, `/SILENT /SUPPRESSMSGBOXES /NORESTART /DIR=<the app's folder>
-  /LOG=<update/setup.log> /RELAUNCH=1` (`windows_command`), detached from the app: its progress
-  shows, no page, its questions answered as by default (stop a build or a stream still running,
+- **Windows**: the bar counts the download; then the installer itself, `/SILENT /SUPPRESSMSGBOXES
+  /NORESTART /DIR=<the app's folder> /LOG=<update/setup.log> /RELAUNCH=1` (`windows_command`),
+  detached from the app: Windows replaces no file a running app holds, so it works once the app
+  has quit, its own progress showing, no page, its questions answered as by default (stop a build or a stream still running,
   which the page asked about). It stops what still runs as on any install (`stop_running.pas`),
   and its `[Run]` entry checked by `RelaunchAsked` (`/RELAUNCH=1` in a silent install) starts the
   app at its end, where a user installing by hand ticks the last page's box.
 - **The last try** (`update/pending.json`): written as a try starts, with its reason when it fails
   (`REASONS`: the release's file, the download, a damaged file or image, a full disk, the hand-over,
-  an app that did not quit, an app that could not be replaced), removed by *Cancel*. The version it
+  an app that did not quit, an app that could not be replaced), removed by *Cancel*. A try takes
+  away what earlier ones left: another version's installer, and a hidden folder beside the app. The version it
   names starting removes it; until then `GET /api/update` says it (`last_try`), `unfinished` when
   no reason was written (the Windows installer stopped, the app ended in the middle), and the
   banner says why beside its buttons.

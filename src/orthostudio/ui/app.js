@@ -1291,7 +1291,7 @@ export async function mockApi(method, path, body, options = {}) {
     };
   }
   if (p === "/api/update/install") {
-    // Install and relaunch, in the mock: a download of 4 s, then the app "quits". `fail=update-busy`
+    // Install and relaunch, in the mock: 4 s of preparing, then the app "quits". `fail=update-busy`
     // answers as for a build and Live flying, until the page confirms.
     const total = 74949673;
     if (method === "POST") {
@@ -1311,7 +1311,7 @@ export async function mockApi(method, path, body, options = {}) {
     if (!mockUpdate.version) return { state: "idle" };
     const done = Math.min(total, Math.round(((Date.now() - mockUpdate.started) / 4000) * total));
     if (done >= total) return { state: "installing", version: mockUpdate.version };
-    return { state: "downloading", version: mockUpdate.version, done, total };
+    return { state: "preparing", version: mockUpdate.version, done, total };
   }
   if (p === "/api/flightplan/simbrief") {
     // A plan as the engine answers it (mock/flightplan.json, computed by orthostudio.flightplan on
@@ -2710,10 +2710,11 @@ async function loadUpdate() {
   renderUpdateNote();
 }
 
-/** Where the banner is: offering the version, downloading it, or installing it. */
+/** Where the banner is: offering the version, preparing it (its one bar, the same for everyone:
+ * the download, then on macOS the copy of the new app), or handed over while the app quits. */
 function updatePhase() {
   const now = state.updateTry?.state;
-  return now === "downloading" || now === "installing" ? now : "offer";
+  return now === "preparing" || now === "installing" ? now : "offer";
 }
 
 function renderUpdateNote() {
@@ -2734,7 +2735,7 @@ function renderUpdateNote() {
   const key = `${language()} ${phase} ${said}`;
   let note = $("update-note");
   if (note && note.dataset.phase === key) {
-    if (phase === "downloading") $("update-progress").textContent = downloadingText();
+    if (phase === "preparing") showUpdateProgress();
     return; // the same buttons: a click under way is not lost to a new one
   }
   const fresh = !note;
@@ -2742,14 +2743,17 @@ function renderUpdateNote() {
   note.dataset.phase = key;
   clear(note).append(...updateNoteParts(u, phase));
   if (fresh) $("main").prepend(note);
+  if (phase === "preparing") showUpdateProgress();
   measureMapTop(); // it sits above the map and pushes it down
 }
 
 function updateNoteParts(u, phase) {
   const version = state.updateTry?.version || u?.latest || "";
-  if (phase === "downloading") {
+  if (phase === "preparing") {
     return [
-      h("span", { id: "update-progress" }, downloadingText()),
+      h("span", { id: "update-progress" }),
+      " ",
+      h("span", { class: "progress update-bar", "aria-hidden": "true" }, h("span", { id: "update-bar" })),
       " ",
       h("button", { type: "button", class: "btn", onclick: cancelUpdate }, t("app.update_cancel")),
     ];
@@ -2782,10 +2786,13 @@ function updateNoteParts(u, phase) {
   return parts;
 }
 
-function downloadingText() {
+/** The bar and its words: the bytes the engine counted, of all it does while the app is open. */
+function showUpdateProgress() {
   const now = state.updateTry || {};
   const percent = now.total > 0 ? Math.floor((100 * (now.done || 0)) / now.total) : 0;
-  return t("app.update_downloading", { version: now.version || state.update?.latest || "", percent });
+  const version = now.version || state.update?.latest || "";
+  $("update-progress").textContent = t("app.update_preparing", { version, percent });
+  $("update-bar").style.width = `${percent}%`;
 }
 
 /** *Install and relaunch*: asked first while a build or Live runs, which the app's quitting

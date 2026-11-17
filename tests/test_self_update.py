@@ -32,7 +32,7 @@ import test_api_fakes as fakes
 from orthostudio import self_update
 from orthostudio.api.app import create_app
 from orthostudio.api.jobs import JobManager
-from orthostudio.self_update import DownloadCancelledError, Here, Installer, Running, UpdateError
+from orthostudio.self_update import Here, InstallCancelledError, Installer, Running, UpdateError
 from test_api_fakes import FakeBuild, client_for, make_spec
 
 anyio_backend = fakes.anyio_backend
@@ -221,7 +221,7 @@ def _sha(body: bytes) -> str:
 
 
 def test_the_download_is_kept_only_whole_and_right(tmp_path: Path, served: dict[str, Any]) -> None:
-    body = os.urandom(600_000)
+    body = os.urandom(3 * self_update.CHUNK + 1000)  # several reads: the bar moves
     served["body"] = body
     dest = tmp_path / "update" / "f.dmg"
     seen: list[int] = []
@@ -265,7 +265,7 @@ def test_cancel_leaves_nothing(tmp_path: Path, served: dict[str, Any]) -> None:
     body = os.urandom(2_000_000)
     served["body"] = body
     dest = tmp_path / "f.dmg"
-    with pytest.raises(DownloadCancelledError):
+    with pytest.raises(InstallCancelledError):
         self_update.download(
             served["url"], dest, size=len(body), sha256=_sha(body), cancelled=lambda: True
         )
@@ -292,7 +292,7 @@ def test_the_last_try_is_said_until_its_version_starts(tmp_path: Path) -> None:
     assert self_update.last_try(tmp_path, "2.2.0") is None
 
 
-# -- the macOS script, for real -------------------------------------------------------------------
+# -- the new app made ready, then swapped in, on macOS, for real ----------------------------------
 
 
 def _image(tmp_path: Path, version: str, *, ident: str = self_update.BUNDLE_ID) -> Path:
@@ -301,36 +301,25 @@ def _image(tmp_path: Path, version: str, *, ident: str = self_update.BUNDLE_ID) 
     # not a name ending in .app: hdiutil would take the folder for the app itself
     source = tmp_path / f"image-{version}-{ident.replace('.', '-')}"
     _mac_app(source, version=version, ident=ident)
+    (source / "OrthoStudio XP.app" / "Contents" / "Resources" / "big").write_bytes(
+        os.urandom(3_000_000)
+    )
     image = tmp_path / f"OrthoStudio-XP-{version}-{ident.replace('.', '-')}.dmg"
     subprocess.run(["hdiutil", "makehybrid", "-quiet", "-hfs", "-o", image, source], check=True)
     return image
 
 
-def _run_script(tmp_path: Path, app: Path, image: Path, version: str, wait_s: int = 5) -> Path:
-    """The script, run as the app runs it, reopening by a mark rather than by ``open``."""
-    reopened = tmp_path / "reopened"
-    script = tmp_path / "install.sh"
-    script.write_text(
-        self_update.mac_script(
-            app=app,
-            image=image,
-            version=version,
-            pending=tmp_path / "pending.json",
-            log=tmp_path / "serve.log",
-            wait_s=wait_s,
-            reopen=("touch", str(reopened)),
-        )
-    )
-    # the mount point on the system's disk, as the app's TMPDIR is: macOS refuses to mount an
-    # image on a folder of another disk (the tests' own folder may be on one)
-    mounts = Path(tempfile.mkdtemp(prefix="osxp-test-mounts-"))
+@pytest.fixture
+def mounts(monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
+    """The system's temporary folder, where the image is mounted, a folder of its own: macOS
+    refuses a mount point on another disk (the tests' folder may be on one), and each test sees
+    that its mount point went."""
+    folder = Path(tempfile.mkdtemp(prefix="osxp-test-mounts-"))
+    monkeypatch.setattr(tempfile, "tempdir", str(folder))
     try:
-        env = {**os.environ, "TMPDIR": str(mounts)}
-        subprocess.run(["/bin/bash", str(script)], check=False, env=env, timeout=120)
-        assert list(mounts.iterdir()) == []  # its mount point gone too
+        yield folder
     finally:
-        shutil.rmtree(mounts, ignore_errors=True)
-    return reopened
+        shutil.rmtree(folder, ignore_errors=True)
 
 
 def _version_of(app: Path) -> str:
@@ -338,58 +327,111 @@ def _version_of(app: Path) -> str:
     return str(info["CFBundleShortVersionString"])
 
 
+def _beside(app: Path) -> list[str]:
+    return sorted(p.name for p in app.parent.iterdir())
+
+
 @on_a_mac
-def test_the_script_puts_the_new_app_in_place_and_opens_it(tmp_path: Path) -> None:
+def test_the_new_app_is_made_ready_beside_the_old_one(tmp_path: Path, mounts: Path) -> None:
+    """While the app is still open: the old one untouched, the new one in a hidden folder of the
+    same folder, the bar told what share is copied, the image let go."""
     app = _mac_app(tmp_path / "Applications")
-    image = _image(tmp_path, "2.3.0")
-    reopened = _run_script(tmp_path, app, image, "2.3.0")
-    assert _version_of(app) == "2.3.0"
-    assert (app / "Contents" / "Resources" / "version.txt").read_text() == "2.3.0"
-    assert reopened.exists() and not image.exists()
-    assert [p.name for p in app.parent.iterdir()] == [app.name]  # the old app gone, nothing aside
+    shares: list[float] = []
+    staged = self_update.stage_app(_image(tmp_path, "2.3.0"), app, "2.3.0", progress=shares.append)
+    assert _version_of(app) == "2.2.0" and _version_of(staged) == "2.3.0"
+    assert staged.name == app.name and staged.parent.parent == app.parent
+    assert staged.parent.name.startswith(self_update.STAGING_PREFIX)
+    assert (staged / "Contents" / "Resources" / "big").stat().st_size == 3_000_000
+    assert shares[-1] == 1.0 and shares == sorted(shares)
+    assert list(mounts.iterdir()) == []
+
+
+@on_a_mac
+def test_an_image_of_another_app_or_version_leaves_nothing(tmp_path: Path, mounts: Path) -> None:
+    app = _mac_app(tmp_path / "Applications")
+    for image in (_image(tmp_path, "2.4.0"), _image(tmp_path, "2.3.0", ident="org.example")):
+        with pytest.raises(UpdateError) as caught:
+            self_update.stage_app(image, app, "2.3.0")
+        assert caught.value.reason == "damaged"
+        assert _beside(app) == [app.name] and list(mounts.iterdir()) == []
+    (tmp_path / "not.dmg").write_text("not an image")
+    with pytest.raises(UpdateError) as caught:
+        self_update.stage_app(tmp_path / "not.dmg", app, "2.3.0")
+    assert caught.value.reason == "damaged" and list(mounts.iterdir()) == []
+
+
+@on_a_mac
+def test_cancel_while_the_app_is_copied_leaves_nothing(tmp_path: Path, mounts: Path) -> None:
+    app = _mac_app(tmp_path / "Applications")
+    with pytest.raises(InstallCancelledError):
+        self_update.stage_app(_image(tmp_path, "2.3.0"), app, "2.3.0", cancelled=lambda: True)
+    assert _beside(app) == [app.name] and list(mounts.iterdir()) == []
+
+
+def _staged(app: Path, version: str = "2.3.0") -> Path:
+    """A new app made ready as :func:`stage_app` leaves it."""
+    staging = Path(tempfile.mkdtemp(prefix=self_update.STAGING_PREFIX, dir=app.parent))
+    _mac_app(staging, version=version)
+    return staging / app.name
+
+
+def _run_script(tmp_path: Path, app: Path, staged: Path, wait_s: int = 5) -> Path:
+    """The script, run as the app runs it, reopening by a mark rather than by ``open``."""
+    reopened = tmp_path / "reopened"
+    script = tmp_path / "install.sh"
+    script.write_text(
+        self_update.mac_script(
+            app=app,
+            staged=staged,
+            version="2.3.0",
+            pending=tmp_path / "pending.json",
+            log=tmp_path / "serve.log",
+            wait_s=wait_s,
+            reopen=("touch", str(reopened)),
+        )
+    )
+    subprocess.run(["/bin/bash", str(script)], check=False, timeout=60)
+    return reopened
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="bash")
+def test_the_script_swaps_the_new_app_in_and_opens_it(tmp_path: Path) -> None:
+    app = _mac_app(tmp_path / "Applications")
+    reopened = _run_script(tmp_path, app, _staged(app))
+    assert _version_of(app) == "2.3.0" and reopened.exists()
+    assert _beside(app) == [app.name]  # the old app gone, nothing hidden left
     assert not (tmp_path / "pending.json").exists()
     assert "installed" in (tmp_path / "serve.log").read_text()
 
 
 @on_a_mac
-def test_an_image_of_another_app_or_version_leaves_the_old_one(tmp_path: Path) -> None:
-    app = _mac_app(tmp_path / "Applications")
-    for image in (_image(tmp_path, "2.4.0"), _image(tmp_path, "2.3.0", ident="org.example")):
-        reopened = _run_script(tmp_path, app, image, "2.3.0")
-        assert _version_of(app) == "2.2.0" and reopened.exists()
-        assert json.loads((tmp_path / "pending.json").read_text())["reason"] == "damaged"
-        assert [p.name for p in app.parent.iterdir()] == [app.name]
-        reopened.unlink()
-
-
-@on_a_mac
 def test_an_app_that_does_not_quit_is_left_as_it_is(tmp_path: Path) -> None:
-    """Something still runs from the app after the wait: nothing is touched, nothing opened."""
+    """Something still runs from the app after the wait: nothing is touched, nothing opened, the
+    new app made ready taken away."""
     app = _mac_app(tmp_path / "Applications")
-    image = _image(tmp_path, "2.3.0")
+    staged = _staged(app)
     # a process whose command line starts with the app's path, as the app's Python's does (a copy
     # of a system program does not run outside its folder)
     sleeper = app / "Contents" / "MacOS" / "sleeper"
     running = subprocess.Popen([str(sleeper), "60"], executable="/bin/sleep")
     try:
         time.sleep(0.2)
-        reopened = _run_script(tmp_path, app, image, "2.3.0", wait_s=1)
+        reopened = _run_script(tmp_path, app, staged, wait_s=1)
     finally:
         running.kill()
         running.wait()
-    assert _version_of(app) == "2.2.0" and not reopened.exists() and image.exists()
+    assert _version_of(app) == "2.2.0" and not reopened.exists() and _beside(app) == [app.name]
     assert json.loads((tmp_path / "pending.json").read_text())["reason"] == "not_quit"
 
 
-@on_a_mac
-@pytest.mark.skipif(os.geteuid() == 0, reason="root writes anywhere")
+@pytest.mark.skipif(sys.platform == "win32" or os.geteuid() == 0, reason="POSIX modes, not root")
 def test_an_app_that_cannot_be_replaced_stays_and_opens(tmp_path: Path) -> None:
     """Its folder could be written when the page asked, and no longer can."""
     app = _mac_app(tmp_path / "Applications")
-    image = _image(tmp_path, "2.3.0")
+    staged = _staged(app)
     os.chmod(app.parent, 0o555)
     try:
-        reopened = _run_script(tmp_path, app, image, "2.3.0")
+        reopened = _run_script(tmp_path, app, staged)
     finally:
         os.chmod(app.parent, 0o755)
     assert _version_of(app) == "2.2.0" and reopened.exists()
@@ -402,7 +444,7 @@ def test_the_script_names_the_app_by_its_path_alone() -> None:
     assert self_update._ere("/A/OrthoStudio XP (2).app") == "/A/OrthoStudio XP \\(2\\)\\.app"
     script = self_update.mac_script(
         app=Path("/Applications/OrthoStudio XP.app"),
-        image=Path("/h/u/f.dmg"),
+        staged=Path("/Applications/.osxp-update.x/OrthoStudio XP.app"),
         version="2.3.0",
         pending=Path("/h/u/pending.json"),
         log=Path("/l/serve.log"),
@@ -415,38 +457,55 @@ def test_the_script_names_the_app_by_its_path_alone() -> None:
 
 
 class _Doubles:
-    """What the installer reaches outside: GitHub, the download, the hand-over, the app's quit."""
+    """What the installer reaches outside: GitHub, the download, the copy, the hand-over, the
+    app's quit."""
 
     def __init__(self, *, facts: tuple[int, str] | None = (100, "ab" * 32)) -> None:
         self.facts = facts
         self.running = Running(build=False, live=False, flying=False)
         self.calls: list[str] = []
+        self.seen: list[tuple[int, int]] = []
         self.fetch_error: BaseException | None = None
+        self.stage_error: BaseException | None = None
         self.hand_error: BaseException | None = None
 
     def installer(self, home: Path) -> Installer:
+        app = home / "OrthoStudio XP.app"
+        (app / "Contents").mkdir(parents=True, exist_ok=True)
+        (app / "Contents" / "a").write_bytes(b"x" * 300)  # the copy's share: 300 bytes
         return Installer(
             home=home,
-            here=Here("macos", "arm64", home / "OrthoStudio XP.app"),
+            here=Here("macos", "arm64", app),
             log=home / "serve.log",
             running=lambda: self.running,
             quit_app=lambda: self.calls.append("quit"),
             facts=lambda version, name: self.facts,
             fetch=self.fetch,
+            stage=self.stage,
             hand=self.hand,
         )
 
     def fetch(self, url: str, dest: Path, **kw: Any) -> None:
         self.calls.append(f"fetch {url.rsplit('/', 1)[-1]}")
         if self.fetch_error is not None:
-            if isinstance(self.fetch_error, DownloadCancelledError):
+            if isinstance(self.fetch_error, InstallCancelledError):
                 while not kw["cancelled"]():
                     time.sleep(0.01)
             raise self.fetch_error
         kw["progress"](kw["size"])
 
+    def stage(self, image: Path, app: Path, version: str, **kw: Any) -> Path:
+        self.calls.append(f"stage {image.name}")
+        if self.stage_error is not None:
+            raise self.stage_error
+        kw["progress"](0.5)
+        kw["progress"](1.0)
+        staging = app.parent / (self_update.STAGING_PREFIX + "t")
+        staging.mkdir()
+        return staging / app.name
+
     def hand(self, here: Here, installer: Path, version: str, **kw: Any) -> None:
-        self.calls.append(f"hand {installer.name}")
+        self.calls.append(f"hand {installer.name} {kw['staged'].parent.name}")
         if self.hand_error is not None:
             raise self.hand_error
 
@@ -455,20 +514,31 @@ def _pending(home: Path) -> dict[str, Any]:
     return json.loads((home / self_update.UPDATE_DIR / self_update.PENDING_NAME).read_text())
 
 
-def test_a_try_downloads_hands_over_then_quits(tmp_path: Path) -> None:
+def test_a_try_downloads_makes_ready_hands_over_then_quits(tmp_path: Path) -> None:
     d = _Doubles()
     installer = d.installer(tmp_path)
+    seen: list[tuple[int, int]] = []
+    real_set = installer._set
+
+    def watch(**state: Any) -> None:
+        if state.get("state") == "preparing":
+            seen.append((state["done"], state["total"]))
+        real_set(**state)
+
+    installer._set = watch  # type: ignore[method-assign]
     assert installer.start("2.3.0", force=False)
     installer.join(10)
     assert installer.status() == {"state": "installing", "version": "2.3.0"}
     name = "OrthoStudio-XP-2.3.0-macos-arm64.dmg"
-    assert d.calls == [f"fetch {name}", f"hand {name}", "quit"]
+    assert d.calls == [f"fetch {name}", f"stage {name}", f"hand {name} .osxp-update.t", "quit"]
+    # one bar: the download's 100 bytes then the copy's 300 (the app as installed), never back
+    assert seen == [(0, 400), (100, 400), (250, 400), (400, 400)]
     assert _pending(tmp_path)["version"] == "2.3.0" and "reason" not in _pending(tmp_path)
 
 
-def test_what_starts_while_it_downloads_is_asked_about(tmp_path: Path) -> None:
-    """A build or Live started meanwhile, which the user did not agree to stop: the file is kept,
-    the page asks, and the try goes on once the user said yes."""
+def test_what_starts_meanwhile_is_asked_about(tmp_path: Path) -> None:
+    """A build or Live started meanwhile, which the user did not agree to stop: the download is
+    kept, the copy taken away, the page asks, and the try goes on once the user said yes."""
     d = _Doubles()
     d.running = Running(build=True, live=True, flying=True)
     installer = d.installer(tmp_path)
@@ -480,6 +550,7 @@ def test_what_starts_while_it_downloads_is_asked_about(tmp_path: Path) -> None:
         "running": {"build": True, "live": True, "flying": True},
     }
     assert "quit" not in d.calls and not any(c.startswith("hand") for c in d.calls)
+    assert not (tmp_path / (self_update.STAGING_PREFIX + "t")).exists()
     assert installer.start("2.3.0", force=True)
     installer.join(10)
     assert installer.status()["state"] == "installing" and d.calls[-1] == "quit"
@@ -491,6 +562,7 @@ def test_what_starts_while_it_downloads_is_asked_about(tmp_path: Path) -> None:
         ("no facts", "release"),
         ("download", "download"),
         ("damaged", "damaged"),
+        ("copy", "room"),
         ("hand", "start"),
         ("bug", "start"),
     ],
@@ -501,6 +573,8 @@ def test_a_try_that_fails_says_why_now_and_at_the_next_start(
     d = _Doubles(facts=None if trouble == "no facts" else (100, "ab" * 32))
     if trouble in ("download", "damaged"):
         d.fetch_error = UpdateError(trouble)
+    if trouble == "copy":
+        d.stage_error = UpdateError("room")
     if trouble == "hand":
         d.hand_error = UpdateError("start")
     if trouble == "bug":
@@ -511,12 +585,13 @@ def test_a_try_that_fails_says_why_now_and_at_the_next_start(
     status = installer.status()
     assert status["state"] == "failed" and status["reason"] == reason
     assert "quit" not in d.calls  # the app stays: nothing was handed over
+    assert not (tmp_path / (self_update.STAGING_PREFIX + "t")).exists()  # nor made ready
     assert self_update.last_try(tmp_path, "2.2.0") == {"version": "2.3.0", "reason": reason}
 
 
-def test_cancel_stops_the_download_and_forgets_the_try(tmp_path: Path) -> None:
+def test_cancel_stops_the_try_and_forgets_it(tmp_path: Path) -> None:
     d = _Doubles()
-    d.fetch_error = DownloadCancelledError()
+    d.fetch_error = InstallCancelledError()
     installer = d.installer(tmp_path)
     assert installer.start("2.3.0", force=False)
     time.sleep(0.05)
@@ -525,18 +600,25 @@ def test_cancel_stops_the_download_and_forgets_the_try(tmp_path: Path) -> None:
     installer.join(10)
     assert installer.status() == {"state": "idle"}
     assert self_update.last_try(tmp_path, "2.2.0") is None
-    assert not installer.cancel()  # nothing downloads now
+    assert not installer.cancel()  # nothing is under way now
 
 
-def test_old_installers_go_when_another_version_is_tried(tmp_path: Path) -> None:
+def test_what_earlier_tries_left_goes(tmp_path: Path) -> None:
+    """Another version's installer, an old script, and a new app made ready by a try the app's end
+    cut short."""
     folder = tmp_path / self_update.UPDATE_DIR
     folder.mkdir()
     (folder / "OrthoStudio-XP-2.2.5-macos-arm64.dmg").write_text("old")
     (folder / "install.sh").write_text("old")
-    installer = _Doubles().installer(tmp_path)
+    left = tmp_path / (self_update.STAGING_PREFIX + "old") / "OrthoStudio XP.app"
+    left.mkdir(parents=True)
+    d = _Doubles()
+    d.fetch_error = UpdateError("download")
+    installer = d.installer(tmp_path)
     installer.start("2.3.0", force=True)
     installer.join(10)
     assert sorted(p.name for p in folder.iterdir()) == [self_update.PENDING_NAME]
+    assert not left.parent.exists()
 
 
 # -- the engine's routes --------------------------------------------------------------------------
@@ -558,7 +640,7 @@ class _Recorder:
         return True
 
     def status(self) -> dict[str, Any]:
-        return {"state": "downloading", "version": "999.0.0", "done": 0, "total": 0}
+        return {"state": "preparing", "version": "999.0.0", "done": 0, "total": 0}
 
     def cancel(self) -> bool:
         self.cancelled += 1
@@ -611,7 +693,7 @@ async def test_the_page_installs_a_newer_version_and_asks_first_while_a_build_ru
             r = await c.post("/api/update/install", json={"force": True})
             assert r.status_code == 202, r.text
             assert recorder.started == [("999.0.0", True)]
-            assert (await c.get("/api/update/install")).json()["state"] == "downloading"
+            assert (await c.get("/api/update/install")).json()["state"] == "preparing"
             assert (await c.delete("/api/update/install")).json() == {"cancelled": True}
             assert recorder.cancelled == 1
             mgr.cancel_all()
@@ -695,6 +777,7 @@ async def test_the_engine_quits_for_the_update_as_it_does_for_quit(
 
     handed: list[str] = []
     monkeypatch.setattr(self_update, "download", fetch)
+    monkeypatch.setattr(self_update, "stage_app", lambda image, app, version, **kw: home / "n.app")
     monkeypatch.setattr(
         self_update, "hand_over", lambda here, installer, version, **kw: handed.append(version)
     )
