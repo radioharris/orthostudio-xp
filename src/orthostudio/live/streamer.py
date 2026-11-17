@@ -43,7 +43,6 @@ ZL16, never the neutral colour.
 from __future__ import annotations
 
 import contextlib
-import json
 import math
 import os
 import queue
@@ -58,7 +57,6 @@ from pathlib import Path
 from . import dds, machine, pools, writes
 from .cache import IMAGE, NO_IMAGERY, ChunkCache, Key
 from .evict import EVICT_SAFE_KM, TARGET, XPlaneWindow, pick, tiles_of, usage, xplane_tiles
-from .filesystem import replace as replace_file
 from .flightplan import MOVING_MS, FlightPlan, last_plan
 from .geo import bearing_deg, haversine_m, parse_texture_name
 from .look import DEFAULT_LOOKS, Look
@@ -66,7 +64,7 @@ from .mapdata import route_points, shown
 from .meshmap import REGION_NAMES, REGION_NAMES_FR, region_of
 from .names import KEEP, RING, Entry, Names, RegionTextures, SquareTextures, squares_round
 from .nightwork import ROADS_KEPT_MB, NightWork
-from .pack import MARKER, copies_in, load_built
+from .pack import copies_in, load_built, save_built
 from .region import (
     NEUTRAL_LEVEL,
     REGION_VERSION,
@@ -433,7 +431,7 @@ class Streamer:
         # (orthostudio.live.texture.copy_up), so that X-Plane never reads the neutral colour there
         self.to_copy: set[str] = set()
         self.cruising = False  # high enough that no 8192 px level gets its photos (_cruise_height)
-        self.meta = load_built(pack_dir)
+        self.meta = load_built(pack_dir, damaged=log)
         self.built: dict[str, int] = dict(self.meta.get("textures", {}))
         # recorded with them: on the disk until their file is written again (evict.usage)
         self.copied_up: set[str] = set(copies_in(self.meta))
@@ -1787,15 +1785,12 @@ class Streamer:
         meta["patchy"] = patchy
         meta["lit"], meta["copied"] = lit, copied  # what their files hold besides (evict.usage)
         meta["updated"] = meta["copied_with"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
-        tmp = self.pack_dir / MARKER.with_suffix(".tmp")
-        text = json.dumps(meta)
         try:
-            tmp.write_text(text)
-            replace_file(tmp, self.pack_dir / MARKER)
+            size = save_built(self.pack_dir, meta)
         except OSError as e:  # held by another program: as a stop between two saves, never fatal
             self.log(f"  Live's record of its textures not saved ({e}): saved whole next time")
             return
-        writes.add("Live's record of its textures", len(text))
+        writes.add("Live's record of its textures", size)
 
     def snapshot(self) -> dict:
         """What the streamer is doing, counted by level (0 the sharpest, 4 the 256 px one): the
