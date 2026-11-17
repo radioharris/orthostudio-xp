@@ -1051,6 +1051,11 @@ without them: the same frame rate (38 against 37), Live's queue as often empty (
 processor +20 %, its writes +43 % (1.70 to 2.43 GB), X-Plane's memory with its graphics +3 GB.
 With rivers apart and even by default, those of rivers and lakes are not made.
 
+Measured on the new mesh (Stockholm's two squares baked with rivers apart, the same flight, one
+each, the computer at rest, 2026-11-17): even and soft banks both 41 frames a second; X-Plane's
+memory with its graphics 13.2 GB even, 13.9 GB soft banks (+0.7 GB, the figure the window gives),
+against 12.3 GB for Live before; Live's processor 0.15 core either way.
+
 The first start after the update, and the first after a change of the setting or of the zoom,
 makes in its squares' process the water photos of the textures already built round the start,
 before X-Plane goes: 3 to 7 ms each for the far ones, 36 to 47 ms for the sharp ones near the

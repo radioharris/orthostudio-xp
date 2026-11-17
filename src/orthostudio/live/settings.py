@@ -157,10 +157,10 @@ class LiveSettings(BaseModel):
     them, as XPME and AutoOrtho draw them; on, faded into the water near their banks as on the
     sea, through each one's mask, with a water photo of its own. The sea and lakes over 200 km²
     keep their masks either way. Off by default (the user, 2026-11-17): soft banks take more
-    graphics memory where there is much water, X-Plane +3 GB at Stockholm with every water body
-    masked. Only regions of the new mesh, whose rivers and lakes have terrain files of their own,
-    tell the two apart; a change takes effect at the next start with X-Plane not running, as the
-    decal's."""
+    graphics memory where there is much water, X-Plane +0.7 GB against off at Stockholm on the
+    new mesh (docs/specs/live.md). Only regions of the new mesh, whose rivers and lakes have
+    terrain files of their own, tell the two apart; a change takes effect at the next start with
+    X-Plane not running, as the decal's."""
     decal: str = LIVE_DECAL
     """X-Plane 12's decal on the land of Live's squares, one of OrthoStudio XP's
     (:data:`orthostudio.decals.DECALS`): the fine ground detail drawn over the photo near the

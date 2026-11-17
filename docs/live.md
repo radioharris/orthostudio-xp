@@ -330,8 +330,8 @@ own photo, so the bank keeps its colours and the season's, and it counts in Live
 - **Even (recommended)**: the photo lies evenly see-through over rivers and lakes, as with
   AutoOrtho and XPME: no mask, no water photo for them.
 - **Soft banks**: the photo fades into the water near their banks, as on the sea. For that Live
-  adds one more image on every river and lake: graphics memory goes up, by up to 3 GB over
-  regions full of water (measured over Stockholm, with every water body faded).
+  adds one more image on every river and lake: graphics memory goes up, by up to 0.7 GB over
+  regions full of water (measured over Stockholm, against Even).
 
 The sea, and lakes over 200 km², always fade softly. The choice applies to the regions of the new
 mesh, whose rivers and lakes are drawn apart from the sea: update them in « The mesh, by region ».

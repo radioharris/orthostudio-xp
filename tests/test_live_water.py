@@ -715,7 +715,7 @@ def test_the_window_asks_about_rivers_and_lakes_between_the_night_and_the_decal(
     assert "rivers_fade: (" in js
     strings = (UI_DIR / "strings.js").read_text(encoding="utf-8")
     assert '"rivers.soft_note": "The photo fades into the water near the banks' in strings
-    assert "up to 3 GB" in strings and "jusqu'à 3 Go de plus" in strings
+    assert "up to 0.7 GB" in strings and "jusqu'à 0,7 Go de plus" in strings
     assert strings.count('"rivers.title"') == 2  # English and French
 
 
