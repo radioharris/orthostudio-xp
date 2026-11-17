@@ -137,6 +137,7 @@ def options_for(settings: LiveSettings) -> session.Options:
         own_tiles=settings.own_tiles,
         night=settings.night,
         night_light=settings.night_light,
+        rivers_fade=settings.rivers_fade,
     )
 
 

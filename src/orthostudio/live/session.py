@@ -107,6 +107,9 @@ class Options:
     own_tiles: str = "first"  # the pilot's own tiles first, or "under" Live's pack while it runs
     night: bool = False  # the towns' lights at night (orthostudio.live.night); the app: on
     night_light: str = "normal"  # their strength, a key of orthostudio.live.night.LIGHTS
+    # rivers and lakes faded at their banks through their masks (orthostudio.live.waterphoto), or
+    # evenly see-through; the sea always fades
+    rivers_fade: bool = False
 
 
 class StartClock:
@@ -270,6 +273,7 @@ def prepare(options: Options, log: Log) -> Prepared:
         remove_temps,
         set_decal,
         set_night,
+        set_water,
         set_zooms,
         setup_region,
     )
@@ -369,6 +373,7 @@ def prepare(options: Options, log: Log) -> Prepared:
             ) from e
         set_decal(pack_dir, options.decal, log=log, xplane_running=xplane_running)
         set_night(pack_dir, options.night, log=log, xplane_running=xplane_running)
+        set_water(pack_dir, options.rivers_fade, log=log, xplane_running=xplane_running)
         left = remove_temps(pack_dir)  # before anything writes there
         if left:
             log(f"{left} unfinished files a stopped Live left among the textures removed")

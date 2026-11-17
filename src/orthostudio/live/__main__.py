@@ -253,6 +253,7 @@ def stream(
         own_tiles=saved.own_tiles,
         night=saved.night,
         night_light=saved.night_light,
+        rivers_fade=saved.rivers_fade,
     )
     try:
         prepared = session.prepare(options, typer.echo)
