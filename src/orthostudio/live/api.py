@@ -7,7 +7,8 @@ can include as it is the day Live comes into its window (``app.include_router``)
   the page asks every second, which also says it is open; ``POST /api/live/presence`` says only
   that (the welcome page);
 - ``GET  /api/live/log?after=N``: the log's lines after the N-th;
-- ``POST /api/live/start``: start streaming (409 while a stream is on);
+- ``POST /api/live/start``: start streaming (409 while a stream is on, or while a region is
+  being downloaded or installed);
 - ``POST /api/live/stop``: stop it; the pack comes out once X-Plane has quit;
 - ``POST /api/live/leave``: stop waiting for X-Plane: the pack stays installed;
 - ``POST /api/live/quit`` ``{"force": bool}``: the window goes, for the app's update or removal
@@ -120,7 +121,11 @@ def live_router(
 
     @router.post("/start", status_code=202)
     def start() -> dict[str, Any]:
-        if not control.start():
+        try:
+            started = control.start()
+        except session.RefusedError as e:  # a region being installed
+            raise HTTPException(409, str(e)) from e
+        if not started:
             raise HTTPException(409, "a stream is already on its way, or on its way out")
         return {"state": control.state}
 

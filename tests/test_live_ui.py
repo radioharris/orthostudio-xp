@@ -1370,8 +1370,10 @@ class FakeInstaller:
         log=print,
         night_only: bool = False,
         rivers: bool = False,
+        may_swap=None,
     ) -> None:
         self.region = region
+        self.may_swap = may_swap
         self.overlays = overlays
         self.night_only = night_only
         self.rivers = rivers
@@ -1431,6 +1433,7 @@ def test_the_regions_the_page_lists(home: Path, tmp_path: Path) -> None:
         "changed": 0,
         "changed_bytes": 13,
         "rivers_bytes": 0,
+        "waiting": False,
     }
     c.install_region("eur")
     assert c._installer.overlays  # the pilot takes X-Plane's roads: they come with it
@@ -1480,6 +1483,7 @@ def test_the_night_grids_of_a_region_installed_before_them_come_by_themselves(
     wait_for(lambda: c._installer is not None)
     quiet = c._installer
     assert quiet.night_only and quiet.region.id == "eur" and not quiet.overlays
+    assert not c.installing() and not c.status()["checks"]["installing"]  # Start not held
     assert c.regions()["install"] is None  # unseen on the page
     listed = {r["id"]: r for r in c.regions()["list"]}
     assert listed["eur"]["changed"] == 1  # its overlays only: the grids come by themselves
@@ -1546,6 +1550,53 @@ async def test_the_regions_api(home: Path, tmp_path: Path) -> None:
         await client.post("/api/live/regions/cancel")
         wait_for(lambda: c.regions()["install"]["phase"] == "cancelled")
         assert (await client.delete("/api/live/regions/eur")).status_code == 409  # not installed
+
+
+@pytest.mark.anyio
+async def test_start_waits_for_a_region_being_installed(
+    home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """While a region is downloaded or installed, Start is refused by Live's server, its window
+    saying why (``checks.installing``): a start would read a region the install is changing. An
+    update may take its place only with Live stopped and X-Plane not running."""
+    monkeypatch.setattr(control_module, "xplane_running", lambda: False)
+    c = regions_control(tmp_path / "X-Plane 12")
+    c.regions(fetch=True)
+    wait_for(lambda: c._catalog is not None)
+    assert not c.status()["checks"]["installing"]
+    c.install_region("eur")
+    assert c.installing() and c.status()["checks"]["installing"]
+    assert c._installer.may_swap()  # Live stopped, X-Plane not running
+    monkeypatch.setattr(control_module, "xplane_running", lambda: True)
+    assert not c._installer.may_swap()  # X-Plane may be reading the region of before
+    with pytest.raises(session.RefusedError, match="being downloaded or installed"):
+        c.start()
+    assert c.state == IDLE
+    async with client_for(create_live_app(c)) as client:
+        refused = await client.post("/api/live/start")
+        assert refused.status_code == 409
+        assert "being downloaded or installed" in refused.json()["detail"]
+    c.cancel_install()
+    wait_for(lambda: not c.installing())
+    assert not c.status()["checks"]["installing"]
+
+
+def test_the_window_puts_back_a_region_a_power_cut_left_aside(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A region renamed aside for its update, the computer stopped before the update took its
+    place: the window, as it opens, puts it back, before it reads the regions into their lists."""
+    from orthostudio.live import aoregions, osxpregions
+    from orthostudio.live.pack import live_root
+
+    monkeypatch.setattr(session, "keep_region_lists", lambda xp, log: None)
+    aside = osxpregions.regions_dir(live_root()) / ".z_osxp_eur.old"
+    aside.mkdir(parents=True)
+    (aside / aoregions.MARKER).write_text("{}")
+    lines: list[str] = []
+    LiveControl(checks=checks(), echo=lines.append).keep_region_lists_aside().join(5)
+    assert (osxpregions.mesh_dir(live_root(), "eur") / aoregions.MARKER).exists()
+    assert not aside.exists() and any("put back" in line for line in lines)
 
 
 # --- the river masks (2026-11-17) ---------------------------------------------------------------
