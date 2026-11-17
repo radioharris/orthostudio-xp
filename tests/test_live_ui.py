@@ -890,6 +890,7 @@ def test_the_settings_read_the_most_needed_first() -> None:
         "q-own-tiles",
         "q-season",
         "q-night",
+        "q-rivers",
         "q-decal",
         "q-plan",
         "q-home",

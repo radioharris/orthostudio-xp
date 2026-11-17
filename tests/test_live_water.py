@@ -655,3 +655,29 @@ def test_a_build_that_missed_its_water_photo_s_name_makes_it_after(tmp_path: Pat
         assert s.water == {} and sum("could not be made" in line for line in said) == 1
     finally:
         cache.close()
+
+
+# --- the window ---------------------------------------------------------------------------------
+
+
+def test_the_window_asks_about_rivers_and_lakes_between_the_night_and_the_decal() -> None:
+    """Two answers, even first and recommended, soft banks saying what it costs, the regions it
+    applies to and when; sent with the settings as rivers_fade, in both languages."""
+    import re
+
+    from orthostudio.live.web import UI_DIR
+
+    html = (UI_DIR / "index.html").read_text(encoding="utf-8")
+    cards = re.findall(r'<fieldset class="question" id="(q-[a-z-]+)">', html)
+    assert cards.index("q-rivers") == cards.index("q-night") + 1 == cards.index("q-decal") - 1
+    block = html[html.index('id="q-rivers"') : html.index('id="q-decal"')]
+    assert re.findall(r'name="rivers_fade" value="(\w+)"', block) == ["even", "soft"]
+    for key in ("title", "help", "even", "even_note", "soft", "soft_note", "new_mesh", "restart"):
+        assert f'data-i18n="rivers.{key}"' in block
+    js = (UI_DIR / "live.js").read_text(encoding="utf-8")
+    assert js.count('input[name="rivers_fade"]') == 2  # filled from the settings, and sent
+    assert "rivers_fade: (" in js
+    strings = (UI_DIR / "strings.js").read_text(encoding="utf-8")
+    assert '"rivers.soft_note": "The photo fades into the water near the banks' in strings
+    assert "up to 3 GB" in strings and "jusqu'à 3 Go de plus" in strings
+    assert strings.count('"rivers.title"') == 2  # English and French

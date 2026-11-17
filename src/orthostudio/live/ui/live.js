@@ -1180,6 +1180,9 @@ function fillSettings(settings) {
   for (const input of document.querySelectorAll('input[name="night"]')) {
     input.checked = input.value === nightChoice(settings);
   }
+  for (const input of document.querySelectorAll('input[name="rivers_fade"]')) {
+    input.checked = input.value === (settings.rivers_fade ? "soft" : "even");
+  }
   drawSimbrief();
   drawMemory();
   drawZooms();
@@ -1210,6 +1213,8 @@ function formSettings() {
     own_tiles: document.querySelector('input[name="own_tiles"]:checked')?.value || saved?.own_tiles || "first",
     night: nightChosen() !== "off",
     night_light: nightChosen() === "off" ? (saved?.night_light || "normal") : nightChosen(),
+    rivers_fade: (document.querySelector('input[name="rivers_fade"]:checked')?.value
+      || (saved?.rivers_fade ? "soft" : "even")) === "soft",
     decal: $("set-decal").options.length ? $("set-decal").value : (saved?.decal ?? LIVE_DECAL),
     season: seasonChosen(),
     seasons: seasonLooks || saved?.seasons,
