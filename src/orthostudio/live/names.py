@@ -847,6 +847,12 @@ class Names:
     ):
         self.pack_dir = pack_dir
         self.water = water  # region.WaterRecord, or None: the water terrain files name the masks
+        # the regions holding their river masks as the stream starts: masks put in place while it
+        # runs (orthostudio.live.osxpregions, soft banks chosen meanwhile) wait for the next start,
+        # whose set-up sees their folder's time and makes the region's terrain files again
+        # (region._fingerprints); read per square, the squares after them faded and those before
+        # left with X-Plane's water alone in one flight, and in the flights after
+        self.river_masks = [(source / RIVER_MASKS).is_dir() for source in sources]
         self.watered = watered
         self.decal = decal  # the land's decal of its .ter files (:func:`with_decal`); None: theirs
         self.night = night  # the land's .ter files name a night texture (:func:`with_night`)
@@ -920,7 +926,8 @@ class Names:
         """Where the region has the water mask of a texture that gets a water photo, None for one
         that gets none: a texture of Live's own mesh whose sea fades (its mask in the region's
         ``textures``), or whose rivers and lakes do with ``rivers_fade`` and their region has their
-        mask (in ``textures`` where the texture has sea too, else in :data:`RIVER_MASKS`)."""
+        mask (in ``textures`` where the texture has sea too, else in :data:`RIVER_MASKS`, where the
+        region had them as the stream started: :attr:`river_masks`)."""
         name, _, _, _, kinds, i = entry
         if self.water is None or not self.sources or not own[i]:
             return None
@@ -929,6 +936,8 @@ class Names:
             return source / "textures" / mask
         if kinds & 2 and self.water.rivers_fade:
             for folder in (Path("textures"), RIVER_MASKS):
+                if folder == RIVER_MASKS and not self.river_masks[i]:
+                    continue
                 if (source / folder / mask).is_file():
                     return source / folder / mask
         return None

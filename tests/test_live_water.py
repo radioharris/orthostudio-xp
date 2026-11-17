@@ -8,6 +8,7 @@ name, made before them, and taken away with them."""
 from __future__ import annotations
 
 import io
+import json
 import os
 import struct
 from pathlib import Path
@@ -655,6 +656,41 @@ def test_a_build_that_missed_its_water_photo_s_name_makes_it_after(tmp_path: Pat
         assert s.water == {} and sum("could not be made" in line for line in said) == 1
     finally:
         cache.close()
+
+
+# --- river masks put in place (2026-11-17) -----------------------------------------------------
+
+
+def test_river_masks_put_in_place_wait_for_the_next_start(tmp_path: Path) -> None:
+    """Soft banks chosen, a region whose river masks come while Live streams (Live installs them
+    then): the running stream keeps X-Plane's water alone on its rivers, as on the squares it made
+    before them; the next start sets the region up again, its terrain files made anew, the rivers
+    faded. A region without them keeps its fingerprints of before: no set-up for nothing."""
+    import shutil
+
+    from orthostudio.live.region import REGION_MARKER, _fingerprints
+
+    pack = live_pack(tmp_path)
+    src = tmp_path / "z_osxp_test"
+    shutil.rmtree(src / "rivers")  # a region without river masks
+    setup_region(src, pack, log=quiet)
+    lines: list[str] = []
+    setup_region(src, pack, log=lines.append)
+    assert lines == []
+    assert len(_fingerprints([src])[str(src)]) == 2
+    set_water(pack, True, log=quiet)
+    names = live_names(pack, water=water_record(pack))
+    (src / "rivers" / "textures").mkdir(parents=True)  # put in place while it streams
+    (src / "rivers" / "textures" / mask_name(f"{RIVER}.dds")).write_bytes(mask_png())
+    names.make(TILE)
+    assert f"BORDER_TEX ../textures/{NO_BORDER}" in ter_of(pack, RIVER, "_water_overlay")
+    assert not (pack / "textures" / water_name(f"{RIVER}.dds")).exists()
+    setup_region(src, pack, log=lines.append)  # the next start
+    assert any("changed since the pack was set up" in line for line in lines)
+    assert not (pack / "terrain" / f"{RIVER}_water_overlay.ter").exists()
+    assert len(json.loads((pack / REGION_MARKER).read_text())["fingerprints"][str(src)]) == 3
+    live_names(pack, water=water_record(pack)).make(TILE)
+    assert f"../textures/{RIVER}_water.dds" in ter_of(pack, RIVER, "_water_overlay")
 
 
 # --- the window ---------------------------------------------------------------------------------

@@ -585,8 +585,12 @@ def _shared_files(sources: Sequence[Path], textures: Path) -> tuple[int, int]:
 def _fingerprints(sources: Sequence[Path]) -> dict[str, list[int]]:
     """What changes when a region is installed again or updated: its folders' times. The pack
     takes the files its DSFs name from the regions while Live streams (orthostudio.live.names),
-    so DSFs of before beside ``.ter`` files of now must not meet."""
-    from .names import terrain_folder
+    so DSFs of before beside ``.ter`` files of now must not meet. Its river masks' folder too,
+    where it has one (2026-11-17): put in place or made again, it changes what the terrain files
+    of its rivers name with soft banks, and squares made before must not keep X-Plane's water
+    alone beside faded ones. Only where it has one, so that every pack of before keeps its
+    fingerprints and is not set up again for nothing."""
+    from .names import RIVER_MASKS, terrain_folder
 
     out = {}
     for source in sources:
@@ -596,6 +600,8 @@ def _fingerprints(sources: Sequence[Path]) -> dict[str, list[int]]:
                 times.append(os.stat(source / sub).st_mtime_ns)
             except OSError:
                 times.append(0)
+        with contextlib.suppress(OSError):
+            times.append(os.stat(source / RIVER_MASKS.parts[0]).st_mtime_ns)
         out[str(source)] = times
     return out
 
