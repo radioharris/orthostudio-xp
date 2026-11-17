@@ -100,6 +100,15 @@ class Host:
         return httpx.Response(206 if start else 200, content=body)
 
 
+@pytest.fixture(autouse=True)
+def delete_at_once(monkeypatch):
+    """The region of before deleted before the install ends, not in the background: what each
+    test looks at is then there or not, whatever the machine's speed."""
+    monkeypatch.setattr(
+        osxpregions, "_delete_aside", lambda folder: shutil.rmtree(folder, ignore_errors=True)
+    )
+
+
 def region_of(files: dict[str, bytes], release: str = RELEASE) -> OsxpRegion:
     """The region a list gives for these files, each by the folder it is in."""
     kinds: dict[str, list[Zip]] = {"mesh": [], "overlays": [], "night": [], "rivers": []}
@@ -680,10 +689,11 @@ def test_live_quit_before_the_rename_keeps_the_update_offered(
             raise KeyboardInterrupt("the app quit")
         return False
 
+    putting = osxpregions.put_in_place
     monkeypatch.setattr(osxpregions, "put_in_place", quit_now)
     with pytest.raises(KeyboardInterrupt):
         install(tmp_path, region, Host(files))
-    monkeypatch.undo()
+    monkeypatch.setattr(osxpregions, "put_in_place", putting)
     assert marker_of(tmp_path) == before
     assert osxpregions.staged_whole(tmp_path, "eur")
     assert osxpregions.not_installed(tmp_path, region, False)  # the page offers Update
@@ -717,7 +727,7 @@ def test_a_power_cut_between_the_two_renames_is_put_right(
     monkeypatch.setattr(osxpregions, "replace_file", cut)
     with pytest.raises(KeyboardInterrupt):
         install(tmp_path, region, Host(files))
-    monkeypatch.undo()
+    monkeypatch.setattr(osxpregions, "replace_file", renaming)
     assert not folder.exists() and osxpregions.installed(tmp_path) == {}
     assert osxpregions.present(tmp_path, "eur")
     said: list[str] = []
@@ -729,8 +739,11 @@ def test_a_power_cut_between_the_two_renames_is_put_right(
     old = folder.with_name(".z_osxp_eur.old")
     old.mkdir()  # a region of before whose deletion a cut stopped
     (old / "x.dsf").write_bytes(b"of before")
+    aside = folder.with_name(".z_osxp_eur.old.1795000000000000000")
+    aside.mkdir()  # one being deleted in the background as the app quit
+    (aside / "y.dsf").write_bytes(b"of before")
     osxpregions.settle(tmp_path, said.append, swap=False)
-    assert not old.exists()
+    assert hidden(tmp_path) == [".download", ".lists"]
 
 
 def test_a_region_in_use_keeps_its_place_until_the_next_try(

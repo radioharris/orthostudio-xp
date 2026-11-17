@@ -496,7 +496,9 @@ grids and its river masks where it wants them (`wanted`: soft banks chosen, or t
 them already), unpacked one at a time in the list's order, each recorded in the stage's
 `.live-install.json`. Once all are there, its marker is written in the stage, and the stage takes
 the region's place (`put_in_place`): the region of before renamed `.z_osxp_<id>.old`, the stage
-renamed in, the old one deleted, one rename helper tried again a moment on Windows
+renamed in, the old one deleted in the background under a name of its own
+(`.z_osxp_<id>.old.<n>`, `_discard`: its hundreds of thousands of files take a minute or more,
+which no start waits for; a deletion a quit stopped is taken up again), one rename helper tried again a moment on Windows
 (`filesystem.replace`), the marker and every record written whole and flushed to the disk
 (`fsutil.atomic_write_text`, fsync). An update does the same as soon as the mesh the region holds
 is not the list's (`made_whole`): a zip made again (a single mended zip brings the region whole,

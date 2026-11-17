@@ -509,7 +509,7 @@ def put_in_place(root: Path, region: str, log: Log = print) -> bool:
             return False
         real = _real(root, region)
         old = _old_dir(real)
-        shutil.rmtree(old, ignore_errors=True)  # one an earlier swap could not delete
+        _discard(old)  # one an earlier swap could not delete
         if real.exists():
             _rename(real, old, real.name)
         try:
@@ -520,7 +520,7 @@ def put_in_place(root: Path, region: str, log: Log = print) -> bool:
             raise
         fsync_dir(real.parent)
         (real / STEP).unlink(missing_ok=True)
-        shutil.rmtree(old, ignore_errors=True)
+        _discard(old)
     now = time.time()
     for sub in ("Earth nav data", "terrain", "terrain-lists"):  # what the set-up compares
         with contextlib.suppress(OSError):
@@ -566,13 +566,35 @@ def _unpack_waiting(root: Path, region: str, log: Log) -> None:
     log(f"  {done} overlay zips of {region} unpacked with it")
 
 
+def _discard(old: Path) -> None:
+    """A region of before deleted in the background, renamed first to a name of its own
+    (``.z_osxp_<id>.old.<n>``): its hundreds of thousands of files take a minute or more, which no
+    start waits for, and a later update's ``.old`` never meets it. A deletion a quit stopped is
+    taken up again by :func:`settle`."""
+    if not old.exists():
+        return
+    gone = old.with_name(f"{old.name}.{time.time_ns()}")
+    try:
+        replace_file(old, gone)
+    except OSError:  # held open a moment: deleted where it is, as before
+        shutil.rmtree(old, ignore_errors=True)
+        return
+    _delete_aside(gone)
+
+
+def _delete_aside(folder: Path) -> None:
+    threading.Thread(
+        target=shutil.rmtree, args=(folder,), kwargs={"ignore_errors": True}, daemon=True
+    ).start()
+
+
 def _region_ids(root: Path) -> set[str]:
     """Every region something of which is in Live's ``regions`` folder: its folder or link, its
     stage or the region of before (those of a region on another disk are beside it there)."""
     ids = set()
     with contextlib.suppress(OSError):
         for entry in os.scandir(regions_dir(root)):
-            m = re.fullmatch(r"\.?z_osxp_(.+?)(\.new|\.old)?", entry.name)
+            m = re.fullmatch(r"\.?z_osxp_(.+?)(\.new|\.old(?:\.\d+)?)?", entry.name)
             if m and (entry.name.startswith("z_") or m.group(2)):
                 ids.add(m.group(1))
     return ids
@@ -588,6 +610,9 @@ def settle(root: Path, log: Log = print, *, swap: bool, only: Iterable[str] | No
         real = _real(root, region)
         old = _old_dir(real)
         with _SWAP:
+            for left in real.parent.glob(f"{old.name}.*"):  # deletions a quit stopped
+                if left.name.removeprefix(f"{old.name}.").isdigit():
+                    _delete_aside(left)
             if not real.exists() and old.exists():
                 try:
                     replace_file(old, real)
@@ -596,7 +621,7 @@ def settle(root: Path, log: Log = print, *, swap: bool, only: Iterable[str] | No
                     log(f"OrthoStudio XP's region {region} could not be put back: {e}")
                     continue
             elif real.exists() and old.exists():
-                shutil.rmtree(old, ignore_errors=True)
+                _discard(old)
         if not swap:
             continue
         try:
@@ -625,6 +650,8 @@ def remove(root: Path, region: str, squares: Sequence[tuple[int, int]], log: Log
             remove_folder_link(folder)
         shutil.rmtree(old, ignore_errors=True)
         shutil.rmtree(stage, ignore_errors=True)
+        for left in real.parent.glob(f"{old.name}.*"):  # regions of before still being deleted
+            shutil.rmtree(left, ignore_errors=True)
     shutil.rmtree(regions_dir(root) / ".download" / f"osxp_{region}", ignore_errors=True)
     pack = overlay_pack(root)
     gone = 0

@@ -317,7 +317,10 @@ def prepare(options: Options, log: Log) -> Prepared:
     # updates keep waiting (orthostudio.live.osxpregions)
     from orthostudio.live import aoregions, osxpregions
 
-    osxpregions.settle(live_root(), log, swap=not xplane_running())
+    try:
+        osxpregions.settle(live_root(), log, swap=not xplane_running())
+    except OSError as e:  # the regions as they are: the checks below say what is missing
+        log(f"Live's regions could not be checked: {e}")
     # another tool's mesh as it is now, once for the start: its mesh and its roads go together
     other = NO_OTHER_MESH if options.source else other_mesh_found(xp_dir, live_root(), fresh=True)
     sources = [options.source] if options.source else default_sources(xp_dir, other=other)
