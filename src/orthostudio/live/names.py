@@ -485,6 +485,36 @@ class NightPool(NeutralPool):
         return path
 
 
+class WaterPool(NeutralPool):
+    """The placeholders the names of water photos not made lead to (orthostudio.live.waterphoto):
+    one of each size, its header and a hole, X-Plane's water alone, and its copies."""
+
+    def path(self, top: int, copy: int = 0) -> Path:
+        from .dds import size_of
+
+        base = self.pack_dir / "_live" / f"water-{size_of(top)}.dds"
+        return base if copy == 0 else base.with_name(f"{base.stem}-{copy + 1}{base.suffix}")
+
+    def _ensure(self, top: int, copy: int) -> Path:
+        from .waterphoto import write_placeholder
+
+        path = self.path(top, copy)
+        if not path.exists():
+            path.parent.mkdir(parents=True, exist_ok=True)
+            write_placeholder(path, top)
+        return path
+
+
+def _water_inodes(pack: Path) -> set[tuple[int, int]]:
+    """(device, inode) of the water photos' placeholders and their copies."""
+    out = set()
+    for path in (pack / "_live").glob("water-*.dds"):
+        with contextlib.suppress(OSError):
+            st = os.stat(path)
+            out.add((st.st_dev, st.st_ino))
+    return out
+
+
 def _night_inodes(pack: Path) -> set[tuple[int, int]]:
     """(device, inode) of the black night texture and its copies."""
     out = set()

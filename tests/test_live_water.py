@@ -1,11 +1,14 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """The water of Live's own mesh (orthostudio.live.waterphoto): the setting for rivers and lakes,
-the pack's record of what its terrain files name, the two borders."""
+the pack's record of what its terrain files name, the two borders, the water photo made from its
+land and following it, and the disk it takes."""
 
 from __future__ import annotations
 
 import io
+import os
+import struct
 from pathlib import Path
 
 import numpy as np
@@ -14,8 +17,8 @@ from PIL import Image
 
 from live_helpers import fake_dsf, live_names
 from orthostudio.live import control as control_module
-from orthostudio.live import settings_file
-from orthostudio.live.names import MASK_RE, TER_KINDS, TERRAIN_LISTS, mask_name
+from orthostudio.live import dds, settings_file
+from orthostudio.live.names import MASK_RE, TER_KINDS, TERRAIN_LISTS, WaterPool, mask_name
 from orthostudio.live.region import (
     WaterRecord,
     set_water,
@@ -23,7 +26,20 @@ from orthostudio.live.region import (
     water_record,
 )
 from orthostudio.live.settings import LiveSettings, load_settings, save_settings
-from orthostudio.live.waterphoto import EVEN_BORDER, NO_BORDER
+from orthostudio.live.texture import levels_from, write_sparse
+from orthostudio.live.waterphoto import (
+    EVEN_BORDER,
+    NO_BORDER,
+    file_size,
+    first_level,
+    follow,
+    header,
+    layout,
+    make,
+    water_name,
+    water_top,
+    write_placeholder,
+)
 
 TILE = (46, 2)
 # ZL16 textures in a row eastwards, their centres on TILE: the sea alone, a river alone (its mask
@@ -150,3 +166,272 @@ def test_the_two_borders_are_written_at_each_start(tmp_path: Path) -> None:
         assert set(np.asarray(im).ravel()) == {150}
     _to_squares(pack, quiet)  # what a pack of before has taken away: not them
     assert (pack / "textures" / EVEN_BORDER).exists() and (pack / "textures" / NO_BORDER).exists()
+
+
+# --- the water photo ----------------------------------------------------------------------------
+
+
+def land_block(level: int) -> bytes:
+    """A BC1 block of one colour of its own for each level, in four-colour mode as Live's are."""
+    c = 0x0841 * (level + 3)
+    return struct.pack("<HHI", c, c, 0)
+
+
+def land_file(pack: Path, name: str, level: int, file_top: int, water: bool = True) -> Path:
+    """A texture built from ``level`` in a file whose sharpest level is ``file_top``, each level of
+    its own colour, the larger ones a hole; its water mask beside it, and with ``water`` the
+    placeholder of its water photo, as the squares' files make them (orthostudio.live.names)."""
+    textures = pack / "textures"
+    textures.mkdir(parents=True, exist_ok=True)
+    layout_ = dds.level_layout(file_top)[level - file_top :]
+    levels = [land_block(level + k) * (length // 8) for k, (_, length) in enumerate(layout_)]
+    path = textures / f"{name}.dds"
+    write_sparse(path, level, levels, file_top=file_top)
+    (textures / mask_name(path.name)).write_bytes(mask_png())
+    if water:
+        WaterPool(pack).link(water_top(file_top), path.with_name(water_name(path.name)))
+    return path
+
+
+def water_levels(water: Path, first: int) -> list[np.ndarray]:
+    """The BC3 blocks, (blocks, 16) bytes, of a water photo's levels from ``first`` down."""
+    data = water.read_bytes()
+    top = dds.read_top(water)
+    return [
+        np.frombuffer(data[offset : offset + length], dtype=np.uint8).reshape(-1, 16)
+        for offset, length in layout(top)[first - top :]
+    ]
+
+
+def test_the_water_photo_s_layout_and_header() -> None:
+    """BC3, every level down to 1 x 1, 16 bytes a block: 5.6 MB for 2048 px; a header Pillow and
+    Live read as a DXT5 texture of that size."""
+    lay = layout(1)
+    assert len(lay) == 12 and lay[0] == (128, 512 * 512 * 16) and lay[-1][1] == 16
+    assert file_size(1) == 5_592_560
+    assert file_size(2) == 128 + 16 * sum(max(1, (1024 >> k) // 4) ** 2 for k in range(11))
+    head = header(1)
+    assert head[:4] == b"DDS " and len(head) == 128 and head[84:88] == b"DXT5"
+    assert struct.unpack_from("<4I", head, 12) == (2048, 2048, 2048 * 2048, 0)
+    assert struct.unpack_from("<I", head, 28)[0] == 12  # its levels
+    assert (water_top(0), water_top(-1), water_top(1), water_top(2)) == (1, 1, 2, 3)
+    assert (first_level(0, 0), first_level(2, 0), first_level(-1, -1), first_level(1, 1)) == (
+        1,
+        3,
+        1,
+        2,
+    )
+
+
+def test_the_placeholder_is_x_plane_s_water_alone(tmp_path: Path) -> None:
+    """Its header, then a hole: zeros, alpha 0 at every level, no disk taken but its header's."""
+    from orthostudio.live.filesystem import allocated
+
+    path = tmp_path / "water-2048.dds"
+    write_placeholder(path, 1)
+    data = path.read_bytes()
+    assert data[:128] == header(1) and len(data) == file_size(1)
+    assert set(data[128:]) == {0}
+    assert dds.read_top(path) == 1
+    assert allocated(path) < 1 << 20
+    with Image.open(path) as im:
+        im.load()
+        assert im.mode == "RGBA" and im.size == (2048, 2048)
+        assert np.asarray(im)[..., 3].max() == 0
+
+
+@pytest.mark.parametrize(
+    ("file_top", "level", "first"),
+    [(0, 0, 1), (0, 2, 3), (-1, -1, 1), (-1, 2, 3), (1, 1, 2), (1, 3, 4)],
+)
+def test_a_water_photo_is_made_from_its_land_s_own_levels(
+    tmp_path: Path, file_top: int, level: int, first: int
+) -> None:
+    """2048 px for a 4096 or 8192 px land file, 1024 for a 2048 px one; its levels from one coarser
+    than the land's built, a hole above; their colours the land's own blocks, nothing encoded
+    again; its placeholder's other names untouched."""
+    pack = tmp_path / "pack"
+    land = land_file(pack, SEA, level, file_top)
+    water = land.with_name(water_name(land.name))
+    wt = water_top(file_top)
+    assert first_level(level, file_top) == first
+    assert make(land, level) == level
+    data = water.read_bytes()
+    assert data[:128] == header(wt) and len(data) == file_size(wt)
+    assert set(data[128 : layout(wt)[first - wt][0]]) <= {0}  # sharper than the land's: a hole
+    colours = levels_from(land, first, file_top)
+    blocks = water_levels(water, first)
+    assert len(blocks) == len(colours)
+    for got, colour in zip(blocks, colours, strict=True):
+        assert got[:, 8:].tobytes() == colour
+    assert set(WaterPool(pack).path(wt).read_bytes()[128:]) == {0}
+
+
+def test_the_water_photo_s_alpha_is_the_mask(tmp_path: Path) -> None:
+    """Read as X-Plane reads it: the land's colour, and the mask resized to its side as alpha."""
+    pack = tmp_path / "pack"
+    land = land_file(pack, SEA, 0, 0)
+    make(land, 0)
+    with Image.open(land.with_name(water_name(land.name))) as im:
+        im.load()
+        rgba = np.asarray(im)
+    with Image.open(land.with_name(mask_name(land.name))) as im:
+        mask = np.asarray(im.resize((2048, 2048), Image.Resampling.BILINEAR)).astype(int)
+    alpha = rgba[..., 3].astype(int)
+    assert np.abs(alpha - mask).max() <= 20 and np.abs(alpha - mask).mean() < 1.5
+    assert alpha.max() == 255 and alpha.min() == 0
+    assert len({tuple(px) for px in rgba[::256, ::256, :3].reshape(-1, 3)}) == 1
+
+
+def test_no_water_photo_for_a_texture_without_one(tmp_path: Path) -> None:
+    """Whether a texture has one is the squares' files' choice: none beside it, none made."""
+    pack = tmp_path / "pack"
+    land = land_file(pack, LAND, 0, 0, water=False)
+    assert make(land, 0) is None and follow(land, 0) is None
+    assert not land.with_name(water_name(land.name)).exists()
+
+
+def test_the_water_photo_follows_its_land(tmp_path: Path) -> None:
+    """Made coarser, it keeps its levels from one below the land's; set to a new zoom, made again at
+    the new file's size; made neutral, back to the placeholder of its size; the 8192 px copy of a
+    land leaves it as it is."""
+    from orthostudio.live.region import ensure_neutral
+    from orthostudio.live.texture import copy_up, downgrade, resize
+
+    pack = tmp_path / "pack"
+    land = land_file(pack, SEA, 0, 0)
+    water = land.with_name(water_name(land.name))
+    make(land, 0)
+    assert downgrade(land, 4, ensure_neutral(pack, 0), file_top=0) == 4
+    data = water.read_bytes()
+    assert set(data[128 : layout(1)[4][0]]) == {0} and any(data[layout(1)[4][0] :])
+    assert water_levels(water, 5)[0][:, 8:].tobytes() == levels_from(land, 5, 0)[0]
+    assert resize(land, 4, 0, 1, ensure_neutral(pack, 1)) == 4  # ZL15: a 2048 px land
+    assert dds.read_top(water) == 2 and len(water.read_bytes()) == file_size(2)
+    assert water_levels(water, 5)[0][:, 8:].tobytes() == levels_from(land, 5, 1)[0]
+    assert downgrade(land, 5, ensure_neutral(pack, 1), file_top=1) is None
+    assert os.path.samefile(water, WaterPool(pack).path(2))
+    sharp = land_file(pack, BOTH, 0, -1)  # an 8192 px file built from its 4096 px level
+    sharp_water = sharp.with_name(water_name(sharp.name))
+    make(sharp, 0)
+    before = sharp_water.read_bytes()
+    copy_up(sharp, ensure_neutral(pack, -1), -1)
+    assert sharp_water.read_bytes() == before
+
+
+def test_a_water_photo_that_cannot_be_made_fails_nothing(tmp_path: Path) -> None:
+    """Its mask gone: the water photo back to its placeholder, never a photo its land no longer
+    has; the land built all the same, the build saying why."""
+    from orthostudio.live.geo import parse_texture_name
+    from orthostudio.live.texture import build_job, piece_keys
+
+    pack = tmp_path / "pack"
+    land = land_file(pack, SEA, 0, 0)
+    water = land.with_name(water_name(land.name))
+    make(land, 0)
+    land.with_name(mask_name(land.name)).unlink()
+    with pytest.raises(OSError):
+        make(land, 0)
+    assert follow(land, 0) is None
+    assert os.path.samefile(water, WaterPool(pack).path(1))
+    keys = piece_keys(parse_texture_name(land.name), 4)
+    pieces = {k: jpeg_piece((90, 140, 60)) for k in keys}
+    got = build_job((land.name, 4, pieces, {}, str(land)))
+    assert got[1] == 4 and isinstance(got[4], str) and "FileNotFoundError" in got[4]
+    assert dds.read_top(land) == 0
+
+
+def jpeg_piece(rgb) -> bytes:
+    out = io.BytesIO()
+    Image.new("RGB", (256, 256), rgb).save(out, "JPEG", quality=95)
+    return out.getvalue()
+
+
+def test_the_water_photo_has_the_land_s_colours_the_season_s_included(tmp_path: Path) -> None:
+    """Built with the land, from its blocks as encoded in the season's colours: the bank never
+    changes colour between the land and the water."""
+    from orthostudio.live.geo import parse_texture_name
+    from orthostudio.live.look import DEFAULT_LOOKS
+    from orthostudio.live.texture import build_job, piece_keys
+
+    keys = piece_keys(parse_texture_name(f"{SEA}.dds"), 2)
+    pieces = {k: jpeg_piece((90 + 9 * (k[1] % 4), 140, 60)) for k in keys}
+    halves = []
+    for k, look in enumerate((None, DEFAULT_LOOKS["autumn"].values())):
+        pack = tmp_path / f"pack{k}"
+        land = land_file(pack, SEA, 4, 0)  # its mask and its water photo's name
+        got = build_job((land.name, 2, pieces, {}, str(land), None, 0, False, None, look))
+        assert got[4] == 2
+        water = land.with_name(water_name(land.name))
+        colours = levels_from(land, 3, 0)
+        blocks = water_levels(water, 3)
+        assert [b[:, 8:].tobytes() for b in blocks] == colours
+        halves.append(colours[0])
+    assert halves[0] != halves[1]  # autumn's colours, on the land and its water alike
+
+
+# --- the disk -----------------------------------------------------------------------------------
+
+
+def test_the_disk_counts_the_water_photos(tmp_path: Path) -> None:
+    """5.6 MB for a sharp one, 2048 px at most whatever the zoom; nothing for a neutral texture;
+    counted with its texture, and a texture made coarser frees what its water photo held."""
+    from orthostudio.live.evict import held_bytes, pick, texture_bytes, usage, water_bytes
+
+    assert 5_590_000 < water_bytes(0, 0) < 5_610_000
+    assert water_bytes(-1, -1) == water_bytes(0, -1) == water_bytes(0, 0)
+    assert water_bytes(1, 1) < water_bytes(0, 0) // 3  # 1024 px for a 2048 px land
+    assert water_bytes(4, 0) < 100_000 and water_bytes(5, 0) == 0
+    built = {"a.dds": 0, "b.dds": 0}
+    water = {"a.dds": 0}
+    assert usage(built, water=water) == usage(built) + water_bytes(0, 0)
+    assert usage(built, lambda _: 0, water=water) == usage(built) + water_bytes(0, 0)
+    assert held_bytes("a.dds", 0, 0, water=water) == texture_bytes(0) + water_bytes(0, 0)
+    # a budget met once "a.dds" and its water photo are coarser: "b.dds" kept
+    coarse = texture_bytes(0) + texture_bytes(4) + water_bytes(4, 0)
+    budget = int(coarse / 0.9) + 1
+    seen = {"a.dds": 1.0, "b.dds": 2.0}
+    assert pick(built, seen, lambda n: True, budget, water=water) == [("a.dds", 4)]
+
+
+def test_the_window_counts_the_water_photos_live_stopped(tmp_path: Path) -> None:
+    """From the textures' record, as the streamer counts them (evict.usage)."""
+    import json
+
+    from orthostudio.live.control import _textures_bytes
+    from orthostudio.live.evict import usage, water_bytes
+    from orthostudio.live.pack import MARKER
+    from orthostudio.live.region import file_tops
+
+    pack = live_pack(tmp_path)
+    built = {f"{SEA}.dds": 0, f"{LAND}.dds": 0}
+    (pack / MARKER).write_text(json.dumps({"textures": built, "water": {f"{SEA}.dds": 0}}))
+    assert _textures_bytes(pack) == usage(built, file_tops(pack)) + water_bytes(0, 0)
+
+
+def test_forgetting_the_textures_forgets_their_water_photos(tmp_path: Path) -> None:
+    """Every built texture back to the neutral one, its water photo back to X-Plane's water."""
+    import json
+
+    from orthostudio.live.pack import MARKER, load_built
+    from orthostudio.live.region import reset_built
+
+    pack = live_pack(tmp_path)
+    land = land_file(pack, SEA, 0, 0)
+    make(land, 0)
+    (pack / MARKER).write_text(json.dumps({"textures": {land.name: 0}, "water": {land.name: 0}}))
+    reset_built(pack, quiet)
+    assert os.path.samefile(land.with_name(water_name(land.name)), WaterPool(pack).path(1))
+    assert load_built(pack)["water"] == {}
+
+
+def test_a_water_photo_is_never_taken_for_a_texture(tmp_path: Path) -> None:
+    """Its name reads as its texture's: a new zoom lays out the texture alone, which its water
+    photo follows."""
+    from orthostudio.live.region import Zooms, _layout_plan, _textures_by_zoom
+
+    pack = live_pack(tmp_path)
+    land = land_file(pack, SEA, 0, 0)
+    make(land, 0)
+    assert _textures_by_zoom(pack) == {16: [land.name]}
+    assert _layout_plan(pack, Zooms(15, 18)) == {16: [(land.name, 1)]}

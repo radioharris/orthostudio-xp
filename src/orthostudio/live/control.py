@@ -197,12 +197,14 @@ def _same_folder(one: str, other: str | None) -> bool:
 
 def _textures_bytes(pack: Path) -> int:
     """The disk of the textures built, Live stopped: as the streamer counts it, from its record
-    (evict.usage), the night textures and the 8192 px copies with them; without them the figure
-    fell by nearly half on Windows as Live stopped (the review of 2026-11-11)."""
+    (evict.usage), the night textures, the 8192 px copies and the water photos with them; without
+    them the figure fell by nearly half on Windows as Live stopped (the review of 2026-11-11)."""
     meta = load_built(pack)
     lit = meta.get("lit")
     lit = lit if isinstance(lit, dict) and night_on(pack) else {}  # lights off: their files gone
-    return usage(meta.get("textures", {}), file_tops(pack), lit, copies_in(meta))
+    water = meta.get("water")
+    water = water if isinstance(water, dict) else {}
+    return usage(meta.get("textures", {}), file_tops(pack), lit, copies_in(meta), water)
 
 
 def gather_checks() -> dict[str, Any]:

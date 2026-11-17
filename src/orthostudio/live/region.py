@@ -177,9 +177,14 @@ def sources_of_pack(pack_dir: Path) -> list[Path]:
 
 
 def _textures_by_zoom(pack_dir: Path) -> dict[int, list[str]]:
+    """The pack's textures by their zoom: not their water photos, whose names are read as theirs
+    (orthostudio.live.waterphoto.is_water_name), and which follow them."""
+    from .waterphoto import is_water_name
+
     out: dict[int, list[str]] = defaultdict(list)
     for entry in os.scandir(pack_dir / "textures"):
-        if entry.name.endswith(".dds") and not entry.name.startswith("."):
+        name = entry.name
+        if name.endswith(".dds") and not name.startswith(".") and not is_water_name(name):
             tex = parse_texture_name(entry.name)
             if tex is not None:
                 out[tex.zoom].append(entry.name)
@@ -951,9 +956,11 @@ def reset_built(pack_dir: Path, log: Callable[[str], None] = print) -> int:
     Only the textures the streamer recorded as built are touched (``_live/ortho.json``), so a reset
     takes seconds; those built in another season and not made neutral yet too (``stale``). Their
     night textures are black again too: one made before stayed over the neutral texture until its
-    texture was built again at night."""
-    from .names import NeutralPool, NightPool, night_name
+    texture was built again at night. Their water photos are back to X-Plane's water alone, made
+    again from them once built (orthostudio.live.waterphoto)."""
+    from .names import NeutralPool, NightPool, WaterPool, night_name
     from .pack import MARKER, load_built
+    from .waterphoto import water_name, water_top
 
     meta = load_built(pack_dir)
     built = {**meta.get("stale", {}), **meta.get("textures", {})}
@@ -961,12 +968,17 @@ def reset_built(pack_dir: Path, log: Callable[[str], None] = print) -> int:
     pool = NeutralPool(pack_dir)
     nights: NightPool | None = None
     lit_too = meta.get("lit") if isinstance(meta.get("lit"), dict) else {}
-    for name in {**built, **lit_too}:  # a night lit over a neutral texture too (Windows refused)
+    water_too = meta.get("water") if isinstance(meta.get("water"), dict) else {}
+    waters = WaterPool(pack_dir)
+    for name in {**built, **lit_too, **water_too}:  # a night lit over a neutral texture too
         path = pack_dir / "textures" / name
         tex = parse_texture_name(name)
         top = 0 if tex is None else _laid_out_top(zooms, layout, tex.zoom)
         if name in built and path.exists():
             pool.replace(top, path)
+        water = path.with_name(water_name(name))
+        if name in water_too and water.exists():
+            waters.replace(water_top(top), water)
         lit = pack_dir / NIGHT_FOLDER / night_name(name)
         if lit.exists():
             nights = nights or NightPool(pack_dir)
@@ -974,6 +986,7 @@ def reset_built(pack_dir: Path, log: Callable[[str], None] = print) -> int:
     if meta:
         meta["textures"], meta["seen"], meta["patchy"], meta["stale"] = {}, {}, [], {}
         meta["lit"], meta["copied"] = {}, []  # their nights black, their copies gone
+        meta["water"] = {}  # their water photos X-Plane's water alone
         meta.pop("grown", None)
         tmp = pack_dir / MARKER.with_suffix(".tmp")
         tmp.write_text(json.dumps(meta))
