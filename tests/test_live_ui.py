@@ -12,7 +12,7 @@ import threading
 import time
 import tomllib
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 import pytest
 from pydantic import ValidationError
@@ -1588,6 +1588,16 @@ def put_region(region, *, mesh_as_listed: bool = True, rivers: bool = False) -> 
     return folder
 
 
+class DoneInstaller(FakeInstaller):
+    """An install that ends at once, done: the next region's turn."""
+
+    made: ClassVar[list] = []
+
+    def run(self) -> None:
+        DoneInstaller.made.append((self.region.id, self.overlays, self.rivers))
+        self.phase = "done"
+
+
 def rivers_control(chosen: dict, installer=FakeInstaller) -> LiveControl:
     catalog = rivers_catalog()
     return LiveControl(
@@ -1644,6 +1654,80 @@ def test_the_regions_sizes_and_updates_follow_the_rivers_setting(home: Path) -> 
     c.install_region("eur")
     assert c._installer.rivers is False  # the setting's, the installer taking them by wanted
     c.cancel_install()
+
+
+def test_soft_banks_saved_brings_the_river_masks_of_each_region_whose_mesh_is_the_list_s(
+    home: Path,
+) -> None:
+    """Region after region, in the installs' one place, seen on the page, overlays left: the
+    river masks alone where the mesh is the list's; a region whose mesh changed shows its update
+    instead; while Live streams, a region whose river masks are there waits for its update."""
+    chosen = {"rivers_fade": True}
+    DoneInstaller.made = []
+    c = rivers_control(chosen, DoneInstaller)
+    catalog = c._catalog_of(None)
+    put_region(catalog["eur"])
+    put_region(catalog["na"], mesh_as_listed=False)
+    assert c.rivers_chosen()  # the list read first, then the regions
+    wait_for(lambda: not c._rivers_thread.is_alive())
+    assert DoneInstaller.made == [("eur", False, True)]
+    assert c.regions()["install"]["region"] == "eur"  # its line on the page
+    assert {r["id"]: r["changed"] for r in c.regions()["list"]}["na"] == 2  # mesh and rivers
+    # while Live streams: added where there are none, never put over those there
+    DoneInstaller.made = []
+    c._state = STREAMING
+    from orthostudio.live import osxpregions
+    from orthostudio.live.pack import live_root
+
+    (osxpregions.mesh_dir(live_root(), "eur") / "rivers").mkdir()
+    assert c.rivers_chosen()
+    wait_for(lambda: not c._rivers_thread.is_alive())
+    assert DoneInstaller.made == []
+    c._state = IDLE
+    assert c.rivers_chosen()
+    wait_for(lambda: not c._rivers_thread.is_alive())
+    assert DoneInstaller.made == [("eur", False, True)]
+
+
+def test_soft_banks_saved_waits_for_the_install_under_way_and_stops_whole(home: Path) -> None:
+    """An install under way keeps the place: the river masks come with Update. Stop ends the
+    whole round, not only the region under way."""
+    c = rivers_control({"rivers_fade": True})
+    catalog = c._catalog_of(None)
+    put_region(catalog["eur"])
+    put_region(catalog["na"])
+    c.regions(fetch=True)
+    wait_for(lambda: c._catalog is not None)
+    c.install_region("eur")
+    first = c._installer
+    assert not c.rivers_chosen()
+    c.cancel_install()
+    wait_for(lambda: not c._install_thread.is_alive())
+    assert c.rivers_chosen()
+    wait_for(lambda: c._installer is not first)
+    assert c._installer.region.id == "eur" and not c._installer.overlays
+    assert c.busy()  # the app keeps Live's process for it
+    with pytest.raises(session.RefusedError):
+        c.install_region("na")  # one at a time
+    with pytest.raises(session.RefusedError):
+        c.remove_region("na")  # its turn may come
+    c.cancel_install()
+    wait_for(lambda: not c._rivers_thread.is_alive())
+    assert c._installer.region.id == "eur"  # North America's never started
+
+
+@pytest.mark.anyio
+async def test_soft_banks_saved_in_the_settings_starts_the_river_masks(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    c = rivers_control({})
+    called: list[bool] = []
+    monkeypatch.setattr(c, "rivers_chosen", lambda: called.append(True) or True)
+    async with client_for(create_live_app(c)) as client:
+        for fade, expected in ((True, 1), (True, 1), (False, 1), (True, 2)):
+            got = await client.put("/api/live/settings", json={"rivers_fade": fade})
+            assert got.status_code == 200 and got.json()["rivers_fade"] is fade
+            assert len(called) == expected  # only when soft banks is newly chosen
 
 
 def test_the_overlays_setting(home: Path) -> None:

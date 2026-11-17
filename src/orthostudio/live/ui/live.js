@@ -779,6 +779,15 @@ function drawRegions(status) {
   }
 }
 
+/** The « Soft banks » answer, with what it downloads for the regions installed: their river masks
+ * they have not got (each region's rivers_bytes, orthostudio/live/control.py); its words alone once
+ * they have them, kept whatever the answer. */
+function drawRivers(status) {
+  const bytes = (status.regions?.list || []).reduce((sum, r) => sum + (r.rivers_bytes || 0), 0);
+  const text = bytes > 0 ? t("rivers.soft_note_download", { size: amount(bytes) }) : t("rivers.soft_note");
+  if ($("rivers-soft-note").textContent !== text) $("rivers-soft-note").textContent = text;
+}
+
 function draw(status) {
   last = status;
   tellFrame?.(); // its state, which the app's frame says beside Live's name (embed.js)
@@ -793,6 +802,7 @@ function draw(status) {
   drawXplane(status);
   drawLogFile(status);
   drawRegions(status);
+  drawRivers(status);
   liveMap?.update({ ...status, providers });
   if (status.decals) decalList = status.decals;
   if (saved === null) {

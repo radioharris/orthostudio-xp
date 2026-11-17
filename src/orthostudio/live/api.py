@@ -20,7 +20,9 @@ can include as it is the day Live comes into its window (``app.include_router``)
   answer; ``POST /api/live/osxp``: OrthoStudio XP's window (its part, in the app's frame);
   ``GET /api/live/osxp-build``: whether OrthoStudio XP builds now; ``POST /api/live/front``: this
   window to the front, or the page opened again in the browser (``orthostudio.live.app_start``);
-- ``GET``/``PUT /api/live/settings``: the settings of ``live.toml`` (:mod:`.settings`);
+- ``GET``/``PUT /api/live/settings``: the settings of ``live.toml`` (:mod:`.settings`); soft
+  banks saved start the download of the installed regions' river masks
+  (:meth:`LiveControl.rivers_chosen`);
 - ``GET``/``PUT /api/live/xplane-folder`` ``{"path"}``: the X-Plane folder named in OrthoStudio
   XP's settings, the same for Build and Live, with the other X-Planes of the computer;
 - ``GET /api/live/providers``: the imagery sources, as OrthoStudio XP's ``GET /api/providers``;
@@ -402,6 +404,8 @@ def live_router(
                 move_live(session.xplane_dir(None), settings.own_tiles)
             except (session.RefusedError, OSError, OsxpError) as e:
                 control.log(f"Live's line in X-Plane's list stays where it is: {e}")
+        if settings.rivers_fade and not before.rivers_fade:  # soft banks: their river masks
+            control.rivers_chosen()
         return settings.model_dump()
 
     return router

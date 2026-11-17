@@ -717,3 +717,21 @@ def test_the_window_asks_about_rivers_and_lakes_between_the_night_and_the_decal(
     assert '"rivers.soft_note": "The photo fades into the water near the banks' in strings
     assert "up to 3 GB" in strings and "jusqu'à 3 Go de plus" in strings
     assert strings.count('"rivers.title"') == 2  # English and French
+
+
+def test_soft_banks_says_what_it_downloads_for_the_regions_installed() -> None:
+    """The « Soft banks » answer adds what its river masks download for the regions installed,
+    from the regions' list (rivers_bytes), and says nothing more once they have them; nothing
+    about deleting them, which stay."""
+    from orthostudio.live.web import UI_DIR
+
+    html = (UI_DIR / "index.html").read_text(encoding="utf-8")
+    assert 'id="rivers-soft-note" data-i18n="rivers.soft_note"' in html
+    js = (UI_DIR / "live.js").read_text(encoding="utf-8")
+    assert "r.rivers_bytes" in js and '"rivers.soft_note_download"' in js
+    strings = (UI_DIR / "strings.js").read_text(encoding="utf-8")
+    assert "(measured over Stockholm), and {size} more to download for your regions." in strings
+    assert "(mesuré à Stockholm), et {size} de plus à télécharger pour vos régions." in strings
+    assert strings.count('"rivers.soft_note_download"') == 2
+    question = strings[strings.index('"rivers.title"') : strings.index('"rivers.restart"')]
+    assert "delet" not in question
