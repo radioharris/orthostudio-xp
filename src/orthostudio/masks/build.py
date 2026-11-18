@@ -206,6 +206,7 @@ def build_cell(job: CellJob) -> CellResult:
         mask_zl=job.mask_zl,
         sea_level=job.sea_level,
         margin=job.margin,
+        exact_edges=job.masking_mode == "soft",
     )
     if job.dem is not None:
         pre = np.maximum(pre, job.dem)

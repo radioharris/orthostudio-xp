@@ -304,6 +304,17 @@ pre-mask of 6000_8432, 14.3 M of the 37.7 M pixels have an exact sum that is a m
   square's middle their two masks of one name differed (1,947 in Europe's zips, 2026-11-17, the
   bands 1.7 % apart at 44 degrees north); counted at the cell they are the same bytes
   (`test_two_rows_of_squares_make_a_soft_mask_they_share_the_same`).
+  Its pre-mask draws the water as its outline covers the pixels (`raster.pre_mask`'s
+  `exact_edges`, `_without_rim`): the triangles' corners come rounded to whole pixels as
+  Ortho4XP's (`water.wgs84_to_pix`), and Pillow fills a triangle up to and with its right and
+  bottom edges, so every water came one pixel wider east and south, about 6 m at `mask_zl` 14.
+  The fade then began inside the water on those banks: at a river by XC00DD the mask read 151 to
+  164 of 255 at the DSF's south and east banks against 227 to 240 at its north and west ones, a
+  sharp line on one side (2026-11-18). A water pixel with land east of it and water west of it,
+  or land south and water north, goes back to land: the rim alone, never a stream one pixel wide
+  (`test_our_fade_draws_the_water_as_its_outline_covers_the_pixels`). After it 189 to 240 on
+  every bank there. Ortho4XP's profiles keep Ortho4XP's drawing byte for byte; with their wider
+  fades the pixel shows little.
 
 ## 8. Not there yet (blocking questions, least engaging option implemented)
 

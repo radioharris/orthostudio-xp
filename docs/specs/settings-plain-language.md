@@ -374,7 +374,7 @@ most, added 2026-09-22), national ones for Luxembourg, the Netherlands (4), Spai
 
 ### 2.6 `essential.coast_transition.profile`
 
-`masking_mode` · `sand` · `sand`, `rocks`, `3steps`.
+`masking_mode` · `sand` · `sand`, `rocks`, `3steps`, `soft`.
 
 - **Does.** The shape of the sea mask's fade (Ortho4XP `O4_Mask_Utils.py:648-811`; OrthoStudio XP
   `masks/profiles.py:215-245` for `sand` and `rocks`, byte-identical to Ortho4XP, and `:297-317` for
@@ -398,11 +398,13 @@ most, added 2026-09-22), national ones for Luxembourg, the Netherlands (4), Spai
   `ratio_water`.
 - **Question.**
   - EN: *How should the coast fade into the sea?* — **Gradually, like a sandy beach
-    (recommended)** · With a clear edge, like a rocky shore. *Near the shore the aerial photo
+    (recommended)** · With a clear edge, like a rocky shore · Like a sandy beach, but rivers
+    keep their water (experimental). *Near the shore the aerial photo
     still shows on the water, then gives way to X-Plane's own water; this sets how that fade
     looks.*
   - FR : *Comment la côte doit-elle se fondre dans la mer ?* — **Progressivement, comme une plage
-    de sable (conseillé)** · Avec un bord marqué, comme une côte rocheuse. *Près du rivage, la
+    de sable (conseillé)** · Avec un bord marqué, comme une côte rocheuse · Comme une plage de
+    sable, mais les rivières gardent leur eau (expérimental). *Près du rivage, la
     photo aérienne reste visible sur l'eau, puis laisse place à l'eau d'X-Plane ; ce choix règle
     l'allure de ce fondu.*
 - **Picture.** Two parts. (1) A chart of photo opacity against distance offshore for the three

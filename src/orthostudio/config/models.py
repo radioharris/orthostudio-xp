@@ -85,7 +85,9 @@ class CoastTransition(BaseModel):
 
     model_config = _FROZEN
 
-    profile: Literal["sand", "rocks", "3steps", "soft"] = _field("sand", "essential", "masking_mode", "")
+    profile: Literal["sand", "rocks", "3steps", "soft"] = _field(
+        "sand", "essential", "masking_mode", ""
+    )
     width_m: float | list[float] = _field(100.0, "essential", "masks_width", "m")
 
     @model_validator(mode="after")

@@ -20,7 +20,7 @@ from orthostudio.masks.build import (
     mask_file_name,
     worker_count,
 )
-from orthostudio.masks.profiles import halo_px, sea_level_for
+from orthostudio.masks.profiles import cell_latitude, halo_px, sea_level_for
 from orthostudio.masks.raster import CELL_PX, custom_pre_mask, extent_polygons, pre_mask
 from orthostudio.masks.water import WaterTriangles, mask_cells, water_triangles
 from orthostudio.mesh.mesh_file import MeshData
@@ -208,3 +208,61 @@ def test_two_rows_of_squares_make_a_soft_mask_they_share_the_same(tmp_path: Path
     assert made[0] == made[1]
     mask = np.array(Image.open(tmp_path / south.name / name))
     assert len(set(np.unique(mask).tolist())) > 2  # a real band, not a hard edge
+
+
+def test_our_fade_draws_the_water_as_its_outline_covers_the_pixels() -> None:
+    """Pillow fills a triangle up to and with its right and bottom edges, on corners rounded to
+    whole pixels: a square of water 4 pixels wide came out 5, the row too many east and south.
+    Ortho4XP's fades keep that drawing byte for byte; OrthoStudio XP's own (``exact_edges``, the
+    ``soft`` fade) gives that row back to the land, and keeps a stream one pixel wide."""
+    from orthostudio.masks.water import cell_pixel_origin
+
+    margin = 16
+    px0, py0 = cell_pixel_origin(8432, 6000, ZL, margin)
+    x0, y0 = px0 + margin + 300, py0 + margin + 300
+    square = [
+        [(x0, y0), (x0 + 4, y0), (x0 + 4, y0 + 4)],
+        [(x0, y0), (x0 + 4, y0 + 4), (x0, y0 + 4)],
+    ]
+    sx = x0 + 40  # a stream one pixel wide, from north to south
+    stream = [
+        [(sx, y0), (sx + 1, y0), (sx + 1, y0 + 30)],
+        [(sx, y0), (sx + 1, y0 + 30), (sx, y0 + 30)],
+    ]
+    tris = WaterTriangles(np.array(square + stream, dtype=np.float64), np.zeros((0, 3, 2)))
+    extents = extent_polygons([TILE], ZL)
+    o4xp = pre_mask(8432, 6000, tris, extents, mask_zl=ZL, sea_level=99, margin=margin)
+    ours = pre_mask(
+        8432, 6000, tris, extents, mask_zl=ZL, sea_level=99, margin=margin, exact_edges=True
+    )
+
+    def span(mask: np.ndarray, x: int, y: int, w: int, h: int) -> tuple[list[int], list[int]]:
+        water = mask[y - py0 : y - py0 + h, x - px0 : x - px0 + w] == 0
+        cols = (np.nonzero(water.any(axis=0))[0] + x - x0).tolist()
+        rows = (np.nonzero(water.any(axis=1))[0] + y - y0).tolist()
+        return cols, rows
+
+    assert span(o4xp, x0 - 2, y0 - 2, 9, 9) == ([0, 1, 2, 3, 4], [0, 1, 2, 3, 4])
+    assert span(ours, x0 - 2, y0 - 2, 9, 9) == ([0, 1, 2, 3], [0, 1, 2, 3])
+    assert span(o4xp, sx - 2, y0 - 2, 5, 35)[0] == [40, 41]
+    assert span(ours, sx - 2, y0 - 2, 5, 35)[0] == [40]  # the stream stays
+    assert np.array_equal(o4xp == 255, (ours == 255) & (o4xp == 255))  # only water given back
+
+
+def test_only_our_fade_draws_the_edges_exactly(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A cell's job asks for the exact edges with ``soft`` alone: Ortho4XP's profiles draw as
+    Ortho4XP does."""
+    import orthostudio.masks.build as build
+
+    asked: list[bool] = []
+
+    def recording(*args: object, **kw: object) -> np.ndarray:
+        asked.append(bool(kw.get("exact_edges")))
+        return pre_mask(*args, **kw)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(build, "pre_mask", recording)
+    tris = water_triangles({TILE: _sea_mesh([(8432, 6000)])}, TILE, ZL)[(8432, 6000)]
+    for mode in ("sand", "rocks", "soft"):
+        margin = halo_px(mode, 100, TILE.lat, ZL, cell_lat=cell_latitude(6000, ZL))
+        build_cell(_job(8432, 6000, tris, masking_mode=mode, margin=margin))
+    assert asked == [False, False, True]

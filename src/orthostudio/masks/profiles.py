@@ -394,7 +394,7 @@ def soft_blur(pre: NDArray[np.uint8], band_px: float) -> NDArray[np.uint8]:
     if not water.any():
         return np.array(pre)
     d = ndimage.distance_transform_edt(water)  # pixels to the nearest land
-    reach = int(math.ceil(band_px))
+    reach = math.ceil(band_px)
     half = ndimage.maximum_filter(d, size=2 * reach + 1)  # the local half-width, up to the band
     band = np.minimum(band_px, half)
     t = np.clip(d / np.maximum(band, 1e-6), 0.0, 1.0)
