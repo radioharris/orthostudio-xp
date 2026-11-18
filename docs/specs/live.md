@@ -588,8 +588,9 @@ mesh kept is the one Live goes on showing. The set of sources then changes, so t
 again at the next start, never with X-Plane running: `region.pack_to_redo`, the one rule of a pack
 to set up again (a region changed, `changed_regions`, or the regions no longer those it was made
 from, but for regions only added after them, `_adding`, which `setup_region` merges in), refuses
-such a start as a new zoom is, saying the cases in plain words (a region updated, the other mesh
-chosen, a disk holding a mesh not connected). Every deletion of a region's folders follows one rule
+such a start as a new zoom is, saying the cases in plain words (a region installed, updated or
+deleted, Mesh switched between New and Old, another tool's mesh or an AutoOrtho region changed, a
+disk holding a mesh not connected). Every deletion of a region's folders follows one rule
 (`LiveControl._deleting`: Live stopped, the region not being installed, X-Plane not running, said
 by `osxpregions.XPLANE_READS`, which the install's own deletions use too): « Delete from the disk »
 (`LiveControl.remove_kept`, `osxpregions.remove_kept`), which the window warns cannot be undone,
@@ -597,29 +598,37 @@ the region's own Delete (`remove`, which takes the kept mesh with it) and the ro
 Nothing else reads a kept mesh then: the pack's record naming it protects nothing (no start under
 X-Plane on a changed mesh), and the Settings' Mesh saying Old falls back to the new mesh where none
 is kept. Mesh goes back to New once no region keeps one, one waiting to be renamed as kept
-counted (`osxpregions.keeps_old`; `LiveControl._mesh_follows_kept`, after each deletion and each
-install): Old left behind would stream the next old mesh kept, unasked; the
+counted, and never while a region's disk is not connected (`osxpregions.keeps_any_old`;
+`LiveControl._mesh_follows_kept`, after each deletion and each install): Old left behind would stream the next old mesh kept, unasked; the
 window shows the switch as saved each time it appears, and sends it only while it shows.
 
-**No room beside the region** (`osxpregions._room`, 2026-11-18). The room an install needs is
-one rule, `_short_of_room`, every disk the install needs counted (the region's, the overlay
-pack's, the download folder's), which the install checks before its first byte
-(`Installer._check_room`, after deleting its stale downloads) and `_room` reads, with those stale
-downloads counted as freed, for the page before an update made whole (`update_room`, the item's
-`room`: what it needs and what is free on the first disk short, and `kept`, whether deleting the
-region's kept old mesh makes every disk enough) and for the install that makes room, which checks
-it again rather than trust the page. A kept mesh frees its marker's size, but nothing where Live's
-pack is made from it on its disk (its record, `region.sources_of_pack`): its DSFs and masks stay in
-the pack as clones or hard links (`region.place_file`) until a start sets the pack up again;
-deleted then, it would free nothing and could not be downloaded again. The window then asks one
-question and starts nothing, its room in plain words always: with `kept` and X-Plane closed, it
-offers « Delete the kept old one and install the new one » (`Installer.make_room`: the kept mesh
-deleted before the next look, not in the background, phase `deleting`, only with Live stopped and
-X-Plane not running, checked as it deletes, the region in use all along); with X-Plane open, it
-says to quit it first; without, to free some room and click Update again. The installed region is
-never deleted to make room (the owner, 2026-11-18): with no kept mesh to delete, an update waits
-for the room. Where the page saw room, the install still stops on its own words should the disk
-fill meanwhile.
+**No room beside the region** (`osxpregions._room_for_update`, 2026-11-18). The room an install
+needs is one rule, `_short_of_room`, every disk the install needs counted (the region's, the
+overlay pack's, the download folder's), which the install checks before its first byte
+(`Installer._check_room`). What it deletes before that counts as freed, one list for the page and
+the install: its stale stages (`_stale_stages`: its stage where its mesh is the list's, or where
+it holds a zip the list no longer has, an update of before stopped or waiting with a newer one
+listed since; its river masks it no longer keeps) and its stale downloads (`_stale_downloads`),
+which the install deletes first, before the next look, never in the background (a release
+stopped halfway left the page saying no room for ever, or offering to delete the kept mesh when
+deleting that stage was enough: the reviews of 2026-11-18). `_room_for_update` reads it so for
+the page, asked as Update is clicked and never at each look, a stale stage read whole
+(`LiveControl.update_room`, `GET regions/<id>/room`: what it needs and what is free on the first
+disk short, that disk named when it is not the region's, and `kept`, whether deleting the
+region's kept old mesh makes every disk enough), and for the install that makes room, which
+checks it again rather than trust the page. A kept mesh frees its marker's size, but nothing
+where Live's pack is made from it on its disk (its record, `region.sources_of_pack`): its DSFs and
+masks stay in the pack as clones or hard links (`region.place_file`) until a start sets the pack
+up again; deleted then, it would free nothing and could not be downloaded again. The window then
+asks one question and starts nothing, its room in plain words always: with `kept` and X-Plane
+closed, it offers « Delete the kept old one and install the new one » (`Installer.make_room`: the
+kept mesh deleted before the next look, phase `deleting`, only with Live stopped and X-Plane not
+running, checked as it deletes, the region in use all along), then asks whether to keep the
+mesh of before as any update does (a rename, no room); with X-Plane open, it says to quit it
+first and click Update again; without, to free some room and click Update again. The installed
+region is never deleted to make room (the owner, 2026-11-18): with no kept mesh to delete, an
+update waits for the room. Where the page saw room, the install still stops on its own words
+should the disk fill meanwhile.
 
 A region installed already changes only with Live stopped and X-Plane not running
 (`Installer.may_swap`, `LiveControl._may_swap`): else its stage, whole, waits (the install's phase

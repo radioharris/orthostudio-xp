@@ -1451,7 +1451,6 @@ def test_the_regions_the_page_lists(home: Path, tmp_path: Path, monkeypatch) -> 
         "rivers_bytes": 0,
         "waiting": False,
         "whole": False,  # not installed: nothing of before to keep
-        "room": None,
     }
     c.install_region("eur")
     assert c._installer.overlays  # the pilot takes X-Plane's roads: they come with it
@@ -1578,13 +1577,13 @@ def test_an_update_s_answers_reach_its_install(home: Path, tmp_path: Path, monke
     c = regions_control(tmp_path / "X-Plane 12")
     mine, _ = kept_world(c)
     listed = {r["id"]: r for r in c.regions()["list"]}
-    assert listed["eur"]["whole"] is False and listed["eur"]["room"] is None  # the list's mesh
+    assert listed["eur"]["whole"] is False and c.update_room("eur") is None  # the list's mesh
     marker = json.loads((mine / ".live-region.json").read_text())
     marker["zips"] = {"eur/zips/z_osxp_eur_+45+005.zip": "f" * 64}  # made again since
     (mine / ".live-region.json").write_text(json.dumps(marker))
     listed = {r["id"]: r for r in c.regions()["list"]}
     assert listed["eur"]["whole"] is True  # its update replaces the mesh: the window asks
-    assert listed["eur"]["room"] is None  # room enough here
+    assert c.update_room("eur") is None  # room enough here, asked at the click
     c.install_region("eur", keep_old=True)
     assert c._installer.keep_old and not c._installer.make_room
     c.cancel_install()
@@ -1616,6 +1615,8 @@ async def test_the_kept_mesh_api(home: Path, tmp_path: Path, monkeypatch) -> Non
         wait_for(lambda: not c.installing())
         bad = await client.post("/api/live/regions/eur/install", json={"make_room": "everything"})
         assert bad.status_code == 422
+        asked = await client.get("/api/live/regions/eur/room")
+        assert asked.status_code == 200 and asked.json() == {"room": None}
 
 
 def test_the_night_grids_of_a_region_installed_before_them_come_by_themselves(

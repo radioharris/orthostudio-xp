@@ -29,6 +29,7 @@ can include as it is the day Live comes into its window (``app.include_router``)
 - ``GET /api/live/regions``: OrthoStudio XP's regions (:meth:`LiveControl.regions`);
   ``POST /api/live/regions/{id}/install`` ``{"keep_old": bool, "make_room": bool}``: install or
   update one, the region of before kept or not, its kept old mesh deleted first for room or not;
+  ``GET /api/live/regions/{id}/room``: the room its update lacks beside it, asked at the click;
   ``DELETE /api/live/regions/{id}``: delete one; ``DELETE /api/live/regions/{id}/kept``: delete
   its kept old mesh alone (409 for each where it may not);
 - ``GET /api/live/providers``: the imagery sources, as OrthoStudio XP's ``GET /api/providers``;
@@ -278,6 +279,10 @@ def live_router(
         except session.RefusedError as e:
             raise HTTPException(409, str(e)) from e
         return control.regions()
+
+    @router.get("/regions/{region_id}/room")
+    def update_room(region_id: str) -> dict[str, Any]:
+        return {"room": control.update_room(region_id)}
 
     @router.delete("/regions/{region_id}/kept")
     def remove_kept(region_id: str) -> dict[str, Any]:

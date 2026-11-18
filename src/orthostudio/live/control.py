@@ -871,11 +871,10 @@ class LiveControl:
         its zips an update brings (the region whole once its mesh changed) and what it downloads,
         whether its update waits whole for Live's next start (``waiting``), and what soft banks
         would download for it (``rivers_bytes``: its river masks it has not, the Settings' question
-        sums them), whether its update replaces its mesh (``whole``: the window asks whether to keep
-        the one of before) and the room it lacks then (``osxpregions.update_room``), and its kept
-        old mesh (``kept``: its size); the install
-        under way. With ``fetch`` (the page's own request, not its status), the host's list is
-        read again in the background when old."""
+        sums them), whether its update replaces its mesh (``whole``: the window asks the room it
+        lacks, :meth:`update_room`, and whether to keep the one of before), and its kept old mesh
+        (``kept``: its size); the install under way. With ``fetch`` (the page's own request, not
+        its status), the host's list is read again in the background when old."""
         with self._lock:
             reading = self._catalog_thread is not None and self._catalog_thread.is_alive()
             stale = time.monotonic() - self._catalog_at > CATALOG_S
@@ -922,11 +921,6 @@ class LiveControl:
                     sum(z.size for z in adds if z in region.rivers) if installed else 0
                 )
                 item["whole"] = installed and osxpregions.made_whole(root, region)
-                item["room"] = (
-                    osxpregions.update_room(root, region, overlays, rivers)
-                    if item["whole"]
-                    else None
-                )
             listed.append(item)
         progress = installer.snapshot() if installer is not None else None
         return {
@@ -935,6 +929,25 @@ class LiveControl:
             "error": error if catalog is None else None,
             "install": progress,
         }
+
+    def update_room(self, region_id: str) -> dict | None:
+        """The room an update of the region lacks beside it (``osxpregions.update_room``), which the
+        window asks as Update is clicked, never at each look (a stale stage is read whole): None
+        where it has room, or where the update does not make it whole (nothing of before beside
+        it then)."""
+        with self._lock:
+            region = (self._catalog or {}).get(region_id)
+        root = live_root()
+        if (
+            region is None
+            or region_id not in osxpregions.installed(root)
+            or not osxpregions.made_whole(root, region)
+        ):
+            return None
+        settings = self._settings()
+        return osxpregions.update_room(
+            root, region, settings.overlays != "off", settings.rivers_fade
+        )
 
     def install_region(
         self, region_id: str, *, keep_old: bool = False, make_room: bool = False
@@ -1101,13 +1114,13 @@ class LiveControl:
 
     def _mesh_follows_kept(self) -> None:
         """The Settings' Mesh back to new once no region keeps an old mesh, one still waiting to
-        be renamed as kept counted (``osxpregions.keeps_old``): Old left behind would stream the
-        next old mesh kept, unasked. Its switch shows only while one is kept."""
+        be renamed as kept counted, and never while a region's disk is not connected
+        (``osxpregions.keeps_any_old``): Old left behind would stream the next old mesh kept,
+        unasked. Its switch shows only while one is kept."""
         settings = self._settings()
         if settings.mesh != "old":
             return
-        root = live_root()
-        if any(osxpregions.keeps_old(root, r) for r in osxpregions.installed(root)):
+        if osxpregions.keeps_any_old(live_root()):
             return
         from orthostudio.live.settings import save_settings
 

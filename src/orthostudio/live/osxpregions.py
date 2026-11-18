@@ -41,7 +41,8 @@ it to the list, updates it nor downloads it again (the host keeps no release of 
 streams onto it, in its region's place, where the Settings' « Mesh » says old
 (``scenery.osxp_sources``); :func:`remove_kept` deletes it alone, the overlays staying, which its
 region's new mesh has too. No room for an update beside the region: the window offers to delete the
-kept mesh first only where that makes every disk enough (:func:`_room`), never the region itself.
+kept mesh first only where that makes every disk enough (:func:`_room_for_update`), never the
+region itself.
 
 A region's river masks are the masks of its textures whose water is only rivers and lakes, which
 Live reads only when the pilot chose soft banks (``LiveSettings.rivers_fade``): Europe's about
@@ -103,7 +104,7 @@ a Live up to 2.2 on the same folder reads as its own list."""
 CATALOG_MAX_AGE_S = 3600.0
 OVERLAY_PACK = "y_osxp_overlays"
 OVERLAY_RECORD = ".live-overlays.json"  # in the overlay pack: {zip path: SHA-256}
-STEP = ".live-install.json"  # in a stage: the zips unpacked so far, the overlays waiting, keep
+STEP = ".live-install.json"  # a stage: zips unpacked so far, overlays waiting, keep_old
 CHUNK = 1 << 20
 ATTEMPTS = 5
 PASSING = frozenset({429, 500, 502, 503, 504})
@@ -355,14 +356,26 @@ def kept_mesh(root: Path, region: str) -> Path | None:
     return kept if (kept / MARKER).is_file() else None
 
 
+def _keeping(real: Path) -> bool:
+    """Whether the region of before waits beside ``real`` to be renamed as its kept old mesh: it
+    is there, and the record the swap carried into the region says to keep it (``keep_old``)."""
+    return _old_dir(real).exists() and bool(_read(real / STEP).get("keep_old"))
+
+
 def keeps_old(root: Path, region: str) -> bool:
     """Whether the region keeps an old mesh: kept (:func:`kept_mesh`), or the region of before
-    still waiting beside it to be renamed as kept, its rename refused a moment
-    (:func:`_settle_old`)."""
-    real = _real(root, region)
-    return kept_mesh(root, region) is not None or (
-        _old_dir(real).exists() and bool(_read(real / STEP).get("keep_old"))
-    )
+    still waiting to be renamed as kept, its rename refused a moment (:func:`_keeping`)."""
+    return kept_mesh(root, region) is not None or _keeping(_real(root, region))
+
+
+def keeps_any_old(root: Path) -> bool:
+    """Whether some region keeps an old mesh (:func:`keeps_old`), or may: one linked to a disk not
+    connected, whose kept mesh cannot be seen."""
+    for region in _region_ids(root):
+        link = mesh_dir(root, region)
+        if (is_folder_link(link) and not link.exists()) or keeps_old(root, region):
+            return True
+    return False
 
 
 def kept_region(root: Path, folder: Path) -> str | None:
@@ -648,7 +661,7 @@ def _settle_old(real: Path, beside: Path | None = None) -> bool:
     and of a repair after a stop between their renames; whether it was kept. The lock held."""
     old = _old_dir(real)
     kept = False
-    if old.exists() and _read(real / STEP).get("keep_old"):
+    if _keeping(real):
         place = _kept_of(real)
         try:
             before = _set_aside(place) if place.exists() else None
@@ -791,13 +804,14 @@ def _aside(path: Path, beside: Path | None = None) -> Path | None:
         return None
 
 
-def _discard(path: Path, beside: Path | None = None) -> None:
+def _discard(path: Path, beside: Path | None = None, *, wait: bool = False) -> None:
     """A stage, or a region or river masks of before, deleted, the one way: set aside
     (:func:`_aside`), then deleted in the background: hundreds of thousands of files take a minute
-    or more, which no start nor install waits for."""
+    or more, which no start nor install waits for; before returning with ``wait``, where the room
+    they leave is counted next (:meth:`Installer._run`)."""
     aside = _aside(path, beside)
     if aside is not None:
-        _delete_aside(aside)
+        (_delete if wait else _delete_aside)(aside)
 
 
 def _delete(*folders: Path, links: Sequence[Path] = ()) -> None:
@@ -1051,7 +1065,7 @@ def _short_of_room(
     place; :data:`SPARE_BYTES` left on each. A folder not made yet counts on the disk of the
     nearest one that is; ``freed``, the bytes a disk gains first ({disk: bytes}). None short, or
     nothing to download: an empty list. The one rule of the install's check
-    (:meth:`Installer._check_room`) and of the room it may make (:func:`_room`)."""
+    (:meth:`Installer._check_room`) and of the room it may make (:func:`_room_for_update`)."""
     todo = [*mesh, *ovl]
     if not todo:
         return []
@@ -1076,56 +1090,94 @@ def _short_of_room(
 
 def _downloads_kept(todo: Iterable[Zip], waiting: Mapping[str, str]) -> set[str]:
     """The files of a region's download folder an install keeps: its zips' (resumed), and the
-    overlays of an update waiting for its region ({path: SHA-256}); the others are stale (parts
-    of zips made again since, a Live of before's), deleted before its room is counted
-    (:meth:`Installer._clear_download`)."""
+    overlays of an update waiting for its region ({path: SHA-256})."""
     return {z.download for z in todo} | {_download_name(p, sha) for p, sha in waiting.items()}
 
 
-def _stale_bytes(download: Path, kept: set[str]) -> int:
-    """What the stale files of a download folder take (:func:`_downloads_kept`), which an install
-    deletes before it counts its room."""
+def _stale_downloads(download: Path, kept: set[str]) -> list[Path]:
+    """The files and folders of a download folder that are none of ``kept``
+    (:func:`_downloads_kept`): parts of zips made again since, whose bytes would be taken for the
+    beginning of the new one, and those of a Live of before."""
+    with contextlib.suppress(OSError), os.scandir(download) as entries:
+        return [Path(e.path) for e in entries if e.name not in kept]
+    return []
+
+
+def _stale_stages(root: Path, region: OsxpRegion, rivers: bool) -> list[tuple[Path, Path | None]]:
+    """What of a region's stages an install deletes: its stage where its mesh is the list's (none
+    needed), or where it holds a zip the list no longer has as it was (:func:`_staged`: an update
+    of before stopped or waiting, a newer one listed since), or only its river masks where the
+    region does not keep them (:func:`keeps_rivers`: Even again before they were in place); the
+    river masks coming alone, not the list's or half come and no longer wanted. Each with where it
+    is set aside (:func:`_discard`). Read before anything is deleted."""
+    keep = keeps_rivers(root, region.id, rivers)
+    stage = stage_dir(root, region.id)
+    out: list[tuple[Path, Path | None]] = []
+    if stage.exists():
+        step = _staged(root, region)
+        if not made_whole(root, region) or not (step["zips"] or step["overlays"]):
+            out.append((stage, None))
+        elif (
+            not keep
+            and (stage / RIVERS).exists()
+            and {z.path for z in region.rivers} & set(step["zips"])
+        ):
+            out.append((stage / RIVERS, stage.parent))
+    small = mesh_dir(root, region.id) / RIVERS_STAGE
+    if small.exists() and (not keep or not _rivers_staged(root, region)):
+        out.append((small, _real(root, region.id).parent))
+    return out
+
+
+def _bytes_of(path: Path) -> int:
+    """What a file, or a folder and all it holds, takes."""
+    try:
+        if not path.is_dir() or path.is_symlink():
+            return path.lstat().st_size
+    except OSError:
+        return 0
     total = 0
-    with contextlib.suppress(OSError):
-        for entry in os.scandir(download):
-            if entry.name in kept:
-                continue
-            if entry.is_dir(follow_symlinks=False):
-                for top, _, names in os.walk(entry.path):
-                    for name in names:
-                        with contextlib.suppress(OSError):
-                            total += os.lstat(os.path.join(top, name)).st_size
-            else:
-                with contextlib.suppress(OSError):
-                    total += entry.stat(follow_symlinks=False).st_size
+    for top, _, names in os.walk(path):
+        for name in names:
+            with contextlib.suppress(OSError):
+                total += os.lstat(os.path.join(top, name)).st_size
     return total
 
 
-def _room(
-    root: Path, region: str, mesh: Sequence[Zip], ovl: Sequence[Zip], waiting: Mapping[str, str]
+def _room_for_update(
+    root: Path,
+    region: OsxpRegion,
+    rivers: bool,
+    mesh: Sequence[Zip],
+    ovl: Sequence[Zip],
+    waiting: Mapping[str, str],
 ) -> dict | None:
     """What an update made whole beside the region lacks on the disk: the one count of the
     window's word before it (:func:`update_room`) and of the room the install makes
-    (:meth:`Installer._make_room`), so that both agree. None where every disk it needs has room,
-    its stale downloads counted as freed (the install deletes them first); else what it needs and
-    what is free on the first disk short, and whether deleting the region's kept old mesh makes
-    every disk the install needs enough (``kept``). Never a kept mesh that frees nothing: Live's
-    pack made from it on its disk keeps its DSFs and masks as clones or hard links
+    (:meth:`Installer._make_room`), so that both agree. What the install deletes before it counts
+    its room counts as freed: its stale stages (:func:`_stale_stages`) and downloads
+    (:func:`_stale_downloads`), which it deletes first, before the next look. None where every
+    disk it needs has room then; else what it needs and what is free on the first disk short
+    (``disk``, its folder where it is not the region's), and whether deleting the region's kept
+    old mesh makes every disk the install needs enough (``kept``). Never a kept mesh that frees
+    nothing: Live's pack made from it on its disk keeps its DSFs and masks as clones or hard links
     (``region.place_file``) until a start sets the pack up again, the disk as short; deleted, it
     could not be downloaded again."""
     from orthostudio.live.pack import pack_dir
     from orthostudio.live.region import sources_of_pack
 
-    download = download_dir(root, region)
-    stage = stage_dir(root, region)
+    download = download_dir(root, region.id)
+    stage = stage_dir(root, region.id)
     freed: dict[int | None, int] = {}
-    stale = _stale_bytes(download, _downloads_kept([*mesh, *ovl], waiting))
-    if stale:
-        freed[_disk_of(download)] = stale
+    stale = [path for path, _ in _stale_stages(root, region, rivers)]
+    stale += _stale_downloads(download, _downloads_kept([*mesh, *ovl], waiting))
+    for path in stale:
+        disk = _disk_of(path)
+        freed[disk] = freed.get(disk, 0) + _bytes_of(path)
     short = _short_of_room(mesh, ovl, stage, overlay_pack(root), download, True, freed)
     if not short:
         return None
-    kept = kept_mesh(root, region)
+    kept = kept_mesh(root, region.id)
     pack = pack_dir(root)
     frees = 0
     if kept is not None and not (
@@ -1137,15 +1189,23 @@ def _room(
     enough = frees > 0 and not _short_of_room(
         mesh, ovl, stage, overlay_pack(root), download, True, freed
     )
-    return {"need": short[0].need, "free": short[0].free, "kept": enough}
+    first = short[0]
+    elsewhere = _disk_of(first.path) != _disk_of(_real(root, region.id).parent)
+    return {
+        "need": first.need,
+        "free": first.free,
+        "kept": enough,
+        "disk": str(first.path) if elsewhere else None,
+    }
 
 
 def update_room(root: Path, region: OsxpRegion, overlays: bool, rivers: bool) -> dict | None:
-    """The window's word before an update that makes an installed region whole beside it (the
-    caller's to say it does, :func:`made_whole`): :func:`_room`, for the zips it would download.
-    ``overlays`` and ``rivers`` as the install's."""
+    """The window's word as Update is clicked on an installed region whose update makes it whole
+    beside it (the caller's to say it does, :func:`made_whole`): :func:`_room_for_update`, for the
+    zips it would download. ``overlays`` and ``rivers`` as the install's. Asked once at the click,
+    never at each look of the page: a stale stage is read whole."""
     mesh, ovl = to_fetch(root, region, overlays, keeps_rivers(root, region.id, rivers))
-    return _room(root, region.id, mesh, ovl, _staged(root, region)["overlays"])
+    return _room_for_update(root, region, rivers, mesh, ovl, _staged(root, region)["overlays"])
 
 
 class Installer:
@@ -1269,8 +1329,8 @@ class Installer:
         pack = overlay_pack(self.root)
         if not self.night_only:
             # what a stop left made right first, nothing put in place here: a whole stage waiting
-            # takes its place at the end (_finish), with this install's answer (keep) and only
-            # while each zip it holds is still the list's (_stage_kept); swapped here, with the
+            # takes its place at the end (_finish), with this install's answer (keep_old) and only
+            # while each zip it holds is still the list's (_stale_stages); swapped here, with the
             # answer of before, it lost the mesh the pilot now keeps, or put in place a release
             # the list no longer has before its successor (the reviews of 2026-11-18)
             settle(self.root, self.log, swap=False, only=[region.id])
@@ -1283,12 +1343,12 @@ class Installer:
         if self.night_only:
             mesh, ovl = night_to_fetch(self.root, region), []
         else:
-            if not whole:
-                _discard(stage)  # the region is the list's: none needed
-            # river masks coming alone: deleted when not the list's, or half come and no longer
-            # wanted (Even again); whole, they are the region's (keeps_rivers)
-            if not _rivers_staged(self.root, region) or not keep:
-                _discard(folder / RIVERS_STAGE, _real(self.root, region.id).parent)
+            # its stale stages deleted before the next look, the room they leave counted next
+            # (_room_for_update, the window's rule too)
+            for path, beside in _stale_stages(self.root, region, self.rivers):
+                if path.parent == stage:  # its river masks alone: whole again once all are there
+                    (stage / MARKER).unlink(missing_ok=True)
+                _discard(path, beside, wait=True)
             if whole:
                 step = {**self._stage_kept(stage, keep), "keep_old": self.keep_old}  # the last
             mesh, ovl = to_fetch(self.root, region, self.with_overlays, keep)
@@ -1313,19 +1373,14 @@ class Installer:
         self._finish(folder, stage, step, whole)
 
     def _stage_kept(self, stage: Path, keep: bool) -> dict[str, dict[str, str]]:
-        """What of the region's stage goes on: everything, while each zip it holds is the list's
-        as it was, but its river masks where the region does not keep them (``keep``,
-        :func:`keeps_rivers`: Even again before they were in place); else nothing, the stage
-        deleted."""
+        """What of the region's stage goes on, its stale parts deleted already
+        (:func:`_stale_stages`): what it holds, but the river masks the region does not keep
+        (``keep``, :func:`keeps_rivers`), their folder and the stage's marker gone, taken out of its
+        record."""
         region = self.region
         step = _staged(self.root, region)
-        if not step["zips"] and not step["overlays"]:
-            _discard(stage)
-            return step
         rivers = {z.path for z in region.rivers}
         if rivers & set(step["zips"]) and not keep:
-            (stage / MARKER).unlink(missing_ok=True)
-            _discard(stage / RIVERS, stage.parent)
             step["zips"] = {p: s for p, s in step["zips"].items() if p not in rivers}
             _write(stage / STEP, step)
         return step
@@ -1463,18 +1518,14 @@ class Installer:
         )
 
     def _clear_download(self, keep: set[str]) -> None:
-        """The download folder's files that are none of ``keep``: parts of zips made again since,
-        whose bytes would be taken for the beginning of the new one, and those of a Live of
-        before."""
-        with contextlib.suppress(OSError):
-            for entry in os.scandir(self.download):
-                if entry.name in keep:
-                    continue
-                if entry.is_dir(follow_symlinks=False):
-                    shutil.rmtree(entry.path, ignore_errors=True)
-                else:
-                    with contextlib.suppress(FileNotFoundError):
-                        os.unlink(entry.path)
+        """The download folder's stale files deleted (:func:`_stale_downloads`), before its room
+        is counted."""
+        for path in _stale_downloads(self.download, keep):
+            if path.is_dir() and not path.is_symlink():
+                shutil.rmtree(path, ignore_errors=True)
+            else:
+                with contextlib.suppress(FileNotFoundError):
+                    path.unlink()
 
     def _check_room(
         self, mesh: list[Zip], ovl: list[Zip], dest: Path, pack: Path, whole: bool
@@ -1492,15 +1543,15 @@ class Installer:
         self, mesh: list[Zip], ovl: list[Zip], step: dict[str, Any], whole: bool
     ) -> None:
         """The pilot's « Delete the kept old one and install the new one » (``make_room``), checked
-        again here by the window's own rule (:func:`_room`), never taken on trust: for an update
-        made whole only, where a disk lacks room and deleting the region's kept old mesh makes
-        every disk the install needs enough, and only with Live stopped and X-Plane not running
-        (``may_swap``), the rule of every deletion of a region; deleted before the next look, not
-        in the background, the room counted being the disk's (phase ``deleting``). Else nothing is
-        deleted, and :meth:`_check_room` says the room it lacks."""
+        again here by the window's own rule (:func:`_room_for_update`), never taken on trust: for
+        an update made whole only, where a disk lacks room and deleting the region's kept old mesh
+        makes every disk the install needs enough, and only with Live stopped and X-Plane not
+        running (``may_swap``), the rule of every deletion of a region; deleted before the next
+        look, not in the background, the room counted being the disk's (phase ``deleting``).
+        Else nothing is deleted, and :meth:`_check_room` says the room it lacks."""
         if not self.make_room or not whole:
             return
-        room = _room(self.root, self.region.id, mesh, ovl, step["overlays"])
+        room = _room_for_update(self.root, self.region, self.rivers, mesh, ovl, step["overlays"])
         if room is None or not room["kept"]:
             return
         if not self.may_swap():
@@ -1602,10 +1653,10 @@ class Installer:
         their stage marked whole (:meth:`_rivers_done`) and put in place by the rule of a region
         (:func:`put_rivers_in_place`): now with Live stopped and X-Plane not running, else at Live's
         next start with X-Plane not running; ``night_only`` leaves them alone. A region made whole:
-        its record written with the pilot's last answer (``keep``), its marker, which makes Live use
-        it, written in its stage, the stage put in the region's place (:func:`put_in_place`), now
-        or, for a region installed already while Live streams or X-Plane runs, at Live's next start
-        with X-Plane not running."""
+        its record written with the pilot's last answer (``keep_old``), its marker, which makes Live
+        use it, written in its stage, the stage put in the region's place (:func:`put_in_place`),
+        now or, for a region installed already while Live streams or X-Plane runs, at Live's next
+        start with X-Plane not running."""
         region = self.region
         if not whole:
             if step["zips"]:

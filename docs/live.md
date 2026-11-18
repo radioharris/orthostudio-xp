@@ -466,19 +466,22 @@ the new mesh elsewhere; with Old, the question of an update says that the mesh y
 Live goes on showing. Like the other settings it takes effect at Live's next start, and never while
 X-Plane is open: a start with X-Plane open on a mesh that changed is refused, as a new zoom is.
 Under its region, the kept mesh shows its size and **Delete from the disk**, which warns first that
-it cannot be downloaded again; like every deletion it waits for Live stopped and X-Plane closed.
-Its roads, forests and buildings stay, shared by the old and the new mesh; the region's own
-**Delete** takes its kept mesh with it. Once no region keeps an old mesh, Mesh goes back to New.
+it cannot be downloaded again; like every deletion it is possible only with Live stopped and
+X-Plane closed. Its roads, forests and buildings stay, shared by the old and the new mesh; the
+region's own **Delete** takes its kept mesh with it. Once no region keeps an old mesh, Mesh goes
+back to New.
 
 **Not enough room for an update.** The new mesh is installed beside the old one, so the disk holds
-both for a while. When it lacks the room, Live says how much the update needs and how much is left,
-and starts nothing. Where the region keeps an old mesh whose deletion makes enough room on every
-disk the update needs, it offers **Delete the kept old one and install the new one**: the kept mesh
-goes, and the update then runs as usual, the region in use all along. Live never deletes the
-installed region to make room. Nothing is offered while X-Plane is open (quit it first) or Live
-streams, nor for a kept mesh Live's last start was made from: its files are shared with the
-scenery Live gives X-Plane until the next start, and deleting it would free almost nothing.
-Otherwise, free some room on the disk and click **Update** again.
+both for a while; what an update stopped earlier left, and which the new one no longer needs, is
+counted as free, being deleted first. When the room is lacking, Live says how much the update
+needs and how much is left, on which disk, and starts nothing. Where the region keeps an old mesh
+whose deletion makes enough room on every disk the update needs, it offers **Delete the kept old
+one and install the new one**: the kept mesh goes, Live asks as usual whether to keep the mesh you
+are replacing (keeping it takes no room), and the update runs, the region in use all along. Live
+never deletes the installed region to make room. Nothing is offered while X-Plane is open (quit
+it, then click **Update** again) or Live streams, nor for a kept mesh Live's last start was made
+from: its files are shared with the scenery Live gives X-Plane until the next start, and deleting
+it would free almost nothing. Otherwise, free some room on the disk and click **Update** again.
 
 A region AutoOrtho installed on its own is still recognised, and left as it is; Live no longer
 offers to install AutoOrtho's. In a terminal, `python -m orthostudio.live regions list`,

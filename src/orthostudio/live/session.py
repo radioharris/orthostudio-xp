@@ -366,10 +366,10 @@ def prepare(options: Options, log: Log) -> Prepared:
     zooms = Zooms(options.max_zoom, options.max_zoom_airports)
     if xplane_running() and pack_to_redo(sources, pack_dir):  # as a new zoom, below
         raise RefusedError(
-            "the mesh changed since Live last started and X-Plane is running: it may be reading "
-            "the mesh of before. A region was installed, updated or deleted, Mesh was switched "
-            "between New and Old in the Settings, or a disk holding a mesh is not connected: quit "
-            "X-Plane, or connect that disk, then start again"
+            "the mesh changed since Live last started (a region installed, updated or deleted, "
+            "Mesh switched between New and Old, another tool's mesh or an AutoOrtho region "
+            "changed, or a disk holding a mesh not connected), and X-Plane may be reading the one "
+            "of before. Quit X-Plane, or connect that disk, then start again"
         )
     from orthostudio.live import machine
 
