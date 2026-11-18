@@ -1864,3 +1864,26 @@ def test_the_buttons_draw_osxp_s_own_icons() -> None:
     html = (UI_DIR / "index.html").read_text()
     assert 'class="icon icon-bin"' in html
     assert 'class="icon icon-quit"' in html
+
+
+def test_a_start_ends_the_line_of_an_install_over(home: Path, monkeypatch) -> None:
+    """An install over keeps its line on the page (« Installed: used from the next start ») until
+    Live starts: that start uses it, and the line goes (the campaign of 2026-11-18 still read it
+    in flight). An install still running keeps it."""
+    monkeypatch.setattr(control_module, "xplane_running", lambda: False)
+    stream = FakeStream()
+    c = control_for(stream)
+
+    class Over:
+        region = None
+
+        def snapshot(self) -> dict:
+            return {"region": "eur", "phase": "done"}
+
+    c._installer = Over()
+    assert c.regions()["install"]["phase"] == "done"
+    assert c.start()
+    assert c.regions()["install"] is None
+    wait_for(lambda: c.state == STREAMING)
+    c.stop()
+    assert c.wait_idle(5)
