@@ -970,14 +970,27 @@ def changed_regions(sources: Sequence[Path], pack_dir: Path) -> list[Path]:
     return [Path(k) for k, v in was.items() if k in now and now[k] != v]
 
 
-def regions_gone(sources: Sequence[Path], pack_dir: Path) -> list[str]:
-    """The regions the pack was set up from that ``sources`` no longer name: one of Live's own read
-    from its kept old mesh in its place or back (the Settings' « Mesh »,
-    ``scenery.osxp_sources``), one deleted or away. The pack is then set up again
-    (:func:`setup_region`), its DSFs replaced, never with X-Plane running, which may be reading
-    those of before (``session.prepare``); a region only added is merged in."""
-    keys = {str(s) for s in sources}
-    return [s for s in sources_of(_marker(pack_dir)) if s not in keys]
+def _adding(had: Sequence[str], keys: Sequence[str]) -> bool:
+    """Whether the regions ``keys`` only add some after those the pack was set up from (``had``),
+    merged in: one that comes first (Live's own mesh, ``scenery.osxp_sources``) must take the
+    squares it has, and sets the pack up again."""
+    return bool(had) and set(had) < set(keys) and list(keys[: len(had)]) == list(had)
+
+
+def pack_to_redo(sources: Sequence[Path], pack_dir: Path) -> bool:
+    """Whether a start on ``sources`` sets the pack up again (:func:`setup_region`), its DSFs
+    replaced: a region changed since (:func:`changed_regions`: updated, given its river masks), or
+    the regions no longer those it was set up from, unless they only add some after them, merged
+    in (:func:`_adding`): one read from another folder (a kept old mesh in its place or back, the
+    Settings' Mesh), one deleted, one whose disk is not connected. Never with X-Plane running,
+    which may be reading the DSFs of before (``session.prepare``). A pack not set up: no."""
+    had = sources_of(_marker(pack_dir))
+    if not had:
+        return False
+    keys = [str(s) for s in sources]
+    return bool(changed_regions(sources, pack_dir)) or (
+        set(had) != set(keys) and not _adding(had, keys)
+    )
 
 
 def setup_region(
@@ -997,7 +1010,8 @@ def setup_region(
     the first time (:func:`relayout` after). A region changed since (:func:`changed_regions`) sets
     the pack up again, the textures built on its squares that no square names any more going too
     (:func:`_unnamed`, read from the lists kept in ``lists``: ``names.one_region``); a start with
-    X-Plane running on such a region is refused before (``session.prepare``)."""
+    X-Plane running on a pack to set up again is refused before (:func:`pack_to_redo`,
+    ``session.prepare``)."""
     sources = [source] if isinstance(source, Path) else list(source)
     keys = [str(s) for s in sources]
     marker = pack_dir / REGION_MARKER
@@ -1034,7 +1048,7 @@ def setup_region(
     # DSFs of before stayed and X-Plane read them with that region's terrain files (2026-10-18)
     # not when the pack is set up again (``force``, a region of before changed included): its DSFs
     # of before would stay beside its lists of now
-    adding = bool(had) and set(had) < set(keys) and keys[: len(had)] == had and not force
+    adding = _adding(had, keys) and not force
     if old and (version < REGION_VERSION or not adding) and not xplane_running():
         forget = _unnamed(pack_dir, sources, changed, lists) if changed else set()
         _to_squares(pack_dir, log, forget)  # the files of the regions of before

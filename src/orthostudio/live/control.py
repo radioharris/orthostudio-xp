@@ -106,7 +106,6 @@ STOP_HINT = "Stop in the window to end"
 INSTALLING = (
     "a region is being downloaded or installed: Start once it is done, or stop it in Settings"
 )
-XPLANE_READS = "X-Plane is running and reads this region: quit X-Plane, then try again"
 
 
 SOURCE_ENV = "OSXP_LIVE_SOURCE"
@@ -260,11 +259,14 @@ def gather_checks() -> dict[str, Any]:
         xplane_quality=xplane_texture_quality(xp),
         # the regions installed, by name, or where they would be
         mesh=", ".join(s.name for s in sources) if sources else str(autoortho_scenery(xp)),
-        # by region, Live's and AutoOrtho's ("eur"), a region's kept old mesh too
-        # (.z_osxp_eur.kept); another tool's by its folder's name; once each: Live's Europe and
-        # AutoOrtho's both said "Europe, Europe"
+        # by region, Live's and AutoOrtho's ("eur"), a region's kept old mesh as its region;
+        # another tool's by its folder's name; once each: Live's Europe and AutoOrtho's both said
+        # "Europe, Europe"
         mesh_regions=list(
-            dict.fromkeys(re.sub(r"^\.?z_(?:ao|osxp)_|\.kept$", "", s.name) for s in sources)
+            dict.fromkeys(
+                osxpregions.kept_region(live_root(), s) or re.sub(r"^z_(?:ao|osxp)_", "", s.name)
+                for s in sources
+            )
         ),
         mesh_found=bool(sources),
         region_ready=session.region_ready(default_pack_dir(), sources),
@@ -871,7 +873,7 @@ class LiveControl:
         would download for it (``rivers_bytes``: its river masks it has not, the Settings' question
         sums them), whether its update replaces its mesh (``whole``: the window asks whether to keep
         the one of before) and the room it lacks then (``osxpregions.update_room``), and its kept
-        old mesh (``kept``: its size, and why it is in use, :meth:`kept_in_use`); the install
+        old mesh (``kept``: its size); the install
         under way. With ``fetch`` (the page's own request, not its status), the host's list is
         read again in the background when old."""
         with self._lock:
@@ -898,10 +900,7 @@ class LiveControl:
             item["waiting"] = region_id in mine and osxpregions.staged_whole(root, region_id)
             kept = osxpregions.kept_mesh(root, region_id) if region_id in mine else None
             if kept is not None:
-                item["kept"] = {
-                    "size": _size_of(kept),
-                    "in_use": self.kept_in_use(region_id, settings),
-                }
+                item["kept"] = {"size": _size_of(kept)}
             if region is not None:
                 installed = region_id in mine
                 mesh, ovl = osxpregions.to_fetch(root, region, overlays, rivers)
@@ -924,7 +923,7 @@ class LiveControl:
                 )
                 item["whole"] = installed and osxpregions.made_whole(root, region)
                 item["room"] = (
-                    osxpregions.update_room(root, region, overlays, rivers)
+                    osxpregions.update_room(root, region, overlays, rivers, default_pack_dir())
                     if item["whole"]
                     else None
                 )
@@ -945,9 +944,9 @@ class LiveControl:
         next start with X-Plane not running (``osxpregions.settle``); Start waits for the install
         (:meth:`installing`). ``keep``: the window's answer, the region of before kept at the
         swap as the region's old mesh. ``make_room``: the window's « Delete the old one and install
-        the new one » where the disk lacks room (``osxpregions.Installer.make_room``), by the rule
-        of every deletion of a region: Live stopped, X-Plane not running, a kept old mesh not in
-        use (:meth:`kept_in_use`)."""
+        the new one » where the disk lacks room (``osxpregions.Installer.make_room``), which
+        deletes only with Live stopped and X-Plane not running, at the moment it does; Mesh back
+        to new once no region keeps an old mesh (:meth:`_mesh_follows_kept`)."""
         self._stop_night_grids()
         with self._lock:
             region = (self._catalog or {}).get(region_id)
@@ -955,11 +954,6 @@ class LiveControl:
             raise session.RefusedError(f"no region {region_id!r} in the list of Live's regions")
         installed = region_id in osxpregions.installed(live_root())
         settings = self._settings()
-        if make_room:
-            if not self._may_swap():
-                raise session.RefusedError(XPLANE_READS)
-            if osxpregions.kept_mesh(live_root(), region_id) is not None:
-                self._refuse_kept_in_use(region_id, settings)
         installer = self._installer_of(
             live_root(),
             region,
@@ -970,7 +964,9 @@ class LiveControl:
             keep=keep,
             make_room=make_room,
         )
-        thread = threading.Thread(target=installer.run, name="live-region-install", daemon=True)
+        thread = threading.Thread(
+            target=self._install, args=(installer,), name="live-region-install", daemon=True
+        )
         # one check and one taking: the night grids' own download, started from the list's read
         # between the two, ran beside it on the same files (the review of 2026-11-11)
         with self._lock:
@@ -986,6 +982,10 @@ class LiveControl:
                 raise session.RefusedError("Live is streaming over this region: stop it first")
             self._installer, self._install_thread, self._quiet = installer, thread, False
         thread.start()
+
+    def _install(self, installer: Any) -> None:
+        installer.run()
+        self._mesh_follows_kept()  # a kept old mesh deleted to make room
 
     def cancel_install(self) -> None:
         """The window's Stop: the install under way, and the round of river masks it is part of."""
@@ -1061,12 +1061,15 @@ class LiveControl:
     def _deleting(self, region_id: str) -> Iterator[None]:
         """The one rule of a deletion from the disk, a region's and its kept old mesh's alike: not
         while Live streams, nor while the region is being installed (any region, by the night
-        grids' or the river masks' rounds), and, said by the caller (:data:`XPLANE_READS`), not
-        while X-Plane runs, which reads the region's roads, forests and buildings straight from it
-        (:meth:`_may_swap`; a campaign of 2026-11-18 deleted them under a flying X-Plane). One
-        check and one taking, as an install's: the installs' one place is held meanwhile where it
-        is free, as the night grids' own download, started from the list's read while the region
-        was deleted, wrote half of it back, listed as installed (the review of 2026-11-11)."""
+        grids' or the river masks' rounds), nor while X-Plane runs, which reads the region's roads,
+        forests and buildings straight from it (:meth:`_may_swap`, ``osxpregions.XPLANE_READS``; a
+        campaign of 2026-11-18 deleted them under a flying X-Plane). Nothing else reads a kept old
+        mesh then, and a start with X-Plane running on a mesh that changed is refused
+        (``region.pack_to_redo``). One check and one taking, as an install's: the installs' one
+        place is held meanwhile where it is free, as the night grids' own download, started from
+        the list's read while the region was deleted, wrote half of it back, listed as installed
+        (the review of 2026-11-11). Mesh back to new after, once no region keeps an old mesh
+        (:meth:`_mesh_follows_kept`)."""
         self._stop_night_grids()
         with self._lock:
             running = self._install_thread
@@ -1083,12 +1086,29 @@ class LiveControl:
             if taken is not None:
                 self._install_thread = taken
         try:
+            if not self._may_swap():
+                raise session.RefusedError(osxpregions.XPLANE_READS)
             yield
             self._checked = (0.0, None)
+            self._mesh_follows_kept()
         finally:
             with self._lock:
                 if taken is not None and self._install_thread is taken:
                     self._install_thread = None
+
+    def _mesh_follows_kept(self) -> None:
+        """The Settings' Mesh back to new once no region keeps an old mesh: Old left behind would
+        stream the next old mesh kept, unasked. Its switch shows only while one is kept."""
+        settings = self._settings()
+        if settings.mesh != "old":
+            return
+        root = live_root()
+        if any(osxpregions.kept_mesh(root, r) for r in osxpregions.installed(root)):
+            return
+        from orthostudio.live.settings import save_settings
+
+        save_settings(settings.model_copy(update={"mesh": "new"}))
+        self.log("no region keeps an old mesh any more: Mesh is New again")
 
     def remove_region(self, region_id: str) -> None:
         """Delete one of OrthoStudio XP's regions from the disk, with its overlays and its kept old
@@ -1096,8 +1116,6 @@ class LiveControl:
         with self._deleting(region_id):
             if not osxpregions.present(live_root(), region_id):
                 raise session.RefusedError(f"the region {region_id!r} is not installed")
-            if not self._may_swap():
-                raise session.RefusedError(XPLANE_READS)
             squares = squares_of({region_id}).get(region_id, [])
             try:
                 osxpregions.remove(
@@ -1106,42 +1124,15 @@ class LiveControl:
             except osxpregions.InstallError as e:  # held open: nothing deleted
                 raise session.RefusedError(str(e)) from e
 
-    def kept_in_use(self, region_id: str, settings: LiveSettings | None = None) -> str | None:
-        """Why a region's kept old mesh may not be deleted now: "setting", the Settings' « Mesh »
-        says old, which the next start streams; "pack", the pack is made from it, as its record
-        says (``session._recorded_sources``), until Live's next start with X-Plane not running sets
-        it up again; None: nothing uses it."""
-        if (settings or self._settings()).mesh == "old":
-            return "setting"
-        kept = str(osxpregions.kept_dir(live_root(), region_id))
-        return "pack" if kept in session._recorded_sources(default_pack_dir()) else None
-
-    def _refuse_kept_in_use(self, region_id: str, settings: LiveSettings | None = None) -> None:
-        why = self.kept_in_use(region_id, settings)
-        if why == "setting":
-            raise session.RefusedError(
-                "the old mesh of this region is in use: choose the new mesh in Live's Settings, "
-                "save, then try again"
-            )
-        if why == "pack":
-            raise session.RefusedError(
-                "the old mesh of this region is in use until Live's next start with X-Plane "
-                "closed: start Live once, then try again"
-            )
-
     def remove_kept(self, region_id: str) -> None:
-        """The window's « Delete from the disk » on a region's kept old mesh
-        (``osxpregions.remove_kept``), which cannot be downloaded again: only where nothing uses it
-        (:meth:`kept_in_use`), by the rule of every deletion (:meth:`_deleting`). The region's
-        overlays stay: its new mesh has them too."""
+        """The window's « Delete from the disk » on a region's kept old mesh, which cannot be
+        downloaded again (``osxpregions.remove_mesh``), by the rule of every deletion
+        (:meth:`_deleting`). The region's overlays stay: its new mesh has them too."""
         with self._deleting(region_id):
             if osxpregions.kept_mesh(live_root(), region_id) is None:
                 raise session.RefusedError(f"the region {region_id!r} keeps no old mesh")
-            if not self._may_swap():
-                raise session.RefusedError(XPLANE_READS)
-            self._refuse_kept_in_use(region_id)
             try:
-                osxpregions.remove_kept(live_root(), region_id, log=self.log)
+                osxpregions.remove_mesh(live_root(), region_id, kept=True, log=self.log)
             except osxpregions.InstallError as e:  # held open: nothing deleted
                 raise session.RefusedError(str(e)) from e
 

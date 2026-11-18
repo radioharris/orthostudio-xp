@@ -1500,40 +1500,28 @@ def kept_world(c: LiveControl) -> tuple[Path, Path]:
     return mine, kept
 
 
-def test_a_kept_old_mesh_is_deleted_only_when_nothing_uses_it(
+def test_a_kept_old_mesh_is_deleted_by_the_rule_of_every_deletion(
     home: Path, tmp_path: Path, monkeypatch
 ) -> None:
-    """The page lists a region's kept old mesh with its size and why it stays. « Delete from the
-    disk » is refused while the Settings' Mesh says old, while the pack is made from it (its
-    record, until the next start), while Live streams, while the region is being installed and
-    while X-Plane runs; then it deletes the kept mesh alone, the overlays staying."""
+    """The page lists a region's kept old mesh with its size. « Delete from the disk » follows
+    the one rule of every deletion: refused while Live streams, while the region is being
+    installed and while X-Plane runs; nothing else reads it then. It deletes the kept mesh alone,
+    the overlays staying, and the Settings' Mesh goes back to New once no region keeps one."""
     from orthostudio.live import osxpregions
-    from orthostudio.live.pack import default_pack_dir, live_root
-    from orthostudio.live.region import REGION_MARKER
+    from orthostudio.live.pack import live_root
 
     monkeypatch.setattr(control_module, "xplane_running", lambda: False)
     monkeypatch.setattr(osxpregions, "_delete_aside", osxpregions._delete)
     c = regions_control(tmp_path / "X-Plane 12")
-    chosen = {"mesh": "old"}
-    c._settings = lambda: LiveSettings(**chosen)
+    c._settings = load_settings
+    save_settings(LiveSettings(mesh="old"))
     mine, kept = kept_world(c)
     overlays = osxpregions.overlay_pack(live_root()) / "Earth nav data" / "+40+000"
     overlays.mkdir(parents=True)
     (overlays / "+45+005.dsf").write_bytes(b"roads")
     listed = {r["id"]: r for r in c.regions()["list"]}
-    assert listed["eur"]["kept"] == {"size": 9, "in_use": "setting"}
+    assert listed["eur"]["kept"] == {"size": 9}
     assert "kept" not in listed["na"]
-    with pytest.raises(session.RefusedError, match="in use: choose the new mesh"):
-        c.remove_kept("eur")
-    chosen["mesh"] = "new"
-    record = default_pack_dir() / REGION_MARKER
-    record.parent.mkdir(parents=True)
-    record.write_text(json.dumps({"sources": [str(kept)]}))  # the pack made from it
-    assert c.kept_in_use("eur") == "pack"
-    with pytest.raises(session.RefusedError, match="until Live's next start"):
-        c.remove_kept("eur")
-    record.write_text(json.dumps({"sources": [str(mine)]}))  # set up again at a start
-    assert c.kept_in_use("eur") is None
     c._state = STREAMING
     with pytest.raises(session.RefusedError, match="streaming"):
         c.remove_kept("eur")
@@ -1544,25 +1532,50 @@ def test_a_kept_old_mesh_is_deleted_only_when_nothing_uses_it(
     c.cancel_install()
     wait_for(lambda: not c.installing())
     monkeypatch.setattr(control_module, "xplane_running", lambda: True)
-    with pytest.raises(session.RefusedError, match="X-Plane is running"):
-        c.remove_kept("eur")
+    for deleting in (c.remove_kept, c.remove_region):  # one rule, one wording
+        with pytest.raises(session.RefusedError, match="X-Plane is running and reads this"):
+            deleting("eur")
     monkeypatch.setattr(control_module, "xplane_running", lambda: False)
-    assert kept.exists()
-    c.remove_kept("eur")
+    assert kept.exists() and load_settings().mesh == "old"
+    c.remove_kept("eur")  # Mesh says Old: deleted all the same, nothing reads it now
     assert not kept.exists() and mine.exists()
     assert (overlays / "+45+005.dsf").read_bytes() == b"roads"  # shared with the new mesh
     assert "kept" not in {r["id"]: r for r in c.regions()["list"]}["eur"]
+    assert load_settings().mesh == "new"  # no region keeps one: never Old left behind
     with pytest.raises(session.RefusedError, match="keeps no old mesh"):
         c.remove_kept("eur")
 
 
+def test_mesh_stays_old_while_a_region_keeps_one(home: Path, tmp_path: Path, monkeypatch) -> None:
+    """Old stays while another region keeps its old mesh; the region's own Delete, which takes
+    its kept mesh with it, sets it back to New once none is left."""
+    from orthostudio.live import aoregions, osxpregions
+    from orthostudio.live.pack import live_root
+
+    monkeypatch.setattr(control_module, "xplane_running", lambda: False)
+    monkeypatch.setattr(osxpregions, "_delete_aside", osxpregions._delete)
+    c = regions_control(tmp_path / "X-Plane 12")
+    c._settings = load_settings
+    save_settings(LiveSettings(mesh="old"))
+    kept_world(c)
+    na = osxpregions.mesh_dir(live_root(), "na")
+    na.mkdir(parents=True)
+    (na / aoregions.MARKER).write_text(json.dumps({"size": 34, "zips": {}}))
+    na_kept = osxpregions.kept_dir(live_root(), "na")
+    na_kept.mkdir()
+    (na_kept / aoregions.MARKER).write_text(json.dumps({"size": 30, "zips": {}}))
+    c.remove_region("eur")  # its kept mesh with it
+    assert not osxpregions.present(live_root(), "eur")
+    assert load_settings().mesh == "old"  # North America keeps one
+    c.remove_kept("na")
+    assert load_settings().mesh == "new"
+
+
 def test_an_update_s_answers_reach_its_install(home: Path, tmp_path: Path, monkeypatch) -> None:
-    """Keep or not, and room made first or not, go to the install; making room is refused with
-    X-Plane running and while the region's kept old mesh is in use, as its deletion is."""
+    """Keep or not, and room made first or not, go to the install, which deletes only with Live
+    stopped and X-Plane not running, at the moment it does (osxpregions.Installer._make_room)."""
     monkeypatch.setattr(control_module, "xplane_running", lambda: False)
     c = regions_control(tmp_path / "X-Plane 12")
-    chosen = {"mesh": "old"}
-    c._settings = lambda: LiveSettings(**chosen)
     mine, _ = kept_world(c)
     listed = {r["id"]: r for r in c.regions()["list"]}
     assert listed["eur"]["whole"] is False and listed["eur"]["room"] is None  # the list's mesh
@@ -1576,30 +1589,24 @@ def test_an_update_s_answers_reach_its_install(home: Path, tmp_path: Path, monke
     assert c._installer.keep and not c._installer.make_room
     c.cancel_install()
     wait_for(lambda: not c.installing())
-    with pytest.raises(session.RefusedError, match="in use"):
-        c.install_region("eur", make_room="kept")
-    chosen["mesh"] = "new"
-    monkeypatch.setattr(control_module, "xplane_running", lambda: True)
-    with pytest.raises(session.RefusedError, match="X-Plane is running"):
-        c.install_region("eur", make_room="all")
-    monkeypatch.setattr(control_module, "xplane_running", lambda: False)
     c.install_region("eur", make_room="all")
     assert c._installer.make_room == "all" and not c._installer.keep
+    assert c._installer.may_swap()  # what the install asks before it deletes
+    monkeypatch.setattr(control_module, "xplane_running", lambda: True)
+    assert not c._installer.may_swap()
     c.cancel_install()
     wait_for(lambda: not c.installing())
 
 
 @pytest.mark.anyio
 async def test_the_kept_mesh_api(home: Path, tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.setattr(control_module, "xplane_running", lambda: False)
+    monkeypatch.setattr(control_module, "xplane_running", lambda: True)
     c = regions_control(tmp_path / "X-Plane 12")
-    chosen = {"mesh": "old"}
-    c._settings = lambda: LiveSettings(**chosen)
     kept_world(c)
     async with client_for(create_live_app(c)) as client:
         refused = await client.delete("/api/live/regions/eur/kept")
-        assert refused.status_code == 409 and "in use" in refused.json()["detail"]
-        chosen["mesh"] = "new"
+        assert refused.status_code == 409 and "X-Plane is running" in refused.json()["detail"]
+        monkeypatch.setattr(control_module, "xplane_running", lambda: False)
         done = await client.delete("/api/live/regions/eur/kept")
         assert done.status_code == 200
         assert "kept" not in {r["id"]: r for r in done.json()["list"]}["eur"]

@@ -39,7 +39,7 @@ the region of before ``.z_osxp_<id>.kept`` beside it, on its disk, instead of de
 (:func:`_settle_old`); one per region, a newer one replacing it. It never changes: nothing compares
 it to the list, updates it nor downloads it again (the host keeps no release of before). Live
 streams onto it, in its region's place, where the Settings' « Mesh » says old
-(``scenery.osxp_sources``); :func:`remove_kept` deletes it alone, the overlays staying, which its
+(``scenery.osxp_sources``); :func:`remove_mesh` deletes it alone, the overlays staying, which its
 region's new mesh has too. No room for an update beside the region: the window offers to delete
 the mesh of before first (:func:`update_room`, the install's own rule, ``Installer.make_room``).
 
@@ -120,6 +120,8 @@ counted at their bytes, Europe's 228,000 would take about half a block each more
 0.45 GB (an estimate)."""
 
 _SWAP = threading.Lock()  # one rename of a region at a time: an install's and a start's
+XPLANE_READS = "X-Plane is running and reads this region: quit X-Plane, then try again"
+"""Why a region's folders are not deleted now: the one wording of every deletion's refusal."""
 
 Log = Callable[[str], None]
 
@@ -279,6 +281,12 @@ def overlay_pack(root: Path) -> Path:
     return regions_dir(root) / OVERLAY_PACK
 
 
+def download_dir(root: Path, region: str) -> Path:
+    """Where a region's zips are downloaded, kept until unpacked (an update's overlays until the
+    region is in place)."""
+    return regions_dir(root) / ".download" / f"osxp_{region}"
+
+
 def installed(root: Path) -> dict[str, dict]:
     """The regions installed whole: {id: their marker}."""
     out: dict[str, dict] = {}
@@ -345,6 +353,12 @@ def kept_mesh(root: Path, region: str) -> Path | None:
     its size); None where it has none."""
     kept = kept_dir(root, region)
     return kept if (kept / MARKER).is_file() else None
+
+
+def kept_region(root: Path, folder: Path) -> str | None:
+    """The region whose kept old mesh ``folder`` is (:func:`kept_dir`); None for any other: the
+    one place that knows its name."""
+    return next((r for r in installed(root) if kept_dir(root, r) == folder), None)
 
 
 def present(root: Path, region: str) -> bool:
@@ -596,7 +610,7 @@ def _swap_in(
     is set aside, out of the region's own folder for its river masks (:func:`_set_aside`). Whether
     the one of before was kept. The lock held."""
     old = _old_dir(real)
-    _discard(old, beside)  # one an earlier swap could not delete
+    _settle_old(real, beside)  # one an earlier swap left: kept or deleted as its record says
     if real.exists():
         _rename(real, old, what)
     try:
@@ -693,7 +707,7 @@ def _unpack_waiting(root: Path, region: str, log: Log) -> None:
     waiting = dict(marker.get("overlays_waiting") or {})
     if not waiting:
         return
-    download = regions_dir(root) / ".download" / f"osxp_{region}"
+    download = download_dir(root, region)
     pack = overlay_pack(root)
     pack.mkdir(parents=True, exist_ok=True)
     done = 0
@@ -935,7 +949,7 @@ def remove(root: Path, region: str, squares: Sequence[tuple[int, int]], log: Log
             remove_folder_link(folder)
         if left:
             _delete_aside(*left, links=links)
-    shutil.rmtree(regions_dir(root) / ".download" / f"osxp_{region}", ignore_errors=True)
+    shutil.rmtree(download_dir(root, region), ignore_errors=True)
     pack = overlay_pack(root)
     # its overlays out of the record before their files: a stop between leaves files the record no
     # longer names, which an install of the region downloads again over them, never a record naming
@@ -964,41 +978,30 @@ def _forget_list(root: Path, *folders: Path) -> None:
         region_list_file(lists_dir(root), folder).unlink(missing_ok=True)
 
 
-def remove_kept(root: Path, region: str, log: Log = print, *, wait: bool = False) -> int:
-    """A region's kept old mesh deleted from the disk (:func:`kept_dir`), alone: the overlays of
-    the overlay pack stay, its region's new mesh has them too, and so do the region, its stage and
-    its downloads. Set aside first, in one rename (:func:`_set_aside_whole`, refused while a
-    program holds it open), then deleted in the background, or before returning with ``wait``,
-    for the room of an update (:meth:`Installer._make_room`), counted once it is free. The caller
-    says whether it may (``LiveControl.remove_kept``). Returns the size its marker gave."""
+def remove_mesh(
+    root: Path, region: str, *, kept: bool, wait: bool = False, log: Log = print
+) -> None:
+    """One mesh of a region deleted from the disk, alone: its kept old mesh (``kept``,
+    :func:`kept_dir`, the window's « Delete from the disk »), or the region installed, its folder
+    alone, for the room of its update (:meth:`Installer._make_room`: its stage, its downloads and a
+    link to it on another disk stay, the stage taking its place there). The overlays of the overlay
+    pack stay either way: the region's other mesh has them too. Set aside first, in one rename
+    (:func:`_set_aside_whole`, refused while a program holds it open: nothing deleted then; never
+    taken for a region nor a kept mesh), then deleted in the background, or before returning with
+    ``wait``: the room an update makes is counted once it is free. The caller says whether it may
+    (``LiveControl._deleting``, ``Installer.may_swap``)."""
+    source = kept_dir(root, region) if kept else mesh_dir(root, region)
     with _SWAP:
-        kept = kept_dir(root, region)
-        if not kept.exists():
-            return 0
-        size = int(_read(kept / MARKER).get("size") or 0)
-        aside = _set_aside_whole(kept)
-    _forget_list(root, kept)
+        folder = source if kept else _real(root, region)
+        if not folder.exists():
+            return
+        aside = _set_aside_whole(folder)
+    _forget_list(root, source)
     if wait:
         _delete(aside)
     else:
         _delete_aside(aside)
-    log(f"the mesh of before of OrthoStudio XP's region {region} deleted ({size / 1e9:.1f} GB)")
-    return size
-
-
-def _remove_installed(root: Path, region: str, log: Log) -> None:
-    """The region installed deleted before returning, its folder alone, for the room of its update
-    (:meth:`Installer._make_room`): its stage, its downloads and its overlays stay, the install
-    going on as a first one; a link to it on another disk stays, the stage taking its place
-    there. Set aside first in one rename (:func:`_set_aside_whole`), never taken for a region."""
-    with _SWAP:
-        real = _real(root, region)
-        if not real.exists():
-            return
-        aside = _set_aside_whole(real)
-    _forget_list(root, mesh_dir(root, region))
-    _delete(aside)
-    log(f"OrthoStudio XP's region {region} deleted to make room for its update")
+    log(f"the {'old ' if kept else ''}mesh of OrthoStudio XP's region {region} deleted")
 
 
 @dataclass(frozen=True)
@@ -1009,17 +1012,6 @@ class Room:
     path: Path
     need: int
     free: int
-
-
-class RoomError(InstallError):
-    """No room for an install on one of its disks, said as before (:class:`Room`)."""
-
-    def __init__(self, room: Room) -> None:
-        self.room = room
-        super().__init__(
-            f"{room.need / 1e9:.0f} GB needed on the disk of {room.path.resolve()}, "
-            f"{room.free / 1e9:.0f} GB free"
-        )
 
 
 def _short_of_room(
@@ -1052,34 +1044,44 @@ def _short_of_room(
     return None
 
 
-def update_room(root: Path, region: OsxpRegion, overlays: bool, rivers: bool) -> dict | None:
-    """What an update of a region installed, made whole beside it (:func:`made_whole`), lacks on
-    the disk, which the window says before it starts, by the install's own rule
-    (:func:`_short_of_room`): None where every disk has room for it; else what it needs and what is
-    free on the disk short, and whether deleting the region's kept old mesh frees enough there
-    (``kept``), or deleting it and the region installed (``all``), counted from their markers'
-    sizes. Neither: that disk holds none of them, or they free too little, and the install stops
-    on its own words. ``overlays`` and ``rivers`` as the install's."""
-    if not (mesh_dir(root, region.id) / MARKER).is_file() or not made_whole(root, region):
+def _disk_of(path: Path) -> int | None:
+    try:
+        return os.stat(path).st_dev
+    except OSError:
         return None
+
+
+def update_room(
+    root: Path, region: OsxpRegion, overlays: bool, rivers: bool, pack: Path
+) -> dict | None:
+    """What an update that makes an installed region whole beside it lacks on the disk (the
+    caller's to say it does, :func:`made_whole`), which the window says before it starts, by the
+    install's own rule (:func:`_short_of_room`): None where every disk has room for it; else what
+    it needs and what is free on the disk short, and whether deleting the region's kept old mesh
+    frees enough there (``kept``), or deleting it and the region installed (``all``). A mesh frees
+    the size its marker gives, but nothing where Live's pack (``pack``) is made from it on that
+    disk: its DSFs and masks stay in the pack as clones or hard links (``region.place_file``) until
+    a start sets the pack up again, and the disk would stay as short, the region deleted for
+    nothing. Neither: the install stops on its own words. ``overlays`` and ``rivers`` as the
+    install's."""
+    from orthostudio.live.region import sources_of_pack
+
     mesh, ovl = to_fetch(root, region, overlays, keeps_rivers(root, region.id, rivers))
-    download = regions_dir(root) / ".download" / f"osxp_{region.id}"
-    room = _short_of_room(mesh, ovl, stage_dir(root, region.id), overlay_pack(root), download, True)
+    stage, download = stage_dir(root, region.id), download_dir(root, region.id)
+    room = _short_of_room(mesh, ovl, stage, overlay_pack(root), download, True)
     if room is None:
         return None
-    disk = os.stat(room.path).st_dev
+    disk = _disk_of(room.path)
+    made_of = {str(s) for s in sources_of_pack(pack)} if _disk_of(pack) == disk else set()
 
-    def freed(folder: Path) -> int:
-        try:
-            if os.stat(folder).st_dev != disk:
-                return 0
-        except OSError:
+    def frees(source: Path, folder: Path) -> int:
+        if _disk_of(folder) != disk or str(source) in made_of:
             return 0
         return int(_read(folder / MARKER).get("size") or 0)
 
     short = room.need - room.free
-    kept = freed(kept_dir(root, region.id))
-    both = kept + freed(_real(root, region.id))
+    kept = frees(kept_dir(root, region.id), kept_dir(root, region.id))
+    both = kept + frees(mesh_dir(root, region.id), _real(root, region.id))
     return {
         "need": room.need,
         "free": room.free,
@@ -1142,7 +1144,7 @@ class Installer:
         self.turn = threading.Condition()
         self.next_up = 0
         self.progress = Progress(region.id)
-        self.download = regions_dir(root) / ".download" / f"osxp_{region.id}"
+        self.download = download_dir(root, region.id)
         self.waiting = False  # the region whole in its stage, waiting to take its place
         from orthostudio.live.streamer import Rate
 
@@ -1208,8 +1210,15 @@ class Installer:
         region = self.region
         folder = mesh_dir(self.root, region.id)
         pack = overlay_pack(self.root)
-        if not self.night_only:  # what a stop left first, a whole stage put in place if it may
-            settle(self.root, self.log, swap=self.may_swap(), only=[region.id])
+        if not self.night_only:
+            # what a stop left made right first, nothing put in place here: a whole stage waiting
+            # takes its place at the end (_finish), with this install's answer (keep) and only
+            # while each zip it holds is still the list's (_stage_kept); swapped here, with the
+            # answer of before, it lost the mesh the pilot now keeps, or put in place a release
+            # the list no longer has before its successor (the reviews of 2026-11-18)
+            settle(self.root, self.log, swap=False, only=[region.id])
+            if self.may_swap():
+                _unpack_waiting(self.root, region.id, self.log)  # a stop right after a swap
         whole = not self.night_only and made_whole(self.root, region)
         stage = stage_dir(self.root, region.id)
         step: dict[str, Any] = {"zips": {}, "overlays": {}}
@@ -1417,36 +1426,38 @@ class Installer:
         self, mesh: list[Zip], ovl: list[Zip], dest: Path, pack: Path, whole: bool
     ) -> None:
         """Room for the whole install before its first byte, disk by disk
-        (:func:`_short_of_room`), or :class:`RoomError`."""
+        (:func:`_short_of_room`), or :class:`InstallError` saying it."""
         room = _short_of_room(mesh, ovl, dest, pack, self.download, whole)
         if room is not None:
-            raise RoomError(room)
+            raise InstallError(
+                f"{room.need / 1e9:.0f} GB needed on the disk of {room.path.resolve()}, "
+                f"{room.free / 1e9:.0f} GB free"
+            )
 
     def _make_room(
         self, mesh: list[Zip], ovl: list[Zip], dest: Path, pack: Path, whole: bool
     ) -> None:
-        """The pilot's « Delete the old one and install the new one » (``make_room``), only where a
-        disk lacks room (:func:`_short_of_room`) and only with Live stopped and X-Plane not running
-        (``may_swap``), the rule of every deletion of a region: the region's kept old mesh deleted
-        first (:func:`remove_kept`); still short and ``make_room`` "all", the region installed
-        itself (:func:`_remove_installed`), the install then going on as a first one, the region
-        without a mesh until it ends. Each deleted before the next look, not in the background:
-        the room counted is the disk's (phase ``deleting``)."""
-        short = _short_of_room(mesh, ovl, dest, pack, self.download, whole)
-        if not self.make_room or short is None:
+        """The pilot's « Delete the old one and install the new one » (``make_room``), only for an
+        update made whole beside the region, only where a disk lacks room (:func:`_short_of_room`)
+        and only with Live stopped and X-Plane not running (``may_swap``), the rule of every
+        deletion of a region: the region's kept old mesh deleted first; still short and
+        ``make_room`` "all", the region installed itself (:func:`remove_mesh`), the install then
+        going on as a first one, the region without a mesh until it ends. Each deleted before the
+        next look, not in the background: the room counted is the disk's (phase ``deleting``)."""
+        if not self.make_room or not whole:
+            return
+        if _short_of_room(mesh, ovl, dest, pack, self.download, whole) is None:
             return
         region = self.region.id
         if not self.may_swap():
-            raise InstallError(
-                "X-Plane is running and reads this region: quit X-Plane, then try again"
-            )
+            raise InstallError(XPLANE_READS)
         self._set(phase="deleting")
-        remove_kept(self.root, region, self.log, wait=True)
+        remove_mesh(self.root, region, kept=True, wait=True, log=self.log)
         short = _short_of_room(mesh, ovl, dest, pack, self.download, whole)
         if self.make_room == "all" and short is not None:
             if self.stop.is_set():
                 raise CancelledError
-            _remove_installed(self.root, region, self.log)
+            remove_mesh(self.root, region, kept=False, wait=True, log=self.log)
         self._set(phase="downloading")
 
     def _room(self, z: Zip, files: int, dest: Path) -> None:

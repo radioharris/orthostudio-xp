@@ -699,57 +699,35 @@ function regionRow(id, mine, r, install, running, idle, xplane) {
   // disk says that
   const line = busy && (running || ["failed", "cancelled"].includes(install.phase)) ? "install"
     : ready ? "waiting" : null;
-  // its kept old mesh, under it: its size, and its Delete from the disk, or why it stays (in use
-  // by the setting or by the pack, orthostudio/live/control.py kept_in_use)
-  let kept = null;
-  if (mine && r.kept) {
-    const use = r.kept.in_use;
-    kept = {
-      text: r.kept.size ? t("regions.kept_size", { gb: gb(r.kept.size) }) : t("regions.kept"),
-      note: use === "setting" ? t("regions.kept_in_use_setting") : use === "pack" ? t("regions.kept_in_use_pack") : "",
-      button: use ? null : { act: "remove_kept", label: t("regions.kept_remove"), danger: true,
-        disabled: !idle || running || xplane },
-    };
-  }
+  // its kept old mesh, under it: its size and its Delete from the disk, by the rule of every
+  // deletion (Live stopped, no install of it, X-Plane closed: orthostudio/live/control.py _deleting)
+  const kept = mine && r.kept ? {
+    text: r.kept.size ? t("regions.kept_size", { gb: gb(r.kept.size) }) : t("regions.kept"),
+    button: { act: "remove_kept", label: t("regions.kept_remove"), danger: true, disabled: !idle || running || xplane },
+  } : null;
   return { id, size, state, buttons, line, bar: busy && running, kept };
 }
 
-/**
- * A region's question in the page's modal <dialog>: a title, its lines, two buttons, the first
- * focused (the careful one: Escape or Enter leaves things as they are or takes the default).
- * Resolves "yes", "no", or "" when closed with Escape: nothing done then.
- */
-function askRegion({ title, lines, yes, no, danger = false }) {
-  const dialog = $("region-ask");
-  if (dialog.open) return Promise.resolve("");
-  $("region-ask-title").textContent = title;
-  $("region-ask-text").replaceChildren(...lines.map((line) => {
-    const p = document.createElement("p");
-    p.textContent = line;
-    return p;
-  }));
-  $("region-ask-no").textContent = no;
-  $("region-ask-yes").textContent = yes;
-  $("region-ask-yes").className = danger ? "btn btn-danger-solid" : "btn";
-  dialog.returnValue = "";
-  dialog.onkeydown = (ev) => {
-    if (ev.key !== "Escape") return;
-    ev.preventDefault();
-    dialog.close();
-  };
-  return new Promise((resolve) => {
-    dialog.addEventListener("close", () => resolve(dialog.returnValue), { once: true });
-    dialog.showModal();
+/** A region's question (the region-ask <dialog>, :func:`ask`): its title, its lines and its two
+ * buttons, the first focused, the careful one; without ``yes``, one that only says. */
+function askRegion({ title, lines, yes = null, no, danger = false }) {
+  return ask($("region-ask"), () => {
+    $("region-ask-title").textContent = title;
+    paragraphs($("region-ask-text"), lines);
+    $("region-ask-no").textContent = no;
+    $("region-ask-yes").hidden = !yes;
+    $("region-ask-yes").textContent = yes || "";
+    $("region-ask-yes").className = danger ? "btn btn-danger-solid" : "btn";
   });
 }
 
 /**
  * Update. Where the disk lacks room for the new mesh beside the old one (r.room, the install's own
- * rule: orthostudio/live/osxpregions.py update_room) and deleting the mesh of before frees enough,
- * the window says so and offers to delete it first: the region's kept old mesh where that is
- * enough, else the region itself, the pilot warned first that it goes without a mesh until the
- * install ends. Else, where the update replaces the mesh (r.whole), whether to keep the one of
- * before, « Don't keep » the default.
+ * rule: orthostudio/live/osxpregions.py update_room) and deleting a mesh frees enough, the window
+ * says so in one question and offers to delete it first: the region's kept old mesh where that is
+ * enough, else the region itself, the line saying it goes without a mesh until the install ends;
+ * never offered while X-Plane runs, which reads the region. Else, where the update replaces the
+ * mesh (r.whole), whether to keep the one of before, « Don't keep » the default.
  */
 async function updateRegion(id) {
   const regions = last?.regions || {};
@@ -758,22 +736,21 @@ async function updateRegion(id) {
   const name = t(`region.${id}`);
   const room = r.room;
   if (room && (room.kept || room.all)) {
-    const go = await askRegion({ title: t("regions.room_title"),
-      lines: [t("regions.room_text", { name, need: gb(room.need), free: gb(room.free) })],
-      yes: t("regions.room_yes"), no: t("regions.ask_cancel"), danger: true });
-    if (go !== "yes") return;
-    if (!room.kept) {
-      const sure = await askRegion({ title: t("regions.gap_title", { name }), lines: [t("regions.gap_text")],
-        yes: t("regions.room_yes"), no: t("regions.ask_cancel"), danger: true });
-      if (sure !== "yes") return;
-    }
-    await regionAct(`regions/${id}/install`, "POST", { make_room: room.kept ? "kept" : "all" });
+    const lines = [t("regions.room_text", { name, need: gb(room.need), free: gb(room.free) })];
+    if (room.kept) lines.push(t("regions.room_kept"));
+    else lines.push(t("regions.room_all", { name }), ...(r.kept ? [t("regions.room_all_kept")] : []));
+    const xplane = Boolean(last?.checks?.xplane_running);
+    if (xplane) lines.push(t("regions.room_xplane"));
+    const yes = xplane ? null : room.kept ? t("regions.room_yes_kept") : t("regions.room_yes");
+    const go = await askRegion({ title: t("regions.room_title"), lines, yes, no: t("regions.ask_cancel"), danger: true });
+    if (go === "yes") await regionAct(`regions/${id}/install`, "POST", { make_room: room.kept ? "kept" : "all" });
     return;
   }
   let keep = false;
   if (r.whole && !room) {
     const lines = [mine.size ? t("regions.keep_text_size", { gb: gb(mine.size) }) : t("regions.keep_text")];
     if (r.kept) lines.push(t("regions.keep_replaces"));
+    if (last?.settings?.mesh === "old") lines.push(t("regions.keep_old_setting")); // kept, it is flown
     const answer = await askRegion({ title: t("regions.keep_title", { name }), lines,
       yes: t("regions.keep_yes"), no: t("regions.keep_no") });
     if (!answer) return; // closed: nothing done
@@ -832,8 +809,15 @@ function drawRegions(status) {
     byFolder.get(r.folder).push(t(`region.${r.id}`));
   }
   const places = [...byFolder].map(([folder, names]) => `${folder} (${names.join(", ")})`);
-  // « Mesh: new / old », for every region at once, once one keeps its old mesh
-  $("mesh-choice").hidden = !rows.some((row) => row.kept);
+  // « Mesh: new / old », for every region at once, while one keeps its old mesh; as saved each
+  // time it shows, Live setting it back to New once none keeps one (control.py _mesh_follows_kept)
+  const keeps = rows.some((row) => row.kept);
+  if (keeps && $("mesh-choice").hidden) {
+    const mesh = status.settings?.mesh || "new";
+    fillMesh(mesh);
+    if (saved) saved = { ...saved, mesh };
+  }
+  $("mesh-choice").hidden = !keeps;
   const shape = JSON.stringify([language(), rows, places]);
   if (shape !== regionsDrawn) {
     regionsDrawn = shape;
@@ -865,15 +849,12 @@ function drawRegions(status) {
         const kept = document.createElement("div");
         kept.className = "region-kept";
         const text = document.createElement("span");
-        text.textContent = row.kept.note ? `${row.kept.text}. ${row.kept.note}` : row.kept.text;
-        kept.append(text);
-        if (row.kept.button) {
-          const b = row.kept.button;
-          const act = document.createElement("span");
-          act.className = "region-actions";
-          act.append(regionButton(b.label, regionAction(row.id, b.act), { danger: b.danger, disabled: b.disabled }));
-          kept.append(act);
-        }
+        text.textContent = row.kept.text;
+        const b = row.kept.button;
+        const act = document.createElement("span");
+        act.className = "region-actions";
+        act.append(regionButton(b.label, regionAction(row.id, b.act), { danger: b.danger, disabled: b.disabled }));
+        kept.append(text, act);
         li.append(kept);
       }
       if (row.line) {
@@ -1330,14 +1311,17 @@ function fillSettings(settings) {
   for (const input of document.querySelectorAll('input[name="rivers_fade"]')) {
     input.checked = input.value === (settings.rivers_fade ? "soft" : "even");
   }
-  for (const input of document.querySelectorAll('input[name="mesh"]')) {
-    input.checked = input.value === (settings.mesh || "new");
-  }
+  fillMesh(settings.mesh);
   drawSimbrief();
   drawMemory();
   drawZooms();
   fillSeason(settings);
   if (providers.length) renderProviders(settings.provider);
+}
+
+/** The « Mesh » answer, new or old. */
+function fillMesh(mesh) {
+  for (const input of document.querySelectorAll('input[name="mesh"]')) input.checked = input.value === (mesh || "new");
 }
 
 /** The "Night lights" answer of settings saved: off, or how bright. */
@@ -1365,7 +1349,10 @@ function formSettings() {
     night_light: nightChosen() === "off" ? (saved?.night_light || "normal") : nightChosen(),
     rivers_fade: (document.querySelector('input[name="rivers_fade"]:checked')?.value
       || (saved?.rivers_fade ? "soft" : "even")) === "soft",
-    mesh: document.querySelector('input[name="mesh"]:checked')?.value || saved?.mesh || "new",
+    // only while its switch shows: hidden, Live's own value stays (control.py _mesh_follows_kept)
+    ...($("mesh-choice").hidden ? {} : {
+      mesh: document.querySelector('input[name="mesh"]:checked')?.value || saved?.mesh || "new",
+    }),
     decal: $("set-decal").options.length ? $("set-decal").value : (saved?.decal ?? LIVE_DECAL),
     season: seasonChosen(),
     seasons: seasonLooks || saved?.seasons,
@@ -1480,15 +1467,15 @@ async function poll() {
   }
 }
 
-/** OrthoStudio XP's question before quitting (app.js confirmQuit), with Live's lines. */
-function confirmQuit(lines) {
-  const dialog = $("quit-confirm");
-  if (dialog.open) return Promise.resolve(false);
-  $("quit-confirm-text").replaceChildren(...lines.map((line) => {
-    const p = document.createElement("p");
-    p.textContent = line;
-    return p;
-  }));
+/**
+ * A question in one of the page's modal <dialog>s, whose form closes it with the value of the
+ * button clicked: that value, or "" when closed with Escape, nothing done then; one at a time ("" while
+ * one is open). ``fill`` writes its words first. The one way of the quit's, the build's and the
+ * regions' questions.
+ */
+function ask(dialog, fill) {
+  if (dialog.open) return Promise.resolve("");
+  fill?.();
   dialog.returnValue = "";
   dialog.onkeydown = (ev) => {
     if (ev.key !== "Escape") return;
@@ -1496,9 +1483,23 @@ function confirmQuit(lines) {
     dialog.close();
   };
   return new Promise((resolve) => {
-    dialog.addEventListener("close", () => resolve(dialog.returnValue === "quit"), { once: true });
+    dialog.addEventListener("close", () => resolve(dialog.returnValue), { once: true });
     dialog.showModal();
   });
+}
+
+/** Lines into a dialog's text, a paragraph each. */
+function paragraphs(box, lines) {
+  box.replaceChildren(...lines.map((line) => {
+    const p = document.createElement("p");
+    p.textContent = line;
+    return p;
+  }));
+}
+
+/** OrthoStudio XP's question before quitting (app.js confirmQuit), with Live's lines. */
+async function confirmQuit(lines) {
+  return (await ask($("quit-confirm"), () => paragraphs($("quit-confirm-text"), lines))) === "quit";
 }
 
 /** "Quit", as OrthoStudio XP's: asks, saying what a stream is worth, then Live goes, at once when
@@ -1533,18 +1534,7 @@ async function askedWhileBuilding() {
     building = false; // no answer: nothing worth asking about
   }
   if (!building) return true;
-  const dialog = $("build-running");
-  if (dialog.open) return false;
-  dialog.returnValue = "";
-  dialog.onkeydown = (ev) => {
-    if (ev.key !== "Escape") return;
-    ev.preventDefault();
-    dialog.close();
-  };
-  return new Promise((resolve) => {
-    dialog.addEventListener("close", () => resolve(dialog.returnValue === "go"), { once: true });
-    dialog.showModal();
-  });
+  return (await ask($("build-running"))) === "go";
 }
 
 async function act(path, body) {

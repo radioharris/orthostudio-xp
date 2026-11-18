@@ -646,12 +646,13 @@ def test_no_start_on_a_mesh_changed_while_xplane_runs(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The pack made from one folder, the start reading the region from another (the Settings'
-    Mesh switched to a kept old mesh, or back): refused with X-Plane running, as a zoom changed
-    is, the pack never set up again under it; with X-Plane closed, set up again. A region only
-    added is merged in, as before."""
+    Mesh switched to a kept old mesh, or back, or the disk of a mesh not connected): refused with
+    X-Plane running, as a zoom changed is, saying the case in plain words, the pack never set up
+    again under it; with X-Plane closed, set up again. A region only added after the others is
+    merged in, as before; one put first sets the pack up again."""
     from orthostudio.live import osxpregions, winsearch
     from orthostudio.live.filesystem import folder_link
-    from orthostudio.live.region import regions_gone
+    from orthostudio.live.region import pack_to_redo
 
     monkeypatch.setenv("OSXP_HOME", str(tmp_path / "home"))
     (tmp_path / "home").mkdir()
@@ -663,16 +664,17 @@ def test_no_start_on_a_mesh_changed_while_xplane_runs(
     monkeypatch.setattr(osxpregions, "settle", lambda root, log, swap, only=None: None)
     monkeypatch.setattr(session, "xplane_running", lambda: False)
     session.prepare(session.Options(xplane=xp, pack=pack, source=new, no_plugin=True), log=quiet)
-    assert regions_gone([new], pack) == [] and regions_gone([new, old], pack) == []
-    assert regions_gone([old], pack) == [str(new)]
+    assert not pack_to_redo([new], pack) and not pack_to_redo([new, old], pack)  # added: merged
+    assert pack_to_redo([old], pack) and pack_to_redo([old, new], pack)  # another comes first
     link = xp / "Custom Scenery" / "z_osxp_live"
     if not is_folder_link(link):
         folder_link(pack, link)
     monkeypatch.setattr(session, "is_installed", lambda *a: True)
     monkeypatch.setattr(session, "xplane_running", lambda: True)
     switched = session.Options(xplane=xp, pack=pack, source=old, no_plugin=True)
-    with pytest.raises(session.RefusedError, match="the mesh changed since Live last started"):
+    with pytest.raises(session.RefusedError, match="the mesh changed since Live last started") as e:
         session.prepare(switched, log=quiet)
+    assert "a disk holding a mesh not connected" in str(e.value) and "z_ao_test" not in str(e.value)
     assert sources_of_pack(pack) == [new]  # the pack as X-Plane found it
     monkeypatch.setattr(session, "xplane_running", lambda: False)
     session.prepare(switched, log=quiet)  # X-Plane closed: set up again from the old mesh
