@@ -411,14 +411,17 @@ class LiveControl:
         self._echo(text)
 
     def keep_region_lists_aside(self) -> threading.Thread:
-        """Each region read into its list in the background, where that list is missing or old
-        (``session.keep_region_lists``): the window does it as it opens, so that its Start or
-        Prepare reads lists only, or waits for the one being made."""
+        """As the window opens, in the background: the deletions of regions or stages a quit
+        stopped taken up (``osxpregions.take_up_deletions``, once, before anything else), what a
+        stop of an install left made right (``osxpregions.settle``, no update put in place here),
+        then each region read into its list where that list is missing or old
+        (``session.keep_region_lists``), so that Start or Prepare reads lists only, or waits for
+        the one being made."""
 
         def run() -> None:
-            try:  # what a stop of an install left, made right first: no update put in place here
+            try:
+                osxpregions.take_up_deletions(live_root())
                 osxpregions.settle(live_root(), self.log, swap=False)
-                osxpregions.take_up_deletions(live_root())  # once, as the window opens
             except Exception as e:
                 self.log(f"Live's regions could not be checked: {e}")
             try:

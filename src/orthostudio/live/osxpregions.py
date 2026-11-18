@@ -74,7 +74,12 @@ from orthostudio.live.aoregions import (
     lists_dir,
     regions_dir,
 )
-from orthostudio.live.filesystem import is_folder_link, link_target, remove_folder_link
+from orthostudio.live.filesystem import (
+    folder_link,
+    is_folder_link,
+    link_target,
+    remove_folder_link,
+)
 from orthostudio.live.filesystem import replace as replace_file
 
 HOST_FILE = "host.json"
@@ -592,9 +597,10 @@ def put_rivers_in_place(root: Path, region: str) -> bool:
             return False
         # else a stop between their rename and their record: in place already
         marker = _read(folder / MARKER)
-        zips = {**(marker.get("zips") or {}), **done["zips"]}
-        size = int(marker.get("size") or 0) + done["adds"]  # :meth:`Installer._rivers_done`
-        _write(folder / MARKER, {**marker, "zips": zips, "size": size})
+        have = marker.get("zips") or {}
+        if any(have.get(p) != s for p, s in done["zips"].items()):  # else recorded before a stop
+            size = int(marker.get("size") or 0) + done["adds"]  # :meth:`Installer._rivers_done`
+            _write(folder / MARKER, {**marker, "zips": {**have, **done["zips"]}, "size": size})
         _discard(stage)
     return True
 
@@ -652,43 +658,81 @@ def _set_aside(path: Path) -> Path:
     return gone
 
 
-def _discard(path: Path) -> None:
-    """A stage, or a region or river masks of before, deleted, the one way: its marker taken away
-    first, so that a stop never leaves one half deleted that a start would trust, then set aside
-    (:func:`_set_aside`) and deleted in the background: hundreds of thousands of files take a
-    minute or more, which no start nor install waits for."""
+def _aside(path: Path) -> Path | None:
+    """A stage, or a region or river masks of before, made ready to be deleted: its marker and its
+    record taken away first, so that a stop never leaves one half deleted that a start or an
+    install would trust, then set aside (:func:`_set_aside`). None where there is none, or where
+    it could not be set aside (held open a moment): deleted where it is then."""
     if not path.exists():
-        return
+        return None
     (path / MARKER).unlink(missing_ok=True)
+    (path / STEP).unlink(missing_ok=True)
     try:
-        gone = _set_aside(path)
-    except OSError:  # held open a moment: deleted where it is, its marker gone already
+        return _set_aside(path)
+    except OSError:
         shutil.rmtree(path, ignore_errors=True)
-        return
-    _delete_aside(gone)
+        return None
 
 
-def _delete_aside(folder: Path) -> None:
-    threading.Thread(
-        target=shutil.rmtree, args=(folder,), kwargs={"ignore_errors": True}, daemon=True
-    ).start()
+def _discard(path: Path) -> None:
+    """A stage, or a region or river masks of before, deleted, the one way: set aside
+    (:func:`_aside`), then deleted in the background: hundreds of thousands of files take a minute
+    or more, which no start nor install waits for."""
+    aside = _aside(path)
+    if aside is not None:
+        _delete_aside(aside)
+
+
+def _delete(*folders: Path, link: Path | None = None) -> None:
+    """``folders`` deleted, then ``link``, the folder link that kept them within reach of Live's
+    ``regions`` folder (:func:`remove`), last."""
+    for folder in folders:
+        shutil.rmtree(folder, ignore_errors=True)
+    if link is not None:
+        with contextlib.suppress(OSError):
+            remove_folder_link(link)
+
+
+def _delete_aside(*folders: Path, link: Path | None = None) -> None:
+    """:func:`_delete` in the background."""
+    threading.Thread(target=_delete, args=folders, kwargs={"link": link}, daemon=True).start()
 
 
 def take_up_deletions(root: Path) -> int:
     """The folders set aside to be deleted that a quit left (:data:`ASIDE`), beside Live's regions
-    and in them, deleted in the background. Once, as Live's window opens: never beside a deletion
-    still under way. Returns how many."""
-    places = {regions_dir(root)}
+    and in them, and those a link set aside in Live's ``regions`` folder leads to, deleted in the
+    background, the link last: everything set aside stays within reach of that folder until it is
+    deleted. Once, as Live's window opens, before anything else: never beside a deletion still
+    under way. Returns how many."""
+    regions = regions_dir(root)
+    places = {regions}
     for region in _region_ids(root):
         real = _real(root, region)
         places |= {real.parent, real}
+    links = []
+    with contextlib.suppress(OSError), os.scandir(regions) as entries:
+        for entry in entries:
+            if ASIDE.fullmatch(entry.name) and is_folder_link(Path(entry.path)):
+                target = link_target(Path(entry.path))
+                places.add(target.parent)  # what was set aside beside it, on its disk
+                links.append((Path(entry.path), target))
+    linked = {os.path.normcase(os.path.abspath(t)) for _, t in links}
     found = 0
     for place in places:
         with contextlib.suppress(OSError), os.scandir(place) as entries:
             for entry in entries:
-                if ASIDE.fullmatch(entry.name) and entry.is_dir(follow_symlinks=False):
-                    _delete_aside(Path(entry.path))
+                path = Path(entry.path)
+                if (
+                    ASIDE.fullmatch(entry.name)
+                    and entry.is_dir(follow_symlinks=False)
+                    and not is_folder_link(path)
+                    and os.path.normcase(os.path.abspath(path)) not in linked
+                ):
+                    _delete_aside(path)
                     found += 1
+    for link, target in links:
+        _delete_aside(*([target] if target.exists() else []), link=link)
+        found += 1
     return found
 
 
@@ -752,23 +796,32 @@ def remove(root: Path, region: str, squares: Sequence[tuple[int, int]], log: Log
     of before, its downloads. Set aside first, in one rename (:func:`_set_aside`, refused while a
     program holds it open: nothing deleted then), then deleted in the background: never half a
     region left that a start would take, and no request waiting a minute for it. A region of which
-    only a stage or the region of before is left is deleted too."""
+    only a stage or the region of before is left is deleted too. A region on another disk keeps a
+    link within reach of Live's ``regions`` folder, set aside there too, until what was set aside
+    beside it is deleted (:func:`take_up_deletions`)."""
     folder = mesh_dir(root, region)
     real = _real(root, region)
+    stage, old = stage_dir(root, region), _old_dir(real)  # beside the region: before its link goes
+    linked = is_folder_link(folder)
     with _SWAP:
+        kept = None
         if real.exists():
             try:
-                aside = _set_aside(real)
+                kept = _set_aside(real)
             except OSError as e:
                 raise InstallError(
                     f"{real.name} is in use, by X-Plane perhaps: close it, then delete it again "
                     f"({e})"
                 ) from e
-            _delete_aside(aside)
-        if is_folder_link(folder):
+        left = [p for p in (_aside(stage), _aside(old), kept) if p is not None]
+        link = None
+        if linked and left:  # the region's disk reached from regions/ until all is deleted
+            link = regions_dir(root) / left[-1].name
+            folder_link(left[-1], link)
+        if linked:
             remove_folder_link(folder)
-        _discard(_old_dir(real))
-        _discard(stage_dir(root, region))
+        if left:
+            _delete_aside(*left, link=link)
     shutil.rmtree(regions_dir(root) / ".download" / f"osxp_{region}", ignore_errors=True)
     pack = overlay_pack(root)
     gone = 0
@@ -949,7 +1002,7 @@ class Installer:
         rivers = {z.path for z in region.rivers}
         if rivers & set(step["zips"]) and not keep:
             (stage / MARKER).unlink(missing_ok=True)
-            shutil.rmtree(stage / RIVERS, ignore_errors=True)
+            _discard(stage / RIVERS)
             step["zips"] = {p: s for p, s in step["zips"].items() if p not in rivers}
             _write(stage / STEP, step)
         return step
