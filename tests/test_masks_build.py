@@ -20,7 +20,7 @@ from orthostudio.masks.build import (
     mask_file_name,
     worker_count,
 )
-from orthostudio.masks.profiles import cell_latitude, halo_px, sea_level_for
+from orthostudio.masks.profiles import halo_px, sea_level_for
 from orthostudio.masks.raster import CELL_PX, custom_pre_mask, extent_polygons, pre_mask
 from orthostudio.masks.water import WaterTriangles, mask_cells, water_triangles
 from orthostudio.mesh.mesh_file import MeshData
@@ -249,20 +249,44 @@ def test_our_fade_draws_the_water_as_its_outline_covers_the_pixels() -> None:
     assert np.array_equal(o4xp == 255, (ours == 255) & (o4xp == 255))  # only water given back
 
 
-def test_only_our_fade_draws_the_edges_exactly(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A cell's job asks for the exact edges with ``soft`` alone: Ortho4XP's profiles draw as
-    Ortho4XP does."""
-    import orthostudio.masks.build as build
+def test_our_fade_keeps_the_sea_at_the_edge_of_the_squares_built() -> None:
+    """Sea along the south and east edges of a square with no square built beyond stays sea: the
+    black there is no land, and only water with land drawn east or south of it has a rim (the
+    first version took the black for land, the photo fading some 13 pixels into the open sea)."""
+    from orthostudio.masks.water import cell_pixel_origin
 
-    asked: list[bool] = []
-
-    def recording(*args: object, **kw: object) -> np.ndarray:
-        asked.append(bool(kw.get("exact_edges")))
-        return pre_mask(*args, **kw)  # type: ignore[arg-type]
-
-    monkeypatch.setattr(build, "pre_mask", recording)
-    tris = water_triangles({TILE: _sea_mesh([(8432, 6000)])}, TILE, ZL)[(8432, 6000)]
-    for mode in ("sand", "rocks", "soft"):
-        margin = halo_px(mode, 100, TILE.lat, ZL, cell_lat=cell_latitude(6000, ZL))
-        build_cell(_job(8432, 6000, tris, masking_mode=mode, margin=margin))
-    assert asked == [False, False, True]
+    (extent,) = extent_polygons([TILE], ZL)
+    south = max(y for _, y in extent)  # the square's south edge, in absolute pixels
+    west = min(x for x, _ in extent)
+    til_x, til_y = (west // 256 + 40) // 16 * 16, (south - 1) // 256 // 16 * 16
+    margin = 16
+    px0, py0 = cell_pixel_origin(til_x, til_y, ZL, margin)
+    x0 = max(west, px0 + margin) + 500
+    sea = [
+        [(x0, south - 30), (x0 + 60, south - 30), (x0 + 60, south + 30)],
+        [(x0, south - 30), (x0 + 60, south + 30), (x0, south + 30)],
+    ]
+    tris = WaterTriangles(np.array(sea, dtype=np.float64), np.zeros((0, 3, 2)))
+    ours = pre_mask(
+        til_x, til_y, tris, [extent], mask_zl=ZL, sea_level=99, margin=margin, exact_edges=True
+    )
+    o4xp = pre_mask(til_x, til_y, tris, [extent], mask_zl=ZL, sea_level=99, margin=margin)
+    rows = slice(south - 2 - py0, south + 1 - py0)  # its last rows as drawn, the black below
+    cols = slice(x0 + 10 - px0, x0 + 50 - px0)
+    assert (o4xp[rows, cols] == 0).all()
+    assert (ours[rows, cols] == 0).all()
+    east = max(x for x, _ in extent)
+    ex_x, ex_y = (east - 1) // 256 // 16 * 16, (south - 4000) // 256 // 16 * 16
+    qx0, qy0 = cell_pixel_origin(ex_x, ex_y, ZL, margin)
+    y1 = max(qy0 + margin, min(y for _, y in extent)) + 500
+    sea = [
+        [(east - 30, y1), (east + 30, y1), (east + 30, y1 + 60)],
+        [(east - 30, y1), (east + 30, y1 + 60), (east - 30, y1 + 60)],
+    ]
+    tris = WaterTriangles(np.array(sea, dtype=np.float64), np.zeros((0, 3, 2)))
+    ours = pre_mask(
+        ex_x, ex_y, tris, [extent], mask_zl=ZL, sea_level=99, margin=margin, exact_edges=True
+    )
+    rows = slice(y1 + 10 - qy0, y1 + 50 - qy0)
+    cols = slice(east - 2 - qx0, east + 1 - qx0)  # its last columns as drawn, the black east
+    assert (ours[rows, cols] == 0).all()

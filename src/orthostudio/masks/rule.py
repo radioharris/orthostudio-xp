@@ -174,7 +174,7 @@ def _job() -> MasksJob:
     version=1,
     params=MasksParams,
     inputs=("mesh", *NEIGHBOUR_OFFSETS, "dem", "custom_extent"),
-    ram_mb=1100,
+    ram_mb=1940,
     kind="dir",
 )
 def osxp_masks(ctx: RunContext) -> None:

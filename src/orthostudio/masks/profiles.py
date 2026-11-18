@@ -35,12 +35,14 @@ __all__ = [
     "blur_mask",
     "blur_widths",
     "cell_latitude",
+    "exact_edges",
     "halo_px",
     "rocks_blur",
     "rocks_width",
     "sand_blur",
     "sand_width",
     "sea_level_for",
+    "soft_blur",
     "soft_width",
     "three_steps_blur",
     "three_steps_widths",
@@ -350,6 +352,13 @@ def three_steps_blur(
     return _gaussian(np.ascontiguousarray(out, dtype=np.uint8), 2)
 
 
+def exact_edges(masking_mode: str) -> bool:
+    """Whether a profile's pre-mask draws the water as its outline covers the pixels, to within
+    one (``raster.pre_mask``): OrthoStudio XP's ``soft``; Ortho4XP's keep Ortho4XP's drawing,
+    byte for byte (``masks-build.md`` section 7)."""
+    return masking_mode == "soft"
+
+
 def blur_mask(
     pre: NDArray[np.uint8],
     *,
@@ -360,8 +369,9 @@ def blur_mask(
     sea_level: int,
     cell_lat: float | None = None,
 ) -> NDArray[np.uint8]:
-    """``blur_mask`` of Ortho4XP (``O4_Mask_Utils.py:648-813``), profile by profile; ``soft``
-    counts its width at ``cell_lat``, the middle of the cell (:func:`soft_width`)."""
+    """Ortho4XP's ``blur_mask`` (``O4_Mask_Utils.py:648-813``), profile by profile, and
+    OrthoStudio XP's ``soft``, which counts its width at ``cell_lat``, the middle of the cell
+    (:func:`soft_width`)."""
     if masking_mode == "sand":
         width = sand_width(_scalar(masks_width), lat, mask_zl)
         return sand_blur(pre, width) if width else np.array(pre)

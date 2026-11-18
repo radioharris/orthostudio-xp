@@ -64,9 +64,9 @@ def pre_mask(
     """The three-level pre-mask of one cell: 255 land, ``sea_level`` inland water, 0 sea.
 
     ``extents`` are the polygons of :func:`extent_polygons`; ``tris`` the triangles this cell
-    must draw. The returned array is ``(CELL_PX + 2 * margin)`` square. ``exact_edges``: the
-    water as its outline covers the pixels (:func:`_without_rim`), for OrthoStudio XP's own
-    fade; Ortho4XP's keep Ortho4XP's drawing, byte for byte.
+    must draw. The returned array is ``(CELL_PX + 2 * margin)`` square. ``exact_edges``
+    (``profiles.exact_edges``): the water as its outline covers the pixels, to within one
+    (:func:`_without_rim`).
     """
     px0, py0 = cell_pixel_origin(til_x, til_y, mask_zl, margin)
     side = CELL_PX + 2 * margin
@@ -88,17 +88,16 @@ def pre_mask(
 
 def _without_rim(pre: NDArray[np.uint8], land: NDArray[np.bool_]) -> NDArray[np.uint8]:
     """``pre`` with the row of pixels Pillow adds east and south of the water given back to the
-    land under it. The water's corners come rounded to whole pixels (``water.wgs84_to_pix``, as
-    Ortho4XP's), and Pillow fills a triangle up to and with its right and bottom edges: every
-    surface of water came one pixel wider to the east and the south, about 6 m at ``mask_zl`` 14.
-    The fade then began inside the water on those banks, a sharp line where the north and west
-    ones faded (a river by XC00DD, 2026-11-18: 151-164 of 255 at the bank against 227-240). A
-    water pixel goes back to land where land lies east of it and water west of it, or land south
-    and water north: the rim alone, never a stream one pixel wide."""
+    land under it (``masks-build.md`` section 7): the water's corners come rounded to whole
+    pixels, as Ortho4XP's, and Pillow fills a triangle up to and with its right and bottom edges.
+    A water pixel goes back to land where land is drawn east of it and water lies west of it, or
+    land south and water north: the rim alone, never a stream one pixel wide, never the sea beside
+    the black where no square has a mesh."""
     water = (pre != 255) & land
+    dry = pre == 255  # land drawn, not the black where no square has a mesh
     rim = np.zeros_like(water)
-    rim[:, 1:-1] |= water[:, 1:-1] & ~water[:, 2:] & water[:, :-2]
-    rim[1:-1, :] |= water[1:-1, :] & ~water[2:, :] & water[:-2, :]
+    rim[:, 1:-1] |= water[:, 1:-1] & dry[:, 2:] & water[:, :-2]
+    rim[1:-1, :] |= water[1:-1, :] & dry[2:, :] & water[:-2, :]
     out = pre.copy()
     out[rim] = 255
     return out

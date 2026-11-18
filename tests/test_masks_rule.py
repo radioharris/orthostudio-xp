@@ -73,7 +73,7 @@ def test_rule_declaration() -> None:
     assert MASKS.kind == "dir"
     # review 4 (minor): the decorator declares the base plus ONE worker; the pipeline node
     # declares base + 0.8 GB per worker of the pool it sizes (masks-build.md 3).
-    assert MASKS.ram_mb == 1100
+    assert MASKS.ram_mb == 1940
     assert set(MASKS.inputs) == {"mesh", "dem", "custom_extent", *NEIGHBOUR_OFFSETS}
 
 
@@ -189,3 +189,12 @@ def test_read_mesh_artifact_reports_a_missing_mesh(tmp_path: Path) -> None:
     empty.mkdir()
     with pytest.raises(OsxpError, match="MESH_INPUT_MISSING"):
         read_mesh_artifact(empty)
+
+
+def test_every_profile_counts_its_worker() -> None:
+    """A profile without its measured worker counted the heaviest: ``soft`` at 1,818 MB was
+    counted 990 (the review of 2026-11-18)."""
+    from orthostudio.masks.profiles import MASKING_MODES
+    from orthostudio.pipeline.build import MASKS_WORKER_MB
+
+    assert set(MASKS_WORKER_MB) == set(MASKING_MODES)

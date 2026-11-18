@@ -377,25 +377,30 @@ most, added 2026-09-22), national ones for Luxembourg, the Netherlands (4), Spai
 `masking_mode` · `sand` · `sand`, `rocks`, `3steps`, `soft`.
 
 - **Does.** The shape of the sea mask's fade (Ortho4XP `O4_Mask_Utils.py:648-811`; OrthoStudio XP
-  `masks/profiles.py:215-245` for `sand` and `rocks`, byte-identical to Ortho4XP, and `:297-317` for
-  `3steps`, 97.9-99.9 % of pixels equal, `masks-build.md` 6.3). `sand`: a smooth blur, then
+  `masks/profiles.py`, `sand_blur` and `rocks_blur` byte-identical to Ortho4XP, `three_steps_blur`
+  97.9-99.9 % of pixels equal, `masks-build.md` 6.3). `sand`: a smooth blur, then
   doubled and clipped. `rocks`: the water is first shrunk, blurred, then pushed through a steep
   curve. `3steps`: a fade to the grey of `ratio_water`, a band at that grey, then a fade to
-  nothing. Numbers in section 1.2.
+  nothing. `soft` (OrthoStudio XP's own, `soft_blur`, experimental): the fall of `sand`, over the
+  width or over the water's half-width where that is narrower, its water drawn as its outline
+  covers the pixels (`masks-build.md` section 7). Numbers in section 1.2.
 - **In X-Plane.** `sand`: the photo of the shallow water (sand bottom, reefs, harbour basins)
   fades gradually into X-Plane's water; about 93 % of the photo at the shoreline with 100 m.
   `rocks`: a clear step at the shoreline, where the photo drops to about 57 %, then a faint
   tail about 1.7 times as long as the width. `3steps`: a wide band of half-transparent photo
   (39 % at the default `ratio_water`), for lagoons and shallow bays (all three to be checked in
-  X-Plane: Q13). The fade applies to the sea, to lakes above `max_area`, and to all inland
-  water when `use_masks_for_inland` is on.
+  X-Plane: Q13). `soft`: as `sand` at the sea and wide water; a river narrower than twice the
+  width fades from each bank to its middle, which stays X-Plane's water, where `sand` lays the
+  photo over it from bank to bank (seen in X-Plane by XC00DD, 2026-11-18). The fade applies to the
+  sea, to lakes above `max_area`, and to all inland water when `use_masks_for_inland` is on.
 - **Cost.** No change on disk or download (the same coastal textures are DXT5 in all
   profiles). Masks of `+43+005` (7 files): `sand` 1.07 s, `rocks` 1.32 s, `3steps` 1.69 s; memory
-  per worker 242 / 703 / 981 MB (measured, `masks-build.md` 6.1-6.2). A change rebuilds masks,
+  per worker 242 / 703 / 981 MB, `soft` 1,818 MB at `mask_zl` 16 (measured, `masks-build.md`
+  6.1-6.2). A change rebuilds masks,
   DSF and coastal textures: 4.1 s for a width change (measured, `p3-native.md` 4).
-- **Recommendation. Shown** with `sand` and `rocks`; `3steps` **folded**: it needs three widths
-  (the model refuses a single one, `config/models.py:83-104`) and its band depends on
-  `ratio_water`.
+- **Recommendation. Shown** with `sand`, `rocks` and `soft` (marked experimental); `3steps`
+  **folded**: it needs three widths (the model refuses a single one, `config/models.py`) and its
+  band depends on `ratio_water`.
 - **Question.**
   - EN: *How should the coast fade into the sea?* — **Gradually, like a sandy beach
     (recommended)** · With a clear edge, like a rocky shore · Like a sandy beach, but rivers

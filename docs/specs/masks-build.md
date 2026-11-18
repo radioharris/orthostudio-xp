@@ -12,8 +12,8 @@ overlaps. 255 means "the orthophoto is opaque" (land), 0 means "let X-Plane's ow
 through" (open sea), and the values between are the shoreline transition. The mask is built
 from the **triangles of the mesh** whose Triangle4XP attribute says water: they are drawn
 black over a white background covering the land of every 1 degree tile whose mesh exists, and
-the black is then feathered outwards over `masks_width` metres by one of three profiles
-(`sand`, `rocks`, `3steps`). A cell that comes out uniformly white or uniformly black is not
+the black is then feathered outwards over `masks_width` metres by one of four profiles
+(Ortho4XP's `sand`, `rocks`, `3steps`, and OrthoStudio XP's `soft`, section 7). A cell that comes out uniformly white or uniformly black is not
 written at all: `textures-imprint.md` treats a missing mask as "this texture has no water".
 
 Because a mask cell straddles tile borders, the cell is built with a 1024 px working margin
@@ -79,8 +79,10 @@ from orthostudio.masks import CellJob, CellResult, MasksIndex, build_cell, build
   `water_tris.npz` (`MeshWaterTris`, `docs/specs/mesh-build.md` section 7). `WaterTriangles`
   holds `sea` and `inland`, each a float64 `(n, 3, 2)` array of **absolute web-mercator pixel
   coordinates** at `mask_zl`.
-* `pre_mask(til_x, til_y, tris, extents, *, mask_zl, sea_level, margin) -> np.uint8`
-  draws the Ortho4XP image; `margin` is the working margin (1024 in Ortho4XP, `halo_px` here).
+* `pre_mask(til_x, til_y, tris, extents, *, mask_zl, sea_level, margin, exact_edges=False)
+  -> np.uint8` draws the Ortho4XP image; `margin` is the working margin (1024 in Ortho4XP,
+  `halo_px` here); `exact_edges` (`profiles.exact_edges`, `soft` only) draws the water as its
+  outline covers the pixels (section 7).
 * `halo_px(masking_mode, masks_width, lat, mask_zl, *, distance_masks_too=False,
   full_margin=1024, cell_lat=None)` (in `profiles.py`) is that margin.
 * `blur_mask(pre, *, masking_mode, masks_width, lat, mask_zl, sea_level, cell_lat=None)
@@ -101,7 +103,7 @@ from orthostudio.masks import CellJob, CellResult, MasksIndex, build_cell, build
 * `MasksJob(workers, cancel)` + `masks_job(...)` (in `rule.py`) is how the pipeline gives the
   node its pool size and its cancellation token, the way `dem_job` / `osm_job` do. There is
   no module-level hook any more: two concurrent nodes would have shared it.
-* `MASKS` is the rule `orthostudio.masks@1`, `kind="dir"`, `ram_mb=1100`, inputs
+* `MASKS` is the rule `orthostudio.masks@1`, `kind="dir"`, `ram_mb=1940`, inputs
   `mesh`, `nb_n`, `nb_ne`, `nb_e`, `nb_se`, `nb_s`, `nb_sw`, `nb_w`, `nb_nw`, `dem`,
   `custom_extent`; every neighbour, `dem` and `custom_extent` may be `None` (a distinct,
   keyed state: `graph-keys.md` invariant K4).
@@ -216,10 +218,12 @@ only bit-exact reproduction (section 4).
 | `rocks` | 703 MB | 438 MB |
 | `3steps` | 981 MB | 441 MB |
 | `sand` + `_dist` | 962 MB | 439 MB |
+| `soft` | 1,818 MB at `mask_zl` 16, 1,552 at 14 | |
 
-The rule declares `ram_mb = 1100`: the base plus the cost of **one** cell of the heaviest
+The rule declares `ram_mb = 1940`: the base plus the cost of **one** cell of the heaviest
 profile. The real cost is `300 MB + a worker of the profile x the workers that start` (250 MB
-for `sand`, 710 `rocks`, 990 `3steps`, 970 with the distance masks), one worker for each cell
+for `sand`, 710 `rocks`, 990 `3steps`, 1,830 `soft`, 970 with the distance masks: the
+`MASKS_WORKER_MB` of `pipeline.build`), one worker for each cell
 with water to draw up to the pool's size, and it is the *pipeline* that knows the worker count
 and counts the cells beforehand (`pipeline-build.md` 8.6, `water.mask_cell_count`); it hands
 the very same pool size to the rule through `MasksJob` (section 6.5). Until 2026-10-28 every
@@ -241,7 +245,7 @@ budget said one process while the pool started `os.cpu_count()`).
 | Who | What it decides |
 |---|---|
 | `pipeline.build.masks_workers(env)` | `env_workers()` if set, else `min(MAX_WORKERS=8, batch workers)`. The single decision. |
-| `pipeline.build._masks_ram_mb(env)` | `300 + 800 x masks_workers(env)`: the node's `ram_mb`. |
+| `pipeline.build._masks_ram_mb(env, params)` | `300 + masks_worker_mb(params) x masks_workers(env)`: the node's `ram_mb`. |
 | `pipeline.build._masks_run(env)` | binds `MasksJob(workers=masks_workers(env), cancel=...)`. |
 | `masks.build.worker_count(cells, workers)` | the argument, else `env_workers()`, else `min(8, cpu_count)`; capped by the number of cells. |
 
@@ -307,7 +311,8 @@ pre-mask of 6000_8432, 14.3 M of the 37.7 M pixels have an exact sum that is a m
   Its pre-mask draws the water as its outline covers the pixels (`raster.pre_mask`'s
   `exact_edges`, `_without_rim`): the triangles' corners come rounded to whole pixels as
   Ortho4XP's (`water.wgs84_to_pix`), and Pillow fills a triangle up to and with its right and
-  bottom edges, so every water came one pixel wider east and south, about 6 m at `mask_zl` 14.
+  bottom edges, so every water came one pixel wider east and south (a pixel at `mask_zl` 14 is
+  9.6 m at the equator, 6.3 m at 49 degrees north).
   The fade then began inside the water on those banks: at a river by XC00DD the mask read 151 to
   164 of 255 at the DSF's south and east banks against 227 to 240 at its north and west ones, a
   sharp line on one side (2026-11-18). A water pixel with land east of it and water west of it,

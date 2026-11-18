@@ -1,6 +1,6 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""The three shoreline profiles and the halo crop (`orthostudio.masks.profiles`)."""
+"""The shoreline profiles and the halo crop (`orthostudio.masks.profiles`)."""
 
 from __future__ import annotations
 
@@ -16,6 +16,7 @@ from orthostudio.masks.profiles import (
     blur_mask,
     blur_widths,
     cell_latitude,
+    exact_edges,
     halo_px,
     rocks_width,
     sand_blur,
@@ -197,3 +198,56 @@ def test_pillow_gaussian_support_bounds_the_real_one() -> None:
         )
         lit = np.flatnonzero(blurred[1] > 0)
         assert int(lit.max() - (n // 2 - 1)) <= pil_blur_support(sigma)
+
+
+def test_only_our_fade_draws_the_edges_exactly() -> None:
+    """Ortho4XP's profiles keep Ortho4XP's drawing of the water, byte for byte."""
+    from orthostudio.masks.profiles import MASKING_MODES
+
+    assert {mode: exact_edges(mode) for mode in MASKING_MODES} == {
+        "sand": False,
+        "rocks": False,
+        "3steps": False,
+        "soft": True,
+    }
+
+
+def test_soft_fades_a_narrow_river_to_its_middle_where_sand_covers_it() -> None:
+    """A river 10 pixels wide, under the 15 of a 100 m fade at ZL14: ``soft`` fades from each bank
+    to its middle, which stays X-Plane's water (0); ``sand`` lays the photo over it all."""
+    pre = np.full((200, 200), 255, dtype=np.uint8)
+    pre[:, 95:105] = 0
+    cell = cell_latitude(6000, ZL)
+    soft = blur_mask(
+        pre, masking_mode="soft", masks_width=100, lat=LAT, mask_zl=ZL, sea_level=99, cell_lat=cell
+    )
+    sand = blur_mask(pre, masking_mode="sand", masks_width=100, lat=LAT, mask_zl=ZL, sea_level=99)
+    assert soft[100, 99] == 0 and soft[100, 100] == 0
+    assert sand[100, 99] > 0
+    assert soft[100, 95] > soft[100, 97] > soft[100, 99]  # from the bank, more and more water
+
+
+def test_soft_crop_matches_full_margin() -> None:
+    """``soft``'s margin keeps every byte of the useful window, as the others'."""
+    rng = np.random.default_rng(5)
+    coarse = rng.choice(np.array([0, 255], dtype=np.uint8), (10, 10))
+    pre = np.kron(coarse, np.ones((40, 40), dtype=np.uint8)).astype(np.uint8)
+    cell = cell_latitude(6000, ZL)
+    halo = halo_px("soft", 100, LAT, ZL, cell_lat=cell)
+
+    def soft(a: np.ndarray) -> np.ndarray:
+        return blur_mask(
+            a,
+            masking_mode="soft",
+            masks_width=100,
+            lat=LAT,
+            mask_zl=ZL,
+            sea_level=99,
+            cell_lat=cell,
+        )
+
+    full = soft(pre)
+    window = slice(halo + 20, pre.shape[0] - halo - 20)
+    crop = slice(20, pre.shape[0] - 20)
+    cropped = soft(np.ascontiguousarray(pre[crop, crop]))
+    assert np.array_equal(cropped[halo:-halo, halo:-halo], full[window, window])

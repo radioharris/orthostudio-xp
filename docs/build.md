@@ -84,9 +84,7 @@ the disk is in [how-it-works.md](how-it-works.md). To fly without building tiles
 - **Rivers that keep their water (experimental).** A fourth way for the coast to fade, *Like a
   sandy beach, but rivers keep their water*: the sea and wide water fade as the sandy beach does,
   and a river narrower than the fade fades from each bank to its middle, which stays X-Plane's
-  water, where the sandy beach covers it from bank to bank. Its fade begins right at both banks:
-  Ortho4XP's way of drawing the water into the masks makes every water one mask pixel wider on its
-  east and south sides (about 6 m at the default mask level), which left those banks sharp.
+  water, where the sandy beach covers it from bank to bank. Both banks fade alike.
 - **A cache, and a tab to see it.** An unchanged tile builds again in a fraction of a second, a
   new zone builds again only what it touches, and imagery is never downloaded twice. *Disk space*
   shows what the data folder holds and, box by box, what freeing each part changes and what would

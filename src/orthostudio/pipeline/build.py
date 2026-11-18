@@ -1996,10 +1996,10 @@ MASKS_BASE_MB = 300
 neighbours, read from their meshes."""
 
 
-MASKS_WORKER_MB = {"sand": 250, "rocks": 710, "3steps": 990}
+MASKS_WORKER_MB = {"sand": 250, "rocks": 710, "3steps": 990, "soft": 1830}
 """One masks worker at its peak, one cell in flight, by masking profile (``masks-build.md`` 6.2,
-measured: 242, 703 and 981 MB). Every profile counted 800 MB, three times what ``sand``, the
-default, takes, and less than ``3steps`` does."""
+measured: 242, 703, 981 and, at ``mask_zl`` 16, 1,818 MB). Every profile counted 800 MB, three
+times what ``sand``, the default, takes, and less than ``3steps`` does."""
 
 MASKS_DISTANCE_MB = 970
 """One worker making the distance masks too (``distance_masks_too``): 962 MB measured."""
