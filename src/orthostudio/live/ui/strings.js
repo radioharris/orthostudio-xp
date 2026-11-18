@@ -401,7 +401,7 @@ export const STRINGS = {
     "folder.prompt": "Choose the folder where OrthoStudio XP Live keeps its textures and its photos",
     "other_mesh.title": "Another tool's mesh",
     "other_mesh.help":
-      "A mesh in AutoOrtho's format. Live uses it where it has no other mesh. No town lights at night.",
+      "A mesh in AutoOrtho's format. Live uses it where it has no other mesh. At night, all its street lamps are on, even out in the country.",
     "other_mesh.prompt": "Choose the folder of another tool's mesh",
     "other_mesh.meshes": "Used: {names}.",
     "other_mesh.meshes_next": "Used from Live's next start: {names}.",
@@ -831,7 +831,7 @@ export const STRINGS = {
     "folder.prompt": "Choisissez le dossier où OrthoStudio XP Live garde ses textures et ses photos",
     "other_mesh.title": "Le mesh d'un autre outil",
     "other_mesh.help":
-      "Un mesh au format d'AutoOrtho. Live s'en sert là où il n'a pas d'autre mesh. Pas de villes éclairées la nuit.",
+      "Un mesh au format d'AutoOrtho. Live s'en sert là où il n'a pas d'autre mesh. La nuit, tous ses lampadaires sont allumés, même en campagne.",
     "other_mesh.prompt": "Choisissez le dossier du mesh d'un autre outil",
     "other_mesh.meshes": "Pris par Live : {names}.",
     "other_mesh.meshes_next": "Pris par Live dès son prochain démarrage : {names}.",
