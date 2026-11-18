@@ -441,8 +441,8 @@ anything else; with X-Plane open, that start flies the region of before. A regio
 Live last started does not start Live while X-Plane is open, which may be reading the region of
 before: quit X-Plane, then start. On Windows, a region another program holds open cannot be
 replaced: the panel says so; close it and click **Update** again, which downloads nothing more.
-While a region is being downloaded or installed, Start waits, the window saying why. Updating and
-deleting wait until Live is stopped. A region's night grids made again on the server while its mesh
+While a region is being downloaded or installed, Start waits, the window saying why. Updating
+waits until Live is stopped. A region's night grids made again on the server while its mesh
 is not come by themselves, a few megabytes (Europe 11.6 MB), as the window opens: no Update to
 click; with a new mesh they come in its update. A region may sit on another disk, linked from Live's
 folder: the panel says where each one is. Live reads the regions of the light mesh, made in November

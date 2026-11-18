@@ -881,6 +881,8 @@ class LiveControl:
             if region is None and region_id not in mine:
                 continue
             item: dict[str, Any] = {"id": region_id, "installed": region_id in mine}
+            # the disk's word, whether the list came or not
+            item["waiting"] = region_id in mine and osxpregions.staged_whole(root, region_id)
             if region is not None:
                 installed = region_id in mine
                 mesh, ovl = osxpregions.to_fetch(root, region, overlays, rivers)
@@ -901,7 +903,6 @@ class LiveControl:
                 item["rivers_bytes"] = (
                     sum(z.size for z in adds if z in region.rivers) if installed else 0
                 )
-                item["waiting"] = installed and osxpregions.staged_whole(root, region_id)
             listed.append(item)
         progress = installer.snapshot() if installer is not None else None
         return {

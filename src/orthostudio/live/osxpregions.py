@@ -65,7 +65,7 @@ from pathlib import Path
 from typing import Any
 
 from orthostudio.errors import OsxpError
-from orthostudio.fsutil import atomic_write_text, fsync_dir
+from orthostudio.fsutil import WINDOWS, atomic_write_text, fsync_dir
 from orthostudio.live.aoregions import (
     MARKER,
     CancelledError,
@@ -203,13 +203,18 @@ def parse_manifest(doc: dict) -> dict[str, OsxpRegion]:
     return out
 
 
+def _answered(status: int) -> str:
+    """The server's answer, said one way wherever it comes from."""
+    return f"the server answered HTTP {status}"
+
+
 def _why(e: BaseException) -> str:
     """What went wrong, in the pilot's words, the host's address never in it (the window and the
     logs show it): the server's answer, the server out of reach, or the disk refusing."""
     import httpx
 
     if isinstance(e, httpx.HTTPStatusError):
-        return f"the server answered HTTP {e.response.status_code}"
+        return _answered(e.response.status_code)
     if isinstance(e, httpx.HTTPError):
         return "the server could not be reached: check the internet connection"
     if isinstance(e, OSError):
@@ -974,7 +979,7 @@ class Installer:
             self._set(phase="cancelled")
             self.log(f"{self._what()} stopped: it goes on from there the next time")
         except Exception as e:  # the page's words: a disk's refusal worded as everywhere (_why)
-            said = _why(e) if isinstance(e, OSError) and not isinstance(e, InstallError) else e
+            said = _why(e) if isinstance(e, OSError) else e
             self._set(phase="failed", error=str(said) or type(e).__name__)
             self.log(f"{self._what()} failed: {e}")  # the cause itself in the log
         finally:
@@ -1268,19 +1273,22 @@ class Installer:
                     elif r.status_code in PASSING:
                         r.raise_for_status()  # an httpx.HTTPError: tried again below
                     elif r.status_code not in (200, 206):
-                        raise InstallError(f"{z.local}: the server answered HTTP {r.status_code}")
+                        raise InstallError(f"{z.local}: {_answered(r.status_code)}")
                     with open(path, "ab" if have else "wb") as f:
                         for chunk in r.iter_bytes():  # as it comes: a cut loses nothing
                             if self.stop.is_set():
                                 raise CancelledError
                             f.write(chunk)
                             self._add(len(chunk))
-            except (httpx.HTTPError, PermissionError) as e:  # the line, or a file held a moment
-                if attempt == ATTEMPTS - 1:
+            except (httpx.HTTPError, OSError) as e:
+                # the line, or on Windows a file held a moment (fsutil's rule): tried again; the
+                # disk otherwise would refuse again
+                again = isinstance(e, httpx.HTTPError) or (
+                    WINDOWS and isinstance(e, PermissionError)
+                )
+                if not again or attempt == ATTEMPTS - 1:
                     raise InstallError(f"{z.local}: {_why(e)}") from e
                 _pause(attempt)
-            except OSError as e:  # the disk otherwise: tried again, it would refuse again
-                raise InstallError(f"{z.local}: {_why(e)}") from e
         size = path.stat().st_size
         if size != z.size:
             raise InstallError(f"{z.local} arrived incomplete ({size} of {z.size} bytes)")

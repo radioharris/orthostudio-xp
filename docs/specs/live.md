@@ -570,9 +570,9 @@ zip made again under the same path, starts the stage again rather than leave hal
 before in it; the stage keeps that record until it takes the region's place (a swap refused then
 downloads nothing more), and one a stop right after the swap left in the region is dropped by the
 next `settle` (`_repair`): a region in place never holds one. A failure says what went wrong in
-plain words (`_why`, the downloads, the list and the install's own failures alike): « the server
+plain words (`_why`: the downloads, the list, and a disk's refusal the installer did not word): « the server
 answered HTTP 404 », the server out of reach, or the disk refusing, the disk at once (a file held a
-moment, `PermissionError`, tried again like the line), the server after a few tries; never the
+moment on Windows, `PermissionError`, tried again like the line, as `fsutil` does), the server after a few tries; never the
 host's address. A list that did not come gives its cause alone, the window saying what.
 
 **Another tool's mesh** (`scenery.other_mesh`, 2026-11-14): a folder chosen in the Settings
