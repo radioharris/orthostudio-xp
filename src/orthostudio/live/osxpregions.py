@@ -211,7 +211,7 @@ def _why(e: BaseException) -> str:
     if isinstance(e, httpx.HTTPStatusError):
         return f"the server answered HTTP {e.response.status_code}"
     if isinstance(e, httpx.HTTPError):
-        return "the server could not be reached: is the internet connection up?"
+        return "the server could not be reached: check the internet connection"
     if isinstance(e, OSError):
         return f"the disk refused it ({e.strerror or e})"
     return type(e).__name__
@@ -253,7 +253,7 @@ def catalog(
     try:
         return parse_manifest(json.loads(path.read_text()))
     except (OSError, ValueError, KeyError, TypeError) as e:
-        raise CatalogError(f"the list of regions kept in {path} is unreadable") from e
+        raise CatalogError("the copy kept on this computer is unreadable") from e
 
 
 def mesh_dir(root: Path, region: str) -> Path:
@@ -582,10 +582,8 @@ def put_in_place(root: Path, region: str, log: Log = print) -> bool:
         if not (stage / MARKER).is_file():
             return False
         real = _real(root, region)
-        # its record of the unpacking first: whole, the stage's marker says so, and a stop between
-        # the renames never carries that record into the region
-        (stage / STEP).unlink(missing_ok=True)
         _swap_in(stage, real, real.name, touch=("Earth nav data", "terrain", "terrain-lists"))
+        (real / STEP).unlink(missing_ok=True)  # a stop before: dropped by the next _repair
     _unpack_waiting(root, region, log)
     return True
 
@@ -798,6 +796,9 @@ def _repair(real: Path, log: Log, what: str) -> bool:
         log(f"{what}: put back as it was before its update")
     elif real.exists() and old.exists():
         _discard(old)
+    # a stage's record of its unpacking, carried in by a stop right after its swap: a region in
+    # place never holds one (the stage keeps it until then, a refused swap downloading nothing)
+    (real / STEP).unlink(missing_ok=True)
     return True
 
 
@@ -972,9 +973,10 @@ class Installer:
         except CancelledError:
             self._set(phase="cancelled")
             self.log(f"{self._what()} stopped: it goes on from there the next time")
-        except Exception as e:
-            self._set(phase="failed", error=str(e) or type(e).__name__)
-            self.log(f"{self._what()} failed: {e}")
+        except Exception as e:  # the page's words: a disk's refusal worded as everywhere (_why)
+            said = _why(e) if isinstance(e, OSError) and not isinstance(e, InstallError) else e
+            self._set(phase="failed", error=str(said) or type(e).__name__)
+            self.log(f"{self._what()} failed: {e}")  # the cause itself in the log
         finally:
             if own:
                 self.client.close()
@@ -1273,12 +1275,12 @@ class Installer:
                                 raise CancelledError
                             f.write(chunk)
                             self._add(len(chunk))
-            except OSError as e:  # the disk: tried again, it would refuse again
-                raise InstallError(f"{z.local}: {_why(e)}") from e
-            except httpx.HTTPError as e:
+            except (httpx.HTTPError, PermissionError) as e:  # the line, or a file held a moment
                 if attempt == ATTEMPTS - 1:
                     raise InstallError(f"{z.local}: {_why(e)}") from e
                 _pause(attempt)
+            except OSError as e:  # the disk otherwise: tried again, it would refuse again
+                raise InstallError(f"{z.local}: {_why(e)}") from e
         size = path.stat().st_size
         if size != z.size:
             raise InstallError(f"{z.local} arrived incomplete ({size} of {z.size} bytes)")

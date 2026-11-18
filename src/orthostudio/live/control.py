@@ -901,12 +901,6 @@ class LiveControl:
                 item["waiting"] = installed and osxpregions.staged_whole(root, region_id)
             listed.append(item)
         progress = installer.snapshot() if installer is not None else None
-        if (
-            progress is not None
-            and progress.get("phase") == "waiting"
-            and not osxpregions.staged_whole(root, progress["region"])
-        ):  # put in place since, by Live's start: the disk says it, not the install of before
-            progress = {**progress, "phase": "done"}
         return {
             "ours": our_regions(root),
             "list": listed,
@@ -1039,10 +1033,6 @@ class LiveControl:
                 running = None
             if self._state != IDLE:
                 raise session.RefusedError("Live is streaming: stop it first")
-            if not self._may_swap():
-                raise session.RefusedError(
-                    "X-Plane is running and reads this region: quit X-Plane, then delete it"
-                )
             if running is not None and (
                 running in (self._night_thread, self._rivers_thread)  # any region, one by one
                 or (self._installer is not None and self._installer.region.id == region_id)
@@ -1054,6 +1044,10 @@ class LiveControl:
         try:
             if not osxpregions.present(live_root(), region_id):
                 raise session.RefusedError(f"the region {region_id!r} is not installed")
+            if not self._may_swap():
+                raise session.RefusedError(
+                    "X-Plane is running and reads this region: quit X-Plane, then delete it"
+                )
             squares = squares_of({region_id}).get(region_id, [])
             try:
                 osxpregions.remove(

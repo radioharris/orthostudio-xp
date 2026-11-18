@@ -1419,6 +1419,8 @@ def test_the_regions_the_page_lists(home: Path, tmp_path: Path, monkeypatch) -> 
     from orthostudio.live import aoregions, osxpregions
     from orthostudio.live.pack import live_root
 
+    # whatever this computer runs
+    monkeypatch.setattr(control_module, "xplane_running", lambda: False)
     c = regions_control(tmp_path / "X-Plane 12")
     # the status never asks the host itself: the regions installed only
     assert c.status()["regions"]["list"] == []
@@ -1452,8 +1454,6 @@ def test_the_regions_the_page_lists(home: Path, tmp_path: Path, monkeypatch) -> 
     listed = {r["id"]: r for r in c.regions()["list"]}
     assert listed["eur"]["installed"] and listed["eur"]["changed"] == 2  # and its overlays
     assert [r["id"] for r in c.regions()["ours"]] == ["eur"]
-    from orthostudio.live import control as control_module
-
     monkeypatch.setattr(control_module, "xplane_running", lambda: True)
     with pytest.raises(session.RefusedError, match="X-Plane is running"):
         c.remove_region("eur")  # X-Plane reads its roads: never deleted under it
@@ -1765,17 +1765,7 @@ def test_soft_banks_saved_in_flight_brings_every_region_s_river_masks(home: Path
     assert c.rivers_chosen()
     wait_for(lambda: not c._rivers_thread.is_alive())
     assert WaitingInstaller.made == ["eur", "na"]
-    # the page's phase is the disk's: waiting while a whole stage waits, done once it took its place
-    from orthostudio.live import osxpregions
-    from orthostudio.live.pack import live_root
-
-    stage = osxpregions.mesh_dir(live_root(), "na") / osxpregions.RIVERS_STAGE
-    stage.mkdir(parents=True, exist_ok=True)
-    (stage / osxpregions.MARKER).write_text("{}")
     assert c.regions()["install"]["phase"] == "waiting"
-    (stage / osxpregions.MARKER).unlink()
-    stage.rmdir()
-    assert c.regions()["install"]["phase"] == "done"  # put in place by Live's start, say
     c._state = IDLE
 
 

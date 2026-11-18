@@ -1643,26 +1643,32 @@ def test_an_older_live_reads_the_new_list(rivers_world) -> None:
 def test_a_stop_after_the_swap_leaves_no_record_of_the_unpacking_in_the_region(
     tmp_path: Path, world, monkeypatch
 ) -> None:
-    """The stage's record of its unpacking goes before the renames: whole, its marker says so, and
-    a stop between the swap and anything after it never leaves that record in the region (the
-    campaign of 2026-11-18 found it there after a simulated power cut)."""
+    """The stage keeps its record of the unpacking until it takes the region's place: a swap
+    refused (a folder held open) downloads nothing more at the next try. A stop right after the
+    swap carries that record into the region: the next settle drops it, a region in place never
+    holding one (the campaign of 2026-11-18 found it there after a simulated power cut)."""
     files, region = world
     install(tmp_path, region, Host(files))
     files, region = mended(files, region, 1, {"terrain/b.ter": b"ter B"})
     inst, lines = install(tmp_path, region, Host(files), may_swap=lambda: False)
     assert inst.progress.phase == "waiting", lines
     stage = osxpregions.stage_dir(tmp_path, "eur")
-    seen: list[bool] = []
-    swap = osxpregions._swap_in
+    rename = osxpregions._rename
 
-    def swapping(new: Path, real: Path, what: str, **kw) -> None:
-        seen.append((new / osxpregions.STEP).exists())
-        swap(new, real, what, **kw)
+    def refused(src: Path, dst: Path, what: str) -> None:
+        raise osxpregions.InstallError(f"{what} is in use")
 
-    monkeypatch.setattr(osxpregions, "_swap_in", swapping)
+    monkeypatch.setattr(osxpregions, "_rename", refused)
+    osxpregions.settle(tmp_path, lambda _: None, swap=True)  # refused: the stage waits as it was
+    assert (stage / osxpregions.STEP).exists()
+    assert osxpregions.to_fetch(tmp_path, region, True) == ([], [])  # nothing more to download
+    monkeypatch.setattr(osxpregions, "_rename", rename)
     osxpregions.settle(tmp_path, lambda _: None, swap=True)
-    assert seen == [False] and not stage.exists()
-    assert not (osxpregions.mesh_dir(tmp_path, "eur") / osxpregions.STEP).exists()
+    folder = osxpregions.mesh_dir(tmp_path, "eur")
+    assert not stage.exists() and not (folder / osxpregions.STEP).exists()
+    (folder / osxpregions.STEP).write_text("{}")  # a stop right after the swap
+    osxpregions.settle(tmp_path, lambda _: None, swap=False)
+    assert not (folder / osxpregions.STEP).exists()
 
 
 def test_a_deletion_drops_the_overlays_record_before_their_files(

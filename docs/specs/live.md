@@ -525,8 +525,9 @@ the mesh of before.
 
 A region installed already changes only with Live stopped and X-Plane not running
 (`Installer.may_swap`, `LiveControl._may_swap`): else its stage, whole, waits (the install's phase
-`waiting`, the page's `waiting`: « Update ready » in the row, the sentence under it; « Update
-available » instead when the list has a newer one still to download; the rows are drawn again only
+`waiting`, the page's `waiting`, read from the disk (`staged_whole`), not from the install of
+before: « Update ready » in the row, the sentence under it, gone once Live's start put it in place;
+« Update available » instead when the list has a newer one still to download; the rows are drawn again only
 when what they show changes, a download's bytes going to the line under its row, so that a button
 is never replaced under the pointer as it is clicked), and Live's next start with
 X-Plane not running puts it in place before anything reads the regions (`osxpregions.settle` in
@@ -566,10 +567,13 @@ record before their files go: a stop between leaves files no record names, which
 region downloads again over them, never a record naming files that are gone (2026-11-18). The zip
 being unpacked into a stage is named in its record first (`unpacking`): a stop halfway, then that
 zip made again under the same path, starts the stage again rather than leave half of its version of
-before in it; that record leaves the stage before it takes the region's place, its marker saying it
-is whole. A failure says what went wrong in plain words (`_why`): the server's answer (« HTTP 404
-»), the server out of reach, or the disk refusing, the disk at once, the server after a few tries;
-never the host's address. A list that did not come gives its cause alone, the window saying what.
+before in it; the stage keeps that record until it takes the region's place (a swap refused then
+downloads nothing more), and one a stop right after the swap left in the region is dropped by the
+next `settle` (`_repair`): a region in place never holds one. A failure says what went wrong in
+plain words (`_why`, the downloads, the list and the install's own failures alike): « the server
+answered HTTP 404 », the server out of reach, or the disk refusing, the disk at once (a file held a
+moment, `PermissionError`, tried again like the line), the server after a few tries; never the
+host's address. A list that did not come gives its cause alone, the window saying what.
 
 **Another tool's mesh** (`scenery.other_mesh`, 2026-11-14): a folder chosen in the Settings
 (`LiveSettings.other_mesh`, empty: none), last in `default_sources` after `base_sources` (Live's

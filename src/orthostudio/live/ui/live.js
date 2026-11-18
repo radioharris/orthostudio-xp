@@ -666,14 +666,14 @@ async function regionAct(path, method = "POST") {
  * bytes of a download change every second: they go to the line, never to the row's shape). */
 function regionRow(id, mine, r, install, running, idle, xplane) {
   const busy = Boolean(install) && install.region === id;
-  const newer = (r.changed_bytes || 0) > 0; // more to download than an update waiting whole has
+  // an update waiting whole, the disk's word (r.waiting), unless a newer one is listed to download
+  const ready = Boolean(mine) && r.waiting && !((r.changed_bytes || 0) > 0);
   let size = "";
   let state = "";
   if (mine) {
     size = mine.size ? t("regions.size", { gb: gb(mine.size) }) : "";
     if (!(busy && running)) { // while it runs, its line says it all
-      state = newer ? t("regions.changed", { gb: gb(r.changed_bytes) })
-        : r.waiting ? t("regions.ready")
+      state = ready ? t("regions.ready")
         : r.changed ? t("regions.changed", { gb: gb(r.changed_bytes) })
         : t("regions.installed");
     }
@@ -691,8 +691,9 @@ function regionRow(id, mine, r, install, running, idle, xplane) {
   } else if (r.download) {
     buttons.push({ act: "install", label: t("regions.install"), disabled: running });
   }
-  // the line: the install of this region, or its update waiting whole when no newer one is listed
-  const line = busy ? "install" : mine && r.waiting && !newer ? "waiting" : null;
+  // the line: the install of this region while it runs or after it (not one that waits: the disk
+  // says that, and not once Live's start put it in place), or its update waiting whole
+  const line = busy && install.phase !== "waiting" ? "install" : ready ? "waiting" : null;
   return { id, size, state, buttons, line, bar: busy && running };
 }
 
@@ -794,7 +795,6 @@ function drawRegions(status) {
         total: gb(install.total_bytes), mbs: number(pace, 1), unpacked: install.unpacked, zips: install.zips });
     } else if (install.phase === "failed") line.textContent = t("regions.failed", { error: install.error });
     else if (install.phase === "cancelled") line.textContent = t("regions.cancelled");
-    else if (install.phase === "waiting") line.textContent = t("regions.waiting");
     else line.textContent = t("regions.done");
     if ($("region-bar")) {
       const share = install.total_bytes ? install.done_bytes / install.total_bytes : 0;
