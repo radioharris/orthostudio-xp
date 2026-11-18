@@ -64,6 +64,7 @@ from importlib import resources
 from pathlib import Path
 from typing import Any
 
+from orthostudio.errors import OsxpError
 from orthostudio.fsutil import atomic_write_text, fsync_dir
 from orthostudio.live.aoregions import (
     MARKER,
@@ -537,15 +538,18 @@ def _rename(src: Path, dst: Path, what: str) -> None:
         ) from e
 
 
-def _swap_in(new: Path, real: Path, what: str, touch: Sequence[str] = ()) -> None:
+def _swap_in(
+    new: Path, real: Path, what: str, touch: Sequence[str] = (), beside: Path | None = None
+) -> None:
     """``new`` put in ``real``'s place with one rename, the one of before renamed aside first
     (:func:`_old_dir`), put back where the rename is refused, deleted in the background after
     (:func:`_discard`): a start finds the one or the other, whole. ``real`` and its ``touch``
     folders then dated now, what the next start's set-up compares (``region._fingerprints``). The
     one swap of a region's stage and of its river masks' alike; :class:`InstallError` when a
-    program holds a folder open. The lock held."""
+    program holds a folder open. ``beside``: where the one of before is set aside, out of the
+    region's own folder for its river masks (:func:`_set_aside`). The lock held."""
     old = _old_dir(real)
-    _discard(old)  # one an earlier swap could not delete
+    _discard(old, beside)  # one an earlier swap could not delete
     if real.exists():
         _rename(real, old, what)
     try:
@@ -559,7 +563,7 @@ def _swap_in(new: Path, real: Path, what: str, touch: Sequence[str] = ()) -> Non
     for path in (real, *(real / sub for sub in touch)):
         with contextlib.suppress(OSError):
             os.utime(path, (now, now))
-    _discard(old)
+    _discard(old, beside)
 
 
 def put_in_place(root: Path, region: str, log: Log = print) -> bool:
@@ -586,14 +590,16 @@ def put_rivers_in_place(root: Path, region: str) -> bool:
     files again for them, and a start with X-Plane running on a region changed is refused."""
     with _SWAP:
         folder = mesh_dir(root, region)
+        beside = _real(root, region).parent  # what is set aside goes there, out of the region
         stage = folder / RIVERS_STAGE
         done = _read(stage / MARKER)
         if not done:
             return False
         if (stage / RIVERS).is_dir():
-            _swap_in(stage / RIVERS, folder / RIVERS, f"the river masks of {region}")
+            what = f"the river masks of {region}"
+            _swap_in(stage / RIVERS, folder / RIVERS, what, beside=beside)
         elif not (folder / RIVERS).is_dir():  # neither here nor there: downloaded again
-            _discard(stage)
+            _discard(stage, beside)
             return False
         # else a stop between their rename and their record: in place already
         marker = _read(folder / MARKER)
@@ -601,7 +607,7 @@ def put_rivers_in_place(root: Path, region: str) -> bool:
         if any(have.get(p) != s for p, s in done["zips"].items()):  # else recorded before a stop
             size = int(marker.get("size") or 0) + done["adds"]  # :meth:`Installer._rivers_done`
             _write(folder / MARKER, {**marker, "zips": {**have, **done["zips"]}, "size": size})
-        _discard(stage)
+        _discard(stage, beside)
     return True
 
 
@@ -647,18 +653,23 @@ ASIDE = re.compile(r"\..+\.(?:new|old)\.\d+")
 ``.z_osxp_eur.new.<n>``, ``.rivers.new.<n>``..."""
 
 
-def _set_aside(path: Path) -> Path:
-    """``path`` renamed to a hidden name of its own (``.z_osxp_<id>.old.<n>`` for a region,
-    ``<its hidden name>.<n>`` for a stage or one of before), which nothing takes for a region, a
-    stage or an update stopped halfway; :func:`take_up_deletions` deletes what a quit left of it.
-    OSError where a program holds it open."""
+def _set_aside(path: Path, beside: Path | None = None) -> Path:
+    """``path`` renamed to a hidden name of its own, ``<its hidden name>.<n>`` of each kind
+    (``.z_osxp_<id>.old.<n>`` for a region, ``.z_osxp_<id>.new.<n>`` for its stage...), which
+    nothing takes for a region, a stage or an update stopped halfway; :func:`take_up_deletions`
+    deletes what a quit left of it. ``beside``: a folder out of the one ``path`` is in, for what a
+    region's folder or stage holds (``.z_osxp_<id>.rivers.new.<n>``): never left inside a folder
+    renamed next, which Windows refuses while a deletion holds a folder of it. OSError where a
+    program holds it open."""
     base = path.name if path.name.startswith(".") else _old_dir(path).name
-    gone = path.with_name(f"{base}.{time.time_ns()}")
+    if beside is not None:
+        base = f".{path.parent.name.lstrip('.')}{base}"
+    gone = (beside or path.parent) / f"{base}.{time.time_ns()}"
     replace_file(path, gone)
     return gone
 
 
-def _aside(path: Path) -> Path | None:
+def _aside(path: Path, beside: Path | None = None) -> Path | None:
     """A stage, or a region or river masks of before, made ready to be deleted: its marker and its
     record taken away first, so that a stop never leaves one half deleted that a start or an
     install would trust, then set aside (:func:`_set_aside`). None where there is none, or where
@@ -668,71 +679,88 @@ def _aside(path: Path) -> Path | None:
     (path / MARKER).unlink(missing_ok=True)
     (path / STEP).unlink(missing_ok=True)
     try:
-        return _set_aside(path)
+        return _set_aside(path, beside)
     except OSError:
         shutil.rmtree(path, ignore_errors=True)
         return None
 
 
-def _discard(path: Path) -> None:
+def _discard(path: Path, beside: Path | None = None) -> None:
     """A stage, or a region or river masks of before, deleted, the one way: set aside
     (:func:`_aside`), then deleted in the background: hundreds of thousands of files take a minute
     or more, which no start nor install waits for."""
-    aside = _aside(path)
+    aside = _aside(path, beside)
     if aside is not None:
         _delete_aside(aside)
 
 
-def _delete(*folders: Path, link: Path | None = None) -> None:
-    """``folders`` deleted, then ``link``, the folder link that kept them within reach of Live's
+def _delete(*folders: Path, links: Sequence[Path] = ()) -> None:
+    """``folders`` deleted, then ``links``, the folder links that kept them within reach of Live's
     ``regions`` folder (:func:`remove`), last."""
     for folder in folders:
         shutil.rmtree(folder, ignore_errors=True)
-    if link is not None:
+    for link in links:
         with contextlib.suppress(OSError):
             remove_folder_link(link)
 
 
-def _delete_aside(*folders: Path, link: Path | None = None) -> None:
+def _delete_aside(*folders: Path, links: Sequence[Path] = ()) -> None:
     """:func:`_delete` in the background."""
-    threading.Thread(target=_delete, args=folders, kwargs={"link": link}, daemon=True).start()
+    threading.Thread(target=_delete, args=folders, kwargs={"links": links}, daemon=True).start()
+
+
+def _set_asides_in(place: Path) -> list[Path]:
+    """The folders of ``place`` set aside to be deleted (:data:`ASIDE`), never a link."""
+    found = []
+    with contextlib.suppress(OSError), os.scandir(place) as entries:
+        for entry in entries:
+            path = Path(entry.path)
+            if (
+                ASIDE.fullmatch(entry.name)
+                and entry.is_dir(follow_symlinks=False)
+                and not is_folder_link(path)
+            ):
+                found.append(path)
+    return found
 
 
 def take_up_deletions(root: Path) -> int:
-    """The folders set aside to be deleted that a quit left (:data:`ASIDE`), beside Live's regions
-    and in them, and those a link set aside in Live's ``regions`` folder leads to, deleted in the
-    background, the link last: everything set aside stays within reach of that folder until it is
-    deleted. Once, as Live's window opens, before anything else: never beside a deletion still
-    under way. Returns how many."""
+    """The folders set aside to be deleted that a quit left (:data:`ASIDE`), beside Live's regions,
+    deleted in the background; for each link set aside in Live's ``regions`` folder
+    (:func:`remove`), what was set aside beside the folder it leads to, that folder, then the link,
+    in one deletion, the link last: everything set aside stays within reach of that folder until
+    it is deleted. A link whose disk is away is kept for a later time. Once, as Live's window
+    opens, before anything else: never beside a deletion still under way. Returns how many
+    folders and links."""
+
+    def key(path: Path) -> str:
+        return os.path.normcase(os.path.abspath(path))
+
     regions = regions_dir(root)
-    places = {regions}
+    places = {key(regions): regions}
     for region in _region_ids(root):
-        real = _real(root, region)
-        places |= {real.parent, real}
-    links = []
-    with contextlib.suppress(OSError), os.scandir(regions) as entries:
-        for entry in entries:
-            if ASIDE.fullmatch(entry.name) and is_folder_link(Path(entry.path)):
-                target = link_target(Path(entry.path))
-                places.add(target.parent)  # what was set aside beside it, on its disk
-                links.append((Path(entry.path), target))
-    linked = {os.path.normcase(os.path.abspath(t)) for _, t in links}
+        place = _real(root, region).parent
+        places[key(place)] = place
     found = 0
-    for place in places:
-        with contextlib.suppress(OSError), os.scandir(place) as entries:
-            for entry in entries:
-                path = Path(entry.path)
-                if (
-                    ASIDE.fullmatch(entry.name)
-                    and entry.is_dir(follow_symlinks=False)
-                    and not is_folder_link(path)
-                    and os.path.normcase(os.path.abspath(path)) not in linked
-                ):
-                    _delete_aside(path)
-                    found += 1
-    for link, target in links:
-        _delete_aside(*([target] if target.exists() else []), link=link)
-        found += 1
+    links: list[Path] = []
+    with contextlib.suppress(OSError), os.scandir(regions) as entries:
+        links = [Path(e.path) for e in entries if ASIDE.fullmatch(e.name)]
+    for link in links:
+        if not is_folder_link(link):
+            continue
+        target = link_target(link)
+        if not target.parent.is_dir():  # its disk away: taken up when it is back
+            continue
+        places.pop(key(target.parent), None)
+        folders = [f for f in _set_asides_in(target.parent) if key(f) != key(target)]
+        folders += [target] if target.exists() else []
+        _delete_aside(*folders, links=[link])
+        found += len(folders) + 1
+    for place in places.values():
+        folders = _set_asides_in(place)
+        if folders:
+            _delete_aside(*folders)
+            found += len(folders)
     return found
 
 
@@ -742,7 +770,7 @@ def _region_ids(root: Path) -> set[str]:
     ids = set()
     with contextlib.suppress(OSError):
         for entry in os.scandir(regions_dir(root)):
-            m = re.fullmatch(r"\.?z_osxp_(.+?)(\.(?:new|old)(?:\.\d+)?)?", entry.name)
+            m = re.fullmatch(r"\.?z_osxp_([a-z0-9_]+)(\.(?:new|old)(?:\.\d+)?)?", entry.name)
             if m and (entry.name.startswith("z_") or m.group(2)):
                 ids.add(m.group(1))
     return ids
@@ -814,14 +842,18 @@ def remove(root: Path, region: str, squares: Sequence[tuple[int, int]], log: Log
                     f"({e})"
                 ) from e
         left = [p for p in (_aside(stage), _aside(old), kept) if p is not None]
-        link = None
+        links = []
         if linked and left:  # the region's disk reached from regions/ until all is deleted
             link = regions_dir(root) / left[-1].name
-            folder_link(left[-1], link)
+            try:
+                folder_link(left[-1], link)
+                links.append(link)
+            except (OSError, OsxpError):  # no link (a junction refused): deleted all the same
+                pass
         if linked:
             remove_folder_link(folder)
         if left:
-            _delete_aside(*left, link=link)
+            _delete_aside(*left, links=links)
     shutil.rmtree(regions_dir(root) / ".download" / f"osxp_{region}", ignore_errors=True)
     pack = overlay_pack(root)
     gone = 0
@@ -965,7 +997,7 @@ class Installer:
             # river masks coming alone: deleted when not the list's, or half come and no longer
             # wanted (Even again); whole, they are the region's (keeps_rivers)
             if not _rivers_staged(self.root, region) or not keep:
-                _discard(folder / RIVERS_STAGE)
+                _discard(folder / RIVERS_STAGE, _real(self.root, region.id).parent)
             if whole:
                 step = self._stage_kept(stage, keep)
             mesh, ovl = to_fetch(self.root, region, self.with_overlays, keep)
@@ -1002,7 +1034,7 @@ class Installer:
         rivers = {z.path for z in region.rivers}
         if rivers & set(step["zips"]) and not keep:
             (stage / MARKER).unlink(missing_ok=True)
-            _discard(stage / RIVERS)
+            _discard(stage / RIVERS, stage.parent)
             step["zips"] = {p: s for p, s in step["zips"].items() if p not in rivers}
             _write(stage / STEP, step)
         return step

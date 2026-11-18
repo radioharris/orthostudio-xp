@@ -833,16 +833,53 @@ def test_a_region_on_another_disk_whose_deletion_a_quit_stopped(
     stage = osxpregions.stage_dir(root, "eur")
     stage.mkdir()
     (stage / "x.dsf").write_bytes(b"half")
-    monkeypatch.setattr(osxpregions, "_delete_aside", lambda *f, link=None: None)  # the quit
+    monkeypatch.setattr(osxpregions, "_delete_aside", lambda *f, links=(): None)  # the quit
     osxpregions.remove(root, "eur", [], log=lambda _: None)
     assert not os.path.lexists(folder) and osxpregions.installed(root) == {}
     assert len(list(elsewhere.parent.iterdir())) == 2  # the region and its stage, set aside
     kept = [p for p in osxpregions.regions_dir(root).iterdir() if p.is_symlink()]
     assert len(kept) == 1 and osxpregions.ASIDE.fullmatch(kept[0].name)
-    monkeypatch.setattr(osxpregions, "_delete_aside", osxpregions._delete)
-    assert osxpregions.take_up_deletions(root) == 2  # the stage, then the region and its link
+    taken: list[tuple] = []
+
+    def delete(*folders: Path, links=()) -> None:
+        taken.append(([f.name for f in folders], [link.name for link in links]))
+        osxpregions._delete(*folders, links=links)
+
+    monkeypatch.setattr(osxpregions, "_delete_aside", delete)
+    away = elsewhere.parent.rename(tmp_path / "unplugged")  # its disk away: kept for later
+    assert osxpregions.take_up_deletions(root) == 0
+    assert [p for p in osxpregions.regions_dir(root).iterdir() if p.is_symlink()] == kept
+    away.rename(elsewhere.parent)  # back
+    assert osxpregions.take_up_deletions(root) == 3  # its stage, the region, then the link
+    (folders, links), *rest = taken
+    assert rest == [] and len(folders) == 2 and folders[-1] == kept[0].name  # one deletion
+    assert links == [kept[0].name]  # the link last
     assert sorted(elsewhere.parent.iterdir()) == []
     assert hidden(root) == [".download", ".lists"]
+
+
+def test_a_region_on_another_disk_is_deleted_when_its_link_is_refused(
+    tmp_path: Path, world, monkeypatch
+) -> None:
+    """The link kept within reach refused (a junction, on Windows): the region, set aside
+    already, is deleted all the same."""
+    from orthostudio.errors import OsxpError
+
+    files, region = world
+    elsewhere = tmp_path / "other disk" / "z_osxp_eur"
+    elsewhere.parent.mkdir()
+    root = tmp_path / "live"
+    install(root, region, Host(files))
+    folder = osxpregions.mesh_dir(root, "eur")
+    folder.rename(elsewhere)
+    folder.symlink_to(elsewhere, target_is_directory=True)
+
+    def refused(target: Path, link: Path) -> None:
+        raise OsxpError("XP_LINK_FAILED")
+
+    monkeypatch.setattr(osxpregions, "folder_link", refused)
+    osxpregions.remove(root, "eur", [], log=lambda _: None)
+    assert not os.path.lexists(folder) and sorted(elsewhere.parent.iterdir()) == []
 
 
 def test_a_key_refused_and_a_region_deleted(tmp_path: Path, world) -> None:
@@ -1393,10 +1430,10 @@ def test_river_masks_recorded_before_a_stop_are_not_counted_twice(
     assert inst.progress.phase == "waiting", lines
     discarding = osxpregions._discard
 
-    def cut(path: Path) -> None:
+    def cut(path: Path, beside: Path | None = None) -> None:
         if path.name == osxpregions.RIVERS_STAGE:
             raise KeyboardInterrupt("the power cut")
-        discarding(path)
+        discarding(path, beside)
 
     monkeypatch.setattr(osxpregions, "_discard", cut)
     with pytest.raises(KeyboardInterrupt):
@@ -1407,6 +1444,25 @@ def test_river_masks_recorded_before_a_stop_are_not_counted_twice(
     osxpregions.settle(tmp_path, lambda _: None, swap=True)
     assert marker_of(tmp_path)["size"] == size + rivers
     assert not (osxpregions.mesh_dir(tmp_path, "eur") / osxpregions.RIVERS_STAGE).exists()
+
+
+def test_what_a_region_holds_is_set_aside_beside_it(
+    tmp_path: Path, rivers_world, monkeypatch
+) -> None:
+    """River masks of before, or half come and no longer wanted, are set aside beside the region,
+    never inside its folder or its stage, which a rename may take next."""
+    files, region = rivers_world
+    install(tmp_path, region, Host(files))
+    damaged = {**files, RIVERS_B: b"x" * region.rivers[1].size}
+    install(tmp_path, region, Host(damaged), overlays=False, rivers=True)  # half come
+    started: list[Path] = []
+    monkeypatch.setattr(osxpregions, "_delete_aside", lambda *f, links=(): started.extend(f))
+    install(tmp_path, region, Host(files))  # Even again
+    folder = osxpregions.mesh_dir(tmp_path, "eur")
+    assert [p.parent for p in started] == [folder.parent]
+    assert started[0].name.startswith(".z_osxp_eur.rivers.new.")
+    assert osxpregions.ASIDE.fullmatch(started[0].name)
+    assert osxpregions.take_up_deletions(tmp_path) == 1  # within its reach
 
 
 def test_river_masks_a_power_cut_left_aside_are_put_back(tmp_path: Path, rivers_world) -> None:
@@ -1486,7 +1542,7 @@ def test_a_stage_discarded_is_never_trusted_half_deleted(
     stage = osxpregions.stage_dir(tmp_path, "eur")
     assert osxpregions.staged_whole(tmp_path, "eur")
 
-    def cut(path: Path) -> Path:
+    def cut(path: Path, beside: Path | None = None) -> Path:
         raise KeyboardInterrupt("the power cut")
 
     monkeypatch.setattr(osxpregions, "_set_aside", cut)
@@ -1501,7 +1557,7 @@ def test_a_region_is_deleted_in_the_background(tmp_path: Path, world, monkeypatc
     files, region = world
     install(tmp_path, region, Host(files))
     started: list[Path] = []
-    monkeypatch.setattr(osxpregions, "_delete_aside", lambda *f, link=None: started.extend(f))
+    monkeypatch.setattr(osxpregions, "_delete_aside", lambda *f, links=(): started.extend(f))
     osxpregions.remove(tmp_path, "eur", [], log=lambda _: None)
     assert [p.name.rsplit(".", 1)[0] for p in started] == [".z_osxp_eur.old"]
     assert osxpregions.ASIDE.fullmatch(started[0].name) and started[0].exists()
