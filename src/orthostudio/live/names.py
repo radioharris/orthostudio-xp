@@ -506,20 +506,17 @@ class WaterPool(NeutralPool):
         return path
 
 
-def _water_inodes(pack: Path) -> set[tuple[int, int]]:
-    """(device, inode) of the water photos' placeholders and their copies."""
-    out = set()
-    for path in (pack / "_live").glob("water-*.dds"):
-        with contextlib.suppress(OSError):
-            st = os.stat(path)
-            out.add((st.st_dev, st.st_ino))
-    return out
+WATER_PLACEHOLDERS = "water-*.dds"  # the water photos' placeholders and their copies
+NIGHT_BLACK = "night*.dds"  # the black night texture and its copies
+NEUTRAL = "neutral*.dds"  # the neutral texture and its copies: what a texture's name leads to
+# until the texture is built
 
 
-def _night_inodes(pack: Path) -> set[tuple[int, int]]:
-    """(device, inode) of the black night texture and its copies."""
+def _inodes(pack: Path, pattern: str) -> set[tuple[int, int]]:
+    """(device, inode) of the files of the pack's ``_live`` folder ``pattern`` names: one file and
+    its copies, which a name made from it leads to until something is written there."""
     out = set()
-    for path in (pack / "_live").glob("night*.dds"):
+    for path in (pack / "_live").glob(pattern):
         with contextlib.suppress(OSError):
             st = os.stat(path)
             out.add((st.st_dev, st.st_ino))
@@ -559,23 +556,12 @@ def _write_new(dst: str, data: bytes) -> None:
     os.close(fd)
 
 
-def _neutral_inodes(pack: Path) -> set[tuple[int, int]]:
-    """(device, inode) of the neutral texture and its copies: what a texture's name leads to until
-    the texture is built."""
-    out = set()
-    for path in (pack / "_live").glob("neutral*.dds"):
-        with contextlib.suppress(OSError):
-            st = os.stat(path)
-            out.add((st.st_dev, st.st_ino))
-    return out
-
-
 def built_files(pack: Path) -> list[str]:
     """The textures whose file holds something built: their name no longer leads to the neutral
     texture or one of its copies. Read once, when Live's record of its textures was lost
     (orthostudio.live.pack.load_built): what it named stayed on the disk, uncounted, never made
     neutral again nor taken away with its square (the review of 2026-11-17)."""
-    neutral = _neutral_inodes(pack)
+    neutral = _inodes(pack, NEUTRAL)
     out = []
     with contextlib.suppress(FileNotFoundError), os.scandir(pack / "textures") as entries:
         for entry in entries:
@@ -690,7 +676,7 @@ def run_ops(pack_dir: str, ops: Sequence[tuple]) -> dict:
                 water, top, land = Path(op[1]), op[2], Path(op[3])
                 level = fitted.get(land.name, op[4])  # set to the zoom's size just now
                 if placeholders is None:
-                    placeholders = _water_inodes(pack)
+                    placeholders = _inodes(pack, WATER_PLACEHOLDERS)
                 if os.path.lexists(water):
                     st = os.stat(water)
                     empty = (st.st_dev, st.st_ino) in placeholders
@@ -712,7 +698,7 @@ def run_ops(pack_dir: str, ops: Sequence[tuple]) -> dict:
                     watered[land.name] = level
             elif kind == "drop_water":
                 if placeholders is None:
-                    placeholders = _water_inodes(pack)
+                    placeholders = _inodes(pack, WATER_PLACEHOLDERS)
                 try:
                     st = os.stat(op[1])
                 except FileNotFoundError:
@@ -730,7 +716,7 @@ def run_ops(pack_dir: str, ops: Sequence[tuple]) -> dict:
                     night_pool.link(0, Path(op[1]))
             elif kind == "drop_night":
                 if night_black is None:
-                    night_black = _night_inodes(pack)
+                    night_black = _inodes(pack, NIGHT_BLACK)
                 st = os.stat(op[1])
                 if (st.st_dev, st.st_ino) in night_black:
                     os.unlink(op[1])
@@ -780,7 +766,7 @@ def run_ops(pack_dir: str, ops: Sequence[tuple]) -> dict:
                 dropped += 1
             elif kind == "drop_name":
                 if neutral is None:
-                    neutral = _neutral_inodes(pack)
+                    neutral = _inodes(pack, NEUTRAL)
                 st = os.stat(op[1])
                 if (st.st_dev, st.st_ino) in neutral:
                     os.unlink(op[1])
@@ -1167,7 +1153,7 @@ class Names:
             st = os.stat(self.pack_dir / "textures" / name)
         except OSError:
             return False
-        return (st.st_dev, st.st_ino) in _neutral_inodes(self.pack_dir)
+        return (st.st_dev, st.st_ino) in _inodes(self.pack_dir, NEUTRAL)
 
     # --- the thread ---------------------------------------------------------------------------
 
