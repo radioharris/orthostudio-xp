@@ -612,42 +612,81 @@ def test_a_region_that_names_its_terrain_files(tmp_path: Path) -> None:
     assert sea.read_bytes() == made_ter(sea.name)  # the sea takes no decal
 
 
-def test_a_texture_two_regions_name_takes_the_files_of_both(tmp_path: Path) -> None:
-    """On the line between two of Live's regions (27° East, Asia's and Europe's) a texture is named
-    by both, each with the files its own DSFs need: it takes them all, its sea's mask from the
-    region that has one. Asia's files alone, the first region's, left Europe's DSFs of +39+026
-    and +40+026 short of their water file, which X-Plane cancelled (issue 36, the world of
-    2026-11-01). A region whose files are copied, AutoOrtho's, gives its own alone."""
-    from orthostudio.live.names import TERRAIN_LISTS, RegionTextures
+def _live_region(root: Path, region: str, ters: str) -> Path:
+    """A region of Live's own mesh naming ``ters`` in its list."""
+    from orthostudio.live.names import TERRAIN_LISTS
 
-    def named(region: str, ters: str) -> Path:
-        source = tmp_path / f"z_osxp_{region}"
-        (source / TERRAIN_LISTS).mkdir(parents=True)
-        (source / TERRAIN_LISTS / f"z_osxp_{region}.txt").write_text(ters, encoding="ascii")
-        return source
+    source = root / f"z_osxp_{region}"
+    (source / TERRAIN_LISTS).mkdir(parents=True)
+    (source / TERRAIN_LISTS / f"z_osxp_{region}.txt").write_text(ters, encoding="ascii")
+    return source
 
-    asi = named(
-        "asi", "24656_37680_BI16.ter\n24656_37680_BI16_sea_overlay.ter\n99680_150720_BI18.ter\n"
+
+def _on_the_line(root: Path) -> tuple[Path, Path]:
+    """Asia's and Europe's regions as the world of 2026-11-01 names two textures on 27° East: Asia
+    the land and the sea of one, the land of the other; Europe the land and the water of both."""
+    asi = _live_region(
+        root,
+        "asi",
+        "24656_37680_BI16.ter\n24656_37680_BI16_sea_overlay.ter\n99680_150720_BI18.ter\n",
     )
-    eur = named(
+    eur = _live_region(
+        root,
         "eur",
         "24656_37680_BI16.ter\n24656_37680_BI16_water_overlay.ter\n"
         "99680_150720_BI18.ter\n99680_150720_BI18_water_overlay.ter\n",
     )
+    return asi, eur
+
+
+def test_a_texture_two_regions_name_takes_the_files_of_both(tmp_path: Path) -> None:
+    """A texture on the line between two of Live's regions takes the files of both, the DSFs of
+    each naming theirs (issue 36); its masks from the region whose files mask most of its water,
+    whichever comes first. AutoOrtho's region, whose files are copied, gives its own alone."""
+    from orthostudio.live.names import RegionTextures
+
+    asi, eur = _on_the_line(tmp_path)
     regions = RegionTextures([asi, eur])  # Live's order: their folders' names
     assert [(e[0], e[4], e[5]) for e in regions.entries_of((40, 27))] == [
-        ("24656_37680_BI16.dds", 1 | 2 | 4, 0)  # the land, Europe's water, Asia's sea and mask
+        ("24656_37680_BI16.dds", 1 | 2 | 4, 0)  # Asia's sea and its mask, Europe's water
     ]
     assert [(e[0], e[4], e[5]) for e in regions.entries_of((39, 26))] == [
-        ("99680_150720_BI18.dds", 1 | 2, 0)
+        ("99680_150720_BI18.dds", 1 | 2, 1)  # Europe's water, its masks Europe's
     ]
-    assert len(regions) == 2
-    # the sea's mask from the region that has it, whichever comes first
     swapped = RegionTextures([eur, asi])
     assert [(e[4], e[5]) for e in swapped.entries_of((40, 27))] == [(1 | 2 | 4, 1)]
-    # AutoOrtho's region copies its own files: none of another region's taken for it
-    ao = tmp_path / "z_ao_eur"
-    (ao / "terrain").mkdir(parents=True)
-    for ter in ("24656_37680_BI16.ter", "24656_37680_BI16_water_overlay.ter"):
-        (ao / "terrain" / ter).write_text("A\n", encoding="ascii")
-    assert [(e[4], e[5]) for e in RegionTextures([ao, asi]).entries_of((40, 27))] == [(1 | 2, 0)]
+    ao = make_source(tmp_path, tile=(40, 27), textures=("24656_37680_BI16",))
+    assert [(e[4], e[5]) for e in RegionTextures([asi, ao]).entries_of((40, 27))] == [(1 | 4, 0)]
+
+
+def test_a_square_on_the_line_has_every_file_its_dsfs_name(tmp_path: Path) -> None:
+    """The square's files as Live makes them round the aircraft: every .ter either region lists,
+    and the sea's mask copied from the region that has it."""
+    import threading
+
+    from orthostudio.live.names import Names, RegionTextures
+    from orthostudio.live.streamer import TextureIndex
+
+    asi, eur = _on_the_line(tmp_path)
+    (asi / "textures").mkdir()
+    (asi / "textures" / "24656_37680_ZL16.png").write_bytes(b"Asia's mask")
+    sources = [asi, eur]
+    region = RegionTextures(sources)
+    pack = tmp_path / "pack"
+    for folder in ("terrain", "textures"):
+        (pack / folder).mkdir(parents=True)
+    names = Names(
+        pack,
+        TextureIndex(region.entries()).by_tile,
+        sources,
+        lambda name: 0,
+        threading.Lock(),
+        busy=lambda name: False,
+    )
+    names.make((40, 26))
+    assert sorted(p.name for p in (pack / "terrain").iterdir()) == [
+        "24656_37680_BI16.ter",
+        "24656_37680_BI16_sea_overlay.ter",
+        "24656_37680_BI16_water_overlay.ter",
+    ]
+    assert (pack / "textures" / "24656_37680_ZL16.png").read_bytes() == b"Asia's mask"
