@@ -552,3 +552,29 @@ def test_no_start_on_a_region_updated_while_xplane_runs(
     session.prepare(options, log=quiet)  # X-Plane quit: the pack set up again
     monkeypatch.setattr(session, "xplane_running", lambda: True)
     session.prepare(options, log=quiet)
+
+
+def test_a_region_updated_and_one_added_before_a_start(tmp_path: Path) -> None:
+    """Europe's update waited while X-Plane ran, North America installed meanwhile: the next start
+    puts the update in place and adds the new region. The pack is set up again whole, never the
+    new region merged alone beside Europe's DSFs of before."""
+    import shutil
+
+    regions = tmp_path / "regions"
+    regions.mkdir()
+    eur = make_source(tmp_path / "a", tile=(45, 6)).rename(regions / "z_osxp_eur")
+    pack = tmp_path / "pack"
+    setup_region([eur], pack, log=quiet)
+    dsf = "Earth nav data/+40+000/+45+006.dsf"
+    update = make_source(tmp_path / "b", tile=(45, 6))
+    (update / dsf).write_bytes(b"the update's DSF")
+    eur.rename(regions / ".z_osxp_eur.old")  # the update put in place
+    update.rename(eur)
+    shutil.rmtree(regions / ".z_osxp_eur.old")
+    os.utime(eur / "Earth nav data", (2_000_000_000, 2_000_000_000))
+    na = make_source(tmp_path / "c", tile=(46, 7)).rename(regions / "z_osxp_na")
+    lines: list[str] = []
+    setup_region([eur, na], pack, log=lines.append)
+    assert (pack / dsf).read_bytes() == b"the update's DSF"
+    assert (pack / "Earth nav data/+40+000/+46+007.dsf").exists()
+    assert any("changed since the pack was set up" in line for line in lines)

@@ -515,19 +515,11 @@ def _unnamed(
     away for a while (another tool's mesh on a disk unplugged) loses nothing; none where a region
     reads as no texture at all (its folder unreadable a moment)."""
     from .evict import tiles_of
-    from .geo import dsf_tile_of
     from .names import one_region
+    from .overlays import squares_of
     from .pack import load_built
 
-    squares: set[tuple[int, int]] = set()
-    for source in changed:
-        with contextlib.suppress(OSError):
-            for tens in os.scandir(source / "Earth nav data"):
-                if tens.is_dir():
-                    for dsf in os.scandir(tens.path):
-                        square = dsf_tile_of(dsf.path)
-                        if square is not None:
-                            squares.add(square)
+    squares = {square for source in changed for square in squares_of(source)}
     if not squares:
         return set()
     named: set[str] = set()
@@ -1023,7 +1015,8 @@ def setup_region(
     # only regions to add after those of before: merged in. One that comes first (Live's own
     # mesh, orthostudio.live.scenery.osxp_regions) must take the squares it has: merged in, the
     # DSFs of before stayed and X-Plane read them with that region's terrain files (2026-10-18)
-    adding = bool(had) and set(had) < set(keys) and keys[: len(had)] == had
+    # never while a region of before changed: its DSFs of before would stay beside its lists of now
+    adding = bool(had) and set(had) < set(keys) and keys[: len(had)] == had and not changed
     if old and (version < REGION_VERSION or not adding) and not xplane_running():
         forget = _unnamed(pack_dir, sources, changed, lists) if changed else set()
         _to_squares(pack_dir, log, forget)  # the files of the regions of before
