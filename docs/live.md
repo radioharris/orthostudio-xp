@@ -183,8 +183,7 @@ itself. Prepare brings the map to the departure, as close as a flight's start.
 mesh's regions, Live's disk space (with what the textures and the imagery take, and a button to
 delete either) and Live's folder; then what the flight shows: the roads, forests and buildings,
 your own tiles, the season, the night lights, rivers and lakes, the ground grain up close; then
-the flight plan and
-what the app opens on. They apply with Save, at the next start.
+the flight plan and what the app opens on. They apply with Save, at the next start.
 
 ![Live's Settings: where X-Plane is installed, the mesh by region with what each downloads and an Install button, the disk space, the season and the night lights](images/live/settings.png)
 
@@ -349,8 +348,8 @@ after region, with the bar and the Stop of « The mesh, by region », while Live
 take their place as a region's update does: at once with Live stopped and X-Plane closed, used from
 Live's next start; chosen while X-Plane is open, they wait whole ("Update ready") and Live's next
 start with X-Plane closed puts them in place, a start with X-Plane open flying on without them. A
-region whose mesh changed since you installed it shows **Update**
-instead, which brings it whole, its river masks included. A stopped or failed download leaves the
+region whose mesh changed since you installed it shows **Update** instead, which brings it whole,
+its river masks included. A stopped or failed download leaves the
 region as it was, never half of its rivers faded; **Update** goes on from where it stopped. Once
 downloaded, the masks stay part of the region: choosing Even again leaves them on the disk,
 unused, and choosing Soft banks again downloads nothing; a region's update brings their new
@@ -427,28 +426,26 @@ megabytes a second over the last few seconds. **Stop** stops it, and **Install**
 stopped, a file cut off included. A region is used from the next start, never half installed. Its
 roads, forests and buildings come with it, unless "Roads, forests and buildings" says "No", and
 its masks of rivers and lakes once you chose Soft banks (see « The sea, rivers and lakes »).
-Once installed, a region shows its size on the disk and **Delete** (click twice). When a region
-is made again on the server, the panel says an update is available and how much it downloads,
-and offers **Update**: the region comes again whole, its masks of rivers and lakes and its night
-grids with it, beside the one installed, which Live keeps using until the new one is complete and
-takes its place in one go; the one of before is then deleted, nothing of it left behind, and the
-update's roads, forests and buildings are put in only then. The disk holds both meanwhile.
-Stopped, an update goes on where it stopped, and the region of before stays as it was; so does a
-computer stopped or a power cut in the middle, put right the next time Live opens or starts. A
-region changes only with Live stopped and X-Plane closed: with X-Plane open, the update, once
-complete, waits, the panel saying "Update ready", and Live puts it in place at its next start with
-X-Plane closed, before anything else; with X-Plane open, that start flies the region of before.
-A region that changed since Live last started does not start Live while X-Plane is open, which
-may be reading the region of before: quit X-Plane, then start. On Windows, a region another
-program holds open cannot be replaced: the panel says so; close it and click **Update** again,
-which downloads nothing more. While a region is being downloaded or installed, Start waits, the
-window saying why. Updating and deleting wait until Live is stopped. A region's night grids made
-again on the server while its mesh is not come by themselves, a few megabytes (Europe 11.6 MB), as
-the window opens: no Update to click; with a new mesh they come in its update. A region may sit on
-another disk,
-linked from Live's folder: the panel says where each one is. Live reads the regions of the light
-mesh, made in November 2026, from a list of their own: the Lives up to 2.2 keep the world of
-before, and the two never mix.
+Once installed, a region shows its size on the disk and **Delete** (click twice). When a region is
+made again on the server, the panel says an update is available and how much it downloads, and
+offers **Update**: the region comes again whole, its masks of rivers and lakes and its night grids
+with it, beside the one installed, which Live keeps using until the new one is complete and takes
+its place in one go; the one of before is then deleted, nothing of it left behind, and the update's
+roads, forests and buildings are put in only then. The disk holds both meanwhile. Stopped, an update
+goes on where it stopped, and the region of before stays as it was; so does a computer stopped or a
+power cut in the middle, put right the next time Live opens or starts. A region changes only with
+Live stopped and X-Plane closed: with X-Plane open, the update, once complete, waits, the panel
+saying "Update ready", and Live puts it in place at its next start with X-Plane closed, before
+anything else; with X-Plane open, that start flies the region of before. A region that changed since
+Live last started does not start Live while X-Plane is open, which may be reading the region of
+before: quit X-Plane, then start. On Windows, a region another program holds open cannot be
+replaced: the panel says so; close it and click **Update** again, which downloads nothing more.
+While a region is being downloaded or installed, Start waits, the window saying why. Updating and
+deleting wait until Live is stopped. A region's night grids made again on the server while its mesh
+is not come by themselves, a few megabytes (Europe 11.6 MB), as the window opens: no Update to
+click; with a new mesh they come in its update. A region may sit on another disk, linked from Live's
+folder: the panel says where each one is. Live reads the regions of the light mesh, made in November
+2026, from a list of their own: the Lives up to 2.2 keep the world of before, and the two never mix.
 
 A region AutoOrtho installed on its own is still recognised, and left as it is; Live no longer
 offers to install AutoOrtho's. In a terminal, `python -m orthostudio.live regions list`,
@@ -623,6 +620,9 @@ To switch Live off, put `enabled = false` in `live.toml`, in OrthoStudio XP's ow
 - Quit X-Plane before Stop: Live unchecks its scenery when it stops, and waits for X-Plane to quit
   first.
 - Quitting the app while Live streams asks first, in the window.
+- If you go back to an older version of the app (2.2 or before) on a Live folder this version has
+  updated, delete your regions in it and install them again with it: otherwise it offers to update
+  every region and would unpack its own world over the new one.
 
 ## Limits
 

@@ -449,16 +449,20 @@ program holding it) is skipped and said, as a stop between two saves would leave
 30 s later, writes it whole.
 
 The pack records its regions (`sources` in `_live/region.json`): one installed since is merged in
-at the next start, the textures built kept; one taken away sets the pack up again. A region
-installed again or updated (its folders' times, `fingerprints`) sets the pack up again too, never
-under a running X-Plane: DSFs of before beside `.ter` files of now must not meet; a start with
-X-Plane running on such a region is refused. Set up again, the pack deletes the textures built
-that no square of its regions names any more (`region._drop_unnamed`, read from the regions'
-lists), with their night textures and water photos, and forgets them in its record (`textures`,
-`seen`, `stale`, `lit`, `water`, `patchy`, `copied`); every water photo goes with the neutral
-textures and is forgotten too (`_forget_water`), and a night texture whose texture is gone
-(`_drop_orphan_nights`): kept, they took Live's space for good. The files every square may name
-(`water_transition.png`) are placed again where the region's is not the pack's any more. A region gone
+at the next start, the textures built kept, unless a region of before changed too (then the pack
+is set up again whole: merged alone, the new one left the changed one's DSFs of before beside its
+lists of now); one taken away sets the pack up again. A region installed again or updated (its
+folders' times, `fingerprints`) sets the pack up again too, never under a running X-Plane: DSFs
+of before beside `.ter` files of now must not meet; a start with X-Plane running on such a region
+is refused (`session.prepare`, the one place of that rule). Set up again, the pack forgets the
+textures built on the squares of the regions that changed that no square of its regions names
+any more (`region._unnamed`, read from the regions' lists, the squares from their DSFs,
+`overlays.squares_of`), then deletes them as it deletes the neutral textures, in its one pass
+(`_to_squares`), with the water photos (their record forgotten, `_forget_water`) and the night
+textures of no texture (`_drop_orphan_nights`): kept, they took Live's space for good. A region
+only absent for a while (another tool's mesh on a disk unplugged) loses nothing. The files every
+square may name (`water_transition.png`) are placed again where the region's is not the pack's
+any more. A region gone
 (its `terrain` folder) stops Live from starting, where the pack once held every file its DSFs name
 (2026-09-30). And a pack left in Custom Scenery by a Live that stopped without taking it out (a
 crash, the computer restarted) is taken out by the plugin as X-Plane starts, when nothing listens
@@ -489,27 +493,32 @@ zips of a bake are in a folder of its date, `<region>/<release>/zips/<name>.zip`
 and never sees this world. Every zip is keyed by its path and SHA-256, as before; a kind Live does
 not know is left aside, and every Live since 2.0 leaves `rivers` aside.
 
-**Installed and updated whole** (`osxpregions.Installer`, 2026-11-18). A region is made whole in
-its stage, `.z_osxp_<id>.new` beside the region's folder (the folder a link or a Windows junction
-leads to, for one on another disk: on its disk, `filesystem.is_folder_link`): its mesh, its night
-grids and its river masks where it wants them (`wanted`: soft banks chosen, or the region has
-them already), unpacked one at a time in the list's order, each recorded in the stage's
+**Installed and updated whole** (`osxpregions.Installer`, 2026-11-18). A region is made whole in its
+stage, `.z_osxp_<id>.new` beside the region's folder (the folder a link or a Windows junction leads
+to, for one on another disk: on its disk, `filesystem.is_folder_link`): its mesh, its night grids
+and its river masks where it wants them (`wanted`: soft banks chosen, or the region has them
+already), unpacked one at a time in the list's order, each recorded in the stage's
 `.live-install.json`. Once all are there, its marker is written in the stage, and the stage takes
 the region's place (`put_in_place`): the region of before renamed `.z_osxp_<id>.old`, the stage
-renamed in, the old one deleted in the background under a name of its own
-(`.z_osxp_<id>.old.<n>`, `_discard`: its hundreds of thousands of files take a minute or more,
-which no start waits for; a deletion a quit stopped is taken up again), the one swap of a region
-and of its river masks alike (`_swap_in`), one rename helper tried again a moment on Windows
+renamed in, the old one deleted in the background, the one way a stage, a region or river masks of
+before are deleted (`_discard`: its marker first, so that a stop never leaves one half deleted that
+a start would trust; then set aside under a name of its own, `.z_osxp_<id>.old.<n>`; its hundreds of
+thousands of files take a minute or more, which no start or install waits for; what a quit left of
+such deletions is taken up once, as Live's window opens, `take_up_deletions`), the one swap of a
+region and of its river masks alike (`_swap_in`), one rename helper tried again a moment on Windows
 (`filesystem.replace`), the marker and every record written whole and flushed to the disk
-(`fsutil.atomic_write_text`, fsync). An update does the same as soon as the mesh the region holds
-is not the list's (`made_whole`): a zip made again (a single mended zip brings the region whole,
-every bake making every zip again), or one the list no longer has, which also catches a region a
-Live up to 2.2 updated in place, its marker naming zips gone. A stage is kept for the next try
-while each zip it holds is still the list's as it was (`_staged`), else started again; river
-masks it holds that the region no longer wants (Even chosen meanwhile) are taken out of it, its
-mesh kept. The update's overlays are downloaded with it and wait in the download folder, named in
-the stage's record, then its marker's (`overlays_waiting`), and are unpacked only once the region
-is in place: new roads never stand on the mesh of before.
+(`fsutil.atomic_write_text`, fsync). An update does the same as soon as the mesh the region holds is
+not the list's (`made_whole`): a zip made again (a single mended zip brings the region whole, every
+bake making every zip again), or one the list no longer has, which also catches a region a Live up
+to 2.2 updated in place, its marker naming zips gone. A stage is kept for the next try while each
+zip it holds is still the list's as it was (`_staged`, as `_rivers_staged`: one check,
+`_still_listed`), else started again; river masks it holds that the region no longer keeps are taken
+out of it, its mesh kept. Whether a region keeps its river masks is one rule (`keeps_rivers`: soft
+banks chosen, or the masks there already, in place or waiting whole), read before anything is
+deleted, by `wanted`, by the stages kept and by the install. The update's overlays are downloaded
+with it and wait in the download folder, named in the stage's record, then its marker's
+(`overlays_waiting`), and are unpacked only once the region is in place: new roads never stand on
+the mesh of before.
 
 A region installed already changes only with Live stopped and X-Plane not running
 (`Installer.may_swap`, `LiveControl._may_swap`): else its stage, whole, waits (the install's phase
@@ -528,7 +537,8 @@ aside whose successor never took its place is put back; one of before left besid
 is deleted; at a start or an install that may, a whole stage is put in place, the region's, then
 its river masks' (`put_rivers_in_place`). The page counts an update by what the region's marker
 does not record (`not_installed`), so that a whole stage waiting keeps its Update, which
-downloads nothing and only puts it in place. Each zip is downloaded under a name holding its SHA-256
+downloads nothing and only puts it in place. Each zip is downloaded under a name holding its
+SHA-256
 (`Zip.download`): a part of a zip made again since is deleted at the next install instead of
 being resumed into a damaged file, and a river zip never meets its mesh zip of the same name. A
 zip that cannot be unpacked is deleted, downloaded again the next time. The room the whole install
@@ -540,7 +550,8 @@ by the same rule as a region (« Water »). Deleting a region renames it aside f
 of its own (`.z_osxp_<id>.old.<n>`, never taken for an update stopped halfway, which `settle`
 would put back), then deletes it, its stage and its downloads: a folder held open is not touched
 at all; a region of which a stop left only its stage or the region of before is deleted too
-(`present`). The zip being unpacked into a stage is named in its record first (`unpacking`): a
+(`present`), the deletion in the background, the request not waiting for it. The zip being
+unpacked into a stage is named in its record first (`unpacking`): a
 stop halfway, then that zip made again under the same path, starts the stage again rather than
 leave half of its version of before in it.
 
