@@ -297,8 +297,8 @@ def test_the_masks_node_budgets_for_the_worker_count_the_rule_uses(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """FINDING M1, FIXED (test amended): ``_masks_ram_mb`` budgets
-    ``300 + a worker's profile x masks_workers(env)`` (250 MB for ``sand``, 2026-10-28) and the
-    node now *passes that number* to the rule
+    ``300 + a worker's profile x masks_workers(env, params)`` (250 MB for ``sand``, 2026-10-28)
+    and the node now *passes that number* to the rule
     (``MasksJob.workers``), which passes it to ``build_masks``. The default of
     ``worker_count`` is capped at ``MAX_WORKERS`` too, so even an unbound rule cannot start
     one process per core."""
@@ -306,7 +306,7 @@ def test_the_masks_node_budgets_for_the_worker_count_the_rule_uses(
     env = BuildEnv.create([_spec(tmp_path)])
     env.workers = 2
     declared = buildmod._masks_ram_mb(env, masks_rule.MasksParams())
-    budgeted_workers = buildmod.masks_workers(env)
+    budgeted_workers = buildmod.masks_workers(env, masks_rule.MasksParams())
     assert budgeted_workers == 2 and declared == 300 + 250 * 2
     with masks_rule.masks_job(masks_rule.MasksJob(workers=budgeted_workers)):
         job = masks_rule.current_masks_job()
@@ -324,16 +324,18 @@ def test_the_same_env_var_is_parsed_once_for_everybody(
     never be computed from two different numbers."""
     from orthostudio.masks.build import env_workers
 
+    monkeypatch.setattr(buildmod, "physical_memory_mb", lambda: 16384)  # 8 for sand from 8 GB
     env = BuildEnv.create([_spec(tmp_path)])
     env.workers = 8
+    params = masks_rule.MasksParams()
     for raw in ("0", "-4", "x"):
         monkeypatch.setenv("OSXP_MASKS_WORKERS", raw)
         assert env_workers() is None
-        assert buildmod.masks_workers(env) == 8  # the batch's workers, capped at MAX_WORKERS
-        assert worker_count(64, buildmod.masks_workers(env)) == 8
+        assert buildmod.masks_workers(env, params) == 8  # the batch's workers, capped at 8
+        assert worker_count(64, buildmod.masks_workers(env, params)) == 8
     monkeypatch.setenv("OSXP_MASKS_WORKERS", "3")
     assert env_workers() == 3
-    assert buildmod.masks_workers(env) == 3 and worker_count(64, 3) == 3
+    assert buildmod.masks_workers(env, params) == 3 and worker_count(64, 3) == 3
 
 
 def test_an_oversized_node_still_runs_alone_instead_of_deadlocking(tmp_path: Path) -> None:
@@ -640,6 +642,7 @@ def test_three_masks_nodes_may_run_at_once_each_with_its_own_process_pool(
     (``slots x (300 + a worker's profile x workers)`` MB, 250 for ``sand`` since 2026-10-28)
     and its RAM budget can do its job."""
     monkeypatch.delenv("OSXP_MASKS_WORKERS", raising=False)
+    monkeypatch.setattr(buildmod, "physical_memory_mb", lambda: 16384)  # sand's 8 from 8 GB
     from orthostudio.masks.water import mask_cells
 
     slots = buildmod.default_subprocess_slots()
@@ -651,7 +654,7 @@ def test_three_masks_nodes_may_run_at_once_each_with_its_own_process_pool(
     cells = ((rng.til_x_max - rng.til_x_min) // 16 + 1) * (
         (rng.til_y_max - rng.til_y_min) // 16 + 1
     )
-    real_workers = worker_count(cells, buildmod.masks_workers(env))
+    real_workers = worker_count(cells, buildmod.masks_workers(env, masks_rule.MasksParams()))
     real = slots * (300 + buildmod.masks_worker_mb(masks_rule.MasksParams()) * real_workers)
     assert real_workers == min(cells, cpus, 8, env.workers)
     assert real == budgeted  # the budget now describes the pool that starts

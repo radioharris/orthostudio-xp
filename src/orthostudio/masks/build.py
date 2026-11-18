@@ -110,9 +110,10 @@ def worker_count(cells: int, workers: int | None = None) -> int:
     """How many processes to use: the argument, then ``$OSXP_MASKS_WORKERS``, then the default.
 
     The default is ``min(MAX_WORKERS, os.cpu_count())`` and never the bare core count: the
-    caller that budgets the RAM of the node (``pipeline.build._masks_ram_mb``) pays
-    ``0.8 GB`` per process, and an unbounded pool made that budget meaningless (review 4,
-    finding M1). An explicit argument is honoured as given -- it is the pipeline's own count.
+    caller that budgets the RAM of the node (``pipeline.build._masks_ram_mb``) pays a worker of
+    its profile per process (``masks.rule.masks_worker_mb``), and an unbounded pool made that
+    budget meaningless (review 4, finding M1). An explicit argument is honoured as given -- it is
+    the pipeline's own count.
     """
     if workers is None:
         workers = env_workers()

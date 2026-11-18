@@ -964,16 +964,55 @@ def test_the_masks_reserve_their_pool_only_where_there_is_water_to_draw(
         ({}, 250),  # sand, the default: 242 MB a worker (masks-build.md 6.2)
         ({"masking_mode": "rocks"}, 710),
         ({"masking_mode": "3steps"}, 990),
-        ({"distance_masks_too": True}, 970),
+        ({"distance_masks_too": True}, 1400),
     ],
 )
 def test_the_masks_pool_is_reserved_by_its_profile(
     tmp_path: Path, env: BuildEnv, config: dict[str, object], worker_mb: int
 ) -> None:
     """Every profile counted 800 MB a worker: three times what ``sand`` takes, less than
-    ``3steps``."""
+    ``3steps``; the distance masks were counted the heavier of the profile and 970 MB until
+    2026-11-18 (``masks_worker_mb``'s own table: ``test_masks_rule``)."""
     (g,) = _declare([_spec(tmp_path, config=config)], _sched(env), env)
-    assert _masks_ram_mb(env, g.masks.params) == 300 + worker_mb * masks_workers(env)
+    workers = masks_workers(env, g.masks.params)
+    assert _masks_ram_mb(env, g.masks.params) == 300 + worker_mb * workers
+
+
+@pytest.mark.parametrize(
+    ("memory_mb", "config", "workers"),
+    [
+        (8192, {}, 8),  # sand, the default, keeps its eight from 8 GB up
+        (16384, {}, 8),
+        (16384, {"masking_mode": "3steps"}, 5),
+        (16384, {"masking_mode": "soft"}, 4),
+        (16384, {"masking_mode": "soft", "distance_masks_too": True}, 3),
+        (32768, {"masking_mode": "soft", "distance_masks_too": True}, 6),
+        (65536, {"masking_mode": "soft", "distance_masks_too": True}, 8),
+    ],
+)
+def test_the_masks_pool_holds_in_half_the_budget(
+    tmp_path: Path,
+    env: BuildEnv,
+    monkeypatch: pytest.MonkeyPatch,
+    memory_mb: int,
+    config: dict[str, object],
+    workers: int,
+) -> None:
+    """Eight workers of the distance masks with ``soft`` would take more than a computer of 16 GB
+    has (1,750 MB measured a worker), and a node above the budget only waits for every other step
+    to end, then starts its whole pool (2026-11-18): the pool holds in half of the budget, the node
+    hands the rule the very count it reserves."""
+    from orthostudio.pipeline import build as buildmod
+
+    monkeypatch.delenv("OSXP_MASKS_WORKERS", raising=False)
+    monkeypatch.setattr(buildmod, "physical_memory_mb", lambda: memory_mb)
+    env.workers = 14
+    env.memory_share = 0.7
+    (g,) = _declare([_spec(tmp_path, config=config)], _sched(env), env)
+    assert masks_workers(env, g.masks.params) == workers
+    budget = buildmod.ram_budget_mb(env.memory_share)
+    assert budget is not None
+    assert _masks_ram_mb(env, g.masks.params) <= budget // 2
 
 
 def test_the_masks_reserve_a_worker_for_each_cell_with_water(tmp_path: Path, env: BuildEnv) -> None:
@@ -984,7 +1023,7 @@ def test_the_masks_reserve_a_worker_for_each_cell_with_water(tmp_path: Path, env
 
     (g,) = _declare([_spec(tmp_path)], _sched(env), env)
     masks = g.masks
-    assert masks_workers(env) == 2
+    assert masks_workers(env, masks.params) == 2
     mesh = _mesh_stats(tmp_path, "tile", {"1": 100, "4": 1})
     # the middle quarters of cell (8432, 6000) of +43+005 at ZL 14: no neighbour cell's margin
     lat, lon = tile_to_wgs84(4 * 8432 + 24, 4 * 6000 + 24, 16)

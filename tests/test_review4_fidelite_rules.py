@@ -156,7 +156,7 @@ def test_the_masks_node_reserves_the_ram_of_the_pool_it_actually_starts(
     """
     env = _env(tmp_path, workers=4)
     monkeypatch.delenv("OSXP_MASKS_WORKERS", raising=False)
-    declared = masks_workers(env)  # what _masks_ram_mb() pays for
+    declared = masks_workers(env, MasksParams())  # what _masks_ram_mb() pays for
     with masks_job(MasksJob(workers=declared)):
         job = current_masks_job()
         assert job is not None
