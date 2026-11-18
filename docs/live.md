@@ -471,14 +471,14 @@ Its roads, forests and buildings stay, shared by the old and the new mesh; the r
 **Delete** takes its kept mesh with it. Once no region keeps an old mesh, Mesh goes back to New.
 
 **Not enough room for an update.** The new mesh is installed beside the old one, so the disk holds
-both for a while. When it lacks the room and deleting a mesh would free enough, Live says how much
-the update needs and how much is left, and offers to delete it first: the kept old mesh where that
-is enough, the update then running as usual, the region in use all along; else the installed
-region, the question saying that the region has no mesh until the install ends (X-Plane shows its
-own scenery there) and that a stopped install goes on from where it stopped. A mesh Live's last
-start was made from frees almost nothing until the next start, its files shared with the scenery
-Live gives X-Plane: Live does not offer to delete it then, nor anything while X-Plane is open
-(quit it first) or while Live streams. Otherwise the update stops, saying the room it lacks.
+both for a while. When it lacks the room, Live says how much the update needs and how much is left,
+and starts nothing. Where the region keeps an old mesh whose deletion makes enough room on every
+disk the update needs, it offers **Delete the kept old one and install the new one**: the kept mesh
+goes, and the update then runs as usual, the region in use all along. Live never deletes the
+installed region to make room. Nothing is offered while X-Plane is open (quit it first) or Live
+streams, nor for a kept mesh Live's last start was made from: its files are shared with the
+scenery Live gives X-Plane until the next start, and deleting it would free almost nothing.
+Otherwise, free some room on the disk and click **Update** again.
 
 A region AutoOrtho installed on its own is still recognised, and left as it is; Live no longer
 offers to install AutoOrtho's. In a terminal, `python -m orthostudio.live regions list`,

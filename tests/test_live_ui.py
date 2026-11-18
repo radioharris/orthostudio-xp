@@ -1381,12 +1381,12 @@ class FakeInstaller:
         night_only: bool = False,
         rivers: bool = False,
         may_swap=None,
-        keep: bool = False,
-        make_room: str = "",
+        keep_old: bool = False,
+        make_room: bool = False,
     ) -> None:
         self.region = region
         self.may_swap = may_swap
-        self.keep = keep
+        self.keep_old = keep_old
         self.make_room = make_room
         self.overlays = overlays
         self.night_only = night_only
@@ -1585,12 +1585,12 @@ def test_an_update_s_answers_reach_its_install(home: Path, tmp_path: Path, monke
     listed = {r["id"]: r for r in c.regions()["list"]}
     assert listed["eur"]["whole"] is True  # its update replaces the mesh: the window asks
     assert listed["eur"]["room"] is None  # room enough here
-    c.install_region("eur", keep=True)
-    assert c._installer.keep and not c._installer.make_room
+    c.install_region("eur", keep_old=True)
+    assert c._installer.keep_old and not c._installer.make_room
     c.cancel_install()
     wait_for(lambda: not c.installing())
-    c.install_region("eur", make_room="all")
-    assert c._installer.make_room == "all" and not c._installer.keep
+    c.install_region("eur", make_room=True)
+    assert c._installer.make_room is True and not c._installer.keep_old
     assert c._installer.may_swap()  # what the install asks before it deletes
     monkeypatch.setattr(control_module, "xplane_running", lambda: True)
     assert not c._installer.may_swap()
@@ -1610,8 +1610,8 @@ async def test_the_kept_mesh_api(home: Path, tmp_path: Path, monkeypatch) -> Non
         done = await client.delete("/api/live/regions/eur/kept")
         assert done.status_code == 200
         assert "kept" not in {r["id"]: r for r in done.json()["list"]}["eur"]
-        started = await client.post("/api/live/regions/eur/install", json={"keep": True})
-        assert started.status_code == 202 and c._installer.keep
+        started = await client.post("/api/live/regions/eur/install", json={"keep_old": True})
+        assert started.status_code == 202 and c._installer.keep_old
         await client.post("/api/live/regions/cancel")
         wait_for(lambda: not c.installing())
         bad = await client.post("/api/live/regions/eur/install", json={"make_room": "everything"})

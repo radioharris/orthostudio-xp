@@ -723,11 +723,11 @@ function askRegion({ title, lines, yes = null, no, danger = false }) {
 
 /**
  * Update. Where the disk lacks room for the new mesh beside the old one (r.room, the install's own
- * rule: orthostudio/live/osxpregions.py update_room) and deleting a mesh frees enough, the window
- * says so in one question and offers to delete it first: the region's kept old mesh where that is
- * enough, else the region itself, the line saying it goes without a mesh until the install ends;
- * never offered while X-Plane runs, which reads the region. Else, where the update replaces the
- * mesh (r.whole), whether to keep the one of before, « Don't keep » the default.
+ * count: orthostudio/live/osxpregions.py _room), one question says so and nothing starts; it
+ * offers to delete the region's kept old mesh first only where that makes every disk enough and
+ * X-Plane is closed (it reads the region: the question says to quit it first), never the region
+ * itself. Else, where the update replaces the mesh (r.whole), whether to keep the one of before,
+ * « Don't keep » the default.
  */
 async function updateRegion(id) {
   const regions = last?.regions || {};
@@ -735,28 +735,28 @@ async function updateRegion(id) {
   const mine = (regions.ours || []).find((x) => x.id === id) || {};
   const name = t(`region.${id}`);
   const room = r.room;
-  if (room && (room.kept || room.all)) {
-    const lines = [t("regions.room_text", { name, need: gb(room.need), free: gb(room.free) })];
-    if (room.kept) lines.push(t("regions.room_kept"));
-    else lines.push(t("regions.room_all", { name }), ...(r.kept ? [t("regions.room_all_kept")] : []));
+  if (room) {
     const xplane = Boolean(last?.checks?.xplane_running);
-    if (xplane) lines.push(t("regions.room_xplane"));
-    const yes = xplane ? null : room.kept ? t("regions.room_yes_kept") : t("regions.room_yes");
-    const go = await askRegion({ title: t("regions.room_title"), lines, yes, no: t("regions.ask_cancel"), danger: true });
-    if (go === "yes") await regionAct(`regions/${id}/install`, "POST", { make_room: room.kept ? "kept" : "all" });
+    const lines = [t("regions.room_text", { name, need: gb(room.need), free: gb(room.free) })];
+    if (!room.kept) lines.push(t("regions.room_none"));
+    else lines.push(t("regions.room_kept"), ...(xplane ? [t("regions.room_xplane")] : []));
+    const offer = room.kept && !xplane;
+    const go = await askRegion({ title: t("regions.room_title"), lines, yes: offer ? t("regions.room_yes") : null,
+      no: offer ? t("regions.ask_cancel") : t("regions.ask_ok"), danger: true });
+    if (go === "yes") await regionAct(`regions/${id}/install`, "POST", { make_room: true });
     return;
   }
-  let keep = false;
-  if (r.whole && !room) {
+  let keepOld = false;
+  if (r.whole) {
     const lines = [mine.size ? t("regions.keep_text_size", { gb: gb(mine.size) }) : t("regions.keep_text")];
     if (r.kept) lines.push(t("regions.keep_replaces"));
     if (last?.settings?.mesh === "old") lines.push(t("regions.keep_old_setting")); // kept, it is flown
     const answer = await askRegion({ title: t("regions.keep_title", { name }), lines,
       yes: t("regions.keep_yes"), no: t("regions.keep_no") });
     if (!answer) return; // closed: nothing done
-    keep = answer === "yes";
+    keepOld = answer === "yes";
   }
-  await regionAct(`regions/${id}/install`, "POST", { keep });
+  await regionAct(`regions/${id}/install`, "POST", { keep_old: keepOld });
 }
 
 /** « Delete from the disk » on a region's kept old mesh: Live warns first that it cannot be
@@ -764,7 +764,7 @@ async function updateRegion(id) {
 async function removeKept(id) {
   const name = t(`region.${id}`);
   const go = await askRegion({ title: t("regions.kept_ask_title", { name }), lines: [t("regions.kept_ask_text")],
-    yes: t("regions.kept_remove"), no: t("regions.keep_yes"), danger: true });
+    yes: t("regions.kept_remove"), no: t("regions.kept_ask_no"), danger: true });
   if (go === "yes") await regionAct(`regions/${id}/kept`, "DELETE");
 }
 

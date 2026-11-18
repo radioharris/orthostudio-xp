@@ -27,8 +27,8 @@ can include as it is the day Live comes into its window (``app.include_router``)
 - ``GET``/``PUT /api/live/xplane-folder`` ``{"path"}``: the X-Plane folder named in OrthoStudio
   XP's settings, the same for Build and Live, with the other X-Planes of the computer;
 - ``GET /api/live/regions``: OrthoStudio XP's regions (:meth:`LiveControl.regions`);
-  ``POST /api/live/regions/{id}/install`` ``{"keep": bool, "make_room": "" | "kept" | "all"}``:
-  install or update one, the region of before kept or not, room made first or not;
+  ``POST /api/live/regions/{id}/install`` ``{"keep_old": bool, "make_room": bool}``: install or
+  update one, the region of before kept or not, its kept old mesh deleted first for room or not;
   ``DELETE /api/live/regions/{id}``: delete one; ``DELETE /api/live/regions/{id}/kept``: delete
   its kept old mesh alone (409 for each where it may not);
 - ``GET /api/live/providers``: the imagery sources, as OrthoStudio XP's ``GET /api/providers``;
@@ -97,8 +97,8 @@ class PrepareBody(BaseModel):
 
 
 class InstallBody(BaseModel):
-    keep: bool = False  # the region of before kept at the swap (osxpregions.kept_dir)
-    make_room: Literal["", "kept", "all"] = ""  # osxpregions.Installer.make_room
+    keep_old: bool = False  # the region of before kept at the swap (osxpregions.kept_dir)
+    make_room: bool = False  # its kept old mesh deleted first (osxpregions.Installer.make_room)
 
 
 def live_router(
@@ -274,7 +274,7 @@ def live_router(
     def install_region(region_id: str, body: InstallBody | None = None) -> dict[str, Any]:
         body = body or InstallBody()
         try:
-            control.install_region(region_id, keep=body.keep, make_room=body.make_room)
+            control.install_region(region_id, keep_old=body.keep_old, make_room=body.make_room)
         except session.RefusedError as e:
             raise HTTPException(409, str(e)) from e
         return control.regions()

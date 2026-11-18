@@ -923,7 +923,7 @@ class LiveControl:
                 )
                 item["whole"] = installed and osxpregions.made_whole(root, region)
                 item["room"] = (
-                    osxpregions.update_room(root, region, overlays, rivers, default_pack_dir())
+                    osxpregions.update_room(root, region, overlays, rivers)
                     if item["whole"]
                     else None
                 )
@@ -936,17 +936,20 @@ class LiveControl:
             "install": progress,
         }
 
-    def install_region(self, region_id: str, *, keep: bool = False, make_room: str = "") -> None:
+    def install_region(
+        self, region_id: str, *, keep_old: bool = False, make_room: bool = False
+    ) -> None:
         """Download and install one of OrthoStudio XP's regions into Live's folder, or update one
         (whole, beside the one installed, which it replaces), in the background. One at a time; a
         region new while Live streams is used from the next start, and one installed is not
         updated then: the pack reads its files. An update whole while X-Plane runs waits for Live's
         next start with X-Plane not running (``osxpregions.settle``); Start waits for the install
-        (:meth:`installing`). ``keep``: the window's answer, the region of before kept at the
-        swap as the region's old mesh. ``make_room``: the window's « Delete the old one and install
-        the new one » where the disk lacks room (``osxpregions.Installer.make_room``), which
-        deletes only with Live stopped and X-Plane not running, at the moment it does; Mesh back
-        to new once no region keeps an old mesh (:meth:`_mesh_follows_kept`)."""
+        (:meth:`installing`). ``keep_old``: the window's answer, the region of before kept at the
+        swap as the region's old mesh. ``make_room``: the window's « Delete the kept old one and
+        install the new one » where the disk lacks room (``osxpregions.Installer.make_room``),
+        which the install checks again by the window's own rule and only with Live stopped and
+        X-Plane not running, at the moment it deletes; Mesh back to new once no region keeps an
+        old mesh (:meth:`_mesh_follows_kept`)."""
         self._stop_night_grids()
         with self._lock:
             region = (self._catalog or {}).get(region_id)
@@ -961,7 +964,7 @@ class LiveControl:
             log=self.log,
             rivers=settings.rivers_fade,
             may_swap=self._may_swap,
-            keep=keep,
+            keep_old=keep_old,
             make_room=make_room,
         )
         thread = threading.Thread(
@@ -1097,13 +1100,14 @@ class LiveControl:
                     self._install_thread = None
 
     def _mesh_follows_kept(self) -> None:
-        """The Settings' Mesh back to new once no region keeps an old mesh: Old left behind would
-        stream the next old mesh kept, unasked. Its switch shows only while one is kept."""
+        """The Settings' Mesh back to new once no region keeps an old mesh, one still waiting to
+        be renamed as kept counted (``osxpregions.keeps_old``): Old left behind would stream the
+        next old mesh kept, unasked. Its switch shows only while one is kept."""
         settings = self._settings()
         if settings.mesh != "old":
             return
         root = live_root()
-        if any(osxpregions.kept_mesh(root, r) for r in osxpregions.installed(root)):
+        if any(osxpregions.keeps_old(root, r) for r in osxpregions.installed(root)):
             return
         from orthostudio.live.settings import save_settings
 
@@ -1126,13 +1130,13 @@ class LiveControl:
 
     def remove_kept(self, region_id: str) -> None:
         """The window's « Delete from the disk » on a region's kept old mesh, which cannot be
-        downloaded again (``osxpregions.remove_mesh``), by the rule of every deletion
+        downloaded again (``osxpregions.remove_kept``), by the rule of every deletion
         (:meth:`_deleting`). The region's overlays stay: its new mesh has them too."""
         with self._deleting(region_id):
             if osxpregions.kept_mesh(live_root(), region_id) is None:
                 raise session.RefusedError(f"the region {region_id!r} keeps no old mesh")
             try:
-                osxpregions.remove_mesh(live_root(), region_id, kept=True, log=self.log)
+                osxpregions.remove_kept(live_root(), region_id, log=self.log)
             except osxpregions.InstallError as e:  # held open: nothing deleted
                 raise session.RefusedError(str(e)) from e
 

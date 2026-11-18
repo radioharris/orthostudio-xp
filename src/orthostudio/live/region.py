@@ -1019,12 +1019,13 @@ def setup_region(
     had = sources_of(old)
     version = old.get("version", 1) if old else REGION_VERSION
     now = _fingerprints(sources)
-    # a start with X-Plane running on a region changed is refused before (session.prepare)
+    # set up again or merged into by the one rule a start reads too (pack_to_redo): a start with
+    # X-Plane running on a pack to set up again is refused before (session.prepare)
     changed = changed_regions(sources, pack_dir)
     if changed:
         log(f"the region {changed[0].name} changed since the pack was set up: set up again")
-        force = True
-    if old and not force and set(had) == set(keys):
+    redo = force or pack_to_redo(sources, pack_dir)
+    if old and not redo and set(had) == set(keys):
         if "fingerprints" not in old:  # a pack of before: what its regions are from now on
             old["fingerprints"] = now
             marker.write_text(json.dumps(old))
@@ -1043,12 +1044,12 @@ def setup_region(
         return old
     t0 = time.monotonic()
     names_of = ", ".join(s.name for s in sources)
-    # only regions to add after those of before: merged in. One that comes first (Live's own
-    # mesh, orthostudio.live.scenery.osxp_regions) must take the squares it has: merged in, the
-    # DSFs of before stayed and X-Plane read them with that region's terrain files (2026-10-18)
-    # not when the pack is set up again (``force``, a region of before changed included): its DSFs
-    # of before would stay beside its lists of now
-    adding = _adding(had, keys) and not force
+    # only regions added after those of before (_adding): merged in. One that comes first (Live's
+    # own mesh, orthostudio.live.scenery.osxp_sources) must take the squares it has: merged in,
+    # the DSFs of before stayed and X-Plane read them with that region's terrain files
+    # (2026-10-18); never when the pack is set up again (``redo``, a region of before changed
+    # included): its DSFs of before would stay beside its lists of now
+    adding = bool(had) and not redo
     if old and (version < REGION_VERSION or not adding) and not xplane_running():
         forget = _unnamed(pack_dir, sources, changed, lists) if changed else set()
         _to_squares(pack_dir, log, forget)  # the files of the regions of before

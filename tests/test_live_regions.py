@@ -674,7 +674,10 @@ def test_no_start_on_a_mesh_changed_while_xplane_runs(
     switched = session.Options(xplane=xp, pack=pack, source=old, no_plugin=True)
     with pytest.raises(session.RefusedError, match="the mesh changed since Live last started") as e:
         session.prepare(switched, log=quiet)
-    assert "a disk holding a mesh not connected" in str(e.value) and "z_ao_test" not in str(e.value)
+    said = str(e.value)
+    assert "a region was installed, updated or deleted" in said.lower()
+    assert "Mesh was switched between New and Old" in said
+    assert "a disk holding a mesh is not connected" in said and "z_ao_test" not in said
     assert sources_of_pack(pack) == [new]  # the pack as X-Plane found it
     monkeypatch.setattr(session, "xplane_running", lambda: False)
     session.prepare(switched, log=quiet)  # X-Plane closed: set up again from the old mesh

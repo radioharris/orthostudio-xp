@@ -367,9 +367,9 @@ def prepare(options: Options, log: Log) -> Prepared:
     if xplane_running() and pack_to_redo(sources, pack_dir):  # as a new zoom, below
         raise RefusedError(
             "the mesh changed since Live last started and X-Plane is running: it may be reading "
-            "the mesh of before (a region updated, the other mesh chosen in the Settings, or a "
-            "disk holding a mesh not connected). Quit X-Plane, or connect that disk, then start "
-            "again"
+            "the mesh of before. A region was installed, updated or deleted, Mesh was switched "
+            "between New and Old in the Settings, or a disk holding a mesh is not connected: quit "
+            "X-Plane, or connect that disk, then start again"
         )
     from orthostudio.live import machine
 
