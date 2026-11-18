@@ -367,7 +367,8 @@ def prepare(options: Options, log: Log) -> Prepared:
     if xplane_running() and pack_to_redo(sources, pack_dir):  # as a new zoom, below
         raise RefusedError(
             "the meshes Live streams onto changed since its last start, and X-Plane may be "
-            "reading those of before. Quit X-Plane, then start again"
+            "reading those of before. Quit X-Plane, or connect the disk holding a mesh, then start "
+            "again"
         )
     from orthostudio.live import machine
 

@@ -441,10 +441,12 @@ it stopped, and the region of before stays as it was; so does a computer stopped
 the middle, put right the next time Live opens or starts. A region changes only with Live stopped
 and X-Plane closed: with X-Plane open, the update, once complete, waits, the panel saying "Update
 ready", and Live puts it in place at its next start with X-Plane closed, before anything else; with
-X-Plane open, that start flies the region of before. A region that changed since Live last started
-does not start Live while X-Plane is open, which may be reading the region of before: quit X-Plane,
-then start. On Windows, a region another program holds open cannot be replaced: the panel says so;
-close it and click **Update** again, which downloads nothing more. While a region is being
+X-Plane open, that start flies the region of before. When the meshes Live streams onto changed since
+its last start (a region installed, updated or deleted, Mesh switched between New and Old, another
+tool's mesh or an AutoOrtho region changed, a disk holding a mesh not connected), Live does not
+start while X-Plane is open, which may be reading those of before: quit X-Plane, or connect that
+disk, then start. On Windows, a region another program holds open cannot be replaced: the panel says
+so; close it and click **Update** again, which downloads nothing more. While a region is being
 downloaded or installed, Start waits, the window saying why. Updating waits until Live is stopped. A
 region's night grids made again on the server while its mesh is not come by themselves, a few
 megabytes (Europe 11.6 MB), as the window opens: no Update to click; with a new mesh they come in
@@ -453,22 +455,21 @@ one is. Live reads the regions of the light mesh, made in November 2026, from a 
 the Lives up to 2.2 keep the world of before, and the two never mix.
 
 **Keeping the old mesh.** When an update replaces a region's mesh, Live first asks whether to keep
-the old one: **Keep** leaves it on the disk beside the new one (the question says its size), so
-that you can go back to it; **Don't keep**, the default, deletes it once the new one is in place,
-as before. If you click **Update** again before the update takes its place (X-Plane was open), the
-last answer counts. A region keeps one old mesh: keeping a newer one deletes the one kept until
-then, and the question says so. A kept mesh never changes: it is never updated and never
-downloaded again, the server keeping no old release, and it may lack the masks of rivers and
-lakes, so that Soft banks does not apply on it. Once a region keeps one, the panel shows **Mesh:
-New / Old**, for all the regions at once: Old streams each region's kept mesh where it has one, and
-the new mesh elsewhere; with Old, the question of an update says that the mesh you keep is the one
-Live goes on showing. Like the other settings it takes effect at Live's next start, and never while
-X-Plane is open: a start with X-Plane open on a mesh that changed is refused, as a new zoom is.
-Under its region, the kept mesh shows its size and **Delete from the disk**, which warns first that
-it cannot be downloaded again; like every deletion it is possible only with Live stopped and
-X-Plane closed. Its roads, forests and buildings stay, shared by the old and the new mesh; the
-region's own **Delete** takes its kept mesh with it. Once no region keeps an old mesh, Mesh goes
-back to New.
+the old one: **Keep** leaves it on the disk beside the new one (the question says its size), so that
+you can go back to it; **Don't keep**, the default, deletes it once the new one is in place, as
+before. If you click **Update** again before the update takes its place (X-Plane was open), the last
+answer counts. A region keeps one old mesh: keeping a newer one deletes the one kept until then, and
+the question says so. A kept mesh never changes: it is never updated and never downloaded again, the
+server keeping no old release, and it may lack the masks of rivers and lakes, so that Soft banks
+does not apply on it. Once a region keeps one, the panel shows **Mesh: New / Old**, for all the
+regions at once: Old streams each region's kept mesh where it has one, and the new mesh elsewhere;
+with Old, the question of an update says that the mesh you keep is the one Live goes on showing.
+Like the other settings it takes effect at Live's next start, and never while X-Plane is open, as
+any change of the mesh (above). Under its region, the kept mesh shows its size and **Delete from the
+disk**, which warns first that it cannot be downloaded again; like every deletion it is possible
+only with Live stopped and X-Plane closed. Its roads, forests and buildings stay, shared by the old
+and the new mesh; the region's own **Delete** takes its kept mesh with it. Once no region keeps an
+old mesh, Mesh goes back to New.
 
 **Not enough room for an update.** The new mesh is installed beside the old one, so the disk holds
 both for a while; what an update stopped earlier left, and which the new one no longer needs, is

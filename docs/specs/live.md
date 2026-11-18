@@ -610,30 +610,33 @@ pack's, the download folder's), which the install checks before its first byte
 the install: its stale stages (`_stale_stages`: its stage where its mesh is the list's, or where it
 holds a zip the list no longer has, an update of before stopped or waiting with a newer one listed
 since; its river masks it no longer keeps) and its stale downloads (`_stale_downloads`), which the
-install deletes first, before the next look, never in the background (its phase `clearing`, its own
-words in the row; a Stop meanwhile is honoured once that is done, before anything else is deleted,
-and the room an install makes checks Stop again before it deletes the kept mesh) (a release stopped
-halfway left the page saying no room for ever, or offering to delete the kept mesh when deleting
-that stage was enough: the reviews of 2026-11-18). `_room_for_update` reads it so for the page,
-asked as Update is clicked and never at each look, a stale stage read whole, the button waiting
-meanwhile (« Calcul de la place… », one request at a time) (`LiveControl.update_room`, `GET
-regions/<id>/room`: what it needs and what is free on the first disk short, `live` where that disk
-is Live's folder's rather than the region's (the window names that folder as the Settings show it),
-`cleared` where what is free there counts what the install deletes first (the window says so), and
-`kept`, whether deleting the region's kept old mesh makes every disk enough), and for the install
-that makes room, which checks it again rather than trust the page. A kept mesh frees its marker's
-size, but nothing where Live's pack is made from it on its disk (its record,
-`region.sources_of_pack`): its DSFs and masks stay in the pack as clones or hard links
-(`region.place_file`) until a start sets the pack up again; deleted then, it would free nothing and
-could not be downloaded again. The window then asks one question and starts nothing, its room in
-plain words always: with `kept` and X-Plane closed, it offers « Delete the kept old one and install
-the new one » (`Installer.make_room`: the kept mesh deleted before the next look, phase `deleting`,
-only with Live stopped and X-Plane not running, checked as it deletes, the region in use all along),
-then asks whether to keep the mesh of before as any update does (a rename, no room); with X-Plane
-open, it says to quit it first and click Update again; without, to free some room and click Update
-again. The installed region is never deleted to make room (the owner, 2026-11-18): with no kept mesh
-to delete, an update waits for the room. Where the page saw room, the install still stops on its own
-words should the disk fill meanwhile.
+install deletes first, before the next look, never in the background (the stages in its phase
+`clearing`, its own words in the row, the downloads as its download starts; a Stop during the
+clearing is honoured once it is done, and the room an install makes checks Stop once more, just
+before it deletes the kept mesh) (a release stopped halfway left the page saying no room for ever,
+or offering to delete the kept mesh when deleting that stage was enough: the reviews of 2026-11-18).
+`_room_for_update` reads it so for the page, asked as Update is clicked and never at each look, a
+stale stage read whole, the button waiting meanwhile (« Calcul de la place… », one request at a
+time) (`LiveControl.update_room`, `GET regions/<id>/room`: what it needs and what is free on the
+first disk short, `live` where that disk is Live's folder's rather than the region's (the window
+names that folder as the Settings show it), `cleared` where what is free there counts what the
+install deletes first (the window says so), and `kept`, whether deleting the region's kept old mesh
+makes every disk enough), and for the install that makes room, which checks it again rather than
+trust the page. A kept mesh frees its marker's size, but nothing where Live's pack on its disk
+shares its files (`_kept_frees`): its DSFs and masks stay in the pack as clones or hard links
+(`region.place_file`) until a start sets the pack up again, the pack made from it (its record names
+it) or from the region before the swap that kept it (its record names the region, which changed
+since, `region.changed_regions`: an update kept with Live stopped, before any start, the reviews of
+2026-11-18); deleted then, it would free nothing and could not be downloaded again. The window then
+asks one question and starts nothing, its room in plain words always: with `kept` and X-Plane
+closed, it offers « Delete the kept old one and install the new one » (`Installer.make_room`: the
+kept mesh deleted before the next look, phase `deleting`, only with Live stopped and X-Plane not
+running, checked as it deletes, the region in use all along), then asks whether to keep the mesh of
+before as any update does (a rename, no room); with X-Plane open, it says to quit it first and click
+Update again; without, to free some room and click Update again. The installed region is never
+deleted to make room (the owner, 2026-11-18): with no kept mesh to delete, an update waits for the
+room. Where the page saw room, the install still stops on its own words should the disk fill
+meanwhile.
 
 A region installed already changes only with Live stopped and X-Plane not running
 (`Installer.may_swap`, `LiveControl._may_swap`): else its stage, whole, waits (the install's phase

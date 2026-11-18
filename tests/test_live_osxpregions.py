@@ -21,6 +21,7 @@ from pathlib import Path
 import httpx
 import pytest
 
+from orthostudio.clean import disk_bytes
 from orthostudio.live import aoregions, osxpregions
 from orthostudio.live.osxpregions import Installer, OsxpRegion, Zip
 
@@ -148,14 +149,23 @@ def total(region: OsxpRegion, kind: str = "size", rivers: bool = False) -> int:
     return sum(getattr(z, kind) for z in zips)
 
 
-def install(root: Path, region: OsxpRegion, host: Host, **kw) -> tuple[Installer, list[str]]:
-    """One install, Live stopped and X-Plane not running unless ``may_swap`` says otherwise."""
+def install(
+    root: Path,
+    region: OsxpRegion,
+    host: Host,
+    started: Callable[[Installer], None] | None = None,
+    **kw,
+) -> tuple[Installer, list[str]]:
+    """One install, Live stopped and X-Plane not running unless ``may_swap`` says otherwise;
+    ``started`` told of it before it runs (the pilot's Stop, from a test)."""
     lines: list[str] = []
     client = httpx.Client(
         transport=httpx.MockTransport(host), headers={"Authorization": f"Bearer {TOKEN}"}
     )
     kw.setdefault("may_swap", lambda: True)
     inst = Installer(root, region, client=client, host=(URL, TOKEN), log=lines.append, **kw)
+    if started is not None:
+        started(inst)
     inst.run()
     return inst, lines
 
@@ -2008,11 +2018,13 @@ def short_disk(monkeypatch):
 
 
 def pack_made_of(pack: Path, *sources: Path) -> Path:
-    """Live's pack, its record saying it is made from these regions."""
-    from orthostudio.live.region import REGION_MARKER
+    """Live's pack, its record saying it is made from these regions as they are now, their
+    fingerprints with them, as a start sets it up (``region.setup_region``)."""
+    from orthostudio.live.region import REGION_MARKER, _fingerprints
 
     (pack / REGION_MARKER).parent.mkdir(parents=True, exist_ok=True)
-    (pack / REGION_MARKER).write_text(json.dumps({"sources": [str(s) for s in sources]}))
+    record = {"sources": [str(s) for s in sources], "fingerprints": _fingerprints(sources)}
+    (pack / REGION_MARKER).write_text(json.dumps(record))
     return pack
 
 
@@ -2345,39 +2357,23 @@ def test_a_stop_while_a_stale_stage_is_deleted_deletes_nothing_more(
     files, region = updated(files, region, b"third")
     inst, _ = install(tmp_path, region, Host(files), may_swap=lambda: False)  # B waits
     files, region = updated(files, region, b"fourth")  # D listed: B's stage stale
-    from orthostudio.clean import disk_bytes
-
     stage = osxpregions.stage_dir(tmp_path, "eur")
     folder = osxpregions.mesh_dir(tmp_path, "eur")
     # short by one byte more than B's stage frees: deleting the kept mesh too would be enough
     short_disk(tmp_path, region, kept_of(tmp_path), folder, stage, by=disk_bytes([stage]) + 1)
     room = osxpregions.update_room(tmp_path, region, True, False)
     assert room is not None and room["kept"] is True and room["cleared"] is True
-    holder: dict = {}
+    running: list[Installer] = []
     phases: list[str] = []
     dropping = osxpregions._drop_stale
 
-    def drop_then_stop(stage, stale):
-        phases.append(holder["inst"].progress.phase)
-        dropping(stage, stale)
-        holder["inst"].cancel()  # the pilot's Stop during the deletion
+    def drop_then_stop(stale):
+        phases.append(running[0].progress.phase)
+        dropping(stale)
+        running[0].cancel()  # the pilot's Stop during the deletion
 
     monkeypatch.setattr(osxpregions, "_drop_stale", drop_then_stop)
-    lines: list[str] = []
-    client = httpx.Client(
-        transport=httpx.MockTransport(Host(files)), headers={"Authorization": f"Bearer {TOKEN}"}
-    )
-    inst = Installer(
-        tmp_path,
-        region,
-        client=client,
-        host=(URL, TOKEN),
-        log=lines.append,
-        may_swap=lambda: True,
-        make_room=True,
-    )
-    holder["inst"] = inst
-    inst.run()
+    inst, lines = install(tmp_path, region, Host(files), running.append, make_room=True)
     assert phases == ["clearing"]
     assert inst.progress.phase == "cancelled", lines
     assert kept_of(tmp_path).exists()  # never deleted after the Stop
@@ -2385,3 +2381,33 @@ def test_a_stop_while_a_stale_stage_is_deleted_deletes_nothing_more(
     monkeypatch.setattr(osxpregions, "_drop_stale", dropping)
     _, lines = install(tmp_path, region, Host(files), make_room=True)  # Update again, no Stop
     assert "the old mesh of OrthoStudio XP's region eur deleted" in lines  # asked, and needed
+
+
+def test_a_kept_mesh_the_pack_still_holds_from_before_its_swap_frees_nothing(
+    tmp_path: Path, world, short_disk
+) -> None:
+    """The pack set up at the last start from the region holding A, its DSFs hard links of A's
+    files; an update kept A with Live stopped, at once, the pack's record still naming the region,
+    which changed since. Deleting A frees nothing until the next start sets the pack up again: not
+    offered, never deleted by an install told to make room (the reviews of 2026-11-18). Once a
+    start set the pack up from the new mesh, it frees its size."""
+    files, region = world
+    install(tmp_path, region, Host(files))  # A installed
+    folder = osxpregions.mesh_dir(tmp_path, "eur")
+    pack = pack_made_of(tmp_path / "pack", folder)  # the last start, on A
+    dsf = "Earth nav data/+40+000/+46+005.dsf"
+    (pack / dsf).parent.mkdir(parents=True)
+    os.link(folder / dsf, pack / dsf)  # as region.place_file does
+    files, region = updated(files, region, b"second")
+    install(tmp_path, region, Host(files), keep_old=True)  # A kept, B in place, no start since
+    kept = kept_of(tmp_path)
+    assert os.stat(kept / dsf).st_nlink == 2  # the pack holds A's files still
+    files, region = updated(files, region, b"third")  # C listed before the next start
+    short_disk(tmp_path, region)
+    room = osxpregions.update_room(tmp_path, region, True, False)
+    assert room is not None and room["kept"] is False
+    inst, _ = install(tmp_path, region, Host(files), make_room=True)
+    assert inst.progress.phase == "failed" and kept.exists()  # A never lost for nothing
+    pack_made_of(pack, folder)  # a start set the pack up from B: A shared no more
+    short_disk(tmp_path, region, kept)
+    assert osxpregions.update_room(tmp_path, region, True, False)["kept"] is True

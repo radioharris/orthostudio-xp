@@ -677,7 +677,8 @@ def test_no_start_on_a_mesh_changed_while_xplane_runs(
     ) as e:
         session.prepare(switched, log=quiet)
     said = str(e.value)
-    assert said.endswith("Quit X-Plane, then start again") and "z_ao_test" not in said
+    assert said.endswith("Quit X-Plane, or connect the disk holding a mesh, then start again")
+    assert "z_ao_test" not in said
     assert sources_of_pack(pack) == [new]  # the pack as X-Plane found it
     monkeypatch.setattr(session, "xplane_running", lambda: False)
     session.prepare(switched, log=quiet)  # X-Plane closed: set up again from the old mesh

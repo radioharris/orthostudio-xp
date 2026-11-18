@@ -1137,10 +1137,11 @@ def _stale_stages(root: Path, region: OsxpRegion, rivers: bool) -> list[Stale]:
     return out
 
 
-def _drop_stale(stage: Path, stale: Stale) -> None:
+def _drop_stale(stale: Stale) -> None:
     """A stale part of a region's stages deleted before returning (:func:`_stale_stages`): a part
     of the stage takes its marker with it first (whole again only once all are there), and its
     zips leave the stage's record after."""
+    stage = stale.path.parent
     if stale.zips:
         (stage / MARKER).unlink(missing_ok=True)
     _discard(stale.path, stale.beside, wait=True)
@@ -1148,6 +1149,29 @@ def _drop_stale(stage: Path, stale: Stale) -> None:
         step = _read(stage / STEP)
         step["zips"] = {p: h for p, h in (step.get("zips") or {}).items() if p not in stale.zips}
         _write(stage / STEP, step)
+
+
+def _kept_frees(root: Path, region: str) -> int:
+    """What deleting the region's kept old mesh frees on its disk: the size its marker gives, but
+    nothing where Live's pack on that disk shares its files, its DSFs and masks clones or hard links
+    of them (``region.place_file``) until a start sets the pack up again: the pack made from it
+    (its record names it), or from the region before the swap that kept it (its record names the
+    region, which changed since, ``region.changed_regions``: kept with Live stopped, before any
+    start). Deleted then, it would leave the disk as short and could not be downloaded again. The
+    one rule of the window's offer and of the install's deletion (:func:`_room_for_update`)."""
+    from orthostudio.live.pack import pack_dir
+    from orthostudio.live.region import changed_regions, sources_of_pack
+
+    kept = kept_mesh(root, region)
+    if kept is None:
+        return 0
+    pack = pack_dir(root)
+    if _disk_of(pack) == _disk_of(kept):
+        made_of = {str(s) for s in sources_of_pack(pack)}
+        folder = mesh_dir(root, region)
+        if str(kept) in made_of or (str(folder) in made_of and changed_regions([folder], pack)):
+            return 0
+    return int(_read(kept / MARKER).get("size") or 0)
 
 
 def _room_for_update(
@@ -1166,17 +1190,12 @@ def _room_for_update(
     disk it needs has room then; else what it needs and what is free on the first disk short,
     whether that disk is Live's folder's rather than the region's (``live``) and what is free
     there counts what the install deletes first (``cleared``), and whether deleting the region's
-    kept old mesh makes every disk the install needs enough (``kept``). Never a kept mesh that frees
-    nothing: Live's pack made from it on its disk keeps its DSFs and masks as clones or hard links
-    (``region.place_file``) until a start sets the pack up again, the disk as short; deleted, it
-    could not be downloaded again."""
-    from orthostudio.live.pack import pack_dir
-    from orthostudio.live.region import sources_of_pack
+    kept old mesh makes every disk the install needs enough (``kept``), by what it frees
+    (:func:`_kept_frees`)."""
+    from orthostudio.clean import disk_bytes
 
     download = download_dir(root, region.id)
     stage = stage_dir(root, region.id)
-    from orthostudio.clean import disk_bytes
-
     freed: dict[int | None, int] = {}
     stale = [item.path for item in _stale_stages(root, region, rivers)]
     stale += _stale_downloads(download, _downloads_kept([*mesh, *ovl], waiting))
@@ -1187,31 +1206,25 @@ def _room_for_update(
             continue
         disk = _disk_of(path)
         freed[disk] = freed.get(disk, 0) + n
-    cleared = dict(freed)  # what the install deletes first, the window says it is counted
     short = _short_of_room(mesh, ovl, stage, overlay_pack(root), download, True, freed)
     if not short:
         return None
-    kept = kept_mesh(root, region.id)
-    pack = pack_dir(root)
-    frees = 0
-    if kept is not None and not (
-        _disk_of(pack) == _disk_of(kept) and str(kept) in {str(s) for s in sources_of_pack(pack)}
-    ):
-        frees = int(_read(kept / MARKER).get("size") or 0)
-        disk = _disk_of(kept)
-        freed[disk] = freed.get(disk, 0) + frees
+    first, disk = short[0], _disk_of(short[0].path)
+    cleared = freed.get(disk, 0) > 0  # what the install deletes first: the window says it counts
+    frees = _kept_frees(root, region.id)
+    if frees:
+        kept = _disk_of(kept_dir(root, region.id))
+        freed[kept] = freed.get(kept, 0) + frees
     enough = frees > 0 and not _short_of_room(
         mesh, ovl, stage, overlay_pack(root), download, True, freed
     )
-    first = short[0]
-    disk = _disk_of(first.path)
     return {
         "need": first.need,
         "free": first.free,
         "kept": enough,
         # not the region's disk: Live's folder's, which holds its downloads and its overlays
         "live": disk != _disk_of(_real(root, region.id).parent),
-        "cleared": cleared.get(disk, 0) > 0,
+        "cleared": cleared,
     }
 
 
@@ -1220,7 +1233,7 @@ def update_room(root: Path, region: OsxpRegion, overlays: bool, rivers: bool) ->
     beside it (:func:`made_whole`), :func:`_room_for_update` for the zips it would download; None
     for any other (nothing of before beside it). ``overlays`` and ``rivers`` as the install's.
     Asked once at the click, never at each look of the page: a stale stage is read whole."""
-    if not (mesh_dir(root, region.id) / MARKER).is_file() or not made_whole(root, region):
+    if _installed_zips(root, region.id) is None or not made_whole(root, region):
         return None
     mesh, ovl = to_fetch(root, region, overlays, keeps_rivers(root, region.id, rivers))
     return _room_for_update(root, region, rivers, mesh, ovl, _staged(root, region)["overlays"])
@@ -1368,7 +1381,7 @@ class Installer:
             if stale:
                 self._set(phase="clearing")
             for item in stale:
-                _drop_stale(stage, item)
+                _drop_stale(item)
             if self.stop.is_set():
                 raise CancelledError
             if whole:
@@ -1557,10 +1570,8 @@ class Installer:
         makes every disk the install needs enough, and only with Live stopped and X-Plane not
         running (``may_swap``), the rule of every deletion of a region; deleted before the next
         look, not in the background, the room counted being the disk's (phase ``deleting``).
-        Else nothing is deleted, and :meth:`_check_room` says the room it lacks. Never after the
-        pilot's Stop, which a long step before it may have hidden (a stale stage deleted)."""
-        if self.stop.is_set():  # the pilot's Stop: nothing deleted that cannot come again
-            raise CancelledError
+        Else nothing is deleted, and :meth:`_check_room` says the room it lacks; nor after the
+        pilot's Stop."""
         if not self.make_room or not whole:
             return
         room = _room_for_update(self.root, self.region, self.rivers, mesh, ovl, step["overlays"])

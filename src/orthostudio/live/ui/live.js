@@ -726,6 +726,8 @@ function askRegion({ title, lines, yes = null, no, danger = false }) {
   });
 }
 
+let roomAsked = false; // the room of an update being asked: one at a time
+
 /**
  * Update. Where the update makes the region whole beside it (r.whole), the room it lacks, asked
  * at the click (GET regions/<id>/room, the install's own count: orthostudio/live/osxpregions.py
@@ -734,20 +736,13 @@ function askRegion({ title, lines, yes = null, no, danger = false }) {
  * (it reads the region), never the region itself. Then whether to keep the one of before,
  * « Don't keep » the default: keeping it is a rename, which takes no room.
  */
-let roomAsked = null; // the region whose room is being asked: one at a time, its button waiting
-
 async function updateRegion(id, button) {
   if (roomAsked) return;
-  roomAsked = id;
-  const label = button?.textContent;
+  roomAsked = true;
   try {
     await updateAsked(id, button);
   } finally {
-    roomAsked = null;
-    if (button) {
-      button.disabled = false;
-      button.textContent = label;
-    }
+    roomAsked = false;
   }
 }
 
@@ -760,6 +755,7 @@ async function updateAsked(id, button) {
   let keepOld = false;
   if (r.whole) {
     regionsError(null);
+    const label = button?.textContent;
     if (button) {
       button.disabled = true; // a stale stage is read whole: seconds, maybe more
       button.textContent = t("regions.room_asking");
@@ -770,12 +766,17 @@ async function updateAsked(id, button) {
     } catch (error) {
       regionsError(error);
       return;
+    } finally {
+      if (button) { // the room known: the questions come next, the button as it was
+        button.disabled = false;
+        button.textContent = label;
+      }
     }
     if (room) {
       const xplane = Boolean(last?.checks?.xplane_running);
-      const left = t("regions.size", { gb: gb(room.free) });
+      const gbFree = { gb: gb(room.free) };
       const sizes = { name, need: gb(room.need), folder: last?.checks?.folder || "",
-        free: room.cleared ? t("regions.room_free_cleared", { left }) : left };
+        free: room.cleared ? t("regions.room_free_cleared", gbFree) : t("regions.room_free", gbFree) };
       const lines = [room.live ? t("regions.room_text_live", sizes) : t("regions.room_text", sizes)];
       if (!room.kept) lines.push(t("regions.room_none"));
       else lines.push(t("regions.room_kept"), ...(xplane ? [t("regions.room_xplane")] : []));
