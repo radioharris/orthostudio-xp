@@ -501,11 +501,14 @@ already), unpacked one at a time in the list's order, each recorded in the stage
 `.live-install.json`. Once all are there, its marker is written in the stage, and the stage takes
 the region's place (`put_in_place`): the region of before renamed `.z_osxp_<id>.old`, the stage
 renamed in, the old one deleted in the background, the one way a stage, a region or river masks of
-before are deleted (`_discard`: its marker first, so that a stop never leaves one half deleted that
-a start would trust; then set aside under a name of its own, `.z_osxp_<id>.old.<n>`; its hundreds of
-thousands of files take a minute or more, which no start or install waits for; what a quit left of
-such deletions is taken up once, as Live's window opens, `take_up_deletions`), the one swap of a
-region and of its river masks alike (`_swap_in`), one rename helper tried again a moment on Windows
+before are deleted (`_discard`, through `_aside`: its marker and its record first, so that a stop
+never leaves one half deleted that a start or an install would trust; then set aside under a name of
+its own, `<its hidden name>.<n>` of each kind, `.z_osxp_<id>.old.<n>` for a region,
+`.z_osxp_<id>.new.<n>` for its stage, and beside the region, never inside a folder renamed next, for
+what its folder or stage holds, `.z_osxp_<id>.rivers.new.<n>`; its hundreds of thousands of files
+take a minute or more, which no start or install waits for; what a quit left of such deletions is
+taken up once, as Live's window opens, `take_up_deletions`), the one swap of a region and of its
+river masks alike (`_swap_in`), one rename helper tried again a moment on Windows
 (`filesystem.replace`), the marker and every record written whole and flushed to the disk
 (`fsutil.atomic_write_text`, fsync). An update does the same as soon as the mesh the region holds is
 not the list's (`made_whole`): a zip made again (a single mended zip brings the region whole, every
@@ -551,10 +554,11 @@ stage and its downloads: a folder held open is not touched at all; a region of w
 only its stage or the region of before is deleted too (`present`), the deletion in the background,
 the request not waiting for it. Everything set aside stays within reach of Live's `regions` folder
 until it is deleted: a region on another disk is set aside there with its stage, and a link to them
-is kept in `regions`, set aside too, deleted last, which `take_up_deletions` follows after a quit.
-The zip being unpacked into a stage is named in its record first (`unpacking`): a stop halfway, then
-that zip made again under the same path, starts the stage again rather than leave half of its
-version of before in it.
+is kept in `regions`, set aside too, deleted last, which `take_up_deletions` follows after a quit,
+in one deletion with all it leads to, the link last, keeping it for later while that disk is away; a
+link refused (a junction, on Windows) does not stop the deletion. The zip being unpacked into a
+stage is named in its record first (`unpacking`): a stop halfway, then that zip made again under the
+same path, starts the stage again rather than leave half of its version of before in it.
 
 **Another tool's mesh** (`scenery.other_mesh`, 2026-11-14): a folder chosen in the Settings
 (`LiveSettings.other_mesh`, empty: none), last in `default_sources` after `base_sources` (Live's
