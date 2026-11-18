@@ -12,7 +12,7 @@ import threading
 import time
 import tomllib
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 import pytest
 from pydantic import ValidationError
@@ -890,6 +890,7 @@ def test_the_settings_read_the_most_needed_first() -> None:
         "q-own-tiles",
         "q-season",
         "q-night",
+        "q-rivers",
         "q-decal",
         "q-plan",
         "q-home",
@@ -1362,11 +1363,20 @@ class FakeInstaller:
     """An install that downloads until it is stopped."""
 
     def __init__(
-        self, root: Path, region, overlays: bool = True, log=print, night_only: bool = False
+        self,
+        root: Path,
+        region,
+        overlays: bool = True,
+        log=print,
+        night_only: bool = False,
+        rivers: bool = False,
+        may_swap=None,
     ) -> None:
         self.region = region
+        self.may_swap = may_swap
         self.overlays = overlays
         self.night_only = night_only
+        self.rivers = rivers
         self.stopped = threading.Event()
         self.phase = "downloading"
 
@@ -1422,6 +1432,8 @@ def test_the_regions_the_page_lists(home: Path, tmp_path: Path) -> None:
         "unpacked": 20,
         "changed": 0,
         "changed_bytes": 13,
+        "rivers_bytes": 0,
+        "waiting": False,
     }
     c.install_region("eur")
     assert c._installer.overlays  # the pilot takes X-Plane's roads: they come with it
@@ -1471,6 +1483,7 @@ def test_the_night_grids_of_a_region_installed_before_them_come_by_themselves(
     wait_for(lambda: c._installer is not None)
     quiet = c._installer
     assert quiet.night_only and quiet.region.id == "eur" and not quiet.overlays
+    assert not c.installing() and not c.status()["checks"]["installing"]  # Start not held
     assert c.regions()["install"] is None  # unseen on the page
     listed = {r["id"]: r for r in c.regions()["list"]}
     assert listed["eur"]["changed"] == 1  # its overlays only: the grids come by themselves
@@ -1537,6 +1550,257 @@ async def test_the_regions_api(home: Path, tmp_path: Path) -> None:
         await client.post("/api/live/regions/cancel")
         wait_for(lambda: c.regions()["install"]["phase"] == "cancelled")
         assert (await client.delete("/api/live/regions/eur")).status_code == 409  # not installed
+
+
+@pytest.mark.anyio
+async def test_start_waits_for_a_region_being_installed(
+    home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """While a region is downloaded or installed, Start is refused by Live's server, its window
+    saying why (``checks.installing``): a start would read a region the install is changing. An
+    update may take its place only with Live stopped and X-Plane not running."""
+    monkeypatch.setattr(control_module, "xplane_running", lambda: False)
+    c = regions_control(tmp_path / "X-Plane 12")
+    c.regions(fetch=True)
+    wait_for(lambda: c._catalog is not None)
+    assert not c.status()["checks"]["installing"]
+    c.install_region("eur")
+    assert c.installing() and c.status()["checks"]["installing"]
+    assert c._installer.may_swap()  # Live stopped, X-Plane not running
+    monkeypatch.setattr(control_module, "xplane_running", lambda: True)
+    assert not c._installer.may_swap()  # X-Plane may be reading the region of before
+    with pytest.raises(session.RefusedError, match="being downloaded or installed"):
+        c.start()
+    assert c.state == IDLE
+    async with client_for(create_live_app(c)) as client:
+        refused = await client.post("/api/live/start")
+        assert refused.status_code == 409
+        assert "being downloaded or installed" in refused.json()["detail"]
+    c.cancel_install()
+    wait_for(lambda: not c.installing())
+    assert not c.status()["checks"]["installing"]
+
+
+def test_the_window_puts_back_a_region_a_power_cut_left_aside(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A region renamed aside for its update, the computer stopped before the update took its
+    place: the window, as it opens, puts it back, before it reads the regions into their lists."""
+    from orthostudio.live import aoregions, osxpregions
+    from orthostudio.live.pack import live_root
+
+    monkeypatch.setattr(session, "keep_region_lists", lambda xp, log: None)
+    aside = osxpregions.regions_dir(live_root()) / ".z_osxp_eur.old"
+    aside.mkdir(parents=True)
+    (aside / aoregions.MARKER).write_text("{}")
+    lines: list[str] = []
+    LiveControl(checks=checks(), echo=lines.append).keep_region_lists_aside().join(5)
+    assert (osxpregions.mesh_dir(live_root(), "eur") / aoregions.MARKER).exists()
+    assert not aside.exists() and any("put back" in line for line in lines)
+
+
+# --- the river masks (2026-11-17) ---------------------------------------------------------------
+
+
+def rivers_catalog() -> dict:
+    """Europe and North America, each with a river zip beside its mesh zip."""
+    from orthostudio.live.osxpregions import OsxpRegion, Zip
+
+    return {
+        "eur": OsxpRegion(
+            "eur",
+            "2026-11-17",
+            (Zip("eur/zips/z_osxp_eur_+45+005.zip", 10, "a" * 64, 17),),
+            (Zip("eur/overlay-zips/y_osxp_eur_+45+005.zip", 3, "b" * 64, 3),),
+            rivers=(Zip("eur/zips/rivers/z_osxp_eur_+45+005.zip", 4, "r" * 64, 6),),
+        ),
+        "na": OsxpRegion(
+            "na",
+            "2026-11-17",
+            (Zip("na/zips/z_osxp_na_+40-100.zip", 20, "c" * 64, 34),),
+            rivers=(Zip("na/zips/rivers/z_osxp_na_+40-100.zip", 5, "s" * 64, 7),),
+        ),
+    }
+
+
+def put_region(region, *, mesh_as_listed: bool = True, rivers: bool = False) -> Path:
+    """A region installed in Live's folder: its marker recording its mesh zips (as listed, or of a
+    bake before), and its river masks with their zips where ``rivers``."""
+    from orthostudio.live import aoregions, osxpregions
+    from orthostudio.live.pack import live_root
+
+    folder = osxpregions.mesh_dir(live_root(), region.id)
+    folder.mkdir(parents=True)
+    zips = {z.path: z.sha256 if mesh_as_listed else "0" * 64 for z in region.mesh}
+    if rivers:
+        (folder / "rivers" / "textures").mkdir(parents=True)
+        zips.update({z.path: z.sha256 for z in region.rivers})
+    (folder / aoregions.MARKER).write_text(json.dumps({"size": 17, "zips": zips}))
+    return folder
+
+
+class DoneInstaller(FakeInstaller):
+    """An install that ends at once, done: the next region's turn."""
+
+    made: ClassVar[list] = []
+
+    def run(self) -> None:
+        DoneInstaller.made.append((self.region.id, self.overlays, self.rivers))
+        self.phase = "done"
+
+
+class WaitingInstaller(FakeInstaller):
+    """As the real Installer ends river masks that may not take their place now (Live streaming,
+    or X-Plane running): whole, waiting for Live's next start."""
+
+    made: ClassVar[list] = []
+
+    def run(self) -> None:
+        WaitingInstaller.made.append(self.region.id)
+        self.phase = "done" if self.may_swap() else "waiting"
+
+
+def rivers_control(chosen: dict, installer=FakeInstaller) -> LiveControl:
+    catalog = rivers_catalog()
+    return LiveControl(
+        checks=checks(),
+        settings=lambda: LiveSettings(**chosen),
+        echo=lambda _: None,
+        catalog=lambda root: catalog,
+        installer=installer,
+    )
+
+
+def test_the_regions_sizes_and_updates_follow_the_rivers_setting(home: Path) -> None:
+    """Even: a region's river masks are not counted, and the Settings' question says what soft
+    banks would download for the regions installed (rivers_bytes). Soft banks: counted, and a
+    region installed without them shows its update. Once installed they count whatever the
+    setting: in its size, and in its update when they change."""
+    import dataclasses
+
+    chosen = {"overlays": "off"}
+    c = rivers_control(chosen)
+    catalog = c._catalog_of(None)
+    put_region(catalog["eur"])
+    c.regions(fetch=True)
+    wait_for(lambda: len(c.regions()["list"]) == 2)
+
+    def listed() -> dict:
+        return {r["id"]: r for r in c.regions()["list"]}
+
+    eur, na = listed()["eur"], listed()["na"]
+    assert (eur["download"], eur["unpacked"], eur["changed"], eur["rivers_bytes"]) == (10, 17, 0, 4)
+    assert (na["download"], na["unpacked"], na["rivers_bytes"]) == (20, 34, 0)  # not installed
+    chosen["rivers_fade"] = True
+    eur, na = listed()["eur"], listed()["na"]
+    assert (eur["download"], eur["unpacked"], eur["changed"]) == (14, 23, 1)
+    assert eur["changed_bytes"] == eur["rivers_bytes"] == 4
+    assert (na["download"], na["unpacked"]) == (25, 41)
+    # installed: even again, they stay part of the region, and nothing more to download
+    from orthostudio.live import osxpregions
+    from orthostudio.live.pack import live_root
+
+    folder = osxpregions.mesh_dir(live_root(), "eur")
+    (folder / "rivers" / "textures").mkdir(parents=True)
+    marker = json.loads((folder / ".live-region.json").read_text())
+    marker["zips"]["eur/zips/rivers/z_osxp_eur_+45+005.zip"] = "r" * 64
+    (folder / ".live-region.json").write_text(json.dumps(marker))
+    chosen["rivers_fade"] = False
+    eur = listed()["eur"]
+    assert (eur["download"], eur["changed"], eur["rivers_bytes"]) == (14, 0, 0)
+    # their zip made again: the update brings it, the setting even
+    river = dataclasses.replace(catalog["eur"].rivers[0], sha256="R" * 64)
+    catalog["eur"] = dataclasses.replace(catalog["eur"], rivers=(river,))
+    eur = listed()["eur"]
+    assert (eur["changed"], eur["changed_bytes"]) == (1, 4)
+    c.install_region("eur")
+    assert c._installer.rivers is False  # the setting's, the installer taking them by wanted
+    c.cancel_install()
+
+
+def test_soft_banks_saved_brings_the_river_masks_of_each_region_whose_mesh_is_the_list_s(
+    home: Path,
+) -> None:
+    """Region after region, in the installs' one place, seen on the page, overlays left: the
+    river masks alone where the mesh is the list's; a region whose mesh changed shows its update
+    instead. While Live streams they are downloaded all the same, the installer told it may not
+    put them in place then (they wait whole for Live's next start with X-Plane closed)."""
+    chosen = {"rivers_fade": True}
+    DoneInstaller.made = []
+    c = rivers_control(chosen, DoneInstaller)
+    catalog = c._catalog_of(None)
+    put_region(catalog["eur"])
+    put_region(catalog["na"], mesh_as_listed=False)
+    assert c.rivers_chosen()  # the list read first, then the regions
+    wait_for(lambda: not c._rivers_thread.is_alive())
+    assert DoneInstaller.made == [("eur", False, True)]
+    assert c.regions()["install"]["region"] == "eur"  # its line on the page
+    assert {r["id"]: r["changed"] for r in c.regions()["list"]}["na"] == 2  # mesh and rivers
+    # while Live streams: downloaded, told not to put them in place now
+    DoneInstaller.made = []
+    c._state = STREAMING
+    assert c.rivers_chosen()
+    wait_for(lambda: not c._rivers_thread.is_alive())
+    assert DoneInstaller.made == [("eur", False, True)]
+    assert not c._installer.may_swap()
+    c._state = IDLE
+
+
+def test_soft_banks_saved_in_flight_brings_every_region_s_river_masks(home: Path) -> None:
+    """Live streaming: each region's masks end whole and waiting, which is their round's success:
+    every region gets its masks, not the first one alone."""
+    WaitingInstaller.made = []
+    c = rivers_control({"rivers_fade": True}, WaitingInstaller)
+    catalog = c._catalog_of(None)
+    put_region(catalog["eur"])
+    put_region(catalog["na"])
+    c._state = STREAMING
+    assert c.rivers_chosen()
+    wait_for(lambda: not c._rivers_thread.is_alive())
+    assert WaitingInstaller.made == ["eur", "na"]
+    assert c.regions()["install"]["phase"] == "waiting"
+    c._state = IDLE
+
+
+def test_soft_banks_saved_waits_for_the_install_under_way_and_stops_whole(home: Path) -> None:
+    """An install under way keeps the place: the river masks come with Update. Stop ends the
+    whole round, not only the region under way."""
+    c = rivers_control({"rivers_fade": True})
+    catalog = c._catalog_of(None)
+    put_region(catalog["eur"])
+    put_region(catalog["na"])
+    c.regions(fetch=True)
+    wait_for(lambda: c._catalog is not None)
+    c.install_region("eur")
+    first = c._installer
+    assert not c.rivers_chosen()
+    c.cancel_install()
+    wait_for(lambda: not c._install_thread.is_alive())
+    assert c.rivers_chosen()
+    wait_for(lambda: c._installer is not first)
+    assert c._installer.region.id == "eur" and not c._installer.overlays
+    assert c.busy()  # the app keeps Live's process for it
+    with pytest.raises(session.RefusedError):
+        c.install_region("na")  # one at a time
+    with pytest.raises(session.RefusedError):
+        c.remove_region("na")  # its turn may come
+    c.cancel_install()
+    wait_for(lambda: not c._rivers_thread.is_alive())
+    assert c._installer.region.id == "eur"  # North America's never started
+
+
+@pytest.mark.anyio
+async def test_soft_banks_saved_in_the_settings_starts_the_river_masks(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    c = rivers_control({})
+    called: list[bool] = []
+    monkeypatch.setattr(c, "rivers_chosen", lambda: called.append(True) or True)
+    async with client_for(create_live_app(c)) as client:
+        for fade, expected in ((True, 1), (True, 1), (False, 1), (True, 2)):
+            got = await client.put("/api/live/settings", json={"rivers_fade": fade})
+            assert got.status_code == 200 and got.json()["rivers_fade"] is fade
+            assert len(called) == expected  # only when soft banks is newly chosen
 
 
 def test_the_overlays_setting(home: Path) -> None:

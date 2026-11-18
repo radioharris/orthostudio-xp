@@ -155,6 +155,12 @@ no virtual disk between X-Plane and its textures: it builds them beside X-Plane 
   the one you choose.
 - **Towns at night**: street lamps and windows along X-Plane's roads on Live's photos, as many
   lit as NASA's Black Marble sees there; soft, normal or strong, or none.
+- **Water at once**: the photo fades into the sea from the first second, with no light
+  triangles while it loads; rivers and lakes evenly see-through, or with soft banks, whose masks
+  only those who choose them download.
+- **Its mesh by region, updated whole**: an update of a region comes complete beside the one in
+  use and takes its place in one go, with Live stopped and X-Plane closed, nothing of the old one
+  left behind; a stop, a full disk or a power cut leaves the region as it was.
 
 Its guide, with the steps of a flight, the window and the measurements:
 [docs/live.md](docs/live.md).

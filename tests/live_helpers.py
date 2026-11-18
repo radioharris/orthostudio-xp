@@ -48,10 +48,10 @@ def make_source(root: Path, tile=(45, 6), textures=("23296_33152_BI16",)) -> Pat
 
 
 def live_names(
-    pack: Path, busy=lambda name: False, forget=lambda name: None, log=None, night=False
+    pack: Path, busy=lambda name: False, forget=lambda name: None, log=None, night=False, **more
 ):
     """The ``Names`` of a pack set up (``orthostudio.live.names``), as the streamer makes it,
-    nothing made yet."""
+    nothing made yet; ``more``: its other arguments (``water``, ``level_of``...)."""
     import threading
 
     from orthostudio.live.geo import parse_texture_name
@@ -78,6 +78,7 @@ def live_names(
         log=log or (lambda _: None),
         others=region.others,
         night=night,
+        **more,
     )
 
 

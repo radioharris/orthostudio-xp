@@ -196,6 +196,7 @@ function blocking(checks) {
   if (!checks.xplane) return t("checks.xplane_missing", { problem: checks.xplane_problem || "" });
   if (checks.folder_problem) return t("checks.folder_problem", { problem: checks.folder_problem });
   if (checks.ortho_streamers?.length) return streamersRunning(checks.ortho_streamers);
+  if (checks.installing) return t("checks.installing");
   if (!checks.mesh_found && !checks.region_ready) return t(noMesh("checks.mesh_missing", checks), { path: checks.mesh });
   if (checks.xplane_running && !checks.installed) return t("checks.xplane_running_late");
   return null;
@@ -667,7 +668,7 @@ function drawRegions(status) {
   const listed = new Map((regions.list || []).map((r) => [r.id, r]));
   const ids = REGION_ORDER.filter((id) => ours.has(id) || listed.has(id));
   const install = regions.install;
-  const running = install && !["done", "failed", "cancelled"].includes(install.phase);
+  const running = install && !["done", "waiting", "failed", "cancelled"].includes(install.phase);
   const idle = status.state === "idle";
   $("regions-loading").hidden = listed.size > 0 || Boolean(regions.error);
   $("regions-error").hidden = !regions.error;
@@ -698,7 +699,9 @@ function drawRegions(status) {
       const busy = install && install.region === id;
       if (mine) {
         size.textContent = mine.size ? t("regions.size", { gb: gb(mine.size) }) : "";
-        state.textContent = r.changed ? t("regions.changed", { gb: gb(r.changed_bytes) })
+        // an update whole in its stage: put in place at the next start with X-Plane closed
+        state.textContent = r.waiting ? t("regions.waiting")
+          : r.changed ? t("regions.changed", { gb: gb(r.changed_bytes) })
           : t("regions.installed");
       } else if (r.download) {
         size.textContent = t("regions.sizes", { download: gb(r.download), disk: gb(r.unpacked) });
@@ -771,12 +774,22 @@ function drawRegions(status) {
         total: gb(install.total_bytes), mbs: number(pace, 1), unpacked: install.unpacked, zips: install.zips });
     } else if (install.phase === "failed") line.textContent = t("regions.failed", { error: install.error });
     else if (install.phase === "cancelled") line.textContent = t("regions.cancelled");
+    else if (install.phase === "waiting") line.textContent = t("regions.waiting");
     else line.textContent = t("regions.done");
     if ($("region-bar")) {
       const share = install.total_bytes ? install.done_bytes / install.total_bytes : 0;
       $("region-bar").style.width = `${Math.round(share * 1000) / 10}%`;
     }
   }
+}
+
+/** The « Soft banks » answer, with what it downloads for the regions installed: their river masks
+ * they have not got (each region's rivers_bytes, orthostudio/live/control.py); its words alone once
+ * they have them, kept whatever the answer. */
+function drawRivers(status) {
+  const bytes = (status.regions?.list || []).reduce((sum, r) => sum + (r.rivers_bytes || 0), 0);
+  const text = bytes > 0 ? t("rivers.soft_note_download", { size: amount(bytes) }) : t("rivers.soft_note");
+  if ($("rivers-soft-note").textContent !== text) $("rivers-soft-note").textContent = text;
 }
 
 function draw(status) {
@@ -793,6 +806,7 @@ function draw(status) {
   drawXplane(status);
   drawLogFile(status);
   drawRegions(status);
+  drawRivers(status);
   liveMap?.update({ ...status, providers });
   if (status.decals) decalList = status.decals;
   if (saved === null) {
@@ -1180,6 +1194,9 @@ function fillSettings(settings) {
   for (const input of document.querySelectorAll('input[name="night"]')) {
     input.checked = input.value === nightChoice(settings);
   }
+  for (const input of document.querySelectorAll('input[name="rivers_fade"]')) {
+    input.checked = input.value === (settings.rivers_fade ? "soft" : "even");
+  }
   drawSimbrief();
   drawMemory();
   drawZooms();
@@ -1210,6 +1227,8 @@ function formSettings() {
     own_tiles: document.querySelector('input[name="own_tiles"]:checked')?.value || saved?.own_tiles || "first",
     night: nightChosen() !== "off",
     night_light: nightChosen() === "off" ? (saved?.night_light || "normal") : nightChosen(),
+    rivers_fade: (document.querySelector('input[name="rivers_fade"]:checked')?.value
+      || (saved?.rivers_fade ? "soft" : "even")) === "soft",
     decal: $("set-decal").options.length ? $("set-decal").value : (saved?.decal ?? LIVE_DECAL),
     season: seasonChosen(),
     seasons: seasonLooks || saved?.seasons,

@@ -375,6 +375,7 @@ class StreamerTest(unittest.TestCase):
         class Names:
             pool = Pool()
             crashed = None
+            fitting = frozenset()  # none being set to a zoom's size
 
             def holds(self, name):
                 return True

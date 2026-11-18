@@ -107,6 +107,9 @@ class Options:
     own_tiles: str = "first"  # the pilot's own tiles first, or "under" Live's pack while it runs
     night: bool = False  # the towns' lights at night (orthostudio.live.night); the app: on
     night_light: str = "normal"  # their strength, a key of orthostudio.live.night.LIGHTS
+    # rivers and lakes faded at their banks through their masks (orthostudio.live.waterphoto), or
+    # evenly see-through; the sea always fades
+    rivers_fade: bool = False
 
 
 class StartClock:
@@ -263,6 +266,7 @@ def prepare(options: Options, log: Log) -> Prepared:
     from orthostudio.live.region import (
         LAYOUT_FIXED,
         Zooms,
+        changed_regions,
         needs_relayout,
         region_layout,
         relayout,
@@ -270,6 +274,7 @@ def prepare(options: Options, log: Log) -> Prepared:
         remove_temps,
         set_decal,
         set_night,
+        set_water,
         set_zooms,
         setup_region,
     )
@@ -307,6 +312,15 @@ def prepare(options: Options, log: Log) -> Prepared:
     from orthostudio.live import winsearch
 
     winsearch.keep_out(live_root(), log)  # Windows: its files too many for the indexer
+    # Live's regions as a stop of an install left them made right, and each update waiting whole
+    # put in place first, X-Plane not running: else Live flies the regions of before, and the
+    # updates keep waiting (orthostudio.live.osxpregions)
+    from orthostudio.live import aoregions, osxpregions
+
+    try:
+        osxpregions.settle(live_root(), log, swap=not xplane_running())
+    except OSError as e:  # the regions as they are: the checks below say what is missing
+        log(f"Live's regions could not be checked: {e}")
     # another tool's mesh as it is now, once for the start: its mesh and its roads go together
     other = NO_OTHER_MESH if options.source else other_mesh_found(xp_dir, live_root(), fresh=True)
     sources = [options.source] if options.source else default_sources(xp_dir, other=other)
@@ -350,13 +364,26 @@ def prepare(options: Options, log: Log) -> Prepared:
         fix = Fix(lat, lon)
         clock.done("departure")
     zooms = Zooms(options.max_zoom, options.max_zoom_airports)
+    newer = changed_regions(sources, pack_dir) if xplane_running() else []
+    if newer:  # the pack set up again only with X-Plane not running: it may read the DSFs of before
+        raise RefusedError(
+            f"the region {newer[0].name} changed since Live last started and X-Plane is running: "
+            "it may be reading the region of before. Quit X-Plane, then start again"
+        )
     from orthostudio.live import machine
 
     # the pack's one-time work (hundreds of thousands of files) in the system's background mode for
     # the disk: every other program keeps it (machine.background_io)
     with machine.background_io():
         try:
-            setup_region(sources, pack_dir, log=log, zooms=zooms, xplane_running=xplane_running)
+            setup_region(
+                sources,
+                pack_dir,
+                log=log,
+                zooms=zooms,
+                xplane_running=xplane_running,
+                lists=aoregions.lists_dir(live_root()),
+            )
         except OsxpError as e:
             if e.code != "XP_LINK_FAILED" or not other.meshes or sys.platform != "win32":
                 raise
@@ -369,6 +396,7 @@ def prepare(options: Options, log: Log) -> Prepared:
             ) from e
         set_decal(pack_dir, options.decal, log=log, xplane_running=xplane_running)
         set_night(pack_dir, options.night, log=log, xplane_running=xplane_running)
+        set_water(pack_dir, options.rivers_fade, log=log, xplane_running=xplane_running)
         left = remove_temps(pack_dir)  # before anything writes there
         if left:
             log(f"{left} unfinished files a stopped Live left among the textures removed")
