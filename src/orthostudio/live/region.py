@@ -29,7 +29,7 @@ import os
 import struct
 import time
 from collections import Counter, defaultdict
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Collection, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -429,17 +429,31 @@ def _remove_tree(folder: Path, log: Callable[[str], None], what: str) -> int:
     return removed
 
 
-def _to_squares(pack_dir: Path, log: Callable[[str], None]) -> None:
-    """A pack that had every square's files (versions 1 and 2): the ``.ter`` files, the water masks
-    and the neutral textures taken away, the textures built kept, made again per square as X-Plane
-    comes (orthostudio.live.names). Once, with X-Plane not running: a minute or two for the 684,000
-    ``.ter`` and 400,000 textures of Europe."""
+def _to_squares(
+    pack_dir: Path, log: Callable[[str], None], forget: Collection[str] = frozenset()
+) -> None:
+    """A pack that had every square's files (versions 1 and 2), or set up again: the ``.ter``
+    files, the water masks, the water photos and the neutral textures taken away, the textures
+    built kept, made again per square as X-Plane comes (orthostudio.live.names), and the night
+    textures of no texture (:func:`_drop_orphan_nights`). With X-Plane not running: a minute or two
+    for the 684,000 ``.ter`` and 400,000 textures of Europe. ``forget``: built textures no square
+    names any more (:func:`_unnamed`), forgotten first, so that they go as the neutral ones do."""
     from .names import MASK_RE
-    from .pack import load_built
+    from .pack import load_built, save_built
 
     t0 = time.monotonic()
     log(f"updating the pack in {pack_dir}: its files made per square from now on (once)")
-    built = set(load_built(pack_dir).get("textures", {}))
+    meta = load_built(pack_dir)
+    if forget:
+        for key in ("textures", "seen", "stale"):
+            if isinstance(meta.get(key), dict):
+                meta[key] = {n: v for n, v in meta[key].items() if n not in forget}
+        for key in ("patchy", "copied"):
+            if isinstance(meta.get(key), list):
+                meta[key] = [n for n in meta[key] if n not in forget]
+        save_built(pack_dir, meta)
+        log(f"  {len(forget)} textures no square names any more forgotten, deleted with them")
+    built = set(meta.get("textures", {}))
     removed = 0
     textures = pack_dir / "textures"
     if is_folder_link(textures):
@@ -492,51 +506,48 @@ def _drop_orphan_nights(pack_dir: Path) -> int:
     return len(gone)
 
 
-def _drop_unnamed(
-    pack_dir: Path, sources: Sequence[Path], lists: Path | None, log: Callable[[str], None]
-) -> int:
-    """The textures built that no square of the regions names any more, an update of a region
-    having made its textures again under other names, deleted with their night textures and their
-    water photos, and forgotten in the textures' record: kept, they took Live's space for good.
-    Nothing deleted where a region reads as no texture at all (its folder unreadable a moment).
-    Returns how many."""
-    from .names import night_name, one_region
-    from .pack import load_built, save_built
-    from .waterphoto import water_name
+def _unnamed(
+    pack_dir: Path, sources: Sequence[Path], changed: Sequence[Path], lists: Path | None
+) -> set[str]:
+    """The textures built on the squares of the regions that ``changed`` (updated: their textures
+    made again, some under other names) that no square of the regions names any more: kept, they
+    took Live's space for good. Never one of a square no region changed, so that a region only
+    away for a while (another tool's mesh on a disk unplugged) loses nothing; none where a region
+    reads as no texture at all (its folder unreadable a moment)."""
+    from .evict import tiles_of
+    from .geo import dsf_tile_of
+    from .names import one_region
+    from .pack import load_built
 
+    squares: set[tuple[int, int]] = set()
+    for source in changed:
+        with contextlib.suppress(OSError):
+            for tens in os.scandir(source / "Earth nav data"):
+                if tens.is_dir():
+                    for dsf in os.scandir(tens.path):
+                        square = dsf_tile_of(dsf.path)
+                        if square is not None:
+                            squares.add(square)
+    if not squares:
+        return set()
     named: set[str] = set()
     for source in sources:
         try:
             one = one_region(source, lists)
         except OSError:
-            return 0
+            return set()
         names = {name for square in one.squares.values() for name in square}
         if not names:
-            return 0
+            return set()
         named |= names
     meta = load_built(pack_dir)
-    kinds = ("textures", "seen", "stale", "lit", "water")
-    held = {n for key in kinds if isinstance(meta.get(key), dict) for n in meta[key]}
-    gone = {n for n in held if n not in named and parse_texture_name(n) is not None}
-    if not gone:
-        return 0
-    textures, night = pack_dir / "textures", pack_dir / NIGHT_FOLDER
-    for name in gone:
-        for path in (textures / name, textures / water_name(name), night / night_name(name)):
-            with contextlib.suppress(FileNotFoundError):
-                os.unlink(path)
-    for key in kinds:
-        if isinstance(meta.get(key), dict):
-            meta[key] = {n: v for n, v in meta[key].items() if n not in gone}
-    for key in ("patchy", "copied"):
-        if isinstance(meta.get(key), list):
-            meta[key] = [n for n in meta[key] if n not in gone]
-    save_built(pack_dir, meta)
-    log(
-        f"  {len(gone)} textures no square names any more deleted, with their night textures "
-        "and water photos"
-    )
-    return len(gone)
+    out = set()
+    for key in ("textures", "stale"):
+        for name in meta.get(key) or {}:
+            texture = parse_texture_name(name)
+            if texture is not None and name not in named and tiles_of(texture) & squares:
+                out.add(name)
+    return out
 
 
 def texture_names(terrain_dir: Path) -> set[str]:
@@ -974,9 +985,10 @@ def setup_region(
     built. A region added since is merged in, once; one taken away sets the pack up again. A pack
     of before, which had every square's files, has them taken away once (:func:`_to_squares`), not
     while X-Plane runs, which may be reading them. ``zooms``: what the textures are laid out for,
-    the first time (:func:`relayout` after). Set up again (a region changed or taken away), the
-    textures built that no square names any more go (:func:`_drop_unnamed`), read from the lists
-    kept in ``lists`` (``orthostudio.live.names.one_region``)."""
+    the first time (:func:`relayout` after). A region changed since (:func:`changed_regions`) sets
+    the pack up again, the textures built on its squares that no square names any more going too
+    (:func:`_unnamed`, read from the lists kept in ``lists``: ``names.one_region``); a start with
+    X-Plane running on such a region is refused before (``session.prepare``)."""
     sources = [source] if isinstance(source, Path) else list(source)
     keys = [str(s) for s in sources]
     marker = pack_dir / REGION_MARKER
@@ -984,14 +996,10 @@ def setup_region(
     had = sources_of(old)
     version = old.get("version", 1) if old else REGION_VERSION
     now = _fingerprints(sources)
-    changed = [str(k) for k in changed_regions(sources, pack_dir)]
-    if changed and xplane_running():  # X-Plane may be reading the DSFs of before
-        log(
-            f"the region {Path(changed[0]).name} changed since the pack was set up: it is set up "
-            f"again at Live's next start with X-Plane not running"
-        )
-    elif changed:
-        log(f"the region {Path(changed[0]).name} changed since the pack was set up: set up again")
+    # a start with X-Plane running on a region changed is refused before (session.prepare)
+    changed = changed_regions(sources, pack_dir)
+    if changed:
+        log(f"the region {changed[0].name} changed since the pack was set up: set up again")
         force = True
     if old and not force and set(had) == set(keys):
         if "fingerprints" not in old:  # a pack of before: what its regions are from now on
@@ -1017,8 +1025,8 @@ def setup_region(
     # DSFs of before stayed and X-Plane read them with that region's terrain files (2026-10-18)
     adding = bool(had) and set(had) < set(keys) and keys[: len(had)] == had
     if old and (version < REGION_VERSION or not adding) and not xplane_running():
-        _to_squares(pack_dir, log)  # the files of the regions of before
-        _drop_unnamed(pack_dir, sources, lists, log)
+        forget = _unnamed(pack_dir, sources, changed, lists) if changed else set()
+        _to_squares(pack_dir, log, forget)  # the files of the regions of before
     if adding:
         new = [s for s in sources if str(s) not in had]
         log(f"adding {', '.join(s.name for s in new)} to the region in {pack_dir} (once)")

@@ -279,7 +279,9 @@ def test_a_region_added_on_another_disk_writes_nothing_into_the_first(
 
 def test_a_region_changed_under_the_pack_sets_it_up_again(tmp_path: Path) -> None:
     """The pack takes the files its DSFs name from the region while Live streams: a region
-    installed again or updated must not leave DSFs of before beside .ter files of now."""
+    installed again or updated must not leave DSFs of before beside .ter files of now. A start
+    with X-Plane running on it is refused before (test_no_start_on_a_region_updated_while_xplane_
+    runs)."""
     import os
     import time
 
@@ -292,9 +294,6 @@ def test_a_region_changed_under_the_pack_sets_it_up_again(tmp_path: Path) -> Non
     time.sleep(0.01)
     (eur / "terrain" / "extra.ter").write_text("A\n800\nTERRAIN\n")  # an update
     os.utime(eur / "terrain")
-    setup_region(eur, pack, log=lines.append, xplane_running=lambda: True)
-    assert any("next start" in line for line in lines)  # not under a running X-Plane
-    lines.clear()
     setup_region(eur, pack, log=lines.append)
     assert any("changed since the pack was set up" in line for line in lines)
     assert any("Earth nav data:" in line for line in lines)  # its DSFs placed again
@@ -435,7 +434,7 @@ def test_a_region_updated_drops_the_textures_no_square_names_any_more(tmp_path: 
     from orthostudio.live.region import NIGHT_FOLDER
     from orthostudio.live.waterphoto import water_name
 
-    eur = make_source(tmp_path / "eur", tile=(45, 6), textures=NAMES)
+    eur = make_source(tmp_path / "eur", tile=(46, 2), textures=NAMES)  # the textures' square
     pack = tmp_path / "pack"
     setup_region(eur, pack, log=quiet)
     textures, night = pack / "textures", pack / NIGHT_FOLDER
@@ -472,6 +471,23 @@ def test_a_region_updated_drops_the_textures_no_square_names_any_more(tmp_path: 
     assert meta["lit"] == {kept: 2} and meta["water"] == {}
     assert meta["patchy"] == [] and meta["copied"] == []
     assert any("no square names any more" in line for line in lines)
+
+
+def test_a_region_away_for_a_while_loses_nothing(tmp_path: Path) -> None:
+    """A region only away (another tool's mesh on a disk unplugged): the pack is set up again
+    without it, and the textures built on its squares stay, recorded, for its return."""
+    from orthostudio.live.pack import load_built, save_built
+
+    eur = make_source(tmp_path / "eur", tile=(46, 2), textures=NAMES)
+    other = make_source(tmp_path / "other", tile=(45, 6), textures=("23968_33424_BI16",))
+    pack = tmp_path / "pack"
+    setup_region([eur, other], pack, log=quiet)
+    kept = pack / "textures" / "23968_33424_BI16.dds"
+    kept.write_bytes(b"built")
+    save_built(pack, {"textures": {kept.name: 0}, "seen": {kept.name: 1}})
+    setup_region([eur], pack, log=quiet)  # the other one's disk unplugged
+    assert kept.read_bytes() == b"built"
+    assert load_built(pack)["textures"] == {kept.name: 0}
 
 
 def test_the_shared_files_follow_their_region(tmp_path: Path) -> None:
