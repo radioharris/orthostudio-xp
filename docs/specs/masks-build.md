@@ -103,7 +103,7 @@ from orthostudio.masks import CellJob, CellResult, MasksIndex, build_cell, build
 * `MasksJob(workers, cancel)` + `masks_job(...)` (in `rule.py`) is how the pipeline gives the
   node its pool size and its cancellation token, the way `dem_job` / `osm_job` do. There is
   no module-level hook any more: two concurrent nodes would have shared it.
-* `MASKS` is the rule `orthostudio.masks@1`, `kind="dir"`, `ram_mb=1400` (section 6.2), inputs
+* `MASKS` is the rule `orthostudio.masks@1`, `kind="dir"`, `ram_mb=2100` (section 6.2), inputs
   `mesh`, `nb_n`, `nb_ne`, `nb_e`, `nb_se`, `nb_s`, `nb_sw`, `nb_w`, `nb_nw`, `dem`,
   `custom_extent`; every neighbour, `dem` and `custom_extent` may be `None` (a distinct,
   keyed state: `graph-keys.md` invariant K4).
@@ -228,13 +228,15 @@ of its heaviest cells (after 24, `sand` and `soft` took 10 MB more at most), the
 
 | Profile + `_dist` | one worker | counted |
 |---|---|---|
-| `sand` | 1,347 MB (`mask_zl` 16) | 1,350 |
-| `rocks` | 1,548 MB (16) | 1,550 |
-| `3steps` | 1,360 MB (16) | 1,370 |
-| `soft` | 1,750 MB (16, inland water) | 1,750 |
+| `sand` | 1,347 MB (`mask_zl` 16) | 1,400 |
+| `rocks` | 1,548 MB (16) | 1,600 |
+| `3steps` | 1,360 MB (16) | 1,400 |
+| `soft` | 1,750 MB (16, inland water) | 1,800 |
 
-Until then the heavier of the profile and 970 MB was counted, a third to three fifths short. The
-same tile without the distance masks, the sea alone, keeps `sand` at 266 MB; its inland water at
+The counted figures are the measures rounded up to the next hundred, for a worker that takes more
+cells. Until then the heavier of the profile and 970 MB was counted, a third to three fifths short;
+the first table's 962 MB is the reference tile `+43+005`, lighter. The same tile without the
+distance masks, the sea alone, keeps `sand` at 266 MB; its inland water at
 `mask_zl` 14 takes `sand` to 452 MB, `rocks` 915, `3steps` 1,355 and `soft` 1,286.
 
 The figures are at 100 m; a wider fade takes a wider margin and more (`soft` at 200 m and 65
@@ -242,10 +244,10 @@ degrees north, 1.4 GB on a cell of sea and rivers). `soft`'s peak is SciPy's
 `distance_transform_edt`, some 35 bytes a pixel; its own steps work in place (a new array at each
 step took 1,818 MB at `mask_zl` 16, the review of 2026-11-18).
 
-The rule declares `ram_mb = 2050`: the base plus the cost of **one** cell of the heaviest
+The rule declares `ram_mb = 2100`: the base plus the cost of **one** cell of the heaviest
 profile. The real cost is `300 MB + a worker of the profile x the workers that start` (250 MB
-for `sand`, 710 `rocks`, 990 `3steps`, 1,100 `soft`; with the distance masks 1,350, 1,550, 1,370
-and 1,750: `MASKS_WORKER_MB` and `MASKS_DISTANCE_WORKER_MB` of `masks.rule`, read by
+for `sand`, 710 `rocks`, 990 `3steps`, 1,100 `soft`; with the distance masks 1,400, 1,600, 1,400
+and 1,800: `MASKS_WORKER_MB` and `MASKS_DISTANCE_WORKER_MB` of `masks.rule`, read by
 `masks_worker_mb` alone), one worker for each cell
 with water to draw up to the pool's size, and it is the *pipeline* that knows the worker count
 and counts the cells beforehand (`pipeline-build.md` 8.6, `water.mask_cell_count`); it hands
@@ -254,7 +256,7 @@ profile counted 800 MB a worker and every node its whole pool. A caller
 that builds the node without `declare()` gets the one-worker figure, which is the honest
 minimum.
 
-The distance masks are the peak: one 4230 x 4230 cell measured at **814 MB** of RSS
+The distance masks are the peak: one 4230 x 4230 cell of `+43+005` measured at **814 MB** of RSS
 (`sand`/100 m, `nice -n 10`), dominated by the index arrays SciPy allocates inside
 `distance_transform_edt`; `edt_px` writes the float64 field into an array of its own
 (`distances=`) so at least the returned copy is not allocated twice.

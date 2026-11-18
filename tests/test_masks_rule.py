@@ -74,7 +74,7 @@ def test_rule_declaration() -> None:
     # review 4 (minor): the decorator declares the base plus ONE worker of the heaviest profile;
     # the pipeline node declares the base plus a worker of its profile for each worker of the pool
     # it sizes (masks-build.md 6.2).
-    assert MASKS.ram_mb == 2050
+    assert MASKS.ram_mb == 2100
     assert set(MASKS.inputs) == {"mesh", "dem", "custom_extent", *NEIGHBOUR_OFFSETS}
 
 
@@ -195,7 +195,7 @@ def test_read_mesh_artifact_reports_a_missing_mesh(tmp_path: Path) -> None:
 def test_every_profile_counts_its_worker() -> None:
     """A profile without its measured worker counts the heaviest, which ``soft``, heavier, was not
     (the review of 2026-11-18); with the distance masks too, each profile its own measure, never
-    less than the profile alone (``soft`` with them was counted 1,100 MB for 1,750)."""
+    less than the profile alone (``soft`` with them was counted 1,100 MB for 1,750 measured)."""
     from orthostudio.masks.profiles import MASKING_MODES
     from orthostudio.masks.rule import MASKS_DISTANCE_WORKER_MB, MASKS_WORKER_MB, masks_worker_mb
 

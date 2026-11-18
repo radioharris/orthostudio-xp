@@ -1735,18 +1735,13 @@ def photos_workers(env: BuildEnv) -> int:
     the line brings images faster than they encode."""
     if env.workers <= 0:
         return env.workers  # encoded in the images' own process
-    return pool_workers(env, env.workers, PHOTOS_BUDGET_SHARE, PHOTOS_BASE_MB, PHOTOS_ENCODER_MB)
-
-
-def pool_workers(env: BuildEnv, most: int, share: int, base_mb: int, worker_mb: int) -> int:
-    """The processes a step's pool starts: ``most`` at the most, as many as ``1 / share`` of the
-    RAM budget holds beside the step's own ``base_mb``, at ``worker_mb`` each, one at least;
-    ``most`` when the system does not say how much memory it has. One rule for the images'
-    encoders and the masks' workers."""
-    budget = ram_budget_mb(env.memory_share)
-    if budget is None:
-        return max(1, most)
-    return max(1, min(most, (budget // share - base_mb) // worker_mb))
+    return pool_workers(
+        env,
+        env.workers,
+        share=PHOTOS_BUDGET_SHARE,
+        base_mb=PHOTOS_BASE_MB,
+        worker_mb=PHOTOS_ENCODER_MB,
+    )
 
 
 def _photos_ram_mb(env: BuildEnv) -> int:
@@ -2071,9 +2066,9 @@ def masks_ram_from(
 MASKS_BUDGET_SHARE = 2
 """A tile's masks take at most half of the RAM budget (:func:`pool_workers`): the images'
 encoders a third beside them (:data:`PHOTOS_BUDGET_SHARE`). Eight workers of the heaviest profiles
-took more than a computer of 16 GB has (the distance masks with ``soft``, 14.3 GB, 2026-11-18),
-and a node above the budget only waits for every other step to end, then starts its whole pool;
-``sand``, the default, keeps its eight from 8 GB up."""
+would take more than a computer of 16 GB has (the distance masks with ``soft``: 8 x 1,750 MB
+measured a worker, 2026-11-18), and a node above the budget only waits for every other step to
+end, then starts its whole pool; ``sand``, the default, keeps its eight from 8 GB up."""
 
 
 def masks_workers(env: BuildEnv, params: OsxpMasksParams) -> int:
@@ -2093,9 +2088,9 @@ def masks_workers(env: BuildEnv, params: OsxpMasksParams) -> int:
     return pool_workers(
         env,
         min(MASKS_MAX_WORKERS, env.workers),
-        MASKS_BUDGET_SHARE,
-        MASKS_BASE_MB,
-        masks_worker_mb(params),
+        share=MASKS_BUDGET_SHARE,
+        base_mb=MASKS_BASE_MB,
+        worker_mb=masks_worker_mb(params),
     )
 
 
@@ -2987,6 +2982,17 @@ def ram_budget_mb(share: float = MEMORY_SHARES["medium"]) -> int | None:
     the platform does not say how much memory it has."""
     mem = physical_memory_mb()
     return None if mem is None else int(mem * share)
+
+
+def pool_workers(env: BuildEnv, most: int, *, share: int, base_mb: int, worker_mb: int) -> int:
+    """The processes a step's pool starts: ``most`` at the most, as many as ``1 / share`` of the
+    RAM budget holds beside the step's own ``base_mb``, at ``worker_mb`` each, one at least;
+    ``most`` when the system does not say how much memory it has. One rule for the images'
+    encoders (:func:`photos_workers`) and the masks' workers (:func:`masks_workers`)."""
+    budget = ram_budget_mb(env.memory_share)
+    if budget is None:
+        return max(1, most)
+    return max(1, min(most, (budget // share - base_mb) // worker_mb))
 
 
 def ram_room_mb() -> int | None:

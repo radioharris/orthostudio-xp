@@ -880,7 +880,7 @@ tiles were the same to the byte in every run.
 The masks node reserves **a worker for each cell with water to draw** (`masks_ram_from`): 300 MB,
 and for each cell, as many as the pool has (`masks_workers`, the cap of `worker_count`), what one
 worker of the profile takes (`masks_worker_mb`: `sand` 250 MB, `rocks` 710, `3steps` 990, `soft` 1,100; with the
-distance masks 1,350, 1,550, 1,370 and 1,750; `masks-build.md` 6.2). The cells are counted before it starts, from the
+distance masks 1,400, 1,600, 1,400 and 1,800; `masks-build.md` 6.2). The cells are counted before it starts, from the
 `water_tris.npz` of the tile and its neighbours (`masks.water.mask_cell_count`, the cutting the
 masks use themselves), read only when their `stats.json` has water the masks draw (`water_bits_counts`:
 the sea and the water marked like it, every water triangle with `use_masks_for_inland`); a mesh
@@ -895,11 +895,11 @@ passes it to `build_masks`, and `worker_count` honours it, so the declared budge
 that starts. `masks_workers(env, params)` is `$OSXP_MASKS_WORKERS` when it is a positive integer,
 else `min(8, --workers)`, as many as half of the RAM budget holds of the profile's worker
 (`pool_workers`, the rule of the images' encoders, which take a third): eight workers of the
-distance masks with `soft` took 14.3 GB, more than a computer of 16 GB has, and a node above the
-budget only waits for every other step to end, then starts its whole pool (2026-11-18). On 16 GB at
-the medium share that leaves `sand` its eight, `3steps` five, `soft` four, and `soft` with the
-distance masks three. The variable has one parser (`masks.build.env_workers`, `masks-build.md`
-6.5) and `0`, a negative value or junk mean *unset*. The rule's own decorator declares 2050 MB,
+distance masks with `soft` would take more than a computer of 16 GB has (1,750 MB measured a
+worker), and a node above the budget only waits for every other step to end, then starts its whole
+pool (2026-11-18). On 16 GB at the medium share that leaves `sand` its eight, `3steps` five, `soft`
+four, and `soft` with the distance masks three. The variable has one parser (`masks.build.env_workers`, `masks-build.md`
+6.5) and `0`, a negative value or junk mean *unset*. The rule's own decorator declares 2100 MB,
 the honest cost of a node built without `declare()` (base + one worker of the heaviest profile).
 
 A relief of one's own is ten times the rasters the rules declare their memory for, so the relief

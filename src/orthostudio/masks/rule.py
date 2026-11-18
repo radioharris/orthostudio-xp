@@ -179,13 +179,14 @@ MASKS_WORKER_MB = {"sand": 250, "rocks": 710, "3steps": 990, "soft": 1100}
 takes a wider margin and more). Every profile counted 800 MB, three times what ``sand``, the
 default, takes, and less than ``3steps`` does."""
 
-MASKS_DISTANCE_WORKER_MB = {"sand": 1350, "rocks": 1550, "3steps": 1370, "soft": 1750}
+MASKS_DISTANCE_WORKER_MB = {"sand": 1400, "rocks": 1600, "3steps": 1400, "soft": 1800}
 """One masks worker making the distance masks too (``distance_masks_too``), by profile: the
 distance field comes after the profile's blur, while the cell and its fade are still held
 (``masks-build.md`` 6.2, measured on ``+51+004``, a tile of sea, rivers and canals: 1,347, 1,548,
 1,360 and 1,750 MB, the most of ``mask_zl`` 14 and 16, with and without the inland water, one
-worker after several cells). The heavier of the profile and 970 MB was counted until
-2026-11-18, a third to three fifths short."""
+worker after several cells; rounded up to the next hundred, for a worker that takes more cells).
+The heavier of the profile and 970 MB was counted until 2026-11-18, a third to three fifths
+short."""
 
 
 def masks_worker_mb(params: MasksParams) -> int:

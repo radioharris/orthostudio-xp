@@ -324,6 +324,7 @@ def test_the_same_env_var_is_parsed_once_for_everybody(
     never be computed from two different numbers."""
     from orthostudio.masks.build import env_workers
 
+    monkeypatch.setattr(buildmod, "physical_memory_mb", lambda: 16384)  # 8 for sand from 8 GB
     env = BuildEnv.create([_spec(tmp_path)])
     env.workers = 8
     params = masks_rule.MasksParams()
@@ -641,6 +642,7 @@ def test_three_masks_nodes_may_run_at_once_each_with_its_own_process_pool(
     (``slots x (300 + a worker's profile x workers)`` MB, 250 for ``sand`` since 2026-10-28)
     and its RAM budget can do its job."""
     monkeypatch.delenv("OSXP_MASKS_WORKERS", raising=False)
+    monkeypatch.setattr(buildmod, "physical_memory_mb", lambda: 16384)  # sand's 8 from 8 GB
     from orthostudio.masks.water import mask_cells
 
     slots = buildmod.default_subprocess_slots()
