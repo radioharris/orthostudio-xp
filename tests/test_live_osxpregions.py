@@ -263,7 +263,7 @@ def test_a_fault_of_the_host_is_tried_again_as_a_cut_line_is(
     inst, lines = install(tmp_path / "lasting", region, Host(files, failing=99))
     assert inst.progress.phase == "failed"
     assert inst.progress.error is not None
-    assert inst.progress.error.endswith(": HTTP 500")
+    assert inst.progress.error.endswith(": the server answered HTTP 500")
     assert URL not in inst.progress.error
 
 
@@ -1638,3 +1638,78 @@ def test_an_older_live_reads_the_new_list(rivers_world) -> None:
     assert osxpregions.parse_manifest(doc)["eur"].rivers == region.rivers
     with pytest.raises(TypeError):  # what an added field would do to them
         OldZip(**{**doc["regions"]["eur"]["mesh"][0], "files": 3})
+
+
+def test_a_stop_after_the_swap_leaves_no_record_of_the_unpacking_in_the_region(
+    tmp_path: Path, world, monkeypatch
+) -> None:
+    """The stage's record of its unpacking goes before the renames: whole, its marker says so, and
+    a stop between the swap and anything after it never leaves that record in the region (the
+    campaign of 2026-11-18 found it there after a simulated power cut)."""
+    files, region = world
+    install(tmp_path, region, Host(files))
+    files, region = mended(files, region, 1, {"terrain/b.ter": b"ter B"})
+    inst, lines = install(tmp_path, region, Host(files), may_swap=lambda: False)
+    assert inst.progress.phase == "waiting", lines
+    stage = osxpregions.stage_dir(tmp_path, "eur")
+    seen: list[bool] = []
+    swap = osxpregions._swap_in
+
+    def swapping(new: Path, real: Path, what: str, **kw) -> None:
+        seen.append((new / osxpregions.STEP).exists())
+        swap(new, real, what, **kw)
+
+    monkeypatch.setattr(osxpregions, "_swap_in", swapping)
+    osxpregions.settle(tmp_path, lambda _: None, swap=True)
+    assert seen == [False] and not stage.exists()
+    assert not (osxpregions.mesh_dir(tmp_path, "eur") / osxpregions.STEP).exists()
+
+
+def test_a_deletion_drops_the_overlays_record_before_their_files(
+    tmp_path: Path, world, monkeypatch
+) -> None:
+    """A region deleted: its overlays leave the record before their files go, so that a stop in
+    between leaves files no record names, downloaded again by an install of the region, never a
+    record naming files that are gone (its roads and forests then missing for good; the campaign of
+    2026-11-18 found that record kept after a kill in the middle of a deletion)."""
+    files, region = world
+    install(tmp_path, region, Host(files))
+    pack = osxpregions.overlay_pack(tmp_path)
+    dsf = pack / "Earth nav data/+40+000/+45+005.dsf"
+    assert dsf.exists() and json.loads((pack / osxpregions.OVERLAY_RECORD).read_text())
+    files_at_write: list[bool] = []
+    write = osxpregions._write
+
+    def writing(path: Path, doc: dict) -> None:
+        if path.name == osxpregions.OVERLAY_RECORD:
+            files_at_write.append(dsf.exists())
+        write(path, doc)
+
+    monkeypatch.setattr(osxpregions, "_write", writing)
+    osxpregions.remove(tmp_path, "eur", [(45, 5)], log=lambda _: None)
+    assert files_at_write == [True] and not dsf.exists()
+    assert json.loads((pack / osxpregions.OVERLAY_RECORD).read_text()) == {}
+
+
+def test_what_went_wrong_is_said_in_plain_words_without_the_host(tmp_path: Path, world) -> None:
+    """The server's answer, the server out of reach, or the disk: one wording each, never the
+    host's address; a list that did not come says its cause alone, the window saying what."""
+    request = httpx.Request("GET", f"{URL}/x.zip")
+    status = httpx.HTTPStatusError(
+        "x", request=request, response=httpx.Response(404, request=request)
+    )
+    assert osxpregions._why(status) == "the server answered HTTP 404"
+    assert "could not be reached" in osxpregions._why(
+        httpx.ConnectError("refused", request=request)
+    )
+    assert osxpregions._why(OSError(28, "No space left on device")) == (
+        "the disk refused it (No space left on device)"
+    )
+
+    def down(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("refused", request=request)
+
+    client = httpx.Client(transport=httpx.MockTransport(down))
+    with pytest.raises(osxpregions.CatalogError) as e:
+        osxpregions.catalog(tmp_path, client=client, host=(URL, "key"))
+    assert str(e.value).startswith("the server could not be reached") and URL not in str(e.value)

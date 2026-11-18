@@ -660,6 +660,57 @@ async function regionAct(path, method = "POST") {
   }
 }
 
+/** What a region's row shows: its name and size, its state, its buttons, and the line under it
+ * (the install's progress, or an update waiting whole). Plain data: the rows are drawn again only
+ * when it changes, so that a button under the pointer is not replaced while it is clicked (the
+ * bytes of a download change every second: they go to the line, never to the row's shape). */
+function regionRow(id, mine, r, install, running, idle) {
+  const busy = Boolean(install) && install.region === id;
+  const newer = (r.changed_bytes || 0) > 0; // more to download than an update waiting whole has
+  let size = "";
+  let state = "";
+  if (mine) {
+    size = mine.size ? t("regions.size", { gb: gb(mine.size) }) : "";
+    if (!(busy && running)) { // while it runs, its line says it all
+      state = newer ? t("regions.changed", { gb: gb(r.changed_bytes) })
+        : r.waiting ? t("regions.ready")
+        : r.changed ? t("regions.changed", { gb: gb(r.changed_bytes) })
+        : t("regions.installed");
+    }
+  } else if (r.download) {
+    size = t("regions.sizes", { download: gb(r.download), disk: gb(r.unpacked) });
+  }
+  const buttons = [];
+  if (busy && running) {
+    buttons.push({ act: "cancel", label: t("regions.cancel") });
+  } else if (mine) {
+    if (r.changed) buttons.push({ act: "update", label: t("regions.update"), disabled: running || !idle });
+    const armed = removeArmed === id;
+    buttons.push({ act: armed ? "remove" : "arm", danger: true, disabled: !idle || running,
+      label: armed ? t("regions.confirm_remove", { name: t(`region.${id}`) }) : t("regions.remove") });
+  } else if (r.download) {
+    buttons.push({ act: "install", label: t("regions.install"), disabled: running });
+  }
+  // the line: the install of this region, or its update waiting whole when no newer one is listed
+  const line = busy ? "install" : mine && r.waiting && !newer ? "waiting" : null;
+  return { id, size, state, buttons, line, bar: busy && running };
+}
+
+function regionAction(id, act) {
+  if (act === "cancel") return () => regionAct("regions/cancel");
+  if (act === "update" || act === "install") return () => regionAct(`regions/${id}/install`);
+  if (act === "remove") {
+    return () => {
+      removeArmed = null;
+      regionAct(`regions/${id}`, "DELETE");
+    };
+  }
+  return () => { // "arm": a second click deletes
+    removeArmed = id;
+    if (last) draw(last);
+  };
+}
+
 /** OrthoStudio XP's regions: each with what it downloads and takes on the disk, installed or not,
  * its zips changed since, and the install under way with its bar. */
 function drawRegions(status) {
@@ -673,92 +724,60 @@ function drawRegions(status) {
   $("regions-loading").hidden = listed.size > 0 || Boolean(regions.error);
   $("regions-error").hidden = !regions.error;
   if (regions.error) $("regions-error").textContent = t("regions.error", { error: regions.error });
-  const shape = JSON.stringify([language(), regions.ours, regions.list, install && [install.region,
-    install.phase, install.error], running, idle, removeArmed]);
+  const rows = ids.map((id) => regionRow(id, ours.get(id), listed.get(id) || { id, installed: ours.has(id) },
+    install, running, idle));
+  // where they are, folder by folder: one may sit on another disk, linked from Live's folder
+  const byFolder = new Map();
+  for (const r of ours.values()) {
+    if (!r.folder) continue;
+    if (!byFolder.has(r.folder)) byFolder.set(r.folder, []);
+    byFolder.get(r.folder).push(t(`region.${r.id}`));
+  }
+  const places = [...byFolder].map(([folder, names]) => `${folder} (${names.join(", ")})`);
+  const shape = JSON.stringify([language(), rows, places]);
   if (shape !== regionsDrawn) {
     regionsDrawn = shape;
-    const ul = $("regions-ours");
-    ul.replaceChildren();
-    for (const id of ids) {
-      const mine = ours.get(id);
-      const r = listed.get(id) || { id, installed: Boolean(mine) };
+    $("regions-ours").replaceChildren(...rows.map((row) => {
       const li = document.createElement("li");
       li.className = "region";
-      li.dataset.region = id;
+      li.dataset.region = row.id;
       const head = document.createElement("div");
       head.className = "region-head";
-      const name = document.createElement("span");
-      name.className = "region-name";
-      name.textContent = t(`region.${id}`);
-      const size = document.createElement("span");
-      size.className = "region-size";
-      const state = document.createElement("span");
-      state.className = "region-state";
-      const actions = document.createElement("span");
-      actions.className = "region-actions";
-      const busy = install && install.region === id;
-      if (mine) {
-        size.textContent = mine.size ? t("regions.size", { gb: gb(mine.size) }) : "";
-        // an update whole in its stage: put in place at the next start with X-Plane closed
-        state.textContent = r.waiting ? t("regions.waiting")
-          : r.changed ? t("regions.changed", { gb: gb(r.changed_bytes) })
-          : t("regions.installed");
-      } else if (r.download) {
-        size.textContent = t("regions.sizes", { download: gb(r.download), disk: gb(r.unpacked) });
-      }
-      if (busy && running) {
-        actions.append(regionButton(t("regions.cancel"), () => regionAct("regions/cancel")));
-      } else if (mine) {
-        if (r.changed) {
-          actions.append(regionButton(t("regions.update"), () => regionAct(`regions/${id}/install`),
-            { disabled: running || !idle }));
-        }
-        const armed = removeArmed === id;
-        actions.append(regionButton(
-          armed ? t("regions.confirm_remove", { name: t(`region.${id}`) }) : t("regions.remove"),
-          () => {
-            if (armed) {
-              removeArmed = null;
-              regionAct(`regions/${id}`, "DELETE");
-            } else {
-              removeArmed = id;
-              if (last) draw(last);
-            }
-          },
-          { danger: true, disabled: !idle || running }));
-      } else if (r.download) {
-        actions.append(regionButton(t("regions.install"), () => regionAct(`regions/${id}/install`),
-          { disabled: running }));
-      }
       const label = document.createElement("span");
       label.className = "region-label"; // the name, and under it what it downloads and takes
+      const name = document.createElement("span");
+      name.className = "region-name";
+      name.textContent = t(`region.${row.id}`);
+      const size = document.createElement("span");
+      size.className = "region-size";
+      size.textContent = row.size;
       label.append(name, size);
+      const state = document.createElement("span");
+      state.className = "region-state";
+      state.textContent = row.state;
+      const actions = document.createElement("span");
+      actions.className = "region-actions";
+      actions.append(...row.buttons.map((b) => regionButton(b.label, regionAction(row.id, b.act),
+        { danger: b.danger, disabled: b.disabled })));
       head.append(label, state, actions);
       li.append(head);
-      if (busy) {
+      if (row.line) {
         const line = document.createElement("p");
         line.className = "question-help region-progress";
-        line.id = "region-progress";
+        if (row.line === "install") line.id = "region-progress";
+        else line.textContent = t("regions.waiting");
         li.append(line);
-        if (running) {
-          const bar = document.createElement("div");
-          bar.className = "progress";
-          const fill = document.createElement("span");
-          fill.id = "region-bar";
-          bar.append(fill);
-          li.append(bar);
-        }
       }
-      ul.append(li);
-    }
-    // where they are, folder by folder: one may sit on another disk, linked from Live's folder
-    const byFolder = new Map();
-    for (const r of ours.values()) {
-      if (!r.folder) continue;
-      if (!byFolder.has(r.folder)) byFolder.set(r.folder, []);
-      byFolder.get(r.folder).push(t(`region.${r.id}`));
-    }
-    const places = [...byFolder].map(([folder, names]) => `${folder} (${names.join(", ")})`);
+      if (row.bar) {
+        const bar = document.createElement("div");
+        bar.className = "progress";
+        const fill = document.createElement("span");
+        fill.id = "region-bar";
+        bar.append(fill);
+        li.append(bar);
+      }
+      return li;
+    }));
     $("regions-where").hidden = places.length === 0;
     $("regions-where").textContent = places.length ? t("regions.where", { places: places.join(" · ") }) : "";
   }

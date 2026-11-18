@@ -525,8 +525,11 @@ the mesh of before.
 
 A region installed already changes only with Live stopped and X-Plane not running
 (`Installer.may_swap`, `LiveControl._may_swap`): else its stage, whole, waits (the install's phase
-`waiting`, the page's `waiting` and « Update ready »), and Live's next start with X-Plane not
-running puts it in place before anything reads the regions (`osxpregions.settle` in
+`waiting`, the page's `waiting`: « Update ready » in the row, the sentence under it; « Update
+available » instead when the list has a newer one still to download; the rows are drawn again only
+when what they show changes, a download's bytes going to the line under its row, so that a button
+is never replaced under the pointer as it is clicked), and Live's next start with
+X-Plane not running puts it in place before anything reads the regions (`osxpregions.settle` in
 `session.prepare`); with X-Plane running, that start flies the region of before and the stage
 keeps waiting. A region not installed yet takes its place as soon as it is whole: nothing reads
 it. A start with X-Plane running on a region that changed since the pack was set up
@@ -556,9 +559,15 @@ the request not waiting for it. Everything set aside stays within reach of Live'
 until it is deleted: a region on another disk is set aside there with its stage, and a link to them
 is kept in `regions`, set aside too, deleted last, which `take_up_deletions` follows after a quit,
 in one deletion with all it leads to, the link last, keeping it for later while that disk is away; a
-link refused (a junction, on Windows) does not stop the deletion. The zip being unpacked into a
-stage is named in its record first (`unpacking`): a stop halfway, then that zip made again under the
-same path, starts the stage again rather than leave half of its version of before in it.
+link refused (a junction, on Windows) does not stop the deletion. Its overlays leave the overlays'
+record before their files go: a stop between leaves files no record names, which an install of the
+region downloads again over them, never a record naming files that are gone (2026-11-18). The zip
+being unpacked into a stage is named in its record first (`unpacking`): a stop halfway, then that
+zip made again under the same path, starts the stage again rather than leave half of its version of
+before in it; that record leaves the stage before it takes the region's place, its marker saying it
+is whole. A failure says what went wrong in plain words (`_why`): the server's answer (« HTTP 404
+»), the server out of reach, or the disk refusing, the disk at once, the server after a few tries;
+never the host's address. A list that did not come gives its cause alone, the window saying what.
 
 **Another tool's mesh** (`scenery.other_mesh`, 2026-11-14): a folder chosen in the Settings
 (`LiveSettings.other_mesh`, empty: none), last in `default_sources` after `base_sources` (Live's

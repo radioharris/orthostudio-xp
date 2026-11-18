@@ -203,6 +203,20 @@ def parse_manifest(doc: dict) -> dict[str, OsxpRegion]:
     return out
 
 
+def _why(e: BaseException) -> str:
+    """What went wrong, in the pilot's words, the host's address never in it (the window and the
+    logs show it): the server's answer, the server out of reach, or the disk refusing."""
+    import httpx
+
+    if isinstance(e, httpx.HTTPStatusError):
+        return f"the server answered HTTP {e.response.status_code}"
+    if isinstance(e, httpx.HTTPError):
+        return "the server could not be reached: is the internet connection up?"
+    if isinstance(e, OSError):
+        return f"the disk refused it ({e.strerror or e})"
+    return type(e).__name__
+
+
 def catalog(
     root: Path, *, refresh: bool = False, client=None, host: tuple[str, str] | None = None
 ) -> dict[str, OsxpRegion]:
@@ -233,15 +247,7 @@ def catalog(
                 return regions
         except (OSError, ValueError, TypeError, httpx.HTTPError) as e:
             if not path.exists():
-                # the status alone: the host's address stays out of the window and the logs
-                said = (
-                    f"HTTP {e.response.status_code}"
-                    if isinstance(e, httpx.HTTPStatusError)
-                    else type(e).__name__
-                )
-                raise CatalogError(
-                    f"the list of OrthoStudio XP's regions did not come: {said}"
-                ) from e
+                raise CatalogError(_why(e)) from e  # the window says what did not come
     if not path.exists():
         raise CatalogError("this build of Live carries no address for its regions")
     try:
@@ -576,8 +582,10 @@ def put_in_place(root: Path, region: str, log: Log = print) -> bool:
         if not (stage / MARKER).is_file():
             return False
         real = _real(root, region)
+        # its record of the unpacking first: whole, the stage's marker says so, and a stop between
+        # the renames never carries that record into the region
+        (stage / STEP).unlink(missing_ok=True)
         _swap_in(stage, real, real.name, touch=("Earth nav data", "terrain", "terrain-lists"))
-        (real / STEP).unlink(missing_ok=True)
     _unpack_waiting(root, region, log)
     return True
 
@@ -856,6 +864,13 @@ def remove(root: Path, region: str, squares: Sequence[tuple[int, int]], log: Log
             _delete_aside(*left, links=links)
     shutil.rmtree(regions_dir(root) / ".download" / f"osxp_{region}", ignore_errors=True)
     pack = overlay_pack(root)
+    # its overlays out of the record before their files: a stop between leaves files the record no
+    # longer names, which an install of the region downloads again over them, never a record naming
+    # files that are gone (that region's roads and forests then missing for good)
+    record = _read(pack / OVERLAY_RECORD)
+    if record:
+        kept = {k: v for k, v in record.items() if not k.startswith(f"{region}/")}
+        _write(pack / OVERLAY_RECORD, kept)
     gone = 0
     for lat, lon in squares:
         tens = f"{lat // 10 * 10:+03d}{lon // 10 * 10:+04d}"
@@ -863,10 +878,6 @@ def remove(root: Path, region: str, squares: Sequence[tuple[int, int]], log: Log
         with contextlib.suppress(FileNotFoundError):
             dsf.unlink()
             gone += 1
-    record = _read(pack / OVERLAY_RECORD)
-    if record:
-        kept = {k: v for k, v in record.items() if not k.startswith(f"{region}/")}
-        _write(pack / OVERLAY_RECORD, kept)
     from orthostudio.live.names import region_list_file
 
     region_list_file(lists_dir(root), folder).unlink(missing_ok=True)
@@ -1255,26 +1266,22 @@ class Installer:
                     elif r.status_code in PASSING:
                         r.raise_for_status()  # an httpx.HTTPError: tried again below
                     elif r.status_code not in (200, 206):
-                        raise InstallError(f"{z.local}: HTTP {r.status_code}")
+                        raise InstallError(f"{z.local}: the server answered HTTP {r.status_code}")
                     with open(path, "ab" if have else "wb") as f:
                         for chunk in r.iter_bytes():  # as it comes: a cut loses nothing
                             if self.stop.is_set():
                                 raise CancelledError
                             f.write(chunk)
                             self._add(len(chunk))
-            except (httpx.HTTPError, OSError) as e:
+            except OSError as e:  # the disk: tried again, it would refuse again
+                raise InstallError(f"{z.local}: {_why(e)}") from e
+            except httpx.HTTPError as e:
                 if attempt == ATTEMPTS - 1:
-                    # the status alone: the host's address stays out of the window and the logs
-                    said = (
-                        f"HTTP {e.response.status_code}"
-                        if isinstance(e, httpx.HTTPStatusError)
-                        else e
-                    )
-                    raise InstallError(f"{z.local}: {said}") from e
+                    raise InstallError(f"{z.local}: {_why(e)}") from e
                 _pause(attempt)
         size = path.stat().st_size
         if size != z.size:
-            raise InstallError(f"{z.local}: {size} bytes, not {z.size}")
+            raise InstallError(f"{z.local} arrived incomplete ({size} of {z.size} bytes)")
         h = hashlib.sha256()
         with open(path, "rb") as f:
             while block := f.read(CHUNK):
@@ -1282,7 +1289,7 @@ class Installer:
         if h.hexdigest() != z.sha256:
             path.unlink()
             self._add(-size)
-            raise InstallError(f"{z.local} came damaged (its SHA-256 differs): install again")
+            raise InstallError(f"{z.local} arrived damaged: it is downloaded again the next time")
         return path
 
     def _rivers_done(self, folder: Path) -> None:
