@@ -220,15 +220,33 @@ only bit-exact reproduction (section 4).
 | `sand` + `_dist` | 962 MB | 439 MB |
 | `soft` | 1,091 MB at `mask_zl` 16, 1,015 at 14 | |
 
+With the distance masks too, each profile has its own figure: the distance field comes after the
+profile's blur, while the cell and its fade are still held, so the two add up in part. Measured on
+`+51+004` (sea, rivers and canals, 1.5 million water triangles), 100 m, one worker after six
+of its heaviest cells (after 24, `sand` and `soft` took 10 MB more at most), the most of
+`mask_zl` 14 and 16, with and without `use_masks_for_inland` (2026-11-18):
+
+| Profile + `_dist` | one worker | counted |
+|---|---|---|
+| `sand` | 1,347 MB (`mask_zl` 16) | 1,350 |
+| `rocks` | 1,548 MB (16) | 1,550 |
+| `3steps` | 1,360 MB (16) | 1,370 |
+| `soft` | 1,750 MB (16, inland water) | 1,750 |
+
+Until then the heavier of the profile and 970 MB was counted, a third to three fifths short. The
+same tile without the distance masks, the sea alone, keeps `sand` at 266 MB; its inland water at
+`mask_zl` 14 takes `sand` to 452 MB, `rocks` 915, `3steps` 1,355 and `soft` 1,286.
+
 The figures are at 100 m; a wider fade takes a wider margin and more (`soft` at 200 m and 65
 degrees north, 1.4 GB on a cell of sea and rivers). `soft`'s peak is SciPy's
 `distance_transform_edt`, some 35 bytes a pixel; its own steps work in place (a new array at each
 step took 1,818 MB at `mask_zl` 16, the review of 2026-11-18).
 
-The rule declares `ram_mb = 1400`: the base plus the cost of **one** cell of the heaviest
+The rule declares `ram_mb = 2050`: the base plus the cost of **one** cell of the heaviest
 profile. The real cost is `300 MB + a worker of the profile x the workers that start` (250 MB
-for `sand`, 710 `rocks`, 990 `3steps`, 1,100 `soft`, 970 with the distance masks: the
-`MASKS_WORKER_MB` of `masks.rule`, one table), one worker for each cell
+for `sand`, 710 `rocks`, 990 `3steps`, 1,100 `soft`; with the distance masks 1,350, 1,550, 1,370
+and 1,750: `MASKS_WORKER_MB` and `MASKS_DISTANCE_WORKER_MB` of `masks.rule`, read by
+`masks_worker_mb` alone), one worker for each cell
 with water to draw up to the pool's size, and it is the *pipeline* that knows the worker count
 and counts the cells beforehand (`pipeline-build.md` 8.6, `water.mask_cell_count`); it hands
 the very same pool size to the rule through `MasksJob` (section 6.5). Until 2026-10-28 every

@@ -879,8 +879,8 @@ tiles were the same to the byte in every run.
 
 The masks node reserves **a worker for each cell with water to draw** (`masks_ram_from`): 300 MB,
 and for each cell, as many as the pool has (`masks_workers`, the cap of `worker_count`), what one
-worker of the profile takes (`masks_worker_mb`: `sand` 250 MB, `rocks` 710, `3steps` 990, `soft` 1,100, the
-distance masks 970; `masks-build.md` 6.2). The cells are counted before it starts, from the
+worker of the profile takes (`masks_worker_mb`: `sand` 250 MB, `rocks` 710, `3steps` 990, `soft` 1,100; with the
+distance masks 1,350, 1,550, 1,370 and 1,750; `masks-build.md` 6.2). The cells are counted before it starts, from the
 `water_tris.npz` of the tile and its neighbours (`masks.water.mask_cell_count`, the cutting the
 masks use themselves), read only when their `stats.json` has water the masks draw (`water_bits_counts`:
 the sea and the water marked like it, every water triangle with `use_masks_for_inland`); a mesh
