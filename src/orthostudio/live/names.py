@@ -53,6 +53,7 @@ Entry = tuple[str, float, float, int, int, int]
 RING = 1  # squares made round X-Plane's window: the next column's are there before X-Plane loads it
 KEEP = 2  # squares farther than this from X-Plane's window lose their files
 TER_KINDS = (("", 1), ("_water_overlay", 2), ("_sea_overlay", 4))  # the .ter files of a texture
+SEA = 4  # its sea overlay, whose border is the texture's water mask: a file of its region's
 OTHER = 8  # a .ter of another kind: its name kept apart (:attr:`RegionTextures.others`)
 MASK_RE = re.compile(r"^(\d+)_(\d+)_ZL(\d{2})\.png$")  # a water mask: a sea overlay's border
 RELEASE_BATCH = 4  # squares taken away at once, between the squares X-Plane will need
@@ -265,7 +266,7 @@ def _listed(source: Path) -> tuple[dict[str, int], dict[str, list[str]]]:
 
 class RegionTextures:
     """Every texture of the AutoOrtho regions a pack is made from, with the files each region has
-    for it, from their ``terrain`` folders (the first region to have a texture has it), each
+    for it, from their ``terrain`` folders (a texture two regions have: :meth:`entries_of`), each
     region's list kept in ``lists`` where given (:func:`one_region`).
 
     ``entries_of`` gives a square's :data:`Entry`, worked out then; ``zooms`` the textures' zooms;
@@ -275,6 +276,8 @@ class RegionTextures:
     def __init__(self, sources: Sequence[Path], lists: Path | None = None):
         self.sources = list(sources)
         self._squares: list[dict[str, dict[str, int]]] = []  # each region's, in their order
+        # Live's own regions, naming their terrain files: each made from its name, whoever names it
+        self._named = [terrain_folder(source).name == TERRAIN_LISTS for source in self.sources]
         self.zooms: set[int] = set()
         self.others: dict[str, list[str]] = {}
         self.listed: list[Path] = []
@@ -314,19 +317,28 @@ class RegionTextures:
         return self._count
 
     def entries_of(self, square: Square) -> list[Entry]:
-        """The textures whose centre is in ``square``, where that centre is worked out now: the
-        first region that has a texture gives its files."""
+        """The textures whose centre is in ``square``, where that centre is worked out now, each
+        with the files the first region that has it gives. A texture two of Live's own regions
+        name, on the line between them, takes the files of both, each made from its name, its
+        sea's mask from the first that has one: the DSFs of each name theirs. The first region's
+        alone left Europe's DSFs short of a water file Asia's list lacks, and X-Plane cancelled
+        55 squares of the world with every region installed (issue 36, 2026-11-18). A region whose
+        files are copied (AutoOrtho's) gives its own alone."""
         key = f"{square[0]},{square[1]}"
-        out: list[Entry] = []
-        seen: set[str] = set()
+        merged: dict[str, list[int]] = {}  # name: [kinds, region]
         for i, squares in enumerate(self._squares):
             for name, kinds in squares.get(key, {}).items():
-                if name in seen:
+                got = merged.setdefault(name, [kinds, i])
+                if got[1] == i or not (self._named[i] and self._named[got[1]]):
                     continue
-                seen.add(name)
-                tex = parse_texture_name(name)
-                lat, lon = tex.center
-                out.append((name, lat, lon, tex.zoom, kinds, i))
+                if kinds & SEA and not got[0] & SEA:
+                    got[1] = i  # its sea's mask is this region's
+                got[0] |= kinds
+        out: list[Entry] = []
+        for name, (kinds, i) in merged.items():
+            tex = parse_texture_name(name)
+            lat, lon = tex.center
+            out.append((name, lat, lon, tex.zoom, kinds, i))
         return out
 
     def entries(self) -> Iterator[Entry]:

@@ -610,3 +610,44 @@ def test_a_region_that_names_its_terrain_files(tmp_path: Path) -> None:
     assert done["placed"] == 2 and not done["errors"]
     assert b"DECAL_LIB lib/g10/decals/grass_and_stony_dirt_1.dcl\n" in land.read_bytes()
     assert sea.read_bytes() == made_ter(sea.name)  # the sea takes no decal
+
+
+def test_a_texture_two_regions_name_takes_the_files_of_both(tmp_path: Path) -> None:
+    """On the line between two of Live's regions (27° East, Asia's and Europe's) a texture is named
+    by both, each with the files its own DSFs need: it takes them all, its sea's mask from the
+    region that has one. Asia's files alone, the first region's, left Europe's DSFs of +39+026
+    and +40+026 short of their water file, which X-Plane cancelled (issue 36, the world of
+    2026-11-01). A region whose files are copied, AutoOrtho's, gives its own alone."""
+    from orthostudio.live.names import TERRAIN_LISTS, RegionTextures
+
+    def named(region: str, ters: str) -> Path:
+        source = tmp_path / f"z_osxp_{region}"
+        (source / TERRAIN_LISTS).mkdir(parents=True)
+        (source / TERRAIN_LISTS / f"z_osxp_{region}.txt").write_text(ters, encoding="ascii")
+        return source
+
+    asi = named(
+        "asi", "24656_37680_BI16.ter\n24656_37680_BI16_sea_overlay.ter\n99680_150720_BI18.ter\n"
+    )
+    eur = named(
+        "eur",
+        "24656_37680_BI16.ter\n24656_37680_BI16_water_overlay.ter\n"
+        "99680_150720_BI18.ter\n99680_150720_BI18_water_overlay.ter\n",
+    )
+    regions = RegionTextures([asi, eur])  # Live's order: their folders' names
+    assert [(e[0], e[4], e[5]) for e in regions.entries_of((40, 27))] == [
+        ("24656_37680_BI16.dds", 1 | 2 | 4, 0)  # the land, Europe's water, Asia's sea and mask
+    ]
+    assert [(e[0], e[4], e[5]) for e in regions.entries_of((39, 26))] == [
+        ("99680_150720_BI18.dds", 1 | 2, 0)
+    ]
+    assert len(regions) == 2
+    # the sea's mask from the region that has it, whichever comes first
+    swapped = RegionTextures([eur, asi])
+    assert [(e[4], e[5]) for e in swapped.entries_of((40, 27))] == [(1 | 2 | 4, 1)]
+    # AutoOrtho's region copies its own files: none of another region's taken for it
+    ao = tmp_path / "z_ao_eur"
+    (ao / "terrain").mkdir(parents=True)
+    for ter in ("24656_37680_BI16.ter", "24656_37680_BI16_water_overlay.ter"):
+        (ao / "terrain" / ter).write_text("A\n", encoding="ascii")
+    assert [(e[4], e[5]) for e in RegionTextures([ao, asi]).entries_of((40, 27))] == [(1 | 2, 0)]

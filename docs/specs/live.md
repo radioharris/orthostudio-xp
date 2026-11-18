@@ -423,6 +423,16 @@ that square, as its files are made round the aircraft (`names.SquareTextures`). 
 round Geneva came in 8 ms, 7,970 textures (the user's Mac, 2026-10-31). A list of version 1 is
 made again once: 9.0 s for the six regions of the world.
 
+A texture two regions name gives the files of the first region that has it
+(`RegionTextures.entries_of`), except between two of Live's own regions: on the line between them
+(27° East between Europe and Asia, for one) a texture's DSFs on either side name the files of
+their own region, so it takes the files of both, each made from its name, its sea's mask from the
+first region that has one. With the first region's alone (Asia before Europe, the folders' order),
+Europe's DSFs of +39+026 and +40+026 named a water file Asia's list lacks, and X-Plane cancelled
+them with a message at load: 55 DSFs of the world of 2026-11-01 with every region installed, 44 of
+Europe's, 8 of South America's, 3 of Asia's (issue 36, 2026-11-18; reproduced in X-Plane at LGKV,
+gone with the fix). AutoOrtho's regions, whose files are copied, still give the first one's.
+
 **The disk of Live's folder** (`orthostudio/live/filesystem.py`, `pack.check_folder`). A texture not
 built is a name of the neutral texture, a hard link, which a disk allows up to a number of names a
 file: 32,767 on APFS and Mac OS Extended, 1,023 on NTFS, 65,000 on ext4; past them, a copy of the
