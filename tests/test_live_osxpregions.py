@@ -831,6 +831,48 @@ def test_a_key_refused_and_a_region_deleted(tmp_path: Path, world) -> None:
     assert not osxpregions.present(tmp_path, "eur")
 
 
+def test_a_region_being_deleted_is_never_put_back(tmp_path: Path, world, monkeypatch) -> None:
+    """A region is renamed aside under a name of its own before it is deleted: a stop in the
+    middle of its deletion leaves it to be deleted at the next look, never put back half
+    deleted as an update stopped halfway would be."""
+    files, region = world
+    install(tmp_path, region, Host(files))
+    deleting = shutil.rmtree
+
+    def stopped(path, ignore_errors=False):
+        if ".old." in Path(path).name:
+            (Path(path) / "terrain/a.ter").unlink()  # half deleted, then the app quit
+            raise KeyboardInterrupt("the app quit")
+        deleting(path, ignore_errors=ignore_errors)
+
+    monkeypatch.setattr(osxpregions.shutil, "rmtree", stopped)
+    with pytest.raises(KeyboardInterrupt):
+        osxpregions.remove(tmp_path, "eur", [], log=lambda _: None)
+    monkeypatch.setattr(osxpregions.shutil, "rmtree", deleting)
+    osxpregions.settle(tmp_path, lambda _: None, swap=True)
+    assert not osxpregions.mesh_dir(tmp_path, "eur").exists()
+    assert osxpregions.installed(tmp_path) == {}
+    assert hidden(tmp_path) == [".download", ".lists"]
+
+
+def test_a_stage_made_again_under_the_same_name_is_started_again(tmp_path: Path, world) -> None:
+    """A zip stopped halfway through its unpacking, then made again on the server under the same
+    path: the stage holding half of the zip of before is started again, never mixed with the new
+    one."""
+    files, region = world
+    first = osxpregions.stage_dir(tmp_path, "eur")
+    first.mkdir(parents=True)
+    (first / "terrain").mkdir()
+    (first / "terrain/a-of-before.ter").write_bytes(b"half of the zip of before")
+    step = {"zips": {}, "overlays": {}, "unpacking": {MESH_A: "0" * 64}}
+    (first / osxpregions.STEP).write_text(json.dumps(step))
+    inst, lines = install(tmp_path, region, Host(files))
+    assert inst.progress.phase == "done", lines
+    folder = osxpregions.mesh_dir(tmp_path, "eur")
+    assert not (folder / "terrain/a-of-before.ter").exists()
+    assert (folder / "terrain/a.ter").read_bytes() == b"ter a"
+
+
 def test_a_region_held_open_is_not_deleted_at_all(tmp_path: Path, world, monkeypatch) -> None:
     files, region = world
     install(tmp_path, region, Host(files))
@@ -1006,8 +1048,9 @@ def test_a_first_install_brings_the_river_masks_only_with_soft_banks(
 def test_soft_banks_chosen_later_brings_the_river_masks_alone(
     tmp_path: Path, rivers_world, monkeypatch
 ) -> None:
-    """The region's mesh the list's: its river zips alone, unpacked beside, put in place whole,
-    then recorded in its marker, last; its mesh, its set-up's dates and its list untouched."""
+    """The region's mesh the list's, Live stopped and X-Plane not running: its river zips alone,
+    unpacked beside, put in place whole, then recorded in its marker, last; its mesh, its set-up's
+    dates and its list untouched."""
     files, region = rivers_world
     install(tmp_path, region, Host(files))
     folder = osxpregions.mesh_dir(tmp_path, "eur")
@@ -1018,15 +1061,15 @@ def test_soft_banks_chosen_later_brings_the_river_masks_alone(
     writing = osxpregions._write
 
     def write(path: Path, doc: dict) -> None:
-        if path.name == aoregions.MARKER:  # the marker: the masks whole in place already
+        if path == folder / aoregions.MARKER:  # the region's: the masks whole in place already
             assert (folder / MASK_A).exists() and (folder / MASK_B).exists()
             assert not (folder / osxpregions.RIVERS_STAGE / "rivers").exists()
         writing(path, doc)
 
     monkeypatch.setattr(osxpregions, "_write", write)
     host = Host(files)
-    inst, lines = install(tmp_path, region, host, overlays=False, rivers=True, may_swap=bool)
-    assert inst.progress.phase == "done", lines  # Live streaming: added all the same
+    inst, lines = install(tmp_path, region, host, overlays=False, rivers=True)
+    assert inst.progress.phase == "done", lines
     assert asked(host) == sorted(z.path for z in region.rivers)
     marker = marker_of(tmp_path)
     assert marker["zips"] == {**before["zips"], **{z.path: z.sha256 for z in region.rivers}}
@@ -1037,6 +1080,55 @@ def test_soft_banks_chosen_later_brings_the_river_masks_alone(
     assert not (folder / osxpregions.RIVERS_STAGE).exists()
     assert osxpregions.rivers_to_add(tmp_path, region) == []
     assert any("river masks installed" in ln for ln in lines)
+
+
+def test_soft_banks_chosen_in_flight_wait_for_the_next_start_with_x_plane_closed(
+    tmp_path: Path, rivers_world, monkeypatch
+) -> None:
+    """Soft banks saved while X-Plane runs: the river masks are downloaded, and wait whole in
+    their stage, by the rule of every change of a region. A start with X-Plane still open is not
+    refused (the region is as the pack was set up from it) and leaves them waiting; a start with
+    X-Plane closed puts them in place, recorded, and sets the region up again for them."""
+    from live_helpers import NAMES, make_source, make_xplane
+    from orthostudio.live import session, winsearch
+    from orthostudio.live.filesystem import folder_link, is_folder_link
+    from orthostudio.live.pack import live_root
+
+    monkeypatch.setenv("OSXP_HOME", str(tmp_path / "home"))
+    (tmp_path / "home").mkdir()
+    monkeypatch.setattr(winsearch, "keep_out", lambda folder, log=None: None)
+    files, region = rivers_world
+    root = live_root()
+    folder = osxpregions.mesh_dir(root, "eur")  # a region of Live's mesh, as installed
+    folder.parent.mkdir(parents=True)
+    make_source(tmp_path / "made", tile=(46, 2), textures=NAMES).rename(folder)
+    zips, size = {z.path: z.sha256 for z in region.mesh}, total(region, "unpacked")
+    (folder / aoregions.MARKER).write_text(json.dumps({"id": "eur", "size": size, "zips": zips}))
+    xp = make_xplane(tmp_path)
+    options = session.Options(xplane=xp, pack=tmp_path / "pack", source=folder, no_plugin=True)
+    monkeypatch.setattr(session, "xplane_running", lambda: False)
+    session.prepare(options, log=lambda _: None)  # the pack set up from the region
+    link = xp / "Custom Scenery" / "z_osxp_live"
+    if not is_folder_link(link):
+        folder_link(tmp_path / "pack", link)
+    monkeypatch.setattr(session, "is_installed", lambda *a: True)
+    monkeypatch.setattr(session, "xplane_running", lambda: True)
+    inst, lines = install(root, region, Host(files), overlays=False, rivers=True, may_swap=bool)
+    assert inst.progress.phase == "waiting", lines
+    assert not (folder / "rivers").exists() and osxpregions.staged_whole(root, "eur")
+    assert osxpregions.rivers_to_add(root, region) == []  # nothing more to download
+    said: list[str] = []
+    session.prepare(options, log=said.append)  # X-Plane open: not refused, the masks wait
+    assert not (folder / "rivers").exists()
+    monkeypatch.setattr(session, "xplane_running", lambda: False)
+    session.prepare(options, log=said.append)  # X-Plane closed: in place, the region set up again
+    assert (folder / MASK_A).read_bytes() == b"river a"
+    assert not (folder / osxpregions.RIVERS_STAGE).exists()
+    marker = marker_of(root)
+    assert marker["zips"] == {**zips, **{z.path: z.sha256 for z in region.rivers}}
+    assert marker["size"] == size + sum(z.unpacked for z in region.rivers)
+    assert any("river masks put in place" in s for s in said)
+    assert any("changed since the pack was set up" in s for s in said)
 
 
 def test_soft_banks_with_a_changed_mesh_waits_for_the_update(tmp_path: Path, rivers_world) -> None:
@@ -1239,6 +1331,23 @@ def test_river_masks_in_use_wait_for_the_next_try(
     assert (folder / MASK_A).read_bytes() == b"river A"
     assert osxpregions.not_installed(tmp_path, region, True) == []
     assert not (folder / osxpregions.RIVERS_STAGE).exists()
+
+
+def test_river_masks_a_power_cut_left_aside_are_put_back(tmp_path: Path, rivers_world) -> None:
+    """Those of before renamed aside, the power cut before the new ones took their place: put
+    back as Live's window opens; those of before left beside the new ones are deleted."""
+    files, region = rivers_world
+    install(tmp_path, region, Host(files), rivers=True)
+    folder = osxpregions.mesh_dir(tmp_path, "eur")
+    (folder / "rivers").rename(folder / ".rivers.old")
+    said: list[str] = []
+    osxpregions.settle(tmp_path, said.append, swap=False)
+    assert (folder / MASK_A).read_bytes() == b"river a"
+    assert any("river masks of eur: put back" in s for s in said)
+    (folder / ".rivers.old").mkdir()
+    osxpregions.settle(tmp_path, said.append, swap=False)
+    assert not (folder / ".rivers.old").exists() and (folder / MASK_A).exists()
+    assert not [p.name for p in folder.iterdir() if p.name.startswith(".rivers.old")]
 
 
 def test_the_night_grids_alone_leave_the_river_stage_alone(tmp_path: Path, rivers_world) -> None:

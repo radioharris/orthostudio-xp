@@ -1712,7 +1712,8 @@ def test_soft_banks_saved_brings_the_river_masks_of_each_region_whose_mesh_is_th
 ) -> None:
     """Region after region, in the installs' one place, seen on the page, overlays left: the
     river masks alone where the mesh is the list's; a region whose mesh changed shows its update
-    instead; while Live streams, a region whose river masks are there waits for its update."""
+    instead. While Live streams they are downloaded all the same, the installer told it may not
+    put them in place then (they wait whole for Live's next start with X-Plane closed)."""
     chosen = {"rivers_fade": True}
     DoneInstaller.made = []
     c = rivers_control(chosen, DoneInstaller)
@@ -1724,20 +1725,14 @@ def test_soft_banks_saved_brings_the_river_masks_of_each_region_whose_mesh_is_th
     assert DoneInstaller.made == [("eur", False, True)]
     assert c.regions()["install"]["region"] == "eur"  # its line on the page
     assert {r["id"]: r["changed"] for r in c.regions()["list"]}["na"] == 2  # mesh and rivers
-    # while Live streams: added where there are none, never put over those there
+    # while Live streams: downloaded, told not to put them in place now
     DoneInstaller.made = []
     c._state = STREAMING
-    from orthostudio.live import osxpregions
-    from orthostudio.live.pack import live_root
-
-    (osxpregions.mesh_dir(live_root(), "eur") / "rivers").mkdir()
-    assert c.rivers_chosen()
-    wait_for(lambda: not c._rivers_thread.is_alive())
-    assert DoneInstaller.made == []
-    c._state = IDLE
     assert c.rivers_chosen()
     wait_for(lambda: not c._rivers_thread.is_alive())
     assert DoneInstaller.made == [("eur", False, True)]
+    assert not c._installer.may_swap()
+    c._state = IDLE
 
 
 def test_soft_banks_saved_waits_for_the_install_under_way_and_stops_whole(home: Path) -> None:

@@ -36,11 +36,13 @@ was is started again.
 A region's river masks are the masks of its textures whose water is only rivers and lakes, which
 Live reads only when the pilot chose soft banks (``LiveSettings.rivers_fade``): Europe's about
 3.2 GB of its 14.6, so they come only with soft banks, or once the region has them. Chosen while
-the region's mesh is the list's, they come alone (:func:`rivers_to_add`), unpacked into
-``.rivers.new`` in the region's folder and put in place as ``rivers`` with one rename once every
-one is there, Live streaming or not, used from its next start; once there they stay, whatever the
-setting, and an update brings their new version with the region. Night grids added to a region
-whose mesh did not change go into it in place, as nothing X-Plane reads changes.
+the region's mesh is the list's, they come alone (:func:`rivers_to_add`), downloaded and unpacked
+into ``.rivers.new`` in the region's folder, Live streaming or not, and put in place as ``rivers``
+with one rename once every one is there, by the same rule as a region: at once with Live stopped
+and X-Plane not running, else at Live's next start with X-Plane not running (:func:`settle`). Once
+there they stay, whatever the setting, and an update brings their new version with the region.
+Night grids added to a region whose mesh did not change go into it in place, as nothing X-Plane
+reads changes.
 """
 
 from __future__ import annotations
@@ -95,7 +97,6 @@ DOWNLOADS = 3  # at a time: one stream from the host is not the pilot's whole li
 SPARE_BYTES = 2 * 10**9
 RIVERS = "rivers"  # a region's river masks, rivers/textures (orthostudio.live.names.RIVER_MASKS)
 RIVERS_STAGE = ".rivers.new"  # in the region's folder: river masks added alone, until all are there
-RIVERS_OLD = ".rivers.old"  # in the region's folder: those of before, for the moment of the swap
 BLOCK = 4096
 """What a file takes on the disk at least, rounded up to it: APFS's, NTFS's and ext4's block. A
 river zip's masks average 10 KB (3,732 in 37 MB over Geneva and Vancouver Island, 2026-11-17):
@@ -226,7 +227,15 @@ def catalog(
                 return regions
         except (OSError, ValueError, TypeError, httpx.HTTPError) as e:
             if not path.exists():
-                raise CatalogError(f"the list of OrthoStudio XP's regions did not come: {e}") from e
+                # the status alone: the host's address stays out of the window and the logs
+                said = (
+                    f"HTTP {e.response.status_code}"
+                    if isinstance(e, httpx.HTTPStatusError)
+                    else type(e).__name__
+                )
+                raise CatalogError(
+                    f"the list of OrthoStudio XP's regions did not come: {said}"
+                ) from e
     if not path.exists():
         raise CatalogError("this build of Live carries no address for its regions")
     try:
@@ -303,9 +312,14 @@ def present(root: Path, region: str) -> bool:
 
 
 def staged_whole(root: Path, region: str) -> bool:
-    """Whether the region's stage is whole, its marker written: it waits to take the region's
-    place (:func:`put_in_place`)."""
-    return (stage_dir(root, region) / MARKER).is_file()
+    """Whether an update of the region waits whole to take its place: its stage, or its river
+    masks' (:func:`settle`)."""
+    return (stage_dir(root, region) / MARKER).is_file() or _rivers_waiting(root, region)
+
+
+def _rivers_waiting(root: Path, region: str) -> bool:
+    """Whether the region's river masks wait whole in their stage, its marker written."""
+    return (mesh_dir(root, region) / RIVERS_STAGE / MARKER).is_file()
 
 
 # --- what a region wants and has --------------------------------------------------------------
@@ -327,11 +341,12 @@ def has_rivers(root: Path, region: str) -> bool:
 def wanted(root: Path, region: OsxpRegion, rivers: bool) -> tuple[Zip, ...]:
     """The zips a region wants in its folder: its mesh, its night grids, and its river masks when
     the pilot chose soft banks (``rivers``, ``LiveSettings.rivers_fade``) or the region has them
-    already. Once downloaded they are part of the region: going back to even rivers and lakes
+    already, in place or waiting whole. Once downloaded they are part of the region: going back to
+    even rivers and lakes
     leaves them there, unused, so that soft banks chosen again downloads nothing, and an update of
     the region brings their new version with it, whatever the setting. The one rule of what an
     install, an update, the sizes and the update counts take."""
-    keep = rivers or has_rivers(root, region.id)
+    keep = rivers or has_rivers(root, region.id) or _rivers_waiting(root, region.id)
     return (*region.mesh, *region.night, *(region.rivers if keep else ()))
 
 
@@ -368,13 +383,15 @@ def recorded(root: Path, region: OsxpRegion) -> dict[str, str]:
 def _staged(root: Path, region: OsxpRegion) -> dict[str, dict[str, str]]:
     """What a stopped install left in the region's stage, ``{"zips": {path: SHA-256}, "overlays":
     {path: SHA-256}}`` (the overlays downloaded, waiting for the region to be in place), when each
-    is still one of the list as it was; else nothing, the stage to be started again: a zip the
-    list no longer has, or made again since, would leave its files in the region."""
+    is still one of the list as it was, the zip it was unpacking as it stopped too; else nothing,
+    the stage to be started again: a zip the list no longer has, or made again since, would leave
+    its files in the region."""
     step = _read(stage_dir(root, region.id) / STEP)
     zips, waiting = dict(step.get("zips") or {}), dict(step.get("overlays") or {})
     listed = {z.path: z.sha256 for z in (*region.mesh, *region.night, *region.rivers)}
     overlays = {z.path: z.sha256 for z in region.overlays}
-    if all(listed.get(p) == s for p, s in zips.items()) and all(
+    held = {**zips, **(step.get("unpacking") or {})}  # one half unpacked when it stopped too
+    if all(listed.get(p) == s for p, s in held.items()) and all(
         overlays.get(p) == s for p, s in waiting.items()
     ):
         return {"zips": zips, "overlays": waiting}
@@ -388,9 +405,11 @@ def _rivers_staged(root: Path, region: OsxpRegion) -> dict[str, str]:
     stage = mesh_dir(root, region.id) / RIVERS_STAGE
     if not (stage / RIVERS).is_dir():
         return {}
-    step = _read(stage / STEP).get("zips") or {}
+    step = _read(stage / STEP)
+    zips = step.get("zips") or {}
+    held = {**zips, **(step.get("unpacking") or {})}  # one half unpacked when it stopped too
     listed = {z.path: z.sha256 for z in region.rivers}
-    return step if all(listed.get(p) == s for p, s in step.items()) else {}
+    return zips if all(listed.get(p) == s for p, s in held.items()) else {}
 
 
 def not_installed(root: Path, region: OsxpRegion, rivers: bool) -> list[Zip]:
@@ -497,35 +516,71 @@ def _rename(src: Path, dst: Path, what: str) -> None:
         ) from e
 
 
+def _swap_in(new: Path, real: Path, what: str, touch: Sequence[str] = ()) -> None:
+    """``new`` put in ``real``'s place with one rename, the one of before renamed aside first
+    (:func:`_old_dir`), put back where the rename is refused, deleted in the background after
+    (:func:`_discard`): a start finds the one or the other, whole. ``real`` and its ``touch``
+    folders then dated now, what the next start's set-up compares (``region._fingerprints``). The
+    one swap of a region's stage and of its river masks' alike; :class:`InstallError` when a
+    program holds a folder open. The lock held."""
+    old = _old_dir(real)
+    _discard(old)  # one an earlier swap could not delete
+    if real.exists():
+        _rename(real, old, what)
+    try:
+        _rename(new, real, what)
+    except InstallError:
+        if old.exists() and not real.exists():
+            replace_file(old, real)  # the one of before back, as it was
+        raise
+    fsync_dir(real.parent)
+    now = time.time()
+    for path in (real, *(real / sub for sub in touch)):
+        with contextlib.suppress(OSError):
+            os.utime(path, (now, now))
+    _discard(old)
+
+
 def put_in_place(root: Path, region: str, log: Log = print) -> bool:
-    """A whole stage (its marker written) put in the region's place with one rename, the region of
-    before renamed aside first and deleted after: a start finds the one or the other, whole. Then
-    the overlays that waited with it unpacked (:func:`_unpack_waiting`). False, nothing done, where
-    no whole stage waits. The caller says whether it may (Live stopped, X-Plane not running, or a
-    region not installed yet)."""
+    """A whole stage (its marker written) put in the region's place (:func:`_swap_in`), then the
+    overlays that waited with it unpacked (:func:`_unpack_waiting`). False, nothing done, where no
+    whole stage waits. The caller says whether it may: Live stopped and X-Plane not running, or a
+    region not installed yet."""
     with _SWAP:
         stage = stage_dir(root, region)
         if not (stage / MARKER).is_file():
             return False
         real = _real(root, region)
-        old = _old_dir(real)
-        _discard(old)  # one an earlier swap could not delete
-        if real.exists():
-            _rename(real, old, real.name)
-        try:
-            _rename(stage, real, real.name)
-        except InstallError:
-            if old.exists() and not real.exists():
-                replace_file(old, real)  # the region of before back, as it was
-            raise
-        fsync_dir(real.parent)
+        _swap_in(stage, real, real.name, touch=("Earth nav data", "terrain", "terrain-lists"))
         (real / STEP).unlink(missing_ok=True)
-        _discard(old)
-    now = time.time()
-    for sub in ("Earth nav data", "terrain", "terrain-lists"):  # what the set-up compares
-        with contextlib.suppress(OSError):
-            os.utime(real / sub, (now, now))
     _unpack_waiting(root, region, log)
+    return True
+
+
+def put_rivers_in_place(root: Path, region: str) -> bool:
+    """A region's river masks waiting whole in their stage (its marker written) put in place as
+    ``rivers`` (:func:`_swap_in`), then recorded in the region's marker, last; the stage deleted.
+    False, nothing done, where none wait. The caller says whether it may, as for a region: Live
+    stopped and X-Plane not running, since the next start's set-up makes the region's terrain
+    files again for them, and a start with X-Plane running on a region changed is refused."""
+    with _SWAP:
+        folder = mesh_dir(root, region)
+        stage = folder / RIVERS_STAGE
+        done = _read(stage / MARKER)
+        if not done:
+            return False
+        if (stage / RIVERS).is_dir():
+            _swap_in(stage / RIVERS, folder / RIVERS, f"the river masks of {region}")
+        elif not (folder / RIVERS).is_dir():  # neither here nor there: downloaded again
+            shutil.rmtree(stage, ignore_errors=True)
+            return False
+        # else a stop between their rename and their record: in place already
+        marker = _read(folder / MARKER)
+        zips = {**(marker.get("zips") or {}), **done["zips"]}
+        # their size, and what the region's marker gained since they were whole (night grids)
+        size = done["size"] + int(marker.get("size") or 0) - done["base"]
+        _write(folder / MARKER, {**marker, "zips": zips, "size": size})
+        shutil.rmtree(stage, ignore_errors=True)
     return True
 
 
@@ -600,28 +655,39 @@ def _region_ids(root: Path) -> set[str]:
     return ids
 
 
+def _repair(real: Path, log: Log, what: str) -> bool:
+    """What a stop or a power cut left beside ``real`` made right: the one of before renamed aside
+    whose successor never took its place put back, one left beside its successor deleted, and
+    the deletions a quit stopped taken up again. False where it could not be put back. The lock
+    held."""
+    old = _old_dir(real)
+    for left in real.parent.glob(f"{old.name}.*"):  # deletions a quit stopped
+        if left.name.removeprefix(f"{old.name}.").isdigit():
+            _delete_aside(left)
+    if not real.exists() and old.exists():
+        try:
+            replace_file(old, real)
+        except OSError as e:
+            log(f"{what} could not be put back: {e}")
+            return False
+        log(f"{what}: put back as it was before its update")
+    elif real.exists() and old.exists():
+        _discard(old)
+    return True
+
+
 def settle(root: Path, log: Log = print, *, swap: bool, only: Iterable[str] | None = None) -> None:
-    """What a stop or a power cut left, made right: a region renamed aside whose successor never
-    took its place put back; a region of before left beside its successor deleted; with ``swap``
-    (Live stopped and X-Plane not running), each whole stage put in its region's place and the
-    overlays that waited with it unpacked. At an install's start and at Live's, before anything
-    reads the regions."""
+    """What a stop or a power cut left, made right (:func:`_repair`), for each region and for its
+    river masks; with ``swap`` (Live stopped and X-Plane not running), each whole stage put in its
+    region's place and the overlays that waited with it unpacked, then the river masks waiting
+    whole put in place. At an install's start, as Live's window opens (``swap`` False) and at
+    Live's start, before anything reads the regions."""
     for region in sorted(only if only is not None else _region_ids(root)):
         real = _real(root, region)
-        old = _old_dir(real)
         with _SWAP:
-            for left in real.parent.glob(f"{old.name}.*"):  # deletions a quit stopped
-                if left.name.removeprefix(f"{old.name}.").isdigit():
-                    _delete_aside(left)
-            if not real.exists() and old.exists():
-                try:
-                    replace_file(old, real)
-                    log(f"OrthoStudio XP's region {region}: put back as it was before its update")
-                except OSError as e:
-                    log(f"OrthoStudio XP's region {region} could not be put back: {e}")
-                    continue
-            elif real.exists() and old.exists():
-                _discard(old)
+            if not _repair(real, log, f"OrthoStudio XP's region {region}"):
+                continue
+            _repair(real / RIVERS, log, f"the river masks of {region}")
         if not swap:
             continue
         try:
@@ -629,6 +695,8 @@ def settle(root: Path, log: Log = print, *, swap: bool, only: Iterable[str] | No
                 log(f"OrthoStudio XP's region {region}: its update put in place")
             else:
                 _unpack_waiting(root, region, log)  # a stop after it took its place
+            if put_rivers_in_place(root, region):
+                log(f"OrthoStudio XP's region {region}: its river masks put in place")
         except (InstallError, OSError) as e:
             log(f"OrthoStudio XP's region {region}: its update waits ({e})")
 
@@ -642,15 +710,17 @@ def remove(root: Path, region: str, squares: Sequence[tuple[int, int]], log: Log
     folder = mesh_dir(root, region)
     real = _real(root, region)
     old, stage = _old_dir(real), stage_dir(root, region)
+    # aside under a name of its own, as a region of before being deleted (:func:`_discard`): never
+    # taken for an update stopped halfway, which :func:`settle` would put back
+    gone = old.with_name(f"{old.name}.{time.time_ns()}")
     with _SWAP:
-        shutil.rmtree(old, ignore_errors=True)
         if real.exists():
-            _rename(real, old, real.name)
+            _rename(real, gone, real.name)
         if is_folder_link(folder):
             remove_folder_link(folder)
         shutil.rmtree(old, ignore_errors=True)
         shutil.rmtree(stage, ignore_errors=True)
-        for left in real.parent.glob(f"{old.name}.*"):  # regions of before still being deleted
+        for left in real.parent.glob(f"{old.name}.*"):  # this one, and those being deleted
             shutil.rmtree(left, ignore_errors=True)
     shutil.rmtree(regions_dir(root) / ".download" / f"osxp_{region}", ignore_errors=True)
     pack = overlay_pack(root)
@@ -802,8 +872,11 @@ class Installer:
                 shutil.rmtree(folder / RIVERS_STAGE, ignore_errors=True)
             else:
                 shutil.rmtree(stage, ignore_errors=True)  # the region is the list's: none needed
+                # river masks half come, Even chosen again since, or of a list of before: deleted;
+                # those whole, waiting their turn, are the region's (wanted)
                 keep = self.rivers or has_rivers(self.root, region.id)
-                if not keep or not _rivers_staged(self.root, region):  # even again, or of before
+                waiting = _rivers_waiting(self.root, region.id)
+                if not _rivers_staged(self.root, region) or not (keep or waiting):
                     shutil.rmtree(folder / RIVERS_STAGE, ignore_errors=True)
             mesh, ovl = to_fetch(self.root, region, self.with_overlays, self.rivers)
         todo = [*mesh, *ovl]
@@ -917,14 +990,12 @@ class Installer:
                     _write(pack / OVERLAY_RECORD, record)
                 elif z in rivers and not whole:  # into their stage, as into the region
                     small.mkdir(exist_ok=True)
-                    self._unpack(z, path, small)
-                    staged["zips"][z.path] = z.sha256
-                    _write(small / STEP, staged)
-                else:
+                    self._staged_unpack(z, path, small, staged)
+                elif whole:
+                    self._staged_unpack(z, path, dest, step)
+                else:  # night grids into the region in place
                     self._unpack(z, path, dest)
                     step["zips"][z.path] = z.sha256
-                    if whole:
-                        _write(dest / STEP, step)
                 with self.lock:
                     self.progress.unpacked += 1
                     self.progress.phase = "downloading"
@@ -944,6 +1015,15 @@ class Installer:
             real = [e for e in errors if not isinstance(e, CancelledError)]
             if real or errors:
                 raise (real or errors)[0]
+
+    def _staged_unpack(self, z: Zip, path: Path, stage: Path, step: dict) -> None:
+        """``z`` unpacked into a stage, named in the stage's step first as the zip being unpacked:
+        a stop halfway, then the zip made again under the same path, starts the stage again
+        rather than leave the files of its version of before among the new ones."""
+        _write(stage / STEP, {**step, "unpacking": {z.path: z.sha256}})
+        self._unpack(z, path, stage)
+        step["zips"][z.path] = z.sha256
+        _write(stage / STEP, step)
 
     def _unpack(self, z: Zip, path: Path, dest: Path) -> None:
         """``z``'s files into ``dest``, room for them checked first (:meth:`_room`), its zip deleted
@@ -1082,58 +1162,51 @@ class Installer:
             raise InstallError(f"{z.local} came damaged (its SHA-256 differs): install again")
         return path
 
-    def _rivers_whole(self) -> bool:
-        """Whether the river stage holds every river zip of the list: what to put in place."""
+    def _rivers_done(self, folder: Path) -> None:
+        """The river stage marked whole once it holds every river zip of the list: its zips, the
+        size the region will have with them, and the region's size then, which
+        :func:`put_rivers_in_place` reads to count what the region gained meanwhile."""
+        stage = folder / RIVERS_STAGE
         listed = {z.path: z.sha256 for z in self.region.rivers}
-        return bool(listed) and _rivers_staged(self.root, self.region) == listed
-
-    def _put_rivers(self, folder: Path) -> dict[str, str]:
-        """The river masks of their stage put in place with one rename once it holds every river
-        zip of the list, those of before renamed aside first and deleted after: a start finds the
-        ones or the others, whole. Returns the zips put in place, {path: SHA-256}, which the marker
-        then records; none while the stage is not whole (a stop), kept for the next time. A folder
-        a program holds open is not renamed: those of before stay as they were, the stage whole
-        for the next try, which only puts it in place."""
-        if not self._rivers_whole():
-            return {}
-        staged = _rivers_staged(self.root, self.region)
-        real, old = folder / RIVERS, folder / RIVERS_OLD
-        shutil.rmtree(old, ignore_errors=True)  # one an earlier swap could not delete
-        what = f"the river masks of {self.region.id}"
-        if real.exists():
-            _rename(real, old, what)
-        try:
-            _rename(folder / RIVERS_STAGE / RIVERS, real, what)
-        except InstallError:
-            if old.exists() and not real.exists():
-                replace_file(old, real)
-            raise
-        now = time.time()
-        with contextlib.suppress(OSError):  # what the next start's set-up compares
-            os.utime(real, (now, now))
-        shutil.rmtree(old, ignore_errors=True)
-        return staged
+        if (stage / MARKER).is_file() or not listed:
+            return
+        if _rivers_staged(self.root, self.region) != listed:
+            return
+        marker = _read(folder / MARKER)
+        sizes = {z.path: z.unpacked for z in self.region.rivers}
+        have = {**(marker.get("zips") or {}), **listed}
+        everything = {z.path: z.unpacked for z in (*self.region.mesh, *self.region.night)}
+        size = sum({**everything, **sizes}.get(p, 0) for p in have)
+        _write(
+            stage / MARKER,
+            {"zips": listed, "size": size, "base": int(marker.get("size") or 0)},
+        )
 
     def _finish(
         self, folder: Path, stage: Path, step: dict[str, dict[str, str]], whole: bool
     ) -> None:
-        """Every zip unpacked. Night grids, river masks or overlays added to a region whose mesh did
-        not change: the river masks put in place whole (:meth:`_put_rivers`), then the marker
-        records them, nothing else of the region changes; ``night_only`` leaves the river masks
-        alone. A region made whole: its marker, which makes Live use it, written in its stage, the
-        stage put in the region's place (:func:`put_in_place`), now or, for a region installed
-        already while Live streams or X-Plane runs, at Live's next start with X-Plane not
-        running."""
+        """Every zip unpacked. Night grids or overlays added to a region whose mesh did not change:
+        the marker records them, nothing else of the region changes. River masks added alone:
+        their stage marked whole (:meth:`_rivers_done`) and put in place by the rule of a region
+        (:func:`put_rivers_in_place`): now with Live stopped and X-Plane not running, else at Live's
+        next start with X-Plane not running; ``night_only`` leaves them alone. A region made whole:
+        its marker, which makes Live use it, written in its stage, the stage put in the region's
+        place (:func:`put_in_place`), now or, for a region installed already while Live streams or
+        X-Plane runs, at Live's next start with X-Plane not running."""
         region = self.region
         sizes = {z.path: z.unpacked for z in (*region.mesh, *region.night, *region.rivers)}
         if not whole:
-            marker = _read(folder / MARKER)
-            put = {} if self.night_only else self._put_rivers(folder)
-            zips = {**(marker.get("zips") or {}), **step["zips"], **put}
-            size = sum(sizes.get(p, 0) for p in zips)
-            _write(folder / MARKER, {**marker, "zips": zips, "size": size})
-            if put:
-                shutil.rmtree(folder / RIVERS_STAGE, ignore_errors=True)
+            if step["zips"]:
+                marker = _read(folder / MARKER)
+                zips = {**(marker.get("zips") or {}), **step["zips"]}
+                size = sum(sizes.get(p, 0) for p in zips)
+                _write(folder / MARKER, {**marker, "zips": zips, "size": size})
+            put = False
+            if not self.night_only:
+                self._rivers_done(folder)
+                if _rivers_waiting(self.root, region.id):
+                    put = self.may_swap() and put_rivers_in_place(self.root, region.id)
+                    self.waiting = not put
             if self.night_only:
                 # its zips deleted as unpacked; an update the pilot stopped keeps what it
                 # downloaded there to go on from it (the review of 2026-11-11)
@@ -1146,6 +1219,11 @@ class Installer:
                 self.log(
                     f"OrthoStudio XP's region {region.id}: its river masks installed, used from "
                     "Live's next start"
+                )
+            elif self.waiting:
+                self.log(
+                    f"OrthoStudio XP's region {region.id}: its river masks are whole and wait; "
+                    "they take their place at Live's next start with X-Plane not running"
                 )
             else:
                 self.log(f"OrthoStudio XP's region {region.id} updated")

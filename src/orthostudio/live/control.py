@@ -955,12 +955,13 @@ class LiveControl:
         """Soft banks saved in the Settings: the river masks of each region installed whose mesh
         is the list's, and that has not got them, downloaded alone (``osxpregions.rivers_to_add``),
         one region after the other, in the installs' one place with its line on the page; a region
-        whose mesh changed shows its update, which brings it whole, rivers in. While Live streams
-        too: the stream reads a region's river masks only from its next start, the region's set-up
-        made again then (``region._fingerprints``); never put in place over those a region has
-        while Live streams, which may be reading them: that waits for Update. The night grids' own
-        download gives way; an install under way keeps its place, and the regions then show
-        Update. False when nothing started."""
+        whose mesh changed shows its update, which brings it whole, rivers in. Downloaded while
+        Live streams too; put in place as a region's update is (``osxpregions.Installer``,
+        :meth:`_may_swap`): at once with Live stopped and X-Plane not running, else whole in their
+        stage until Live's next start with X-Plane not running, whose set-up makes the region's
+        terrain files again for them (``region._fingerprints``). The night grids' own download
+        gives way; an install under way keeps its place, and the regions then show Update. False
+        when nothing started."""
         self._stop_night_grids()
         thread = threading.Thread(target=self._rivers, name="live-rivers", daemon=True)
         with self._lock:
@@ -996,8 +997,6 @@ class LiveControl:
                 if region is None or region_id not in osxpregions.installed(root):
                     continue
                 if not osxpregions.rivers_to_add(root, region):
-                    continue
-                if self._state != IDLE and osxpregions.has_rivers(root, region_id):
                     continue
             except OSError as e:  # its folder unreadable this moment: its Update stays offered
                 self.log(f"the river masks of {region_id} wait: {e}")
