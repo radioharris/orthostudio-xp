@@ -901,6 +901,12 @@ class LiveControl:
                 item["waiting"] = installed and osxpregions.staged_whole(root, region_id)
             listed.append(item)
         progress = installer.snapshot() if installer is not None else None
+        if (
+            progress is not None
+            and progress.get("phase") == "waiting"
+            and not osxpregions.staged_whole(root, progress["region"])
+        ):  # put in place since, by Live's start: the disk says it, not the install of before
+            progress = {**progress, "phase": "done"}
         return {
             "ours": our_regions(root),
             "list": listed,
@@ -1019,7 +1025,10 @@ class LiveControl:
 
     def remove_region(self, region_id: str) -> None:
         """Delete one of OrthoStudio XP's regions from the disk, with its overlays. Not while Live
-        streams, nor while the region is being installed."""
+        streams, nor while the region is being installed, nor while X-Plane runs: it reads the
+        region's roads, forests and buildings straight from it (the one rule of every change of a
+        region, :meth:`_may_swap`; a campaign of 2026-11-18 deleted them under a flying
+        X-Plane)."""
         self._stop_night_grids()
         # one check and one taking, as an install's: the night grids' own download, started from
         # the list's read while the region was deleted, wrote half of it back, listed as installed
@@ -1030,6 +1039,10 @@ class LiveControl:
                 running = None
             if self._state != IDLE:
                 raise session.RefusedError("Live is streaming: stop it first")
+            if not self._may_swap():
+                raise session.RefusedError(
+                    "X-Plane is running and reads this region: quit X-Plane, then delete it"
+                )
             if running is not None and (
                 running in (self._night_thread, self._rivers_thread)  # any region, one by one
                 or (self._installer is not None and self._installer.region.id == region_id)

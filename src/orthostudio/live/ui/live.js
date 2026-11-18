@@ -664,7 +664,7 @@ async function regionAct(path, method = "POST") {
  * (the install's progress, or an update waiting whole). Plain data: the rows are drawn again only
  * when it changes, so that a button under the pointer is not replaced while it is clicked (the
  * bytes of a download change every second: they go to the line, never to the row's shape). */
-function regionRow(id, mine, r, install, running, idle) {
+function regionRow(id, mine, r, install, running, idle, xplane) {
   const busy = Boolean(install) && install.region === id;
   const newer = (r.changed_bytes || 0) > 0; // more to download than an update waiting whole has
   let size = "";
@@ -686,7 +686,7 @@ function regionRow(id, mine, r, install, running, idle) {
   } else if (mine) {
     if (r.changed) buttons.push({ act: "update", label: t("regions.update"), disabled: running || !idle });
     const armed = removeArmed === id;
-    buttons.push({ act: armed ? "remove" : "arm", danger: true, disabled: !idle || running,
+    buttons.push({ act: armed ? "remove" : "arm", danger: true, disabled: !idle || running || xplane,
       label: armed ? t("regions.confirm_remove", { name: t(`region.${id}`) }) : t("regions.remove") });
   } else if (r.download) {
     buttons.push({ act: "install", label: t("regions.install"), disabled: running });
@@ -724,8 +724,9 @@ function drawRegions(status) {
   $("regions-loading").hidden = listed.size > 0 || Boolean(regions.error);
   $("regions-error").hidden = !regions.error;
   if (regions.error) $("regions-error").textContent = t("regions.error", { error: regions.error });
+  const xplane = Boolean(status.checks?.xplane_running); // deleting waits for it to quit: it reads the region
   const rows = ids.map((id) => regionRow(id, ours.get(id), listed.get(id) || { id, installed: ours.has(id) },
-    install, running, idle));
+    install, running, idle, xplane));
   // where they are, folder by folder: one may sit on another disk, linked from Live's folder
   const byFolder = new Map();
   for (const r of ours.values()) {

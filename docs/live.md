@@ -426,7 +426,8 @@ megabytes a second over the last few seconds. **Stop** stops it, and **Install**
 stopped, a file cut off included. A region is used from the next start, never half installed. Its
 roads, forests and buildings come with it, unless "Roads, forests and buildings" says "No", and
 its masks of rivers and lakes once you chose Soft banks (see « The sea, rivers and lakes »).
-Once installed, a region shows its size on the disk and **Delete** (click twice). When a region is
+Once installed, a region shows its size on the disk and **Delete** (click twice, with Live stopped
+and X-Plane closed: X-Plane reads its roads, forests and buildings). When a region is
 made again on the server, the panel says an update is available and how much it downloads, and
 offers **Update**: the region comes again whole, its masks of rivers and lakes and its night grids
 with it, beside the one installed, which Live keeps using until the new one is complete and takes

@@ -551,7 +551,9 @@ before its first byte, disk by disk (the region's, the overlay pack's, the downl
 again before each zip, each file counted as a whole block (`_room`). Night grids alone, added to a
 region whose mesh did not change, go into it in place, the marker recording them; river masks alone
 go through their own stage, `.rivers.new`, and take their place by the same rule as a region («
-Water »). Deleting a region renames it aside first, under a name of its own (`.z_osxp_<id>.old.<n>`,
+Water »). Deleting a region waits for Live stopped and X-Plane not running, the rule of every
+change of a region (`LiveControl.remove_region`, X-Plane reading its overlays straight from it);
+it renames it aside first, under a name of its own (`.z_osxp_<id>.old.<n>`,
 never taken for an update stopped halfway, which `settle` would put back), then deletes it, its
 stage and its downloads: a folder held open is not touched at all; a region of which a stop left
 only its stage or the region of before is deleted too (`present`), the deletion in the background,
