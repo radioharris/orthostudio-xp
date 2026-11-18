@@ -1508,6 +1508,10 @@ def test_the_night_grids_never_come_back_into_a_region_being_deleted(
     listed as installed (the review of 2026-11-11). The deletion holds the installs' one place."""
     import dataclasses
 
+    monkeypatch.setattr(
+        control_module, "xplane_running", lambda: False
+    )  # whatever this computer runs
+
     from orthostudio.live import aoregions, osxpregions
     from orthostudio.live.osxpregions import Zip
     from orthostudio.live.pack import live_root

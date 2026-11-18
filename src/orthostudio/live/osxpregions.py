@@ -545,7 +545,7 @@ def _rename(src: Path, dst: Path, what: str) -> None:
     except OSError as e:
         raise InstallError(
             f"{what} is in use, by X-Plane perhaps: close it, then try again, which downloads "
-            f"nothing more ({e})"
+            f"nothing more ({_why(e)})"
         ) from e
 
 
@@ -803,7 +803,8 @@ def _repair(real: Path, log: Log, what: str) -> bool:
         _discard(old)
     # a stage's record of its unpacking, carried in by a stop right after its swap: a region in
     # place never holds one (the stage keeps it until then, a refused swap downloading nothing)
-    (real / STEP).unlink(missing_ok=True)
+    with contextlib.suppress(OSError):  # a disk that answers otherwise: tried at the next settle
+        (real / STEP).unlink()
     return True
 
 
@@ -853,7 +854,7 @@ def remove(root: Path, region: str, squares: Sequence[tuple[int, int]], log: Log
             except OSError as e:
                 raise InstallError(
                     f"{real.name} is in use, by X-Plane perhaps: close it, then delete it again "
-                    f"({e})"
+                    f"({_why(e)})"
                 ) from e
         left = [p for p in (_aside(stage), _aside(old), kept) if p is not None]
         links = []
