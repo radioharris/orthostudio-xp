@@ -26,6 +26,11 @@ can include as it is the day Live comes into its window (``app.include_router``)
   (:meth:`LiveControl.rivers_chosen`);
 - ``GET``/``PUT /api/live/xplane-folder`` ``{"path"}``: the X-Plane folder named in OrthoStudio
   XP's settings, the same for Build and Live, with the other X-Planes of the computer;
+- ``GET /api/live/regions``: OrthoStudio XP's regions (:meth:`LiveControl.regions`);
+  ``POST /api/live/regions/{id}/install`` ``{"keep": bool, "make_room": "" | "kept" | "all"}``:
+  install or update one, the region of before kept or not, room made first or not;
+  ``DELETE /api/live/regions/{id}``: delete one; ``DELETE /api/live/regions/{id}/kept``: delete
+  its kept old mesh alone (409 for each where it may not);
 - ``GET /api/live/providers``: the imagery sources, as OrthoStudio XP's ``GET /api/providers``;
 - ``POST /api/live/choose-folder`` ``{"prompt", "start"}``: the system's folder dialog, as
   OrthoStudio XP's ``POST /api/choose-folder``; ``POST /api/live/reveal`` ``{"path"}``: the
@@ -89,6 +94,11 @@ class QuitBody(BaseModel):
 
 class PrepareBody(BaseModel):
     departure: str = Field("", max_length=40)  # an airport's ICAO code, or lat,lon
+
+
+class InstallBody(BaseModel):
+    keep: bool = False  # the region of before kept at the swap (osxpregions.kept_dir)
+    make_room: Literal["", "kept", "all"] = ""  # osxpregions.Installer.make_room
 
 
 def live_router(
@@ -261,9 +271,18 @@ def live_router(
         return control.regions()
 
     @router.post("/regions/{region_id}/install", status_code=202)
-    def install_region(region_id: str) -> dict[str, Any]:
+    def install_region(region_id: str, body: InstallBody | None = None) -> dict[str, Any]:
+        body = body or InstallBody()
         try:
-            control.install_region(region_id)
+            control.install_region(region_id, keep=body.keep, make_room=body.make_room)
+        except session.RefusedError as e:
+            raise HTTPException(409, str(e)) from e
+        return control.regions()
+
+    @router.delete("/regions/{region_id}/kept")
+    def remove_kept(region_id: str) -> dict[str, Any]:
+        try:
+            control.remove_kept(region_id)
         except session.RefusedError as e:
             raise HTTPException(409, str(e)) from e
         return control.regions()

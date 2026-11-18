@@ -552,6 +552,56 @@ with it and wait in the download folder, named in the stage's record, then its m
 (`overlays_waiting`), and are unpacked only once the region is in place: new roads never stand on
 the mesh of before.
 
+**The mesh of before kept** (`osxpregions.kept_dir`, 2026-11-18). An update that replaces a
+region's mesh (the page's `whole`) asks first whether to keep the one of before, « Don't keep »
+the default; the answer goes to the install (`Installer.keep`), which writes it in its stage's
+record (`keep`) at every install, a whole stage waiting included (`_finish` writes the record
+before the marker), so that a swap now or at a later start honours the last answer. The swap
+carries that record into the region; `_settle_old`, the one way of a swap and of a repair, then
+renames the region of before `.z_osxp_<id>.kept` beside the region instead of deleting it (one
+kept before set aside and deleted first: one per region), and drops the record last. A stop before
+the stage's rename puts the region of before back, its stage waiting with the answer; a stop
+between the stage's rename and the keeping leaves the record in the region, and the next `settle`
+(`_repair`) keeps it, never deletes it; a rename refused a moment on Windows waits for the next
+settle the same way. The layout: beside the region's real folder, on its disk (a link's target for
+a region on another disk), renamed, never copied; hidden, under a name nothing else takes:
+`osxp_regions` and `installed` read `z_osxp_` names only, `_repair` the `.old`, the stages are
+`.new`, a folder set aside to be deleted ends in `.<n>` (`ASIDE`, `.z_osxp_<id>.kept.<n>` among
+them) and `_region_ids` reads regions, stages and regions of before alone. Its record is its name
+and its marker, its region's of before (its release, its size). It never changes: `installed`,
+`recorded` and `made_whole` read the region's marker alone, so that it is never compared to the
+list nor offered as an update, never downloaded again (the host keeps no release of before), and
+the pack's fingerprints read its folders' dates as they were. It may lack river masks: soft banks
+then do not apply on it. `LiveSettings.mesh` (« Mesh: New / Old », for every region at once,
+shown only once a region keeps one) picks, in one place (`scenery.osxp_sources`, read by
+`base_sources`), each region's kept mesh in its place where it has one, the new one elsewhere;
+both are Live's own mesh (`names.own_mesh`), each with its list of textures
+(`names.region_list_file`, by name and path). The set of sources then changes, so the pack is set
+up again at the next start, never with X-Plane running: `region.regions_gone`, a region the pack
+was set up from that the start no longer names, refuses it as a new zoom is (a region only added
+is still merged in). « Delete from the disk » (`LiveControl.remove_kept`, `osxpregions.remove_kept`)
+deletes it alone, set aside then deleted in the background, the overlays of `y_osxp_overlays`
+staying (the region's new mesh has them too), by the rule of every deletion
+(`LiveControl._deleting`: Live stopped, the region not being installed, X-Plane not running), and
+only where nothing uses it (`kept_in_use`): the Settings' Mesh saying old, or the pack's record
+naming it (`session._recorded_sources`) until a start sets the pack up again; the window warns
+first that it cannot be downloaded again. A region's own Delete (`remove`) takes it with it.
+
+**No room beside the region** (`osxpregions.update_room`, 2026-11-18). The room an install needs
+is one rule, `_short_of_room`, which the install checks before its first byte
+(`Installer._check_room`, `RoomError` worded as before) and the page reads before an update
+(the item's `room`: what it needs and what is free on the disk short, and whether deleting the
+region's kept mesh, `kept`, or that and the region installed, `all`, frees enough there, from
+their markers' sizes). Where one of them does, the window says it in plain words and offers
+« Delete the old one and install the new one » (`Installer.make_room`): "kept" deletes the kept
+mesh first, the region in use all along; "all", after a warning that the region has no mesh until
+the install ends (X-Plane shows its own scenery there) and that a stopped install resumes, also
+deletes the region installed (its folder alone: its stage, its downloads and its overlays stay),
+the install then going on as a first one. Each deletion before the next look, not in the
+background, the room counted being the disk's (the install's phase `deleting`); only with Live
+stopped and X-Plane not running, and refused while the kept mesh is in use. Where neither frees
+enough, or the disk short holds neither, the install runs and stops on its own words, as before.
+
 A region installed already changes only with Live stopped and X-Plane not running
 (`Installer.may_swap`, `LiveControl._may_swap`): else its stage, whole, waits (the install's phase
 `waiting`, the page's `waiting`, read from the disk (`staged_whole`), not from the install of

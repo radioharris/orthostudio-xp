@@ -648,10 +648,10 @@ function regionButton(label, onClick, { danger = false, disabled = false } = {})
   return button;
 }
 
-async function regionAct(path, method = "POST") {
+async function regionAct(path, method = "POST", body = undefined) {
   $("regions-error").hidden = true;
   try {
-    const regions = await api(path, { method });
+    const regions = await api(path, { method, body });
     if (last) draw({ ...last, regions });
     liveMap?.regionsChanged();
   } catch (error) {
@@ -666,6 +666,7 @@ async function regionAct(path, method = "POST") {
  * bytes of a download change every second: they go to the line, never to the row's shape). */
 function regionRow(id, mine, r, install, running, idle, xplane) {
   const busy = Boolean(install) && install.region === id;
+  const name = t(`region.${id}`);
   // an update waiting whole, the disk's word (r.waiting), unless a newer one is listed to download
   const ready = Boolean(mine) && r.waiting && !((r.changed_bytes || 0) > 0);
   let size = "";
@@ -686,8 +687,9 @@ function regionRow(id, mine, r, install, running, idle, xplane) {
   } else if (mine) {
     if (r.changed) buttons.push({ act: "update", label: t("regions.update"), disabled: running || !idle });
     const armed = removeArmed === id;
+    const sure = r.kept ? t("regions.confirm_remove_kept", { name }) : t("regions.confirm_remove", { name });
     buttons.push({ act: armed ? "remove" : "arm", danger: true, disabled: !idle || running || xplane,
-      label: armed ? t("regions.confirm_remove", { name: t(`region.${id}`) }) : t("regions.remove") });
+      label: armed ? sure : t("regions.remove") });
   } else if (r.download) {
     buttons.push({ act: "install", label: t("regions.install"), disabled: running });
   }
@@ -697,12 +699,103 @@ function regionRow(id, mine, r, install, running, idle, xplane) {
   // disk says that
   const line = busy && (running || ["failed", "cancelled"].includes(install.phase)) ? "install"
     : ready ? "waiting" : null;
-  return { id, size, state, buttons, line, bar: busy && running };
+  // its kept old mesh, under it: its size, and its Delete from the disk, or why it stays (in use
+  // by the setting or by the pack, orthostudio/live/control.py kept_in_use)
+  let kept = null;
+  if (mine && r.kept) {
+    const use = r.kept.in_use;
+    kept = {
+      text: r.kept.size ? t("regions.kept_size", { gb: gb(r.kept.size) }) : t("regions.kept"),
+      note: use === "setting" ? t("regions.kept_in_use_setting") : use === "pack" ? t("regions.kept_in_use_pack") : "",
+      button: use ? null : { act: "remove_kept", label: t("regions.kept_remove"), danger: true,
+        disabled: !idle || running || xplane },
+    };
+  }
+  return { id, size, state, buttons, line, bar: busy && running, kept };
+}
+
+/**
+ * A region's question in the page's modal <dialog>: a title, its lines, two buttons, the first
+ * focused (the careful one: Escape or Enter leaves things as they are or takes the default).
+ * Resolves "yes", "no", or "" when closed with Escape: nothing done then.
+ */
+function askRegion({ title, lines, yes, no, danger = false }) {
+  const dialog = $("region-ask");
+  if (dialog.open) return Promise.resolve("");
+  $("region-ask-title").textContent = title;
+  $("region-ask-text").replaceChildren(...lines.map((line) => {
+    const p = document.createElement("p");
+    p.textContent = line;
+    return p;
+  }));
+  $("region-ask-no").textContent = no;
+  $("region-ask-yes").textContent = yes;
+  $("region-ask-yes").className = danger ? "btn btn-danger-solid" : "btn";
+  dialog.returnValue = "";
+  dialog.onkeydown = (ev) => {
+    if (ev.key !== "Escape") return;
+    ev.preventDefault();
+    dialog.close();
+  };
+  return new Promise((resolve) => {
+    dialog.addEventListener("close", () => resolve(dialog.returnValue), { once: true });
+    dialog.showModal();
+  });
+}
+
+/**
+ * Update. Where the disk lacks room for the new mesh beside the old one (r.room, the install's own
+ * rule: orthostudio/live/osxpregions.py update_room) and deleting the mesh of before frees enough,
+ * the window says so and offers to delete it first: the region's kept old mesh where that is
+ * enough, else the region itself, the pilot warned first that it goes without a mesh until the
+ * install ends. Else, where the update replaces the mesh (r.whole), whether to keep the one of
+ * before, « Don't keep » the default.
+ */
+async function updateRegion(id) {
+  const regions = last?.regions || {};
+  const r = (regions.list || []).find((x) => x.id === id) || {};
+  const mine = (regions.ours || []).find((x) => x.id === id) || {};
+  const name = t(`region.${id}`);
+  const room = r.room;
+  if (room && (room.kept || room.all)) {
+    const go = await askRegion({ title: t("regions.room_title"),
+      lines: [t("regions.room_text", { name, need: gb(room.need), free: gb(room.free) })],
+      yes: t("regions.room_yes"), no: t("regions.ask_cancel"), danger: true });
+    if (go !== "yes") return;
+    if (!room.kept) {
+      const sure = await askRegion({ title: t("regions.gap_title", { name }), lines: [t("regions.gap_text")],
+        yes: t("regions.room_yes"), no: t("regions.ask_cancel"), danger: true });
+      if (sure !== "yes") return;
+    }
+    await regionAct(`regions/${id}/install`, "POST", { make_room: room.kept ? "kept" : "all" });
+    return;
+  }
+  let keep = false;
+  if (r.whole && !room) {
+    const lines = [mine.size ? t("regions.keep_text_size", { gb: gb(mine.size) }) : t("regions.keep_text")];
+    if (r.kept) lines.push(t("regions.keep_replaces"));
+    const answer = await askRegion({ title: t("regions.keep_title", { name }), lines,
+      yes: t("regions.keep_yes"), no: t("regions.keep_no") });
+    if (!answer) return; // closed: nothing done
+    keep = answer === "yes";
+  }
+  await regionAct(`regions/${id}/install`, "POST", { keep });
+}
+
+/** « Delete from the disk » on a region's kept old mesh: Live warns first that it cannot be
+ * downloaded again (the host keeps no release of before). */
+async function removeKept(id) {
+  const name = t(`region.${id}`);
+  const go = await askRegion({ title: t("regions.kept_ask_title", { name }), lines: [t("regions.kept_ask_text")],
+    yes: t("regions.kept_remove"), no: t("regions.keep_yes"), danger: true });
+  if (go === "yes") await regionAct(`regions/${id}/kept`, "DELETE");
 }
 
 function regionAction(id, act) {
   if (act === "cancel") return () => regionAct("regions/cancel");
-  if (act === "update" || act === "install") return () => regionAct(`regions/${id}/install`);
+  if (act === "install") return () => regionAct(`regions/${id}/install`);
+  if (act === "update") return () => updateRegion(id);
+  if (act === "remove_kept") return () => removeKept(id);
   if (act === "remove") {
     return () => {
       removeArmed = null;
@@ -739,6 +832,8 @@ function drawRegions(status) {
     byFolder.get(r.folder).push(t(`region.${r.id}`));
   }
   const places = [...byFolder].map(([folder, names]) => `${folder} (${names.join(", ")})`);
+  // « Mesh: new / old », for every region at once, once one keeps its old mesh
+  $("mesh-choice").hidden = !rows.some((row) => row.kept);
   const shape = JSON.stringify([language(), rows, places]);
   if (shape !== regionsDrawn) {
     regionsDrawn = shape;
@@ -766,6 +861,21 @@ function drawRegions(status) {
         { danger: b.danger, disabled: b.disabled })));
       head.append(label, state, actions);
       li.append(head);
+      if (row.kept) {
+        const kept = document.createElement("div");
+        kept.className = "region-kept";
+        const text = document.createElement("span");
+        text.textContent = row.kept.note ? `${row.kept.text}. ${row.kept.note}` : row.kept.text;
+        kept.append(text);
+        if (row.kept.button) {
+          const b = row.kept.button;
+          const act = document.createElement("span");
+          act.className = "region-actions";
+          act.append(regionButton(b.label, regionAction(row.id, b.act), { danger: b.danger, disabled: b.disabled }));
+          kept.append(act);
+        }
+        li.append(kept);
+      }
       if (row.line) {
         const line = document.createElement("p");
         line.className = "question-help region-progress";
@@ -791,7 +901,8 @@ function drawRegions(status) {
   if (install && $("region-progress")) {
     const line = $("region-progress");
     line.classList.toggle("is-warn", install.phase === "failed");
-    if (running) {
+    if (install.phase === "deleting") line.textContent = t("regions.deleting"); // room made first
+    else if (running) {
       // the pace while files come; none once only unpacking is left
       const pace = install.mbs >= 0.05 ? install.mbs : 0;
       line.textContent = t(pace ? "regions.progress_pace" : "regions.progress", { done: gb(install.done_bytes),
@@ -1219,6 +1330,9 @@ function fillSettings(settings) {
   for (const input of document.querySelectorAll('input[name="rivers_fade"]')) {
     input.checked = input.value === (settings.rivers_fade ? "soft" : "even");
   }
+  for (const input of document.querySelectorAll('input[name="mesh"]')) {
+    input.checked = input.value === (settings.mesh || "new");
+  }
   drawSimbrief();
   drawMemory();
   drawZooms();
@@ -1251,6 +1365,7 @@ function formSettings() {
     night_light: nightChosen() === "off" ? (saved?.night_light || "normal") : nightChosen(),
     rivers_fade: (document.querySelector('input[name="rivers_fade"]:checked')?.value
       || (saved?.rivers_fade ? "soft" : "even")) === "soft",
+    mesh: document.querySelector('input[name="mesh"]:checked')?.value || saved?.mesh || "new",
     decal: $("set-decal").options.length ? $("set-decal").value : (saved?.decal ?? LIVE_DECAL),
     season: seasonChosen(),
     seasons: seasonLooks || saved?.seasons,
