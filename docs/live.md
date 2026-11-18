@@ -412,8 +412,9 @@ roads alike. Nothing in that folder is changed. Its mesh and its roads are taken
 and kept until the next one: the line says "Used from Live's next start" until then. Each start says
 in Live's log what it takes there, or that the folder is not there; when it is the only mesh, the
 window and the start then say so. On Windows, a folder on a network drive needs Developer Mode on:
-without it, Windows cannot link Live's scenery to it. There are no town lights at night on it: they
-come with Live's regions.
+without it, Windows cannot link Live's scenery to it. At night its towns are lit too, along X-Plane's
+own roads, but without NASA's night map, which comes with Live's regions: every street lamp is on,
+a little dimmer, out in the open country too.
 
 Where no region installed has a mesh, X-Plane shows its own scenery, without photos: Live says so,
 in its window and in a small panel in X-Plane ("Live: no mesh here: install North America in the
