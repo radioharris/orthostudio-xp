@@ -533,27 +533,28 @@ refused by the server and greyed in the window (`LiveControl.installing`, `check
 
 What a stop or a power cut leaves is made right (`settle`, `_repair`) at an install's start, as
 Live's window opens and at Live's start, for a region and for its river masks alike: one renamed
-aside whose successor never took its place is put back; one of before left beside its successor
-is deleted; at a start or an install that may, a whole stage is put in place, the region's, then
-its river masks' (`put_rivers_in_place`). The page counts an update by what the region's marker
-does not record (`not_installed`), so that a whole stage waiting keeps its Update, which
-downloads nothing and only puts it in place. Each zip is downloaded under a name holding its
-SHA-256
-(`Zip.download`): a part of a zip made again since is deleted at the next install instead of
-being resumed into a damaged file, and a river zip never meets its mesh zip of the same name. A
-zip that cannot be unpacked is deleted, downloaded again the next time. The room the whole install
-needs is checked before its first byte, disk by disk (the region's, the overlay pack's, the
-download folder's), and again before each zip, each file counted as a whole block (`_room`).
-Night grids alone, added to a region whose mesh did not change, go into it in place, the marker
-recording them; river masks alone go through their own stage, `.rivers.new`, and take their place
-by the same rule as a region (« Water »). Deleting a region renames it aside first, under a name
-of its own (`.z_osxp_<id>.old.<n>`, never taken for an update stopped halfway, which `settle`
-would put back), then deletes it, its stage and its downloads: a folder held open is not touched
-at all; a region of which a stop left only its stage or the region of before is deleted too
-(`present`), the deletion in the background, the request not waiting for it. The zip being
-unpacked into a stage is named in its record first (`unpacking`): a
-stop halfway, then that zip made again under the same path, starts the stage again rather than
-leave half of its version of before in it.
+aside whose successor never took its place is put back; one of before left beside its successor is
+deleted; at a start or an install that may, a whole stage is put in place, the region's, then its
+river masks' (`put_rivers_in_place`). The page counts an update by what the region's marker does not
+record (`not_installed`), so that a whole stage waiting keeps its Update, which downloads nothing
+and only puts it in place. Each zip is downloaded under a name holding its SHA-256 (`Zip.download`):
+a part of a zip made again since is deleted at the next install instead of being resumed into a
+damaged file, and a river zip never meets its mesh zip of the same name. A zip that cannot be
+unpacked is deleted, downloaded again the next time. The room the whole install needs is checked
+before its first byte, disk by disk (the region's, the overlay pack's, the download folder's), and
+again before each zip, each file counted as a whole block (`_room`). Night grids alone, added to a
+region whose mesh did not change, go into it in place, the marker recording them; river masks alone
+go through their own stage, `.rivers.new`, and take their place by the same rule as a region («
+Water »). Deleting a region renames it aside first, under a name of its own (`.z_osxp_<id>.old.<n>`,
+never taken for an update stopped halfway, which `settle` would put back), then deletes it, its
+stage and its downloads: a folder held open is not touched at all; a region of which a stop left
+only its stage or the region of before is deleted too (`present`), the deletion in the background,
+the request not waiting for it. Everything set aside stays within reach of Live's `regions` folder
+until it is deleted: a region on another disk is set aside there with its stage, and a link to them
+is kept in `regions`, set aside too, deleted last, which `take_up_deletions` follows after a quit.
+The zip being unpacked into a stage is named in its record first (`unpacking`): a stop halfway, then
+that zip made again under the same path, starts the stage again rather than leave half of its
+version of before in it.
 
 **Another tool's mesh** (`scenery.other_mesh`, 2026-11-14): a folder chosen in the Settings
 (`LiveSettings.other_mesh`, empty: none), last in `default_sources` after `base_sources` (Live's
@@ -1125,13 +1126,12 @@ with 3,732 masks; estimated for Europe from the bake of 2026-11-17, about 3.2 GB
   install under way keeps its place (the river masks then come with Update); the night grids'
   own download gives way. It downloads while Live streams too; what it brings takes its place by
   the rule above (`LiveControl._may_swap`), never under a running X-Plane or Live.
-- **Used from the next start.** `Names` reads which regions hold `rivers` as the stream starts
-  (`river_masks`): masks put in place meanwhile (none now: they wait for a start, the rule above)
-  would not be taken square by square, or one flight
-  would show X-Plane's water alone on the squares before them and faded banks after, and the
-  squares kept would stay so. The region's fingerprint counts the `rivers` folder's time where it
+- **Used from the next start.** A region's river masks never change while Live streams: they take
+  their place with Live stopped and X-Plane not running (the rule above), and `Names._water_mask`
+  reads those the region has. The region's fingerprint counts the `rivers` folder's time where it
   has one (`region._fingerprints`; a region without one keeps its fingerprints of before), so the
-  next start with X-Plane not running sets the region up again and its terrain files are made anew.
+  next start sets the region up again and its terrain files are made anew: one flight never shows
+  X-Plane's water alone on some squares and faded banks on others.
 - **The window.** Each region of the list carries `rivers_bytes`, what its river masks would
   download for a region installed that has not got them; « Soft banks » says their sum, « … and
   1.2 GB more to download for your regions. », its plain words alone once they are there.
