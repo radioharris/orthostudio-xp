@@ -1015,8 +1015,9 @@ def setup_region(
     # only regions to add after those of before: merged in. One that comes first (Live's own
     # mesh, orthostudio.live.scenery.osxp_regions) must take the squares it has: merged in, the
     # DSFs of before stayed and X-Plane read them with that region's terrain files (2026-10-18)
-    # never while a region of before changed: its DSFs of before would stay beside its lists of now
-    adding = bool(had) and set(had) < set(keys) and keys[: len(had)] == had and not changed
+    # never set up again (a region of before changed, ``force``): its DSFs of before would stay
+    # beside its lists of now
+    adding = bool(had) and set(had) < set(keys) and keys[: len(had)] == had and not force
     if old and (version < REGION_VERSION or not adding) and not xplane_running():
         forget = _unnamed(pack_dir, sources, changed, lists) if changed else set()
         _to_squares(pack_dir, log, forget)  # the files of the regions of before
