@@ -574,7 +574,7 @@ def test_no_start_on_a_region_updated_while_xplane_runs(
     time.sleep(0.01)
     (src / "terrain" / "extra.ter").write_text("A\n800\nTERRAIN\n")  # an update
     os.utime(src / "terrain")
-    with pytest.raises(session.RefusedError, match="changed since Live last started"):
+    with pytest.raises(session.RefusedError, match="changed since its last start"):
         session.prepare(options, log=quiet)
     monkeypatch.setattr(session, "xplane_running", lambda: False)
     session.prepare(options, log=quiet)  # X-Plane quit: the pack set up again
@@ -606,3 +606,80 @@ def test_a_region_updated_and_one_added_before_a_start(tmp_path: Path) -> None:
     assert (pack / dsf).read_bytes() == b"the update's DSF"
     assert (pack / "Earth nav data/+40+000/+46+007.dsf").exists()
     assert any("changed since the pack was set up" in line for line in lines)
+
+
+def test_the_mesh_setting_streams_each_region_s_kept_old_mesh(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """« Mesh: old », for every region at once: each region's kept old mesh in its place where it
+    has one, the new mesh elsewhere (North America keeps none); « new », the regions installed.
+    The kept mesh is Live's own mesh alike, with a list of textures of its own."""
+    from orthostudio.live import osxpregions
+    from orthostudio.live.aoregions import MARKER, regions_dir
+    from orthostudio.live.names import own_mesh
+    from orthostudio.live.settings import LiveSettings, save_settings
+
+    monkeypatch.setenv("OSXP_HOME", str(tmp_path / "home"))
+    (tmp_path / "home").mkdir()
+    live = tmp_path / "live"
+    xp = tmp_path / "X-Plane 12"
+    folders = {}
+    for name in ("z_osxp_eur", "z_osxp_na", ".z_osxp_eur.kept"):
+        folder = regions_dir(live) / name
+        (folder / "terrain-lists").mkdir(parents=True)
+        (folder / MARKER).write_text("{}")
+        folders[name] = folder
+    eur, na, kept = folders["z_osxp_eur"], folders["z_osxp_na"], folders[".z_osxp_eur.kept"]
+    assert osxpregions.kept_mesh(live, "eur") == kept
+    assert default_sources(xp, live) == [eur, na]  # new, the default
+    save_settings(LiveSettings(mesh="old"))
+    assert default_sources(xp, live) == [kept, na]
+    assert own_mesh(kept) and region_list_file(tmp_path, kept) != region_list_file(tmp_path, eur)
+    (kept / MARKER).unlink()  # not whole: the new one
+    assert default_sources(xp, live) == [eur, na]
+    save_settings(LiveSettings(mesh="new"))
+    (kept / MARKER).write_text("{}")
+    assert default_sources(xp, live) == [eur, na]
+
+
+def test_no_start_on_a_mesh_changed_while_xplane_runs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The pack made from one folder, the start reading the region from another (the Settings'
+    Mesh switched to a kept old mesh, or back, or the disk of a mesh not connected): refused with
+    X-Plane running, as a zoom changed is, saying the case in plain words, the pack never set up
+    again under it; with X-Plane closed, set up again. A region only added after the others is
+    merged in, as before; one put first sets the pack up again."""
+    from orthostudio.live import osxpregions, winsearch
+    from orthostudio.live.filesystem import folder_link
+    from orthostudio.live.region import pack_to_redo
+
+    monkeypatch.setenv("OSXP_HOME", str(tmp_path / "home"))
+    (tmp_path / "home").mkdir()
+    xp = make_xplane(tmp_path)
+    new = make_source(tmp_path / "new", tile=(45, 6), textures=NAMES)
+    old = make_source(tmp_path / "old", tile=(45, 6), textures=NAMES)
+    pack = tmp_path / "pack"
+    monkeypatch.setattr(winsearch, "keep_out", lambda folder, log=None: None)
+    monkeypatch.setattr(osxpregions, "settle", lambda root, log, swap, only=None: None)
+    monkeypatch.setattr(session, "xplane_running", lambda: False)
+    session.prepare(session.Options(xplane=xp, pack=pack, source=new, no_plugin=True), log=quiet)
+    assert not pack_to_redo([new], pack) and not pack_to_redo([new, old], pack)  # added: merged
+    assert pack_to_redo([old], pack) and pack_to_redo([old, new], pack)  # another comes first
+    link = xp / "Custom Scenery" / "z_osxp_live"
+    if not is_folder_link(link):
+        folder_link(pack, link)
+    monkeypatch.setattr(session, "is_installed", lambda *a: True)
+    monkeypatch.setattr(session, "xplane_running", lambda: True)
+    switched = session.Options(xplane=xp, pack=pack, source=old, no_plugin=True)
+    with pytest.raises(
+        session.RefusedError, match="streams onto changed since its last start"
+    ) as e:
+        session.prepare(switched, log=quiet)
+    said = str(e.value)
+    assert said.endswith("Quit X-Plane, or connect the disk holding a mesh, then start again")
+    assert "z_ao_test" not in said
+    assert sources_of_pack(pack) == [new]  # the pack as X-Plane found it
+    monkeypatch.setattr(session, "xplane_running", lambda: False)
+    session.prepare(switched, log=quiet)  # X-Plane closed: set up again from the old mesh
+    assert sources_of_pack(pack) == [old]

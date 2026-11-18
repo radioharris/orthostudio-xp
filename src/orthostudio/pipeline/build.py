@@ -78,7 +78,13 @@ from orthostudio.machine import (  # noqa: F401
 from orthostudio.masks.build import MAX_WORKERS as MASKS_MAX_WORKERS
 from orthostudio.masks.build import env_workers as masks_env_workers
 from orthostudio.masks.rule import MASKS as OSXP_MASKS
-from orthostudio.masks.rule import MasksJob, masks_job, read_water_tris_artifact
+from orthostudio.masks.rule import (
+    MASKS_BASE_MB,
+    MasksJob,
+    masks_job,
+    masks_worker_mb,
+    read_water_tris_artifact,
+)
 from orthostudio.masks.rule import MasksParams as OsxpMasksParams
 from orthostudio.masks.water import NEIGHBOUR_OFFSETS, mask_cell_count
 from orthostudio.mesh.build import mesh_file_name, steiner_budget
@@ -1989,26 +1995,6 @@ def neighbour_meshes(store: Store) -> dict[str, ArtifactRef]:
                 ref = ArtifactRef(info.key, info.digest, info.path, info.rule, info.kind, info.size)
                 best[name] = (info.last_used_at, ref)
     return {name: ref for name, (_used, ref) in best.items()}
-
-
-MASKS_BASE_MB = 300
-"""The masks node's own memory, without its pool: the water triangles of the tile and its
-neighbours, read from their meshes."""
-
-
-MASKS_WORKER_MB = {"sand": 250, "rocks": 710, "3steps": 990}
-"""One masks worker at its peak, one cell in flight, by masking profile (``masks-build.md`` 6.2,
-measured: 242, 703 and 981 MB). Every profile counted 800 MB, three times what ``sand``, the
-default, takes, and less than ``3steps`` does."""
-
-MASKS_DISTANCE_MB = 970
-"""One worker making the distance masks too (``distance_masks_too``): 962 MB measured."""
-
-
-def masks_worker_mb(params: OsxpMasksParams) -> int:
-    """What one masks worker takes for ``params``' profile; an unknown one counts the heaviest."""
-    mb = MASKS_WORKER_MB.get(params.masking_mode, max(MASKS_WORKER_MB.values()))
-    return max(mb, MASKS_DISTANCE_MB) if params.distance_masks_too else mb
 
 
 def _masks_ram_mb(env: BuildEnv, params: OsxpMasksParams) -> int:

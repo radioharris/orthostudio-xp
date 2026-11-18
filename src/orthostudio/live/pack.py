@@ -77,8 +77,13 @@ def check_folder(path: Path, *, custom_scenery: Path | None = None, create: bool
     return path
 
 
+def pack_dir(root: Path) -> Path:
+    """The pack in a Live folder ``root``."""
+    return root / "pack"
+
+
 def default_pack_dir() -> Path:
-    return live_root() / "pack"
+    return pack_dir(live_root())
 
 
 def default_cache_path() -> Path:

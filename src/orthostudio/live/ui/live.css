@@ -110,6 +110,9 @@
 .region-state { color: var(--fg-2); font-size: var(--fs-2); }
 .region-actions { display: flex; gap: 6px; justify-self: end; }
 .region-progress { font-variant-numeric: tabular-nums; }
+/* a region's kept old mesh, under its row: its size and its Delete from the disk */
+.region-kept { display: flex; align-items: center; gap: 12px; color: var(--fg-2); font-size: var(--fs-2); }
+.region-kept .region-actions { margin-left: auto; }
 
 /* The map: the shared base map (basemap.js), Live's layers over it (livemap.js) */
 .live-map-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }

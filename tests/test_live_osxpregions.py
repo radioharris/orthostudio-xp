@@ -21,6 +21,7 @@ from pathlib import Path
 import httpx
 import pytest
 
+from orthostudio.clean import disk_bytes
 from orthostudio.live import aoregions, osxpregions
 from orthostudio.live.osxpregions import Installer, OsxpRegion, Zip
 
@@ -148,14 +149,23 @@ def total(region: OsxpRegion, kind: str = "size", rivers: bool = False) -> int:
     return sum(getattr(z, kind) for z in zips)
 
 
-def install(root: Path, region: OsxpRegion, host: Host, **kw) -> tuple[Installer, list[str]]:
-    """One install, Live stopped and X-Plane not running unless ``may_swap`` says otherwise."""
+def install(
+    root: Path,
+    region: OsxpRegion,
+    host: Host,
+    started: Callable[[Installer], None] | None = None,
+    **kw,
+) -> tuple[Installer, list[str]]:
+    """One install, Live stopped and X-Plane not running unless ``may_swap`` says otherwise;
+    ``started`` told of it before it runs (the pilot's Stop, from a test)."""
     lines: list[str] = []
     client = httpx.Client(
         transport=httpx.MockTransport(host), headers={"Authorization": f"Bearer {TOKEN}"}
     )
     kw.setdefault("may_swap", lambda: True)
     inst = Installer(root, region, client=client, host=(URL, TOKEN), log=lines.append, **kw)
+    if started is not None:
+        started(inst)
     inst.run()
     return inst, lines
 
@@ -1450,13 +1460,14 @@ def test_what_a_region_holds_is_set_aside_beside_it(
     tmp_path: Path, rivers_world, monkeypatch
 ) -> None:
     """River masks of before, or half come and no longer wanted, are set aside beside the region,
-    never inside its folder or its stage, which a rename may take next."""
+    never inside its folder or its stage, which a rename may take next; deleted before the install
+    counts its room."""
     files, region = rivers_world
     install(tmp_path, region, Host(files))
     damaged = {**files, RIVERS_B: b"x" * region.rivers[1].size}
     install(tmp_path, region, Host(damaged), overlays=False, rivers=True)  # half come
     started: list[Path] = []
-    monkeypatch.setattr(osxpregions, "_delete_aside", lambda *f, links=(): started.extend(f))
+    monkeypatch.setattr(osxpregions, "_delete", lambda *f, links=(): started.extend(f))
     install(tmp_path, region, Host(files))  # Even again
     folder = osxpregions.mesh_dir(tmp_path, "eur")
     assert [p.parent for p in started] == [folder.parent]
@@ -1719,3 +1730,730 @@ def test_what_went_wrong_is_said_in_plain_words_without_the_host(tmp_path: Path,
     with pytest.raises(osxpregions.CatalogError) as e:
         osxpregions.catalog(tmp_path, client=client, host=(URL, "key"))
     assert str(e.value).startswith("the server could not be reached") and URL not in str(e.value)
+
+
+# --- the mesh of before kept beside the new one -----------------------------------------------
+
+
+def kept_of(root: Path) -> Path:
+    return osxpregions.kept_dir(root, "eur")
+
+
+def updated(files: dict, region: OsxpRegion, tag: bytes):
+    """The world with its second mesh zip made again: a new release of the region's mesh."""
+    return mended(
+        files, region, 1, {"Earth nav data/+40+000/+46+005.dsf": tag * 400, "terrain/b.ter": tag}
+    )
+
+
+def test_an_update_keeps_the_mesh_of_before_where_the_pilot_said_so(tmp_path: Path, world) -> None:
+    """Kept: at the swap the region of before is renamed beside the region, its marker, its files
+    and its dates as they were; never a copy. A newer update kept replaces it, one per region; one
+    not kept deletes the region of before as before and leaves the kept one alone."""
+    files, region = world
+    install(tmp_path, region, Host(files))
+    folder = osxpregions.mesh_dir(tmp_path, "eur")
+    before = marker_of(tmp_path)
+    nav = folder / "Earth nav data"
+    dated = os.stat(nav).st_mtime_ns
+    inode = os.stat(folder / "terrain/b.ter").st_ino
+    files, region = updated(files, region, b"second")
+    inst, lines = install(tmp_path, region, Host(files), keep_old=True)
+    assert inst.progress.phase == "done", lines
+    kept = kept_of(tmp_path)
+    assert kept.name == ".z_osxp_eur.kept" and kept.parent == folder.parent
+    assert osxpregions.kept_mesh(tmp_path, "eur") == kept
+    assert json.loads((kept / aoregions.MARKER).read_text()) == before
+    assert (kept / "terrain/b.ter").read_bytes() == b"ter b"
+    assert os.stat(kept / "terrain/b.ter").st_ino == inode  # renamed, not copied
+    assert os.stat(kept / "Earth nav data").st_mtime_ns == dated  # its dates of before
+    assert (folder / "terrain/b.ter").read_bytes() == b"second"
+    assert not (folder / osxpregions.STEP).exists() and not (kept / osxpregions.STEP).exists()
+    assert hidden(tmp_path) == [".download", ".lists", ".z_osxp_eur.kept"]
+    assert osxpregions.installed(tmp_path) == {"eur": marker_of(tmp_path)}  # never a region
+    assert any("kept beside it" in line for line in lines)
+    # a newer one kept: it replaces the one kept before
+    files, region = updated(files, region, b"third")
+    install(tmp_path, region, Host(files), keep_old=True)
+    assert (kept / "terrain/b.ter").read_bytes() == b"second"
+    assert (folder / "terrain/b.ter").read_bytes() == b"third"
+    assert hidden(tmp_path) == [".download", ".lists", ".z_osxp_eur.kept"]
+    # one not kept: the region of before goes, the one kept stays as it was
+    files, region = updated(files, region, b"fourth")
+    inst, lines = install(tmp_path, region, Host(files), keep_old=False)
+    assert inst.progress.phase == "done", lines
+    assert (kept / "terrain/b.ter").read_bytes() == b"second"
+    assert (folder / "terrain/b.ter").read_bytes() == b"fourth"
+    assert hidden(tmp_path) == [".download", ".lists", ".z_osxp_eur.kept"]
+
+
+def test_an_update_not_kept_leaves_nothing_of_before(tmp_path: Path, world) -> None:
+    files, region = world
+    install(tmp_path, region, Host(files))
+    files, region = updated(files, region, b"second")
+    inst, lines = install(tmp_path, region, Host(files))  # the default: not kept
+    assert inst.progress.phase == "done", lines
+    assert osxpregions.kept_mesh(tmp_path, "eur") is None and not kept_of(tmp_path).exists()
+    assert hidden(tmp_path) == [".download", ".lists"]
+
+
+def test_an_update_put_in_place_at_a_later_start_honours_the_last_answer(
+    tmp_path: Path, world
+) -> None:
+    """X-Plane open: the update waits whole, the answer in its stage's record. Clicked again with
+    another answer, nothing is downloaded and the record says the new one; Live's next start with
+    X-Plane closed keeps the region of before or not, as said last."""
+    files, region = world
+    install(tmp_path, region, Host(files))
+    files, region = updated(files, region, b"second")
+    inst, _ = install(tmp_path, region, Host(files), keep_old=True, may_swap=lambda: False)
+    assert inst.progress.phase == "waiting"
+    stage = osxpregions.stage_dir(tmp_path, "eur")
+    assert json.loads((stage / osxpregions.STEP).read_text())["keep_old"] is True
+    host = Host(files)
+    inst, _ = install(tmp_path, region, host, keep_old=False, may_swap=lambda: False)
+    assert inst.progress.phase == "waiting" and host.asked == []
+    assert json.loads((stage / osxpregions.STEP).read_text())["keep_old"] is False
+    osxpregions.settle(tmp_path, lambda _: None, swap=True)  # Live's start, X-Plane closed
+    assert marker_of(tmp_path)["zips"] == {z.path: z.sha256 for z in region.mesh}
+    assert not kept_of(tmp_path).exists()
+    # and kept: the next update waits, said kept, and the start keeps the region of before
+    files, region = updated(files, region, b"third")
+    install(tmp_path, region, Host(files), keep_old=True, may_swap=lambda: False)
+    said: list[str] = []
+    osxpregions.settle(tmp_path, said.append, swap=True)
+    assert (kept_of(tmp_path) / "terrain/b.ter").read_bytes() == b"second"
+    assert any("kept beside it" in s for s in said)
+    assert hidden(tmp_path) == [".download", ".lists", ".z_osxp_eur.kept"]
+
+
+def test_a_power_cut_between_the_renames_of_an_update_kept_is_put_right(
+    tmp_path: Path, world, monkeypatch
+) -> None:
+    """Kept, the power cut at each rename: before the stage took the region's place, the region
+    of before is put back and the update waits whole with its answer; after it, before the region
+    of before was renamed as the one kept, the next settle keeps it as the record says, never
+    deletes it."""
+    files, region = world
+    install(tmp_path, region, Host(files))
+    files, region = updated(files, region, b"second")
+    folder = osxpregions.mesh_dir(tmp_path, "eur")
+    stage = osxpregions.stage_dir(tmp_path, "eur")
+    old = folder.with_name(".z_osxp_eur.old")
+    renaming = osxpregions.replace_file
+
+    def cut_at(which: Path):
+        def cut(src, dst):
+            if Path(src) == which:
+                raise KeyboardInterrupt("the power cut")
+            renaming(src, dst)
+
+        return cut
+
+    monkeypatch.setattr(osxpregions, "replace_file", cut_at(stage))  # before the stage's rename
+    with pytest.raises(KeyboardInterrupt):
+        install(tmp_path, region, Host(files), keep_old=True)
+    monkeypatch.setattr(osxpregions, "replace_file", renaming)
+    assert not folder.exists() and old.exists()
+    osxpregions.settle(tmp_path, lambda _: None, swap=False)  # the window opens
+    assert (folder / "terrain/b.ter").read_bytes() == b"ter b" and not old.exists()
+    assert osxpregions.staged_whole(tmp_path, "eur")
+    monkeypatch.setattr(osxpregions, "replace_file", cut_at(old))  # after it, before the keeping
+    with pytest.raises(KeyboardInterrupt):
+        osxpregions.settle(tmp_path, lambda _: None, swap=True)
+    monkeypatch.setattr(osxpregions, "replace_file", renaming)
+    assert (folder / "terrain/b.ter").read_bytes() == b"second" and old.exists()
+    assert json.loads((folder / osxpregions.STEP).read_text())["keep_old"] is True
+    said: list[str] = []
+    osxpregions.settle(tmp_path, said.append, swap=False)  # the window opens again
+    assert (kept_of(tmp_path) / "terrain/b.ter").read_bytes() == b"ter b"
+    assert not old.exists() and not (folder / osxpregions.STEP).exists()
+    assert any("kept beside it" in s for s in said)
+    assert hidden(tmp_path) == [".download", ".lists", ".z_osxp_eur.kept"]
+
+
+def test_a_kept_mesh_never_changes(tmp_path: Path, world) -> None:
+    """Never compared to the list, never updated, never downloaded again: the region's Update
+    counts its own marker alone, and a start, an install, the window's take-up of deletions leave
+    the kept mesh as it is."""
+    files, region = world
+    install(tmp_path, region, Host(files))
+    files, region = updated(files, region, b"second")
+    install(tmp_path, region, Host(files), keep_old=True)
+    kept = kept_of(tmp_path)
+    marker = (kept / aoregions.MARKER).read_text()
+    assert osxpregions.to_fetch(tmp_path, region, True) == ([], [])  # up to date: no Update
+    assert osxpregions.not_installed(tmp_path, region, False) == []
+    assert not osxpregions.made_whole(tmp_path, region)
+    host = Host(files)
+    inst, lines = install(tmp_path, region, host)
+    assert inst.progress.phase == "done" and host.asked == [], lines
+    osxpregions.settle(tmp_path, lambda _: None, swap=True)
+    assert osxpregions.take_up_deletions(tmp_path) == 0
+    assert (kept / aoregions.MARKER).read_text() == marker
+    assert (kept / "terrain/b.ter").read_bytes() == b"ter b"
+    files, region = updated(files, region, b"third")  # a newer list: the region's Update only
+    assert [z.path for z in osxpregions.not_installed(tmp_path, region, False)] == [
+        region.mesh[1].path
+    ]
+    assert (kept / aoregions.MARKER).read_text() == marker
+
+
+def test_the_kept_mesh_deleted_alone_keeps_the_shared_overlays(tmp_path: Path, world) -> None:
+    """« Delete from the disk »: the kept mesh alone, set aside then deleted; the region, its
+    overlays and their record stay, which its new mesh has too. The region's own Delete takes
+    the kept mesh with it."""
+    files, region = world
+    install(tmp_path, region, Host(files))
+    files, region = updated(files, region, b"second")
+    install(tmp_path, region, Host(files), keep_old=True)
+    pack = osxpregions.overlay_pack(tmp_path)
+    record = (pack / osxpregions.OVERLAY_RECORD).read_text()
+    lines: list[str] = []
+    osxpregions.remove_kept(tmp_path, "eur", log=lines.append)
+    assert lines == ["the old mesh of OrthoStudio XP's region eur deleted"]
+    assert not kept_of(tmp_path).exists() and osxpregions.kept_mesh(tmp_path, "eur") is None
+    assert (pack / "Earth nav data/+40+000/+45+005.dsf").read_bytes() == b"roads a"
+    assert (pack / osxpregions.OVERLAY_RECORD).read_text() == record
+    assert (osxpregions.mesh_dir(tmp_path, "eur") / "terrain/b.ter").read_bytes() == b"second"
+    assert hidden(tmp_path) == [".download", ".lists"]
+    osxpregions.remove_kept(tmp_path, "eur")  # none left: nothing done
+    files, region = updated(files, region, b"third")
+    install(tmp_path, region, Host(files), keep_old=True)
+    assert kept_of(tmp_path).exists()
+    osxpregions.remove(tmp_path, "eur", [(45, 5), (46, 5)], log=lines.append)
+    assert not osxpregions.present(tmp_path, "eur") and not kept_of(tmp_path).exists()
+    assert hidden(tmp_path) == [".download", ".lists"]
+
+
+def test_a_kept_mesh_whose_deletion_a_quit_stopped_is_deleted_at_the_next_opening(
+    tmp_path: Path, world, monkeypatch
+) -> None:
+    files, region = world
+    install(tmp_path, region, Host(files))
+    files, region = updated(files, region, b"second")
+    install(tmp_path, region, Host(files), keep_old=True)
+    monkeypatch.setattr(osxpregions, "_delete_aside", lambda *f, links=(): None)  # the quit
+    osxpregions.remove_kept(tmp_path, "eur")
+    aside = [p for p in osxpregions.regions_dir(tmp_path).iterdir() if ".kept." in p.name]
+    assert len(aside) == 1 and osxpregions.ASIDE.fullmatch(aside[0].name)
+    assert osxpregions.kept_mesh(tmp_path, "eur") is None  # never taken for a kept one
+    monkeypatch.setattr(osxpregions, "_delete_aside", osxpregions._delete)
+    assert osxpregions.take_up_deletions(tmp_path) == 1
+    assert hidden(tmp_path) == [".download", ".lists"]
+
+
+def test_a_region_on_another_disk_keeps_its_mesh_of_before_on_that_disk(
+    tmp_path: Path, world
+) -> None:
+    files, region = world
+    elsewhere = tmp_path / "other disk" / "z_osxp_eur"
+    elsewhere.parent.mkdir()
+    root = tmp_path / "live"
+    install(root, region, Host(files))
+    folder = osxpregions.mesh_dir(root, "eur")
+    folder.rename(elsewhere)
+    folder.symlink_to(elsewhere, target_is_directory=True)
+    files, region = updated(files, region, b"second")
+    inst, lines = install(root, region, Host(files), keep_old=True)
+    assert inst.progress.phase == "done", lines
+    assert kept_of(root) == elsewhere.with_name(".z_osxp_eur.kept")
+    assert (kept_of(root) / "terrain/b.ter").read_bytes() == b"ter b"
+    assert sorted(p.name for p in elsewhere.parent.iterdir()) == [".z_osxp_eur.kept", "z_osxp_eur"]
+    assert hidden(root) == [".download", ".lists"]
+
+
+# --- no room for an update beside the region --------------------------------------------------
+
+
+@pytest.fixture
+def short_disk(monkeypatch):
+    """A disk ``by`` bytes short of an update's room (one by default), where each folder or file
+    named, deleted (or made again under its name), frees what the test says it holds: a file its
+    size, a mesh or a stage the size its marker gave, ``(folder, bytes)`` those bytes (0 for a
+    kept mesh the pack holds still, its files shared). No rule of its own on what is shared: each
+    test says it."""
+    real = shutil.disk_usage
+    monkeypatch.setattr(osxpregions, "SPARE_BYTES", 0)
+    state: dict = {"base": None, "freeable": []}
+
+    def usage(path):
+        got = real(path)
+        if state["base"] is None:
+            return got
+        free = state["base"] + sum(n for folder, n, ino in state["freeable"] if gone(folder, ino))
+        return type(got)(got.total, got.total - free, free)
+
+    def gone(path: Path, ino: int) -> bool:
+        try:
+            return path.stat().st_ino != ino  # made again since: a new folder
+        except OSError:
+            return True
+
+    monkeypatch.setattr(osxpregions.shutil, "disk_usage", usage)
+
+    def short(root: Path, region: OsxpRegion, *folders: Path | tuple, by: int = 1) -> None:
+        state["base"], state["freeable"] = 0, []  # the disk empty: what the install needs
+        mesh, ovl = osxpregions.to_fetch(root, region, True)
+        stage = osxpregions.stage_dir(root, region.id)
+        download = osxpregions.download_dir(root, region.id)
+        pack = osxpregions.overlay_pack(root)
+        (need,) = (
+            r.need for r in osxpregions._short_of_room(mesh, ovl, stage, pack, download, True)
+        )
+
+        def holds(f: Path | tuple) -> tuple[Path, int]:
+            if isinstance(f, tuple):
+                return f
+            if f.is_file():
+                return f, f.stat().st_size
+            return f, json.loads((f / aoregions.MARKER).read_text())["size"]
+
+        state["freeable"] = [(f, n, f.stat().st_ino) for f, n in map(holds, folders)]
+        state["base"] = need - by
+
+    return short
+
+
+def pack_made_of(pack: Path, *sources: Path) -> Path:
+    """Live's pack, its record saying it is made from these regions as they are now, their
+    fingerprints with them, as a start sets it up (``region.setup_region``)."""
+    from orthostudio.live.region import REGION_MARKER, _fingerprints
+
+    (pack / REGION_MARKER).parent.mkdir(parents=True, exist_ok=True)
+    record = {"sources": [str(s) for s in sources], "fingerprints": _fingerprints(sources)}
+    (pack / REGION_MARKER).write_text(json.dumps(record))
+    return pack
+
+
+def test_no_room_beside_the_region_says_it_and_deletes_nothing(
+    tmp_path: Path, world, short_disk
+) -> None:
+    """The window's word before an update (update_room), by the install's own count: the room it
+    needs and what is free; no kept mesh to delete, nothing offered. The install, told to make room
+    all the same, checks again, deletes nothing, and stops on its words, the region as it was:
+    never deleted to make room."""
+    files, region = world
+    install(tmp_path, region, Host(files))
+    files, region = updated(files, region, b"second")
+    folder = osxpregions.mesh_dir(tmp_path, "eur")
+    assert osxpregions.update_room(tmp_path, region, True, False) is None  # room enough
+    short_disk(tmp_path, region, folder)
+    room = osxpregions.update_room(tmp_path, region, True, False)
+    assert room == {
+        "need": room["need"],
+        "free": room["need"] - 1,
+        "kept": False,
+        "shared": False,  # no kept mesh at all
+        "live": False,  # the region's own disk
+        "cleared": False,  # nothing an update stopped earlier left
+    }
+    for make_room in (False, True):
+        host = Host(files)
+        inst, _ = install(tmp_path, region, host, make_room=make_room)
+        assert inst.progress.phase == "failed" and "GB needed on the disk" in inst.progress.error
+        assert host.asked == [] and (folder / "terrain/b.ter").read_bytes() == b"ter b"
+
+
+def test_no_room_the_kept_mesh_deleted_first_and_the_install_runs_with_no_gap(
+    tmp_path: Path, world, short_disk
+) -> None:
+    files, region = world
+    install(tmp_path, region, Host(files))
+    files, region = updated(files, region, b"second")
+    install(tmp_path, region, Host(files), keep_old=True)
+    files, region = updated(files, region, b"third")
+    folder = osxpregions.mesh_dir(tmp_path, "eur")
+    short_disk(tmp_path, region, kept_of(tmp_path), folder)
+    room = osxpregions.update_room(tmp_path, region, True, False)
+    assert room is not None and room["kept"] is True
+    inst, _ = install(tmp_path, region, Host(files), make_room=True, may_swap=lambda: False)
+    assert inst.progress.phase == "failed" and "X-Plane is running" in inst.progress.error
+    assert kept_of(tmp_path).exists()  # never under a running X-Plane
+    seen: list[bool] = []
+    host = Host(files, hook=lambda key: seen.append((folder / aoregions.MARKER).is_file()))
+    inst, lines = install(tmp_path, region, host, make_room=True)
+    assert inst.progress.phase == "done", lines
+    assert seen and all(seen)  # the region of before in place all along: no gap
+    assert "the old mesh of OrthoStudio XP's region eur deleted" in lines
+    assert not kept_of(tmp_path).exists()
+    assert (folder / "terrain/b.ter").read_bytes() == b"third"
+    assert hidden(tmp_path) == [".download", ".lists"]
+
+
+def test_no_room_a_kept_mesh_that_frees_too_little_or_nothing_is_never_deleted(
+    tmp_path: Path, world, short_disk
+) -> None:
+    """A kept mesh whose deletion would leave the disk short, or that frees nothing (Live's pack
+    made from it: its DSFs and masks stay there as clones or hard links), is not offered, and the
+    install told to make room all the same deletes nothing: it could not be downloaded again."""
+    files, region = world
+    install(tmp_path, region, Host(files))
+    files, region = updated(files, region, b"second")
+    install(tmp_path, region, Host(files), keep_old=True)
+    files, region = updated(files, region, b"third")
+    folder, kept = osxpregions.mesh_dir(tmp_path, "eur"), kept_of(tmp_path)
+    pack_made_of(tmp_path / "pack", folder)  # the last start flew the new mesh: kept unshared
+    short_disk(tmp_path, region, kept)
+    assert osxpregions.update_room(tmp_path, region, True, False)["kept"] is True
+    big = json.loads((kept / aoregions.MARKER).read_text())["size"] + 1
+    short_disk(tmp_path, region, kept, by=big)  # too little
+    assert osxpregions.update_room(tmp_path, region, True, False)["kept"] is False
+    inst, _ = install(tmp_path, region, Host(files), make_room=True)
+    assert inst.progress.phase == "failed" and kept.exists()
+    pack_made_of(tmp_path / "pack", kept)  # the last start flew the kept mesh: frees nothing
+    short_disk(tmp_path, region, (kept, 0))
+    room = osxpregions.update_room(tmp_path, region, True, False)
+    assert room["kept"] is False and room["shared"] is True  # its room after the next start
+    inst, _ = install(tmp_path, region, Host(files), make_room=True)
+    assert inst.progress.phase == "failed" and kept.exists()
+    assert (folder / "terrain/b.ter").read_bytes() == b"second"
+
+
+def test_no_room_on_two_disks_the_kept_mesh_is_deleted_only_if_it_makes_both_enough(
+    tmp_path: Path, world, monkeypatch
+) -> None:
+    """A region on another disk, linked from Live's folder, its kept mesh beside it there: that
+    disk short, and Live's own disk too (the downloads, the overlays). Deleting the kept mesh frees
+    the first one only: never offered nor deleted, the install stopping on its words; Live's disk
+    with room, it is (the reviews of 2026-11-18)."""
+    files, region = world
+    other = tmp_path / "other disk"
+    elsewhere = other / "z_osxp_eur"
+    other.mkdir()
+    root = tmp_path / "live"
+    install(root, region, Host(files))
+    folder = osxpregions.mesh_dir(root, "eur")
+    folder.rename(elsewhere)
+    folder.symlink_to(elsewhere, target_is_directory=True)
+    files, region = updated(files, region, b"second")
+    install(root, region, Host(files), keep_old=True)
+    files, region = updated(files, region, b"third")
+    kept = kept_of(root)
+    assert kept.parent == other
+
+    def disk(path) -> int:
+        p = Path(path)
+        return 2 if (p == other or other in p.parents) else 1
+
+    monkeypatch.setattr(osxpregions, "_disk_of", disk)
+    monkeypatch.setattr(osxpregions, "SPARE_BYTES", 0)
+    real = shutil.disk_usage
+    lives_free = [1]
+
+    def usage(path):
+        got = real(path)
+        # the kept mesh gone: what the disk says then, more than its marker (each file a block)
+        free = (1 if kept.exists() else 10**9) if disk(path) == 2 else lives_free[0]
+        return type(got)(got.total, got.total - free, free)
+
+    monkeypatch.setattr(osxpregions.shutil, "disk_usage", usage)
+    room = osxpregions.update_room(root, region, True, False)
+    assert room is not None and room["kept"] is False  # Live's disk would stay short
+    assert room["live"] is False  # the region's disk, short too, said first
+    other_free = usage  # Live's folder's disk alone short: said as Live's
+
+    def lives_alone(path):
+        got = real(path)
+        if disk(path) == 2:
+            return type(got)(got.total, 0, 10**12)
+        return other_free(path)
+
+    monkeypatch.setattr(osxpregions.shutil, "disk_usage", lives_alone)
+    room = osxpregions.update_room(root, region, True, False)
+    assert room is not None and room["live"] is True and room["kept"] is False
+    monkeypatch.setattr(osxpregions.shutil, "disk_usage", usage)
+    inst, _ = install(root, region, Host(files), make_room=True)
+    assert inst.progress.phase == "failed" and "GB needed" in inst.progress.error
+    assert kept.exists()  # never deleted for nothing: it cannot be downloaded again
+    lives_free[0] = 10**12
+    room = osxpregions.update_room(root, region, True, False)
+    assert room is not None and room["kept"] is True and room["live"] is False
+    inst, lines = install(root, region, Host(files), make_room=True)
+    assert inst.progress.phase == "done", lines
+    assert not kept.exists() and (elsewhere / "terrain/b.ter").read_bytes() == b"third"
+
+
+def test_stale_downloads_count_as_room_for_the_window_as_for_the_install(
+    tmp_path: Path, world, short_disk
+) -> None:
+    """Parts of zips made again since, in the region's download folder, which the install deletes
+    before it counts its room: the window counts them freed too, and asks its keep question rather
+    than say there is no room; the install then finds it."""
+    files, region = world
+    install(tmp_path, region, Host(files))
+    files, region = updated(files, region, b"second")
+    stale = osxpregions.download_dir(tmp_path, "eur") / "0000000000000000-z_osxp_eur_+46+005.zip"
+    stale.parent.mkdir(parents=True)
+    stale.write_bytes(b"x" * 50_000)  # each unpacked file then counted a whole block: room for it
+    short_disk(tmp_path, region, stale, by=40_000)
+    assert osxpregions.update_room(tmp_path, region, True, False) is None
+    inst, lines = install(tmp_path, region, Host(files))
+    assert inst.progress.phase == "done", lines
+    assert not stale.exists()
+
+
+def test_a_kept_mesh_replaced_stays_until_the_new_one_has_its_place(
+    tmp_path: Path, world, monkeypatch
+) -> None:
+    """Kept again, the rename of the region of before into the kept mesh refused a moment
+    (Windows): the mesh kept until then stays in its place, never deleted first; the next settle
+    renames the waiting one, which then replaces it."""
+    files, region = world
+    install(tmp_path, region, Host(files))
+    files, region = updated(files, region, b"second")
+    install(tmp_path, region, Host(files), keep_old=True)
+    files, region = updated(files, region, b"third")
+    kept = kept_of(tmp_path)
+    renaming = osxpregions.replace_file
+
+    def held(src, dst):
+        if Path(dst) == kept and Path(src).name == ".z_osxp_eur.old":
+            raise PermissionError(32, "in use by another process")
+        renaming(src, dst)
+
+    monkeypatch.setattr(osxpregions, "replace_file", held)
+    inst, lines = install(tmp_path, region, Host(files), keep_old=True)
+    assert inst.progress.phase == "done", lines
+    assert (kept / "terrain/b.ter").read_bytes() == b"ter b"  # the one kept before, still there
+    assert osxpregions.keeps_old(tmp_path, "eur")
+    monkeypatch.setattr(osxpregions, "replace_file", renaming)
+    osxpregions.settle(tmp_path, lambda _: None, swap=False)
+    assert (kept / "terrain/b.ter").read_bytes() == b"second"
+    assert hidden(tmp_path) == [".download", ".lists", ".z_osxp_eur.kept"]
+
+
+def test_room_is_made_only_for_an_update_made_whole(tmp_path: Path, world, short_disk) -> None:
+    """Told to make room, an install that only adds to the region (its mesh the list's) deletes
+    nothing."""
+    files, region = world
+    install(tmp_path, region, Host(files))
+    roads = zip_of("y_osxp_overlays", {"Earth nav data/+40+000/+45+005.dsf": b"roads A"})
+    files = {**files, OVERLAY_A: roads}
+    region = dataclasses.replace(region, overlays=(entry(OVERLAY_A, roads),))
+    folder = osxpregions.mesh_dir(tmp_path, "eur")
+    assert not osxpregions.made_whole(tmp_path, region)
+    short_disk(tmp_path, region, folder, by=10**6)
+    inst, _ = install(tmp_path, region, Host(files), make_room=True)
+    assert inst.progress.phase == "failed" and "GB needed" in inst.progress.error
+    assert (folder / "terrain/b.ter").read_bytes() == b"ter b"
+
+
+# --- the last answer wins ---------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("first, last", [(False, True), (True, False)])
+def test_update_clicked_again_with_x_plane_closed_takes_the_last_answer(
+    tmp_path: Path, world, first: bool, last: bool
+) -> None:
+    """Update with X-Plane open, one answer: the update waits whole. X-Plane closed, Update
+    again and the other answer: the stage takes its place with that one, never the one of
+    before (« Don't keep » first, then « Keep », lost the mesh for good: the reviews of
+    2026-11-18)."""
+    files, region = world
+    install(tmp_path, region, Host(files))
+    files, region = updated(files, region, b"second")
+    inst, _ = install(tmp_path, region, Host(files), keep_old=first, may_swap=lambda: False)
+    assert inst.progress.phase == "waiting"
+    host = Host(files)
+    inst, lines = install(tmp_path, region, host, keep_old=last, may_swap=lambda: True)
+    assert inst.progress.phase == "done" and host.asked == [], lines
+    assert (osxpregions.mesh_dir(tmp_path, "eur") / "terrain/b.ter").read_bytes() == b"second"
+    if last:
+        assert (kept_of(tmp_path) / "terrain/b.ter").read_bytes() == b"ter b"
+    else:
+        assert osxpregions.kept_mesh(tmp_path, "eur") is None
+
+
+def test_a_newer_release_over_a_waiting_update_keeps_the_mesh_flown(tmp_path: Path, world) -> None:
+    """A flown, B waiting whole (X-Plane open). C comes on the list; X-Plane closed, Update and
+    Keep: B, no longer the list's, is never put in place, and A, the mesh flown, is the one
+    kept, C in place (one swap, not two)."""
+    files, region = world
+    install(tmp_path, region, Host(files))
+    files, region = updated(files, region, b"second")
+    inst, _ = install(tmp_path, region, Host(files), keep_old=True, may_swap=lambda: False)
+    assert inst.progress.phase == "waiting"
+    files, region = updated(files, region, b"third")
+    inst, lines = install(tmp_path, region, Host(files), keep_old=True, may_swap=lambda: True)
+    assert inst.progress.phase == "done", lines
+    assert (kept_of(tmp_path) / "terrain/b.ter").read_bytes() == b"ter b"
+    assert (osxpregions.mesh_dir(tmp_path, "eur") / "terrain/b.ter").read_bytes() == b"third"
+    assert hidden(tmp_path) == [".download", ".lists", ".z_osxp_eur.kept"]
+
+
+def test_a_swap_keeps_a_mesh_an_earlier_one_could_not_rename_yet(tmp_path: Path) -> None:
+    """The region of before an earlier swap left beside the region, its rename into the kept
+    mesh refused a moment (Windows): the next swap keeps it as its record says, then honours its
+    own answer, never deleting the mesh to keep."""
+    regions = tmp_path / "regions"
+    real, old, new = (regions / n for n in ("z_osxp_eur", ".z_osxp_eur.old", ".z_osxp_eur.new"))
+    for folder, tag in ((real, b"B"), (old, b"A"), (new, b"C")):
+        folder.mkdir(parents=True)
+        (folder / "x.dsf").write_bytes(tag)
+    (real / osxpregions.STEP).write_text(json.dumps({"keep_old": True}))  # B's answer: keep A
+    (new / osxpregions.STEP).write_text(json.dumps({"keep_old": False}))  # C's: B not kept
+    assert osxpregions._swap_in(new, real, "eur") is False
+    assert (real / "x.dsf").read_bytes() == b"C"
+    assert (regions / ".z_osxp_eur.kept" / "x.dsf").read_bytes() == b"A"
+    assert not old.exists() and not (real / osxpregions.STEP).exists()
+
+
+def test_a_stale_stage_counts_as_room_for_the_window_as_for_the_install(
+    tmp_path: Path, world, short_disk
+) -> None:
+    """Release B waiting whole (X-Plane open), C listed since: B's stage, no longer the list's, is
+    deleted by the install before it counts its room, at once, so the window counts it freed too:
+    no « no room » for ever, no kept mesh offered for deletion when deleting B was enough (the
+    reviews of 2026-11-18)."""
+    files, region = world
+    install(tmp_path, region, Host(files))
+    files, region = updated(files, region, b"second")
+    install(tmp_path, region, Host(files), keep_old=True)  # A kept
+    files, region = updated(files, region, b"third")
+    inst, _ = install(tmp_path, region, Host(files), may_swap=lambda: False)
+    assert inst.progress.phase == "waiting"
+    stage = osxpregions.stage_dir(tmp_path, "eur")
+    files, region = updated(files, region, b"fourth")  # D listed: the stage is stale
+    assert osxpregions._staged(tmp_path, region)["zips"] == {}
+    short_disk(tmp_path, region, stage, by=10**9)  # short however much the stage frees
+    room = osxpregions.update_room(tmp_path, region, True, False)
+    assert room is not None and room["cleared"] is True  # the window says what it counts
+    short_disk(tmp_path, region, stage)  # one byte short while the stage is there
+    assert osxpregions.update_room(tmp_path, region, True, False) is None  # the keep question
+    inst, lines = install(tmp_path, region, Host(files), make_room=True)
+    assert inst.progress.phase == "done", lines
+    assert kept_of(tmp_path).exists()  # never deleted when the stale stage was enough
+    folder = osxpregions.mesh_dir(tmp_path, "eur")
+    assert (folder / "terrain/b.ter").read_bytes() == b"fourth"
+
+
+def test_mesh_back_to_new_waits_for_a_region_whose_disk_is_away(tmp_path: Path, world) -> None:
+    """A region linked to another disk, that disk not connected: its kept mesh cannot be seen,
+    so Live counts it as keeping one, and Mesh stays as it is."""
+    files, region = world
+    elsewhere = tmp_path / "other disk" / "z_osxp_eur"
+    elsewhere.parent.mkdir()
+    root = tmp_path / "live"
+    install(root, region, Host(files))
+    folder = osxpregions.mesh_dir(root, "eur")
+    folder.rename(elsewhere)
+    folder.symlink_to(elsewhere, target_is_directory=True)
+    assert not osxpregions.keeps_any_old(root)
+    elsewhere.parent.rename(tmp_path / "unplugged")
+    assert osxpregions.keeps_any_old(root)
+
+
+def test_a_stop_while_a_stale_stage_is_deleted_deletes_nothing_more(
+    tmp_path: Path, world, short_disk, monkeypatch
+) -> None:
+    """The pilot's Stop while the install deletes what an update stopped earlier left (a minute
+    or more, in its phase of its own): honoured once that is done, before the kept old mesh is
+    deleted to make room, which could not be downloaded again (the reviews of 2026-11-18)."""
+    files, region = world
+    install(tmp_path, region, Host(files))
+    files, region = updated(files, region, b"second")
+    install(tmp_path, region, Host(files), keep_old=True)  # A kept
+    files, region = updated(files, region, b"third")
+    inst, _ = install(tmp_path, region, Host(files), may_swap=lambda: False)  # B waits
+    files, region = updated(files, region, b"fourth")  # D listed: B's stage stale
+    stage = osxpregions.stage_dir(tmp_path, "eur")
+    folder = osxpregions.mesh_dir(tmp_path, "eur")
+    # short by one byte more than B's stage frees: deleting the kept mesh too would be enough
+    short_disk(tmp_path, region, kept_of(tmp_path), folder, stage, by=disk_bytes([stage]) + 1)
+    room = osxpregions.update_room(tmp_path, region, True, False)
+    assert room is not None and room["kept"] is True and room["cleared"] is True
+    running: list[Installer] = []
+    phases: list[str] = []
+    dropping = osxpregions._drop_stale
+
+    def drop_then_stop(stale):
+        phases.append(running[0].progress.phase)
+        dropping(stale)
+        running[0].cancel()  # the pilot's Stop during the deletion
+
+    monkeypatch.setattr(osxpregions, "_drop_stale", drop_then_stop)
+    inst, lines = install(tmp_path, region, Host(files), running.append, make_room=True)
+    assert phases == ["clearing"]
+    assert inst.progress.phase == "cancelled", lines
+    assert kept_of(tmp_path).exists()  # never deleted after the Stop
+    assert not stage.exists()  # what was stale is gone
+    monkeypatch.setattr(osxpregions, "_drop_stale", dropping)
+    _, lines = install(tmp_path, region, Host(files), make_room=True)  # Update again, no Stop
+    assert "the old mesh of OrthoStudio XP's region eur deleted" in lines  # asked, and needed
+
+
+def test_a_kept_mesh_the_pack_still_holds_from_before_its_swap_frees_nothing(
+    tmp_path: Path, world, short_disk
+) -> None:
+    """The pack set up at the last start from the region holding A, its DSFs hard links of A's
+    files; an update kept A with Live stopped, at once, the pack's record still naming the region,
+    which changed since. Deleting A frees nothing until the next start sets the pack up again: not
+    offered, never deleted by an install told to make room (the reviews of 2026-11-18). Once a
+    start set the pack up from the new mesh, it frees its size."""
+    files, region = world
+    install(tmp_path, region, Host(files))  # A installed
+    folder = osxpregions.mesh_dir(tmp_path, "eur")
+    pack = pack_made_of(tmp_path / "pack", folder)  # the last start, on A
+    dsf = "Earth nav data/+40+000/+46+005.dsf"
+    (pack / dsf).parent.mkdir(parents=True)
+    os.link(folder / dsf, pack / dsf)  # as region.place_file does
+    files, region = updated(files, region, b"second")
+    install(tmp_path, region, Host(files), keep_old=True)  # A kept, B in place, no start since
+    kept = kept_of(tmp_path)
+    assert os.stat(kept / dsf).st_nlink == 2  # the pack holds A's files still
+    files, region = updated(files, region, b"third")  # C listed before the next start
+    short_disk(tmp_path, region, (kept, 0))  # its files shared: deleting it frees nothing
+    room = osxpregions.update_room(tmp_path, region, True, False)
+    assert room is not None and room["kept"] is False and room["shared"] is True
+    inst, _ = install(tmp_path, region, Host(files), make_room=True)
+    assert inst.progress.phase == "failed" and kept.exists()  # A never lost for nothing
+    pack_made_of(pack, folder)  # a start set the pack up from B: A shared no more
+    short_disk(tmp_path, region, kept)
+    assert osxpregions.update_room(tmp_path, region, True, False)["kept"] is True
+
+
+def test_a_kept_mesh_the_pack_no_longer_holds_frees_its_size(tmp_path: Path, world, short_disk):
+    """A kept, a start on B, then C installed without keeping B, Live stopped since: the pack's
+    record names the region, which changed, but holds B's files, not A's (its fingerprints are
+    B's): deleting A frees its size, offered. The river masks' date never counts: put in place
+    in A's place they would not make the pack hold A's files."""
+    files, region = world
+    install(tmp_path, region, Host(files))  # A
+    files, region = updated(files, region, b"second")
+    install(tmp_path, region, Host(files), keep_old=True)  # A kept, B in place
+    folder, kept = osxpregions.mesh_dir(tmp_path, "eur"), kept_of(tmp_path)
+    pack = pack_made_of(tmp_path / "pack", folder)  # a start on B
+    files, region = updated(files, region, b"third")
+    install(tmp_path, region, Host(files), keep_old=False)  # C, B deleted, A still kept
+    assert (kept / "terrain/b.ter").read_bytes() == b"ter b"
+    assert osxpregions._kept_frees(tmp_path, "eur") == marker_of_kept(tmp_path)["size"]
+    files, region = updated(files, region, b"fourth")
+    short_disk(tmp_path, region, kept)
+    room = osxpregions.update_room(tmp_path, region, True, False)
+    assert room is not None and room["kept"] is True and room["shared"] is False
+    pack_made_of(pack, kept)  # a start on A: held, whatever its river masks' date
+    (kept / osxpregions.RIVERS).mkdir()
+    assert osxpregions._kept_frees(tmp_path, "eur") == 0
+
+
+def test_a_pack_on_another_disk_holds_nothing_of_the_kept_mesh(
+    tmp_path: Path, world, monkeypatch
+) -> None:
+    """Live's pack on another disk than the kept mesh links to the folders it reads there
+    (``region._place_dir``), never a clone: its record naming the kept mesh, deleting it still
+    frees its size."""
+    files, region = world
+    install(tmp_path, region, Host(files))
+    files, region = updated(files, region, b"second")
+    install(tmp_path, region, Host(files), keep_old=True)
+    kept = kept_of(tmp_path)
+    pack = pack_made_of(tmp_path / "pack", kept)
+    assert osxpregions._kept_frees(tmp_path, "eur") == 0  # the same disk: held
+    disk_of = osxpregions._disk_of
+    monkeypatch.setattr(osxpregions, "_disk_of", lambda p: -1 if Path(p) == pack else disk_of(p))
+    assert osxpregions._kept_frees(tmp_path, "eur") == marker_of_kept(tmp_path)["size"]
+
+
+def marker_of_kept(root: Path) -> dict:
+    return json.loads((kept_of(root) / aoregions.MARKER).read_text())

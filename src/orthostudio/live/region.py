@@ -958,6 +958,20 @@ def _drop_night(pack_dir: Path, log: Callable[[str], None]) -> None:
         log(f"night lights off: {gone} night files deleted")
 
 
+def holds_files_of(pack_dir: Path, folder: Path) -> bool:
+    """Whether the pack holds files of ``folder``, clones or hard links of its DSFs and masks
+    (:func:`place_file`): its record keeps, for one of the regions it was set up from, the dates of
+    ``folder``'s DSFs and terrain files (:func:`_fingerprints`, its river masks' left out), which a
+    region renamed keeps (a region's kept old mesh, ``osxpregions.kept_dir``: the swap dates only
+    the new mesh) and which a start setting the pack up from another mesh replaces."""
+    meta = _marker(pack_dir)
+    was = meta.get("fingerprints") if isinstance(meta, dict) else None
+    if not isinstance(was, dict):
+        return False
+    now = _fingerprints([folder])[str(folder)][:2]
+    return any(isinstance(times, list) and times[:2] == now for times in was.values())
+
+
 def changed_regions(sources: Sequence[Path], pack_dir: Path) -> list[Path]:
     """The regions that changed since the pack was set up from them (:func:`_fingerprints`):
     updated, or given their river masks, the pack to be set up again with X-Plane not running."""
@@ -968,6 +982,29 @@ def changed_regions(sources: Sequence[Path], pack_dir: Path) -> list[Path]:
     now = _fingerprints(sources)
     was = old.get("fingerprints", {}) if isinstance(old, dict) else {}
     return [Path(k) for k, v in was.items() if k in now and now[k] != v]
+
+
+def _adding(had: Sequence[str], keys: Sequence[str]) -> bool:
+    """Whether the regions ``keys`` only add some after those the pack was set up from (``had``),
+    merged in: one that comes first (Live's own mesh, ``scenery.osxp_sources``) must take the
+    squares it has, and sets the pack up again."""
+    return bool(had) and set(had) < set(keys) and list(keys[: len(had)]) == list(had)
+
+
+def pack_to_redo(sources: Sequence[Path], pack_dir: Path) -> bool:
+    """Whether a start on ``sources`` sets the pack up again (:func:`setup_region`), its DSFs
+    replaced: a region changed since (:func:`changed_regions`: updated, given its river masks), or
+    the regions no longer those it was set up from, unless they only add some after them, merged
+    in (:func:`_adding`): one read from another folder (a kept old mesh in its place or back, the
+    Settings' Mesh), one deleted, one whose disk is not connected. Never with X-Plane running,
+    which may be reading the DSFs of before (``session.prepare``). A pack not set up: no."""
+    had = sources_of(_marker(pack_dir))
+    if not had:
+        return False
+    keys = [str(s) for s in sources]
+    return bool(changed_regions(sources, pack_dir)) or (
+        set(had) != set(keys) and not _adding(had, keys)
+    )
 
 
 def setup_region(
@@ -987,7 +1024,8 @@ def setup_region(
     the first time (:func:`relayout` after). A region changed since (:func:`changed_regions`) sets
     the pack up again, the textures built on its squares that no square names any more going too
     (:func:`_unnamed`, read from the lists kept in ``lists``: ``names.one_region``); a start with
-    X-Plane running on such a region is refused before (``session.prepare``)."""
+    X-Plane running on a pack to set up again is refused before (:func:`pack_to_redo`,
+    ``session.prepare``)."""
     sources = [source] if isinstance(source, Path) else list(source)
     keys = [str(s) for s in sources]
     marker = pack_dir / REGION_MARKER
@@ -995,12 +1033,13 @@ def setup_region(
     had = sources_of(old)
     version = old.get("version", 1) if old else REGION_VERSION
     now = _fingerprints(sources)
-    # a start with X-Plane running on a region changed is refused before (session.prepare)
+    # set up again or merged into by the one rule a start reads too (pack_to_redo): a start with
+    # X-Plane running on a pack to set up again is refused before (session.prepare)
     changed = changed_regions(sources, pack_dir)
     if changed:
         log(f"the region {changed[0].name} changed since the pack was set up: set up again")
-        force = True
-    if old and not force and set(had) == set(keys):
+    redo = force or pack_to_redo(sources, pack_dir)
+    if old and not redo and set(had) == set(keys):
         if "fingerprints" not in old:  # a pack of before: what its regions are from now on
             old["fingerprints"] = now
             marker.write_text(json.dumps(old))
@@ -1019,12 +1058,12 @@ def setup_region(
         return old
     t0 = time.monotonic()
     names_of = ", ".join(s.name for s in sources)
-    # only regions to add after those of before: merged in. One that comes first (Live's own
-    # mesh, orthostudio.live.scenery.osxp_regions) must take the squares it has: merged in, the
-    # DSFs of before stayed and X-Plane read them with that region's terrain files (2026-10-18)
-    # not when the pack is set up again (``force``, a region of before changed included): its DSFs
-    # of before would stay beside its lists of now
-    adding = bool(had) and set(had) < set(keys) and keys[: len(had)] == had and not force
+    # only regions added after those of before (_adding): merged in. One that comes first (Live's
+    # own mesh, orthostudio.live.scenery.osxp_sources) must take the squares it has: merged in,
+    # the DSFs of before stayed and X-Plane read them with that region's terrain files
+    # (2026-10-18); never when the pack is set up again (``redo``, a region of before changed
+    # included): its DSFs of before would stay beside its lists of now
+    adding = bool(had) and not redo
     if old and (version < REGION_VERSION or not adding) and not xplane_running():
         forget = _unnamed(pack_dir, sources, changed, lists) if changed else set()
         _to_squares(pack_dir, log, forget)  # the files of the regions of before

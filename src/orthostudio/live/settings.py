@@ -115,6 +115,12 @@ class LiveSettings(BaseModel):
     (:func:`orthostudio.live.scenery.other_mesh`); empty: none. A setting, not a look into the
     other tool's own files, which may change under Live (the user, 2026-11-14: « je préfère le
     réglage sans surprise »)."""
+    mesh: Literal["new", "old"] = "new"
+    """Which mesh of Live's own regions a start streams onto, for all of them at once: "new", each
+    region installed; "old", each region's kept old mesh where it has one, the new one elsewhere
+    (:func:`orthostudio.live.scenery.osxp_sources`). Shown in the window only once a region keeps
+    its old mesh (``osxpregions.kept_dir``); taken at the next start with X-Plane not running, as
+    every change of the mesh (``session.prepare``)."""
     app_home: Literal["ask", "live", "build"] = "ask"
     """What the app opens at its start (orthostudio.live.app_start): the question the first time,
     then Live's window or OrthoStudio XP's, as chosen."""

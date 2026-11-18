@@ -266,8 +266,8 @@ def prepare(options: Options, log: Log) -> Prepared:
     from orthostudio.live.region import (
         LAYOUT_FIXED,
         Zooms,
-        changed_regions,
         needs_relayout,
+        pack_to_redo,
         region_layout,
         relayout,
         remove_aside,
@@ -364,11 +364,11 @@ def prepare(options: Options, log: Log) -> Prepared:
         fix = Fix(lat, lon)
         clock.done("departure")
     zooms = Zooms(options.max_zoom, options.max_zoom_airports)
-    newer = changed_regions(sources, pack_dir) if xplane_running() else []
-    if newer:  # the pack set up again only with X-Plane not running: it may read the DSFs of before
+    if xplane_running() and pack_to_redo(sources, pack_dir):  # as a new zoom, below
         raise RefusedError(
-            f"the region {newer[0].name} changed since Live last started and X-Plane is running: "
-            "it may be reading the region of before. Quit X-Plane, then start again"
+            "the meshes Live streams onto changed since its last start, and X-Plane may be "
+            "reading those of before. Quit X-Plane, or connect the disk holding a mesh, then start "
+            "again"
         )
     from orthostudio.live import machine
 
