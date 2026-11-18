@@ -427,13 +427,15 @@ A texture several regions name, on the line between two (27° East between Europ
 one), takes the files of all of Live's own regions that name it, each made from its name
 (`RegionTextures.entries_of`): the DSFs on either side name the files of their own region. Its
 masks, the files copied from a region, come from the one whose files mask most of its water: its
-sea, else its rivers and lakes (`names._water_rank`). Until 2026-11-18 the first region's files
-alone were taken (Asia before Europe, the folders' order): Europe's DSFs of +39+026 and +40+026
-named a water file Asia's list lacks, and X-Plane cancelled them with a message at load, 55 DSFs of
-the world of 2026-11-01 with every region installed, 44 of Europe's, 8 of South America's, 3 of
-Asia's (issue 36; reproduced in X-Plane at LGKV, gone with the fix). A region whose files are
-copied (AutoOrtho's, Live's of before with a `terrain` folder, another tool's mesh: `names.own_mesh`)
-gives its own alone, the first that has the texture.
+sea, else its rivers and lakes (`names._water_rank`). Regions whose files are copied (AutoOrtho's,
+Live's of before with a `terrain` folder, another tool's mesh: `names.own_mesh`) are never merged:
+the first region that has the texture gives its files, and on a line between Live's region and a
+copied one the copied side's DSF may still name a file never made (no such line in Live's world).
+Until 2026-11-18 the first region's files alone were taken between Live's own regions too (Asia
+before Europe, the folders' order): Europe's DSFs of +39+026 and +40+026 named a water file Asia's
+list lacks, and X-Plane cancelled them with a message at load, 55 DSFs of the world of 2026-11-01
+with every region installed, 44 of Europe's, 8 of South America's, 3 of Asia's (issue 36;
+reproduced in X-Plane at LGKV, gone with the fix).
 
 **The disk of Live's folder** (`orthostudio/live/filesystem.py`, `pack.check_folder`). A texture not
 built is a name of the neutral texture, a hard link, which a disk allows up to a number of names a

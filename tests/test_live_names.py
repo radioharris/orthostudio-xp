@@ -18,6 +18,8 @@ from orthostudio.live.cache import ChunkCache
 from orthostudio.live.names import (
     KEEP,
     RING,
+    TERRAIN_LISTS,
+    Names,
     NeutralPool,
     RegionTextures,
     one_region,
@@ -614,8 +616,6 @@ def test_a_region_that_names_its_terrain_files(tmp_path: Path) -> None:
 
 def _live_region(root: Path, region: str, ters: str) -> Path:
     """A region of Live's own mesh naming ``ters`` in its list."""
-    from orthostudio.live.names import TERRAIN_LISTS
-
     source = root / f"z_osxp_{region}"
     (source / TERRAIN_LISTS).mkdir(parents=True)
     (source / TERRAIN_LISTS / f"z_osxp_{region}.txt").write_text(ters, encoding="ascii")
@@ -642,9 +642,7 @@ def _on_the_line(root: Path) -> tuple[Path, Path]:
 def test_a_texture_two_regions_name_takes_the_files_of_both(tmp_path: Path) -> None:
     """A texture on the line between two of Live's regions takes the files of both, the DSFs of
     each naming theirs (issue 36); its masks from the region whose files mask most of its water,
-    whichever comes first. AutoOrtho's region, whose files are copied, gives its own alone."""
-    from orthostudio.live.names import RegionTextures
-
+    whichever comes first. A region whose files are copied, AutoOrtho's, is never merged."""
     asi, eur = _on_the_line(tmp_path)
     regions = RegionTextures([asi, eur])  # Live's order: their folders' names
     assert [(e[0], e[4], e[5]) for e in regions.entries_of((40, 27))] == [
@@ -661,23 +659,22 @@ def test_a_texture_two_regions_name_takes_the_files_of_both(tmp_path: Path) -> N
 
 def test_a_square_on_the_line_has_every_file_its_dsfs_name(tmp_path: Path) -> None:
     """The square's files as Live makes them round the aircraft: every .ter either region lists,
-    and the sea's mask copied from the region that has it."""
+    and the sea's mask copied from the region that has it, here the second."""
     import threading
 
-    from orthostudio.live.names import Names, RegionTextures
     from orthostudio.live.streamer import TextureIndex
 
     asi, eur = _on_the_line(tmp_path)
     (asi / "textures").mkdir()
     (asi / "textures" / "24656_37680_ZL16.png").write_bytes(b"Asia's mask")
-    sources = [asi, eur]
+    sources = [eur, asi]
     region = RegionTextures(sources)
     pack = tmp_path / "pack"
     for folder in ("terrain", "textures"):
         (pack / folder).mkdir(parents=True)
     names = Names(
         pack,
-        TextureIndex(region.entries()).by_tile,
+        TextureIndex(region=region).by_tile,
         sources,
         lambda name: 0,
         threading.Lock(),

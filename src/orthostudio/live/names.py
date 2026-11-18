@@ -47,14 +47,14 @@ from .geo import _TEXTURE_RE, parse_texture_name
 
 Square = tuple[int, int]
 # (name, lat, lon, zoom, kinds, source): a texture of the regions, where its centre is, the files
-# it takes (:data:`TER_KINDS`: :meth:`RegionTextures.entries_of`) and the region they come from
-# (an index into the sources)
+# it takes (:data:`TER_KINDS`: :meth:`RegionTextures.entries_of`) and the region its copied files,
+# its masks, come from (an index into the sources)
 Entry = tuple[str, float, float, int, int, int]
 
 RING = 1  # squares made round X-Plane's window: the next column's are there before X-Plane loads it
 KEEP = 2  # squares farther than this from X-Plane's window lose their files
-TER_KINDS = (("", 1), ("_water_overlay", 2), ("_sea_overlay", 4))  # the .ter files of a texture
-WATER, SEA = 2, 4  # its overlays of rivers and lakes and of the sea: their masks are its region's
+LAND, WATER, SEA = 1, 2, 4  # a texture's land, its rivers' and lakes' overlay, its sea's overlay
+TER_KINDS = (("", LAND), ("_water_overlay", WATER), ("_sea_overlay", SEA))  # its .ter files
 OTHER = 8  # a .ter of another kind: its name kept apart (:attr:`RegionTextures.others`)
 MASK_RE = re.compile(r"^(\d+)_(\d+)_ZL(\d{2})\.png$")  # a water mask: a sea overlay's border
 RELEASE_BATCH = 4  # squares taken away at once, between the squares X-Plane will need
@@ -112,8 +112,9 @@ def own_mesh(source: Path) -> bool:
 
 
 def _water_rank(kinds: int) -> int:
-    """How much of a texture's water a region's files of it mask: its sea, else its rivers and
-    lakes, else none (the region a texture of several takes its masks from)."""
+    """How much of a texture's water its files of a region mask: its sea (its border is the
+    texture's mask, a file of the region), else its rivers and lakes, else none. A texture
+    several regions name takes its masks from the highest (:meth:`RegionTextures.entries_of`)."""
     return 2 if kinds & SEA else 1 if kinds & WATER else 0
 
 
@@ -334,7 +335,7 @@ class RegionTextures:
         with the files of the first region that has it. A texture several of Live's own regions
         name, on the line between them, takes the files of all, each made from its name, since
         the DSFs of each name theirs (issue 36); its masks from the one whose files mask most of
-        its water (:func:`_water_rank`). A region whose files are copied gives its own alone."""
+        its water (:func:`_water_rank`). Regions whose files are copied are never merged."""
         key = f"{square[0]},{square[1]}"
         merged: dict[str, list[int]] = {}  # name: [the kinds of all, the region of its masks]
         for i, squares in enumerate(self._squares):
@@ -343,7 +344,7 @@ class RegionTextures:
                 if got is None:
                     merged[name] = [kinds, i]
                 elif self._own[i] and self._own[got[1]]:
-                    if _water_rank(kinds) > _water_rank(self._squares[got[1]][key][name]):
+                    if _water_rank(kinds) > _water_rank(got[0]):  # the masks' region's rank
                         got[1] = i
                     got[0] |= kinds
         out: list[Entry] = []
@@ -901,7 +902,7 @@ class Names:
             ops += [
                 ("night", str(self.pack_dir / NIGHT_FOLDER / night_name(entry[0])))
                 for entry in entries
-                if entry[4] & 1
+                if entry[4] & LAND
             ]
         for entry in entries:
             source = self.sources[entry[5]] if self.sources else None

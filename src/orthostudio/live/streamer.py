@@ -335,7 +335,7 @@ class _Job:
 
 class TextureIndex:
     """The region's textures by the 1-degree tile of their centre: (name, lat, lon, zoom, kinds,
-    source), the last two the files it takes and the region they come from (``names.Entry``).
+    source), the last two the files it takes and the region its masks come from (``names.Entry``).
     From the regions' lists (``region``), a tile's worked out the first time it is asked for
     (``names.SquareTextures``); from names, all at once, those two 0."""
 
