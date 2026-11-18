@@ -495,8 +495,8 @@ class LiveControl:
             if self._installing():
                 raise session.RefusedError(INSTALLING)
             thread = self._install_thread
-            if thread is None or not thread.is_alive():  # an install over: its line, « used from
-                self._installer = None  # the next start », said its last with this start
+            if thread is None or not thread.is_alive():  # an install over ends with this start,
+                self._installer = None  # and the line of one failed or stopped with it
             self._state, self._error, self._report = STARTING, None, None
             self._stop.clear()
             self._leave.clear()

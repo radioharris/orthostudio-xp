@@ -691,9 +691,12 @@ function regionRow(id, mine, r, install, running, idle, xplane) {
   } else if (r.download) {
     buttons.push({ act: "install", label: t("regions.install"), disabled: running });
   }
-  // the line: the install of this region while it runs or after it (not one that waits: the disk
-  // says that, and not once Live's start put it in place), or its update waiting whole
-  const line = busy && install.phase !== "waiting" ? "install" : ready ? "waiting" : null;
+  // the line: the install of this region while it runs, or why it ended short (failed, stopped),
+  // or its update waiting whole. None once it is done, the row saying « Installed » (a line « used
+  // from the next start » was read as « restart the app », 2026-11-18), nor while it waits: the
+  // disk says that
+  const line = busy && (running || ["failed", "cancelled"].includes(install.phase)) ? "install"
+    : ready ? "waiting" : null;
   return { id, size, state, buttons, line, bar: busy && running };
 }
 
@@ -794,8 +797,7 @@ function drawRegions(status) {
       line.textContent = t(pace ? "regions.progress_pace" : "regions.progress", { done: gb(install.done_bytes),
         total: gb(install.total_bytes), mbs: number(pace, 1), unpacked: install.unpacked, zips: install.zips });
     } else if (install.phase === "failed") line.textContent = t("regions.failed", { error: install.error });
-    else if (install.phase === "cancelled") line.textContent = t("regions.cancelled");
-    else line.textContent = t("regions.done");
+    else line.textContent = t("regions.cancelled");
     if ($("region-bar")) {
       const share = install.total_bytes ? install.done_bytes / install.total_bytes : 0;
       $("region-bar").style.width = `${Math.round(share * 1000) / 10}%`;

@@ -527,7 +527,10 @@ A region installed already changes only with Live stopped and X-Plane not runnin
 (`Installer.may_swap`, `LiveControl._may_swap`): else its stage, whole, waits (the install's phase
 `waiting`, the page's `waiting`, read from the disk (`staged_whole`), not from the install of
 before: « Update ready » in the row, the sentence under it, gone once Live's start put it in place;
-« Update available » instead when the list has a newer one still to download; the rows are drawn again only
+« Update available » instead when the list has a newer one still to download; a line under a
+row only while its install runs, after one failed or stopped (why), or for an update waiting
+whole: none once an install is done, its row saying « Installed » (a line « used from the next
+start » read as « restart the app », 2026-11-18); the rows are drawn again only
 when what they show changes, a download's bytes going to the line under its row, so that a button
 is never replaced under the pointer as it is clicked), and Live's next start with
 X-Plane not running puts it in place before anything reads the regions (`osxpregions.settle` in
