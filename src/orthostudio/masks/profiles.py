@@ -1,6 +1,7 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""The three shoreline transition profiles: ``sand``, ``rocks`` and ``3steps``.
+"""The shoreline transition profiles: Ortho4XP's ``sand``, ``rocks`` and ``3steps``, and
+OrthoStudio XP's ``soft``.
 
 Spec: ``docs/specs/masks-build.md`` sections 2 and 4. Origin: ``O4_Mask_Utils.py:648-813``
 (``blur_mask``) and ``:69-71`` (the grey level of inland water).
@@ -8,7 +9,8 @@ Spec: ``docs/specs/masks-build.md`` sections 2 and 4. Origin: ``O4_Mask_Utils.py
 ``sand`` and ``rocks`` are reproduced bit for bit, including Ortho4XP's uint8 truncation between
 the two passes of the separable hat convolution; ``3steps`` replaces dozens of
 blur-and-threshold dilations with one Euclidean distance transform and the same value ladder
-(the profile only ever depended on the distance to the water boundary).
+(the profile only ever depended on the distance to the water boundary). ``soft`` counts its
+width at the middle of the mask cell, the others at the middle of the square, as Ortho4XP does.
 """
 
 from __future__ import annotations
@@ -20,9 +22,10 @@ from typing import Literal
 import numpy as np
 from numpy.typing import NDArray
 from PIL import Image, ImageFilter
+from scipy import ndimage
 
 from orthostudio.errors import OsxpError
-from orthostudio.imagery.grid import webmercator_pixel_size
+from orthostudio.imagery.grid import TEXTURE_TILES, tile_to_wgs84, webmercator_pixel_size
 from orthostudio.masks.distance import edt_px, pil_blur_reach, pil_blur_support
 
 __all__ = [
@@ -32,20 +35,24 @@ __all__ = [
     "MasksWidth",
     "blur_mask",
     "blur_widths",
+    "cell_latitude",
+    "exact_edges",
     "halo_px",
     "rocks_blur",
     "rocks_width",
     "sand_blur",
     "sand_width",
     "sea_level_for",
+    "soft_blur",
+    "soft_width",
     "three_steps_blur",
     "three_steps_widths",
 ]
 
-MaskingMode = Literal["sand", "rocks", "3steps"]
+MaskingMode = Literal["sand", "rocks", "3steps", "soft"]
 MasksWidth = float | int | list[float] | tuple[float, ...]
 
-MASKING_MODES: tuple[str, ...] = ("sand", "rocks", "3steps")
+MASKING_MODES: tuple[str, ...] = ("sand", "rocks", "3steps", "soft")
 
 WATER_TRANSITION: tuple[int, ...] = (
     0, 0, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 6, 6, 6, 7, 7, 7, 8,
@@ -79,6 +86,24 @@ def sea_level_for(ratio_water: float) -> int:
 
 def _pxscal(lat: int, mask_zl: int) -> float:
     return webmercator_pixel_size(lat + 0.5, mask_zl)
+
+
+def cell_latitude(til_y: int, mask_zl: int) -> float:
+    """Latitude of the middle of the mask cell whose top row of ``mask_zl`` tiles is ``til_y``."""
+    return tile_to_wgs84(0, til_y + TEXTURE_TILES / 2, mask_zl)[0]
+
+
+def soft_width(masks_width: float, cell_lat: float, mask_zl: int) -> float:
+    """``soft``'s band in pixels: ``masks_width`` metres at the middle of the mask cell
+    (:func:`cell_latitude`), not of the square, so that the square on each side of a cell across
+    the line between two rows of squares makes the same bytes (``masks-build.md`` section 7)."""
+    return float(masks_width) / webmercator_pixel_size(cell_lat, mask_zl)
+
+
+def _at_cell(cell_lat: float | None) -> float:
+    if cell_lat is None:
+        raise ValueError("the soft profile counts its width at the mask cell: give cell_lat")
+    return cell_lat
 
 
 def sand_width(masks_width: float, lat: int, mask_zl: int) -> int:
@@ -157,15 +182,18 @@ def halo_px(
     *,
     distance_masks_too: bool = False,
     full_margin: int = 1024,
+    cell_lat: float | None = None,
 ) -> int:
-    """Working margin the profile actually needs, at most ``full_margin``.
+    """Working margin the profile actually needs, at most ``full_margin``; ``cell_lat``: the
+    latitude of the cell's middle, where ``soft`` counts its width (:func:`soft_width`).
 
     ``sand`` is a convolution with a hat kernel of half-width ``blur_width - 1``, so a pixel
     of the final image can only depend on input pixels within that distance: the 1024 px
     margin of Ortho4XP can be cropped without changing a single byte (spec section 4). With
     ``distance_masks_too`` the margin also has to cover the saturation distance of the
-    ``_dist`` mask. Every other mode keeps the full margin (Pillow's Gaussian chain reaches
-    much further and its support is not exact).
+    ``_dist`` mask. ``rocks`` and ``3steps`` take the supports of their Pillow blurs
+    (:func:`pil_blur_support`); ``soft`` twice its band and one pixel, the band into the water
+    and the water's width read over as much again.
     """
     if masking_mode == "sand":
         needed = max(0, sand_width(_scalar(masks_width), lat, mask_zl) - 1)
@@ -178,6 +206,8 @@ def halo_px(
     elif masking_mode == "3steps":
         needed = _three_steps_reach(three_steps_widths(_sequence(masks_width), lat, mask_zl))
         needed += pil_blur_support(2)
+    elif masking_mode == "soft":
+        needed = 2 * math.ceil(soft_width(_scalar(masks_width), _at_cell(cell_lat), mask_zl)) + 1
     else:
         needed = 0
     if distance_masks_too:
@@ -319,6 +349,13 @@ def three_steps_blur(
     return _gaussian(np.ascontiguousarray(out, dtype=np.uint8), 2)
 
 
+def exact_edges(masking_mode: str) -> bool:
+    """Whether a profile's pre-mask takes a pixel for water where the water covers its middle
+    (``raster.pre_mask``): OrthoStudio XP's ``soft``; Ortho4XP's keep Ortho4XP's drawing, byte for
+    byte (``masks-build.md`` section 7)."""
+    return masking_mode == "soft"
+
+
 def blur_mask(
     pre: NDArray[np.uint8],
     *,
@@ -327,8 +364,11 @@ def blur_mask(
     lat: int,
     mask_zl: int,
     sea_level: int,
+    cell_lat: float | None = None,
 ) -> NDArray[np.uint8]:
-    """``blur_mask`` of Ortho4XP (``O4_Mask_Utils.py:648-813``), profile by profile."""
+    """Ortho4XP's ``blur_mask`` (``O4_Mask_Utils.py:648-813``), profile by profile, and
+    OrthoStudio XP's ``soft``, which counts its width at ``cell_lat``, the middle of the cell
+    (:func:`soft_width`)."""
     if masking_mode == "sand":
         width = sand_width(_scalar(masks_width), lat, mask_zl)
         return sand_blur(pre, width) if width else np.array(pre)
@@ -338,4 +378,42 @@ def blur_mask(
     if masking_mode == "3steps":
         widths = three_steps_widths(_sequence(masks_width), lat, mask_zl)
         return three_steps_blur(pre, widths, sea_level, mask_zl)
+    if masking_mode == "soft":
+        return soft_blur(pre, soft_width(_scalar(masks_width), _at_cell(cell_lat), mask_zl))
     return np.array(pre)
+
+
+def soft_blur(pre: NDArray[np.uint8], band_px: float) -> NDArray[np.uint8]:
+    """OrthoStudio XP's ``soft`` profile (a trial, 2026-11-15, made progressive 2026-11-16).
+
+    From the bank, the photo grows more and more transparent, fast at first and then slowly
+    (``(1 - t)²``, as ``sand`` falls), down to the water's own level (``sea_level`` inland, 0 at
+    sea and on lakes faded like it) over ``band_px``, or over the water's local half-width when
+    that is narrower: a river narrower than twice the band fades from each bank to its middle,
+    which X-Plane's water alone draws, so it is never covered from bank to bank by the photo.
+    On water wider than twice the band it is ``sand``'s fade.
+
+    Computed in place, two float arrays of the cell at a time: a new array at each step took a
+    worker to 1.7 GB on a cell of 4338 pixels (the review of 2026-11-18).
+    """
+    if band_px <= 0:
+        return np.array(pre)
+    water = pre < 255
+    if not water.any():
+        return np.array(pre)
+    d = ndimage.distance_transform_edt(water)  # pixels to the nearest land
+    reach = math.ceil(band_px)
+    band = ndimage.maximum_filter(d, size=2 * reach + 1)  # the local half-width, up to the band
+    np.clip(band, 1e-6, band_px, out=band)
+    np.divide(d, band, out=d)
+    del band
+    np.clip(d, 0.0, 1.0, out=d)
+    np.subtract(1.0, d, out=d)
+    np.square(d, out=d)  # the photo's share, (1 - t)²
+    room = np.subtract(255.0, pre, dtype=np.float64)  # from the water's level to the photo
+    np.multiply(d, room, out=d)
+    del room
+    np.add(d, pre, out=d)
+    d[~water] = 255.0
+    np.rint(d, out=d)
+    return d.astype(np.uint8)

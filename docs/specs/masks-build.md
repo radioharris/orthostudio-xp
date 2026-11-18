@@ -12,8 +12,8 @@ overlaps. 255 means "the orthophoto is opaque" (land), 0 means "let X-Plane's ow
 through" (open sea), and the values between are the shoreline transition. The mask is built
 from the **triangles of the mesh** whose Triangle4XP attribute says water: they are drawn
 black over a white background covering the land of every 1 degree tile whose mesh exists, and
-the black is then feathered outwards over `masks_width` metres by one of three profiles
-(`sand`, `rocks`, `3steps`). A cell that comes out uniformly white or uniformly black is not
+the black is then feathered outwards over `masks_width` metres by one of four profiles
+(Ortho4XP's `sand`, `rocks`, `3steps`, and OrthoStudio XP's `soft`, section 7). A cell that comes out uniformly white or uniformly black is not
 written at all: `textures-imprint.md` treats a missing mask as "this texture has no water".
 
 Because a mask cell straddles tile borders, the cell is built with a 1024 px working margin
@@ -58,7 +58,7 @@ from orthostudio.masks import CELL_PX, custom_pre_mask, extent_polygons, pre_mas
 
 # profiles.py
 from orthostudio.masks import WATER_TRANSITION, blur_mask, blur_widths, halo_px, rocks_blur
-from orthostudio.masks import sand_blur, sea_level_for, three_steps_blur
+from orthostudio.masks import sand_blur, sea_level_for, soft_blur, three_steps_blur
 
 # distance.py
 from orthostudio.masks import distance_mask, edt_px, pil_blur_reach
@@ -79,11 +79,16 @@ from orthostudio.masks import CellJob, CellResult, MasksIndex, build_cell, build
   `water_tris.npz` (`MeshWaterTris`, `docs/specs/mesh-build.md` section 7). `WaterTriangles`
   holds `sea` and `inland`, each a float64 `(n, 3, 2)` array of **absolute web-mercator pixel
   coordinates** at `mask_zl`.
-* `pre_mask(til_x, til_y, tris, extents, *, mask_zl, sea_level, margin) -> np.uint8`
-  draws the Ortho4XP image; `margin` is the working margin (1024 in Ortho4XP, `halo_px` here).
+* `pre_mask(til_x, til_y, tris, extents, *, mask_zl, sea_level, margin, exact_edges=False)
+  -> np.uint8` draws the Ortho4XP image; `margin` is the working margin (1024 in Ortho4XP,
+  `halo_px` here); `exact_edges` (`profiles.exact_edges`, `soft` only) draws the water as its
+  outline covers the pixels (section 7).
 * `halo_px(masking_mode, masks_width, lat, mask_zl, *, distance_masks_too=False,
-  full_margin=1024)` (in `profiles.py`) is that margin.
-* `blur_mask(pre, *, masking_mode, masks_width, lat, mask_zl, sea_level) -> np.uint8`.
+  full_margin=1024, cell_lat=None)` (in `profiles.py`) is that margin.
+* `blur_mask(pre, *, masking_mode, masks_width, lat, mask_zl, sea_level, cell_lat=None)
+  -> np.uint8`. `lat` is the square's, where Ortho4XP's three profiles count their width (its
+  middle, `lat + 0.5`); `cell_lat` the middle of the cell (`cell_latitude(til_y, mask_zl)`),
+  where `soft` counts its own (section 7).
 * `distance_mask(pre, *, mask_zl, margin) -> np.uint8 (4096, 4096)`.
 * `build_cell(...) -> CellResult(mask: np.ndarray | None, dist: np.ndarray | None)`.
 * `build_masks(out_dir, meshes, tile, *, mask_zl, masks_width, masking_mode,
@@ -98,7 +103,7 @@ from orthostudio.masks import CellJob, CellResult, MasksIndex, build_cell, build
 * `MasksJob(workers, cancel)` + `masks_job(...)` (in `rule.py`) is how the pipeline gives the
   node its pool size and its cancellation token, the way `dem_job` / `osm_job` do. There is
   no module-level hook any more: two concurrent nodes would have shared it.
-* `MASKS` is the rule `orthostudio.masks@1`, `kind="dir"`, `ram_mb=1100`, inputs
+* `MASKS` is the rule `orthostudio.masks@1`, `kind="dir"`, `ram_mb=1400` (section 6.2), inputs
   `mesh`, `nb_n`, `nb_ne`, `nb_e`, `nb_se`, `nb_s`, `nb_sw`, `nb_w`, `nb_nw`, `dem`,
   `custom_extent`; every neighbour, `dem` and `custom_extent` may be `None` (a distinct,
   keyed state: `graph-keys.md` invariant K4).
@@ -124,7 +129,7 @@ The output directory is the one `textures-imprint.masks_dir_lookup` and
 | 8 neighbours by mesh presence; absent = no sea beyond the border | keep, as 9 explicit rule inputs instead of a directory scan |
 | white extent polygon per available mesh | keep |
 | `ImageDraw.polygon` with float pixel coordinates | keep, same Pillow call (this is what makes byte identity reachable at all) |
-| 1024 px working margin | **narrowed to what the profile can reach** (`halo_px`, plus 2 px, at most 1024): `sand` needs `blur_width - 1` px; `rocks` the supports of its two Gaussian blurs (`pil_blur_support`), or that of its last `GaussianBlur(2**(mask_zl-14))` when larger; `3steps` the reach of its ladder plus the support of its last `GaussianBlur(2)`; with `distance_masks_too`, at least the distance at which `_dist` saturates. On the reference tile that is 15 px for `sand` and 35 for `rocks` at 100 m, 57 for `3steps` at 100/200/100 (`test_halo_is_the_reach_of_the_profile`). Proven identical on the reference for `sand`: the hat kernel has half-width `bw - 1`, so a pixel of the final 4096² window can only depend on input pixels within `bw - 1` of it, and `numpy.convolve` in `'same'` mode over a cropped row computes the *same* 27-term dot product for every interior position (`test_masks_profiles.py::test_crop_matches_full_margin`); `test_rocks_crop_matches_full_margin` checks `rocks` against the full margin the same way |
+| 1024 px working margin | **narrowed to what the profile can reach** (`halo_px`, plus 2 px, at most 1024): `sand` needs `blur_width - 1` px; `rocks` the supports of its two Gaussian blurs (`pil_blur_support`), or that of its last `GaussianBlur(2**(mask_zl-14))` when larger; `3steps` the reach of its ladder plus the support of its last `GaussianBlur(2)`; `soft` twice its band and one pixel (`test_soft_crop_matches_full_margin`); with `distance_masks_too`, at least the distance at which `_dist` saturates. On the reference tile that is 15 px for `sand` and 35 for `rocks` at 100 m, 57 for `3steps` at 100/200/100 (`test_halo_is_the_reach_of_the_profile`). Proven identical on the reference for `sand`: the hat kernel has half-width `bw - 1`, so a pixel of the final 4096² window can only depend on input pixels within `bw - 1` of it, and `numpy.convolve` in `'same'` mode over a cropped row computes the *same* 27-term dot product for every interior position (`test_masks_profiles.py::test_crop_matches_full_margin`); `test_rocks_crop_matches_full_margin` checks `rocks` against the full margin the same way |
 | `sand` = hat convolution with a **uint8 truncation between the two passes** | keep exactly. The only reproduction that is bit-exact is `numpy.convolve` itself: the float64 result is rounded by cblas `ddot`, and an exact-integer double box (which is what the kernel mathematically is) differs on the pixels whose exact sum is a multiple of `bw**2` (measured: 22 pixels per 300² of synthetic three-level data, `max diff 2`). Speed comes from the halo crop and from memoising identical rows, never from changing the arithmetic |
 | `rocks` = `GaussianBlur` chain | keep, same Pillow calls, on the margin `halo_px` gives it (the supports of its blurs) |
 | `3steps` = dozens of `GaussianBlur(1) > 0` dilations | **replaced** by an EDT: the profile is a function of the distance to the water boundary alone, so it is computed once with `scipy.ndimage.distance_transform_edt` and mapped through the same value ladder, with the thresholds at multiples of the measured reach of one `GaussianBlur(1) > 0` step (3 px) and the middle zone at `reach(R_buf) - reach(R_buf - R_sea)`. Tolerance in section 6 |
@@ -213,10 +218,17 @@ only bit-exact reproduction (section 4).
 | `rocks` | 703 MB | 438 MB |
 | `3steps` | 981 MB | 441 MB |
 | `sand` + `_dist` | 962 MB | 439 MB |
+| `soft` | 1,091 MB at `mask_zl` 16, 1,015 at 14 | |
 
-The rule declares `ram_mb = 1100`: the base plus the cost of **one** cell of the heaviest
+The figures are at 100 m; a wider fade takes a wider margin and more (`soft` at 200 m and 65
+degrees north, 1.4 GB on a cell of sea and rivers). `soft`'s peak is SciPy's
+`distance_transform_edt`, some 35 bytes a pixel; its own steps work in place (a new array at each
+step took 1,818 MB at `mask_zl` 16, the review of 2026-11-18).
+
+The rule declares `ram_mb = 1400`: the base plus the cost of **one** cell of the heaviest
 profile. The real cost is `300 MB + a worker of the profile x the workers that start` (250 MB
-for `sand`, 710 `rocks`, 990 `3steps`, 970 with the distance masks), one worker for each cell
+for `sand`, 710 `rocks`, 990 `3steps`, 1,100 `soft`, 970 with the distance masks: the
+`MASKS_WORKER_MB` of `masks.rule`, one table), one worker for each cell
 with water to draw up to the pool's size, and it is the *pipeline* that knows the worker count
 and counts the cells beforehand (`pipeline-build.md` 8.6, `water.mask_cell_count`); it hands
 the very same pool size to the rule through `MasksJob` (section 6.5). Until 2026-10-28 every
@@ -238,7 +250,7 @@ budget said one process while the pool started `os.cpu_count()`).
 | Who | What it decides |
 |---|---|
 | `pipeline.build.masks_workers(env)` | `env_workers()` if set, else `min(MAX_WORKERS=8, batch workers)`. The single decision. |
-| `pipeline.build._masks_ram_mb(env)` | `300 + 800 x masks_workers(env)`: the node's `ram_mb`. |
+| `pipeline.build._masks_ram_mb(env, params)` | `300 + masks_worker_mb(params) x masks_workers(env)`: the most the node's `ram_from` declares (its `ram_mb` is the base, 300). |
 | `pipeline.build._masks_run(env)` | binds `MasksJob(workers=masks_workers(env), cancel=...)`. |
 | `masks.build.worker_count(cells, workers)` | the argument, else `env_workers()`, else `min(8, cpu_count)`; capped by the number of cells. |
 
@@ -291,6 +303,32 @@ pre-mask of 6000_8432, 14.3 M of the 37.7 M pixels have an exact sum that is a m
 * The working margin is cropped to what the profile can reach (`halo_px`, at most 1024), for
   every profile.
 * A process pool instead of 4 GIL-bound threads.
+* A fourth profile, `soft` (OrthoStudio XP's own, 2026-11-16): from the bank the photo grows
+  transparent as `(1 - t)²`, as `sand` falls, down to the water's own level, over `masks_width`
+  or over the water's local half-width where that is narrower, so that a river narrower than
+  twice the width fades from each bank to its middle instead of being covered from bank to bank.
+  Its width is counted in pixels at the middle of the mask cell (`soft_width`), not of the
+  square as Ortho4XP's profiles count theirs, and so is its working margin: a cell across the
+  line between two rows of squares is made by the square on each side, and counted at each
+  square's middle their two masks of one name differed (1,947 in Europe's zips, 2026-11-17, the
+  bands 1.7 % apart at 44 degrees north); counted at the cell they are the same bytes
+  (`test_two_rows_of_squares_make_a_soft_mask_they_share_the_same`).
+  Its pre-mask takes the pixels whose middle the water covers (`raster.pre_mask`'s
+  `exact_edges`): the triangles' corners come rounded to whole pixels as Ortho4XP's
+  (`water.wgs84_to_pix`), and Pillow fills a triangle up to and with its edges, so every water came
+  about one pixel wider on its east and south sides (a pixel at `mask_zl` 14 is 9.6 m at the
+  equator, 6.3 m at 49 degrees north). The fade then began inside the water on those banks: at a
+  river by XC00DD the mask read 151 to 164 of 255 at the DSF's south and east banks against 227 to
+  240 at its north and west ones, a sharp line on one side (2026-11-18). `soft` draws at twice the
+  scale and reads the odd pixels, the middles of the cell's pixels: on a river at every angle from
+  0 to 180 degrees, one to four pixels wide, each bank is 0.16 pixel wider than the outline on
+  average, 0.26 at most, the same on both banks, and no row of a stream is lost
+  (`test_our_fade_draws_the_water_as_its_outline_covers_the_pixels`). A first rule, the row east
+  and south of the water given back to the land, left up to 0.94 pixel between the two banks of a
+  slanting river and took whole rows of a stream one or two pixels wide (the review of
+  2026-11-18). Ortho4XP's profiles keep Ortho4XP's drawing byte for byte; with their wider fades
+  the pixel shows little. Ortho4XP itself does not know `soft`: a tile's `Ortho4XP.cfg` that names
+  it gives masks without a fade there.
 
 ## 8. Not there yet (blocking questions, least engaging option implemented)
 
@@ -309,7 +347,9 @@ pre-mask of 6000_8432, 14.3 M of the 37.7 M pixels have an exact sum that is a m
   rule raises `MASK_FILE_UNREADABLE`-style `OsxpError("DEM_FILE_UNREADABLE")` when the flag is set
   and the `dem` input is absent. The pipeline declares the masks node with `dem` absent and
   refuses the setting before a build (`pipeline/native.py`, `CFG_VALUE_INVALID`:
-  "masks_use_DEM_too is not supported"). **TODO** marked in the code.
+  "masks_use_DEM_too is not supported"). **TODO** marked in the code. The arrays will have to
+  be cut to the cell's working margin, which with `soft` changes from one row of cells to the
+  next (`halo_px`'s `cell_lat`).
 * **Custom extents**: `masks_custom_extent` needs the extent rasteriser of `orthostudio.imagery`
   (P4b). The pure function is written; the rule raises `MASK_CUSTOM_EXTENT_INVALID` when the
   flag is set and the `custom_extent` input is absent, and the pipeline refuses the setting before

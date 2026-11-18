@@ -29,7 +29,14 @@ from PIL import Image
 
 from orthostudio.errors import OsxpError
 from orthostudio.masks.distance import distance_mask
-from orthostudio.masks.profiles import MasksWidth, blur_mask, halo_px, sea_level_for
+from orthostudio.masks.profiles import (
+    MasksWidth,
+    blur_mask,
+    cell_latitude,
+    exact_edges,
+    halo_px,
+    sea_level_for,
+)
 from orthostudio.masks.raster import (
     CELL_PX,
     FULL_MARGIN_PX,
@@ -200,6 +207,7 @@ def build_cell(job: CellJob) -> CellResult:
         mask_zl=job.mask_zl,
         sea_level=job.sea_level,
         margin=job.margin,
+        exact_edges=exact_edges(job.masking_mode),
     )
     if job.dem is not None:
         pre = np.maximum(pre, job.dem)
@@ -217,6 +225,7 @@ def build_cell(job: CellJob) -> CellResult:
         lat=job.lat,
         mask_zl=job.mask_zl,
         sea_level=job.sea_level,
+        cell_lat=cell_latitude(job.til_y, job.mask_zl),
     )
     t_blur = time.perf_counter() - t1
     margin = job.margin
@@ -321,14 +330,20 @@ def build_masks(
     out_dir.mkdir(parents=True, exist_ok=True)
     rng = mask_cells(tile, mask_zl)
     sea_level = sea_level_for(ratio_water)
-    margin = halo_px(
-        masking_mode,
-        masks_width,
-        tile.lat,
-        mask_zl,
-        distance_masks_too=distance_masks_too,
-        full_margin=FULL_MARGIN_PX,
-    )
+
+    def margin(til_y: int) -> int:
+        """The cell's working margin: the same for every cell but with ``soft``, which counts its
+        width at the cell (``profiles.soft_width``)."""
+        return halo_px(
+            masking_mode,
+            masks_width,
+            tile.lat,
+            mask_zl,
+            distance_masks_too=distance_masks_too,
+            full_margin=FULL_MARGIN_PX,
+            cell_lat=cell_latitude(til_y, mask_zl),
+        )
+
     by_cell = water_triangles(
         meshes,
         tile,
@@ -347,7 +362,7 @@ def build_masks(
             masking_mode=masking_mode,
             masks_width=masks_width,
             sea_level=sea_level,
-            margin=margin,
+            margin=margin(til_y),
             distance_masks_too=distance_masks_too,
             dem=None if dem_cells is None else dem_cells.get((til_x, til_y)),
             custom_extent=None if custom_cells is None else custom_cells.get((til_x, til_y)),
