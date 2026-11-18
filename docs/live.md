@@ -256,8 +256,12 @@ its blur. Live writes the one chosen in its settings on the land of its squares 
 line of each land terrain file it places), from OrthoStudio XP's list: `maquify_2_green_key`
 by default, Ortho4XP's, shrubby vegetation on the green and stony dirt elsewhere, the one
 OrthoStudio XP's tiles have; `grass_and_stony_dirt_1`, long grass on the green, a finer grain;
-or none. The sea keeps none. A new choice takes effect at the next start: the terrain files of the
-squares flown already are made again as X-Plane comes, not while X-Plane runs.
+or none. The photo laid on the water near the shores takes it too, so that the grain goes on where
+the photo does instead of stopping at the shore, as with Ortho4XP: the sea's, and that of rivers and
+lakes with soft banks (*Rivers and lakes*). Even rivers and lakes take none, nor the water far from
+the shore, which is X-Plane's alone. A new choice takes effect at the next start: the terrain files
+of the squares flown already are made again as X-Plane comes, not while X-Plane runs. The first
+start after an update from a version whose water had no grain makes them again the same way, once.
 
 ## Towns at night
 

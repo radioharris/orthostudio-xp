@@ -712,7 +712,12 @@ def _fingerprints(sources: Sequence[Path]) -> dict[str, list[int]]:
 
 
 DECAL_RECORD = "_live/decal.json"
-"""The land's decal the ``.ter`` files of the pack name (:func:`set_decal`)."""
+"""The decal the ``.ter`` files of the pack name (:func:`set_decal`)."""
+
+DECAL_ON_WATER = True
+"""The photo laid on the water through a mask takes the decal too (``names.photo_on_water``,
+2026-11-16 for the sea, 2026-11-18 for rivers and lakes with soft banks): a pack whose record does
+not say so had its water's files made without it, and makes them again once."""
 
 
 def set_decal(
@@ -721,35 +726,37 @@ def set_decal(
     log: Callable[[str], None] = print,
     xplane_running: Callable[[], bool] = lambda: False,
 ) -> None:
-    """The ``.ter`` files of the pack made again when the land's decal Live's settings choose is
-    not the one they name (:func:`orthostudio.live.names.with_decal`): taken away, made again per
-    square as X-Plane comes. Not while X-Plane runs, which may be reading them: at the next start.
-    ``None``: the regions' own decals, nothing to do."""
+    """The ``.ter`` files of the pack made again when the decal Live's settings choose is not the
+    one they name, or when they were made before the photo on the water took it too
+    (:data:`DECAL_ON_WATER`, :func:`orthostudio.live.names.photo_on_water`): taken away, made
+    again per square as X-Plane comes. Not while X-Plane runs, which may be reading them: at the
+    next start. ``None``: the regions' own decals, nothing to do."""
     if decal is None:
         return
     record = pack_dir / DECAL_RECORD
     try:
-        was = json.loads(record.read_text(encoding="utf-8")).get("decal")
+        said = json.loads(record.read_text(encoding="utf-8"))
+        was, was_on_water = said.get("decal"), said.get("on_water", False)
     except (OSError, ValueError, AttributeError):
-        was = None  # a pack of before: its .ter files name the regions' decals
-    if was == decal:
+        was, was_on_water = None, False  # a pack of before: its .ter files name the regions' decals
+    if was == decal and (was_on_water == DECAL_ON_WATER or not decal):
         return
     terrain = pack_dir / "terrain"
     if terrain.is_dir() and next(terrain.glob("*.ter"), None) is not None:
         if xplane_running():
             log(
-                f"the land's decal {decal or 'none'}: the terrain files made already keep theirs "
-                "until Live's next start with X-Plane not running"
+                f"the decal {decal or 'none'}, on the photo over the water too: the terrain files "
+                "made already keep theirs until Live's next start with X-Plane not running"
             )
             return
         removed = _remove_tree(terrain, log, "terrain files")
         terrain.mkdir(exist_ok=True)
         log(
-            f"the land's decal is {decal or 'none'}: {removed} terrain files made again as "
-            "X-Plane comes"
+            f"the decal is {decal or 'none'}, on the photo over the water too: {removed} terrain "
+            "files made again as X-Plane comes"
         )
     record.parent.mkdir(parents=True, exist_ok=True)
-    record.write_text(json.dumps({"decal": decal}), encoding="utf-8")
+    record.write_text(json.dumps({"decal": decal, "on_water": DECAL_ON_WATER}), encoding="utf-8")
 
 
 NIGHT_RECORD = "_live/night.json"

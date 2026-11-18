@@ -53,6 +53,8 @@ Entry = tuple[str, float, float, int, int, int]
 RING = 1  # squares made round X-Plane's window: the next column's are there before X-Plane loads it
 KEEP = 2  # squares farther than this from X-Plane's window lose their files
 TER_KINDS = (("", 1), ("_water_overlay", 2), ("_sea_overlay", 4))  # the .ter files of a texture
+SEA_OVERLAY_TER = "_sea_overlay.ter"
+"""The end of a terrain file's name laying the photo on water with a mask, which takes the decal."""
 OTHER = 8  # a .ter of another kind: its name kept apart (:attr:`RegionTextures.others`)
 MASK_RE = re.compile(r"^(\d+)_(\d+)_ZL(\d{2})\.png$")  # a water mask: a sea overlay's border
 RIVER_MASKS = Path("rivers") / "textures"  # where a region of Live's mesh has its rivers' masks
@@ -424,15 +426,22 @@ class SquareWaitError(Exception):
     (orthostudio.live.region.set_zooms); made a moment later, once it is built at the new one."""
 
 
-def with_decal(ter: bytes, decal: str) -> bytes:
-    """A ``.ter`` file with the land's decal Live's settings choose: its ``DECAL_LIB`` line naming
-    ``lib/g10/decals/<decal>``, or gone when ``decal`` is empty. A file with no such line (the sea,
-    the water's overlays) is left as it is: decals go on the land only."""
+def with_decal(ter: bytes, decal: str, *, on_water: bool = False) -> bytes:
+    """A ``.ter`` file with the decal Live's settings choose: its ``DECAL_LIB`` line naming
+    ``lib/g10/decals/<decal>``, or gone when ``decal`` is empty. ``on_water``: a file laying the
+    photo on the water through a mask (:func:`photo_on_water`), which takes it too, its line put
+    before ``WET`` as Build's pack puts it, so that the grain goes on where the photo does rather
+    than stopping at the shore (2026-11-16, as Ortho4XP does). Any other file with no such line is
+    left as it is."""
     from orthostudio.decals import decal_lib
 
     lines = ter.split(b"\n")
     if not any(line.startswith(b"DECAL_LIB ") for line in lines):
-        return ter
+        if not (on_water and decal):
+            return ter
+        from orthostudio.textures.ter import with_decal as with_decal_line
+
+        return with_decal_line(ter.decode("latin-1"), decal).encode("latin-1")
     out = []
     for line in lines:
         if line.startswith(b"DECAL_LIB "):
@@ -523,11 +532,26 @@ def _inodes(pack: Path, pattern: str) -> set[tuple[int, int]]:
     return out
 
 
-def _ter_text(text: bytes, decal: str | None, lit: str | None, night: bool) -> bytes:
-    """A ``.ter`` file as the pack has it: the decal Live's settings choose, and its night texture
-    when the night lights are on (``lit``: the land's; None for the water's files)."""
+def photo_on_water(path: str, water: tuple | None) -> bool:
+    """Whether the terrain file ``path`` lays the photo on the water through a mask, so takes the
+    decal as the land does (:func:`with_decal`): one naming Live's water photo (``water``, from
+    ``waterphoto.ter_text``: the sea's, and rivers' and lakes' with soft banks); else, a file as
+    its region or its name makes it, the sea's (``_sea_overlay``, its mask its border). Never the
+    even grey border of rivers and lakes, which lays the photo over all their water, nor X-Plane's
+    water alone: no grain on open water."""
+    if water is not None:
+        return water[0] == "photo"
+    return path.endswith(SEA_OVERLAY_TER)
+
+
+def _ter_text(
+    text: bytes, decal: str | None, lit: str | None, night: bool, *, on_water: bool = False
+) -> bytes:
+    """A ``.ter`` file as the pack has it: the decal Live's settings choose (on the photo laid on
+    the water too, ``on_water``: :func:`with_decal`), and its night texture when the night lights
+    are on (``lit``: the land's; None for the water's files)."""
     if decal is not None:
-        text = with_decal(text, decal)
+        text = with_decal(text, decal, on_water=on_water)
     return with_night(text, lit) if night else text
 
 
@@ -658,17 +682,20 @@ def run_ops(pack_dir: str, ops: Sequence[tuple]) -> dict:
                     with open(op[1], "rb") as f:
                         text = f.read()
                     lit, night = (op[4], op[5]) if len(op) > 5 else (None, False)
-                    _write_new(op[2], _ter_text(text, op[3], lit, night))
+                    on_water = photo_on_water(op[2], None)
+                    _write_new(op[2], _ter_text(text, op[3], lit, night, on_water=on_water))
                     placed += 1
             elif kind == "make":  # a region naming its terrain files: made from the name
                 if not os.path.lexists(op[2]):
                     ter = made_ter(os.path.basename(op[2]))
                     lit, night = (op[4], op[5]) if len(op) > 5 else (None, False)
-                    if len(op) > 6 and op[6] is not None:  # what its water names
+                    water = op[6] if len(op) > 6 else None  # what its water names
+                    if water is not None:
                         from .waterphoto import ter_text
 
-                        ter = ter_text(ter, op[6])
-                    _write_new(op[2], _ter_text(ter, op[3], lit, night))
+                        ter = ter_text(ter, water)
+                    on_water = photo_on_water(op[2], water)
+                    _write_new(op[2], _ter_text(ter, op[3], lit, night, on_water=on_water))
                     placed += 1
             elif kind == "water":  # a water photo, before the terrain files naming it
                 from . import waterphoto
