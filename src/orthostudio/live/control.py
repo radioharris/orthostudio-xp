@@ -418,6 +418,7 @@ class LiveControl:
         def run() -> None:
             try:  # what a stop of an install left, made right first: no update put in place here
                 osxpregions.settle(live_root(), self.log, swap=False)
+                osxpregions.take_up_deletions(live_root())  # once, as the window opens
             except Exception as e:
                 self.log(f"Live's regions could not be checked: {e}")
             try:
@@ -820,7 +821,7 @@ class LiveControl:
     def _night_grids(self, root: Path, regions: list) -> None:
         for region in regions:
             installer = self._installer_of(
-                root, region, overlays=False, log=self.log, night_only=True
+                root, region, overlays=False, log=self.log, night_only=True, may_swap=self._may_swap
             )
             with self._lock:
                 if not self._quiet:  # the pilot's install took over
@@ -1009,7 +1010,8 @@ class LiveControl:
                     return
                 self._installer = installer
             installer.run()
-            if installer.snapshot().get("phase") != "done":
+            # river masks whole and waiting for Live's next start (X-Plane open) are done too
+            if installer.snapshot().get("phase") not in ("done", "waiting"):
                 return
 
     def remove_region(self, region_id: str) -> None:

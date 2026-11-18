@@ -339,7 +339,7 @@ def test_the_pace_is_the_last_seconds_bytes_and_slows_down_when_nothing_comes(
     """The panel's MB/s: the bytes of the last five seconds, sampled at most twice a second; a
     download that stalls slows down at each look of the page (2026-10-26)."""
     _, region = world
-    inst = Installer(tmp_path, region, host=(URL, TOKEN), log=lambda _: None)
+    inst = Installer(tmp_path, region, host=(URL, TOKEN), log=lambda _: None, may_swap=bool)
     now = [100.0]
     inst.clock = lambda: now[0]
     for _ in range(20):  # 10 MB a second: 1 MB every tenth of a second
@@ -743,6 +743,8 @@ def test_a_power_cut_between_the_two_renames_is_put_right(
     aside.mkdir()  # one being deleted in the background as the app quit
     (aside / "y.dsf").write_bytes(b"of before")
     osxpregions.settle(tmp_path, said.append, swap=False)
+    assert not old.exists() and aside.exists()  # a deletion maybe under way: left to it
+    assert osxpregions.take_up_deletions(tmp_path) == 1  # once, as the window opens
     assert hidden(tmp_path) == [".download", ".lists"]
 
 
@@ -810,7 +812,9 @@ def test_a_key_refused_and_a_region_deleted(tmp_path: Path, world) -> None:
     files, region = world
     lines: list[str] = []
     client = httpx.Client(transport=httpx.MockTransport(Host(files)))
-    inst = Installer(tmp_path, region, client=client, host=(URL, "old"), log=lines.append)
+    inst = Installer(
+        tmp_path, region, client=client, host=(URL, "old"), log=lines.append, may_swap=bool
+    )
     inst.run()
     assert inst.progress.phase == "failed" and "key" in inst.progress.error
     install(tmp_path, region, Host(files))
@@ -849,9 +853,10 @@ def test_a_region_being_deleted_is_never_put_back(tmp_path: Path, world, monkeyp
     with pytest.raises(KeyboardInterrupt):
         osxpregions.remove(tmp_path, "eur", [], log=lambda _: None)
     monkeypatch.setattr(osxpregions.shutil, "rmtree", deleting)
-    osxpregions.settle(tmp_path, lambda _: None, swap=True)
+    osxpregions.settle(tmp_path, lambda _: None, swap=True)  # a start: never put back
     assert not osxpregions.mesh_dir(tmp_path, "eur").exists()
     assert osxpregions.installed(tmp_path) == {}
+    assert osxpregions.take_up_deletions(tmp_path) == 1  # as the window opens: deleted
     assert hidden(tmp_path) == [".download", ".lists"]
 
 
@@ -1348,6 +1353,82 @@ def test_river_masks_a_power_cut_left_aside_are_put_back(tmp_path: Path, rivers_
     osxpregions.settle(tmp_path, said.append, swap=False)
     assert not (folder / ".rivers.old").exists() and (folder / MASK_A).exists()
     assert not [p.name for p in folder.iterdir() if p.name.startswith(".rivers.old")]
+
+
+def test_river_masks_waiting_stay_through_even_and_an_update_while_x_plane_runs(
+    tmp_path: Path, rivers_world
+) -> None:
+    """Soft banks chosen while X-Plane runs (the masks wait whole), then Even again, then the
+    region made again on the server and its Update while X-Plane still runs: the masks are the
+    region's, whatever the setting, and come in the update's stage with its mesh."""
+    files, region = rivers_world
+    install(tmp_path, region, Host(files))  # Even
+    inst, lines = install(tmp_path, region, Host(files), overlays=False, rivers=True, may_swap=bool)
+    assert inst.progress.phase == "waiting", lines
+    assert osxpregions.keeps_rivers(tmp_path, "eur", False)
+    files, region = mended_mesh(files, region, 1, {"terrain/b2.ter": b"ter B"})
+    inst, lines = install(tmp_path, region, Host(files), rivers=False, may_swap=bool)  # Even
+    assert inst.progress.phase == "waiting", lines
+    stage = osxpregions.stage_dir(tmp_path, "eur")
+    assert (stage / MASK_A).exists() and (stage / MASK_B).exists()
+    osxpregions.settle(tmp_path, lambda _: None, swap=True)  # the next start, X-Plane closed
+    folder = osxpregions.mesh_dir(tmp_path, "eur")
+    assert (folder / MASK_A).read_bytes() == b"river a"
+    assert (folder / "terrain/b2.ter").read_bytes() == b"ter B"
+    assert all(marker_of(tmp_path)["zips"][z.path] == z.sha256 for z in region.rivers)
+
+
+def test_river_masks_a_stop_left_unrecorded_are_not_downloaded_again(
+    tmp_path: Path, rivers_world
+) -> None:
+    """A stop between the masks' rename and their record: their stage, whole, is kept, nothing is
+    downloaded again, and the next try with Live stopped and X-Plane closed records them."""
+    files, region = rivers_world
+    install(tmp_path, region, Host(files))
+    inst, _ = install(tmp_path, region, Host(files), overlays=False, rivers=True, may_swap=bool)
+    assert inst.progress.phase == "waiting"
+    folder = osxpregions.mesh_dir(tmp_path, "eur")
+    (folder / osxpregions.RIVERS_STAGE / "rivers").rename(folder / "rivers")  # renamed, then cut
+    for may in (bool, lambda: True):  # with X-Plane open, then closed
+        host = Host(files)
+        install(tmp_path, region, host, overlays=False, rivers=True, may_swap=may)
+        assert host.asked == []
+    assert all(marker_of(tmp_path)["zips"][z.path] == z.sha256 for z in region.rivers)
+    assert not (folder / osxpregions.RIVERS_STAGE).exists()
+
+
+def test_a_stage_discarded_is_never_trusted_half_deleted(
+    tmp_path: Path, world, monkeypatch
+) -> None:
+    """A stage is discarded one way: its marker first, then set aside and deleted in the
+    background; a stop in the middle never leaves one whole for a start to put in place."""
+    files, region = world
+    install(tmp_path, region, Host(files))
+    files, region = mended(files, region, 1, {"terrain/b.ter": b"ter B"})
+    install(tmp_path, region, Host(files), may_swap=bool)  # whole, waiting
+    stage = osxpregions.stage_dir(tmp_path, "eur")
+    assert osxpregions.staged_whole(tmp_path, "eur")
+
+    def cut(path: Path) -> Path:
+        raise KeyboardInterrupt("the power cut")
+
+    monkeypatch.setattr(osxpregions, "_set_aside", cut)
+    with pytest.raises(KeyboardInterrupt):
+        osxpregions._discard(stage)
+    assert stage.exists() and not osxpregions.staged_whole(tmp_path, "eur")
+
+
+def test_a_region_is_deleted_in_the_background(tmp_path: Path, world, monkeypatch) -> None:
+    """Deleting a region sets it aside in one rename and deletes it in the background: the
+    request does not wait for its files."""
+    files, region = world
+    install(tmp_path, region, Host(files))
+    started: list[Path] = []
+    monkeypatch.setattr(osxpregions, "_delete_aside", started.append)
+    osxpregions.remove(tmp_path, "eur", [], log=lambda _: None)
+    assert [p.name.rsplit(".", 1)[0] for p in started] == [".z_osxp_eur.old"]
+    assert osxpregions.ASIDE.fullmatch(started[0].name) and started[0].exists()
+    assert osxpregions.installed(tmp_path) == {} and not osxpregions.present(tmp_path, "eur")
 
 
 def test_the_night_grids_alone_leave_the_river_stage_alone(tmp_path: Path, rivers_world) -> None:

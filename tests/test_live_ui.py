@@ -1649,6 +1649,17 @@ class DoneInstaller(FakeInstaller):
         self.phase = "done"
 
 
+class WaitingInstaller(FakeInstaller):
+    """As the real Installer ends river masks that may not take their place now (Live streaming,
+    or X-Plane running): whole, waiting for Live's next start."""
+
+    made: ClassVar[list] = []
+
+    def run(self) -> None:
+        WaitingInstaller.made.append(self.region.id)
+        self.phase = "done" if self.may_swap() else "waiting"
+
+
 def rivers_control(chosen: dict, installer=FakeInstaller) -> LiveControl:
     catalog = rivers_catalog()
     return LiveControl(
@@ -1732,6 +1743,22 @@ def test_soft_banks_saved_brings_the_river_masks_of_each_region_whose_mesh_is_th
     wait_for(lambda: not c._rivers_thread.is_alive())
     assert DoneInstaller.made == [("eur", False, True)]
     assert not c._installer.may_swap()
+    c._state = IDLE
+
+
+def test_soft_banks_saved_in_flight_brings_every_region_s_river_masks(home: Path) -> None:
+    """Live streaming: each region's masks end whole and waiting, which is their round's success:
+    every region gets its masks, not the first one alone."""
+    WaitingInstaller.made = []
+    c = rivers_control({"rivers_fade": True}, WaitingInstaller)
+    catalog = c._catalog_of(None)
+    put_region(catalog["eur"])
+    put_region(catalog["na"])
+    c._state = STREAMING
+    assert c.rivers_chosen()
+    wait_for(lambda: not c._rivers_thread.is_alive())
+    assert WaitingInstaller.made == ["eur", "na"]
+    assert c.regions()["install"]["phase"] == "waiting"
     c._state = IDLE
 
 
