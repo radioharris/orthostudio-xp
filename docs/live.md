@@ -345,8 +345,11 @@ more, once.
 apart, and only Soft banks downloads them: for Europe, about 3.2 GB more (an estimate from the
 bake of 17 November 2026), 228,000 small files. Under « Soft banks », the Settings say how much
 they add to download for your regions. Choose Soft banks and click Save: Live downloads them region
-after region, with the bar and the Stop of « The mesh, by region », while Live streams too; they
-are used from the next start. A region whose mesh changed since you installed it shows **Update**
+after region, with the bar and the Stop of « The mesh, by region », while Live streams too. They
+take their place as a region's update does: at once with Live stopped and X-Plane closed, used from
+Live's next start; chosen while X-Plane is open, they wait whole ("Update ready") and Live's next
+start with X-Plane closed puts them in place, a start with X-Plane open flying on without them. A
+region whose mesh changed since you installed it shows **Update**
 instead, which brings it whole, its river masks included. A stopped or failed download leaves the
 region as it was, never half of its rivers faded; **Update** goes on from where it stopped. Once
 downloaded, the masks stay part of the region: choosing Even again leaves them on the disk,
@@ -436,11 +439,13 @@ region changes only with Live stopped and X-Plane closed: with X-Plane open, the
 complete, waits, the panel saying "Update ready", and Live puts it in place at its next start with
 X-Plane closed, before anything else; with X-Plane open, that start flies the region of before.
 A region that changed since Live last started does not start Live while X-Plane is open, which
-may be reading the region of before: quit X-Plane, then start. On Windows, a region another program holds open cannot be replaced: the panel says so; close it
-and click **Update** again, which downloads nothing more. While a region is being downloaded or
-installed, Start waits, the window saying why. Updating and deleting wait until Live is stopped.
-A region installed with 2.0, before the night lights, gets their grids by itself, a few megabytes
-(Europe 11.6 MB), as the window opens: no Update to click. A region may sit on another disk,
+may be reading the region of before: quit X-Plane, then start. On Windows, a region another
+program holds open cannot be replaced: the panel says so; close it and click **Update** again,
+which downloads nothing more. While a region is being downloaded or installed, Start waits, the
+window saying why. Updating and deleting wait until Live is stopped. A region's night grids made
+again on the server while its mesh is not come by themselves, a few megabytes (Europe 11.6 MB), as
+the window opens: no Update to click; with a new mesh they come in its update. A region may sit on
+another disk,
 linked from Live's folder: the panel says where each one is. Live reads the regions of the light
 mesh, made in November 2026, from a list of their own: the Lives up to 2.2 keep the world of
 before, and the two never mix.

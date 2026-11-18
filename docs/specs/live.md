@@ -498,7 +498,8 @@ them already), unpacked one at a time in the list's order, each recorded in the 
 the region's place (`put_in_place`): the region of before renamed `.z_osxp_<id>.old`, the stage
 renamed in, the old one deleted in the background under a name of its own
 (`.z_osxp_<id>.old.<n>`, `_discard`: its hundreds of thousands of files take a minute or more,
-which no start waits for; a deletion a quit stopped is taken up again), one rename helper tried again a moment on Windows
+which no start waits for; a deletion a quit stopped is taken up again), the one swap of a region
+and of its river masks alike (`_swap_in`), one rename helper tried again a moment on Windows
 (`filesystem.replace`), the marker and every record written whole and flushed to the disk
 (`fsutil.atomic_write_text`, fsync). An update does the same as soon as the mesh the region holds
 is not the list's (`made_whole`): a zip made again (a single mended zip brings the region whole,
@@ -521,21 +522,27 @@ it. A start with X-Plane running on a region that changed since the pack was set
 before. While a region is downloaded or installed (not the night grids' own download), Start is
 refused by the server and greyed in the window (`LiveControl.installing`, `checks.installing`).
 
-What a stop or a power cut leaves is made right (`settle`) at an install's start, as Live's window
-opens and at Live's start: a region renamed aside whose successor never took its place is put
-back; a region of before left beside its successor is deleted; at a start or an install that may,
-a whole stage is put in place. The page counts an update by what the region's marker does not
-record (`not_installed`), so that a whole stage waiting keeps its Update, which downloads nothing
-and only puts it in place. Each zip is downloaded under a name holding its SHA-256
+What a stop or a power cut leaves is made right (`settle`, `_repair`) at an install's start, as
+Live's window opens and at Live's start, for a region and for its river masks alike: one renamed
+aside whose successor never took its place is put back; one of before left beside its successor
+is deleted; at a start or an install that may, a whole stage is put in place, the region's, then
+its river masks' (`put_rivers_in_place`). The page counts an update by what the region's marker
+does not record (`not_installed`), so that a whole stage waiting keeps its Update, which
+downloads nothing and only puts it in place. Each zip is downloaded under a name holding its SHA-256
 (`Zip.download`): a part of a zip made again since is deleted at the next install instead of
 being resumed into a damaged file, and a river zip never meets its mesh zip of the same name. A
 zip that cannot be unpacked is deleted, downloaded again the next time. The room the whole install
 needs is checked before its first byte, disk by disk (the region's, the overlay pack's, the
 download folder's), and again before each zip, each file counted as a whole block (`_room`).
-Night grids alone, or river masks alone (« Water »), added to a region whose mesh did not change go
-into it in place, the marker recording them. Deleting a region renames it aside first, then
-deletes it, its stage and its downloads: a folder held open is not touched at all; a region of
-which a stop left only its stage or the region of before is deleted too (`present`).
+Night grids alone, added to a region whose mesh did not change, go into it in place, the marker
+recording them; river masks alone go through their own stage, `.rivers.new`, and take their place
+by the same rule as a region (« Water »). Deleting a region renames it aside first, under a name
+of its own (`.z_osxp_<id>.old.<n>`, never taken for an update stopped halfway, which `settle`
+would put back), then deletes it, its stage and its downloads: a folder held open is not touched
+at all; a region of which a stop left only its stage or the region of before is deleted too
+(`present`). The zip being unpacked into a stage is named in its record first (`unpacking`): a
+stop halfway, then that zip made again under the same path, starts the stage again rather than
+leave half of its version of before in it.
 
 **Another tool's mesh** (`scenery.other_mesh`, 2026-11-14): a folder chosen in the Settings
 (`LiveSettings.other_mesh`, empty: none), last in `default_sources` after `base_sources` (Live's
@@ -1075,14 +1082,19 @@ with 3,732 masks; estimated for Europe from the bake of 2026-11-17, about 3.2 GB
   (`.rivers.new/rivers/textures/...`), each recorded in the stage's own `.live-install.json`; once
   it holds every river zip of the list, `.rivers.new/rivers` takes the
   place of `rivers` with one rename (those of before renamed `.rivers.old` first, deleted after),
-  then the marker records them, last (`Installer._put_rivers`). A stop, a damaged zip or a full
+  then the marker records them, last (`put_rivers_in_place`, the region's `_swap_in`), by the
+  rule of every change of a region: at once with Live stopped and X-Plane not running; else they
+  wait whole, their stage marked (its marker: their zips, the size the region will have), and
+  Live's next start with X-Plane not running puts them in place before anything reads the
+  regions, a start with X-Plane running flying on without them (and not refused: the region is
+  as the pack was set up from it). A stop, a damaged zip or a full
   disk leaves the region's rivers as they were, faded or even in one piece, never half; the next
   try goes on in the stage, started again when it holds a zip the list no longer has as it was
   (`_rivers_staged`). The marker's river zips count all together or not at all, and only while
   `rivers` is there (`recorded`): one made again, they all come again into the stage (a bake makes
-  every zip again anyway). A `.rivers.new` the region no longer wants (Even chosen again before it
-  was whole) is deleted at the next install, and one of a region whose mesh changed: its update
-  brings them.
+  every zip again anyway). A `.rivers.new` half come that the region no longer wants (Even chosen
+  again before it was whole) is deleted at the next install, and one of a region whose mesh
+  changed: its update brings them. One whole and waiting is the region's already (`wanted`).
 - **Windows** does not rename a folder a program holds open: those of before stay in place, the
   stage whole; the error says to close X-Plane and try again, which downloads nothing more. Until
   then the region shows its update (`not_installed`: zips the marker does not record, downloaded
@@ -1100,10 +1112,11 @@ with 3,732 masks; estimated for Europe from the bake of 2026-11-17, about 3.2 GB
   its list of textures and its date untouched, the marker recording what came. A region whose mesh
   changed gets nothing alone: it shows its update, which brings it whole, river masks in. An
   install under way keeps its place (the river masks then come with Update); the night grids'
-  own download gives way. It runs while Live streams too, but never puts river masks over those a
-  region has while Live streams: that waits for Update, with Live stopped.
+  own download gives way. It downloads while Live streams too; what it brings takes its place by
+  the rule above (`LiveControl._may_swap`), never under a running X-Plane or Live.
 - **Used from the next start.** `Names` reads which regions hold `rivers` as the stream starts
-  (`river_masks`): masks put in place meanwhile are not taken square by square, or one flight
+  (`river_masks`): masks put in place meanwhile (none now: they wait for a start, the rule above)
+  would not be taken square by square, or one flight
   would show X-Plane's water alone on the squares before them and faded banks after, and the
   squares kept would stay so. The region's fingerprint counts the `rivers` folder's time where it
   has one (`region._fingerprints`; a region without one keeps its fingerprints of before), so the

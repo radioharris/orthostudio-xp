@@ -1051,9 +1051,10 @@ Live lays its photos on its own mesh of the world, which it installs by region f
 tab (Europe, North America...). When a region is made again, its Update downloads it whole beside
 the one in use, which it replaces in one go once complete, with Live stopped and X-Plane closed:
 with X-Plane open, the update waits ("Update ready") and Live puts it in place at its next start
-with X-Plane closed. While a region downloads, Start waits. Where none is installed, it can use
-another tool's mesh in AutoOrtho's format, from a folder chosen in the same tab. Your own tiles come first: where you built
-one, X-Plane shows it, and Live downloads nothing there.
+with X-Plane closed; so do the masks of rivers and lakes Soft banks downloads. While a region
+downloads, Start waits. Where none is installed, it can use another tool's mesh in AutoOrtho's
+format, from a folder chosen in the same tab. Your own tiles come first: where you built one,
+X-Plane shows it, and Live downloads nothing there.
 
 What it keeps is in its own folder, `~/.orthostudio/live` unless its settings name another, apart
 from the data folder:
