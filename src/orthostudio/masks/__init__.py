@@ -29,6 +29,7 @@ from orthostudio.masks.profiles import (
     rocks_blur,
     sand_blur,
     sea_level_for,
+    soft_blur,
     three_steps_blur,
 )
 from orthostudio.masks.raster import (
@@ -85,6 +86,7 @@ __all__ = [
     "rocks_blur",
     "sand_blur",
     "sea_level_for",
+    "soft_blur",
     "three_steps_blur",
     "water_triangles",
     "worker_count",

@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from orthostudio.imagery.grid import tile_to_wgs84
+from orthostudio.imagery.grid import texture_at, tile_to_wgs84
 from orthostudio.masks.build import (
     MASKS_INDEX_FORMAT,
     CellJob,
@@ -187,3 +187,70 @@ def test_pre_mask_margin_changes_nothing_inside_the_cell() -> None:
     wide = pre_mask(8432, 6000, tris, extents, mask_zl=ZL, sea_level=99, margin=64)
     tight = pre_mask(8432, 6000, tris, extents, mask_zl=ZL, sea_level=99, margin=16)
     assert np.array_equal(wide[64:-64, 64:-64], tight[16:-16, 16:-16])
+
+
+def test_two_rows_of_squares_make_a_soft_mask_they_share_the_same(tmp_path: Path) -> None:
+    """A mask cell across the line between two rows of squares is made by the square on each
+    side, each from the two meshes: both write the very same ``soft`` mask (``soft_width``)."""
+    south, north = TileRef(43, 5), TileRef(44, 5)
+    cell = texture_at(44.0, 5.5, ZL, "")
+    straddling = (cell.til_x, cell.til_y)
+    above = (cell.til_x, cell.til_y - 16)
+    meshes = {south: _sea_mesh([straddling]), north: _sea_mesh([above])}
+    for tile in (south, north):
+        build_masks(
+            tmp_path / tile.name, meshes, tile, masking_mode="soft", masks_width=100, workers=1
+        )
+    name = mask_file_name(*straddling)
+    made = [(tmp_path / tile.name / name).read_bytes() for tile in (south, north)]
+    assert made[0] == made[1]
+    mask = np.array(Image.open(tmp_path / south.name / name))
+    assert len(set(np.unique(mask).tolist())) > 2  # a real band, not a hard edge
+
+
+def test_our_fade_draws_the_water_as_its_outline_covers_the_pixels() -> None:
+    """Pillow fills a triangle up to and with its edges, on corners rounded to whole pixels: a
+    square of water 4 pixels wide came out 5, a pixel too many east and south. Ortho4XP's fades
+    keep that drawing byte for byte; OrthoStudio XP's own (``exact_edges``, the ``soft`` fade)
+    takes the pixels whose middle the water covers: 4, a stream one pixel wide keeps its pixel,
+    and a slanting stream two pixels wide keeps two on every row, slanting east or west."""
+    from orthostudio.masks.water import cell_pixel_origin
+
+    margin = 16
+    px0, py0 = cell_pixel_origin(8432, 6000, ZL, margin)
+    x0, y0 = px0 + margin + 300, py0 + margin + 300
+    square = [
+        [(x0, y0), (x0 + 4, y0), (x0 + 4, y0 + 4)],
+        [(x0, y0), (x0 + 4, y0 + 4), (x0, y0 + 4)],
+    ]
+    sx = x0 + 40  # a stream one pixel wide, from north to south
+    stream = [
+        [(sx, y0), (sx + 1, y0), (sx + 1, y0 + 30)],
+        [(sx, y0), (sx + 1, y0 + 30), (sx, y0 + 30)],
+    ]
+    slants = []
+    for kx, dx in ((x0 + 80, 15), (x0 + 140, -15)):  # two pixels wide, slanting east and west
+        slants += [
+            [(kx, y0), (kx + 2, y0), (kx + 2 + dx, y0 + 30)],
+            [(kx, y0), (kx + 2 + dx, y0 + 30), (kx + dx, y0 + 30)],
+        ]
+    tris = WaterTriangles(np.array(square + stream + slants, dtype=np.float64), np.zeros((0, 3, 2)))
+    extents = extent_polygons([TILE], ZL)
+    o4xp = pre_mask(8432, 6000, tris, extents, mask_zl=ZL, sea_level=99, margin=margin)
+    ours = pre_mask(
+        8432, 6000, tris, extents, mask_zl=ZL, sea_level=99, margin=margin, exact_edges=True
+    )
+
+    def span(mask: np.ndarray, x: int, y: int, w: int, h: int) -> tuple[list[int], list[int]]:
+        water = mask[y - py0 : y - py0 + h, x - px0 : x - px0 + w] == 0
+        cols = (np.nonzero(water.any(axis=0))[0] + x - x0).tolist()
+        rows = (np.nonzero(water.any(axis=1))[0] + y - y0).tolist()
+        return cols, rows
+
+    assert span(o4xp, x0 - 2, y0 - 2, 9, 9) == ([0, 1, 2, 3, 4], [0, 1, 2, 3, 4])
+    assert span(ours, x0 - 2, y0 - 2, 9, 9) == ([0, 1, 2, 3], [0, 1, 2, 3])
+    assert span(o4xp, sx - 2, y0 - 2, 5, 35)[0] == [40, 41]
+    assert span(ours, sx - 2, y0 - 2, 5, 35)[0] == [40]  # the stream stays
+    for kx in (x0 + 80 - 20, x0 + 140 - 20):
+        rows = ours[y0 - py0 : y0 - py0 + 30, kx - px0 : kx - px0 + 40] == 0
+        assert rows.sum(axis=1).tolist() == [2] * 30

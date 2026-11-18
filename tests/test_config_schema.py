@@ -14,7 +14,7 @@ from orthostudio.tilefiles import TILE_PARAMETERS
 EXPECTED_LEAVES = {"essential": 19, "advanced": 14, "expert": 33}
 ENUMS = {
     "essential.airports.mode": ["off", "on", "icao", "existing"],
-    "essential.coast_transition.profile": ["sand", "rocks", "3steps"],
+    "essential.coast_transition.profile": ["sand", "rocks", "3steps", "soft"],
     "essential.water_rendering": ["XP11 + bathy", "XP12"],
     "essential.overlays": ["xplane", "roads", "none"],
     "essential.relief.source": [

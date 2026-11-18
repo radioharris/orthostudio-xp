@@ -81,6 +81,10 @@ the disk is in [how-it-works.md](how-it-works.md). To fly without building tiles
   tidal bay no longer sink under the sea; seaplane bases keep their water.
 - **Shores without blue needles.** Water closer than a metre to the shore is shallow, as the shore
   is, so X-Plane no longer draws its deep seabed at the edge of a lake.
+- **Rivers that keep their water (experimental).** A fourth way for the coast to fade, *Like a
+  sandy beach, but rivers keep their water*: the sea and wide water fade as the sandy beach does,
+  and a river narrower than twice the fade's width fades from each bank to its middle, which stays
+  X-Plane's water, where the sandy beach covers it from bank to bank. Both banks fade alike.
 - **A cache, and a tab to see it.** An unchanged tile builds again in a fraction of a second, a
   new zone builds again only what it touches, and imagery is never downloaded twice. *Disk space*
   shows what the data folder holds and, box by box, what freeing each part changes and what would
