@@ -47,12 +47,14 @@ from .geo import _TEXTURE_RE, parse_texture_name
 
 Square = tuple[int, int]
 # (name, lat, lon, zoom, kinds, source): a texture of the regions, where its centre is, the files
-# its region has for it (:data:`TER_KINDS`) and which region (an index into the sources)
+# it takes (:data:`TER_KINDS`: :meth:`RegionTextures.entries_of`) and the region its copied files,
+# its masks, come from (an index into the sources)
 Entry = tuple[str, float, float, int, int, int]
 
 RING = 1  # squares made round X-Plane's window: the next column's are there before X-Plane loads it
 KEEP = 2  # squares farther than this from X-Plane's window lose their files
-TER_KINDS = (("", 1), ("_water_overlay", 2), ("_sea_overlay", 4))  # the .ter files of a texture
+LAND, WATER, SEA = 1, 2, 4  # a texture's land, its rivers' and lakes' overlay, its sea's overlay
+TER_KINDS = (("", LAND), ("_water_overlay", WATER), ("_sea_overlay", SEA))  # its .ter files
 OTHER = 8  # a .ter of another kind: its name kept apart (:attr:`RegionTextures.others`)
 MASK_RE = re.compile(r"^(\d+)_(\d+)_ZL(\d{2})\.png$")  # a water mask: a sea overlay's border
 RELEASE_BATCH = 4  # squares taken away at once, between the squares X-Plane will need
@@ -100,6 +102,20 @@ def terrain_folder(source: Path) -> Path:
     of before), else its :data:`TERRAIN_LISTS`."""
     folder = source / "terrain"
     return folder if folder.is_dir() else source / TERRAIN_LISTS
+
+
+def own_mesh(source: Path) -> bool:
+    """Whether a region is of Live's own mesh, naming its terrain files in its lists, each made
+    from its name (:func:`made_ter`); else they are copied from its ``terrain`` folder
+    (AutoOrtho's regions, Live's of before, another tool's mesh)."""
+    return terrain_folder(source).name == TERRAIN_LISTS
+
+
+def _water_rank(kinds: int) -> int:
+    """How much of a texture's water its files of a region mask: its sea (its border is the
+    texture's mask, a file of the region), else its rivers and lakes, else none. A texture
+    several regions name takes its masks from the highest (:meth:`RegionTextures.entries_of`)."""
+    return 2 if kinds & SEA else 1 if kinds & WATER else 0
 
 
 def made_ter(name: str) -> bytes:
@@ -264,9 +280,9 @@ def _listed(source: Path) -> tuple[dict[str, int], dict[str, list[str]]]:
 
 
 class RegionTextures:
-    """Every texture of the AutoOrtho regions a pack is made from, with the files each region has
-    for it, from their ``terrain`` folders (the first region to have a texture has it), each
-    region's list kept in ``lists`` where given (:func:`one_region`).
+    """Every texture of the regions a pack is made from, Live's own and AutoOrtho's, with the files
+    each region has for it (a texture several name: :meth:`entries_of`), each region's list kept
+    in ``lists`` where given (:func:`one_region`).
 
     ``entries_of`` gives a square's :data:`Entry`, worked out then; ``zooms`` the textures' zooms;
     ``others`` names the rare ``.ter`` of another kind; ``listed`` the regions whose folder was
@@ -275,6 +291,7 @@ class RegionTextures:
     def __init__(self, sources: Sequence[Path], lists: Path | None = None):
         self.sources = list(sources)
         self._squares: list[dict[str, dict[str, int]]] = []  # each region's, in their order
+        self._own = [own_mesh(source) for source in self.sources]
         self.zooms: set[int] = set()
         self.others: dict[str, list[str]] = {}
         self.listed: list[Path] = []
@@ -292,7 +309,7 @@ class RegionTextures:
         self._count = self._counted()
 
     def _region_of(self, name: str) -> int | None:
-        """The first region that has a texture: the one whose files it takes."""
+        """The first region that has a texture: the one whose other ``.ter`` (OTHER) it keeps."""
         key = square_key(name)
         found = (i for i, squares in enumerate(self._squares) if name in squares.get(key, ()))
         return next(found, None)
@@ -314,19 +331,27 @@ class RegionTextures:
         return self._count
 
     def entries_of(self, square: Square) -> list[Entry]:
-        """The textures whose centre is in ``square``, where that centre is worked out now: the
-        first region that has a texture gives its files."""
+        """The textures whose centre is in ``square``, where that centre is worked out now, each
+        with the files of the first region that has it. A texture several of Live's own regions
+        name, on the line between them, takes the files of all, each made from its name, since
+        the DSFs of each name theirs (issue 36); its masks from the one whose files mask most of
+        its water (:func:`_water_rank`). Regions whose files are copied are never merged."""
         key = f"{square[0]},{square[1]}"
-        out: list[Entry] = []
-        seen: set[str] = set()
+        merged: dict[str, list[int]] = {}  # name: [the kinds of all, the region of its masks]
         for i, squares in enumerate(self._squares):
             for name, kinds in squares.get(key, {}).items():
-                if name in seen:
-                    continue
-                seen.add(name)
-                tex = parse_texture_name(name)
-                lat, lon = tex.center
-                out.append((name, lat, lon, tex.zoom, kinds, i))
+                got = merged.get(name)
+                if got is None:
+                    merged[name] = [kinds, i]
+                elif self._own[i] and self._own[got[1]]:
+                    if _water_rank(kinds) > _water_rank(got[0]):  # the masks' region's rank
+                        got[1] = i
+                    got[0] |= kinds
+        out: list[Entry] = []
+        for name, (kinds, i) in merged.items():
+            tex = parse_texture_name(name)
+            lat, lon = tex.center
+            out.append((name, lat, lon, tex.zoom, kinds, i))
         return out
 
     def entries(self) -> Iterator[Entry]:
@@ -810,7 +835,7 @@ class Names:
         if kinds & OTHER:
             for other in self.others.get(name, ()):
                 yield "terrain", other
-        if kinds & 4:  # a sea overlay: its border is the texture's water mask
+        if kinds & SEA:  # a sea overlay: its border is the texture's water mask
             yield "textures", mask_name(name)
 
     def _present(self) -> set[Square]:
@@ -877,12 +902,12 @@ class Names:
             ops += [
                 ("night", str(self.pack_dir / NIGHT_FOLDER / night_name(entry[0])))
                 for entry in entries
-                if entry[4] & 1
+                if entry[4] & LAND
             ]
         for entry in entries:
             source = self.sources[entry[5]] if self.sources else None
             if source is not None:
-                named = terrain_folder(source).name == TERRAIN_LISTS
+                named = own_mesh(source)
                 land = entry[0][: -len(".dds")] + ".ter"
                 for folder, file in self._files(entry):
                     src, dst = str(source / folder / file), str(self.pack_dir / folder / file)
