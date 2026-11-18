@@ -211,9 +211,12 @@ export const STRINGS = {
     "regions.keep_no": "Don't keep",
     "regions.room_title": "Not enough room",
     "regions.room_text":
-      "Not enough room to install the new mesh of {name} beside the old one: it needs {need} GB on its disk, {free} GB are left.",
-    "regions.room_text_disk":
-      "Not enough room to install the new mesh of {name}: it needs {need} GB on the disk of {disk}, {free} GB are left.",
+      "Not enough room to install the new mesh of {name} beside the old one: it needs {need} GB on its disk, {free} left.",
+    "regions.room_text_live":
+      "Not enough room to install the new mesh of {name}: it needs {need} GB on the disk of Live's folder, {folder}, {free} left.",
+    "regions.room_free_cleared": "{left} once what a stopped update left is deleted",
+    "regions.room_asking": "Working out the room…",
+    "regions.clearing": "Deleting what a stopped update left…",
     "regions.room_kept": "Deleting the kept old mesh frees enough room.",
     "regions.room_none": "Free some room on the disk, then click Update again.",
     "regions.room_yes": "Delete the kept old one and install the new one",
@@ -681,8 +684,11 @@ export const STRINGS = {
     "regions.room_title": "Pas assez de place",
     "regions.room_text":
       "Pas assez de place pour installer le nouveau maillage de {name} à côté de l'ancien : il faut {need} Go sur son disque, il en reste {free}.",
-    "regions.room_text_disk":
-      "Pas assez de place pour installer le nouveau maillage de {name} : il faut {need} Go sur le disque de {disk}, il en reste {free}.",
+    "regions.room_text_live":
+      "Pas assez de place pour installer le nouveau maillage de {name} : il faut {need} Go sur le disque du dossier de Live, {folder}, il en reste {free}.",
+    "regions.room_free_cleared": "{left} une fois supprimé ce qu'une mise à jour arrêtée a laissé",
+    "regions.room_asking": "Calcul de la place…",
+    "regions.clearing": "Suppression de ce qu'une mise à jour arrêtée a laissé…",
     "regions.room_kept": "Supprimer l'ancien maillage gardé libère assez de place.",
     "regions.room_none": "Libérez de la place sur le disque, puis cliquez à nouveau sur « Mettre à jour ».",
     "regions.room_yes": "Supprimer l'ancien gardé et installer le nouveau",

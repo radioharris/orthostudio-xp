@@ -574,7 +574,7 @@ def test_no_start_on_a_region_updated_while_xplane_runs(
     time.sleep(0.01)
     (src / "terrain" / "extra.ter").write_text("A\n800\nTERRAIN\n")  # an update
     os.utime(src / "terrain")
-    with pytest.raises(session.RefusedError, match="changed since Live last started"):
+    with pytest.raises(session.RefusedError, match="changed since its last start"):
         session.prepare(options, log=quiet)
     monkeypatch.setattr(session, "xplane_running", lambda: False)
     session.prepare(options, log=quiet)  # X-Plane quit: the pack set up again
@@ -672,13 +672,12 @@ def test_no_start_on_a_mesh_changed_while_xplane_runs(
     monkeypatch.setattr(session, "is_installed", lambda *a: True)
     monkeypatch.setattr(session, "xplane_running", lambda: True)
     switched = session.Options(xplane=xp, pack=pack, source=old, no_plugin=True)
-    with pytest.raises(session.RefusedError, match="the mesh changed since Live last started") as e:
+    with pytest.raises(
+        session.RefusedError, match="streams onto changed since its last start"
+    ) as e:
         session.prepare(switched, log=quiet)
     said = str(e.value)
-    assert "a region installed, updated or deleted" in said
-    assert "Mesh switched between New and Old" in said
-    assert "another tool's mesh or an AutoOrtho region changed" in said
-    assert "a disk holding a mesh not connected" in said and "z_ao_test" not in said
+    assert said.endswith("Quit X-Plane, then start again") and "z_ao_test" not in said
     assert sources_of_pack(pack) == [new]  # the pack as X-Plane found it
     monkeypatch.setattr(session, "xplane_running", lambda: False)
     session.prepare(switched, log=quiet)  # X-Plane closed: set up again from the old mesh

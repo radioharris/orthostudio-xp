@@ -806,9 +806,9 @@ def _aside(path: Path, beside: Path | None = None) -> Path | None:
 
 def _discard(path: Path, beside: Path | None = None, *, wait: bool = False) -> None:
     """A stage, or a region or river masks of before, deleted, the one way: set aside
-    (:func:`_aside`), then deleted in the background: hundreds of thousands of files take a minute
-    or more, which no start nor install waits for; before returning with ``wait``, where the room
-    they leave is counted next (:meth:`Installer._run`)."""
+    (:func:`_aside`), then deleted, in the background (hundreds of thousands of files take a
+    minute or more, which a start waits for nowhere), or before returning with ``wait``, where
+    the room they leave is counted next (:func:`_drop_stale`)."""
     aside = _aside(path, beside)
     if aside is not None:
         (_delete if wait else _delete_aside)(aside)
@@ -1103,45 +1103,51 @@ def _stale_downloads(download: Path, kept: set[str]) -> list[Path]:
     return []
 
 
-def _stale_stages(root: Path, region: OsxpRegion, rivers: bool) -> list[tuple[Path, Path | None]]:
-    """What of a region's stages an install deletes: its stage where its mesh is the list's (none
-    needed), or where it holds a zip the list no longer has as it was (:func:`_staged`: an update
-    of before stopped or waiting, a newer one listed since), or only its river masks where the
-    region does not keep them (:func:`keeps_rivers`: Even again before they were in place); the
-    river masks coming alone, not the list's or half come and no longer wanted. Each with where it
-    is set aside (:func:`_discard`). Read before anything is deleted."""
+@dataclass(frozen=True)
+class Stale:
+    """A part of a region's stages an install deletes (:func:`_stale_stages`): where it is set
+    aside (:func:`_discard`), and the zips of the stage's record that go with it."""
+
+    path: Path
+    beside: Path | None = None
+    zips: frozenset[str] = frozenset()
+
+
+def _stale_stages(root: Path, region: OsxpRegion, rivers: bool) -> list[Stale]:
+    """What of a region's stages an install deletes, before it counts its room: its stage where
+    its mesh is the list's (none needed), or where it holds a zip the list no longer has as it was
+    (:func:`_staged`: an update of before stopped or waiting, a newer one listed since), or only
+    its river masks where the region does not keep them (:func:`keeps_rivers`: Even again before
+    they were in place), their zips with them; the river masks coming alone, not the list's or
+    half come and no longer wanted. Read before anything is deleted; deleted by
+    :func:`_drop_stale`, counted by :func:`_room_for_update`."""
     keep = keeps_rivers(root, region.id, rivers)
     stage = stage_dir(root, region.id)
-    out: list[tuple[Path, Path | None]] = []
+    out: list[Stale] = []
     if stage.exists():
         step = _staged(root, region)
+        theirs = {z.path for z in region.rivers} & set(step["zips"])
         if not made_whole(root, region) or not (step["zips"] or step["overlays"]):
-            out.append((stage, None))
-        elif (
-            not keep
-            and (stage / RIVERS).exists()
-            and {z.path for z in region.rivers} & set(step["zips"])
-        ):
-            out.append((stage / RIVERS, stage.parent))
+            out.append(Stale(stage))
+        elif theirs and not keep:
+            out.append(Stale(stage / RIVERS, stage.parent, frozenset(theirs)))
     small = mesh_dir(root, region.id) / RIVERS_STAGE
     if small.exists() and (not keep or not _rivers_staged(root, region)):
-        out.append((small, _real(root, region.id).parent))
+        out.append(Stale(small, _real(root, region.id).parent))
     return out
 
 
-def _bytes_of(path: Path) -> int:
-    """What a file, or a folder and all it holds, takes."""
-    try:
-        if not path.is_dir() or path.is_symlink():
-            return path.lstat().st_size
-    except OSError:
-        return 0
-    total = 0
-    for top, _, names in os.walk(path):
-        for name in names:
-            with contextlib.suppress(OSError):
-                total += os.lstat(os.path.join(top, name)).st_size
-    return total
+def _drop_stale(stage: Path, stale: Stale) -> None:
+    """A stale part of a region's stages deleted before returning (:func:`_stale_stages`): a part
+    of the stage takes its marker with it first (whole again only once all are there), and its
+    zips leave the stage's record after."""
+    if stale.zips:
+        (stage / MARKER).unlink(missing_ok=True)
+    _discard(stale.path, stale.beside, wait=True)
+    if stale.zips:
+        step = _read(stage / STEP)
+        step["zips"] = {p: h for p, h in (step.get("zips") or {}).items() if p not in stale.zips}
+        _write(stage / STEP, step)
 
 
 def _room_for_update(
@@ -1157,9 +1163,10 @@ def _room_for_update(
     (:meth:`Installer._make_room`), so that both agree. What the install deletes before it counts
     its room counts as freed: its stale stages (:func:`_stale_stages`) and downloads
     (:func:`_stale_downloads`), which it deletes first, before the next look. None where every
-    disk it needs has room then; else what it needs and what is free on the first disk short
-    (``disk``, its folder where it is not the region's), and whether deleting the region's kept
-    old mesh makes every disk the install needs enough (``kept``). Never a kept mesh that frees
+    disk it needs has room then; else what it needs and what is free on the first disk short,
+    whether that disk is Live's folder's rather than the region's (``live``) and what is free
+    there counts what the install deletes first (``cleared``), and whether deleting the region's
+    kept old mesh makes every disk the install needs enough (``kept``). Never a kept mesh that frees
     nothing: Live's pack made from it on its disk keeps its DSFs and masks as clones or hard links
     (``region.place_file``) until a start sets the pack up again, the disk as short; deleted, it
     could not be downloaded again."""
@@ -1168,12 +1175,19 @@ def _room_for_update(
 
     download = download_dir(root, region.id)
     stage = stage_dir(root, region.id)
+    from orthostudio.clean import disk_bytes
+
     freed: dict[int | None, int] = {}
-    stale = [path for path, _ in _stale_stages(root, region, rivers)]
+    stale = [item.path for item in _stale_stages(root, region, rivers)]
     stale += _stale_downloads(download, _downloads_kept([*mesh, *ovl], waiting))
     for path in stale:
+        try:
+            n = disk_bytes([path], links=False)
+        except OSError:
+            continue
         disk = _disk_of(path)
-        freed[disk] = freed.get(disk, 0) + _bytes_of(path)
+        freed[disk] = freed.get(disk, 0) + n
+    cleared = dict(freed)  # what the install deletes first, the window says it is counted
     short = _short_of_room(mesh, ovl, stage, overlay_pack(root), download, True, freed)
     if not short:
         return None
@@ -1190,20 +1204,24 @@ def _room_for_update(
         mesh, ovl, stage, overlay_pack(root), download, True, freed
     )
     first = short[0]
-    elsewhere = _disk_of(first.path) != _disk_of(_real(root, region.id).parent)
+    disk = _disk_of(first.path)
     return {
         "need": first.need,
         "free": first.free,
         "kept": enough,
-        "disk": str(first.path) if elsewhere else None,
+        # not the region's disk: Live's folder's, which holds its downloads and its overlays
+        "live": disk != _disk_of(_real(root, region.id).parent),
+        "cleared": cleared.get(disk, 0) > 0,
     }
 
 
 def update_room(root: Path, region: OsxpRegion, overlays: bool, rivers: bool) -> dict | None:
-    """The window's word as Update is clicked on an installed region whose update makes it whole
-    beside it (the caller's to say it does, :func:`made_whole`): :func:`_room_for_update`, for the
-    zips it would download. ``overlays`` and ``rivers`` as the install's. Asked once at the click,
-    never at each look of the page: a stale stage is read whole."""
+    """The window's word as Update is clicked: for an installed region whose update makes it whole
+    beside it (:func:`made_whole`), :func:`_room_for_update` for the zips it would download; None
+    for any other (nothing of before beside it). ``overlays`` and ``rivers`` as the install's.
+    Asked once at the click, never at each look of the page: a stale stage is read whole."""
+    if not (mesh_dir(root, region.id) / MARKER).is_file() or not made_whole(root, region):
+        return None
     mesh, ovl = to_fetch(root, region, overlays, keeps_rivers(root, region.id, rivers))
     return _room_for_update(root, region, rivers, mesh, ovl, _staged(root, region)["overlays"])
 
@@ -1343,14 +1361,18 @@ class Installer:
         if self.night_only:
             mesh, ovl = night_to_fetch(self.root, region), []
         else:
-            # its stale stages deleted before the next look, the room they leave counted next
-            # (_room_for_update, the window's rule too)
-            for path, beside in _stale_stages(self.root, region, self.rivers):
-                if path.parent == stage:  # its river masks alone: whole again once all are there
-                    (stage / MARKER).unlink(missing_ok=True)
-                _discard(path, beside, wait=True)
+            # its stale stages deleted before the next look, a minute or more, the room they leave
+            # counted next (_room_for_update, the window's rule too); a Stop meanwhile honoured
+            # after, before anything else is deleted
+            stale = _stale_stages(self.root, region, self.rivers)
+            if stale:
+                self._set(phase="clearing")
+            for item in stale:
+                _drop_stale(stage, item)
+            if self.stop.is_set():
+                raise CancelledError
             if whole:
-                step = {**self._stage_kept(stage, keep), "keep_old": self.keep_old}  # the last
+                step = {**_staged(self.root, region), "keep_old": self.keep_old}  # the last
             mesh, ovl = to_fetch(self.root, region, self.with_overlays, keep)
         todo = [*mesh, *ovl]
         self._set(
@@ -1371,19 +1393,6 @@ class Installer:
                 stage.mkdir(parents=True, exist_ok=True)
             self._fetch_all(region, mesh, ovl, stage if whole else folder, pack, step, whole)
         self._finish(folder, stage, step, whole)
-
-    def _stage_kept(self, stage: Path, keep: bool) -> dict[str, dict[str, str]]:
-        """What of the region's stage goes on, its stale parts deleted already
-        (:func:`_stale_stages`): what it holds, but the river masks the region does not keep
-        (``keep``, :func:`keeps_rivers`), their folder and the stage's marker gone, taken out of its
-        record."""
-        region = self.region
-        step = _staged(self.root, region)
-        rivers = {z.path for z in region.rivers}
-        if rivers & set(step["zips"]) and not keep:
-            step["zips"] = {p: s for p, s in step["zips"].items() if p not in rivers}
-            _write(stage / STEP, step)
-        return step
 
     def _fetch_all(
         self,
@@ -1548,7 +1557,10 @@ class Installer:
         makes every disk the install needs enough, and only with Live stopped and X-Plane not
         running (``may_swap``), the rule of every deletion of a region; deleted before the next
         look, not in the background, the room counted being the disk's (phase ``deleting``).
-        Else nothing is deleted, and :meth:`_check_room` says the room it lacks."""
+        Else nothing is deleted, and :meth:`_check_room` says the room it lacks. Never after the
+        pilot's Stop, which a long step before it may have hidden (a stale stage deleted)."""
+        if self.stop.is_set():  # the pilot's Stop: nothing deleted that cannot come again
+            raise CancelledError
         if not self.make_room or not whole:
             return
         room = _room_for_update(self.root, self.region, self.rivers, mesh, ovl, step["overlays"])
@@ -1556,6 +1568,8 @@ class Installer:
             return
         if not self.may_swap():
             raise InstallError(XPLANE_READS)
+        if self.stop.is_set():
+            raise CancelledError
         self._set(phase="deleting")
         remove_kept(self.root, self.region.id, wait=True, log=self.log)
         self._set(phase="downloading")

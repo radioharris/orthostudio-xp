@@ -648,15 +648,20 @@ function regionButton(label, onClick, { danger = false, disabled = false } = {})
   return button;
 }
 
+/** The line under the regions saying why a request was refused; none: cleared. */
+function regionsError(error) {
+  $("regions-error").hidden = !error;
+  $("regions-error").textContent = error ? error.message : "";
+}
+
 async function regionAct(path, method = "POST", body = undefined) {
-  $("regions-error").hidden = true;
+  regionsError(null);
   try {
     const regions = await api(path, { method, body });
     if (last) draw({ ...last, regions });
     liveMap?.regionsChanged();
   } catch (error) {
-    $("regions-error").hidden = false;
-    $("regions-error").textContent = error.message;
+    regionsError(error);
   }
 }
 
@@ -729,7 +734,24 @@ function askRegion({ title, lines, yes = null, no, danger = false }) {
  * (it reads the region), never the region itself. Then whether to keep the one of before,
  * « Don't keep » the default: keeping it is a rename, which takes no room.
  */
-async function updateRegion(id) {
+let roomAsked = null; // the region whose room is being asked: one at a time, its button waiting
+
+async function updateRegion(id, button) {
+  if (roomAsked) return;
+  roomAsked = id;
+  const label = button?.textContent;
+  try {
+    await updateAsked(id, button);
+  } finally {
+    roomAsked = null;
+    if (button) {
+      button.disabled = false;
+      button.textContent = label;
+    }
+  }
+}
+
+async function updateAsked(id, button) {
   const regions = last?.regions || {};
   const r = (regions.list || []).find((x) => x.id === id) || {};
   const mine = (regions.ours || []).find((x) => x.id === id) || {};
@@ -737,18 +759,24 @@ async function updateRegion(id) {
   let makeRoom = false;
   let keepOld = false;
   if (r.whole) {
+    regionsError(null);
+    if (button) {
+      button.disabled = true; // a stale stage is read whole: seconds, maybe more
+      button.textContent = t("regions.room_asking");
+    }
     let room = null;
     try {
       room = (await api(`regions/${id}/room`)).room;
     } catch (error) {
-      $("regions-error").hidden = false;
-      $("regions-error").textContent = error.message;
+      regionsError(error);
       return;
     }
     if (room) {
       const xplane = Boolean(last?.checks?.xplane_running);
-      const sizes = { name, need: gb(room.need), free: gb(room.free), disk: room.disk };
-      const lines = [room.disk ? t("regions.room_text_disk", sizes) : t("regions.room_text", sizes)];
+      const left = t("regions.size", { gb: gb(room.free) });
+      const sizes = { name, need: gb(room.need), folder: last?.checks?.folder || "",
+        free: room.cleared ? t("regions.room_free_cleared", { left }) : left };
+      const lines = [room.live ? t("regions.room_text_live", sizes) : t("regions.room_text", sizes)];
       if (!room.kept) lines.push(t("regions.room_none"));
       else lines.push(t("regions.room_kept"), ...(xplane ? [t("regions.room_xplane")] : []));
       const offer = room.kept && !xplane;
@@ -780,7 +808,7 @@ async function removeKept(id) {
 function regionAction(id, act) {
   if (act === "cancel") return () => regionAct("regions/cancel");
   if (act === "install") return () => regionAct(`regions/${id}/install`);
-  if (act === "update") return () => updateRegion(id);
+  if (act === "update") return (ev) => updateRegion(id, ev.currentTarget);
   if (act === "remove_kept") return () => removeKept(id);
   if (act === "remove") {
     return () => {
@@ -892,6 +920,7 @@ function drawRegions(status) {
     const line = $("region-progress");
     line.classList.toggle("is-warn", install.phase === "failed");
     if (install.phase === "deleting") line.textContent = t("regions.deleting"); // room made first
+    else if (install.phase === "clearing") line.textContent = t("regions.clearing"); // stale stages
     else if (running) {
       // the pace while files come; none once only unpacking is left
       const pace = install.mbs >= 0.05 ? install.mbs : 0;

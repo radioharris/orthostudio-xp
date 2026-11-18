@@ -296,7 +296,8 @@ def remove_autoortho(xplane: Path, region: str, log: Log = print) -> None:
 @dataclass
 class Progress:
     region: str
-    phase: str = "starting"  # downloading, unpacking, deleting, done, waiting, failed, cancelled
+    phase: str = "starting"  # clearing, downloading, unpacking, deleting, done, waiting, failed,
+    # cancelled
     done_bytes: int = 0  # downloaded, the files already unpacked counted whole
     total_bytes: int = 0
     unpacked: int = 0  # zips unpacked

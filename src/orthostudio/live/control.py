@@ -314,6 +314,12 @@ def our_regions(root: Path) -> list[dict[str, Any]]:
     return out
 
 
+def _takes(settings: LiveSettings) -> tuple[bool, bool]:
+    """What an install of a region takes as the Settings say: its overlays (X-Plane's roads,
+    forests and buildings), and its river masks (soft banks)."""
+    return settings.overlays != "off", settings.rivers_fade
+
+
 def _size_of(folder: Path) -> int | None:
     """A region's size on the disk as its marker holds it, a kept old mesh's too; None without."""
     try:
@@ -888,7 +894,7 @@ class LiveControl:
         root = live_root()
         mine = osxpregions.installed(root)
         settings = self._settings()
-        overlays, rivers = settings.overlays != "off", settings.rivers_fade
+        overlays, rivers = _takes(settings)
         listed = []
         for region_id in REGION_NAMES:
             region = (catalog or {}).get(region_id)
@@ -931,23 +937,14 @@ class LiveControl:
         }
 
     def update_room(self, region_id: str) -> dict | None:
-        """The room an update of the region lacks beside it (``osxpregions.update_room``), which the
-        window asks as Update is clicked, never at each look (a stale stage is read whole): None
-        where it has room, or where the update does not make it whole (nothing of before beside
-        it then)."""
+        """The room an update of the region lacks beside it (``osxpregions.update_room``: None where
+        it has room, or where it does not make the region whole), which the window asks as Update
+        is clicked, never at each look (a stale stage is read whole)."""
         with self._lock:
             region = (self._catalog or {}).get(region_id)
-        root = live_root()
-        if (
-            region is None
-            or region_id not in osxpregions.installed(root)
-            or not osxpregions.made_whole(root, region)
-        ):
+        if region is None:
             return None
-        settings = self._settings()
-        return osxpregions.update_room(
-            root, region, settings.overlays != "off", settings.rivers_fade
-        )
+        return osxpregions.update_room(live_root(), region, *_takes(self._settings()))
 
     def install_region(
         self, region_id: str, *, keep_old: bool = False, make_room: bool = False
@@ -969,13 +966,13 @@ class LiveControl:
         if region is None:
             raise session.RefusedError(f"no region {region_id!r} in the list of Live's regions")
         installed = region_id in osxpregions.installed(live_root())
-        settings = self._settings()
+        overlays, rivers = _takes(self._settings())
         installer = self._installer_of(
             live_root(),
             region,
-            overlays=settings.overlays != "off",
+            overlays=overlays,
             log=self.log,
-            rivers=settings.rivers_fade,
+            rivers=rivers,
             may_swap=self._may_swap,
             keep_old=keep_old,
             make_room=make_room,
