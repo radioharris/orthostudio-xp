@@ -191,8 +191,9 @@ def halo_px(
     of the final image can only depend on input pixels within that distance: the 1024 px
     margin of Ortho4XP can be cropped without changing a single byte (spec section 4). With
     ``distance_masks_too`` the margin also has to cover the saturation distance of the
-    ``_dist`` mask. Every other mode keeps the full margin (Pillow's Gaussian chain reaches
-    much further and its support is not exact).
+    ``_dist`` mask. ``rocks`` and ``3steps`` take the supports of their Pillow blurs
+    (:func:`pil_blur_support`); ``soft`` twice its band and one pixel, the band into the water
+    and the water's width read over as much again.
     """
     if masking_mode == "sand":
         needed = max(0, sand_width(_scalar(masks_width), lat, mask_zl) - 1)
@@ -206,8 +207,6 @@ def halo_px(
         needed = _three_steps_reach(three_steps_widths(_sequence(masks_width), lat, mask_zl))
         needed += pil_blur_support(2)
     elif masking_mode == "soft":
-        # the band reaches masks_width into the water, and the width of the water is read
-        # over as much again
         needed = 2 * math.ceil(soft_width(_scalar(masks_width), _at_cell(cell_lat), mask_zl)) + 1
     else:
         needed = 0
@@ -351,9 +350,9 @@ def three_steps_blur(
 
 
 def exact_edges(masking_mode: str) -> bool:
-    """Whether a profile's pre-mask draws the water as its outline covers the pixels, to within
-    one (``raster.pre_mask``): OrthoStudio XP's ``soft``; Ortho4XP's keep Ortho4XP's drawing,
-    byte for byte (``masks-build.md`` section 7)."""
+    """Whether a profile's pre-mask takes a pixel for water where the water covers its middle
+    (``raster.pre_mask``): OrthoStudio XP's ``soft``; Ortho4XP's keep Ortho4XP's drawing, byte for
+    byte (``masks-build.md`` section 7)."""
     return masking_mode == "soft"
 
 

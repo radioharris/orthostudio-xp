@@ -183,12 +183,18 @@ MASKS_DISTANCE_MB = 970
 """One worker making the distance masks too (``distance_masks_too``): 962 MB measured."""
 
 
+def masks_worker_mb(params: MasksParams) -> int:
+    """What one masks worker takes for ``params``' profile; an unknown one counts the heaviest."""
+    mb = MASKS_WORKER_MB.get(params.masking_mode, max(MASKS_WORKER_MB.values()))
+    return max(mb, MASKS_DISTANCE_MB) if params.distance_masks_too else mb
+
+
 @rule(
     name="orthostudio.masks",
     version=1,
     params=MasksParams,
     inputs=("mesh", *NEIGHBOUR_OFFSETS, "dem", "custom_extent"),
-    ram_mb=MASKS_BASE_MB + max(MASKS_WORKER_MB.values()),
+    ram_mb=MASKS_BASE_MB + max(*MASKS_WORKER_MB.values(), MASKS_DISTANCE_MB),
     kind="dir",
 )
 def osxp_masks(ctx: RunContext) -> None:

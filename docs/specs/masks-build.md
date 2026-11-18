@@ -58,7 +58,7 @@ from orthostudio.masks import CELL_PX, custom_pre_mask, extent_polygons, pre_mas
 
 # profiles.py
 from orthostudio.masks import WATER_TRANSITION, blur_mask, blur_widths, halo_px, rocks_blur
-from orthostudio.masks import sand_blur, sea_level_for, three_steps_blur
+from orthostudio.masks import sand_blur, sea_level_for, soft_blur, three_steps_blur
 
 # distance.py
 from orthostudio.masks import distance_mask, edt_px, pil_blur_reach
@@ -129,7 +129,7 @@ The output directory is the one `textures-imprint.masks_dir_lookup` and
 | 8 neighbours by mesh presence; absent = no sea beyond the border | keep, as 9 explicit rule inputs instead of a directory scan |
 | white extent polygon per available mesh | keep |
 | `ImageDraw.polygon` with float pixel coordinates | keep, same Pillow call (this is what makes byte identity reachable at all) |
-| 1024 px working margin | **narrowed to what the profile can reach** (`halo_px`, plus 2 px, at most 1024): `sand` needs `blur_width - 1` px; `rocks` the supports of its two Gaussian blurs (`pil_blur_support`), or that of its last `GaussianBlur(2**(mask_zl-14))` when larger; `3steps` the reach of its ladder plus the support of its last `GaussianBlur(2)`; with `distance_masks_too`, at least the distance at which `_dist` saturates. On the reference tile that is 15 px for `sand` and 35 for `rocks` at 100 m, 57 for `3steps` at 100/200/100 (`test_halo_is_the_reach_of_the_profile`). Proven identical on the reference for `sand`: the hat kernel has half-width `bw - 1`, so a pixel of the final 4096² window can only depend on input pixels within `bw - 1` of it, and `numpy.convolve` in `'same'` mode over a cropped row computes the *same* 27-term dot product for every interior position (`test_masks_profiles.py::test_crop_matches_full_margin`); `test_rocks_crop_matches_full_margin` checks `rocks` against the full margin the same way |
+| 1024 px working margin | **narrowed to what the profile can reach** (`halo_px`, plus 2 px, at most 1024): `sand` needs `blur_width - 1` px; `rocks` the supports of its two Gaussian blurs (`pil_blur_support`), or that of its last `GaussianBlur(2**(mask_zl-14))` when larger; `3steps` the reach of its ladder plus the support of its last `GaussianBlur(2)`; `soft` twice its band and one pixel (`test_soft_crop_matches_full_margin`); with `distance_masks_too`, at least the distance at which `_dist` saturates. On the reference tile that is 15 px for `sand` and 35 for `rocks` at 100 m, 57 for `3steps` at 100/200/100 (`test_halo_is_the_reach_of_the_profile`). Proven identical on the reference for `sand`: the hat kernel has half-width `bw - 1`, so a pixel of the final 4096² window can only depend on input pixels within `bw - 1` of it, and `numpy.convolve` in `'same'` mode over a cropped row computes the *same* 27-term dot product for every interior position (`test_masks_profiles.py::test_crop_matches_full_margin`); `test_rocks_crop_matches_full_margin` checks `rocks` against the full margin the same way |
 | `sand` = hat convolution with a **uint8 truncation between the two passes** | keep exactly. The only reproduction that is bit-exact is `numpy.convolve` itself: the float64 result is rounded by cblas `ddot`, and an exact-integer double box (which is what the kernel mathematically is) differs on the pixels whose exact sum is a multiple of `bw**2` (measured: 22 pixels per 300² of synthetic three-level data, `max diff 2`). Speed comes from the halo crop and from memoising identical rows, never from changing the arithmetic |
 | `rocks` = `GaussianBlur` chain | keep, same Pillow calls, on the margin `halo_px` gives it (the supports of its blurs) |
 | `3steps` = dozens of `GaussianBlur(1) > 0` dilations | **replaced** by an EDT: the profile is a function of the distance to the water boundary alone, so it is computed once with `scipy.ndimage.distance_transform_edt` and mapped through the same value ladder, with the thresholds at multiples of the measured reach of one `GaussianBlur(1) > 0` step (3 px) and the middle zone at `reach(R_buf) - reach(R_buf - R_sea)`. Tolerance in section 6 |
@@ -250,7 +250,7 @@ budget said one process while the pool started `os.cpu_count()`).
 | Who | What it decides |
 |---|---|
 | `pipeline.build.masks_workers(env)` | `env_workers()` if set, else `min(MAX_WORKERS=8, batch workers)`. The single decision. |
-| `pipeline.build._masks_ram_mb(env, params)` | `300 + masks_worker_mb(params) x masks_workers(env)`: the node's `ram_mb`. |
+| `pipeline.build._masks_ram_mb(env, params)` | `300 + masks_worker_mb(params) x masks_workers(env)`: the most the node's `ram_from` declares (its `ram_mb` is the base, 300). |
 | `pipeline.build._masks_run(env)` | binds `MasksJob(workers=masks_workers(env), cancel=...)`. |
 | `masks.build.worker_count(cells, workers)` | the argument, else `env_workers()`, else `min(8, cpu_count)`; capped by the number of cells. |
 

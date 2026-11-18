@@ -423,10 +423,11 @@ most, added 2026-09-22), national ones for Luxembourg, the Netherlands (4), Spai
 `masks_width` · 100 m · ≥ 0; a list of three when the profile is `3steps`.
 
 - **Does.** `sand`: blur over `int(width / pixel)` mask pixels (Ortho4XP `O4_Mask_Utils.py:659-679`;
-  OrthoStudio XP `masks/profiles.py:82-84, 215-220`). `rocks`: a blur radius of `width / 2`, in mask
-  pixels (`:661-662, 680-724`; OrthoStudio XP `:87-89, 228-245`). `3steps`: the three lengths.
-  `soft`: the width of `sand`, at the middle of the mask cell, or the water's half-width where
-  that is narrower. A
+  OrthoStudio XP `masks/profiles.py`, `sand_width` and `sand_blur`). `rocks`: a blur radius of
+  `width / 2`, in mask pixels (`:661-662, 680-724`; OrthoStudio XP `rocks_width` and
+  `rocks_blur`). `3steps`: the three lengths. `soft`: `width / pixel` mask pixels, not truncated,
+  the pixel counted at the middle of the mask cell (`soft_width`), or the water's half-width
+  where that is narrower. A
   mask pixel is 6.9 m at `mask_zl` 14 and 43.5° N, so widths are rounded to about 7 m, and a `sand`
   width under one pixel gives no fade at all (hard edge, no photo on the sea).
 - **In X-Plane.** Computed (section 1.2): with `sand`, a width of 50 m leaves no photo beyond

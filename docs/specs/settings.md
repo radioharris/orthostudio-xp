@@ -188,7 +188,7 @@ mutated by a build step; changes go through
 `ortho4xp` is the Ortho4XP variable name, or `None` for a field with no Ortho4XP counterpart.
 
 Cross-field rules (model validators): `coast_transition.width_m` must be a scalar for
-`sand`/`rocks` and a list of exactly three values for `3steps` (Ortho4XP `masking_mode` hint);
+`sand`/`rocks`/`soft` and a list of exactly three values for `3steps` (Ortho4XP `masking_mode` hint);
 `relief.file` must be non-empty when `relief.source == "file"`.
 
 ### 4.2 File (`store.py`)

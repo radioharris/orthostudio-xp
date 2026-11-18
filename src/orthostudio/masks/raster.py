@@ -8,9 +8,9 @@ same float pixel coordinates Ortho4XP passes it: that is what makes byte identit
 
 Ortho4XP always works on a 6144 x 6144 image (a 4096 px cell plus a 1024 px margin on each side).
 OrthoStudio XP keeps that image, except that the margin may be narrowed to what the chosen profile
-can reach (:func:`orthostudio.masks.profiles.halo_px`); the drawing itself is unchanged, Pillow
-clips the polygons to the image, but for ``soft``, which reads the water at the pixels' middles
-(:func:`pre_mask`'s ``exact_edges``).
+can reach (:func:`orthostudio.masks.profiles.halo_px`), and Pillow clips the polygons to the
+image; the drawing itself is unchanged but for ``soft``, which reads the water at the pixels'
+middles (:func:`pre_mask`'s ``exact_edges``).
 """
 
 from __future__ import annotations
@@ -71,8 +71,8 @@ def pre_mask(
     middle. Pillow fills a polygon up to and with its edges, on corners rounded to whole pixels as
     Ortho4XP's, so every water came about one pixel wider on its east and south sides
     (``masks-build.md`` section 7). Drawn at twice the scale and read at the odd pixels, the
-    middles of the cell's pixels, the water is at most a quarter of a pixel wider than its
-    outline, on every side alike.
+    middles of the cell's pixels, the water is at most 0.26 pixel wider than its outline, on every
+    side alike (``masks-build.md`` section 7).
     """
     px0, py0 = cell_pixel_origin(til_x, til_y, mask_zl, margin)
     scale = 2 if exact_edges else 1

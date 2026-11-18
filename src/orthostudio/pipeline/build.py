@@ -80,10 +80,9 @@ from orthostudio.masks.build import env_workers as masks_env_workers
 from orthostudio.masks.rule import MASKS as OSXP_MASKS
 from orthostudio.masks.rule import (
     MASKS_BASE_MB,
-    MASKS_DISTANCE_MB,
-    MASKS_WORKER_MB,
     MasksJob,
     masks_job,
+    masks_worker_mb,
     read_water_tris_artifact,
 )
 from orthostudio.masks.rule import MasksParams as OsxpMasksParams
@@ -1996,12 +1995,6 @@ def neighbour_meshes(store: Store) -> dict[str, ArtifactRef]:
                 ref = ArtifactRef(info.key, info.digest, info.path, info.rule, info.kind, info.size)
                 best[name] = (info.last_used_at, ref)
     return {name: ref for name, (_used, ref) in best.items()}
-
-
-def masks_worker_mb(params: OsxpMasksParams) -> int:
-    """What one masks worker takes for ``params``' profile; an unknown one counts the heaviest."""
-    mb = MASKS_WORKER_MB.get(params.masking_mode, max(MASKS_WORKER_MB.values()))
-    return max(mb, MASKS_DISTANCE_MB) if params.distance_masks_too else mb
 
 
 def _masks_ram_mb(env: BuildEnv, params: OsxpMasksParams) -> int:

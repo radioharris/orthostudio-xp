@@ -213,9 +213,7 @@ def test_our_fade_draws_the_water_as_its_outline_covers_the_pixels() -> None:
     square of water 4 pixels wide came out 5, a pixel too many east and south. Ortho4XP's fades
     keep that drawing byte for byte; OrthoStudio XP's own (``exact_edges``, the ``soft`` fade)
     takes the pixels whose middle the water covers: 4, a stream one pixel wide keeps its pixel,
-    and a slanting stream two pixels wide keeps two on every row, slanting east or west (the rule
-    before it, the row east and south of the water given back to the land, left one of two on
-    such a stream, or none)."""
+    and a slanting stream two pixels wide keeps two on every row, slanting east or west."""
     from orthostudio.masks.water import cell_pixel_origin
 
     margin = 16
