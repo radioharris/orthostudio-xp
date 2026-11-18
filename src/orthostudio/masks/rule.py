@@ -169,12 +169,26 @@ def _job() -> MasksJob:
     return job if job is not None else MasksJob()
 
 
+MASKS_BASE_MB = 300
+"""The masks node's own memory, without its pool: the water triangles of the tile and its
+neighbours, read from their meshes."""
+
+MASKS_WORKER_MB = {"sand": 250, "rocks": 710, "3steps": 990, "soft": 1100}
+"""One masks worker at its peak, one cell in flight, by masking profile, at 100 m
+(``masks-build.md`` 6.2, measured: 242, 703, 981 and, at ``mask_zl`` 16, 1,091 MB; a wider fade
+takes a wider margin and more). Every profile counted 800 MB, three times what ``sand``, the
+default, takes, and less than ``3steps`` does."""
+
+MASKS_DISTANCE_MB = 970
+"""One worker making the distance masks too (``distance_masks_too``): 962 MB measured."""
+
+
 @rule(
     name="orthostudio.masks",
     version=1,
     params=MasksParams,
     inputs=("mesh", *NEIGHBOUR_OFFSETS, "dem", "custom_extent"),
-    ram_mb=1940,
+    ram_mb=MASKS_BASE_MB + max(MASKS_WORKER_MB.values()),
     kind="dir",
 )
 def osxp_masks(ctx: RunContext) -> None:

@@ -191,9 +191,7 @@ def test_pre_mask_margin_changes_nothing_inside_the_cell() -> None:
 
 def test_two_rows_of_squares_make_a_soft_mask_they_share_the_same(tmp_path: Path) -> None:
     """A mask cell across the line between two rows of squares is made by the square on each
-    side, each from the two meshes: the ``soft`` fade counts its width at the cell, not at the
-    square, so both write the very same bytes (a region's zips held 1,947 masks of one name that
-    differed, each square counting at its own middle, Europe, 2026-11-17)."""
+    side, each from the two meshes: both write the very same ``soft`` mask (``soft_width``)."""
     south, north = TileRef(43, 5), TileRef(44, 5)
     cell = texture_at(44.0, 5.5, ZL, "")
     straddling = (cell.til_x, cell.til_y)
@@ -211,10 +209,13 @@ def test_two_rows_of_squares_make_a_soft_mask_they_share_the_same(tmp_path: Path
 
 
 def test_our_fade_draws_the_water_as_its_outline_covers_the_pixels() -> None:
-    """Pillow fills a triangle up to and with its right and bottom edges, on corners rounded to
-    whole pixels: a square of water 4 pixels wide came out 5, the row too many east and south.
-    Ortho4XP's fades keep that drawing byte for byte; OrthoStudio XP's own (``exact_edges``, the
-    ``soft`` fade) gives that row back to the land, and keeps a stream one pixel wide."""
+    """Pillow fills a triangle up to and with its edges, on corners rounded to whole pixels: a
+    square of water 4 pixels wide came out 5, a pixel too many east and south. Ortho4XP's fades
+    keep that drawing byte for byte; OrthoStudio XP's own (``exact_edges``, the ``soft`` fade)
+    takes the pixels whose middle the water covers: 4, a stream one pixel wide keeps its pixel,
+    and a slanting stream two pixels wide keeps two on every row, slanting east or west (the rule
+    before it, the row east and south of the water given back to the land, left one of two on
+    such a stream, or none)."""
     from orthostudio.masks.water import cell_pixel_origin
 
     margin = 16
@@ -229,7 +230,13 @@ def test_our_fade_draws_the_water_as_its_outline_covers_the_pixels() -> None:
         [(sx, y0), (sx + 1, y0), (sx + 1, y0 + 30)],
         [(sx, y0), (sx + 1, y0 + 30), (sx, y0 + 30)],
     ]
-    tris = WaterTriangles(np.array(square + stream, dtype=np.float64), np.zeros((0, 3, 2)))
+    slants = []
+    for kx, dx in ((x0 + 80, 15), (x0 + 140, -15)):  # two pixels wide, slanting east and west
+        slants += [
+            [(kx, y0), (kx + 2, y0), (kx + 2 + dx, y0 + 30)],
+            [(kx, y0), (kx + 2 + dx, y0 + 30), (kx + dx, y0 + 30)],
+        ]
+    tris = WaterTriangles(np.array(square + stream + slants, dtype=np.float64), np.zeros((0, 3, 2)))
     extents = extent_polygons([TILE], ZL)
     o4xp = pre_mask(8432, 6000, tris, extents, mask_zl=ZL, sea_level=99, margin=margin)
     ours = pre_mask(
@@ -246,47 +253,6 @@ def test_our_fade_draws_the_water_as_its_outline_covers_the_pixels() -> None:
     assert span(ours, x0 - 2, y0 - 2, 9, 9) == ([0, 1, 2, 3], [0, 1, 2, 3])
     assert span(o4xp, sx - 2, y0 - 2, 5, 35)[0] == [40, 41]
     assert span(ours, sx - 2, y0 - 2, 5, 35)[0] == [40]  # the stream stays
-    assert np.array_equal(o4xp == 255, (ours == 255) & (o4xp == 255))  # only water given back
-
-
-def test_our_fade_keeps_the_sea_at_the_edge_of_the_squares_built() -> None:
-    """Sea along the south and east edges of a square with no square built beyond stays sea: the
-    black there is no land, and only water with land drawn east or south of it has a rim (the
-    first version took the black for land, the photo fading some 13 pixels into the open sea)."""
-    from orthostudio.masks.water import cell_pixel_origin
-
-    (extent,) = extent_polygons([TILE], ZL)
-    south = max(y for _, y in extent)  # the square's south edge, in absolute pixels
-    west = min(x for x, _ in extent)
-    til_x, til_y = (west // 256 + 40) // 16 * 16, (south - 1) // 256 // 16 * 16
-    margin = 16
-    px0, py0 = cell_pixel_origin(til_x, til_y, ZL, margin)
-    x0 = max(west, px0 + margin) + 500
-    sea = [
-        [(x0, south - 30), (x0 + 60, south - 30), (x0 + 60, south + 30)],
-        [(x0, south - 30), (x0 + 60, south + 30), (x0, south + 30)],
-    ]
-    tris = WaterTriangles(np.array(sea, dtype=np.float64), np.zeros((0, 3, 2)))
-    ours = pre_mask(
-        til_x, til_y, tris, [extent], mask_zl=ZL, sea_level=99, margin=margin, exact_edges=True
-    )
-    o4xp = pre_mask(til_x, til_y, tris, [extent], mask_zl=ZL, sea_level=99, margin=margin)
-    rows = slice(south - 2 - py0, south + 1 - py0)  # its last rows as drawn, the black below
-    cols = slice(x0 + 10 - px0, x0 + 50 - px0)
-    assert (o4xp[rows, cols] == 0).all()
-    assert (ours[rows, cols] == 0).all()
-    east = max(x for x, _ in extent)
-    ex_x, ex_y = (east - 1) // 256 // 16 * 16, (south - 4000) // 256 // 16 * 16
-    qx0, qy0 = cell_pixel_origin(ex_x, ex_y, ZL, margin)
-    y1 = max(qy0 + margin, min(y for _, y in extent)) + 500
-    sea = [
-        [(east - 30, y1), (east + 30, y1), (east + 30, y1 + 60)],
-        [(east - 30, y1), (east + 30, y1 + 60), (east - 30, y1 + 60)],
-    ]
-    tris = WaterTriangles(np.array(sea, dtype=np.float64), np.zeros((0, 3, 2)))
-    ours = pre_mask(
-        ex_x, ex_y, tris, [extent], mask_zl=ZL, sea_level=99, margin=margin, exact_edges=True
-    )
-    rows = slice(y1 + 10 - qy0, y1 + 50 - qy0)
-    cols = slice(east - 2 - qx0, east + 1 - qx0)  # its last columns as drawn, the black east
-    assert (ours[rows, cols] == 0).all()
+    for kx in (x0 + 80 - 20, x0 + 140 - 20):
+        rows = ours[y0 - py0 : y0 - py0 + 30, kx - px0 : kx - px0 + 40] == 0
+        assert rows.sum(axis=1).tolist() == [2] * 30

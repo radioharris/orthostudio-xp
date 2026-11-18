@@ -22,6 +22,7 @@ from typing import Literal
 import numpy as np
 from numpy.typing import NDArray
 from PIL import Image, ImageFilter
+from scipy import ndimage
 
 from orthostudio.errors import OsxpError
 from orthostudio.imagery.grid import TEXTURE_TILES, tile_to_wgs84, webmercator_pixel_size
@@ -94,11 +95,8 @@ def cell_latitude(til_y: int, mask_zl: int) -> float:
 
 def soft_width(masks_width: float, cell_lat: float, mask_zl: int) -> float:
     """``soft``'s band in pixels: ``masks_width`` metres at the middle of the mask cell
-    (:func:`cell_latitude`), not of the square. A cell across the line between two rows of
-    squares is made by the square on each side: counted at each square's middle, a degree of
-    latitude apart, their bands differed (1.7 % at 44 degrees north, 3 % at 61) and their masks
-    of one name too (1,947 in Europe's zips, 2026-11-17); counted at the cell, both make the same
-    bytes."""
+    (:func:`cell_latitude`), not of the square, so that the square on each side of a cell across
+    the line between two rows of squares makes the same bytes (``masks-build.md`` section 7)."""
     return float(masks_width) / webmercator_pixel_size(cell_lat, mask_zl)
 
 
@@ -395,9 +393,10 @@ def soft_blur(pre: NDArray[np.uint8], band_px: float) -> NDArray[np.uint8]:
     that is narrower: a river narrower than twice the band fades from each bank to its middle,
     which X-Plane's water alone draws, so it is never covered from bank to bank by the photo.
     On water wider than twice the band it is ``sand``'s fade.
-    """
-    from scipy import ndimage
 
+    Computed in place, two float arrays of the cell at a time: a new array at each step took a
+    worker to 1.7 GB on a cell of 4338 pixels (the review of 2026-11-18).
+    """
     if band_px <= 0:
         return np.array(pre)
     water = pre < 255
@@ -405,10 +404,17 @@ def soft_blur(pre: NDArray[np.uint8], band_px: float) -> NDArray[np.uint8]:
         return np.array(pre)
     d = ndimage.distance_transform_edt(water)  # pixels to the nearest land
     reach = math.ceil(band_px)
-    half = ndimage.maximum_filter(d, size=2 * reach + 1)  # the local half-width, up to the band
-    band = np.minimum(band_px, half)
-    t = np.clip(d / np.maximum(band, 1e-6), 0.0, 1.0)
-    photo = (1.0 - t) ** 2
-    level = pre.astype(np.float64)
-    out = np.where(water, level + (255.0 - level) * photo, 255.0)
-    return np.clip(np.rint(out), 0, 255).astype(np.uint8)
+    band = ndimage.maximum_filter(d, size=2 * reach + 1)  # the local half-width, up to the band
+    np.clip(band, 1e-6, band_px, out=band)
+    np.divide(d, band, out=d)
+    del band
+    np.clip(d, 0.0, 1.0, out=d)
+    np.subtract(1.0, d, out=d)
+    np.square(d, out=d)  # the photo's share, (1 - t)²
+    room = np.subtract(255.0, pre, dtype=np.float64)  # from the water's level to the photo
+    np.multiply(d, room, out=d)
+    del room
+    np.add(d, pre, out=d)
+    d[~water] = 255.0
+    np.rint(d, out=d)
+    return d.astype(np.uint8)

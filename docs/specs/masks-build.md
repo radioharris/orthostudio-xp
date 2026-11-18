@@ -103,7 +103,7 @@ from orthostudio.masks import CellJob, CellResult, MasksIndex, build_cell, build
 * `MasksJob(workers, cancel)` + `masks_job(...)` (in `rule.py`) is how the pipeline gives the
   node its pool size and its cancellation token, the way `dem_job` / `osm_job` do. There is
   no module-level hook any more: two concurrent nodes would have shared it.
-* `MASKS` is the rule `orthostudio.masks@1`, `kind="dir"`, `ram_mb=1940`, inputs
+* `MASKS` is the rule `orthostudio.masks@1`, `kind="dir"`, `ram_mb=1400` (section 6.2), inputs
   `mesh`, `nb_n`, `nb_ne`, `nb_e`, `nb_se`, `nb_s`, `nb_sw`, `nb_w`, `nb_nw`, `dem`,
   `custom_extent`; every neighbour, `dem` and `custom_extent` may be `None` (a distinct,
   keyed state: `graph-keys.md` invariant K4).
@@ -218,12 +218,17 @@ only bit-exact reproduction (section 4).
 | `rocks` | 703 MB | 438 MB |
 | `3steps` | 981 MB | 441 MB |
 | `sand` + `_dist` | 962 MB | 439 MB |
-| `soft` | 1,818 MB at `mask_zl` 16, 1,552 at 14 | |
+| `soft` | 1,091 MB at `mask_zl` 16, 1,015 at 14 | |
 
-The rule declares `ram_mb = 1940`: the base plus the cost of **one** cell of the heaviest
+The figures are at 100 m; a wider fade takes a wider margin and more (`soft` at 200 m and 65
+degrees north, 1.4 GB on a cell of sea and rivers). `soft`'s peak is SciPy's
+`distance_transform_edt`, some 35 bytes a pixel; its own steps work in place (a new array at each
+step took 1,818 MB at `mask_zl` 16, the review of 2026-11-18).
+
+The rule declares `ram_mb = 1400`: the base plus the cost of **one** cell of the heaviest
 profile. The real cost is `300 MB + a worker of the profile x the workers that start` (250 MB
-for `sand`, 710 `rocks`, 990 `3steps`, 1,830 `soft`, 970 with the distance masks: the
-`MASKS_WORKER_MB` of `pipeline.build`), one worker for each cell
+for `sand`, 710 `rocks`, 990 `3steps`, 1,100 `soft`, 970 with the distance masks: the
+`MASKS_WORKER_MB` of `masks.rule`, one table), one worker for each cell
 with water to draw up to the pool's size, and it is the *pipeline* that knows the worker count
 and counts the cells beforehand (`pipeline-build.md` 8.6, `water.mask_cell_count`); it hands
 the very same pool size to the rule through `MasksJob` (section 6.5). Until 2026-10-28 every
@@ -308,18 +313,22 @@ pre-mask of 6000_8432, 14.3 M of the 37.7 M pixels have an exact sum that is a m
   square's middle their two masks of one name differed (1,947 in Europe's zips, 2026-11-17, the
   bands 1.7 % apart at 44 degrees north); counted at the cell they are the same bytes
   (`test_two_rows_of_squares_make_a_soft_mask_they_share_the_same`).
-  Its pre-mask draws the water as its outline covers the pixels (`raster.pre_mask`'s
-  `exact_edges`, `_without_rim`): the triangles' corners come rounded to whole pixels as
-  Ortho4XP's (`water.wgs84_to_pix`), and Pillow fills a triangle up to and with its right and
-  bottom edges, so every water came one pixel wider east and south (a pixel at `mask_zl` 14 is
-  9.6 m at the equator, 6.3 m at 49 degrees north).
-  The fade then began inside the water on those banks: at a river by XC00DD the mask read 151 to
-  164 of 255 at the DSF's south and east banks against 227 to 240 at its north and west ones, a
-  sharp line on one side (2026-11-18). A water pixel with land east of it and water west of it,
-  or land south and water north, goes back to land: the rim alone, never a stream one pixel wide
-  (`test_our_fade_draws_the_water_as_its_outline_covers_the_pixels`). After it 189 to 240 on
-  every bank there. Ortho4XP's profiles keep Ortho4XP's drawing byte for byte; with their wider
-  fades the pixel shows little.
+  Its pre-mask takes the pixels whose middle the water covers (`raster.pre_mask`'s
+  `exact_edges`): the triangles' corners come rounded to whole pixels as Ortho4XP's
+  (`water.wgs84_to_pix`), and Pillow fills a triangle up to and with its edges, so every water came
+  about one pixel wider on its east and south sides (a pixel at `mask_zl` 14 is 9.6 m at the
+  equator, 6.3 m at 49 degrees north). The fade then began inside the water on those banks: at a
+  river by XC00DD the mask read 151 to 164 of 255 at the DSF's south and east banks against 227 to
+  240 at its north and west ones, a sharp line on one side (2026-11-18). `soft` draws at twice the
+  scale and reads the odd pixels, the middles of the cell's pixels: on a river at every angle from
+  0 to 180 degrees, one to four pixels wide, each bank is 0.16 pixel wider than the outline on
+  average, 0.26 at most, the same on both banks, and no row of a stream is lost
+  (`test_our_fade_draws_the_water_as_its_outline_covers_the_pixels`). A first rule, the row east
+  and south of the water given back to the land, left up to 0.94 pixel between the two banks of a
+  slanting river and took whole rows of a stream one or two pixels wide (the review of
+  2026-11-18). Ortho4XP's profiles keep Ortho4XP's drawing byte for byte; with their wider fades
+  the pixel shows little. Ortho4XP itself does not know `soft`: a tile's `Ortho4XP.cfg` that names
+  it gives masks without a fade there.
 
 ## 8. Not there yet (blocking questions, least engaging option implemented)
 
@@ -338,7 +347,9 @@ pre-mask of 6000_8432, 14.3 M of the 37.7 M pixels have an exact sum that is a m
   rule raises `MASK_FILE_UNREADABLE`-style `OsxpError("DEM_FILE_UNREADABLE")` when the flag is set
   and the `dem` input is absent. The pipeline declares the masks node with `dem` absent and
   refuses the setting before a build (`pipeline/native.py`, `CFG_VALUE_INVALID`:
-  "masks_use_DEM_too is not supported"). **TODO** marked in the code.
+  "masks_use_DEM_too is not supported"). **TODO** marked in the code. The arrays will have to
+  be cut to the cell's working margin, which with `soft` changes from one row of cells to the
+  next (`halo_px`'s `cell_lat`).
 * **Custom extents**: `masks_custom_extent` needs the extent rasteriser of `orthostudio.imagery`
   (P4b). The pure function is written; the rule raises `MASK_CUSTOM_EXTENT_INVALID` when the
   flag is set and the `custom_extent` input is absent, and the pipeline refuses the setting before

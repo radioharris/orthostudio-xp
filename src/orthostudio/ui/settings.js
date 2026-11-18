@@ -410,7 +410,7 @@ export function answer(draft, id, value) {
       break;
     case "coast":
       setPath(draft, "essential.coast_transition.profile", value);
-      // sand and rocks take one width: leaving three steps comes back to the recommended one
+      // every profile but three steps takes one width: leaving it comes back to the recommended one
       if (value !== "3steps" && Array.isArray(getPath(draft, "essential.coast_transition.width_m"))) {
         setPath(draft, "essential.coast_transition.width_m", 100);
       }
@@ -455,10 +455,13 @@ export function settingsSummary(settings) {
   };
   parts.push(airports[e.airports?.mode]?.() ?? t("plan.s.airports_off"));
   const ct = e.coast_transition || {};
-  if (ct.profile === "3steps") parts.push(t("plan.s.coast_3steps"));
-  else if (ct.profile === "rocks") parts.push(t("plan.s.coast_rocks", { n: fmtNum(Number(ct.width_m), 1) }));
-  else if (ct.profile === "soft") parts.push(t("plan.s.coast_soft", { n: fmtNum(Number(ct.width_m), 1) }));
-  else parts.push(t("plan.s.coast_sand", { n: fmtNum(Number(ct.width_m), 1) }));
+  const n = fmtNum(Number(ct.width_m), 1);
+  const coast = {
+    rocks: () => t("plan.s.coast_rocks", { n }),
+    soft: () => t("plan.s.coast_soft", { n }),
+    "3steps": () => t("plan.s.coast_3steps"),
+  };
+  parts.push(coast[ct.profile]?.() ?? t("plan.s.coast_sand", { n }));
   parts.push(e.water_rendering === "XP12" ? t("plan.s.water_xp12") : t("plan.s.water_xp11"));
   const relief = e.relief?.source;
   if (relief === "file") parts.push(t("plan.s.relief_file"));

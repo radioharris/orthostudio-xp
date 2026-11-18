@@ -9,7 +9,8 @@ same float pixel coordinates Ortho4XP passes it: that is what makes byte identit
 Ortho4XP always works on a 6144 x 6144 image (a 4096 px cell plus a 1024 px margin on each side).
 OrthoStudio XP keeps that image, except that the margin may be narrowed to what the chosen profile
 can reach (:func:`orthostudio.masks.profiles.halo_px`); the drawing itself is unchanged, Pillow
-clips the polygons to the image.
+clips the polygons to the image, but for ``soft``, which reads the water at the pixels' middles
+(:func:`pre_mask`'s ``exact_edges``).
 """
 
 from __future__ import annotations
@@ -64,43 +65,32 @@ def pre_mask(
     """The three-level pre-mask of one cell: 255 land, ``sea_level`` inland water, 0 sea.
 
     ``extents`` are the polygons of :func:`extent_polygons`; ``tris`` the triangles this cell
-    must draw. The returned array is ``(CELL_PX + 2 * margin)`` square. ``exact_edges``
-    (``profiles.exact_edges``): the water as its outline covers the pixels, to within one
-    (:func:`_without_rim`).
+    must draw. The returned array is ``(CELL_PX + 2 * margin)`` square.
+
+    ``exact_edges`` (``profiles.exact_edges``): a pixel is water where the water covers its
+    middle. Pillow fills a polygon up to and with its edges, on corners rounded to whole pixels as
+    Ortho4XP's, so every water came about one pixel wider on its east and south sides
+    (``masks-build.md`` section 7). Drawn at twice the scale and read at the odd pixels, the
+    middles of the cell's pixels, the water is at most a quarter of a pixel wider than its
+    outline, on every side alike.
     """
     px0, py0 = cell_pixel_origin(til_x, til_y, mask_zl, margin)
-    side = CELL_PX + 2 * margin
+    scale = 2 if exact_edges else 1
+    side = scale * (CELL_PX + 2 * margin)
     image = Image.new("L", (side, side), "black")
     draw = ImageDraw.Draw(image)
     for polygon in extents:
-        draw.polygon(_shift(polygon, px0, py0), fill="white")
-    land = np.asarray(image) == 255 if exact_edges else None
+        draw.polygon([scale * v for v in _shift(polygon, px0, py0)], fill="white")
+    origin = np.array([px0, py0], dtype=np.float64)
     for corners, fill in ((tris.inland, sea_level), (tris.sea, 0)):
         if corners.shape[0] == 0:
             continue
-        flat = (corners - np.array([px0, py0], dtype=np.float64)).reshape(-1, 6).tolist()
+        flat = (scale * (corners - origin)).reshape(-1, 6).tolist()
         for triangle in flat:
             draw.polygon(triangle, fill=fill)
     del draw
     out = np.asarray(image, dtype=np.uint8)
-    return out if land is None else _without_rim(out, land)
-
-
-def _without_rim(pre: NDArray[np.uint8], land: NDArray[np.bool_]) -> NDArray[np.uint8]:
-    """``pre`` with the row of pixels Pillow adds east and south of the water given back to the
-    land under it (``masks-build.md`` section 7): the water's corners come rounded to whole
-    pixels, as Ortho4XP's, and Pillow fills a triangle up to and with its right and bottom edges.
-    A water pixel goes back to land where land is drawn east of it and water lies west of it, or
-    land south and water north: the rim alone, never a stream one pixel wide, never the sea beside
-    the black where no square has a mesh."""
-    water = (pre != 255) & land
-    dry = pre == 255  # land drawn, not the black where no square has a mesh
-    rim = np.zeros_like(water)
-    rim[:, 1:-1] |= water[:, 1:-1] & dry[:, 2:] & water[:, :-2]
-    rim[1:-1, :] |= water[1:-1, :] & dry[2:, :] & water[:-2, :]
-    out = pre.copy()
-    out[rim] = 255
-    return out
+    return out if scale == 1 else np.ascontiguousarray(out[1::2, 1::2])
 
 
 def custom_pre_mask(coverage: NDArray[np.uint8], sea_level: int) -> NDArray[np.uint8]:

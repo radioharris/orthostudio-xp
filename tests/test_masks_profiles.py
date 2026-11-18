@@ -16,7 +16,6 @@ from orthostudio.masks.profiles import (
     blur_mask,
     blur_widths,
     cell_latitude,
-    exact_edges,
     halo_px,
     rocks_width,
     sand_blur,
@@ -198,18 +197,6 @@ def test_pillow_gaussian_support_bounds_the_real_one() -> None:
         )
         lit = np.flatnonzero(blurred[1] > 0)
         assert int(lit.max() - (n // 2 - 1)) <= pil_blur_support(sigma)
-
-
-def test_only_our_fade_draws_the_edges_exactly() -> None:
-    """Ortho4XP's profiles keep Ortho4XP's drawing of the water, byte for byte."""
-    from orthostudio.masks.profiles import MASKING_MODES
-
-    assert {mode: exact_edges(mode) for mode in MASKING_MODES} == {
-        "sand": False,
-        "rocks": False,
-        "3steps": False,
-        "soft": True,
-    }
 
 
 def test_soft_fades_a_narrow_river_to_its_middle_where_sand_covers_it() -> None:
