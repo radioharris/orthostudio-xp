@@ -1141,36 +1141,33 @@ def _drop_stale(stale: Stale) -> None:
     """A stale part of a region's stages deleted before returning (:func:`_stale_stages`): a part
     of the stage takes its marker with it first (whole again only once all are there), and its
     zips leave the stage's record after."""
-    stage = stale.path.parent
     if stale.zips:
-        (stage / MARKER).unlink(missing_ok=True)
+        (stale.path.parent / MARKER).unlink(missing_ok=True)
     _discard(stale.path, stale.beside, wait=True)
     if stale.zips:
+        stage = stale.path.parent
         step = _read(stage / STEP)
         step["zips"] = {p: h for p, h in (step.get("zips") or {}).items() if p not in stale.zips}
         _write(stage / STEP, step)
 
 
-def _kept_frees(root: Path, region: str) -> int:
-    """What deleting the region's kept old mesh frees on its disk: the size its marker gives, but
-    nothing where Live's pack on that disk shares its files, its DSFs and masks clones or hard links
-    of them (``region.place_file``) until a start sets the pack up again: the pack made from it
-    (its record names it), or from the region before the swap that kept it (its record names the
-    region, which changed since, ``region.changed_regions``: kept with Live stopped, before any
-    start). Deleted then, it would leave the disk as short and could not be downloaded again. The
-    one rule of the window's offer and of the install's deletion (:func:`_room_for_update`)."""
+def _kept_frees(root: Path, region: str) -> int | None:
+    """What deleting the region's kept old mesh frees on its disk (None: none kept): the size its
+    marker gives, but nothing where Live's pack on that disk holds its files still, its DSFs and
+    masks clones or hard links of them (``region.place_file``) until a start sets the pack up from
+    another mesh (``region.holds_files_of``: the pack made from it, or from the region before the
+    swap that kept it, with Live stopped and no start since). Deleted then, it would free nothing
+    and could not be downloaded again. The one rule of the window's offer and of the install's
+    deletion (:func:`_room_for_update`)."""
     from orthostudio.live.pack import pack_dir
-    from orthostudio.live.region import changed_regions, sources_of_pack
+    from orthostudio.live.region import holds_files_of
 
     kept = kept_mesh(root, region)
     if kept is None:
-        return 0
+        return None
     pack = pack_dir(root)
-    if _disk_of(pack) == _disk_of(kept):
-        made_of = {str(s) for s in sources_of_pack(pack)}
-        folder = mesh_dir(root, region)
-        if str(kept) in made_of or (str(folder) in made_of and changed_regions([folder], pack)):
-            return 0
+    if _disk_of(pack) == _disk_of(kept) and holds_files_of(pack, kept):
+        return 0
     return int(_read(kept / MARKER).get("size") or 0)
 
 
@@ -1191,7 +1188,7 @@ def _room_for_update(
     whether that disk is Live's folder's rather than the region's (``live``) and what is free
     there counts what the install deletes first (``cleared``), and whether deleting the region's
     kept old mesh makes every disk the install needs enough (``kept``), by what it frees
-    (:func:`_kept_frees`)."""
+    (:func:`_kept_frees`), or would free after Live's next start only (``shared``)."""
     from orthostudio.clean import disk_bytes
 
     download = download_dir(root, region.id)
@@ -1213,15 +1210,17 @@ def _room_for_update(
     cleared = freed.get(disk, 0) > 0  # what the install deletes first: the window says it counts
     frees = _kept_frees(root, region.id)
     if frees:
-        kept = _disk_of(kept_dir(root, region.id))
-        freed[kept] = freed.get(kept, 0) + frees
-    enough = frees > 0 and not _short_of_room(
+        disk_kept = _disk_of(kept_dir(root, region.id))
+        freed[disk_kept] = freed.get(disk_kept, 0) + frees
+    enough = bool(frees) and not _short_of_room(
         mesh, ovl, stage, overlay_pack(root), download, True, freed
     )
     return {
         "need": first.need,
         "free": first.free,
         "kept": enough,
+        # a kept mesh the pack holds still: it frees its room only after Live's next start
+        "shared": frees == 0,
         # not the region's disk: Live's folder's, which holds its downloads and its overlays
         "live": disk != _disk_of(_real(root, region.id).parent),
         "cleared": cleared,

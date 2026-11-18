@@ -778,6 +778,7 @@ async function updateAsked(id, button) {
       const sizes = { name, need: gb(room.need), folder: last?.checks?.folder || "",
         free: room.cleared ? t("regions.room_free_cleared", gbFree) : t("regions.room_free", gbFree) };
       const lines = [room.live ? t("regions.room_text_live", sizes) : t("regions.room_text", sizes)];
+      if (!room.kept && room.shared) lines.push(t("regions.room_shared")); // its Delete frees nothing yet
       if (!room.kept) lines.push(t("regions.room_none"));
       else lines.push(t("regions.room_kept"), ...(xplane ? [t("regions.room_xplane")] : []));
       const offer = room.kept && !xplane;

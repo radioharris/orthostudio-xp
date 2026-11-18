@@ -958,6 +958,20 @@ def _drop_night(pack_dir: Path, log: Callable[[str], None]) -> None:
         log(f"night lights off: {gone} night files deleted")
 
 
+def holds_files_of(pack_dir: Path, folder: Path) -> bool:
+    """Whether the pack holds files of ``folder``, clones or hard links of its DSFs and masks
+    (:func:`place_file`): its record keeps, for one of the regions it was set up from, the dates of
+    ``folder``'s DSFs and terrain files (:func:`_fingerprints`, its river masks' left out), which a
+    region renamed keeps (a region's kept old mesh, ``osxpregions.kept_dir``: the swap dates only
+    the new mesh) and which a start setting the pack up from another mesh replaces."""
+    meta = _marker(pack_dir)
+    was = meta.get("fingerprints") if isinstance(meta, dict) else None
+    if not isinstance(was, dict):
+        return False
+    now = _fingerprints([folder])[str(folder)][:2]
+    return any(isinstance(times, list) and times[:2] == now for times in was.values())
+
+
 def changed_regions(sources: Sequence[Path], pack_dir: Path) -> list[Path]:
     """The regions that changed since the pack was set up from them (:func:`_fingerprints`):
     updated, or given their river masks, the pack to be set up again with X-Plane not running."""

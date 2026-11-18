@@ -1969,13 +1969,10 @@ def test_a_region_on_another_disk_keeps_its_mesh_of_before_on_that_disk(
 @pytest.fixture
 def short_disk(monkeypatch):
     """A disk ``by`` bytes short of an update's room (one by default), where each folder or file
-    named, deleted (or made again under its name), frees what it holds (a mesh or a stage: the size
-    its marker gave), but nothing where Live's pack is made from it: its DSFs and masks stay in the
-    pack as clones or hard links. (Set it up for these folders, the pack's record read as it is
-    then.)"""
-    from orthostudio.live.pack import pack_dir
-    from orthostudio.live.region import sources_of_pack
-
+    named, deleted (or made again under its name), frees what the test says it holds: a file its
+    size, a mesh or a stage the size its marker gave, ``(folder, bytes)`` those bytes (0 for a
+    kept mesh the pack holds still, its files shared). No rule of its own on what is shared: each
+    test says it."""
     real = shutil.disk_usage
     monkeypatch.setattr(osxpregions, "SPARE_BYTES", 0)
     state: dict = {"base": None, "freeable": []}
@@ -1995,7 +1992,7 @@ def short_disk(monkeypatch):
 
     monkeypatch.setattr(osxpregions.shutil, "disk_usage", usage)
 
-    def short(root: Path, region: OsxpRegion, *folders: Path, by: int = 1) -> None:
+    def short(root: Path, region: OsxpRegion, *folders: Path | tuple, by: int = 1) -> None:
         state["base"], state["freeable"] = 0, []  # the disk empty: what the install needs
         mesh, ovl = osxpregions.to_fetch(root, region, True)
         stage = osxpregions.stage_dir(root, region.id)
@@ -2004,14 +2001,15 @@ def short_disk(monkeypatch):
         (need,) = (
             r.need for r in osxpregions._short_of_room(mesh, ovl, stage, pack, download, True)
         )
-        shared = {str(s) for s in sources_of_pack(pack_dir(root))}
 
-        def holds(f: Path) -> int:
+        def holds(f: Path | tuple) -> tuple[Path, int]:
+            if isinstance(f, tuple):
+                return f
             if f.is_file():
-                return f.stat().st_size
-            return 0 if str(f) in shared else json.loads((f / aoregions.MARKER).read_text())["size"]
+                return f, f.stat().st_size
+            return f, json.loads((f / aoregions.MARKER).read_text())["size"]
 
-        state["freeable"] = [(f, holds(f), f.stat().st_ino) for f in folders]
+        state["freeable"] = [(f, n, f.stat().st_ino) for f, n in map(holds, folders)]
         state["base"] = need - by
 
     return short
@@ -2046,6 +2044,7 @@ def test_no_room_beside_the_region_says_it_and_deletes_nothing(
         "need": room["need"],
         "free": room["need"] - 1,
         "kept": False,
+        "shared": False,  # no kept mesh at all
         "live": False,  # the region's own disk
         "cleared": False,  # nothing an update stopped earlier left
     }
@@ -2103,8 +2102,9 @@ def test_no_room_a_kept_mesh_that_frees_too_little_or_nothing_is_never_deleted(
     inst, _ = install(tmp_path, region, Host(files), make_room=True)
     assert inst.progress.phase == "failed" and kept.exists()
     pack_made_of(tmp_path / "pack", kept)  # the last start flew the kept mesh: frees nothing
-    short_disk(tmp_path, region, kept)
-    assert osxpregions.update_room(tmp_path, region, True, False)["kept"] is False
+    short_disk(tmp_path, region, (kept, 0))
+    room = osxpregions.update_room(tmp_path, region, True, False)
+    assert room["kept"] is False and room["shared"] is True  # its room after the next start
     inst, _ = install(tmp_path, region, Host(files), make_room=True)
     assert inst.progress.phase == "failed" and kept.exists()
     assert (folder / "terrain/b.ter").read_bytes() == b"second"
@@ -2403,11 +2403,57 @@ def test_a_kept_mesh_the_pack_still_holds_from_before_its_swap_frees_nothing(
     kept = kept_of(tmp_path)
     assert os.stat(kept / dsf).st_nlink == 2  # the pack holds A's files still
     files, region = updated(files, region, b"third")  # C listed before the next start
-    short_disk(tmp_path, region)
+    short_disk(tmp_path, region, (kept, 0))  # its files shared: deleting it frees nothing
     room = osxpregions.update_room(tmp_path, region, True, False)
-    assert room is not None and room["kept"] is False
+    assert room is not None and room["kept"] is False and room["shared"] is True
     inst, _ = install(tmp_path, region, Host(files), make_room=True)
     assert inst.progress.phase == "failed" and kept.exists()  # A never lost for nothing
     pack_made_of(pack, folder)  # a start set the pack up from B: A shared no more
     short_disk(tmp_path, region, kept)
     assert osxpregions.update_room(tmp_path, region, True, False)["kept"] is True
+
+
+def test_a_kept_mesh_the_pack_no_longer_holds_frees_its_size(tmp_path: Path, world, short_disk):
+    """A kept, a start on B, then C installed without keeping B, Live stopped since: the pack's
+    record names the region, which changed, but holds B's files, not A's (its fingerprints are
+    B's): deleting A frees its size, offered. The river masks' date never counts: put in place
+    in A's place they would not make the pack hold A's files."""
+    files, region = world
+    install(tmp_path, region, Host(files))  # A
+    files, region = updated(files, region, b"second")
+    install(tmp_path, region, Host(files), keep_old=True)  # A kept, B in place
+    folder, kept = osxpregions.mesh_dir(tmp_path, "eur"), kept_of(tmp_path)
+    pack = pack_made_of(tmp_path / "pack", folder)  # a start on B
+    files, region = updated(files, region, b"third")
+    install(tmp_path, region, Host(files), keep_old=False)  # C, B deleted, A still kept
+    assert (kept / "terrain/b.ter").read_bytes() == b"ter b"
+    assert osxpregions._kept_frees(tmp_path, "eur") == marker_of_kept(tmp_path)["size"]
+    files, region = updated(files, region, b"fourth")
+    short_disk(tmp_path, region, kept)
+    room = osxpregions.update_room(tmp_path, region, True, False)
+    assert room is not None and room["kept"] is True and room["shared"] is False
+    pack_made_of(pack, kept)  # a start on A: held, whatever its river masks' date
+    (kept / osxpregions.RIVERS).mkdir()
+    assert osxpregions._kept_frees(tmp_path, "eur") == 0
+
+
+def test_a_pack_on_another_disk_holds_nothing_of_the_kept_mesh(
+    tmp_path: Path, world, monkeypatch
+) -> None:
+    """Live's pack on another disk than the kept mesh links to the folders it reads there
+    (``region._place_dir``), never a clone: its record naming the kept mesh, deleting it still
+    frees its size."""
+    files, region = world
+    install(tmp_path, region, Host(files))
+    files, region = updated(files, region, b"second")
+    install(tmp_path, region, Host(files), keep_old=True)
+    kept = kept_of(tmp_path)
+    pack = pack_made_of(tmp_path / "pack", kept)
+    assert osxpregions._kept_frees(tmp_path, "eur") == 0  # the same disk: held
+    disk_of = osxpregions._disk_of
+    monkeypatch.setattr(osxpregions, "_disk_of", lambda p: -1 if Path(p) == pack else disk_of(p))
+    assert osxpregions._kept_frees(tmp_path, "eur") == marker_of_kept(tmp_path)["size"]
+
+
+def marker_of_kept(root: Path) -> dict:
+    return json.loads((kept_of(root) / aoregions.MARKER).read_text())
