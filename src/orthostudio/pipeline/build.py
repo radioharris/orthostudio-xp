@@ -1735,11 +1735,18 @@ def photos_workers(env: BuildEnv) -> int:
     the line brings images faster than they encode."""
     if env.workers <= 0:
         return env.workers  # encoded in the images' own process
+    return pool_workers(env, env.workers, PHOTOS_BUDGET_SHARE, PHOTOS_BASE_MB, PHOTOS_ENCODER_MB)
+
+
+def pool_workers(env: BuildEnv, most: int, share: int, base_mb: int, worker_mb: int) -> int:
+    """The processes a step's pool starts: ``most`` at the most, as many as ``1 / share`` of the
+    RAM budget holds beside the step's own ``base_mb``, at ``worker_mb`` each, one at least;
+    ``most`` when the system does not say how much memory it has. One rule for the images'
+    encoders and the masks' workers."""
     budget = ram_budget_mb(env.memory_share)
     if budget is None:
-        return env.workers
-    fits = (budget // PHOTOS_BUDGET_SHARE - PHOTOS_BASE_MB) // PHOTOS_ENCODER_MB
-    return max(1, min(env.workers, fits))
+        return max(1, most)
+    return max(1, min(most, (budget // share - base_mb) // worker_mb))
 
 
 def _photos_ram_mb(env: BuildEnv) -> int:
@@ -1815,14 +1822,14 @@ def _textures_run(env: BuildEnv) -> Callable[[NodeContext], Any]:
     return run
 
 
-def _masks_run(env: BuildEnv) -> Callable[[NodeContext], Any]:
+def _masks_run(env: BuildEnv, params: OsxpMasksParams) -> Callable[[NodeContext], Any]:
     """Bind the masks job: the pool size the node budgeted for, and the cancellation token.
 
     Review 4, findings C1 and M1: the rule used to read a module-level hook nothing ever set
     (no cancellation, shared between concurrent nodes) and no worker count at all (the pool
     started ``os.cpu_count()`` processes against a budget computed for ``min(8, workers)``).
     """
-    workers = masks_workers(env)
+    workers = masks_workers(env, params)
 
     def run(ctx: NodeContext) -> ArtifactRef:
         job = MasksJob(workers=workers, cancel=cast(Any, ctx.cancel_event))
@@ -1999,7 +2006,7 @@ def neighbour_meshes(store: Store) -> dict[str, ArtifactRef]:
 
 def _masks_ram_mb(env: BuildEnv, params: OsxpMasksParams) -> int:
     """RAM of the native masks node with its whole pool, which it runs inside (spec 8.6)."""
-    return MASKS_BASE_MB + masks_worker_mb(params) * masks_workers(env)
+    return MASKS_BASE_MB + masks_worker_mb(params) * masks_workers(env, params)
 
 
 def masks_water_triangles(mesh: ArtifactRef | None, use_masks_for_inland: bool) -> int | None:
@@ -2056,14 +2063,23 @@ def masks_ram_from(
             # the whole batch (a truncated npz raises BadZipFile or EOFError); the masks step,
             # which reads it too, now fails alone, its tile's
             return full
-        return MASKS_BASE_MB + worker_mb * min(masks_workers(env), cells)
+        return MASKS_BASE_MB + worker_mb * min(masks_workers(env, params), cells)
 
     return ram_from
 
 
-def masks_workers(env: BuildEnv) -> int:
+MASKS_BUDGET_SHARE = 2
+"""A tile's masks take at most half of the RAM budget (:func:`pool_workers`): the images'
+encoders a third beside them (:data:`PHOTOS_BUDGET_SHARE`). Eight workers of the heaviest profiles
+took more than a computer of 16 GB has (the distance masks with ``soft``, 14.3 GB, 2026-11-18),
+and a node above the budget only waits for every other step to end, then starts its whole pool;
+``sand``, the default, keeps its eight from 8 GB up."""
+
+
+def masks_workers(env: BuildEnv, params: OsxpMasksParams) -> int:
     """Processes ``orthostudio.masks`` may use: ``$OSXP_MASKS_WORKERS``, else the batch's workers
-    (<= 8).
+    (<= 8), as many as half of the RAM budget holds of ``params``' worker
+    (:data:`MASKS_BUDGET_SHARE`).
 
     Eight is where the measured gain stops (``masks-build.md`` 6: 0.74 s at 8 workers against 1.40 s
     alone, the pool start-up being 0.45 s of it). The environment variable is parsed by
@@ -2074,7 +2090,13 @@ def masks_workers(env: BuildEnv) -> int:
     explicit = masks_env_workers()
     if explicit is not None:
         return explicit
-    return max(1, min(MASKS_MAX_WORKERS, env.workers))
+    return pool_workers(
+        env,
+        min(MASKS_MAX_WORKERS, env.workers),
+        MASKS_BUDGET_SHARE,
+        MASKS_BASE_MB,
+        masks_worker_mb(params),
+    )
 
 
 def _coastline_node(reg: _Registry, spec: BuildSpec, osm_input: Node | ArtifactRef) -> Node:
@@ -2659,7 +2681,7 @@ def declare(
             # its pool's memory only once its meshes say there is water to draw
             ram_mb=MASKS_BASE_MB,
             ram_from=masks_ram_from(env, masks_params),
-            run=_masks_run(env),
+            run=_masks_run(env, masks_params),
         )
         xp12: Node | None = None
         overlay: Node | None = None

@@ -63,7 +63,7 @@ id gets a `#2` suffix.
 | vectors | `orthostudio.vectors@1` | subprocess on the `tracing` lane, in a process of its own (8.6); by its roads, 1.2 GB at least (8.6) | `VectorsParams` (spec `vectors-assembly.md`) + `tile` | `osm` (8.5), `dem`, `patches` (the tile's folder of hand-made patches, absent without one: 8.5), `airports` (absent) | dir `Data<tile>.{node,poly,alt}`, `dem.json`, `airports.json`, `airports.npz`, `airports.wkb.json` |
 | coastline | `orthostudio.coastline@1` | io, 0.2 GB | `tile` | `osm` (8.4) | file `coastline.npz` |
 | mesh | `orthostudio.mesh@1` | subprocess, 0.2 GB a million triangles it will make and 2.2 times the raster it reads, 0.9 GB at least (8.6) | `MeshParams` (spec `mesh-build.md` 9) + `tile` | `vectors`, `dem` (8.2), `coastline` | dir `Data<tile>.mesh`, `mesh.npz` |
-| masks | `orthostudio.masks@1` | subprocess on the `coast` lane, one tile at a time (8.6); 300 MB and a worker of its profile for each cell with water to draw, as many as the pool has (8.6) | `MasksParams` (spec `masks-build.md`) + `tile` | `mesh`, `nb_n`..`nb_nw` | dir `<y>_<x>.png`, `index.json` |
+| masks | `orthostudio.masks@1` | subprocess on the `coast` lane, one tile at a time (8.6); 300 MB and a worker of its profile for each cell with water to draw, as many as the pool has, a pool as large as half of the RAM budget holds (8.6) | `MasksParams` (spec `masks-build.md`) + `tile` | `mesh`, `nb_n`..`nb_nw` | dir `<y>_<x>.png`, `index.json` |
 | xp12 | `xp12.rasters@1` | io, 0.2 GB | `tile` | `source` = the Global Scenery DSF (7z) of the tile, by content digest | dir `demn.bin`, `dems.bin` (bathy already clamped) |
 | dsf | `tile.dsf@3` | cpu, in a process of its own, 0.6 GB and 0.61 GB a million triangles of its mesh, 3 GB when the mesh does not say (8.6) | `TileDsfParams` = `DsfParams` (spec `dsf-encoding.md` 2, minus `sea_texture_blur`, see 7) + `tile` + `creation_agent` | `mesh`, `masks`, `rasters` (None = no DEMS, explicit choice only), `vectors` (None unless `cover_airports_with_highres` is `True` or `ICAO`) | dir `<tile>.dsf`, `terrain/*.ter`, `textures.json`, `stats.json` |
 | textures | `tile.textures@1` | net (+ its own encoding pool), 0.35 GB and 0.55 GB an encoder, as many encoders as a third of the RAM budget holds (8.6) | `TileTexturesParams`: encoder and version, `mip_mode`, `refine_passes`, `sea_texture_blur`, `clean_halo`, `parent_levels`, `TerParams` fields | `dsf`, `masks` | dir `textures/*.dds` (hard links to the `texture.dds` artefacts), `textures/water_transition.png` when needed, `terrain/*.ter`, `manifest.json` |
@@ -890,12 +890,17 @@ masks step that reads it too now fails alone (review, 2026-10-29). Every masks n
 on 8 threads and 6.7 on 14, for masks that took a second, inland with no cell, around a lake with
 two to twelve; on 16 GB no tile's masks, so no images, started beside a big city's tracing
 (2026-10-28). **The same `workers` is given to the
-rule**: `_masks_run` binds `MasksJob(workers=masks_workers(env), cancel=...)`, the rule passes it to
-`build_masks`, and `worker_count` honours it, so the declared budget describes the pool that starts.
-`masks_workers(env)` is `$OSXP_MASKS_WORKERS` when it is a positive integer, else
-`min(8, --workers)`; the variable has one parser (`masks.build.env_workers`, `masks-build.md` 6.5)
-and `0`, a negative value or junk mean *unset*. The rule's own decorator declares 1100 MB, the honest
-cost of a node built without `declare()` (base + one worker).
+rule**: `_masks_run` binds `MasksJob(workers=masks_workers(env, params), cancel=...)`, the rule
+passes it to `build_masks`, and `worker_count` honours it, so the declared budget describes the pool
+that starts. `masks_workers(env, params)` is `$OSXP_MASKS_WORKERS` when it is a positive integer,
+else `min(8, --workers)`, as many as half of the RAM budget holds of the profile's worker
+(`pool_workers`, the rule of the images' encoders, which take a third): eight workers of the
+distance masks with `soft` took 14.3 GB, more than a computer of 16 GB has, and a node above the
+budget only waits for every other step to end, then starts its whole pool (2026-11-18). On 16 GB at
+the medium share that leaves `sand` its eight, `3steps` five, `soft` four, and `soft` with the
+distance masks three. The variable has one parser (`masks.build.env_workers`, `masks-build.md`
+6.5) and `0`, a negative value or junk mean *unset*. The rule's own decorator declares 2050 MB,
+the honest cost of a node built without `declare()` (base + one worker of the heaviest profile).
 
 A relief of one's own is ten times the rasters the rules declare their memory for, so the relief
 and vectors nodes of its tile declare their own (`relief_ram`, from `RELIEF_RAM` and the file's

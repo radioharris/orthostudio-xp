@@ -267,9 +267,9 @@ budget said one process while the pool started `os.cpu_count()`).
 
 | Who | What it decides |
 |---|---|
-| `pipeline.build.masks_workers(env)` | `env_workers()` if set, else `min(MAX_WORKERS=8, batch workers)`. The single decision. |
-| `pipeline.build._masks_ram_mb(env, params)` | `300 + masks_worker_mb(params) x masks_workers(env)`: the most the node's `ram_from` declares (its `ram_mb` is the base, 300). |
-| `pipeline.build._masks_run(env)` | binds `MasksJob(workers=masks_workers(env), cancel=...)`. |
+| `pipeline.build.masks_workers(env, params)` | `env_workers()` if set, else `min(MAX_WORKERS=8, batch workers)`, as many as half of the RAM budget holds of the profile's worker (`pool_workers`, the rule of the images' encoders, which take a third). The single decision. |
+| `pipeline.build._masks_ram_mb(env, params)` | `300 + masks_worker_mb(params) x masks_workers(env, params)`: the most the node's `ram_from` declares (its `ram_mb` is the base, 300). |
+| `pipeline.build._masks_run(env, params)` | binds `MasksJob(workers=masks_workers(env, params), cancel=...)`. |
 | `masks.build.worker_count(cells, workers)` | the argument, else `env_workers()`, else `min(8, cpu_count)`; capped by the number of cells. |
 
 The default is capped at 8 on purpose: the node holds one `subprocess` slot while starting a
