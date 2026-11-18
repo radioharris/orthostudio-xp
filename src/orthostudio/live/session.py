@@ -269,6 +269,7 @@ def prepare(options: Options, log: Log) -> Prepared:
         changed_regions,
         needs_relayout,
         region_layout,
+        regions_gone,
         relayout,
         remove_aside,
         remove_temps,
@@ -369,6 +370,13 @@ def prepare(options: Options, log: Log) -> Prepared:
         raise RefusedError(
             f"the region {newer[0].name} changed since Live last started and X-Plane is running: "
             "it may be reading the region of before. Quit X-Plane, then start again"
+        )
+    gone = regions_gone(sources, pack_dir) if xplane_running() else []
+    if gone:  # the same: a region read from another folder (the Settings' Mesh), or taken away
+        raise RefusedError(
+            f"the mesh changed since Live last started ({Path(gone[0]).name} is no longer used) "
+            "and X-Plane is running: it may be reading the mesh of before. Quit X-Plane, then "
+            "start again"
         )
     from orthostudio.live import machine
 

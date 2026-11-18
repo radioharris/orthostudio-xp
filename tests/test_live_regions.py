@@ -606,3 +606,74 @@ def test_a_region_updated_and_one_added_before_a_start(tmp_path: Path) -> None:
     assert (pack / dsf).read_bytes() == b"the update's DSF"
     assert (pack / "Earth nav data/+40+000/+46+007.dsf").exists()
     assert any("changed since the pack was set up" in line for line in lines)
+
+
+def test_the_mesh_setting_streams_each_region_s_kept_old_mesh(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """« Mesh: old », for every region at once: each region's kept old mesh in its place where it
+    has one, the new mesh elsewhere (North America keeps none); « new », the regions installed.
+    The kept mesh is Live's own mesh alike, with a list of textures of its own."""
+    from orthostudio.live import osxpregions
+    from orthostudio.live.aoregions import MARKER, regions_dir
+    from orthostudio.live.names import own_mesh
+    from orthostudio.live.settings import LiveSettings, save_settings
+
+    monkeypatch.setenv("OSXP_HOME", str(tmp_path / "home"))
+    (tmp_path / "home").mkdir()
+    live = tmp_path / "live"
+    xp = tmp_path / "X-Plane 12"
+    folders = {}
+    for name in ("z_osxp_eur", "z_osxp_na", ".z_osxp_eur.kept"):
+        folder = regions_dir(live) / name
+        (folder / "terrain-lists").mkdir(parents=True)
+        (folder / MARKER).write_text("{}")
+        folders[name] = folder
+    eur, na, kept = folders["z_osxp_eur"], folders["z_osxp_na"], folders[".z_osxp_eur.kept"]
+    assert osxpregions.kept_mesh(live, "eur") == kept
+    assert default_sources(xp, live) == [eur, na]  # new, the default
+    save_settings(LiveSettings(mesh="old"))
+    assert default_sources(xp, live) == [kept, na]
+    assert own_mesh(kept) and region_list_file(tmp_path, kept) != region_list_file(tmp_path, eur)
+    (kept / MARKER).unlink()  # not whole: the new one
+    assert default_sources(xp, live) == [eur, na]
+    save_settings(LiveSettings(mesh="new"))
+    (kept / MARKER).write_text("{}")
+    assert default_sources(xp, live) == [eur, na]
+
+
+def test_no_start_on_a_mesh_changed_while_xplane_runs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The pack made from one folder, the start reading the region from another (the Settings'
+    Mesh switched to a kept old mesh, or back): refused with X-Plane running, as a zoom changed
+    is, the pack never set up again under it; with X-Plane closed, set up again. A region only
+    added is merged in, as before."""
+    from orthostudio.live import osxpregions, winsearch
+    from orthostudio.live.filesystem import folder_link
+    from orthostudio.live.region import regions_gone
+
+    monkeypatch.setenv("OSXP_HOME", str(tmp_path / "home"))
+    (tmp_path / "home").mkdir()
+    xp = make_xplane(tmp_path)
+    new = make_source(tmp_path / "new", tile=(45, 6), textures=NAMES)
+    old = make_source(tmp_path / "old", tile=(45, 6), textures=NAMES)
+    pack = tmp_path / "pack"
+    monkeypatch.setattr(winsearch, "keep_out", lambda folder, log=None: None)
+    monkeypatch.setattr(osxpregions, "settle", lambda root, log, swap, only=None: None)
+    monkeypatch.setattr(session, "xplane_running", lambda: False)
+    session.prepare(session.Options(xplane=xp, pack=pack, source=new, no_plugin=True), log=quiet)
+    assert regions_gone([new], pack) == [] and regions_gone([new, old], pack) == []
+    assert regions_gone([old], pack) == [str(new)]
+    link = xp / "Custom Scenery" / "z_osxp_live"
+    if not is_folder_link(link):
+        folder_link(pack, link)
+    monkeypatch.setattr(session, "is_installed", lambda *a: True)
+    monkeypatch.setattr(session, "xplane_running", lambda: True)
+    switched = session.Options(xplane=xp, pack=pack, source=old, no_plugin=True)
+    with pytest.raises(session.RefusedError, match="the mesh changed since Live last started"):
+        session.prepare(switched, log=quiet)
+    assert sources_of_pack(pack) == [new]  # the pack as X-Plane found it
+    monkeypatch.setattr(session, "xplane_running", lambda: False)
+    session.prepare(switched, log=quiet)  # X-Plane closed: set up again from the old mesh
+    assert sources_of_pack(pack) == [old]

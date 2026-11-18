@@ -94,6 +94,21 @@ def osxp_regions(root: Path) -> list[Path]:
     )
 
 
+def osxp_sources(root: Path) -> list[Path]:
+    """Live's own mesh as a start streams onto it: each region installed (:func:`osxp_regions`),
+    or, where the Settings' « Mesh » says old (``LiveSettings.mesh``), its kept old mesh in its
+    place where it has one (``osxpregions.kept_mesh``), the new one elsewhere. The one rule of
+    which of the two a region's squares come from; both are Live's own mesh alike
+    (``names.own_mesh``), each with its own list of textures (``names.region_list_file``)."""
+    from orthostudio.live import osxpregions
+    from orthostudio.live.settings import load_settings
+
+    regions = osxp_regions(root)
+    if load_settings().mesh != "old":
+        return regions
+    return [osxpregions.kept_mesh(root, p.name.removeprefix("z_osxp_")) or p for p in regions]
+
+
 @dataclass(frozen=True)
 class OtherMesh:
     """What the folder of another tool's mesh holds (:func:`other_mesh`)."""
@@ -283,9 +298,9 @@ def other_mesh_found(xplane: Path | None, root: Path, *, fresh: bool = False) ->
 
 
 def base_sources(xplane: Path, root: Path) -> list[Path]:
-    """Live's own mesh first, so that a square it has is its (``region.setup_region``: a DSF a
-    region has already stays that region's), then AutoOrtho's own, then those Live installed (in
-    ``root``, Live's folder) that AutoOrtho has not."""
+    """Live's own mesh first (:func:`osxp_sources`), so that a square it has is its
+    (``region.setup_region``: a DSF a region has already stays that region's), then AutoOrtho's
+    own, then those Live installed (in ``root``, Live's folder) that AutoOrtho has not."""
     from orthostudio.live import aoregions
 
     theirs = autoortho_regions(xplane)
@@ -295,7 +310,7 @@ def base_sources(xplane: Path, root: Path) -> list[Path]:
         for region in sorted(aoregions.installed(root))
         if f"z_ao_{region}" not in have
     ]
-    return osxp_regions(root) + theirs + mine
+    return osxp_sources(root) + theirs + mine
 
 
 def default_sources(

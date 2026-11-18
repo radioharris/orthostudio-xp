@@ -970,6 +970,16 @@ def changed_regions(sources: Sequence[Path], pack_dir: Path) -> list[Path]:
     return [Path(k) for k, v in was.items() if k in now and now[k] != v]
 
 
+def regions_gone(sources: Sequence[Path], pack_dir: Path) -> list[str]:
+    """The regions the pack was set up from that ``sources`` no longer name: one of Live's own read
+    from its kept old mesh in its place or back (the Settings' « Mesh »,
+    ``scenery.osxp_sources``), one deleted or away. The pack is then set up again
+    (:func:`setup_region`), its DSFs replaced, never with X-Plane running, which may be reading
+    those of before (``session.prepare``); a region only added is merged in."""
+    keys = {str(s) for s in sources}
+    return [s for s in sources_of(_marker(pack_dir)) if s not in keys]
+
+
 def setup_region(
     source: Path | Sequence[Path],
     pack_dir: Path,
