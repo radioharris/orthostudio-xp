@@ -5,9 +5,7 @@ build first. OrthoStudio XP Live comes with OrthoStudio XP from version 2.0.
 
 ![Live's window in flight near Toulouse: on the left the map, the aircraft at its centre and the textures built around it coloured by how sharp they are, sharper still around the airports; on the right Live's state, the photo source and its zoom, the flight's altitude, speed and position, and the textures being built](images/live/flight.png)
 
-This guide is for pilots: what Live does, what you do, and why it asks for so few settings. The
-design and the measurements behind it are in [specs/live.md](specs/live.md) and
-[specs/live/](specs/live/).
+This guide is for pilots: what Live does, what you do, and why it asks for so few settings.
 
 ## Contents
 
@@ -93,7 +91,6 @@ What the figures say:
 
 One flight each: the large gaps (the start, the processor, the scenery loads) are clear, the gaps
 of a few percent (sharpness, memory, writes) would want more flights before being taken as rules.
-How the flights are made and measured: [specs/live/flights.md](specs/live/flights.md).
 
 ## Getting started
 
@@ -457,8 +454,8 @@ own setting, not the one of its VR settings, which X-Plane uses in VR.
 
 External views read nothing more: X-Plane takes each texture's levels for the aircraft, when it
 loads a flight and then as the aircraft moves, and a camera taken away, even kilometres out near the
-ground, shows what it took for the aircraft (measured with X-Plane 12.4.4-b4 on 20 October 2026,
-[specs/live/levels-test.md](specs/live/levels-test.md)). Far from the aircraft the ground looks a
+ground, shows what it took for the aircraft (measured with X-Plane 12.4.4-b4 on 20 October 2026).
+Far from the aircraft the ground looks a
 little blurry there. A level X-Plane took before Live built it shows the neutral colour, green-grey,
 once a camera comes close enough to show it, until X-Plane loads that area again. At a flight's
 start, the whole airport and its surroundings (its ZL18 textures, about 7 km across) are built at

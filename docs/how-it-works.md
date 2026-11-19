@@ -1,8 +1,7 @@
 # How OrthoStudio XP works
 
 A guide for users: what OrthoStudio XP builds, the steps it goes through, what it keeps on disk and
-how to get that space back. For the design and the rules behind each step, see `docs/specs/`; for
-the measurements, `docs/benchmarks/`.
+how to get that space back.
 
 ## 1. The words
 
@@ -402,7 +401,7 @@ column, a tile waiting has its cloud dimmed, one at work a spinner, and a quiet 
 cloud's right corner counts the clouds found that wait for your look, 0 when a search found none
 (no badge: never searched). Quitting stops the searches: the tiles searched keep their clouds,
 those still waiting are not searched. A tile *Find and apply…* is stopped on before its *Apply*
-is left as it was, and one whose *Apply* could not be done (X-Plane running) says why in its cell. Details: `docs/specs/clouds.md`.
+is left as it was, and one whose *Apply* could not be done (X-Plane running) says why in its cell.
 
 A tile filed elsewhere that you build again is built in the workshop, beside the cache, then put
 back in its folder in place of the old version: moved there at once on the workshop's disk, copied
