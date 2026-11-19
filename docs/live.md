@@ -433,7 +433,7 @@ the last few seconds. **Stop** stops it, and **Install** again goes on where it 
 off included. A region is used from the next start, never half installed. Its roads, forests and
 buildings come with it, unless "Roads, forests and buildings" says "No", and its masks of rivers and
 lakes once you chose Soft banks (see « The sea, rivers and lakes »). Once installed, a region shows
-its size on the disk and **Delete the region** (click twice, with Live stopped and X-Plane closed: X-Plane
+its size on the disk and **Delete** (click twice, with Live stopped and X-Plane closed: X-Plane
 reads its roads, forests and buildings). When a region is made again on the server, the panel says
 an update is available and how much it downloads, and offers **Update**: the region comes again
 whole, its masks of rivers and lakes and its night grids with it, beside the one installed, which
@@ -468,11 +468,15 @@ does not apply on it. Once a region keeps one, the panel shows **Mesh: New / Old
 regions at once: Old streams each region's kept mesh where it has one, and the new mesh elsewhere;
 with Old, the question of an update says that the mesh you keep is the one Live goes on showing.
 Like the other settings it takes effect at Live's next start, and never while X-Plane is open, as
-any change of the mesh (above). Under its region, the kept mesh shows its size and **Delete the old
-mesh**, which warns first that it cannot be downloaded again; like every deletion it is possible
-only with Live stopped and X-Plane closed. Its roads, forests and buildings stay, shared by the old
-and the new mesh; the region's own **Delete the region** takes its kept mesh with it. Once no region keeps an
-old mesh, Mesh goes back to New.
+any change of the mesh (above). Each mesh then has its own **Delete**, which never deletes the
+other, like every deletion only with Live stopped and X-Plane closed; the roads, forests and
+buildings stay, shared by the old and the new mesh. Under its region, the kept mesh shows its size and its
+**Delete**, which warns first that it cannot be downloaded again. The region's own **Delete**
+deletes the new mesh, and the old one takes its place, as the line under the row says once clicked:
+the region then shows the old mesh's size and offers its **Update** again, and an update ready goes
+with the new mesh. A computer stopped or a power cut in the middle leaves the one or the other in
+place, put right the next time Live opens. Once no region keeps an old mesh, Mesh goes back to
+New.
 
 **Not enough room for an update.** The new mesh is installed beside the old one, so the disk holds
 both for a while; what an update stopped earlier left, and which the new one no longer needs, is

@@ -1542,10 +1542,10 @@ def kept_world(c: LiveControl) -> tuple[Path, Path]:
 def test_a_kept_old_mesh_is_deleted_by_the_rule_of_every_deletion(
     home: Path, tmp_path: Path, monkeypatch
 ) -> None:
-    """The page lists a region's kept old mesh with its size. « Delete from the disk » follows
-    the one rule of every deletion: refused while Live streams, while the region is being
-    installed and while X-Plane runs; nothing else reads it then. It deletes the kept mesh alone,
-    the overlays staying, and the Settings' Mesh goes back to New once no region keeps one."""
+    """The page lists a region's kept old mesh with its size. Its Delete follows the one rule of
+    every deletion: refused while Live streams, while the region is being installed and while
+    X-Plane runs; nothing else reads it then. It deletes the kept mesh alone, the overlays
+    staying, and the Settings' Mesh goes back to New once no region keeps one."""
     from orthostudio.live import osxpregions
     from orthostudio.live.pack import live_root
 
@@ -1586,8 +1586,9 @@ def test_a_kept_old_mesh_is_deleted_by_the_rule_of_every_deletion(
 
 
 def test_mesh_stays_old_while_a_region_keeps_one(home: Path, tmp_path: Path, monkeypatch) -> None:
-    """Old stays while another region keeps its old mesh; the region's own Delete, which takes
-    its kept mesh with it, sets it back to New once none is left."""
+    """Old stays while another region keeps its old mesh. The region's own Delete deletes its new
+    mesh, its kept one taking its place: listed installed, of its own size, keeping none; Mesh
+    goes back to New once no region keeps one."""
     from orthostudio.live import aoregions, osxpregions
     from orthostudio.live.pack import live_root
 
@@ -1603,11 +1604,18 @@ def test_mesh_stays_old_while_a_region_keeps_one(home: Path, tmp_path: Path, mon
     na_kept = osxpregions.kept_dir(live_root(), "na")
     na_kept.mkdir()
     (na_kept / aoregions.MARKER).write_text(json.dumps({"size": 30, "zips": {}}))
-    c.remove_region("eur")  # its kept mesh with it
-    assert not osxpregions.present(live_root(), "eur")
+    c.remove_region("eur")  # its new mesh: the kept one takes its place
+    assert osxpregions.kept_mesh(live_root(), "eur") is None
+    regions = c.regions()
+    assert {r["id"]: r["size"] for r in regions["ours"]}["eur"] == 9  # the old mesh's
+    listed = {r["id"]: r for r in regions["list"]}
+    assert listed["eur"]["installed"] and "kept" not in listed["eur"] and "kept" in listed["na"]
     assert load_settings().mesh == "old"  # North America keeps one
-    c.remove_kept("na")
+    c.remove_region("na")
+    assert osxpregions.installed(live_root())["na"]["size"] == 30
     assert load_settings().mesh == "new"
+    c.remove_region("eur")  # no old mesh kept: the region goes
+    assert not osxpregions.present(live_root(), "eur")
 
 
 def test_an_update_s_answers_reach_its_install(home: Path, tmp_path: Path, monkeypatch) -> None:
@@ -1657,6 +1665,57 @@ async def test_the_kept_mesh_api(home: Path, tmp_path: Path, monkeypatch) -> Non
         assert bad.status_code == 422
         asked = await client.get("/api/live/regions/eur/room")
         assert asked.status_code == 200 and asked.json() == {"room": None}
+
+
+@pytest.mark.skipif(NODE is None, reason="needs node")
+def test_each_mesh_has_its_own_delete_its_confirmation_says_what_goes() -> None:
+    """The region's line and its kept old mesh's line each read Delete (2026-11-19): what each
+    deletes is said by its confirmation, the region's armed sentence (its new mesh, the old one
+    taking its place, an update ready going too) and the kept mesh's question; a region named
+    « d'Europe » in French, never « de Europe »."""
+    keys = [
+        "regions.remove",
+        "regions.confirm_remove_new",
+        "regions.confirm_remove_ready",
+        "regions.kept_ask_title",
+        "region_of.na",
+    ]
+    script = (
+        "globalThis.document = { documentElement: {} };"
+        f"const s = await import({json.dumps((UI_DIR / 'strings.js').as_uri())});"
+        f"const keys = {json.dumps(keys)}; const out = {{}};"
+        "for (const lang of ['en', 'fr']) { s.setLanguage(lang); const of = s.t('region_of.eur');"
+        " out[lang] = Object.fromEntries(keys.map((k) => [k, s.t(k, { of })])); }"
+        "console.log(JSON.stringify(out));"
+    )
+    out = subprocess.run(
+        [NODE or "node", "--input-type=module", "-e", script],
+        capture_output=True,
+        encoding="utf-8",
+        check=True,
+    )
+    said = json.loads(out.stdout)
+    en, fr = said["en"], said["fr"]
+    assert (en["regions.remove"], fr["regions.remove"]) == ("Delete", "Supprimer")
+    assert en["regions.confirm_remove_new"] == (
+        "Click Sure? to delete the new mesh of Europe: the old one takes its place."
+    )
+    assert fr["regions.confirm_remove_new"] == (
+        "Cliquez sur Sûr ? pour supprimer le nouveau maillage d'Europe : l'ancien reprend sa place."
+    )
+    assert fr["regions.confirm_remove_ready"] == "La mise à jour prête est supprimée aussi."
+    assert en["regions.kept_ask_title"] == "Delete the kept old mesh of Europe from the disk?"
+    assert fr["regions.kept_ask_title"] == "Supprimer du disque l'ancien maillage gardé d'Europe ?"
+    assert (en["region_of.na"], fr["region_of.na"]) == ("of North America", "d'Amérique du Nord")
+    js = (UI_DIR / "live.js").read_text(encoding="utf-8")
+    row = js[js.index("function regionRow(") :]
+    row = row[: row.index("\n}")]
+    assert 't("regions.confirm_remove_new", { of: t(`region_of.${id}`) })' in row
+    assert 'if (ready) sure += ` ${t("regions.confirm_remove_ready")}`' in row
+    assert 'act: "remove_kept", label: t("regions.remove")' in row  # the kept mesh's, the same
+    asked = js[js.index("async function removeKept(") :]
+    asked = asked[: asked.index("\n}")]
+    assert 'yes: t("regions.remove")' in asked
 
 
 def test_the_night_grids_of_a_region_installed_before_them_come_by_themselves(

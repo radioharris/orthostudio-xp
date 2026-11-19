@@ -718,10 +718,17 @@ function regionRow(id, mine, r, install, running, idle, xplane) {
   }
   const buttons = [];
   // its Delete armed: a short « Sure? » on the button, what it deletes on a line under the row (the
-  // whole sentence on the button widened the buttons' column and moved every row, 2026-11-19)
+  // whole sentence on the button widened the buttons' column and moved every row, 2026-11-19): its
+  // installed mesh, the kept old one taking its place where it keeps one, an update ready going
+  // with the new mesh (osxpregions.py remove)
   const armed = mine && removeArmed === id;
-  const sure = !armed ? null
-    : r.kept ? t("regions.confirm_remove_kept", { name }) : t("regions.confirm_remove", { name });
+  let sure = null;
+  if (armed && r.kept) {
+    sure = t("regions.confirm_remove_new", { of: t(`region_of.${id}`) });
+    if (ready) sure += ` ${t("regions.confirm_remove_ready")}`;
+  } else if (armed) {
+    sure = t("regions.confirm_remove", { name });
+  }
   if (busy && running) {
     buttons.push({ act: "cancel", label: t("regions.cancel") });
   } else if (mine) {
@@ -737,11 +744,11 @@ function regionRow(id, mine, r, install, running, idle, xplane) {
   // disk says that
   const line = busy && (running || ["failed", "cancelled"].includes(install.phase)) ? "install"
     : ready ? "waiting" : null;
-  // its kept old mesh, under it: its size and its Delete from the disk, by the rule of every
-  // deletion (Live stopped, no install of it, X-Plane closed: orthostudio/live/control.py _deleting)
+  // its kept old mesh, under it: its size and its own Delete, which deletes it alone, by the rule
+  // of every deletion (Live stopped, no install of it, X-Plane closed: control.py _deleting)
   const kept = mine && r.kept ? {
     text: r.kept.size ? t("regions.kept_size", { gb: gb(r.kept.size) }) : t("regions.kept"),
-    button: { act: "remove_kept", label: t("regions.kept_remove"), danger: true, disabled: !idle || running || xplane },
+    button: { act: "remove_kept", label: t("regions.remove"), danger: true, disabled: !idle || running || xplane },
   } : null;
   return { id, size, state, buttons, line, bar: busy && running, kept, sure };
 }
@@ -783,7 +790,7 @@ async function updateAsked(id, button) {
   const regions = last?.regions || {};
   const r = (regions.list || []).find((x) => x.id === id) || {};
   const mine = (regions.ours || []).find((x) => x.id === id) || {};
-  const name = t(`region.${id}`);
+  const of = t(`region_of.${id}`);
   let makeRoom = false;
   let keepOld = false;
   if (r.whole) {
@@ -811,7 +818,7 @@ async function updateAsked(id, button) {
     if (room) {
       const xplane = Boolean(last?.checks?.xplane_running);
       const gbFree = { gb: gb(room.free) };
-      const sizes = { name, need: gb(room.need), folder: last?.checks?.folder || "",
+      const sizes = { of, need: gb(room.need), folder: last?.checks?.folder || "",
         free: room.cleared ? t("regions.room_free_cleared", gbFree) : t("regions.room_free", gbFree) };
       const lines = [room.live ? t("regions.room_text_live", sizes) : t("regions.room_text", sizes)];
       if (!room.kept && room.shared) lines.push(t("regions.room_shared")); // its Delete frees nothing yet
@@ -826,7 +833,7 @@ async function updateAsked(id, button) {
     const lines = [mine.size ? t("regions.keep_text_size", { gb: gb(mine.size) }) : t("regions.keep_text")];
     if (r.kept && !makeRoom) lines.push(t("regions.keep_replaces")); // deleted already otherwise
     if (last?.settings?.mesh === "old") lines.push(t("regions.keep_old_setting")); // kept, it is flown
-    const answer = await askRegion({ title: t("regions.keep_title", { name }), lines,
+    const answer = await askRegion({ title: t("regions.keep_title", { of }), lines,
       yes: t("regions.keep_yes"), no: t("regions.keep_no") });
     if (!answer) return; // closed: nothing done
     keepOld = answer === "yes";
@@ -834,12 +841,11 @@ async function updateAsked(id, button) {
   await regionAct(`regions/${id}/install`, "POST", { keep_old: keepOld, make_room: makeRoom });
 }
 
-/** « Delete from the disk » on a region's kept old mesh: Live warns first that it cannot be
+/** Delete on a region's kept old mesh, which deletes it alone: Live warns first that it cannot be
  * downloaded again (the host keeps no release of before). */
 async function removeKept(id) {
-  const name = t(`region.${id}`);
-  const go = await askRegion({ title: t("regions.kept_ask_title", { name }), lines: [t("regions.kept_ask_text")],
-    yes: t("regions.kept_remove"), no: t("regions.kept_ask_no"), danger: true });
+  const go = await askRegion({ title: t("regions.kept_ask_title", { of: t(`region_of.${id}`) }), lines: [t("regions.kept_ask_text")],
+    yes: t("regions.remove"), no: t("regions.kept_ask_no"), danger: true });
   if (go === "yes") await regionAct(`regions/${id}/kept`, "DELETE");
 }
 

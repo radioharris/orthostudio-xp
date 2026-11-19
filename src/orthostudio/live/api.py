@@ -30,8 +30,9 @@ can include as it is the day Live comes into its window (``app.include_router``)
   ``POST /api/live/regions/{id}/install`` ``{"keep_old": bool, "make_room": bool}``: install or
   update one, the region of before kept or not, its kept old mesh deleted first for room or not;
   ``GET /api/live/regions/{id}/room``: the room its update lacks beside it, asked at the click;
-  ``DELETE /api/live/regions/{id}``: delete one; ``DELETE /api/live/regions/{id}/kept``: delete
-  its kept old mesh alone (409 for each where it may not);
+  ``DELETE /api/live/regions/{id}``: delete its installed mesh, its kept old mesh taking its place
+  where it keeps one, else the region; ``DELETE /api/live/regions/{id}/kept``: delete its kept old
+  mesh alone (409 for each where it may not);
 - ``GET /api/live/providers``: the imagery sources, as OrthoStudio XP's ``GET /api/providers``;
 - ``POST /api/live/choose-folder`` ``{"prompt", "start"}``: the system's folder dialog, as
   OrthoStudio XP's ``POST /api/choose-folder``; ``POST /api/live/reveal`` ``{"path"}``: the

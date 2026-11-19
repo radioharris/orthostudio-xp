@@ -1054,7 +1054,8 @@ Live lays its photos on its own mesh of the world, which it installs by region f
 one in use, which it replaces in one go once complete, with Live stopped and X-Plane closed: with
 X-Plane open, the update waits ("Update ready") and Live puts it in place at its next start with
 X-Plane closed; so do the masks of rivers and lakes Soft banks downloads. The update can keep the
-region's old mesh beside the new one, to go back to it with « Mesh: Old » in the same tab; where the
+region's old mesh beside the new one, to go back to it with « Mesh: Old » in the same tab; each mesh
+then has its own Delete, the region's deleting the new one, the old one taking its place. Where the
 disk lacks room for both, Live offers to delete the kept old mesh first, only when that is enough on
 every disk the update needs. While a region downloads, Start waits. Where none is installed, it can
 use another tool's mesh in AutoOrtho's format, from a folder chosen in the same tab. Your own tiles
