@@ -208,7 +208,7 @@ def _encoded(line: str, limit: int = 200) -> bytes:
 
 
 class Gate:
-    def __init__(self, xplane: Path, airports: Airports, port: int = GATE_PORT):
+    def __init__(self, xplane: Path, airports: Airports, port: int = GATE_PORT, lang: str = "en"):
         self.prefs = xplane / "Output" / "preferences" / "Freeflight.prf"
         self.airports = airports
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -225,7 +225,8 @@ class Gate:
         self._lock = threading.Lock()  # the socket's reads, the loop's or the stand-in's
         self._inbox: list[Request] = []  # read for the loop while it was busy
         self._polled = time.monotonic()  # the loop's last read of the plugin's lines
-        self._wait = _wait_line(0, "", 0.0, 0.0, 0.0, "en")  # what the gate says for the loop
+        # what the gate says for the loop, in the Live window's language from its first line
+        self._wait = _wait_line(0, "", 0.0, 0.0, 0.0, lang)
         self._stood_in: list[float] = []  # how late the loop was, each time
         self._closed = threading.Event()
         threading.Thread(target=self._stand_in, name="live-gate", daemon=True).start()
