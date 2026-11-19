@@ -949,6 +949,7 @@ class StartBarTest(unittest.TestCase):
             urgent_left=lambda: day.left,
             urgent_building=lambda: 0,
             built_copy=lambda: {},
+            squares_left=lambda *points: 0,
         )
         a = Arrival(43.63, 1.37, "LFBO", "plugin", 0.0)
         self.assertEqual(start_count(s, a, 0.0, fresh=True)["progress"], 0.0)
@@ -1211,6 +1212,7 @@ class NightDiskTest(unittest.TestCase):
             urgent_left=lambda: 0,
             urgent_building=lambda: 0,
             built_copy=lambda: {},
+            squares_left=lambda *points: 0,
         )
         a = Arrival(46.24, 6.11, "LSGG", "plugin", 0.0, held_time=(171, 15.5))
         self.assertEqual(start_count(s, a, 100.0)["left"], 8700)  # its photos built: not ready
@@ -1331,6 +1333,9 @@ class NightDiskTest(unittest.TestCase):
         from orthostudio.live.streamer import Arrival
 
         a = Arrival(43.70, 7.25, "LFMN", "plugin", 0.0)
-        shown = a.count(0, 0, 8700, 0.4)
-        self.assertEqual(shown, {"left": 8700, "building": 8700, "night": 8700, "progress": 0.4})
+        shown = a.count(0, 0, 8700, 0.4, squares=3)
+        self.assertEqual(
+            shown,
+            {"left": 8700, "building": 8700, "night": 8700, "progress": 0.4, "squares": 3},
+        )
         self.assertIs(a.shown, shown)

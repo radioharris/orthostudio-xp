@@ -939,6 +939,46 @@ def _views(statuses: list[dict]) -> dict:
     return json.loads(re.sub(r"\\u00a0|\\u202f|\u00a0|\u202f", " ", out.stdout))
 
 
+@pytest.mark.skipif(NODE is None, reason="needs node")
+def test_the_start_s_line_says_the_squares_once_every_texture_is_built() -> None:
+    """The line under the start's bar says what the plugin's loading window says (live_gate.c's
+    show()), from the same count: the squares whose files are being made once no texture is left,
+    where it said « 0 textures à construire » (LSGG, 2026-11-19)."""
+    starts = [
+        {"left": 0, "squares": 36, "seconds": 12},
+        {"left": 0, "squares": 1, "seconds": 14},
+        {"left": 3, "building": 0, "squares": 36, "seconds": 2},  # textures left: they first
+        {"left": 7, "building": 7, "night": 7, "squares": 0, "seconds": 17},
+        {"left": 0, "seconds": 3},  # a count of before: no squares
+    ]
+    script = (
+        f"import {{ holdText }} from {json.dumps((UI_DIR / 'live.js').as_uri())};"
+        f"import {{ setLanguage }} from {json.dumps((UI_DIR / 'strings.js').as_uri())};"
+        f"const starts = {json.dumps(starts)}; const out = {{}};"
+        "for (const lang of ['en', 'fr']) { setLanguage(lang);"
+        " out[lang] = starts.map((s) => holdText(s, 5.2)); }"
+        "console.log(JSON.stringify(out));"
+    )
+    out = subprocess.run(
+        [NODE or "node", "--input-type=module", "-e", script],
+        capture_output=True,
+        encoding="utf-8",
+        check=True,
+    )
+    said = json.loads(out.stdout)
+    assert said["fr"] == [
+        "Préparation du sol : 36 carrés · 12 s",
+        "Préparation du sol : 1 carré · 14 s",
+        "3 textures à construire · 5,2 Mo/s · 2 s",
+        "7 textures de nuit à construire · 17 s",
+        "0 textures à construire · 5,2 Mo/s · 3 s",
+    ]
+    assert said["en"][:2] == [
+        "Preparing the ground: 36 squares · 12 s",
+        "Preparing the ground: 1 square · 14 s",
+    ]
+
+
 def _streaming(**streamer: object) -> dict:
     """A status while Live runs: an aircraft flying, everything the two cards show."""
     return {

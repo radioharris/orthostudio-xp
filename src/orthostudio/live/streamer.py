@@ -1998,6 +1998,8 @@ class Arrival:
     counted: float = 0.0  # when it was worked out
     # the flight's day of the year from 0 and UTC hours, as the plugin read them in X-Plane
     held_time: tuple[float, float] | None = None
+    # where X-Plane says it loads the flight (the plugin's HOLD): its squares waited for too
+    held_at: tuple[float, float] | None = None
     loading: bool = (
         True  # X-Plane went through a load since: its position stopped, or the plugin spoke
     )
@@ -2023,14 +2025,18 @@ class Arrival:
         done = 1.0 - (left + night_left) / whole
         return min(done, 0.99) if left + night_left else done
 
-    def count(self, left: int, building: int, night_left: int, done: float) -> dict:
+    def count(
+        self, left: int, building: int, night_left: int, done: float, squares: int = 0
+    ) -> dict:
         """What a start waits for: its textures and its night ones, those all of whose photos are
-        in, its progress (:func:`start_count`)."""
+        in, its progress, and the squares round it whose files are not made yet
+        (:func:`start_count`)."""
         self.shown = {
             "left": left + night_left,
             "building": building + night_left,
             "night": night_left,
             "progress": done,
+            "squares": squares,
         }
         return self.shown
 
@@ -2077,11 +2083,14 @@ COUNT_EVERY_S = 1.0
 
 def start_count(streamer: Streamer, arrival: Arrival, now: float, fresh: bool = False) -> dict:
     """What a start waits for, worked out in this one place: the textures X-Plane may show there
-    and, at night, the night ones round it, those all of whose photos are in, its progress. The
-    plugin and the pause window show it as it is (``fresh``), Live's window as it was at most
-    :data:`COUNT_EVERY_S` before, X-Plane held or not; the start is ready when none is left.
-    Live's window said ready, or nothing, while X-Plane waited for 8,700 night textures, and its
-    count stood still once X-Plane was let go (the review of 2026-11-11)."""
+    and, at night, the night ones round it, those all of whose photos are in, its progress, and
+    the squares of X-Plane's window round it and round where X-Plane says it loads whose files are
+    not made yet (:meth:`Streamer.squares_left`). The plugin and the pause window show it as it is
+    (``fresh``), Live's window as it was at most :data:`COUNT_EVERY_S` before, X-Plane held or
+    not; the start is ready when no texture and no square is left. Live's window said ready, or
+    nothing, while X-Plane waited for 8,700 night textures, and its count stood still once X-Plane
+    was let go (the review of 2026-11-11); it said 0 textures to build, as the plugin did, for the
+    19 s the files of 36 squares took after a region update (LSGG, 2026-11-19)."""
     if not fresh and arrival.shown is not None and now - arrival.counted < COUNT_EVERY_S:
         return arrival.shown
     arrival.counted = now
@@ -2091,7 +2100,9 @@ def start_count(streamer: Streamer, arrival: Arrival, now: float, fresh: bool = 
         streamer.night.tick((arrival.lat, arrival.lon), arrival.held_time, streamer.built_copy)
         night_left, night = streamer.night.start_left(left), streamer.night.start_night
     done = arrival.progress(left, night_left, night)
-    return arrival.count(left, streamer.urgent_building(), night_left, done)
+    held_at = [arrival.held_at] if arrival.held_at is not None else []
+    squares = streamer.squares_left((arrival.lat, arrival.lon), *held_at)
+    return arrival.count(left, streamer.urgent_building(), night_left, done, squares)
 
 
 def may_have_read_early(arrival: Arrival, xplane_started: float | None) -> bool:
@@ -2394,6 +2405,7 @@ def run(
                     arrival.loading = True
                     if kind == "HOLD":
                         streamer.hold_at(lat, lon)
+                        arrival.held_at = (lat, lon)
                         if gate.held_day is not None and gate.held_utc is not None:
                             if arrival.held_time is None:
                                 utc = int(gate.held_utc) // 60
@@ -2420,7 +2432,7 @@ def run(
                         # start was chosen and where X-Plane says it loads it: the plugin counts
                         # them down once every texture is built (it said 0 textures to build for
                         # the 19 s they took after a region update, LSGG 2026-11-19)
-                        squares = streamer.squares_left((arrival.lat, arrival.lon), (lat, lon))
+                        squares = shown["squares"]
                         ready = shown["left"] == 0 and squares == 0
                         gate.answer(
                             addr,
@@ -2483,7 +2495,7 @@ def run(
                     left, building = shown["left"] - night_left, shown["building"] - night_left
                     done = shown["progress"]
                     stalled = left > 0 and streamer.stalled_s() > STALL_S
-                    squares = streamer.squares_left((arrival.lat, arrival.lon))
+                    squares = shown["squares"]
                     ready = shown["left"] == 0 and squares == 0
                     pause_window.show(
                         *lines(
@@ -2539,8 +2551,8 @@ def run(
                 arrival is not None
                 and arrival.ready_at is None
                 and streamer.urgent_left() == 0
-                and start_count(streamer, arrival, now)["left"] == 0  # its night textures too
-                and streamer.squares_left((arrival.lat, arrival.lon)) == 0
+                # its night textures too, and its squares' files
+                and not any(start_count(streamer, arrival, now)[k] for k in ("left", "squares"))
             ):
                 arrival.ready_at = now
                 log(f"  everything X-Plane will read around {arrival.name} is built")

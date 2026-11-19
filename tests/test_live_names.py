@@ -27,7 +27,7 @@ from orthostudio.live.names import (
     squares_round,
 )
 from orthostudio.live.region import neutral_file, setup_region, sources_of_pack
-from orthostudio.live.streamer import Fix, Streamer
+from orthostudio.live.streamer import Arrival, Fix, Streamer, start_count
 
 # ZL16 textures in a row eastwards from NAMES[0]: ROW[10] lies on the squares (46, 2) and (46, 3)
 ROW = tuple(f"23296_{33152 + 16 * k}_BI16" for k in range(12))
@@ -504,9 +504,13 @@ def test_a_start_is_ready_once_its_squares_are_made(tmp_path: Path) -> None:
     s.plan(Fix(46.5, 2.5), x_plane_there=False, starting=True)
     window = squares_round([(46.5, 2.5)], 0)
     assert s.squares_left((46.5, 2.5)) == len(window)  # the plugin holds X-Plane meanwhile
-    # where X-Plane says it loads the flight counted too, each square once
+    # the start's one count, which the plugin, the pause window and Live's window show: where
+    # X-Plane says it loads the flight counted too, each square once
+    start = Arrival(46.5, 2.5, "LFLX", "click", 0.0)
+    assert start_count(s, start, 0.0, fresh=True)["squares"] == len(window)
+    start.held_at = (46.5, 3.5)
     both = squares_round([(46.5, 2.5), (46.5, 3.5)], 0)
-    assert len(window) < s.squares_left((46.5, 2.5), (46.5, 3.5)) == len(both)
+    assert len(window) < start_count(s, start, 0.0, fresh=True)["squares"] == len(both)
     s.names.start()
     try:
         assert s.names.wait_ready(window, 10.0)

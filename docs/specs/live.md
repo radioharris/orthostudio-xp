@@ -387,7 +387,8 @@ start the names are made while the first textures are built, and 168 good ones w
 over Norway (2026-09-30; `Names.leads_to_neutral`). A start's are
 made from the click, and the plugin holds X-Plane until those of its window are there
 (`Streamer.squares_left`, by the rule of `Names.left`: a square made, or failing past `GIVE_UP_S`,
-counts as made); once every texture is built its loading window counts down the squares left
+counts as made; counted in `start_count`, with the textures); once every texture is built its
+loading window and Live's window count down the squares left
 (`sq=`, below): it said « 0 textures à construire » for the 19 s the files of 36 squares took after
 a region update (LSGG, 2026-11-19); in flight, the ring gives a square of flight to make the next
 column before X-Plane loads it (4 to 7 minutes at 480 kt, 1.5 for a Concorde). The squares two rings from
@@ -1847,7 +1848,7 @@ A plugin that does not return from one of these messages holds the whole load.
     count the hold waits for, sent always, 0 too, which an older plugin reads past; it said
     « 0 textures à construire » for 19 s at LSGG, 2026-11-19), the
     seconds since the start was known, and a progress bar; the window's start card says the same,
-    the squares aside (it says 0 textures to build meanwhile).
+    from the same count (`start_count`, its textures, night textures and squares).
     The bar is the share done of the count it shows, its textures and, while the start waits for
     them (`NightWork.start_night`), its night textures, each part's whole the most seen while it is
     wanted, going back only as work is added, never full with work left (`Arrival.progress`):

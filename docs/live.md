@@ -128,8 +128,8 @@ slow disk).
    where you have flown before, a minute or two the first time in a new area. Live's window and a
    small panel over X-Plane count down the textures left, with the download rate, or « every photo
    in, building » once only the building is left. After a region update or a change of *Rivers
-   and lakes*, the first flight's panel may then say « Preparing the ground: 36 squares » for a
-   few seconds, while the files X-Plane reads for the squares round you are made. X-Plane's own
+   and lakes*, both may then say « Preparing the ground: 36 squares » for a few seconds at the
+   first flight, while the files X-Plane reads for the squares round you are made. X-Plane's own
    window looks frozen meanwhile: it is waiting, it has not crashed.
    ![Live preparing a departure from Munich: its state says it builds the ortho around EDDM, with a bar, the textures left, the seconds gone by and the download rate](images/live/departure.png)
 
