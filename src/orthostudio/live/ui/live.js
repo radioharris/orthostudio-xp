@@ -756,10 +756,12 @@ async function updateAsked(id, button) {
   if (r.whole) {
     regionsError(null);
     const label = button?.textContent;
-    if (button) {
-      button.disabled = true; // a stale stage is read whole: seconds, maybe more
+    // a stale stage is read whole: seconds, maybe more, which the button says; the count is
+    // most often a few milliseconds, and the button's words changed and back flickered
+    const slow = button ? setTimeout(() => {
+      button.disabled = true;
       button.textContent = t("regions.room_asking");
-    }
+    }, 300) : null;
     let room = null;
     try {
       room = (await api(`regions/${id}/room`)).room;
@@ -767,6 +769,7 @@ async function updateAsked(id, button) {
       regionsError(error);
       return;
     } finally {
+      clearTimeout(slow);
       if (button) { // the room known: the questions come next, the button as it was
         button.disabled = false;
         button.textContent = label;
