@@ -710,14 +710,17 @@ function regionRow(id, mine, r, install, running, idle, xplane) {
     size = t("regions.sizes", { download: gb(r.download), disk: gb(r.unpacked) });
   }
   const buttons = [];
+  // its Delete armed: a short « Sure? » on the button, what it deletes on a line under the row (the
+  // whole sentence on the button widened the buttons' column and moved every row, 2026-11-19)
+  const armed = mine && removeArmed === id;
+  const sure = !armed ? null
+    : r.kept ? t("regions.confirm_remove_kept", { name }) : t("regions.confirm_remove", { name });
   if (busy && running) {
     buttons.push({ act: "cancel", label: t("regions.cancel") });
   } else if (mine) {
     if (r.changed) buttons.push({ act: "update", label: t("regions.update"), disabled: running || !idle });
-    const armed = removeArmed === id;
-    const sure = r.kept ? t("regions.confirm_remove_kept", { name }) : t("regions.confirm_remove", { name });
     buttons.push({ act: armed ? "remove" : "arm", danger: true, disabled: !idle || running || xplane,
-      label: armed ? sure : t("regions.remove") });
+      label: armed ? t("regions.remove_sure") : t("regions.remove") });
   } else if (r.download) {
     buttons.push({ act: "install", label: t("regions.install"), disabled: running });
   }
@@ -733,7 +736,7 @@ function regionRow(id, mine, r, install, running, idle, xplane) {
     text: r.kept.size ? t("regions.kept_size", { gb: gb(r.kept.size) }) : t("regions.kept"),
     button: { act: "remove_kept", label: t("regions.kept_remove"), danger: true, disabled: !idle || running || xplane },
   } : null;
-  return { id, size, state, buttons, line, bar: busy && running, kept };
+  return { id, size, state, buttons, line, bar: busy && running, kept, sure };
 }
 
 /** A region's question (the region-ask <dialog>, :func:`ask`): its title, its lines and its two
@@ -910,6 +913,12 @@ function drawRegions(status) {
       }));
       head.append(label, actions);
       li.append(head);
+      if (row.sure) {
+        const sure = document.createElement("p");
+        sure.className = "question-help";
+        sure.textContent = row.sure;
+        li.append(sure);
+      }
       if (row.kept) {
         const kept = document.createElement("div");
         kept.className = "region-kept";
