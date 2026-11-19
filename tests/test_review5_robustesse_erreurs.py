@@ -35,8 +35,8 @@ def _cfg(**kw) -> dict:
 def test_the_airport_cover_is_not_a_refusal(tmp_path: Path) -> None:
     """Was ``test_vectors_native_is_refused_when_the_tile_covers_airports_with_highres``.
 
-    ``cover_airports_with_highres`` reads the airport record the vector stage publishes
-    (``airports-integration.md`` 3 and 4), so it is a setting like any other.
+    ``cover_airports_with_highres`` reads the airport record the vector stage publishes,
+    so it is a setting like any other.
     """
     triangle = tmp_path / "Triangle4XP"
     triangle.write_bytes(b"")
@@ -66,8 +66,7 @@ def test_dem_vectors_means_what_it_says(tmp_path: Path) -> None:
     """Was ``test_vectors_native_says_so_when_it_overrides_an_explicit_dem_vectors``.
 
     Review 5's defect was that ``--dem vectors`` silently became ``dem=native``. The vector
-    stage publishes its own smoothed ``Data<tile>.alt``, so both values mean what they say
-    (``airports-integration.md`` 3).
+    stage publishes its own smoothed ``Data<tile>.alt``, so both values mean what they say.
     """
     triangle = tmp_path / "Triangle4XP"
     triangle.write_bytes(b"")

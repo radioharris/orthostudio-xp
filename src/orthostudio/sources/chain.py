@@ -2,7 +2,7 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Where a tile's map data comes from, in order: prepared libraries first, Overpass last.
 
-Specification: ``docs/specs/osm-prepared.md``. The night of 2026-09-22 stopped every build on
+The night of 2026-09-22 stopped every build on
 every continent because the one thing a tile cannot do without was asked of three public machines
 and two of them became unusable at once. The data is public and downloadable in bulk, so the same
 four questions can be answered from files, in milliseconds, with no quota.
@@ -162,7 +162,7 @@ class FolderSource:
                 # An XML file says nothing about the question it answers: Ortho4XP's small roads
                 # of a tile are the same file name whichever road level fetched them, and taken
                 # at another one they give a scenery missing roads, or holding roads the settings
-                # exclude, with nothing to say so. The spec held the folder to this rule; only
+                # exclude, with nothing to say so. The rule was meant for the folder too; only
                 # the public library applied it (found in review, 2026-09-25). Builds at road
                 # level 0 and 1 never ask for this layer.
                 if not self._said_road_level:
@@ -340,7 +340,7 @@ def settings_trouble(settings: Mapping[str, object]) -> list[OsxpError]:
 def sources_from_settings(
     settings: Mapping[str, object], *, cache_dir: Path | None = None
 ) -> list[PreparedSource]:
-    """The sources a build asks, in order, read from the settings (``osm-prepared.md`` 6)."""
+    """The sources a build asks, in order, read from the settings."""
     out: list[PreparedSource] = []
     folder = str(settings.get("osm_folder", "") or "").strip()
     if folder:

@@ -2,12 +2,12 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """The scenery pack of a tile and its installation: rules ``tile.pack`` and ``tile.install``.
 
-Spec: ``docs/specs/pipeline-build.md`` sections 2.3 and 3. The pack is an *effect* (files
+The pack is an *effect* (files
 under the output directory, links under ``Custom Scenery``); the artefacts of these rules are
 small receipts keyed on their inputs and destination, so an unchanged build hits, and
 :func:`pack_is_intact` / :func:`install_is_intact` let the caller redo the effect after a hit.
-:func:`uninstall_receipt` and :func:`delete_receipt` undo them (``docs/specs/install.md`` 4.1
-and 4.2): what ``osxp uninstall`` and the page's library call.
+:func:`uninstall_receipt` and :func:`delete_receipt` undo them: what ``osxp uninstall`` and
+the page's library call.
 
 Both rule functions read their environment (store, output root, Custom Scenery, library) from
 a context variable set by :func:`pack_env`; the scheduler's ``run`` wrapper in
@@ -119,7 +119,7 @@ tile pack, which X-Plane no longer reads, and where :func:`install_receipt` find
 LEFT_OVERLAY = "osxp-overlay.dsf.left"
 """The overlay DSF of a tile whose roads, forests and buildings the user left to another pack's
 overlays (AutoOrtho's, XPME's, Ortho4XP's): X-Plane does not read it here, and it stays through an
-uninstall, an install and a rebuild until the user takes the overlay back (``install.md`` 4.3)."""
+uninstall, an install and a rebuild until the user takes the overlay back."""
 _OTHER_OVERLAYS = re.compile(r"(?i)overlays?$")
 """An overlay pack of another tool (``yAutoOrtho_Overlays``, ``XPME_Overlays``,
 ``yOrtho4XP_Overlays``)."""
@@ -191,7 +191,7 @@ class ArtefactEntry:
 
 @dataclass(slots=True)
 class PackManifest:
-    """Content of ``orthostudio.toml`` (spec section 3): deterministic, no timestamp."""
+    """Content of ``orthostudio.toml``: deterministic, no timestamp."""
 
     tile: str
     provider: str
@@ -1125,7 +1125,7 @@ def _take_out_other_build(pack_dir: Path, custom_scenery: Path, tile: TileRef) -
         _uninstall(pack_dir.name, custom_scenery)
 
 
-# -- the overlays of other packs (install.md 4.3) ---------------------------------------------
+# -- the overlays of other packs --------------------------------------------------------------
 
 
 @dataclass(frozen=True, slots=True)
@@ -1741,7 +1741,7 @@ def find_tiles_receipt(
     leave: Collection[str] = (),
 ) -> dict[str, Any]:
     """The tiles OrthoStudio XP built in ``folder`` (``library.own_pack_dirs``) that the Library
-    does not list there, each taken back (``install.md`` 4.8). A user moved his tiles by hand,
+    does not list there, each taken back. A user moved his tiles by hand,
     found 200 of 1,300 again one by one, deleted the rest from the list, and his map stayed
     empty: nothing looked for them in his workshop's own tiles folder, where they were
     (2026-10-22). The page runs it on the workshop's tiles folder whenever the Library is read

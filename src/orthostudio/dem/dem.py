@@ -2,13 +2,12 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """The :class:`Dem` object: the raster of one tile and the altitude queries built on it.
 
-Spec: ``docs/specs/dem.md`` section 8.
 Origin: Ortho4XP ``src/O4_DEM_Utils.py:37-350`` (class ``DEM``).
 
 The hot method is :meth:`Dem.alt_vec`: the vector stage calls it once per way and the mesh
 stage once per vertex block. Ortho4XP evaluates its four raster corners with four Python list
 comprehensions over ``zip``; here they are four fancy-indexing gathers, bit-identical and
-about sixteen times faster (``docs/specs/dem.md`` section 11).
+about sixteen times faster.
 """
 
 from __future__ import annotations
@@ -137,7 +136,7 @@ class Dem:
 
     ``x``/``y`` are tile-local (``x = lon - tile.lon``); the raster runs north to south. The
     window is ``[x0, x1] x [y0, y1]``, slightly larger than the unit square for an assembled
-    source (section 4.1).
+    source.
     """
 
     tile: TileRef
@@ -447,7 +446,7 @@ class Dem:
         np.asarray(self.alt_dem, dtype=np.float32).tofile(path)
 
     def meta(self) -> dict[str, object]:
-        """The ``meta.json`` document of the artefact (spec section 9)."""
+        """The ``meta.json`` document of the artefact."""
         return {
             "format": META_FORMAT,
             "tile": self.tile.name,

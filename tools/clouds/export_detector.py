@@ -1,6 +1,6 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""Make the cloud detector's two files from OmniCloudMask (``docs/specs/clouds.md`` 4.1).
+"""Make the cloud detector's two files from OmniCloudMask.
 
 OmniCloudMask (DPIRD, MIT licence) ships PyTorch networks; the app runs them with OpenCV, which
 reads ONNX and runs both only once they are simplified (their shapes worked out in advance).

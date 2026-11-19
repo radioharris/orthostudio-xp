@@ -1,6 +1,6 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""The map proxy, ``GET /api/map/{provider}/{z}/{x}/{y}`` (``docs/specs/map-zones.md`` section 6).
+"""The map proxy, ``GET /api/map/{provider}/{z}/{x}/{y}``.
 
 ``httpx.ASGITransport`` on a temporary ``OSXP_HOME``; the upstream is a stub ``fetch`` (no
 network), except in the two tests of the real client, which talk to a loopback server. One test
@@ -607,7 +607,7 @@ async def test_a_fetch_cut_by_the_deadline_is_502_and_its_fetcher_is_not_lent_ag
 
 @pytest.mark.anyio
 async def test_the_application_serves_the_map(home: Path) -> None:
-    """``create_app`` includes the map router (integration of map-zones.md 8); ``map_fetch``
+    """``create_app`` includes the map router; ``map_fetch``
     keeps the request on the machine."""
     from orthostudio.api.app import create_app
     from orthostudio.api.jobs import JobManager

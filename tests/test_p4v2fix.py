@@ -2,8 +2,7 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Review-6 fixes outside the noder: the airport dictionary, smoothing tag, events, writes.
 
-Specs: ``docs/specs/airports-integration.md`` 4 (the records, atomicity, events) and
-``docs/specs/airports-geometry.md`` 6 (differences 8 and 9). No network.
+No network.
 """
 
 from __future__ import annotations

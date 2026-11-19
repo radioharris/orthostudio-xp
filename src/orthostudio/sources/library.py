@@ -2,7 +2,7 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """The baked library a build reads over HTTP, and the key it opens with.
 
-Specification: ``docs/specs/osm-prepared.md``. The files are those of the baked library: one
+The files are those of the baked library: one
 snapshot per tile and per layer, under ``osm/<cell>/<tile>/<tile>_<layer>.osm.json.zst``, listed
 by a ``manifest.json`` that gives each one its size and the content digest of its layer.
 
@@ -91,7 +91,7 @@ CONNECT_TIMEOUT_S = 5.0
 """What reaching the server may take."""
 LIBRARY_TIMEOUT_S = 30.0
 """How long a request may go without receiving a byte. A library exists to save seconds; one that
-hangs would cost them, so silence is a failure and the chain moves on (``osm-prepared.md`` 4).
+hangs would cost them, so silence is a failure and the chain moves on.
 
 Silence, not slowness. A file of the planet library weighs up to 61 MB (Tokyo's small roads) and
 its manifest 28 MB; a limit on the whole transfer, 35 s as it first was, failed them below 14 and
@@ -499,7 +499,7 @@ class LibrarySource:
         waits two minutes and asks again. But a library down for the whole build was asked every
         two minutes all build long, and a silent one cost 35 s each time, some fifty minutes of
         a three-hour build: at the second failure it is set aside, as a library that fails two
-        tiles is (``osm-prepared.md`` 4, 2026-09-25).
+        tiles is.
         """
         self._manifest_failures += 1
         if self._manifest_failures >= GIVE_UP_AFTER:

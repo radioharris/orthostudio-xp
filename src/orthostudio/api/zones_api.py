@@ -1,6 +1,6 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""``GET`` and ``PUT /api/zones``: the zones document of the page (spec ``map-zones.md`` 3).
+"""``GET`` and ``PUT /api/zones``: the zones document of the page.
 
 :func:`zones_router` returns an ``APIRouter`` that ``orthostudio.api.app.create_app`` includes::
 
@@ -57,7 +57,7 @@ from orthostudio.zones import (
 __all__ = ["ZONE_CONFLICT_STATUS", "ZONE_ERROR_STATUS", "revision_matches", "zones_router"]
 
 ZONE_ERROR_STATUS = 422
-"""HTTP status of ``ZONE_*`` errors (spec section 3)."""
+"""HTTP status of ``ZONE_*`` errors."""
 ZONE_CONFLICT_STATUS = 409
 """HTTP status of ``ZONE_CONFLICT``: the save was based on another revision of the file."""
 

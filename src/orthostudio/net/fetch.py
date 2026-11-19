@@ -2,7 +2,7 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Bounded, self-adjusting HTTP fetcher on top of curl_cffi (libcurl multi, HTTP/2).
 
-Rules and their justification: ``docs/specs/net-download.md`` (R1-R7). In short:
+The rules, in short:
 
 - one ``AsyncSession`` for the life of the ``Fetcher`` (connections kept alive);
 - per ``host_group`` AIMD window: +1 per round of successes up to ``max_in_flight``, halved on
@@ -22,7 +22,7 @@ Rules and their justification: ``docs/specs/net-download.md`` (R1-R7). In short:
 - cooperative cancellation through an ``asyncio.Event`` (returns within a second);
 - sliding statistics delivered at most four times per second;
 - per-run overrides of the in-flight ceiling and of the attempts, so that a caller can run a
-  spaced, low-concurrency retry round on the same session, AIMD and pause state (spec R4);
+  spaced, low-concurrency retry round on the same session, AIMD and pause state;
 - the transport error of a request given up is kept as text (``FetchResult.detail``), so that
   a failure reported to the user says what happened on the wire.
 
@@ -90,7 +90,7 @@ class FetchResult:
 
 @dataclass(slots=True, frozen=True)
 class FetchStats:
-    """Snapshot of a ``fetch_many`` run (see spec R6)."""
+    """Snapshot of a ``fetch_many`` run."""
 
     done: int
     total: int
@@ -112,7 +112,7 @@ class FetchStats:
     2026-09-24: "the source is asking us to slow down" beside 1 269 requests a second)."""
 
 
-# --- constants (spec R2-R4, R6) ---------------------------------------------------------------
+# --- constants --------------------------------------------------------------------------------
 
 MIN_IN_FLIGHT = 8
 LATENCY_RING = 1000
@@ -201,7 +201,7 @@ class _Pending:
 
 
 class _Group:
-    """AIMD state of one ``host_group`` (spec R2)."""
+    """AIMD state of one ``host_group``."""
 
     __slots__ = (
         "answer_times",
@@ -300,7 +300,7 @@ class _Group:
         return self.paused_until
 
     def hedge_after(self, floor: float) -> float:
-        """How long a transfer goes without an answer before it is doubled (spec R3): ``floor``
+        """How long a transfer goes without an answer before it is doubled: ``floor``
         (``hedge_after_s``), or twice the time 95 % of the group's last answers took, when longer.
 
         A fixed delay doubled nearly every image on a slow line, where every answer takes longer
@@ -390,7 +390,7 @@ class _Group:
 
 
 class Fetcher:
-    """Downloads many small bodies with per-host-group AIMD concurrency (spec section 1)."""
+    """Downloads many small bodies with per-host-group AIMD concurrency."""
 
     def __init__(
         self,
@@ -407,7 +407,7 @@ class Fetcher:
         pushback_status: tuple[int, ...] = (),
     ) -> None:
         """``pushback_status``: the statuses besides 429 with which the server asks to be asked
-        more slowly, taken as a 429 (spec R2): EOX answers 403 to the requests above the rate it
+        more slowly, taken as a 429: EOX answers 403 to the requests above the rate it
         tolerates, where a 403 is otherwise an answer that is neither slowed down for nor asked
         again (2026-10-25)."""
         if max_in_flight < 1 or start_in_flight < 1:
@@ -549,7 +549,7 @@ class Fetcher:
         ``limit_in_flight`` caps the requests admitted per group for this run below the AIMD
         window (which keeps adapting), and ``max_attempts`` replaces the constructor's for this
         run. They exist for a caller's spaced retry rounds: a round at low concurrency on the
-        same session keeps the group's pause after a 429 and its window (spec R4).
+        same session keeps the group's pause after a 429 and its window.
         """
         if self._busy:
             raise RuntimeError("fetch_many is already running on this Fetcher")
@@ -645,7 +645,7 @@ class Fetcher:
         on_result: Callable[[FetchResult], None] | None,
         callback_error: list[BaseException],
     ) -> None:
-        """Admit requests of one group while its window and pause allow (spec R2)."""
+        """Admit requests of one group while its window and pause allow."""
         while True:
             now = _now()
             group.promote_due(now)
@@ -718,7 +718,7 @@ class Fetcher:
             pending.last = outcome
             if outcome.kind == "pushback" and not self._cancelled:
                 # A 429 obeyed is not a failure of the request: it is re-queued at the tail
-                # after the group's pause, within a budget of its own (spec R2).
+                # after the group's pause, within a budget of its own.
                 not_before = group.pause(_retry_after(outcome.headers), now)
                 wait = not_before - now
                 if (
@@ -796,8 +796,8 @@ class Fetcher:
                     g.wake.set()
 
     async def _attempt(self, pending: _Pending, group: _Group, session: AsyncSession) -> _Outcome:
-        """One transfer, doubled after ``hedge_after_s`` (spec R3); no hedge starts while the
-        group is paused (spec R2)."""
+        """One transfer, doubled after ``hedge_after_s``; no hedge starts while the
+        group is paused."""
         req = pending.request
         pending.attempts += 1
         primary = asyncio.create_task(self._transfer(session, req, group))
@@ -841,7 +841,7 @@ class Fetcher:
     async def _transfer(self, session: AsyncSession, req: FetchRequest, group: _Group) -> _Outcome:
         """One HTTP transfer; never raises except ``CancelledError``.
 
-        It leaves only once its group's pause is over (spec R2), checked as it is handed to the
+        It leaves only once its group's pause is over, checked as it is handed to the
         session, in the same step: a request let in before a 429 came back was sent after it
         under load, during the pause the server had asked for (the whole suite on six workers,
         2026-10-03). The wait is not its latency, which tells the window how the server fares.

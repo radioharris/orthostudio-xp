@@ -1,6 +1,6 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""A relief file downloaded as it arrives (``dem.sources.http_download``, ``dem.md`` 3.5).
+"""A relief file downloaded as it arrives (``dem.sources.http_download``).
 
 It went through the imagery's fetcher, which cut every transfer at 30 s whole and started a
 second copy of it after 3 s: a USGS square of 443 MB never arrived on a line under some
@@ -179,7 +179,7 @@ def test_the_answers_keep_the_fetchers_codes(server: str, monkeypatch: pytest.Mo
 def test_a_429_is_obeyed_without_costing_an_attempt_within_its_budget(
     server: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The fetcher's rule, kept (``net-download.md`` R2): five refusals, two attempts, the file."""
+    """The fetcher's rule, kept: five refusals, two attempts, the file."""
     monkeypatch.setattr(fetch, "RETRY_AFTER_MIN_S", 0.05)
     got = sources.http_download(f"{server}/pushed", timeout_s=2.0, max_attempts=2)
     assert got.ok and got.body == BODY and _Handler.asked["/pushed"] == 6

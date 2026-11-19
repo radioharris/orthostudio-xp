@@ -2,7 +2,6 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Per-layer OSM tag sets, transcribed from Ortho4XP.
 
-Specification: ``docs/specs/vectors-osm-layers.md`` section 3.
 
 ``OSM_queries_to_OSM_layer`` (``O4_OSM_Utils.py:392-419``) derives two dictionaries from the
 Overpass selectors of a layer and from its ``tags_of_interest``:
@@ -12,7 +11,7 @@ Overpass selectors of a layer and from its ``tags_of_interest``:
 * ``target_tags``: what tags are kept at all.
 
 The selectors themselves are not re-typed here: they live once, verbatim and with their
-origin, in :data:`orthostudio.sources.osm.LAYERS` (``docs/specs/osm-source.md`` section 3).
+origin, in :data:`orthostudio.sources.osm.LAYERS`.
 """
 
 from __future__ import annotations

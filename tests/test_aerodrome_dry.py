@@ -1,6 +1,6 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""The water an aerodrome holds is taken out of it (``docs/specs/aerodrome-dry.md``).
+"""The water an aerodrome holds is taken out of it.
 
 Haneda's taxiway bridges sat under the water's surface in our tiles (forum report, 2026-10-13),
 and Avranches' whole aerodrome lay in the sea of OpenStreetMap's coastline. XPME, a mesh many

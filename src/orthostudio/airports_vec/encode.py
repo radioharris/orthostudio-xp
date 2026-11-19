@@ -12,14 +12,13 @@ sequence of objects shaped like Ortho4XP's ``dico_airports`` entries (:class:`Ai
 airport OSM layer for the ways whose ids those objects carry, and the elevation raster
 **after** it was smoothed over the airports, and it returns the passes, the seeds and the
 footprints the rest of the stage needs. It writes no file and never touches the noder: the
-assembler orders the passes (``docs/specs/vectors-assembly.md``).
+assembler orders the passes.
 
 The hot spot of Ortho4XP is here: ``weighted_alt`` (``O4_Vector_Utils.py:1250-1280``) gives every
 vertex of a runway, a traverse, a taxiway or an apron its altitude, one Python call and one
 rtree query at a time -- 14 091 of them on the reference tile. :class:`AltitudeField` does
-the same arithmetic in batches, 67 times faster (section 4 of the spec).
+the same arithmetic in batches, 67 times faster.
 
-Spec: ``docs/specs/airports-encoding.md``.
 """
 
 from __future__ import annotations
@@ -145,7 +144,7 @@ class RunwayLike(Protocol):
 
 @runtime_checkable
 class AirportLike(Protocol):
-    """One entry of Ortho4XP's ``dico_airports``, with its tuples given names (spec section 3).
+    """One entry of Ortho4XP's ``dico_airports``, with its tuples given names.
 
     Only these members are read here. Building them -- name discovery, runway reconstruction,
     hangar / apron / taxiway areas, boundary -- belongs to the airport data chantier; the
@@ -344,7 +343,7 @@ class AltitudeField:
 
     The only wanted difference is the order the weighted terms are summed in: Ortho4XP adds them
     in rtree order, here they are added by ``np.add.at`` in candidate-pair order, which moves
-    a z by at most a few ulps (spec 4.2).
+    a z by at most a few ulps.
     """
 
     lines: NDArray[np.object_]
@@ -510,7 +509,7 @@ def altitude_field(
 
 
 def _report(on_event: EventHandler | None, code: str, context: dict[str, object]) -> None:
-    """What Ortho4XP swallows in a bare ``except``: reported, never raised (spec 5.2, 7.2)."""
+    """What Ortho4XP swallows in a bare ``except``: reported, never raised."""
     if on_event is not None:
         on_event(OsxpError(code, context=context))
 
@@ -531,7 +530,7 @@ def _encode_runways(
 ) -> tuple[list[geometry.Polygon], geometry.Polygon | None, int]:
     """Runway outlines and their traverses (``O4_Airport_Utils.py:1139-1203``).
 
-    Returns the encoded polygons (the seeds of section 6.1 are computed from them), the last
+    Returns the encoded polygons (the seeds are computed from them), the last
     runway polygon *iterated* -- the leftover loop variable the apron branch reads at ``:1271``
     -- and how many traverses were inserted.
     """
@@ -745,7 +744,7 @@ def airport_bounds(airports: Sequence[AirportLike]) -> NDArray[np.float64]:
     """``(A, 4)`` bounding boxes of the airport boundaries, in input order.
 
     What ``airports.json`` carries and what the curvature weight map of the mesh stage reads
-    (``O4_Mesh_Utils.py:140-160``, ``docs/specs/mesh-build.md`` 3.2). An airport whose
+    (``O4_Mesh_Utils.py:140-160``). An airport whose
     boundary has no finite bounds is skipped rather than crashing the stage (**fix**: Ortho4XP
     raises ``ValueError`` on the unpacking).
     """

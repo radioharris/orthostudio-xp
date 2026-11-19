@@ -7,7 +7,6 @@ The altitude field is checked against a **literal transcription** of
 ``least_square_fit_altitude_along_way`` (``:1182-1212``) written in this file: the vectorised
 version must agree with the loop it replaces, on the same inputs, to the last bits.
 
-Spec: ``docs/specs/airports-encoding.md``.
 """
 
 from __future__ import annotations
@@ -210,7 +209,7 @@ def test_two_crossing_runways_seed_their_crossing() -> None:
 
 
 def test_a_runway_is_flat_to_the_smoothing_of_its_raster() -> None:
-    """Spec 5.3: flatness is a property of the smoothed raster, not of the encoder."""
+    """Flatness is a property of the smoothed raster, not of the encoder."""
     runway = _runway(0.2, 0.3, 0.35, 0.3)
 
     class Flat(Ramp):

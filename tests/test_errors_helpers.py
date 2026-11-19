@@ -1,6 +1,6 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""Shared helpers for the ``test_errors_*`` modules: parse ``docs/specs/errors.md``."""
+"""Shared helpers for the ``test_errors_*`` modules: parse the inventory of error codes."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ ORIGIN_PATTERN = re.compile(r"([A-Za-z0-9_]+\.py):(\d+)(?:-(\d+))?")
 
 @dataclass(frozen=True)
 class SpecRow:
-    """One inventory row of the spec table."""
+    """One inventory row of the error table."""
 
     code: str
     origin: str

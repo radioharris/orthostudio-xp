@@ -1,6 +1,6 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""Unit tests of the road builder (``docs/specs/vectors-water-roads.md`` 3).
+"""Unit tests of the road builder.
 
 No network: the roads are written as a small Ortho4XP-style ``.osm`` file
 and read back through ``OsmData``. The metric helpers are checked against a transcription of
@@ -219,7 +219,7 @@ def test_road_level_zero_builds_nothing(tmp_path: Path) -> None:
 
 
 def test_a_second_store_adds_its_roads(tmp_path: Path) -> None:
-    """``road_level >= 2``: the caller passes ``small_roads`` as well (spec 3.1).
+    """``road_level >= 2``: the caller passes ``small_roads`` as well.
 
     There is no ``small_roads`` cache on the reference machine and no network is allowed, so
     this is a mechanism test, not a fidelity one: the layer must grow, nothing more.

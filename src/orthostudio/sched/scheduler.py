@@ -1,6 +1,6 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""Asynchronous DAG scheduler over the artefact store (spec ``docs/specs/scheduler.md``).
+"""Asynchronous DAG scheduler over the artefact store.
 
 One event loop owns the state; nodes execute in a ``ProcessPoolExecutor`` (``cpu``) or in
 threads of a shared ``ThreadPoolExecutor`` (``subprocess``, ``net``, ``io``; ``cpu`` too in
@@ -95,7 +95,7 @@ class _Rec:
 
 
 class Scheduler:
-    """Runs a graph of :class:`Node` against a :class:`Store` (spec section 2)."""
+    """Runs a graph of :class:`Node` against a :class:`Store`."""
 
     def __init__(
         self,

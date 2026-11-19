@@ -2,14 +2,14 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """The graph rule ``orthostudio.vectors@1``: step 1 of Ortho4XP, natively.
 
-Spec: ``docs/specs/vectors-assembly.md`` section 6. The artefact is a directory holding
+The artefact is a directory holding
 ``Data<tile>.node`` and ``Data<tile>.poly``, which is what ``orthostudio.mesh`` reads, plus the
 replay file and the stats.
 
 Wave 2 completed it: the airports are built from the ``aeroway`` layer of the ``osm`` input,
 the elevation is smoothed over them before anything samples it, and the artefact publishes
 what the rest of the graph reads back -- the PSLG, the smoothed ``Data<tile>.alt`` with its
-``dem.json`` and OrthoStudio XP's airport record (``docs/specs/airports-integration.md``). Its
+``dem.json`` and OrthoStudio XP's airport record. Its
 measurements are in ``docs/benchmarks/p4-airports.md``.
 
 Where the layers come from is injected, like every other native rule's outside world
@@ -67,7 +67,7 @@ __all__ = [
 ]
 
 LAYER_BUILDER = ("orthostudio.vectors.layers", "build_layers")
-"""Module and function the wave-1 layer builders converge on; resolved lazily (spec 6)."""
+"""Module and function the wave-1 layer builders converge on; resolved lazily."""
 
 MIN_MESH_ZL, MAX_MESH_ZL = 0, 24
 """Range ``orthostudio.imagery.grid`` accepts; the orthophoto grid is built at ``mesh_zl``."""
@@ -77,7 +77,7 @@ DEM_JSON = "dem.json"
 
 
 class VectorsParams(RuleParams):
-    """Exactly what step 1 reads of the configuration (spec section 6).
+    """Exactly what step 1 reads of the configuration.
 
     ``custom_dem`` and ``fill_nodata`` are deliberately absent: the elevation reaches the rule as an
     artefact whose digest already keys it, as in ``orthostudio.mesh`` and ``orthostudio.masks``.
@@ -85,7 +85,7 @@ class VectorsParams(RuleParams):
 
     Wave 2 added two fields: ``apt_smoothing_pix``, the only ``tile.<attribute>`` of
     ``O4_Airport_Utils.py`` that is configuration, which changes the bytes of the ``Data<tile>.alt``
-    the artefact publishes (``airports-integration.md`` R-I6); and ``exact_grid_order``, a fidelity
+    the artefact publishes; and ``exact_grid_order``, a fidelity
     switch of OrthoStudio XP's own that changes the PSLG (corrected by review 6, this docstring said
     "exactly one field").
     """
@@ -224,8 +224,8 @@ class LayerRequest:
     not exist."""
     global_scenery: Path | None = None
     """The tile's DSF of X-Plane's Global Scenery: its elevation says where X-Plane draws land,
-    which guards a tile against a coastline that would make it all sea (``vectors-coastline.md``
-    section 9). ``None`` without X-Plane's scenery: the coastline is taken as it is."""
+    which guards a tile against a coastline that would make it all sea. ``None`` without X-Plane's
+    scenery: the coastline is taken as it is."""
     cancel: threading.Event | None = None
     rounded_road_ends: bool = False
     """The road and taxiway bands' ends drawn round, as by :data:`VECTORS`; angular, as by
@@ -243,8 +243,7 @@ class LayerBuild:
     Wave 1 returned only the layers, because the raster the rule already held was the raster
     every family sampled. Wave 2 smooths it over the airports first
     (``O4_Vector_Map.py:213``), so the rule assembles, samples the orthophoto grid and
-    publishes ``Data<tile>.alt`` from *this* raster and not from the one it read
-    (``docs/specs/airports-integration.md`` R-I1).
+    publishes ``Data<tile>.alt`` from *this* raster and not from the one it read.
 
     It lives here, beside :class:`LayerRequest`, because the pair *is* the contract of the
     injection point; the builder module imports the two and the rule imports no builder.
@@ -396,7 +395,7 @@ def run_vectors(ctx: RunContext) -> AssembledVectors:
     assembly = replace(params.assembly(), check_planar=job.check_planar, cancel=job.cancel)
     # ``build.dem`` and not ``dem``: the airports smoothed the raster, and the orthophoto
     # grid, the gluing border and the default seed must sample the same one every family
-    # sampled (``airports-integration.md`` R-I1).
+    # sampled.
     assembled = assemble_vectors(build.layers, tile, build.dem, assembly)
     assembled.stats.update(layer_stats(build))
     say(0.95, "writing what the relief must follow")
@@ -421,7 +420,7 @@ def layer_stats(build: LayerBuild) -> dict[str, object]:
 
 
 def write_elevation_and_airports(out_dir: Path, tile: TileRef, build: LayerBuild) -> None:
-    """Publish what the artefact holds beside the PSLG (``airports-integration.md`` 3 and 4).
+    """Publish what the artefact holds beside the PSLG.
 
     * ``Data<tile>.alt`` -- the raster **after** the airport smoothing, which is the one Ortho4XP
       writes (``O4_Vector_Map.py:169``) and the one Triangle4XP, the masks and the DSF read;
@@ -475,35 +474,34 @@ def osxp_vectors(ctx: RunContext) -> None:
 # Version 2: the dry rainwater basins OpenStreetMap marks as water are left out of the water
 # layer (``vectors.water.is_dry_basin``), so a tile's water built by version 1 is not this one.
 # Version 3: a runway drawn in parts that close on themselves is an outline or two copies of one
-# line, never a centre line of zero length (``airports-geometry.md`` 3.3, EGJA and LFRT,
-# 2026-10-12; version 2 in 1.0.1, which has no dry basins): a tile built again recomputes its
-# airports.
+# line, never a centre line of zero length (EGJA and LFRT, 2026-10-12; version 2 in 1.0.1, which
+# has no dry basins): a tile built again recomputes its airports.
 # Version 5: a node closer than 5 cm to an edge it does not end, and tied by an edge to one of
-# its ends, is put on that edge (``vectors-pslg.md`` 2.14, +35+139, 2026-10-13; version 4 in
-# 1.0.2, which has no dry basins); a tile with no such node gets the same files again, so its mesh
-# and DSF come from the cache.
+# its ends, is put on that edge (+35+139, 2026-10-13; version 4 in 1.0.2, which has no dry
+# basins); a tile with no such node gets the same files again, so its mesh and DSF come from the
+# cache.
 VECTORS: Rule = rule(
     name="orthostudio.vectors",
     # 2: a runway drawn in parts that close on themselves is an outline or two copies of one
-    # line, never a centre line of zero length (``airports-geometry.md`` 3.3, EGJA and LFRT,
-    # 2026-10-12): a tile built again recomputes its airports.
+    # line, never a centre line of zero length (EGJA and LFRT, 2026-10-12): a tile built again
+    # recomputes its airports.
     # 4: a node closer than 5 cm to an edge it does not end, and tied by an edge to one of its
-    # ends, is put on that edge (``vectors-pslg.md`` 2.14, +35+139, 2026-10-13); a tile with no
-    # such node gets the same files again, so its mesh and DSF come from the cache. Version 3
-    # was a first form of the rule, never released.
+    # ends, is put on that edge (+35+139, 2026-10-13); a tile with no such node gets the same
+    # files again, so its mesh and DSF come from the cache. Version 3 was a first form of the
+    # rule, never released.
     # 8: the water inside an aerodrome OpenStreetMap draws that its runways, taxiways or aprons
-    # enter is taken out of it, but for an aerodrome with a water runway (``aerodrome-dry.md``,
-    # 2026-10-14). Version 5 is taken by the dry basins of the ideas branch, 6 and 7 by first
-    # forms of this rule; artefacts of all three may be in a store already.
+    # enter is taken out of it, but for an aerodrome with a water runway (2026-10-14). Version 5
+    # is taken by the dry basins of the ideas branch, 6 and 7 by first forms of this rule;
+    # artefacts of all three may be in a store already.
     # 9: what such a cut leaves is put on the noder's grid, so a lake it leaves in two lobes that
     # touch at a point gets a seed in each (KXTA, Groom Lake, 2026-10-14); 8 made one of them land.
     # 10: 9 and the dry basins of the ideas branch (5) together, for 1.1.0 (2026-10-15), with the
-    # coastline guard's new input, the tile's Global Scenery DSF (``vectors-coastline.md``).
-    # 12: every region seed lies 10 cm inside its polygon, or the polygon gets none
-    # (``vectors-assembly.md`` 4.1): a Haneda RUNWAY seed 1 mm from its edge made all +35+139
+    # coastline guard's new input, the tile's Global Scenery DSF.
+    # 12: every region seed lies 10 cm inside its polygon, or the polygon gets none:
+    # a Haneda RUNWAY seed 1 mm from its edge made all +35+139
     # runway (2026-10-16). 11 is taken by a first fix of the same tile, never released.
     # 13: the road and airport bands get 8 segments a quadrant at their rounded ends, as
-    # Ortho4XP 1.30's do (``vectors-water-roads.md`` 7.9, KSME, 2026-10-24); 12's angular bands bent
+    # Ortho4XP 1.30's do; 12's angular bands bent
     # the roads laid on them.
     version=13,
     params=VectorsParams,
@@ -518,7 +516,7 @@ VECTORS_ANGULAR: Rule = replace(VECTORS, version=12)
 """``orthostudio.vectors@12``, the same rule with the angular band ends of Ortho4XP 1.40, the
 default since 2026-10-27: they are what 1.1.0 drew at version 12, and nothing else of the tracing
 changed between them, so a tile 1.1.0 traced is found as it is. Round ends doubled the tracing's
-time and memory at the service roads of a dense city (Atlanta, ``vectors-water-roads.md`` 3.7).
+time and memory at the service roads of a dense city (Atlanta).
 Which of the two a tile takes is its setting (:func:`vectors_rule`), never a field of the key."""
 
 

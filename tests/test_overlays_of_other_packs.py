@@ -1,9 +1,9 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""The overlays of other packs on the squares of OrthoStudio XP tiles (``docs/specs/install.md``
-4.3): X-Plane draws every active pack's overlays, so AutoOrtho's, XPME's or Ortho4XP's roads,
-forests and buildings came twice on a square an OrthoStudio XP tile also had (a user asked,
-2026-09-14). A fake X-Plane in a temporary folder; nothing of the machine's is read or written."""
+"""The overlays of other packs on the squares of OrthoStudio XP tiles: X-Plane draws every active
+pack's overlays, so AutoOrtho's, XPME's or Ortho4XP's roads, forests and buildings came twice
+on a square an OrthoStudio XP tile also had (a user asked, 2026-09-14). A fake X-Plane in a
+temporary folder; nothing of the machine's is read or written."""
 
 from __future__ import annotations
 

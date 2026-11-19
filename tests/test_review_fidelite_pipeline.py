@@ -4,7 +4,7 @@
 
 Uses the local tile server of ``test_pipeline_textures.py``. The tests that were ``xfail`` at
 review time (border PNG size, corrupted body, sea kind without mask) now pass: the markers
-were removed by the P1 fixes and each test names the spec section that records the rule.
+were removed by the P1 fixes.
 """
 
 from __future__ import annotations
@@ -66,7 +66,7 @@ def _mask_dir_at_zl5(tmp_path: Path, window: np.ndarray) -> Path:
 
 
 def test_border_png_keeps_the_crop_size_like_ortho4xp(server: TileServer, tmp_path: Path) -> None:
-    """Spec pipeline section 3: with ``imprint_masks_to_dds=False`` the border PNG is the raw
+    """With ``imprint_masks_to_dds=False`` the border PNG is the raw
     crop (``4096 // factor`` px, ``O4_DSF_Utils.py:737-742`` saves ``needs_mask``'s
     ``small_img``), the resolution the ``.ter`` declares in ``LOAD_CENTER_BORDER``."""
     window = np.zeros((2048, 2048), dtype=np.uint8)
@@ -95,10 +95,10 @@ def test_dxt5_decision_uses_the_raw_crop_as_ortho4xp_even_when_bicubic_overshoot
     server: TileServer, tmp_path: Path
 ) -> None:
     """A crop whose maximum is exactly 30 next to zeros: bicubic upsampling overshoots above 30.
-    One rule for the module API and the pipeline (spec imprint section 4, amended by the P1
+    One rule for the module API and the pipeline (amended by the P1
     review): the threshold is evaluated on the **raw** crop, so ``mask_for_texture`` returns
     ``None`` and ``needs_mask_for_texture`` is False, as Ortho4XP. The pipeline, whose job carries a
-    sea kind that the mask does not support any more, fails the texture (pipeline section 3)."""
+    sea kind that the mask does not support any more, fails the texture."""
     window = np.zeros((2048, 2048), dtype=np.uint8)
     window[:, :1024] = 30
     masks = _mask_dir_at_zl5(tmp_path, window)
@@ -125,7 +125,7 @@ def test_dxt5_decision_uses_the_raw_crop_as_ortho4xp_even_when_bicubic_overshoot
 
 
 def test_sea_kind_without_mask_is_not_a_success(server: TileServer, tmp_path: Path) -> None:
-    """Spec pipeline section 3: a ``_sea_overlay`` terrain over a DXT1 texture (no alpha) is an
+    """A ``_sea_overlay`` terrain over a DXT1 texture (no alpha) is an
     opaque overlay that hides X-Plane's water, a situation Ortho4XP never produces (``needs_mask``
     False -> ``terrain_Water``, no ``.ter``); the texture is failed, not published."""
     empty = tmp_path / "nomasks"
@@ -143,7 +143,7 @@ def test_sea_kind_without_mask_is_not_a_success(server: TileServer, tmp_path: Pa
 
 
 def test_chunk_entry_rejects_a_truncated_image_body(server: TileServer) -> None:
-    """Spec pipeline section 4: a body is ``OK`` only when its structure is complete
+    """A body is ``OK`` only when its structure is complete
     (``image_body_complete``: JPEG ``FFD9``, PNG ``IEND``...); Ortho4XP decoded the body and retried
     a corrupted one (``http_request_to_image``, ``max_baddata_retries``)."""
     p = server.provider()
@@ -158,7 +158,7 @@ def test_chunk_entry_rejects_a_truncated_image_body(server: TileServer) -> None:
 
 
 def test_corrupted_body_is_retried_not_cached_forever(server: TileServer, tmp_path: Path) -> None:
-    """Spec pipeline section 4: a corrupted body is asked again ``CORRUPT_RETRIES`` times in the
+    """A corrupted body is asked again ``CORRUPT_RETRIES`` times in the
     run (Ortho4XP ``max_baddata_retries``), then left ``ERROR`` so the next run fetches it."""
     st = server.state
     key = (ZL, 33, 17)

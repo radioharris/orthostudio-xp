@@ -7,7 +7,7 @@ system ``alpha * ab + beta * dc = ac``; the crossing coordinate is then
 ``(1 - alpha) * a + alpha * b`` on the edge being inserted. The last bits of ``alpha``
 therefore decide on which side of a 9-decimal tie the node lands, and the orthophoto grid
 abscissae are exactly such ties, so ``_solve_2x2`` is not free to use any algebraically
-equivalent formula: see ``docs/specs/vectors-pslg.md`` 2.8.
+equivalent formula.
 
 Two levels are checked here:
 
@@ -104,8 +104,8 @@ def test_it_matches_numpy_bit_for_bit() -> None:
         pytest.skip(
             "numpy.linalg.solve rounds differently here "
             f"({agreement:.4%} of {len(ours)} pairs identical): this LAPACK is not the one "
-            "the noder was measured with, so the parity of "
-            "docs/specs/vectors-pslg.md 2.8 must be re-measured on this machine"
+            "the noder was measured with, so the parity with Ortho4XP "
+            "must be re-measured on this machine"
         )
     assert agreement == 1.0
 

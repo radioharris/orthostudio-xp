@@ -2,7 +2,7 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Writing the DSF: temporary file, rename, ``.bak`` of the previous file.
 
-``O4_DSF_Utils.py:1053-1057`` and ``:1330-1346``; spec ``docs/specs/dsf-encoding.md`` 3.8.
+``O4_DSF_Utils.py:1053-1057`` and ``:1330-1346``.
 """
 
 from __future__ import annotations

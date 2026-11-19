@@ -174,7 +174,7 @@ def test_filter_equals_the_ortho4xp_loop_when_objects_are_dropped(pol: list, net
 
 
 def test_default_keeps_objects_where_ortho4xp_dropped_them() -> None:
-    """Documented deviation D3 (``overlays.md`` 6): the default ``keep_objects=True`` keeps
+    """Documented deviation D3: the default ``keep_objects=True`` keeps
     ``OBJECT_DEF`` / ``OBJECT`` / ``OBJECT_MSL``; Ortho4XP dropped them. The XP12 Global Scenery
     tiles sampled hold 0 objects, so a comparison on them cannot see it; a source with objects
     gives a different overlay DSF than Ortho4XP."""

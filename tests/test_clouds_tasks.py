@@ -1,6 +1,6 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""The engine's cloud tasks (``clouds.md`` R7): as many searches at once as the memory holds,
+"""The engine's cloud tasks: as many searches at once as the memory holds,
 each fetching from a source after another's; a task stopped while it waits for its turn ends at
 once, and one that fails says how until the tile's next task; one of each kind for a cloud or a
 tile; none while something else holds the tile's folder, and what

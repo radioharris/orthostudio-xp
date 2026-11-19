@@ -2,7 +2,7 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Water transparency masks: step 2.5 of Ortho4XP, natively.
 
-Specification: ``docs/specs/masks-build.md``. The consumer side (which texture needs a mask
+The consumer side (which texture needs a mask
 and how a mask becomes an alpha channel) is ``orthostudio.textures.imprint``.
 """
 

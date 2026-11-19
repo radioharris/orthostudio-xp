@@ -1,9 +1,6 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""Rule ``orthostudio.masks@1``: declaration, keys, artefact read back by its consumers.
-
-Spec: ``docs/specs/masks-build.md`` sections 3 and 5.
-"""
+"""Rule ``orthostudio.masks@1``: declaration, keys, artefact read back by its consumers."""
 
 from __future__ import annotations
 
@@ -73,7 +70,7 @@ def test_rule_declaration() -> None:
     assert MASKS.kind == "dir"
     # review 4 (minor): the decorator declares the base plus ONE worker of the heaviest profile;
     # the pipeline node declares the base plus a worker of its profile for each worker of the pool
-    # it sizes (masks-build.md 6.2).
+    # it sizes.
     assert MASKS.ram_mb == 2300
     assert set(MASKS.inputs) == {"mesh", "dem", "custom_extent", *NEIGHBOUR_OFFSETS}
 

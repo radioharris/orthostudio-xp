@@ -15,7 +15,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from doc_text import all_specs, spec_text
+from doc_text import spec_text
 from orthostudio.model import TileRef
 
 SRC = Path("src/orthostudio")
@@ -38,7 +38,7 @@ TILE = TileRef.parse("+43+005")
 
 
 AIRPORTS = SRC / "airports_vec"
-"""Wave 2's package: the same ADRs apply to it (``airports-integration.md``)."""
+"""Wave 2's package: the same ADRs apply to it."""
 
 
 def _module_paths() -> list[Path]:
@@ -103,22 +103,6 @@ def test_defect_the_replay_file_is_loaded_without_pinning_allow_pickle() -> None
     text = (VECTORS / "assemble.py").read_text(encoding="utf-8")
     assert "savez_compressed" in text
     assert "allow_pickle" not in text
-
-
-def test_every_new_vector_module_has_a_spec_that_names_it() -> None:
-    """ "Spec before code": each module's docstring must point at a ``docs/specs`` file."""
-    specs = all_specs()
-    missing = []
-    for path in _module_paths():
-        doc = ast.get_docstring(ast.parse(path.read_text(encoding="utf-8"))) or ""
-        named = re.findall(r"docs/specs/([a-z0-9-]+\.md)", doc)
-        if not named:
-            missing.append(f"{path}: docstring names no spec")
-            continue
-        for name in named:
-            if name not in specs:
-                missing.append(f"{path}: names a spec that does not exist ({name})")
-    assert missing == []
 
 
 def test_no_private_symbol_of_the_noder_is_imported_across_modules() -> None:
@@ -339,12 +323,11 @@ def test_the_way_order_of_the_pslg_depends_on_cpython_set_iteration(tmp_path: Pa
 def test_the_sea_equiv_pass_through_is_declared_for_what_it_is() -> None:
     """Was ``test_defect_the_sea_equiv_pass_through_changes_nothing_in_the_coast_result``.
 
-    The finding: the module docstring and ``vectors-assembly.md`` section 7 justified building
-    water *before* the coast by the ``sea_equiv`` coupling, and that coupling is inert --
-    ``build_sea_layers`` only stores the argument, nothing reads it back. Fixed as
-    documentation, not as code: the field is declared "reserved for wave 2, not read in
-    wave 1" in both places, and the build order keeps Ortho4XP's own reason. The behaviour below
-    is unchanged and pinned.
+    The finding: the module docstring justified building water *before* the coast by the
+    ``sea_equiv`` coupling, and that coupling is inert -- ``build_sea_layers`` only stores the
+    argument, nothing reads it back. Fixed as documentation, not as code: the field is declared
+    "reserved for wave 2, not read in wave 1", and the build order keeps Ortho4XP's own reason.
+    The behaviour below is unchanged and pinned.
     """
     from shapely import geometry
 

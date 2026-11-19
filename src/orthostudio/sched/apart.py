@@ -1,6 +1,6 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""One P0 rule run in a process started for it alone (spec ``docs/specs/scheduler.md`` 2.3).
+"""One P0 rule run in a process started for it alone.
 
 The tracing (``orthostudio.vectors``) ran in a thread of the engine's own process, and two things
 came of it. What it took of the memory stayed with the engine: a user's row

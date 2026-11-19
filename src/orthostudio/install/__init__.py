@@ -2,7 +2,7 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Installation into X-Plane 12: detection, ``scenery_packs.ini``, pack links, library.
 
-Spec: ``docs/specs/install.md``. Everything here is stdlib.
+Everything here is stdlib.
 """
 
 from orthostudio.install._model import TileRef

@@ -2,7 +2,7 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """``orthostudio.vectors@1`` after wave 2: the cache key, the artefact layout, the stage selection.
 
-Rule R-I6 of ``docs/specs/airports-integration.md``: *a consumed parameter that is not
+Rule R-I6 of airport integration: *a consumed parameter that is not
 declared is a silently wrong cache.* The first test below is the one that enforces it -- it
 moves every declared field in turn and asserts the key moves -- and the second shows why it
 matters, by changing ``apt_smoothing_pix`` and watching the elevation raster change.

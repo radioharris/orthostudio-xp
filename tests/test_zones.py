@@ -1,6 +1,6 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""Zones engine (spec ``docs/specs/map-zones.md`` sections 3 to 5, package A).
+"""Zones engine.
 
 The ``osxp-zones-1`` document (validation, normalisation, atomic save with ``.bak``, the saved
 document read zone by zone), its clipping into each tile's Ortho4XP ``zone_list`` (format, priority,

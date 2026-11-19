@@ -2,7 +2,7 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Per-texture container of raw tiles (``.chunks`` files) and its store.
 
-Specification: ``docs/specs/imagery-chunks.md``. Invented here: Ortho4XP keeps no raw
+Invented here: Ortho4XP keeps no raw
 tiles, only the assembled 4096² JPEG (``O4_Imagery_Utils.py:1329-1368``).
 """
 
@@ -42,7 +42,7 @@ _PREAMBLE = struct.Struct("<8sII")  # magic, count, reserved
 _INDEX_ENTRY = struct.Struct("<QIBBI")  # offset, length, status, content type, fetched_at
 HEADER_SIZE = _PREAMBLE.size + CHUNK_COUNT * _INDEX_ENTRY.size  # 4624
 _DIGEST_PREFIX = b"osxp-chunks-digest-1"
-_CORRUPT_CODE = "IMG_CACHE_INCOMPLETE"  # until IMG_CHUNKS_CORRUPTED is registered (spec s. 6)
+_CORRUPT_CODE = "IMG_CACHE_INCOMPLETE"  # until IMG_CHUNKS_CORRUPTED is registered
 READ_ATTEMPTS = 10
 """How many times :meth:`ChunkStore.read` tries on Windows while a writer renames the file."""
 
@@ -59,7 +59,7 @@ CONTENT_TYPES: dict[int, str] = {
     9: "application/json",
     10: "application/xml",
     11: "text/xml",
-    # 100-109: reason codes of ERROR entries (spec section 2), kept so that a container read
+    # 100-109: reason codes of ERROR entries, kept so that a container read
     # back still says why a tile failed
     100: "NET_TIMEOUT",
     101: "NET_CONNECTION_FAILED",
@@ -79,7 +79,7 @@ _OTHER_CODE = 255
 
 
 class ChunkStatus(IntEnum):
-    """State of one tile of a texture (``docs/specs/imagery-chunks.md`` section 2)."""
+    """State of one tile of a texture."""
 
     OK = 0
     MISSING = 1
@@ -194,7 +194,7 @@ class ChunkContainer:
         return h.hexdigest()
 
     def to_bytes(self) -> bytes:
-        """Serialise (``docs/specs/imagery-chunks.md`` section 3)."""
+        """Serialise."""
         index = bytearray()
         offset = HEADER_SIZE
         for e in self.entries:

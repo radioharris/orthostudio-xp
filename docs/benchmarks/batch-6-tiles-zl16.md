@@ -13,8 +13,7 @@ landed: what an ordinary evening build costs, measured from its journal and text
   few minutes before, so every texture was built and every image piece downloaded again. The
   OpenStreetMap data of the six tiles was still cached from an earlier build of the same tiles
   (the six OSM rows were cache hits): a first build of new tiles adds about 25 s per tile, one
-  tile after the other (`docs/benchmarks/p2-build.md`, the Overpass rule of
-  `docs/specs/pipeline-build.md` section 4).
+  tile after the other (`docs/benchmarks/p2-build.md`).
 
 ## Result
 
@@ -64,8 +63,8 @@ against the slower line of the journal the weights were fitted on
 (`tests/data/jobs/six-tiles-bi16-20260913.jsonl.gz`, 450-1,230 requests/s). From 75 % on, the
 range held the real end.
 
-**Since then** the downloads start from the line's speed on the latest builds (`docs/specs/api.
-md` section 5.6). This batch's own six texture reports give 0.19-0.27 s per downloaded texture,
+**Since then** the downloads start from the line's speed on the latest builds. This batch's own
+six texture reports give 0.19-0.27 s per downloaded texture,
 0.73 of the fixed weight; started from them, its first estimate is 315 s instead of 416 s, with
 a range of 244-527 s that holds the real end (`tests/test_api_progress.py`,
 `test_the_first_estimate_starts_from_the_line_of_recent_builds`). A later build on a slower

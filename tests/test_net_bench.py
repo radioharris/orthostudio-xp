@@ -108,7 +108,7 @@ def test_bing_200_tiles_all_200_with_bodies() -> None:
 
 
 def test_bench_5000_tiles_at_128_in_flight() -> None:
-    """Short benchmark: req/s and CPU per request at the Bing ceiling (spec R7 gate)."""
+    """Short benchmark: req/s and CPU per request at the Bing ceiling."""
     count = int(os.environ.get("OSXP_NET_BENCH_COUNT", "5000"))
     reqs = requests_for(texture_order_quadkeys(), 10_000, count)
     snapshots: list[float] = []

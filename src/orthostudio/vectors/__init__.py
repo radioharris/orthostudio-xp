@@ -6,7 +6,6 @@
 store), ``coast``, ``water``, ``roads`` and ``patches``, all leaning on ``geom`` for the
 small ``O4_Vector_Utils`` helpers; ``layers`` wires them, ``grid`` and ``seeds`` add what the
 assembly owns, ``assemble`` orders and writes, and ``rule`` declares ``orthostudio.vectors@1``.
-Specs: ``docs/specs/vectors-*.md``.
 """
 
 from orthostudio.vectors.assemble import (

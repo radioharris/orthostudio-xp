@@ -1,6 +1,6 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""Unit tests of the airport smoothing rules (``docs/specs/airports-geometry.md`` A8).
+"""Unit tests of the airport smoothing rules.
 
 No network: a 200x200 synthetic raster and hand-built footprints, so the rules the
 reference tile never exercises -- a per-airport ``smoothing_pix``, ``apt_smoothing_pix = 0``, a
@@ -200,7 +200,7 @@ def test_apt_smoothing_pix_zero_returns_the_dem_untouched() -> None:
 
 
 def test_no_airport_at_all_still_re_blends_the_border() -> None:
-    """Ortho4XP runs the border blend even with an empty airport dictionary (spec 5.5).
+    """Ortho4XP runs the border blend even with an empty airport dictionary.
 
     ``i/pix * x + (pix-i)/pix * x`` is ``x`` in real arithmetic and not always in float32:
     102 of the 40 000 samples of this raster move by at most 4e-6 m. Faithful, and measured
@@ -222,7 +222,7 @@ def test_the_result_keeps_every_other_field_of_the_dem() -> None:
 
 
 def test_two_overlapping_airports_are_smoothed_one_after_the_other() -> None:
-    """The order is the caller's, and the second sees the first's blur (spec 5.4)."""
+    """The order is the caller's, and the second sees the first's blur."""
     dem = _dem()
     a = footprint(geometry.box(0.30, 0.30, 0.50, 0.50))
     b = footprint(geometry.box(0.40, 0.40, 0.60, 0.60))

@@ -1,6 +1,6 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""A flight plan file turned into the line the Plan's squares are chosen along (``flight-plan.md``).
+"""A flight plan file turned into the line the Plan's squares are chosen along.
 
 Two formats, chosen by what the file holds rather than by its name:
 

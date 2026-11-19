@@ -1,9 +1,6 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""Elevation file names, viewfinderpanoramas URLs, zip extraction and the negative memo.
-
-Spec: ``docs/specs/dem.md`` sections 2, 3 (acceptance A8, A9).
-"""
+"""Elevation file names, viewfinderpanoramas URLs, zip extraction and the negative memo."""
 
 from __future__ import annotations
 
@@ -39,7 +36,7 @@ from orthostudio.dem.sources import (
 )
 from orthostudio.meter import counting
 
-# -- naming (spec 2) ----------------------------------------------------------------------
+# -- naming -------------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -75,7 +72,7 @@ def test_base_file_name_and_suffixes(tmp_path: Path) -> None:
         elevation_path("nope", tmp_path, 43, 5)
 
 
-# -- URLs (spec 3.1, 3.3) -----------------------------------------------------------------
+# -- URLs ---------------------------------------------------------------------------------
 
 
 V = "http://viewfinderpanoramas.org"
@@ -133,7 +130,7 @@ def test_cells_of_block_wraps_the_antimeridian() -> None:
     assert cells_of_block(0, -180)[1] == (0, 179)
 
 
-# -- zip extraction (spec 3.1) ------------------------------------------------------------
+# -- zip extraction -----------------------------------------------------------------------
 
 
 def _zip(members: dict[str, bytes]) -> bytes:
@@ -170,7 +167,7 @@ def test_extract_view_zip_does_not_shrink_an_existing_file(tmp_path: Path) -> No
     assert out.read_bytes() == b"y" * 500
 
 
-# -- negative memo (spec 3.4) -------------------------------------------------------------
+# -- negative memo ------------------------------------------------------------------------
 
 
 def test_negative_memo_records_and_expires(tmp_path: Path) -> None:
@@ -210,7 +207,7 @@ def test_memo_without_a_path_is_in_memory_only(tmp_path: Path) -> None:
     assert list(tmp_path.iterdir()) == []
 
 
-# -- ensure_elevation (spec 3) ------------------------------------------------------------
+# -- ensure_elevation ---------------------------------------------------------------------
 
 
 def _opts(tmp_path: Path, download, **kw) -> EnsureOptions:  # type: ignore[no-untyped-def]
@@ -496,7 +493,7 @@ def _write_small_geotiff(path: Path, side: int) -> None:
     Image.fromarray(np.zeros((side, side), dtype=np.float32)).save(path, tiffinfo=info)
 
 
-# -- ANADEM, South America (spec 3.0b) ---------------------------------------------------------
+# -- ANADEM, South America ---------------------------------------------------------------------
 
 
 def test_anadem_zones_and_urls() -> None:

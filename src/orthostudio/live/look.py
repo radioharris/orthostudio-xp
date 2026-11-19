@@ -82,8 +82,7 @@ class Look:
 # can guess: the best filter reproduced a third of July to January (the light, mostly: 1 % once
 # it is out), less than 6 % of July to April and nothing of July to October. What is common:
 # green turns olive in winter (much), a little yellower and paler in April and October. Summer is
-# the driest season in the south of France: the photos, mostly summer's, stay as delivered
-# (docs/specs/live.md, "The season").
+# the driest season in the south of France: the photos, mostly summer's, stay as delivered.
 DEFAULT_LOOKS: dict[str, Look] = {
     "spring": Look(vegetation=0.15),
     "summer": Look(),

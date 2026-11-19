@@ -2,9 +2,9 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Pipelines composing the OrthoStudio XP modules into user-visible builds.
 
-``build`` declares and runs the graph of a batch of tiles (``docs/specs/pipeline-build.md``),
-``textures`` builds the textures of one tile (``docs/specs/pipeline-textures.md``) and ``pack``
-writes, installs, uninstalls and deletes the packs (``docs/specs/install.md``).
+``build`` declares and runs the graph of a batch of tiles,
+``textures`` builds the textures of one tile and ``pack``
+writes, installs, uninstalls and deletes the packs.
 """
 
 from orthostudio.pipeline.home import default_chunks_root, default_store_root, osxp_home

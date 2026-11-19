@@ -4,8 +4,7 @@
 
 The textures are ordinary files on the disk. The streamer builds each one at the sharpness X-Plane
 will read, before X-Plane reads it, following the aircraft and the camera. A small X-Plane plugin
-holds X-Plane on its loading screen at a flight's start until the area is built. The design, the
-measurements behind it and the users' guide are in ``docs/specs/live.md``.
+holds X-Plane on its loading screen at a flight's start until the area is built.
 
 It is switched on by default (:data:`ENABLED_BY_DEFAULT`), and its own file
 ``live.toml``, beside ``config.toml`` in ``$OSXP_HOME``, switches it off with ``enabled = false``

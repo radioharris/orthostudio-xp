@@ -1,6 +1,6 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""A large road network buffered in squares (``docs/specs/vectors-water-roads.md`` 3.8).
+"""A large road network buffered in squares.
 
 Past ``ROAD_SQUARES_FROM`` segments, and only once ``max_levelled_segs`` is raised past them too,
 the network is cut into squares, each buffered on its own and kept within its square; the outline

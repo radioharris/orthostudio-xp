@@ -1,7 +1,7 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """The engine's cloud tasks: a search, getting a cloud's images, trying an outline's sources,
-Apply and Restore (``clouds.md`` R7). Each runs in a thread of its own and ends whether or not a
+Apply and Restore. Each runs in a thread of its own and ends whether or not a
 page is open; it writes its result at its end, so a page that went away loses nothing. A few
 searches at once for the whole app, as many as its memory holds (:func:`searches_at_once`: a
 search holds gigabytes, B2), a few reads of a cloud's sources at once, Apply and Restore at once

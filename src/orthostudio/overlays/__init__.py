@@ -3,7 +3,7 @@
 """The ``yOrthoStudio_Overlays`` pack: X-Plane's own overlays, without the mesh.
 
 Port of Ortho4XP step 4 (``O4_Overlay_Utils.py``) with checked subprocesses, in-process
-7z decompression and by-name exclusions. Spec: ``docs/specs/overlays.md``.
+7z decompression and by-name exclusions.
 """
 
 from __future__ import annotations

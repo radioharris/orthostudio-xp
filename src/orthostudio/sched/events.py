@@ -2,7 +2,7 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Typed events emitted by the scheduler, always in the event-loop thread.
 
-Spec: ``docs/specs/scheduler.md`` section 2.5. Per node the order is ``Started`` then any
+Per node the order is ``Started`` then any
 number of ``Progress`` then exactly one of ``Done`` / ``Failed``. ``Stats`` is emitted after
 every completion and periodically while nodes run.
 """

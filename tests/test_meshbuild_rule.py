@@ -3,7 +3,7 @@
 """Tests for orthostudio.mesh.build and orthostudio.mesh.rule: command line, DEM window,
 rule, retry.
 
-Spec: docs/specs/mesh-build.md sections 2.2, 4 and 9. Only the end-to-end tests need the
+Only the end-to-end tests need the
 Triangle4XP binary.
 """
 
@@ -355,7 +355,7 @@ def _program(path: Path, source: str) -> Path:
 
 @needs_binary
 def test_retry_relaxes_min_angle_and_not_nodata(synthetic: dict) -> None:
-    """Wanted difference (spec 4.1): Ortho4XP overwrites ``nodata``; OrthoStudio XP rebuilds
+    """Wanted difference: Ortho4XP overwrites ``nodata``; OrthoStudio XP rebuilds
     the switches."""
     root = synthetic["root"]
     marker = root / "failed_once"

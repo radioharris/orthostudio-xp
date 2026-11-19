@@ -2,7 +2,6 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Rule ``orthostudio.dem@1``: the tile elevation raster as a keyed ``kind=dir`` artefact.
 
-Spec: ``docs/specs/dem.md`` section 9.
 
 The rule is a graph root: its real input is external state (the elevation files on disk), so it is
 keyed by its params alone. Everything the computation needs beyond those params -- where the
@@ -54,14 +53,14 @@ class DemParams(RuleParams):
     0007): an empty value keeps Ortho4XP's meaning (``<cell>.tif`` if present, else ``View``)."""
 
     fill_nodata: bool = True
-    """Ortho4XP's boolean: True = nearest neighbour, False = every void to 0 m (spec section 7)."""
+    """Ortho4XP's boolean: True = nearest neighbour, False = every void to 0 m."""
 
     own_relief_first: bool = False
     """OrthoStudio XP's: a file of one's own in the folder of Settings is laid even where it is
     coarser than the relief chosen there (idea 9, 2026-10-11); off, the finest wins."""
 
     dem1_local_fallback: bool = False
-    """osxp-only, TODO (spec 9.1, blocker B2): reuse a local 3" file when the 1" archive is
+    """osxp-only, TODO (blocker B2): reuse a local 3" file when the 1" archive is
     unavailable. Off by default: turning it on changes ``Data<tile>.alt`` and the mesh."""
 
     own_stamp: str = ""

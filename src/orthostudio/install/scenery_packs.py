@@ -2,12 +2,12 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Read, reorder and rewrite ``Custom Scenery/scenery_packs.ini``.
 
-Spec: ``docs/specs/install.md`` section 3. The file is kept as a list of lines where the
+The file is kept as a list of lines where the
 ``SCENERY_PACK`` / ``SCENERY_PACK_DISABLED`` lines are parsed and every other line (header,
 blank lines, unknown keywords) is preserved verbatim, so that a load/save round-trip of an
 untouched list reproduces the file byte for byte, line ending included.
 
-The ordering rule is OrthoStudio XP's (spec section 3.2).
+The ordering rule is OrthoStudio XP's.
 """
 
 from __future__ import annotations
@@ -131,7 +131,7 @@ class SceneryPackEntry:
 
     @property
     def named_as_mesh(self) -> bool:
-        """Named as base meshes are (spec 3.2, rule 3): whether it is one, its DSF says
+        """Named as base meshes are: whether it is one, its DSF says
         (:meth:`SceneryPacks.is_mesh`)."""
         name = self.name
         return name.startswith(MESH_PREFIXES) or (
@@ -325,7 +325,7 @@ class SceneryPacks:
         An existing line keeps its position; a disabled one becomes enabled unless
         ``reenable`` is false: a user of simHeaven X-World disables the shared overlays, which
         X-World replaces, and a later install must not turn them back on. A new line goes,
-        enabled, where the ordering rule says (spec section 3.2), never above
+        enabled, where the ordering rule says, never above
         ``*GLOBAL_AIRPORTS*`` -- or right above the line of ``above`` when that one is listed: a
         tile OrthoStudio XP built draws over an imported tile of the same square.
         """

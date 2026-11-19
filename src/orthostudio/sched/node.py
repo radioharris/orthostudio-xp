@@ -2,7 +2,7 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Scheduler nodes and the context a node run receives.
 
-Spec: ``docs/specs/scheduler.md`` sections 2.1 and 2.2. A :class:`Node` is a P0 ``Rule``
+A :class:`Node` is a P0 ``Rule``
 applied to frozen params and named inputs, plus the *kind* of pool it needs, its RAM cost
 and the callable that produces its artefact. :class:`NodeContext` gives that callable the
 store, a working directory, the resolved inputs, a progress callback and a cancel token, and
@@ -78,7 +78,7 @@ def own_bytes(path: Path) -> int:
 
 @dataclass(slots=True)
 class NodeContext:
-    """Everything a node run receives (spec 2.1)."""
+    """Everything a node run receives."""
 
     node_id: str
     rule: Rule
@@ -221,7 +221,7 @@ def run_p0_rule(ctx: NodeContext) -> ArtifactRef:
 
 @dataclass(eq=False, slots=True)
 class Node:
-    """One vertex of the build graph (spec 2.1). Compared by identity, addressed by ``id``."""
+    """One vertex of the build graph. Compared by identity, addressed by ``id``."""
 
     id: str
     rule: Rule

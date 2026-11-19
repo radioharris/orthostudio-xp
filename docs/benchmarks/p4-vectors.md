@@ -89,7 +89,7 @@ unordered pairs of matched nodes.
 | planarity (`check_planar`) | **0 violation** | |
 
 The whole residue is the **ten node pairs that Ortho4XP writes 1e-9 apart and the noder merges**
-— an accepted difference of P0 (`docs/specs/vectors-pslg.md`, wanted differences). All ten
+— an accepted difference of P0. All ten
 sit on the south (`y=0`) or north (`y=1`) edge of the tile, at an orthogrid abscissa that
 rounds to two values one unit of the 9th decimal apart (`0.405273437` and `0.405273438`), and
 every edge touching them is DUMMY. The 30 + 40 uncommon edges are exactly their edges.
@@ -105,8 +105,8 @@ displaced by 1.9e-6. The cause was one line of `roads.py`: it skipped
 `network.difference(improved_buffer(airport_area, ...))` when the airport area was empty,
 which in wave 1 is always. The call is *not* a no-op — GEOS re-nodes the left operand, so
 `difference(POLYGON EMPTY)` turns the 2 783 banked ways into 2 936 line strings and moves the
-buffered outline by 8e-9 deg². Ortho4XP calls it unconditionally; OrthoStudio XP now does too
-(`docs/specs/vectors-water-roads.md` 3.3). With the airports injected, as the roads chantier
+buffered outline by 8e-9 deg². Ortho4XP calls it unconditionally; OrthoStudio XP now does too.
+With the airports injected, as the roads chantier
 tested it, the branch was never taken and the bug was invisible: **it is the airport-free
 reference of A3 that made it appear.**
 
@@ -217,17 +217,17 @@ separates them:
    `Data<tile>.apt` that `cover_airports_with_highres` and the mesh weight map read;
 2. **the ten merged duplicate nodes (P0)** — 0.005 % of the PSLG, but enough to make the
    mesh, the masks and the DSF non-byte-identical. Reaching byte-identity end to end would
-   mean the noder keeping two nodes 1e-9 apart apart, which `vectors-pslg.md` decided against.
+   mean the noder keeping two nodes 1e-9 apart apart, which was decided against.
    That decision now has a measured price: an equivalent-but-different mesh and DSF.
    Review 5 measured the lever: it is **not** a keying rule (the snapped keys of the ten pairs
    already differ, so no keying change can act on them) but the axis-aligned substitution of
    `noding.py:274-277`; replaying without it recovers 8 of the 10 nodes and 8 of the 10 edges,
-   and 2 remain unexplained. See `vectors-pslg.md` 2.8.
+   and 2 remain unexplained.
 
 ## 5. Elevation: what the native DEM really costs
 
-`docs/specs/pipeline-build.md` 8.2 says the native raster and the one Ortho4XP writes differ on
-21 923 samples of 13 490 929 (up to 13.57 m). This run splits that figure:
+The native raster and the one Ortho4XP writes differ on 21 923 samples of 13 490 929 (up to
+13.57 m). This run splits that figure:
 
 | | differing samples | max |
 |---|---|---|

@@ -2,7 +2,7 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """What the installed app starts: ``osxp serve --open``, its output in a log file.
 
-The launchers of the installers run ``python -m orthostudio.desktop`` (``docs/specs/packaging.md``).
+The launchers of the installers run ``python -m orthostudio.desktop``.
 Started from the Finder, the Start menu or a desktop menu, the engine has no terminal to write to
 (``pythonw`` on Windows gives it none at all), so its output goes to ``serve.log`` in the
 platform's log folder: ``~/Library/Logs/OrthoStudio XP`` on macOS,

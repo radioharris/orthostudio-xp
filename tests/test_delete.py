@@ -1,6 +1,6 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""Deleting a tile for good: ``delete_receipt`` (``docs/specs/install.md`` section 4.2).
+"""Deleting a tile for good: ``delete_receipt``.
 
 Found on the user's Library screen: a tile could be taken out of X-Plane, not deleted.
 ``OrthoStudio XP uninstall --delete`` deleted a pack only while it was installed, left its rows in
@@ -308,7 +308,7 @@ def test_a_pack_folder_deleted_by_hand_still_leaves_xplane_and_the_library(world
     assert receipt["pack_deleted"] is False and receipt["removed_from_xplane"] is True
     assert not os.path.lexists(world.cs / pack.name)
     assert not _overlay_dsf(world, T1).exists()  # OrthoStudio XP's, the library says so
-    # without the pack's orthostudio.toml, the overlay pack's link is left as it is (install.md 4.1)
+    # without the pack's orthostudio.toml, the overlay pack's link is left as it is
     assert os.path.islink(world.cs / OVERLAY_PACK)
     assert world.names() == ["*GLOBAL_AIRPORTS*", OVERLAY_PACK, "z_autoortho"]
     assert world.rows() == set() and world.keys() == set()  # its keys were in its library row

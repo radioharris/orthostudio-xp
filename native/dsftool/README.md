@@ -2,7 +2,7 @@
 
 DSFTool converts X-Plane DSF files to text and back. OrthoStudio XP runs it to extract the overlays
 (roads, railways, power lines, forests, buildings) of a tile from X-Plane 12's Global Scenery into
-the shared `yOrthoStudio_Overlays` pack (`src/orthostudio/overlays/`, `docs/specs/overlays.md`).
+the shared `yOrthoStudio_Overlays` pack (`src/orthostudio/overlays/`).
 `src/orthostudio/overlays/dsftool.py` (`find_dsftool`) takes the binary of this folder for the
 running platform.
 

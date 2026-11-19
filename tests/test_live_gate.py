@@ -1531,7 +1531,7 @@ class ReachTest(unittest.TestCase):
     def test_a_camera_anywhere_changes_nothing(self):
         """X-Plane takes each texture's levels for the aircraft alone: a camera over a texture,
         low or high, near or 111 km from the aircraft, leaves the plan as the aircraft alone makes
-        it (the drone and circle views of 2026-10-20, docs/specs/live/levels-test.md)."""
+        it (the drone and circle views of 2026-10-20)."""
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             pack = root / "stream_pack"

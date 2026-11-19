@@ -2,9 +2,7 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Vectorised DSF encoder, byte-identical to Ortho4XP ``build_dsf``.
 
-Specs: ``docs/specs/dsf-encoding.md`` (pools, commands, atoms) and
-``docs/specs/dsf-terrain-assignment.md`` (terrains, textures, ``.ter``). Origin:
-``O4_DSF_Utils.py:464-1365``. The two triangle loops of Ortho4XP become array passes: a
+Origin: ``O4_DSF_Utils.py:464-1365``. The two triangle loops of Ortho4XP become array passes: a
 first-encounter deduplication (``numpy.unique``) gives the pool entries and their positions,
 the triangle lists are grouped by (terrain, pool) in first-use order, and the atoms are
 serialised with ``tobytes``.

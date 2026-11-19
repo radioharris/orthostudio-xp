@@ -2,13 +2,13 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Which mip level X-Plane reads of an ortho texture at a given distance, as the probe measured it.
 
-First probe flight, 2026-09-26 (``docs/specs/live/probe-flight-1.md``): X-Plane aims at a ground
+First probe flight, 2026-09-26: X-Plane aims at a ground
 resolution proportional to distance, about 0.18 m per pixel per km. A ZL16 texture, about 7 km
 across, was read at level 3 (512 px) from 72 km, level 2 from 38 km, level 1 from 21 km and level 0
 (4096 px) under 12 km, the last only with texture quality at Maximum; a ZL18 texture follows the
 same law four times closer. At DSF load, 130-230 km away, X-Plane reads level 4 (256 px) only.
 
-Those rings were 12 % short (a start at KOWB, 2026-10-22, ``docs/specs/live/levels-test.md``):
+Those rings were 12 % short (a start at KOWB, 2026-10-22):
 X-Plane, loading the flight, opened for more than 256 px every ZL16 texture whose centre was within
 80.8 km of the aircraft and none beyond, every ZL18 one within 20.2 km, against 72 and 18; and the
 textures it showed neutral, Live having built them a level coarser, lay at 21.4 to 21.6 km (2048 px)
@@ -24,7 +24,7 @@ level below (orthostudio.live.texture). Its 8192 px level, read where a 4096 px 
 is, is the streamer's own rule.
 
 The rings were measured on one image, 2704 px wide with a 65° field of view. Probe flight 2
-(``docs/specs/live/probe-flight-2.md``) found X-Plane reading each level farther on a wider image
+found X-Plane reading each level farther on a wider image
 and with a narrower field of view, as the width of a pixel on the ground goes: :func:`screen_scale`.
 """
 

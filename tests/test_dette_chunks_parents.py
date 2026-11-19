@@ -4,8 +4,7 @@
 
 The flat cache (one zero-or-more-byte ``.tile`` file per parent tile) existed only because a
 container could not say "never asked for". It can now, so parents live in ordinary
-containers at the parent level, in a store of their own
-(``docs/specs/imagery-chunks.md`` section 2.1).
+containers at the parent level, in a store of their own.
 """
 
 from __future__ import annotations

@@ -1,8 +1,8 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""What a page server of OrthoStudio XP answers before its routes: the guard of its API (spec
-``docs/specs/api.md`` section 3) and its page's files. The engine's app (``app.py``) serves with
-it, and OrthoStudio XP Live's window too (``orthostudio.live.web``).
+"""What a page server of OrthoStudio XP answers before its routes: the guard of its API and its
+page's files. The engine's app (``app.py``) serves with it, and OrthoStudio XP Live's window too
+(``orthostudio.live.web``).
 
 It stands apart from ``app.py``, which imports the whole tile engine: Live's window took it from
 there and loaded the engine for nothing, half of the code its start read, which took 44 s on a
@@ -57,13 +57,13 @@ class _RevalidatedStaticFiles(StaticFiles):
 
 
 MAX_BODY_BYTES = 4 * 1024 * 1024
-"""Largest request body: a zones document of hundreds of detailed polygons (``map-zones.md`` 3)."""
+"""Largest request body: a zones document of hundreds of detailed polygons."""
 DEFAULT_ALLOWED_HOSTS: tuple[str, ...] = ("127.0.0.1", "localhost", "[::1]")
 ALLOWED_FETCH_SITES: frozenset[str] = frozenset({"same-origin", "none"})
 """``Sec-Fetch-Site`` values accepted under ``/api/``: the page itself, or a URL the user typed."""
 JSON_MEDIA_TYPE = "application/json"
 BODY_METHODS: frozenset[str] = frozenset({"POST", "PUT", "PATCH", "DELETE"})
-"""Methods whose ``Content-Type`` under ``/api/`` must be JSON when there is one (section 3)."""
+"""Methods whose ``Content-Type`` under ``/api/`` must be JSON when there is one."""
 
 
 def _plain_error(
@@ -92,7 +92,7 @@ def _plain_error(
 
 class _GuardMiddleware(BaseHTTPMiddleware):
     """DNS-rebinding guard (``Host`` allow-list), cross-site guard of the API (``Sec-Fetch-Site``
-    and JSON-only bodies) and request-body cap (spec section 3)."""
+    and JSON-only bodies) and request-body cap."""
 
     def __init__(self, app: Any, *, allowed_hosts: Iterable[str]) -> None:
         super().__init__(app)

@@ -2,8 +2,8 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """P2a adversarial review, robustness lens: the pack effect and the installation.
 
-No network, no Ortho4XP. The first four tests were ``xfail(strict=True)`` findings of the review
-(``pipeline-build.md`` 2.3, ``install.md`` 4), fixed in the P2a correction round: no ``.dds.bak``,
+No network, no Ortho4XP. The first four tests were ``xfail(strict=True)`` findings of the review,
+fixed in the P2a correction round: no ``.dds.bak``,
 one level of a tile per output directory, a dangling link is replaced, one ``scenery_packs.ini``
 save per install.
 """

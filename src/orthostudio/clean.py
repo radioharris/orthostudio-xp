@@ -16,7 +16,7 @@ minutes instead of the hour, and superseded builds stay for ``osxp clean``.
 
 The imagery caches are emptied only on request: ``chunks`` is what a texture rebuilt with other
 zones or masks reads instead of downloading again, ``mapcache`` holds the tiles of the page's base
-map (``docs/specs/map-zones.md`` section 6). The map cache is touched only when the caller names
+map. The map cache is touched only when the caller names
 it: no directory is ever guessed from another one.
 
 The cache of the tiles filed outside the atelier (``filed``, the atelier's step 5) goes only on
@@ -125,8 +125,8 @@ otherwise, but for a neighbour whose masks were made from it, which keeps it as 
 the water it draws is there all the same."""
 
 _CONTAINER = re.compile(r"(\d+)_(\d+)\.chunks")
-"""A texture container's name in the imagery cache, ``<til_y>_<til_x>.chunks``
-(``docs/specs/imagery-chunks.md`` section 5)."""
+"""A texture container's name in the imagery cache, ``<til_y>_<til_x>.chunks``.
+"""
 
 
 @dataclass(slots=True)

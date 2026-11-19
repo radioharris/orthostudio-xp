@@ -1,6 +1,7 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""Registry invariants, spec/registry agreement and JSON rendering of ``orthostudio.errors``."""
+"""Registry invariants, agreement of the error table with the registry, and JSON rendering of
+``orthostudio.errors``."""
 
 from __future__ import annotations
 
@@ -91,7 +92,7 @@ def test_blocking_codes_stop_except_cancellation() -> None:
             assert spec.action is Action.CONTINUE, spec.code
 
 
-# ------------------------------------------------------- spec <-> registry
+# ------------------------------------------------ error table <-> registry
 
 
 def _advice_texts() -> list[tuple[str, str]]:
@@ -144,7 +145,7 @@ def test_spec_document_lists_exactly_the_registered_codes() -> None:
     rows = parse_spec_rows()
     assert len(rows) >= 40
     doc_codes = [row.code for row in rows]
-    assert len(doc_codes) == len(set(doc_codes)), "duplicate row in errors.md"
+    assert len(doc_codes) == len(set(doc_codes)), "duplicate row in the error table"
     assert set(doc_codes) == set(REGISTRY), (set(doc_codes) ^ set(REGISTRY),)
 
 

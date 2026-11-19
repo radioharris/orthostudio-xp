@@ -3,7 +3,7 @@
 """Unit tests for ``orthostudio.sources.osm``: queries, snapshots, store, mirrors, client.
 
 No network: the client is driven either by a scripted in-process transport or by a real
-local HTTP server serving recorded Overpass JSON answers. Spec: ``docs/specs/osm-source.md``.
+local HTTP server serving recorded Overpass JSON answers.
 """
 
 from __future__ import annotations

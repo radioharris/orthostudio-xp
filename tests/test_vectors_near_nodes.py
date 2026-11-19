@@ -1,6 +1,6 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""A node lying next to an edge it does not end is put on that edge (``vectors-pslg.md`` 2.14).
+"""A node lying next to an edge it does not end is put on that edge.
 
 ``+35+139`` (Tokyo, 2026-10-13): a canal node 7 micrometres off a river's edge at Odaiba, runway
 outlines laid twice 1 to 4 cm apart at Haneda. Triangle4XP filled the slivers they leave with

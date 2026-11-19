@@ -1,9 +1,6 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""Tests for orthostudio.mesh.postprocess: classification, altitude smoothing, water table.
-
-Spec: docs/specs/mesh-build.md sections 5 and 7.
-"""
+"""Tests for orthostudio.mesh.postprocess: classification, altitude smoothing, water table."""
 
 from __future__ import annotations
 
@@ -157,7 +154,7 @@ def test_water_order_changes_the_result_and_the_flag_selects_it() -> None:
 
     The sweep is Gauss-Seidel, so the order matters as soon as the water triangles share
     vertices and the sweeps have not converged. On the reference tile the difference is
-    97 622 vertex lines out of 603 649 (``mesh-build.md``); here we only need
+    97 622 vertex lines out of 603 649; here we only need
     one draw where the two orders disagree.
     """
     differed = False

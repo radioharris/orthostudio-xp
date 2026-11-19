@@ -675,7 +675,7 @@ def test_no_8192_px_photos_at_cruise_height(tmp_path: Path) -> None:
     them from there (the user's rule of 2026-10-01). Those X-Plane is about to read get the copy of
     their 4096 px level, never the neutral colour; their photos again below 17,500 ft, and at a
     start, where X-Plane gives no height; not for a camera down low, X-Plane taking the levels for
-    the aircraft (docs/specs/live/levels-test.md)."""
+    the aircraft."""
     s = row_streamer(tmp_path)
     lines: list[str] = []
     s.log = lines.append

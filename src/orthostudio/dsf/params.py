@@ -2,7 +2,7 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Parameters consumed by the DSF stage (Ortho4XP defaults, ``O4_Config_Utils.py:163-338``).
 
-Spec: ``docs/specs/dsf-encoding.md`` section 2. A frozen pydantic ``RuleParams`` so that
+A frozen pydantic ``RuleParams`` so that
 ``DsfParams.subset_of(tile_cfg)`` picks the fields out of a full tile configuration and the
 canonical dump enters the artefact key.
 """
@@ -28,8 +28,8 @@ class DsfParams(RuleParams):
     """Tile parameters read by ``build_dsf`` (``O4_DSF_Utils.py``, ``O4_Bathymetry.py``).
 
     ``sea_texture_blur`` (listed by the P2a contract) is deliberately absent: the DSF does not
-    consume it, so it must not enter the DSF key (``graph-keys.md`` K2); it belongs to the
-    textures node (``pipeline-build.md`` section 7).
+    consume it, so it must not enter the DSF key; it belongs to the
+    textures node.
     """
 
     water_tech: WaterTech = "XP11 + bathy"

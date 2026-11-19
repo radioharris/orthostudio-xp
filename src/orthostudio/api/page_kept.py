@@ -1,7 +1,6 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""What a page keeps from one visit to the next, kept by the program that serves it
-(docs/specs/ui.md 1, *What the page keeps*).
+"""What a page keeps from one visit to the next, kept by the program that serves it.
 
 OrthoStudio XP's page keeps its choices in ``$OSXP_HOME/page.json`` (:data:`PAGE_FILE`), Live's in
 ``live-page.json`` (:data:`LIVE_PAGE_FILE`): Live's page is served by another program, and two

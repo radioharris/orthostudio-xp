@@ -14655,10 +14655,9 @@ void highorder(struct mesh *m, struct behavior *b)
 /*                                                                           */
 /*  Start of : Added for OrthoStudio XP                                      */
 /*                                                                           */
-/*  Binary I/O (switch -b).  File layouts are documented in                  */
-/*  docs/specs/mesh-triangle-io.md of the OrthoStudio XP repository.  All    */
-/*  integers are int32 and all reals are float64, in the byte order of the   */
-/*  machine that wrote the file (little-endian on every supported platform). */
+/*  Binary I/O (switch -b).  All integers are int32 and all reals are        */
+/*  float64, in the byte order of the machine that wrote the file            */
+/*  (little-endian on every supported platform).                             */
 /*                                                                           */
 /*    OSXPNOD1  header int32[5] = {n_vertices, dim, n_attrs, n_markers,     */
 /*              first_number}; float64[n_vertices][2 + n_attrs];             */

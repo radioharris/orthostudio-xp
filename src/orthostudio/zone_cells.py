@@ -1,6 +1,6 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""The squares of about 1 km a zone will take, as the build takes them (``map-zones.md`` 3.2).
+"""The squares of about 1 km a zone will take, as the build takes them.
 
 A zone does not stop on its outline: every mesh cell it covers a part of takes its level, so the
 sharp area runs in straight lines up to a cell beyond what was drawn, and a zone under the zones

@@ -4,7 +4,7 @@
 
 Successor of ``include_sea`` (Ortho4XP ``O4_Vector_Map.py:363-451``) and of
 ``coastline_to_MultiPolygon`` (``O4_Vector_Utils.py:848-999``). The rules, their origin and
-the wanted differences are written down in ``docs/specs/vectors-coastline.md``; in short:
+the wanted differences, in short:
 
 * the coastline is inserted as *lines* with marker ``SEA``, never as polygons;
 * the sea polygons exist only to place one Triangle4XP region seed each -- get them wrong and
@@ -207,7 +207,7 @@ class CoastResult:
     sea_polygons: geometry.MultiPolygon = field(default_factory=geometry.MultiPolygon)
     """The sea area; one region seed per polygon."""
     sea_equiv: geometry.MultiPolygon = field(default_factory=geometry.MultiPolygon)
-    """Injected pass-through: the large lakes the *water* builder marks SEA_EQUIV (spec 6).
+    """Injected pass-through: the large lakes the *water* builder marks SEA_EQUIV.
 
     **Reserved, not read in wave 1** (review 5): this builder stores what it is given and
     nothing downstream reads it back -- the SEA_EQUIV layer is emitted by the water family
@@ -238,7 +238,7 @@ class CoastResult:
     ) -> list[Layer]:
         """The layer list for ``node_layers``: one SEA layer, z sampled by ``alt_vec``.
 
-        ``alt_vec`` is ``Dem.alt_vec`` (``docs/specs/dem.md``); ``None`` leaves z at 0.
+        ``alt_vec`` is ``Dem.alt_vec``; ``None`` leaves z at 0.
         """
         if self.sea_lines.is_empty:
             return []
@@ -273,7 +273,7 @@ def _ways_from_source(source: OsmWaysSource, params: CoastParams) -> list[F64]:
         except KeyError:
             # An incomplete way (a node the layer does not carry): Ortho4XP would raise on the
             # same data because ``dicosmn_id_map`` would miss the id; dropping is the safe
-            # transcription (spec 5).
+            # transcription.
             out.append(np.zeros((0, 2), dtype=np.float64))
     return out
 
@@ -392,7 +392,7 @@ def _classify(coastline: geometry.MultiLineString, params: CoastParams) -> Coast
         coords = shapely.get_coordinates(line)
         if line.is_ring:
             if len(coords) < 4:
-                continue  # degenerate ring: Ortho4XP would raise in Polygon() (spec 4.4)
+                continue  # degenerate ring: Ortho4XP would raise in Polygon()
             if params.custom_source or geometry.LinearRing(coords).is_ccw:
                 topo.islands.append(coords)
             else:
@@ -437,7 +437,7 @@ def _walk_border(topo: CoastTopology, params: CoastParams, tile: TileRef) -> lis
         try:
             idx = bdcoords.index(coord)
         except ValueError as exc:
-            # Ortho4XP lets this ValueError escape and kills step 1 (spec 5): it happens when a
+            # Ortho4XP lets this ValueError escape and kills step 1: it happens when a
             # chain is walked twice because two chains share an init arclength.
             x, y = bd_point([coord])[0]
             raise OsxpError(
@@ -509,7 +509,7 @@ def _union(polygons: NDArray[np.object_]) -> BaseGeometry:
 
 
 def _count_swallowed(islands: NDArray[np.object_], lakes: NDArray[np.object_]) -> int:
-    """Islands entirely inside an interior sea: Ortho4XP loses them in the union (spec 4.4)."""
+    """Islands entirely inside an interior sea: Ortho4XP loses them in the union."""
     if islands.size == 0 or lakes.size == 0:
         return 0
     hits = shapely.STRtree(lakes).query(islands, predicate="covered_by")
@@ -592,7 +592,7 @@ def build_sea_layers(
     ``osm_data`` is the ``natural=coastline`` layer: an :class:`OsmWaysSource`, a sequence of
     WGS84 ``(lon, lat)`` arrays, or a shapely geometry already in tile-local coordinates.
     ``sea_equiv`` is the large-lake MultiPolygon of the *water* builder, carried through
-    untouched so the assembler has a single object for every sea-class region (spec 6); it is
+    untouched so the assembler has a single object for every sea-class region; it is
     empty in wave 1, exactly like the airport layers of arbitration A2.
 
     The order of operations is Ortho4XP's (``O4_Vector_Map.py:402-451``): the lines are encoded
@@ -604,8 +604,8 @@ def build_sea_layers(
     the coastline is ignored and the tile is land, as with no coastline at all. Without ``land``,
     or in any other case, the result is the very one of before.
 
-    ``dry`` gives the aerodromes whose water is taken out of the sea before its seeds are placed
-    (``docs/specs/aerodrome-dry.md``); the outline of what was taken joins the SEA lines, so the
+    ``dry`` gives the aerodromes whose water is taken out of the sea before its seeds are placed;
+    the outline of what was taken joins the SEA lines, so the
     sea stops there. A sea they do not reach is the very result of before.
     """
     params = params or CoastParams()

@@ -5,7 +5,7 @@
     uv run python tools/package/build.py           # the installer, in dist/
     uv run python tools/package/build.py --check   # then check the engine it packed
 
-What goes in (``docs/specs/packaging.md``): the standalone CPython uv installs
+What goes in: the standalone CPython uv installs
 (python-build-standalone), the runtime dependencies pinned by ``uv.lock`` (no dev group, the
 ``server`` extra), OrthoStudio XP's wheel, Triangle4XP, DSFTool and OrthoStudio XP Live's X-Plane
 plugin in ``orthostudio/bin``, and the licences. What comes out, in ``dist/``:
@@ -354,8 +354,7 @@ def inno_setup_script(
     replaced or removed (:data:`INNO_CODE`). Uninstalling also takes OrthoStudio XP Live out of
     X-Plane: its lines, links and plugin, which a stop leaves unchecked and idle. Before the end,
     the app's code is opened once (``orthostudio.warmup``), so that each new file has been read
-    once, from the disk and by the antivirus, before the first start
-    (``docs/specs/packaging.md``).
+    once, from the disk and by the antivirus, before the first start.
 
     On a machine without the WebView2 Runtime, which OrthoStudio XP shows its window through, the
     installer offers ``webview2`` (:func:`fetch_webview2`): a task of its own, ticked, that the

@@ -61,7 +61,7 @@ def flat_dem(value: float = 0.0) -> Dem:
     """What ``build_layers`` needs since wave 2: a raster **and its window**, not a sampler.
 
     The airport smoothing rebuilds the elevation over the aerodromes, so the stage takes an
-    ``orthostudio.dem@1`` artefact (``airports-integration.md`` R-I1); ``FlatDem`` above is still
+    ``orthostudio.dem@1`` artefact; ``FlatDem`` above is still
     what the individual layer builders take.
     """
     return Dem(
@@ -210,7 +210,7 @@ def test_cancellation_is_seen_between_families_but_not_inside_one(tmp_path: Path
 
     # Review 5 measured a latency of about two seconds and asked for a checkpoint around the
     # noding: ``AssemblyParams.cancel`` is it. The noder and the road builder are still
-    # uninterruptible inside one pass, which is documented in ``vectors-assembly.md`` 7.
+    # uninterruptible inside one pass.
     assert "cancel" in inspect.getsource(__import__("orthostudio.vectors.assemble", fromlist=["x"]))
     assert "cancel" in inspect.getsource(__import__("orthostudio.vectors.noding", fromlist=["x"]))
     for module in ("orthostudio.vectors.roads",):

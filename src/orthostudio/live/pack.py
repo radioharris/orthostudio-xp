@@ -95,7 +95,7 @@ def load_built(pack_dir: Path, damaged: Callable[[str], object] | None = None) -
 
     A record that does not read (empty, cut short, not a table, not text) is read as none, and
     ``damaged`` hears why: every request of the window reads it, and one found empty answered
-    them all with an error (discussion 32, docs/specs/live.md)."""
+    them all with an error (discussion 32)."""
     try:
         with open_read(pack_dir / MARKER) as f:  # Windows: never in the instant of a save
             text = f.read().decode("utf-8")
@@ -113,7 +113,7 @@ def load_built(pack_dir: Path, damaged: Callable[[str], object] | None = None) -
 
 def save_built(pack_dir: Path, meta: dict[str, Any]) -> int:
     """Live's record of its textures written whole, its bytes flushed to the disk before it takes
-    the record's name (docs/specs/live.md). Returns its size."""
+    the record's name. Returns its size."""
     text = json.dumps(meta)
     atomic_write_text(pack_dir / MARKER, text, fsync=True)
     return len(text)

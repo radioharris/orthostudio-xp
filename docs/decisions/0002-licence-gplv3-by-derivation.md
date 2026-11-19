@@ -13,8 +13,8 @@ curvature weight map. A clean-room would rediscover those cases one user report 
 A clean-room by the same people who read the code is also a promise, not a proof.
 
 ## Decision
-GPL v3, derivation. Rules may be ported by reading Ortho4XP. Each ported rule gets a spec in
-`docs/specs/` stating the rule in plain language, its origin (file:line in Ortho4XP), and whether
+GPL v3, derivation. Rules may be ported by reading Ortho4XP. Each ported rule gets a written
+specification stating the rule in plain language, its origin (file:line in Ortho4XP), and whether
 OrthoStudio XP keeps it, fixes it (a "wanted difference") or drops it.
 
 ## Consequences

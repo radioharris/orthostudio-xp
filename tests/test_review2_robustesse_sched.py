@@ -2,10 +2,9 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """P2a adversarial review, robustness lens: the scheduler under interruption.
 
-No network, no Ortho4XP. The first three tests were ``xfail(strict=True)`` findings of the review
-(``docs/specs/scheduler.md`` 2.6, ``pipeline-build.md`` 4); they are green since the P2a
-correction round (BaseException cancels the run, a second cancel abandons it at once, the
-twins of a KeyMismatch node are skipped with a cause).
+No network, no Ortho4XP. The first three tests were ``xfail(strict=True)`` findings of the review;
+they are green since the P2a correction round (BaseException cancels the run, a second cancel
+abandons it at once, the twins of a KeyMismatch node are skipped with a cause).
 """
 
 from __future__ import annotations
@@ -190,7 +189,7 @@ def test_cancel_reaches_a_subprocess_node_and_its_child_dies(store: Store, tmp_p
     assert elapsed < 2.0
     assert sched.failed["child"].code == "SYS_CANCELLED"
     pid_files = list((tmp_path / "work").rglob("child.pid"))
-    assert pid_files, "the failed node's workdir must be kept for inspection (spec 2.6)"
+    assert pid_files, "the failed node's workdir must be kept for inspection"
     pid = int(pid_files[0].read_text())
     deadline = time.perf_counter() + 3.0
     while time.perf_counter() < deadline and _pid_alive(pid):  # os.kill(pid, 0) kills on Windows
@@ -224,7 +223,7 @@ def test_cancelled_run_leaves_the_store_consistent_and_a_rerun_completes(store: 
 
 
 def test_stall_detector_never_hangs_when_the_ram_budget_cannot_be_met(store: Store) -> None:
-    """A lone node larger than the budget is admitted when nothing runs (spec 2.3)."""
+    """A lone node larger than the budget is admitted when nothing runs."""
     sched = Scheduler(store, cpu_in_threads=True, cpu_workers=2, ram_budget_mb=100)
     a = Node("big-a", SRC, P(seconds=0.05, tag="a"), {}, kind="cpu", ram_mb=5000, run=run_polling)
     b = Node("big-b", SRC, P(seconds=0.05, tag="b"), {}, kind="cpu", ram_mb=5000, run=run_polling)

@@ -89,8 +89,7 @@ def test_the_mesh_and_the_dsf_read_the_same_airports(tmp_path: Path) -> None:
 def test_the_clean_record_is_what_the_dsf_node_reads() -> None:
     """Turned round (was ``test_defect_the_clean_record_has_no_reader_in_the_graph``). The
     DSF airport cover reads ``airports.npz``/``airports.wkb.json``; the mesh reads the bounds of
-    ``airports.json``, a view of the same airports (the file-to-reader table is in
-    ``docs/specs/airports-integration.md`` section 4)."""
+    ``airports.json``, a view of the same airports."""
     callers = sorted(
         path.relative_to(SRC).as_posix()
         for path in SRC.rglob("*.py")

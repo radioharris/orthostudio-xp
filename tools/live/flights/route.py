@@ -1,7 +1,7 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """A test flight's scenario made from a route, as a pilot flies it: waypoints, and the height and
-ground speed along the way (``docs/specs/live/flights.md``). The test pilot flies legs (a
+ground speed along the way. The test pilot flies legs (a
 duration, a turn rate, a climb rate, the speed at their end); writing those by hand for a real
 route, with its turns, its climb and its descent, was out of reach, so they are generated here:
 the aircraft turns towards each waypoint (2 degrees a second above 300 kt, 3 below), its height

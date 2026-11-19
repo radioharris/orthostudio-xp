@@ -18,7 +18,7 @@ flight (2026-09-29) went from LFBO to LFMT and back at FL300: X-Plane moved at 1
 then at 3.35 and 2.35 back west, loading again the columns it had let go of. The starts at LEMD,
 LEBL and LFBO showed the same window. So behind the aircraft X-Plane holds 1.65 to 2.65 columns,
 133 to 213 km at 43.6 N; the 300 km kept until then held about twice that. The replayable test
-flights over Norway (``docs/specs/live/flights.md``, the same day) found the same window at 60.5 N,
+flights over Norway (the same day) found the same window at 60.5 N,
 in degrees, not kilometres: its columns moved at 10.65, 11.65 and 12.65 east and at 12.35, 11.35 and
 10.35 back west, each new one 1.35 degree ahead (74 km there, 108 at 43.6 N), and its rows at 61.1
 north and 60.9 back south.

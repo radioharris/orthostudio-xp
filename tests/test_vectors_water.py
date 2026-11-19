@@ -1,6 +1,6 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""Unit tests of the inland water builder (``docs/specs/vectors-water-roads.md`` 2).
+"""Unit tests of the inland water builder.
 
 No network: the OSM input is written as a small Ortho4XP-style ``.osm`` file
 and read back through ``OsmData``, which is the production path.
@@ -82,7 +82,7 @@ def load(tmp_path: Path, body: str, layer: str | None = "water") -> OsmData:
 
 
 def test_polygons_that_only_touch_are_not_merged() -> None:
-    """Ortho4XP merges on ``intersection.area``, so a shared edge is not an overlap (spec 2.3)."""
+    """Ortho4XP merges on ``intersection.area``, so a shared edge is not an overlap."""
     out = merge_overlapping_polygons([square(0, 0, 1), square(1, 0, 1)])
     assert len(out) == 2
 
@@ -100,7 +100,7 @@ def test_merge_is_transitive() -> None:
 
 
 def test_a_merged_group_takes_the_rank_of_its_last_member() -> None:
-    """Order of ``dico_pol``: a group is re-appended each time it grows (spec 2.3)."""
+    """Order of ``dico_pol``: a group is re-appended each time it grows."""
     lonely = square(10, 10, 0.5)  # smallest bounding box: last in the sorted walk
     big_a, big_b = square(0, 0, 2), square(1, 1, 2)
     out = merge_overlapping_polygons([big_a, lonely, big_b])
@@ -144,7 +144,7 @@ def test_encode_drops_polygons_at_or_below_the_area_limit() -> None:
 
 
 def test_encode_aligns_z_with_get_coordinates() -> None:
-    """``z`` must follow exterior-then-holes, polygon after polygon (spec 2.4)."""
+    """``z`` must follow exterior-then-holes, polygon after polygon."""
     import shapely
 
     holed = geometry.Polygon(

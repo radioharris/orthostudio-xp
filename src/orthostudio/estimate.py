@@ -1,11 +1,11 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""``osxp plan``: what a build will cost before it runs (spec ``pipeline-build.md`` section 5).
+"""``osxp plan``: what a build will cost before it runs.
 
 Nothing is built. The node statuses come from ``Scheduler.plan`` (keys computed as far as
 the built inputs allow), the texture list from the DSF artefact when it is in the store
 (exact) or from the imagery grid (every texture of the tile, plus the textures of its
-``zone_list`` at their zoom levels: ``map-zones.md`` 5, and of the airports the build makes
+``zone_list`` at their zoom levels, and of the airports the build makes
 sharper), the requests from the chunk store,
 the time from the learnt costs and, online, from a 20-request probe of the provider.
 """
@@ -95,7 +95,7 @@ RELIEF_CELL_MB: dict[str, float] = {"COP30": 43.5, "NED1/3": 476.0}
 build of three tiles on Copernicus downloaded 0.47 GB of relief besides its images. X-Plane 12's
 relief is on the disk already; the other sources are not counted."""
 DEFAULT_REQ_PER_S = 400.0
-"""Conservative sustained throughput without a probe (``net-download.md`` measured 1 000+)."""
+"""Conservative sustained throughput without a probe (1 000+ measured)."""
 OTHER_ARTEFACTS_GB = 0.25
 """DSF, mesh, vectors and their npz twins per tile, roughly: what a tile whose steps never ran
 here is counted for (`_other_gb`)."""
@@ -657,7 +657,7 @@ def estimate(
     probe: ProbeResult | None = None,
     airports: AirportIndex | None = None,
 ) -> Estimate:
-    """Plan the build of ``specs`` (spec section 5); ``online`` runs the 20-request probe.
+    """Plan the build of ``specs``; ``online`` runs the 20-request probe.
     ``airports`` (X-Plane's list) places the airports of a tile whose map data is not read yet."""
     env = env if env is not None else BuildEnv.create(specs)
     scheduler = make_scheduler(env.store, env, cpu_in_threads=True)
@@ -807,7 +807,7 @@ def _fmt_s(seconds: float) -> str:
 
 
 def render_text(est: Estimate) -> str:
-    """The two-line summary per tile of spec section 5 (plus disk)."""
+    """The two-line summary per tile (plus disk)."""
     lines: list[str] = []
     for t in est.tiles:
         exact = "exact" if t.textures_exact else "upper bound"

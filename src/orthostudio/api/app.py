@@ -1,6 +1,6 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""The local HTTP API of the page (spec ``docs/specs/api.md``).
+"""The local HTTP API of the page.
 
 ``create_app`` returns a FastAPI application bound to nothing yet (``serve.py`` binds
 ``127.0.0.1``); tests drive it through ``httpx.ASGITransport``. Every error is one JSON
@@ -223,7 +223,7 @@ summary (how many of its tiles at each detail level, which Works writes), 40 = `
 the store's files, made one file with them whatever the choices), 41 = the setting
 ``expert.road_smoothing`` (an older engine refuses a settings document that holds it), 42 = the
 setting ``expert.rounded_road_ends`` (likewise), 43 = the settings profiles (``/api/profiles``)
-and ``profile`` in a job's summary, 50 = the replaced clouds (``/api/clouds``, ``clouds.md`` 6); 44
+and ``profile`` in a job's summary, 50 = the replaced clouds (``/api/clouds``); 44
 to 49 were test builds of the clouds (1.4.0 rc), never released, whose routes were other, 51 = what
 runs of a tile's clouds (``GET /api/clouds/{tile}/tasks``), 52 = ``working`` in a cloud's row (its
 spinner from its task's start to its end), 53 = ``named`` in ``/api/profiles`` (the profile to
@@ -927,7 +927,7 @@ def create_app(
     folder_dialog: Callable[[str, Path | None], Path | None] | None = None,
     updater: self_update.Installer | None = None,
 ) -> FastAPI:
-    """The application (spec section 2). ``jobs`` defaults to a manager on ``env_factory``.
+    """The application. ``jobs`` defaults to a manager on ``env_factory``.
 
     ``map_fetch`` replaces the base map's upstream fetch (``map_api.map_router``); tests pass a stub
     so that no request leaves the machine. ``shutdown`` stops the server (``osxp serve`` gives it;
@@ -941,10 +941,10 @@ def create_app(
     app.add_middleware(_GuardMiddleware, allowed_hosts=tuple(allowed_hosts))
     # the answers the page waits for long, named in serve.log; added last, so the guard is timed too
     app.add_middleware(_SlowAnswers)
-    # P5 (docs/specs/map-zones.md): the zones document and the base map. The map router carries
+    # P5: the zones document and the base map. The map router carries
     # its own lifespan, which closes its upstream fetchers when the server stops.
     app.include_router(zones_router(mesh_zl_of=lambda: int(settings().expert.mesh_zl)))
-    # what the page keeps from one visit to the next (docs/specs/ui.md 1, What the page keeps)
+    # what the page keeps from one visit to the next
     app.include_router(page_kept_router())
     app.include_router(map_router(fetch=map_fetch))
     app.include_router(basemap_router())
@@ -1332,7 +1332,7 @@ def create_app(
             "doctor": checks,
             "settings_problems": list(state["settings_problems"]),
             "home": str(home),
-            # the page writes the paths under it with "~": docs/specs/ui.md 1.9
+            # the page writes the paths under it with "~"
             "user_home": str(Path.home()),
             # where the tiles and the downloads go: an external disk may be unplugged. Its tiles
             # folder also with its links followed: a tile built without installing it is listed
@@ -1501,7 +1501,7 @@ def create_app(
         # the registry's order (Bing Maps, then Esri), then the sources the user added
         return [provider_json(p) for p in (await asyncio.to_thread(load_registry)).values()]
 
-    # -- the sources a user adds (docs/specs/imagery-providers.md) ---------------------------
+    # -- the sources a user adds ---------------------------
 
     @app.post("/api/sources", status_code=201)
     async def add_source(req: SourceRequest) -> Any:
@@ -1979,7 +1979,7 @@ def create_app(
                 if isinstance(env, BuildEnv):
                     env.close()  # each plan opened the store's index and left it open
             answer = plan_answer(est, specs)
-            # its replaced clouds that this build may show as photographed again (``clouds.md`` R1)
+            # its replaced clouds that this build may show as photographed again
             cs = custom_scenery_dir(xp) if (xp := xplane_dir()) is not None else None
             back = [
                 te.tile
@@ -2361,7 +2361,7 @@ def create_app(
     @app.post("/api/library/overlays")
     async def library_overlays(req: OverlaysRequest) -> Any:
         """Leave the roads, forests and buildings of squares to the other packs' overlays
-        (AutoOrtho's, XPME's, Ortho4XP's), or draw the tiles' own again (``install.md`` 4.3).
+        (AutoOrtho's, XPME's, Ortho4XP's), or draw the tiles' own again.
         Refused while X-Plane runs, and for a tile in a build under way or waiting."""
         if filing_lock.locked():
             return busy_filing()

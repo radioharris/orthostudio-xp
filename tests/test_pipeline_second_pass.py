@@ -2,7 +2,7 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """The second pass of the textures: a transient failure costs time, not the tile.
 
-Spec: ``docs/specs/pipeline-textures.md`` section 4.1 and ``docs/specs/net-download.md`` R4. Most
+Most
 tests replace ``orthostudio.net.Fetcher`` in the pipeline by a scripted fake, so that a chunk can
 time out N times, a provider can die between two passes or a round can be abandoned without waiting
 for real timeouts. Two tests use a local HTTP server instead, for what only the real fetcher does:
@@ -520,7 +520,7 @@ def test_404_placeholder_and_final_errors_take_no_second_pass(
 def test_chunk_recovered_as_404_still_gets_its_parent(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A 404 obtained by a round is an answer: the parent round runs after it (section 5)."""
+    """A 404 obtained by a round is an answer: the parent round runs after it."""
 
     def answer(req: FetchRequest, tile: Tile, n: int, phase: int) -> FetchResult:
         if tile == BAD:

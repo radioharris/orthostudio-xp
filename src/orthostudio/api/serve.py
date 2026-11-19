@@ -1,6 +1,6 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""``osxp serve``: the API and the page on ``127.0.0.1`` (spec ``api.md`` section 6).
+"""``osxp serve``: the API and the page on ``127.0.0.1``.
 
 ``main`` is what ``cli.py`` wires; it never binds another address than the loopback.
 """
@@ -315,7 +315,7 @@ def serve(
 
 def _busy(state: Mapping[str, Any]) -> bool:
     """Whether the engine works for nobody's page: a build, or a task of the cloud mode (a search,
-    an Apply), which ends whether a page is open or not (``clouds.md`` R7)."""
+    an Apply), which ends whether a page is open or not."""
     clouds = state.get("clouds")
     return state["jobs"].active() is not None or bool(clouds is not None and clouds.tasks.busy())
 

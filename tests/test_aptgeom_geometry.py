@@ -1,6 +1,6 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""Unit tests of the airport geometry rules (``docs/specs/airports-geometry.md`` A7).
+"""Unit tests of the airport geometry rules.
 
 No reference build, no network: every input is a hand-built OSM store and a hand-built
 :class:`orthostudio.airports_vec.model.AirportSet`, so the rules the reference tile never exercises
@@ -225,7 +225,7 @@ def test_two_runways_sharing_an_end_point_are_not_joined() -> None:
 
 
 def test_the_merged_part_goes_to_the_end_of_the_list() -> None:
-    """Three parts: the untouched one keeps its place, the merge is appended (spec 3.3)."""
+    """Three parts: the untouched one keeps its place, the merge is appended."""
     store = _store()
     _way(store, -1, [(0, 3000), (500, 3000)], width="40")
     _way(store, -2, [(0, 6000), (900, 6000)], width="60")
@@ -314,7 +314,7 @@ def test_a_distinct_linear_runway_is_kept_beside_the_area_one() -> None:
 
 
 def test_an_airport_with_no_runway_gets_an_empty_area_not_none() -> None:
-    """``discard_unwanted`` tells "no runway" from "never built" by that ``None`` (spec 3.7)."""
+    """``discard_unwanted`` tells "no runway" from "never built" by that ``None``."""
     store = _store()
     airport = _airport()
     _build(store, airport)

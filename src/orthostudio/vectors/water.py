@@ -2,7 +2,7 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Inland water layers: the successor of ``include_water`` in Ortho4XP.
 
-Specification: ``docs/specs/vectors-water-roads.md`` sections 2 and 5. Origin:
+Origin:
 ``O4_Vector_Map.py:453-589`` (``include_water``, ``filter_large_lakes``) and the two helpers
 it leans on, ``O4_Vector_Utils.py:659-736`` (``MultiPolygon_to_Indexed_Polygons``) and
 ``:365-436`` (``encode_MultiPolygon``).
@@ -64,7 +64,7 @@ M_TO_LAT = 1 / LAT_TO_M
 """Degrees of latitude per metre (``O4_Geo_Utils.py:7``)."""
 
 EventHandler = Callable[[OsxpError], None]
-"""What the builders call instead of ``UI.vprint``; see ``docs/specs/errors.md``."""
+"""What the builders call instead of ``UI.vprint``."""
 
 
 def lon_to_m(lat: float) -> float:
@@ -170,7 +170,7 @@ class WaterResult:
     """The inland water contribution to the PSLG of one tile."""
 
     layers: tuple[Layer, ...] = ()
-    """``WATER`` then ``SEA_EQUIV``, empty layers omitted (spec 2.6)."""
+    """``WATER`` then ``SEA_EQUIV``, empty layers omitted."""
     seeds: dict[str, NDArray[np.float64]] = field(default_factory=dict)
     """Marker name -> (S, 2) seeds, ready for ``triangle_files.write_poly_file``."""
     water: geometry.MultiPolygon = field(default_factory=geometry.MultiPolygon)
@@ -187,7 +187,7 @@ class WaterResult:
 
 
 class DryAerodromes(NamedTuple):
-    """The aerodromes whose water is taken out of it (``docs/specs/aerodrome-dry.md``)."""
+    """The aerodromes whose water is taken out of it."""
 
     outlines: BaseGeometry
     """Their outlines as OpenStreetMap draws them, tile-local."""
@@ -295,7 +295,7 @@ def encode_multipolygon(
     ``area_limit``, orient (exterior counter-clockwise), refine, sample the altitude on the
     exterior then on each hole, and plant one seed at the representative point. The rings of
     the returned ``MultiPolygon`` come out in that order, which is the order
-    ``shapely.get_coordinates`` walks, so ``z`` lines up with it (spec 2.4).
+    ``shapely.get_coordinates`` walks, so ``z`` lines up with it.
     """
     kept: list[geometry.Polygon] = []
     altitudes: list[NDArray[np.float64]] = []
@@ -350,8 +350,8 @@ def merge_overlapping_polygons(
     candidate pair. OrthoStudio XP builds the same relation in one pass — an ``STRtree`` for the
     candidate pairs, then a ``T********`` DE-9IM test, which is "the interiors meet", i.e. exactly
     "the intersection has an area" for polygons — labels the connected components and unions each
-    component once. Same components, same polygons; see spec 2.3 for the proof and 7.1 for the one
-    difference (the order inside a merged component).
+    component once. Same components, same polygons; the one difference is the order inside a
+    merged component.
 
     ``merge=False`` is ``clean_bad_geometries=False``: every polygon is kept as it comes.
     """
@@ -444,7 +444,7 @@ def build_water_layers(
     ``osm_data`` is the ``water`` layer store (or a user file loaded with ``layer=None``);
     ``dem`` gives the vertex altitudes and may be ``None`` in tests, which zeroes them.
     ``dry`` gives the aerodromes whose water is taken out of the lakes and rivers before they are
-    encoded and seeded (``docs/specs/aerodrome-dry.md``). A polygon they do not reach is kept as
+    encoded and seeded. A polygon they do not reach is kept as
     it is, so a tile without such an aerodrome gets the very layers it got before.
     """
     polygons = osm_data.multipolygons_with(on_skip=lambda code, ctx: _report(on_event, code, ctx))

@@ -1,6 +1,6 @@
 // OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 // Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-// The map of the Plan screen (docs/specs/map-zones.md section 7): the engine's base layer, the
+// The map of the Plan screen: the engine's base layer, the
 // 1° tile grid, zones drawn from visible buttons (the Ortho4XP gestures are only shortcuts), the
 // zone list saved with PUT /api/zones, and the approximate sizes shown before any estimate.
 // Leaflet 1.9.4 is vendored and loaded as a classic script before app.js (decision M1); without
@@ -69,7 +69,7 @@ const MAX_LABELS = 400;
 const EUROPE = [[36, -10], [60, 25]];
 const WORLD = [[-85.06, -180], [85.06, 180]];
 /** Highest detail level the page offers: the default mesh (ZL19). The engine refuses a zone
- * above the mesh (`ZONE_INVALID`, map-zones.md 10); the document format still allows 20. */
+ * above the mesh (`ZONE_INVALID`); the document format still allows 20. */
 const ZONE_ZL_OFFERED = Math.min(ZONE_ZL_MAX, 19);
 const HINT_KEY = "osxp.mapHintDone";
 /** Country borders (Natural Earth, public domain: vendor/borders/README.md), fetched the first
@@ -146,7 +146,7 @@ export function bordersRetryDelay(tries) {
   return BORDERS_RETRY_MS[i];
 }
 
-/** Plain names of the detail levels (section 7.0.3); literal keys for the i18n test. */
+/** Plain names of the detail levels; literal keys for the i18n test. */
 const DETAIL_NAMES = {
   11: () => t("detail.11"),
   12: () => t("detail.12"),
@@ -291,7 +291,7 @@ export function createPlanMap(ctx) {
 
   const zs = {
     zones: [],
-    tiles: {},  // tile name → {photo}: the colours a square carries of its own (map-zones.md 3)
+    tiles: {},  // tile name → {photo}: the colours a square carries of its own
     fileUnreadable: false,  // the saved file holds something this version could not read
     loaded: false, // GET /api/zones answered: the list may be edited and saved
     loading: null, // the GET in flight, shared by every caller
@@ -459,7 +459,7 @@ export function createPlanMap(ctx) {
     return Boolean(area) && area.count === 0;
   }
 
-  /** Approximate extra megabytes of one zone, over every tile it covers (section 7.0.4). */
+  /** Approximate extra megabytes of one zone, over every tile it covers. */
   function zoneMB(z) {
     let n = 0;
     for (const tile of zoneTiles(z)) {
@@ -611,7 +611,7 @@ export function createPlanMap(ctx) {
   }
 
   function documentBody() {
-    // The squares' own colours travel with the zones: one file, one revision (map-zones.md 3).
+    // The squares' own colours travel with the zones: one file, one revision.
     const tiles = {};
     for (const [name, choice] of Object.entries(zs.tiles || {})) {
       if (choice && choice.photo && choice.photo.look) tiles[name] = { photo: choice.photo };
@@ -1033,7 +1033,7 @@ export function createPlanMap(ctx) {
 
   // ---------------------------------------------------------------- pointer and keys
 
-  /** The Ortho4XP gestures, kept as shortcuts (section 7.0.2); never needed. */
+  /** The Ortho4XP gestures, kept as shortcuts; never needed. */
   function shortcut(latlng, ev, mod, shift) {
     // macOS may deliver one Ctrl+click as a contextmenu and a click: act once.
     const kind = `${mod}${shift}`;
@@ -1982,7 +1982,7 @@ export function createPlanMap(ctx) {
     colours.addTo(map);
   }
 
-  /** Mock mode: a neutral canvas grid drawn in the browser, no request (spec section 7.1.7). */
+  /** Mock mode: a neutral canvas grid drawn in the browser, no request. */
   function neutralLayer() {
     const Neutral = L.GridLayer.extend({
       createTile(coords) {
@@ -2396,7 +2396,7 @@ export function createPlanMap(ctx) {
     drawRoute();
   }
 
-  /** The banner over the map says what to do next while drawing (section 7.0.2). */
+  /** The banner over the map says what to do next while drawing. */
   function renderBanner() {
     const box = $("map-banner");
     if (!box) return;
@@ -2433,7 +2433,7 @@ export function createPlanMap(ctx) {
     renderHint();
   }
 
-  /** Installed tiles, selected tiles, and the detail levels in use (section 7.0.5). */
+  /** Installed tiles, selected tiles, and the detail levels in use. */
   /** The view's zoom, its latitude, and the ceiling to measure it against.
    *
    * The ceiling is ``nativeCeiling``, the very one the base layer stops downloading at. The
@@ -3035,7 +3035,7 @@ export function createPlanMap(ctx) {
     ownColours,
     /** The colours a square carries of its own, or null (the Library compares them). */
     tilePhoto: (name) => zs.tiles[name]?.photo || null,
-    /** What the squares of a build carry of their own, for the request (``map-zones.md`` 5). */
+    /** What the squares of a build carry of their own, for the request. */
     tilesSettings(names) {
       const out = {};
       for (const name of names) {
@@ -3103,7 +3103,7 @@ export function createPlanMap(ctx) {
       renderLegend();
     },
     /**
-     * `zones` for POST /api/plan and /api/jobs: always the list shown (map-zones.md 5). Zones that
+     * `zones` for POST /api/plan and /api/jobs: always the list shown. Zones that
      * could not be loaded are asked for again first; null when that fails too, and then nothing
      * may be sent: an empty list would build without the saved zones, unseen.
      */

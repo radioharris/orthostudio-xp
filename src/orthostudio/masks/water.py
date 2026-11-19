@@ -2,7 +2,7 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Water triangles of a mesh, sorted into the cells of the ``mask_zl`` texture grid.
 
-Spec: ``docs/specs/masks-build.md`` sections 2 and 4. Origin: ``O4_Mask_Utils.py:394-646``
+Origin: ``O4_Mask_Utils.py:394-646``
 (``record_water_tris``) and ``:223-242`` (``select_neighbor_meshes``), vectorised over
 :class:`orthostudio.mesh.mesh_file.MeshData` instead of re-parsing the ``.mesh`` text twice.
 
@@ -59,7 +59,7 @@ INLAND_BIT = 1
 """``attr & has_water == 1`` is inland water (``O4_Mask_Utils.py:474-480``)."""
 
 WATER_TRIS_FORMAT = "osxp-water-tris-1"
-"""``water_tris.npz`` of the native mesh rule (``docs/specs/mesh-build.md`` section 7)."""
+"""``water_tris.npz`` of the native mesh rule."""
 
 
 class MaskRange(NamedTuple):
@@ -89,10 +89,10 @@ class MaskRange(NamedTuple):
 class MeshWaterTris:
     """The mesh-side half of ``record_water_tris``, as the mesh rule publishes it.
 
-    ``docs/specs/mesh-build.md`` section 7: every triangle with ``attr & 7 != 0``, its
-    corners (indices into ``MeshData.vertices``), its ``attr & 7`` bits and its barycentre
-    in ``(lon, lat)``. The zoom-dependent half (which mask cell, which quarter) stays here,
-    because ``mask_zl`` is a parameter of *this* stage and must not rebuild the mesh.
+    Every triangle with ``attr & 7 != 0``, its corners (indices into ``MeshData.vertices``),
+    its ``attr & 7`` bits and its barycentre in ``(lon, lat)``. The zoom-dependent half
+    (which mask cell, which quarter) stays here, because ``mask_zl`` is a parameter of *this*
+    stage and must not rebuild the mesh.
     """
 
     corners: NDArray[np.int32]

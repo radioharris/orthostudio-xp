@@ -1,6 +1,6 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""Replayable test flights for OrthoStudio XP Live (``docs/specs/live/flights.md``): X-Plane flies
+"""Replayable test flights for OrthoStudio XP Live: X-Plane flies
 scenarios by itself, through the test pilot plugin (``native/xplane_test_pilot``), the same way
 every time, and each leaves its files and a report in a folder of its own.
 

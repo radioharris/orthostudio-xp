@@ -4,7 +4,7 @@
 
 X-Plane 12 ships them in ``Resources/default scenery/1000 decals`` and exports each as
 ``lib/g10/decals/<name>``; the land and sea terrain files of a tile name one on their ``DECAL_LIB``
-line (``docs/specs/textures-ter.md``). The list is the one of setdecal, a tool of the X-Plane.Org
+line. The list is the one of setdecal, a tool of the X-Plane.Org
 forum that rewrites that line in the tiles already built: its author asked for the same choice
 here (2026-09-25). Five of its names are left out because X-Plane 12.4.4 no longer exports them
 (``grass_and_asphalt_3``, ``mid_freq_test``, ``rail_dry_drp``, ``rail_dry_grass_emb``,

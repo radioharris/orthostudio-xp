@@ -1,8 +1,7 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""Settings profiles (``docs/specs/settings.md`` section 7, ``api.md`` ``/api/profiles``): named
-sets of the build settings, one of them current, kept in ``profiles.json`` beside
-``config.toml``; what belongs to the computer is the same for them all."""
+"""Settings profiles: named sets of the build settings, one of them current, kept in
+``profiles.json`` beside ``config.toml``; what belongs to the computer is the same for them all."""
 
 from __future__ import annotations
 

@@ -2,7 +2,7 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """``osxp build``: the graph of one tile (or a batch) declared on the scheduler and run.
 
-Spec: ``docs/specs/pipeline-build.md``. Per tile: the elevation, the vector stage, the mesh and
+Per tile: the elevation, the vector stage, the mesh and
 the masks (``orthostudio.dem``, ``orthostudio.vectors``, ``orthostudio.mesh``,
 ``orthostudio.masks``), the XP12 rasters, the DSF (``orthostudio.dsf``), the textures
 (``build_textures`` of P1), the overlay (``orthostudio.overlays``), the pack and the optional
@@ -224,12 +224,12 @@ TEXTURES_JSON = "textures.json"
 TEXTURES_FORMAT = "osxp-dsf-textures-1"
 MANIFEST_FORMAT = "osxp-textures-1"
 PER_TEXTURE_COST = "tile.textures/texture"
-"""Cost-model name of the learnt seconds per texture (spec ``pipeline-build.md`` 5)."""
+"""Cost-model name of the learnt seconds per texture."""
 DEFAULT_PER_TEXTURE_S = 0.5
 OVERLAY_SETTINGS: tuple[str, ...] = ("ovl_exclude_pol", "ovl_exclude_net", "keep_objects")
 """The overlay settings accepted next to the 44 tile variables (``config`` / ``--set``): the
 Ortho4XP *application* variables ``ovl_exclude_pol`` / ``ovl_exclude_net``
-(``O4_Config_Utils.py:93-108``) and OrthoStudio XP's ``keep_objects`` (``overlays.md`` D3)."""
+(``O4_Config_Utils.py:93-108``) and OrthoStudio XP's ``keep_objects``."""
 
 
 # -- specification -------------------------------------------------------------------------------
@@ -250,7 +250,7 @@ def default_relief() -> str:
 def resolve_global_scenery(
     explicit: Path | None = None, *, xplane: Path | None = None
 ) -> Path | None:
-    """The X-Plane 12 Global Scenery directory (spec 2.4), or ``None``.
+    """The X-Plane 12 Global Scenery directory, or ``None``.
 
     Order: ``explicit`` (the Global Scenery folder or the X-Plane folder), ``xplane``, then
     ``detect_xplane()``.
@@ -357,7 +357,7 @@ batch, the system and the other apps. 0.6 for every computer up to 1.2.1."""
 
 @dataclass(slots=True)
 class BuildSpec:
-    """One tile to build (spec section 1). Paths are resolved by :class:`BuildEnv`."""
+    """One tile to build. Paths are resolved by :class:`BuildEnv`."""
 
     tile: TileRef
     provider: str
@@ -373,13 +373,13 @@ class BuildSpec:
     ovl_exclude_net: list[str | int] | None = None
     """Ortho4XP ``ovl_exclude_net`` (road types, ``22001`` = power lines); same resolution."""
     keep_objects: bool | None = None
-    """Keep ``OBJECT`` lines in the overlay (OrthoStudio XP default True, ``overlays.md`` D3;
+    """Keep ``OBJECT`` lines in the overlay (OrthoStudio XP default True;
     Ortho4XP dropped them: ``False`` gives its exact output on sources with objects)."""
     dem: str = "vectors"
     """``vectors`` = the ``Data<tile>.alt`` of the vector stage (smoothed over the airports);
-    ``native`` = the raw raster of the ``orthostudio.dem@1`` node (spec 8.2)."""
+    ``native`` = the raw raster of the ``orthostudio.dem@1`` node."""
     osm_fetch: bool = True
-    """Download the OSM layers the tile does not have yet (spec 8.3)."""
+    """Download the OSM layers the tile does not have yet."""
     osm_refresh: str = ""
     """Free label entering the OSM key: change it to ask for fresh OSM data."""
     patches_dir: Path | None = None
@@ -436,7 +436,7 @@ class BuildSpec:
                     "CFG_VALUE_INVALID",
                     context={"name": name, "value": value, "type": "-", "range": "-"},
                     message=f"{name!r} is not an Ortho4XP tile parameter.",
-                    remedy="See the 44 tile parameters in docs/specs/tile-files.md "
+                    remedy="Use one of Ortho4XP's tile parameters "
                     f"(overlay settings: {', '.join(OVERLAY_SETTINGS)}; OrthoStudio XP's own: "
                     f"{', '.join(OSXP_PARAMETERS)}).",
                 )
@@ -479,7 +479,7 @@ def _prepared_chain(spec: BuildSpec, workdir: Path) -> Any:
     """The prepared sources of a batch, or ``None`` when the settings name none.
 
     Read from the first spec's settings, which the batch shares: where a tile's map data may come
-    from is not a per-tile choice (``osm-prepared.md`` 6).
+    from is not a per-tile choice.
     """
     from orthostudio.sources.chain import Chain, settings_trouble, sources_from_settings
 
@@ -849,7 +849,7 @@ class OverlayParams(OverlayExclusions):
 
 
 def _xp12_rasters(ctx: RunContext) -> None:
-    """DEMN and clamped DEMS payloads of the Global Scenery DSF (spec ``dsf-xp12-rasters.md``)."""
+    """DEMN and clamped DEMS payloads of the Global Scenery DSF."""
     params = ctx.params
     assert isinstance(params, Xp12RastersParams)
     tile = TileRef.parse(params.tile)
@@ -1105,7 +1105,7 @@ def photo_zone_shapes(
         if reaches:
             out.append((tuple(points), float(brightness), float(contrast), float(saturation)))
     # in the order they are applied, which is the page's reversed: it paints the last first so
-    # that the first ends on top (decision M4, ``map-zones.md``), and applying them in document
+    # that the first ends on top (decision M4), and applying them in document
     # order made the last one win instead
     return tuple(reversed(out))
 
@@ -1435,7 +1435,7 @@ def dem_downloading_message(
 ) -> str:
     """The line of a relief file as it arrives, ``+46+006: elevation, downloading file 1, 210 of
     430 MB (16.2 MB/s)``: the rate is every byte of the relief received since the node started, in
-    the brackets where the Works page reads the rate of any step (``ui.md`` 2.2; a user asked for
+    the brackets where the Works page reads the rate of any step (a user asked for
     it wherever the network works). Before the first second, ``downloading file 1`` alone."""
     text = f"{tile.name}: elevation, downloading file {number}"
     if in_file > 0:
@@ -1621,13 +1621,13 @@ def _osm_run(env: BuildEnv) -> Callable[[NodeContext], Any]:
         job = OsmJob(
             fetch=outer.fetch if outer is not None else None,
             # the job's own fifteen minutes: a build still gave 300 s until 1.0, which cut the
-            # rounds a spent Overpass quota needs (``osm-source.md``)
+            # rounds a spent Overpass quota needs
             timeout_s=outer.timeout_s if outer is not None else OSM_TIMEOUT_S,
             cancel=cast(Any, ctx.cancel_event),
             progress=ctx.progress,
             chain=env.prepared,
             # what the user asked to be downloaded again is downloaded again: a prepared library
-            # is weeks behind, which is the whole reason for pressing it (``osm-prepared.md`` 1)
+            # is weeks behind, which is the whole reason for pressing it
             refresh=bool(getattr(params, "refresh", "")),
         )
         # what the library or Overpass sends counts as this step's download, and the copy of the
@@ -1971,7 +1971,7 @@ def _refuse_pack_dir_conflict(
 
 
 def stored_neighbour_mesh(store: Store, neighbour: TileRef) -> ArtifactRef | None:
-    """The most recently used ``orthostudio.mesh`` artefact of ``neighbour`` (spec 8.5), as
+    """The most recently used ``orthostudio.mesh`` artefact of ``neighbour``, as
     :func:`neighbour_meshes` finds them."""
     return neighbour_meshes(store).get(neighbour.name)
 
@@ -2000,7 +2000,7 @@ def neighbour_meshes(store: Store) -> dict[str, ArtifactRef]:
 
 
 def _masks_ram_mb(env: BuildEnv, params: OsxpMasksParams) -> int:
-    """RAM of the native masks node with its whole pool, which it runs inside (spec 8.6)."""
+    """RAM of the native masks node with its whole pool, which it runs inside."""
     return MASKS_BASE_MB + masks_worker_mb(params) * masks_workers(env, params)
 
 
@@ -2076,7 +2076,7 @@ def masks_workers(env: BuildEnv, params: OsxpMasksParams) -> int:
     (<= 8), as many as half of the RAM budget holds of ``params``' worker
     (:data:`MASKS_BUDGET_SHARE`).
 
-    Eight is where the measured gain stops (``masks-build.md`` 6: 0.74 s at 8 workers against 1.40 s
+    Eight is where the measured gain stops (0.74 s at 8 workers against 1.40 s
     alone, the pool start-up being 0.45 s of it). The environment variable is parsed by
     :func:`orthostudio.masks.build.env_workers` -- the single parser (review 4, finding M2) -- and
     the number returned here is **both** what ``_masks_ram_mb`` budgets and what the node hands the
@@ -2095,7 +2095,7 @@ def masks_workers(env: BuildEnv, params: OsxpMasksParams) -> int:
 
 
 def _coastline_node(reg: _Registry, spec: BuildSpec, osm_input: Node | ArtifactRef) -> Node:
-    """The ``orthostudio.coastline`` node of a tile (spec 8.4).
+    """The ``orthostudio.coastline`` node of a tile.
 
     It reads the OSM data the vector stage reads (``osm_input``): the tile's OSM node, a stored
     snapshot, or the placeholder of the layers still to fetch in an estimate.
@@ -2118,7 +2118,7 @@ def _vectors_osm_input(
     *,
     planning: bool = False,
 ) -> ArtifactRef:
-    """The OSM layers ``orthostudio.vectors@1`` reads: the snapshot phase 0 produced (spec 8.5).
+    """The OSM layers ``orthostudio.vectors@1`` reads: the snapshot phase 0 produced.
 
     It must hold every layer of the tile's ``road_level``, ``airports`` included since the stage
     builds the aerodromes from it: without it the tile would have none, which is a different tile
@@ -2499,11 +2499,11 @@ def declare(
     planning: bool = False,
     fetch_osm: bool = False,
 ) -> list[TileNodes]:
-    """Declare the graphs of ``specs`` on ``scheduler`` (spec sections 2 and 8); their nodes.
+    """Declare the graphs of ``specs`` on ``scheduler``; their nodes.
 
     ``unavailable`` names tiles of the batch whose mesh must not be wired as a neighbour (their
     stage failed in a first pass): the neighbour falls back to the store, else absent.
-    ``osm_artefacts`` maps a tile to its stored ``orthostudio.osm`` artefact (spec 8.3); the vector
+    ``osm_artefacts`` maps a tile to its stored ``orthostudio.osm`` artefact; the vector
     stage and the coastline node both read it. ``fetch_osm`` (a build) gives a tile without one,
     whose spec downloads, an OSM node of its own, on the Overpass lane, which the two read instead:
     the tile goes on as soon as its own layers are in. ``planning`` (an estimate) lets a tile
@@ -2593,11 +2593,11 @@ def declare(
                 # (decision 0010 stopped reading Ortho4XP's own folder; this one is chosen).
                 "patches": patches_ref(spec.patches_dir, spec.tile),
                 # Wave 2 builds the airports inside the stage, from the aeroway layer of
-                # ``osm`` (``airports-integration.md`` 1); the input keeps its place in the key
+                # ``osm``; the input keeps its place in the key
                 # and stays absent.
                 "airports": None,
                 # X-Plane's own land, which a coastline that would make the whole tile sea must
-                # agree with (``vectors-coastline.md`` section 9; Tehran and Manaus, 2026-10).
+                # agree with (Tehran and Manaus, 2026-10).
                 "global_scenery": global_source(spec.tile),
             },
             # Not "cpu": a cpu node is shipped to a pool's worker process, and this node's run
@@ -2623,8 +2623,7 @@ def declare(
             {
                 "vectors": vectors,
                 # ``--dem vectors`` (the default) is the vector stage's own raster, smoothed
-                # over the airports; ``--dem native`` is the raw one of ``orthostudio.dem@1``
-                # (``airports-integration.md`` 3).
+                # over the airports; ``--dem native`` is the raw one of ``orthostudio.dem@1``.
                 "dem": dem if choice.dem == "native" else vectors,
                 "coastline": coast,
             },
@@ -2859,9 +2858,9 @@ class TileOutcome:
     repaired: list[str] = field(default_factory=list)
     """Effects redone after a hit (``pack``, ``install``)."""
     stages: dict[str, Any] = field(default_factory=dict)
-    """The elevation the mesh read (spec 8.1)."""
+    """The elevation the mesh read."""
     osm: dict[str, Any] = field(default_factory=dict)
-    """What phase 0 did for this tile (spec 8.3)."""
+    """What phase 0 did for this tile."""
     patches: list[str] = field(default_factory=list)
     """The hand-made patch files this tile was built with, named as the user named them."""
 
@@ -3014,7 +3013,7 @@ def make_scheduler(
     cpu_workers: int | None = None,
     cpu_in_threads: bool = False,
 ) -> Scheduler:
-    """The batch scheduler with the pool sizes of spec section 4."""
+    """The batch scheduler with its pool sizes."""
     if physical_memory_mb() is None:
         log.warning(
             "this platform does not report its physical memory: the scheduler runs without a "
@@ -3041,7 +3040,7 @@ def make_scheduler(
 
 @dataclass(frozen=True, slots=True)
 class Phase:
-    """The batch enters a phase (spec section 4.1). ``build_tiles`` emits it through
+    """The batch enters a phase. ``build_tiles`` emits it through
     ``on_event``, next to the scheduler's events; the scheduler never does.
 
     ``check`` comes first, and only after a build cut short: the store reads again what that
@@ -3175,7 +3174,7 @@ def run_osm_phase(
     on_event: Callable[[BuildEvent], None] | None = None,
     handle_sigint: bool = True,
 ) -> dict[TileRef, OsmOutcome]:
-    """Phase 0: download the OSM layers a tile does not have yet (spec section 8.3).
+    """Phase 0: download the OSM layers a tile does not have yet.
 
     Runs on a scheduler of its own because what it produced decides the graph: which OSM data
     the vector stage and the coastline read (``_vectors_osm_input``), and whether a tile can be
@@ -3237,7 +3236,7 @@ def run_osm_phase(
 def osm_plan(
     specs: Sequence[BuildSpec], env: BuildEnv
 ) -> tuple[dict[TileRef, OsmOutcome], dict[TileRef, tuple[int, str]]]:
-    """What the OSM data of each tile of a batch will be (spec 8.3), before anything runs.
+    """What the OSM data of each tile of a batch will be, before anything runs.
 
     Returns the tiles whose data is settled -- a snapshot the store holds, or ``--no-osm-fetch``
     -- and those to download, with the road level and refresh label of their node. The first
@@ -3817,7 +3816,7 @@ def _clouds_again(
     spec: BuildSpec, pack_dir: Path, progress: Callable[[int, int], None] | None = None
 ) -> None:
     """The clouds replaced in the tile laid again in the textures its build placed, where those
-    are the ones they were chosen on (``clouds.md`` 2.3), ``progress`` told how many textures of
+    are the ones they were chosen on, ``progress`` told how many textures of
     how many are. The clouds are no part of the build: nothing of them fails it."""
     try:
         from orthostudio.clouds.laying import lay_again
@@ -4003,7 +4002,7 @@ def build_tiles(
     env: BuildEnv | None = None,
     handle_sigint: bool = True,
 ) -> BuildReport:
-    """Build (and optionally install) every spec with one scheduler (spec section 4)."""
+    """Build (and optionally install) every spec with one scheduler."""
     t0 = time.perf_counter()
     env = env if env is not None else BuildEnv.create(specs)
     store = env.store
@@ -4030,7 +4029,7 @@ def build_tiles(
                 on_event(Failed(_put_back_id(s), away[s.tile.name]))
     # Validate the stage options *before* anything is downloaded or written (finding V1).
     choices = stage_choices(specs)
-    # The OSM downloads are nodes of the graph, on a lane of their own (spec 8.3): each tile goes
+    # The OSM downloads are nodes of the graph, on a lane of their own: each tile goes
     # on as soon as its own layers are in, where every tile of a batch used to wait for the
     # downloads of all of them (a phase 0 of its own, 4 min for ten tiles on 2026-09-14).
     osm, _todo = osm_plan(specs, env)
@@ -4112,7 +4111,7 @@ def build_tiles(
     osm_refs = osm_artefact_refs(osm)
 
     # Second pass: a tile whose masks were skipped only because a *neighbour* of the batch
-    # failed its own stage is built again with that neighbour treated as absent (spec 2.1).
+    # failed its own stage is built again with that neighbour treated as absent.
     if not cancelled:
         failed_tiles = {
             g.spec.tile

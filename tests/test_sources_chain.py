@@ -1,6 +1,6 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""The order a tile's map data is asked in (``docs/specs/osm-prepared.md``).
+"""The order a tile's map data is asked in.
 
 The night of 2026-09-22 every build stopped on its Data step, and the days after it showed why a
 prepared library cannot simply be trusted: 22 % of the tiles the one public library lists hold no
@@ -221,7 +221,7 @@ def _live(monkeypatch) -> list[str]:  # type: ignore[no-untyped-def]
 
 def test_asking_for_fresh_data_goes_straight_to_the_live_servers(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     """A prepared library is weeks behind by design, which is the whole reason for pressing
-    Refresh (``osm-prepared.md`` 1)."""
+    Refresh."""
     from orthostudio.pipeline.native import OsmJob
 
     live = _live(monkeypatch)
@@ -384,8 +384,8 @@ def test_a_copied_level_5_library_answers_a_lower_level_in_a_folder(tmp_path: Pa
 
 
 def test_the_small_roads_of_an_ortho4xp_folder_are_not_read(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
-    """An XML file says nothing about the road level that fetched it. The spec held the folder to
-    this rule and only the public library applied it: a build at road level 5 took whatever
+    """An XML file says nothing about the road level that fetched it. The rule was meant for the
+    folder too, and only the public library applied it: a build at road level 5 took whatever
     Ortho4XP had fetched, and labelled it with its own selectors (found in review, 2026-09-25)."""
     import orthostudio.sources.chain as chain_module
 

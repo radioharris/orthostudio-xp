@@ -2,7 +2,7 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Airport index: ``apt.dat`` streamed once into sqlite, then ICAO search and tiles around.
 
-Spec: ``docs/specs/airports-index.md``. Stdlib only.
+Stdlib only.
 
 Usage::
 
@@ -239,7 +239,7 @@ def parse_apt_dat(
     A row is ``(icao, ident, name, lat, lon, elev_ft, kind, has_datum, icao_explicit,
     runways)``.
 
-    Reads the file in blocks (spec section 2); never holds more than one block. Duplicate
+    Reads the file in blocks; never holds more than one block. Duplicate
     identifiers are *not* resolved here (the sqlite insert does it): every record is yielded.
     """
     stats = stats if stats is not None else BuildStats()
@@ -335,7 +335,7 @@ def _wrap_lon(lon: int) -> int:
 
 
 def tiles_within(lat: float, lon: float, radius_km: float) -> list[TileRef]:
-    """The 1° tiles whose bounding box is within ``radius_km`` of ``(lat, lon)`` (spec 4)."""
+    """The 1° tiles whose bounding box is within ``radius_km`` of ``(lat, lon)``."""
     if radius_km < 0:
         raise ValueError("radius_km must be >= 0")
     lat = max(-90.0, min(90.0, lat))
@@ -398,7 +398,7 @@ _COLUMNS = (
     "icao, ident, name, lat, lon, elev_ft, kind, has_datum, icao_explicit, "
     "runway_south, runway_west, runway_north, runway_east"
 )
-#: The record X-Plane itself would pick for a code shared by several records (spec 2).
+#: The record X-Plane itself would pick for a code shared by several records.
 _PREFERRED = "icao_explicit DESC, (ident = icao) DESC, rowid"
 _SELECT = f"SELECT {_COLUMNS} FROM airports"
 
@@ -621,7 +621,7 @@ class AirportIndex:
     def search(
         self, q: str, limit: int = 10, *, kinds: Iterable[str] | None = None
     ) -> list[Airport]:
-        """Identifier prefix or name substring, case-insensitive, ranked (spec section 3)."""
+        """Identifier prefix or name substring, case-insensitive, ranked."""
         text = q.strip()
         if not text or limit <= 0 or not self.db.exists():
             return []

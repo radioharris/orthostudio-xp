@@ -1,6 +1,6 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""A cloud's source at a coarser level (``clouds.md`` 4.1, 4.3): some sources show another photo
+"""A cloud's source at a coarser level: some sources show another photo
 at ZL11, blurred but with no clouds, where ZL12 shows cumulus (Esri World Imagery over tropical
 forest, a user, 2026-11-14). The search tries each source at every coarser level under the clouds
 no source clears and keeps those showing another photo; a cloud's level may be chosen, every

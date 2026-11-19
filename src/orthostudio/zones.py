@@ -2,7 +2,7 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Zones drawn on the map, and their clipping into each tile's Ortho4XP ``zone_list``.
 
-Spec: ``docs/specs/map-zones.md`` sections 3 to 5. A zone is a polygon asking for another
+A zone is a polygon asking for another
 zoom level, and optionally another provider, inside the tiles it covers; a zone covering
 several tiles is a region, not a separate object. The zones live in one document,
 ``$OSXP_HOME/zones.json`` (format ``osxp-zones-1``). At build time every zone is clipped to
@@ -229,7 +229,7 @@ class TileChoice(BaseModel):
 
 
 class Zone(BaseModel):
-    """One zone of an ``osxp-zones-1`` document (spec section 3), normalised and validated.
+    """One zone of an ``osxp-zones-1`` document, normalised and validated.
 
     ``polygon`` holds ``[lon, lat]`` vertices, ring not closed: a last vertex equal to the
     first is dropped and every coordinate is rounded to 9 decimals. ``provider`` ``None`` is
@@ -769,7 +769,7 @@ def _zone_by_zone(
 
 
 def read_saved_zones(path: Path, *, registry: Mapping[str, Provider] | None = None) -> SavedZones:
-    """The saved document at ``path``, never refused whole (spec ``map-zones.md`` 3 and 5).
+    """The saved document at ``path``, never refused whole.
 
     Each zone is checked on its own, in document order, and has at most one problem. A valid
     zone is listed normalised and kept for the builds. A zone that fails validation, repeats the
@@ -1076,9 +1076,8 @@ def photo_zone_entries(zones: Sequence[Zone], tile: TileRef) -> list[list[Any]]:
 
     ``[[lat0, lon0, ..., lat0, lon0], brightness, contrast, saturation]`` per part, in document
     order like ``zone_list``: the textures stage reads them and gives each texture the colours
-    of the first part its centre falls in (``pipeline-textures.md`` 6, a user asked for colours
-    per zone, 2026-09-18). A zone whose ``photo.look`` is ``None`` is absent: it inherits the
-    tile's colours.
+    of the first part its centre falls in (a user asked for colours per zone, 2026-09-18). A
+    zone whose ``photo.look`` is ``None`` is absent: it inherits the tile's colours.
     """
     cell = _cell(tile)
     out: list[list[Any]] = []

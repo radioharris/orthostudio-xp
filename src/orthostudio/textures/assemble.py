@@ -3,7 +3,7 @@
 """Assemble a 4096² RGB texture from its 256 web-mercator chunks.
 
 Ported from Ortho4XP ``build_texture_from_tilbox`` / ``get_wmts_image``
-(``src/O4_Imagery_Utils.py:1244-1368``); behaviour spec in ``docs/specs/textures-assemble.md``.
+(``src/O4_Imagery_Utils.py:1244-1368``).
 
 The chunk container is ``orthostudio.imagery.chunks.ChunkContainer``: 256 entries in row-major
 order, each with a ``status`` (``ChunkStatus``) and a ``data`` body. Only those two attributes are

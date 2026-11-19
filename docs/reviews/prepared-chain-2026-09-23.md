@@ -1,7 +1,7 @@
 # Review of the prepared chain before it ships, 2026-09-23
 
-Six reviews of the chain that reads prepared OSM layers before asking the public servers
-(`docs/specs/osm-prepared.md`), run the day it was written, with the failure of 2026-09-22 as the
+Six reviews of the chain that reads prepared OSM layers before asking the public servers,
+run the day it was written, with the failure of 2026-09-22 as the
 standard: what went wrong that night was not code but unexamined assumptions.
 
 Status column: **done** (fixed and tested the same day), **open** (still to do).

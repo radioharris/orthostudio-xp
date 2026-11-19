@@ -17,7 +17,7 @@ both compatible with OrthoStudio XP's GPL v3.
 
 Why the 5 series rather than 6: MapLibre 6 ships ES modules only, and the bridge loads the two
 libraries from the globals `L` and `maplibregl`, as the page does with Leaflet. The 5 series has
-the classic build that fits a page with no build step (`docs/specs/ui.md` section 1).
+the classic build that fits a page with no build step.
 
 Why vendored: the page never contacts another origin. To upgrade, download the tarball, check its
 integrity against `https://registry.npmjs.org/maplibre-gl/<version>`, replace the files and this

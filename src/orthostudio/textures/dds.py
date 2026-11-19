@@ -3,7 +3,7 @@
 """DDS container as written by Ortho4XP (nvcompress) and read by X-Plane.
 
 Only the subset used for orthophoto textures is modelled: 2D, block-compressed DXT1 (BC1) or
-DXT5 (BC3), full mip chain down to 1x1. Spec: ``docs/specs/textures-dds.md``.
+DXT5 (BC3), full mip chain down to 1x1.
 """
 
 from __future__ import annotations

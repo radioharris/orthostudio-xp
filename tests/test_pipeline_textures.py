@@ -1,6 +1,6 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""Tests of the texture pipeline against a local tile server (spec pipeline-textures.md s. 10).
+"""Tests of the texture pipeline against a local tile server.
 
 The server (a thread) serves deterministic flat-colour PNG tiles at ``/tiles/{z}/{x}/{y}.png``
 and can be told to answer 404, a placeholder, a permanent 500 or a single 500 for given tiles.
@@ -257,7 +257,7 @@ def test_chunk_entry_classification(server: TileServer) -> None:
     forbidden = chunk_entry_for(p, _result(403, b""))
     assert forbidden.status is ChunkStatus.ERROR
     assert forbidden.content_type == "NET_UNEXPECTED_STATUS"
-    # the reason codes survive the container format (imagery-chunks.md section 3)
+    # the reason codes survive the container format
     c = ChunkContainer()
     for i, e in enumerate((html, garbage, err, forbidden)):
         c.set(i, e)
@@ -525,7 +525,7 @@ def test_error_tile_leaves_texture_incomplete_then_retry_fetches_only_it(
 def test_sea_kind_without_mask_is_failed_without_download(
     server: TileServer, tmp_path: Path
 ) -> None:
-    """Spec section 3 (P1 review): a WET overlay over a DXT1 texture would hide X-Plane's water,
+    """P1 review: a WET overlay over a DXT1 texture would hide X-Plane's water,
     a situation Ortho4XP never produces, so the texture is failed (no DDS, no request), its ``.ter``
     are still written and the run ends with ``TEX_MISSING``."""
     empty = tmp_path / "nomasks"

@@ -2,7 +2,7 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Per-rule cost estimates (EWMA of observed wall seconds), persisted in the store's meta table.
 
-Spec: ``docs/specs/scheduler.md`` section 2.7. Rows are ``sched.cost.<rule>@<version>`` with
+Rows are ``sched.cost.<rule>@<version>`` with
 a JSON value ``{"ewma": seconds, "n": observations}``. The P0 store has no public meta
 accessor yet, so this module uses its connection under its lock; replace by
 ``Store.meta_get`` / ``meta_set`` when ``orthostudio.graph`` grows them.

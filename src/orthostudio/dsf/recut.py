@@ -3,7 +3,7 @@
 """Triangle type remap and X-Plane 12 recut of coastal water triangles, vectorised.
 
 Port of ``O4_DSF_Utils.py:475-480`` (type remap) and ``O4_Bathymetry.py:16-183``
-(``recut_water_tris``). Spec: ``docs/specs/dsf-terrain-assignment.md`` 3.1-3.2. The node and
+(``recut_water_tris``). The node and
 triangle numbering of Ortho4XP is reproduced exactly (it drives the pool order of the DSF).
 """
 
@@ -136,7 +136,7 @@ def recut_water_tris(coords: np.ndarray, tris: np.ndarray, tri_types: np.ndarray
             new_tris[rows] = np.stack([col[idx] for col in tri], axis=1)
             new_types[rows] = tri_types[wi[idx]]
 
-    # Case table (``O4_Bathymetry.py:95-168``), see the spec for the ring arithmetic.
+    # Case table (``O4_Bathymetry.py:95-168``).
     emit(bary, (a, b, gn), ((b, c, gn), (c, a, gn)))
     one = cuts == 1
     emit(one & has_c, (cn, b, c), ((cn, c, a),))

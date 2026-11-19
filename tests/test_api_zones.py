@@ -1,7 +1,6 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""``GET`` / ``PUT /api/zones`` and the zones of ``/api/plan`` and ``/api/jobs``
-(spec ``docs/specs/map-zones.md`` sections 3 and 5, package A).
+"""``GET`` / ``PUT /api/zones`` and the zones of ``/api/plan`` and ``/api/jobs``.
 
 The router is tested alone in a small FastAPI application, then in the real ``create_app``,
 which includes it (the fixture adds nothing). ``httpx.ASGITransport``: no server, no network; a

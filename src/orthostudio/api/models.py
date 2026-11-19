@@ -1,6 +1,6 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""Request schemas of the API (pydantic, ``extra='forbid'``): spec ``api.md`` section 2.2."""
+"""Request schemas of the API (pydantic, ``extra='forbid'``)."""
 
 from __future__ import annotations
 
@@ -92,8 +92,8 @@ class PlanRequest(BaseModel):
     xp12_rasters: bool = True
     online: bool = False
     zones: list[ZoneModel] | None = None
-    """``None``: the saved zones document; a list (possibly empty): exactly those zones
-    (``map-zones.md`` 5). Each is validated like a zone of the document (``ZONE_INVALID``)."""
+    """``None``: the saved zones document; a list (possibly empty): exactly those zones.
+    Each is validated like a zone of the document (``ZONE_INVALID``)."""
     tiles_zl: dict[str, int] | None = None
     """The detail level of some squares, by name, in place of ``zoom_level`` for those alone: a
     flight plan gives its departure and arrival one level and the squares along the route another

@@ -4,7 +4,7 @@
 
 They need no reference build: they exercise
 :mod:`orthostudio.airports_vec.stage` and :mod:`orthostudio.airports_vec.artefact` on airports built
-by hand. Spec: ``docs/specs/airports-integration.md`` sections 2, 4 and 6.
+by hand.
 """
 
 from __future__ import annotations
@@ -66,7 +66,7 @@ def airports() -> AirportSet:
     return out
 
 
-# -- the seam (spec 2) -------------------------------------------------------------------
+# -- the seam ----------------------------------------------------------------------------
 
 
 def test_the_view_projects_the_record_without_computing_anything(airports: AirportSet) -> None:
@@ -101,7 +101,7 @@ def test_the_smoothing_parameters_carry_the_one_configurable_number() -> None:
     assert AirportParams(smoothing_pix=0).smoothing().apt_smoothing_pix == 0
 
 
-# -- the published record (spec 4) ------------------------------------------------------------
+# -- the published record ---------------------------------------------------------------------
 
 
 def test_the_dsf_cover_reads_the_record(airports: AirportSet, tmp_path: Path) -> None:
@@ -127,7 +127,7 @@ def test_nothing_in_the_engine_pickles() -> None:
     assert found == set()
 
 
-# -- OrthoStudio XP's own record (spec 4) ----------------------------------------------------------
+# -- OrthoStudio XP's own record -------------------------------------------------------------------
 
 
 def test_the_native_record_round_trips(airports: AirportSet, tmp_path: Path) -> None:

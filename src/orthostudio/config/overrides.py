@@ -1,6 +1,6 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""``Settings`` -> the Ortho4XP tile variables ``BuildSpec.config`` accepts (spec section 4.4).
+"""``Settings`` -> the Ortho4XP tile variables ``BuildSpec.config`` accepts.
 
 Names are those of ``tilefiles.TILE_PARAMETERS`` plus the two overlay settings; values
 carry the type Ortho4XP declares (``masks_width`` keeps its int/float-or-list quirk). Provider and
@@ -152,8 +152,8 @@ def to_build_overrides(settings: Settings) -> dict[str, Any]:
     """The tile variables and overlay settings of ``settings`` under their Ortho4XP names."""
     e, a, x = settings.essential, settings.advanced, settings.expert
     out: dict[str, Any] = {
-        # where a tile's map data may come from, before the public servers are asked
-        # (``osm-prepared.md``); empty means there is none of that kind
+        # where a tile's map data may come from, before the public servers are asked;
+        # empty means there is none of that kind
         "osm_folder": str(x.osm_folder or ""),
         "osm_library": str(x.osm_library or ""),
         "osm_library_token": str(x.osm_library_token or ""),
@@ -176,6 +176,6 @@ def to_build_overrides(settings: Settings) -> dict[str, Any]:
     if e.overlays == "roads":
         # X-Plane's network alone (idea 6): every polygon definition has a dot in its file name
         # (.for, .agp, .fac...), so "." leaves out the forests and buildings and keeps the roads,
-        # railways, power lines and their bridges, which are the network (``overlays.md``).
+        # railways, power lines and their bridges, which are the network.
         out["ovl_exclude_pol"] = [*out["ovl_exclude_pol"], ROADS_ONLY_EXCLUSION]
     return out

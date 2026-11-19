@@ -54,8 +54,8 @@ def test_the_parameters_are_ortho4xps_stage_1_minus_two_documented_absences() ->
 
     The two absences are the ones the rule's docstring justifies: ``custom_dem`` / ``fill_nodata``
     enter through the ``orthostudio.dem@1`` input, which is stronger. The one field the native
-    side has and Ortho4XP has not is ``exact_grid_order``, a fidelity switch of the noder
-    (``airports-integration.md`` 5), and ``flatten_helipads``, OrthoStudio XP's own setting
+    side has and Ortho4XP has not is ``exact_grid_order``, a fidelity switch of the noder,
+    and ``flatten_helipads``, OrthoStudio XP's own setting
     (idea 8, 2026-10-11), and ``road_smoothing``, another of its own (2026-10-26), besides the
     ``tile`` every stage keys on. Any *other*
     divergence is a silently wrong cache, so this test is the alarm for a parameter added on one
@@ -151,8 +151,7 @@ def _flat_raster() -> Dem:
     """What ``build_layers`` takes since wave 2: a raster and its window, not a sampler.
 
     The airport smoothing rebuilds the elevation over the aerodromes and every family samples
-    the result, so the stage needs an ``orthostudio.dem@1`` artefact
-    (``docs/specs/airports-integration.md`` R-I1).
+    the result, so the stage needs an ``orthostudio.dem@1`` artefact.
     """
     return Dem(
         tile=TILE,

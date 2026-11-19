@@ -2,7 +2,7 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """The airport record: :class:`Airport`, :class:`AirportSet` and the geodetic helpers.
 
-Specification: ``docs/specs/airports-discovery.md`` section 2. Successor of the
+Successor of the
 ``dico_airports`` dictionary of Ortho4XP (``O4_Airport_Utils.py:19-177`` builds it,
 ``:177-329`` fills it, ``:682-847`` reshapes it), with the same keys, the same contents and —
 this is the load-bearing part — the same **insertion order**: ``attach_surfaces_to_airports``
@@ -77,8 +77,8 @@ def great_circle_m(a: tuple[float, float], b: tuple[float, float]) -> float:
     """Great-circle distance in metres between two ``(lon, lat)`` points.
 
     ``O4_Geo_Utils.dist`` (``:19-28``), formula for formula and in scalar form: the value
-    reaches a ``< 3500`` comparison in the attachment fallback
-    (``docs/specs/airports-discovery.md`` R11), where an ulp decides which aerodrome owns a
+    reaches a ``< 3500`` comparison in the attachment fallback,
+    where an ulp decides which aerodrome owns a
     runway.
     """
     h = (
@@ -94,7 +94,7 @@ Category = Literal["runway", "taxiway", "apron", "hangar"]
 """The four ``aeroway`` values Ortho4XP attaches to aerodromes (``O4_Airport_Utils.py:179``)."""
 
 CATEGORIES: tuple[Category, ...] = ("runway", "taxiway", "apron", "hangar")
-"""In Ortho4XP's own order: it decides which orphan airport is created first (spec R8)."""
+"""In Ortho4XP's own order: it decides which orphan airport is created first."""
 
 KeyType = Literal["icao", "iata", "local_ref", "name", "repr_node"]
 """How an airport got its key, in the precedence order of ``:28-42`` and ``:89-99``."""
@@ -131,7 +131,7 @@ class SurfaceAreas:
 
     Every field is ``None`` until the module that owns it has run, which is how
     :func:`orthostudio.airports_vec.discover.discard_unwanted` tells "no runway" from "the runways
-    were never reconstructed" (spec R13).
+    were never reconstructed".
     """
 
     runway: BaseGeometry | None = None
@@ -156,7 +156,7 @@ class Airport:
 
     ``repr_node`` and, until :func:`orthostudio.airports_vec.discover.update_boundaries` runs,
     ``boundary`` are in **absolute** degrees — that is what the attachment and the size filter
-    consume (spec R7, R11, R13). After ``update_boundaries`` the boundary is a tile-local
+    consume. After ``update_boundaries`` the boundary is a tile-local
     ``MultiPolygon``.
     """
 
@@ -173,7 +173,7 @@ class Airport:
     smoothing_pix: int | None = None
     """The ``smoothing_pix`` tag, overriding ``apt_smoothing_pix`` for this airport (``:105``)."""
     elevation: float | None = None
-    """The OSM ``ele`` tag; **additive**, consumed by nothing in the port (spec difference 5)."""
+    """The OSM ``ele`` tag; **additive**, consumed by nothing in the port."""
     orphan: bool = False
     """Made by a surface far from every aerodrome (``:226-252``, ``:300-322``) rather than by
     an aerodrome element. Ortho4XP builds the two kinds of entries with their keys in a different
@@ -239,8 +239,8 @@ def has_boundary(airport: Airport) -> bool:
 class AirportSet:
     """An ordered mapping from :data:`AirportKey` to :class:`Airport`.
 
-    A thin wrapper on a ``dict`` because the insertion order *is* part of the specification
-    (spec section 1) and because Ortho4XP keys by a string **or** by a ``(lon, lat)`` tuple
+    A thin wrapper on a ``dict`` because the insertion order *is* part of the behaviour and
+    because Ortho4XP keys by a string **or** by a ``(lon, lat)`` tuple
     (``:110``, ``:243``), which no list can index.
     """
 

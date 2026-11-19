@@ -4,8 +4,7 @@
 
 Origin: ``src/O4_Geo_Utils.py:66-150`` (``gtile_to_wgs84``, ``wgs84_to_gtile``,
 ``gtile_to_quadkey``, ``wgs84_to_orthogrid``, ``st_coord``, ``webmercator_pixel_size``) and
-``src/O4_File_Names.py:350-410`` (texture names). Specification and acceptance tests:
-``docs/specs/imagery-grid.md``.
+``src/O4_File_Names.py:350-410`` (texture names).
 
 A texture is 16 x 16 tiles of 256 px at zoom level ``zl``; it is addressed by the Google/XYZ
 indices of its top-left tile, both multiples of 16.
@@ -169,7 +168,7 @@ def parse_texture_name(name: str) -> TextureId:
 
     The zoom level is glued to the provider code, which may itself end with digits
     (``PDOK18``): the last two digits are the ZL when they form a number in [10, 22], else
-    the last digit alone (see ``docs/specs/imagery-grid.md`` section 3).
+    the last digit alone.
     """
     stem = name.rsplit("/", 1)[-1]
     if "." in stem:

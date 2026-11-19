@@ -3,7 +3,7 @@
 """Noding of prioritised vector layers into a planar straight-line graph.
 
 Successor of ``Vector_Map.insert_edge`` in Ortho4XP (O4_Vector_Utils.py:117-226). The
-rules it reproduces are written down in ``docs/specs/vectors-pslg.md``; in short:
+rules it reproduces, in short:
 
 * two edges of the result either do not meet or meet at a common end node (planar graph);
 * the z of a crossing node is interpolated on the edge that was there first (higher priority
@@ -283,7 +283,7 @@ def _solve_2x2(
     and ``beta`` the one on the pre-existing edge. The crossing coordinate is then
     ``(1 - alpha) * a + alpha * b`` (lines 149-156), so the **last bits** of ``alpha`` decide
     which side of a 9-decimal tie the node lands on -- and the orthophoto grid abscissae are
-    exactly such ties (`docs/specs/vectors-pslg.md` 2.8). A mathematically equivalent formula
+    exactly such ties. A mathematically equivalent formula
     (Cramer) puts some of those crossings on the other side and merges them with the border
     vertex they sit on, which is the whole of the ten-node residue of wave 1.
 
@@ -756,7 +756,7 @@ def join_near_nodes(
     move, the edge bends by less than ``tolerance_m``, and edges that become the same carry the
     OR of their markers.
 
-    Two limits keep it to that sliver (``vectors-pslg.md`` 2.14):
+    Two limits keep it to that sliver:
 
     * a node on a shore is not put on an edge of the same kind of water (water, sea, sea-like
       lake) unless it already shares an edge with one of its ends. An islet's shore 10 cm from a

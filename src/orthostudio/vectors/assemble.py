@@ -8,9 +8,8 @@ collects the seeds and writes the artefact. It builds no geometry: coastline, wa
 patches are the layer builders' business, airports are wave 2 and arrive as an injected,
 optional input (arbitration A2).
 
-Origin: ``O4_Vector_Map.build_poly_file`` (lines 19-179). Spec:
-``docs/specs/vectors-assembly.md``; the noder it calls is specified in
-``docs/specs/vectors-pslg.md`` and implemented in ``orthostudio.vectors.noding``.
+Origin: ``O4_Vector_Map.build_poly_file`` (lines 19-179). The noder it calls is implemented in
+``orthostudio.vectors.noding``.
 """
 
 from __future__ import annotations
@@ -75,7 +74,7 @@ class Elevation(Protocol):
 
     @property
     def alt_dem(self) -> NDArray[np.floating]:
-        """The raster itself; only its maximum is read (the default seed, spec 4.2)."""
+        """The raster itself; only its maximum is read (the default seed)."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -115,9 +114,9 @@ def to_vector_layers(
     return the same pair: ``layers``, a tuple of ``(geometry, marker, z)`` triples in insertion
     order, and ``seeds``, a map from attribute *name* to ``(S, 2)`` points for the whole family.
     Seeds of one attribute are attached to the first pass carrying it, which is what the ``.poly``
-    writes anyway: the order there is the attribute value, then the order inside the attribute (spec
-    4.3). A seed whose attribute no pass carries is an error, not a rounding: it would be written
-    into a region no edge bounds.
+    writes anyway: the order there is the attribute value, then the order inside the attribute. A
+    seed whose attribute no pass carries is an error, not a rounding: it would be written into a
+    region no edge bounds.
     """
     remaining = {
         (MARKERS[key] if isinstance(key, str) else int(key)): np.asarray(points, dtype=np.float64)
@@ -140,14 +139,14 @@ class VectorLayers:
     """The layers of one tile, by family, each already geometric.
 
     The *order of the families* is the priority: the first one to touch a point decides its
-    altitude, and a marker is the OR of everything covering an edge
-    (``docs/specs/vectors-pslg.md`` 2.4-2.6). :meth:`ordered` is the only place that order is
+    altitude, and a marker is the OR of everything covering an edge.
+    :meth:`ordered` is the only place that order is
     written down.
 
     ``airports`` is empty in wave 1 (arbitration A2): the assembler never calls an airport
     module, it takes the layers ready-made. ``airport_bounds`` is ``(A, 4)``
     ``(x_min, y_min, x_max, y_max)`` in tile-local degrees, written as ``airports.json`` for
-    the curvature weight map of the mesh stage (``docs/specs/mesh-build.md`` 3.2).
+    the curvature weight map of the mesh stage.
     """
 
     patches: Sequence[VectorLayer] = ()
@@ -158,7 +157,7 @@ class VectorLayers:
     airport_bounds: NDArray[np.float64] | None = None
 
     def ordered(self) -> list[VectorLayer]:
-        """The layers in insertion order (``O4_Vector_Map.py:52-90``, spec 2.1).
+        """The layers in insertion order (``O4_Vector_Map.py:52-90``).
 
         Patches come first: ``include_patches`` runs at ``:215``, inside ``include_airports``
         and *before* ``encode_runways_taxiways_and_aprons`` at ``:216``.
@@ -189,12 +188,12 @@ class AssemblyParams:
     sub-segment it gives to the intersection solver is the one bounded by the crossings it
     has already made; the vectorised noder cuts between layers and uses the whole pre-layer
     edge. On +43+005 that leaves 3 nodes of 247 282 one unit away in the 9th decimal; the
-    count depends on the input (17 on review 6's synthetic aeroway layer, ``vectors-pslg.md``
-    2.8). Splitting the horizontal grid pass into one pass per line
+    count depends on the input (17 on review 6's synthetic aeroway layer). Splitting the
+    horizontal grid pass into one pass per line
     reproduces Ortho4XP's sequence exactly -- every node key of the reference, none invented --
     and cost 12.6 s of noding instead of 1.05 s, so it is **off** by default: it is a
     fidelity switch, not a setting (``docs/benchmarks/p4-airports.md`` section 4). Since the
-    incremental insertion of review 6 (``vectors-pslg.md`` 2.13) it costs 1.67 s instead of
+    incremental insertion of review 6 it costs 1.67 s instead of
     1.05 s; whether that makes it the default is the architect's call (it changes the key)."""
 
     check_planar: bool = False

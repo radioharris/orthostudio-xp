@@ -2,9 +2,9 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Rasterisation of the water pre-mask of one cell.
 
-Spec: ``docs/specs/masks-build.md`` section 2 (``build_water_pre_mask``,
-``O4_Mask_Utils.py:260-328``). The drawing is Pillow's ``ImageDraw.polygon`` with the very
-same float pixel coordinates Ortho4XP passes it: that is what makes byte identity reachable.
+Origin: ``build_water_pre_mask`` (``O4_Mask_Utils.py:260-328``). The drawing is Pillow's
+``ImageDraw.polygon`` with the very same float pixel coordinates Ortho4XP passes it: that is
+what makes byte identity reachable.
 
 Ortho4XP always works on a 6144 x 6144 image (a 4096 px cell plus a 1024 px margin on each side).
 OrthoStudio XP keeps that image, except that the margin may be narrowed to what the chosen profile
@@ -69,10 +69,9 @@ def pre_mask(
 
     ``exact_edges`` (``profiles.exact_edges``): a pixel is water where the water covers its
     middle. Pillow fills a polygon up to and with its edges, on corners rounded to whole pixels as
-    Ortho4XP's, so every water came about one pixel wider on its east and south sides
-    (``masks-build.md`` section 7). Drawn at twice the scale and read at the odd pixels, the
-    middles of the cell's pixels, the water is at most 0.26 pixel wider than its outline, on every
-    side alike (``masks-build.md`` section 7).
+    Ortho4XP's, so every water came about one pixel wider on its east and south sides. Drawn at
+    twice the scale and read at the odd pixels, the middles of the cell's pixels, the water is at
+    most 0.26 pixel wider than its outline, on every side alike.
     """
     px0, py0 = cell_pixel_origin(til_x, til_y, mask_zl, margin)
     scale = 2 if exact_edges else 1

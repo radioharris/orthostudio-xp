@@ -1,6 +1,6 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""The smoothing of the levelled roads (``docs/specs/vectors-water-roads.md`` 3.6).
+"""The smoothing of the levelled roads.
 
 The altitude of each levelled road polygon is averaged along its outline over 100 or 250 m, the
 points staying where they are; off, nothing changes, the keys of the tiles built before included.

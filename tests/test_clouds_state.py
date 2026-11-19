@@ -1,6 +1,6 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""The one state of the cloud mode (``clouds.md`` 1.5, R4, R6; ``clouds/state.py``): from the list
+"""The one state of the cloud mode (``clouds/state.py``): from the list
 and what the tile's folder shows, each cloud's row, its words, its actions, the count, what Apply
 lays and what Discard and Apply leave. Every combination is walked, and they must all agree."""
 

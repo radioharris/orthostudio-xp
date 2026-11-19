@@ -1,6 +1,6 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""The cloud mode's routes through the app (``clouds.md`` 1.5, 6): what a tile and its clouds
+"""The cloud mode's routes through the app: what a tile and its clouds
 allow is the engine's one view's (``clouds/state.py``), and its routes refuse by it; what runs the
 detector is asked first; a bad tile name, cloud or outline is refused, never a bare error."""
 

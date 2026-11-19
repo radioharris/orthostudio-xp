@@ -1,7 +1,6 @@
 // OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 // Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-// The Settings screen in plain words (docs/specs/ui.md 2.4; what each setting really does, and
-// the wording: docs/specs/settings-plain-language.md).
+// The Settings screen in plain words.
 //
 // A pilot answers questions about what they want to see in X-Plane, and OrthoStudio XP keeps the
 // detailed settings behind the answers. The recommended answers are marked, three presets set
@@ -129,9 +128,8 @@ export function profileDiffersText(name, differs, label) {
 
 // ---------------------------------------------------------------- presets
 
-/** Sizes: docs/specs/settings-plain-language.md section 5 (a coastal ZL16 tile with 7 main
- * airports; estimates). A preset leaves the imagery source, the relief, the overlays and every
- * expert setting as they are. */
+/** Sizes: estimates for a coastal ZL16 tile with 7 main airports. A preset leaves the imagery
+ * source, the relief, the overlays and every expert setting as they are. */
 export const PRESETS = [
   {
     id: "recommended",
@@ -507,7 +505,7 @@ export const EXPERT_GROUPS = [
   { id: "roads", title: () => t("settings.x.group_roads"), fields: ["advanced.road_level", "expert.road_smoothing", "expert.rounded_road_ends", "expert.road_banking_limit", "expert.lane_width", "expert.max_levelled_segs"] },
   { id: "look", title: () => t("settings.x.group_look"), fields: ["advanced.terrain_casts_shadows", "expert.normal_map_strength", "expert.use_decal_on_terrain", "expert.decal_on_sea", "expert.decal", "expert.photo_brightness", "expert.photo_contrast", "expert.photo_saturation"] },
   { id: "objects", title: () => t("settings.x.group_objects"), fields: ["expert.ovl_exclude_pol", "expert.ovl_exclude_net"] },
-  // Where the map data of a tile comes from, before the public servers are asked (osm-prepared.md).
+  // Where the map data of a tile comes from, before the public servers are asked.
   { id: "mapdata", title: () => t("settings.x.group_mapdata"), fields: ["expert.osm_folder", "expert.osm_library", "expert.osm_library_token"] },
   // Nothing to do with the tiles: what the app itself does, which is why it has a group of its own.
   { id: "app", title: () => t("settings.x.group_app"), fields: ["expert.build_memory", "expert.check_updates"] },

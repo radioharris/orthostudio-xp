@@ -1,7 +1,7 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """The test flights' window: what to fly, chosen with the mouse, the flight under way, and the
-results (``docs/specs/live/flights.md``). It runs ``fly.py`` as its command line does, with the
+results. It runs ``fly.py`` as its command line does, with the
 options chosen, and reads what it leaves in ``build/flights``.
 
     uv run python tools/live/flights/bench.py

@@ -2,7 +2,7 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Assembly of the vector layers and the rule ``orthostudio.vectors@1``.
 
-Spec: ``docs/specs/vectors-assembly.md`` sections 2, 5, 6. The layers are synthetic and the
+The layers are synthetic and the
 checks are structural.
 """
 
@@ -122,7 +122,7 @@ def test_patches_come_before_the_airports() -> None:
 
 
 def test_priority_decides_the_altitude_of_a_crossing() -> None:
-    """The pre-existing layer wins: the road's z, not the water's (vectors-pslg.md 2.4)."""
+    """The pre-existing layer wins: the road's z, not the water's."""
     road = LineString([(0.2, 0.5), (0.8, 0.5)])
     water = LineString([(0.5, 0.2), (0.5, 0.8)])
     layers = VectorLayers(
@@ -195,7 +195,7 @@ def test_the_written_files_are_the_graph_that_was_assembled(tmp_path: Path) -> N
 def test_the_stats_count_the_nodes_put_on_an_edge_only_when_there_are_some(
     tmp_path: Path,
 ) -> None:
-    """``vectors-pslg.md`` 2.14: a tile without a node next to an edge writes the stats.json it
+    """A tile without a node next to an edge writes the stats.json it
     always wrote, so its mesh and DSF stay in the store; one with such a node says how many. The
     second water way passes 2 mm from the first one's edge without touching it."""
     assemble_vectors(sample_layers(), TILE, FakeDem(), SMALL, out_dir=tmp_path / "none")
@@ -277,7 +277,7 @@ def test_the_rule_declares_what_it_consumes_and_nothing_else() -> None:
         "clean_bad_geometries",
         "mesh_zl",
         # wave 2: the airport smoothing rewrites Data<tile>.alt, and the exact grid order
-        # changes the PSLG (``airports-integration.md`` 5)
+        # changes the PSLG
         "apt_smoothing_pix",
         "exact_grid_order",
         # idea #8: off, the helipads are not flattened
@@ -341,7 +341,7 @@ def test_the_rule_assembles_the_layers_it_is_given(tmp_path: Path) -> None:
     def builder(request: LayerRequest) -> LayerBuild:
         seen.append(request)
         # wave 2: a builder hands back the elevation every family sampled, because the
-        # airports smoothed it (``airports-integration.md`` R-I1)
+        # airports smoothed it
         return LayerBuild(layers=sample_layers(), dem=_dem())
 
     ctx = _context(tmp_path, _dem_dir(tmp_path))

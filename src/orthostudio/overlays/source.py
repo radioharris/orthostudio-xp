@@ -1,6 +1,6 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""Locate and materialise the Global Scenery DSF of a tile (spec section 2, lines 40-79).
+"""Locate and materialise the Global Scenery DSF of a tile.
 
 The source folder is the one just above ``Earth nav data`` (Ortho4XP's ``custom_overlay_src``,
 typically ``<X-Plane>/Global Scenery/X-Plane 12 Global Scenery``, or ``X-Plane 12 Demo Areas``

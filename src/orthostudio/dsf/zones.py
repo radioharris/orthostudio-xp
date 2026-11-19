@@ -5,8 +5,7 @@
 Port of ``zone_list_to_ortho_dico`` (``O4_DSF_Utils.py:110-257``): a 4096² priority image of
 the zones, the airport upgrade to ``cover_zl``, the ``Existing`` mode, and the texture of a
 mesh-grid cell at its zoom level. One departure: a cell takes the level of every zone that covers
-a pixel inside it, where Ortho4XP read the cell at its centre (:func:`cells_touched`). Spec:
-``docs/specs/dsf-terrain-assignment.md`` 3.4.
+a pixel inside it, where Ortho4XP read the cell at its centre (:func:`cells_touched`).
 """
 
 from __future__ import annotations

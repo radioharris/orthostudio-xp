@@ -2,9 +2,8 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Parent tiles for the fallback of missing chunks: cache, memo and the recipe blob.
 
-Spec: ``docs/specs/pipeline-textures.md`` section 5 and ``docs/specs/imagery-chunks.md``
-section 2. A parent tile is a raw body at a lower zoom level; a tombstone records that the
-provider has nothing there (placeholder or 404).
+A parent tile is a raw body at a lower zoom level; a tombstone records that the provider has
+nothing there (placeholder or 404).
 
 Dette D3: the cache used to be one flat file per parent tile
 (``<chunks_root>/<provider>/_parents/<zl>/<y>_<x>.tile``, zero length = tombstone) because a
