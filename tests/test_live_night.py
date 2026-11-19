@@ -975,14 +975,14 @@ class NightWordsTest(unittest.TestCase):
         from orthostudio.live.pause_window import lines
 
         self.assertEqual(
-            lines("LSGG", 7, 7, 0.0, 40.0, True, "en", night=7)[1],
+            lines("LSGG", 7, 7, 0.0, 40.0, "en", night=7)[1],
             "7 night textures to build  -  40 s",
         )
         self.assertEqual(
-            lines("LSGG", 7, 7, 0.0, 40.0, True, "fr", night=7)[1],
+            lines("LSGG", 7, 7, 0.0, 40.0, "fr", night=7)[1],
             "7 textures de nuit à construire  -  40 s",
         )
-        self.assertNotIn("night", lines("LSGG", 9, 2, 3.0, 40.0, True, "en", night=7)[1])
+        self.assertNotIn("night", lines("LSGG", 9, 2, 3.0, 40.0, "en", night=7)[1])
 
 
 # --- the review of 2026-11-11: what it found, mended
@@ -1336,6 +1336,13 @@ class NightDiskTest(unittest.TestCase):
         shown = a.count(0, 0, 8700, 0.4, squares=3)
         self.assertEqual(
             shown,
-            {"left": 8700, "building": 8700, "night": 8700, "progress": 0.4, "squares": 3},
+            {
+                "left": 8700,
+                "building": 8700,
+                "night": 8700,
+                "progress": 0.4,
+                "squares": 3,
+                "ready": False,
+            },
         )
         self.assertIs(a.shown, shown)

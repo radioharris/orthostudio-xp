@@ -353,42 +353,41 @@ static void tell_start(void) {
     send_line(sock, line);
 }
 
+/* Every texture built, the files of the squares round the start still being made: what X-Plane
+   waits for then (docs/specs/live.md, sq=). */
+static int preparing_ground(const struct state *st) { return st->left == 0 && st->squares > 0; }
+
 /* One line: the textures left, then the download rate, or once every photo they wait for is in
    (all of them being built: b= reaches n=), that instead of a rate of 0.0, which read as stuck
    while the count went down (the user's Shadow, 2026-10-11). Once none is left, the squares whose
-   files are being made: it said 0 textures to build for the 19 s they took (LSGG, 2026-11-19). */
+   files are being made. */
 static void show(const struct state *st) {
     char what[200], progress[120];
     int photos_in = st->left > 0 && st->building >= st->left;
     int nights_only = st->night > 0 && st->night >= st->left; /* the photos built: the night left */
-    int ground = st->left == 0 && st->squares > 0; /* every texture built: the squares left */
-    if (french && ground) {
-        snprintf(what, sizeof what, "Chargement de l'ortho autour de %s", st->where);
+    snprintf(what, sizeof what, french ? "Chargement de l'ortho autour de %s" : "Loading the ortho around %s",
+             st->where);
+    if (french && preparing_ground(st)) {
         snprintf(progress, sizeof progress, "Préparation du sol : %d carré%s  -  %d s", st->squares,
                  st->squares > 1 ? "s" : "", st->secs);
-    } else if (ground) {
-        snprintf(what, sizeof what, "Loading the ortho around %s", st->where);
+    } else if (preparing_ground(st)) {
         snprintf(progress, sizeof progress, "Preparing the ground: %d square%s  -  %d s", st->squares,
                  st->squares > 1 ? "s" : "", st->secs);
     } else if (french && nights_only) {
-        snprintf(what, sizeof what, "Chargement de l'ortho autour de %s", st->where);
         snprintf(progress, sizeof progress, "%d textures de nuit à construire  -  %d s", st->left,
                  st->secs);
     } else if (nights_only) {
-        snprintf(what, sizeof what, "Loading the ortho around %s", st->where);
         snprintf(progress, sizeof progress, "%d night textures to build  -  %d s", st->left,
                  st->secs);
     } else if (french) {
         char rate[48], *dot;
         snprintf(rate, sizeof rate, "%.1f Mo/s", st->mbs);
         if ((dot = strchr(rate, '.')) != NULL) *dot = ','; /* 15,2 Mo/s */
-        snprintf(what, sizeof what, "Chargement de l'ortho autour de %s", st->where);
         snprintf(progress, sizeof progress, "%d textures à construire  -  %s  -  %d s", st->left,
                  photos_in ? "photos reçues, construction en cours" : rate, st->secs);
     } else {
         char rate[48];
         snprintf(rate, sizeof rate, "%.1f MB/s", st->mbs);
-        snprintf(what, sizeof what, "Loading the ortho around %s", st->where);
         snprintf(progress, sizeof progress, "%d textures to build  -  %s  -  %d s", st->left,
                  photos_in ? "every photo in, building" : rate, st->secs);
     }
@@ -429,7 +428,8 @@ static void hold(const char *at) {
         if (r == 0) {
             answered = t;
             if (!told) {
-                say("X-Plane waits at %s until the ortho around %s is built (%d textures to go)", at, st.where, st.left);
+                say("X-Plane waits at %s until the ortho around %s is built (%d %s to go)", at, st.where,
+                    preparing_ground(&st) ? st.squares : st.left, preparing_ground(&st) ? "squares" : "textures");
                 told = 1;
             }
             show(&st);

@@ -246,7 +246,7 @@ def test_a_file_that_fails_is_tried_again_and_stops_nothing(
     try:
         names.want({HERE, EAST}, {HERE, EAST}, (46.5, 2.5))
         assert names.wait_ready({EAST}, 10.0)  # the other square made all the same
-        assert not names.ready({HERE}) and HERE in names.failing
+        assert names.left({HERE}) == 1 and HERE in names.failing
         assert any("could not all be made" in line for line in logged)
         assert (pack / "textures" / f"{ROW[4]}.dds").exists()  # its other files are there
         broken["on"] = False  # the disk has room again
@@ -259,36 +259,20 @@ def test_a_file_that_fails_is_tried_again_and_stops_nothing(
 def test_a_start_is_not_held_for_ever_by_a_failing_square(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """The squares a start waits for, counted (docs/specs/live.md, sq=): a square made, or failing
+    past GIVE_UP_S, counts as made, the log saying so once."""
     from orthostudio.live import names as names_module
 
     pack = region(tmp_path)
     logged: list[str] = []
     names = live_names(pack, log=logged.append)
     names.failing[HERE] = [time.monotonic() - 1.0, time.monotonic() + 60, 1, "EPERM"]
-    assert not names.ready({HERE})
-    monkeypatch.setattr(names_module, "GIVE_UP_S", 0.5)
-    assert names.ready({HERE})
-    assert names.ready({HERE})
-    assert sum("X-Plane goes on without the files" in line for line in logged) == 1
-
-
-def test_the_squares_left_are_counted_by_the_rule_that_holds_a_start(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """The squares whose files are not made yet, which the plugin counts down once every texture
-    is built (it said « 0 textures à construire » for 19 s, LSGG 2026-11-19): a square made, or
-    failing past GIVE_UP_S, counts as made, as for :meth:`ready`."""
-    from orthostudio.live import names as names_module
-
-    pack = region(tmp_path)
-    logged: list[str] = []
-    names = live_names(pack, log=logged.append)
-    names.failing[HERE] = [time.monotonic() - 1.0, time.monotonic() + 60, 1, "EPERM"]
-    assert names.left({HERE, EAST}) == 2 and not names.ready({HERE, EAST})
+    assert names.left({HERE, EAST}) == 2
     names.done.add(EAST)
-    assert names.left({HERE, EAST}) == 1 and not names.ready({HERE, EAST})
+    assert names.left({HERE, EAST}) == 1
     monkeypatch.setattr(names_module, "GIVE_UP_S", 0.5)  # HERE failing past it
-    assert names.left({HERE, EAST}) == 0 and names.ready({HERE, EAST})
+    assert names.left({HERE, EAST}) == 0
+    assert names.left({HERE, EAST}) == 0
     assert sum("X-Plane goes on without the files" in line for line in logged) == 1
 
 

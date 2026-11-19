@@ -1244,10 +1244,6 @@ class Names:
                     )
         return left
 
-    def ready(self, squares: Iterable[Square]) -> bool:
-        """Whether every file of ``squares`` is made (:meth:`left`)."""
-        return self.left(squares) == 0
-
     def wait_ready(self, squares: Iterable[Square], timeout: float) -> bool:
         wanted = set(squares)
         with self._cond:

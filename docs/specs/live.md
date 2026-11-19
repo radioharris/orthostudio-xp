@@ -384,16 +384,14 @@ start at most 60 s (`GIVE_UP_S`, the log says so); an unexpected error stops Liv
 builder's does. A texture recorded as built whose name had to be made again (its file taken away
 by hand) is built again, unless the builder wrote its file over that new name meanwhile: at a
 start the names are made while the first textures are built, and 168 good ones were built twice
-over Norway (2026-09-30; `Names.leads_to_neutral`). A start's are
-made from the click, and the plugin holds X-Plane until those of its window are there
-(`Streamer.squares_left`, by the rule of `Names.left`: a square made, or failing past `GIVE_UP_S`,
-counts as made; counted in `start_count`, with the textures); once every texture is built its
-loading window and Live's window count down the squares left
-(`sq=`, below): it said « 0 textures à construire » for the 19 s the files of 36 squares took after
-a region update (LSGG, 2026-11-19); in flight, the ring gives a square of flight to make the next
-column before X-Plane loads it (4 to 7 minutes at 480 kt, 1.5 for a Concorde). The squares two rings from
-X-Plane's window lose their files (`KEEP`), a texture built kept (the disk budget's), and none while
-X-Plane loads scenery. Until 2026-09-29 the pack held every square's files from its setup: 400,000
+over Norway (2026-09-30; `Names.leads_to_neutral`). A start's are made from the click, and the
+plugin holds X-Plane until those of its window are there. They are counted with the start's
+textures (`start_count`, through `Streamer.squares_left` and `Names.left`: a square made, or
+failing past `GIVE_UP_S`, counts as made), and once every texture is built the plugin's loading
+window and Live's window count them down (`sq=`, below). In flight, the ring gives a square of
+flight to make the next column before X-Plane loads it (4 to 7 minutes at 480 kt, 1.5 for a
+Concorde). The squares two rings from X-Plane's window lose their files (`KEEP`), a texture built
+kept (the disk budget's), and none while X-Plane loads scenery. Until 2026-09-29 the pack held every square's files from its setup: 400,000
 textures and 684,000 `.ter` for Europe, four minutes to set up, three to lay out again for a new
 zoom, and possible only on APFS, whose clones cost nothing. Measured then with Live's real names:
 

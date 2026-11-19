@@ -283,7 +283,9 @@ class GateTest(unittest.TestCase):
                 p.connect(("127.0.0.1", self.port))
                 p.settimeout(1.0)  # the plugin's second
                 p.send(b"LIVE1 HOLD 37.936700 23.944500 flight")
-                self.assertEqual(p.recv(100), b"LIVE1 WAIT n=0 b=0 p=0 s=0 mbs=0.0")
+                self.assertEqual(
+                    p.recv(100), b"LIVE1 WAIT n=0 b=0 p=0 s=0 mbs=0.0 lang=en night=0 sq=0 at="
+                )
                 gate.hold_at("LGAV parking B17", "fr")  # the start the loop plans next
                 p.send(b"LIVE1 HOLD 37.936700 23.944500 flight")
                 self.assertTrue(p.recv(100).endswith(b"lang=fr night=0 sq=0 at=LGAV parking B17"))
@@ -633,9 +635,10 @@ class PanelWordsTest(unittest.TestCase):
     def tearDownClass(cls):
         cls.tmp.cleanup()
 
-    def shown(self, *answers: bytes) -> list[tuple[str, str]]:
+    def shown(self, *answers: bytes) -> tuple[list[tuple[str, str]], list[str]]:
         """The window's two lines for the stand-in streamer's ``answers``, each given to two
-        HOLDs in turn (one coming too late for its ask is drained at the next), then GO."""
+        HOLDs in turn (one coming too late for its ask is drained at the next), then GO; and what
+        the plugin wrote in X-Plane's Log.txt."""
         left = [a for a in answers for _ in range(2)]
 
         def streamer(sock):
@@ -654,56 +657,47 @@ class PanelWordsTest(unittest.TestCase):
                 timeout=30,
             )
             let_go(sock)
+        lines = out.stdout.splitlines()
         said = [
             tuple(line[len("PANEL ") :].split(" | ")[:2])
-            for line in out.stdout.splitlines()
+            for line in lines
             if line.startswith("PANEL ")
         ]
-        return list(dict.fromkeys(said))
+        return list(dict.fromkeys(said)), [line[4:] for line in lines if line.startswith("LOG ")]
 
     def test_preparing_the_ground_once_every_texture_is_built(self):
-        """Every texture built, the squares' files still being made: the squares counted down,
-        where the window said « 0 textures à construire » for 19 s (LSGG, 2026-11-19)."""
+        """Every texture built, the squares' files still being made: the squares counted down
+        (docs/specs/live.md, sq=), in X-Plane's Log.txt too. A streamer of before sends no sq=:
+        the window says what it said."""
         wait = "LIVE1 WAIT n={} b={} p=500 s={} mbs=5.2 lang={} night={} sq={} at={}"
         fr, en = "LSGG piste 04", "LSGG runway 04"
-        shown = self.shown(
-            wait.format(3, 0, 2, "fr", 0, 36, fr).encode(),
+        shown, logged = self.shown(
             wait.format(0, 0, 12, "fr", 0, 36, fr).encode(),
             wait.format(0, 0, 14, "fr", 0, 1, fr).encode(),
             wait.format(0, 0, 15, "en", 0, 2, en).encode(),
             wait.format(0, 0, 16, "en", 0, 1, en).encode(),
+            wait.format(3, 0, 2, "fr", 0, 36, fr).encode(),  # textures left: they first
+            wait.format(3, 0, 3, "en", 0, 0, en).encode(),
+            # a streamer of before, every word it does not send still 0
+            f"LIVE1 WAIT n=0 b=0 p=1000 s=4 mbs=0.0 lang=en at={en}".encode(),
             wait.format(7, 7, 17, "en", 7, 0, en).encode(),
         )
+        french, english = f"Chargement de l'ortho autour de {fr}", f"Loading the ortho around {en}"
         self.assertEqual(
             shown,
             [
-                (
-                    f"Chargement de l'ortho autour de {fr}",
-                    "3 textures à construire  -  5,2 Mo/s  -  2 s",
-                ),
-                (
-                    f"Chargement de l'ortho autour de {fr}",
-                    "Préparation du sol : 36 carrés  -  12 s",
-                ),
-                (f"Chargement de l'ortho autour de {fr}", "Préparation du sol : 1 carré  -  14 s"),
-                (f"Loading the ortho around {en}", "Preparing the ground: 2 squares  -  15 s"),
-                (f"Loading the ortho around {en}", "Preparing the ground: 1 square  -  16 s"),
-                (f"Loading the ortho around {en}", "7 night textures to build  -  17 s"),
+                (french, "Préparation du sol : 36 carrés  -  12 s"),
+                (french, "Préparation du sol : 1 carré  -  14 s"),
+                (english, "Preparing the ground: 2 squares  -  15 s"),
+                (english, "Preparing the ground: 1 square  -  16 s"),
+                (french, "3 textures à construire  -  5,2 Mo/s  -  2 s"),
+                (english, "3 textures to build  -  5.2 MB/s  -  3 s"),
+                (english, "0 textures to build  -  0.0 MB/s  -  4 s"),
+                (english, "7 night textures to build  -  17 s"),
             ],
         )
-
-    def test_an_older_streamer_says_no_squares(self):
-        """A streamer of before sends no ``sq=``: the window says what it said."""
-        shown = self.shown(b"LIVE1 WAIT n=0 b=0 p=1000 s=3 mbs=0.0 lang=en at=LSGG runway 04")
-        self.assertEqual(
-            shown,
-            [
-                (
-                    "Loading the ortho around LSGG runway 04",
-                    "0 textures to build  -  0.0 MB/s  -  3 s",
-                )
-            ],
-        )
+        waits = [line for line in logged if "X-Plane waits at" in line]
+        self.assertIn(f"until the ortho around {fr} is built (36 squares to go)", waits[0])
 
 
 @unittest.skipIf(Image is None, "needs numpy, Pillow and ispc_texcomp")

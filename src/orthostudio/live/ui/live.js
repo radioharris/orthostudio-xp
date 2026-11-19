@@ -206,8 +206,8 @@ function blocking(checks) {
  * the same count, streamer.start_count). */
 export function holdText(start, mbs) {
   const seconds = number(start.seconds);
-  // every texture built, the files of the squares round the start still being made: it said
-  // 0 textures to build for the 19 s they took after a region update (LSGG, 2026-11-19)
+  // every texture built, the files of the squares round the start still being made (sq= in
+  // docs/specs/live.md)
   if (start.left === 0 && (start.squares || 0) > 0) {
     return t(start.squares === 1 ? "hold.ground_one" : "hold.ground", { n: number(start.squares), seconds });
   }

@@ -56,21 +56,19 @@ def lines(
     building: int,
     mbs: float,
     seconds: float,
-    counted: bool,
     lang: str,
     night: int = 0,
     squares: int = 0,
 ) -> tuple[str, str]:
     """The window's headline and detail: ``where`` (the start's name in that language), the
     textures ``left`` (``building`` of them with every photo in), the download rate, the seconds
-    since the start was known; ``counted``: False before the textures are counted; once none is
-    left, the ``squares`` round the start whose files are being made."""
+    since the start was known. No texture left: the ``squares`` round the start whose files are
+    being made, else « preparing the files » (the start not counted yet, or ready this instant)."""
     around, to_build, rate, photos, preparing, nights, ground = WORDS.get(lang, WORDS["en"])
     headline = around.format(where)
-    if left == 0 and squares > 0:  # every texture built: the squares' files
-        return headline, f"{ground.format(squares, 's' if squares > 1 else '')}  -  {seconds:.0f} s"
-    if not counted:
-        return headline, f"{preparing}  -  {seconds:.0f} s"
+    if left == 0:
+        said = ground.format(squares, "s" if squares > 1 else "") if squares > 0 else preparing
+        return headline, f"{said}  -  {seconds:.0f} s"
     if 0 < left <= night:  # the photos built: the night textures left (a start at night)
         return headline, f"{nights.format(left)}  -  {seconds:.0f} s"
     said = photos if left > 0 and building >= left else rate.format(mbs)
