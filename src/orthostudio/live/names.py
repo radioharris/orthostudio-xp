@@ -608,11 +608,11 @@ def _ignore_ctrl_c() -> None:
         signal.signal(signal.SIGBREAK, signal.SIG_IGN)
 
 
-def _night_named(pack_dir: str, lit: str, errors: list[tuple[str, str]]) -> str | None:
+def _night_named(pack_dir: str, lit: str, unlit: list[tuple[str, str]]) -> str | None:
     """A land ``.ter``'s night texture ``lit``, its black name made first if it is not there
-    (:class:`NightPool`): ``lit`` if it is there then, else None, the error said. Made apart, a
-    name that failed left its ``.ter`` naming a file not there, which X-Plane could not load
-    (discussion 37)."""
+    (:class:`NightPool`): ``lit`` if it is there then, else None, the error said in ``unlit``: the
+    land then names none and has no lights at night. Made apart, a name that failed left its
+    ``.ter`` naming a file not there, which X-Plane could not load (discussion 37)."""
     from .region import NIGHT_FOLDER
 
     path = Path(pack_dir) / NIGHT_FOLDER / lit
@@ -623,9 +623,27 @@ def _night_named(pack_dir: str, lit: str, errors: list[tuple[str, str]]) -> str 
             )
             pool.link(0, path)
     except OSError as e:
-        errors.append((str(path), f"{type(e).__name__}: {e}"))
+        unlit.append((str(path), f"{type(e).__name__}: {e}"))
         return None
     return lit
+
+
+def _unlit(ter: str) -> None:
+    """A land ``.ter`` there naming its night texture, written again naming none: its night could
+    not be named (:func:`_night_named`), and X-Plane could not load a file naming it."""
+    try:
+        with open(ter, "rb") as f:
+            text = f.read()
+    except FileNotFoundError:  # gone meanwhile: made again naming none
+        return
+    if b"LIT_TEX" not in text:
+        return
+    path = Path(ter)
+    tmp = path.with_name(f".live-tmp-{os.getpid()}-{path.name}")
+    with contextlib.suppress(FileNotFoundError):
+        os.unlink(tmp)
+    _write_new(str(tmp), with_night(text, None))
+    replace(tmp, path)
 
 
 def run_ops(pack_dir: str, ops: Sequence[tuple]) -> dict:
@@ -646,14 +664,16 @@ def run_ops(pack_dir: str, ops: Sequence[tuple]) -> dict:
     texture's name removed while still black and once its land ``.ter`` is gone. The ``.ter``
     operations may carry two more: the land's night texture and whether the night lights are on
     (:func:`with_night`), its black name then made first, its ``.ter`` there or not (one left
-    naming a night not there gets it back), and named only if it is there (:func:`_night_named`).
-    Every error is reported, none stops the others."""
+    naming a night not there gets it back), and named only if it is there (:func:`_night_named`):
+    a night that could not be named is said in ``unlit``, its land naming none, a ``.ter`` there
+    written again without it (:func:`_unlit`). Every error is reported, none stops the others."""
     pack = Path(pack_dir)
     pool = _POOLS.get(pack_dir) or _POOLS.setdefault(pack_dir, NeutralPool(pack))
     placed = dropped = 0
     named: list[str] = []
     missing: list[str] = []
     errors: list[tuple[str, str]] = []
+    unlit: list[tuple[str, str]] = []
     neutral: set[tuple[int, int]] | None = None
     night_black: set[tuple[int, int]] | None = None
     tops: dict[tuple[int, int], int] | None = None
@@ -670,7 +690,9 @@ def run_ops(pack_dir: str, ops: Sequence[tuple]) -> dict:
                 lit, night = (op[4], op[5]) if len(op) > 5 else (None, False)
                 # its night's name made, the .ter there too: one naming a night gone gets it back
                 if night and lit is not None:
-                    lit = _night_named(pack_dir, lit, errors)
+                    lit = _night_named(pack_dir, lit, unlit)
+                    if lit is None and os.path.lexists(op[2]):
+                        _unlit(op[2])
                 if not os.path.lexists(op[2]):
                     if kind == "ter":
                         with open(op[1], "rb") as f:
@@ -743,14 +765,17 @@ def run_ops(pack_dir: str, ops: Sequence[tuple]) -> dict:
                 missing.append(op[1])
             elif kind in ("fit", "check"):  # never a square readable with a texture not set
                 errors.append((str(op[2]), f"{type(e).__name__}: {e}"))
-        except OSError as e:
-            errors.append((str(op[-1]), f"{type(e).__name__}: {e}"))
+        except OSError as e:  # said with its file: the one made, else the one removed
+            errors.append(
+                (str(op[1] if kind.startswith("drop") else op[2]), f"{type(e).__name__}: {e}")
+            )
     return {
         "placed": placed,
         "named": named,
         "dropped": dropped,
         "missing": missing,
         "errors": errors,
+        "unlit": unlit,
         "fitted": fitted,
         "stale": stale,
     }
@@ -766,7 +791,9 @@ class Names:
     whose file was missing and got a neutral name, built again if it was recorded as built.
     ``release``: whether squares lose their files at all (not in a pack of before, which has
     every square's: orthostudio.live.region). A square whose files could not all be made is tried
-    again later (:data:`FAIL_RETRY_S`), and holds a start no longer than :data:`GIVE_UP_S`.
+    again later (:data:`FAIL_RETRY_S`), and holds a start no longer than :data:`GIVE_UP_S`. One
+    whose files could not all be taken away is ``present``, never ``done``: wanted again, it is
+    made at once, its files gone made again; else its take-away is tried again later.
 
     A new zoom sets each texture to its size as its square is made (:meth:`make`): ``building``,
     ``level_of`` and ``refit``, under ``lock`` too, say which the builder has taken (being
@@ -820,6 +847,7 @@ class Names:
         self.keep: set[Square] = set()
         self.center: tuple[float, float] | None = None
         self.failing: dict[Square, list] = {}  # square: [first failure, next try, tries, error]
+        self.failing_away: dict[Square, list] = {}  # the same, of the squares' take-away
         self.nights_gone: set[str] = set()  # textures whose day file went (:meth:`day_gone`)
         self._given_up: set[Square] = set()
         self._said: set[str] = set()
@@ -883,8 +911,9 @@ class Names:
         """Every file ``square`` needs, those there already left: (files placed, texture names
         made). Its textures first, each set to the zoom's size if a new zoom left it another
         (region.set_zooms), then its terrain files, which make X-Plane read them: never one of
-        another size, never a night texture not there (:func:`_night_named`). Raises
-        :class:`SquareError` when some could not be made,
+        another size, never a night texture not there (:func:`_night_named`: a land whose night
+        could not be named has no lights, said in the log). Raises :class:`SquareError` when some
+        could not be made,
         :class:`SquareWaitError` while a texture being built has still its old size."""
         entries = self.textures_on(square)
         names = [entry[0] for entry in entries]
@@ -938,6 +967,12 @@ class Names:
         for src in placed["missing"]:
             region = Path(src).parent.parent.name
             self._say_once(f"  {Path(src).name} is gone from {region}: the region changed")
+        if placed["unlit"]:  # made all the same: a square held for its lights held the start
+            self.log(
+                f"  square {square[0]:+03d}{square[1]:+04d} has no lights at night where its night "
+                f"textures could not be named ({SquareError(placed['unlit'])}), until it is made "
+                "again"
+            )
         if placed["errors"]:
             raise SquareError(placed["errors"])
         return placed["placed"], len(result["named"])
@@ -1055,24 +1090,26 @@ class Names:
 
     def _todo(self) -> tuple[list[Square], list[Square]]:
         """(squares to make, nearest first; squares to take away, farthest first), those failing
-        not before their next try."""
+        not before their next try; a take-away failing holds back no making."""
         now = time.monotonic()
         later = {s for s, f in self.failing.items() if f[1] > now}
         make = sorted(self.target - self.done - later, key=self._distance)
         gone = []
         if self.release_ok and self.keep and not self.yielding():
+            later |= {s for s, f in self.failing_away.items() if f[1] > now}
             gone = sorted(
                 (self.done | self.present) - self.keep - later, key=self._distance, reverse=True
             )
         return make, gone[:RELEASE_BATCH]
 
-    def _failed(self, square: Square, error: SquareError) -> None:
-        """A square's files failed: tried again later, a little later each time."""
+    def _failed(self, square: Square, error: SquareError, record: dict[Square, list]) -> None:
+        """A square's files failed to be made or taken away (``record``: :attr:`failing` or
+        :attr:`failing_away`): tried again later, a little later each time."""
         now = time.monotonic()
         with self._cond:
-            first, _, tries, _ = self.failing.get(square, [now, now, 0, ""])
+            first, _, tries, _ = record.get(square, [now, now, 0, ""])
             wait = min(FAIL_RETRY_MAX_S, FAIL_RETRY_S * 2**tries)
-            self.failing[square] = [first, now + wait, tries + 1, str(error)]
+            record[square] = [first, now + wait, tries + 1, str(error)]
         if tries == 0:
             self.log(
                 f"  the files of square {square[0]:+03d}{square[1]:+04d} could not all be made or "
@@ -1115,12 +1152,16 @@ class Names:
                     try:
                         self.take_away(square)
                     except SquareError as e:
-                        self._failed(square, e)
+                        with self._cond:  # some of its files gone: made again if wanted again
+                            self.done.discard(square)
+                            self.present.add(square)
+                        self._failed(square, e, self.failing_away)
                         continue
                     with self._cond:
                         self.done.discard(square)
                         self.present.discard(square)
                         self.failing.pop(square, None)
+                        self.failing_away.pop(square, None)
                         self.released += 1
 
     def _make_batch(self, squares: list[Square]) -> None:
@@ -1133,7 +1174,7 @@ class Names:
             try:
                 files, names = self.make(square)
             except SquareError as e:
-                self._failed(square, e)
+                self._failed(square, e, self.failing)
                 continue
             except SquareWaitError:  # a texture on it being built at its old size: in a moment
                 now = time.monotonic()
@@ -1146,6 +1187,7 @@ class Names:
                 self.done.add(square)
                 self.present.discard(square)
                 self.failing.pop(square, None)
+                self.failing_away.pop(square, None)
                 self.made += 1
                 self._cond.notify_all()
         if placed or named:
