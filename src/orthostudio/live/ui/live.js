@@ -867,22 +867,22 @@ function drawRegions(status) {
       const head = document.createElement("div");
       head.className = "region-head";
       const label = document.createElement("span");
-      label.className = "region-label"; // the name, and under it what it downloads and takes
+      label.className = "region-label"; // the name, under it its size, then its state
       const name = document.createElement("span");
       name.className = "region-name";
       name.textContent = t(`region.${row.id}`);
       const size = document.createElement("span");
       size.className = "region-size";
       size.textContent = row.size;
-      label.append(name, size);
       const state = document.createElement("span");
       state.className = "region-state";
       state.textContent = row.state;
+      label.append(name, size, state);
       const actions = document.createElement("span");
       actions.className = "region-actions";
       actions.append(...row.buttons.map((b) => regionButton(b.label, regionAction(row.id, b.act),
         { danger: b.danger, disabled: b.disabled })));
-      head.append(label, state, actions);
+      head.append(label, actions);
       li.append(head);
       if (row.kept) {
         const kept = document.createElement("div");
