@@ -656,11 +656,6 @@ function disarmRemove() {
   if (last) draw(last);
 }
 
-// seen before the button's own click: a click on the armed button deletes, any other disarms
-document.addEventListener("click", (ev) => {
-  if (removeArmed !== null && !ev.target.closest?.("[data-armed]")) disarmRemove();
-}, true);
-
 function regionButton(label, onClick, { danger = false, disabled = false } = {}) {
   const button = document.createElement("button");
   button.type = "button";
@@ -2086,6 +2081,10 @@ function boot() {
   // before any other listener: the click is the text's, not the field's
   document.addEventListener("click", (ev) => {
     if (isTitleClick(ev.target)) ev.preventDefault();
+  }, true);
+  // seen before the button's own click: a click on the armed Delete deletes, any other disarms it
+  document.addEventListener("click", (ev) => {
+    if (removeArmed !== null && !ev.target.closest?.("[data-armed]")) disarmRemove();
   }, true);
   setLanguage(detectLanguage());
   $("lang-select").value = language();
