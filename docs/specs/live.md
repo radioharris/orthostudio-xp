@@ -593,8 +593,8 @@ sentences: « the meshes Live streams onto changed since its last start, and X-P
 those of before. Quit X-Plane, or connect the disk holding a mesh, then start again ». Every
 deletion of a region's folders follows one rule (`LiveControl._deleting`: Live stopped, the region
 not being installed, X-Plane not running, said by `osxpregions.XPLANE_READS`, which the install's
-own deletions use too): « Delete from the disk » (`LiveControl.remove_kept`,
-`osxpregions.remove_kept`), which the window warns cannot be undone, the region's own Delete
+own deletions use too): « Delete the old mesh » (`LiveControl.remove_kept`,
+`osxpregions.remove_kept`), which the window warns cannot be undone, the region's own « Delete the region »
 (`remove`, which takes the kept mesh with it) and the room an update makes. Nothing else reads a
 kept mesh then: the pack's record naming it protects nothing (no start under X-Plane on a changed
 mesh), and the Settings' Mesh saying Old falls back to the new mesh where none is kept. Mesh goes
