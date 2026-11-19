@@ -272,6 +272,49 @@ def test_a_start_is_not_held_for_ever_by_a_failing_square(
     assert sum("X-Plane goes on without the files" in line for line in logged) == 1
 
 
+def test_a_square_partly_taken_away_is_made_again_when_wanted(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A take-away failing half way (a file another program holds on Windows) left its square
+    counted made: the aircraft back, X-Plane found its other files gone. Wanted again, it is made
+    at once, never held back by its take-away's next try; out of reach, that take-away comes."""
+    pack = region(tmp_path)
+    names = live_names(pack)
+    held, real_unlink, refused = pack / "terrain" / f"{ROW[3]}.ter", os.unlink, {"on": True}
+
+    def unlink(path, *args, **kwargs):
+        if refused["on"] and Path(path) == held:
+            raise PermissionError(errno.EACCES, "held by another program", str(path))
+        real_unlink(path, *args, **kwargs)
+
+    def until(test) -> bool:
+        deadline = time.monotonic() + 10.0
+        while not test() and time.monotonic() < deadline:
+            time.sleep(0.02)
+        return test()
+
+    monkeypatch.setattr(os, "unlink", unlink)
+    names.start(own_process=False)
+    try:
+        names.want({HERE}, {HERE}, (46.5, 2.5))
+        assert names.wait_ready({HERE}, 10.0)
+        names.want({EAST}, {EAST}, (46.5, 3.5))  # flown away: HERE taken away, one file refused
+        assert until(lambda: HERE in names.failing_away)
+        assert HERE not in names.done and HERE in names.present
+        assert names._todo()[1] == []  # its take-away not tried again before its next try
+        assert held.exists() and not (pack / "terrain" / f"{ROW[0]}.ter").exists()
+        names.want({HERE, EAST}, {HERE, EAST}, (46.5, 2.5))  # back, its next take-away 10 s on
+        assert names.wait_ready({HERE}, 5.0)
+        assert all(f.exists() for name in ROW[:11] for f in files_of(pack, name))
+        assert HERE not in names.failing_away and HERE not in names.failing
+        refused["on"] = False
+        names.want({EAST}, {EAST}, (46.5, 3.5))  # away again, the file let go
+        assert until(lambda: names.released == 1 and HERE not in names.present)
+        assert not held.exists()
+    finally:
+        names.close()
+
+
 def test_a_texture_built_since_is_never_taken_away(tmp_path: Path) -> None:
     """Taking a square away removes a texture's name only while it leads to the neutral texture:
     one built in the meantime (renamed over it) stays, whatever was decided before."""
