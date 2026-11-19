@@ -171,8 +171,9 @@ Windows, where the same tracings take about a fifth less, 1.4 and 5.0. A big cit
 waiting for that memory is not overtaken by the smaller tiles: it starts as soon as the room is
 there, and they follow beside it. The water masks reserve memory for the squares of photo where
 there is sea or a large lake to mask, a little for a lake, nothing more inland, and start as many
-workers as half of the memory holds: the heaviest fades, with the shallow water near the shore, get
-three on a computer of 16 GB instead of eight, a few seconds more a tile. A DSF
+workers as half of the memory holds: the heaviest fades (our own fade, the three steps, or any fade
+with the shallow water near the shore) get two or three on a computer of 16 GB instead of eight, a
+few seconds more a tile; the default fade keeps its eight. A DSF
 reserves what its mesh takes, about 0.6 GB a million triangles, and the images start as many
 encoders as the memory holds: two on a computer of 8 GB, six on 16, twelve on a large Mac. Until
 1.2.1 every tracing counted 1.2 GB, and three big cities could start together whatever they took.

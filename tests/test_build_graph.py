@@ -961,9 +961,10 @@ def test_the_masks_reserve_their_pool_only_where_there_is_water_to_draw(
 @pytest.mark.parametrize(
     ("config", "worker_mb"),
     [
-        ({}, 250),  # sand, the default: 242 MB a worker (masks-build.md 6.2)
-        ({"masking_mode": "rocks"}, 710),
-        ({"masking_mode": "3steps"}, 990),
+        ({}, 300),  # sand, the default: 277 MB a worker at most (masks-build.md 6.2)
+        ({"masking_mode": "rocks"}, 800),
+        ({"masking_mode": "3steps"}, 1500),
+        ({"use_masks_for_inland": True}, 500),
         ({"distance_masks_too": True}, 1400),
     ],
 )
@@ -972,7 +973,8 @@ def test_the_masks_pool_is_reserved_by_its_profile(
 ) -> None:
     """Every profile counted 800 MB a worker: three times what ``sand`` takes, less than
     ``3steps``; the distance masks were counted the heavier of the profile and 970 MB until
-    2026-11-18 (``masks_worker_mb``'s own table: ``test_masks_rule``)."""
+    2026-11-18, the inland water as the sea alone until 2026-11-19 (``masks_worker_mb``'s own
+    tables: ``test_masks_rule``)."""
     (g,) = _declare([_spec(tmp_path, config=config)], _sched(env), env)
     workers = masks_workers(env, g.masks.params)
     assert _masks_ram_mb(env, g.masks.params) == 300 + worker_mb * workers
@@ -983,10 +985,12 @@ def test_the_masks_pool_is_reserved_by_its_profile(
     [
         (8192, {}, 8),  # sand, the default, keeps its eight from 8 GB up
         (16384, {}, 8),
-        (16384, {"masking_mode": "3steps"}, 5),
-        (16384, {"masking_mode": "soft"}, 4),
-        (16384, {"masking_mode": "soft", "distance_masks_too": True}, 3),
-        (32768, {"masking_mode": "soft", "distance_masks_too": True}, 6),
+        (16384, {"masking_mode": "rocks"}, 6),
+        (16384, {"masking_mode": "rocks", "use_masks_for_inland": True}, 5),
+        (16384, {"masking_mode": "3steps"}, 3),
+        (16384, {"masking_mode": "soft"}, 2),
+        (16384, {"masking_mode": "soft", "distance_masks_too": True}, 2),
+        (32768, {"masking_mode": "soft", "distance_masks_too": True}, 5),
         (65536, {"masking_mode": "soft", "distance_masks_too": True}, 8),
     ],
 )
@@ -1036,8 +1040,8 @@ def test_the_masks_reserve_a_worker_for_each_cell_with_water(tmp_path: Path, env
     )
     inputs = {name: None for name in masks.inputs}
     inputs["mesh"] = mesh
-    assert masks.ram_from(inputs) == 300 + 250 * 1
-    assert _masks_ram_mb(env, masks.params) == 300 + 250 * 2  # the whole pool
+    assert masks.ram_from(inputs) == 300 + 300 * 1
+    assert _masks_ram_mb(env, masks.params) == 300 + 300 * 2  # the whole pool
 
 
 @pytest.mark.parametrize("damage", ["cut", "not a zip"])

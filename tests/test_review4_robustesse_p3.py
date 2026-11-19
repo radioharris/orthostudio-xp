@@ -297,7 +297,7 @@ def test_the_masks_node_budgets_for_the_worker_count_the_rule_uses(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """FINDING M1, FIXED (test amended): ``_masks_ram_mb`` budgets
-    ``300 + a worker's profile x masks_workers(env, params)`` (250 MB for ``sand``, 2026-10-28)
+    ``300 + a worker's profile x masks_workers(env, params)`` (300 MB for ``sand``, 2026-11-19)
     and the node now *passes that number* to the rule
     (``MasksJob.workers``), which passes it to ``build_masks``. The default of
     ``worker_count`` is capped at ``MAX_WORKERS`` too, so even an unbound rule cannot start
@@ -307,7 +307,7 @@ def test_the_masks_node_budgets_for_the_worker_count_the_rule_uses(
     env.workers = 2
     declared = buildmod._masks_ram_mb(env, masks_rule.MasksParams())
     budgeted_workers = buildmod.masks_workers(env, masks_rule.MasksParams())
-    assert budgeted_workers == 2 and declared == 300 + 250 * 2
+    assert budgeted_workers == 2 and declared == 300 + 300 * 2
     with masks_rule.masks_job(masks_rule.MasksJob(workers=budgeted_workers)):
         job = masks_rule.current_masks_job()
         assert job is not None
@@ -639,7 +639,7 @@ def test_three_masks_nodes_may_run_at_once_each_with_its_own_process_pool(
     """FINDING M1 (the batch half), FIXED (test amended): ``orthostudio.masks`` still takes ONE
     ``subprocess`` slot and starts a pool of its own, but the pool is the one the node
     budgeted for, so what a batch can really use is what the scheduler was told
-    (``slots x (300 + a worker's profile x workers)`` MB, 250 for ``sand`` since 2026-10-28)
+    (``slots x (300 + a worker's profile x workers)`` MB, 300 for ``sand`` since 2026-11-19)
     and its RAM budget can do its job."""
     monkeypatch.delenv("OSXP_MASKS_WORKERS", raising=False)
     monkeypatch.setattr(buildmod, "physical_memory_mb", lambda: 16384)  # sand's 8 from 8 GB
