@@ -39,10 +39,11 @@ renames the region of before ``.z_osxp_<id>.kept`` beside it, on its disk, inste
 (:func:`_settle_old`); one per region, a newer one replacing it. It never changes: nothing compares
 it to the list, updates it nor downloads it again (the host keeps no release of before). Live
 streams onto it, in its region's place, where the Settings' « Mesh » says old
-(``scenery.osxp_sources``); :func:`remove_kept` deletes it alone, the overlays staying, which its
-region's new mesh has too. No room for an update beside the region: the window offers to delete the
-kept mesh first only where that makes every disk enough (:func:`_room_for_update`), never the
-region itself.
+(``scenery.osxp_sources``). Each mesh has its own Delete, the overlays staying, which both have:
+:func:`remove_kept` deletes the kept one alone, and the region's own (:func:`remove`) deletes the
+new one, the kept one taking its place by the update's swap reversed (:func:`_kept_back`). No room
+for an update beside the region: the window offers to delete the kept mesh first only where that
+makes every disk enough (:func:`_room_for_update`), never the region itself.
 
 A region's river masks are the masks of its textures whose water is only rivers and lakes, which
 Live reads only when the pilot chose soft banks (``LiveSettings.rivers_fade``): Europe's about
@@ -628,10 +629,11 @@ def _swap_in(
     (:func:`_old_dir`), put back where the rename is refused, then kept or deleted
     (:func:`_settle_old`): a start finds the one or the other, whole. ``real`` and its ``touch``
     folders then dated now, what the next start's set-up compares (``region._fingerprints``); the
-    one of before keeps its dates. The one swap of a region's stage and of its river masks' alike;
-    :class:`InstallError` when a program holds a folder open. ``beside``: where the one of before
-    is set aside, out of the region's own folder for its river masks (:func:`_set_aside`). Whether
-    the one of before was kept. The lock held."""
+    one of before keeps its dates. The one swap of a region's stage, of its river masks' and of
+    its kept old mesh put back (:func:`_kept_back`) alike; :class:`InstallError` when a program
+    holds a folder open. ``beside``: where the one of before is set aside, out of the region's own
+    folder for its river masks (:func:`_set_aside`). Whether the one of before was kept. The lock
+    held."""
     old = _old_dir(real)
     _settle_old(real, beside)  # one an earlier swap left: kept or deleted as its record says
     if real.exists():
@@ -684,6 +686,11 @@ def _settle_old(real: Path, beside: Path | None = None) -> bool:
     return kept
 
 
+DATED = ("Earth nav data", "terrain", "terrain-lists")
+"""A region's folders a swap dates now with the region (:func:`_swap_in`): what the next start's
+set-up compares (``region._fingerprints``)."""
+
+
 def put_in_place(root: Path, region: str, log: Log = print) -> bool:
     """A whole stage (its marker written) put in the region's place (:func:`_swap_in`), the region
     of before kept or deleted as its record says (:func:`_settle_old`), then the overlays that
@@ -695,7 +702,7 @@ def put_in_place(root: Path, region: str, log: Log = print) -> bool:
         if not (stage / MARKER).is_file():
             return False
         real = _real(root, region)
-        if _swap_in(stage, real, real.name, touch=("Earth nav data", "terrain", "terrain-lists")):
+        if _swap_in(stage, real, real.name, touch=DATED):
             log(f"  the mesh of before of {region} kept beside it, {_kept_of(real).name}")
     _unpack_waiting(root, region, log)
     return True
@@ -953,15 +960,19 @@ def _set_aside_whole(path: Path) -> Path:
 
 
 def remove(root: Path, region: str, squares: Sequence[tuple[int, int]], log: Log = print) -> None:
-    """A region deleted from the disk (the folder a link leads to too, a link or a junction), its
+    """The region's Delete: its installed mesh deleted. Where it keeps an old mesh
+    (:func:`keeps_old`), that one takes its place (:func:`_kept_back`), the overlays staying. Else
+    the region deleted from the disk (the folder a link leads to too, a link or a junction), its
     overlays out of the overlay pack, and what an install of it left behind: its stage, the region
-    of before, its kept old mesh, its downloads. Set aside first, in one rename
-    (:func:`_set_aside_whole`, refused while a program holds it open: nothing deleted then), then
-    deleted in the background: never half a region left that a start would take, and no request
-    waiting a minute for it. A region of which only a stage or the region of before is left is
-    deleted too. A region on another disk keeps a link within reach of Live's ``regions`` folder,
-    set aside there too, until what was set aside beside it is deleted
-    (:func:`take_up_deletions`)."""
+    of before, its downloads. Set aside first, in one rename (:func:`_set_aside_whole`, refused
+    while a program holds it open: nothing deleted then), then deleted in the background: never
+    half a region left that a start would take, and no request waiting a minute for it. A region
+    of which only a stage or the region of before is left is deleted too. A region on another disk
+    keeps a link within reach of Live's ``regions`` folder, set aside there too, until what was set
+    aside beside it is deleted (:func:`take_up_deletions`)."""
+    if keeps_old(root, region):
+        _kept_back(root, region, log)
+        return
     folder = mesh_dir(root, region)
     real = _real(root, region)
     # beside the region: before its link goes
@@ -1002,6 +1013,29 @@ def remove(root: Path, region: str, squares: Sequence[tuple[int, int]], log: Log
     log(f"OrthoStudio XP's region {region} deleted, and {gone} of its overlays")
 
 
+def _kept_back(root: Path, region: str, log: Log) -> None:
+    """The region's Delete where it keeps an old mesh (:func:`remove`): the reverse of the update
+    that kept it, by the same swap (:func:`_swap_in`). The kept mesh renamed into the region's
+    place, its marker with it (its release: the window offers its Update again), dated now for the
+    next start's set-up; the installed mesh renamed aside first, then deleted in the background,
+    no record keeping it (:func:`_settle_old`). A stop or a power cut between the renames leaves
+    what the next opening makes right (:func:`_repair`): the installed mesh back and the old one
+    still kept, or the old one in place and the other deleted. Its stage and its downloads go too,
+    the stage made not whole first: never put in place over the old mesh at a later start, with
+    an answer that would delete it. The overlays stay, which both meshes have. :class:`InstallError`
+    where a program holds a folder open: nothing deleted then."""
+    folder = mesh_dir(root, region)
+    real = _real(root, region)
+    with _SWAP:
+        stage = stage_dir(root, region)
+        (stage / MARKER).unlink(missing_ok=True)
+        _swap_in(_kept_of(real), real, real.name, touch=DATED)
+        _discard(stage)
+    shutil.rmtree(download_dir(root, region), ignore_errors=True)
+    _forget_list(root, folder, _kept_of(real))
+    log(f"the new mesh of OrthoStudio XP's region {region} deleted, its old mesh back in its place")
+
+
 def _forget_list(root: Path, *folders: Path) -> None:
     """The lists of textures Live kept for these folders (``names.region_list_file``) deleted:
     a folder deleted leaves none behind."""
@@ -1018,8 +1052,8 @@ def remove_kept(root: Path, region: str, *, wait: bool = False, log: Log = print
     open: nothing deleted then; never taken for a kept mesh), then deleted in the background, or
     before returning with ``wait``: the room an update makes is counted once it is free
     (:meth:`Installer._make_room`). The caller says whether it may (``LiveControl._deleting``,
-    ``Installer.may_swap``). The window's « Delete from the disk », and its « Delete the kept old
-    one and install the new one »."""
+    ``Installer.may_swap``). The window's Delete on the kept mesh's line, and its « Delete the kept
+    old one and install the new one »."""
     folder = kept_dir(root, region)
     with _SWAP:
         if not folder.exists():

@@ -1125,8 +1125,9 @@ class LiveControl:
         self.log("no region keeps an old mesh any more: Mesh is New again")
 
     def remove_region(self, region_id: str) -> None:
-        """Delete one of OrthoStudio XP's regions from the disk, with its overlays and its kept old
-        mesh, by the rule of every deletion (:meth:`_deleting`)."""
+        """The window's Delete on one of OrthoStudio XP's regions, by the rule of every deletion
+        (:meth:`_deleting`): its installed mesh deleted, its kept old mesh taking its place where
+        it keeps one, else the region with its overlays (``osxpregions.remove``)."""
         with self._deleting(region_id):
             if not osxpregions.present(live_root(), region_id):
                 raise session.RefusedError(f"the region {region_id!r} is not installed")
@@ -1139,8 +1140,8 @@ class LiveControl:
                 raise session.RefusedError(str(e)) from e
 
     def remove_kept(self, region_id: str) -> None:
-        """The window's « Delete from the disk » on a region's kept old mesh, which cannot be
-        downloaded again (``osxpregions.remove_kept``), by the rule of every deletion
+        """The window's Delete on a region's kept old mesh, which cannot be downloaded again
+        (``osxpregions.remove_kept``), by the rule of every deletion
         (:meth:`_deleting`). The region's overlays stay: its new mesh has them too."""
         with self._deleting(region_id):
             if osxpregions.kept_mesh(live_root(), region_id) is None:

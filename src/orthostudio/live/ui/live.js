@@ -711,7 +711,8 @@ function regionRow(id, mine, r, install, running, idle, xplane) {
   }
   const buttons = [];
   // its Delete armed: a short « Sure? » on the button, what it deletes on a line under the row (the
-  // whole sentence on the button widened the buttons' column and moved every row, 2026-11-19)
+  // whole sentence on the button widened the buttons' column and moved every row, 2026-11-19): its
+  // installed mesh, the kept old one taking its place where it keeps one (osxpregions.py remove)
   const armed = mine && removeArmed === id;
   const sure = !armed ? null
     : r.kept ? t("regions.confirm_remove_kept", { name }) : t("regions.confirm_remove", { name });
@@ -730,8 +731,8 @@ function regionRow(id, mine, r, install, running, idle, xplane) {
   // disk says that
   const line = busy && (running || ["failed", "cancelled"].includes(install.phase)) ? "install"
     : ready ? "waiting" : null;
-  // its kept old mesh, under it: its size and its Delete from the disk, by the rule of every
-  // deletion (Live stopped, no install of it, X-Plane closed: orthostudio/live/control.py _deleting)
+  // its kept old mesh, under it: its size and its own Delete, which deletes it alone, by the rule
+  // of every deletion (Live stopped, no install of it, X-Plane closed: control.py _deleting)
   const kept = mine && r.kept ? {
     text: r.kept.size ? t("regions.kept_size", { gb: gb(r.kept.size) }) : t("regions.kept"),
     button: { act: "remove_kept", label: t("regions.kept_remove"), danger: true, disabled: !idle || running || xplane },
@@ -827,7 +828,7 @@ async function updateAsked(id, button) {
   await regionAct(`regions/${id}/install`, "POST", { keep_old: keepOld, make_room: makeRoom });
 }
 
-/** « Delete from the disk » on a region's kept old mesh: Live warns first that it cannot be
+/** Delete on a region's kept old mesh, which deletes it alone: Live warns first that it cannot be
  * downloaded again (the host keeps no release of before). */
 async function removeKept(id) {
   const name = t(`region.${id}`);

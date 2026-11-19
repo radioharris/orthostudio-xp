@@ -1546,8 +1546,9 @@ def test_a_kept_old_mesh_is_deleted_by_the_rule_of_every_deletion(
 
 
 def test_mesh_stays_old_while_a_region_keeps_one(home: Path, tmp_path: Path, monkeypatch) -> None:
-    """Old stays while another region keeps its old mesh; the region's own Delete, which takes
-    its kept mesh with it, sets it back to New once none is left."""
+    """Old stays while another region keeps its old mesh. The region's own Delete deletes its new
+    mesh, its kept one taking its place: listed installed, of its own size, keeping none; Mesh
+    goes back to New once no region keeps one."""
     from orthostudio.live import aoregions, osxpregions
     from orthostudio.live.pack import live_root
 
@@ -1563,11 +1564,18 @@ def test_mesh_stays_old_while_a_region_keeps_one(home: Path, tmp_path: Path, mon
     na_kept = osxpregions.kept_dir(live_root(), "na")
     na_kept.mkdir()
     (na_kept / aoregions.MARKER).write_text(json.dumps({"size": 30, "zips": {}}))
-    c.remove_region("eur")  # its kept mesh with it
-    assert not osxpregions.present(live_root(), "eur")
+    c.remove_region("eur")  # its new mesh: the kept one takes its place
+    assert osxpregions.kept_mesh(live_root(), "eur") is None
+    regions = c.regions()
+    assert {r["id"]: r["size"] for r in regions["ours"]}["eur"] == 9  # the old mesh's
+    listed = {r["id"]: r for r in regions["list"]}
+    assert listed["eur"]["installed"] and "kept" not in listed["eur"] and "kept" in listed["na"]
     assert load_settings().mesh == "old"  # North America keeps one
-    c.remove_kept("na")
+    c.remove_region("na")
+    assert osxpregions.installed(live_root())["na"]["size"] == 30
     assert load_settings().mesh == "new"
+    c.remove_region("eur")  # no old mesh kept: the region goes
+    assert not osxpregions.present(live_root(), "eur")
 
 
 def test_an_update_s_answers_reach_its_install(home: Path, tmp_path: Path, monkeypatch) -> None:
@@ -1617,6 +1625,60 @@ async def test_the_kept_mesh_api(home: Path, tmp_path: Path, monkeypatch) -> Non
         assert bad.status_code == 422
         asked = await client.get("/api/live/regions/eur/room")
         assert asked.status_code == 200 and asked.json() == {"room": None}
+
+
+@pytest.mark.skipif(NODE is None, reason="needs node")
+def test_each_mesh_has_its_own_delete_its_confirmation_says_what_goes() -> None:
+    """The region's line and its kept old mesh's line each read Delete (2026-11-19): what each
+    deletes is said by its confirmation, the region's armed sentence (its new mesh, the old one
+    taking its place, where one is kept) and the kept mesh's question (it cannot be downloaded
+    again)."""
+    keys = [
+        "regions.remove",
+        "regions.kept_remove",
+        "regions.confirm_remove",
+        "regions.confirm_remove_kept",
+        "regions.kept_ask_title",
+        "regions.kept_ask_text",
+    ]
+    script = (
+        "globalThis.document = { documentElement: {} };"
+        f"const s = await import({json.dumps((UI_DIR / 'strings.js').as_uri())});"
+        f"const keys = {json.dumps(keys)}; const out = {{}};"
+        "for (const lang of ['en', 'fr']) { s.setLanguage(lang);"
+        " out[lang] = Object.fromEntries(keys.map((k) => [k, s.t(k, { name: 'Europe' })])); }"
+        "console.log(JSON.stringify(out));"
+    )
+    out = subprocess.run(
+        [NODE or "node", "--input-type=module", "-e", script],
+        capture_output=True,
+        encoding="utf-8",
+        check=True,
+    )
+    said = json.loads(out.stdout)
+    en, fr = said["en"], said["fr"]
+    assert en["regions.remove"] == en["regions.kept_remove"] == "Delete"
+    assert fr["regions.remove"] == fr["regions.kept_remove"] == "Supprimer"
+    assert en["regions.confirm_remove"] == "Click Sure? to delete Europe from the disk."
+    assert en["regions.confirm_remove_kept"] == (
+        "Click Sure? to delete the new mesh of Europe: the old one takes its place."
+    )
+    assert fr["regions.confirm_remove_kept"] == (
+        "Cliquez sur Sûr ? pour supprimer le nouveau maillage de Europe : "
+        "l'ancien reprend sa place."
+    )
+    assert en["regions.kept_ask_title"] == "Delete the kept old mesh of Europe from the disk?"
+    assert en["regions.kept_ask_text"] == "It cannot be downloaded again."
+    js = (UI_DIR / "live.js").read_text(encoding="utf-8")
+    row = js[js.index("function regionRow(") :]
+    row = row[: row.index("\n}")]
+    sure = 'r.kept ? t("regions.confirm_remove_kept", { name })'
+    assert sure in row  # the region's armed sentence, where it keeps an old mesh
+    assert 'label: armed ? t("regions.remove_sure") : t("regions.remove")' in row
+    assert 'act: "remove_kept", label: t("regions.kept_remove")' in row
+    asked = js[js.index("async function removeKept(") :]
+    asked = asked[: asked.index("\n}")]
+    assert 't("regions.kept_ask_text")' in asked and 'yes: t("regions.kept_remove")' in asked
 
 
 def test_the_night_grids_of_a_region_installed_before_them_come_by_themselves(

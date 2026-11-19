@@ -112,7 +112,7 @@
 .region-state { color: var(--fg-2); font-size: var(--fs-2); }
 .region-actions { display: flex; gap: 6px; justify-self: end; }
 .region-progress { font-variant-numeric: tabular-nums; }
-/* a region's kept old mesh, under its row: its size and its Delete from the disk */
+/* a region's kept old mesh, under its row: its size and its own Delete */
 .region-kept { display: flex; align-items: center; gap: 12px; color: var(--fg-2); font-size: var(--fs-2); }
 .region-kept .region-actions { margin-left: auto; }
 

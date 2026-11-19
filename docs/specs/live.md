@@ -593,15 +593,34 @@ sentences: « the meshes Live streams onto changed since its last start, and X-P
 those of before. Quit X-Plane, or connect the disk holding a mesh, then start again ». Every
 deletion of a region's folders follows one rule (`LiveControl._deleting`: Live stopped, the region
 not being installed, X-Plane not running, said by `osxpregions.XPLANE_READS`, which the install's
-own deletions use too): « Delete the old mesh » (`LiveControl.remove_kept`,
-`osxpregions.remove_kept`), which the window warns cannot be undone, the region's own « Delete the region »
-(`remove`, which takes the kept mesh with it) and the room an update makes. Nothing else reads a
-kept mesh then: the pack's record naming it protects nothing (no start under X-Plane on a changed
-mesh), and the Settings' Mesh saying Old falls back to the new mesh where none is kept. Mesh goes
-back to New once no region keeps one, one waiting to be renamed as kept counted, and never while a
-region's disk is not connected (`osxpregions.keeps_any_old`; `LiveControl._mesh_follows_kept`, after
-each deletion and each install): Old left behind would stream the next old mesh kept, unasked; the
-window shows the switch as saved each time it appears, and sends it only while it shows.
+own deletions use too): each mesh's own « Delete », the kept one's (`LiveControl.remove_kept`,
+`osxpregions.remove_kept`), which the window warns cannot be undone, and the region's (`remove`),
+which deletes its new mesh, the kept one taking its place where it keeps one (below), else the
+region with its overlays; and the room an update makes. Nothing else reads a kept mesh then: the
+pack's record naming it protects nothing (no start under X-Plane on a changed mesh), and the
+Settings' Mesh saying Old falls back to the new mesh where none is kept. Mesh goes back to New once
+no region keeps one, one waiting to be renamed as kept counted, and never while a region's disk is
+not connected (`osxpregions.keeps_any_old`; `LiveControl._mesh_follows_kept`, after each deletion
+and each install): Old left behind would stream the next old mesh kept, unasked; the window shows
+the switch as saved each time it appears, and sends it only while it shows.
+
+**The region's Delete with a kept mesh** (`osxpregions._kept_back`, 2026-11-19). Each mesh has its
+own Delete, which deletes it alone: the region's, where the region keeps an old mesh (`keeps_old`,
+one waiting to be renamed as kept counted), is the reverse of the update that kept it, by its swap
+(`_swap_in`, no second way). The kept folder is renamed into the region's place, its marker with it
+(its release: `made_whole`, the window offers its Update again), and it and its folders are dated
+now (`DATED`, as an update's: the pack is set up again at the next start, `pack_to_redo`); the new
+mesh is renamed `.old` first, then set aside and deleted in the background by `_settle_old`, no
+record keeping it. A stop or a power cut between leaves what `_repair` makes right at the next
+opening: the new mesh put back and the old one still kept, or the old one in place and the new one
+deleted; what a quit left set aside, `take_up_deletions` deletes. A rename refused (Windows, a
+folder held open) puts back what was renamed: nothing deleted, the window saying so. The region's
+stage and its downloads go with the new mesh, the stage's marker dropped before the swap: a whole
+update waiting would else take the old mesh's place at a later start, with an answer (« Don't
+keep ») that deletes it for good. The overlays stay, which both meshes have; the lists of textures
+of both folders are dropped (`_forget_list`), a start listing the region again. The window's armed
+sentence says it (`regions.confirm_remove_kept`: « the old one takes its place »), both buttons
+reading « Delete », each on its own line.
 
 **No room beside the region** (`osxpregions._room_for_update`, 2026-11-18). The room an install
 needs is one rule, `_short_of_room`, every disk the install needs counted (the region's, the overlay

@@ -1900,9 +1900,8 @@ def test_a_kept_mesh_never_changes(tmp_path: Path, world) -> None:
 
 
 def test_the_kept_mesh_deleted_alone_keeps_the_shared_overlays(tmp_path: Path, world) -> None:
-    """« Delete from the disk »: the kept mesh alone, set aside then deleted; the region, its
-    overlays and their record stay, which its new mesh has too. The region's own Delete takes
-    the kept mesh with it."""
+    """The kept mesh's Delete: the kept mesh alone, set aside then deleted; the region, its
+    overlays and their record stay, which its new mesh has too."""
     files, region = world
     install(tmp_path, region, Host(files))
     files, region = updated(files, region, b"second")
@@ -1918,12 +1917,159 @@ def test_the_kept_mesh_deleted_alone_keeps_the_shared_overlays(tmp_path: Path, w
     assert (osxpregions.mesh_dir(tmp_path, "eur") / "terrain/b.ter").read_bytes() == b"second"
     assert hidden(tmp_path) == [".download", ".lists"]
     osxpregions.remove_kept(tmp_path, "eur")  # none left: nothing done
+    assert (osxpregions.mesh_dir(tmp_path, "eur") / "terrain/b.ter").read_bytes() == b"second"
+
+
+def test_the_region_s_delete_puts_its_kept_mesh_back_in_its_place(tmp_path: Path, world) -> None:
+    """The region's Delete while it keeps an old mesh: the reverse of the update that kept it.
+    The new mesh is deleted, the old one renamed into the region's place, its marker with it, so
+    that its Update is offered again; dated now, the next start sets Live's pack up again from
+    it. The overlays stay, which both meshes have. Delete again: the region goes whole, as any
+    region keeping no old mesh."""
+    files, region = world
+    install(tmp_path, region, Host(files))
+    before = marker_of(tmp_path)
+    files, region = updated(files, region, b"second")
+    install(tmp_path, region, Host(files), keep_old=True)
+    folder = osxpregions.mesh_dir(tmp_path, "eur")
+    kept = kept_of(tmp_path)
+    inode = os.stat(kept / "terrain/b.ter").st_ino
+    os.utime(kept / "Earth nav data", ns=(10**9, 10**9))  # its dates of before
+    pack = osxpregions.overlay_pack(tmp_path)
+    record = (pack / osxpregions.OVERLAY_RECORD).read_text()
+    lists = aoregions.lists_dir(tmp_path)
+    from orthostudio.live.names import region_list_file
+
+    for listed in (folder, kept):
+        region_list_file(lists, listed).write_text("{}")
+    lines: list[str] = []
+    osxpregions.remove(tmp_path, "eur", [(45, 5), (46, 5)], log=lines.append)
+    assert lines == [
+        "the new mesh of OrthoStudio XP's region eur deleted, its old mesh back in its place"
+    ]
+    assert marker_of(tmp_path) == before and osxpregions.installed(tmp_path) == {"eur": before}
+    assert (folder / "terrain/b.ter").read_bytes() == b"ter b"
+    assert os.stat(folder / "terrain/b.ter").st_ino == inode  # renamed, not copied
+    assert os.stat(folder / "Earth nav data").st_mtime_ns > 10**9  # the pack set up again
+    assert osxpregions.kept_mesh(tmp_path, "eur") is None and not kept.exists()
+    assert not osxpregions.keeps_any_old(tmp_path)  # the Settings' Mesh then back to New
+    assert hidden(tmp_path) == [".download", ".lists"]
+    assert (pack / "Earth nav data/+40+000/+45+005.dsf").read_bytes() == b"roads a"
+    assert (pack / osxpregions.OVERLAY_RECORD).read_text() == record
+    assert not any(region_list_file(lists, f).exists() for f in (folder, kept))
+    assert osxpregions.made_whole(tmp_path, region)  # its Update offered again, whole
+    assert [z.path for z in osxpregions.not_installed(tmp_path, region, False)] == [
+        region.mesh[1].path
+    ]
+    osxpregions.remove(tmp_path, "eur", [(45, 5), (46, 5)], log=lines.append)
+    assert not osxpregions.present(tmp_path, "eur")
+    assert not (pack / "Earth nav data/+40+000/+45+005.dsf").exists()
+    assert hidden(tmp_path) == [".download", ".lists"]
+
+
+def test_the_region_s_delete_takes_its_waiting_update_with_its_new_mesh(
+    tmp_path: Path, world
+) -> None:
+    """An update waiting whole (X-Plane was open) when the region's Delete puts its kept mesh
+    back: the update goes with the new mesh, never put in place at a later start over the old one
+    with its answer (« Don't keep » would delete it for good)."""
+    files, region = world
+    install(tmp_path, region, Host(files))
+    files, region = updated(files, region, b"second")
+    install(tmp_path, region, Host(files), keep_old=True)
+    files, region = updated(files, region, b"third")
+    inst, lines = install(tmp_path, region, Host(files), keep_old=False, may_swap=lambda: False)
+    assert inst.progress.phase == "waiting", lines
+    assert osxpregions.staged_whole(tmp_path, "eur")
+    osxpregions.remove(tmp_path, "eur", [], log=lambda _: None)
+    folder = osxpregions.mesh_dir(tmp_path, "eur")
+    assert (folder / "terrain/b.ter").read_bytes() == b"ter b"
+    assert not osxpregions.stage_dir(tmp_path, "eur").exists()
+    assert not osxpregions.download_dir(tmp_path, "eur").exists()
+    osxpregions.settle(tmp_path, lambda _: None, swap=True)  # Live's next start
+    assert (folder / "terrain/b.ter").read_bytes() == b"ter b"
+    assert hidden(tmp_path) == [".download", ".lists"]
+
+
+def test_a_power_cut_while_the_region_s_delete_puts_its_kept_mesh_back(
+    tmp_path: Path, world, monkeypatch
+) -> None:
+    """The power cut at each rename of the swap reversed, as an update's: before the kept mesh
+    took the region's place, the next opening puts the new mesh back, the old one still kept;
+    after it, the next opening deletes the new mesh. A quit before the new mesh is deleted leaves
+    it set aside, deleted at the next opening."""
+    files, region = world
+    install(tmp_path, region, Host(files))
+    files, region = updated(files, region, b"second")
+    install(tmp_path, region, Host(files), keep_old=True)
+    folder = osxpregions.mesh_dir(tmp_path, "eur")
+    kept = kept_of(tmp_path)
+    old = folder.with_name(".z_osxp_eur.old")
+    renaming = osxpregions.replace_file
+
+    def cut_at(which: Path):
+        def cut(src, dst):
+            if Path(src) == which:
+                raise KeyboardInterrupt("the power cut")
+            renaming(src, dst)
+
+        return cut
+
+    monkeypatch.setattr(osxpregions, "replace_file", cut_at(kept))  # before the kept's rename
+    with pytest.raises(KeyboardInterrupt):
+        osxpregions.remove(tmp_path, "eur", [], log=lambda _: None)
+    monkeypatch.setattr(osxpregions, "replace_file", renaming)
+    assert not folder.exists() and old.exists() and kept.exists()
+    osxpregions.settle(tmp_path, lambda _: None, swap=False)  # the window opens
+    assert (folder / "terrain/b.ter").read_bytes() == b"second" and not old.exists()
+    assert (kept / "terrain/b.ter").read_bytes() == b"ter b"
+    monkeypatch.setattr(osxpregions, "replace_file", cut_at(old))  # after it
+    with pytest.raises(KeyboardInterrupt):
+        osxpregions.remove(tmp_path, "eur", [], log=lambda _: None)
+    monkeypatch.setattr(osxpregions, "replace_file", renaming)
+    assert (folder / "terrain/b.ter").read_bytes() == b"ter b" and old.exists()
+    assert not kept.exists()
+    osxpregions.settle(tmp_path, lambda _: None, swap=False)  # the window opens again
+    assert (folder / "terrain/b.ter").read_bytes() == b"ter b" and not old.exists()
+    assert osxpregions.kept_mesh(tmp_path, "eur") is None
+    assert hidden(tmp_path) == [".download", ".lists"]
+    # kept again, then deleted with the app quitting before the new mesh is
     files, region = updated(files, region, b"third")
     install(tmp_path, region, Host(files), keep_old=True)
-    assert kept_of(tmp_path).exists()
-    osxpregions.remove(tmp_path, "eur", [(45, 5), (46, 5)], log=lines.append)
-    assert not osxpregions.present(tmp_path, "eur") and not kept_of(tmp_path).exists()
+    monkeypatch.setattr(osxpregions, "_delete_aside", lambda *f, links=(): None)  # the quit
+    osxpregions.remove(tmp_path, "eur", [], log=lambda _: None)
+    aside = [p.name for p in osxpregions.regions_dir(tmp_path).iterdir() if ".old." in p.name]
+    assert len(aside) == 1 and osxpregions.ASIDE.fullmatch(aside[0])
+    assert (folder / "terrain/b.ter").read_bytes() == b"ter b"
+    monkeypatch.setattr(osxpregions, "_delete_aside", osxpregions._delete)
+    assert osxpregions.take_up_deletions(tmp_path) == 1
     assert hidden(tmp_path) == [".download", ".lists"]
+
+
+def test_a_region_held_open_keeps_its_two_meshes(tmp_path: Path, world, monkeypatch) -> None:
+    """Windows: a rename of the swap reversed refused, a folder held open: the region's Delete
+    says so, and both meshes stay as they were, the new one put back where it was renamed aside
+    already."""
+    files, region = world
+    install(tmp_path, region, Host(files))
+    files, region = updated(files, region, b"second")
+    install(tmp_path, region, Host(files), keep_old=True)
+    folder = osxpregions.mesh_dir(tmp_path, "eur")
+    kept = kept_of(tmp_path)
+    renaming = osxpregions.replace_file
+    for which in (folder, kept):  # the new mesh held, then the old one
+
+        def held(src, dst, which=which):
+            if Path(src) == which:
+                raise PermissionError(32, "in use by another process")
+            renaming(src, dst)
+
+        monkeypatch.setattr(osxpregions, "replace_file", held)
+        with pytest.raises(osxpregions.InstallError, match="in use"):
+            osxpregions.remove(tmp_path, "eur", [], log=lambda _: None)
+        assert (folder / "terrain/b.ter").read_bytes() == b"second"
+        assert (kept / "terrain/b.ter").read_bytes() == b"ter b"
+        assert hidden(tmp_path) == [".download", ".lists", ".z_osxp_eur.kept"]
 
 
 def test_a_kept_mesh_whose_deletion_a_quit_stopped_is_deleted_at_the_next_opening(
@@ -1960,6 +2106,12 @@ def test_a_region_on_another_disk_keeps_its_mesh_of_before_on_that_disk(
     assert kept_of(root) == elsewhere.with_name(".z_osxp_eur.kept")
     assert (kept_of(root) / "terrain/b.ter").read_bytes() == b"ter b"
     assert sorted(p.name for p in elsewhere.parent.iterdir()) == [".z_osxp_eur.kept", "z_osxp_eur"]
+    assert hidden(root) == [".download", ".lists"]
+    # the region's Delete: the kept mesh back in its place on that disk, the link leading to it
+    osxpregions.remove(root, "eur", [], log=lambda _: None)
+    assert folder.is_symlink() and folder.resolve() == elsewhere.resolve()
+    assert (elsewhere / "terrain/b.ter").read_bytes() == b"ter b"
+    assert sorted(p.name for p in elsewhere.parent.iterdir()) == ["z_osxp_eur"]
     assert hidden(root) == [".download", ".lists"]
 
 
