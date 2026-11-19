@@ -468,9 +468,9 @@ does not apply on it. Once a region keeps one, the panel shows **Mesh: New / Old
 regions at once: Old streams each region's kept mesh where it has one, and the new mesh elsewhere;
 with Old, the question of an update says that the mesh you keep is the one Live goes on showing.
 Like the other settings it takes effect at Live's next start, and never while X-Plane is open, as
-any change of the mesh (above). Each mesh then has its own **Delete**, which deletes it alone,
-like every deletion only with Live stopped and X-Plane closed; the roads, forests and buildings
-stay, shared by the old and the new mesh. Under its region, the kept mesh shows its size and its
+any change of the mesh (above). Each mesh then has its own **Delete**, which never deletes the
+other, like every deletion only with Live stopped and X-Plane closed; the roads, forests and
+buildings stay, shared by the old and the new mesh. Under its region, the kept mesh shows its size and its
 **Delete**, which warns first that it cannot be downloaded again. The region's own **Delete**
 deletes the new mesh, and the old one takes its place, as the line under the row says once clicked:
 the region then shows the old mesh's size and offers its **Update** again, and an update ready goes

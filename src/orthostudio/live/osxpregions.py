@@ -1034,13 +1034,19 @@ def _kept_back(root: Path, region: str, log: Log) -> None:
     still kept, or the old one in place and the other deleted. Its stage and its downloads go too,
     the stage made not whole first: never put in place over the old mesh at a later start, with
     an answer that would delete it. The overlays stay, which both meshes have. :class:`InstallError`
-    where a program holds a folder open: nothing deleted then."""
+    where a program holds a folder open: nothing deleted then, an update waiting whole again."""
     folder = mesh_dir(root, region)
     real = _real(root, region)
     with _SWAP:
         stage = stage_dir(root, region)
+        waiting = _read(stage / MARKER)
         (stage / MARKER).unlink(missing_ok=True)
-        _swap_in(_kept_of(real), real, real.name, touch=DATED, again=DELETE_AGAIN)
+        try:
+            _swap_in(_kept_of(real), real, real.name, touch=DATED, again=DELETE_AGAIN)
+        except InstallError:
+            if waiting:  # refused, nothing deleted: the update waiting is whole again
+                _write(stage / MARKER, waiting)
+            raise
         _discard(stage)
     shutil.rmtree(download_dir(root, region), ignore_errors=True)
     _forget_list(root, folder, _kept_of(real))

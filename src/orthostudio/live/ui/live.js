@@ -719,11 +719,16 @@ function regionRow(id, mine, r, install, running, idle, xplane) {
   const buttons = [];
   // its Delete armed: a short « Sure? » on the button, what it deletes on a line under the row (the
   // whole sentence on the button widened the buttons' column and moved every row, 2026-11-19): its
-  // installed mesh, the kept old one taking its place where it keeps one (osxpregions.py remove)
+  // installed mesh, the kept old one taking its place where it keeps one, an update ready going
+  // with the new mesh (osxpregions.py remove)
   const armed = mine && removeArmed === id;
-  const sure = !armed ? null
-    : r.kept ? t("regions.confirm_remove_kept", { of: t(`region_of.${id}`) })
-    : t("regions.confirm_remove", { name });
+  let sure = null;
+  if (armed && r.kept) {
+    sure = t("regions.confirm_remove_new", { of: t(`region_of.${id}`) });
+    if (ready) sure += ` ${t("regions.confirm_remove_ready")}`;
+  } else if (armed) {
+    sure = t("regions.confirm_remove", { name });
+  }
   if (busy && running) {
     buttons.push({ act: "cancel", label: t("regions.cancel") });
   } else if (mine) {
@@ -743,7 +748,7 @@ function regionRow(id, mine, r, install, running, idle, xplane) {
   // of every deletion (Live stopped, no install of it, X-Plane closed: control.py _deleting)
   const kept = mine && r.kept ? {
     text: r.kept.size ? t("regions.kept_size", { gb: gb(r.kept.size) }) : t("regions.kept"),
-    button: { act: "remove_kept", label: t("regions.kept_remove"), danger: true, disabled: !idle || running || xplane },
+    button: { act: "remove_kept", label: t("regions.remove"), danger: true, disabled: !idle || running || xplane },
   } : null;
   return { id, size, state, buttons, line, bar: busy && running, kept, sure };
 }
@@ -840,7 +845,7 @@ async function updateAsked(id, button) {
  * downloaded again (the host keeps no release of before). */
 async function removeKept(id) {
   const go = await askRegion({ title: t("regions.kept_ask_title", { of: t(`region_of.${id}`) }), lines: [t("regions.kept_ask_text")],
-    yes: t("regions.kept_remove"), no: t("regions.kept_ask_no"), danger: true });
+    yes: t("regions.remove"), no: t("regions.kept_ask_no"), danger: true });
   if (go === "yes") await regionAct(`regions/${id}/kept`, "DELETE");
 }
 
