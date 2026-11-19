@@ -15,6 +15,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from doc_text import all_specs, spec_text
 from orthostudio.model import TileRef
 
 SRC = Path("src/orthostudio")
@@ -106,7 +107,7 @@ def test_defect_the_replay_file_is_loaded_without_pinning_allow_pickle() -> None
 
 def test_every_new_vector_module_has_a_spec_that_names_it() -> None:
     """ "Spec before code": each module's docstring must point at a ``docs/specs`` file."""
-    specs = {p.name: p.read_text(encoding="utf-8") for p in Path("docs/specs").glob("*.md")}
+    specs = all_specs()
     missing = []
     for path in _module_paths():
         doc = ast.get_docstring(ast.parse(path.read_text(encoding="utf-8"))) or ""
@@ -362,6 +363,4 @@ def test_the_sea_equiv_pass_through_is_declared_for_what_it_is() -> None:
     field_doc = CoastResult.__doc__ or ""
     annotation = inspect.getsource(CoastResult)
     assert "not read in wave 1" in annotation, field_doc
-    assert "not read in wave 1" in (
-        Path("docs/specs/vectors-assembly.md").read_text(encoding="utf-8")
-    )
+    assert "not read in wave 1" in spec_text("vectors-assembly.md")

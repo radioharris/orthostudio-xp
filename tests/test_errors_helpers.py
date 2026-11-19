@@ -8,10 +8,10 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from doc_text import spec_text
 from orthostudio.errors import CODE_PATTERN
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-SPEC_PATH = REPO_ROOT / "docs" / "specs" / "errors.md"
 
 ORIGIN_PATTERN = re.compile(r"([A-Za-z0-9_]+\.py):(\d+)(?:-(\d+))?")
 
@@ -36,10 +36,10 @@ class SpecRow:
         ]
 
 
-def parse_spec_rows(path: Path = SPEC_PATH) -> list[SpecRow]:
+def parse_spec_rows() -> list[SpecRow]:
     """Return every table row whose first cell is an error code."""
     rows: list[SpecRow] = []
-    for line in path.read_text(encoding="utf-8").splitlines():
+    for line in spec_text("errors.md").splitlines():
         if not line.startswith("|"):
             continue
         cells = [c.strip() for c in line.strip().strip("|").split("|")]
