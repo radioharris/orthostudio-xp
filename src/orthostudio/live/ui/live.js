@@ -1412,11 +1412,27 @@ function settingsChanged() {
   return Object.keys(now).some((key) => text(now[key]) !== text(saved[key]));
 }
 
+/** Soft banks saved where Even was: the river masks of the regions on the listed mesh download at
+ * once (orthostudio/live/control.py rivers_chosen), which the pilot accepts first, seeing their
+ * size (each region's rivers_bytes; one still to update brings its own with its Update). False:
+ * cancelled, nothing saved. */
+async function riversAccepted(body) {
+  if (!body.rivers_fade || saved?.rivers_fade) return true;
+  const bytes = (last?.regions?.list || []).filter((r) => !r.whole)
+    .reduce((sum, r) => sum + (r.rivers_bytes || 0), 0);
+  if (bytes <= 0) return true;
+  const size = amount(bytes);
+  const answer = await askRegion({ title: t("rivers.ask_title", { size }), lines: [t("rivers.ask_text", { size })],
+    yes: t("rivers.ask_yes"), no: t("regions.ask_cancel") });
+  return answer === "yes";
+}
+
 async function saveSettings(event) {
   event.preventDefault();
   const body = formSettings();
   $("settings-error").hidden = true;
   $("settings-status").textContent = "";
+  if (!(await riversAccepted(body))) return;
   try {
     const before = saved?.simbrief_user;
     await saveXplaneFolder();
