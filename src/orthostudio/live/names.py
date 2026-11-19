@@ -1222,24 +1222,31 @@ class Names:
             self.target, self.keep, self.center = set(target), set(keep) | set(target), center
             self._cond.notify_all()
 
-    def ready(self, squares: Iterable[Square]) -> bool:
-        """Whether every file of ``squares`` is made; a square failing for :data:`GIVE_UP_S`
-        counts as made, so that X-Plane is not held for ever (the log says so, once)."""
+    def left(self, squares: Iterable[Square]) -> int:
+        """How many of ``squares`` have files not made yet: what a start waits for, which the
+        plugin's loading window counts down. A square failing for :data:`GIVE_UP_S` counts as
+        made, so that X-Plane is not held for ever (the log says so, once)."""
         now = time.monotonic()
+        left = 0
         with self._cond:
             for square in squares:
                 if square in self.done:
                     continue
                 failing = self.failing.get(square)
                 if failing is None or now - failing[0] < GIVE_UP_S:
-                    return False
+                    left += 1
+                    continue
                 if square not in self._given_up:
                     self._given_up.add(square)
                     self.log(
                         f"  X-Plane goes on without the files of square {square[0]:+03d}"
                         f"{square[1]:+04d}: they could not all be made ({failing[3]})"
                     )
-            return True
+        return left
+
+    def ready(self, squares: Iterable[Square]) -> bool:
+        """Whether every file of ``squares`` is made (:meth:`left`)."""
+        return self.left(squares) == 0
 
     def wait_ready(self, squares: Iterable[Square], timeout: float) -> bool:
         wanted = set(squares)

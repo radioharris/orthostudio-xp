@@ -966,7 +966,7 @@ class NightWordsTest(unittest.TestCase):
 
         line = _wait_line(12, "LSGG", 0.5, 30.0, 0.0, "en", building=12, night=12)
         self.assertIn(" night=12 ", line)
-        self.assertTrue(line.split(" at=")[0].endswith("night=12"))  # at= stays last
+        self.assertEqual(line.split(" at=")[1], "LSGG")  # at= stays last
         # 0 said too: the plugin keeps the last value it read (the review of 2026-11-11)
         self.assertIn(" night=0 ", _wait_line(4, "LSGG", 0.5, 30.0, 0.0, "en", building=4))
 

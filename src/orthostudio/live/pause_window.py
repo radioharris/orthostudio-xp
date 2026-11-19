@@ -36,6 +36,7 @@ WORDS = {  # live_gate.c's show(), and "preparing the files" before the textures
         "every photo in, building",
         "preparing the files",
         "{} night textures to build",
+        "Preparing the ground: {} square{}",
     ),
     "fr": (
         "Chargement de l'ortho autour de {}",
@@ -44,6 +45,7 @@ WORDS = {  # live_gate.c's show(), and "preparing the files" before the textures
         "photos reçues, construction en cours",
         "préparation des fichiers",
         "{} textures de nuit à construire",
+        "Préparation du sol : {} carré{}",
     ),
 }
 
@@ -57,13 +59,16 @@ def lines(
     counted: bool,
     lang: str,
     night: int = 0,
+    squares: int = 0,
 ) -> tuple[str, str]:
     """The window's headline and detail: ``where`` (the start's name in that language), the
     textures ``left`` (``building`` of them with every photo in), the download rate, the seconds
-    since the start was known; ``counted``: False while the files of the squares are made, before
-    the textures are counted."""
-    around, to_build, rate, photos, preparing, nights = WORDS.get(lang, WORDS["en"])
+    since the start was known; ``counted``: False before the textures are counted; once none is
+    left, the ``squares`` round the start whose files are being made."""
+    around, to_build, rate, photos, preparing, nights, ground = WORDS.get(lang, WORDS["en"])
     headline = around.format(where)
+    if left == 0 and squares > 0:  # every texture built: the squares' files
+        return headline, f"{ground.format(squares, 's' if squares > 1 else '')}  -  {seconds:.0f} s"
     if not counted:
         return headline, f"{preparing}  -  {seconds:.0f} s"
     if 0 < left <= night:  # the photos built: the night textures left (a start at night)

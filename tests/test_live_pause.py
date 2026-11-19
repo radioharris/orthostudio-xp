@@ -165,6 +165,34 @@ class NamesTest(unittest.TestCase):
             lines("LSGG runway 22", 0, 0, 0.0, 2, False, "en")[1], "preparing the files  -  2 s"
         )
 
+    def test_the_window_says_the_squares_once_every_texture_is_built(self):
+        """As the plugin does (live_gate.c's show()): the squares whose files are being made, once
+        no texture is left, where it said « 0 textures à construire » (LSGG, 2026-11-19)."""
+        self.assertEqual(
+            lines("LSGG piste 04", 0, 0, 0.0, 12.3, False, "fr", squares=36),
+            (
+                "Chargement de l'ortho autour de LSGG piste 04",
+                "Préparation du sol : 36 carrés  -  12 s",
+            ),
+        )
+        self.assertEqual(
+            lines("LSGG piste 04", 0, 0, 0.0, 14, False, "fr", squares=1)[1],
+            "Préparation du sol : 1 carré  -  14 s",
+        )
+        self.assertEqual(
+            lines("LSGG runway 04", 0, 0, 0.0, 15, False, "en", squares=2)[1],
+            "Preparing the ground: 2 squares  -  15 s",
+        )
+        self.assertEqual(
+            lines("LSGG runway 04", 0, 0, 0.0, 16, False, "en", squares=1)[1],
+            "Preparing the ground: 1 square  -  16 s",
+        )
+        # textures left: they first, whatever squares wait
+        self.assertEqual(
+            lines("LSGG runway 04", 3, 0, 5.2, 2, True, "en", squares=36)[1],
+            "3 textures to build  -  5.2 MB/s  -  2 s",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

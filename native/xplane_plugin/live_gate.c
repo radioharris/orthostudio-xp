@@ -282,12 +282,14 @@ static void drain(void) {
    theirs: all of them, "every photo in" instead of the rate), 45.0 % of the work done, 23 s since
    the start was known, downloading at 15.2 MB/s, the Live window's language (the words shown take
    it), and where (the rest of the line, in that language). "night=7": 7 of the textures left are
-   night ones (a start at night, after 2026-11-11; an older streamer says none). */
+   night ones (a start at night, after 2026-11-11; an older streamer says none). "sq=36": 36
+   squares round the start whose files are not made yet, which X-Plane waits for too (after
+   2026-11-19; an older streamer says none). */
 struct state {
     int left, building, permille, secs;
     double mbs;
     char where[128];
-    int night;
+    int night, squares;
 };
 
 static void parse_wait(char *p, struct state *st) {
@@ -298,7 +300,7 @@ static void parse_wait(char *p, struct state *st) {
             return;
         }
         if (sscanf(p, "n=%d", &st->left) != 1 && sscanf(p, "b=%d", &st->building) != 1 &&
-            sscanf(p, "night=%d", &st->night) != 1 &&
+            sscanf(p, "night=%d", &st->night) != 1 && sscanf(p, "sq=%d", &st->squares) != 1 &&
             sscanf(p, "p=%d", &st->permille) != 1 &&
             sscanf(p, "s=%d", &st->secs) != 1 && sscanf(p, "mbs=%lf", &st->mbs) != 1 && *p >= '0' && *p <= '9')
             st->left = atoi(p); /* "LIVE1 WAIT 12": the count alone */
@@ -353,12 +355,22 @@ static void tell_start(void) {
 
 /* One line: the textures left, then the download rate, or once every photo they wait for is in
    (all of them being built: b= reaches n=), that instead of a rate of 0.0, which read as stuck
-   while the count went down (the user's Shadow, 2026-10-11). */
+   while the count went down (the user's Shadow, 2026-10-11). Once none is left, the squares whose
+   files are being made: it said 0 textures to build for the 19 s they took (LSGG, 2026-11-19). */
 static void show(const struct state *st) {
     char what[200], progress[120];
     int photos_in = st->left > 0 && st->building >= st->left;
     int nights_only = st->night > 0 && st->night >= st->left; /* the photos built: the night left */
-    if (french && nights_only) {
+    int ground = st->left == 0 && st->squares > 0; /* every texture built: the squares left */
+    if (french && ground) {
+        snprintf(what, sizeof what, "Chargement de l'ortho autour de %s", st->where);
+        snprintf(progress, sizeof progress, "Préparation du sol : %d carré%s  -  %d s", st->squares,
+                 st->squares > 1 ? "s" : "", st->secs);
+    } else if (ground) {
+        snprintf(what, sizeof what, "Loading the ortho around %s", st->where);
+        snprintf(progress, sizeof progress, "Preparing the ground: %d square%s  -  %d s", st->squares,
+                 st->squares > 1 ? "s" : "", st->secs);
+    } else if (french && nights_only) {
         snprintf(what, sizeof what, "Chargement de l'ortho autour de %s", st->where);
         snprintf(progress, sizeof progress, "%d textures de nuit à construire  -  %d s", st->left,
                  st->secs);
@@ -385,7 +397,7 @@ static void show(const struct state *st) {
 
 static void hold(const char *at) {
     char line[96];
-    struct state st = {-1, 0, 0, 0, 0.0, "", 0};
+    struct state st = {-1, 0, 0, 0, 0.0, "", 0, 0};
     double lat, lon, start, answered = 0, t;
     int told = 0, r;
     if (sock == NO_SOCKET || !position(&lat, &lon)) return;

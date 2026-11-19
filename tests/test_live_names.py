@@ -272,6 +272,26 @@ def test_a_start_is_not_held_for_ever_by_a_failing_square(
     assert sum("X-Plane goes on without the files" in line for line in logged) == 1
 
 
+def test_the_squares_left_are_counted_by_the_rule_that_holds_a_start(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The squares whose files are not made yet, which the plugin counts down once every texture
+    is built (it said « 0 textures à construire » for 19 s, LSGG 2026-11-19): a square made, or
+    failing past GIVE_UP_S, counts as made, as for :meth:`ready`."""
+    from orthostudio.live import names as names_module
+
+    pack = region(tmp_path)
+    logged: list[str] = []
+    names = live_names(pack, log=logged.append)
+    names.failing[HERE] = [time.monotonic() - 1.0, time.monotonic() + 60, 1, "EPERM"]
+    assert names.left({HERE, EAST}) == 2 and not names.ready({HERE, EAST})
+    names.done.add(EAST)
+    assert names.left({HERE, EAST}) == 1 and not names.ready({HERE, EAST})
+    monkeypatch.setattr(names_module, "GIVE_UP_S", 0.5)  # HERE failing past it
+    assert names.left({HERE, EAST}) == 0 and names.ready({HERE, EAST})
+    assert sum("X-Plane goes on without the files" in line for line in logged) == 1
+
+
 def test_a_texture_built_since_is_never_taken_away(tmp_path: Path) -> None:
     """Taking a square away removes a texture's name only while it leads to the neutral texture:
     one built in the meantime (renamed over it) stays, whatever was decided before."""
@@ -482,11 +502,15 @@ def test_where_x_plane_says_it_loads_is_made_too(tmp_path: Path) -> None:
 def test_a_start_is_ready_once_its_squares_are_made(tmp_path: Path) -> None:
     s = streamer(tmp_path)
     s.plan(Fix(46.5, 2.5), x_plane_there=False, starting=True)
-    assert not s.squares_ready(46.5, 2.5)  # the plugin holds X-Plane meanwhile
+    window = squares_round([(46.5, 2.5)], 0)
+    assert s.squares_left((46.5, 2.5)) == len(window)  # the plugin holds X-Plane meanwhile
+    # where X-Plane says it loads the flight counted too, each square once
+    both = squares_round([(46.5, 2.5), (46.5, 3.5)], 0)
+    assert len(window) < s.squares_left((46.5, 2.5), (46.5, 3.5)) == len(both)
     s.names.start()
     try:
-        assert s.names.wait_ready(squares_round([(46.5, 2.5)], 0), 10.0)
-        assert s.squares_ready(46.5, 2.5)
+        assert s.names.wait_ready(window, 10.0)
+        assert s.squares_left((46.5, 2.5)) == 0
         assert (s.pack_dir / "terrain" / f"{ROW[0]}.ter").exists()
     finally:
         s.names.close()

@@ -1,1 +1,1 @@
-86616b166a2ee3fd802895360892e7469ecda35e8127cabf792aa3f3b4d24aa0  live_gate.c live_panel_win.c live_panel_x11.c XPLM_64.def, and the build commands (orthostudio/live/plugin.py)
+6f74c2bb7218d9419cecd2c3232dd52720c02ebe5ad23c7b5218a617a472e6c2  live_gate.c live_panel_win.c live_panel_x11.c XPLM_64.def, and the build commands (orthostudio/live/plugin.py)

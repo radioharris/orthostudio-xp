@@ -785,14 +785,15 @@ class Streamer:
         if self.night is not None:  # its team, if any, ends with its jobs
             self.night.arrived()
 
-    def squares_ready(self, lat: float, lon: float) -> bool:
-        """Whether the files of X-Plane's window round (``lat``, ``lon``) are made: a start's, for
-        the plugin to let X-Plane go. True where the pack has every file (a pack of before), or
-        where making them failed (the log says it; X-Plane is not held for ever)."""
+    def squares_left(self, *points: tuple[float, float]) -> int:
+        """How many squares of X-Plane's window round the ``points`` have files not made yet: a
+        start's, which the plugin waits for before it lets X-Plane go, and its loading window
+        counts down once every texture is built. None where the pack has every file (a pack of
+        before), nor where making them failed (the log says it; X-Plane is not held for ever)."""
         names = self.names
         if names is None or names.crashed is not None:
-            return True
-        return names.ready(squares_round([(lat, lon)], 0))
+            return 0
+        return names.left(squares_round(points, 0))
 
     # --- planning -----------------------------------------------------------------------------
 
@@ -2416,12 +2417,11 @@ def run(
                         # takes, and goes on only once nothing has arrived for a minute
                         stalled = left > 0 and streamer.stalled_s() > STALL_S
                         # and the files of its squares made (orthostudio.live.names), where the
-                        # start was chosen and where X-Plane says it loads it
-                        ready = (
-                            shown["left"] == 0
-                            and streamer.squares_ready(arrival.lat, arrival.lon)
-                            and streamer.squares_ready(lat, lon)
-                        )
+                        # start was chosen and where X-Plane says it loads it: the plugin counts
+                        # them down once every texture is built (it said 0 textures to build for
+                        # the 19 s they took after a region update, LSGG 2026-11-19)
+                        squares = streamer.squares_left((arrival.lat, arrival.lon), (lat, lon))
+                        ready = shown["left"] == 0 and squares == 0
                         gate.answer(
                             addr,
                             ready or stalled,
@@ -2433,6 +2433,7 @@ def run(
                             lang=language(),
                             building=shown["building"],
                             night=shown["night"],
+                            squares=squares,
                         )
                         if stalled and not arrival.stalled:
                             arrival.stalled = True
@@ -2463,8 +2464,8 @@ def run(
                         elif not ready and not stalled and now - last_wait >= 5:
                             last_wait = now
                             log(
-                                "  X-Plane waits on its loading screen: the files of its squares "
-                                f"around {arrival.name} are being made"
+                                f"  X-Plane waits on its loading screen: the files of {squares} "
+                                f"squares around {arrival.name} are being made"
                             )
             if pauser is not None and pauser.paused_for is not None:
                 # X-Plane paused at a new location chosen in flight: its start is the click read in
@@ -2482,7 +2483,8 @@ def run(
                     left, building = shown["left"] - night_left, shown["building"] - night_left
                     done = shown["progress"]
                     stalled = left > 0 and streamer.stalled_s() > STALL_S
-                    ready = shown["left"] == 0 and streamer.squares_ready(arrival.lat, arrival.lon)
+                    squares = streamer.squares_left((arrival.lat, arrival.lon))
+                    ready = shown["left"] == 0 and squares == 0
                     pause_window.show(
                         *lines(
                             place_in(arrival.name, lang),
@@ -2493,6 +2495,7 @@ def run(
                             shown["left"] > 0,
                             lang,
                             shown["night"],
+                            squares,
                         ),
                         shown["progress"],
                     )
@@ -2512,6 +2515,12 @@ def run(
                                 f"  X-Plane goes on after {took:.0f} s: everything it reads "
                                 f"around {arrival.name} is built"
                             )
+                    elif now - last_wait >= 5 and shown["left"] == 0:
+                        last_wait = now
+                        log(
+                            f"  X-Plane waits, paused: the files of {squares} squares around "
+                            f"{arrival.name} are being made"
+                        )
                     elif now - last_wait >= 5:
                         last_wait = now
                         log(
@@ -2531,7 +2540,7 @@ def run(
                 and arrival.ready_at is None
                 and streamer.urgent_left() == 0
                 and start_count(streamer, arrival, now)["left"] == 0  # its night textures too
-                and streamer.squares_ready(arrival.lat, arrival.lon)
+                and streamer.squares_left((arrival.lat, arrival.lon)) == 0
             ):
                 arrival.ready_at = now
                 log(f"  everything X-Plane will read around {arrival.name} is built")
