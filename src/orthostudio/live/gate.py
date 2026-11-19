@@ -19,12 +19,16 @@ X-Plane reads the scenery. It sends one line per datagram over UDP on 127.0.0.1:
   ``day`` alone.
   The gate sends ``LIVE1 GO n`` once every texture X-Plane will read there is built. Otherwise
   it sends, for instance,
-  ``LIVE1 WAIT n=12 p=450 s=23 mbs=15.2 lang=en at=LFMN runway 04R``:
+  ``LIVE1 WAIT n=12 b=4 p=450 s=23 mbs=15.2 lang=en night=0 sq=0 at=LFMN runway 04R``:
   - n is how many textures are left;
+  - b is how many of them have all their photos, being built;
   - p is the progress in thousandths, counted from the first moment the start was known;
   - s is the seconds since then;
   - mbs is the download rate, in megabytes a second;
   - lang is the Live window's language, ``en`` or ``fr``, which the plugin's words take;
+  - night is how many of the textures left are night ones;
+  - sq is how many squares round the start have files not made yet
+    (``orthostudio.live.names``), which X-Plane waits for too;
   - at is the start's name in that language (``LFMN piste 04R``), the rest of the line.
 
   The plugin's loading window shows all of it.
@@ -172,16 +176,19 @@ def _wait_line(
     lang: str,
     building: int = 0,
     night: int = 0,
+    squares: int = 0,
 ) -> str:
     """``building``: of the ``left``, those with all their photos, being built (the plugin's
     second line); ``night``: of the ``left``, the night textures (the plugin says « night
-    textures to build » once only they are left; an older plugin reads past the word). Sent
-    always, 0 too: the plugin keeps the last value it read, and said night textures after
-    there were none (the review of 2026-11-11)."""
+    textures to build » once only they are left); ``squares``: the squares round the start
+    whose files are not made yet (the plugin says « Preparing the ground: 36 squares » once no
+    texture is left). An older plugin reads past a word it does not know. Each sent always, 0
+    too: the plugin keeps the last value it read, and said night textures after there were none
+    (the review of 2026-11-11)."""
     return (
         f"LIVE1 WAIT n={left} b={building} p={round(max(0.0, min(1.0, done)) * 1000)} "
         f"s={round(took)} "
-        f"mbs={mbs:.1f} lang={lang} night={night} "
+        f"mbs={mbs:.1f} lang={lang} night={night} sq={squares} "
         f"at={_fitted(place_in(name, lang), 100)}"
     )
 
@@ -201,7 +208,7 @@ def _encoded(line: str, limit: int = 200) -> bytes:
 
 
 class Gate:
-    def __init__(self, xplane: Path, airports: Airports, port: int = GATE_PORT):
+    def __init__(self, xplane: Path, airports: Airports, port: int = GATE_PORT, lang: str = "en"):
         self.prefs = xplane / "Output" / "preferences" / "Freeflight.prf"
         self.airports = airports
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -218,7 +225,8 @@ class Gate:
         self._lock = threading.Lock()  # the socket's reads, the loop's or the stand-in's
         self._inbox: list[Request] = []  # read for the loop while it was busy
         self._polled = time.monotonic()  # the loop's last read of the plugin's lines
-        self._wait = "LIVE1 WAIT n=0 b=0 p=0 s=0 mbs=0.0"  # what the gate says for the loop
+        # what the gate says for the loop, in the Live window's language from its first line
+        self._wait = _wait_line(0, "", 0.0, 0.0, 0.0, lang)
         self._stood_in: list[float] = []  # how late the loop was, each time
         self._closed = threading.Event()
         threading.Thread(target=self._stand_in, name="live-gate", daemon=True).start()
@@ -325,11 +333,14 @@ class Gate:
         lang: str = "en",
         building: int = 0,
         night: int = 0,
+        squares: int = 0,
     ) -> None:
         if go:
             line = f"LIVE1 GO {left}"
         else:
-            line = self._wait = _wait_line(left, name, done, took, mbs, lang, building, night)
+            line = self._wait = _wait_line(
+                left, name, done, took, mbs, lang, building, night, squares
+            )
         self._send(line, addr)
 
     def note(

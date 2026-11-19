@@ -438,7 +438,11 @@ def prepare(options: Options, log: Log) -> Prepared:
             plugin.installed(xp_dir) if xplane_running() else plugin.install(xp_dir, log=log)
         ):
             try:
-                gate = Gate(xp_dir, AirportIndex(apt_dat(xp_dir), airport_files(xp_dir)))
+                gate = Gate(
+                    xp_dir,
+                    AirportIndex(apt_dat(xp_dir), airport_files(xp_dir)),
+                    lang=options.language,
+                )
             except OSError as e:
                 # never streaming without it: the plugin, finding nobody there as X-Plane starts,
                 # would take Live's scenery out of X-Plane (the review of 2026-10-01)

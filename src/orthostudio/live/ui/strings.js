@@ -40,6 +40,8 @@ export const STRINGS = {
     "hold.text": "{left} textures to build · {mbs} MB/s · {seconds} s",
     "hold.photos_in": "{left} textures to build · every photo in, building · {seconds} s",
     "hold.night": "{left} night textures to build · {seconds} s",
+    "hold.ground": "Preparing the ground: {n} squares · {seconds} s",
+    "hold.ground_one": "Preparing the ground: 1 square · {seconds} s",
 
     "action.start": "Start Live",
     "action.stop": "Stop",
@@ -524,6 +526,8 @@ export const STRINGS = {
     "hold.text": "{left} textures à construire · {mbs} Mo/s · {seconds} s",
     "hold.photos_in": "{left} textures à construire · photos reçues, construction en cours · {seconds} s",
     "hold.night": "{left} textures de nuit à construire · {seconds} s",
+    "hold.ground": "Préparation du sol : {n} carrés · {seconds} s",
+    "hold.ground_one": "Préparation du sol : 1 carré · {seconds} s",
 
     "action.start": "Démarrer Live",
     "action.stop": "Arrêter",

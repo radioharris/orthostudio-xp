@@ -202,6 +202,27 @@ function blocking(checks) {
   return null;
 }
 
+/** The line under a start's bar, as the plugin's loading window says it (live_gate.c's show(), from
+ * the same count, streamer.start_count). */
+export function holdText(start, mbs) {
+  const seconds = number(start.seconds);
+  // every texture built, the files of the squares round the start still being made (sq= in
+  // docs/specs/live.md)
+  if (start.left === 0 && (start.squares || 0) > 0) {
+    return t(start.squares === 1 ? "hold.ground_one" : "hold.ground", { n: number(start.squares), seconds });
+  }
+  // once every photo the start waits for is in, that instead of a rate of 0.0, which read as
+  // stuck while the count went down (the user's Shadow, 2026-10-11)
+  const photosIn = start.left > 0 && (start.building || 0) >= start.left;
+  // the night textures alone left (streamer.Arrival.count)
+  const nightsOnly = (start.night || 0) > 0 && start.night >= start.left;
+  return t(nightsOnly ? "hold.night" : photosIn ? "hold.photos_in" : "hold.text", {
+    left: number(start.left),
+    seconds,
+    mbs: number(mbs, 1),
+  });
+}
+
 function drawState(status) {
   const [title, lead, dot] = headline(status);
   $("state-title").textContent = title;
@@ -214,16 +235,7 @@ function drawState(status) {
   $("hold").hidden = !holding;
   if (holding) {
     $("hold-bar").style.width = `${Math.round(start.progress * 1000) / 10}%`;
-    // as the plugin's line: once every photo the start waits for is in, that instead of a rate of
-    // 0.0, which read as stuck while the count went down (the user's Shadow, 2026-10-11)
-    const photosIn = start.left > 0 && (start.building || 0) >= start.left;
-    // the night textures alone left, as the plugin says it (streamer.Arrival.count)
-    const nightsOnly = (start.night || 0) > 0 && start.night >= start.left;
-    $("hold-text").textContent = t(nightsOnly ? "hold.night" : photosIn ? "hold.photos_in" : "hold.text", {
-      left: number(start.left),
-      seconds: number(start.seconds),
-      mbs: number(status.stream.mbs, 1),
-    });
+    $("hold-text").textContent = holdText(start, status.stream.mbs);
   }
 
   const error = status.state === "idle" && status.error;

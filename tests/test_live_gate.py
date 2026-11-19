@@ -30,6 +30,7 @@ from orthostudio.live.cache import ChunkCache
 from orthostudio.live.filesystem import folder_link, is_folder_link
 from orthostudio.live.gate import Gate, read_last_start, start_position
 from orthostudio.live.geo import parse_texture_name
+from orthostudio.live.names import squares_round
 from orthostudio.live.pause import last_start
 from orthostudio.live.region import Zooms, setup_region
 from orthostudio.live.streamer import Arrival, Fix, Streamer, run
@@ -253,16 +254,20 @@ class GateTest(unittest.TestCase):
                 gate.answer(got[1][3], False, 12, "LFML runway 13L", 0.4567, 23.4, 15.18)
                 self.assertEqual(
                     p.recv(100),
-                    b"LIVE1 WAIT n=12 b=0 p=457 s=23 mbs=15.2 lang=en night=0 at=LFML runway 13L",
+                    b"LIVE1 WAIT n=12 b=0 p=457 s=23 mbs=15.2 lang=en night=0 sq=0 "
+                    b"at=LFML runway 13L",
                 )
                 gate.answer(got[1][3], False, 3, "LFPG Aérogare 2 機", lang="fr")
                 self.assertTrue(
-                    p.recv(100).endswith("lang=fr night=0 at=LFPG Aérogare 2 機".encode())
+                    p.recv(100).endswith("lang=fr night=0 sq=0 at=LFPG Aérogare 2 機".encode())
                 )
                 gate.answer(got[1][3], False, 3, "LFBZ runway 09", lang="fr")
                 self.assertTrue(
-                    p.recv(100).endswith(b"lang=fr night=0 at=LFBZ piste 09")
+                    p.recv(100).endswith(b"lang=fr night=0 sq=0 at=LFBZ piste 09")
                 )  # in French
+                # every texture built, the files of 36 squares round it still being made
+                gate.answer(got[1][3], False, 0, "LSGG runway 04", squares=36)
+                self.assertTrue(p.recv(100).endswith(b" night=0 sq=36 at=LSGG runway 04"))
                 gate.answer(got[1][3], True, 0)
                 self.assertEqual(p.recv(100), b"LIVE1 GO 0")
         finally:
@@ -278,10 +283,12 @@ class GateTest(unittest.TestCase):
                 p.connect(("127.0.0.1", self.port))
                 p.settimeout(1.0)  # the plugin's second
                 p.send(b"LIVE1 HOLD 37.936700 23.944500 flight")
-                self.assertEqual(p.recv(100), b"LIVE1 WAIT n=0 b=0 p=0 s=0 mbs=0.0")
+                self.assertEqual(
+                    p.recv(100), b"LIVE1 WAIT n=0 b=0 p=0 s=0 mbs=0.0 lang=en night=0 sq=0 at="
+                )
                 gate.hold_at("LGAV parking B17", "fr")  # the start the loop plans next
                 p.send(b"LIVE1 HOLD 37.936700 23.944500 flight")
-                self.assertTrue(p.recv(100).endswith(b"lang=fr night=0 at=LGAV parking B17"))
+                self.assertTrue(p.recv(100).endswith(b"lang=fr night=0 sq=0 at=LGAV parking B17"))
                 got = gate.requests()  # the loop back: both kept for it
                 self.assertEqual([k for k, *_ in got], ["HOLD", "HOLD"])
                 self.assertEqual(len(gate.stood_in()), 2)
@@ -592,6 +599,105 @@ class PluginTest(unittest.TestCase):
         # nothing but the start's question whether Live is there
         self.assertEqual([g for g in got if g != b"LIVE1 HELLO"], [])
         self.assertLess(max(took.values()), 0.3)
+
+
+@unittest.skipIf(c_compiler() is None, "needs a C compiler")
+class PanelWordsTest(unittest.TestCase):
+    """What the plugin's loading window says (live_gate.c's show()), its window a stand-in that
+    prints its lines (tests/data/live/panel_said.c), as the stand-in streamer answers."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory()
+        cls.port = free_port()
+        cls.exe = Path(cls.tmp.name) / (
+            "panel_said.exe" if sys.platform == "win32" else "panel_said"
+        )
+        data = HERE / "data" / "live"
+        cmd = [
+            c_compiler(),
+            "-O1",
+            "-Wall",
+            "-Werror",
+            f"-DLIVE_PORT={cls.port}",
+            "-DSILENT_S=1.0",
+            "-DALONE_S=0.05",
+            "-o",
+            str(cls.exe),
+            str(plugin.SOURCE),
+            str(data / "panel_said.c"),
+            str(data / "fake_xplm.c"),
+        ]
+        cmd += ["-lws2_32", "-luser32"] if sys.platform == "win32" else ["-lm"]
+        subprocess.run(cmd, check=True)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmp.cleanup()
+
+    def shown(self, *answers: bytes) -> tuple[list[tuple[str, str]], list[str]]:
+        """The window's two lines for the stand-in streamer's ``answers``, each given to two
+        HOLDs in turn (one coming too late for its ask is drained at the next), then GO; and what
+        the plugin wrote in X-Plane's Log.txt."""
+        left = [a for a in answers for _ in range(2)]
+
+        def streamer(sock):
+            with contextlib.suppress(OSError):  # its socket let go of
+                while True:
+                    data, addr = read(sock)
+                    if data.startswith(b"LIVE1 HOLD"):
+                        sock.sendto(left.pop(0) if left else b"LIVE1 GO 0", addr)
+
+        with live_port(self.port) as sock:
+            threading.Thread(target=streamer, args=(sock,), daemon=True).start()
+            out = subprocess.run(
+                [str(self.exe), "46.2381", "6.1089", "102:0", "112:1"],
+                capture_output=True,
+                encoding="utf-8",
+                timeout=30,
+            )
+            let_go(sock)
+        lines = out.stdout.splitlines()
+        said = [
+            tuple(line[len("PANEL ") :].split(" | ")[:2])
+            for line in lines
+            if line.startswith("PANEL ")
+        ]
+        return list(dict.fromkeys(said)), [line[4:] for line in lines if line.startswith("LOG ")]
+
+    def test_preparing_the_ground_once_every_texture_is_built(self):
+        """Every texture built, the squares' files still being made: the squares counted down
+        (docs/specs/live.md, sq=), in X-Plane's Log.txt too. A streamer of before sends no sq=:
+        the window says what it said."""
+        wait = "LIVE1 WAIT n={} b={} p=500 s={} mbs=5.2 lang={} night={} sq={} at={}"
+        fr, en = "LSGG piste 04", "LSGG runway 04"
+        shown, logged = self.shown(
+            wait.format(0, 0, 12, "fr", 0, 36, fr).encode(),
+            wait.format(0, 0, 14, "fr", 0, 1, fr).encode(),
+            wait.format(0, 0, 15, "en", 0, 2, en).encode(),
+            wait.format(0, 0, 16, "en", 0, 1, en).encode(),
+            wait.format(3, 0, 2, "fr", 0, 36, fr).encode(),  # textures left: they first
+            wait.format(3, 0, 3, "en", 0, 0, en).encode(),
+            # a streamer of before, every word it does not send still 0
+            f"LIVE1 WAIT n=0 b=0 p=1000 s=4 mbs=0.0 lang=en at={en}".encode(),
+            wait.format(7, 7, 17, "en", 7, 0, en).encode(),
+        )
+        french, english = f"Chargement de l'ortho autour de {fr}", f"Loading the ortho around {en}"
+        self.assertEqual(
+            shown,
+            [
+                (french, "Préparation du sol : 36 carrés  -  12 s"),
+                (french, "Préparation du sol : 1 carré  -  14 s"),
+                (english, "Preparing the ground: 2 squares  -  15 s"),
+                (english, "Preparing the ground: 1 square  -  16 s"),
+                (french, "3 textures à construire  -  5,2 Mo/s  -  2 s"),
+                (english, "3 textures to build  -  5.2 MB/s  -  3 s"),
+                (english, "0 textures to build  -  0.0 MB/s  -  4 s"),
+                (english, "7 night textures to build  -  17 s"),
+            ],
+        )
+        waits = [line for line in logged if "X-Plane waits at" in line]
+        self.assertIn(f"until the ortho around {fr} is built (36 squares to go)", waits[0])
 
 
 @unittest.skipIf(Image is None, "needs numpy, Pillow and ispc_texcomp")
@@ -1606,7 +1712,7 @@ class RunTest(unittest.TestCase):
         self.assertEqual(
             self.streamer.built, {f"{n}.dds": 0 for n in NAMES}
         )  # built before X-Plane goes on
-        self.assertTrue(self.streamer.squares_ready(self.lat, self.lon))  # and its squares' files
+        self.assertEqual(self.streamer.squares_left((self.lat, self.lon)), 0)  # its squares' too
         self.assertTrue((self.pack / "terrain" / f"{NAMES[0]}_water_overlay.ter").exists())
         waits = [
             dict(kv.split("=", 1) for kv in a.split(" at=")[0].split()[2:]) for a in answers[:-1]
@@ -1653,7 +1759,14 @@ class RunTest(unittest.TestCase):
         )
         answers = self.hold(self.lat, self.lon, timeout=1.5)
         self.assertTrue(answers and all(a.startswith("LIVE1 WAIT n=0 ") for a in answers), answers)
-        self.assertTrue(self.wait_for(lambda: any("are being made" in m for m in self.log)))
+        # how many squares wait, which the plugin says (« Préparation du sol : 12 carrés »)
+        window = len(squares_round([(self.lat, self.lon)], 0))
+        self.assertTrue(all(f" sq={window} " in a for a in answers), answers)
+        self.assertTrue(
+            self.wait_for(
+                lambda: any(f"the files of {window} squares around" in m for m in self.log)
+            )
+        )
         go_on.set()
         answers = self.hold(self.lat, self.lon)
         self.assertEqual(answers[-1], "LIVE1 GO 0")

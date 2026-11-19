@@ -27,7 +27,7 @@ from orthostudio.live.names import (
     squares_round,
 )
 from orthostudio.live.region import neutral_file, setup_region, sources_of_pack
-from orthostudio.live.streamer import Fix, Streamer
+from orthostudio.live.streamer import Arrival, Fix, Streamer, start_count
 
 # ZL16 textures in a row eastwards from NAMES[0]: ROW[10] lies on the squares (46, 2) and (46, 3)
 ROW = tuple(f"23296_{33152 + 16 * k}_BI16" for k in range(12))
@@ -246,7 +246,7 @@ def test_a_file_that_fails_is_tried_again_and_stops_nothing(
     try:
         names.want({HERE, EAST}, {HERE, EAST}, (46.5, 2.5))
         assert names.wait_ready({EAST}, 10.0)  # the other square made all the same
-        assert not names.ready({HERE}) and HERE in names.failing
+        assert names.left({HERE}) == 1 and HERE in names.failing
         assert any("could not all be made" in line for line in logged)
         assert (pack / "textures" / f"{ROW[4]}.dds").exists()  # its other files are there
         broken["on"] = False  # the disk has room again
@@ -259,16 +259,20 @@ def test_a_file_that_fails_is_tried_again_and_stops_nothing(
 def test_a_start_is_not_held_for_ever_by_a_failing_square(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """The squares a start waits for, counted (docs/specs/live.md, sq=): a square made, or failing
+    past GIVE_UP_S, counts as made, the log saying so once."""
     from orthostudio.live import names as names_module
 
     pack = region(tmp_path)
     logged: list[str] = []
     names = live_names(pack, log=logged.append)
     names.failing[HERE] = [time.monotonic() - 1.0, time.monotonic() + 60, 1, "EPERM"]
-    assert not names.ready({HERE})
-    monkeypatch.setattr(names_module, "GIVE_UP_S", 0.5)
-    assert names.ready({HERE})
-    assert names.ready({HERE})
+    assert names.left({HERE, EAST}) == 2
+    names.done.add(EAST)
+    assert names.left({HERE, EAST}) == 1
+    monkeypatch.setattr(names_module, "GIVE_UP_S", 0.5)  # HERE failing past it
+    assert names.left({HERE, EAST}) == 0
+    assert names.left({HERE, EAST}) == 0
     assert sum("X-Plane goes on without the files" in line for line in logged) == 1
 
 
@@ -482,11 +486,19 @@ def test_where_x_plane_says_it_loads_is_made_too(tmp_path: Path) -> None:
 def test_a_start_is_ready_once_its_squares_are_made(tmp_path: Path) -> None:
     s = streamer(tmp_path)
     s.plan(Fix(46.5, 2.5), x_plane_there=False, starting=True)
-    assert not s.squares_ready(46.5, 2.5)  # the plugin holds X-Plane meanwhile
+    window = squares_round([(46.5, 2.5)], 0)
+    assert s.squares_left((46.5, 2.5)) == len(window)  # the plugin holds X-Plane meanwhile
+    # the start's one count, which the plugin, the pause window and Live's window show: where
+    # X-Plane says it loads the flight counted too, each square once
+    start = Arrival(46.5, 2.5, "LFLX", "click", 0.0)
+    assert start_count(s, start, 0.0, fresh=True)["squares"] == len(window)
+    start.held_at = (46.5, 3.5)
+    both = squares_round([(46.5, 2.5), (46.5, 3.5)], 0)
+    assert len(window) < start_count(s, start, 0.0, fresh=True)["squares"] == len(both)
     s.names.start()
     try:
-        assert s.names.wait_ready(squares_round([(46.5, 2.5)], 0), 10.0)
-        assert s.squares_ready(46.5, 2.5)
+        assert s.names.wait_ready(window, 10.0)
+        assert s.squares_left((46.5, 2.5)) == 0
         assert (s.pack_dir / "terrain" / f"{ROW[0]}.ter").exists()
     finally:
         s.names.close()
