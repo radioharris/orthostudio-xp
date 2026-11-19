@@ -608,6 +608,26 @@ def _ignore_ctrl_c() -> None:
         signal.signal(signal.SIGBREAK, signal.SIG_IGN)
 
 
+def _night_named(pack_dir: str, lit: str, errors: list[tuple[str, str]]) -> str | None:
+    """A land ``.ter``'s night texture ``lit``, its black name made first if it is not there
+    (:class:`NightPool`): ``lit`` if it is there then, else None, the error said. Made apart, a
+    name that failed left its ``.ter`` naming a file not there, which X-Plane could not load
+    (discussion 37)."""
+    from .region import NIGHT_FOLDER
+
+    path = Path(pack_dir) / NIGHT_FOLDER / lit
+    try:
+        if not os.path.lexists(path):  # made, or there already (NeutralPool.link)
+            pool = _NIGHT_POOLS.get(pack_dir) or _NIGHT_POOLS.setdefault(
+                pack_dir, NightPool(Path(pack_dir))
+            )
+            pool.link(0, path)
+    except OSError as e:
+        errors.append((str(path), f"{type(e).__name__}: {e}"))
+        return None
+    return lit
+
+
 def run_ops(pack_dir: str, ops: Sequence[tuple]) -> dict:
     """The file operations of a square (:class:`Names`), in a process of its own: made from Live's
     process they waited for Python's lock after each system call, 5.8 s alone becoming 14.3 s at a
@@ -615,17 +635,19 @@ def run_ops(pack_dir: str, ops: Sequence[tuple]) -> dict:
 
     ``ops``: ("file", source, destination), a ``.ter`` or a water mask copied if not there;
     ("ter", source, destination, decal), a ``.ter`` copied with its decal (:func:`with_decal`);
-    ("name", top, destination), a name of the neutral texture made if not there; ("fit", top,
-    destination, level built or None), the same, and a texture there already set to the size
-    ``top`` gives if it has another (a new zoom: orthostudio.live.region.set_zooms), its levels
-    kept, nothing downloaded; ("check", top, destination), a texture being built: a name of the
-    neutral texture made if it has no file yet, said ``stale`` if it still has another size;
-    ("drop", path), a file removed; ("drop_name", path), a texture's
-    name removed only while it leads to the neutral texture (one built since stays); ("night",
-    destination), a night texture's name made black if not there; ("drop_night", path), one
-    removed while still black. The ``.ter`` operations may carry two more: the land's night
-    texture and whether the night lights are on (:func:`with_night`). Every error is reported,
-    none stops the others."""
+    ("make", source, destination, decal), the same made from its name (a region naming its
+    terrain files); ("name", top, destination), a name of the neutral texture made if not there;
+    ("fit", top, destination, level built or None), the same, and a texture there already set to
+    the size ``top`` gives if it has another (a new zoom: orthostudio.live.region.set_zooms), its
+    levels kept, nothing downloaded; ("check", top, destination), a texture being built: a name
+    of the neutral texture made if it has no file yet, said ``stale`` if it still has another
+    size; ("drop", path), a file removed; ("drop_name", path), a texture's name removed only
+    while it leads to the neutral texture (one built since stays); ("drop_night", path), a night
+    texture's name removed while still black and once its land ``.ter`` is gone. The ``.ter``
+    operations may carry two more: the land's night texture and whether the night lights are on
+    (:func:`with_night`), its black name then made first, its ``.ter`` there or not (one left
+    naming a night not there gets it back), and named only if it is there (:func:`_night_named`).
+    Every error is reported, none stops the others."""
     pack = Path(pack_dir)
     pool = _POOLS.get(pack_dir) or _POOLS.setdefault(pack_dir, NeutralPool(pack))
     placed = dropped = 0
@@ -644,30 +666,27 @@ def run_ops(pack_dir: str, ops: Sequence[tuple]) -> dict:
                 if not os.path.lexists(op[2]):
                     _copy_small(op[1], op[2])
                     placed += 1
-            elif kind == "ter":
+            elif kind in ("ter", "make"):
+                lit, night = (op[4], op[5]) if len(op) > 5 else (None, False)
+                # its night's name made, the .ter there too: one naming a night gone gets it back
+                if night and lit is not None:
+                    lit = _night_named(pack_dir, lit, errors)
                 if not os.path.lexists(op[2]):
-                    with open(op[1], "rb") as f:
-                        text = f.read()
-                    lit, night = (op[4], op[5]) if len(op) > 5 else (None, False)
+                    if kind == "ter":
+                        with open(op[1], "rb") as f:
+                            text = f.read()
+                    else:  # a region naming its terrain files: made from the name
+                        text = made_ter(os.path.basename(op[2]))
                     _write_new(op[2], _ter_text(text, op[3], lit, night))
                     placed += 1
-            elif kind == "make":  # a region naming its terrain files: made from the name
-                if not os.path.lexists(op[2]):
-                    ter = made_ter(os.path.basename(op[2]))
-                    lit, night = (op[4], op[5]) if len(op) > 5 else (None, False)
-                    _write_new(op[2], _ter_text(ter, op[3], lit, night))
-                    placed += 1
-            elif kind == "night":  # a night texture's name, black until it is built
-                if not os.path.lexists(op[1]):
-                    night_pool = _NIGHT_POOLS.get(pack_dir) or _NIGHT_POOLS.setdefault(
-                        pack_dir, NightPool(pack)
-                    )
-                    night_pool.link(0, Path(op[1]))
-            elif kind == "drop_night":
+            elif kind == "drop_night":  # never while its land .ter, which names it, is there
                 if night_black is None:
                     night_black = _night_inodes(pack)
+                land = os.path.basename(op[1])[: -len("_LIT.dds")] + ".ter"
                 st = os.stat(op[1])
-                if (st.st_dev, st.st_ino) in night_black:
+                if (st.st_dev, st.st_ino) in night_black and not os.path.lexists(
+                    pack / "terrain" / land
+                ):
                     os.unlink(op[1])
                     dropped += 1
             elif kind == "name":
@@ -801,6 +820,7 @@ class Names:
         self.keep: set[Square] = set()
         self.center: tuple[float, float] | None = None
         self.failing: dict[Square, list] = {}  # square: [first failure, next try, tries, error]
+        self.nights_gone: set[str] = set()  # textures whose day file went (:meth:`day_gone`)
         self._given_up: set[Square] = set()
         self._said: set[str] = set()
         self.made = self.released = 0  # squares, for the log and the tests
@@ -863,7 +883,8 @@ class Names:
         """Every file ``square`` needs, those there already left: (files placed, texture names
         made). Its textures first, each set to the zoom's size if a new zoom left it another
         (region.set_zooms), then its terrain files, which make X-Plane read them: never one of
-        another size. Raises :class:`SquareError` when some could not be made,
+        another size, never a night texture not there (:func:`_night_named`). Raises
+        :class:`SquareError` when some could not be made,
         :class:`SquareWaitError` while a texture being built has still its old size."""
         entries = self.textures_on(square)
         names = [entry[0] for entry in entries]
@@ -895,15 +916,10 @@ class Names:
         if result["stale"]:
             raise SquareWaitError(result["stale"])
         ops: list[tuple] = []
-        if self.night:  # the night textures' names first: never a .ter naming one not there
+        if self.night:  # each night texture's name made with its land .ter (run_ops)
             from .region import NIGHT_FOLDER
 
             (self.pack_dir / NIGHT_FOLDER).mkdir(exist_ok=True)
-            ops += [
-                ("night", str(self.pack_dir / NIGHT_FOLDER / night_name(entry[0])))
-                for entry in entries
-                if entry[4] & LAND
-            ]
         for entry in entries:
             source = self.sources[entry[5]] if self.sources else None
             if source is not None:
@@ -945,7 +961,7 @@ class Names:
                 for n in names
                 if not self.busy(n)
             ]
-        if self.night:  # those still black; one built stays, as a texture built does
+        if self.night:  # those still black, after their .ter; one built stays, as a texture does
             from .region import NIGHT_FOLDER
 
             night = self.pack_dir / NIGHT_FOLDER
@@ -954,6 +970,26 @@ class Names:
         if result["errors"]:
             raise SquareError(result["errors"])
         return result["dropped"]
+
+    def day_gone(self, name: str) -> None:
+        """``name``'s day file gone, its night made black (orthostudio.live.nightwork): its name
+        dropped by the file operations' process where its land ``.ter`` is gone (:func:`run_ops`),
+        else with that ``.ter`` when its square is taken away."""
+        with self._cond:
+            self.nights_gone.add(name)
+            self._cond.notify_all()
+
+    def _drop_nights(self) -> None:
+        with self._cond:
+            names, self.nights_gone = self.nights_gone, set()
+        if not names:
+            return
+        from .region import NIGHT_FOLDER
+
+        night = self.pack_dir / NIGHT_FOLDER
+        result = self._run_ops([("drop_night", str(night / night_name(n))) for n in names])
+        if result["errors"]:  # black, they take no disk: dropped with their square, if made again
+            self.log(f"  night textures left black: {SquareError(result['errors'])}")
 
     def holds(self, name: str) -> bool:
         """Whether a texture is on a square whose files are made: X-Plane may read it there."""
@@ -1066,11 +1102,12 @@ class Names:
             with self._cond:
                 while not self._stop:
                     make, gone = self._todo()
-                    if make or gone:
+                    if make or gone or self.nights_gone:
                         break
                     self._cond.wait(timeout=1.0)
                 if self._stop:
                     return
+            self._drop_nights()
             if make:
                 self._make_batch(make)
             else:

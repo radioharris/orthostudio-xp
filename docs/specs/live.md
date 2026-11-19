@@ -631,14 +631,21 @@ Exclusion, by the sun's height); XPME sells a night texture.
 **The terrain files.** With `night` on (`LiveSettings.night`, on by default), each land `.ter` of
 a square names its night texture right after its photo, `LIT_TEX_NOWRAP
 ../textures_night/<texture>_LIT.dds` (`names.with_night`, applied with the decal by `run_ops` to
-the `ter` and `make` operations); the water's and the sea's files name none. The night textures'
-names are made before the `.ter` files that name them (`("night", path)`), each a hard link to the
-pack's black night texture (`_live/night.dds`, 1024 px BC1, `region.ensure_night_neutral`) and its
-copies past a disk's names per file (`names.NightPool`), so a night texture not made takes no
-space and adds nothing. A square taken away drops the names still black (`("drop_night", path)`);
-one made stays, as a texture built does. A change of the setting makes the `.ter` files again at
-the next start with X-Plane not running (`region.set_night`, recorded in `_live/night.json`, as
-`set_decal`).
+the `ter` and `make` operations); the water's and the sea's files name none. A land `.ter` never
+names a night texture that is not there: its night texture's name is made by the same operation,
+just before the `.ter` is written, and named only if it is there then (`names._night_named`); one
+that cannot be made is an error of the square, said in the log and tried again, and that texture
+has no lights until its square is taken away and made again. The name is made at each making of
+the square, its `.ter` there too: one an older Live left naming a night not there gets it back at
+the next start. Made apart and first, a name that failed left its `.ter` naming a file not there,
+and X-Plane said some scenery textures could not be loaded (discussion 37). Each name is a hard link to the pack's black night texture (`_live/night.dds`,
+1024 px BC1, `region.ensure_night_neutral`) and its copies past a disk's names per file
+(`names.NightPool`), so a night texture not made takes no space and adds nothing. A black name is
+deleted only once its land `.ter` is gone (`("drop_night", path)`): a square taken away drops
+those still black after its `.ter` files, and one whose `.ter` Windows refuses to delete keeps
+its night; one made stays, as a texture built does. A change of the setting makes the `.ter`
+files again at the next start with X-Plane not running (`region.set_night`, recorded in
+`_live/night.json`, as `set_decal`).
 
 **What a night texture is** (`orthostudio.live.night`), as a prototype on the user's tile of Nice
 settled it (2026-11-10): street lamps along X-Plane's own roads, one every 20 to 45 m by the road's
@@ -760,17 +767,18 @@ pool, a new one made at the next turn, the textures given again; past five in a 
 night for the flight (`LOST_MAX`), never Live stopped. A texture is never given while it is being
 made (two at once wrote its file in either order, a coarse one last left it black); one that
 fails is given again once, then left for the flight, the first five failures said in the log
-(`TRIES`); one made neutral or coarser while it was made is not counted made, and is put back as
-its day file once made, then made again from its new level if it is wanted (counted at the level
-it was given, a 1024 px night stayed over a 256 px texture, the review of 2026-11-11). Put back as
-its day file means read from the disk then (`NightWork._black`): black where the day file is,
-which X-Plane may read, gone where it is not; told beforehand, a square made meanwhile was left
-naming a night deleted. Filling the jobs stops once each is full and no room is left (28,800
-textures wanted at nightfall went through the lock to the end each time). The night's
-processes run at the encoders' lower priority, forked as they are (`pools.context`). Made in
-each texture's own build job instead, as tried on 2026-11-10, the night took each of Live's
-encoders (twelve on the user's Mac) 155 MB more (27 MB at rest, 182 MB once it had made one) and
-Live 8.9 GB in flight against 4.7 at most without the night.
+(`TRIES`); one made neutral or coarser while it was made is not counted made, and is put back
+black once made, then made again from its new level if it is wanted (counted at the level it was
+given, a 1024 px night stayed over a 256 px texture, the review of 2026-11-11). Black
+(`NightWork._black`), it is never deleted there: deleted where its day file was gone, a square
+made meanwhile named it all the same (discussion 37). Its day file gone, read from the disk then,
+its name is dropped by the squares' files where its land `.ter` is gone, else with that `.ter`
+when its square is taken away (`Names.day_gone`, `run_ops`' `drop_night`). Filling the jobs stops
+once each is full and no room is left (28,800 textures wanted at nightfall went through the lock
+to the end each time). The night's processes run at the encoders' lower priority, forked as they are
+(`pools.context`). Made in each texture's own build job instead, as tried on 2026-11-10, the
+night took each of Live's encoders (twelve on the user's Mac) 155 MB more (27 MB at rest, 182 MB
+once it had made one) and Live 8.9 GB in flight against 4.7 at most without the night.
 
 **Its memory**, measured on the user's Mac (2026-11-10), 18 MB at rest and 110 to 140 MB at work:
 - 34 MB of modules: numpy and Pillow, no scipy (`night._blur`, `_max2` and `_zoom_linear` give
@@ -851,11 +859,11 @@ coarser, or set to a new zoom's size as its square is made (`Streamer._refit`), 
 black, then again from its new level when it is night (`Streamer._night_follows`; kept sharp, a
 night texture took fifteen times its day one; left at its old size, X-Plane read a hole, black,
 until the next night); one made neutral (the disk budget, a season changed: `Streamer._neutral`)
-has it black again, or gone with it; a night texture without a light (the sea, a forest) is the
-black name, not 684 KB of zeros. The roads kept for them take 5 % of Live's disk space, 1 GB at
-most (`streamer.ROADS_SHARE`, `nightwork.ROADS_KEPT_MB`: a fixed share of a 200 GB space set
-10 GB aside for 1 GB of roads), the night's loop dropping the oldest once a minute
-(`nightwork.prune_roads`). Every texture file, day and night, is counted as the disk takes it
+has it black again, its name gone with its square's `.ter`; a night texture without a light
+(the sea, a forest) is the black name, not 684 KB of zeros. The roads kept for them take 5 % of
+Live's disk space, 1 GB at most (`streamer.ROADS_SHARE`, `nightwork.ROADS_KEPT_MB`: a fixed share of
+a 200 GB space set 10 GB aside for 1 GB of roads), the night's loop dropping the oldest once a
+minute (`nightwork.prune_roads`). Every texture file, day and night, is counted as the disk takes it
 (`evict.file_bytes`): its header and its levels written, each in the disk's steps
 (`evict.ALLOC_BLOCK`), 4 KB on APFS and ext4, 64 KB on NTFS, which gives a sparse file's data
 64 KB at a time. Checked against the free space on the user's Shadow (2026-11-11): 2,000 far

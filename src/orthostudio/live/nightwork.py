@@ -444,6 +444,9 @@ class NightWork:
         self.lit: dict[str, int] = {}
         self.team = 1  # the processes at a start at night: Live's encoders (the streamer's)
         self.top_of: Callable[[str], int] = lambda name: 0  # a file's sharpest level (streamer's)
+        # a texture whose day file went: its night's name dropped with its land .ter, by the
+        # squares' files (the streamer's: orthostudio.live.names.Names.day_gone)
+        self.day_gone: Callable[[str], None] = lambda name: None
         self.night = False
         self.lock = threading.Lock()
         self.wanted: dict[str, int] = {}  # name: the level its night is wanted from
@@ -575,8 +578,8 @@ class NightWork:
         return left
 
     def back_to_black(self, name: str) -> None:
-        """``name`` made neutral or coarser: its night as its day file (:meth:`_black`), made again
-        if it is wanted. One being made meanwhile is not counted made, and is put back so once
+        """``name`` made neutral or coarser: its night black (:meth:`_black`), made again if it
+        is wanted. One being made meanwhile is not counted made, and is put back so once
         made (:meth:`pump`): counted at the level it was given, a night 1024 px wide stayed over a
         texture made 256 px (the review of 2026-11-11)."""
         with self.lock:
@@ -642,7 +645,7 @@ class NightWork:
                 for i, (name, level) in enumerate(batch):
                     self.running.pop(name, None)
                     said, lit = (None, False) if results is None else results[i][1:]
-                    if name in self.changed:  # neutral or coarser meanwhile: as its day file
+                    if name in self.changed:  # neutral or coarser meanwhile: put back black
                         self.changed.discard(name)
                         black.append(name)
                     elif said is None:
@@ -779,20 +782,20 @@ class NightWork:
         )
 
     def _black(self, name: str) -> None:
-        """``name``'s night as its day file, read from the disk when it is put back: black where
-        the day file is (X-Plane may read it), gone with it. Told beforehand, a square made
-        meanwhile was left naming a night deleted (the review of 2026-11-11)."""
+        """``name``'s night black, never deleted here: deleted where its day file was gone, a
+        square made meanwhile named it all the same (discussion 37). Its day file gone, read
+        from the disk then, its name goes where its land ``.ter`` is gone, else with it
+        (:attr:`day_gone`)."""
         from .names import NightPool, night_name
         from .region import NIGHT_FOLDER
 
         path = self.pack_dir / NIGHT_FOLDER / night_name(name)
         if path.exists():
-            if (self.pack_dir / "textures" / name).exists():
-                if self._pool_names is None:
-                    self._pool_names = NightPool(self.pack_dir)
-                self._pool_names.replace(0, path)
-            else:
-                path.unlink(missing_ok=True)
+            if self._pool_names is None:
+                self._pool_names = NightPool(self.pack_dir)
+            self._pool_names.replace(0, path)
+            if not (self.pack_dir / "textures" / name).exists():
+                self.day_gone(name)
         with self.lock:  # once done (refused, Windows: it still holds its lights), none running
             if name not in self.running:  # (one running writes its lights after: pump then)
                 self.lit.pop(name, None)

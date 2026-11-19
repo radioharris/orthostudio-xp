@@ -591,6 +591,8 @@ class Streamer:
         if night is not None:
             night.team = self.workers  # the start's team: as many as the encoders, idle by then
             night.top_of = self.top_of  # its levels counted from its file's top, as X-Plane does
+            if self.names is not None:  # a night whose day file went: its name with its .ter
+                night.day_gone = self.names.day_gone
             lit = self.meta.get("lit")
             night.lit = dict(lit) if isinstance(lit, dict) else {}  # made before (evict.usage)
         self._points: dict[str, tuple[float, float]] = {}  # "aircraft", "start", "hold"
@@ -673,9 +675,10 @@ class Streamer:
 
     def _neutral(self, name: str) -> None:
         """``name`` back to the neutral texture (its square made: X-Plane may read it), or gone (far
-        from every square made), and its night black again or gone with it: one way for the disk
-        budget and a season's change. Raises ``OSError`` for the day file; the night's is said and
-        left (Windows refusing a file X-Plane holds open), the day texture neutral all the same."""
+        from every square made), and its night black again, its name gone with its square's
+        (NightWork._black): one way for the disk budget and a season's change. Raises ``OSError``
+        for the day file; the night's is said and left (Windows refusing a file X-Plane holds
+        open), the day texture neutral all the same."""
         path = self.pack_dir / "textures" / name
         held = self.names is not None and self.names.holds(name)
         if held:

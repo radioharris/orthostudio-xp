@@ -223,6 +223,120 @@ class PackTest(unittest.TestCase):
         finally:
             cache.close()
 
+    # --- never a land .ter naming a night texture that is not there (discussion 37)
+
+    def dangling(self) -> list[str]:
+        """The land .ter files naming a night texture that is not there, their photo there."""
+        import os
+
+        out = []
+        for ter in sorted((self.pack / "terrain").glob("*.ter")):
+            for line in ter.read_bytes().split(b"\n"):
+                if line.startswith(b"LIT_TEX"):
+                    lit = ter.parent / line.split()[-1].decode()
+                    day = self.pack / "textures" / ter.name.replace(".ter", ".dds")
+                    if not os.path.lexists(lit) and os.path.lexists(day):
+                        out.append(ter.name)
+        return out
+
+    def flaky_night(self, times: int):
+        """The black night names failing ``times`` times as not found, then made."""
+        from unittest import mock
+
+        from orthostudio.live.names import NeutralPool, NightPool
+
+        real, left = NeutralPool.link, [times]
+
+        def link(pool, top, dst):
+            if isinstance(pool, NightPool) and left[0] > 0:
+                left[0] -= 1
+                raise FileNotFoundError(2, "simulated", str(dst))
+            return real(pool, top, dst)
+
+        return mock.patch.object(NeutralPool, "link", link)
+
+    def test_a_night_name_not_found_is_said_and_never_named(self):
+        """Its black name failing as not found was passed over in silence: the .ter named it all
+        the same, the square counted made, and X-Plane could not load it. Refused (Windows), it
+        was said, but named all the same: the same error now."""
+        from live_helpers import live_names
+        from orthostudio.live.names import SquareError
+
+        names = live_names(self.pack, night=True)
+        with self.flaky_night(4), self.assertRaises(SquareError):
+            names.make((46, 2))  # said, and tried again
+        self.assertEqual(self.dangling(), [])
+        lands = [(self.pack / f"terrain/{t}.ter").read_bytes() for t in self.row[:11]]
+        self.assertEqual(sum(b"LIT_TEX" in land for land in lands), 7)  # the others name none
+
+    def test_a_night_missing_under_its_ter_comes_back_at_the_next_start(self):
+        """A land .ter naming a night not there (an older Live's, discussion 37): its square made
+        again at the next start, its .ter there, gets its black name back."""
+        from live_helpers import live_names
+        from orthostudio.live.region import NIGHT_FOLDER
+
+        live_names(self.pack, night=True).make((46, 2))
+        (self.pack / NIGHT_FOLDER / f"{self.row[0]}_LIT.dds").unlink()
+        self.assertEqual(self.dangling(), [f"{self.row[0]}.ter"])
+        names = live_names(self.pack, night=True)  # the next start, the square there
+        names.make((46, 2))
+        self.assertEqual(self.dangling(), [])
+
+    def test_a_ter_x_plane_holds_keeps_its_night(self):
+        """Windows refusing to delete a land .ter X-Plane holds, its black night went all the
+        same: the square stays made, and the aircraft back, the .ter named a deleted file."""
+        import os
+        from unittest import mock
+
+        from live_helpers import live_names
+        from orthostudio.live.names import SquareError
+
+        names = live_names(self.pack, night=True, busy=lambda name: True)  # their photos built
+        names.make((46, 2))
+        names.done.add((46, 2))
+        held, real = f"{self.row[3]}.ter", os.unlink
+
+        def unlink(path, *args, **kwargs):
+            if str(path).endswith(held):
+                raise PermissionError(13, "X-Plane holds it", str(path))
+            return real(path, *args, **kwargs)
+
+        with mock.patch("os.unlink", unlink), self.assertRaises(SquareError):
+            names.take_away((46, 2))
+        names.want({(46, 2)}, {(46, 2)})  # the aircraft back: made still, never made again
+        self.assertEqual(names._todo(), ([], []))
+        self.assertEqual(self.dangling(), [])
+
+    def test_a_night_whose_photo_went_goes_with_its_ter(self):
+        """Lit, a night stays when its square is taken away, as its photo does; its photo gone,
+        its black name is dropped by the squares' files, its .ter gone: none piles up."""
+        import time
+
+        from live_helpers import live_names
+        from orthostudio.live.nightwork import NightWork
+        from orthostudio.live.region import NIGHT_FOLDER
+
+        names = live_names(self.pack, night=True, busy=lambda name: True)
+        names.make((46, 2))
+        name = f"{self.row[0]}.dds"
+        lit = self.pack / NIGHT_FOLDER / f"{self.row[0]}_LIT.dds"
+        lit.unlink()
+        lit.write_bytes(b"lit")
+        names.done.add((46, 2))
+        names.take_away((46, 2))
+        (self.pack / "textures" / name).unlink()  # made neutral far from every square made
+        night = NightWork(self.pack, None, None, [], log=lambda _: None)
+        night.day_gone = names.day_gone  # as the streamer does
+        names.start(own_process=False)
+        try:
+            night.back_to_black(name)
+            deadline = time.monotonic() + 10.0
+            while lit.exists() and time.monotonic() < deadline:
+                time.sleep(0.02)
+        finally:
+            names.close()
+        self.assertFalse(lit.exists())
+
 
 # --- the worker: a night texture made from the day texture on the disk
 
@@ -755,15 +869,20 @@ class NightWorkTest(unittest.TestCase):
         lit.parent.mkdir(parents=True)
         lit.write_bytes(b"lit")
         self.work.made[self.near] = 0
-        self.work.back_to_black(self.near)  # its day file gone with its square: the night too
-        self.assertFalse(lit.exists())
+        gone: list[str] = []
+        self.work.day_gone = gone.append
+        self.work.back_to_black(self.near)  # its day file gone with its square: black, never
+        self.assertTrue(os.path.samefile(lit, self.root / NIGHT_NEUTRAL))  # deleted here...
+        self.assertEqual(gone, [self.near])  # ... but with its .ter (Names.day_gone)
         self.assertEqual(self.work.made, {})
         day = self.root / "textures" / self.near
         day.parent.mkdir()
         day.write_bytes(b"neutral")
+        lit.unlink()
         lit.write_bytes(b"lit")
         self.work.back_to_black(self.near)  # its day file there, X-Plane may read it: black
         self.assertTrue(os.path.samefile(lit, self.root / NIGHT_NEUTRAL))
+        self.assertEqual(gone, [self.near])
         # made coarser while its night was made: not counted made, black, made again from its
         # new level (a 1024 px night stayed over a 256 px texture, the review of 2026-11-11)
         self.work.tick((43.70, 7.25), (314, 20.0), lambda: {self.near: 0})
