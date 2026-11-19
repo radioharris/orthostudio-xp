@@ -546,6 +546,7 @@ def test_an_app_that_cannot_be_replaced_stays_and_opens(tmp_path: Path) -> None:
     assert json.loads((tmp_path / "pending.json").read_text())["reason"] == "replace"
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="bash")
 def test_the_script_names_the_app_by_its_path_alone() -> None:
     """``pgrep -f`` reads a regular expression: the app's path is matched as itself, from the
     start of a command line, so that the script's own does not count."""
@@ -1009,8 +1010,8 @@ async def test_the_engine_takes_away_what_earlier_tries_left(home: Path, newer: 
     try:
         async with client_for(app) as c:
             assert (await c.get("/api/update")).json()["installable"]
-            for _ in range(100):
-                if not left.parent.exists():
+            for _ in range(100):  # the hidden folder first, then the update folder's files
+                if not left.parent.exists() and not any((home / self_update.UPDATE_DIR).iterdir()):
                     break
                 await asyncio.sleep(0.05)
             assert not left.parent.exists()
