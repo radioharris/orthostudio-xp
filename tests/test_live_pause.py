@@ -167,7 +167,7 @@ class NamesTest(unittest.TestCase):
 
     def test_the_window_says_the_squares_once_every_texture_is_built(self):
         """As the plugin does (live_gate.c's show()): the squares whose files are being made, once
-        no texture is left (docs/specs/live.md, sq=)."""
+        no texture is left (sq=)."""
         self.assertEqual(
             lines("LSGG piste 04", 0, 0, 0.0, 12.3, "fr", squares=36),
             (

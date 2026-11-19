@@ -206,8 +206,7 @@ function blocking(checks) {
  * the same count, streamer.start_count). */
 export function holdText(start, mbs) {
   const seconds = number(start.seconds);
-  // every texture built, the files of the squares round the start still being made (sq= in
-  // docs/specs/live.md)
+  // every texture built, the files of the squares round the start still being made (sq=)
   if (start.left === 0 && (start.squares || 0) > 0) {
     return t(start.squares === 1 ? "hold.ground_one" : "hold.ground", { n: number(start.squares), seconds });
   }

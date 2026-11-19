@@ -2089,7 +2089,7 @@ def start_count(streamer: Streamer, arrival: Arrival, now: float, fresh: bool = 
     """What a start waits for, worked out in this one place: the textures X-Plane may show there
     and, at night, the night ones round it, those all of whose photos are in, its progress, and
     the squares of X-Plane's window round it and round where X-Plane says it loads whose files are
-    not made yet (:meth:`Streamer.squares_left`; docs/specs/live.md, ``sq=``). The plugin, the
+    not made yet (:meth:`Streamer.squares_left`, ``sq=``). The plugin, the
     pause window and the start's readiness take it as it is (``fresh``), Live's window as it was
     at most :data:`COUNT_EVERY_S` before, X-Plane held or not; the start is ready when no texture
     and no square is left. Live's window said ready, or nothing, while X-Plane waited for 8,700

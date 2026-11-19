@@ -667,7 +667,7 @@ class PanelWordsTest(unittest.TestCase):
 
     def test_preparing_the_ground_once_every_texture_is_built(self):
         """Every texture built, the squares' files still being made: the squares counted down
-        (docs/specs/live.md, sq=), in X-Plane's Log.txt too. A streamer of before sends no sq=:
+        (sq=), in X-Plane's Log.txt too. A streamer of before sends no sq=:
         the window says what it said."""
         wait = "LIVE1 WAIT n={} b={} p=500 s={} mbs=5.2 lang={} night={} sq={} at={}"
         fr, en = "LSGG piste 04", "LSGG runway 04"

@@ -164,7 +164,7 @@ class LiveSettings(BaseModel):
     sea, through each one's mask, with a water photo of its own. The sea and lakes over 200 km²
     keep their masks either way. Off by default (the user, 2026-11-17): soft banks take more
     graphics memory where there is much water, X-Plane +0.7 GB against off at Stockholm on the
-    new mesh (docs/specs/live.md). Only regions of the new mesh, whose rivers and lakes have
+    new mesh. Only regions of the new mesh, whose rivers and lakes have
     terrain files of their own, tell the two apart; a change takes effect at the next start with
     X-Plane not running, as the decal's."""
     decal: str = LIVE_DECAL

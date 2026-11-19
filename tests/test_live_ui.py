@@ -943,7 +943,7 @@ def _views(statuses: list[dict]) -> dict:
 def test_the_start_s_line_says_the_squares_once_every_texture_is_built() -> None:
     """The line under the start's bar says what the plugin's loading window says (live_gate.c's
     show()), from the same count: the squares whose files are being made once no texture is left
-    (docs/specs/live.md, sq=)."""
+    (sq=)."""
     starts = [
         {"left": 0, "squares": 36, "seconds": 12},
         {"left": 0, "squares": 1, "seconds": 14},

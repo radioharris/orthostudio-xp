@@ -259,7 +259,7 @@ def test_a_file_that_fails_is_tried_again_and_stops_nothing(
 def test_a_start_is_not_held_for_ever_by_a_failing_square(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The squares a start waits for, counted (docs/specs/live.md, sq=): a square made, or failing
+    """The squares a start waits for, counted (sq=): a square made, or failing
     past GIVE_UP_S, counts as made, the log saying so once."""
     from orthostudio.live import names as names_module
 
