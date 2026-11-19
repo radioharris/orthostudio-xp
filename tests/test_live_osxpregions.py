@@ -783,7 +783,7 @@ def test_a_region_in_use_keeps_its_place_until_the_next_try(
     monkeypatch.setattr(osxpregions, "replace_file", held)
     inst, lines = install(tmp_path, region, Host(files))
     assert inst.progress.phase == "failed" and "in use" in inst.progress.error
-    assert "close it" in inst.progress.error
+    assert "close it, then try again, which downloads nothing more" in inst.progress.error
     assert (folder / "terrain/b.ter").read_bytes() == b"ter b"  # the region of before, in use
     assert osxpregions.staged_whole(tmp_path, "eur")
     assert osxpregions.not_installed(tmp_path, region, False)
@@ -1666,7 +1666,7 @@ def test_a_stop_after_the_swap_leaves_no_record_of_the_unpacking_in_the_region(
     stage = osxpregions.stage_dir(tmp_path, "eur")
     rename = osxpregions._rename
 
-    def refused(src: Path, dst: Path, what: str) -> None:
+    def refused(src: Path, dst: Path, what: str, again: str) -> None:
         raise osxpregions.InstallError(f"{what} is in use")
 
     monkeypatch.setattr(osxpregions, "_rename", refused)
@@ -2065,7 +2065,7 @@ def test_a_region_held_open_keeps_its_two_meshes(tmp_path: Path, world, monkeypa
             renaming(src, dst)
 
         monkeypatch.setattr(osxpregions, "replace_file", held)
-        with pytest.raises(osxpregions.InstallError, match="in use"):
+        with pytest.raises(osxpregions.InstallError, match="close it, then delete it again"):
             osxpregions.remove(tmp_path, "eur", [], log=lambda _: None)
         assert (folder / "terrain/b.ter").read_bytes() == b"second"
         assert (kept / "terrain/b.ter").read_bytes() == b"ter b"

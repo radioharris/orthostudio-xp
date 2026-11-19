@@ -710,7 +710,8 @@ function regionRow(id, mine, r, install, running, idle, xplane) {
   // installed mesh, the kept old one taking its place where it keeps one (osxpregions.py remove)
   const armed = mine && removeArmed === id;
   const sure = !armed ? null
-    : r.kept ? t("regions.confirm_remove_kept", { name }) : t("regions.confirm_remove", { name });
+    : r.kept ? t("regions.confirm_remove_kept", { of: t(`region_of.${id}`) })
+    : t("regions.confirm_remove", { name });
   if (busy && running) {
     buttons.push({ act: "cancel", label: t("regions.cancel") });
   } else if (mine) {
@@ -772,7 +773,7 @@ async function updateAsked(id, button) {
   const regions = last?.regions || {};
   const r = (regions.list || []).find((x) => x.id === id) || {};
   const mine = (regions.ours || []).find((x) => x.id === id) || {};
-  const name = t(`region.${id}`);
+  const of = t(`region_of.${id}`);
   let makeRoom = false;
   let keepOld = false;
   if (r.whole) {
@@ -800,7 +801,7 @@ async function updateAsked(id, button) {
     if (room) {
       const xplane = Boolean(last?.checks?.xplane_running);
       const gbFree = { gb: gb(room.free) };
-      const sizes = { name, need: gb(room.need), folder: last?.checks?.folder || "",
+      const sizes = { of, need: gb(room.need), folder: last?.checks?.folder || "",
         free: room.cleared ? t("regions.room_free_cleared", gbFree) : t("regions.room_free", gbFree) };
       const lines = [room.live ? t("regions.room_text_live", sizes) : t("regions.room_text", sizes)];
       if (!room.kept && room.shared) lines.push(t("regions.room_shared")); // its Delete frees nothing yet
@@ -815,7 +816,7 @@ async function updateAsked(id, button) {
     const lines = [mine.size ? t("regions.keep_text_size", { gb: gb(mine.size) }) : t("regions.keep_text")];
     if (r.kept && !makeRoom) lines.push(t("regions.keep_replaces")); // deleted already otherwise
     if (last?.settings?.mesh === "old") lines.push(t("regions.keep_old_setting")); // kept, it is flown
-    const answer = await askRegion({ title: t("regions.keep_title", { name }), lines,
+    const answer = await askRegion({ title: t("regions.keep_title", { of }), lines,
       yes: t("regions.keep_yes"), no: t("regions.keep_no") });
     if (!answer) return; // closed: nothing done
     keepOld = answer === "yes";
@@ -826,8 +827,7 @@ async function updateAsked(id, button) {
 /** Delete on a region's kept old mesh, which deletes it alone: Live warns first that it cannot be
  * downloaded again (the host keeps no release of before). */
 async function removeKept(id) {
-  const name = t(`region.${id}`);
-  const go = await askRegion({ title: t("regions.kept_ask_title", { name }), lines: [t("regions.kept_ask_text")],
+  const go = await askRegion({ title: t("regions.kept_ask_title", { of: t(`region_of.${id}`) }), lines: [t("regions.kept_ask_text")],
     yes: t("regions.kept_remove"), no: t("regions.kept_ask_no"), danger: true });
   if (go === "yes") await regionAct(`regions/${id}/kept`, "DELETE");
 }

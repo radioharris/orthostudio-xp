@@ -1641,12 +1641,15 @@ def test_each_mesh_has_its_own_delete_its_confirmation_says_what_goes() -> None:
         "regions.kept_ask_title",
         "regions.kept_ask_text",
     ]
+    of = {"eur": "Europe", "na": "North America"}
     script = (
         "globalThis.document = { documentElement: {} };"
         f"const s = await import({json.dumps((UI_DIR / 'strings.js').as_uri())});"
         f"const keys = {json.dumps(keys)}; const out = {{}};"
         "for (const lang of ['en', 'fr']) { s.setLanguage(lang);"
-        " out[lang] = Object.fromEntries(keys.map((k) => [k, s.t(k, { name: 'Europe' })])); }"
+        " out[lang] = Object.fromEntries(keys.map((k) => [k, s.t(k, { name: 'Europe',"
+        " of: s.t('region_of.eur') })]));"
+        f" for (const id of {json.dumps(list(of))}) out[lang][id] = s.t(`region_of.${{id}}`); }}"
         "console.log(JSON.stringify(out));"
     )
     out = subprocess.run(
@@ -1664,15 +1667,16 @@ def test_each_mesh_has_its_own_delete_its_confirmation_says_what_goes() -> None:
         "Click Sure? to delete the new mesh of Europe: the old one takes its place."
     )
     assert fr["regions.confirm_remove_kept"] == (
-        "Cliquez sur Sûr ? pour supprimer le nouveau maillage de Europe : "
-        "l'ancien reprend sa place."
+        "Cliquez sur Sûr ? pour supprimer le nouveau maillage d'Europe : l'ancien reprend sa place."
     )
+    assert fr["regions.kept_ask_title"] == "Supprimer du disque l'ancien maillage gardé d'Europe ?"
+    assert (en["na"], fr["na"]) == ("of North America", "d'Amérique du Nord")
     assert en["regions.kept_ask_title"] == "Delete the kept old mesh of Europe from the disk?"
     assert en["regions.kept_ask_text"] == "It cannot be downloaded again."
     js = (UI_DIR / "live.js").read_text(encoding="utf-8")
     row = js[js.index("function regionRow(") :]
     row = row[: row.index("\n}")]
-    sure = 'r.kept ? t("regions.confirm_remove_kept", { name })'
+    sure = 'r.kept ? t("regions.confirm_remove_kept", { of: t(`region_of.${id}`) })'
     assert sure in row  # the region's armed sentence, where it keeps an old mesh
     assert 'label: armed ? t("regions.remove_sure") : t("regions.remove")' in row
     assert 'act: "remove_kept", label: t("regions.kept_remove")' in row

@@ -610,20 +610,33 @@ def unpack(path: Path, dest: Path, stop: threading.Event | None = None) -> int:
 # --- a region put in place, and what a stop left -----------------------------------------------
 
 
-def _rename(src: Path, dst: Path, what: str) -> None:
+UPDATE_AGAIN = "try again, which downloads nothing more"
+DELETE_AGAIN = "delete it again"
+"""What the pilot does once the program holding a folder is closed (:func:`_in_use`): an update
+tried again downloads nothing it has, a deletion is asked again."""
+
+
+def _in_use(what: str, again: str, e: OSError) -> InstallError:
+    """A folder a program holds open (Windows), said: close it, then ``again``."""
+    return InstallError(f"{what} is in use, by X-Plane perhaps: close it, then {again} ({_why(e)})")
+
+
+def _rename(src: Path, dst: Path, what: str, again: str) -> None:
     """One folder renamed (tried again a moment on Windows, where a folder a program holds open
-    cannot be), or :class:`InstallError` saying what holds it."""
+    cannot be), or :class:`InstallError` saying what holds it (:func:`_in_use`)."""
     try:
         replace_file(src, dst)
     except OSError as e:
-        raise InstallError(
-            f"{what} is in use, by X-Plane perhaps: close it, then try again, which downloads "
-            f"nothing more ({_why(e)})"
-        ) from e
+        raise _in_use(what, again, e) from e
 
 
 def _swap_in(
-    new: Path, real: Path, what: str, touch: Sequence[str] = (), beside: Path | None = None
+    new: Path,
+    real: Path,
+    what: str,
+    touch: Sequence[str] = (),
+    beside: Path | None = None,
+    again: str = UPDATE_AGAIN,
 ) -> bool:
     """``new`` put in ``real``'s place with one rename, the one of before renamed aside first
     (:func:`_old_dir`), put back where the rename is refused, then kept or deleted
@@ -631,15 +644,15 @@ def _swap_in(
     folders then dated now, what the next start's set-up compares (``region._fingerprints``); the
     one of before keeps its dates. The one swap of a region's stage, of its river masks' and of
     its kept old mesh put back (:func:`_kept_back`) alike; :class:`InstallError` when a program
-    holds a folder open. ``beside``: where the one of before is set aside, out of the region's own
-    folder for its river masks (:func:`_set_aside`). Whether the one of before was kept. The lock
-    held."""
+    holds a folder open, saying what to do once it is closed (``again``, an update's by default).
+    ``beside``: where the one of before is set aside, out of the region's own folder for its river
+    masks (:func:`_set_aside`). Whether the one of before was kept. The lock held."""
     old = _old_dir(real)
     _settle_old(real, beside)  # one an earlier swap left: kept or deleted as its record says
     if real.exists():
-        _rename(real, old, what)
+        _rename(real, old, what, again)
     try:
-        _rename(new, real, what)
+        _rename(new, real, what, again)
     except InstallError:
         if old.exists() and not real.exists():
             replace_file(old, real)  # the one of before back, as it was
@@ -954,9 +967,7 @@ def _set_aside_whole(path: Path) -> Path:
     try:
         return _set_aside(path)
     except OSError as e:
-        raise InstallError(
-            f"{path.name} is in use, by X-Plane perhaps: close it, then delete it again ({_why(e)})"
-        ) from e
+        raise _in_use(path.name, DELETE_AGAIN, e) from e
 
 
 def remove(root: Path, region: str, squares: Sequence[tuple[int, int]], log: Log = print) -> None:
@@ -1029,7 +1040,7 @@ def _kept_back(root: Path, region: str, log: Log) -> None:
     with _SWAP:
         stage = stage_dir(root, region)
         (stage / MARKER).unlink(missing_ok=True)
-        _swap_in(_kept_of(real), real, real.name, touch=DATED)
+        _swap_in(_kept_of(real), real, real.name, touch=DATED, again=DELETE_AGAIN)
         _discard(stage)
     shutil.rmtree(download_dir(root, region), ignore_errors=True)
     _forget_list(root, folder, _kept_of(real))
