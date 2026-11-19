@@ -592,7 +592,7 @@ class Streamer:
             night.team = self.workers  # the start's team: as many as the encoders, idle by then
             night.top_of = self.top_of  # its levels counted from its file's top, as X-Plane does
             if self.names is not None:  # a night whose day file went: its name with its .ter
-                night.day_gone = self.names.drop_night
+                night.day_gone = self.names.day_gone
             lit = self.meta.get("lit")
             night.lit = dict(lit) if isinstance(lit, dict) else {}  # made before (evict.usage)
         self._points: dict[str, tuple[float, float]] = {}  # "aircraft", "start", "hold"

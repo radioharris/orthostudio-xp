@@ -445,7 +445,7 @@ class NightWork:
         self.team = 1  # the processes at a start at night: Live's encoders (the streamer's)
         self.top_of: Callable[[str], int] = lambda name: 0  # a file's sharpest level (streamer's)
         # a texture whose day file went: its night's name dropped with its land .ter, by the
-        # squares' files (the streamer's: orthostudio.live.names.Names.drop_night)
+        # squares' files (the streamer's: orthostudio.live.names.Names.day_gone)
         self.day_gone: Callable[[str], None] = lambda name: None
         self.night = False
         self.lock = threading.Lock()
@@ -645,7 +645,7 @@ class NightWork:
                 for i, (name, level) in enumerate(batch):
                     self.running.pop(name, None)
                     said, lit = (None, False) if results is None else results[i][1:]
-                    if name in self.changed:  # neutral or coarser meanwhile: as its day file
+                    if name in self.changed:  # neutral or coarser meanwhile: put back black
                         self.changed.discard(name)
                         black.append(name)
                     elif said is None:
@@ -784,7 +784,8 @@ class NightWork:
     def _black(self, name: str) -> None:
         """``name``'s night black, never deleted here: deleted where its day file was gone, a
         square made meanwhile named it all the same (discussion 37). Its day file gone, read
-        from the disk then, its name goes once its land ``.ter`` is gone too (:attr:`day_gone`)."""
+        from the disk then, its name goes where its land ``.ter`` is gone, else with it
+        (:attr:`day_gone`)."""
         from .names import NightPool, night_name
         from .region import NIGHT_FOLDER
 

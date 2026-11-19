@@ -257,7 +257,8 @@ class PackTest(unittest.TestCase):
 
     def test_a_night_name_not_found_is_said_and_never_named(self):
         """Its black name failing as not found was passed over in silence: the .ter named it all
-        the same, the square counted made, and X-Plane could not load it."""
+        the same, the square counted made, and X-Plane could not load it. Refused (Windows), it
+        was said, but named all the same: the same error now."""
         from live_helpers import live_names
         from orthostudio.live.names import SquareError
 
@@ -268,15 +269,18 @@ class PackTest(unittest.TestCase):
         lands = [(self.pack / f"terrain/{t}.ter").read_bytes() for t in self.row[:11]]
         self.assertEqual(sum(b"LIT_TEX" in land for land in lands), 7)  # the others name none
 
-    def test_a_night_name_refused_is_never_named(self):
-        """Refused (Windows), its black name was said, but the .ter named it all the same until
-        the square was tried again."""
+    def test_a_night_missing_under_its_ter_comes_back_at_the_next_start(self):
+        """A land .ter naming a night not there (an older Live's, discussion 37): its square made
+        again at the next start, its .ter there, gets its black name back."""
         from live_helpers import live_names
-        from orthostudio.live.names import SquareError
+        from orthostudio.live.region import NIGHT_FOLDER
 
-        names = live_names(self.pack, night=True)
-        with self.flaky_night(PermissionError, 4), self.assertRaises(SquareError):
-            names.make((46, 2))
+        live_names(self.pack, night=True).make((46, 2))
+        (self.pack / NIGHT_FOLDER / f"{self.row[0]}_LIT.dds").unlink()
+        self.assertEqual(self.dangling(), [f"{self.row[0]}.ter"])
+        names = live_names(self.pack, night=True)  # the next start, the square there
+        names.want({(46, 2)}, {(46, 2)})
+        names.make((46, 2))
         self.assertEqual(self.dangling(), [])
 
     def test_a_ter_x_plane_holds_keeps_its_night(self):
@@ -360,7 +364,7 @@ class PackTest(unittest.TestCase):
         names.take_away((46, 2))
         (self.pack / "textures" / name).unlink()  # made neutral far from every square made
         night = NightWork(self.pack, None, None, [], log=lambda _: None)
-        night.day_gone = names.drop_night  # as the streamer does
+        night.day_gone = names.day_gone  # as the streamer does
         names.start(own_process=False)
         try:
             night.back_to_black(name)
@@ -907,7 +911,7 @@ class NightWorkTest(unittest.TestCase):
         self.work.day_gone = gone.append
         self.work.back_to_black(self.near)  # its day file gone with its square: black, never
         self.assertTrue(os.path.samefile(lit, self.root / NIGHT_NEUTRAL))  # deleted here...
-        self.assertEqual(gone, [self.near])  # ... but with its .ter (Names.drop_night)
+        self.assertEqual(gone, [self.near])  # ... but with its .ter (Names.day_gone)
         self.assertEqual(self.work.made, {})
         day = self.root / "textures" / self.near
         day.parent.mkdir()

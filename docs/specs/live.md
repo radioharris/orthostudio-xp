@@ -635,7 +635,9 @@ the `ter` and `make` operations); the water's and the sea's files name none. A l
 names a night texture that is not there: its night texture's name is made by the same operation,
 just before the `.ter` is written, and named only if it is there then (`names._night_named`); one
 that cannot be made is an error of the square, said in the log and tried again, and that texture
-has no lights until its square is made again. Made apart and first, a name that failed left its
+has no lights until its square is taken away and made again. The name is made at each making of
+the square, its `.ter` there too: one an older Live left naming a night not there gets it back at
+the next start. Made apart and first, a name that failed left its
 `.ter` naming a file not there, and X-Plane said some scenery textures could not be loaded
 (discussion 37). Each name is a hard link to the pack's black night texture (`_live/night.dds`,
 1024 px BC1, `region.ensure_night_neutral`) and its copies past a disk's names per file
@@ -766,14 +768,14 @@ pool, a new one made at the next turn, the textures given again; past five in a 
 night for the flight (`LOST_MAX`), never Live stopped. A texture is never given while it is being
 made (two at once wrote its file in either order, a coarse one last left it black); one that
 fails is given again once, then left for the flight, the first five failures said in the log
-(`TRIES`); one made neutral or coarser while it was made is not counted made, and is put back as
-its day file once made, then made again from its new level if it is wanted (counted at the level
-it was given, a 1024 px night stayed over a 256 px texture, the review of 2026-11-11). Put back
-means black (`NightWork._black`), never deleted there: deleted where its day file was gone, a
-square made meanwhile named it all the same (discussion 37). Its day file gone, read from the
-disk then, its name is dropped by the squares' files once its land `.ter` is gone too
-(`Names.drop_night`, `run_ops`' `drop_night`). Filling the jobs stops once each is full and no
-room is left (28,800 textures wanted at nightfall went through the lock to the end each time).
+(`TRIES`); one made neutral or coarser while it was made is not counted made, and is put back
+black once made, then made again from its new level if it is wanted (counted at the level it was
+given, a 1024 px night stayed over a 256 px texture, the review of 2026-11-11). Black
+(`NightWork._black`), it is never deleted there: deleted where its day file was gone, a square
+made meanwhile named it all the same (discussion 37). Its day file gone, read from the disk then,
+its name is dropped by the squares' files where its land `.ter` is gone, else with that `.ter`
+when its square is taken away (`Names.day_gone`, `run_ops`' `drop_night`). Filling the jobs stops
+once each is full and no room is left (28,800 textures wanted at nightfall went through the lock to the end each time).
 The night's processes run at the encoders' lower priority, forked as they are
 (`pools.context`). Made in each texture's own build job instead, as tried on 2026-11-10, the
 night took each of Live's encoders (twelve on the user's Mac) 155 MB more (27 MB at rest, 182 MB

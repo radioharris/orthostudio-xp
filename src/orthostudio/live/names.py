@@ -644,8 +644,9 @@ def run_ops(pack_dir: str, ops: Sequence[tuple]) -> dict:
     while it leads to the neutral texture (one built since stays); ("drop_night", path), a night
     texture's name removed while still black and once its land ``.ter`` is gone. The ``.ter``
     operations may carry two more: the land's night texture and whether the night lights are on
-    (:func:`with_night`), its black name then made first and named only if it is there
-    (:func:`_night_named`). Every error is reported, none stops the others."""
+    (:func:`with_night`), its black name then made first, its ``.ter`` there or not (one left
+    naming a night not there gets it back), and named only if it is there (:func:`_night_named`).
+    Every error is reported, none stops the others."""
     pack = Path(pack_dir)
     pool = _POOLS.get(pack_dir) or _POOLS.setdefault(pack_dir, NeutralPool(pack))
     placed = dropped = 0
@@ -665,15 +666,15 @@ def run_ops(pack_dir: str, ops: Sequence[tuple]) -> dict:
                     _copy_small(op[1], op[2])
                     placed += 1
             elif kind in ("ter", "make"):
+                lit, night = (op[4], op[5]) if len(op) > 5 else (None, False)
+                if night and lit is not None:  # its .ter there too: one naming a night not
+                    lit = _night_named(pack_dir, lit, errors)  # there gets it back
                 if not os.path.lexists(op[2]):
                     if kind == "ter":
                         with open(op[1], "rb") as f:
                             text = f.read()
                     else:  # a region naming its terrain files: made from the name
                         text = made_ter(os.path.basename(op[2]))
-                    lit, night = (op[4], op[5]) if len(op) > 5 else (None, False)
-                    if night and lit is not None:
-                        lit = _night_named(pack_dir, lit, errors)
                     _write_new(op[2], _ter_text(text, op[3], lit, night))
                     placed += 1
             elif kind == "drop_night":  # never while its land .ter, which names it, is there
@@ -817,7 +818,7 @@ class Names:
         self.keep: set[Square] = set()
         self.center: tuple[float, float] | None = None
         self.failing: dict[Square, list] = {}  # square: [first failure, next try, tries, error]
-        self.nights_gone: set[str] = set()  # textures whose day file went (:meth:`drop_night`)
+        self.nights_gone: set[str] = set()  # textures whose day file went (:meth:`day_gone`)
         self._given_up: set[Square] = set()
         self._said: set[str] = set()
         self.made = self.released = 0  # squares, for the log and the tests
@@ -968,11 +969,11 @@ class Names:
             raise SquareError(result["errors"])
         return result["dropped"]
 
-    def drop_night(self, name: str) -> None:
+    def day_gone(self, name: str) -> None:
         """``name``'s day file gone, its night made black (orthostudio.live.nightwork): its name
-        dropped by the file operations' process, as a square taken away drops it, once its land
-        ``.ter`` is gone (:func:`run_ops`). Deleted where its day file was gone, a square made
-        meanwhile named it all the same (discussion 37)."""
+        dropped by the file operations' process where its land ``.ter`` is gone (:func:`run_ops`),
+        else with that ``.ter`` when its square is taken away. Deleted where its day file was
+        gone, a square made meanwhile named it all the same (discussion 37)."""
         with self._cond:
             self.nights_gone.add(name)
             self._cond.notify_all()
