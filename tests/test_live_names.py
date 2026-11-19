@@ -301,6 +301,7 @@ def test_a_square_partly_taken_away_is_made_again_when_wanted(
         names.want({EAST}, {EAST}, (46.5, 3.5))  # flown away: HERE taken away, one file refused
         assert until(lambda: HERE in names.failing_away)
         assert HERE not in names.done and HERE in names.present
+        assert names._todo()[1] == []  # its take-away not tried again before its next try
         assert held.exists() and not (pack / "terrain" / f"{ROW[0]}.ter").exists()
         names.want({HERE, EAST}, {HERE, EAST}, (46.5, 2.5))  # back, its next take-away 10 s on
         assert names.wait_ready({HERE}, 5.0)

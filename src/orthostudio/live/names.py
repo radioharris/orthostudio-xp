@@ -630,11 +630,12 @@ def _night_named(pack_dir: str, lit: str, unlit: list[tuple[str, str]]) -> str |
 
 def _unlit(ter: str) -> None:
     """A land ``.ter`` there naming its night texture, written again naming none: its night could
-    not be named (:func:`_night_named`), and X-Plane could not load a file naming it."""
+    not be named (:func:`_night_named`), and X-Plane could not load a file naming it. Its file
+    being written is swept at the next start (``region.remove_temps``)."""
     try:
         with open(ter, "rb") as f:
             text = f.read()
-    except FileNotFoundError:  # gone meanwhile: made again naming none
+    except FileNotFoundError:  # not there: made naming none
         return
     if b"LIT_TEX" not in text:
         return
@@ -691,7 +692,7 @@ def run_ops(pack_dir: str, ops: Sequence[tuple]) -> dict:
                 # its night's name made, the .ter there too: one naming a night gone gets it back
                 if night and lit is not None:
                     lit = _night_named(pack_dir, lit, unlit)
-                    if lit is None and os.path.lexists(op[2]):
+                    if lit is None:
                         _unlit(op[2])
                 if not os.path.lexists(op[2]):
                     if kind == "ter":
@@ -913,8 +914,8 @@ class Names:
         (region.set_zooms), then its terrain files, which make X-Plane read them: never one of
         another size, never a night texture not there (:func:`_night_named`: a land whose night
         could not be named has no lights, said in the log). Raises :class:`SquareError` when some
-        could not be made,
-        :class:`SquareWaitError` while a texture being built has still its old size."""
+        could not be made, :class:`SquareWaitError` while a texture being built has still its old
+        size."""
         entries = self.textures_on(square)
         names = [entry[0] for entry in entries]
         with self.lock:
@@ -968,10 +969,10 @@ class Names:
             region = Path(src).parent.parent.name
             self._say_once(f"  {Path(src).name} is gone from {region}: the region changed")
         if placed["unlit"]:  # made all the same: a square held for its lights held the start
-            self.log(
+            self._say_once(
                 f"  square {square[0]:+03d}{square[1]:+04d} has no lights at night where its night "
-                f"textures could not be named ({SquareError(placed['unlit'])}), until it is made "
-                "again"
+                f"textures could not be named ({SquareError(placed['unlit'])}), until it is taken "
+                "away and made again"
             )
         if placed["errors"]:
             raise SquareError(placed["errors"])

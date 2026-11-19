@@ -286,7 +286,6 @@ class PackTest(unittest.TestCase):
             live_names(self.pack, night=True).make((46, 2))  # the next start, the square there
         self.assertEqual(self.dangling(), [])
         after = ter.read_bytes()
-        self.assertNotIn(b"LIT_TEX", after)
         self.assertEqual(after, b"\n".join(x for x in before.split(b"\n") if b"LIT_TEX" not in x))
 
     def test_a_night_missing_under_its_ter_comes_back_at_the_next_start(self):
@@ -304,8 +303,7 @@ class PackTest(unittest.TestCase):
 
     def test_a_ter_x_plane_holds_keeps_its_night(self):
         """Windows refusing to delete a land .ter X-Plane holds, its black night went all the
-        same, and the aircraft back, the .ter named a deleted file. Its night stays now; the
-        square, its other files gone, is no longer made: wanted again, it is made at once."""
+        same, and the aircraft back, the .ter named a deleted file."""
         import os
         from unittest import mock
 
@@ -314,7 +312,6 @@ class PackTest(unittest.TestCase):
 
         names = live_names(self.pack, night=True, busy=lambda name: True)  # their photos built
         names.make((46, 2))
-        names.done.add((46, 2))
         held, real = f"{self.row[3]}.ter", os.unlink
 
         def unlink(path, *args, **kwargs):
@@ -1235,16 +1232,18 @@ class ReviewTest(unittest.TestCase):
         pack = self.root / "pack"
         (pack / NIGHT_FOLDER).mkdir(parents=True)
         (pack / ROADS_FOLDER).mkdir(parents=True)
+        (pack / "terrain").mkdir(parents=True)
         half = [
             pack / NIGHT_FOLDER / f"{TEMP_PREFIX}a",
             pack / ROADS_FOLDER / ".+43+007-1.123.tmp",
             pack / ROADS_FOLDER / "+43+007-1.lock",
+            pack / "terrain" / f"{TEMP_PREFIX}1-a.ter",  # a land written again without its night
         ]
         kept = [pack / NIGHT_FOLDER / "a_LIT.dds", pack / ROADS_FOLDER / "+43+007-1.npz"]
         for f in half + kept:
             f.write_bytes(b"x")
-        self.assertEqual(remove_temps(pack), 3)
-        self.assertEqual([f.exists() for f in half + kept], [False] * 3 + [True] * 2)
+        self.assertEqual(remove_temps(pack), 4)
+        self.assertEqual([f.exists() for f in half + kept], [False] * 4 + [True] * 2)
 
 
 class RoadsReadTest(unittest.TestCase):
