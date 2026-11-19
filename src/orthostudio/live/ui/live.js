@@ -637,6 +637,29 @@ function drawSimbrief() {
 const REGION_ORDER = ["eur", "na", "sa", "afr", "asi", "aus_pac"];
 let regionsDrawn = ""; // what the list shows: drawn again only when it changes, keeping the focus
 let removeArmed = null; // the region whose Delete was clicked once: a second click deletes it
+let disarmTimer = null;
+const ARM_S = 5; // the armed Delete goes back to « Delete » after this, or at a click elsewhere
+
+/** A region's Delete clicked once: its button asks « Sure? » for ARM_S seconds, or until a click
+ * anywhere else (it had no way back but a reload, 2026-11-19). */
+function armRemove(id) {
+  removeArmed = id;
+  clearTimeout(disarmTimer);
+  disarmTimer = setTimeout(disarmRemove, ARM_S * 1000);
+  if (last) draw(last);
+}
+
+function disarmRemove() {
+  clearTimeout(disarmTimer);
+  if (removeArmed === null) return;
+  removeArmed = null;
+  if (last) draw(last);
+}
+
+// seen before the button's own click: a click on the armed button deletes, any other disarms
+document.addEventListener("click", (ev) => {
+  if (removeArmed !== null && !ev.target.closest?.("[data-armed]")) disarmRemove();
+}, true);
 
 function regionButton(label, onClick, { danger = false, disabled = false } = {}) {
   const button = document.createElement("button");
@@ -817,14 +840,11 @@ function regionAction(id, act) {
   if (act === "remove_kept") return () => removeKept(id);
   if (act === "remove") {
     return () => {
-      removeArmed = null;
+      disarmRemove();
       regionAct(`regions/${id}`, "DELETE");
     };
   }
-  return () => { // "arm": a second click deletes
-    removeArmed = id;
-    if (last) draw(last);
-  };
+  return () => armRemove(id); // "arm": a second click deletes
 }
 
 /** OrthoStudio XP's regions: each with what it downloads and takes on the disk, installed or not,
@@ -883,8 +903,11 @@ function drawRegions(status) {
       label.append(name, size, state);
       const actions = document.createElement("span");
       actions.className = "region-actions";
-      actions.append(...row.buttons.map((b) => regionButton(b.label, regionAction(row.id, b.act),
-        { danger: b.danger, disabled: b.disabled })));
+      actions.append(...row.buttons.map((b) => {
+        const button = regionButton(b.label, regionAction(row.id, b.act), { danger: b.danger, disabled: b.disabled });
+        if (b.act === "remove") button.dataset.armed = ""; // its click deletes, never disarms
+        return button;
+      }));
       head.append(label, actions);
       li.append(head);
       if (row.kept) {
