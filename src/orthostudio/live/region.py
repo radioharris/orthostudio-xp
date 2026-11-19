@@ -352,7 +352,8 @@ def remove_temps(pack_dir: Path) -> int:
     start, before anything writes there (the next writes' own names are the same kind). The
     night textures' too, and the roads' half written (``.<square>.<pid>.tmp``) and their locks,
     none of which a start finds in use (the review of 2026-11-11). The record of the textures
-    built's too (``ortho.json.tmp-…``, ``ortho.tmp`` before 2.2.1)."""
+    built's too (``ortho.json.tmp-…``, ``ortho.tmp`` before 2.2.1), and a land ``.ter`` written
+    again without its night (``names._unlit``)."""
     from .nightwork import ROADS_FOLDER
     from .pack import MARKER
 
@@ -364,6 +365,7 @@ def remove_temps(pack_dir: Path) -> int:
         ),
         (pack_dir / "textures", lambda n: n.startswith(TEMP_PREFIX)),
         (pack_dir / NIGHT_FOLDER, lambda n: n.startswith(TEMP_PREFIX)),
+        (pack_dir / "terrain", lambda n: n.startswith(TEMP_PREFIX)),  # names._unlit
         (
             pack_dir / ROADS_FOLDER,
             lambda n: (n.startswith(".") and n.endswith(".tmp")) or n.endswith(".lock"),

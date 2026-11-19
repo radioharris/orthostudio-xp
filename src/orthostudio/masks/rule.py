@@ -173,26 +173,27 @@ MASKS_BASE_MB = 300
 """The masks node's own memory, without its pool: the water triangles of the tile and its
 neighbours, read from their meshes."""
 
-MASKS_WORKER_MB = {"sand": 250, "rocks": 710, "3steps": 990, "soft": 1100}
-"""One masks worker at its peak, one cell in flight, by masking profile, at 100 m
-(``masks-build.md`` 6.2, measured: 242, 703, 981 and, at ``mask_zl`` 16, 1,091 MB; a wider fade
-takes a wider margin and more). Every profile counted 800 MB, three times what ``sand``, the
-default, takes, and less than ``3steps`` does."""
+MASKS_WORKER_MB = {"sand": 300, "rocks": 800, "3steps": 1500, "soft": 2000}
+"""One masks worker, by masking profile, the sea alone: the most measured on five tiles, rounded
+up to the next hundred (``masks-build.md`` 6.2, where the measures are)."""
 
-MASKS_DISTANCE_WORKER_MB = {"sand": 1400, "rocks": 1600, "3steps": 1400, "soft": 1800}
-"""One masks worker making the distance masks too (``distance_masks_too``), by profile: the
-distance field comes after the profile's blur, while the cell and its fade are still held
-(``masks-build.md`` 6.2, measured on ``+51+004``, a tile of sea, rivers and canals: 1,347, 1,548,
-1,360 and 1,750 MB, the most of ``mask_zl`` 14 and 16, with and without the inland water, one
-worker after several cells; rounded up to the next hundred, for a worker that takes more cells).
-The heavier of the profile and 970 MB was counted until 2026-11-18, a third to three fifths
-short."""
+MASKS_INLAND_WORKER_MB = {"sand": 500, "rocks": 1000, "3steps": 1500, "soft": 2000}
+"""The same with the inland water too (``use_masks_for_inland``), never less than the sea alone."""
+
+MASKS_DISTANCE_WORKER_MB = {"sand": 1400, "rocks": 1600, "3steps": 1500, "soft": 2000}
+"""The same making the distance masks too (``distance_masks_too``), with or without the inland
+water, never less than without them."""
 
 
 def masks_worker_mb(params: MasksParams) -> int:
-    """What one masks worker takes for ``params``' profile and distance masks; an unknown profile
-    counts the heaviest."""
-    table = MASKS_DISTANCE_WORKER_MB if params.distance_masks_too else MASKS_WORKER_MB
+    """What one masks worker takes for ``params``' profile, inland water and distance masks; an
+    unknown profile counts the heaviest."""
+    if params.distance_masks_too:
+        table = MASKS_DISTANCE_WORKER_MB
+    elif params.use_masks_for_inland:
+        table = MASKS_INLAND_WORKER_MB
+    else:
+        table = MASKS_WORKER_MB
     return table.get(params.masking_mode, max(table.values()))
 
 
@@ -201,7 +202,7 @@ def masks_worker_mb(params: MasksParams) -> int:
     version=1,
     params=MasksParams,
     inputs=("mesh", *NEIGHBOUR_OFFSETS, "dem", "custom_extent"),
-    ram_mb=MASKS_BASE_MB + max(*MASKS_WORKER_MB.values(), *MASKS_DISTANCE_WORKER_MB.values()),
+    ram_mb=MASKS_BASE_MB + max(MASKS_DISTANCE_WORKER_MB.values()),
     kind="dir",
 )
 def osxp_masks(ctx: RunContext) -> None:

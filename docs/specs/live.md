@@ -381,7 +381,10 @@ becoming 8.1 s with another thread busy half the time and 35 s at 90 %, against 
 process of their own (2026-09-30). A square whose files fail (a full disk, a file held open on
 Windows) is tried again 10 s later, doubled each time, never stopping the others, and holds a
 start at most 60 s (`GIVE_UP_S`, the log says so); an unexpected error stops Live, as the
-builder's does. A texture recorded as built whose name had to be made again (its file taken away
+builder's does. A take-away that fails is tried again the same way (`Names.failing_away`), its
+square no longer counted made (`present`, never `done`): wanted again, it is made at once, its
+files gone made again, never held back by that next try. Counted made, the aircraft back found its
+other files gone. A texture recorded as built whose name had to be made again (its file taken away
 by hand) is built again, unless the builder wrote its file over that new name meanwhile: at a
 start the names are made while the first textures are built, and 168 good ones were built twice
 over Norway (2026-09-30; `Names.leads_to_neutral`). A start's are made from the click, and the
@@ -865,8 +868,10 @@ a square names its night texture right after its photo, `LIT_TEX_NOWRAP
 the `ter` and `make` operations); the water's and the sea's files name none. A land `.ter` never
 names a night texture that is not there: its night texture's name is made by the same operation,
 just before the `.ter` is written, and named only if it is there then (`names._night_named`); one
-that cannot be made is an error of the square, said in the log and tried again, and that texture
-has no lights until its square is taken away and made again. The name is made at each making of
+that cannot be made leaves its land naming none, a `.ter` there written again without it
+(`names._unlit`), the square made all the same and the log saying it: that texture has no lights
+until its square is taken away and made again. Counted an error of the square, it held a start up
+to `GIVE_UP_S` for lights it could not add, its `.ter` written already. The name is made at each making of
 the square, its `.ter` there too: one an older Live left naming a night not there gets it back at
 the next start. Made apart and first, a name that failed left its `.ter` naming a file not there,
 and X-Plane said some scenery textures could not be loaded (discussion 37). Each name is a hard link to the pack's black night texture (`_live/night.dds`,

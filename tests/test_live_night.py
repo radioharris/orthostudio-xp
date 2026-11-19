@@ -258,16 +258,35 @@ class PackTest(unittest.TestCase):
     def test_a_night_name_not_found_is_said_and_never_named(self):
         """Its black name failing as not found was passed over in silence: the .ter named it all
         the same, the square counted made, and X-Plane could not load it. Refused (Windows), it
-        was said, but named all the same: the same error now."""
+        was said, but named all the same. Now the land names none, the square is made, and the
+        log says it: counted a square's error, it held the start up to a minute for its lights."""
         from live_helpers import live_names
-        from orthostudio.live.names import SquareError
 
-        names = live_names(self.pack, night=True)
-        with self.flaky_night(4), self.assertRaises(SquareError):
-            names.make((46, 2))  # said, and tried again
+        logged: list[str] = []
+        names = live_names(self.pack, night=True, log=logged.append)
+        with self.flaky_night(4):
+            names.make((46, 2))
         self.assertEqual(self.dangling(), [])
         lands = [(self.pack / f"terrain/{t}.ter").read_bytes() for t in self.row[:11]]
         self.assertEqual(sum(b"LIT_TEX" in land for land in lands), 7)  # the others name none
+        self.assertEqual(sum("has no lights at night" in line for line in logged), 1)
+
+    def test_a_ter_naming_a_night_that_cannot_be_named_is_written_without_it(self):
+        """A land .ter there naming its night, the night gone and its black name refused: the
+        .ter is written again naming none, the rest of it kept, X-Plane never left a file naming
+        a texture that is not there."""
+        from live_helpers import live_names
+        from orthostudio.live.region import NIGHT_FOLDER
+
+        live_names(self.pack, night=True).make((46, 2))
+        ter = self.pack / f"terrain/{self.row[0]}.ter"
+        before = ter.read_bytes()
+        (self.pack / NIGHT_FOLDER / f"{self.row[0]}_LIT.dds").unlink()
+        with self.flaky_night(1):
+            live_names(self.pack, night=True).make((46, 2))  # the next start, the square there
+        self.assertEqual(self.dangling(), [])
+        after = ter.read_bytes()
+        self.assertEqual(after, b"\n".join(x for x in before.split(b"\n") if b"LIT_TEX" not in x))
 
     def test_a_night_missing_under_its_ter_comes_back_at_the_next_start(self):
         """A land .ter naming a night not there (an older Live's, discussion 37): its square made
@@ -284,7 +303,7 @@ class PackTest(unittest.TestCase):
 
     def test_a_ter_x_plane_holds_keeps_its_night(self):
         """Windows refusing to delete a land .ter X-Plane holds, its black night went all the
-        same: the square stays made, and the aircraft back, the .ter named a deleted file."""
+        same, and the aircraft back, the .ter named a deleted file."""
         import os
         from unittest import mock
 
@@ -293,7 +312,6 @@ class PackTest(unittest.TestCase):
 
         names = live_names(self.pack, night=True, busy=lambda name: True)  # their photos built
         names.make((46, 2))
-        names.done.add((46, 2))
         held, real = f"{self.row[3]}.ter", os.unlink
 
         def unlink(path, *args, **kwargs):
@@ -303,8 +321,6 @@ class PackTest(unittest.TestCase):
 
         with mock.patch("os.unlink", unlink), self.assertRaises(SquareError):
             names.take_away((46, 2))
-        names.want({(46, 2)}, {(46, 2)})  # the aircraft back: made still, never made again
-        self.assertEqual(names._todo(), ([], []))
         self.assertEqual(self.dangling(), [])
 
     def test_a_night_whose_photo_went_goes_with_its_ter(self):
@@ -1217,16 +1233,18 @@ class ReviewTest(unittest.TestCase):
         pack = self.root / "pack"
         (pack / NIGHT_FOLDER).mkdir(parents=True)
         (pack / ROADS_FOLDER).mkdir(parents=True)
+        (pack / "terrain").mkdir(parents=True)
         half = [
             pack / NIGHT_FOLDER / f"{TEMP_PREFIX}a",
             pack / ROADS_FOLDER / ".+43+007-1.123.tmp",
             pack / ROADS_FOLDER / "+43+007-1.lock",
+            pack / "terrain" / f"{TEMP_PREFIX}1-a.ter",  # a land written again without its night
         ]
         kept = [pack / NIGHT_FOLDER / "a_LIT.dds", pack / ROADS_FOLDER / "+43+007-1.npz"]
         for f in half + kept:
             f.write_bytes(b"x")
-        self.assertEqual(remove_temps(pack), 3)
-        self.assertEqual([f.exists() for f in half + kept], [False] * 3 + [True] * 2)
+        self.assertEqual(remove_temps(pack), 4)
+        self.assertEqual([f.exists() for f in half + kept], [False] * 4 + [True] * 2)
 
 
 class RoadsReadTest(unittest.TestCase):

@@ -74,7 +74,7 @@ def test_rule_declaration() -> None:
     # review 4 (minor): the decorator declares the base plus ONE worker of the heaviest profile;
     # the pipeline node declares the base plus a worker of its profile for each worker of the pool
     # it sizes (masks-build.md 6.2).
-    assert MASKS.ram_mb == 2100
+    assert MASKS.ram_mb == 2300
     assert set(MASKS.inputs) == {"mesh", "dem", "custom_extent", *NEIGHBOUR_OFFSETS}
 
 
@@ -194,15 +194,26 @@ def test_read_mesh_artifact_reports_a_missing_mesh(tmp_path: Path) -> None:
 
 def test_every_profile_counts_its_worker() -> None:
     """A profile without its measured worker counts the heaviest, which ``soft``, heavier, was not
-    (the review of 2026-11-18); with the distance masks too, each profile its own measure, never
-    less than the profile alone (``soft`` with them was counted 1,100 MB for 1,750 measured)."""
+    (the review of 2026-11-18); with the inland water, then the distance masks too, each profile
+    its own measure, never less than without them (``soft`` with the distance masks was counted
+    1,100 MB for 1,750 measured, ``3steps`` with the inland water 990 for 1,402)."""
     from orthostudio.masks.profiles import MASKING_MODES
-    from orthostudio.masks.rule import MASKS_DISTANCE_WORKER_MB, MASKS_WORKER_MB, masks_worker_mb
+    from orthostudio.masks.rule import (
+        MASKS_DISTANCE_WORKER_MB,
+        MASKS_INLAND_WORKER_MB,
+        MASKS_WORKER_MB,
+        masks_worker_mb,
+    )
 
-    assert set(MASKS_WORKER_MB) == set(MASKING_MODES)
-    assert set(MASKS_DISTANCE_WORKER_MB) == set(MASKING_MODES)
+    for table in (MASKS_WORKER_MB, MASKS_INLAND_WORKER_MB, MASKS_DISTANCE_WORKER_MB):
+        assert set(table) == set(MASKING_MODES)
     for mode in MASKING_MODES:
-        alone = masks_worker_mb(_params(masking_mode=mode))
-        with_distance = masks_worker_mb(_params(masking_mode=mode, distance_masks_too=True))
-        assert alone == MASKS_WORKER_MB[mode]
-        assert with_distance == MASKS_DISTANCE_WORKER_MB[mode] >= alone
+        sea = masks_worker_mb(_params(masking_mode=mode))
+        inland = masks_worker_mb(_params(masking_mode=mode, use_masks_for_inland=True))
+        distance = masks_worker_mb(
+            _params(masking_mode=mode, use_masks_for_inland=True, distance_masks_too=True)
+        )
+        assert sea == MASKS_WORKER_MB[mode]
+        assert inland == MASKS_INLAND_WORKER_MB[mode] >= sea
+        assert distance == MASKS_DISTANCE_WORKER_MB[mode] >= inland
+        assert masks_worker_mb(_params(masking_mode=mode, distance_masks_too=True)) == distance
