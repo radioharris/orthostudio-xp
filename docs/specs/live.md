@@ -637,9 +637,8 @@ just before the `.ter` is written, and named only if it is there then (`names._n
 that cannot be made is an error of the square, said in the log and tried again, and that texture
 has no lights until its square is taken away and made again. The name is made at each making of
 the square, its `.ter` there too: one an older Live left naming a night not there gets it back at
-the next start. Made apart and first, a name that failed left its
-`.ter` naming a file not there, and X-Plane said some scenery textures could not be loaded
-(discussion 37). Each name is a hard link to the pack's black night texture (`_live/night.dds`,
+the next start. Made apart and first, a name that failed left its `.ter` naming a file not there,
+and X-Plane said some scenery textures could not be loaded (discussion 37). Each name is a hard link to the pack's black night texture (`_live/night.dds`,
 1024 px BC1, `region.ensure_night_neutral`) and its copies past a disk's names per file
 (`names.NightPool`), so a night texture not made takes no space and adds nothing. A black name is
 deleted only once its land `.ter` is gone (`("drop_night", path)`): a square taken away drops
@@ -775,8 +774,8 @@ given, a 1024 px night stayed over a 256 px texture, the review of 2026-11-11). 
 made meanwhile named it all the same (discussion 37). Its day file gone, read from the disk then,
 its name is dropped by the squares' files where its land `.ter` is gone, else with that `.ter`
 when its square is taken away (`Names.day_gone`, `run_ops`' `drop_night`). Filling the jobs stops
-once each is full and no room is left (28,800 textures wanted at nightfall went through the lock to the end each time).
-The night's processes run at the encoders' lower priority, forked as they are
+once each is full and no room is left (28,800 textures wanted at nightfall went through the lock
+to the end each time). The night's processes run at the encoders' lower priority, forked as they are
 (`pools.context`). Made in each texture's own build job instead, as tried on 2026-11-10, the
 night took each of Live's encoders (twelve on the user's Mac) 155 MB more (27 MB at rest, 182 MB
 once it had made one) and Live 8.9 GB in flight against 4.7 at most without the night.

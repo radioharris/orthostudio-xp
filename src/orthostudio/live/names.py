@@ -617,14 +617,15 @@ def _night_named(pack_dir: str, lit: str, errors: list[tuple[str, str]]) -> str 
 
     path = Path(pack_dir) / NIGHT_FOLDER / lit
     try:
-        if not os.path.lexists(path):
+        if not os.path.lexists(path):  # made, or there already (NeutralPool.link)
             pool = _NIGHT_POOLS.get(pack_dir) or _NIGHT_POOLS.setdefault(
                 pack_dir, NightPool(Path(pack_dir))
             )
             pool.link(0, path)
     except OSError as e:
         errors.append((str(path), f"{type(e).__name__}: {e}"))
-    return lit if os.path.lexists(path) else None
+        return None
+    return lit
 
 
 def run_ops(pack_dir: str, ops: Sequence[tuple]) -> dict:
@@ -667,8 +668,9 @@ def run_ops(pack_dir: str, ops: Sequence[tuple]) -> dict:
                     placed += 1
             elif kind in ("ter", "make"):
                 lit, night = (op[4], op[5]) if len(op) > 5 else (None, False)
-                if night and lit is not None:  # its .ter there too: one naming a night not
-                    lit = _night_named(pack_dir, lit, errors)  # there gets it back
+                # its night's name made, the .ter there too: one naming a night gone gets it back
+                if night and lit is not None:
+                    lit = _night_named(pack_dir, lit, errors)
                 if not os.path.lexists(op[2]):
                     if kind == "ter":
                         with open(op[1], "rb") as f:
@@ -972,8 +974,7 @@ class Names:
     def day_gone(self, name: str) -> None:
         """``name``'s day file gone, its night made black (orthostudio.live.nightwork): its name
         dropped by the file operations' process where its land ``.ter`` is gone (:func:`run_ops`),
-        else with that ``.ter`` when its square is taken away. Deleted where its day file was
-        gone, a square made meanwhile named it all the same (discussion 37)."""
+        else with that ``.ter`` when its square is taken away."""
         with self._cond:
             self.nights_gone.add(name)
             self._cond.notify_all()

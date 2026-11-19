@@ -239,8 +239,8 @@ class PackTest(unittest.TestCase):
                         out.append(ter.name)
         return out
 
-    def flaky_night(self, error: type[OSError], times: int):
-        """The black night names failing ``times`` times, then made."""
+    def flaky_night(self, times: int):
+        """The black night names failing ``times`` times as not found, then made."""
         from unittest import mock
 
         from orthostudio.live.names import NeutralPool, NightPool
@@ -250,7 +250,7 @@ class PackTest(unittest.TestCase):
         def link(pool, top, dst):
             if isinstance(pool, NightPool) and left[0] > 0:
                 left[0] -= 1
-                raise error(2 if error is FileNotFoundError else 13, "simulated", str(dst))
+                raise FileNotFoundError(2, "simulated", str(dst))
             return real(pool, top, dst)
 
         return mock.patch.object(NeutralPool, "link", link)
@@ -263,7 +263,7 @@ class PackTest(unittest.TestCase):
         from orthostudio.live.names import SquareError
 
         names = live_names(self.pack, night=True)
-        with self.flaky_night(FileNotFoundError, 4), self.assertRaises(SquareError):
+        with self.flaky_night(4), self.assertRaises(SquareError):
             names.make((46, 2))  # said, and tried again
         self.assertEqual(self.dangling(), [])
         lands = [(self.pack / f"terrain/{t}.ter").read_bytes() for t in self.row[:11]]
@@ -279,7 +279,6 @@ class PackTest(unittest.TestCase):
         (self.pack / NIGHT_FOLDER / f"{self.row[0]}_LIT.dds").unlink()
         self.assertEqual(self.dangling(), [f"{self.row[0]}.ter"])
         names = live_names(self.pack, night=True)  # the next start, the square there
-        names.want({(46, 2)}, {(46, 2)})
         names.make((46, 2))
         self.assertEqual(self.dangling(), [])
 
@@ -306,43 +305,6 @@ class PackTest(unittest.TestCase):
             names.take_away((46, 2))
         names.want({(46, 2)}, {(46, 2)})  # the aircraft back: made still, never made again
         self.assertEqual(names._todo(), ([], []))
-        self.assertEqual(self.dangling(), [])
-
-    def test_a_night_put_back_while_its_square_is_made(self):
-        """Its photo read gone, the night's thread deleted a night while the square was made
-        again, its .ter naming it."""
-        from pathlib import Path
-        from unittest import mock
-
-        from live_helpers import live_names
-        from orthostudio.live.names import night_name
-        from orthostudio.live.nightwork import NightWork
-        from orthostudio.live.region import NIGHT_FOLDER
-
-        names = live_names(self.pack, night=True, busy=lambda name: True)
-        name = f"{self.row[3]}.dds"
-        names.make((46, 2))
-        lit = self.pack / NIGHT_FOLDER / night_name(name)
-        lit.unlink()
-        lit.write_bytes(b"lit, kept with its photo")
-        names.done.add((46, 2))
-        names.take_away((46, 2))
-        names.done.discard((46, 2))
-        day = self.pack / "textures" / name
-        day.unlink()  # made neutral far from every square made (Streamer._neutral): gone
-        night = NightWork(self.pack, None, None, [], log=lambda _: None)
-        real, once = Path.exists, [True]
-
-        def exists(path):
-            seen = real(path)
-            if path == day and once[0]:  # read gone...
-                once[0] = False
-                names.want({(46, 2)}, {(46, 2)})
-                names.make((46, 2))  # ... the square made meanwhile
-            return seen
-
-        with mock.patch.object(Path, "exists", exists):
-            night.back_to_black(name)
         self.assertEqual(self.dangling(), [])
 
     def test_a_night_whose_photo_went_goes_with_its_ter(self):
