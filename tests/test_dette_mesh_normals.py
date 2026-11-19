@@ -9,13 +9,10 @@ claims of that section; nothing here asks for a code change.
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import numpy as np
 
+from doc_text import spec_text
 from orthostudio.dsf.encode import NORMAL_DECIMALS, _normals_as_ortho4xp
-
-SPEC = Path(__file__).resolve().parents[1] / "docs" / "specs" / "mesh-file.md"
 
 
 def _u16(values: np.ndarray, sign: int) -> np.ndarray:
@@ -46,6 +43,6 @@ def test_normals_as_ortho4xp_rounds_float32_and_passes_float64_through() -> None
 
 
 def test_the_spec_documents_the_contract() -> None:
-    text = SPEC.read_text("utf-8")
+    text = spec_text("mesh-file.md")
     assert "## 8. Normals: the float32 contract (dette D5)" in text
     assert "1 493" in text and "_normals_as_ortho4xp" in text

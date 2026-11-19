@@ -10,10 +10,10 @@ unreadable: a run the user stopped and a run broken by one bad tile looked the s
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 import pytest
 
+from doc_text import spec_text
 from orthostudio.errors import REGISTRY, Action, OsxpError, Severity
 
 NEW_CODES = ("DSF_MESH_OUTSIDE_TILE", "SYS_UPSTREAM_FAILED")
@@ -46,7 +46,7 @@ def test_messages_render_with_the_context_the_call_sites_pass() -> None:
 
 
 def test_the_spec_table_documents_them() -> None:
-    text = Path(__file__).resolve().parents[1].joinpath("docs/specs/errors.md").read_text("utf-8")
+    text = spec_text("errors.md")
     for code in NEW_CODES:
         assert f"| {code} |" in text, code
 

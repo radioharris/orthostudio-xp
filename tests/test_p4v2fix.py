@@ -17,6 +17,7 @@ import numpy as np
 import pytest
 from shapely import geometry
 
+from doc_text import spec_text
 from orthostudio.airports_vec.model import Airport, RunwayPart, SurfaceAreas
 from orthostudio.errors import REGISTRY, OsxpError
 from orthostudio.model import TileRef
@@ -77,7 +78,7 @@ def test_the_smoothing_code_is_registered_and_documented() -> None:
         context={"airport": "LFXX", "value": -3, "range": "0..1000"},
     ).message
     assert "LFXX" in text and "-3" in text and "0..1000" in text
-    errors_md = (REPO / "docs" / "specs" / "errors.md").read_text(encoding="utf-8")
+    errors_md = spec_text("errors.md")
     assert "| OSM_AIRPORT_SMOOTHING_INVALID |" in errors_md
 
 

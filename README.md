@@ -98,7 +98,7 @@ uv run osxp serve --open    # the page, at http://127.0.0.1:8641
 
 On macOS, `uv run python tools/package/checkout_app.py` makes `dist/OrthoStudio XP.app`, an app
 that runs this checkout. `uv run python tools/package/build.py --check` builds and checks the
-installer of the system it runs on (`docs/specs/packaging.md`).
+installer of the system it runs on.
 
 Started again while it runs, OrthoStudio XP shows the running one, unless the code changed in
 between (a pull, another branch, an edit): the one started before is then stopped and the new
@@ -225,8 +225,7 @@ them against their digests.
 
 Map data © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright), under the Open
 Database Licence (ODbL): OrthoStudio XP reads the airports, roads, coastline and water of each
-tile from its own library, cut from OpenStreetMap's planet file (how:
-`docs/specs/osm-prepared.md`, section 8), or from public Overpass servers when the library cannot
+tile from its own library, cut from OpenStreetMap's planet file, or from public Overpass servers when the library cannot
 answer, to shape its terrain. Like the
 imagery, the tiles built from them are for your own use.
 
@@ -257,7 +256,6 @@ docs/build.md          the guide to building tiles
 docs/live.md           the guide to flying with OrthoStudio XP Live
 docs/how-it-works.md   the user's guide to what OrthoStudio XP does and keeps
 docs/decisions/   architecture decision records
-docs/specs/       behaviour specifications, written before each ported rule
 docs/benchmarks/  the measurements behind each design choice
 tools/            network benchmarks, borders data, the installers (package/)
 tests/
