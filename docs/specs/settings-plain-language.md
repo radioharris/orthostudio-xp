@@ -1150,7 +1150,9 @@ and read 50 or more as 5; OrthoStudio XP refuses those, and until 1.0 it stopped
 - **In X-Plane.** Expected (Q9): water that looks shallower in the first tens of metres off
   beaches, quays and rocks, instead of a sudden drop.
 - **Cost.** Masks of `+43+005`: 1.83 s instead of 1.07 s, 962 MB per worker (measured,
-  `masks-build.md` 6.1-6.2). The distance masks stay in the store; they are not part of the
+  `masks-build.md` 6.1-6.2); on a tile full of water, 1.35 to 1.75 GB per worker, by profile, and fewer workers on a
+  computer with little memory
+  (`+51+004`, `masks-build.md` 6.2). The distance masks stay in the store; they are not part of the
   tile.
 - **Recommendation. Folded**, together with `ratio_bathy`, as one switch.
 - **Expert label.** EN *Shallow water near the shore (experimental)* · FR *Eau peu profonde près
