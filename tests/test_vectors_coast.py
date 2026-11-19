@@ -1,6 +1,6 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""Unit tests of the coastline builder: the limit cases spec vectors-coastline.md 5 lists."""
+"""Unit tests of the coastline builder: its limit cases."""
 
 from __future__ import annotations
 
@@ -45,7 +45,7 @@ def test_bd_point_is_the_inverse_modulo_four() -> None:
 
 
 def test_bd_coord_projects_a_point_slightly_off_the_border() -> None:
-    # The 1e-5 tolerance of spec 4.1: an endpoint 3e-6 inside is still on the border.
+    # The 1e-5 tolerance: an endpoint 3e-6 inside is still on the border.
     assert bd_coord(np.array([(3e-6, 0.4)])).tolist() == pytest.approx([0.4])
 
 
@@ -177,7 +177,7 @@ def test_a_cw_ring_alone_inverts_the_tile_as_in_ortho4xp() -> None:
     lake = [(0.4, 0.4), (0.4, 0.6), (0.6, 0.6), (0.6, 0.4), (0.4, 0.4)]
     result = build_sea_layers(mls(lake), TILE, CoastParams())
     assert result.stats.interior_seas == 1
-    assert result.stats.inverted_tile is True  # spec 4.3 / 8, kept for parity
+    assert result.stats.inverted_tile is True  # kept for parity
     assert result.sea_polygons.area == pytest.approx(1 - 0.04)
 
 
@@ -202,7 +202,7 @@ def test_an_island_inside_a_lake_is_swallowed_as_in_ortho4xp() -> None:
     coast = [(-0.1, 0.05), (1.1, 0.05)]
     result = build_sea_layers(mls(coast, lake, island), TILE, CoastParams())
     assert result.stats.islands_swallowed == 1
-    # the island is not subtracted from the lake: Ortho4XP's union loses it (spec 4.4)
+    # the island is not subtracted from the lake: Ortho4XP's union loses it
     assert result.sea_polygons.area == pytest.approx(0.05 + 0.36)
 
 
@@ -244,7 +244,7 @@ def test_the_border_tolerance_is_asymmetric_as_in_ortho4xp() -> None:
     west = build_sea_layers(mls([(3e-6, 0.5), (1.1, 0.5)]), TILE, CoastParams())
     assert west.stats.sea_polygons == 1
     # ... while 3e-6 from the *east* side does not: int(0.999997) is 0, so the distance
-    # Ortho4XP measures is 0.999997 (spec 4.1). Only an exact 1.0 passes there.
+    # Ortho4XP measures is 0.999997. Only an exact 1.0 passes there.
     with pytest.raises(OsxpError) as excinfo:
         build_sea_layers(mls([(-0.1, 0.5), (1.0 - 3e-6, 0.5)]), TILE, CoastParams())
     assert excinfo.value.code == "OSM_COAST_OPEN_END"
@@ -252,7 +252,7 @@ def test_the_border_tolerance_is_asymmetric_as_in_ortho4xp() -> None:
 
 def test_a_walk_that_never_closes_raises_orientation() -> None:
     # Two chains forming a cycle (1.5 -> 2.5 -> 1.5) that does not contain the smallest
-    # arclength the walk starts from: Ortho4XP spins 1000 times and gives up (spec 4.3).
+    # arclength the walk starts from: Ortho4XP spins 1000 times and gives up.
     topo = CoastTopology(
         chain_coords=[np.zeros((2, 2))] * 3,
         inits=[1.5, 2.5, 0.2],
@@ -264,7 +264,7 @@ def test_a_walk_that_never_closes_raises_orientation() -> None:
 
 
 def test_three_chains_meeting_on_the_border_raise_triple_junction() -> None:
-    # Ortho4XP lets a bare ValueError escape here; OrthoStudio XP names the junction (spec 5).
+    # Ortho4XP lets a bare ValueError escape here; OrthoStudio XP names the junction.
     junction = [
         [(0.0, 0.5), (0.3, 0.2), (0.5, 0.0)],
         [(0.0, 0.5), (0.3, 0.8), (0.5, 1.0)],
@@ -279,7 +279,7 @@ def test_three_chains_meeting_on_the_border_raise_triple_junction() -> None:
 
 def test_a_self_retracing_closed_line_is_not_a_ring() -> None:
     # shapely's is_ring means closed *and* simple, so this one goes to the open-chain
-    # branch and its ends are judged against the border, exactly as in Ortho4XP (spec 4.4).
+    # branch and its ends are judged against the border, exactly as in Ortho4XP.
     degenerate = geometry.LineString([(0.3, 0.3), (0.4, 0.4), (0.3, 0.3)])
     assert degenerate.is_ring is False
     with pytest.raises(OsxpError) as excinfo:

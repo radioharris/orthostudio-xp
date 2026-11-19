@@ -385,7 +385,7 @@ def test_all_is_refused_while_another_process_builds(
     assert (Path(world["chunks"]) / "BI" / "16" / "1_2.chunks").is_file()  # type: ignore[arg-type]
 
 
-# -- the map cache (docs/specs/map-zones.md section 6) ------------------------------------------
+# -- the map cache ------------------------------------------
 
 
 def _map_tiles(mapcache: Path) -> int:

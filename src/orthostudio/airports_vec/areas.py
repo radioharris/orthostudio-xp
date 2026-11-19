@@ -2,7 +2,7 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Airport surfaces: the hangar, apron and taxiway areas of every aerodrome.
 
-Specification: ``docs/specs/airports-geometry.md`` section 4. Origin: Ortho4XP
+Origin: Ortho4XP
 ``src/O4_Airport_Utils.py`` ``build_hangar_areas`` (700-734), ``build_apron_areas`` (734-775)
 and ``build_taxiway_areas`` (775-805), with ``improved_buffer`` (``O4_Vector_Utils.py``
 1021-1062), already ported as :func:`orthostudio.vectors.roads.improved_buffer`.

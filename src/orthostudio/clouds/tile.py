@@ -1,6 +1,6 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""What a tile's folder shows of its replaced clouds (``clouds.md`` 2.1).
+"""What a tile's folder shows of its replaced clouds.
 
 The clouds are no part of the build. A texture showing clouds is the texture the build placed, its
 blocks under the clouds made again (``laying``), every other block its own. Its header says so

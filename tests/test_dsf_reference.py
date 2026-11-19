@@ -508,7 +508,7 @@ def reference_zone_dico(
 
 
 def _shallow_shore(nbr_nodes, node_coords, tri_idx, tri_types, node_is_coast, tile):
-    """Not in Ortho4XP (``dsf-terrain-assignment.md`` 3.3): a water node closer than 1 m to the
+    """Not in Ortho4XP: a water node closer than 1 m to the
     shore is shallow, written as a coast node for the depth ratio. Every pair of node and shore
     edge, in metres at the tile's middle latitude."""
     kx, ky = 111320.0 * math.cos(math.radians(tile.lat + 0.5)), 111320.0

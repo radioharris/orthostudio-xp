@@ -3,7 +3,7 @@
 """Mip chain generation with a 2x2 box filter, in linear light or on stored values.
 
 nvtt (the encoder behind Ortho4XP) filters RGB in linear light with a 2.2 power law and
-alpha on its stored values; ``mode='gamma22'`` reproduces that (``docs/specs/textures-dds.md``).
+alpha on its stored values; ``mode='gamma22'`` reproduces that.
 """
 
 from __future__ import annotations

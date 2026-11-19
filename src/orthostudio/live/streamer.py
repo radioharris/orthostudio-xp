@@ -22,8 +22,8 @@ built, the log says what it read before stays the neutral colour until it loads 
 
 External views take the camera away from the aircraft, but X-Plane takes each texture's levels
 for the aircraft alone, when it loads a flight and as the aircraft moves: a camera taken
-kilometres out, near the ground, shows what it took there (docs/specs/live/levels-test.md,
-2026-10-20). So nothing is built for the camera: the rings are round the aircraft and its path,
+kilometres out, near the ground, shows what it took there (2026-10-20).
+So nothing is built for the camera: the rings are round the aircraft and its path,
 widened by ``reach_km`` (0 by default). At a start, the airport's whole block of ZL18 textures is
 built at 4096 px before X-Plane goes on (:meth:`Streamer._airport_block`).
 
@@ -1046,7 +1046,7 @@ class Streamer:
     def _cruise_height(self, fix: Fix, starting: bool) -> None:
         """Whether the eye is so high above the ground that the screen cannot show an 8192 px level
         (:attr:`cruising`, CRUISE_ON_M): the aircraft's height, X-Plane taking the levels for the
-        aircraft, never for a camera lower down (docs/specs/live/levels-test.md); until it is
+        aircraft, never for a camera lower down; until it is
         below CRUISE_OFF_M, or descending CRUISE_AHEAD_S from CRUISE_SEEN_M. Never at a start:
         X-Plane gives no height while it loads one."""
         eye = fix.agl_m
@@ -1107,7 +1107,7 @@ class Streamer:
         # heights above the ground: X-Plane measures from the aircraft in three dimensions, and
         # at cruise a texture right under the aircraft is 10 km away, too far for its 8192 px.
         # Never from the camera: X-Plane reads nothing again for it, in the drone view or the
-        # circle view, 25 km out near the ground (docs/specs/live/levels-test.md, 2026-10-20)
+        # circle view, 25 km out near the ground
         h = max(0.0, fix.agl_m) / 1000.0
         self._cruise_height(fix, starting)
         jobs: dict[str, tuple[float, int]] = {}

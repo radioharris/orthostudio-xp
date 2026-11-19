@@ -2,9 +2,8 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Dette D5: the float32 normals contract of ``MeshData`` (documentation, with the numbers).
 
-``docs/specs/mesh-file.md`` section 8 states why float32 is exact for an Ortho4XP ``.mesh`` file
-and why the DSF encoder must still round to 2 decimals in float64. These tests hold the
-claims of that section; nothing here asks for a code change.
+Float32 is exact for an Ortho4XP ``.mesh`` file, and the DSF encoder must still round to 2
+decimals in float64. These tests hold both claims; nothing here asks for a code change.
 """
 
 from __future__ import annotations

@@ -2,7 +2,7 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Readers of the ``.ter`` files written by Ortho4XP (``O4_DSF_Utils.py:261-357``).
 
-Spec: ``docs/specs/tile-files.md`` section 3.1. A ``.ter`` is named after its texture
+A ``.ter`` is named after its texture
 (``{til_y}_{til_x}_{provider}{zl}``) plus a suffix giving the triangle type and overlay flag;
 its ``LOAD_CENTER`` line is recomputed from the parsed name to make the ``{provider}{zl}``
 split unambiguous and to check the file against its name.
@@ -150,7 +150,7 @@ class TerFile:
 
 
 def read_ter(path: Path) -> TerFile:
-    """Parse an Ortho4XP ``.ter`` and check its content against its name (spec 3.1)."""
+    """Parse an Ortho4XP ``.ter`` and check its content against its name."""
     path = Path(path)
     try:
         lines = path.read_text(encoding="ascii").splitlines()
@@ -219,7 +219,7 @@ def read_all_ter(build_dir: Path) -> list[TerFile]:
 def list_textures(build_dir: Path) -> list[tuple[TextureId, tuple[TerKind, ...]]]:
     """Textures of an Ortho4XP build with the terrain kinds each one carries.
 
-    Deduced from ``terrain/*.ter`` (spec 3.1); sorted by ``(zl, til_y, til_x, provider)``,
+    Deduced from ``terrain/*.ter``; sorted by ``(zl, til_y, til_x, provider)``,
     kinds in the order of ``TerKind``.
     """
     kinds: defaultdict[TextureId, set[TerKind]] = defaultdict(set)

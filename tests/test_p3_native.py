@@ -2,7 +2,7 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """P3 integration: what the stages can build, the graph, the OSM and coastline nodes.
 
-Spec: ``docs/specs/pipeline-build.md`` section 8. Nothing here touches the network or
+Nothing here touches the network or
 Ortho4XP.
 """
 
@@ -121,7 +121,7 @@ def test_the_graph_wires_the_stages(tmp_path: Path, triangle: Path) -> None:
     assert g.mesh.rule is OSXP_MESH and g.mesh.kind == "subprocess"
     assert g.masks.rule is OSXP_MASKS
     # the vector stage reads the raw elevation; --dem vectors: the mesh reads the smoothed
-    # Data<tile>.alt of the vector stage (spec 8.2)
+    # Data<tile>.alt of the vector stage
     assert g.dem is not None and g.vectors.inputs["dem"] is g.dem
     assert g.mesh.inputs["dem"] is g.vectors
     assert g.masks.inputs["mesh"] is g.mesh
@@ -159,7 +159,7 @@ def test_a_cold_tile_plans_its_coastline_from_the_layers_still_to_fetch(
 
 
 def test_a_native_mesh_artefact_is_a_usable_neighbour(tmp_path: Path) -> None:
-    """``stored_neighbour_mesh`` finds a stored mesh of the neighbour (spec 8.5)."""
+    """``stored_neighbour_mesh`` finds a stored mesh of the neighbour."""
     store = Store(tmp_path / "store")
     nb = TileRef(43, 6)
     with store.begin(OSXP_MESH.name, "a1" * 32, "dir") as build:
@@ -322,7 +322,7 @@ def test_the_snapshot_feeds_the_vector_stage(tmp_path: Path, triangle: Path) -> 
     refs = {t: o.ref for t, o in outcomes.items() if o.ref is not None}
     g = declare([spec], make_scheduler(env.store, env), env, osm_artefacts=refs)[0]
     assert g.vectors.inputs["osm"] is refs[TILE]
-    # the mesh and the vector stage read the same extract of the coast (spec 8.4)
+    # the mesh and the vector stage read the same extract of the coast
     assert g.coastline is not None and g.coastline.inputs == {"osm": refs[TILE]}
 
 

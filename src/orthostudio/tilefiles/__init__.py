@@ -5,8 +5,7 @@
 The 44 tile variables and the text of their settings file (``tile_settings.cfg`` in an
 OrthoStudio XP pack, ``Ortho4XP_<tile>.cfg`` in a tile Ortho4XP built), the index of a tile's mask
 PNGs, the tile folder names, and the reader of the ``terrain/*.ter`` files, with which the Library
-import learns the provider and zoom level of a tile Ortho4XP built. Spec:
-``docs/specs/tile-files.md``.
+import learns the provider and zoom level of a tile Ortho4XP built.
 """
 
 from orthostudio.tilefiles._grid import TextureId

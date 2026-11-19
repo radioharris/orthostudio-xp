@@ -2,7 +2,7 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Native elevation stage: sources, raster assembly, altitude queries, rule ``orthostudio.dem@1``.
 
-Spec: ``docs/specs/dem.md``. Replaces the elevation half of Ortho4XP's step 1
+Replaces the elevation half of Ortho4XP's step 1
 (``O4_DEM_Utils.py``). Nothing here imports the Ortho4XP sources.
 """
 

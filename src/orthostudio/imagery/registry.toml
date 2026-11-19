@@ -1,4 +1,4 @@
-# OrthoStudio XP imagery provider registry (docs/specs/imagery-providers.md, section 4).
+# OrthoStudio XP imagery provider registry.
 #
 # Thirteen providers alive in September 2026 without a key or token, converted from the
 # Ortho4XP definitions named in each comment (docs/providers-audit.md). Values marked

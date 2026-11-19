@@ -3,9 +3,8 @@
 """Imagery providers: typed registry, tile URL grammar and placeholder recognition.
 
 Origin: Ortho4XP ``src/O4_Imagery_Utils.py:1160-1215`` (URL grammar, kept),
-``:1019-1032`` (placeholder by Content-Length, extended per ``docs/specs/net-download.md``
-R5) and ``Providers/**/*.lay`` (definitions, converted to ``registry.toml``).
-Specification: ``docs/specs/imagery-providers.md``.
+``:1019-1032`` (placeholder by Content-Length, extended) and ``Providers/**/*.lay``
+(definitions, converted to ``registry.toml``).
 """
 
 from __future__ import annotations
@@ -48,7 +47,7 @@ log = logging.getLogger("orthostudio.imagery.providers")
 
 REGISTRY_SCHEMA = 1
 PLACEHOLDERS = ("{zoom}", "{zoom:02d}", "{x}", "{y}", "{-y}", "{|y|}", "{quadkey}", "{switch:")
-"""Substitutions of the URL grammar (``docs/specs/imagery-providers.md`` section 2)."""
+"""Substitutions of the URL grammar."""
 
 USER_SOURCES_FILE = "sources.toml"
 """The imagery sources a user added (``$OSXP_HOME/sources.toml``, the registry's schema).
@@ -95,7 +94,7 @@ class Provider(BaseModel):
     the line (Bing, Esri). The estimates never count downloads faster than this."""
     pushback_status: tuple[int, ...] = ()
     """The statuses besides 429 with which the server says it is asked too fast: they slow the
-    download down and the image is asked again, as after a 429 (``net-download.md`` R2). EOX's
+    download down and the image is asked again, as after a 429. EOX's
     403, 2026-10-25."""
     placeholder: PlaceholderRule | None = None
     extent: str | None = None
@@ -228,9 +227,9 @@ def tile_url(p: Provider, x: int, y: int, zl: int, *, switch: int | None = None)
 def is_placeholder(p: Provider, headers: Mapping[str, str], body: bytes) -> str | None:
     """Signal identifying a "no imagery" answer: ``"header"``, ``"blake3"``, ``"size"`` or None.
 
-    Signals are tested in the order of ``docs/specs/net-download.md`` R5: the header is
-    authoritative, the body hash is exact, the byte count is a last resort that the caller
-    should log (a provider change becomes visible there). Header names are case-insensitive.
+    Signals are tested in this order: the header is authoritative, the body hash is exact, the byte
+    count is a last resort that the caller should log (a provider change becomes visible there).
+    Header names are case-insensitive.
     """
     rule = p.placeholder
     if rule is None:

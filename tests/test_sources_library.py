@@ -1,6 +1,6 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""The baked library read over HTTP, and the door it opens with (``osm-prepared.md``).
+"""The baked library read over HTTP, and the door it opens with.
 
 Nothing here touches the network: the transport is injected, and the library it serves is baked
 by our own tools in a temporary folder, manifest included.

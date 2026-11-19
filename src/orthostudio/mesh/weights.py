@@ -2,7 +2,7 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """The 1001 x 1001 curvature-tolerance weight map Triangle4XP reads (`.weight`).
 
-Spec: ``docs/specs/mesh-build.md`` section 3. Origin: ``O4_Mesh_Utils.py:132-228``
+Origin: ``O4_Mesh_Utils.py:132-228``
 (``build_curv_tol_weight_map``).
 
 The map says, per 1/1000 degree cell of the tile, by how much the curvature tolerance must be
@@ -11,7 +11,7 @@ divided there: 1 everywhere, ``curvature_tol / apt_curv_tol`` over airports,
 Ortho4XP paints one rectangle per airport and one per coastline node in a Python loop;
 OrthoStudio XP paints the same integer rectangles with a two-dimensional difference array, which is
 exact (the two edges of a window are rounded independently, so a fixed-footprint ``maximum_filter``
-is not equivalent -- see the spec) and an order of magnitude faster.
+is not equivalent) and an order of magnitude faster.
 
 Nothing here reads a file or the network: the airport boxes and the coastline nodes are
 arguments.
@@ -116,7 +116,7 @@ def build_weight_map(
     coast_nodes: NDArray[np.float64] | None = None,
     lon: int = 0,
 ) -> NDArray[np.float32]:
-    """Build the ``(1001, 1001)`` float32 weight map (spec section 3).
+    """Build the ``(1001, 1001)`` float32 weight map.
 
     ``apt_bounds`` is an ``(A, 4)`` array of ``(xmin, ymin, xmax, ymax)`` airport bounding
     boxes in **tile-relative** degrees; ``coast_nodes`` an ``(C, 2)`` array of **absolute**
@@ -189,8 +189,8 @@ def weight_stats(weight: NDArray[np.float32]) -> tuple[int, float]:
 def read_airport_bounds(vectors_dir: str | Path, tile_name: str) -> NDArray[np.float64]:
     """Airport bounding boxes of the tile, ``(A, 4)`` in tile-relative degrees.
 
-    Read from ``airports.json``, which the vector stage writes when the tile has airports (spec
-    section 3.2). Returns an empty array when it is absent or does not parse, as Ortho4XP does
+    Read from ``airports.json``, which the vector stage writes when the tile has airports.
+    Returns an empty array when it is absent or does not parse, as Ortho4XP does
     (``O4_Mesh_Utils.py:140-149``); the caller records ``MESH_WEIGHT_MAP_INCOMPLETE``.
     """
     native = Path(vectors_dir) / "airports.json"
@@ -205,7 +205,7 @@ def read_airport_bounds(vectors_dir: str | Path, tile_name: str) -> NDArray[np.f
 
 
 def read_coastline_nodes(path: str | Path) -> NDArray[np.float64]:
-    """Read ``coastline.npz`` (spec section 2.3): ``(C, 2)`` absolute ``(lon, lat)``."""
+    """Read ``coastline.npz``: ``(C, 2)`` absolute ``(lon, lat)``."""
     path = Path(path)
     if path.is_dir():
         path = path / "coastline.npz"

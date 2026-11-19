@@ -1,7 +1,7 @@
 // OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 // Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 /**
- * The flight plan of step 1, as the page keeps it (docs/specs/flight-plan.md).
+ * The flight plan of step 1, as the page keeps it.
  *
  * The engine computes a plan: its line, and its squares, the departure's and the arrival's
  * (`ends`) and those along the route (`along`, in the order flown), GET /api/flightplan/simbrief.

@@ -1,5 +1,5 @@
 name: release
-# The installers of OrthoStudio XP (tools/package/build.py, docs/specs/packaging.md): each built and
+# The installers of OrthoStudio XP (tools/package/build.py): each built and
 # checked on its own system. A tag v* makes them a GitHub release: a draft first, which each
 # system's installer goes into as soon as it is built, published once all are in. A manual run
 # keeps them as the run's artifacts, for a day. A private repository builds the Windows one alone.
@@ -89,7 +89,7 @@ jobs:
       - run: uv sync --frozen --no-dev
       # The address and the key of the prepared library, which the repository does not hold: it
       # is public. Without them the installer reaches no library and downloads every tile live,
-      # exactly as every version before 0.1.17 (docs/specs/osm-prepared.md).
+      # exactly as every version before 0.1.17.
       - name: Carry the prepared library
         shell: bash
         env:

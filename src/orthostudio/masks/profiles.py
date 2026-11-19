@@ -3,7 +3,7 @@
 """The shoreline transition profiles: Ortho4XP's ``sand``, ``rocks`` and ``3steps``, and
 OrthoStudio XP's ``soft``.
 
-Spec: ``docs/specs/masks-build.md`` sections 2 and 4. Origin: ``O4_Mask_Utils.py:648-813``
+Origin: ``O4_Mask_Utils.py:648-813``
 (``blur_mask``) and ``:69-71`` (the grey level of inland water).
 
 ``sand`` and ``rocks`` are reproduced bit for bit, including Ortho4XP's uint8 truncation between
@@ -96,7 +96,7 @@ def cell_latitude(til_y: int, mask_zl: int) -> float:
 def soft_width(masks_width: float, cell_lat: float, mask_zl: int) -> float:
     """``soft``'s band in pixels: ``masks_width`` metres at the middle of the mask cell
     (:func:`cell_latitude`), not of the square, so that the square on each side of a cell across
-    the line between two rows of squares makes the same bytes (``masks-build.md`` section 7)."""
+    the line between two rows of squares makes the same bytes."""
     return float(masks_width) / webmercator_pixel_size(cell_lat, mask_zl)
 
 
@@ -189,7 +189,7 @@ def halo_px(
 
     ``sand`` is a convolution with a hat kernel of half-width ``blur_width - 1``, so a pixel
     of the final image can only depend on input pixels within that distance: the 1024 px
-    margin of Ortho4XP can be cropped without changing a single byte (spec section 4). With
+    margin of Ortho4XP can be cropped without changing a single byte. With
     ``distance_masks_too`` the margin also has to cover the saturation distance of the
     ``_dist`` mask. ``rocks`` and ``3steps`` take the supports of their Pillow blurs
     (:func:`pil_blur_support`); ``soft`` twice its band and one pixel, the band into the water
@@ -229,7 +229,7 @@ def _convolve_rows(array: NDArray[np.uint8], kernel: NDArray[np.float64]) -> NDA
     The float64 arithmetic is Ortho4XP's: ``numpy.convolve`` sums through cblas ``ddot`` and the
     assignment into a uint8 array truncates. An exact integer double box filter (what the
     kernel mathematically is) differs on the pixels whose exact sum is a multiple of
-    ``blur_width ** 2`` -- see the spec. Memoising identical rows is the only shortcut taken.
+    ``blur_width ** 2``. Memoising identical rows is the only shortcut taken.
     """
     out = np.empty_like(array)
     cache: dict[bytes, NDArray[np.uint8]] = {}
@@ -329,13 +329,13 @@ def _three_steps_reach(widths: list[float]) -> int:
 def three_steps_blur(
     pre: NDArray[np.uint8], widths: list[float], sea_level: int, mask_zl: int
 ) -> NDArray[np.uint8]:
-    """``3steps`` by distance transform (spec section 4; Ortho4XP's loop is ``:726-810``).
+    """``3steps`` by distance transform (Ortho4XP's loop is ``:726-810``).
 
     The value ladder of :func:`_three_steps_ladder` is applied to a Euclidean distance
     transform instead of to dozens of blur-and-threshold dilations. Ortho4XP's dilation is a
     separable, 8-bit-quantised square: it reaches ``3 k`` pixels along the axes after ``k``
     steps but only about ``2.5 k`` along a diagonal, so the Euclidean transform overshoots
-    the diagonals by about a sixth of a step. Tolerance measured in the spec.
+    the diagonals by about a sixth of a step.
     """
     del mask_zl
     bounds, values = _three_steps_ladder(widths, sea_level)
@@ -352,7 +352,7 @@ def three_steps_blur(
 def exact_edges(masking_mode: str) -> bool:
     """Whether a profile's pre-mask takes a pixel for water where the water covers its middle
     (``raster.pre_mask``): OrthoStudio XP's ``soft``; Ortho4XP's keep Ortho4XP's drawing, byte for
-    byte (``masks-build.md`` section 7)."""
+    byte."""
     return masking_mode == "soft"
 
 

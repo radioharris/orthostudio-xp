@@ -2,7 +2,7 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Distances: the ``_dist`` masks and the reach of Pillow's Gaussian blur.
 
-Spec: ``docs/specs/masks-build.md`` section 4. Origin: ``O4_Mask_Utils.py:181-198`` (the
+Origin: ``O4_Mask_Utils.py:181-198`` (the
 ``skfmm`` distance masks used by the XP12 bathymetry cut-off).
 
 ``scikit-fmm`` solves the eikonal equation over the signed field ``2 * (pre > 0) - 1``, whose
@@ -40,7 +40,7 @@ def edt_px(inside: NDArray[np.bool_]) -> NDArray[np.float32]:
     The float64 field is written into a caller-owned array (``distances=``) instead of being
     returned, which saves one full-size allocation per cell; the peak of the transform itself
     is still dominated by SciPy's internal index arrays (measured 814 MB of RSS for one
-    4230 x 4230 cell, ``masks-build.md`` 4), which is what the node budgets for.
+    4230 x 4230 cell), which is what the node budgets for.
     """
     out = np.empty(inside.shape, dtype=np.float64)
     ndimage.distance_transform_edt(inside, distances=out)

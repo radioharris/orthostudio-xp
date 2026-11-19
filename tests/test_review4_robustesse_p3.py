@@ -321,8 +321,8 @@ def test_the_same_env_var_is_parsed_once_for_everybody(
 ) -> None:
     """FINDING M2, FIXED (test amended): ``OSXP_MASKS_WORKERS`` has one parser,
     ``masks.build.env_workers``; the pipeline and the pool call it. ``0``, a negative value
-    and junk mean *unset* (documented in ``masks-build.md`` 6), so the budget and the pool can
-    never be computed from two different numbers."""
+    and junk mean *unset*, so the budget and the pool can never be computed from two different
+    numbers."""
     from orthostudio.masks.build import env_workers
 
     monkeypatch.setattr(buildmod, "physical_memory_mb", lambda: 16384)  # 8 for sand from 8 GB
@@ -829,7 +829,7 @@ def test_the_distance_mask_allocates_a_float64_field_it_immediately_narrows() ->
     """FINDING M4 (minor), FIXED (test amended): ``edt_px`` now writes into a caller-owned
     float64 array (``distances=``), which saves one full-size allocation per cell; the
     measured peak of one 4230 x 4230 cell (0.8 GB, dominated by SciPy's internal index
-    arrays) is written down in ``masks-build.md`` 4 so the node's budget is justifiable."""
+    arrays) is what justifies the node's budget."""
     from scipy import ndimage
 
     small = np.zeros((64, 64), dtype=bool)

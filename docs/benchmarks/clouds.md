@@ -1,9 +1,8 @@
 # Clouds: what the search and laying measured
 
-The figures behind the rules of `docs/specs/clouds.md`, which cites them by their number. The Mac
-is the development machine (Apple silicon), the Shadow a Windows cloud computer. B1 to B3 were
-measured on the 1.4.0 test versions (rc), whose detector, search and outline this version keeps;
-B4 to B12 on this version, the clouds laid in the finished tile's folder.
+The Mac is the development machine (Apple silicon), the Shadow a Windows cloud computer. B1 to B3
+were measured on the 1.4.0 test versions (rc), whose detector, search and outline this version
+keeps; B4 to B12 on this version, the clouds laid in the finished tile's folder.
 
 ## B1. The quick and the finer readings (2026-11-04)
 
@@ -29,7 +28,7 @@ instead of 21, 18 % less surface.
 - Downloaded where the environment has no OpenCV (Mac, 2026-11-03): 48 MB from PyPI in 3.3 s.
 - Memory, +24-102 at the finer level (12 805 x 11 652 pixels): the answers kept one row of
   patches at a time, the search's peak 2.8 GB reading once, 3.6 GB with the finer reading. As many
-  searches at once as the computer's memory holds, four at most (`clouds.md` R7, B14).
+  searches at once as the computer's memory holds, four at most (B14).
 
 ## B3. Outlines that touch themselves (Mac, 2026-11-05)
 

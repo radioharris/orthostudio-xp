@@ -1,6 +1,6 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""The user's list of a tile's clouds, kept and changed here (``clouds.md`` 2.4): what was found
+"""The user's list of a tile's clouds, kept and changed here: what was found
 or outlined, what is ticked, the source the user chose. The list's own rules are here: how a
 search's clouds join it (R3), what an outline takes over, what Discard brings back, that it knows
 every cloud the tile shows replaced (:func:`knowing`). What each cloud is, and what Apply does with

@@ -14,7 +14,7 @@ without the development tools.
   with `uv sync --frozen --no-dev --extra server --no-editable` into that CPython: the same wheels
   the tests run with, and no second list of dependencies to keep in step. A macOS `.dmg` (Apple
   Silicon), a Windows setup program built with Inno Setup (for the current user, no administrator)
-  and a Linux `.tar.gz` (`docs/specs/packaging.md`). Not PyInstaller, py2app or Briefcase: each
+  and a Linux `.tar.gz`. Not PyInstaller, py2app or Briefcase: each
   would bring its own way of finding modules and data, which the package already finds by itself
   from its folder.
 - Triangle4XP and DSFTool go into `orthostudio/bin`; `orthostudio.programs` finds them there

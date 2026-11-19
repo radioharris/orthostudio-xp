@@ -1,6 +1,6 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""The page's colour maths and the engine's are the same (docs/specs/ui.md 2.4).
+"""The page's colour maths and the engine's are the same.
 
 The Settings screen previews the photo colours before a build downloads gigabytes, which is
 only honest if ``ui/colour.js`` computes what ``textures/colour.py`` will encode. Both are fed

@@ -12,13 +12,12 @@ forests go with it), and taken out of the folder it came from, whole elsewhere b
 Wherever a stop comes, a whole tile is left: the original until the copy is in place, the copy
 after. A temporary folder is a copy a stop left half made, made again. A tile is checked whole
 before anything of it moves, and a folder of its name found where it goes is taken for a copy only
-when it is not a link and reads back the same bytes. Spec ``install.md`` 4.6.
+when it is not a link and reads back the same bytes.
 
 A tile filed elsewhere and built again (the atelier, step 4) is built in the workshop, beside the
 cache, then put back in its folder in place of the old version (:func:`put_back`): moved there
 when that folder is on the workshop's disk, else copied, read back, and swapped with the old one,
-which goes only once the new one is in place. Its folder is :func:`tile_home`. Spec
-``install.md`` 4.7.
+which goes only once the new one is in place. Its folder is :func:`tile_home`.
 """
 
 from __future__ import annotations

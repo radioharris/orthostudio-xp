@@ -2,7 +2,7 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Tests of ``orthostudio.net.fetch`` against a local HTTP/1.1 server (no real network).
 
-Spec: ``docs/specs/net-download.md`` section 3. The server (a thread) simulates the cases the
+The server (a thread) simulates the cases the
 fetcher must handle: normal bodies, 404, 500 then 200, 503 then 200, 429 with ``Retry-After``,
 a 5 s straggler, a dropped connection, a slow route and a hanging route.
 """
@@ -244,7 +244,7 @@ def test_429_exhausted_reports_rate_limited(server: LocalServer) -> None:
 
 
 def test_429_obeyed_does_not_cost_an_attempt(server: LocalServer) -> None:
-    """Spec R2 (amended by the P1 review): a 429 whose pause is obeyed is re-queued without
+    """Amended by the P1 review: a 429 whose pause is obeyed is re-queued without
     consuming ``max_attempts``; ``attempts`` still counts the transfers."""
     fetcher = Fetcher(max_attempts=1)
     (r,) = run(fetch(fetcher, [FetchRequest("k", server.url("ratelimit/4"))]))
@@ -569,7 +569,7 @@ def test_host_groups_are_independent(server: LocalServer) -> None:
 
 
 def test_transport_failure_keeps_curls_error_line(server: LocalServer) -> None:
-    """Spec R4 (2026-09-13 review): a request given up says what happened on the wire."""
+    """A request given up says what happened on the wire (2026-09-13 review)."""
     (hung,) = run(
         fetch(Fetcher(timeout_s=0.3, max_attempts=1), [FetchRequest("h", server.url("hang/3"))])
     )
@@ -583,7 +583,7 @@ def test_transport_failure_keeps_curls_error_line(server: LocalServer) -> None:
 
 
 def test_run_overrides_cap_in_flight_and_attempts_for_one_run(server: LocalServer) -> None:
-    """Spec R4: a caller's retry round runs at low concurrency and with its own attempts on the
+    """A caller's retry round runs at low concurrency and with its own attempts on the
     same fetcher (same session, window and pause state); the next run is back to the
     constructor's values."""
     fetcher = Fetcher(max_in_flight=16, start_in_flight=16, timeout_s=0.3, max_attempts=4)

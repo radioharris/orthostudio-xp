@@ -2,7 +2,7 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """The library of built tiles (``~/.orthostudio/library.sqlite``) and the import of Ortho4XP tiles.
 
-Spec: ``docs/specs/install.md`` section 5. One row per (tile, kind, path): where the pack is, which
+One row per (tile, kind, path): where the pack is, which
 provider and ZL it holds, who built it (``osxp`` with the store keys of its artefacts, or
 ``ortho4xp`` with no keys: installable but not incremental).
 
@@ -10,8 +10,7 @@ provider and ZL it holds, who built it (``osxp`` with the store keys of its arte
 62-68``: ``Tiles/``, the custom build dir, ``yOrtho4XP_Overlays/``) and reads the tile cfg with
 ``orthostudio.tilefiles``. It is the one place OrthoStudio XP reads an Ortho4XP folder
 (decision 0010), and it only registers what it finds. ``own_pack_dirs`` names the tiles
-OrthoStudio XP built that a folder holds, which ``pipeline.pack.find_tiles_receipt`` takes back
-(section 4.8).
+OrthoStudio XP built that a folder holds, which ``pipeline.pack.find_tiles_receipt`` takes back.
 """
 
 from __future__ import annotations

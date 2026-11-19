@@ -20,9 +20,9 @@ area builders (:mod:`~orthostudio.airports_vec.areas`), the elevation smoothing
 modules of the same wave; they fill :class:`~orthostudio.airports_vec.model.SurfaceAreas` and read
 the record back. :mod:`~orthostudio.airports_vec.stage` calls all of them in Ortho4XP's order and is
 what the vector stage uses; :mod:`~orthostudio.airports_vec.artefact` serialises the
-result (``docs/specs/airports-integration.md``).
+result.
 
-Specification: ``docs/specs/airports-discovery.md``. The name of the package is
+The name of the package is
 ``airports_vec`` and not ``airports`` because :mod:`orthostudio.airports` already exists and is a
 different thing: the ``apt.dat`` index behind the ICAO search of the page (arbitration B5).
 

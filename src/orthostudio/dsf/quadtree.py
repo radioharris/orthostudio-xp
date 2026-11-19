@@ -3,7 +3,7 @@
 """Quadtree partition of the tile into vertex pools, in Ortho4XP's dictionary order.
 
 Port of ``QuadTree`` and ``float2qquad`` (``O4_DSF_Utils.py:20-107``) and of the pool
-parameters (``:491-571``). Spec: ``docs/specs/dsf-encoding.md`` 3.1-3.2. Instead of inserting
+parameters (``:491-571``). Instead of inserting
 nodes one by one, the split time of every bucket (the node index at which it receives its
 ``capacity + 1``-th node) is computed by order statistics on the nodes sorted by quadkey, and
 the dict order is replayed from those times.

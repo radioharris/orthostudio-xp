@@ -1,6 +1,6 @@
 // OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 // Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-// OrthoStudio XP web page — docs/specs/ui.md. Native ES module: state, API client (real or mock),
+// OrthoStudio XP web page. Native ES module: state, API client (real or mock),
 // rendering functions, SSE handling. No framework, no dependency, no external URL.
 
 import {
@@ -427,8 +427,8 @@ export function codeWords(err) {
   return codeText(e.code, e.context) || own;
 }
 
-/** An error in one line: its code, what happened, and what to do. The engine sends both halves
- * (docs/specs/errors.md), and the line kept only the first: every toast and every note under a
+/** An error in one line: its code, what happened, and what to do. The engine sends both halves,
+ * and the line kept only the first: every toast and every note under a
  * button said what went wrong and never what to do about it (found in review, 2026-09-24). */
 export function errorMessage(err) {
   if (err instanceof ApiError) {
@@ -1057,7 +1057,7 @@ export function mockTimeline(doc, script, reuse = new Set()) {
   return out.sort((a, b) => a.at - b.at);
 }
 
-/** The report and decisions of a finished mock job, in the engine's shapes (api.md 5.5). */
+/** The report and decisions of a finished mock job, in the engine's shapes. */
 function mockOutcome(run) {
   const doc = run.doc;
   const reportStatus = { done: "built", hit: "hit", failed: "failed", skipped: "skipped", cancelled: "failed" };
@@ -1901,7 +1901,7 @@ function nodeFraction(n, nowMs = Date.now()) {
 
 /**
  * Status, fraction and time of a step from its nodes, by the engine's rules (`osxp.api.jobs`
- * `stage_status` and `osxp.api.progress` `weighted_progress`, docs/specs/api.md 5.4): failed,
+ * `stage_status` and `osxp.api.progress` `weighted_progress`): failed,
  * cancelled, skipped; done once every node ended (hit when all were hits); pending while none runs
  * and none did real work (hits alone do not start a step); running while one runs; waiting when
  * some did real work and the others have not started. The fraction weighs each node by the
@@ -3514,7 +3514,7 @@ function addTileFromLatLon() {
   keepInPlace($("latlon-add"), () => sayTilesInBuild(addTiles([tileName(lat, lon)])));
 }
 
-/** Every 1° cell intersecting the bounding box of the circle (spec 2.1). */
+/** Every 1° cell intersecting the bounding box of the circle. */
 export function tilesAround(lat, lon, radiusKm) {
   const dlat = radiusKm / 111.2;
   const dlon = radiusKm / (111.2 * Math.max(0.05, Math.cos((lat * Math.PI) / 180)));
@@ -4164,7 +4164,7 @@ function renderZlOptions() {
 
 // ------------------------------------------------------------------ Plan: estimate + build
 
-/** The page sends what it shows: the tiles, and the zones of the list that reach them (map-zones.md 5).
+/** The page sends what it shows: the tiles, and the zones of the list that reach them.
  * Null, with the reason shown, when the zones could not be loaded even on a second try. */
 async function planRequest() {
   const zones = planMap ? await planMap.zonesForRequest([...state.tiles]) : [];
@@ -7615,7 +7615,7 @@ let folderAsked = false;
 /** Where the Settings screen takes its colour sample: the map's centre, and the chosen source.
  *
  * ``null`` while the map has not drawn yet. In the mock mode the page draws its own image, so
- * that the preview works with no network (``ui.md`` 2.4). */
+ * that the preview works with no network. */
 function photoSampleUrl(provider, at = null) {
   const centre = at || (planMap && planMap.mapCenter ? planMap.mapCenter() : null);
   if (!centre) return null;
@@ -7858,7 +7858,7 @@ function renderPlanSettings() {
 
 /** Step 1: the colours of the squares chosen, with the three sliders and the preview.
  *
- * The three levels are Settings, the square, then the zones (``map-zones.md`` 3). This control
+ * The three levels are Settings, the square, then the zones. This control
  * writes the **squares'**: one square selected changes that one, six change the six -- which is
  * also "one colour for this build" (a user, 2026-09-18). */
 function renderTileColours() {

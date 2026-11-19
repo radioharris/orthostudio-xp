@@ -2,7 +2,7 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """The graph rule ``orthostudio.mesh@1``: stage 2 of Ortho4XP, natively.
 
-Spec: ``docs/specs/mesh-build.md`` section 9. The artefact is a directory holding the mesh as
+The artefact is a directory holding the mesh as
 ``mesh.npz`` and as Ortho4XP's ``Data<tile>.mesh``, the same mesh in text, which a compacted cache
 goes without (``MeshJob.ortho4xp_form``), the water table the masks stage needs and a
 ``stats.json``.
@@ -67,7 +67,7 @@ def triangle_binary() -> Path:
 
 
 class MeshParams(RuleParams):
-    """The parameters ``orthostudio.mesh`` consumes, and only those (spec section 9).
+    """The parameters ``orthostudio.mesh`` consumes, and only those.
 
     ``custom_dem`` / ``fill_nodata`` are absent on purpose: the elevation enters through the
     digest of the ``dem`` input, not through a parameter. Same for ``mesh_zl`` and the OSM data,
@@ -91,13 +91,13 @@ class MeshParams(RuleParams):
     sea_smoothing_mode: str = "zero"
     water_smoothing: int = 10
     iterate: int = 0
-    """Refinement round (``-r``); 0 is the normal build. TODO: no fixture, see spec 4.2."""
+    """Refinement round (``-r``); 0 is the normal build. TODO: no fixture."""
 
     skip_multiples_of_ten: bool = True
     """Reproduce ``O4_Mesh_Utils.py:245`` (attributes that are multiples of ten are skipped)."""
 
     water_in_set_order: bool = True
-    """Smooth inland water in CPython set order, as Ortho4XP does (spec section 5.1b)."""
+    """Smooth inland water in CPython set order, as Ortho4XP does."""
 
     def options(self) -> MeshBuildOptions:
         """The subset :func:`orthostudio.mesh.build.build_mesh_native` takes."""
@@ -187,7 +187,7 @@ def run_mesh(ctx: RunContext) -> MeshBuildResult:
     )
 
 
-# version 2: an empty interpolated altitude keeps the ground's height (``mesh-build.md`` 5.3)
+# version 2: an empty interpolated altitude keeps the ground's height
 @rule(name="orthostudio.mesh", version=2, params=MeshParams, inputs=("vectors", "dem", "coastline"),
       ram_mb=900, kind="dir")  # fmt: skip
 def osxp_mesh(ctx: RunContext) -> None:

@@ -1,9 +1,6 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""``Dem``: source resolution, ``alt_vec``, composites, and the artefact round trip.
-
-Spec: ``docs/specs/dem.md`` sections 8 and 9 (acceptance A6, A7).
-"""
+"""``Dem``: source resolution, ``alt_vec``, composites, and the artefact round trip."""
 
 from __future__ import annotations
 
@@ -77,7 +74,7 @@ def _synthetic_raster(n: int = 121, seed: int = 0) -> np.ndarray:
     return rng.normal(300, 200, (n, n)).astype(np.float32)
 
 
-# -- source resolution (spec 8, ``DEM.load_data``) -----------------------------------------
+# -- source resolution (``DEM.load_data``) -------------------------------------------------
 
 
 def test_resolve_source_defaults_to_view(tmp_path: Path) -> None:
@@ -103,7 +100,7 @@ def test_resolve_source_splits_a_composite(tmp_path: Path) -> None:
         resolve_source("View;;/b.tif", TILE, tmp_path)
 
 
-# -- alt_vec (spec 8.1, acceptance A6) -----------------------------------------------------
+# -- alt_vec (acceptance A6) ---------------------------------------------------------------
 
 
 @pytest.mark.parametrize("seed", range(5))
@@ -176,7 +173,7 @@ def test_a_composite_lets_the_overlay_win_where_it_has_data() -> None:
     assert got[1] == 100.0
 
 
-# -- build (spec 4, 7) ---------------------------------------------------------------------
+# -- build ---------------------------------------------------------------------------------
 
 
 def _block(tmp_path: Path, value: int = 250, holes: int = 0) -> EnsureOptions:
@@ -472,7 +469,7 @@ def test_a_hole_in_the_overlay_lets_the_relief_under_it_through(tmp_path: Path) 
 
 
 def test_an_overlay_covering_the_tile_leaves_the_margin_to_the_base(tmp_path: Path) -> None:
-    """An assembled source is read a little beyond the tile (section 4.1); a file of one's own
+    """An assembled source is read a little beyond the tile; a file of one's own
     covers the square and no more, so the skirt around it keeps the relief underneath."""
     opts = _block(tmp_path, value=250)
     over = _hgt(tmp_path / "over.hgt", 3601, 700)
@@ -497,7 +494,7 @@ def test_a_folder_without_this_square_leaves_the_relief_alone(tmp_path: Path) ->
     assert dem.own == ()  # no file of his for this square: nothing to name
 
 
-# -- artefact (spec 9, acceptance A7) ------------------------------------------------------
+# -- artefact (acceptance A7) --------------------------------------------------------------
 
 
 def test_save_and_load_round_trip(tmp_path: Path) -> None:

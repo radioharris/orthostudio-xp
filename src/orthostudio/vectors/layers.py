@@ -17,10 +17,8 @@ of :data:`orthostudio.vectors.roads.NO_AIRPORTS`.
 The one thing wave 2 changed beyond those two slots is the **elevation**: Ortho4XP smooths its
 raster over the airports before anything samples it (``O4_Vector_Map.py:213``), so this module
 returns the smoothed raster along with the layers and every family -- patches, airports,
-roads, water, coastline, and the grid the assembler builds -- reads that one
-(``docs/specs/airports-integration.md`` R-I1).
+roads, water, coastline, and the grid the assembler builds -- reads that one.
 
-Spec: ``docs/specs/vectors-assembly.md`` section 7.
 """
 
 from __future__ import annotations
@@ -454,8 +452,8 @@ def _airport_params(
     """The airport constants of this run: the smoothing width and whether helipads are flat.
 
     A sweep of ``O4_Airport_Utils.py`` for ``tile.<attribute>`` finds ``dem``, ``lat``,
-    ``lon`` and ``apt_smoothing_pix``, and only the last is configuration
-    (``docs/specs/airports-integration.md`` 5). Every other number of the chain is hard-coded
+    ``lon`` and ``apt_smoothing_pix``, and only the last is configuration.
+    Every other number of the chain is hard-coded
     in Ortho4XP and lives in the dataclasses of :mod:`orthostudio.airports_vec.stage`;
     ``flatten_helipads`` is OrthoStudio XP's own (idea #8), and ``rounded_ends``, the taxiway
     bands' ends round or angular, follows the rule that runs (``VECTORS_ANGULAR``).
@@ -503,7 +501,7 @@ def _no_airport_artefact(request: object) -> None:
 def dry_aerodromes(store: OsmData, tile: TileRef) -> DryAerodromes | None:
     """The aerodromes OpenStreetMap draws with a runway out of the water and none on it,
     tile-local, and their runways, taxiways and aprons: the water inside their outline that these
-    enter is taken out of it (``aerodrome-dry.md``). ``None`` when there is none.
+    enter is taken out of it. ``None`` when there is none.
 
     A seaplane base keeps its water, and so does an aerodrome with a water runway beside its land
     ones: Fairbanks' and Kenai's taxiways run into their float ponds (census, 2026-10-14). An

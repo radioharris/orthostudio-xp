@@ -2,7 +2,6 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Reading elevation files, assembling the 3x3 raster, filling voids, upsampling, smoothing.
 
-Spec: ``docs/specs/dem.md`` sections 4 to 7 and 8.3.
 Origin: Ortho4XP ``src/O4_DEM_Utils.py`` -- ``build_combined_raster`` (350-441),
 ``read_elevation_from_file`` (441-593), ``fill_nodata_values_with_nearest_neighbor`` (866-910),
 ``upsample`` (910-956), ``smoothen`` (956-1002) -- and ``O4_Airport_Utils.py:924-1034`` for
@@ -64,7 +63,7 @@ NODATA = -32768.0
 """The one nodata value OrthoStudio XP carries; every reader normalises to it (``:517-524``)."""
 
 FillNodata = Literal["nearest", "zero", "none"]
-"""Spec section 7. Ortho4XP's tri-state, named."""
+"""Ortho4XP's tri-state, named."""
 
 MAX_FILL_STEPS = 20
 MAX_FILL_PIXELS = 10000
@@ -275,7 +274,7 @@ def _read_gdal_like(
     info_only: bool,
     on_event: Callable[[OsxpError], None] | None,
 ) -> RasterRead:
-    """GeoTIFF through Pillow and the raw TIFF tags (spec section 5.1, a **fix**).
+    """GeoTIFF through Pillow and the raw TIFF tags (a **fix**).
 
     **What 0.1.19 read, it reads as 0.1.19 did**, the same code to the letter
     (:func:`_read_with_pillow`): every relief a build used before reads the same. Only a raster
@@ -1006,7 +1005,7 @@ class Region:
     """One already-rasterised smoothing window (an airport, typically).
 
     ``mask`` is a 0-255 array of shape ``(rowmax - rowmin + 1, colmax - colmin + 1)``.
-    Producing it from OSM geometry is the vector stage's job (spec section 9.2).
+    Producing it from OSM geometry is the vector stage's job.
     """
 
     rowmin: int

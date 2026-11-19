@@ -1,8 +1,7 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""What a page keeps from one visit to the next (docs/specs/ui.md 1, *What the page keeps*): kept by
-the program that serves it, written into the page as it is served, changed by
-``PUT /api/page-kept``."""
+"""What a page keeps from one visit to the next: kept by the program that serves it, written into
+the page as it is served, changed by ``PUT /api/page-kept``."""
 
 from __future__ import annotations
 

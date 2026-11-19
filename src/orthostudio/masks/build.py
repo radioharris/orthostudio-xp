@@ -2,7 +2,7 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Building the masks of one tile: one cell per task, a process pool, an indexed directory.
 
-Spec: ``docs/specs/masks-build.md`` sections 1, 3 and 4. Origin: ``O4_Mask_Utils.py:64-221``
+Origin: ``O4_Mask_Utils.py:64-221``
 (``build_masks``), whose four GIL-bound threads are replaced by a pool of processes.
 
 The artefact this writes is the directory ``orthostudio.textures.imprint.masks_dir_lookup`` and
@@ -74,7 +74,7 @@ __all__ = [
 MASKS_INDEX_FORMAT = "osxp-masks-1"
 WORKERS_ENV = "OSXP_MASKS_WORKERS"
 MAX_WORKERS = 8
-"""Default ceiling on the pool: the measured gain stops there (``masks-build.md`` 6)."""
+"""Default ceiling on the pool: the measured gain stops there."""
 START_METHOD_ENV = "OSXP_MASKS_START_METHOD"
 DEFAULT_START_METHOD = "spawn"
 """``spawn`` is the safe default on macOS (Ortho4XP itself uses processes here).
@@ -97,7 +97,7 @@ def env_workers() -> int | None:
     The **only** parser of that variable (review 4, finding M2: three copies disagreed on
     ``0`` and on negative values). A value that is not a positive integer -- ``0``, ``-4``,
     ``x`` -- is treated as *unset*, so the pipeline's RAM budget and the pool the rule starts
-    can never be computed from two different numbers (``masks-build.md`` 6).
+    can never be computed from two different numbers.
     """
     raw = os.environ.get(WORKERS_ENV)
     if raw is None or not raw.strip().lstrip("+").isdigit():
@@ -324,8 +324,8 @@ def build_masks(
 
     ``meshes`` maps the tile (and any of its 8 neighbours that exist) to its mesh; a missing
     neighbour is simply absent from the mapping, which is Ortho4XP's "no sea beyond that border".
-    ``water_tris`` is the optional ``water_tris.npz`` of the same artefacts
-    (``docs/specs/mesh-build.md`` section 7), which saves searching the mesh again.
+    ``water_tris`` is the optional ``water_tris.npz`` of the same artefacts,
+    which saves searching the mesh again.
     """
     t0 = time.perf_counter()
     out_dir.mkdir(parents=True, exist_ok=True)

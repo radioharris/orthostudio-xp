@@ -1,7 +1,7 @@
 // OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 // Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 /**
- * The cloud mode of the Plan's map (``docs/specs/clouds.md`` 1.3).
+ * The cloud mode of the Plan's map.
  *
  * A view of what the engine says of a tile (``GET /api/clouds/{tile}``): every cloud with its tick
  * and its source; After, the tile as X-Plane shows it, the textures Apply makes again with the

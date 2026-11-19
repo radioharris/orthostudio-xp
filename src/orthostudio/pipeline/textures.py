@@ -2,7 +2,7 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Textures of one tile: download the missing tiles, encode what the store lacks, write ``.ter``.
 
-Spec: ``docs/specs/pipeline-textures.md``. The domain rules live in ``orthostudio.imagery``,
+The domain rules live in ``orthostudio.imagery``,
 ``orthostudio.net``, ``orthostudio.textures`` and ``orthostudio.tilefiles``; this module only
 composes them:
 
@@ -150,7 +150,7 @@ CORRUPT_RETRIES = 2
 CORRUPTED = "IMG_TILE_CORRUPTED"
 
 SECOND_PASS_PAUSES_S: tuple[float, ...] = (5.0, 15.0, 45.0)
-"""Pause before each round of the second pass, one round per value (spec section 4.1).
+"""Pause before each round of the second pass, one round per value.
 
 Seen on 2026-09-13 (Bing ZL16, 212 000 requests): five chunks got no answer to any of their four
 transfers for 43 s while their 255 neighbours arrived within the same second, and three tiles
@@ -160,7 +160,7 @@ the rest of the tile is done and spaced x3 ask a few stuck chunks again about 5 
 timeout). The bound of the whole pass, however many chunks wait, is ``SECOND_PASS_MAX_S``."""
 
 SECOND_PASS_MAX_S = 180.0
-"""Wall time of the whole second pass of a run, pauses, probes and rounds included (spec 4.1).
+"""Wall time of the whole second pass of a run, pauses, probes and rounds included.
 
 The textures node holds the build's single network slot meanwhile, so other tiles wait for it.
 Three rounds that stall for their whole timeout need 65 s of pauses plus 3 x 21 s, about 130 s;
@@ -170,7 +170,7 @@ that time, after an outage that failed thousands of chunks for example, stop the
 left stay ``ERROR``, and the next run fetches only them."""
 
 SECOND_PASS_IN_FLIGHT = 8
-"""Floor of a round's concurrency: the floor of the AIMD window (``net-download.md`` R2)."""
+"""Floor of a round's concurrency: the floor of the AIMD window."""
 
 SECOND_PASS_WAVES = 4
 """A round sends its chunks in about this many waves: ``pending // 4`` in flight, at least the
@@ -240,7 +240,7 @@ class TextureJob:
 
 
 def merge_jobs(jobs: Iterable[TextureJob]) -> list[TextureJob]:
-    """One job per texture, kinds merged in first-seen order (spec section 2)."""
+    """One job per texture, kinds merged in first-seen order."""
     merged: dict[TextureId, list[TerKind]] = {}
     for job in jobs:
         kinds = merged.setdefault(job.texture, [])
@@ -255,7 +255,7 @@ ProgressFn = Callable[["ProgressSnapshot"], None]
 
 @dataclass(slots=True)
 class TexturesSpec:
-    """Everything :func:`build_textures` needs (spec section 2).
+    """Everything :func:`build_textures` needs.
 
     ``mask_zl`` is the single source of the mask zoom level: the pipeline copies it into
     ``ter_params.mask_zl`` so that the mask crop and the ``LOAD_CENTER_BORDER`` of the ``.ter``
@@ -392,7 +392,7 @@ class ProgressSnapshot:
 
 @dataclass(slots=True)
 class TexturesReport:
-    """Result of :func:`build_textures` (spec section 2)."""
+    """Result of :func:`build_textures`."""
 
     tile: str
     provider: str
@@ -479,7 +479,7 @@ def publish_file(src: Path, dest: Path, *, link: bool = True) -> None:
 def write_ter_files(
     out_dir: Path, t: TextureId, kinds: Iterable[TerKind], params: TerParams
 ) -> list[Path]:
-    """Write ``terrain/<name>[_kind].ter`` for every kind (``textures-ter.md``)."""
+    """Write ``terrain/<name>[_kind].ter`` for every kind."""
     lat_med, lon_med = ter_center(t)
     written: list[Path] = []
     for kind in kinds:
@@ -521,10 +521,10 @@ def ensure_water_transition(out_dir: Path) -> Path:
 def chunk_entry_for(
     provider: Provider, r: FetchResult, *, fetched_at: int | None = None
 ) -> ChunkEntry:
-    """Classify one answer into a container entry (spec section 4).
+    """Classify one answer into a container entry.
 
     An ``ERROR`` entry carries its reason code in ``content_type`` (persisted by the
-    container format, ``imagery-chunks.md`` section 3).
+    container format).
     """
     when = now_unix() if fetched_at is None else fetched_at
     if r.error is not None:
@@ -623,7 +623,7 @@ _WORKER_STORE: Store | None = None
 
 
 def _worker_init() -> None:
-    """Workers ignore Ctrl-C: the parent cancels them through the pool (spec section 8). They
+    """Workers ignore Ctrl-C: the parent cancels them through the pool. They
     leave when the engine is gone (:func:`orthostudio.parentwatch.leave_with_parent`)."""
     with contextlib.suppress(Exception):
         signal.signal(signal.SIGINT, signal.SIG_IGN)
@@ -1101,7 +1101,7 @@ class _Pipeline:
     def _read_container(self, t: TextureId) -> tuple[ChunkContainer | None, OsxpError | None]:
         try:
             return self.chunk_store.read(t), None
-        except OsxpError as exc:  # corrupted: discard and download again (spec chunks s. 3)
+        except OsxpError as exc:  # corrupted: discard and download again
             self.chunk_store.delete(t)
             return None, exc
 
@@ -1298,8 +1298,8 @@ class _Pipeline:
 
     async def _further_rounds(self, fetcher: Fetcher) -> None:
         """Parents of missing chunks (a parent that turns out to be a placeholder asks the next
-        level up, spec section 5) and corrupted bodies asked again (section 4). Only the I/O
-        tasks are awaited between rounds: the pool keeps encoding the complete textures."""
+        level up) and corrupted bodies asked again. Only the I/O tasks are awaited between
+        rounds: the pool keeps encoding the complete textures."""
         while (self.needed_parents or self.retry_requests) and not self.cancelled:
             batch = sorted(self.needed_parents)
             self.needed_parents = set()
@@ -1495,7 +1495,7 @@ class _Pipeline:
 
     async def _second_pass(self, fetcher: Fetcher) -> None:
         """Ask again, in spaced rounds at low concurrency, for the chunks whose failure said "try
-        later" (spec section 4.1): a transient failure costs time, not the tile."""
+        later": a transient failure costs time, not the tile."""
         if not self.deferred:
             return
         t0 = time.perf_counter()
@@ -1550,7 +1550,7 @@ class _Pipeline:
                 idle(False)
 
     def _round_limit(self, pending: int) -> int:
-        """Requests in flight for a fetch of the second pass (spec section 4.1): about a quarter of
+        """Requests in flight for a fetch of the second pass: about a quarter of
         the pending chunks (``SECOND_PASS_WAVES``), so that a round lasts a few waves whatever
         their number, at least the AIMD floor, and at most half the provider's ceiling. The
         fetcher still admits no more than the group's AIMD window and pauses on a 429."""
@@ -2051,7 +2051,7 @@ class _Pipeline:
 
     async def _mark_corrupted(self, st: _TexState, indices: tuple[int, ...]) -> None:
         """Bodies that passed the structural check but did not decode: ``ERROR`` on disk so
-        the next run asks for them again (spec section 4); the texture stays degraded."""
+        the next run asks for them again; the texture stays degraded."""
         t = st.texture
         assert st.outcome is not None
         st.outcome.corrupted = len(indices)
@@ -2285,7 +2285,7 @@ class _Pipeline:
 
 
 def build_textures(spec: TexturesSpec) -> TexturesReport:
-    """Build the textures and terrain files of one tile (spec section 1). Synchronous.
+    """Build the textures and terrain files of one tile. Synchronous.
 
     A first ``SIGINT`` (Ctrl-C) takes the cooperative cancellation path: the download stops
     within a second, received tiles are persisted, the report comes back with

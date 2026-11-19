@@ -1,6 +1,6 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""``scenery_packs.ini`` parsing, ordering rule and atomic save (spec section 3)."""
+"""``scenery_packs.ini`` parsing, ordering rule and atomic save."""
 
 from __future__ import annotations
 
@@ -314,7 +314,7 @@ def test_real_scenery_packs_ini_is_read_only_and_reordered_on_a_copy(tmp_path: P
     ga = names.index(GLOBAL_AIRPORTS)
     # Nothing below is a fact about one particular installation: the user adds and removes
     # scenery, so the pack count, the first pack's name and the neighbours of the new packs
-    # are read from the file itself. What is asserted is the ordering rule of install.md.
+    # are read from the file itself. What is asserted is the ordering rule.
 
     assert p.ensure("zOrthoStudio_+43+005", kind="ortho") is True
     assert p.ensure("yOrthoStudio_Overlays", kind="overlay") is True

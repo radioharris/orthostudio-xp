@@ -7,7 +7,7 @@ library, the job history, the zones. The heavy data (the tiles, the artefact sto
 image pieces, the map background, the relief and map data downloaded, the build's work folder)
 live in the **data folder** (:func:`data_root`): ``$OSXP_HOME`` too, unless the setting
 ``essential.data_dir`` names another folder, on an external disk for instance (a user asked,
-2026-09-15; ``docs/specs/pipeline-textures.md`` section 2). The roots can be overridden per command.
+2026-09-15). The roots can be overridden per command.
 
 This module sits at the bottom of the package on purpose: ``orthostudio.sources`` and
 ``orthostudio.dem`` need the roots and must not import ``orthostudio.pipeline`` to get them (review
@@ -235,12 +235,12 @@ def check_data_dir(value: str | Path, *, custom_scenery: Path | None = None) -> 
 
 
 def default_store_root() -> Path:
-    """Root of the artefact store (``docs/specs/graph-keys.md``)."""
+    """Root of the artefact store."""
     return data_root() / "store"
 
 
 def default_chunks_root() -> Path:
-    """Root of the raw tile containers and the parent cache (``imagery-chunks.md``)."""
+    """Root of the raw tile containers and the parent cache."""
     return data_root() / "chunks"
 
 

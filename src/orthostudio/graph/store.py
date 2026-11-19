@@ -4,8 +4,7 @@
 
 Layout: ``<root>/<rule>/<key[:2]>/<key>`` is the artefact (a file or a directory, per rule
 kind). A build writes into ``<root>/<rule>/<key[:2]>/<key>.tmp-<pid>-<rand>/out`` and commits
-with a single ``rename``; the index row is inserted after the rename. See
-docs/specs/graph-keys.md for the crash matrix.
+with a single ``rename``; the index row is inserted after the rename.
 
 A file of a folder artefact that holds what another of its files holds (the relief and the mesh,
 in Ortho4XP's form beside OrthoStudio XP's) can go while the artefact keeps its identity, its

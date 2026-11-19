@@ -2,7 +2,6 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Elevation sources: file names, download, unzip, and the negative memo of missing URLs.
 
-Spec: ``docs/specs/dem.md`` sections 2 and 3.
 Origin: Ortho4XP ``src/O4_DEM_Utils.py:593-866`` (``ensure_elevation``, ``http_request``)
 and ``src/O4_File_Names.py:24-56, 290-328`` (the naming).
 
@@ -286,7 +285,7 @@ def default_elevation_dir() -> Path:
 
 
 def default_memo_path() -> Path:
-    """``<data folder>/dem/misses.json`` (spec section 3.4)."""
+    """``<data folder>/dem/misses.json``."""
     from orthostudio.home import data_root
 
     return data_root() / "dem" / "misses.json"
@@ -381,7 +380,7 @@ def ned_url(source: str, lat: int, lon: int) -> str:
 class NegativeMemo:
     """Remembers URLs a server said do not exist, so they are not requested every run.
 
-    Spec section 3.4. Ortho4XP re-issues three ``dem1`` 404s on every build of ``+43+005``; the
+    Ortho4XP re-issues three ``dem1`` 404s on every build of ``+43+005``; the
     memo is the fix. It records *final* refusals only (404 and friends), never a timeout or a
     5xx. It never changes an output: a memoised URL degrades its cell exactly like a fresh
     404 would.
@@ -666,7 +665,7 @@ def http_download(
     cancel: threading.Event | None = None,
     on_bytes: BytesFn | None = None,
 ) -> Download:
-    """One relief file (spec section 3.5), read as it arrives on a connection kept from one call
+    """One relief file, read as it arrives on a connection kept from one call
     to the next, and given up only after ``timeout_s`` without a byte.
 
     Not through the imagery's fetcher: it is built for thousands of small pieces, cut each
@@ -675,7 +674,7 @@ def http_download(
     fetcher's: a 404 and the like are the server's word, memoised by the caller
     (:attr:`Download.final`); a 5xx, a silence or a refused connection are asked again, up to
     ``max_attempts`` transfers, then carry the fetcher's code; a 429's pause is obeyed, and costs
-    no attempt while the pauses stay within their budget (``net-download.md`` R2). ``cancel``
+    no attempt while the pauses stay within their budget. ``cancel``
     stops the transfer within 0.2 s: ``SYS_CANCELLED`` is raised. ``on_bytes`` hears when the
     file starts to arrive, then every :data:`RELIEF_PROGRESS_S` how much of it is in, on the
     transfer's own thread; a transfer asked again starts again from nothing.
@@ -796,7 +795,7 @@ class EnsureOptions:
     """Reads parts of a file served whole (ANADEM's zones of 2 GB); ``no_ranges`` reads none."""
     memo: NegativeMemo = field(default_factory=NegativeMemo)
     dem1_local_fallback: bool = False
-    """TODO (spec 9.1, blocker B2): reuse a local 3" file when the 1" zip is unavailable.
+    """TODO (blocker B2): reuse a local 3" file when the 1" zip is unavailable.
     Off by default because it changes ``Data<tile>.alt`` and therefore the mesh."""
     cancel: threading.Event | None = None
     """The scheduler's cancellation token (``DemJob.cancel``). Polled before every download
@@ -863,7 +862,7 @@ def _is_tiff(path: Path) -> bool:
 def ensure_elevation(source: str, lat: int, lon: int, opts: EnsureOptions) -> EnsureResult:
     """Make the elevation file of one cell available, downloading it if needed.
 
-    ``O4_DEM_Utils.py:593-828``, with the negative memo of section 3.4 on top. Never raises
+    ``O4_DEM_Utils.py:593-828``, with the negative memo on top. Never raises
     for a cell that simply is not available: the caller degrades it to zeros, as Ortho4XP does.
     """
     if source == "View":

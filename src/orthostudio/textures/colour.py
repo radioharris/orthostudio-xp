@@ -93,7 +93,7 @@ def adjust_photo_inside(
 
     ``source`` is the image the zone's colours are read from, the photograph as it was delivered,
     where ``rgb`` already carries the square's own. A zone **replaces** what the square asked for,
-    it does not add to it: that is what the page paints and what ``map-zones.md`` says, and adding
+    it does not add to it: that is what the page paints, and adding
     them meant a zone set to "as delivered" inside a softened square changed nothing at all, which
     is the very complaint the zones were made for (2026-09-23).
     """

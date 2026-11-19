@@ -2,7 +2,7 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """The elevation part of a pre-mask (``masks_use_DEM_too``), as a pure function.
 
-Spec: ``docs/specs/masks-build.md`` sections 2 and 8. Origin: ``O4_Mask_Utils.py:330-368``
+Origin: ``O4_Mask_Utils.py:330-368``
 (``build_dem_pre_mask``) and ``O4_Imagery_Utils.py:2043-2081`` (``gdalwarp_alternative``).
 
 ``orthostudio.sources.dem`` does not exist yet, so this module never opens an elevation file: it

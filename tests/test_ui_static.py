@@ -1,6 +1,6 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""Static checks of the web page (``docs/specs/ui.md`` section 4, ``map-zones.md`` section 7).
+"""Static checks of the web page.
 
 The directory is served exactly as ``create_app`` will serve it (``/`` → ``index.html``,
 ``/static/*`` → the rest) through FastAPI's ``StaticFiles`` and an in-process ASGI transport,
@@ -196,8 +196,8 @@ LIVE_ENTRY = "api/live-app/entry.js"
 
 
 def test_no_framework_or_cdn_script() -> None:
-    # Decision M1 of docs/specs/map-zones.md: Leaflet 1.9.4 is the one library, vendored under
-    # static/vendor/leaflet/ (same origin, no CDN) and loaded as a classic script before app.js.
+    # Leaflet 1.9.4 is the one library, vendored under static/vendor/leaflet/ (same origin, no
+    # CDN) and loaded as a classic script before app.js.
     html = (UI / INDEX_FILE).read_text(encoding="utf-8")
     scripts = re.findall(r"<script[^>]*>", html)
     assert scripts == [
@@ -309,7 +309,7 @@ def _mock_json(name: str) -> Any:
 
 
 def test_mock_events_follow_the_engine_journal() -> None:
-    """``mock/job_events.json`` holds journal entries in the engine's flat shape (api.md 5.2):
+    """``mock/job_events.json`` holds journal entries in the engine's flat shape:
     ``tile``, ``stage``, ``node``, ``role`` on every node entry, never ``step``, ``node_id`` or a
     ``data`` envelope; the mock adds ``seq`` and ``ts`` when it writes them."""
     from orthostudio.api.stages import ROLE_STAGE
@@ -404,7 +404,7 @@ def test_mock_schema_is_the_engines() -> None:
     Settings.model_validate(_mock_json("settings"))
 
 
-# -- zones and map geometry (docs/specs/map-zones.md sections 3 and 7) ------------------------
+# -- zones and map geometry ------------------------
 
 
 def test_mock_zones_follow_the_document_format() -> None:
@@ -518,7 +518,7 @@ def test_zone_tiles_and_sizes() -> None:
     assert all(ZONE_ID_RE.match(i) for i in got["ids"])
 
 
-# -- country borders (docs/specs/map-zones.md section 7.2) -----------------------------------
+# -- country borders -----------------------------------
 
 BORDERS = UI / "vendor" / "borders" / "borders.json"
 
@@ -704,7 +704,7 @@ def test_saves_are_conditional_and_survive_closing_the_page() -> None:
     assert '"ZONE_CONFLICT"' in map_js and "reloadAfterConflict" in map_js
     assert '"visibilitychange"' in map_js and '"beforeunload"' in map_js
     # Every request to the engine goes through api() (headers, mock, keepalive rule); the one
-    # fetch left reads a static file of the page itself, the country borders (map-zones.md 7.2).
+    # fetch left reads a static file of the page itself, the country borders.
     assert map_js.count("fetch(") == map_js.count("fetch(BORDERS_URL)") == 1
     # Estimate and Build always send the zones of the list (none of them when it could not load)
     assert "zones," in _function_body(app_js, "planRequest")
@@ -825,7 +825,7 @@ def test_the_page_and_the_engine_agree_on_the_api_level() -> None:
     )
 
 
-# -- library (docs/specs/ui.md section 2.3) ---------------------------------------------------
+# -- library ---------------------------------------------------
 
 LIBRARY_ROW_KEYS = {
     "photo",  # the colours the pack was built with, or null
@@ -1145,7 +1145,7 @@ def test_the_map_paints_a_tile_installed_by_its_own_pack_only() -> None:
     assert '(e.kind == null || e.kind === "ortho")' in body.group(0)
 
 
-# -- works: the job's events, its panel and its report (docs/specs/ui.md section 2.2) ----------
+# -- works: the job's events, its panel and its report ----------
 
 
 def _job_state(tiles: tuple[str, ...], *, last_seq: int = 1) -> dict[str, Any]:
@@ -2811,7 +2811,7 @@ def test_a_zone_whose_level_changes_goes_to_its_place() -> None:
 def test_the_trash_deletes_the_zones_in_the_list_after_asking() -> None:
     """A user deleting a dozen zones row by row asked for a trash that deletes them all: shown above
     the list when it has rows, it asks first, then deletes the zones the list shows, which the
-    usual debounced PUT saves (docs/specs/ui.md, Step 2). Those of other tiles, which the list
+    usual debounced PUT saves. Those of other tiles, which the list
     leaves out, stay: the trash never deletes what cannot be seen (2026-09-22)."""
     html = (UI / INDEX_FILE).read_text(encoding="utf-8")
     head_re = r'<div class="zone-list-head" id="zone-list-head" hidden>.*?\n {10}</div>'
@@ -3192,7 +3192,7 @@ def test_the_step_1_trash_unselects_every_tile_at_once() -> None:
     """A user asked for a trash in step 1 of the Plan to remove every selected tile: on the line of
     the tile count, shown when tiles are selected, it empties the selection without asking (nothing
     on the disk changes, and the selection is not saved), drops the estimate and says how many
-    tiles it unselected (docs/specs/ui.md, Step 1)."""
+    tiles it unselected."""
     html = (UI / INDEX_FILE).read_text(encoding="utf-8")
     row = re.search(r'<div class="tile-count-row">.*?\n {10}</div>', html, re.S)
     assert row is not None and 'id="tile-count"' in row.group(0)
@@ -3237,8 +3237,8 @@ def test_a_build_asked_for_during_another_waits_in_the_queue() -> None:
     """A user asked to start builds while one runs: the page asks with ``queue`` and the build
     waits for its turn, as in the engine. The Plan stays for the next ones and step 4 says
     beforehand that it will wait; Works says that a build waits and can take it out of the queue;
-    off Works the page follows the build under way; Quit says that the waiting builds are cancelled
-    too (docs/specs/ui.md, Step 4 and Works)."""
+    off Works the page follows the build under way; Quit says that the waiting builds are
+    cancelled too."""
     app_js = (UI / "app.js").read_text(encoding="utf-8")
     build = _function_body(app_js, "build")
     assert "{ ...req, install, queue: true }" in build
@@ -3307,7 +3307,7 @@ def test_a_tile_in_a_build_cannot_be_chosen_again() -> None:
     queue it would have been built twice. A tile in a build, under way or waiting, is not chosen
     (a toast says why; the other ways of adding tiles leave it out and say so). In the Library the
     buttons of such a tile wait for the build's end, and deleting waits for the builds to end. The
-    mock refuses like the engine (docs/specs/ui.md, Step 1 and Library)."""
+    mock refuses like the engine."""
     jobs = """[
       {id: "a", status: "running", tiles: ["+46+006", "+46+007"]},
       {id: "b", status: "queued", tiles: ["+46+007", "+46+008"]},
@@ -3404,8 +3404,7 @@ def test_the_cost_follows_the_plan_and_build_needs_no_estimate_first() -> None:
     the zones or the settings, dimming the figures of before; an answer older than the last change
     is dropped. Build is there as soon as tiles are chosen, sums the estimate up under its buttons,
     and waits only when the estimate was refused or the disk cannot hold the build, saying why; a
-    click during a change waits for its estimate. The top bar and the status bar are pinned
-    (docs/specs/ui.md, Steps 3 and 4)."""
+    click during a change waits for its estimate. The top bar and the status bar are pinned."""
     app_js = (UI / "app.js").read_text(encoding="utf-8")
     changed = _function_body(app_js, "planChanged")
     assert "estimateTimer = setTimeout(estimate, ESTIMATE_DELAY_MS);" in changed
@@ -3480,7 +3479,7 @@ def test_the_sources_are_grouped_by_what_they_cover_bing_and_esri_first() -> Non
     countries' that cover every tile chosen, the user's own, and the other countries' by country,
     each with its country ("Netherlands · PDOK 2020"); NL, the same imagery as PDOK, is listed
     once. A source that misses a chosen tile says so under the list; the zones' list and the
-    Settings question follow the same order (docs/specs/ui.md, Step 1)."""
+    Settings question follow the same order."""
     providers = _mock_json("providers")
     script = f"""(() => {{
       const rows = {json.dumps(providers)};
@@ -3545,8 +3544,8 @@ def test_a_user_adds_a_source_of_their_own_at_their_own_risk() -> None:
     OrthoStudio XP does not ship them, but "My sources…" under step 1's list adds one. The dialog
     says its terms apply to the user, checks the address before sending it, tries one tile where
     the page is looking, adds the source (chosen at once) and removes it unless a zone uses it.
-    The mock answers like the engine, the refusal of a country's source outside its country
-    included (docs/specs/ui.md, Step 1)."""
+    The mock answers like the engine, the refusal of a country's source outside its
+    country included."""
     html = (UI / INDEX_FILE).read_text(encoding="utf-8")
     dialog = re.search(r'<dialog id="sources-dialog".*?</dialog>', html, re.S)
     assert dialog is not None
@@ -3612,7 +3611,7 @@ def test_the_library_says_when_roads_come_twice_and_mends_it_in_one_click() -> N
     every active pack's overlays, so a square both have gets its roads, forests and buildings
     twice. The Library says it above the table and on the row, and one click leaves those roads to
     the other pack; a square whose roads went to a pack no longer active says so too, and one click
-    takes OrthoStudio XP's back (docs/specs/ui.md, Library)."""
+    takes OrthoStudio XP's back."""
     got = _node_json("app.js", '["yAutoOrtho_Overlays", "XPME_Overlays", "yOrtho4XP_Overlays", '
                      '"yOther_Overlays"].map(m.overlayPackLabel)')  # fmt: skip
     assert got == ["AutoOrtho", "XPME", "Ortho4XP", "yOther_Overlays"]
@@ -3664,7 +3663,7 @@ def test_borders_that_failed_to_load_are_tried_again() -> None:
     assert 'window.addEventListener("online"' in map_js
 
 
-# -- settings in plain words (docs/specs/ui.md 2.4, settings-plain-language.md) ---------------
+# -- settings in plain words ---------------
 
 
 def test_every_setting_is_offered_somewhere() -> None:
@@ -6849,7 +6848,7 @@ def test_the_level_lists_start_at_the_coarsest_level_named_in_both_languages() -
 
 
 def test_an_error_in_one_line_says_what_to_do_as_well() -> None:
-    """The engine sends what happened and what to do (docs/specs/errors.md). The one-line form,
+    """The engine sends what happened and what to do. The one-line form,
     used by every toast and every note under a button, kept the first half only, so they said
     what went wrong and never what to do about it (found in review, 2026-09-24). Both halves now,
     the page's own words where it has them and the engine's where it has none."""
@@ -7305,7 +7304,7 @@ def test_a_lone_error_card_takes_the_whole_width() -> None:
     assert "grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));" in rule
 
 
-# -- the flight plan of step 1 (docs/specs/flight-plan.md) ---------------------------------------
+# -- the flight plan of step 1 ---------------------------------------
 
 _FP = """
 const plan = {

@@ -2,8 +2,6 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Reading, assembling, filling, upsampling and smoothing rasters.
 
-Spec: ``docs/specs/dem.md`` sections 4 to 7 and 8.3 (acceptance A3, A4, A5).
-
 The ``_reference_*`` helpers are literal transcriptions of Ortho4XP (line numbers in their
 docstrings); the OrthoStudio XP functions are compared to them **bitwise**.
 """
@@ -145,7 +143,7 @@ def _reference_smoothen(raster, pix_width, mask_im, preserve_boundary=True):  # 
     return raster * (mask_array == 0) + tmp * (mask_array != 0)
 
 
-# -- upsample (spec 6, acceptance A3) ------------------------------------------------------
+# -- upsample (acceptance A3) --------------------------------------------------------------
 
 
 @pytest.mark.parametrize("seed", range(6))
@@ -170,7 +168,7 @@ def test_upsample_refuses_another_size() -> None:
         upsample_1201_to_3601(np.zeros((3601, 3601), dtype=np.float32))
 
 
-# -- voids (spec 7, acceptance A4) ---------------------------------------------------------
+# -- voids (acceptance A4) -----------------------------------------------------------------
 
 
 @pytest.mark.parametrize("seed", range(8))
@@ -216,7 +214,7 @@ def test_nodata_to_zero_counts_what_it_changed() -> None:
     assert nodata_to_zero(a, NODATA) == 0
 
 
-# -- smoothing (spec 8.3, acceptance A5) ---------------------------------------------------
+# -- smoothing (acceptance A5) -------------------------------------------------------------
 
 
 @pytest.mark.parametrize("pix", [1, 2, 5, 11])
@@ -294,7 +292,7 @@ def test_smooth_over_regions_without_regions_copies() -> None:
     assert np.array_equal(out, alt)
 
 
-# -- reading (spec 5) ----------------------------------------------------------------------
+# -- reading -------------------------------------------------------------------------------
 
 
 def _write_hgt(path: Path, values: np.ndarray) -> None:
@@ -419,7 +417,7 @@ def test_a_geotiff_in_another_crs_is_refused(tmp_path: Path) -> None:
     assert read.alt_dem is not None and read.alt_dem.shape == (8, 8)
 
 
-# -- the world bitmap and the 3x3 assembly (spec 4) ----------------------------------------
+# -- the world bitmap and the 3x3 assembly -------------------------------------------------
 
 
 def test_world_tiles_shape_and_known_cells() -> None:

@@ -2,9 +2,9 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Smoothing the elevation raster over airport footprints: what makes a runway flat.
 
-Specification: ``docs/specs/airports-geometry.md`` section 5. Origin: Ortho4XP
+Origin: Ortho4XP
 ``src/O4_Airport_Utils.py`` ``smooth_raster_over_airports`` (924-1038), the only writer of
-``Data<tile>.alt`` on Ortho4XP's normal path (``docs/specs/dem.md`` 9.2).
+``Data<tile>.alt`` on Ortho4XP's normal path.
 
 The blur itself is **not** written here: ``orthostudio.dem.raster.smoothen`` and
 ``orthostudio.dem.raster.smooth_over_regions`` are the pure half of the Ortho4XP function, already
@@ -122,7 +122,7 @@ def _tag_pix(footprint: Footprint) -> int | None:
 
     ``discover`` already drops an out-of-range tag with a code; this is the same bound for a
     footprint built by other means, so that no path hands ``smooth_over_regions`` a negative
-    or unbounded width (review 6, ``airports-geometry.md`` difference 7).
+    or unbounded width (review 6, difference 7).
     """
     if footprint.smoothing_pix is None:
         return None

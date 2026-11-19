@@ -191,7 +191,7 @@ def _stand_in(fail: TileRef) -> Callable[..., Callable[[NodeContext], ArtifactRe
 def test_a_neighbour_that_fails_its_vector_stage_does_not_cost_the_tile_its_masks(
     tmp_path: Path, env: BuildEnv, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Spec ``pipeline-build.md`` 4: the masks of +43+005 are skipped because its western neighbour
+    """The masks of +43+005 are skipped because its western neighbour
     of the batch failed, and the second pass builds them again without that neighbour. The stages
     are stand-ins; the graph, the scheduler and the second pass are the real ones."""
     triangle = tmp_path / "Triangle4XP"

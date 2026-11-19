@@ -2,7 +2,7 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Find the X-Plane 12 folder and tell whether X-Plane is running.
 
-Spec: ``docs/specs/install.md`` section 2. X-Plane's installer records every installation,
+X-Plane's installer records every installation,
 one absolute directory per line (trailing ``/`` included), in a per-user text file whose
 location depends on the OS. Detection reads that file first, then the usual folders.
 

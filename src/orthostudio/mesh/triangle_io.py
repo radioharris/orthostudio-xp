@@ -9,10 +9,10 @@ Two encodings are supported for every file kind:
 * the OrthoStudio XP binary format (``OSXPNOD1``, ``OSXPPOL1``, ``OSXPELE1`` magics) that the
   patched Triangle4XP reads and writes when invoked with ``-b``.
 
-Layouts are specified in ``docs/specs/mesh-triangle-io.md``.  Integers are int32 and reals
-are float64, in native byte order (little-endian on every supported platform).  Vertex
-numbers inside segments and triangles are kept exactly as Triangle numbers them, i.e.
-starting at ``first_number`` (1 in Ortho4XP), not converted to 0-based indices.
+Integers are int32 and reals are float64, in native byte order (little-endian on every
+supported platform).  Vertex numbers inside segments and triangles are kept exactly as
+Triangle numbers them, i.e. starting at ``first_number`` (1 in Ortho4XP), not converted to
+0-based indices.
 """
 
 from __future__ import annotations

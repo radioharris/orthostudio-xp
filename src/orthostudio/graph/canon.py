@@ -2,7 +2,7 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Canonical JSON: the unique byte form of a parameter set, hashed into artefact keys.
 
-Rules (see docs/specs/graph-keys.md, "Canonical JSON"):
+Rules:
 
 * objects: keys must be ``str``, emitted sorted by Unicode code point, no whitespace;
 * arrays: lists and tuples, in order;

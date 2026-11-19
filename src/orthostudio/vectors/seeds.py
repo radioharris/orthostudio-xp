@@ -4,7 +4,7 @@
 
 A seed is a point inside a polygon plus an attribute value. Triangle4XP triangulates the
 PSLG, drops one seed per region and lets its attribute plague the triangles until an edge
-carrying that bit stops it (``docs/specs/vectors-pslg.md`` section 1). Ortho4XP drops one
+carrying that bit stops it. Ortho4XP drops one
 seed per *encoded polygon*, at ``representative_point()`` (``O4_Vector_Utils.py:409-424``).
 
 Two consequences shape this module:
@@ -18,7 +18,6 @@ Two consequences shape this module:
 * a seed lies :data:`SEED_MARGIN_M` inside its polygon, or the polygon gets none
   (:func:`inner_points`): Triangle4XP drops it among the edges as written, not on the polygon.
 
-Spec: ``docs/specs/vectors-assembly.md`` section 4.
 """
 
 from __future__ import annotations
@@ -69,7 +68,7 @@ an edge. A seed nearer its polygon's edge than that may fall on the other side, 
 attribute then floods all that no edge of its kind stops: on +35+139, a RUNWAY seed of Haneda
 1 mm from the edge of a sliver between two runway outlines that nearly coincide made the whole
 tile runway, so Triangle4XP refined none of it and every vertex kept the height it was written
-with (``vectors-assembly.md`` 4.1, 2026-10-16). Ortho4XP places its seeds with no margin and
+with. Ortho4XP places its seeds with no margin and
 floods that tile the same way.
 """
 
@@ -88,7 +87,7 @@ def marker_label(marker: int) -> str:
     """Readable form of an *edge* marker, which is a bitwise OR: ``3 -> "WATER|SEA"``.
 
     Seeds and layers carry a single attribute and use :func:`marker_name`; an edge carries
-    everything that covers it (``docs/specs/vectors-pslg.md`` 2.5), so ``WATER|SEA`` is a
+    everything that covers it, so ``WATER|SEA`` is a
     lake shore that is also coastline, not an error.
     """
     value = int(marker)
@@ -170,7 +169,7 @@ class SeedSet:
 
     by_marker: dict[int, list[NDArray[np.float64]]] = field(default_factory=dict)
     skipped: int = 0
-    """Polygons that produced no seed (spec 4.1): GEOS refused their point, or too thin."""
+    """Polygons that produced no seed: GEOS refused their point, or too thin."""
 
     def add(self, marker: int, seeds: NDArray[np.floating] | None) -> None:
         """Append the seeds of one encoded layer under its attribute value."""

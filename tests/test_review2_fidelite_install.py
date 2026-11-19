@@ -100,7 +100,7 @@ def test_crlf_file_stays_crlf_and_only_gains_two_lines() -> None:
 
 
 def test_without_autoortho_a_new_ortho_pack_lands_above_a_mesh_pack() -> None:
-    """Rule 3 of ``install.md`` 3.2, amended after the P2a review: with no ``zOrthoStudio_*``
+    """Rule 3, amended after the P2a review: with no ``zOrthoStudio_*``
     and no AutoOrtho line, the ortho pack (and the overlay) is inserted *before* the first
     base-mesh pack (``zzz_hd_global_scenery4``, ``XPME_*``, any ``z*`` name sorting after
     ``zOrthoStudio_``) rather than appended below it, so X-Plane draws the ortho tile, not the

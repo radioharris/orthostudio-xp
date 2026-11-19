@@ -8,7 +8,6 @@ over the outline, and a helipad already covered by a runway, a taxiway, an apron
 is skipped -- those surfaces have their own altitude and a second flat polygon inside them
 would fight it.
 
-Spec: ``docs/specs/airports-encoding.md`` section 9.
 """
 
 from __future__ import annotations

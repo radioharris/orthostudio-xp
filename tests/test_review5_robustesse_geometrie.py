@@ -350,7 +350,7 @@ def test_the_longitude_fold_is_bit_exact_inside_the_usual_range() -> None:
 
 
 def test_an_empty_tile_still_writes_a_valid_node_and_poly_pair(tmp_path: Path) -> None:
-    """No OSM data at all: grid + border + the single default SEA seed (spec 4.2)."""
+    """No OSM data at all: grid + border + the single default SEA seed."""
     dem = FlatDem(120.0)
     out = assemble_vectors(
         VectorLayers(), MARSEILLE, dem, AssemblyParams(mesh_zl=16), out_dir=tmp_path
@@ -443,7 +443,7 @@ def test_a_seed_whose_attribute_no_layer_carries_is_refused() -> None:
 
 
 def test_refine_way_is_a_python_loop_whose_cost_is_linear_in_the_inserted_points() -> None:
-    """The only per-vertex Python loop left in the hot path (spec claims vectorisation)."""
+    """The only per-vertex Python loop left in the hot path."""
     import time
 
     way = np.column_stack([np.linspace(0, 1, 5000), np.linspace(0, 1, 5000)])

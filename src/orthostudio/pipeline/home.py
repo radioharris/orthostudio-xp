@@ -2,10 +2,9 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Compatibility re-export of :mod:`orthostudio.home` (the roots moved down a layer).
 
-Spec ``docs/specs/pipeline-textures.md`` section 2. The implementation lives in ``orthostudio.home``
-so that low modules (``orthostudio.sources``, ``orthostudio.dem``) can ask for the roots without
-importing the pipeline package; every ``from orthostudio.pipeline.home import ...`` in the tree
-keeps working unchanged.
+The implementation lives in ``orthostudio.home`` so that low modules (``orthostudio.sources``,
+``orthostudio.dem``) can ask for the roots without importing the pipeline package; every
+``from orthostudio.pipeline.home import ...`` in the tree keeps working unchanged.
 """
 
 from __future__ import annotations

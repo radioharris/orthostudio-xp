@@ -183,7 +183,7 @@ def test_texture_and_ter_names_round_trip_for_every_registry_code() -> None:
 
 
 def test_texture_name_zl_below_ten_with_digit_ending_code() -> None:
-    """imagery-grid.md s. 3: ``PDOK189`` -> ``(PDOK18, 9)``; ``PDOK1814`` -> ``(PDOK18, 14)``."""
+    """``PDOK189`` -> ``(PDOK18, 9)``; ``PDOK1814`` -> ``(PDOK18, 14)``."""
     assert parse_texture_name("5952_8416_PDOK189") == TextureId(8416, 5952, 9, "PDOK18")
     assert parse_texture_name("5952_8416_PDOK1814") == TextureId(8416, 5952, 14, "PDOK18")
     assert parse_texture_name("5952_8416_Arc@14") == TextureId(8416, 5952, 14, "Arc@")

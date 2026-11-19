@@ -2,7 +2,7 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Progress and time remaining of a whole job, across the phases of a build.
 
-Spec: ``docs/specs/api.md`` section 5.6. ``build_tiles`` downloads OSM data in a phase 0 of its
+``build_tiles`` downloads OSM data in a phase 0 of its
 own, then runs the main graph on another scheduler, and each scheduler's ``Stats`` only knows
 its own nodes: a six-tile batch read "2 of 4 done" during phase 0 -- 50 % on the page, while the
 four downloads were a fifth of the job -- and its elapsed time restarted with the main graph.

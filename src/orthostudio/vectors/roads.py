@@ -2,7 +2,7 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Road and railway levelling layers: the successor of ``include_roads`` in Ortho4XP.
 
-Specification: ``docs/specs/vectors-water-roads.md`` sections 3 and 5. Origin:
+Origin:
 ``O4_Vector_Map.py:228-355`` and the metric helpers of ``O4_Vector_Utils.py`` it uses:
 ``weighted_normals:1071-1094``, ``shift_way:1096-1098``, ``improved_buffer:1021-1069``,
 ``length_in_meters:1002-1011``.
@@ -104,7 +104,7 @@ ROAD_SMOOTHING_CHOICES = (0, 100, 250)
 100 m takes out the small waves of a 30 m relief and moves the roads little (KSME: half their
 points by about a quarter of a metre, none by 10 m); 250 m smooths longer waves but begins to
 plane real slopes; 50 m changed almost nothing and 500 m planed too much (measured and chosen on
-2026-10-26, ``vectors-water-roads.md`` 3.6)."""
+2026-10-26)."""
 
 SMOOTH_STEP_M = 2.0
 """Spacing of the samples :func:`smooth_along` averages, fine against the 100 m segments of a
@@ -364,7 +364,7 @@ DEFAULT_ROAD_PARAMS = RoadParams()
 
 @dataclass(frozen=True, slots=True)
 class AirportAreas:
-    """The two airport inputs of ``include_roads`` (arbitration A2, spec 5.1).
+    """The two airport inputs of ``include_roads`` (arbitration A2).
 
     ``array`` is the 1001x1001 boolean raster of the airport neighbourhoods
     (``build_airport_array``, ``O4_Airport_Utils.py:910-921``) and ``area`` the flattened
@@ -451,7 +451,7 @@ def build_road_layers(
 
     ``osm_data`` is the ``big_roads`` store, or ``(big_roads, small_roads)`` from
     ``road_level >= 2``; which selectors filled them is the OSM stage's business
-    (``orthostudio.sources.osm.layers_for``), not this builder's (spec 3.1).
+    (``orthostudio.sources.osm.layers_for``), not this builder's.
     """
     on_skip: SkipHandler | None = None
     if on_event is not None:

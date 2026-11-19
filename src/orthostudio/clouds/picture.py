@@ -1,7 +1,7 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """The tile as X-Plane draws it, at a reduced level: what the cloud mode's map shows, what the
-search looks for clouds in, what a cloud's colours are matched on (``clouds.md`` R2).
+search looks for clouds in, what a cloud's colours are matched on.
 
 X-Plane draws a tile from its DSF: every triangle takes the texture its terrain names. On ground
 the photo shows whole; on the sea the photo shows at its texture's alpha (the sea mask) over

@@ -20,7 +20,6 @@ Three calls, because the elevation sits between them:
 and the encoder (:class:`orthostudio.airports_vec.encode.AirportLike`): a nine-field projection with
 no computation, so that neither module imports the other.
 
-Spec: ``docs/specs/airports-integration.md``.
 """
 
 from __future__ import annotations
@@ -72,7 +71,7 @@ class AirportParams:
 
     Only :attr:`smoothing_pix` is configuration in Ortho4XP (``O4_Config_Utils.py:117``); the
     others are the hard-coded numbers of ``O4_Airport_Utils``, named here so a profile could
-    move them and so the rule knows what it consumes (``airports-integration.md`` 5).
+    move them and so the rule knows what it consumes.
     """
 
     smoothing_pix: int = 8
@@ -120,7 +119,7 @@ def build_airports(
 
     Discovery, attachment, runway reconstruction, the size filter, the three surface builders
     and the final boundaries -- in that order, which decides which aerodrome owns which
-    surface and therefore what is flattened (``airports-discovery.md`` section 1).
+    surface and therefore what is flattened.
     """
     airports = apt_discover.discover(store, tile, params.discover, on_event=_coded(on_event))
     found = len(airports)
@@ -211,7 +210,7 @@ def view_of(airport: Airport) -> AirportView:
     Nine fields, no computation, no copy of a geometry: ``runways`` is the concatenation
     Ortho4XP's ``runway[1] + runway[2]`` makes at every call site (``O4_Airport_Utils.py:1046``),
     and the way id lists are the ones the record kept when the area builders overwrote Ortho4XP's
-    fields (``airports-discovery.md`` R16).
+    fields.
     """
     built = airport.areas
     empty = geometry.Polygon()

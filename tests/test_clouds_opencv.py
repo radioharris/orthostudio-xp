@@ -1,6 +1,6 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""OpenCV for the clouds, downloaded at their first use, not shipped (``clouds.md`` C2)."""
+"""OpenCV for the clouds, downloaded at their first use, not shipped."""
 
 from __future__ import annotations
 

@@ -5,7 +5,7 @@
 Every test here runs the **native** airport chain -- ``orthostudio.airports_vec.stage`` alone, or
 the whole rule ``orthostudio.vectors@1`` through :func:`orthostudio.vectors.rule.run_vectors` -- on
 small OSM layers written by hand. No fixture, no network: the reference tile
-``+43+005`` exercises none of these cases (``docs/specs/vectors-assembly.md`` 8.3).
+``+43+005`` exercises none of these cases.
 
 Convention of the review series: a test whose name starts with ``test_defect_`` asserts the
 *current, wrong* behaviour on purpose, so that the finding is reproducible and the test turns
@@ -403,8 +403,7 @@ def test_defect_a_runway_across_two_tiles_steps_at_the_seam(tmp_path: Path) -> N
     """The two tiles an aerodrome straddles each fit the runway altitude on their own raster.
 
     Kept as a defect on purpose after the review-6 fixes: it is inherited from Ortho4XP and a fix
-    would be a wanted difference with a cost to measure; it is documented as a known limit in
-    ``docs/specs/vectors-assembly.md`` 8.3.
+    would be a wanted difference with a cost to measure; it is a known limit.
 
     ``AltitudeField`` fits a degree-7 polynomial of the smoothed raster **of the tile** along
     the whole axis, and each tile's raster is re-blended to raw at its own border. Measured
@@ -493,7 +492,7 @@ def test_a_negative_smoothing_pix_tag_is_ignored_with_a_code() -> None:
     error``). ``discover._smoothing_pix`` ignores a value outside ``0..MAX_SMOOTHING_PIX``
     and reports ``OSM_AIRPORT_SMOOTHING_INVALID``; a footprint built by other means is bounded
     the same way by ``smoothing._tag_pix``, so ``smooth_elevation`` no longer dies of a bare
-    ``ValueError`` in ``numpy.convolve`` (``airports-geometry.md`` difference 8)."""
+    ``ValueError`` in ``numpy.convolve``."""
     reported: list[tuple[str, dict[str, Any]]] = []
     tag = {"smoothing_pix": "-3"}
     assert apt_discover._smoothing_pix(tag, lambda c, x: reported.append((c, x)), "LFTG") is None

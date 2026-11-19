@@ -86,7 +86,7 @@ around 250 MB as budgeted.
 
 ## 4. Fidelity against the Ortho4XP outputs (`orthostudio.pipeline.validate`)
 
-Method (`docs/specs/pipeline-textures.md` s. 11): `.ter` compared as text; each DDS compared level
+Method: `.ter` compared as text; each DDS compared level
 by level with **its own source** mip chain (Ortho4XP: its q75 JPEG cache; OrthoStudio XP: the raw
 tiles re-assembled from the chunk store and the parent cache; both with the same mask), gate of ADR
 0005 on the difference: PSNR within 0.5 dB on levels 0-6, luma SSIM within 0.005 on levels 0-4,

@@ -3,10 +3,9 @@
 """The mesh the DSF encoder reads: ``orthostudio.mesh.mesh_file.MeshData`` and a
 structural protocol.
 
-Format: ``O4_Mesh_Utils.py:326-372`` (``write_mesh_file``) and ``:847-894`` (``read_mesh_file``);
-spec ``docs/specs/dsf-terrain-assignment.md`` 2.1 and ``docs/specs/mesh-file.md``. The whole
-pipeline shares one mesh object (P2a integration): the transitional private reader that lived
-here is gone.
+Format: ``O4_Mesh_Utils.py:326-372`` (``write_mesh_file``) and ``:847-894`` (``read_mesh_file``).
+The whole pipeline shares one mesh object (P2a integration): the transitional private reader that
+lived here is gone.
 """
 
 from __future__ import annotations
@@ -42,7 +41,7 @@ class MeshLike(Protocol):
 def mesh_version(mesh: MeshLike) -> float:
     """The ``MeshVersionFormatted`` token as Ortho4XP reads it (``float``), default 2.
 
-    ``MeshData.extra`` keeps it under ``"version"`` (a string, spec ``mesh-file.md``); older
+    ``MeshData.extra`` keeps it under ``"version"`` (a string); older
     callers wrote ``"mesh_version"`` (a float). Both are honoured.
     """
     extra = mesh.extra or {}

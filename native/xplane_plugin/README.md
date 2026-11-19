@@ -1,7 +1,7 @@
 # The X-Plane plugin of OrthoStudio XP Live
 
 `live_gate.c`: while X-Plane loads a flight, the plugin holds it until the streamer has built the
-ortho around the start, and shows its own loading window meanwhile (`docs/specs/live.md`). The
+ortho around the start, and shows its own loading window meanwhile. The
 window is drawn by `live_panel.m` on a Mac (Cocoa), `live_panel_win.c` on Windows (Win32) and
 `live_panel_x11.c` on Linux (X11, opened only when it shows).
 

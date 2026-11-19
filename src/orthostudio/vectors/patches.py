@@ -2,7 +2,7 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Patches: a folder of ``*.patch.osm`` files and OBJ8 objects, read as Ortho4XP reads them.
 
-Specification: ``docs/specs/vectors-water-roads.md`` section 4. Origin:
+Origin:
 ``O4_Vector_Map.py:639-873`` (``include_patches``) and ``:875-968`` (``keep_obj8``).
 
 A patch is a hand-made JOSM file that overrides the elevation of a piece of ground: a closed
@@ -120,7 +120,7 @@ class Runs:
     six lines -- the class of duplication review 5 removed (blocker 5 of ``aptencode``).
 
     A layer carries one marker, and :func:`orthostudio.vectors.noding.node_layers` walks polygon
-    rings after line parts, so a run is closed whenever the marker or the kind changes (spec 7.5).
+    rings after line parts, so a run is closed whenever the marker or the kind changes.
     """
 
     def __init__(self) -> None:
@@ -213,7 +213,7 @@ def _ramp(
     cuts_long = int(length / cell_size)
     if not cuts_long:
         # Ortho4XP leaves ``alti_way`` unset here (``:750``) and crashes or reuses the previous
-        # way's altitudes; OrthoStudio XP falls back on the DEM (spec 7, wanted difference).
+        # way's altitudes; OrthoStudio XP falls back on the DEM (a wanted difference).
         return way, np.asarray(alt(way), dtype=np.float64), 0
     cuts_long += 1
     steps = np.arange(cuts_long, dtype=np.float64) / cuts_long
@@ -334,8 +334,7 @@ def read_obj8(path: Path | str, tile: TileRef, dem: Altitudes | None = None) -> 
 
     ``None`` when the first line does not carry a usable ``ANCHOR``. The index arrays are read
     as one flat array and ``TRIS offset count`` slices it, which is what the format means;
-    Ortho4XP indexes the ``IDX`` *lines* instead and only agrees for a single ``TRIS`` at offset 0
-    (spec 4.6).
+    Ortho4XP indexes the ``IDX`` *lines* instead and only agrees for a single ``TRIS`` at offset 0.
     """
     text = Path(path).read_text(errors="replace").splitlines()
     if not text or "ANCHOR" not in text[0]:
@@ -423,7 +422,7 @@ def build_patch_layers(
     ``directory`` is ``Patches/<tile>``; a missing directory gives an empty result, as it does
     in Ortho4XP (``:652-653``), but it is *reported* through ``on_event`` so that a folder that is
     absent is never indistinguishable from a folder that is empty (review 5). Files are read
-    in sorted order, not in ``os.listdir`` order (spec 7.4).
+    in sorted order, not in ``os.listdir`` order.
     """
     root = Path(directory)
     if not root.is_dir():

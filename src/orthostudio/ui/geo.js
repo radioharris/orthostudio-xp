@@ -1,6 +1,6 @@
 // OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 // Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-// Geometry of tiles, textures and zones for the page (docs/specs/map-zones.md sections 3 and 7).
+// Geometry of tiles, textures and zones for the page.
 // Plain functions, no DOM and no Leaflet, so that node imports this module in the tests.
 // Points are [lon, lat] pairs, the order of the zones document (GeoJSON).
 
@@ -18,7 +18,7 @@ export const MAX_LAT = 85;
 
 const ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 const TILE_NAME_RE = /^([+-]\d{2})([+-]\d{3})$/;
-/** Area (deg²) above which a clipped part of a zone counts for a tile, as in the engine (section 4). */
+/** Area (deg²) above which a clipped part of a zone counts for a tile, as in the engine. */
 const MIN_PART_AREA = 1e-10;
 /** Beyond this many 1° cells in a zone's bounding box, every cell of the box counts (no clipping). */
 const MAX_EXACT_CELLS = 4096;
@@ -285,7 +285,7 @@ export function tilesTouched(points) {
 
 /** Names of the tiles the bounding box of `points` overlaps with a positive area, even when the
  * polygon itself is invalid: every tile a zone can affect, the engine's rule for a zone with a
- * problem (map-zones.md 10). Points that are not two finite numbers are ignored. */
+ * problem. Points that are not two finite numbers are ignored. */
 export function tilesInBounds(points) {
   const pts = (Array.isArray(points) ? points : []).filter(
     (p) => Array.isArray(p) && Number.isFinite(p[0]) && Number.isFinite(p[1]),
@@ -366,7 +366,7 @@ export function newZoneId(zones, now = Date.now(), random = Math.random) {
 }
 
 /**
- * Where a new zone goes in the priority list (index 0 wins, map-zones.md M4): before the first
+ * Where a new zone goes in the priority list (index 0 wins): before the first
  * zone of the same or a lower zoom level, so a finer zone drawn inside a coarser one wins, as
  * Ortho4XP's `save_zone_list` sorted them; the user reorders afterwards.
  */
@@ -404,7 +404,7 @@ export function movedInList(zones, listed, id, delta) {
   return out;
 }
 
-/** Why one zone breaks the `osxp-zones-1` format (section 3), or null. `ids` holds the ids before it. */
+/** Why one zone breaks the `osxp-zones-1` format, or null. `ids` holds the ids before it. */
 export function zoneProblem(zone, ids, providers) {
   if (!zone || typeof zone !== "object") return "a zone must be an object";
   if (typeof zone.id !== "string" || !ID_RE.test(zone.id)) return "id: 1 to 64 characters among A-Z a-z 0-9 _ -";

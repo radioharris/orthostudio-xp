@@ -49,7 +49,7 @@ and figures as the loop last said them): X-Plane waits on. Never for a loop gone
 
 The start is known even before the plugin speaks. When the user clicks Start Flight, X-Plane saves
 it in ``Output/preferences/Freeflight.prf`` (``_last_start``, a JSON object), and the streamer
-starts building right then (hold test, docs/specs/live/hold-test.md).
+starts building right then (hold test).
 """
 
 from __future__ import annotations

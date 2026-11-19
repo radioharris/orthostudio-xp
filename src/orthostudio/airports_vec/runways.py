@@ -2,7 +2,7 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Runway reconstruction: OSM ways and relations to the rectangles X-Plane flattens.
 
-Specification: ``docs/specs/airports-geometry.md`` section 3. Origin: Ortho4XP
+Origin: Ortho4XP
 ``src/O4_Airport_Utils.py`` ``sort_and_reconstruct_runways`` (329-682), with the helpers of
 ``src/O4_Vector_Utils.py`` it calls (``min_bounding_rectangle`` 1292-1316,
 ``buffer_simple_way`` 1101-1110, ``weighted_normals`` 1071-1094, ``length_in_meters``
@@ -54,7 +54,7 @@ RUNWAY_MAX_RECT_AREA = 9999.0
 """``min_bounding_rectangle:1296`` starts its search at 9999 square degrees."""
 
 EventHandler = Callable[[OsxpError], None]
-"""``docs/specs/errors.md``: what the builders call instead of ``UI.vprint``."""
+"""What the builders call instead of ``UI.vprint``."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -86,7 +86,7 @@ class RunwayResult:
     runways: int = 0
     """Reconstructed runways, area and linear together."""
     merged: int = 0
-    """Pairs of linear runway parts that were joined (spec section 3.3)."""
+    """Pairs of linear runway parts that were joined."""
     rejected: int = 0
     """Closed ways or relation rings refused as runways."""
     dropped_small: int = 0
@@ -103,8 +103,7 @@ def min_bounding_rectangle(pol: BaseGeometry, scalx: float) -> geometry.Polygon:
 
     Rotating calipers over the convex hull: every hull edge is tried as the rectangle's
     direction and the smallest area wins, ties going to the first edge tested. Ortho4XP relies on
-    an unbound local when the search finds nothing; OrthoStudio XP raises a coded error instead
-    (spec section 3.6).
+    an unbound local when the search finds nothing; OrthoStudio XP raises a coded error instead.
     """
     scaled = affinity.affine_transform(pol, [scalx, 0, 0, 1, 0, 0]).convex_hull
     way = np.asarray(scaled.exterior.coords, dtype=np.float64)
@@ -314,9 +313,9 @@ def _merge_runway_parts(
     params: RunwayParams,
     tile: TileRef,
 ) -> tuple[list[list[int]], list[float], int, list[RunwayPart]]:
-    """Re-assemble the parts OSM cut a runway into (``:536-625``, spec section 3.3).
+    """Re-assemble the parts OSM cut a runway into (``:536-625``).
 
-    A join that would end where it starts is not a centre line (spec section 3.3, *loops*): its
+    A join that would end where it starts is not a centre line: its
     axis would be zero long and every altitude fitted along it empty. When the loop goes round
     a runway, it is that runway's outline drawn in parts and comes back as an area runway, the
     last of the four values; otherwise the two parts are left apart.

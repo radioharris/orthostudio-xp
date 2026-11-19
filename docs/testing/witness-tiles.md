@@ -98,7 +98,7 @@ The report also goes to `<report>.json`, every number of every tile.
 ## 5. A rule that must act in one place only
 
 Some fixes are meant to change only the tiles where their condition occurs. The rule that takes
-X-Plane's pavement out of the water (`docs/specs/xp-pavement.md`) writes what it took out next to
+X-Plane's pavement out of the water writes what it took out next to
 the vector files (`xp_dry_sea.wkb`, `xp_dry_inland.wkb`), and the record keeps it with the
 airports concerned. With `compare --pavement-rule` the report then counts the changed tiles where
 pavement was taken out, the changed tiles next to one of them built in the same batch (their masks

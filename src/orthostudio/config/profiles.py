@@ -1,7 +1,6 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""Settings profiles: named sets of the build settings, one of them current
-(``docs/specs/settings.md`` section 7).
+"""Settings profiles: named sets of the build settings, one of them current.
 
 ``config.toml`` keeps holding what every build and the command line read: the current profile's
 settings, with what belongs to this computer. ``profiles.json`` beside it keeps the build settings

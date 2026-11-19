@@ -2,7 +2,7 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Airport discovery, surface attachment, size filter, boundaries and neighbourhood raster.
 
-Specification: ``docs/specs/airports-discovery.md``. Successor of five functions of Ortho4XP
+Successor of five functions of Ortho4XP
 Ortho4XP ``src/O4_Airport_Utils.py``:
 
 * ``discover_airport_names`` (``:19-177``) -> :func:`discover_names`;
@@ -15,7 +15,7 @@ Ortho4XP ``src/O4_Airport_Utils.py``:
 The one change of substance is the attachment: Ortho4XP answers "which aerodrome owns this
 surface?" with a Python double loop of ``linestring.intersects(boundary)``; OrthoStudio XP asks a
 ``shapely.STRtree`` for the candidates and keeps the smallest index, which *is* Ortho4XP's "first
-airport in insertion order" (spec section 5). Everything else — the key precedence, the
+airport in insertion order". Everything else — the key precedence, the
 representative points, the 3500 m fallback, the orphan airports, the size thresholds, the
 union order of the final boundary, the inclusive slice of the raster — is reproduced as it is.
 
@@ -143,7 +143,7 @@ def discover(
 
     ``store`` is the ``airports`` layer read by :mod:`orthostudio.vectors.osmdata`; ``tile`` is
     carried for the callers that go on to :func:`discard_unwanted` and is not used here — the
-    discovery works in absolute degrees (spec R7).
+    discovery works in absolute degrees.
     """
     airports = discover_names(store, params, on_event=on_event)
     attach_surfaces(airports, store, params, on_event=on_event)
@@ -164,7 +164,7 @@ def discover_names(
 
     Relations, then ways, then nodes; inside each, the order the *tag* dictionary was filled,
     which is the order the OSM file spells the elements. That order fixes everything the
-    attachment does afterwards (spec section 1).
+    attachment does afterwards.
     """
     airports = AirportSet(store=store)
     for kind in ("r", "w", "n"):
@@ -294,7 +294,7 @@ def _smoothing_pix(
 ) -> int | None:
     """``:105-113``: an integer tag that overrides the tile's ``apt_smoothing_pix``.
 
-    Difference 7 of ``airports-geometry.md`` (review 6): a value outside
+    Difference 7 (review 6): a value outside
     ``0..MAX_SMOOTHING_PIX`` is ignored, as an unparsable one is, and reported with
     ``OSM_AIRPORT_SMOOTHING_INVALID``. Ortho4XP takes it as is: a negative width crashes the
     convolution, a huge one blocks the build for minutes on a single OSM tag.
@@ -314,7 +314,7 @@ def _smoothing_pix(
 
 
 def _elevation(tags: dict[str, str]) -> float | None:
-    """The OSM ``ele`` tag; additive, consumed by nothing in the port (spec difference 5)."""
+    """The OSM ``ele`` tag; additive, consumed by nothing in the port."""
     try:
         return float(tags["ele"])
     except (KeyError, ValueError):
@@ -325,7 +325,7 @@ def _boundary(store: OsmData, kind: str, osm_id: int) -> BaseGeometry | None:
     """``:114-159``: a way is one polygon, a relation the union of its outer rings, a node none.
 
     Absolute degrees, unrounded: that is what the attachment intersects and what the size
-    filter measures (spec R7).
+    filter measures.
     """
     if kind == "w":
         return geometry.Polygon(np.array([store.nodes[i] for i in store.ways[osm_id]]))
@@ -344,7 +344,7 @@ def _boundary(store: OsmData, kind: str, osm_id: int) -> BaseGeometry | None:
 
 @dataclass(frozen=True, slots=True)
 class _Surface:
-    """One ``aeroway`` element to attach, in Ortho4XP's own order (spec R8)."""
+    """One ``aeroway`` element to attach, in Ortho4XP's own order."""
 
     category: Category
     element_id: int
@@ -370,8 +370,7 @@ def attach_surfaces(
     The **first** half does not: which aerodrome boundary a surface meets depends on the
     surface and on the boundaries, never on the record's growth (the airports R12 creates have
     no boundary). So every surface is tested against the whole index in one
-    ``STRtree.query`` call, and the sequential loop below only walks the answers (spec
-    section 5).
+    ``STRtree.query`` call, and the sequential loop below only walks the answers.
     """
     surfaces = _surfaces(store, on_event)
     owners = airports.with_boundary()
@@ -465,7 +464,7 @@ def _relations_tagged(store: OsmData, category: str) -> list[int]:
 def _nearest(airports: AirportSet, point: tuple[float, float], radius_m: float) -> Airport | None:
     """``:202-225``: the first strict minimum of ``GEO.dist`` over the whole record.
 
-    Scalar on purpose (spec section 5): the record grows while the categories are walked, and
+    Scalar on purpose: the record grows while the categories are walked, and
     an ulp on this distance moves a runway from one aerodrome to another.
     """
     closest: Airport | None = None
@@ -510,7 +509,7 @@ def discard_unwanted(
 
     An airport with an OSM outline is judged on that outline and on nothing else; one without
     is judged on its reconstructed runway area, which the runway module of this wave must have
-    filled (spec R13).
+    filled.
     """
     scale = M_TO_LAT * m_to_lon(tile.lat)
     min_boundary = params.min_boundary_area_m2 * scale
@@ -538,8 +537,7 @@ def _required_area(airport: Airport, field_name: str) -> BaseGeometry:
     """One of the four built areas, or a coded error saying which module has not run.
 
     Ortho4XP raises ``AttributeError`` here, and treating the area as empty would silently discard
-    airports or shrink boundaries -- the class of failure ``errors.md`` exists to stop
-    (spec difference 3).
+    airports or shrink boundaries -- the class of failure the error codes exist to stop.
     """
     area = getattr(airport.areas, field_name)
     if area is None:
@@ -614,8 +612,8 @@ def airport_array(
 def local_bounds(airports: AirportSet) -> NDArray[np.float64]:
     """``(A, 4)`` tile-local ``(x_min, y_min, x_max, y_max)``, one row per airport.
 
-    What ``VectorLayers.airport_bounds`` carries and what ``airports.json`` spells
-    (``docs/specs/vectors-assembly.md`` section 7), for the DSF stage to cover with
+    What ``VectorLayers.airport_bounds`` carries and what ``airports.json`` spells,
+    for the DSF stage to cover with
     high-resolution imagery (arbitration B4). Call it **after** :func:`update_boundaries`:
     before that, the boundary is in absolute degrees.
     """

@@ -2,7 +2,7 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Jobs: one build at a time in a dedicated thread, a resumable journal, an aggregated state.
 
-Spec: ``docs/specs/api.md`` section 5. A :class:`Job` wraps one ``build_tiles`` call; its
+A :class:`Job` wraps one ``build_tiles`` call; its
 ``on_event`` (called in the scheduler's loop thread) normalises every typed event
 (``orthostudio.sched.events``, and the ``Phase`` of ``orthostudio.pipeline.build``) into one JSON
 object, appends it to the journal (memory + a ``.jsonl`` file under ``<OSXP_HOME>/jobs``) and
@@ -95,7 +95,7 @@ NODE_ENDED = ("done", "hit", "failed", "skipped", "cancelled")
 
 
 class CancelRequested(BaseException):
-    """Raised from ``on_event`` to stop the scheduler cooperatively (spec 5.1)."""
+    """Raised from ``on_event`` to stop the scheduler cooperatively."""
 
 
 class JobBusyError(Exception):
@@ -235,7 +235,7 @@ class _TileState:
 
 
 def stage_status(statuses: Sequence[str], job_status: str | None = None) -> str:
-    """A stage's status from its nodes' (spec 5.4).
+    """A stage's status from its nodes'.
 
     ``running`` only while one of its nodes runs. ``waiting`` when some did real work (``done``)
     and the others have not started: the assembly of a tile read ``running`` for 220 s while its
@@ -260,7 +260,7 @@ def stage_status(statuses: Sequence[str], job_status: str | None = None) -> str:
 
 
 def _expected_nodes(spec: BuildSpec) -> list[tuple[str, str]]:
-    """The node ids a spec declares (``pipeline-build.md`` 2 and 8), as ``(id, role)``.
+    """The node ids a spec declares, as ``(id, role)``.
 
     A prediction from the spec alone, so that the page has every row before phase 0 ends; the
     main graph's ``Phase`` event then replaces it with what ``declare`` declared (rows added,
@@ -634,7 +634,7 @@ class Job:
             self._last_said[st.node] = last
             self._append("log", **base, message=last)
 
-    # -- phases (api.md 5.6) -----------------------------------------------------------------
+    # -- phases -----------------------------------------------------------------
 
     def _on_phase(self, event: Phase) -> None:
         now = self._clock()
@@ -1205,7 +1205,7 @@ def _dir_bytes(path: Path) -> int:
 
 
 def _textures_decision(env: BuildEnv | None, ts: _TileState) -> dict[str, Any] | None:
-    """Read the textures reports ``build_tiles`` wrote next to the logs (spec 5.5).
+    """Read the textures reports ``build_tiles`` wrote next to the logs.
 
     The textures node writes one report per level it prepares, named
     ``textures-<tile>-<source><level>-<key>.json`` with the node's key: the tile's own level, and
@@ -1342,8 +1342,8 @@ def _call_env_factory(factory: EnvFactory | None, specs: Sequence[BuildSpec]) ->
 
 
 class JobManager:
-    """One active job, a FIFO of queued ones, the past jobs of this home (spec 5). A tile is in one
-    of them at most."""
+    """One active job, a FIFO of queued ones, the past jobs of this home. A tile is in one of
+    them at most."""
 
     def __init__(
         self,
@@ -1569,7 +1569,7 @@ class JobManager:
         job.begin()
         # A build the user asked for is also a second chance for the Overpass mirrors: without
         # this, a mirror put aside earlier is refused for up to an hour and every build after a
-        # bad night fails in seconds (``osm-source.md`` 4, breaker).
+        # bad night fails in seconds.
         shared_board().reset()
         try:
             job._open_file()

@@ -2,10 +2,10 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """The airport discovery rules on small hand-built stores.
 
-``docs/specs/airports-discovery.md`` R1 to R16, one test per rule: each is pinned so a later
+The rules R1 to R16 of airport discovery, one test per rule: each is pinned so a later
 change says which one it broke. The stores are built by filling :class:`OsmData`'s public
-dictionaries directly, in the order the reader would have filled them -- that order is the
-specification (spec section 1).
+dictionaries directly, in the order the reader would have filled them -- that order is part of
+the rules.
 """
 
 from __future__ import annotations
@@ -424,7 +424,7 @@ def test_local_bounds_is_what_airports_json_carries() -> None:
     assert apt.local_bounds(AirportSet()).shape == (0, 4)
 
 
-# -- section 5: the index against the double loop ----------------------------------------------
+# -- the index against the double loop ---------------------------------------------------------
 
 
 def _naive_owner(owners: list[Airport], line: geometry.LineString) -> int:
@@ -439,7 +439,7 @@ def _naive_owner(owners: list[Airport], line: geometry.LineString) -> int:
 def test_the_index_answers_what_the_double_loop_answers(
     n_airports: int, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Spec section 5: same owner for every surface, and the gain grows with the record."""
+    """Same owner for every surface, and the gain grows with the record."""
     rng = np.random.default_rng(43005)
     airports = AirportSet()
     for i in range(n_airports):
@@ -483,7 +483,7 @@ def test_the_index_answers_what_the_double_loop_answers(
 
 
 def test_the_record_exposes_ortho4xps_flat_field_names() -> None:
-    """The seam with the geometry modules of the wave (spec 2.1).
+    """The seam with the geometry modules of the wave.
 
     They name the record structurally, with ``dico_airports``' own keys; the record exposes
     them as read-only views of :attr:`Airport.ways` and :attr:`Airport.runway_rels`, and the

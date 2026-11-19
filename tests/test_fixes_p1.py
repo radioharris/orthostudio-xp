@@ -1,6 +1,6 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""Tests of the P1 review fixes (spec sections named in each test).
+"""Tests of the P1 review fixes.
 
 Covers what the reviewers' own tests (``test_review_*.py``) do not: the atomic-write helper,
 the structural image check, the raw-crop mask rule of the module API, provider codes with an
@@ -147,7 +147,7 @@ def test_concurrent_atomic_writers_leave_a_complete_file(tmp_path: Path) -> None
     assert got in payloads and not list(tmp_path.glob("*.tmp-*"))
 
 
-# --- structural image check (pipeline spec section 4) ---------------------------------------------
+# --- structural image check -----------------------------------------------------------------------
 
 
 def _encode(fmt: str, **kw: object) -> bytes:
@@ -174,7 +174,7 @@ def test_image_body_complete_rejects_signatures_alone_and_garbage() -> None:
     assert image_body_complete(_encode("JPEG") + b"\r\n")
 
 
-# --- raw-crop mask rule in the module API (imprint spec section 4) --------------------------------
+# --- raw-crop mask rule in the module API ---------------------------------------------------------
 
 
 def test_mask_for_texture_applies_the_raw_threshold(tmp_path: Path) -> None:
@@ -198,7 +198,7 @@ def test_mask_for_texture_applies_the_raw_threshold(tmp_path: Path) -> None:
     assert not needs_mask_for_texture(TextureId(4224, 3008, 13, "BI"), 14, lookup)
 
 
-# --- provider codes with an underscore (tile-files spec) ------------------------------------------
+# --- provider codes with an underscore ------------------------------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -225,10 +225,10 @@ def test_parse_ter_name_still_rejects_unknown_suffixes() -> None:
         parse_ter_name("6016_8448_My_Prov.ter")
 
 
-# --- validate: byte identity reported separately (pipeline spec section 11) -----------------------
+# --- validate: byte identity reported separately --------------------------------------------------
 
 
-# --- jobs, mask_zl, leaked exceptions, corrupted bodies (pipeline spec sections 2-4, 8) -----------
+# --- jobs, mask_zl, leaked exceptions, corrupted bodies -------------------------------------------
 
 
 def test_merge_jobs_unions_kinds_per_texture() -> None:
@@ -288,8 +288,8 @@ def _png_with_valid_trailer_but_broken_data(z: int, x: int, y: int) -> bytes:
 def test_body_passing_the_structural_check_but_undecodable_is_flagged_on_disk(
     server: TileServer, tmp_path: Path, mask_dir: Path
 ) -> None:
-    """Second layer of spec section 4: the worker reports ``corrupted`` chunks, the pipeline
-    flips them to ``ERROR`` in the container (next run fetches them again) and reports
+    """Second layer, after the structural check: the worker reports ``corrupted`` chunks, the
+    pipeline flips them to ``ERROR`` in the container (next run fetches them again) and reports
     ``IMG_TILE_CORRUPTED``; the texture is published, degraded."""
     st = server.state
     key = (ZL, 33, 17)

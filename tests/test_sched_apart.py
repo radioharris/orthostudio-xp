@@ -1,6 +1,6 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""A P0 rule run in a process of its own (``orthostudio.sched.apart``, scheduler spec 2.3)."""
+"""A P0 rule run in a process of its own (``orthostudio.sched.apart``)."""
 
 from __future__ import annotations
 

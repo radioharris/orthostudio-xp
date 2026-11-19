@@ -2,7 +2,7 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Link (or copy) a built scenery pack into ``Custom Scenery`` and undo it.
 
-Spec: ``docs/specs/install.md`` section 4. Origin: Ortho4XP ``O4_GUI_Utils.py:1713-1780``
+Origin: Ortho4XP ``O4_GUI_Utils.py:1713-1780``
 (``toggle_to_custom``): a symbolic link named after the pack, identity checked with
 ``os.path.samefile`` on the real paths, removal with ``os.remove``. OrthoStudio XP adds the refusal
 while X-Plane runs, the junction fallback on Windows, the copy mode and the

@@ -2,7 +2,6 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """What the vector stage publishes about the airports of a tile.
 
-Spec: ``docs/specs/airports-integration.md``.
 
 ``airports.npz`` + ``airports.wkb.json`` is OrthoStudio XP's record: WKB geometries and a JSON
 sidecar of the scalars. Nothing evaluates, nothing is pickled, and a file written by another

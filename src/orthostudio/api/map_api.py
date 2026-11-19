@@ -1,6 +1,6 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""The page's base map: ``GET /api/map/{provider}/{z}/{x}/{y}`` (``docs/specs/map-zones.md`` 6).
+"""The page's base map: ``GET /api/map/{provider}/{z}/{x}/{y}``.
 
 A caching proxy in front of the imagery providers of the registry: the page never contacts
 another origin, and it shows the imagery a build would download.
@@ -104,7 +104,7 @@ _CLIENT_GONE = 499
 request"); the server drops it, nobody reads it."""
 
 # A map tile is worth one retry and a short 429 pause, not the minutes a build may spend on a
-# texture (``docs/specs/net-download.md`` R2-R4). Worst case with these values: about 12 s.
+# texture. Worst case with these values: about 12 s.
 MAP_TIMEOUT_S = 10.0
 MAP_HEDGE_AFTER_S = 3.0
 MAP_MAX_ATTEMPTS = 2

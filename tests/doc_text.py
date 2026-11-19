@@ -17,10 +17,3 @@ def spec_text(name: str) -> str:
     if not path.is_file():
         pytest.skip(f"docs/specs/{name}: the specifications are not in this checkout")
     return path.read_text(encoding="utf-8")
-
-
-def all_specs() -> dict[str, str]:
-    """Every ``docs/specs/*.md`` by name; the test skips when the specifications are not here."""
-    if not SPECS.is_dir():
-        pytest.skip("docs/specs: the specifications are not in this checkout")
-    return {p.name: p.read_text(encoding="utf-8") for p in SPECS.glob("*.md")}

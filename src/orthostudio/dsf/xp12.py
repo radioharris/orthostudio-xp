@@ -3,7 +3,7 @@
 """Elevation and bathymetry rasters copied from an X-Plane 12 Global Scenery DSF.
 
 Port of ``extract_elevation_and_bathymetry_data`` (``O4_DSF_Utils.py:360-453``) with ``py7zr``
-in memory instead of the ``7z`` binary. Spec: ``docs/specs/dsf-xp12-rasters.md``.
+in memory instead of the ``7z`` binary.
 """
 
 from __future__ import annotations

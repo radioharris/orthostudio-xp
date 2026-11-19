@@ -1,6 +1,6 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""Settings models: defaults, levels, validation (spec settings.md sections 2 and 4.1)."""
+"""Settings models: defaults, levels, validation."""
 
 from __future__ import annotations
 

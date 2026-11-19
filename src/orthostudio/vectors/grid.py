@@ -11,9 +11,8 @@ edges that carry no attribute (marker ``DUMMY``) but must be mesh edges:
 * the **gluing border**, the four sides of the tile cut in 2048 equal segments, so that two
   neighbouring tiles share the same border vertices and their meshes glue.
 
-Both are described in ``docs/specs/vectors-assembly.md`` section 3. Everything here is
-arithmetic on Python floats, in Ortho4XP's order: the result is a node key rounded to 9 decimals
-and an algebraically equivalent formula is not numerically equivalent.
+Everything here is arithmetic on Python floats, in Ortho4XP's order: the result is a node key
+rounded to 9 decimals and an algebraically equivalent formula is not numerically equivalent.
 """
 
 from __future__ import annotations
@@ -92,7 +91,7 @@ def ortho_grid_lines(tile: TileRef, mesh_zl: int) -> tuple[MultiLineString, Mult
     """The vertical and the horizontal grid lines (``O4_Vector_Map.py:131-135``).
 
     They are two separate geometries because Ortho4XP inserts every vertical before every
-    horizontal, and that order decides the altitude of their crossings (spec 2.2).
+    horizontal, and that order decides the altitude of their crossings.
     """
     xgrid, ygrid = ortho_grid_abscissae(tile, mesh_zl)
     eps = GRID_MARGIN

@@ -1,6 +1,6 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""The cloud detector: the two networks of OmniCloudMask, run by OpenCV (``clouds.md`` 4.1).
+"""The cloud detector: the two networks of OmniCloudMask, run by OpenCV.
 
 OmniCloudMask (DPIRD, MIT licence, https://github.com/DPIRD-DMA/OmniCloudMask, version 1.8.1)
 tells clear ground, thick cloud, thin cloud and cloud shadow apart on satellite images of 10 to

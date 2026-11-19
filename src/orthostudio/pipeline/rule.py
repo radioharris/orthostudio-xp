@@ -2,7 +2,7 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """The artefact-graph rule ``texture.dds``: one 4096² DDS from chunks, mask and parents.
 
-Spec: ``docs/specs/pipeline-textures.md`` section 6. The rule is a pure function of its
+The rule is a pure function of its
 inputs (the chunk container, the mask PNG and its crop window, the parents blob) and of its
 parameters (provider, zoom level, encoder, imprint settings); the texture position is not a
 parameter, so identical inputs share one artefact.

@@ -2,9 +2,9 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """X-Plane ``.ter`` terrain definitions, one per (texture, triangle type, overlay flag).
 
-Byte-for-byte port of Ortho4XP ``create_terrain_file`` (``src/O4_DSF_Utils.py:261-357``);
-behaviour spec in ``docs/specs/textures-ter.md``. Pure functions: writing the file, copying
-``water_transition.png`` and the DSF ``TERT`` entry belong to the caller.
+Byte-for-byte port of Ortho4XP ``create_terrain_file`` (``src/O4_DSF_Utils.py:261-357``).
+Pure functions: writing the file, copying ``water_transition.png`` and the DSF ``TERT`` entry
+belong to the caller.
 """
 
 from __future__ import annotations

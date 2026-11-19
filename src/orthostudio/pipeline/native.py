@@ -2,7 +2,7 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """The stages seen from the pipeline: what they can build, the OSM and coastline rules.
 
-Spec: ``docs/specs/pipeline-build.md`` section 8. This module is the *integration* layer: it holds
+This module is the *integration* layer: it holds
 what the graph needs and what none of the stage modules may hold -- the settings the stages
 cannot build (refused before a build starts) and the two rules that only exist to feed them,
 ``orthostudio.osm@1`` and ``orthostudio.coastline@1``.
@@ -80,11 +80,11 @@ def triangle_binary() -> Path:
 
 @dataclass(frozen=True, slots=True)
 class StageChoice:
-    """How the stages of one tile are fed (spec 8.1)."""
+    """How the stages of one tile are fed."""
 
     dem: DemSource = "vectors"
     """Where the mesh reads ``Data<tile>.alt``: ``vectors`` = the vector stage's own, smoothed
-    over the airports; ``native`` = the raw raster of the ``orthostudio.dem@1`` node (spec 8.2).
+    over the airports; ``native`` = the raw raster of the ``orthostudio.dem@1`` node.
     The vector stage reads that node either way: it is its elevation *input*."""
 
     @property
@@ -98,7 +98,7 @@ class StageChoice:
 def native_reasons(cfg: Mapping[str, Any], *, triangle: Path | None = None) -> dict[str, str]:
     """Why a stage cannot build this tile configuration; empty = it can.
 
-    Decided **before** the graph is declared (spec 8.1): a stage that cannot run must be refused
+    Decided **before** the graph is declared: a stage that cannot run must be refused
     up front, never fail in the middle of a build.
     """
     out: dict[str, str] = {}
@@ -151,11 +151,11 @@ def resolve_stages(
 
 
 class OsmParams(RuleParams):
-    """What the OSM download consumes, and nothing else (spec 8.3)."""
+    """What the OSM download consumes, and nothing else."""
 
     tile: str = ""
     road_level: int = 1
-    """The list of layers depends on it (``osm-source.md`` 3): 4 layers at 1, 5 above."""
+    """The list of layers depends on it: 4 layers at 1, 5 above."""
     refresh: str = ""
     """Free label: change it to ask for fresh data (the key follows, so the node re-runs)."""
 
@@ -190,7 +190,7 @@ OSM_TIMEOUT_S = 900.0
 class OsmJob:
     """How the OSM rule reaches its data (injected, so tests never do).
 
-    The prepared sources are asked first, in the order ``osm-prepared.md`` gives them, and
+    The prepared sources are asked first, in the chain's order, and
     Overpass answers what none of them holds. A tile asked for with ``refresh`` skips them: a
     prepared library is weeks behind by design, which is the whole point of asking again.
     """
@@ -307,7 +307,7 @@ def snapshot_index(tile: TileRef, road_level: int, snaps: Mapping[str, OsmSnapsh
 
 @rule(name="orthostudio.osm", version=1, params=OsmParams, inputs=(), ram_mb=300, kind="dir")
 def osxp_osm(ctx: RunContext) -> None:
-    """Download the OSM layers of one tile into a snapshot store of its own (spec 8.3)."""
+    """Download the OSM layers of one tile into a snapshot store of its own."""
     params = ctx.params
     assert isinstance(params, OsmParams)
     tile = TileRef.parse(params.tile)
@@ -356,7 +356,7 @@ def artefact_layers(artefact: Path) -> dict[str, str]:
 
 
 class CoastlineParams(RuleParams):
-    """Only the tile: the source of the nodes enters through the inputs (spec 8.4)."""
+    """Only the tile: the source of the nodes enters through the inputs."""
 
     tile: str = ""
 
@@ -421,7 +421,7 @@ COASTLINE_RULE: Rule = osxp_coastline
 
 @dataclass(slots=True)
 class OsmOutcome:
-    """What phase 0 produced for one tile (spec 8.3)."""
+    """What phase 0 produced for one tile."""
 
     tile: TileRef
     label: str | None = None

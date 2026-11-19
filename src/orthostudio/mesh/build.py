@@ -2,7 +2,7 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """The native mesh stage: weight map, Triangle4XP sidecar, post-processing, ``.mesh``.
 
-Spec: ``docs/specs/mesh-build.md``. Origin: ``O4_Mesh_Utils.py:540-783`` (``build_mesh``).
+Origin: ``O4_Mesh_Utils.py:540-783`` (``build_mesh``).
 
 This module replaces stage 2 of Ortho4XP. It reads the PSLG of the vector stage
 (``Data<tile>.node`` + ``Data<tile>.poly``) and the elevation raster of the DEM stage
@@ -89,7 +89,7 @@ def mesh_file_name(tile: TileRef) -> str:
 
 @dataclass(frozen=True, slots=True)
 class DemSpec:
-    """What Triangle4XP needs to know about the elevation raster (spec section 2.2).
+    """What Triangle4XP needs to know about the elevation raster.
 
     ``x0, y0, x1, y1`` are the corners of the DEM window in **tile-relative degrees** (the
     View / SRTM grid overshoots the tile by 36 samples, hence ``-0.01 .. 1.01``), ``nodata``
@@ -163,8 +163,8 @@ class DemSpec:
             alt_path = directory / f"Data{tile.name}.alt"
         spec_path = directory / "dem.json"
         if not spec_path.is_file():
-            # orthostudio.dem@1 publishes the same fields under the name of its own metadata file
-            # (``dem.md`` 9); either name is accepted, the format string is what is checked.
+            # orthostudio.dem@1 publishes the same fields under the name of its own metadata file;
+            # either name is accepted, the format string is what is checked.
             spec_path = directory / "meta.json"
         if spec_path.is_file():
             payload = json.loads(spec_path.read_text(encoding="utf-8"))
@@ -189,7 +189,7 @@ class DemSpec:
 
 @dataclass(frozen=True, slots=True)
 class MeshBuildOptions:
-    """Exactly the parameters the mesh computation consumes (spec section 9)."""
+    """Exactly the parameters the mesh computation consumes."""
 
     curvature_tol: float = 2.0
     apt_curv_tol: float = 0.5
@@ -239,7 +239,7 @@ def steiner_budget(limit_tris: float, input_nodes: int) -> float:
 def triangle_switches(
     options: MeshBuildOptions, input_nodes: int, *, binary: bool, min_angle: float | None = None
 ) -> str:
-    """``-pq{min_angle}{A|r}uYBQP[b]S{steiner}`` (spec section 4)."""
+    """``-pq{min_angle}{A|r}uYBQP[b]S{steiner}``."""
     angle = options.min_angle if min_angle is None else min_angle
     do_refine = "r" if options.iterate else "A"
     return (
@@ -259,7 +259,7 @@ def triangle_command(
     weight_path: str | Path,
     poly_path: str | Path,
 ) -> list[str]:
-    """The 15-element command line of ``O4_Mesh_Utils.py:658-673`` (spec section 4).
+    """The 15-element command line of ``O4_Mesh_Utils.py:658-673``.
 
     ``{:n}`` on the DEM dimensions is replaced by ``str(int(...))``: Ortho4XP's format is
     locale-dependent and would emit ``3,673`` under a grouping locale.
@@ -656,7 +656,7 @@ def _named(argv: list[str]) -> list[str]:
 def _write_post_nodes(path: Path, points: NDArray[np.float64]) -> None:
     """Rewrite the ``.node`` table Ortho4XP feeds to the next ``iterate`` round (``:314-322``).
 
-    TODO (spec section 4.2): the ``iterate`` path has no fixture and is not part of the
+    TODO: the ``iterate`` path has no fixture and is not part of the
     fidelity claim.
     """
     n = points.shape[0]

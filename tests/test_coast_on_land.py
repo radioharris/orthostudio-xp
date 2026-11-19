@@ -1,7 +1,6 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""A coastline that would make a whole tile sea where X-Plane draws land is ignored
-(``docs/specs/vectors-coastline.md`` section 9).
+"""A coastline that would make a whole tile sea where X-Plane draws land is ignored.
 
 Tehran, 2026-10-01: a market tagged ``natural=coastline``, a ring alone in the tile, and the whole
 tile became sea at 0 m but for the market. Manaus the next day with a hotel; eleven such tiles in

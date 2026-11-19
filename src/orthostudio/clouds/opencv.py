@@ -1,6 +1,6 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""OpenCV for the clouds, downloaded at their first use (``clouds.md`` C2).
+"""OpenCV for the clouds, downloaded at their first use.
 
 The detector's networks run on OpenCV, and a cloud's replacement does its pixel work with it.
 Inside the installer it would have made it half as large again (35 to 61 MB more, compressed,

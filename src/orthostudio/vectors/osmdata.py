@@ -2,12 +2,12 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """The OSM store of a vector layer: nodes, ways, relations, tags, multipolygons.
 
-Specification: ``docs/specs/vectors-osm-layers.md``. Successor of ``OSM_layer`` and
+Successor of ``OSM_layer`` and
 ``OSM_layer.update_dicosm`` in Ortho4XP (``O4_OSM_Utils.py:22-283``), plus the two
 geometry helpers that read it (``:587-641`` ``OSM_to_MultiLineString``, ``:643-772``
 ``OSM_to_MultiPolygon``).
 
-What it reproduces, id for id (spec section 4):
+What it reproduces, id for id:
 
 * internal negative ids assigned in reading order, recycled when an element is dropped;
 * node deduplication on the exact ``(lon, lat)`` pair;
@@ -18,7 +18,7 @@ Two sources are accepted: an OrthoStudio XP snapshot (``orthostudio.sources.osm`
 layer of a build comes from, and a JOSM ``.osm`` text file, which is what a ``*.patch.osm`` is. A
 snapshot is walked in the order Ortho4XP spelled the elements of the same data -- nodes, ways,
 relations, each group sorted by OSM id -- so the internal ids, and therefore the structures, are
-the ones Ortho4XP built (spec section 2.1).
+the ones Ortho4XP built.
 
 Nothing here touches the network.
 """
@@ -324,7 +324,7 @@ def _as_tags(layer: str | LayerSpec | LayerTags | None) -> LayerTags | None:
 
 
 class _Builder:
-    """The state machine of ``update_dicosm``, driven by either source (spec section 4)."""
+    """The state machine of ``update_dicosm``, driven by either source."""
 
     __slots__ = ("_cur", "_kind", "_node_ids", "_on_skip", "_open", "_tags", "_way_ids", "d")
 
@@ -589,10 +589,10 @@ def _node_coords(items: list[str]) -> tuple[float, float]:
 
 
 def _feed_snapshot(builder: _Builder, snapshot: OsmSnapshot) -> None:
-    """Walk a snapshot in the order Ortho4XP's cache file spelled it (spec section 2.1).
+    """Walk a snapshot in the order Ortho4XP's cache file spelled it.
 
     All nodes, then all ways, then all relations, each group sorted by OSM id, ways with an
-    unknown or empty node list skipped (``docs/specs/osm-source.md`` section 6), so the internal
+    unknown or empty node list skipped, so the internal
     ids are the ones Ortho4XP assigned to the same data.
     """
     known: set[int] = set()

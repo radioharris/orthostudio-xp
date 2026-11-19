@@ -1,6 +1,6 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""The ends of the road bands, angular or round (``docs/specs/vectors-water-roads.md`` 3.7).
+"""The ends of the road bands, angular or round.
 
 Angular by default, as Ortho4XP 1.40 and OrthoStudio XP 1.1.0 draw them, with the key of the
 tiles 1.1.0 traced; round on request, as Ortho4XP 1.30 and OrthoStudio XP 1.2.0 draw them, with

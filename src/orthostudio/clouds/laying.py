@@ -1,8 +1,8 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""The clouds laid in a tile's folder, put back, and laid again after a build (``clouds.md`` 2.2,
-2.3). What Apply does is computed one way (:func:`plan_folder`): the cloud mode shows it
-(``state.view``) and Apply runs it (:func:`lay_folder`). What X-Plane shows changes one way
+"""The clouds laid in a tile's folder, put back, and laid again after a build. What Apply does
+is computed one way (:func:`plan_folder`): the cloud mode shows it (``state.view``) and Apply
+runs it (:func:`lay_folder`). What X-Plane shows changes one way
 (:func:`lay_folder`), under the tile's lock: Apply and Restore (:func:`show`) give it the clouds
 of the view, or none, then tell the list which it shows (``laid``); a build of the tile gives it
 the clouds Apply last laid (:func:`lay_again`), and leaves the list as it is: those that do not

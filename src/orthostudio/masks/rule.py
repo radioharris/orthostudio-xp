@@ -2,10 +2,9 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """The native masks rule ``orthostudio.masks@1``.
 
-Spec: ``docs/specs/masks-build.md`` section 3.
 
 Inputs: ``mesh`` (the tile's mesh artefact) plus the eight neighbours, each of which may be
-absent -- an absent neighbour is a distinct, keyed state (``docs/specs/graph-keys.md``, K4)
+absent -- an absent neighbour is a distinct, keyed state
 and means "no sea beyond that border", exactly Ortho4XP's ``select_neighbor_meshes``. ``dem`` and
 ``custom_extent`` are optional inputs for ``masks_use_DEM_too`` and ``masks_custom_extent``.
 
@@ -88,7 +87,7 @@ def read_mesh_artifact(path: Path) -> MeshData:
 def read_water_tris_artifact(path: Path) -> MeshWaterTris | None:
     """``water_tris.npz`` of a mesh artefact, when the rule that wrote it published one.
 
-    Contract: ``docs/specs/mesh-build.md`` section 7. Absent means "search the mesh again", which
+    Absent means "search the mesh again", which
     gives the same triangles.
     """
     npz = path / "water_tris.npz" if path.is_dir() else path.with_name("water_tris.npz")
@@ -175,7 +174,7 @@ neighbours, read from their meshes."""
 
 MASKS_WORKER_MB = {"sand": 300, "rocks": 800, "3steps": 1500, "soft": 2000}
 """One masks worker, by masking profile, the sea alone: the most measured on five tiles, rounded
-up to the next hundred (``masks-build.md`` 6.2, where the measures are)."""
+up to the next hundred."""
 
 MASKS_INLAND_WORKER_MB = {"sand": 500, "rocks": 1000, "3steps": 1500, "soft": 2000}
 """The same with the inland water too (``use_masks_for_inland``), never less than the sea alone."""

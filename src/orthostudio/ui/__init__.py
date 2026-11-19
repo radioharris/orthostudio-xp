@@ -3,7 +3,7 @@
 """The web page of OrthoStudio XP: static files served
 by ``orthostudio.api.create_app(ui_dir=ui_dir())``.
 
-Spec: ``docs/specs/ui.md`` and ``docs/specs/map-zones.md`` section 7. The page is plain HTML, CSS
+The page is plain HTML, CSS
 and native ES modules talking to ``/api``, plus the vendored Leaflet 1.9.4 under ``vendor/leaflet/``
 and the country borders of Natural Earth under ``vendor/borders/``; a page's server writes what it
 starts from into it (:func:`with_json`).

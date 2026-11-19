@@ -1,6 +1,6 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""Every rule of the cloud mode, in one place (``clouds.md`` 1.5, R4): from two facts, the tile's
+"""Every rule of the cloud mode, in one place: from two facts, the tile's
 list (``cloudlist``) and what its folder shows (``tile.read_tile``), the state of the tile and of
 each of its clouds; and from those states alone, everything the page shows and every action the
 engine takes. The page decides nothing: it shows a :class:`View`. The routes check an action

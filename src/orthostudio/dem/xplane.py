@@ -2,7 +2,7 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """X-Plane 12's own relief as an elevation source: ``custom_dem = "XP12"`` (OrthoStudio XP only).
 
-Spec: ``docs/specs/dem.md`` section 12. Decision: ``docs/decisions/0007-relief-xplane.md``.
+Decision: ``docs/decisions/0007-relief-xplane.md``.
 
 Every X-Plane 12 Global Scenery DSF carries an ``elevation`` raster in its ``DEMS`` atom:
 1201 x 1201 signed 16-bit posts (``DEMI`` flags ``0x5``), 3 arc-seconds, metres, scale 1,

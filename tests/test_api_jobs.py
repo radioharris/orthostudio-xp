@@ -1,6 +1,6 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""Jobs of the API (spec ``docs/specs/api.md`` section 5): the manager alone, then over HTTP.
+"""Jobs of the API: the manager alone, then over HTTP.
 
 A fake ``build_tiles`` plays synthetic scheduler events (success, failure with a code,
 cancellation); no network, no Ortho4XP.
@@ -129,7 +129,7 @@ def test_manager_runs_a_job_to_done(home: Path) -> None:
     assert {"started", "progress", "done", "stats", "log"} <= set(kinds)
     logs = [e for e in job.events() if e["event"] == "log" and e.get("stage") == "imagery"]
     assert logs and "req/s" in logs[0]["message"]
-    # job-level stats (api.md 5.6): the last one says the whole job is done, nothing is left
+    # job-level stats: the last one says the whole job is done, nothing is left
     stats = [e for e in job.events() if e["event"] == "stats"][-1]["stats"]
     assert stats["progress"] == 1.0 and stats["eta_low_s"] == 0.0 and stats["eta_high_s"] == 0.0
     assert stats["phase"] == "build" and stats["done"] == 11 and stats["pending"] == 0
@@ -138,7 +138,7 @@ def test_manager_runs_a_job_to_done(home: Path) -> None:
     assert {"nodes", "stage_time"} <= decisions
     nodes = next(d for d in st["decisions"] if d["kind"] == "nodes")
     # the orthostudio.osm node of phase 0 is an expected node of the page too (api/stages.py
-    # ROLE_STAGE, blocker B4), and so are the elevation and coastline rows (api.md 5.2): 11.
+    # ROLE_STAGE, blocker B4), and so are the elevation and coastline rows: 11.
     assert nodes["built"] == 11 and nodes["hit"] == 0
     # journal on disk, one JSON per line, dense sequence numbers
     lines = (home / "jobs" / f"{job.id}.jsonl").read_text().splitlines()

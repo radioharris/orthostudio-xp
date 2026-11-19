@@ -2,8 +2,7 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """The typed OSM store: the reader rules R1-R11 and the geometry helpers.
 
-Specification: ``docs/specs/vectors-osm-layers.md``. Every test names the rule of the spec
-and the lines of ``O4_OSM_Utils.py`` it reproduces.
+Every test names the rule and the lines of ``O4_OSM_Utils.py`` it reproduces.
 """
 
 from __future__ import annotations
@@ -38,7 +37,7 @@ TILE = TileRef(43, 5)
 
 
 def osm_text(body: str, *, closed: bool = True) -> str:
-    """An Ortho4XP-shaped document around ``body`` (the grammar of ``osm-source.md`` section 6)."""
+    """An Ortho4XP-shaped document around ``body``."""
     head = '<?xml version="1.0" encoding="UTF-8"?>\n<osm version="0.6" generator="Ortho4XP">\n'
     return head + body + ("</osm>" if closed else "")
 
@@ -71,7 +70,7 @@ def write_osm(tmp_path: Path, body: str, *, name: str = "x.osm", closed: bool = 
     return path
 
 
-# -- tags.py (spec section 3) --------------------------------------------------------------
+# -- tags.py -------------------------------------------------------------------------------
 
 
 def test_tag_sets_of_the_water_layer_leave_nodes_empty() -> None:
@@ -199,7 +198,7 @@ def test_a_tag_outside_target_tags_is_not_stored(tmp_path: Path) -> None:
 
 
 def test_tag_values_are_stored_raw(tmp_path: Path) -> None:
-    """The Ortho4XP reader never unescapes (``osm-source.md`` 6.5); neither does OrthoStudio XP."""
+    """The Ortho4XP reader never unescapes; neither does OrthoStudio XP."""
     body = node(10, 43.5, 5.5, name="A&amp;B&#x0a;C")
     data = OsmData.load(write_osm(tmp_path, body), tile=TILE)
     assert data.tags["n"][-1]["name"] == "A&amp;B&#x0a;C"
@@ -342,7 +341,7 @@ def test_update_merges_a_second_file_and_keeps_the_counters(tmp_path: Path) -> N
     assert data.first["w"] == {-1, -2}
 
 
-# -- the snapshot source (spec section 2.1) -------------------------------------------------
+# -- the snapshot source --------------------------------------------------------------------
 
 
 def _snapshot(nodes, ways, relations, layer: str = "water") -> OsmSnapshot:
@@ -363,12 +362,12 @@ def _snapshot(nodes, ways, relations, layer: str = "water") -> OsmSnapshot:
 
 
 def test_a_snapshot_way_with_an_unknown_node_is_skipped() -> None:
-    """The rule the Ortho4XP cache writer already applies (``osm-source.md`` 6.4)."""
+    """The rule the Ortho4XP cache writer already applies."""
     snapshot = _snapshot([OsmNode(1, 43.1, 5.1)], [OsmWay(2, (1, 99), {"natural": "water"})], [])
     assert OsmData.load(snapshot, layer="water").ways == {}
 
 
-# -- geometry (spec section 5) --------------------------------------------------------------
+# -- geometry -------------------------------------------------------------------------------
 
 
 def test_way_coordinates_are_tile_local_and_rounded_to_seven_decimals(tmp_path: Path) -> None:

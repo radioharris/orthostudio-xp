@@ -2,7 +2,7 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Reader of the ``Ortho4XP_<tile>.cfg`` written by Ortho4XP (``O4_Config_Utils.py:523-604``).
 
-Spec: ``docs/specs/tile-files.md`` section 3.2. Flat ``key=value`` lines; the declared
+Flat ``key=value`` lines; the declared
 types of the 44 tile parameters are ported from ``cfg_vars`` (``O4_Config_Utils.py:16-352``).
 Values are converted with the declared type or, for ``bool``/``list`` parameters, parsed with
 ``ast.literal_eval``; nothing is ever ``exec``'d or ``eval``'d.
@@ -173,7 +173,7 @@ def _convert(name: str, raw: str, param: TileParameter) -> Any:
 
 
 def parse_tile_cfg(text: str, *, path: Path | None = None, strict: bool = False) -> dict[str, Any]:
-    """Parse the text of an Ortho4XP tile configuration into typed values (spec 3.2).
+    """Parse the text of an Ortho4XP tile configuration into typed values.
 
     Unknown keys are kept as raw strings unless ``strict``; ``zone_list.append([...])`` lines
     (<= 1.20) are honoured with ``ast.literal_eval``.

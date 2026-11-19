@@ -4,8 +4,7 @@
 
 Ported from Ortho4XP ``needs_mask`` (``src/O4_Mask_Utils.py:38-60``), the mask crop of
 ``convert_texture`` (``src/O4_Imagery_Utils.py:2318-2334, 2380-2408``) and the two layer rules
-of ``combine_textures`` (``src/O4_Imagery_Utils.py:2182-2189, 2255-2265``). Behaviour spec in
-``docs/specs/textures-imprint.md``.
+of ``combine_textures`` (``src/O4_Imagery_Utils.py:2182-2189, 2255-2265``).
 """
 
 from __future__ import annotations
@@ -220,7 +219,7 @@ def imprint(
 
     With ``sea_texture_blur > 0`` the imagery is Gaussian-blurred with
     :func:`sea_blur_radius` and blended in where the mask says water, weighted by
-    ``(255 - alpha) / 255`` (OrthoStudio XP extension of the combined-provider rule; see the spec).
+    ``(255 - alpha) / 255`` (OrthoStudio XP extension of the combined-provider rule).
     With ``clean_halo`` the alpha is first passed through :func:`clean_halo_mask`.
     """
     _check_pair(rgb, alpha)

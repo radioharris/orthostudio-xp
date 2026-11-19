@@ -255,8 +255,8 @@ class StreamerTest(unittest.TestCase):
 
     def test_the_camera_counts_for_nothing(self):
         """X-Plane takes each texture's levels for the aircraft, never for the camera: a camera
-        taken over a texture leaves it at the level the aircraft's distance gives
-        (docs/specs/live/levels-test.md, 2026-10-20)."""
+        taken over a texture leaves it at the level the aircraft's distance gives.
+        """
         tex = parse_texture_name(f"{NAMES[1]}.dds")
         lat, lon = tex.center
         away = (lat - 0.5, lon)  # the aircraft 55 km south, flying south: the texture behind it

@@ -3,7 +3,6 @@
 """Tests for orthostudio.mesh.weights: the vectorised weight map against a literal
 Ortho4XP transcription.
 
-Spec: docs/specs/mesh-build.md section 3.
 """
 
 from __future__ import annotations
@@ -238,7 +237,7 @@ def test_coastline_npz_round_trip(tmp_path: Path) -> None:
 
 
 def test_a_box_entirely_outside_the_tile_is_dropped_unlike_ortho4xp() -> None:
-    """Wanted difference (spec section 12.10): Ortho4XP paints most of the tile instead.
+    """Wanted difference: Ortho4XP paints most of the tile instead.
 
     ``weight[rowmin:rowmax + 1]`` with a negative ``rowmax + 1`` is a *negative* slice bound
     in Python, so an airport box lying entirely north of the tile makes Ortho4XP refine rows 0 to

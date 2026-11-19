@@ -1,6 +1,6 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""Graph declaration and node rules of ``osxp build`` (spec ``pipeline-build.md`` 2, 6): no
+"""Graph declaration and node rules of ``osxp build``: no
 network, no Ortho4XP. Sharing across zoom levels and tiles, neighbour wiring, ``#2`` suffixes,
 consumed subsets, and a synthetic DSF + pack run through the scheduler in thread mode."""
 
@@ -652,7 +652,7 @@ def test_a_tile_whose_file_another_program_holds_is_packed_all_the_same(
     """A file of the tile another program holds (a scanner, a sync tool) cannot be forced to
     disk on Windows. Failing the tile for it (``XP_PACK_CONFLICT``, 2026-09-28) stopped a build for
     a file almost always whole: the tile is packed, and the durable point stops before that
-    file, which the next build checks (``graph-keys.md`` 6)."""
+    file, which the next build checks."""
     from orthostudio.graph import store as store_mod
 
     monkeypatch.setattr(store_mod, "DURABLE_MARGIN_S", 0.0)
@@ -690,7 +690,7 @@ def test_a_tile_whose_file_another_program_holds_is_packed_all_the_same(
 def test_the_pack_records_the_colours_its_textures_are_encoded_with(
     tmp_path: Path, env: BuildEnv
 ) -> None:
-    """The Library reads a tile's colours in its manifest first (``api.md`` 2.3), and ``declare``
+    """The Library reads a tile's colours in its manifest first, and ``declare``
     left them out of the pack's params: no pack recorded any from 2026-09-18 on, and the page
     could only ask the store, which has no answer once the data folder changed (found
     2026-09-26). Through ``declare`` and the rule itself; a plain tile keeps its pack's key."""
@@ -962,7 +962,7 @@ def test_the_masks_reserve_their_pool_only_where_there_is_water_to_draw(
 @pytest.mark.parametrize(
     ("config", "worker_mb"),
     [
-        ({}, 300),  # sand, the default: 277 MB a worker at most (masks-build.md 6.2)
+        ({}, 300),  # sand, the default: 277 MB a worker at most
         ({"masking_mode": "rocks"}, 800),
         ({"masking_mode": "3steps"}, 1500),
         ({"use_masks_for_inland": True}, 500),

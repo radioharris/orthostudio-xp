@@ -7,8 +7,6 @@ times (coastline, water, roads) and ``cut_to_tile`` (``:739-777``) twice with tw
 signatures. They agreed, which is exactly the state in which one of them drifts unnoticed.
 This module is the single transcription the three builders now import; no semantics changed,
 the bodies are the ones P4 wave 1 was measured with.
-
-Spec: ``docs/specs/vectors-assembly.md`` section 11 (shared geometry helpers).
 """
 
 from __future__ import annotations

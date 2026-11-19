@@ -2,11 +2,10 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """From an API request to ``BuildSpec`` objects, and from an ``Estimate`` to the plan answer.
 
-Spec: ``docs/specs/api.md`` sections 2.2 and 4. Mirrors ``orthostudio.cli._build_specs`` with the
+Mirrors ``orthostudio.cli._build_specs`` with the
 values of ``Settings`` underneath the request (the request wins), validated paths and the
 airport index for ``{icao, radius_km}`` areas. The zones of the request, or else the zones of
-the saved document touching the requested tiles, are clipped into each tile's ``zone_list``
-(``docs/specs/map-zones.md`` 5).
+the saved document touching the requested tiles, are clipped into each tile's ``zone_list``.
 """
 
 from __future__ import annotations
@@ -265,7 +264,7 @@ def make_specs(
     zones_path: Path | None = None,
     left_out: list[str] | None = None,
 ) -> list[BuildSpec]:
-    """The specs of a plan or a job (spec 2.2); raises ``OsxpError`` on any bad input.
+    """The specs of a plan or a job; raises ``OsxpError`` on any bad input.
 
     Every tile a zone touches gets ``config["zone_list"]``, the zones clipped to it; a tile
     no zone touches keeps exactly the config it had without zones (same keys). The data folder
@@ -385,7 +384,7 @@ def where_now(
     xplane_dir: str | None = None,
     global_scenery: bool = False,
 ) -> dict[str, Any]:
-    """Where a build reads and writes, from the settings as they are now (spec 2.2): the data
+    """Where a build reads and writes, from the settings as they are now: the data
     folder's tiles, store and chunks, X-Plane's Custom Scenery and Global Scenery, the folder of
     hand-made mesh patches. ``BuildSpec`` fields, raising ``OsxpError`` as a new build does: the
     data folder must be there (``CFG_DATA_DIR_MISSING``), X-Plane too for an install, and its
@@ -422,7 +421,7 @@ def where_now(
 
 
 def plan_answer(est: Estimate, specs: Sequence[BuildSpec]) -> dict[str, Any]:
-    """The two-line answer of spec section 4 around ``Estimate.to_dict()``."""
+    """The two-line answer around ``Estimate.to_dict()``."""
     doc = est.to_dict()
     requests = sum(t.requests for t in est.tiles)
     mb = sum(t.download_mb for t in est.tiles)

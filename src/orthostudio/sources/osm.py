@@ -2,9 +2,8 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """OpenStreetMap vector data: Overpass mirrors and OrthoStudio XP snapshots.
 
-Specification: ``docs/specs/osm-source.md``. Policy already fixed by ADR 0005 decision 4
-(mirror order) and ``docs/specs/net-download.md`` section 5.5 (two requests in flight per
-cluster, health check, three attempts across mirrors, never the 2^n back-off of Ortho4XP).
+Policy already fixed: the mirror order (ADR 0005 decision 4), two requests in flight per
+cluster, health check, three attempts across mirrors, never the 2^n back-off of Ortho4XP.
 
 Two independent pieces live here:
 
@@ -82,7 +81,7 @@ SNAPSHOT_FORMAT = "osxp-osm-snapshot-1"
 USER_AGENT = "orthostudio/0.0.1 (+OSM vector data for X-Plane scenery)"
 
 DEFAULT_QUERY_TIMEOUT_S = 120
-"""``[out:json][timeout:n]``: what the server is told it may spend (spec section 3)."""
+"""``[out:json][timeout:n]``: what the server is told it may spend."""
 
 CONNECT_TIMEOUT_S = 5.0
 HEALTH_TIMEOUT_S = 5.0
@@ -143,7 +142,7 @@ PROGRESS_PERIOD_S = 1.0
 
 @dataclass(frozen=True, slots=True)
 class Mirror:
-    """One Overpass *machine* (never a round-robin name: ``net-download.md`` section 5.5)."""
+    """One Overpass *machine* (never a round-robin name)."""
 
     code: str
     interpreter: str
@@ -297,7 +296,7 @@ LAYERS: Mapping[str, LayerSpec] = {
         ),
     )
 }
-"""The five Ortho4XP layers, selectors copied verbatim (spec section 3)."""
+"""The five Ortho4XP layers, selectors copied verbatim."""
 
 
 def layers_for(road_level: int = 1) -> tuple[LayerSpec, ...]:
@@ -338,8 +337,7 @@ def overpass_query(
     timeout_s: int = DEFAULT_QUERY_TIMEOUT_S,
     at: str = "",
 ) -> str:
-    """The OrthoStudio XP query for one layer: JSON, children recursed, ``qt`` order (spec
-    section 3).
+    """The OrthoStudio XP query for one layer: JSON, children recursed, ``qt`` order.
 
     ``at`` asks the servers for the map as it stood at that moment (``[date:"..."]``, what
     Overpass calls attic data). Nothing in a build uses it: it is how a baked tile is proved,
@@ -435,7 +433,7 @@ def split_elements(
 def _canonical(
     nodes: Sequence[OsmNode], ways: Sequence[OsmWay], relations: Sequence[OsmRelation]
 ) -> bytes:
-    """Mirror-, date- and order-independent bytes of the data (spec section 5, content key)."""
+    """Mirror-, date- and order-independent bytes of the data (content key)."""
     doc: list[dict[str, Any]] = []
     for n in sorted(nodes, key=lambda x: x.id):
         doc.append(
@@ -654,7 +652,7 @@ def snapshot_from_overpass(
     query: str = "",
     fetched_at: str | None = None,
 ) -> OsmSnapshot:
-    """Build a snapshot from one Overpass JSON answer (spec section 5)."""
+    """Build a snapshot from one Overpass JSON answer."""
     spec = LAYERS[layer] if isinstance(layer, str) else layer
     doc = orjson.loads(body)
     nodes, ways, relations = parse_overpass_json(body)
@@ -919,7 +917,7 @@ class MirrorBoard:
 
     A build downloads each tile with a client of its own, in a thread and an event loop of its
     own. With a board per client every tile found a dead mirror again by its timeouts: on
-    2026-09-14 ``lz4`` refused connections and each tile lost 10 s to it (``osm-source.md`` 8).
+    2026-09-14 ``lz4`` refused connections and each tile lost 10 s to it.
     The builds of one process share :func:`shared_board`, so a mirror put aside stays aside for
     its cooldown, whatever tile or build comes next; a client made without a board keeps one to
     itself. Thread-safe: the clients of a batch run in different threads.
@@ -1085,7 +1083,7 @@ def osm_progress_message(
 
     It now says what is being waited for, names the layers in words a pilot knows, and gives a
     rate only when something is really coming down: an average over a long wait is not a rate.
-    The rate keeps its brackets, where the Works page reads it (``ui.md`` 2.2).
+    The rate keeps its brackets, where the Works page reads it.
     """
     if not received:
         waiting = ", ".join(LAYER_WORDS.get(name, name) for name in asked)
@@ -1105,7 +1103,6 @@ def osm_progress_message(
 class OverpassClient:
     """Downloads OSM layers from the mirror registry, with a breaker and fail-over.
 
-    Policy: ``docs/specs/osm-source.md`` section 4 and ``docs/specs/net-download.md`` 5.5.
     At most ``max_in_flight`` requests per *cluster*, ``min_interval_s`` between two of them,
     each layer to the least busy cluster, ``max_attempts`` attempts across mirrors (waiting
     ``attempt_delay_s`` only before another machine of the cluster that just failed), and a
@@ -1214,7 +1211,7 @@ class OverpassClient:
         """The mirror of the next attempt: not tried yet for this layer, its breaker not open,
         the last resort only when no other is left. Among them the least busy cluster, then the
         registry's order: with two clusters healthy, four layers are in flight at once instead
-        of two (``osm-source.md`` 4)."""
+        of two."""
         now = time.monotonic()
         usable = [
             m
@@ -1287,7 +1284,7 @@ class OverpassClient:
     # -- health ------------------------------------------------------------------------
 
     async def check_health(self) -> dict[str, MirrorHealth]:
-        """Probe every mirror once (spec section 4, health check) and update the breakers.
+        """Probe every mirror once (health check) and update the breakers.
 
         ``GET <status_url>`` with a 5 s timeout, or a minimal query when no status URL is
         declared. A 403 alone does not disqualify (``overpass.openstreetmap.fr`` refuses the
@@ -1348,7 +1345,7 @@ class OverpassClient:
         on_reply: Callable[[HttpReply], None] | None = None,
         deadline: float | None = None,
     ) -> OsmSnapshot:
-        """One layer of one tile, from the first mirror that answers (spec section 4).
+        """One layer of one tile, from the first mirror that answers.
 
         ``on_reply`` sees every answer (the tile counts the bytes received). Raises
         ``OsxpError("OSM_LAYER_UNAVAILABLE")`` when every attempt failed.
@@ -1666,7 +1663,7 @@ class OverpassClient:
         return wait
 
     def _classify(self, mirror: Mirror, reply: HttpReply) -> tuple[str, str] | None:
-        """``None`` when the answer is usable, else ``(error code, reason)`` (spec 4)."""
+        """``None`` when the answer is usable, else ``(error code, reason)``."""
         if reply.error is not None:
             self._open(mirror.code, reason=reply.error)
             return "OSM_MIRROR_UNREACHABLE", reply.error

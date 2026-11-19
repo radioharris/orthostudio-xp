@@ -176,7 +176,7 @@ def _water_tris_npz(mesh: MeshData) -> MeshWaterTris:
 
 
 def test_precomputed_water_tris_give_the_same_cells() -> None:
-    """``docs/specs/mesh-build.md`` section 7: the split mesh-side / zoom-side is confirmed."""
+    """The split mesh-side / zoom-side is confirmed."""
     points = [_cell_centre(8432, 6000, q, 0) for q in range(4)]
     mesh = _mesh(points, [2, 1, 3, 0])
     from_mesh = water_triangles({TILE: mesh}, TILE, ZL)

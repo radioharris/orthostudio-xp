@@ -146,7 +146,7 @@ def test_the_masks_bytes_do_not_depend_on_the_worker_count(tmp_path: Path) -> No
 def test_the_masks_node_reserves_the_ram_of_the_pool_it_actually_starts(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """``pipeline-build.md`` 8.6: ``ram_mb`` is ``workers x 0.8 GB``, the same ``workers``.
+    """``ram_mb`` is ``workers x 0.8 GB``, the same ``workers``.
 
     AMENDED (was ``xfail(strict)``): the fix gives the pipeline one owner of the number. The
     node binds :class:`MasksJob` with the very count ``_masks_ram_mb`` paid for
@@ -347,7 +347,7 @@ def test_a_custom_dem_file_can_change_without_moving_the_dem_key(tmp_path: Path)
 
     AMENDED docstring, same assertions: the behaviour is kept (making ``custom_dem`` a source
     edge changes the rule's inputs, which belongs to the DEM chantier and is escalated as a
-    blocker), and the consequence the review asked for is now written in ``dem.md`` 9.4 --
+    blocker), and the consequence the review asked for is now written down --
     "changing the content of an elevation file or of custom_dem does not change the key".
     """
     tile = TileRef(46, 5)
@@ -411,8 +411,8 @@ def test_the_triangle4xp_binary_is_not_part_of_the_mesh_key(
     AMENDED docstring, same assertions: the fix pass did **not** close this hole, because
     both ways of closing it (a fourth ``triangle`` input on the rule, or a ``triangle_build``
     digest parameter) change the rule's signature and therefore belong to the mesh chantier;
-    it is escalated as a blocker and written down as a known limit of the cache in
-    ``mesh-build.md`` 9. The test stays green and guards the documented behaviour.
+    it is escalated as a blocker and written down as a known limit of the cache. The test stays
+    green and guards the documented behaviour.
     """
     from orthostudio.graph import key_for
 

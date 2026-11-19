@@ -2,7 +2,7 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """``osxp doctor``: is this machine ready to build a tile?
 
-Checks (spec ``docs/specs/pipeline-textures.md`` section 9): Python, the DDS encoder, the
+Checks: Python, the DDS encoder, the
 HTTP client (curl_cffi, libcurl, HTTP/2), free disk at the store root, the X-Plane 12 folder
 (found as every command finds it), the Triangle4XP binary, one Bing tile (skipped offline), the
 store and chunk roots.
@@ -212,7 +212,7 @@ def _architecture() -> Check:
     under Rosetta passes the Intel preference on to every universal program below it, though the
     engine's own Python has no Intel code: DSFTool and Triangle4XP then run translated, slower, and
     macOS warns that the app "includes a component that will not work with a future release"
-    (found on the first installed app, 2026-09-14; ``docs/specs/packaging.md`` section 2).
+    (found on the first installed app, 2026-09-14).
     """
     if sys.platform != "darwin" or platform.machine() != "arm64":
         return Check("architecture", "skip", "not a Mac with Apple Silicon", {})

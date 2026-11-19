@@ -2,8 +2,7 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """``dem/cog.py``: the window of a tiled GeoTIFF, read from a file or over byte ranges.
 
-No network: a small tiled TIFF is built here, byte for byte, and read back. Spec:
-``docs/specs/dem.md`` section 3.0b.
+No network: a small tiled TIFF is built here, byte for byte, and read back.
 """
 
 from __future__ import annotations

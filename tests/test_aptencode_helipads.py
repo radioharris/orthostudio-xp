@@ -2,7 +2,7 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Unit tests of ``flatten_helipads`` (``O4_Airport_Utils.py:1370-1464``).
 
-Spec: ``docs/specs/airports-encoding.md`` section 9. The reference tile exercised the path too
+The reference tile exercised the path too
 (52 flattened helipads), but only its nominal branch: the exclusions and the hexagon are pinned
 here.
 """

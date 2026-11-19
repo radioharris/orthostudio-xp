@@ -23,7 +23,6 @@ encoding of runways, taxiways, aprons, hangars and helipads, and the 1001×1001 
 raster the roads read. Its artefact gained four files: the smoothed `Data<tile>.alt` with its
 `dem.json`, OrthoStudio XP's own airport record (`airports.npz` + `airports.wkb.json`) and the
 `Data<tile>.apt` bridge Ortho4XP's stage 2 and the DSF airport cover still read (arbitration B3).
-Spec: `docs/specs/airports-integration.md`.
 
 ## 2. Fidelity, in the order of the chain
 

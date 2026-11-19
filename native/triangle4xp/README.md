@@ -3,8 +3,7 @@
 `Triangle4XP.c` is **Triangle 1.6** by Jonathan Richard Shewchuk, as adapted by Oscar Pilote for
 Ortho4XP (curvature-driven refinement of X-Plane terrain meshes), plus the **OrthoStudio XP
 binary I/O modifications** described in [`CHANGES.md`](CHANGES.md). It is built as a separate
-executable and driven as a sidecar process by `orthostudio.mesh` (see ADR 0004 and
-`docs/specs/mesh-triangle-io.md`).
+executable and driven as a sidecar process by `orthostudio.mesh` (see ADR 0004).
 
 ## Provenance
 
@@ -73,7 +72,7 @@ Triangle4XP <switches> scalx scaly nxdem nydem X0 Y0 X1 Y1 nodata curv_tol \
 * `<switches>` as in Ortho4XP, e.g. `-pq10AuYBQPS1331665.3684210528`; add `b` (e.g.
   `-pq10AuYBQPbS...`) for **binary I/O**: `file.poly` and `file.node` are read in the
   `OSXPPOL1` / `OSXPNOD1` layouts and `file.1.node` / `file.1.ele` are written in the
-  `OSXPNOD1` / `OSXPELE1` layouts (`docs/specs/mesh-triangle-io.md`). `-b` cannot be combined
+  `OSXPNOD1` / `OSXPELE1` layouts. `-b` cannot be combined
   with `-r` (refinement of an existing mesh).
 * `file.alt`: `nxdem * nydem` float32, `file.weight`: `1001 * 1001` float32, both raw and
   unchanged from Ortho4XP; a short file is now an error instead of undefined behaviour.

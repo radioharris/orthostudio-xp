@@ -1,6 +1,6 @@
 // OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 // Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-// i18n for the OrthoStudio XP web page (docs/specs/ui.md section 1).
+// i18n for the OrthoStudio XP web page.
 // Every visible string is looked up with t(key); keys are literal in app.js so that
 // tests/test_ui_static.py can check that both languages define each of them.
 // Numbers and durations are formatted here too, so that "1 min 40 – 3 min" reads the same
@@ -2871,7 +2871,7 @@ const RELIEF_WORDS = {
 };
 const reliefWord = (lang, source) => RELIEF_WORDS[lang][String(source || "")] || String(source || "");
 
-// Messages and remedies for the warning / error codes the page knows (docs/specs/errors.md).
+// Messages and remedies for the warning / error codes the page knows.
 // Unknown codes fall back to the message and remedy carried by the engine, and so do the ZONE_*
 // codes when the engine sends a message (it names the zone): see codeWords() in app.js. An entry
 // may be a function of the error's context, and {name} is filled from it.
@@ -3142,7 +3142,7 @@ let current = "en";
 // Only a choice made in the language switch is kept.
 const LANGUAGE_KEY = "osxp.language";
 
-/** English whatever the browser's language (the user's decision, map-zones.md 7.0.7), unless the
+/** English whatever the browser's language (the user's decision), unless the
  * switch chose otherwise. */
 export function detectLanguage() {
   try {

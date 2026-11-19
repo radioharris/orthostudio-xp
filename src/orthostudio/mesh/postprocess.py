@@ -2,7 +2,7 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Altitude post-processing of the Triangle4XP output, and the water table the masks need.
 
-Spec: ``docs/specs/mesh-build.md`` sections 5 and 7. Origin: ``O4_Mesh_Utils.py:230-324``
+Origin: ``O4_Mesh_Utils.py:230-324``
 (``post_process_nodes_altitudes``) and ``O4_Mask_Utils.py:432-620`` (``record_water_tris``,
 mesh-side half only).
 
@@ -13,7 +13,7 @@ plagued over the regions. This module turns that into the altitudes Ortho4XP wri
 flattened, sea forced to zero, airports / roads / patches lifted onto their vector altitude.
 
 Two behaviours of Ortho4XP are quirks that the byte-identity target forces us to keep; both are
-behind a flag, see the spec section 5.1 and the docstrings below.
+behind a flag, see the docstrings below.
 """
 
 from __future__ import annotations
@@ -90,7 +90,7 @@ class TriangleClasses:
 def classify_triangles(
     attr: NDArray[np.integer], *, skip_multiples_of_ten: bool = True
 ) -> TriangleClasses:
-    """Sort the triangles into Ortho4XP's three post-processing classes (spec section 5).
+    """Sort the triangles into Ortho4XP's three post-processing classes.
 
     ``skip_multiples_of_ten`` reproduces ``O4_Mesh_Utils.py:245``, ``if line[-2] == "0": continue``:
     Ortho4XP reads the *last decimal digit of the attribute* to detect the dummy attribute, and so
@@ -161,7 +161,7 @@ def post_process_altitudes(
     keeps the interpolated one).
 
     Returns how many vertices had an empty interpolated altitude (``nan``). They keep the height
-    of the ground Triangle4XP read under them (spec ``mesh-build.md`` 5.3): written as it
+    of the ground Triangle4XP read under them: written as it
     is, an empty altitude became 0 m on an Apple processor and minus nine billion billion metres
     on an Intel or AMD one, which X-Plane could not read (EGJA and LFRT, 2026-10-12). Ortho4XP
     reads the text ``nan`` back as 0.
@@ -204,7 +204,7 @@ def post_process_altitudes(
 
 @dataclass(frozen=True, slots=True)
 class WaterTris:
-    """Mesh-side half of Ortho4XP's ``record_water_tris`` (spec section 7).
+    """Mesh-side half of Ortho4XP's ``record_water_tris``.
 
     One row per triangle that carries at least one water bit, in ``.mesh`` triangle order.
     The corner coordinates are *not* duplicated here: they are
@@ -265,7 +265,7 @@ def water_tris_table(
 
 
 def write_water_tris_npz(path: str | Path, table: WaterTris) -> None:
-    """Write ``water_tris.npz`` (spec section 7), ``.tmp`` + rename."""
+    """Write ``water_tris.npz``, ``.tmp`` + rename."""
     path = Path(path)
     tmp = path.with_name(path.name + ".tmp")
     with open(tmp, "wb") as f:

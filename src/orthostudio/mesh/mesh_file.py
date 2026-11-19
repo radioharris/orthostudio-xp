@@ -2,7 +2,7 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """The ``.mesh`` file of Ortho4XP: typed reader, byte-identical writer, ``.npz`` twin.
 
-Spec: ``docs/specs/mesh-file.md``. Origin: ``O4_Mesh_Utils.py:326-372`` (``write_mesh_file``)
+Origin: ``O4_Mesh_Utils.py:326-372`` (``write_mesh_file``)
 and ``O4_Mesh_Utils.py:847-894`` (``read_mesh_file``).
 
 :class:`MeshData` keeps Ortho4XP's *in-memory* semantics, not the file's: altitudes in metres (the
@@ -140,7 +140,7 @@ def _find(data: bytes, tag: bytes, start: int, what: str) -> int:
 
 
 def read_mesh(path: str | Path) -> MeshData:
-    """Read an Ortho4XP ``.mesh`` file into a :class:`MeshData` (spec section 6)."""
+    """Read an Ortho4XP ``.mesh`` file into a :class:`MeshData`."""
     data = Path(path).read_bytes()
     if b"\r\n" in data[:64]:
         # Ortho4XP writes the file in text mode (``O4_Mesh_Utils.py:326-372``): CRLF on Windows.
@@ -196,7 +196,7 @@ def _lines(rows: list[Any], fmt: str) -> str:
 
 
 def write_mesh_text(path: str | Path, mesh: MeshData) -> None:
-    """Write ``mesh`` in Ortho4XP's exact text layout (spec sections 2 and 4), ``.tmp`` + rename."""
+    """Write ``mesh`` in Ortho4XP's exact text layout, ``.tmp`` + rename."""
     path = Path(path)
     tmp = path.with_name(path.name + ".tmp")
     n, m = mesh.n_vertices, mesh.n_triangles
@@ -295,7 +295,7 @@ def as_written(mesh: MeshData) -> MeshData:
 
 
 def write_mesh_npz(path: str | Path, mesh: MeshData) -> None:
-    """Save ``mesh`` as an uncompressed ``.npz`` (spec section 5), ``.tmp`` + rename."""
+    """Save ``mesh`` as an uncompressed ``.npz``, ``.tmp`` + rename."""
     path = Path(path)
     tmp = path.with_name(path.name + ".tmp")
     with open(tmp, "wb") as f:

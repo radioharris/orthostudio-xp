@@ -2,8 +2,8 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """The author's hints of Ortho4XP, verbatim (``O4_Config_Utils.py:16-352``, ``cfg_vars``).
 
-Generated from Ortho4XP's sources; the UI shows them as tooltips
-(``docs/specs/settings.md`` section 1). Keys are the Ortho4XP variable names. Whitespace is
+Generated from Ortho4XP's sources; the UI shows them as tooltips.
+Keys are the Ortho4XP variable names. Whitespace is
 normalised (the Ortho4XP strings carry line-continuation runs of spaces); wording is untouched.
 """
 

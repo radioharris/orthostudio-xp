@@ -4,8 +4,7 @@
 
 Every failure or silent degradation that OrthoStudio XP can meet has a stable code
 (``DOMAIN_SNAKE_CASE``), an English message, a remedy for the user, a severity and
-an action. The inventory and its origin in Ortho4XP live in
-``docs/specs/errors.md``; this module is the executable registry.
+an action. This module is the executable registry.
 
 Usage::
 

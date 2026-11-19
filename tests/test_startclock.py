@@ -1,7 +1,6 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""How long a start took, and where: what ``serve.log`` says of it (``orthostudio.startclock``,
-``docs/specs/packaging.md`` 4).
+"""How long a start took, and where: what ``serve.log`` says of it (``orthostudio.startclock``).
 
 The app took more than 45 s to open on a cloud PC after an install, and the log could not say
 where the time went (a Shadow PC, 2026-10-02): nothing in it had a time between the window's line

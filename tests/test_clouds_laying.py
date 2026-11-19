@@ -1,6 +1,6 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""The replaced clouds in a tile's folder (``clouds.md`` 2.1 to 2.3): laid in the textures the
+"""The replaced clouds in a tile's folder: laid in the textures the
 build placed, only the blocks a cloud reaches made again at every level; put back byte for byte;
 always laid from the build's own texture, never over a laid one; read from the folder alone; laid
 again after a build where they still stand, whole or not at all; nothing of it ever fails a

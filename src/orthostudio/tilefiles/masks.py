@@ -2,7 +2,7 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Index of the mask PNGs of a tile (``O4_Mask_Utils.py:23-60``, ``O4_File_Names.py:334-345``).
 
-Spec: ``docs/specs/tile-files.md`` section 3.3. The masks artefact holds them at ``mask_zl``
+The masks artefact holds them at ``mask_zl``
 as ``{m_til_y}_{m_til_x}.png``, named as Ortho4XP names them; a texture at ``zl >= mask_zl``
 reads a sub-window of the mask texture that contains it.
 """
@@ -79,7 +79,7 @@ class MaskIndex:
 
 
 def masks_index(directory: Path, mask_zl: int) -> MaskIndex:
-    """Index the ``{m_til_y}_{m_til_x}.png`` masks of one tile's directory (spec 3.3).
+    """Index the ``{m_til_y}_{m_til_x}.png`` masks of one tile's directory.
 
     Only names of that exact form with indices that are multiples of 16 and fit in the
     ``mask_zl`` grid are indexed; ``_dist.png`` and subdirectories are ignored. A missing
