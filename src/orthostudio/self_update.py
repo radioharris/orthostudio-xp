@@ -199,7 +199,7 @@ def installed_here(
             app is None
             or app.suffix != ".app"
             or python.parent != app / "Contents" / "Resources" / "python" / "bin"
-            or "/AppTranslocation/" in str(app)
+            or "AppTranslocation" in app.parts
         ):
             return None
         if _bundle_facts(app)[0] != BUNDLE_ID:
