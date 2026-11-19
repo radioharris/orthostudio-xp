@@ -347,8 +347,9 @@ more, once.
 **Soft banks downloads the masks of rivers and lakes.** The regions of the new mesh keep them
 apart, and only Soft banks downloads them: for Europe, about 3.2 GB more (an estimate from the
 bake of 17 November 2026), 228,000 small files. Under « Soft banks », the Settings say how much
-they add to download for your regions. Choose Soft banks and click Save: Live downloads them region
-after region, with the bar and the Stop of « The mesh, by region », while Live streams too. They
+they add to download for your regions. Choose Soft banks and click Save: Live first asks, with the
+size of the masks of your regions already updated (« Download 15.4 GB of river masks? »), and on
+« Download » downloads them region after region, with the bar and the Stop of « The mesh, by region », while Live streams too. They
 take their place as a region's update does: at once with Live stopped and X-Plane closed, used from
 Live's next start; chosen while X-Plane is open, they wait whole ("Update ready") and Live's next
 start with X-Plane closed puts them in place, a start with X-Plane open flying on without them. A

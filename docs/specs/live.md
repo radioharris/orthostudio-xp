@@ -1274,6 +1274,9 @@ with 3,732 masks; estimated for Europe from the bake of 2026-11-17, about 3.2 GB
 - **The window.** Each region of the list carries `rivers_bytes`, what its river masks would
   download for a region installed that has not got them; « Soft banks » says their sum, « … and
   1.2 GB more to download for your regions. », its plain words alone once they are there.
+  Saving Soft banks where Even was asks first when that downloads something now (`riversAccepted`
+  in live.js): the sum of `rivers_bytes` of the regions not `whole` (one still to update brings its
+  own with its Update), « Download » or « Cancel » (nothing saved).
 
 **It ships with the new world bake.** Today's installed regions of Live's mesh have no
 `_water_overlay` of their own: every water body is a `_sea_overlay` with a mask, so every one gets
