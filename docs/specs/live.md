@@ -384,12 +384,14 @@ start at most 60 s (`GIVE_UP_S`, the log says so); an unexpected error stops Liv
 builder's does. A texture recorded as built whose name had to be made again (its file taken away
 by hand) is built again, unless the builder wrote its file over that new name meanwhile: at a
 start the names are made while the first textures are built, and 168 good ones were built twice
-over Norway (2026-09-30; `Names.leads_to_neutral`). A start's are
-made from the click, and the plugin holds X-Plane until those of its window are there
-(`Streamer.squares_ready`); in flight, the ring gives a square of flight to make the next column
-before X-Plane loads it (4 to 7 minutes at 480 kt, 1.5 for a Concorde). The squares two rings from
-X-Plane's window lose their files (`KEEP`), a texture built kept (the disk budget's), and none while
-X-Plane loads scenery. Until 2026-09-29 the pack held every square's files from its setup: 400,000
+over Norway (2026-09-30; `Names.leads_to_neutral`). A start's are made from the click, and the
+plugin holds X-Plane until those of its window are there. They are counted with the start's
+textures (`start_count`, through `Streamer.squares_left` and `Names.left`: a square made, or
+failing past `GIVE_UP_S`, counts as made), and once every texture is built the plugin's loading
+window and Live's window count them down (`sq=`, below). In flight, the ring gives a square of
+flight to make the next column before X-Plane loads it (4 to 7 minutes at 480 kt, 1.5 for a
+Concorde). The squares two rings from X-Plane's window lose their files (`KEEP`), a texture built
+kept (the disk budget's), and none while X-Plane loads scenery. Until 2026-09-29 the pack held every square's files from its setup: 400,000
 textures and 684,000 `.ter` for Europe, four minutes to set up, three to lay out again for a new
 zoom, and possible only on APFS, whose clones cost nothing. Measured then with Live's real names:
 
@@ -1799,8 +1801,9 @@ A plugin that does not return from one of these messages holds the whole load.
       20.05 and 20.04 s against 23 to 26 ms unpaused.
     - Nothing of X-Plane runs while it is paused, the plugin neither: Live shows the plugin's
       loading window itself (`orthostudio.live.pause_window`: its sizes, colours and words, the
-      start's whole name from the first instant, « preparing the files » while the squares' files
-      are made, before the textures are counted), a Cocoa panel of the app on a Mac (none when Live
+      start's whole name from the first instant, « preparing the files » before the textures are
+      counted, « Preparing the ground: 36 squares » once none is left while the squares' files are
+      made, as the plugin says it), a Cocoa panel of the app on a Mac (none when Live
       runs from a terminal), a topmost window of a thread of its own on Windows, on Linux a process
       of its own while the window is up (`orthostudio.live.pause_window_x11`, X11 through ctypes,
       the plugin's `live_panel_x11.c` window; apart from Live because Live's window is GTK in the
@@ -1838,8 +1841,15 @@ A plugin that does not return from one of these messages holds the whole load.
     Shadow, 2026-10-11; two lines, the textures waiting for photos and those being built, were
     tried and dropped: the second stayed between 0 and 4 on a Mac), « N night textures to build »
     once only night textures are left at a start at night (`night=`, how many of those left are
-    night ones, sent always, 0 too, which an older plugin reads past; the user, 2026-11-11), the
-    seconds since the start was known, and a progress bar; the window's start card says the same.
+    night ones, sent always, 0 too, which an older plugin reads past; the user, 2026-11-11),
+    « Preparing the ground: 36 squares » (« Préparation du sol : 36 carrés », « 1 square ») once
+    no texture is left while the files of the squares round the start are made, the first flight
+    after a region update or a change of the rivers' banks (`sq=`, how many squares of X-Plane's
+    window round the start and round where X-Plane says it loads have files not made yet, the very
+    count the hold waits for, sent always, 0 too, which an older plugin reads past; it said
+    « 0 textures à construire » for 19 s at LSGG, 2026-11-19), the
+    seconds since the start was known, and a progress bar; the window's start card says the same,
+    from the same count (`start_count`, its textures, night textures and squares).
     The bar is the share done of the count it shows, its textures and, while the start waits for
     them (`NightWork.start_night`), its night textures, each part's whole the most seen while it is
     wanted, going back only as work is added, never full with work left (`Arrival.progress`):

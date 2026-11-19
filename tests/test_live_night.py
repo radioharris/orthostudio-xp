@@ -949,6 +949,7 @@ class StartBarTest(unittest.TestCase):
             urgent_left=lambda: day.left,
             urgent_building=lambda: 0,
             built_copy=lambda: {},
+            squares_left=lambda *points: 0,
         )
         a = Arrival(43.63, 1.37, "LFBO", "plugin", 0.0)
         self.assertEqual(start_count(s, a, 0.0, fresh=True)["progress"], 0.0)
@@ -966,7 +967,7 @@ class NightWordsTest(unittest.TestCase):
 
         line = _wait_line(12, "LSGG", 0.5, 30.0, 0.0, "en", building=12, night=12)
         self.assertIn(" night=12 ", line)
-        self.assertTrue(line.split(" at=")[0].endswith("night=12"))  # at= stays last
+        self.assertEqual(line.split(" at=")[1], "LSGG")  # at= stays last
         # 0 said too: the plugin keeps the last value it read (the review of 2026-11-11)
         self.assertIn(" night=0 ", _wait_line(4, "LSGG", 0.5, 30.0, 0.0, "en", building=4))
 
@@ -974,14 +975,14 @@ class NightWordsTest(unittest.TestCase):
         from orthostudio.live.pause_window import lines
 
         self.assertEqual(
-            lines("LSGG", 7, 7, 0.0, 40.0, True, "en", night=7)[1],
+            lines("LSGG", 7, 7, 0.0, 40.0, "en", night=7)[1],
             "7 night textures to build  -  40 s",
         )
         self.assertEqual(
-            lines("LSGG", 7, 7, 0.0, 40.0, True, "fr", night=7)[1],
+            lines("LSGG", 7, 7, 0.0, 40.0, "fr", night=7)[1],
             "7 textures de nuit à construire  -  40 s",
         )
-        self.assertNotIn("night", lines("LSGG", 9, 2, 3.0, 40.0, True, "en", night=7)[1])
+        self.assertNotIn("night", lines("LSGG", 9, 2, 3.0, 40.0, "en", night=7)[1])
 
 
 # --- the review of 2026-11-11: what it found, mended
@@ -1211,6 +1212,7 @@ class NightDiskTest(unittest.TestCase):
             urgent_left=lambda: 0,
             urgent_building=lambda: 0,
             built_copy=lambda: {},
+            squares_left=lambda *points: 0,
         )
         a = Arrival(46.24, 6.11, "LSGG", "plugin", 0.0, held_time=(171, 15.5))
         self.assertEqual(start_count(s, a, 100.0)["left"], 8700)  # its photos built: not ready
@@ -1331,6 +1333,16 @@ class NightDiskTest(unittest.TestCase):
         from orthostudio.live.streamer import Arrival
 
         a = Arrival(43.70, 7.25, "LFMN", "plugin", 0.0)
-        shown = a.count(0, 0, 8700, 0.4)
-        self.assertEqual(shown, {"left": 8700, "building": 8700, "night": 8700, "progress": 0.4})
+        shown = a.count(0, 0, 8700, 0.4, squares=3)
+        self.assertEqual(
+            shown,
+            {
+                "left": 8700,
+                "building": 8700,
+                "night": 8700,
+                "progress": 0.4,
+                "squares": 3,
+                "ready": False,
+            },
+        )
         self.assertIs(a.shown, shown)
