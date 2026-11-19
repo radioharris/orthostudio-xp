@@ -213,9 +213,11 @@ only bit-exact reproduction (section 4).
 ### 6.2 Memory, one cell in flight per worker
 
 One worker, at its peak, after six of its heaviest cells (the cells with the most water
-triangles), at 100 m: the most of five tiles of sea, coasts, lakes and rivers (`+51+004`,
-`+21-083`, `+46+006`, `+49-125`, `+49-126`) at `mask_zl` 14 and 16 (2026-11-19). After 24 cells
-`soft` and `3steps` took 1 MB more on `+49-126`. The counted figures are the measures rounded up
+triangles), at 100 m: the most of five tiles of sea, coasts, lakes and rivers (`+51+004` on
+2026-11-18, `+21-083`, `+46+006`, `+49-125` and `+49-126` on 2026-11-19) at `mask_zl` 14 and 16;
+`soft` with the distance masks after 24 cells (1,740 MB after six; 1,717 after 24 on `+49-126`,
+where `soft` alone grew to 1,942). After 24 cells `soft` and
+`3steps` took 1 MB more on `+49-126`. The counted figures are the measures rounded up
 to the next hundred, and never less than a lighter case: with the inland water never less than
 the sea alone, with the distance masks never less than without them.
 
@@ -230,8 +232,9 @@ the sea alone, with the distance masks never less than without them.
 by `masks_worker_mb` alone. Each cell alone, in a process of its own, took no more than 246, 775,
 1,400 and 1,166 MB at sea: a worker of `soft` grows as it takes more cells, up to 1.9 GB, and a
 collection of Python's garbage after each cell changes nothing (memory the process does not give
-back, not objects kept). `3steps` is at its heaviest at `mask_zl` 16. The distance field comes
-after the profile's blur, while the cell and its fade are still held, so the two add up in part.
+back, not objects kept). `3steps` is at its heaviest at `mask_zl` 16. For `sand` and `rocks` the
+distance field, which comes after the profile's blur while the cell and its fade are still held,
+makes the peak; `3steps` and `soft` reach theirs in their own fade.
 Until 2026-11-19 the reference tile `+43+005` at `mask_zl` 14 gave the figures alone (242, 703,
 981 MB, and `soft` 1,091 at 16: counted 250, 710, 990 and 1,100), the inland water counted as
 the sea alone, and `3steps` and `soft` went past them on every tile above; until 2026-11-18 the
@@ -252,7 +255,7 @@ profile counted 800 MB a worker and every node its whole pool. A caller
 that builds the node without `declare()` gets the one-worker figure, which is the honest
 minimum.
 
-The distance masks are the peak: one 4230 x 4230 cell of `+43+005` measured at **814 MB** of RSS
+For `sand` the distance masks are the peak: one 4230 x 4230 cell of `+43+005` measured at **814 MB** of RSS
 (`sand`/100 m, `nice -n 10`), dominated by the index arrays SciPy allocates inside
 `distance_transform_edt`; `edt_px` writes the float64 field into an array of its own
 (`distances=`) so at least the returned copy is not allocated twice.

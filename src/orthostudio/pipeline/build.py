@@ -2066,9 +2066,9 @@ def masks_ram_from(
 MASKS_BUDGET_SHARE = 2
 """A tile's masks take at most half of the RAM budget (:func:`pool_workers`): the images'
 encoders a third beside them (:data:`PHOTOS_BUDGET_SHARE`). Eight workers of the heaviest profiles
-would take more than a computer of 16 GB has (``soft``: 8 x 1,942 MB measured a worker,
+would take nearly all a computer of 16 GB has (``soft``: 8 x 1,942 MB measured a worker,
 2026-11-19), and a node above the budget only waits for every other step to end, then starts its
-whole pool; ``sand``, the default, keeps its eight from 8 GB up."""
+whole pool; ``sand``, the default, at sea, keeps its eight from 8 GB up at the medium share."""
 
 
 def masks_workers(env: BuildEnv, params: OsxpMasksParams) -> int:

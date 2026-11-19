@@ -19,6 +19,7 @@ from orthostudio.errors import OsxpError
 from orthostudio.graph import Store
 from orthostudio.imagery.providers import load_registry
 from orthostudio.install import packs as install_packs
+from orthostudio.masks.rule import MASKS_BASE_MB, masks_worker_mb
 from orthostudio.masks.rule import MasksParams as OsxpMasksParams
 from orthostudio.mesh.mesh_file import MeshData, write_mesh_npz, write_mesh_text
 from orthostudio.mesh.rule import OSXP_MESH
@@ -1002,10 +1003,10 @@ def test_the_masks_pool_holds_in_half_the_budget(
     config: dict[str, object],
     workers: int,
 ) -> None:
-    """Eight workers of the distance masks with ``soft`` would take more than a computer of 16 GB
-    has (1,750 MB measured a worker), and a node above the budget only waits for every other step
-    to end, then starts its whole pool (2026-11-18): the pool holds in half of the budget, the node
-    hands the rule the very count it reserves."""
+    """Eight workers of ``soft`` would take nearly all a computer of 16 GB has (1,942 MB measured
+    a worker), and a node above the budget only waits for every other step to end, then starts its
+    whole pool (2026-11-18): the pool holds in half of the budget, the node hands the rule the very
+    count it reserves."""
     from orthostudio.pipeline import build as buildmod
 
     monkeypatch.delenv("OSXP_MASKS_WORKERS", raising=False)
@@ -1040,8 +1041,9 @@ def test_the_masks_reserve_a_worker_for_each_cell_with_water(tmp_path: Path, env
     )
     inputs = {name: None for name in masks.inputs}
     inputs["mesh"] = mesh
-    assert masks.ram_from(inputs) == 300 + 300 * 1
-    assert _masks_ram_mb(env, masks.params) == 300 + 300 * 2  # the whole pool
+    worker_mb = masks_worker_mb(masks.params)
+    assert masks.ram_from(inputs) == MASKS_BASE_MB + worker_mb * 1
+    assert _masks_ram_mb(env, masks.params) == MASKS_BASE_MB + worker_mb * 2  # the whole pool
 
 
 @pytest.mark.parametrize("damage", ["cut", "not a zip"])

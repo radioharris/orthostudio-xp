@@ -395,8 +395,8 @@ most, added 2026-09-22), national ones for Luxembourg, the Netherlands (4), Spai
   sea, to lakes above `max_area`, and to all inland water when `use_masks_for_inland` is on.
 - **Cost.** No change on disk or download (the same coastal textures are DXT5 in all
   profiles). Masks of `+43+005` (7 files): `sand` 1.07 s, `rocks` 1.32 s, `3steps` 1.69 s
-  (measured, `masks-build.md` 6.1). Memory per worker, the most of five tiles: 277 / 776 / 1,402
-  MB, `soft` 1,941 MB (measured, 6.2); the build starts as many as half of its memory holds, so on
+  (measured, `masks-build.md` 6.1). Memory per worker at sea, the most of five tiles: 277 / 776 /
+  1,402 MB, `soft` 1,941 MB (measured, 6.2); the build starts as many as half of its memory holds, so on
   16 GB `3steps` and `soft` run three and two at once instead of eight. A change rebuilds masks,
   DSF and coastal textures: 4.1 s for a width change (measured, `p3-native.md` 4).
 - **Recommendation. Shown** with `sand`, `rocks` and `soft` (marked experimental); `3steps`

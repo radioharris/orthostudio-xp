@@ -879,9 +879,8 @@ tiles were the same to the byte in every run.
 
 The masks node reserves **a worker for each cell with water to draw** (`masks_ram_from`): 300 MB,
 and for each cell, as many as the pool has (`masks_workers`, the cap of `worker_count`), what one
-worker of the profile takes (`masks_worker_mb`: `sand` 300 MB, `rocks` 800, `3steps` 1,500, `soft` 2,000 at sea;
-with the inland water 500, 1,000, 1,500 and 2,000; with the distance masks 1,400, 1,600, 1,500 and
-2,000; `masks-build.md` 6.2). The cells are counted before it starts, from the
+worker of the profile takes, the sea alone, with the inland water or with the distance masks
+(`masks_worker_mb`, measured: `masks-build.md` 6.2). The cells are counted before it starts, from the
 `water_tris.npz` of the tile and its neighbours (`masks.water.mask_cell_count`, the cutting the
 masks use themselves), read only when their `stats.json` has water the masks draw (`water_bits_counts`:
 the sea and the water marked like it, every water triangle with `use_masks_for_inland`); a mesh
@@ -895,12 +894,13 @@ rule**: `_masks_run` binds `MasksJob(workers=masks_workers(env, params), cancel=
 passes it to `build_masks`, and `worker_count` honours it, so the declared budget describes the pool
 that starts. `masks_workers(env, params)` is `$OSXP_MASKS_WORKERS` when it is a positive integer,
 else `min(8, --workers)`, as many as half of the RAM budget holds of the profile's worker
-(`pool_workers`, the rule of the images' encoders, which take a third): eight workers of the
-distance masks with `soft` would take more than a computer of 16 GB has (1,750 MB measured a
+(`pool_workers`, the rule of the images' encoders, which take a third): eight workers of `soft` would take nearly all a computer of 16 GB has (1,942 MB measured a
 worker), and a node above the budget only waits for every other step to end, then starts its whole
 pool (2026-11-18). On 16 GB at the medium share that leaves `sand` its eight (with the inland
 water too), `rocks` six (five with the inland water), `3steps` three and `soft` two; the distance
-masks three, `soft`'s two. The variable has one parser (`masks.build.env_workers`, `masks-build.md`
+masks three, `soft`'s two. What it costs, the masks of `+49-126` on the Mac (2026-11-19): `soft`
+2.4 s with eight workers and 6.0 with two at `mask_zl` 14, 8.5 and 27.3 s at 16; `3steps` 2.0 and
+3.9 s with three, 7.4 and 17.3 s. The variable has one parser (`masks.build.env_workers`, `masks-build.md`
 6.5) and `0`, a negative value or junk mean *unset*. The rule's own decorator declares 2300 MB,
 the honest cost of a node built without `declare()` (base + one worker of the heaviest profile).
 
