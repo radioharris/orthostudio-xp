@@ -390,7 +390,7 @@ def test_the_disk_counts_the_water_photos(tmp_path: Path) -> None:
     assert 5_590_000 < water_bytes(0, 0) < 5_610_000 + ALLOC_BLOCK  # 64 KB steps on Windows
     assert water_bytes(-1, -1) == water_bytes(0, -1) == water_bytes(0, 0)
     assert water_bytes(1, 1) < water_bytes(0, 0) // 3  # 1024 px for a 2048 px land
-    assert water_bytes(4, 0) < 100_000 and water_bytes(5, 0) == 0
+    assert water_bytes(4, 0) < 100_000 + ALLOC_BLOCK and water_bytes(5, 0) == 0
     built = {"a.dds": 0, "b.dds": 0}
     water = {"a.dds": 0}
     assert usage(built, water=water) == usage(built) + water_bytes(0, 0)
