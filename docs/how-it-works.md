@@ -531,7 +531,8 @@ all bring the window back in front and ask the same question, telling you when a
 where there is no icon to show that it runs, it still stops by itself five minutes after its last
 page closed, with no build running or waiting.
 
-**A new version.** When a newer OrthoStudio XP is out, a line at the top of the page says so. On
+**A new version.** When a newer OrthoStudio XP is out, a line at the top of the page says so, Build's
+and Live's alike (*Not now* hides it on both until a newer one). On
 macOS, Windows and Linux, *Install and relaunch* installs it: a bar shows the installation while the app
 is still open, then OrthoStudio XP quits, puts the new version in place of the old one and opens
 again by itself, your tiles and settings kept: a few seconds later on macOS and Linux, and on

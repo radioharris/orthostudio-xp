@@ -47,9 +47,10 @@ Python inside.
 Opening OrthoStudio XP shows its page in a window of its own, which works like any window on your
 system; opening it again brings that window back. It keeps a browser's habits: Cmd+F or Ctrl+F
 finds text on the page, and Cmd or Ctrl with `+`, `-` and `0` changes the text size, which it
-remembers. When a newer version is out, a line at the top of the page says so. On macOS, Windows
-and Linux, *Install and relaunch* downloads it and installs it: OrthoStudio XP quits, then opens
-again in its new version, your tiles and settings kept; it asks first while a build or Live runs.
+remembers. When a newer version is out, a line at the top of the page says so, in Build and in
+Live alike. On macOS, Windows and Linux, *Install and relaunch* downloads it and installs it:
+OrthoStudio XP quits, then opens again in its new version, your tiles and settings kept; it asks
+first while a build or Live runs.
 Where the app cannot replace itself (the Windows zip, a folder it cannot write), the line links to
 its release page instead.
 Nothing is downloaded or installed unless you ask, GitHub is asked once a day at most, and Settings

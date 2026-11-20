@@ -49,6 +49,7 @@ PAGE_MODULES = (
     "settings.js",
     "sources.js",
     "textsize.js",
+    "update.js",
     "zoom.js",
 )
 """The page's own modules: every visible string of theirs goes through a literal t() key."""
@@ -582,7 +583,8 @@ def test_decode_borders_reads_the_format_and_refuses_another() -> None:
 
 
 def _function_body(code: str, name: str) -> str:
-    match = re.search(rf"\n(?:export )?(?:async )?function {name}\(.*?\n\}}\n", code, re.S)
+    # at the top of its file or inside another function: closed at its own indentation
+    match = re.search(rf"\n( *)(?:export )?(?:async )?function {name}\(.*?\n\1\}}\n", code, re.S)
     assert match is not None, name
     return match.group(0)
 
@@ -5609,25 +5611,29 @@ def test_the_mock_takes_an_imported_tile_off_the_list_like_the_engine() -> None:
 
 
 def test_the_page_says_when_a_newer_version_is_out() -> None:
-    """A user who did not read the forum stayed on the version he had, with bugs fixed since, and
-    nothing told him (2026-09-21). One line at the top, with a link to the release page, and where
-    the app can replace itself *Install and relaunch* (2026-11-17); "Not now" hides it until the
-    next version."""
+    """One line at the top, with a link to the release page, and where the app can replace itself
+    *Install and relaunch*; "Not now" hides it until the next version, on Build's page and Live's
+    alike: one banner (update.js) both pages bind."""
     app_js = (UI / "app.js").read_text(encoding="utf-8")
-    load = _function_body(app_js, "loadUpdate")
-    assert 'api("GET", "/api/update")' in load
+    banner = (UI / "update.js").read_text(encoding="utf-8")
+    assert 'request("GET", "/api/update")' in _function_body(banner, "load")
     # asked once the page is up, and never waited for: a slow GitHub must not hold the page back
     boot = _function_body(app_js, "boot")
     assert "loadUpdate();" in boot and "await loadUpdate" not in boot
-    note = _function_body(app_js, "renderUpdateNote") + _function_body(app_js, "updateNoteParts")
+    assert "bindUpdate({" in _function_body(app_js, "loadUpdate")
+    assert "resized: measureMapTop" in _function_body(app_js, "loadUpdate")  # it sits above the map
+    note = _function_body(banner, "parts")
     # the button only where the engine says the app can replace itself
-    assert "if (u.installable)" in note and "installUpdate(false)" in note
+    assert "if (offer.installable)" in note and "install(false)" in note
     # a link, not window.open: the window hands only a clicked target="_blank" link to the
     # system's browser
-    assert 'h("a", {' in note and 'target: "_blank"' in note and 'rel: "noopener"' in note
-    assert "window.open(" not in note  # a call; the comment above says why there is none
-    assert "UPDATE_DISMISSED_KEY, u.latest" in note  # put away for this version, not for ever
-    assert "measureMapTop();" in note  # it sits above the map
+    assert 'el("a", {' in note and 'target: "_blank"' in note and 'rel: "noopener"' in note
+    assert "window.open(" not in banner  # a call; the comment above says why there is none
+    # put away for this version, not for ever, and for both pages: the server keeps it
+    assert '"/api/update/later", { version }' in _function_body(banner, "later")
+    # Live's page binds the same banner, asking Live's server the same paths
+    live_js = (UI.parent / "live" / "ui" / "live.js").read_text(encoding="utf-8")
+    assert 'import("../static/update.js")' in live_js and "request: osxpRequest" in live_js
     tables = _i18n_tables()
     for lang in ("en", "fr"):
         for key in (

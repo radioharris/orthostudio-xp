@@ -9,6 +9,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from orthostudio.api.update_requests import UpdateInstallRequest, UpdateLaterRequest
 from orthostudio.errors import OsxpError
 from orthostudio.zones import MAX_ZONES, check_zone_ids, too_many_zones
 from orthostudio.zones import TileChoice as TileChoiceModel
@@ -33,6 +34,7 @@ __all__ = [
     "ProfileRequest",
     "UninstallRequest",
     "UpdateInstallRequest",
+    "UpdateLaterRequest",
     "ZoneModel",
     "tile_error",
 ]
@@ -222,12 +224,6 @@ class QuitRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     force: bool = False
     """Stop a running build too (the page asks first)."""
-
-
-class UpdateInstallRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    force: bool = False
-    """Stop a build or Live at work too, which the app's quitting stops (the page asks first)."""
 
 
 class ChooseFolderRequest(BaseModel):

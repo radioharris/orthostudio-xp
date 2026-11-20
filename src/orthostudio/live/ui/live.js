@@ -24,13 +24,23 @@ let liveMap = null; // the map (livemap.js), when Leaflet has loaded
 
 // --- talking to the engine ---------------------------------------------------------------------
 
-async function api(path, { method = "GET", body } = {}) {
+async function api(path, options) {
+  return fetchJson(`api/live/${path}`, options);
+}
+
+/** OrthoStudio XP's own paths that Live's server answers too (/api/update…, the new version's
+ * banner: static/update.js), asked as Build's page asks them. */
+function osxpRequest(method, path, body) {
+  return fetchJson(path.replace(/^\//, ""), { method, body });
+}
+
+async function fetchJson(url, { method = "GET", body } = {}) {
   const init = { method, headers: {} };
   if (body !== undefined) {
     init.headers["Content-Type"] = "application/json";
     init.body = JSON.stringify(body);
   }
-  const response = await fetch(`api/live/${path}`, init);
+  const response = await fetch(url, init);
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     const error = new Error(data.detail || data.error?.message || `HTTP ${response.status}`);
@@ -1850,6 +1860,7 @@ function toast(message) {
 }
 
 let osxpWords = null; // OrthoStudio XP's words (static/i18n.js), which its find bar and zoom speak
+let updateBanner = null; // the new version's banner (static/update.js), once loaded
 let textSizeTools = null; // its text size (static/textsize.js), once loaded
 let findTools = null; // its find bar (static/find.js), once loaded
 let zoomRefresh = null; // writes the zoom's level again in the page's language, once bound
@@ -1865,18 +1876,27 @@ let textSizeRefresh = null; // writes the text size's choices again, once bound
  */
 async function bindPageTools() {
   try {
-    const [words, find, zoom, textSize, embed] = await Promise.all([
+    const [words, find, zoom, textSize, embed, update] = await Promise.all([
       import("../static/i18n.js"),
       import("../static/find.js"),
       import("../static/zoom.js"),
       import("../static/textsize.js"),
       import("../static/embed.js"),
+      import("../static/update.js"),
     ]);
     osxpWords = words;
     findTools = find;
     textSizeTools = textSize;
     osxpWords.setLanguage(language());
     textSize.applyTextSize(textSize.savedTextSize());
+    // the new version's banner, as on Build's page: its words are OrthoStudio XP's
+    updateBanner = update.bindUpdate({
+      request: osxpRequest,
+      place: $("main"),
+      resized: measureMapTop,
+      failed: (err) => toast(err.message),
+    });
+    updateBanner.load(); // not awaited: a slow GitHub must never hold the page back
     textSizeRefresh = textSize.bindTextSize($("text-size"));
     find.bindFind();
     whenInOwnWindow(() => {
@@ -2073,6 +2093,7 @@ let tellFrame = null; // gives the app's frame these screens again, in it (embed
 /** Everything the page says again in a new language, chosen here or in the app's frame. */
 function languageChanged() {
   osxpWords?.setLanguage(language());
+  updateBanner?.render();
   tellLanguage();
   liveMap?.languageChanged();
   applyStatic(document);

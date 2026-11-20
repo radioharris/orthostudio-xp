@@ -34,8 +34,10 @@ __all__ = [
     "RELEASES_API",
     "check",
     "is_newer",
+    "later",
     "latest_release",
     "release_page",
+    "say_later",
     "version_tuple",
 ]
 
@@ -158,7 +160,7 @@ def check(
         answer = fetch()
         if answer is not None:
             latest = answer
-        _write(path, {"checked_at": now, "latest": latest})
+        _write(path, {**kept, "checked_at": now, "latest": latest})
     available = is_newer(latest, current)
     return {
         "current": current,
@@ -166,3 +168,16 @@ def check(
         "url": release_page(latest) if available and latest else None,
         "available": available,
     }
+
+
+def later(path: Path) -> str | None:
+    """The version the pilot said *Not now* to, on either page: its banner stays hidden until a
+    newer one is out."""
+    said = _read(path).get("later")
+    return said if version_tuple(said) else None
+
+
+def say_later(path: Path, version: str) -> None:
+    """*Not now* to ``version``, kept beside what GitHub said, for every page of the app."""
+    if version_tuple(version):
+        _write(path, {**_read(path), "later": version})

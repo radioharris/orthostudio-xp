@@ -84,6 +84,7 @@ __all__ = [
     "installed_here",
     "installer_names",
     "last_try",
+    "offer",
     "stage_app",
     "stage_folder",
     "swap_script",
@@ -580,6 +581,22 @@ def _write_pending(home: Path, version: str, reason: str | None = None) -> None:
     with contextlib.suppress(OSError):
         path.parent.mkdir(parents=True, exist_ok=True)
         atomic_write_text(path, json.dumps(doc))
+
+
+def offer(
+    home: Path, current: str, *, ask: bool, installable: bool, busy: bool = False
+) -> dict[str, Any]:
+    """What the new version's banner says (``GET /api/update``), for Build's page and Live's
+    alike: whether a newer version is out (:func:`orthostudio.update.check`, GitHub asked only
+    with ``ask``), whether this app installs it (``installable``), the last try that did not
+    (none while one runs: ``busy``), and whether the pilot said *Not now* to it (``later``)."""
+    path = home / update.CACHE_NAME
+    answer: dict[str, Any] = {"current": current, "latest": None, "url": None, "available": False}
+    if ask:
+        answer = update.check(current, path=path)
+    tried = None if busy else last_try(home, current)
+    later = answer["latest"] is not None and update.later(path) == answer["latest"]
+    return {**answer, "installable": installable, "last_try": tried, "later": later}
 
 
 def last_try(home: Path, current: str) -> dict[str, str] | None:

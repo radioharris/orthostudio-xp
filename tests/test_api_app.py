@@ -1570,8 +1570,13 @@ async def test_the_page_is_told_when_a_newer_version_is_out(
             # an engine osxp serve did not start, from a checkout: the link alone
             "installable": False,
             "last_try": None,
+            "later": False,
         }
         assert (home / update.CACHE_NAME).is_file()
+        # Not now, kept in the home for every page of the app: hidden until a newer one is out
+        assert (await c.post("/api/update/later", json={"version": "999.0.0"})).status_code == 200
+        assert (await c.get("/api/update")).json()["later"] is True
+        assert update.later(home / update.CACHE_NAME) == "999.0.0"
 
         # said no in Settings: the answer is "nothing", and GitHub is not asked
         asked.clear()

@@ -170,6 +170,7 @@ def create_live_app(
     )
     from orthostudio.api.page_kept import LIVE_PAGE_FILE, kept_page, page_kept_router
     from orthostudio.live.api import live_router
+    from orthostudio.live.update_relay import update_router
     from orthostudio.ui import ui_dir
 
     app = FastAPI(title=TITLE, docs_url=None, redoc_url=None, openapi_url=None)
@@ -179,6 +180,7 @@ def create_live_app(
     app.include_router(_map_router(map_fetch))
     app.include_router(_airports_router())
     app.include_router(page_kept_router(LIVE_PAGE_FILE))
+    app.include_router(update_router())  # the new version's banner, as on Build's page
     app.mount("/static", _RevalidatedStaticFiles(directory=ui_dir()), name="static")
     app.mount("/live", _RevalidatedStaticFiles(directory=UI_DIR), name="live")
 

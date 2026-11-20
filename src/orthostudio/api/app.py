@@ -67,6 +67,7 @@ from orthostudio.api.models import (
     SourceTestRequest,
     UninstallRequest,
     UpdateInstallRequest,
+    UpdateLaterRequest,
 )
 from orthostudio.api.page_kept import kept_page, page_kept_router
 from orthostudio.api.presence import Presence
@@ -1232,14 +1233,20 @@ def create_app(
         app can install it from the page (``orthostudio.self_update``); ``last_try``: the last try
         that did not, and why, until the version it tried starts."""
         installer = update_installer()
-        answer: dict[str, Any] = {
-            "current": __version__, "latest": None, "url": None, "available": False,
-        }  # fmt: skip
-        if settings().expert.check_updates:
-            path = osxp_home() / update.CACHE_NAME
-            answer = await asyncio.to_thread(update.check, __version__, path=path)
-        tried = None if installer.busy() else self_update.last_try(osxp_home(), __version__)
-        return {**answer, "installable": installer.here is not None, "last_try": tried}
+        return await asyncio.to_thread(
+            self_update.offer,
+            osxp_home(),
+            __version__,
+            ask=settings().expert.check_updates,
+            installable=installer.here is not None,
+            busy=installer.busy(),
+        )
+
+    @app.post("/api/update/later")
+    async def update_later(req: UpdateLaterRequest) -> dict[str, Any]:
+        """The banner's *Not now*, for every page of the app (``orthostudio.update.say_later``)."""
+        update.say_later(osxp_home() / update.CACHE_NAME, req.version)
+        return {"later": req.version}
 
     @app.post("/api/update/install", status_code=202)
     async def update_install(req: UpdateInstallRequest) -> Any:
