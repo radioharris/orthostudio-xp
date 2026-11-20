@@ -229,6 +229,9 @@ tile from its own library, cut from OpenStreetMap's planet file, or from public 
 answer, to shape its terrain. Like the
 imagery, the tiles built from them are for your own use.
 
+The scenery Live downloads (each region's mesh, river masks, overlays and night map) has its own
+terms and the credits of its sources: see [SCENERY-LICENCE.md](SCENERY-LICENCE.md).
+
 The page's street map comes from [OpenFreeMap](https://openfreemap.org) (© OpenMapTiles, data ©
 OpenStreetMap contributors), read through the engine so the page contacts nothing but its own
 address. Base-map borders: Natural Earth (public domain). Map libraries: Leaflet (BSD-2-Clause)
