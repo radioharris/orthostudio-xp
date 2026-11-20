@@ -7,7 +7,7 @@ one absolute directory per line (trailing ``/`` included), in a per-user text fi
 location depends on the OS. Detection reads that file first, then the usual folders.
 
 ``xplane_running`` reads the process list without ``psutil``: ``/proc/<pid>/comm`` on Linux
-(X-Plane by the first word of its command line, :func:`linux_name`), ``ps -axo comm=`` on other
+(X-Plane by its first argument, :func:`linux_name`), ``ps -axo comm=`` on other
 POSIX systems, ``tasklist /FO CSV /NH`` on Windows. Only the executable base name is compared,
 never the arguments, so that ``orthostudio`` itself (whose arguments may contain ``X-Plane 12``) is
 never mistaken for the simulator.
@@ -253,11 +253,14 @@ def packs_of_their_own(xplane: Path) -> list[str]:
 
 
 def linux_name(entry: Path, name: str) -> str:
-    """A Linux process's name: ``name``, the one ``/proc/<pid>`` gives, unless the program it runs
-    (the first word of its command line) is X-Plane, which renames its main thread, the name Linux
-    gives (« Main Thread »)."""
+    """A Linux process's name: ``name``, or X-Plane's executable where it is its first argument
+    (X-Plane names its main thread « Main Thread », the name ``/proc`` gives). Only this user's
+    processes are read, a few bytes each."""
     with contextlib.suppress(OSError):
-        first = (entry / "cmdline").read_bytes().split(b"\0", 1)[0]
+        if entry.stat().st_uid != os.getuid():
+            return name
+        with open(entry / "cmdline", "rb") as f:
+            first = f.read(4096).split(b"\0", 1)[0]
         program = Path(first.decode("utf-8", errors="replace")).name
         if program in XPLANE_EXECUTABLES:
             return program

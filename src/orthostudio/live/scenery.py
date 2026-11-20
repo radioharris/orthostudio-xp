@@ -620,11 +620,11 @@ def _darwin_processes() -> dict[int, tuple[str, float]] | None:
 
 
 def _linux_processes(proc: Path = Path("/proc")) -> dict[int, tuple[str, float]] | None:
-    """From ``/proc``: each process's name (15 characters at most, X-Plane-x86_64 whole, X-Plane's
-    by its program, :func:`linux_name`) and its start, in clock ticks after the boot. A process
-    that has quit but that its parent has not yet looked at (a zombie, ``Z``) is not running:
-    X-Plane started by Live is looked at by a thread of Live's (:func:`_spawn`), one started by
-    another program may wait."""
+    """From ``/proc``: each process's name (:func:`linux_name`, 15 characters at most) and its
+    start, in clock ticks after the boot. A process that has quit but that its parent has not yet
+    looked at (a zombie, ``Z``) is not running: X-Plane started by Live is looked at by a thread of
+    Live's (:func:`_spawn`), one started by another program may wait. Nor is one X-Plane forked,
+    named as X-Plane until it runs its own program."""
     try:
         boot = next(
             float(line.split()[1])
@@ -636,6 +636,7 @@ def _linux_processes(proc: Path = Path("/proc")) -> dict[int, tuple[str, float]]
     except (OSError, StopIteration, ValueError, IndexError):
         return None
     out = {}
+    parents = {}
     for entry in entries:
         try:
             stat = (entry / "stat").read_text()
@@ -645,9 +646,11 @@ def _linux_processes(proc: Path = Path("/proc")) -> dict[int, tuple[str, float]]
                 continue
             start = boot + int(fields[19]) / tick  # the 22nd field
             out[int(entry.name)] = (linux_name(entry, name), start)
+            parents[int(entry.name)] = int(fields[1])  # the 4th field
         except (OSError, ValueError, IndexError):
             continue  # gone meanwhile
-    return out
+    xplanes = {pid for pid, (name, _) in out.items() if name in XPLANE_EXECUTABLES}
+    return {pid: v for pid, v in out.items() if not (pid in xplanes and parents[pid] in xplanes)}
 
 
 def _spawn(cmd: list[str], cwd: Path | None = None) -> subprocess.Popen:

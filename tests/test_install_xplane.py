@@ -161,8 +161,8 @@ def test_ps_and_tasklist_parsing(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_x_plane_renaming_its_main_thread_is_found_on_linux(tmp_path: Path) -> None:
-    """X-Plane 12.4 on Linux names its main thread « Main Thread », the name /proc gives: found by
-    the first word of its command line; another program keeps its own name."""
+    """X-Plane on Linux names its main thread « Main Thread », the name /proc gives: found by its
+    first argument; another program keeps its own name, X-Plane in its arguments or not."""
     for pid, comm, cmdline in (
         ("10", "Main Thread", b"./X-Plane-x86_64\0"),
         ("11", "bash", b"bash\0-c\0X-Plane-x86_64\0"),
