@@ -531,20 +531,21 @@ all bring the window back in front and ask the same question, telling you when a
 where there is no icon to show that it runs, it still stops by itself five minutes after its last
 page closed, with no build running or waiting.
 
-**A new version.** When a newer OrthoStudio XP is out, a line at the top of the page says so, Build's
-and Live's alike. On
-macOS, Windows and Linux, *Install and relaunch* installs it: a bar shows the installation while the app
-is still open, then OrthoStudio XP quits, puts the new version in place of the old one and opens
-again by itself, your tiles and settings kept: a few seconds later on macOS and Linux, and on
-Windows once its installer, whose progress shows, has finished. While a build or Live runs, it asks first, as *Quit* does: installing stops them,
-what is already built is kept, and X-Plane flies on over the photos already made. *Cancel*, beside the
-bar, stops it. An install that did not complete says why on the same line, the next time the app
-opens, and the old version is still there. On Linux the new version takes the place of the folder
-you extracted, under its name, and opens in your browser as before. Where the app cannot replace
-itself (an account of a Mac that is not an administrator's, the Windows zip, a Linux folder you
-cannot write), the line links to the release page instead, where you download the installer.
-*What's new* opens that page too, and *Not now* hides the line, on both pages, until the next
-version. The check asks GitHub once a day at most, and Settings can turn it off.
+**A new version.** When a newer OrthoStudio XP is out, a line at the top of the page says so,
+Build's and Live's alike. On macOS, Windows and Linux, *Install and relaunch* installs it: a bar
+shows the installation while the app is still open, then OrthoStudio XP quits, puts the new version
+in place of the old one and opens again by itself, your tiles and settings kept: a few seconds later
+on macOS and Linux, and on Windows once its installer, whose progress shows, has finished. While a
+build or Live runs, it asks first, as *Quit* does: installing stops them, what is already built is
+kept, and X-Plane flies on over the photos already made. *Cancel*, beside the bar, stops it. An
+install that did not complete says why on the same line, the next time the app opens, and the old
+version is still there. On Linux the new version takes the place of the folder you extracted, under
+its name, and opens in your browser as before. Where the app cannot replace itself (an account of a
+Mac that is not an administrator's, the Windows zip, a Linux folder you cannot write), the line
+links to the release page instead, where you download the installer. *What's new* opens that page
+too. *Not now* hides the line until the next version: at once on the page where you clicked it, and
+on the other page the next time it is opened. The check asks GitHub once a day at most, and Settings
+can turn it off.
 
 The window is drawn by the web view your system already carries, so the page is the same one a
 browser would show. At the right end of the bar at its foot, `− 100 % +` zooms the whole page (Ctrl

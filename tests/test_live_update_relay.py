@@ -11,9 +11,10 @@ import time
 from pathlib import Path
 from typing import Any
 
+import anyio
 import pytest
 
-from orthostudio import __version__, self_update, update
+from orthostudio import __version__, desktop, self_update, update
 from orthostudio.live import update_relay
 from test_api_fakes import client_for
 
@@ -36,7 +37,7 @@ class Engine:
         self.asked: list[tuple[str, str, Any]] = []
         self.started = threading.Event()
 
-    def answer(self, port: int, method: str, path: str, body: Any = None) -> Any:
+    def answer(self, method: str, path: str, body: Any = None) -> Any:
         self.asked.append((method, path, body))
         if path == "/api/update/install" and method == "POST":
             return 202, {"state": "preparing", "version": "999.0.0", "done": 0, "total": 10}
@@ -47,21 +48,27 @@ class Engine:
         self.up = True
 
 
-def live_app(engine: Engine, monkeypatch: pytest.MonkeyPatch, **kw: Any) -> Any:
+def live_app(engine: Engine, monkeypatch: pytest.MonkeyPatch, log: Any = lambda _text: None) -> Any:
     from fastapi import FastAPI
 
     monkeypatch.setattr(update_relay, "_ask", engine.answer)
+    monkeypatch.setattr(desktop, "engine_here", lambda *_a, **_k: engine.up)
+    monkeypatch.setattr(desktop, "_listening", lambda _port: engine.up)
+    monkeypatch.setattr(desktop, "start_engine", lambda _log: engine.start())
+    monkeypatch.setattr(update_relay, "STEP_S", 0.01)
     app = FastAPI()
-    app.include_router(
-        update_relay.update_router(
-            port=1,
-            engine_here=lambda: engine.up,
-            port_held=lambda: engine.up,
-            start_engine=engine.start,
-            **kw,
-        )
-    )
+    app.include_router(update_relay.update_router(log=log))
     return app
+
+
+async def until(pred: Any) -> Any:
+    """``pred()``'s first true answer, waited for 5 s at most; its last answer after."""
+    for _ in range(500):
+        got = await pred()
+        if got:
+            return got
+        await anyio.sleep(0.01)
+    return got
 
 
 @pytest.mark.anyio
@@ -95,25 +102,24 @@ async def test_install_starts_the_engine_then_hands_it_the_try(
     home: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(self_update, "installed_here", lambda: Path("/Applications/x.app"))
-    monkeypatch.setattr(update_relay, "STEP_S", 0.01)
     engine = Engine(up=False)
+    handed = ("POST", "/api/update/install", {"force": False})
     async with client_for(live_app(engine, monkeypatch)) as c:
         posted = await c.post("/api/update/install", json={"force": False})
         assert posted.status_code == 202
         assert posted.json() == {"state": "starting", "version": "999.0.0"}
         assert engine.started.wait(5)
-        for _ in range(500):
-            if ("POST", "/api/update/install", {"force": False}) in engine.asked:
-                break
-            time.sleep(0.01)
-        assert ("POST", "/api/update/install", {"force": False}) in engine.asked
-        # the engine says the try's state from now on
-        for _ in range(500):
+
+        async def asked() -> bool:
+            return handed in engine.asked
+
+        assert await until(asked)
+
+        async def from_engine() -> Any:  # the engine says the try's state from now on
             state = (await c.get("/api/update/install")).json()
-            if state.get("from") == "engine":
-                break
-            time.sleep(0.01)
-        assert state == {"from": "engine", "path": "/api/update/install"}
+            return state if state.get("from") == "engine" else None
+
+        assert await until(from_engine) == {"from": "engine", "path": "/api/update/install"}
 
 
 @pytest.mark.anyio
@@ -130,12 +136,36 @@ async def test_an_engine_that_cannot_start_leaves_the_banner_and_a_line_in_lives
     said: list[str] = []
     async with client_for(live_app(engine, monkeypatch, log=said.append)) as c:
         assert (await c.post("/api/update/install", json={})).json()["state"] == "starting"
-        for _ in range(500):
-            if (await c.get("/api/update/install")).json() == {"state": "idle"}:
-                break
-            time.sleep(0.01)
-        assert (await c.get("/api/update/install")).json() == {"state": "idle"}
+
+        async def idle() -> bool:
+            return (await c.get("/api/update/install")).json() == {"state": "idle"}
+
+        assert await until(idle)
     assert len(said) == 1 and "No space left on device" in said[0] and engine.asked == []
+
+
+@pytest.mark.anyio
+async def test_an_engine_that_refuses_or_does_not_answer_leaves_a_line_in_lives_log(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(self_update, "installed_here", lambda: Path("/Applications/x.app"))
+    refused = (409, {"error": {"code": "SYS_UPDATE_NONE", "message": "No newer version."}})
+    for answer, why in ((refused, "SYS_UPDATE_NONE"), (None, "did not answer")):
+        engine = Engine(up=False)
+
+        def asked(method: str, path: str, body: Any = None, got: Any = answer) -> Any:
+            return got if method == "POST" else (200, {"state": "idle"})
+
+        engine.answer = asked  # type: ignore[method-assign]
+        said: list[str] = []
+        async with client_for(live_app(engine, monkeypatch, log=said.append)) as c:
+            await c.post("/api/update/install", json={})
+
+            async def idle() -> bool:
+                return (await c.get("/api/update/install")).json() == {"state": "idle"}
+
+            assert await until(idle)
+        assert len(said) == 1 and said[0].startswith(update_relay.HANDING) and why in said[0]
 
 
 @pytest.mark.anyio

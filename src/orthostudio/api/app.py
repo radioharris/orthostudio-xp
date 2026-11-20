@@ -30,7 +30,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from pydantic import ValidationError
 
-from orthostudio import __version__, config, self_update, update
+from orthostudio import __version__, config, self_update
 from orthostudio.airports import default_index as default_airport_index
 from orthostudio.api.basemap import basemap_router
 from orthostudio.api.clouds_api import CloudHooks, clouds_router
@@ -172,7 +172,7 @@ __all__ = [
     "sse_message",
 ]
 
-API_LEVEL = 56
+API_LEVEL = 57
 """What this engine's API offers, for the page: 1 = P2b, 2 = zones (``/api/zones``) and the base map
 (``/api/map``), 3 = deleting a tile (``POST /api/library/{name}/delete``) and the sizes of the
 library, 4 = the disk space of the Library (``GET /api/disk``, ``POST /api/clean``), 5 = clearing
@@ -235,7 +235,8 @@ name, from the second one on), 54 = a cloud's level (``level``, ``levels`` in it
 and ``level`` in its menu, the ``level`` pick) and ``short`` in ``GET /api/providers``, 55 =
 the Library's Find clouds (``/api/cloud-searches``; ``found``, ``find`` and ``failed`` in a
 Clouds cell), 56 = the app's own update (``/api/update/install``; ``installable`` and
-``last_try`` in ``GET /api/update``). A page
+``last_try`` in ``GET /api/update``), 57 = *Not now* kept for both pages
+(``POST /api/update/later``, ``later`` in ``GET /api/update``). A page
 served by an engine older than itself (a ``osxp serve`` started before an update: the page's files
 are read from disk at each load, the routes were imported at start) asks the user to restart
 OrthoStudio XP instead of showing "Not Found"."""
@@ -1229,21 +1230,19 @@ def create_app(
         flying = at_work and isinstance(checks, dict) and bool(checks.get("xplane_running"))
         return self_update.Running(build=manager.active() is not None, live=at_work, flying=flying)
 
-    @app.get("/api/update")
-    async def update_check() -> dict[str, Any]:
-        """Whether a newer OrthoStudio XP has been published (``orthostudio.update``): GitHub is
-        asked at most once a day, and not at all when the setting says no. ``installable``: this
-        app can install it from the page (``orthostudio.self_update``); ``last_try``: the last try
-        that did not, and why, until the version it tried starts."""
-        installer = update_installer()
-        return await asyncio.to_thread(
-            self_update.offer,
+    def offered(installer: Any) -> dict[str, Any]:
+        return self_update.offer(
             osxp_home(),
             __version__,
             ask=settings().expert.check_updates,
             installable=installer.here is not None,
             busy=installer.busy(),
         )
+
+    @app.get("/api/update")
+    async def update_check() -> dict[str, Any]:
+        """What the new version's banner says: :func:`orthostudio.self_update.offer`."""
+        return await asyncio.to_thread(offered, update_installer())
 
     app.include_router(later_router())
 
@@ -1254,16 +1253,12 @@ def create_app(
         build or Live runs that the app's quitting would stop, unless ``force`` (the page has
         asked); a try already under way goes on, and its state is the answer."""
         installer = update_installer()
-        latest = None
-        if installer.here is not None and settings().expert.check_updates:
-            path = osxp_home() / update.CACHE_NAME
-            answer = await asyncio.to_thread(update.check, __version__, path=path)
-            latest = answer["latest"] if answer["available"] else None
-        refused = install_refused(installer.here is not None, latest)
+        now = await asyncio.to_thread(offered, installer)
+        refused = install_refused(now)
         if refused is not None:
             return refused
         # asking Live whether it is at work takes up to 1.5 s: never on the loop
-        await asyncio.to_thread(installer.start, latest, force=req.force)
+        await asyncio.to_thread(installer.start, now["latest"], force=req.force)
         return installer.status()
 
     @app.get("/api/update/install")

@@ -41,17 +41,17 @@ def later_router() -> APIRouter:
     return router
 
 
-def install_refused(installable: bool, latest: str | None) -> Any:
-    """Why *Install and relaunch* cannot be done here, as an answer; None when it can.
-    ``latest``: the newer version known, None when there is none."""
-    if not installable:
+def install_refused(offer: dict[str, Any]) -> Any:
+    """Why *Install and relaunch* cannot be done here, as an answer; None when it can. ``offer``:
+    what the banner says (:func:`orthostudio.self_update.offer`)."""
+    if not offer["installable"]:
         return _plain_error(
             "SYS_UPDATE_NOT_HERE",
             "This OrthoStudio XP cannot install a new version by itself here.",
             "Download the new version from its release page and install it.",
             status=409,
         )
-    if latest is None:
+    if not offer["available"]:
         return _plain_error(
             "SYS_UPDATE_NONE",
             f"No version newer than {__version__} is known.",

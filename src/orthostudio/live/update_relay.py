@@ -8,6 +8,7 @@ starts the engine first, the banner saying the installation starts meanwhile."""
 
 from __future__ import annotations
 
+import http.client
 import json
 import threading
 import time
@@ -16,8 +17,13 @@ import urllib.request
 from collections.abc import Callable
 from typing import Any
 
-# at the module's top: the routes' bodies are read from their annotations
-from orthostudio.api.update_banner import UpdateInstallRequest
+from fastapi import APIRouter
+from fastapi.responses import JSONResponse
+
+from orthostudio import __version__, desktop, self_update
+from orthostudio.api.update_banner import UpdateInstallRequest, install_refused, later_router
+from orthostudio.config.store import load_settings
+from orthostudio.home import osxp_home
 
 ENGINE_WAIT_S = 120.0
 """How long an install waits for the engine it started to answer."""
@@ -26,11 +32,11 @@ HANDING = "Install and relaunch stopped:"
 """How Live's log says an install it could not hand to the engine."""
 
 
-def _ask(port: int, method: str, path: str, body: dict[str, Any] | None = None) -> Any:
+def _ask(method: str, path: str, body: dict[str, Any] | None = None) -> Any:
     """The engine's answer, ``(status, document)``; None when it does not answer."""
     data = json.dumps(body).encode("utf-8") if body is not None else None
     request = urllib.request.Request(
-        f"http://127.0.0.1:{port}{path}",
+        f"http://127.0.0.1:{desktop.ENGINE_PORT}{path}",
         data=data,
         headers={"Content-Type": "application/json"} if data is not None else {},
         method=method,
@@ -41,43 +47,32 @@ def _ask(port: int, method: str, path: str, body: dict[str, Any] | None = None) 
     except urllib.error.HTTPError as refused:
         try:
             return refused.code, json.load(refused)
-        except ValueError:
+        except (ValueError, OSError, http.client.HTTPException):
             return refused.code, {}
-    except (OSError, ValueError):
+    except (OSError, ValueError, http.client.HTTPException):
         return None
 
 
-def update_router(
-    *,
-    port: int | None = None,
-    engine_here: Callable[[], bool] | None = None,
-    port_held: Callable[[], bool] | None = None,
-    start_engine: Callable[[], None] | None = None,
-    wait_s: float = ENGINE_WAIT_S,
-    log: Callable[[str], None] | None = None,
-) -> Any:
-    """``/api/update``, ``/api/update/later`` and ``/api/update/install`` for Live's page. The
-    engine's port, whether it answers, whether something holds its port and how it starts are the
-    app's (:mod:`orthostudio.desktop`) unless a test says otherwise; ``log`` writes in Live's log
-    why an install was not handed over."""
-    from fastapi import APIRouter
-    from fastapi.responses import JSONResponse
+def _refusal(document: Any) -> str:
+    """What an engine's refusal says, in one line."""
+    error = document.get("error") if isinstance(document, dict) else None
+    if isinstance(error, dict) and error.get("message"):
+        return f"{error['message']} ({error.get('code')})"
+    return "the engine refused it"
 
-    from orthostudio import __version__, desktop, self_update
-    from orthostudio.api.update_banner import install_refused, later_router
-    from orthostudio.config.store import load_settings
-    from orthostudio.home import osxp_home
 
-    port = port or desktop.ENGINE_PORT
-    here = engine_here or (lambda: desktop.engine_here(port, timeout_s=1.0))
-    held = port_held or (lambda: desktop._listening(port))
-    start = start_engine or (lambda: desktop.start_engine(desktop.log_path()))
-    say = log or (lambda _text: None)
+def update_router(*, log: Callable[[str], None]) -> Any:
+    """``/api/update``, ``/api/update/later`` and ``/api/update/install`` for Live's page,
+    OrthoStudio XP's engine (:mod:`orthostudio.desktop`) asked when it answers; ``log`` writes in
+    Live's log why an install was not handed over."""
     lock = threading.Lock()
     handing: dict[str, Any] = {}  # the try waiting for the engine: its version
 
+    def here() -> bool:
+        return desktop.engine_here(desktop.ENGINE_PORT, timeout_s=1.0)
+
     def relayed(method: str, path: str, body: dict[str, Any] | None = None) -> Any:
-        got = _ask(port, method, path, body) if here() else None
+        got = _ask(method, path, body) if here() else None
         return None if got is None else JSONResponse(got[1], status_code=got[0])
 
     def offered() -> dict[str, Any]:
@@ -92,17 +87,21 @@ def update_router(
         """The engine started (unless something already starts it), then asked to install."""
         try:
             if first:
-                start()
-            deadline = time.monotonic() + wait_s
+                desktop.start_engine(desktop.log_path())
+            deadline = time.monotonic() + ENGINE_WAIT_S
             while time.monotonic() < deadline:
                 if here():
-                    _ask(port, "POST", "/api/update/install", {"force": force})
+                    got = _ask("POST", "/api/update/install", {"force": force})
+                    if got is None:
+                        log(f"{HANDING} OrthoStudio XP's engine did not answer")
+                    elif got[0] >= 400:
+                        log(f"{HANDING} {_refusal(got[1])}")
                     break
                 time.sleep(STEP_S)
             else:
-                say(f"{HANDING} OrthoStudio XP's engine did not answer in {wait_s:.0f} s")
+                log(f"{HANDING} OrthoStudio XP's engine did not answer in {ENGINE_WAIT_S:.0f} s")
         except Exception as exc:
-            say(f"{HANDING} OrthoStudio XP's engine could not be started: {exc!r}")
+            log(f"{HANDING} OrthoStudio XP's engine could not be started: {exc!r}")
         finally:
             with lock:
                 handing.clear()  # the engine says the try's state from now on, or nothing runs
@@ -120,7 +119,7 @@ def update_router(
         if answer is not None:
             return answer
         now = offered()
-        refused = install_refused(now["installable"], now["latest"] if now["available"] else None)
+        refused = install_refused(now)
         if refused is not None:
             return refused
         with lock:
@@ -128,7 +127,7 @@ def update_router(
                 handing["version"] = now["latest"]
                 threading.Thread(
                     target=hand_over,
-                    args=(req.force, not held()),
+                    args=(req.force, not desktop._listening(desktop.ENGINE_PORT)),
                     name="update-hand-over",
                     daemon=True,
                 ).start()
