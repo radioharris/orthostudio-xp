@@ -47,11 +47,19 @@ def test_linux_s_processes_from_proc(monkeypatch, tmp_path):
     write_stat(proc, 4242, "X-Plane-x86_64", "R", 25_000)  # 250 s after the boot
     write_stat(proc, 4300, "X-Plane-x86_64", "Z", 30_000)  # has quit, its parent not told yet
     write_stat(proc, 77, "a (strange) name", "S", 200)
+    # X-Plane 12.4 renames its main thread, the name Linux gives: known by its program
+    write_stat(proc, 5000, "Main Thread", "S", 40_000)
+    (proc / "5000" / "cmdline").write_bytes(b"./X-Plane-x86_64\0--no_sound\0")
+    # a program whose arguments name X-Plane is not X-Plane
+    write_stat(proc, 5100, "python3", "S", 50_000)
+    (proc / "5100" / "cmdline").write_bytes(b"/usr/bin/python3\0/sims/X-Plane-x86_64\0")
     (proc / "self").mkdir()  # no process's number
     assert scenery._linux_processes(proc) == {
         1: ("systemd", 1_700_000_001.0),
         4242: ("X-Plane-x86_64", 1_700_000_250.0),
         77: ("a (strange) name", 1_700_000_002.0),
+        5000: ("X-Plane-x86_64", 1_700_000_400.0),
+        5100: ("python3", 1_700_000_500.0),
     }
     assert scenery._linux_processes(tmp_path / "none") is None
 

@@ -6,10 +6,11 @@ X-Plane's installer records every installation,
 one absolute directory per line (trailing ``/`` included), in a per-user text file whose
 location depends on the OS. Detection reads that file first, then the usual folders.
 
-``xplane_running`` reads the process list without ``psutil``: ``/proc/<pid>/comm`` on Linux,
-``ps -axo comm=`` on other POSIX systems, ``tasklist /FO CSV /NH`` on Windows. Only the
-executable base name is compared, never the command line, so that ``orthostudio`` itself (whose
-arguments may contain ``X-Plane 12``) is never mistaken for the simulator.
+``xplane_running`` reads the process list without ``psutil``: ``/proc/<pid>/comm`` on Linux
+(X-Plane by the first word of its command line, :func:`linux_name`), ``ps -axo comm=`` on other
+POSIX systems, ``tasklist /FO CSV /NH`` on Windows. Only the executable base name is compared,
+never the arguments, so that ``orthostudio`` itself (whose arguments may contain ``X-Plane 12``) is
+never mistaken for the simulator.
 """
 
 from __future__ import annotations
@@ -34,6 +35,7 @@ __all__ = [
     "detect_xplane",
     "global_scenery_dir",
     "is_xplane_dir",
+    "linux_name",
     "other_xplane_dirs",
     "packs_of_their_own",
     "process_names",
@@ -250,8 +252,19 @@ def packs_of_their_own(xplane: Path) -> list[str]:
 # ----------------------------------------------------------------- running?
 
 
-def _proc_names() -> set[str] | None:
-    proc = Path("/proc")
+def linux_name(entry: Path, name: str) -> str:
+    """A Linux process's name: ``name``, the one ``/proc/<pid>`` gives, unless the program it runs
+    (the first word of its command line) is X-Plane, which renames its main thread, the name Linux
+    gives (« Main Thread »)."""
+    with contextlib.suppress(OSError):
+        first = (entry / "cmdline").read_bytes().split(b"\0", 1)[0]
+        program = Path(first.decode("utf-8", errors="replace")).name
+        if program in XPLANE_EXECUTABLES:
+            return program
+    return name
+
+
+def _proc_names(proc: Path = Path("/proc")) -> set[str] | None:
     if not proc.is_dir():
         return None
     names: set[str] = set()
@@ -259,7 +272,8 @@ def _proc_names() -> set[str] | None:
         if not entry.name.isdigit():
             continue
         with contextlib.suppress(OSError):
-            names.add((entry / "comm").read_text(encoding="utf-8", errors="replace").strip())
+            comm = (entry / "comm").read_text(encoding="utf-8", errors="replace").strip()
+            names.add(linux_name(entry, comm))
     return names
 
 
