@@ -903,6 +903,7 @@ class LiveControl:
             item: dict[str, Any] = {"id": region_id, "installed": region_id in mine}
             # the disk's word, whether the list came or not
             item["waiting"] = region_id in mine and osxpregions.staged_whole(root, region_id)
+            item["held"] = osxpregions.held(root, region_id) if item["waiting"] else None
             kept = osxpregions.kept_mesh(root, region_id) if region_id in mine else None
             if kept is not None:
                 item["kept"] = {"size": _size_of(kept)}
@@ -965,6 +966,15 @@ class LiveControl:
             region = (self._catalog or {}).get(region_id)
         if region is None:
             raise session.RefusedError(f"no region {region_id!r} in the list of Live's regions")
+        try:  # the checks' rule (folder_problem): never a region on the computer's own disk while
+            # the disk of Live's folder is unplugged, nor where Live cannot start
+            xp: Path | None = session.xplane_dir(None)
+        except session.RefusedError:
+            xp = None
+        try:
+            check_folder(live_root(), custom_scenery=xp and xp / "Custom Scenery", create=True)
+        except FolderError as e:
+            raise session.RefusedError(f"Live's folder: {e}") from e
         installed = region_id in osxpregions.installed(live_root())
         overlays, rivers = _takes(self._settings())
         installer = self._installer_of(

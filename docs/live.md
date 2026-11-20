@@ -447,7 +447,8 @@ tool's mesh or an AutoOrtho region changed, a disk holding a mesh not connected)
 start while X-Plane is open, which may be reading those of before: quit X-Plane, or connect that
 disk, then start. On Windows, a region another program holds open cannot be replaced: the panel says
 so; close it and click **Update** again, which downloads nothing more. While a region is being
-downloaded or installed, Start waits, the window saying why. Updating waits until Live is stopped. A
+downloaded or installed, Start waits, the window saying why. Updating waits until Live is stopped,
+the panel saying so under the regions, as it says when the disk of Live's folder is not connected. A
 region's night grids made again on the server while its mesh is not come by themselves, a few
 megabytes (Europe 11.6 MB), as the window opens: no Update to click; with a new mesh they come in
 its update. A region may sit on another disk, linked from Live's folder: the panel says where each

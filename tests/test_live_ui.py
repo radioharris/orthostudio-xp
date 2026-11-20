@@ -1490,6 +1490,7 @@ def test_the_regions_the_page_lists(home: Path, tmp_path: Path, monkeypatch) -> 
         "changed_bytes": 13,
         "rivers_bytes": 0,
         "waiting": False,
+        "held": None,
         "whole": False,  # not installed: nothing of before to keep
     }
     c.install_region("eur")
@@ -1509,6 +1510,12 @@ def test_the_regions_the_page_lists(home: Path, tmp_path: Path, monkeypatch) -> 
     listed = {r["id"]: r for r in c.regions()["list"]}
     assert listed["eur"]["installed"] and listed["eur"]["changed"] == 2  # and its overlays
     assert [r["id"] for r in c.regions()["ours"]] == ["eur"]
+    stage = osxpregions.stage_dir(live_root(), "eur")  # whole, its swap refused at a start
+    stage.mkdir()
+    (stage / aoregions.MARKER).write_text("{}")
+    (stage / osxpregions.STEP).write_text(json.dumps({"held": "z_osxp_eur is in use"}))
+    listed = {r["id"]: r for r in c.regions()["list"]}
+    assert listed["eur"]["waiting"] and listed["eur"]["held"] == "z_osxp_eur is in use"
     monkeypatch.setattr(control_module, "xplane_running", lambda: True)
     with pytest.raises(session.RefusedError, match="X-Plane is running"):
         c.remove_region("eur")  # X-Plane reads its roads: never deleted under it
@@ -1520,6 +1527,21 @@ def test_the_regions_the_page_lists(home: Path, tmp_path: Path, monkeypatch) -> 
         c.remove_region("eur")  # not installed (any more)
     with pytest.raises(session.RefusedError):
         c.install_region("atlantis")
+
+
+def test_no_region_installed_into_a_folder_whose_disk_is_gone(
+    home: Path, tmp_path: Path, monkeypatch
+) -> None:
+    """Live's folder on a disk unplugged: Install refused in the words of Live's start, nothing
+    made on the computer's own disk."""
+    gone = tmp_path / "unplugged" / "live"
+    monkeypatch.setattr(control_module, "live_root", lambda: gone)
+    c = regions_control(tmp_path / "X-Plane 12")
+    c.regions(fetch=True)
+    wait_for(lambda: len(c.regions()["list"]) == 2)
+    with pytest.raises(session.RefusedError, match="is not there: is its disk plugged in"):
+        c.install_region("eur")
+    assert not gone.parent.exists() and c.regions()["install"] is None
 
 
 def kept_world(c: LiveControl) -> tuple[Path, Path]:

@@ -236,6 +236,9 @@ def _why(e: BaseException) -> str:
     return type(e).__name__
 
 
+DAMAGED_LIST = "the server sent it damaged: try again later"
+
+
 def catalog(
     root: Path, *, refresh: bool = False, client=None, host: tuple[str, str] | None = None
 ) -> dict[str, OsxpRegion]:
@@ -264,9 +267,10 @@ def catalog(
             if regions:
                 atomic_write_text(path, json.dumps(doc))
                 return regions
-        except (OSError, ValueError, TypeError, httpx.HTTPError) as e:
-            if not path.exists():
-                raise CatalogError(_why(e)) from e  # the window says what did not come
+        except (OSError, ValueError, TypeError, KeyError, httpx.HTTPError) as e:
+            if not path.exists():  # the window says what did not come
+                damaged = isinstance(e, (ValueError, TypeError, KeyError))
+                raise CatalogError(DAMAGED_LIST if damaged else _why(e)) from e
     if not path.exists():
         raise CatalogError("this build of Live carries no address for its regions")
     try:
@@ -412,6 +416,23 @@ def _rivers_waiting(root: Path, region: str) -> bool:
     return (mesh_dir(root, region) / RIVERS_STAGE / MARKER).is_file()
 
 
+def _waiting_stage(root: Path, region: str) -> Path | None:
+    """The stage of the region's update waiting whole (:func:`staged_whole`): its own, else its
+    river masks'."""
+    for stage in (stage_dir(root, region), mesh_dir(root, region) / RIVERS_STAGE):
+        if (stage / MARKER).is_file():
+            return stage
+    return None
+
+
+def held(root: Path, region: str) -> str | None:
+    """Why the region's update waiting whole did not take its place at Live's last start (a
+    program holding a folder of it open): :func:`settle`'s refusal, None where it was not refused
+    or nothing waits."""
+    stage = _waiting_stage(root, region)
+    return _read(stage / STEP).get("held") if stage is not None else None
+
+
 # --- what a region wants and has --------------------------------------------------------------
 
 
@@ -512,9 +533,12 @@ def _rivers_staged(root: Path, region: OsxpRegion) -> dict[str, str]:
 
 
 def not_installed(root: Path, region: OsxpRegion, rivers: bool) -> list[Zip]:
-    """The zips the region wants (:func:`wanted`) that its marker does not record as installed:
-    downloaded already or not (a whole stage waiting to take its place), an update of it has them
-    to bring."""
+    """The zips an update of the region brings, downloaded already or not (a whole stage waiting
+    to take its place): every one it wants (:func:`wanted`) where it makes the region whole
+    (:func:`made_whole`), whatever its marker records, else those its marker does not record as
+    installed."""
+    if made_whole(root, region):
+        return list(wanted(root, region, rivers))
     have = recorded(root, region)
     return [z for z in wanted(root, region, rivers) if have.get(z.path) != z.sha256]
 
@@ -617,8 +641,12 @@ tried again downloads nothing it has, a deletion is asked again."""
 
 
 def _in_use(what: str, again: str, e: OSError) -> InstallError:
-    """A folder a program holds open (Windows), said: close it, then ``again``."""
-    return InstallError(f"{what} is in use, by X-Plane perhaps: close it, then {again} ({_why(e)})")
+    """A folder a program holds open (Windows), said: close it, then ``again``. Never X-Plane:
+    a region changes only with X-Plane not running."""
+    return InstallError(
+        f"{what} is in use by another program (File Explorer, an antivirus…): close it, then "
+        f"{again} ({_why(e)})"
+    )
 
 
 def _rename(src: Path, dst: Path, what: str, again: str) -> None:
@@ -959,6 +987,10 @@ def settle(root: Path, log: Log = print, *, swap: bool, only: Iterable[str] | No
                 log(f"OrthoStudio XP's region {region}: its river masks put in place")
         except (InstallError, OSError) as e:
             log(f"OrthoStudio XP's region {region}: its update waits ({e})")
+            stage = _waiting_stage(root, region)
+            if stage is not None:  # the window says why (held); the stage's next install clears it
+                with contextlib.suppress(OSError):
+                    _write(stage / STEP, {**_read(stage / STEP), "held": str(e)})
 
 
 def _set_aside_whole(path: Path) -> Path:
@@ -1606,10 +1638,7 @@ class Installer:
         (:func:`_short_of_room`), or :class:`InstallError` saying the first disk short."""
         short = _short_of_room(mesh, ovl, dest, pack, self.download, whole)
         if short:
-            raise InstallError(
-                f"{short[0].need / 1e9:.0f} GB needed on the disk of {short[0].path.resolve()}, "
-                f"{short[0].free / 1e9:.0f} GB free"
-            )
+            raise self._no_room(short[0])
 
     def _make_room(
         self, mesh: list[Zip], ovl: list[Zip], step: dict[str, Any], whole: bool
@@ -1643,10 +1672,21 @@ class Installer:
         need = files + SPARE_BYTES
         free = shutil.disk_usage(dest.resolve()).free
         if free < need:
-            raise InstallError(
-                f"{need / 1e9:.1f} GB needed on the disk of {dest.resolve()} for {z.local}, "
-                f"{free / 1e9:.1f} GB free"
-            )
+            raise self._no_room(Room(dest, need, free))
+
+    def _no_room(self, room: Room) -> InstallError:
+        """A disk short of room, said with the folder the pilot knows: Live's folder for one inside
+        it, else the folder holding it (a region on another disk), never a hidden stage; the need
+        counts what the install unpacks, downloads and leaves free (:data:`SPARE_BYTES`)."""
+        place = room.path.resolve()
+        if place.is_relative_to(self.root.resolve()):
+            place = self.root
+        while place.name.startswith(".") and place.parent != place:
+            place = place.parent
+        return InstallError(
+            f"not enough room on the disk of {place} ({room.need / 1e9:.1f} GB needed while it "
+            f"installs, {room.free / 1e9:.1f} GB free): free some room"
+        )
 
     def _have_bytes(self, todo: Sequence[Zip]) -> int:
         total = 0

@@ -698,7 +698,7 @@ async function regionAct(path, method = "POST", body = undefined) {
  * (the install's progress, or an update waiting whole). Plain data: the rows are drawn again only
  * when it changes, so that a button under the pointer is not replaced while it is clicked (the
  * bytes of a download change every second: they go to the line, never to the row's shape). */
-function regionRow(id, mine, r, install, running, idle, xplane) {
+function regionRow(id, mine, r, install, running, idle, xplane, folder) {
   const busy = Boolean(install) && install.region === id;
   const name = t(`region.${id}`);
   // an update waiting whole, the disk's word (r.waiting), unless a newer one is listed to download
@@ -731,18 +731,19 @@ function regionRow(id, mine, r, install, running, idle, xplane) {
   if (busy && running) {
     buttons.push({ act: "cancel", label: t("regions.cancel") });
   } else if (mine) {
-    if (r.changed) buttons.push({ act: "update", label: t("regions.update"), disabled: running || !idle });
+    if (r.changed) buttons.push({ act: "update", label: t("regions.update"), disabled: running || !idle || folder });
     buttons.push({ act: armed ? "remove" : "arm", danger: true, disabled: !idle || running || xplane,
       label: armed ? t("regions.remove_sure") : t("regions.remove") });
   } else if (r.download) {
-    buttons.push({ act: "install", label: t("regions.install"), disabled: running });
+    buttons.push({ act: "install", label: t("regions.install"), disabled: running || folder });
   }
   // the line: the install of this region while it runs, or why it ended short (failed, stopped),
   // or its update waiting whole. None once it is done, the row saying « Installed » (a line « used
   // from the next start » was read as « restart the app », 2026-11-18), nor while it waits: the
   // disk says that
-  const line = busy && (running || ["failed", "cancelled"].includes(install.phase)) ? "install"
-    : ready ? "waiting" : null;
+  const line = busy && (running || ["failed", "cancelled"].includes(install.phase)) ? { install: true }
+    : ready && r.held ? { text: t("regions.held", { why: r.held }), warn: true }
+    : ready ? { text: t("regions.waiting") } : null;
   // its kept old mesh, under it: its size and its own Delete, which deletes it alone, by the rule
   // of every deletion (Live stopped, no install of it, X-Plane closed: control.py _deleting)
   const kept = mine && r.kept ? {
@@ -876,8 +877,9 @@ function drawRegions(status) {
   $("regions-error").hidden = !regions.error;
   if (regions.error) $("regions-error").textContent = t("regions.error", { error: regions.error });
   const xplane = Boolean(status.checks?.xplane_running); // deleting waits for it to quit: it reads the region
+  const folder = Boolean(status.checks?.folder_problem); // Live's folder unfit: nothing to install into
   const rows = ids.map((id) => regionRow(id, ours.get(id), listed.get(id) || { id, installed: ours.has(id) },
-    install, running, idle, xplane));
+    install, running, idle, xplane, folder));
   // where they are, folder by folder: one may sit on another disk, linked from Live's folder
   const byFolder = new Map();
   for (const r of ours.values()) {
@@ -946,8 +948,9 @@ function drawRegions(status) {
       if (row.line) {
         const line = document.createElement("p");
         line.className = "question-help region-progress";
-        if (row.line === "install") line.id = "region-progress";
-        else line.textContent = t("regions.waiting");
+        if (row.line.install) line.id = "region-progress";
+        else line.textContent = row.line.text;
+        line.classList.toggle("is-warn", Boolean(row.line.warn));
         li.append(line);
       }
       if (row.bar) {
@@ -965,6 +968,12 @@ function drawRegions(status) {
   }
   // "none installed" once the list came (or could not): not while it is asked for
   $("regions-ours-none").hidden = ids.length > 0 || !$("regions-loading").hidden;
+  // why the buttons are grey, by the rules of regionRow, install_region and _deleting
+  const why = folder ? t("checks.folder_problem", { problem: status.checks.folder_problem })
+    : ours.size && !idle ? t("regions.wait_live")
+    : ours.size && xplane ? t("regions.wait_xplane") : "";
+  if ($("regions-why").textContent !== why) $("regions-why").textContent = why;
+  $("regions-why").hidden = !why;
   if (install && $("region-progress")) {
     const line = $("region-progress");
     line.classList.toggle("is-warn", install.phase === "failed");
@@ -975,8 +984,11 @@ function drawRegions(status) {
       const pace = install.mbs >= 0.05 ? install.mbs : 0;
       line.textContent = t(pace ? "regions.progress_pace" : "regions.progress", { done: gb(install.done_bytes),
         total: gb(install.total_bytes), mbs: number(pace, 1), unpacked: install.unpacked, zips: install.zips });
-    } else if (install.phase === "failed") line.textContent = t("regions.failed", { error: install.error });
-    else line.textContent = t("regions.cancelled");
+    } else {
+      const button = t(ours.has(install.region) ? "regions.update" : "regions.install");
+      line.textContent = install.phase === "failed" ? t("regions.failed", { error: install.error, button })
+        : t("regions.cancelled", { button });
+    }
     if ($("region-bar")) {
       const share = install.total_bytes ? install.done_bytes / install.total_bytes : 0;
       $("region-bar").style.width = `${Math.round(share * 1000) / 10}%`;

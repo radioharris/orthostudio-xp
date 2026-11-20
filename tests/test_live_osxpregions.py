@@ -329,7 +329,10 @@ def test_a_full_disk_stops_an_install_before_its_first_byte(
     monkeypatch.setattr(osxpregions.shutil, "disk_usage", full)
     host = Host(files)
     inst, _ = install(tmp_path, region, host)
-    assert inst.progress.phase == "failed" and "GB needed on the disk" in inst.progress.error
+    assert inst.progress.phase == "failed" and inst.progress.error.startswith(
+        f"not enough room on the disk of {tmp_path} ("  # Live's folder, never a hidden stage
+    )
+    assert inst.progress.error.endswith("GB free): free some room")
     assert host.asked == []
 
 
@@ -661,7 +664,7 @@ def test_an_update_waits_while_x_plane_runs_and_live_s_next_start_puts_it_in_pla
     assert marker_of(tmp_path) == before
     assert (pack / "Earth nav data/+40+000/+45+005.dsf").read_bytes() == b"roads a"
     assert osxpregions.staged_whole(tmp_path, "eur")
-    assert osxpregions.not_installed(tmp_path, region, False) == [region.mesh[1]]  # Update
+    assert osxpregions.not_installed(tmp_path, region, False) == list(region.mesh)  # Update
     assert osxpregions.to_fetch(tmp_path, region, True) == ([], [])  # nothing to download
     said: list[str] = []
     osxpregions.settle(tmp_path, said.append, swap=False)  # a start with X-Plane running
@@ -1232,7 +1235,7 @@ def test_soft_banks_with_a_changed_mesh_waits_for_the_update(tmp_path: Path, riv
     files, region = mended_mesh(files, region, 1, {"terrain/b2.ter": b"ter B"})
     assert osxpregions.rivers_to_add(tmp_path, region) == []
     missing = osxpregions.not_installed(tmp_path, region, True)
-    assert missing == [region.mesh[1], *region.rivers]
+    assert missing == [*region.mesh, *region.rivers]
     host = Host(files)
     inst, lines = install(tmp_path, region, host, rivers=True)
     assert inst.progress.phase == "done", lines
@@ -1301,7 +1304,7 @@ def test_an_update_brings_the_river_masks_installed_whatever_the_setting(
     files, region = mended_rivers(files, region, 0, {MASK_A: b"river A"})
     files, region = mended_rivers(files, region, 1, {"rivers/textures/9_9_ZL16.png": b"new"})
     changed = osxpregions.not_installed(tmp_path, region, False)
-    assert changed == [region.mesh[0], *region.rivers]  # Update says them, the setting even
+    assert changed == [*region.mesh, *region.rivers]  # Update says them, the setting even
     host = Host(files)
     inst, lines = install(tmp_path, region, host, rivers=False)
     assert inst.progress.phase == "done", lines
@@ -1385,8 +1388,10 @@ def test_a_full_disk_stops_before_a_zip_and_counts_each_file_a_block(
         osxpregions, "disk_need", lambda p: 10**18 if p.name == full else needing(p)
     )
     inst, _ = install(tmp_path, region, Host(files), overlays=False, rivers=True)
-    assert inst.progress.phase == "failed" and "GB needed on the disk" in inst.progress.error
-    assert region.rivers[1].local in inst.progress.error
+    assert (
+        inst.progress.phase == "failed" and "not enough room on the disk of" in inst.progress.error
+    )
+    assert f"disk of {tmp_path} (" in inst.progress.error  # Live's folder, not the stage in it
     assert not (folder / "rivers").exists()
     download = osxpregions.regions_dir(tmp_path) / ".download" / "osxp_eur"
     assert (download / full).exists()
@@ -1682,6 +1687,52 @@ def test_a_stop_after_the_swap_leaves_no_record_of_the_unpacking_in_the_region(
     assert not (folder / osxpregions.STEP).exists()
 
 
+def test_an_update_refused_at_a_start_says_why_until_its_next_install(
+    tmp_path: Path, world, monkeypatch
+) -> None:
+    """A start with X-Plane closed whose swap another program refuses (Windows): the stage keeps
+    why, for the region's line, never blaming X-Plane; the next install of it clears it."""
+    files, region = world
+    install(tmp_path, region, Host(files))
+    files, region = mended(files, region, 1, {"terrain/b.ter": b"ter B"})
+    install(tmp_path, region, Host(files), may_swap=lambda: False)
+    assert osxpregions.held(tmp_path, "eur") is None
+    replace = osxpregions.replace_file
+
+    def held_open(src: Path, dst: Path) -> None:
+        raise PermissionError(13, "Access is denied")
+
+    monkeypatch.setattr(osxpregions, "replace_file", held_open)
+    osxpregions.settle(tmp_path, lambda _: None, swap=True)
+    why = osxpregions.held(tmp_path, "eur")
+    assert why and why.startswith("z_osxp_eur is in use by another program")
+    assert "X-Plane" not in why and osxpregions.staged_whole(tmp_path, "eur")
+    monkeypatch.setattr(osxpregions, "replace_file", replace)
+    inst, lines = install(tmp_path, region, Host(files), may_swap=lambda: False)
+    assert inst.progress.phase == "waiting", lines
+    assert osxpregions.held(tmp_path, "eur") is None
+
+
+def test_a_marker_naming_both_meshes_still_offers_the_update(tmp_path: Path, world) -> None:
+    """A region a Live of before put back on its old mesh after an update keeps both meshes' zips
+    in its marker: its Update offered all the same, whole, as its install brings it."""
+    files, old = world
+    install(tmp_path, old, Host(files))
+    moved = {z.path: z.path.replace(RELEASE, "2026-12-01") for z in old.mesh}
+    files = {moved.get(p, p): data for p, data in files.items()}
+    new = dataclasses.replace(
+        old, mesh=tuple(entry(moved[z.path], files[moved[z.path]]) for z in old.mesh)
+    )
+    marker = marker_of(tmp_path)
+    both = {**marker["zips"], **{z.path: z.sha256 for z in new.mesh}}
+    folder = osxpregions.mesh_dir(tmp_path, "eur")
+    (folder / aoregions.MARKER).write_text(json.dumps({**marker, "zips": both}))
+    assert osxpregions.made_whole(tmp_path, new)
+    assert osxpregions.not_installed(tmp_path, new, False) == list(new.mesh)
+    mesh, _ = osxpregions.to_fetch(tmp_path, new, False)
+    assert mesh == list(new.mesh)  # what the Update counts is what its install brings
+
+
 def test_a_deletion_drops_the_overlays_record_before_their_files(
     tmp_path: Path, world, monkeypatch
 ) -> None:
@@ -1730,6 +1781,13 @@ def test_what_went_wrong_is_said_in_plain_words_without_the_host(tmp_path: Path,
     with pytest.raises(osxpregions.CatalogError) as e:
         osxpregions.catalog(tmp_path, client=client, host=(URL, "key"))
     assert str(e.value).startswith("the server could not be reached") and URL not in str(e.value)
+    for body in (b'{"regions": {"eur"', b'{"regions": {"eur": {"mesh": [{"path": "a"}]}}}'):
+        cut = httpx.Client(
+            transport=httpx.MockTransport(lambda r, b=body: httpx.Response(200, content=b))
+        )
+        with pytest.raises(osxpregions.CatalogError) as e:
+            osxpregions.catalog(tmp_path, client=cut, host=(URL, "key"))
+        assert str(e.value) == osxpregions.DAMAGED_LIST  # never an error's name
 
 
 # --- the mesh of before kept beside the new one -----------------------------------------------
@@ -1893,9 +1951,7 @@ def test_a_kept_mesh_never_changes(tmp_path: Path, world) -> None:
     assert (kept / aoregions.MARKER).read_text() == marker
     assert (kept / "terrain/b.ter").read_bytes() == b"ter b"
     files, region = updated(files, region, b"third")  # a newer list: the region's Update only
-    assert [z.path for z in osxpregions.not_installed(tmp_path, region, False)] == [
-        region.mesh[1].path
-    ]
+    assert osxpregions.not_installed(tmp_path, region, False) == list(region.mesh)  # whole
     assert (kept / aoregions.MARKER).read_text() == marker
 
 
@@ -1958,9 +2014,7 @@ def test_the_region_s_delete_puts_its_kept_mesh_back_in_its_place(tmp_path: Path
     assert (pack / osxpregions.OVERLAY_RECORD).read_text() == record
     assert not any(region_list_file(lists, f).exists() for f in (folder, kept))
     assert osxpregions.made_whole(tmp_path, region)  # its Update offered again, whole
-    assert [z.path for z in osxpregions.not_installed(tmp_path, region, False)] == [
-        region.mesh[1].path
-    ]
+    assert osxpregions.not_installed(tmp_path, region, False) == list(region.mesh)
     osxpregions.remove(tmp_path, "eur", [(45, 5), (46, 5)], log=lines.append)
     assert not osxpregions.present(tmp_path, "eur")
     assert not (pack / "Earth nav data/+40+000/+45+005.dsf").exists()
@@ -2194,7 +2248,10 @@ def test_no_room_beside_the_region_says_it_and_deletes_nothing(
     for make_room in (False, True):
         host = Host(files)
         inst, _ = install(tmp_path, region, host, make_room=make_room)
-        assert inst.progress.phase == "failed" and "GB needed on the disk" in inst.progress.error
+        assert (
+            inst.progress.phase == "failed"
+            and "not enough room on the disk of" in inst.progress.error
+        )
         assert host.asked == [] and (folder / "terrain/b.ter").read_bytes() == b"ter b"
 
 
