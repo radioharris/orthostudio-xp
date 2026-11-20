@@ -59,8 +59,8 @@ class ChunkCache:
             )
 
     def size_bytes(self) -> int:
-        """The disk the imagery takes: the file's pages in use, read from its header at once
-        whatever its size, without the pages freed pieces left, which the next ones reuse."""
+        """Bytes of the file's pages in use, from its header; the freed ones, which the next
+        pieces reuse, left out."""
         pages, free, size = (
             self.db.execute(f"PRAGMA {name}").fetchone()[0]
             for name in ("page_count", "freelist_count", "page_size")

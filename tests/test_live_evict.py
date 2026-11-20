@@ -175,7 +175,7 @@ class CacheEvictTest(unittest.TestCase):
                 )
             c.db.commit()
             held = c.size_bytes()  # the pages in use: the pieces and their table
-            self.assertGreaterEqual(held, 10_000)
+            self.assertGreater(held, 10_000)
             freed = c.evict_oldest(2500)
             left = [x for (x,) in c.db.execute("SELECT x FROM chunks ORDER BY x")]
             self.assertLess(c.size_bytes(), held)  # freed pages left out
@@ -191,9 +191,8 @@ class CacheEvictTest(unittest.TestCase):
             steps = []
             c.db.set_progress_handler(lambda: steps.append(1), 1)
             c.size_bytes()
-            c.db.set_progress_handler(None, 1)
             c.close()
-        self.assertLess(len(steps), 50)  # a sum over the pieces takes four a piece
+        self.assertLess(len(steps), 50)
 
 
 class PreparedStartTest(unittest.TestCase):
