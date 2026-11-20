@@ -91,17 +91,6 @@ async def test_live_relays_to_the_engine_that_runs(
 
 
 @pytest.mark.anyio
-async def test_not_now_is_kept_for_both_pages(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    engine = Engine(up=False)
-    async with client_for(live_app(engine, monkeypatch)) as c:
-        assert (await c.post("/api/update/later", json={"version": "999.0.0"})).status_code == 200
-        assert (await c.get("/api/update")).json()["later"] is True
-    # the file Build's engine reads too
-    assert update.later(home / update.CACHE_NAME) == "999.0.0"
-    assert self_update.offer(home, __version__, ask=True, installable=False)["later"] is True
-
-
-@pytest.mark.anyio
 async def test_install_starts_the_engine_then_hands_it_the_try(
     home: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -128,23 +117,25 @@ async def test_install_starts_the_engine_then_hands_it_the_try(
 
 
 @pytest.mark.anyio
-async def test_a_try_cancelled_while_the_engine_starts_is_never_handed(
+async def test_an_engine_that_cannot_start_leaves_the_banner_and_a_line_in_lives_log(
     home: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(self_update, "installed_here", lambda: Path("/Applications/x.app"))
-    monkeypatch.setattr(update_relay, "STEP_S", 0.01)
     engine = Engine(up=False)
-    engine.start = engine.started.set  # type: ignore[method-assign]  # started, never answering
-    async with client_for(live_app(engine, monkeypatch, wait_s=5.0)) as c:
+
+    def full_disk() -> None:
+        raise OSError(28, "No space left on device")
+
+    engine.start = full_disk  # type: ignore[method-assign]
+    said: list[str] = []
+    async with client_for(live_app(engine, monkeypatch, log=said.append)) as c:
         assert (await c.post("/api/update/install", json={})).json()["state"] == "starting"
-        assert (await c.get("/api/update/install")).json()["state"] == "starting"
-        assert (await c.delete("/api/update/install")).json() == {"cancelled": True}
         for _ in range(500):
             if (await c.get("/api/update/install")).json() == {"state": "idle"}:
                 break
             time.sleep(0.01)
         assert (await c.get("/api/update/install")).json() == {"state": "idle"}
-    assert engine.asked == []
+    assert len(said) == 1 and "No space left on device" in said[0] and engine.asked == []
 
 
 @pytest.mark.anyio
@@ -157,3 +148,4 @@ async def test_a_checkout_offers_the_link_and_installs_nothing(
         assert (await c.get("/api/update")).json()["installable"] is False
         refused = await c.post("/api/update/install", json={})
     assert refused.status_code == 409 and not engine.started.is_set()
+    assert refused.json()["error"]["code"] == "SYS_UPDATE_NOT_HERE"  # as Build's engine says it

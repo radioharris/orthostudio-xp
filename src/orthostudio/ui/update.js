@@ -29,11 +29,10 @@ function el(tag, attrs, ...children) {
 /**
  * The banner of one page. `request(method, path, body)`: the page's server, its answer or a
  * thrown error; `place`: where the banner goes, first; `resized`: told when the banner comes or
- * goes; `failed(error)`: a refused request said; `gone()`: the page's server has stopped;
- * `earlierLater()`: a version *Not now* was said to before it was kept for both pages.
+ * goes; `failed(error)`: a refused request said; `gone()`: the page's server has stopped.
  * Returns `load` (ask again), `render` (in a new language) and `installing` (the app quits for it).
  */
-export function bindUpdate({ request, place, resized = () => {}, failed = () => {}, gone = () => false, earlierLater = () => null }) {
+export function bindUpdate({ request, place, resized = () => {}, failed = () => {}, gone = () => false }) {
   let offer = null; // GET /api/update
   let now = null; // the try's state, while one goes on
   let timer = 0;
@@ -56,7 +55,7 @@ export function bindUpdate({ request, place, resized = () => {}, failed = () => 
   }
 
   function hidden() {
-    return !offer?.available || !offer.url || offer.later || earlierLater() === offer.latest;
+    return !offer?.available || !offer.url || offer.later;
   }
 
   function render() {
@@ -218,6 +217,11 @@ export function bindUpdate({ request, place, resized = () => {}, failed = () => 
     stay.textContent = t("app.update_later");
     go.textContent = t("app.update_install");
     dialog.returnValue = "";
+    dialog.onkeydown = (ev) => {
+      if (ev.key !== "Escape") return;
+      ev.preventDefault();
+      dialog.close();
+    };
     return new Promise((resolve) => {
       dialog.addEventListener("close", () => resolve(dialog.returnValue === "install"), { once: true });
       dialog.showModal();

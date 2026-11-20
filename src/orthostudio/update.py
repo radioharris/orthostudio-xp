@@ -17,6 +17,7 @@ fault of the user's.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import re
 import time
@@ -26,6 +27,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from orthostudio.fsutil import atomic_write_text
 from orthostudio.net import USER_AGENT
 
 __all__ = [
@@ -131,12 +133,12 @@ def _read(path: Path) -> dict[str, Any]:
     return doc if isinstance(doc, dict) else {}
 
 
-def _write(path: Path, doc: dict[str, Any]) -> None:
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(doc), encoding="utf-8")
-    except OSError:
-        pass  # a home that cannot be written asks again next time, which harms nobody
+def _write(path: Path, fields: dict[str, Any]) -> None:
+    """``fields`` written over what the file holds now, read again just before, so that what the
+    other page wrote meanwhile is kept; the file is replaced whole, never left half written."""
+    # a home that cannot be written asks again next time, which harms nobody
+    with contextlib.suppress(OSError):
+        atomic_write_text(path, json.dumps({**_read(path), **fields}))
 
 
 def check(
@@ -160,7 +162,7 @@ def check(
         answer = fetch()
         if answer is not None:
             latest = answer
-        _write(path, {**kept, "checked_at": now, "latest": latest})
+        _write(path, {"checked_at": now, "latest": latest})
     available = is_newer(latest, current)
     return {
         "current": current,
@@ -180,4 +182,4 @@ def later(path: Path) -> str | None:
 def say_later(path: Path, version: str) -> None:
     """*Not now* to ``version``, kept beside what GitHub said, for every page of the app."""
     if version_tuple(version):
-        _write(path, {**_read(path), "later": version})
+        _write(path, {"later": version})

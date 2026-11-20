@@ -31,7 +31,7 @@ async function api(path, options) {
 /** OrthoStudio XP's own paths that Live's server answers too (/api/update…, the new version's
  * banner: static/update.js), asked as Build's page asks them. */
 function osxpRequest(method, path, body) {
-  return fetchJson(path.replace(/^\//, ""), { method, body });
+  return fetchJson(path, { method, body });
 }
 
 async function fetchJson(url, { method = "GET", body } = {}) {

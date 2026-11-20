@@ -9,6 +9,7 @@ told him (2026-09-21). The page now says so once, with a link; nothing is downlo
 from __future__ import annotations
 
 import json
+import time
 from pathlib import Path
 
 import pytest
@@ -99,6 +100,28 @@ def test_an_answer_kept_survives_a_day_without_one(tmp_path: Path) -> None:
         "0.1.9", path=cache, now=1000.0 + update.CHECK_EVERY_S + 1, fetch=lambda: None
     )
     assert later["available"] and later["latest"] == "0.1.10"
+
+
+def test_not_now_outlives_the_daily_question_until_a_newer_version(tmp_path: Path) -> None:
+    """*Not now* is kept by GitHub's next answer, even said on the other page while it was asked,
+    and hides that version alone: a newer one is offered again."""
+    from orthostudio import self_update
+
+    cache = tmp_path / update.CACHE_NAME
+    yesterday = time.time() - update.CHECK_EVERY_S - 1
+    update.check("0.1.9", path=cache, now=yesterday, fetch=lambda: "0.1.10")
+
+    def asked_meanwhile() -> str:
+        update.say_later(cache, "0.1.10")  # the other page's Not now, while GitHub answers
+        return "0.1.10"
+
+    update.check("0.1.9", path=cache, now=time.time(), fetch=asked_meanwhile)
+    assert update.later(cache) == "0.1.10"
+    # asked today: GitHub is not asked again here
+    assert self_update.offer(tmp_path, "0.1.9", ask=True, installable=False)["later"] is True
+    update._write(cache, {"checked_at": time.time(), "latest": "0.1.11"})  # a newer one is out
+    got = self_update.offer(tmp_path, "0.1.9", ask=True, installable=False)
+    assert got["latest"] == "0.1.11" and got["available"] and got["later"] is False
 
 
 def test_a_version_already_installed_is_not_offered(tmp_path: Path) -> None:

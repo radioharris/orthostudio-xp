@@ -180,7 +180,8 @@ def create_live_app(
     app.include_router(_map_router(map_fetch))
     app.include_router(_airports_router())
     app.include_router(page_kept_router(LIVE_PAGE_FILE))
-    app.include_router(update_router())  # the new version's banner, as on Build's page
+    # the new version's banner, as on Build's page; Live's log read when a line is written
+    app.include_router(update_router(log=lambda text: control.log(text)))
     app.mount("/static", _RevalidatedStaticFiles(directory=ui_dir()), name="static")
     app.mount("/live", _RevalidatedStaticFiles(directory=UI_DIR), name="live")
 
@@ -633,7 +634,9 @@ def app_may_quit() -> bool:
     window alone."""
     from orthostudio import desktop, window
 
-    engine = window.shown(window.PLACE_NAME) and desktop._listening(desktop.ENGINE_PORT)
+    shown = window.shown(window.PLACE_NAME)
+    # the engine of OrthoStudio XP's window, or the one Live's page started to install a new version
+    engine = (shown or desktop.holds_an_engine()) and desktop._listening(desktop.ENGINE_PORT)
     build = engine and desktop.a_build_runs(desktop.ENGINE_PORT)
     with _here_lock:
         live = _here
@@ -644,7 +647,7 @@ def app_may_quit() -> bool:
         if engine:
             desktop.stop_the_engine(desktop.ENGINE_PORT)
         return True
-    over = window.PLACE_NAME if build else TITLE
+    over = window.PLACE_NAME if build and shown else TITLE
     window.to_the_front(over)
 
     def aside() -> None:

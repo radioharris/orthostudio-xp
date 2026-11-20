@@ -17,11 +17,13 @@ from collections.abc import Callable
 from typing import Any
 
 # at the module's top: the routes' bodies are read from their annotations
-from orthostudio.api.update_requests import UpdateInstallRequest, UpdateLaterRequest
+from orthostudio.api.update_banner import UpdateInstallRequest
 
 ENGINE_WAIT_S = 120.0
 """How long an install waits for the engine it started to answer."""
 STEP_S = 0.5
+HANDING = "Install and relaunch stopped:"
+"""How Live's log says an install it could not hand to the engine."""
 
 
 def _ask(port: int, method: str, path: str, body: dict[str, Any] | None = None) -> Any:
@@ -52,14 +54,17 @@ def update_router(
     port_held: Callable[[], bool] | None = None,
     start_engine: Callable[[], None] | None = None,
     wait_s: float = ENGINE_WAIT_S,
+    log: Callable[[str], None] | None = None,
 ) -> Any:
     """``/api/update``, ``/api/update/later`` and ``/api/update/install`` for Live's page. The
     engine's port, whether it answers, whether something holds its port and how it starts are the
-    app's (:mod:`orthostudio.desktop`) unless a test says otherwise."""
-    from fastapi import APIRouter, HTTPException
+    app's (:mod:`orthostudio.desktop`) unless a test says otherwise; ``log`` writes in Live's log
+    why an install was not handed over."""
+    from fastapi import APIRouter
     from fastapi.responses import JSONResponse
 
-    from orthostudio import __version__, desktop, self_update, update
+    from orthostudio import __version__, desktop, self_update
+    from orthostudio.api.update_banner import install_refused, later_router
     from orthostudio.config.store import load_settings
     from orthostudio.home import osxp_home
 
@@ -67,8 +72,9 @@ def update_router(
     here = engine_here or (lambda: desktop.engine_here(port, timeout_s=1.0))
     held = port_held or (lambda: desktop._listening(port))
     start = start_engine or (lambda: desktop.start_engine(desktop.log_path()))
+    say = log or (lambda _text: None)
     lock = threading.Lock()
-    handing: dict[str, Any] = {}  # the try waiting for the engine: version, force, cancelled
+    handing: dict[str, Any] = {}  # the try waiting for the engine: its version
 
     def relayed(method: str, path: str, body: dict[str, Any] | None = None) -> Any:
         got = _ask(port, method, path, body) if here() else None
@@ -82,32 +88,31 @@ def update_router(
             installable=self_update.installed_here() is not None,
         )
 
-    def hand_over(version: str, force: bool, first: bool) -> None:
+    def hand_over(force: bool, first: bool) -> None:
         """The engine started (unless something already starts it), then asked to install."""
-        if first:
-            start()
-        deadline = time.monotonic() + wait_s
-        while time.monotonic() < deadline:
-            with lock:
-                if handing.get("cancelled"):
+        try:
+            if first:
+                start()
+            deadline = time.monotonic() + wait_s
+            while time.monotonic() < deadline:
+                if here():
+                    _ask(port, "POST", "/api/update/install", {"force": force})
                     break
-            if here():
-                _ask(port, "POST", "/api/update/install", {"force": force})
-                break
-            time.sleep(STEP_S)
-        with lock:
-            handing.clear()  # the engine says the try's state from now on, or nothing runs
+                time.sleep(STEP_S)
+            else:
+                say(f"{HANDING} OrthoStudio XP's engine did not answer in {wait_s:.0f} s")
+        except Exception as exc:
+            say(f"{HANDING} OrthoStudio XP's engine could not be started: {exc!r}")
+        finally:
+            with lock:
+                handing.clear()  # the engine says the try's state from now on, or nothing runs
 
     router = APIRouter()
+    router.include_router(later_router())
 
     @router.get("/api/update")
     def offer() -> Any:
         return relayed("GET", "/api/update") or offered()
-
-    @router.post("/api/update/later")
-    def later(req: UpdateLaterRequest) -> dict[str, Any]:
-        update.say_later(osxp_home() / update.CACHE_NAME, req.version)
-        return {"later": req.version}
 
     @router.post("/api/update/install", status_code=202)
     def install(req: UpdateInstallRequest) -> Any:
@@ -115,16 +120,15 @@ def update_router(
         if answer is not None:
             return answer
         now = offered()
-        if not now["installable"] or not now["available"]:
-            raise HTTPException(
-                409, "This OrthoStudio XP cannot install a new version by itself here."
-            )
+        refused = install_refused(now["installable"], now["latest"] if now["available"] else None)
+        if refused is not None:
+            return refused
         with lock:
             if not handing:
-                handing.update(version=now["latest"], force=req.force, cancelled=False)
+                handing["version"] = now["latest"]
                 threading.Thread(
                     target=hand_over,
-                    args=(now["latest"], req.force, not held()),
+                    args=(req.force, not held()),
                     name="update-hand-over",
                     daemon=True,
                 ).start()
@@ -139,10 +143,6 @@ def update_router(
 
     @router.delete("/api/update/install")
     def cancel() -> Any:
-        with lock:
-            if handing:
-                handing["cancelled"] = True
-                return {"cancelled": True}
         return relayed("DELETE", "/api/update/install") or {"cancelled": False}
 
     return router

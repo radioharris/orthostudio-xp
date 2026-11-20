@@ -5631,6 +5631,8 @@ def test_the_page_says_when_a_newer_version_is_out() -> None:
     assert "window.open(" not in banner  # a call; the comment above says why there is none
     # put away for this version, not for ever, and for both pages: the server keeps it
     assert '"/api/update/later", { version }' in _function_body(banner, "later")
+    # its question closes on Escape, as every other dialog of the pages
+    assert 'ev.key !== "Escape"' in _function_body(banner, "confirm")
     # Live's page binds the same banner, asking Live's server the same paths
     live_js = (UI.parent / "live" / "ui" / "live.js").read_text(encoding="utf-8")
     assert 'import("../static/update.js")' in live_js and "request: osxpRequest" in live_js

@@ -66,8 +66,6 @@ from orthostudio.api.models import (
     SourceRequest,
     SourceTestRequest,
     UninstallRequest,
-    UpdateInstallRequest,
-    UpdateLaterRequest,
 )
 from orthostudio.api.page_kept import kept_page, page_kept_router
 from orthostudio.api.presence import Presence
@@ -80,6 +78,11 @@ from orthostudio.api.specs import (
     plan_answer,
     resolve_xplane,
     where_now,
+)
+from orthostudio.api.update_banner import (
+    UpdateInstallRequest,
+    install_refused,
+    later_router,
 )
 from orthostudio.api.zones_api import zones_router
 from orthostudio.clean import GRACE_S, clean, disk_bytes, pack_disk_bytes
@@ -1242,11 +1245,7 @@ def create_app(
             busy=installer.busy(),
         )
 
-    @app.post("/api/update/later")
-    async def update_later(req: UpdateLaterRequest) -> dict[str, Any]:
-        """The banner's *Not now*, for every page of the app (``orthostudio.update.say_later``)."""
-        update.say_later(osxp_home() / update.CACHE_NAME, req.version)
-        return {"later": req.version}
+    app.include_router(later_router())
 
     @app.post("/api/update/install", status_code=202)
     async def update_install(req: UpdateInstallRequest) -> Any:
@@ -1255,25 +1254,14 @@ def create_app(
         build or Live runs that the app's quitting would stop, unless ``force`` (the page has
         asked); a try already under way goes on, and its state is the answer."""
         installer = update_installer()
-        if installer.here is None:
-            return _plain_error(
-                "SYS_UPDATE_NOT_HERE",
-                "This OrthoStudio XP cannot install a new version by itself here.",
-                "Download the new version from its release page and install it.",
-                status=409,
-            )
         latest = None
-        if settings().expert.check_updates:
+        if installer.here is not None and settings().expert.check_updates:
             path = osxp_home() / update.CACHE_NAME
             answer = await asyncio.to_thread(update.check, __version__, path=path)
             latest = answer["latest"] if answer["available"] else None
-        if latest is None:
-            return _plain_error(
-                "SYS_UPDATE_NONE",
-                f"No version newer than {__version__} is known.",
-                "Nothing to install.",
-                status=409,
-            )
+        refused = install_refused(installer.here is not None, latest)
+        if refused is not None:
+            return refused
         # asking Live whether it is at work takes up to 1.5 s: never on the loop
         await asyncio.to_thread(installer.start, latest, force=req.force)
         return installer.status()

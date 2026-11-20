@@ -338,7 +338,7 @@ def window_opens(now: float | None = None) -> str:
     return f"its window opens: {said}" if said else "its window opens"
 
 
-_HELD_ENGINES: list[object] = []
+_HELD_ENGINES: list[Any] = []
 """The engines this window started (:func:`start_engine`), their pipes open while it lives."""
 
 
@@ -399,6 +399,11 @@ def start_engine(log: Path) -> None:
         )
     # kept, and its pipe with it, for as long as this process lives: let go, the pipe would close
     _HELD_ENGINES.append(engine)
+
+
+def holds_an_engine() -> bool:
+    """Whether an engine this process started (:func:`start_engine`) still runs."""
+    return any(engine.poll() is None for engine in _HELD_ENGINES)
 
 
 def time_to_close(port: int = ENGINE_PORT) -> Callable[[], bool]:

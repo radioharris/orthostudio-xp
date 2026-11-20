@@ -9,7 +9,6 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from orthostudio.api.update_requests import UpdateInstallRequest, UpdateLaterRequest
 from orthostudio.errors import OsxpError
 from orthostudio.zones import MAX_ZONES, check_zone_ids, too_many_zones
 from orthostudio.zones import TileChoice as TileChoiceModel
@@ -33,8 +32,6 @@ __all__ = [
     "ProfileRenameRequest",
     "ProfileRequest",
     "UninstallRequest",
-    "UpdateInstallRequest",
-    "UpdateLaterRequest",
     "ZoneModel",
     "tile_error",
 ]

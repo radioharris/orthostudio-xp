@@ -230,7 +230,13 @@ def test_cmd_q_closes_both_asking_once_where_something_runs(
         return answers.pop(0)
 
     monkeypatch.setattr(window_module, "ask", ask)
+    monkeypatch.setattr(desktop, "_HELD_ENGINES", [])
     assert web.app_may_quit() is True and stopped == []  # nothing up, no engine to stop
+    # the engine Live's page started to install a new version, OrthoStudio XP's window never open
+    monkeypatch.setattr(desktop, "_HELD_ENGINES", [SimpleNamespace(poll=lambda: None)])
+    assert web.app_may_quit() is True and stopped == [False]
+    monkeypatch.setattr(desktop, "_HELD_ENGINES", [])
+    stopped.clear()
     control = _live_here()
     program.up.update({web.TITLE, window_module.PLACE_NAME})
     assert web.app_may_quit() is True and stopped == [False]  # nothing runs: all goes at once

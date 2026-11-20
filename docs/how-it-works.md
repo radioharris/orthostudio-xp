@@ -532,7 +532,7 @@ where there is no icon to show that it runs, it still stops by itself five minut
 page closed, with no build running or waiting.
 
 **A new version.** When a newer OrthoStudio XP is out, a line at the top of the page says so, Build's
-and Live's alike (*Not now* hides it on both until a newer one). On
+and Live's alike. On
 macOS, Windows and Linux, *Install and relaunch* installs it: a bar shows the installation while the app
 is still open, then OrthoStudio XP quits, puts the new version in place of the old one and opens
 again by itself, your tiles and settings kept: a few seconds later on macOS and Linux, and on
@@ -543,8 +543,8 @@ opens, and the old version is still there. On Linux the new version takes the pl
 you extracted, under its name, and opens in your browser as before. Where the app cannot replace
 itself (an account of a Mac that is not an administrator's, the Windows zip, a Linux folder you
 cannot write), the line links to the release page instead, where you download the installer.
-*What's new* opens that page too, and *Not now* hides the line until the next version. The check
-asks GitHub once a day at most, and Settings can turn it off.
+*What's new* opens that page too, and *Not now* hides the line, on both pages, until the next
+version. The check asks GitHub once a day at most, and Settings can turn it off.
 
 The window is drawn by the web view your system already carries, so the page is the same one a
 browser would show. At the right end of the bar at its foot, `− 100 % +` zooms the whole page (Ctrl
@@ -588,6 +588,7 @@ one when the app starts.
   airports.sqlite  X-Plane's airports and the box of their runways, for the Plan's search, its map
                    and its count of the airports made sharper
   update.json      the latest version GitHub named, and when it was asked (once a day at most)
+                   and the version *Not now* was said to
   update/          the installer of a new version while *Install and relaunch* installs it, and
                    pending.json, the last install that did not complete and why
   page.json        what the page keeps from one visit to the next: the map's boxes, the

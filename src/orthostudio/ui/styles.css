@@ -1407,7 +1407,7 @@ html.in-frame .statusbar { padding-right: var(--frame-foot-w, 236px); min-height
 }
 .window-note code { margin: 0 4px; overflow-wrap: anywhere; }
 /* the new version's words, then its buttons, spaced; the bar of Install and relaunch
-   (app.js showUpdateProgress) in the same line */
+   (update.js, Build's page and Live's) in the same line */
 .update-note { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .update-note .update-bar { display: inline-block; width: 12em; max-width: 40%; vertical-align: middle; }
 

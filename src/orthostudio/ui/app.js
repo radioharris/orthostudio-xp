@@ -2693,7 +2693,6 @@ function renderWindowNote() {
   $("main").prepend(note);
 }
 
-const UPDATE_DISMISSED_KEY = "osxp.updateDismissed"; // Not now, as this page alone kept it before
 let updateBanner = null; // the new version's banner (update.js)
 
 /**
@@ -2702,12 +2701,11 @@ let updateBanner = null; // the new version's banner (update.js)
  */
 function loadUpdate() {
   updateBanner ??= bindUpdate({
-    request: (method, path, body) => api(method, path, body),
+    request: api,
     place: $("main"),
     resized: measureMapTop, // it sits above the map and pushes it down
     failed: (err) => toast(errorMessage(err), "fail"),
     gone: () => !$("stopped").hidden,
-    earlierLater: () => pageKept(UPDATE_DISMISSED_KEY),
   });
   return updateBanner.load();
 }
