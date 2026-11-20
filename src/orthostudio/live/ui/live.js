@@ -742,15 +742,17 @@ function regionRow(id, mine, r, install, running, idle, xplane, folder) {
   // from the next start » was read as « restart the app », 2026-11-18), nor while it waits: the
   // disk says that
   const line = busy && (running || ["failed", "cancelled"].includes(install.phase)) ? { install: true }
-    : ready && r.held ? { text: t("regions.held", { why: r.held }), warn: true }
-    : ready ? { text: t("regions.waiting") } : null;
+    : ready ? { text: [t("regions.waiting"), ...(r.held ? [t("regions.held", { why: r.held })] : [])].join(" "),
+      warn: Boolean(r.held) } : null;
   // its kept old mesh, under it: its size and its own Delete, which deletes it alone, by the rule
   // of every deletion (Live stopped, no install of it, X-Plane closed: control.py _deleting)
   const kept = mine && r.kept ? {
     text: r.kept.size ? t("regions.kept_size", { gb: gb(r.kept.size) }) : t("regions.kept"),
     button: { act: "remove_kept", label: t("regions.remove"), danger: true, disabled: !idle || running || xplane },
   } : null;
-  return { id, size, state, buttons, line, bar: busy && running, kept, sure };
+  // the button that goes on after a stop, which its line names
+  const again = t(mine ? "regions.update" : "regions.install");
+  return { id, size, state, buttons, line, bar: busy && running, kept, sure, again };
 }
 
 /** A region's question (the region-ask <dialog>, :func:`ask`): its title, its lines and its two
@@ -985,7 +987,7 @@ function drawRegions(status) {
       line.textContent = t(pace ? "regions.progress_pace" : "regions.progress", { done: gb(install.done_bytes),
         total: gb(install.total_bytes), mbs: number(pace, 1), unpacked: install.unpacked, zips: install.zips });
     } else {
-      const button = t(ours.has(install.region) ? "regions.update" : "regions.install");
+      const button = rows.find((row) => row.id === install.region)?.again;
       line.textContent = install.phase === "failed" ? t("regions.failed", { error: install.error, button })
         : t("regions.cancelled", { button });
     }

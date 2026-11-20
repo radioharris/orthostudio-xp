@@ -1705,12 +1705,48 @@ def test_an_update_refused_at_a_start_says_why_until_its_next_install(
     monkeypatch.setattr(osxpregions, "replace_file", held_open)
     osxpregions.settle(tmp_path, lambda _: None, swap=True)
     why = osxpregions.held(tmp_path, "eur")
-    assert why and why.startswith("z_osxp_eur is in use by another program")
+    assert why and why.startswith("another program holds z_osxp_eur open")
     assert "X-Plane" not in why and osxpregions.staged_whole(tmp_path, "eur")
     monkeypatch.setattr(osxpregions, "replace_file", replace)
     inst, lines = install(tmp_path, region, Host(files), may_swap=lambda: False)
     assert inst.progress.phase == "waiting", lines
     assert osxpregions.held(tmp_path, "eur") is None
+
+
+def test_a_refusal_said_is_forgotten_by_the_next_install_of_river_masks_too(
+    tmp_path: Path, rivers_world
+) -> None:
+    files, region = rivers_world
+    install(tmp_path, region, Host(files))
+    inst, lines = install(tmp_path, region, Host(files), rivers=True, may_swap=lambda: False)
+    assert inst.progress.phase == "waiting", lines
+    step = osxpregions.mesh_dir(tmp_path, "eur") / osxpregions.RIVERS_STAGE / osxpregions.STEP
+    prior = json.loads(step.read_text()) if step.exists() else {}
+    step.write_text(json.dumps({**prior, "held": "refused"}))
+    assert osxpregions.held(tmp_path, "eur") == "refused"
+    inst, lines = install(tmp_path, region, Host(files), rivers=True, may_swap=lambda: False)
+    assert inst.progress.phase == "waiting", lines
+    assert osxpregions.held(tmp_path, "eur") is None
+
+
+def test_no_room_names_the_folder_the_pilot_knows(tmp_path: Path, world) -> None:
+    """Live's folder for a place inside it, a hidden name of its own included; else the folder
+    holding a hidden stage (a region on another disk)."""
+    _, region = world
+    root = tmp_path / ".my live"
+    inst = Installer(root, region, may_swap=lambda: True, host=(URL, TOKEN))
+    stage = root / "regions" / ".z_osxp_eur.new"
+    other = tmp_path / "other disk" / ".z_osxp_eur.new"
+    for path in (stage, other):
+        path.mkdir(parents=True)
+    room = osxpregions.Room(stage, 3 * 10**9, 10**9)
+    said = str(inst._no_room(room, "while it installs"))
+    assert said == (
+        f"not enough room on the disk of {root} (3.0 GB needed while it installs, 1.0 GB free): "
+        "free some room"
+    )
+    room = osxpregions.Room(other, 3 * 10**9, 10**9)
+    assert f"disk of {(tmp_path / 'other disk').resolve()} (" in str(inst._no_room(room, "x"))
 
 
 def test_a_marker_naming_both_meshes_still_offers_the_update(tmp_path: Path, world) -> None:
@@ -1781,13 +1817,14 @@ def test_what_went_wrong_is_said_in_plain_words_without_the_host(tmp_path: Path,
     with pytest.raises(osxpregions.CatalogError) as e:
         osxpregions.catalog(tmp_path, client=client, host=(URL, "key"))
     assert str(e.value).startswith("the server could not be reached") and URL not in str(e.value)
-    for body in (b'{"regions": {"eur"', b'{"regions": {"eur": {"mesh": [{"path": "a"}]}}}'):
+    bodies = (b'{"regions": {"eur"', b'{"regions": {"eur": {"mesh": [{"path": "a"}]}}}', b"[]")
+    for body in bodies:
         cut = httpx.Client(
             transport=httpx.MockTransport(lambda r, b=body: httpx.Response(200, content=b))
         )
         with pytest.raises(osxpregions.CatalogError) as e:
             osxpregions.catalog(tmp_path, client=cut, host=(URL, "key"))
-        assert str(e.value) == osxpregions.DAMAGED_LIST  # never an error's name
+        assert str(e.value) == "the server's answer did not read: try again later"
 
 
 # --- the mesh of before kept beside the new one -----------------------------------------------

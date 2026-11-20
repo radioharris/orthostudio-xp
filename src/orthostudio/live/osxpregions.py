@@ -105,7 +105,7 @@ a Live up to 2.2 on the same folder reads as its own list."""
 CATALOG_MAX_AGE_S = 3600.0
 OVERLAY_PACK = "y_osxp_overlays"
 OVERLAY_RECORD = ".live-overlays.json"  # in the overlay pack: {zip path: SHA-256}
-STEP = ".live-install.json"  # a stage: zips unpacked so far, overlays waiting, keep_old
+STEP = ".live-install.json"  # a stage: zips unpacked so far, overlays waiting, keep_old, held
 CHUNK = 1 << 20
 ATTEMPTS = 5
 PASSING = frozenset({429, 500, 502, 503, 504})
@@ -222,9 +222,14 @@ def _answered(status: int) -> str:
     return f"the server answered HTTP {status}"
 
 
+UNREADABLE = (ValueError, TypeError, KeyError, AttributeError)
+"""What reading a list that is not one raises (cut short, not JSON, not the list's shape)."""
+
+
 def _why(e: BaseException) -> str:
     """What went wrong, in the pilot's words, the host's address never in it (the window and the
-    logs show it): the server's answer, the server out of reach, or the disk refusing."""
+    logs show it): the server's answer, the server out of reach, the disk refusing, or else an
+    answer that does not read (:data:`UNREADABLE`)."""
     import httpx
 
     if isinstance(e, httpx.HTTPStatusError):
@@ -233,10 +238,7 @@ def _why(e: BaseException) -> str:
         return "the server could not be reached: check the internet connection"
     if isinstance(e, OSError):
         return f"the disk refused it ({e.strerror or e})"
-    return type(e).__name__
-
-
-DAMAGED_LIST = "the server sent it damaged: try again later"
+    return "the server's answer did not read: try again later"
 
 
 def catalog(
@@ -267,15 +269,14 @@ def catalog(
             if regions:
                 atomic_write_text(path, json.dumps(doc))
                 return regions
-        except (OSError, ValueError, TypeError, KeyError, httpx.HTTPError) as e:
-            if not path.exists():  # the window says what did not come
-                damaged = isinstance(e, (ValueError, TypeError, KeyError))
-                raise CatalogError(DAMAGED_LIST if damaged else _why(e)) from e
+        except (OSError, httpx.HTTPError, *UNREADABLE) as e:
+            if not path.exists():
+                raise CatalogError(_why(e)) from e  # the window says what did not come
     if not path.exists():
         raise CatalogError("this build of Live carries no address for its regions")
     try:
         return parse_manifest(json.loads(path.read_text()))
-    except (OSError, ValueError, KeyError, TypeError) as e:
+    except (OSError, *UNREADABLE) as e:
         raise CatalogError("the copy kept on this computer is unreadable") from e
 
 
@@ -408,7 +409,7 @@ def present(root: Path, region: str) -> bool:
 def staged_whole(root: Path, region: str) -> bool:
     """Whether an update of the region waits whole to take its place: its stage, or its river
     masks' (:func:`settle`)."""
-    return (stage_dir(root, region) / MARKER).is_file() or _rivers_waiting(root, region)
+    return _waiting_stage(root, region) is not None
 
 
 def _rivers_waiting(root: Path, region: str) -> bool:
@@ -426,11 +427,20 @@ def _waiting_stage(root: Path, region: str) -> Path | None:
 
 
 def held(root: Path, region: str) -> str | None:
-    """Why the region's update waiting whole did not take its place at Live's last start (a
-    program holding a folder of it open): :func:`settle`'s refusal, None where it was not refused
-    or nothing waits."""
+    """Why the region's update waiting whole did not take its place at the last start that tried
+    (a program holding a folder of it open): :func:`settle`'s refusal, kept in its stage's record
+    until the region's next install (:func:`_try_again`); None where none was refused or nothing
+    waits."""
     stage = _waiting_stage(root, region)
     return _read(stage / STEP).get("held") if stage is not None else None
+
+
+def _try_again(root: Path, region: str) -> None:
+    """The refusal :func:`held` says forgotten, as the pilot installs the region again."""
+    stage = _waiting_stage(root, region)
+    step = _read(stage / STEP) if stage is not None else {}
+    if stage is not None and step.pop("held", None) is not None:
+        _write(stage / STEP, step)
 
 
 # --- what a region wants and has --------------------------------------------------------------
@@ -516,9 +526,9 @@ def _still_listed(step: dict, listed: Iterable[Zip]) -> dict[str, str] | None:
     as it stopped, is still one of ``listed`` as it was; None where one is not: the stage to be
     started again."""
     zips = dict(step.get("zips") or {})
-    held = {**zips, **(step.get("unpacking") or {})}
+    holds = {**zips, **(step.get("unpacking") or {})}
     have = {z.path: z.sha256 for z in listed}
-    return zips if all(have.get(p) == s for p, s in held.items()) else None
+    return zips if all(have.get(p) == s for p, s in holds.items()) else None
 
 
 def _rivers_staged(root: Path, region: OsxpRegion) -> dict[str, str]:
@@ -643,9 +653,9 @@ tried again downloads nothing it has, a deletion is asked again."""
 def _in_use(what: str, again: str, e: OSError) -> InstallError:
     """A folder a program holds open (Windows), said: close it, then ``again``. Never X-Plane:
     a region changes only with X-Plane not running."""
+    which = " (File Explorer, an antivirus…)" if WINDOWS else ""
     return InstallError(
-        f"{what} is in use by another program (File Explorer, an antivirus…): close it, then "
-        f"{again} ({_why(e)})"
+        f"another program holds {what} open{which}: close it, then {again} ({_why(e)})"
     )
 
 
@@ -988,7 +998,7 @@ def settle(root: Path, log: Log = print, *, swap: bool, only: Iterable[str] | No
         except (InstallError, OSError) as e:
             log(f"OrthoStudio XP's region {region}: its update waits ({e})")
             stage = _waiting_stage(root, region)
-            if stage is not None:  # the window says why (held); the stage's next install clears it
+            if stage is not None:  # the window says why (held)
                 with contextlib.suppress(OSError):
                     _write(stage / STEP, {**_read(stage / STEP), "held": str(e)})
 
@@ -1447,6 +1457,7 @@ class Installer:
             # answer of before, it lost the mesh the pilot now keeps, or put in place a release
             # the list no longer has before its successor (the reviews of 2026-11-18)
             settle(self.root, self.log, swap=False, only=[region.id])
+            _try_again(self.root, region.id)
             if self.may_swap():
                 _unpack_waiting(self.root, region.id, self.log)  # a stop right after a swap
         whole = not self.night_only and made_whole(self.root, region)
@@ -1638,7 +1649,7 @@ class Installer:
         (:func:`_short_of_room`), or :class:`InstallError` saying the first disk short."""
         short = _short_of_room(mesh, ovl, dest, pack, self.download, whole)
         if short:
-            raise self._no_room(short[0])
+            raise self._no_room(short[0], "while it installs")
 
     def _make_room(
         self, mesh: list[Zip], ovl: list[Zip], step: dict[str, Any], whole: bool
@@ -1672,20 +1683,21 @@ class Installer:
         need = files + SPARE_BYTES
         free = shutil.disk_usage(dest.resolve()).free
         if free < need:
-            raise self._no_room(Room(dest, need, free))
+            raise self._no_room(Room(dest, need, free), "for its next part")
 
-    def _no_room(self, room: Room) -> InstallError:
+    def _no_room(self, room: Room, need_for: str) -> InstallError:
         """A disk short of room, said with the folder the pilot knows: Live's folder for one inside
         it, else the folder holding it (a region on another disk), never a hidden stage; the need
-        counts what the install unpacks, downloads and leaves free (:data:`SPARE_BYTES`)."""
+        (``need_for``) counts :data:`SPARE_BYTES` left free."""
         place = room.path.resolve()
         if place.is_relative_to(self.root.resolve()):
             place = self.root
-        while place.name.startswith(".") and place.parent != place:
-            place = place.parent
+        else:
+            while place.name.startswith(".") and place.parent != place:
+                place = place.parent
         return InstallError(
-            f"not enough room on the disk of {place} ({room.need / 1e9:.1f} GB needed while it "
-            f"installs, {room.free / 1e9:.1f} GB free): free some room"
+            f"not enough room on the disk of {place} ({room.need / 1e9:.1f} GB needed {need_for}, "
+            f"{room.free / 1e9:.1f} GB free): free some room"
         )
 
     def _have_bytes(self, todo: Sequence[Zip]) -> int:

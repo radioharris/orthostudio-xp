@@ -248,10 +248,7 @@ def gather_checks() -> dict[str, Any]:
         out["xplane_problem"] = str(e)
         out["other_mesh"] = _other_mesh_said(None)
         return out
-    try:
-        check_folder(live_root(), custom_scenery=xp / "Custom Scenery")
-    except FolderError as e:
-        out["folder_problem"] = str(e)
+    out["folder_problem"] = folder_problem(xp)
     sources = stream_sources(xp)
     out["other_mesh"] = _other_mesh_said(xp)
     out.update(
@@ -280,6 +277,26 @@ def gather_checks() -> dict[str, Any]:
         ],
     )
     return out
+
+
+def folder_problem(xp: Path | None, *, create: bool = False) -> str | None:
+    """Why Live's folder cannot hold Live's pack and regions (``check_folder``: its disk not there,
+    inside X-Plane's Custom Scenery...), None where it can; ``create`` makes it where its parent
+    is. The page's checks and an install alike."""
+    try:
+        check_folder(
+            live_root(), custom_scenery=xp / "Custom Scenery" if xp else None, create=create
+        )
+    except (FolderError, OSError) as e:
+        return str(e)
+    return None
+
+
+def _xplane_or_none() -> Path | None:
+    try:
+        return session.xplane_dir(None)
+    except session.RefusedError:
+        return None
 
 
 def _other_mesh_said(xp: Path | None) -> dict[str, Any] | None:
@@ -442,10 +459,7 @@ class LiveControl:
                 osxpregions.settle(live_root(), self.log, swap=False)
             except Exception as e:
                 self.log(f"Live's regions could not be checked: {e}")
-            try:
-                xp = session.xplane_dir(None)
-            except session.RefusedError:
-                xp = None
+            xp = _xplane_or_none()
             try:
                 session.keep_region_lists(xp, self.log)
             except Exception as e:  # a start lists what is left
@@ -875,7 +889,8 @@ class LiveControl:
         downloads (``osxpregions.wanted``: its river masks only with soft banks or once it has
         them; the overlays only when the pilot takes them), whether it is installed, how many of
         its zips an update brings (the region whole once its mesh changed) and what it downloads,
-        whether its update waits whole for Live's next start (``waiting``), and what soft banks
+        whether its update waits whole for Live's next start (``waiting``) and why the last start
+        that tried did not put it in place (``held``), and what soft banks
         would download for it (``rivers_bytes``: its river masks it has not, the Settings' question
         sums them), whether its update replaces its mesh (``whole``: the window asks the room it
         lacks, :meth:`update_room`, and whether to keep the one of before), and its kept old mesh
@@ -903,7 +918,7 @@ class LiveControl:
             item: dict[str, Any] = {"id": region_id, "installed": region_id in mine}
             # the disk's word, whether the list came or not
             item["waiting"] = region_id in mine and osxpregions.staged_whole(root, region_id)
-            item["held"] = osxpregions.held(root, region_id) if item["waiting"] else None
+            item["held"] = osxpregions.held(root, region_id)
             kept = osxpregions.kept_mesh(root, region_id) if region_id in mine else None
             if kept is not None:
                 item["kept"] = {"size": _size_of(kept)}
@@ -961,20 +976,15 @@ class LiveControl:
         which the install checks again by the window's own rule and only with Live stopped and
         X-Plane not running, at the moment it deletes; Mesh back to new once no region keeps an
         old mesh (:meth:`_mesh_follows_kept`)."""
-        self._stop_night_grids()
         with self._lock:
             region = (self._catalog or {}).get(region_id)
         if region is None:
             raise session.RefusedError(f"no region {region_id!r} in the list of Live's regions")
-        try:  # the checks' rule (folder_problem): never a region on the computer's own disk while
-            # the disk of Live's folder is unplugged, nor where Live cannot start
-            xp: Path | None = session.xplane_dir(None)
-        except session.RefusedError:
-            xp = None
-        try:
-            check_folder(live_root(), custom_scenery=xp and xp / "Custom Scenery", create=True)
-        except FolderError as e:
-            raise session.RefusedError(f"Live's folder: {e}") from e
+        # never a region on the computer's own disk while the disk of Live's folder is unplugged
+        problem = folder_problem(_xplane_or_none(), create=True)
+        if problem is not None:
+            raise session.RefusedError(f"Live's folder: {problem}")
+        self._stop_night_grids()
         installed = region_id in osxpregions.installed(live_root())
         overlays, rivers = _takes(self._settings())
         installer = self._installer_of(
