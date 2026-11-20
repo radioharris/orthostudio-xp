@@ -41,11 +41,10 @@ from orthostudio.live.evict import usage
 from orthostudio.live.meshmap import REGION_NAMES, squares_of
 from orthostudio.live.pack import (
     LINK_NAME,
-    FolderError,
-    check_folder,
     copies_in,
     default_live_root,
     default_pack_dir,
+    folder_problem,
     live_root,
     load_built,
 )
@@ -247,8 +246,9 @@ def gather_checks() -> dict[str, Any]:
     except session.RefusedError as e:
         out["xplane_problem"] = str(e)
         out["other_mesh"] = _other_mesh_said(None)
+        out["folder_problem"] = folder_problem(live_root(), None)
         return out
-    out["folder_problem"] = folder_problem(xp)
+    out["folder_problem"] = folder_problem(live_root(), xp)
     sources = stream_sources(xp)
     out["other_mesh"] = _other_mesh_said(xp)
     out.update(
@@ -277,26 +277,6 @@ def gather_checks() -> dict[str, Any]:
         ],
     )
     return out
-
-
-def folder_problem(xp: Path | None, *, create: bool = False) -> str | None:
-    """Why Live's folder cannot hold Live's pack and regions (``check_folder``: its disk not there,
-    inside X-Plane's Custom Scenery...), None where it can; ``create`` makes it where its parent
-    is. The page's checks and an install alike."""
-    try:
-        check_folder(
-            live_root(), custom_scenery=xp / "Custom Scenery" if xp else None, create=create
-        )
-    except (FolderError, OSError) as e:
-        return str(e)
-    return None
-
-
-def _xplane_or_none() -> Path | None:
-    try:
-        return session.xplane_dir(None)
-    except session.RefusedError:
-        return None
 
 
 def _other_mesh_said(xp: Path | None) -> dict[str, Any] | None:
@@ -459,7 +439,7 @@ class LiveControl:
                 osxpregions.settle(live_root(), self.log, swap=False)
             except Exception as e:
                 self.log(f"Live's regions could not be checked: {e}")
-            xp = _xplane_or_none()
+            xp = session.xplane_or_none()
             try:
                 session.keep_region_lists(xp, self.log)
             except Exception as e:  # a start lists what is left
@@ -890,10 +870,10 @@ class LiveControl:
         them; the overlays only when the pilot takes them), whether it is installed, how many of
         its zips an update brings (the region whole once its mesh changed) and what it downloads,
         whether its update waits whole for Live's next start (``waiting``) and why the last start
-        that tried did not put it in place (``held``), and what soft banks
-        would download for it (``rivers_bytes``: its river masks it has not, the Settings' question
-        sums them), whether its update replaces its mesh (``whole``: the window asks the room it
-        lacks, :meth:`update_room`, and whether to keep the one of before), and its kept old mesh
+        that tried did not put it in place (``held``), and what soft banks would download for it
+        (``rivers_bytes``: its river masks it has not, the Settings' question sums them), whether
+        its update replaces its mesh (``whole``: the window asks the room it lacks,
+        :meth:`update_room`, and whether to keep the one of before), and its kept old mesh
         (``kept``: its size); the install under way. With ``fetch`` (the page's own request, not
         its status), the host's list is read again in the background when old."""
         with self._lock:
@@ -981,7 +961,7 @@ class LiveControl:
         if region is None:
             raise session.RefusedError(f"no region {region_id!r} in the list of Live's regions")
         # never a region on the computer's own disk while the disk of Live's folder is unplugged
-        problem = folder_problem(_xplane_or_none(), create=True)
+        problem = folder_problem(live_root(), session.xplane_or_none(), create=True)
         if problem is not None:
             raise session.RefusedError(f"Live's folder: {problem}")
         self._stop_night_grids()

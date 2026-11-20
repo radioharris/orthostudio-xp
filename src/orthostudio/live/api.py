@@ -53,7 +53,7 @@ from pydantic import BaseModel, Field, ValidationError
 from orthostudio.errors import OsxpError
 from orthostudio.live import session
 from orthostudio.live.control import LiveControl, Refusal
-from orthostudio.live.pack import FolderError, check_folder
+from orthostudio.live.pack import folder_problem
 from orthostudio.live.scenery import move_live
 from orthostudio.live.settings import (
     LiveSettings,
@@ -417,14 +417,9 @@ def live_router(
             where = ".".join(str(p) for p in first.get("loc", ()))
             raise HTTPException(422, f"{where}: {first.get('msg', 'invalid')}") from e
         if settings.folder:
-            try:
-                scenery = session.xplane_dir(None) / "Custom Scenery"
-            except session.RefusedError:
-                scenery = None
-            try:
-                check_folder(Path(settings.folder), custom_scenery=scenery)
-            except FolderError as e:
-                raise HTTPException(422, f"folder: {e}") from e
+            problem = folder_problem(Path(settings.folder), session.xplane_or_none())
+            if problem is not None:
+                raise HTTPException(422, f"folder: {problem}")
         try:
             save_settings(settings)
         except (OSError, SettingsFileError) as e:

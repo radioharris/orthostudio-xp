@@ -1513,9 +1513,9 @@ def test_the_regions_the_page_lists(home: Path, tmp_path: Path, monkeypatch) -> 
     stage = osxpregions.stage_dir(live_root(), "eur")  # whole, its swap refused at a start
     stage.mkdir()
     (stage / aoregions.MARKER).write_text("{}")
-    (stage / osxpregions.STEP).write_text(json.dumps({"held": "z_osxp_eur is in use"}))
+    (stage / osxpregions.STEP).write_text(json.dumps({"held": "z_osxp_eur held open"}))
     listed = {r["id"]: r for r in c.regions()["list"]}
-    assert listed["eur"]["waiting"] and listed["eur"]["held"] == "z_osxp_eur is in use"
+    assert listed["eur"]["waiting"] and listed["eur"]["held"] == "z_osxp_eur held open"
     monkeypatch.setattr(control_module, "xplane_running", lambda: True)
     with pytest.raises(session.RefusedError, match="X-Plane is running"):
         c.remove_region("eur")  # X-Plane reads its roads: never deleted under it

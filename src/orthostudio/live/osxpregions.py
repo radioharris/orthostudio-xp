@@ -428,19 +428,21 @@ def _waiting_stage(root: Path, region: str) -> Path | None:
 
 def held(root: Path, region: str) -> str | None:
     """Why the region's update waiting whole did not take its place at the last start that tried
-    (a program holding a folder of it open): :func:`settle`'s refusal, kept in its stage's record
-    until the region's next install (:func:`_try_again`); None where none was refused or nothing
+    (:func:`settle`'s refusal, kept by :func:`_hold`); None where none was refused or nothing
     waits."""
     stage = _waiting_stage(root, region)
     return _read(stage / STEP).get("held") if stage is not None else None
 
 
-def _try_again(root: Path, region: str) -> None:
-    """The refusal :func:`held` says forgotten, as the pilot installs the region again."""
+def _hold(root: Path, region: str, why: str | None) -> None:
+    """The refusal :func:`held` says, kept in the waiting stage's record, or forgotten (None) as
+    the pilot installs the region again."""
     stage = _waiting_stage(root, region)
-    step = _read(stage / STEP) if stage is not None else {}
-    if stage is not None and step.pop("held", None) is not None:
-        _write(stage / STEP, step)
+    record = _read(stage / STEP) if stage is not None else {}
+    if stage is None or record.get("held") == why:
+        return
+    record.pop("held", None)
+    _write(stage / STEP, {**record, "held": why} if why else record)
 
 
 # --- what a region wants and has --------------------------------------------------------------
@@ -997,10 +999,8 @@ def settle(root: Path, log: Log = print, *, swap: bool, only: Iterable[str] | No
                 log(f"OrthoStudio XP's region {region}: its river masks put in place")
         except (InstallError, OSError) as e:
             log(f"OrthoStudio XP's region {region}: its update waits ({e})")
-            stage = _waiting_stage(root, region)
-            if stage is not None:  # the window says why (held)
-                with contextlib.suppress(OSError):
-                    _write(stage / STEP, {**_read(stage / STEP), "held": str(e)})
+            with contextlib.suppress(OSError):
+                _hold(root, region, str(e))  # the window says why
 
 
 def _set_aside_whole(path: Path) -> Path:
@@ -1457,7 +1457,7 @@ class Installer:
             # answer of before, it lost the mesh the pilot now keeps, or put in place a release
             # the list no longer has before its successor (the reviews of 2026-11-18)
             settle(self.root, self.log, swap=False, only=[region.id])
-            _try_again(self.root, region.id)
+            _hold(self.root, region.id, None)
             if self.may_swap():
                 _unpack_waiting(self.root, region.id, self.log)  # a stop right after a swap
         whole = not self.night_only and made_whole(self.root, region)

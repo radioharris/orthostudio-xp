@@ -77,6 +77,17 @@ def check_folder(path: Path, *, custom_scenery: Path | None = None, create: bool
     return path
 
 
+def folder_problem(path: Path, xp: Path | None, *, create: bool = False) -> str | None:
+    """Why ``path`` cannot be Live's folder (:func:`check_folder`, with X-Plane's Custom Scenery
+    where X-Plane is known), None where it can: Live's start, an install, the page's checks and
+    the Settings alike."""
+    try:
+        check_folder(path, custom_scenery=xp / "Custom Scenery" if xp else None, create=create)
+    except (FolderError, OSError) as e:
+        return str(e)
+    return None
+
+
 def pack_dir(root: Path) -> Path:
     """The pack in a Live folder ``root``."""
     return root / "pack"

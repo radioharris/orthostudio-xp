@@ -29,10 +29,9 @@ from orthostudio.live.gate import read_flight_time
 from orthostudio.live.pack import (
     LINK_NAME,
     OVERLAY_LINK_NAME,
-    FolderError,
-    check_folder,
     default_cache_path,
     default_pack_dir,
+    folder_problem,
     live_root,
 )
 from orthostudio.live.rings import DEFAULT_MARGIN
@@ -152,6 +151,14 @@ def xplane_dir(explicit: Path | None) -> Path:
         return find_xplane(explicit)
     except OsxpError as exc:
         raise RefusedError(f"{exc.message} {exc.remedy}") from exc
+
+
+def xplane_or_none() -> Path | None:
+    """X-Plane's folder found by itself, None where it is not."""
+    try:
+        return xplane_dir(None)
+    except RefusedError:
+        return None
 
 
 def _recorded_sources(pack: Path) -> list[str]:
@@ -305,10 +312,9 @@ def prepare(options: Options, log: Log) -> Prepared:
             f"{who[0].upper()}{who[1:]} {verb} running: quit {pronoun} first, only one program "
             "may stream ortho to X-Plane"
         )
-    try:
-        check_folder(live_root(), custom_scenery=xp_dir / "Custom Scenery", create=True)
-    except FolderError as e:
-        raise RefusedError(f"Live's folder: {e}. Choose another in the Live window.") from e
+    problem = folder_problem(live_root(), xp_dir, create=True)
+    if problem is not None:
+        raise RefusedError(f"Live's folder: {problem}. Choose another in the Live window.")
     from orthostudio.live import winsearch
 
     winsearch.keep_out(live_root(), log)  # Windows: its files too many for the indexer
