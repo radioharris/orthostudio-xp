@@ -43,6 +43,7 @@ def write_stat(
 
 def test_linux_s_processes_from_proc(monkeypatch, tmp_path):
     monkeypatch.setattr(os, "sysconf", lambda name: 100, raising=False)  # clock ticks a second
+    monkeypatch.setattr(os, "getuid", lambda: tmp_path.stat().st_uid, raising=False)
     proc = tmp_path / "proc"
     proc.mkdir()
     (proc / "stat").write_text("cpu  1 2 3 4\nbtime 1700000000\nprocesses 99\n")

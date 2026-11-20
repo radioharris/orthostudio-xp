@@ -259,7 +259,7 @@ def linux_name(entry: Path, name: str) -> str:
     with contextlib.suppress(OSError):
         if entry.stat().st_uid != os.getuid():
             return name
-        with open(entry / "cmdline", "rb") as f:
+        with open(entry / "cmdline", "rb", buffering=0) as f:
             first = f.read(4096).split(b"\0", 1)[0]
         program = Path(first.decode("utf-8", errors="replace")).name
         if program in XPLANE_EXECUTABLES:
