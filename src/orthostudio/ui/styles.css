@@ -409,6 +409,7 @@ input[aria-invalid="true"] { border-color: var(--fail); }
 }
 .btn:hover { background: var(--bg-3); }
 .btn:disabled { opacity: 0.5; cursor: default; }
+a.btn { display: inline-flex; align-items: center; text-decoration: none; }  /* a link drawn as a button */
 .btn-primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); font-weight: 600; }
 .btn-primary:hover { filter: brightness(1.08); background: var(--accent); }
 /* One text size for every button, the field's and the list's beside it (--fs), wherever it stands:
@@ -1405,7 +1406,9 @@ html.in-frame .statusbar { padding-right: var(--frame-foot-w, 236px); min-height
   background: var(--bg-3); color: var(--fg-2); border: 1px solid var(--line);
 }
 .window-note code { margin: 0 4px; overflow-wrap: anywhere; }
-/* the bar of Install and relaunch (app.js showUpdateProgress), in the line of its words */
+/* the new version's words, then its buttons, spaced; the bar of Install and relaunch
+   (app.js showUpdateProgress) in the same line */
+.update-note { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .update-note .update-bar { display: inline-block; width: 12em; max-width: 40%; vertical-align: middle; }
 
 .engine-outdated {
