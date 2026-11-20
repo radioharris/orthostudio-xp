@@ -185,8 +185,10 @@
 /* the foot holds OrthoStudio XP's text size and zoom alone: on its right, as in its page */
 .live-statusbar { justify-content: flex-end; }
 
-/* the rivers question's two looks, side by side under their choices: the same camera over the
-   Rhône by Geneva, Live with each setting (the bench of 2026-11-17), so the pilot sees the
-   difference before reading it */
+/* two choices side by side, each with its picture under it; one under the other when narrow */
+.choices-side { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px; }
+.choices-side .choice-text { align-self: stretch; }  /* the pictures level at the foot */
+.choices-side .choice-note { margin-bottom: 6px; }
+.choices-side .choice-shot { margin-top: auto; }
 .choice-shot { display: block; width: 240px; max-width: 100%; height: auto; margin-top: 6px;
   border-radius: var(--radius); }
