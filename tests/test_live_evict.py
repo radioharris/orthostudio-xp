@@ -174,12 +174,25 @@ class CacheEvictTest(unittest.TestCase):
                     (i, IMAGE, b"x" * 1000, i),
                 )
             c.db.commit()
-            self.assertEqual(c.size_bytes(), 10_000)
+            held = c.size_bytes()  # the pages in use: the pieces and their table
+            self.assertGreater(held, 10_000)
             freed = c.evict_oldest(2500)
             left = [x for (x,) in c.db.execute("SELECT x FROM chunks ORDER BY x")]
+            self.assertLess(c.size_bytes(), held)  # freed pages left out
             c.close()
         self.assertEqual(freed, 3000)
         self.assertEqual(left, list(range(3, 10)))
+
+    def test_the_size_reads_no_piece(self):
+        """The size comes from the file's header: no row of the table is read, whatever its size."""
+        with tempfile.TemporaryDirectory() as tmp:
+            c = ChunkCache(Path(tmp) / "c.sqlite")
+            c.put_many("BI", [((12, i, 0), IMAGE, b"x" * 5000) for i in range(200)])
+            steps = []
+            c.db.set_progress_handler(lambda: steps.append(1), 1)
+            c.size_bytes()
+            c.close()
+        self.assertLess(len(steps), 50)
 
 
 class PreparedStartTest(unittest.TestCase):

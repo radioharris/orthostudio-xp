@@ -1742,8 +1742,7 @@ class Streamer:
 
     def texture_budget(self) -> int:
         """The textures' share of Live's disk space, with the room the imagery cache leaves in its
-        own: one space, as the user sets it (the imagery held 1.7 GB of its 20 when the textures
-        filled theirs over Norway, 2026-09-29); the roads' share kept aside when the night is on
+        own: one space, as the user sets it; the roads' share kept aside when the night is on
         (:data:`ROADS_SHARE`)."""
         budget = self.disk_budget + max(0, self.cache_budget - self._cache_size)
         if self.night is None:
@@ -1814,6 +1813,7 @@ class Streamer:
                 f"{self.texture_budget() / 1e9:.0f} GB now"
             )
         if self._cache_size > self.cache_budget:
+            # the file's pages asked, the pieces' bytes counted: a little more goes
             self.cache_freed += self.cache.evict_oldest(
                 self._cache_size - int(self.cache_budget * TARGET)
             )
