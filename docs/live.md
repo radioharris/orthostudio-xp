@@ -664,7 +664,7 @@ To switch Live off, put `enabled = false` in `live.toml`, in OrthoStudio XP's ow
 - Quit X-Plane before Stop: Live unchecks its scenery when it stops, and waits for X-Plane to quit
   first.
 - Quitting the app while Live streams asks first, in the window.
-- If you go back to an older version of the app (2.2 or before) on a Live folder this version has
+- If you go back to an older version of the app (2.3 or before) on a Live folder this version has
   updated, delete your regions in it and install them again with it: otherwise it offers to update
   every region and would unpack its own world over the new one.
 
