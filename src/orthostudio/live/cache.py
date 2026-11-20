@@ -59,8 +59,13 @@ class ChunkCache:
             )
 
     def size_bytes(self) -> int:
-        """Bytes of imagery held (the file itself keeps freed pages for the next pieces)."""
-        return self.db.execute("SELECT COALESCE(SUM(LENGTH(data)), 0) FROM chunks").fetchone()[0]
+        """The disk the imagery takes: the file's pages in use, read from its header at once
+        whatever its size, without the pages freed pieces left, which the next ones reuse."""
+        pages, free, size = (
+            self.db.execute(f"PRAGMA {name}").fetchone()[0]
+            for name in ("page_count", "freelist_count", "page_size")
+        )
+        return (pages - free) * size
 
     def evict_oldest(self, nbytes: int) -> int:
         """Delete the pieces downloaded longest ago until ``nbytes`` are freed; bytes freed."""
