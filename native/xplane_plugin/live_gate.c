@@ -7,8 +7,7 @@
  * files, so it asks X-Plane from the inside.
  *
  * X-Plane loads a flight's aircraft before its scenery, and tells plugins as it goes: PLANE_LOADED,
- * then FMOD_BANK_LOADED and LIVERY_LOADED. It reads no scenery before these
- * (docs/specs/live/hold-test.md).
+ * then FMOD_BANK_LOADED and LIVERY_LOADED. It reads no scenery before these.
  * - At PLANE_LOADED, the plugin tells the streamer where the flight starts, so that it builds while
  *   the aircraft loads.
  * - At the radio's FMOD_BANK_LOADED and at LIVERY_LOADED, it waits for the streamer to say that
@@ -354,7 +353,7 @@ static void tell_start(void) {
 }
 
 /* Every texture built, the files of the squares round the start still being made: what X-Plane
-   waits for then (docs/specs/live.md, sq=). */
+   waits for then (sq=). */
 static int preparing_ground(const struct state *st) { return st->left == 0 && st->squares > 0; }
 
 /* One line: the textures left, then the download rate, or once every photo they wait for is in

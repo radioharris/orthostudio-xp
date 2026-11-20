@@ -3,30 +3,12 @@
 """The water of Live's own mesh: a water photo for the water that fades, one grey border for the
 rivers and lakes that do not.
 
-The water overlays of Live's mesh fade the photo into X-Plane's water near the shore, through a
-mask of each texture. Given to X-Plane as their ``BORDER_TEX``, a PNG beside the photo, that mask
-came after the photo: for 2 to 2.5 s at a cold start, 2 to 5 s in Live each time a new photo
-appeared, the water showed large light triangles (the user's Rhône camera, 2026-11-17). Measured
-there, X-Plane cold: the mask in the photo's alpha (Build's way), right from 0 s; a separate mask
-PNG, 2 s; the same mask as a DDS, 2.5 s, so the format does not help; a water photo of its own,
-the mask in its alpha, given as the overlay's ``BASE_TEX`` with no border, right from 0 s at 4096,
-2048, 1024 and 512 px. Close at the bank, 512 and 1024 px left a straight line, 2048 was clean; at
-ZL17/19 a water photo of 2048 px (3.3 m a pixel on the ZL16 grid's textures) looks the same as one
-half the land's side: 2048 px at most, whatever the zoom.
-
-So each texture of Live's mesh whose water fades has its water photo ``<texture>_water.dds``
-beside it in the pack's ``textures``, its alpha the mask, and its water terrain names it instead
-of the photo and the mask (``orthostudio.live.names``). Rivers and lakes fade so only when the
-pilot asks (``LiveSettings.rivers_fade``); otherwise they are drawn as XPME and AutoOrtho draw
-them, one uniform grey as their border, 150 (:data:`EVEN_BORDER`: in X-Plane the same look as
-XPME's ``ratio_water`` 0.25), and no mask. The sea and lakes over 200 km² keep their masks either
-way.
-
-Measured with a prototype at Stockholm, every water body masked (6,111 water photos in a
-ten-minute flight, the worst case): the same frame rate (38 against 37), Live's queue as often
-empty (92 %), Live's processor +20 %, its writes +43 % (1.70 to 2.43 GB), X-Plane's memory with
-its graphics +3 GB; a 2048 px water photo encoded in 43 ms against 291 ms for the 4096 px land
-photo (2026-11-17).
+Each texture of Live's mesh whose water fades has its water photo ``<texture>_water.dds`` beside
+it in the pack's ``textures``, 2048 px at most, its alpha the mask, given as the water overlay's
+``BASE_TEX`` with no border; its water terrain names it instead of the photo and the mask
+(``orthostudio.live.names``). Rivers and lakes fade so only when the pilot asks
+(``LiveSettings.rivers_fade``); otherwise they have one uniform grey as their border
+(:data:`EVEN_BORDER`) and no mask. The sea and lakes over 200 km² keep their masks either way.
 """
 
 from __future__ import annotations
@@ -220,10 +202,7 @@ def make(land: Path, level: int) -> int | None:
     of its blocks. So the water shows the land's very colours, the season's included, and the bank
     never changes colour; nothing is encoded a second time; and a water photo can be made from its
     land's file whenever it is wanted, not only as its land is built: a texture built before its
-    square's files, or before the water photos, or set to a new zoom. The prototype encoded the
-    land's image again (43 ms for 2048 px), and its colours could differ from the land's at the
-    bank. Made so, 36 to 47 ms for 2048 px from a 4096 px land and a mask of Europe's region, 16 ms
-    of it the alpha's encoding; 3 to 7 ms from a land built from 256 px (the Mac, 2026-11-17)."""
+    square's files, or before the water photos, or set to a new zoom."""
     import numpy as np
     from PIL import Image
 
