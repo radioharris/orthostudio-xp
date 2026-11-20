@@ -708,8 +708,8 @@ def test_the_window_asks_about_rivers_and_lakes_between_the_night_and_the_decal(
     assert js.count('input[name="rivers_fade"]') == 2  # filled from the settings, and sent
     assert "rivers_fade: (" in js
     strings = (UI_DIR / "strings.js").read_text(encoding="utf-8")
-    assert '"rivers.soft_note": "The photo fades near the banks' in strings
-    assert "Up to 0.7 GB" in strings and "Jusqu'à 0,7 Go" in strings
+    assert '"rivers.soft_note": "Fades near the banks' in strings
+    assert "up to 0.7 GB" in strings and "jusqu'à 0,7 Go" in strings
     assert strings.count('"rivers.title"') == 2  # English and French
 
 
@@ -724,8 +724,8 @@ def test_soft_banks_says_what_it_downloads_for_the_regions_installed() -> None:
     js = (UI_DIR / "live.js").read_text(encoding="utf-8")
     assert "r.rivers_bytes" in js and '"rivers.soft_note_download"' in js
     strings = (UI_DIR / "strings.js").read_text(encoding="utf-8")
-    assert "full of water, and {size} to download." in strings
-    assert "riches en eau, et {size} à télécharger." in strings
+    assert "video memory and {size} to download." in strings
+    assert "mémoire vidéo et {size} à télécharger en plus." in strings
     assert strings.count('"rivers.soft_note_download"') == 2
     question = strings[strings.index('"rivers.title"') : strings.index('"rivers.ask_title"')]
     assert "delet" not in question
