@@ -31,15 +31,19 @@ def test_where_live_runs(monkeypatch, platform, runs):
     assert live.supported() is runs
 
 
-def write_stat(proc: Path, pid: int, name: str, state: str, start_ticks: int) -> None:
-    """A process's ``/proc/<pid>/stat``: its name, its state (3rd field), its start (22nd)."""
+def write_stat(
+    proc: Path, pid: int, name: str, state: str, start_ticks: int, parent: int = 1
+) -> None:
+    """A process's ``/proc/<pid>/stat``: its name, its state (3rd field), its parent (4th), its
+    start (22nd)."""
     (proc / str(pid)).mkdir(parents=True)
-    fields = [state, *["0"] * 18, str(start_ticks), *["0"] * 30]
+    fields = [state, str(parent), *["0"] * 17, str(start_ticks), *["0"] * 30]
     (proc / str(pid) / "stat").write_text(f"{pid} ({name}) {' '.join(fields)}\n")
 
 
 def test_linux_s_processes_from_proc(monkeypatch, tmp_path):
     monkeypatch.setattr(os, "sysconf", lambda name: 100, raising=False)  # clock ticks a second
+    monkeypatch.setattr(os, "getuid", lambda: tmp_path.stat().st_uid, raising=False)
     proc = tmp_path / "proc"
     proc.mkdir()
     (proc / "stat").write_text("cpu  1 2 3 4\nbtime 1700000000\nprocesses 99\n")
@@ -47,11 +51,18 @@ def test_linux_s_processes_from_proc(monkeypatch, tmp_path):
     write_stat(proc, 4242, "X-Plane-x86_64", "R", 25_000)  # 250 s after the boot
     write_stat(proc, 4300, "X-Plane-x86_64", "Z", 30_000)  # has quit, its parent not told yet
     write_stat(proc, 77, "a (strange) name", "S", 200)
+    # X-Plane names its main thread « Main Thread », the name Linux gives: known by its program
+    write_stat(proc, 5000, "Main Thread", "S", 40_000)
+    (proc / "5000" / "cmdline").write_bytes(b"./X-Plane-x86_64\0--no_sound\0")
+    # a process it forked, before it runs its own program, is not X-Plane
+    write_stat(proc, 5001, "Main Thread", "S", 40_100, parent=5000)
+    (proc / "5001" / "cmdline").write_bytes(b"./X-Plane-x86_64\0--no_sound\0")
     (proc / "self").mkdir()  # no process's number
     assert scenery._linux_processes(proc) == {
         1: ("systemd", 1_700_000_001.0),
         4242: ("X-Plane-x86_64", 1_700_000_250.0),
         77: ("a (strange) name", 1_700_000_002.0),
+        5000: ("X-Plane-x86_64", 1_700_000_400.0),
     }
     assert scenery._linux_processes(tmp_path / "none") is None
 

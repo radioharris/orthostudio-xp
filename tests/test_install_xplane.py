@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -158,6 +159,27 @@ def test_ps_and_tasklist_parsing(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(xplane, "_run", lambda cmd: None)
     assert xplane._ps_names() is None and xplane._tasklist_names() is None
     assert xplane.process_names("win32") == set()
+
+
+def test_x_plane_renaming_its_main_thread_is_found_on_linux(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """X-Plane on Linux names its main thread « Main Thread », the name /proc gives: found by its
+    first argument; another program keeps its own name, X-Plane in its arguments or not; another
+    user's processes keep theirs."""
+    me = tmp_path.stat().st_uid
+    monkeypatch.setattr(os, "getuid", lambda: me, raising=False)  # Windows has none
+    for pid, comm, cmdline in (
+        ("10", "Main Thread", b"./X-Plane-x86_64\0"),
+        ("11", "bash", b"bash\0-c\0X-Plane-x86_64\0"),
+        ("12", "kworker/0:1", b""),
+    ):
+        (tmp_path / pid).mkdir()
+        (tmp_path / pid / "comm").write_text(comm + "\n")
+        (tmp_path / pid / "cmdline").write_bytes(cmdline)
+    assert xplane._proc_names(tmp_path) == {"X-Plane-x86_64", "bash", "kworker/0:1"}
+    monkeypatch.setattr(os, "getuid", lambda: me + 1, raising=False)
+    assert xplane._proc_names(tmp_path) == {"Main Thread", "bash", "kworker/0:1"}
 
 
 def test_process_listing_failure_means_not_running(monkeypatch: pytest.MonkeyPatch) -> None:
