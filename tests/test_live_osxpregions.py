@@ -2206,10 +2206,19 @@ def short_disk(monkeypatch):
     named, deleted (or made again under its name), frees what the test says it holds: a file its
     size, a mesh or a stage the size its marker gave, ``(folder, bytes)`` those bytes (0 for a
     kept mesh the pack holds still, its files shared). No rule of its own on what is shared: each
-    test says it."""
+    test says it. One renamed away counts as deleted: Linux gives a folder made again under its
+    name the number of the one deleted."""
     real = shutil.disk_usage
     monkeypatch.setattr(osxpregions, "SPARE_BYTES", 0)
     state: dict = {"base": None, "freeable": []}
+    moved: set[Path] = set()
+    replace = osxpregions.replace_file
+
+    def replacing(src, dst, *args, **kw):
+        moved.add(Path(src))
+        return replace(src, dst, *args, **kw)
+
+    monkeypatch.setattr(osxpregions, "replace_file", replacing)
 
     def usage(path):
         got = real(path)
@@ -2219,6 +2228,8 @@ def short_disk(monkeypatch):
         return type(got)(got.total, got.total - free, free)
 
     def gone(path: Path, ino: int) -> bool:
+        if path in moved:
+            return True
         try:
             return path.stat().st_ino != ino  # made again since: a new folder
         except OSError:
@@ -2243,6 +2254,7 @@ def short_disk(monkeypatch):
                 return f, f.stat().st_size
             return f, json.loads((f / aoregions.MARKER).read_text())["size"]
 
+        moved.clear()
         state["freeable"] = [(f, n, f.stat().st_ino) for f, n in map(holds, folders)]
         state["base"] = need - by
 

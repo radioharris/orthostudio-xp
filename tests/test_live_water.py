@@ -378,9 +378,16 @@ def test_the_water_photo_has_the_land_s_colours_the_season_s_included(tmp_path: 
 def test_the_disk_counts_the_water_photos(tmp_path: Path) -> None:
     """5.6 MB for a sharp one, 2048 px at most whatever the zoom; nothing for a neutral texture;
     counted with its texture, and a texture made coarser frees what its water photo held."""
-    from orthostudio.live.evict import held_bytes, pick, texture_bytes, usage, water_bytes
+    from orthostudio.live.evict import (
+        ALLOC_BLOCK,
+        held_bytes,
+        pick,
+        texture_bytes,
+        usage,
+        water_bytes,
+    )
 
-    assert 5_590_000 < water_bytes(0, 0) < 5_610_000
+    assert 5_590_000 < water_bytes(0, 0) < 5_610_000 + ALLOC_BLOCK  # 64 KB steps on Windows
     assert water_bytes(-1, -1) == water_bytes(0, -1) == water_bytes(0, 0)
     assert water_bytes(1, 1) < water_bytes(0, 0) // 3  # 1024 px for a 2048 px land
     assert water_bytes(4, 0) < 100_000 and water_bytes(5, 0) == 0
