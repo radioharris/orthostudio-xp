@@ -13,6 +13,7 @@ from unittest import mock
 
 import httpx
 import pytest
+from tests.test_live_night import grid_of_streets, texture_at
 
 from orthostudio.errors import OsxpError
 from orthostudio.graph import ResolvedInput, RunContext
@@ -33,7 +34,6 @@ from orthostudio.textures.ter import (
     ter_text,
     with_night,
 )
-from tests.test_live_night import grid_of_streets, texture_at
 
 T = TileRef(43, 7)
 TOWN = (43.70, 7.27)
