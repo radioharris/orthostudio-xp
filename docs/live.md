@@ -521,24 +521,25 @@ same folder is not added twice: written another way (with `~`, a slash more), re
 link, or, on a Mac, in other capitals; a folder whose disk is unplugged is told apart by how it is
 written alone.
 
-Live's regions come first, then AutoOrtho's in X-Plane, then these folders in the list's order,
-for the mesh and for the roads alike; only the mesh of the squares you put in front of Live comes
-first (below). Where two folders have the same square, the higher one in the list gives it, in
-front of Live or behind: **↑** and **↓** move a folder up or down. A folder that is not there (its
-disk unplugged) does not stop Live: its line says so, and its squares come from the next folder
-that has them, else from Live's mesh. **Remove** puts the squares a folder gives back behind
-Live, as **All behind** does (below), then makes Live forget the folder; its files stay where they
-are. A folder that is not there gives no square, so Live cannot know which of the squares in front
-were its own: its **Remove** leaves them in front of Live, and the text under the list says so;
-plug its disk in first to put them back behind Live. Nothing in those folders is changed. Their
-meshes and their roads are taken at Live's start, and kept until the next one: the line says "Used
-from Live's next start" until then. Each start says in Live's log what each folder's line says,
-and a little more: the squares it gives, none included, what it takes there or why it takes
-nothing, the folder not there included, and every pack it leaves aside, by name, whatever the
-case; when they are the only mesh, the window and the start then say so. On Windows, a folder on a network drive needs Developer Mode on:
-without it, Windows cannot link Live's scenery to it. At night their towns are lit too, along
-X-Plane's own roads, but without NASA's night map, which comes with Live's regions: every street
-lamp is on, a little dimmer, out in the open country too.
+Live's regions come first, then AutoOrtho's in X-Plane, then these folders in the list's order, for
+the mesh and for the roads alike; only the mesh of the squares you put in front of Live comes first
+(below). Where two folders have the same square, the higher one in the list gives it, in front of
+Live or behind: **↑** and **↓** move a folder up or down. A folder that is not there (its disk
+unplugged) does not stop Live: its line says so, and its squares come from the next folder that has
+them, else from Live's mesh. **Remove** puts the squares a folder gives back behind Live, as **All
+behind** does (below), then makes Live forget the folder; its files stay where they are. A folder
+that is not there gives no square, so Live cannot know which of the squares in front were its own:
+its **Remove** leaves them in front of Live, and the text under the list says so while one of the
+squares in front comes from no folder there; plug its disk in first to put them back behind Live.
+Nothing in those folders is changed. Their meshes and their roads are taken at Live's start, and
+kept until the next one: the line says "Used from Live's next start" until then. Each start says in
+Live's log what each folder's line says, and a little more: the squares it gives, none included,
+what it takes there or why it takes nothing, the folder not there included, and every pack it leaves
+aside, by name, whatever the case; when they are the only mesh, the window and the start then say
+so. On Windows, a folder on a network drive needs Developer Mode on: without it, Windows cannot link
+Live's scenery to it. At night their towns are lit too, along X-Plane's own roads, but without
+NASA's night map, which comes with Live's regions: every street lamp is on, a little dimmer, out in
+the open country too.
 
 **In front of Live.** A mesh of your own, its relief fixed by hand around an airport, can replace
 Live's mesh on the squares you choose, with Live's photos laid on it: on Live's map, the squares of

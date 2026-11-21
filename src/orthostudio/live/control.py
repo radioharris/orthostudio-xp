@@ -61,6 +61,7 @@ from orthostudio.live.scenery import (
     ortho_streamers,
     osxp_regions,
     other_mesh_found,
+    other_mesh_front,
     other_mesh_said,
     save_named_xplane,
     xplane_running,
@@ -293,7 +294,9 @@ def _other_meshes_said(xp: Path | None) -> dict[str, Any] | None:
     :func:`other_mesh_said` says it, with whether its meshes wait for Live's next start (not in
     the pack yet) and its packs checked in X-Plane's list above Live's line, which X-Plane draws
     itself without photos (``in_xplane``); whether the squares put in front of Live are not those
-    of the pack yet (``front_next``). None without a folder."""
+    of the pack yet (``front_next``); how many of them no folder there gives (``front_unseen``),
+    which a folder not there may have given: its Remove leaves them in front. None without a
+    folder."""
     from orthostudio.live.covered import listed_above_live
 
     found = other_mesh_found(xp, live_root())
@@ -314,7 +317,11 @@ def _other_meshes_said(xp: Path | None) -> dict[str, Any] | None:
         }
         for one, lines in zip(found.folders, in_xplane, strict=True)
     ]
-    return {"folders": folders, "front_next": front_changed(pack, found.front)}
+    return {
+        "folders": folders,
+        "front_next": front_changed(pack, found.front),
+        "front_unseen": len(other_mesh_front(load_settings()).difference(found.front)),
+    }
 
 
 def our_regions(root: Path) -> list[dict[str, Any]]:

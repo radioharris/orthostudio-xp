@@ -631,8 +631,9 @@ function drawOtherMeshes(other) {
 
 /** Under the list: how to put a square of these meshes in front of Live on its map, and whether
  *  the squares in front wait for Live's next start, while a folder gives a square (its count, the
- *  engine's); while a folder is not there, that its Remove leaves its squares in front of Live,
- *  Live not knowing which it gave (orthostudio/live/api.py other_remove). Empty: nothing to say. */
+ *  engine's); while a folder is not there and a square in front comes from no folder there
+ *  (front_unseen, the engine's count), that its Remove leaves its squares in front of Live, Live
+ *  not knowing which it gave (orthostudio/live/api.py other_remove). Empty: nothing to say. */
 export function otherFrontSaid(other) {
   const folders = other?.folders || [];
   const said = [];
@@ -640,7 +641,7 @@ export function otherFrontSaid(other) {
     said.push(t("other_mesh.front_how"));
     if (other.front_next) said.push(t("other_mesh.front_next"));
   }
-  if (folders.some((f) => f.unused === "gone")) said.push(t("other_mesh.gone_remove"));
+  if (other?.front_unseen > 0 && folders.some((f) => f.unused === "gone")) said.push(t("other_mesh.gone_remove"));
   return said.join(" ");
 }
 
