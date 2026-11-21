@@ -648,8 +648,8 @@ def test_no_start_on_a_mesh_changed_while_xplane_runs(
 ) -> None:
     """The pack made from one folder, the start reading the region from another (the Settings'
     Mesh switched to a kept old mesh, or back, or the disk of a mesh not connected): refused with
-    X-Plane running, as a zoom changed is, saying the case in plain words, the pack never set up
-    again under it; with X-Plane closed, set up again. A region only added after the others is
+    X-Plane running, as a zoom changed is, in plain words, the pack never set up again under it;
+    with X-Plane closed, set up again. A region only added after the others is
     merged in, as before; one put first sets the pack up again."""
     from orthostudio.live import osxpregions, winsearch
     from orthostudio.live.filesystem import folder_link
@@ -673,12 +673,11 @@ def test_no_start_on_a_mesh_changed_while_xplane_runs(
     monkeypatch.setattr(session, "is_installed", lambda *a: True)
     monkeypatch.setattr(session, "xplane_running", lambda: True)
     switched = session.Options(xplane=xp, pack=pack, source=old, no_plugin=True)
-    with pytest.raises(
-        session.RefusedError, match="streams onto changed since its last start"
-    ) as e:
+    with pytest.raises(session.RefusedError, match="streams onto or the squares in front") as e:
         session.prepare(switched, log=quiet)
     said = str(e.value)
-    assert said.endswith("Quit X-Plane, or connect the disk holding a mesh, then start again")
+    # the mesh of before on the disk: no disk to connect (test_live_front, a mesh gone)
+    assert said.endswith("Quit X-Plane, then start again")
     assert "z_ao_test" not in said
     assert sources_of_pack(pack) == [new]  # the pack as X-Plane found it
     monkeypatch.setattr(session, "xplane_running", lambda: False)

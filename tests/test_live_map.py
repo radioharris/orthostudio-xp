@@ -217,14 +217,20 @@ def test_the_map_s_legend_is_osxp_s_laid_on_the_map() -> None:
     assert "pointer-events: none;" in build_legend
 
 
-def test_a_double_click_flips_its_square_once() -> None:
-    """A double-click on a square of another tool's mesh zooms in and flips it once: Leaflet sends
-    its second click as a click too, which put the square back."""
+def test_a_double_click_zooms_in_alone() -> None:
+    """A double-click on a square of another tool's mesh zooms in, the square as it was: a click
+    on one flips it after a wait, which a double-click cancels, both its clicks, which Leaflet
+    sends as clicks too. Once the first flipped it and the zoom put it in front."""
     js = (UI_DIR / "livemap.js").read_text()
+    assert "const DOUBLE_CLICK_MS = 300;" in js
     click = js[js.index('  map.on("click", (ev) => {') :]
-    click = click[: click.index("\n  });\n")]
-    assert "if (ev.originalEvent?.detail > 1) return;" in click
-    assert click.index("detail > 1") < click.index("onOther(square)")
+    click = click[: click.index('  map.on("dblclick", () => {')]
+    assert "setTimeout(" in click and "DOUBLE_CLICK_MS" in click and "waiting.add(click)" in click
+    assert click.index("setTimeout(") < click.index("onOther(square)")
+    double = js[js.index('  map.on("dblclick", () => {') :]
+    double = double[: double.index("\n  });\n")]
+    assert "for (const click of waiting) clearTimeout(click);" in double
+    assert "detail" not in click  # the second click waits too, and goes with the double-click
 
 
 class FakeStreamer:

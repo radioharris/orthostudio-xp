@@ -196,7 +196,7 @@ function streamersRunning(given) {
  *  start says it; another tool's mesh offered only when none is chosen. */
 function noMesh(key, checks) {
   const other = checks?.other_meshes;
-  if (other?.folders.some((f) => !f.there) && key === "checks.mesh_missing") return "checks.other_mesh_gone";
+  if (other?.folders.some((f) => f.unused === "gone") && key === "checks.mesh_missing") return "checks.other_mesh_gone";
   return other ? key : `${key}_other`;
 }
 
@@ -583,10 +583,11 @@ export function otherMeshSaid(f) {
   const said = f.squares ? [counted] : [];
   if (f.unused === "above") return [[...said, t("other_mesh.above")].join(" "), false];
   if (f.unused === "behind") return [[...said, t("other_mesh.behind")].join(" "), false];
-  const used = f.next_start ? "other_mesh.meshes_next" : "other_mesh.meshes";
-  said.push(f.meshes.length ? t(used, { names: f.meshes.join(", ") }) : t("other_mesh.none"));
-  if (f.overlays.length) said.push(t("other_mesh.overlays", { names: f.overlays.join(", ") }));
-  else if (f.meshes.length) said.push(t("other_mesh.no_roads"));
+  if (f.unused === "no_mesh") said.push(t("other_mesh.none"));
+  else {
+    said.push(t(f.next_start ? "other_mesh.meshes_next" : "other_mesh.meshes", { names: f.meshes.join(", ") }));
+    said.push(f.overlays.length ? t("other_mesh.overlays", { names: f.overlays.join(", ") }) : t("other_mesh.no_roads"));
+  }
   if (f.refused.length) {
     // a few, the rest counted: X-Plane's folder chosen lists every tile of Custom Scenery
     const shown = f.refused.slice(0, 5);
@@ -607,7 +608,7 @@ function drawOtherMeshes(other) {
   const folders = other?.folders || [];
   const key = JSON.stringify([language(), folders]);
   drawOtherFront(other);
-  if (!h || list.dataset.drawn === key) return; // h: static/dom.js, loaded with the page's tools
+  if (!h || list.dataset.drawn === key) return; // h: static/dom.js, loaded on its own (bindDom)
   list.dataset.drawn = key;
   list.hidden = !folders.length;
   list.replaceChildren(...folders.map((f, i) => {
@@ -1966,7 +1967,20 @@ let textSizeTools = null; // its text size (static/textsize.js), once loaded
 let findTools = null; // its find bar (static/find.js), once loaded
 let zoomRefresh = null; // writes the zoom's level again in the page's language, once bound
 let textSizeRefresh = null; // writes the text size's choices again, once bound
-let h = null; // its one way to make an element (static/dom.js), once loaded
+let h = null; // its one way to make an element (static/dom.js), once loaded (bindDom)
+
+/**
+ * OrthoStudio XP's one way to make an element (static/dom.js), which the folders of other tools'
+ * meshes are drawn with, loaded at the page's start on its own: another of OrthoStudio XP's modules
+ * failing to load (bindPageTools) never hides that list and its buttons. Drawn at the next status.
+ */
+async function bindDom() {
+  try {
+    ({ h } = await import("../static/dom.js"));
+  } catch (_e) {
+    // not there: the list waits for it
+  }
+}
 
 /**
  * OrthoStudio XP's find bar (Cmd+F, Ctrl+F), zoom (Cmd+plus, Cmd+minus, Cmd+0, and its control at
@@ -1974,21 +1988,18 @@ let h = null; // its one way to make an element (static/dom.js), once loaded
  * static/zoom.js, static/textsize.js): Live's window has none of them, and a browser keeps its own
  * find and zoom; the text size works in a browser too. Loaded here rather than with the page, as
  * the map is: they speak OrthoStudio XP's own words, told the page's language. The user asked for
- * the foot of OrthoStudio XP's page in Live's (2026-10-03). With them its one way to make an
- * element (static/dom.js), which the folders of other tools' meshes are drawn with.
+ * the foot of OrthoStudio XP's page in Live's (2026-10-03).
  */
 async function bindPageTools() {
   try {
-    const [words, find, zoom, textSize, embed, update, dom] = await Promise.all([
+    const [words, find, zoom, textSize, embed, update] = await Promise.all([
       import("../static/i18n.js"),
       import("../static/find.js"),
       import("../static/zoom.js"),
       import("../static/textsize.js"),
       import("../static/embed.js"),
       import("../static/update.js"),
-      import("../static/dom.js"),
     ]);
-    h = dom.h; // the folders of other tools' meshes drawn at the next status
     osxpWords = words;
     findTools = find;
     textSizeTools = textSize;
@@ -2322,6 +2333,7 @@ function boot() {
   const route = screenFromHash(location.hash);
   showScreen(route.name, route.question);
   startMap();
+  bindDom();
   bindPageTools();
   bindSearch();
   loadProviders();

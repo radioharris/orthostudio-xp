@@ -526,12 +526,13 @@ for the mesh and for the roads alike; only the mesh of the squares you put in fr
 first (below). Where two folders have the same square, the higher one in the list gives it, in
 front of Live or behind: **↑** and **↓** move a folder up or down. A folder that is not there (its
 disk unplugged) does not stop Live: its line says so, and its squares come from the next folder
-that has them, else from Live's mesh. **Remove** makes Live forget a folder; its files stay where
-they are, and so do the squares you put in front of Live: one that no folder gives any more is
-simply not taken. Nothing in those folders is changed. Their meshes and their roads are taken at Live's start, and kept until
-the next one: the line says "Used from Live's next start" until then. Each start says in Live's log
-what it takes in each folder, or that one is not there; when they are the only mesh, the window
-and the start then say so. On Windows, a folder on a network drive needs Developer Mode on:
+that has them, else from Live's mesh. **Remove** puts the squares a folder gives back behind
+Live, as **All behind** does (below), then makes Live forget the folder; its files stay where they
+are. Nothing in those folders is changed. Their meshes and their roads are taken at Live's start,
+and kept until the next one: the line says "Used from Live's next start" until then. Each start
+says in Live's log what each folder's line says: the squares it gives and what it takes there, or
+why it takes nothing, the folder not there included; when they are the only mesh, the window and
+the start then say so. On Windows, a folder on a network drive needs Developer Mode on:
 without it, Windows cannot link Live's scenery to it. At night their towns are lit too, along
 X-Plane's own roads, but without NASA's night map, which comes with Live's regions: every street
 lamp is on, a little dimmer, out in the open country too.
@@ -540,7 +541,7 @@ lamp is on, a little dimmer, out in the open country too.
 Live's mesh on the squares you choose, with Live's photos laid on it: on Live's map, the squares of
 the folders are drawn in their own colour, dashed while they come behind Live, framed and shaded
 once in front of it, and pointing at one names the folder it comes from; click one to put it in
-front of Live, click it again to put it back (a double-click zooms in and counts as one click).
+front of Live, click it again to put it back (a double-click only zooms in).
 **All in front** and **All behind** do it at once for every square a folder gives: not those a
 folder higher in the list has, which stay as they are. Live's own mesh stays everywhere else, and
 the roads, forests and buildings do not change. While every square a folder gives is behind Live,

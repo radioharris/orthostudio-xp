@@ -41,6 +41,7 @@ const BUILT_EVERY_MS = 3000; // while Live streams: the engine answers "same" wh
 const OWN_EVERY_MS = 30000; // the user's own tiles asked for again this often (the engine: 30 s)
 const OWN_INSET = 2.5; // px: as OrthoStudio XP's Plan frames a tile, inside it, never on its edge
 const OTHER_INSET = 1; // px: a square of another tool's mesh, inside it, the user's tile frame outside
+const DOUBLE_CLICK_MS = 300; // a click on such a square waits this long for a double-click (a zoom)
 // the legend folded away, and its "Show" (Build's Plan map keeps its own: osxp.mapLegend...)
 const LEGEND_KEY = "osxp.live.mapLegend";
 const LEGEND_SHOW_KEY = "osxp.live.mapLegendShow";
@@ -275,7 +276,8 @@ export function createLiveMap(el, { api, info = null, legend = null, onOther = n
    * The squares of other tools' meshes (orthostudio/live/control.py other_squares), each with the
    * folder that gives it: dashed where it comes behind Live, framed and shaded where the pilot put
    * it in front of Live, its mesh there with Live's photos. A click on one puts it in front or
-   * back (onOther); those whose line under "Show" is unticked are neither drawn nor clicked.
+   * back (onOther), a double-click zooms in alone; those whose line under "Show" is unticked are
+   * neither drawn nor clicked.
    */
   const otherShown = () => otherSquares.filter((x) => shown[x.front ? "other-front" : "other-behind"]);
   function drawOther() {
@@ -311,12 +313,22 @@ export function createLiveMap(el, { api, info = null, legend = null, onOther = n
     const { lat, lng } = latlng;
     return otherShown().find((x) => lat >= x.lat && lat < x.lat + 1 && lng >= x.lon && lng < x.lon + 1);
   }
-  // a click elsewhere does what it did before: nothing; the second click of a double-click (a
-  // zoom), which Leaflet sends as a click too, nothing either: it would put the square back
+  // a click on a square flips it DOUBLE_CLICK_MS later, unless a double-click came meanwhile,
+  // whose two clicks Leaflet sends as clicks too: it zooms in alone, the square as it was; a click
+  // elsewhere does what it did before: nothing
+  const waiting = new Set(); // the clicks on a square not applied yet
   map.on("click", (ev) => {
-    if (ev.originalEvent?.detail > 1) return;
     const square = otherAt(ev.latlng);
-    if (square && onOther) onOther(square);
+    if (!square || !onOther) return;
+    const click = setTimeout(() => {
+      waiting.delete(click);
+      onOther(square);
+    }, DOUBLE_CLICK_MS);
+    waiting.add(click);
+  });
+  map.on("dblclick", () => {
+    for (const click of waiting) clearTimeout(click);
+    waiting.clear();
   });
 
   // the regions' shade only while zoomed out: closer, the view is inside one

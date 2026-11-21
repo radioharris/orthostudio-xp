@@ -24,6 +24,7 @@ from orthostudio.decals import DECALS
 from orthostudio.fsutil import atomic_write_text
 from orthostudio.install.library import tile_from_name
 from orthostudio.live import settings_file
+from orthostudio.live.filesystem import folder_identity
 from orthostudio.live.geo import tile_name
 
 TABLE = "stream"
@@ -119,7 +120,7 @@ class LiveSettings(BaseModel):
     streams onto them after its own mesh and AutoOrtho's in X-Plane, but on the squares of
     :attr:`other_mesh_front`, and takes their roads, forests and buildings too; between them the
     first in the list that has a square gives it, in front of Live or behind
-    (:func:`orthostudio.live.scenery.other_meshes`). Each folder once, as typed; added at the
+    (:func:`orthostudio.live.scenery._given_by`). Each folder once, as typed; added at the
     bottom, moved up or down, or removed by the page's buttons (:func:`add_other_mesh`,
     :func:`move_other_mesh`, :func:`remove_other_mesh`). A setting, not a look into the other
     tools' own files, which may change under Live (the user, 2026-11-14: « je préfère le réglage
@@ -130,9 +131,9 @@ class LiveSettings(BaseModel):
     DSF of the first folder that has it wins over Live's own and AutoOrtho's, with Live's photos
     (:func:`orthostudio.live.scenery.default_meshes`); elsewhere they come after them. Put in
     front or back by a click (:func:`flip_front`), or a folder's squares all at once
-    (:func:`put_in_front`); never dropped otherwise, a folder removed included: a square no folder
-    gives is not taken. Taken at the next start with X-Plane not running, as every change of the
-    mesh (``session.prepare``)."""
+    (:func:`put_in_front`), those of a folder removed put back behind (:func:`remove_other_mesh`);
+    never dropped otherwise: a square no folder gives is not taken. Taken at the next start with
+    X-Plane not running, as every change of the mesh (``session.prepare``)."""
     mesh: Literal["new", "old"] = "new"
     """Which mesh of Live's own regions a start streams onto, for all of them at once: "new", each
     region installed; "old", each region's kept old mesh where it has one, the new one elsewhere
@@ -297,14 +298,12 @@ def folder_key(text: str) -> str:
 
 def _same_folder(a: str, b: str) -> bool:
     """Whether two folders of that list are one: written the same (:func:`folder_key`), or, both
-    there, the same folder on the disk (one a link to the other, or written in another case on
-    macOS, whose disks ignore it)."""
+    there, the same folder on the disk (``filesystem.folder_identity``: one a link to the other,
+    or written in another case on macOS, whose disks ignore it)."""
     if folder_key(a) == folder_key(b):
         return True
-    try:
-        return os.path.samefile(folder_path(a), folder_path(b))
-    except (OSError, ValueError):  # one not there (its disk unplugged), a name no disk takes
-        return False
+    one = folder_identity(folder_path(a))
+    return one is not None and one == folder_identity(folder_path(b))
 
 
 class SettingsFileError(Exception):
@@ -440,17 +439,20 @@ def flip_front(square: str) -> LiveSettings:
     return saved_with(change)
 
 
+def _front_with(settings: LiveSettings, squares: Collection[str], front: bool) -> list[str]:
+    """The squares in front of Live of ``settings``, ``squares`` put in front or back behind, the
+    others as they are: the one rule of a folder's « All in front » and « All behind »
+    (:func:`put_in_front`), and of its Remove (:func:`remove_other_mesh`)."""
+    names = {name.strip() for name in squares}
+    kept = [name for name in settings.other_mesh_front if name not in names]
+    return [*kept, *names] if front else kept
+
+
 def put_in_front(squares: Collection[str], front: bool) -> LiveSettings:
     """Squares of the folders of other tools' meshes put in front of Live, or back behind it: those
     a folder gives, its « All in front » or « All behind ». The setting read, those squares alone
     changed, saved. The settings, as saved; :class:`ValueError` for a name not a square's."""
-    names = {name.strip() for name in squares}
-
-    def change(settings: LiveSettings) -> dict[str, Any]:
-        kept = [name for name in settings.other_mesh_front if name not in names]
-        return {"other_mesh_front": [*kept, *names] if front else kept}
-
-    return saved_with(change)
+    return saved_with(lambda now: {"other_mesh_front": _front_with(now, squares, front)})
 
 
 def _index(settings: LiveSettings, folder: str) -> int:
@@ -500,13 +502,15 @@ def move_other_mesh(folder: str, up: bool) -> LiveSettings:
     return saved_with(change)
 
 
-def remove_other_mesh(folder: str) -> LiveSettings:
-    """A folder forgotten, its files left as they are; the squares in front of Live stay as they
-    are (one no folder gives is not taken). The settings, as saved."""
+def remove_other_mesh(folder: str, gives: Collection[str]) -> LiveSettings:
+    """A folder's Remove: its « All behind » on the squares it ``gives`` (``OtherMeshes.gives``,
+    from the folders as last read, outside the settings' lock; none for a folder not there), then
+    the folder forgotten, in one save, its files left as they are. The other squares in front of
+    Live stay as they are. The settings, as saved; :class:`ValueError` for a folder not listed."""
 
     def change(settings: LiveSettings) -> dict[str, Any]:
         folders = list(settings.other_meshes)
         del folders[_index(settings, folder)]
-        return {"other_meshes": folders}
+        return {"other_meshes": folders, "other_mesh_front": _front_with(settings, gives, False)}
 
     return saved_with(change)

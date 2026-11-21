@@ -267,3 +267,13 @@ def save_settings(settings) -> None:
     from orthostudio.live.settings import saved_with
 
     saved_with(lambda _: settings.model_dump())
+
+
+def other_meshes(folders, given=(), front=()):
+    """The folders of other tools' meshes ``folders``, top first, read on the disk now, after the
+    regions ``given``, with the squares put in front of Live ``front``: as Live finds them
+    (``scenery.other_mesh_found``), neither its settings nor what it kept read."""
+    from orthostudio.live.scenery import _given_by, read_folders
+
+    folders = list(folders)
+    return _given_by(folders, read_folders(folders, list(given)), front)

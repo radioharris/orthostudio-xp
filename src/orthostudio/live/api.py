@@ -65,7 +65,7 @@ from orthostudio.live import session
 from orthostudio.live.control import LiveControl, Refusal
 from orthostudio.live.geo import tile_name
 from orthostudio.live.pack import folder_problem
-from orthostudio.live.scenery import move_live
+from orthostudio.live.scenery import OtherFolder, move_live
 from orthostudio.live.settings import (
     AlreadyListedError,
     LiveSettings,
@@ -392,24 +392,31 @@ def live_router(
         """A folder's ↑ or ↓: moved one line."""
         return other_changed(lambda: move_other_mesh(body.folder, body.up))
 
+    def given_by(folder: str) -> tuple[OtherFolder, list[str]]:
+        """The folder of the list the page names, and the squares it gives
+        (``OtherMeshes.gives``: not those a folder above it gives, whose own buttons and clicks
+        decide them), from the folders as last read, outside the settings' lock: what its « All
+        in front », « All behind » and Remove change. 422 for a folder not listed."""
+        found = control.other_found()
+        one = found.named(folder)
+        if one is None:
+            raise HTTPException(422, f"{folder} is not in the list of other tools' meshes")
+        return one, [tile_name(*square) for square in found.gives(one.folder)]
+
     @router.post("/other/remove")
     def other_remove(body: OtherFolderBody) -> dict[str, Any]:
-        """A folder's Remove: forgotten, its files left as they are, the squares in front as they
-        are."""
-        return other_changed(lambda: remove_other_mesh(body.folder))
+        """A folder's Remove: « All behind » on it, then forgotten, its files left as they are; a
+        folder not there gives nothing, nothing put behind."""
+        _, squares = given_by(body.folder)
+        return other_changed(lambda: remove_other_mesh(body.folder, squares))
 
     @router.post("/other/all")
     def other_all(body: OtherAllBody) -> dict[str, Any]:
         """A folder's « All in front » or « All behind »: every square it gives in front of Live,
-        or back behind it; not those a folder above it gives, whose own buttons and clicks
-        decide them (``OtherMeshes.gives``)."""
-        found = control.other_found()
-        one = found.named(body.folder)
-        if one is None:
-            raise HTTPException(422, f"{body.folder} is not in the list of other tools' meshes")
+        or back behind it."""
+        one, squares = given_by(body.folder)
         if not one.there:
             raise HTTPException(409, f"{body.folder} is not there: is its disk unplugged?")
-        squares = [tile_name(*square) for square in found.gives(one.folder)]
         return other_changed(lambda: put_in_front(squares, body.front))
 
     @router.get("/map/regions")

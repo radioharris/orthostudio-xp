@@ -64,15 +64,17 @@ class RefusedError(Exception):
     """Streaming cannot start; the message says why, and what to do."""
 
 
-REDO_REFUSED = {
-    "regions": "the meshes Live streams onto changed since its last start, and X-Plane may be "
-    "reading those of before. Quit X-Plane, or connect the disk holding a mesh, then start again",
-    "front": "the squares in front of Live or their mesh changed since its last start, and X-Plane "
-    "may be reading the meshes of before. Quit X-Plane, then start again",
-}
-"""A start refused while X-Plane runs on a pack to set up again, by why (``region.pack_to_redo``):
-"front" only with the regions of before but for the meshes that come and go with the squares in
-front, which are there: a disk is not the cause."""
+REDO_REFUSED = (
+    "the meshes Live streams onto or the squares in front of Live changed since its last start, "
+    "and X-Plane may be reading the meshes of before. Quit X-Plane, then start again"
+)
+"""A start refused while X-Plane runs on a pack to set up again (``region.pack_to_redo``), every
+mesh it was last set up from on the disk: a disk is not the cause."""
+REDO_UNPLUGGED = (
+    "the meshes Live streams onto changed since its last start, and X-Plane may be reading those "
+    "of before. Quit X-Plane, or connect the disk holding a mesh, then start again"
+)
+"""The same, a mesh the pack was last set up from no longer on the disk (its disk unplugged)."""
 
 
 def default_workers() -> int:
@@ -298,6 +300,7 @@ def prepare(options: Options, log: Log) -> Prepared:
         set_water,
         set_zooms,
         setup_region,
+        sources_of_pack,
     )
     from orthostudio.live.route import AirportIndex, Route, airport_files, apt_dat
     from orthostudio.live.streamer import Fix
@@ -388,9 +391,10 @@ def prepare(options: Options, log: Log) -> Prepared:
         fix = Fix(lat, lon)
         clock.done("departure")
     zooms = Zooms(options.max_zoom, options.max_zoom_airports)
-    redo = pack_to_redo(sources, pack_dir, front) if xplane_running() else None
-    if redo is not None:  # as a new zoom, below
-        raise RefusedError(REDO_REFUSED[redo])
+    if xplane_running() and pack_to_redo(sources, pack_dir, front):  # as a new zoom, below
+        # a disk to connect if and only if a mesh of the pack's last set-up is not on the disk
+        gone = any(not source.is_dir() for source in sources_of_pack(pack_dir))
+        raise RefusedError(REDO_UNPLUGGED if gone else REDO_REFUSED)
     from orthostudio.live import machine
 
     # the pack's one-time work (hundreds of thousands of files) in the system's background mode for
@@ -506,16 +510,27 @@ def prepare(options: Options, log: Log) -> Prepared:
 
 def _other_said(one: OtherFolder, every: OtherMeshes) -> str:
     """The start's line on a folder of another tool's mesh (``one`` of ``every``), what its window
-    says (:func:`other_mesh_said`) in words."""
+    says (:func:`other_mesh_said`) in words, by the same case (``unused``): not there; the squares
+    it gives, then its squares all behind Live's mesh, all given by folders above it, no mesh Live
+    can use, or what it takes there; with those left aside and those in front of Live."""
     said = other_mesh_said(one, every)
-    chosen = one.folder
-    if not said["there"]:
+    chosen, unused = one.folder, said["unused"]
+    if unused == "gone":
         return f"another tool's mesh: {chosen} is not there (its disk unplugged?): left out"
-    line = f"another tool's mesh in {chosen}: {', '.join(said['meshes']) or 'no mesh Live can use'}"
-    if said["overlays"]:
-        line += f"; roads, forests and buildings: {', '.join(said['overlays'])}"
-    elif said["meshes"]:
-        line += "; no roads, forests or buildings taken from it"
+    given = said["squares"]
+    line = f"another tool's mesh in {chosen}: {given} square{'' if given == 1 else 's'} given"
+    if unused == "behind":
+        line += ", all behind Live's mesh"
+    elif unused == "above":
+        line += ", folders higher in the list have them all"
+    elif unused == "no_mesh":
+        line += "; no mesh Live can use"
+    else:
+        line += f"; uses {', '.join(said['meshes'])}"
+        if said["overlays"]:
+            line += f"; roads, forests and buildings: {', '.join(said['overlays'])}"
+        else:
+            line += "; no roads, forests or buildings taken from it"
     if said["refused"]:
         line += "; left aside: " + ", ".join(f"{r['name']} ({r['why']})" for r in said["refused"])
     if said["front"]:

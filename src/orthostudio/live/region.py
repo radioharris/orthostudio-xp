@@ -32,7 +32,6 @@ from collections import Counter, defaultdict
 from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Literal
 
 from orthostudio.install.library import tile_from_name
 from orthostudio.textures.ter import NIGHT_FOLDER
@@ -1089,50 +1088,27 @@ def front_changed(pack_dir: Path, front: Mapping[tuple[int, int], Path]) -> bool
     return not all(_holds_dsf(pack_dir, square, source) for square, source in front.items())
 
 
-Redo = Literal["regions", "front"]
-"""Why the pack is set up again (:func:`pack_to_redo`), which a start refused says."""
-
-
 def pack_to_redo(
     sources: Sequence[Path], pack_dir: Path, front: Mapping[tuple[int, int], Path] | None = None
-) -> Redo | None:
-    """Why a start on ``sources`` and ``front`` sets the pack up again (:func:`setup_region`), its
-    DSFs replaced, or None: "regions", a region changed since (:func:`changed_regions`: updated,
-    given its river masks), or the regions no longer those it was set up from, in that order,
-    unless they only add some after them, merged in (:func:`_adding`): one read from another
-    folder (a kept old mesh in its place or back, the Settings' Mesh), one deleted, one whose disk
-    is not connected; "front", the squares put in front of Live or the DSF of one of them changed,
-    or not in the pack (:func:`front_changed`), the regions changing only by the meshes that come
-    and go with them (:func:`_with_front`). Never with X-Plane running, which may be reading the
-    DSFs of before (``session.prepare``, which says why). A pack not set up: None."""
-    meta = _marker(pack_dir)
-    had = sources_of(meta)
+) -> bool:
+    """Whether a start on ``sources`` and ``front`` sets the pack up again (:func:`setup_region`),
+    its DSFs replaced: a region changed since (:func:`changed_regions`: updated, given its river
+    masks); the regions no longer those it was set up from, in that order, unless they only add
+    some after them, merged in (:func:`_adding`): one read from another folder (a kept old mesh in
+    its place or back, the Settings' Mesh), one deleted, one whose disk is not connected, the mesh
+    of a folder coming or going with the squares put in front of Live; or those squares, or the
+    DSF of one of them, changed, or not in the pack (:func:`front_changed`). Never with X-Plane
+    running, which may be reading the DSFs of before (``session.prepare``, which says why). A pack
+    not set up: no."""
+    had = sources_of(_marker(pack_dir))
     if not had:
-        return None
-    front = front or {}
+        return False
     keys = [str(s) for s in sources]
-    if changed_regions(sources, pack_dir):
-        return "regions"
-    if had != keys and not _adding(had, keys):
-        moving = _with_front(had, keys, front, front_of(meta))
-        mine, now = [s for s in had if s not in moving], [k for k in keys if k not in moving]
-        return "front" if mine == now or _adding(mine, now) else "regions"
-    return "front" if front_changed(pack_dir, front) else None
-
-
-def _with_front(
-    had: Sequence[str],
-    keys: Sequence[str],
-    front: Mapping[tuple[int, int], Path],
-    before: Mapping[tuple[int, int], Path],
-) -> set[str]:
-    """The regions that come or go with the squares put in front of Live: the mesh of one now in
-    front that the pack was not set up from (a folder's first square put in front, its mesh in the
-    middle of the regions), or the mesh of one in front before that no longer is a region, still
-    there (its last square put back behind Live); not one whose disk is not connected."""
-    coming = {str(s) for s in front.values()} - set(had)
-    going = {str(s) for s in before.values() if s.is_dir()} - set(keys)
-    return coming | going
+    return (
+        bool(changed_regions(sources, pack_dir))
+        or (had != keys and not _adding(had, keys))
+        or front_changed(pack_dir, front or {})
+    )
 
 
 def setup_region(

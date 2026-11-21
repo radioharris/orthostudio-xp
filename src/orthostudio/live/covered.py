@@ -15,13 +15,13 @@ there, and a start there waits for none of them. The same reading of the list
 
 from __future__ import annotations
 
-import os
 from collections.abc import Collection, Iterator, Sequence
 from pathlib import Path
 
 from orthostudio.install.dsf_head import dsf_properties
 from orthostudio.install.scenery_packs import SceneryPackEntry, SceneryPacks
 
+from .filesystem import folder_identity
 from .geo import dsf_tile_of
 from .scenery import _ini, place_line
 
@@ -102,29 +102,20 @@ def own_squares(xplane: Path, below: str, own_tiles: str = "first") -> dict[tupl
     return covered_squares(xplane, below, own_tiles=own_tiles)
 
 
-def _identity(folder: Path) -> tuple[int, int] | None:
-    """A folder as the disk knows it, its links followed, whatever its name's spelling or case:
-    None for one not there."""
-    try:
-        st = os.stat(folder)
-    except (OSError, ValueError):
-        return None
-    return st.st_dev, st.st_ino
-
-
 def listed_above_live(
     xplane: Path, folders: Sequence[Collection[Path]], below: str, own_tiles: str = "first"
 ) -> list[list[str]]:
     """For each of ``folders`` (its packs), the lines of X-Plane's list checked above Live's
     (``below``, as :func:`own_squares` places it) whose folder is one of its packs on the disk
-    (:func:`_identity`), whatever the line's name (a link, a copy's name, another case on a Mac's
-    disk): the meshes of another tool's folder that X-Plane draws there itself, without photos.
-    The list read once for all."""
+    (``filesystem.folder_identity``), whatever the line's name (a link, a copy's name, another
+    case on a Mac's disk): the meshes of another tool's folder that X-Plane draws there itself,
+    without photos. The list read once for all."""
     lines = [
-        (entry.name, _identity(folder)) for entry, folder in lines_above(xplane, below, own_tiles)
+        (entry.name, folder_identity(folder))
+        for entry, folder in lines_above(xplane, below, own_tiles)
     ]
     out = []
     for packs in folders:
-        wanted = {one for p in packs if (one := _identity(p)) is not None}
+        wanted = {one for p in packs if (one := folder_identity(p)) is not None}
         out.append([name for name, folder in lines if folder in wanted])
     return out

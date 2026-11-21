@@ -66,7 +66,7 @@ from orthostudio.live.scenery import (
     xplane_running,
     xplane_texture_quality,
 )
-from orthostudio.live.settings import LiveSettings, load_settings, saved_with
+from orthostudio.live.settings import LiveSettings, SettingsFileError, load_settings, saved_with
 
 API = 2  # the page's /api/live answers, as the page reads them
 CHECKS_S = 3.0  # the checks are looked at again this often: pgrep and disks, not every second
@@ -777,15 +777,15 @@ class LiveControl:
     def other_found(self) -> OtherMeshes:
         """The folders of other tools' meshes and what they give, as last looked at
         (:func:`other_mesh_found`), with the X-Plane of the checks: what the map draws and « All
-        in front » and « All behind » act on, read outside the settings' lock."""
+        in front », « All behind » and Remove act on, read outside the settings' lock."""
         xp = self.checks().get("xplane")
         return other_mesh_found(Path(xp) if xp else None, live_root())
 
     def other_squares(self) -> list[dict]:
         """The squares of the folders of other tools' meshes, for the map: each one in front of
         Live or not (``LiveSettings.other_mesh_front``), with the name of the folder that gives
-        it, the first in the list that has it (:func:`orthostudio.live.scenery.other_meshes`), its
-        path for a drive's root, which has no name. Empty without a folder there."""
+        it, the first in the list that has it (``OtherMeshes.ground``), its path for a drive's
+        root, which has no name. Empty without a folder there."""
         found = self.other_found()
         return [
             {
@@ -824,8 +824,11 @@ class LiveControl:
         if language not in ("en", "fr"):
             raise ValueError(f"no language {language!r}")
         self.language = language
-        if self._settings().language != language:  # else live.toml not read as it is, nor raised
-            saved_with(lambda _: {"language": language})
+        try:  # compared under the settings' lock: two quick switches end on the last one
+            saved_with(lambda now: None if now.language == language else {"language": language})
+        except SettingsFileError:  # live.toml not parsing: one sent again answers as before
+            if self._settings().language != language:
+                raise
 
     def choose_home(self, home: str, *, remember: bool) -> None:
         """The welcome page's answer: Live's window, or OrthoStudio XP's (this window then closes

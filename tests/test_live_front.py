@@ -24,10 +24,10 @@ from tests.test_live_other_mesh import mesh
 from tests.test_live_overlays import xplane
 from tests.test_live_regions import _another_disk
 
-from live_helpers import NAMES, make_source, make_xplane, save_settings
+from live_helpers import NAMES, make_source, make_xplane, other_meshes, save_settings
 from orthostudio.config.store import toml_dumps
 from orthostudio.live import api as api_module
-from orthostudio.live import control, scenery, session, settings_file
+from orthostudio.live import control, filesystem, scenery, session, settings_file
 from orthostudio.live import settings as settings_module
 from orthostudio.live.covered import listed_above_live
 from orthostudio.live.filesystem import folder_link
@@ -40,13 +40,7 @@ from orthostudio.live.region import (
     setup_region,
     square_owner,
 )
-from orthostudio.live.scenery import (
-    NOTHING_READ,
-    Meshes,
-    default_meshes,
-    other_mesh,
-    other_meshes,
-)
+from orthostudio.live.scenery import NOTHING_READ, Meshes, default_meshes
 from orthostudio.live.settings import (
     AlreadyListedError,
     LiveSettings,
@@ -55,7 +49,6 @@ from orthostudio.live.settings import (
     load_settings,
     move_other_mesh,
     put_in_front,
-    remove_other_mesh,
     saved_with,
 )
 from orthostudio.live.web import UI_DIR, create_live_app
@@ -86,8 +79,8 @@ def live_and_alps(root: Path) -> tuple[Path, Path]:
 
 
 def test_the_setting_is_a_list_of_squares(tmp_path: Path, monkeypatch) -> None:
-    """Each square once, as X-Plane names its DSF; a wrong name refused, and on reading the file
-    that name alone left out; kept in live.toml as a list."""
+    """Each square once, as X-Plane names its DSF; a wrong name refused; kept in live.toml as a
+    list."""
     monkeypatch.setenv("OSXP_HOME", str(tmp_path))
     chosen = LiveSettings(other_mesh_front=["+45+007", " +45+006", "+45+006", "-01-001"])
     assert chosen.other_mesh_front == ["-01-001", "+45+006", "+45+007"]
@@ -97,17 +90,20 @@ def test_the_setting_is_a_list_of_squares(tmp_path: Path, monkeypatch) -> None:
     save_settings(LiveSettings(disk_gb=40, other_mesh_front=["+45+006"]))
     assert tomllib.loads(settings_file().read_text())["stream"]["other_mesh_front"] == ["+45+006"]
     assert load_settings().other_mesh_front == ["+45+006"]
-    settings_file().write_text('[stream]\ndisk_gb = 40\nother_mesh_front = ["Alps", "+45+006"]\n')
-    assert load_settings().other_mesh_front == ["+45+006"] and load_settings().disk_gb == 40
 
 
 def test_a_wrong_line_of_a_list_costs_itself(tmp_path: Path, monkeypatch) -> None:
-    """A list of the file read line by line, a wrong one left out, the others kept; a list of
-    folders that is not a list leaves the one folder of before in its place, so that the next
-    save keeps it."""
+    """A list of the file read line by line, a wrong one left out, the others and the other
+    settings kept; a list of folders that is not a list leaves the one folder of before in its
+    place, so that the next save keeps it."""
     monkeypatch.setenv("OSXP_HOME", str(tmp_path))
-    settings_file().write_text('[stream]\nother_meshes = ["/Alps", 3, "/Pyrenees"]\n')
-    assert load_settings().other_meshes == ["/Alps", "/Pyrenees"]
+    settings_file().write_text(
+        '[stream]\ndisk_gb = 40\nother_meshes = ["/Alps", 3, "/Pyrenees"]\n'
+        'other_mesh_front = ["Alps", "+45+006"]\n'
+    )
+    saved = load_settings()
+    assert saved.other_meshes == ["/Alps", "/Pyrenees"] and saved.other_mesh_front == ["+45+006"]
+    assert saved.disk_gb == 40
     settings_file().write_text('[stream]\nother_meshes = "/Alps"\nother_mesh = "/Alps"\n')
     assert load_settings().other_meshes == ["/Alps"]
     add_other_mesh("/Pyrenees")
@@ -120,14 +116,14 @@ def test_a_wrong_line_of_a_list_costs_itself(tmp_path: Path, monkeypatch) -> Non
 def test_a_square_in_front_takes_the_other_mesh_s_dsf(tmp_path: Path) -> None:
     """The pack takes the other mesh's DSF on the square in front, Live's elsewhere, and records
     the front with the regions; the same front again: nothing to do; another front, the regions in
-    another order: set up again, saying why. The one place this rule is tested."""
+    another order: set up again. The one place this rule is tested."""
     live, alps = live_and_alps(tmp_path)
     pack = tmp_path / "pack"
     setup_region([live, alps], pack, log=quiet)
     assert (pack / DSF).read_bytes() == (live / DSF).read_bytes()  # behind Live: Live's
     lines: list[str] = []
     front = {COURCHEVEL: alps}
-    assert pack_to_redo([live, alps], pack, front) == "front"
+    assert pack_to_redo([live, alps], pack, front)
     assert not session.region_ready(pack, Meshes([live, alps], front))
     setup_region([live, alps], pack, log=lines.append, front=front)
     assert any("1 squares in front of Live" in line for line in lines)
@@ -137,31 +133,60 @@ def test_a_square_in_front_takes_the_other_mesh_s_dsf(tmp_path: Path) -> None:
     recorded = json.loads((pack / REGION_MARKER).read_text())["front"]
     assert recorded["+46+002"]["source"] == str(alps)
     assert front_of_pack(pack) == front
-    assert pack_to_redo([live, alps], pack, front) is None
+    assert not pack_to_redo([live, alps], pack, front)
     assert session.region_ready(pack, Meshes([live, alps], front))
     lines.clear()
     setup_region([live, alps], pack, log=lines.append, front=front)
     assert lines == []  # nothing to do
-    assert pack_to_redo([alps, live], pack, front) == "regions"  # a square's DSF another's
-    assert pack_to_redo([live, alps], pack, {}) == "front"  # back behind Live
+    assert pack_to_redo([alps, live], pack, front)  # a square's DSF another's
+    assert pack_to_redo([live, alps], pack, {})  # back behind Live
     setup_region([live, alps], pack, log=quiet)
     assert (pack / DSF).read_bytes() == (live / DSF).read_bytes()
     assert front_of_pack(pack) == {}
 
 
-def test_a_mesh_coming_with_the_front_is_said_as_the_front(tmp_path: Path) -> None:
-    """A folder's first square put in front brings its mesh in the middle of the regions, its last
-    put back takes it out: the start refused says the squares in front, not a disk to connect;
-    that mesh gone from the disk, the meshes changed, a disk to connect."""
+def under_x_plane(tmp_path: Path, monkeypatch, pack: Path) -> session.Options:
+    """A start on Live's pack ``pack``, set up already, with X-Plane running and Live's line in its
+    list, nothing else looked at: the meshes it sets the pack up from the test's
+    (``session.default_meshes``)."""
+    from orthostudio.live import osxpregions, winsearch
+
+    monkeypatch.setenv("OSXP_HOME", str(tmp_path / "home"))
+    (tmp_path / "home").mkdir()
+    xp = make_xplane(tmp_path)
+    monkeypatch.setattr(winsearch, "keep_out", lambda folder, log=None: None)
+    monkeypatch.setattr(osxpregions, "settle", lambda root, log, swap, only=None: None)
+    monkeypatch.setattr(session, "_overlays", lambda *args: None)
+    monkeypatch.setattr(session, "is_installed", lambda *a: True)
+    folder_link(pack, xp / "Custom Scenery" / LINK_NAME)  # as Live links it there
+    monkeypatch.setattr(session, "xplane_running", lambda: True)
+    return session.Options(xplane=xp, pack=pack, no_plugin=True)
+
+
+def test_a_start_refused_says_a_disk_only_for_a_mesh_gone(tmp_path: Path, monkeypatch) -> None:
+    """A start refused while X-Plane runs says to connect a disk if and only if a mesh the pack
+    was last set up from is no longer on the disk: a folder's first square put in front, its mesh
+    coming in the middle of the regions, or its last put back, its mesh going, says the meshes or
+    the squares in front changed; that mesh gone from the disk, a disk to connect."""
     live, alps = live_and_alps(tmp_path)
     pyrenees = make_source(tmp_path / "pyrenees", tile=PYRENEES, textures=NAMES)
     pack = tmp_path / "pack"
     setup_region([live, pyrenees], pack, log=quiet)
-    assert pack_to_redo([live, alps, pyrenees], pack, {COURCHEVEL: alps}) == "front"
+    options = under_x_plane(tmp_path, monkeypatch, pack)
+
+    def refused(meshes: Meshes) -> str:
+        monkeypatch.setattr(session, "default_meshes", lambda xp, other=None: meshes)
+        with pytest.raises(session.RefusedError) as e:
+            session.prepare(options, log=quiet)
+        return str(e.value)
+
+    assert refused(Meshes([live, alps, pyrenees], {COURCHEVEL: alps})) == session.REDO_REFUSED
     setup_region([live, alps, pyrenees], pack, log=quiet, front={COURCHEVEL: alps})
-    assert pack_to_redo([live, pyrenees], pack, {}) == "front"
+    assert refused(Meshes([live, pyrenees], {})) == session.REDO_REFUSED
     alps.rename(tmp_path / "unplugged")
-    assert pack_to_redo([live, pyrenees], pack, {}) == "regions"
+    assert refused(Meshes([live, pyrenees], {})) == session.REDO_UNPLUGGED
+    assert "connect the disk" in session.REDO_UNPLUGGED
+    assert "disk" not in session.REDO_REFUSED
 
 
 def test_a_dsf_in_front_edited_again_is_taken(tmp_path: Path) -> None:
@@ -172,16 +197,16 @@ def test_a_dsf_in_front_edited_again_is_taken(tmp_path: Path) -> None:
     pack = tmp_path / "pack"
     front = {COURCHEVEL: alps}
     setup_region([live, alps], pack, log=quiet, front=front)
-    assert pack_to_redo([live, alps], pack, front) is None
+    assert not pack_to_redo([live, alps], pack, front)
     edited = alps / DSF.with_suffix(".new")  # as an editor saves it: a new file in its place
     edited.write_bytes(b"XPLNEDSF the Alps' relief, fixed again")
     later = (alps / DSF).stat().st_mtime_ns + 5_000_000_000
     os.utime(edited, ns=(later, later))
     os.replace(edited, alps / DSF)
-    assert pack_to_redo([live, alps], pack, front) == "front"
+    assert pack_to_redo([live, alps], pack, front)
     setup_region([live, alps], pack, log=quiet, front=front)
     assert (pack / DSF).read_bytes() == b"XPLNEDSF the Alps' relief, fixed again"
-    assert pack_to_redo([live, alps], pack, front) is None
+    assert not pack_to_redo([live, alps], pack, front)
 
 
 def as_an_app_of_before(pack: Path, regions: list[Path]) -> None:
@@ -205,7 +230,7 @@ def test_a_pack_an_app_of_before_set_up_again(tmp_path: Path, theirs: str) -> No
     setup_region([live, alps], pack, log=quiet, front=front)
     as_an_app_of_before(pack, [live] if theirs == "added" else [live, alps])
     assert (pack / DSF).read_bytes() == (live / DSF).read_bytes()
-    assert pack_to_redo([live, alps], pack, front) == "front"
+    assert pack_to_redo([live, alps], pack, front)
     assert not session.region_ready(pack, Meshes([live, alps], front))
     setup_region([live, alps], pack, log=quiet, front=front)
     assert (pack / DSF).read_bytes() == b"XPLNEDSF the Alps' own elevation"
@@ -235,17 +260,19 @@ def test_the_folder_s_squares_and_those_in_front(tmp_path: Path) -> None:
     live = mesh(tmp_path / "live" / "z_osxp_eur", squares=(COURCHEVEL, BESIDE))
     folder = tmp_path / "Alps"
     alps = mesh(folder / "z_ao_alps", squares=(COURCHEVEL,))
-    behind = other_mesh(folder, [live])
-    assert behind.meshes == [] and behind.refused == [("z_ao_alps", "already")]
-    assert behind.ground == {COURCHEVEL: alps}
-    assert other_meshes([folder], [live], ()).front == {}
-    ahead = other_mesh(folder, [live], front={COURCHEVEL, (10, 10)})
-    assert ahead.meshes == [alps] and ahead.refused == []
-    assert other_meshes([folder], [live], {COURCHEVEL, (10, 10)}).front == {COURCHEVEL: alps}
+    behind = other_meshes([folder], [live])
+    found = behind.folders[0].found
+    assert found.meshes == [] and found.refused == [("z_ao_alps", "already")]
+    assert found.ground == {COURCHEVEL: alps} and behind.front == {}
+    ahead = other_meshes([folder], [live], {COURCHEVEL, (10, 10)})
+    found = ahead.folders[0].found
+    assert found.meshes == [alps] and found.refused == []
+    assert ahead.front == {COURCHEVEL: alps}
     copy = mesh(folder / "z_ao_alps_copy", squares=(COURCHEVEL,))
-    with_copy = other_mesh(folder, [live], front={COURCHEVEL})
-    assert with_copy.refused == [("z_ao_alps_copy", "already")] and with_copy.packs == [alps, copy]
-    assert other_meshes([folder], [live], {COURCHEVEL}).front == {COURCHEVEL: alps}
+    with_copy = other_meshes([folder], [live], {COURCHEVEL})
+    found = with_copy.folders[0].found
+    assert found.refused == [("z_ao_alps_copy", "already")] and found.packs == [alps, copy]
+    assert with_copy.front == {COURCHEVEL: alps}
 
 
 def test_one_rule_for_every_caller(tmp_path: Path, monkeypatch) -> None:
@@ -276,13 +303,13 @@ def test_between_folders_the_first_that_has_a_square_gives_it(tmp_path: Path) ->
         at = square_owner(meshes.sources, meshes.front, square)
         return None if at is None else meshes.sources[at]
 
-    behind = other_meshes([alps_dir, pyrenees_dir], [live], ())
+    behind = other_meshes([alps_dir, pyrenees_dir], [live])
     assert behind.meshes == [alps, pyrenees] and behind.front == {}
     assert [owner(behind, sq) for sq in (COURCHEVEL, PYRENEES, BESIDE)] == [alps, pyrenees, live]
     assert behind.ground == {COURCHEVEL: alps_dir, BESIDE: alps_dir, PYRENEES: pyrenees_dir}
     ahead = other_meshes([alps_dir, pyrenees_dir], [live], {COURCHEVEL, BESIDE, PYRENEES})
     assert ahead.front == {COURCHEVEL: alps, BESIDE: alps, PYRENEES: pyrenees}
-    turned = other_meshes([pyrenees_dir, alps_dir], [live], ())
+    turned = other_meshes([pyrenees_dir, alps_dir], [live])
     assert [owner(turned, sq) for sq in (COURCHEVEL, PYRENEES, BESIDE)] == [
         pyrenees,
         pyrenees,
@@ -368,8 +395,34 @@ def test_each_folder_once(tmp_path: Path, monkeypatch) -> None:
         raise AssertionError(f"the disk asked for {path}")
 
     monkeypatch.setattr(os.path, "realpath", no_disk)
-    monkeypatch.setattr(os.path, "samefile", no_disk)
+    monkeypatch.setattr(settings_module, "folder_identity", no_disk)
     assert load_settings().other_meshes == [str(alps), str(pyrenees)]
+
+
+def test_a_disk_that_numbers_no_file_compares_real_paths(tmp_path: Path, monkeypatch) -> None:
+    """Some network shares number no file (``st_ino`` 0): every folder there was the same one, the
+    second refused as listed already, every pack of a folder matched with every line of X-Plane's
+    list. There their real paths are compared, as the system compares names: a link is still the
+    folder it leads to."""
+    monkeypatch.setenv("OSXP_HOME", str(tmp_path / "home"))
+    alps, pyrenees, link = tmp_path / "Alps", tmp_path / "Pyrenees", tmp_path / "Alps link"
+    alps.mkdir()
+    pyrenees.mkdir()
+    folder_link(alps, link)
+    stat = os.stat
+
+    def unnumbered(path, *args, **kwargs):
+        st = stat(path, *args, **kwargs)
+        return os.stat_result((st.st_mode, 0, *tuple(st)[2:]))
+
+    monkeypatch.setattr(filesystem.os, "stat", unnumbered)
+    assert os.stat(alps).st_ino == 0
+    one = filesystem.folder_identity
+    assert one(alps) != one(pyrenees) and one(alps) == one(link) and one(tmp_path / "No") is None
+    add_other_mesh(str(alps))
+    assert add_other_mesh(str(pyrenees)).other_meshes == [str(alps), str(pyrenees)]
+    with pytest.raises(AlreadyListedError):
+        add_other_mesh(str(link))
 
 
 def test_a_folder_moved_up_or_down(tmp_path: Path, monkeypatch) -> None:
@@ -384,18 +437,40 @@ def test_a_folder_moved_up_or_down(tmp_path: Path, monkeypatch) -> None:
         move_other_mesh("/D", up=True)
 
 
-def test_a_folder_removed_is_forgotten_alone(tmp_path: Path, monkeypatch) -> None:
-    """Remove forgets a folder, its files left as they are; the squares in front stay as they are,
-    those no folder gives now included: they are not taken."""
+@pytest.mark.anyio
+async def test_remove_puts_the_folder_s_squares_behind_first(tmp_path: Path, monkeypatch) -> None:
+    """Remove is « All behind » on its folder, then the folder forgotten, in one save: the squares
+    it gives go back behind Live; one a folder above it gives, and one no folder gives, stay as
+    they are; a folder not there gives nothing, nothing put behind. Its squares those of the
+    folders as last read, no folder read under the settings' lock; its files left as they are."""
     monkeypatch.setenv("OSXP_HOME", str(tmp_path / "home"))
-    alps = tmp_path / "Alps"
+    alps, pyrenees, gone = tmp_path / "Alps", tmp_path / "Pyrenees", tmp_path / "Gone"
     mesh(alps / "z_ao_alps", squares=(COURCHEVEL,))
-    front = ["+42+000", "+45+006", "+46+002"]
-    save_settings(LiveSettings(other_meshes=[str(alps), "/Pyrenees"], other_mesh_front=front))
-    saved = remove_other_mesh(str(alps))
-    assert saved.other_meshes == ["/Pyrenees"] and saved.other_mesh_front == front
-    assert (alps / "z_ao_alps").is_dir()
-    assert other_meshes([Path("/Pyrenees")], [], scenery.other_mesh_front(saved)).front == {}
+    mesh(pyrenees / "z_ao_pyr", squares=(COURCHEVEL, PYRENEES))
+    front = ["+42+000", "+45+006", "+46+002"]  # the Pyrenees', no folder's, the Alps'
+    chosen = [str(alps), str(gone), str(pyrenees)]
+    save_settings(LiveSettings(other_meshes=chosen, other_mesh_front=front))
+    locked: list[bool] = []
+    real = scenery.read_packs
+
+    def watched(folder: Path):
+        locked.append(settings_module.SAVING.locked())
+        return real(folder)
+
+    monkeypatch.setattr(scenery, "read_packs", watched)
+    live = control.LiveControl(checks=lambda: {"xplane": None}, echo=quiet, catalog=lambda r: {})
+    async with client_for(create_live_app(live)) as client:
+
+        async def remove(folder: Path) -> dict:
+            got = await client.post("/api/live/other/remove", json={"folder": str(folder)})
+            assert got.status_code == 200
+            return got.json()
+
+        kept = ["+45+006", "+46+002"]
+        assert await remove(pyrenees) == {"other_meshes": chosen[:2], "other_mesh_front": kept}
+        assert await remove(gone) == {"other_meshes": chosen[:1], "other_mesh_front": kept}
+    assert locked and not any(locked)
+    assert (pyrenees / "z_ao_pyr").is_dir()
 
 
 class WatchedLock:
@@ -453,17 +528,17 @@ async def test_no_disk_is_asked_under_the_settings_lock(tmp_path: Path, monkeypa
     all. Under the lock a folder added meanwhile is told apart as written."""
     monkeypatch.setenv("OSXP_HOME", str(tmp_path / "home"))
     asked: list[bool] = []
-    samefile, problem = os.path.samefile, api_module.folder_problem
+    identity, problem = settings_module.folder_identity, api_module.folder_problem
 
-    def watched_samefile(a, b):
+    def watched_identity(folder):
         asked.append(settings_module.SAVING.locked())
-        return samefile(a, b)
+        return identity(folder)
 
     def watched_problem(folder, xplane):
         asked.append(settings_module.SAVING.locked())
         return problem(folder, xplane)
 
-    monkeypatch.setattr(os.path, "samefile", watched_samefile)
+    monkeypatch.setattr(settings_module, "folder_identity", watched_identity)
     monkeypatch.setattr(api_module, "folder_problem", watched_problem)
     alps, pyrenees = tmp_path / "Alps", tmp_path / "Pyrenees"
     alps.mkdir()
@@ -474,7 +549,7 @@ async def test_no_disk_is_asked_under_the_settings_lock(tmp_path: Path, monkeypa
     async with client_for(create_live_app(live)) as client:
         got = await client.put("/api/live/settings", json={"folder": str(tmp_path / "Live")})
         assert got.status_code == 200
-    assert asked == [False, False]
+    assert asked == [False, False, False]  # the two folders on the disk, Live's folder
 
 
 def test_a_click_reads_no_folder_again(tmp_path: Path, monkeypatch) -> None:
@@ -517,6 +592,38 @@ async def test_the_language_unchanged_leaves_the_file_as_it_is(tmp_path: Path, m
         got = await client.post("/api/live/language", json={"language": "fr"})
         assert got.status_code == 200
     assert load_settings().language == "fr" and load_settings().disk_gb == 40
+
+
+def test_two_quick_language_switches_end_on_the_last(tmp_path: Path, monkeypatch) -> None:
+    """EN to FR then back to EN at once: the second compared with the settings as the first saved
+    them, under the settings' lock, not as read before it; once compared with the file before
+    the first was written, it saved nothing and the window stayed in French at the next start."""
+    monkeypatch.setenv("OSXP_HOME", str(tmp_path))
+    save_settings(LiveSettings(language="en", disk_gb=60))
+    lock = WatchedLock()
+    monkeypatch.setattr(settings_module, "SAVING", lock)
+    writing, release = threading.Event(), threading.Event()
+    write = settings_module._write
+
+    def slow_first(data: dict, settings: LiveSettings) -> None:
+        if not writing.is_set():
+            writing.set()
+            assert release.wait(5)
+        write(data, settings)
+
+    monkeypatch.setattr(settings_module, "_write", slow_first)
+    live = control.LiveControl(checks=lambda: {"xplane": None}, echo=quiet, catalog=lambda r: {})
+    french = threading.Thread(target=live.set_language, args=("fr",))
+    french.start()
+    assert writing.wait(5)  # French being written
+    english = threading.Thread(target=live.set_language, args=("en",))
+    english.start()
+    assert lock.waiting.wait(5) and english.is_alive()  # English waits for it
+    release.set()
+    french.join(5)
+    english.join(5)
+    assert load_settings().language == "en" and live.language == "en"
+    assert load_settings().disk_gb == 60
 
 
 @pytest.mark.anyio
@@ -570,7 +677,7 @@ def test_the_folder_s_packs_checked_above_live_in_x_plane(tmp_path: Path) -> Non
     folder = tmp_path / "Alps"
     alps = mesh(folder / "z_ao_alps", squares=(COURCHEVEL,))
     mesh(folder / "z_ao_alps_copy", squares=(COURCHEVEL,))
-    packs = other_mesh(folder).packs
+    packs = other_meshes([folder]).folders[0].found.packs
     for name, lines, said in [
         ("a", ["SCENERY_PACK Custom Scenery/z_ao_alps/", live], ["z_ao_alps"]),
         ("b", [live, "SCENERY_PACK Custom Scenery/z_ao_alps/"], []),
@@ -625,29 +732,18 @@ def test_no_start_on_a_new_front_while_x_plane_runs(tmp_path: Path, monkeypatch,
     """A square put in front while X-Plane runs, or the pack an app of before set up again without
     its DSF: the start refused, saying why, no DSF written; X-Plane closed, the pack set up with
     it."""
-    from orthostudio.live import osxpregions, winsearch
-
-    monkeypatch.setenv("OSXP_HOME", str(tmp_path / "home"))
-    (tmp_path / "home").mkdir()
-    xp = make_xplane(tmp_path)
     live, alps = live_and_alps(tmp_path)
-    save_settings(LiveSettings(other_meshes=[str(alps.parent)], other_mesh_front=["+46+002"]))
     pack = tmp_path / "pack"
     if why == "new":
         setup_region([live, alps], pack, log=quiet)
     else:
         setup_region([live, alps], pack, log=quiet, front={COURCHEVEL: alps})
         as_an_app_of_before(pack, [live, alps])
-    monkeypatch.setattr(winsearch, "keep_out", lambda folder, log=None: None)
-    monkeypatch.setattr(osxpregions, "settle", lambda root, log, swap, only=None: None)
-    monkeypatch.setattr(session, "_overlays", lambda *args: None)
+    options = under_x_plane(tmp_path, monkeypatch, pack)
+    save_settings(LiveSettings(other_meshes=[str(alps.parent)], other_mesh_front=["+46+002"]))
     meshes = Meshes([live, alps], {COURCHEVEL: alps})
     monkeypatch.setattr(session, "default_meshes", lambda xp, other=None: meshes)
-    monkeypatch.setattr(session, "is_installed", lambda *a: True)
-    folder_link(pack, xp / "Custom Scenery" / LINK_NAME)  # as Live links it there
-    monkeypatch.setattr(session, "xplane_running", lambda: True)
-    options = session.Options(xplane=xp, pack=pack, no_plugin=True)
-    with pytest.raises(session.RefusedError, match="squares in front of Live or their mesh"):
+    with pytest.raises(session.RefusedError, match="or the squares in front of Live changed"):
         session.prepare(options, log=quiet)
     assert (pack / DSF).read_bytes() == (live / DSF).read_bytes()  # nothing written
     monkeypatch.setattr(session, "xplane_running", lambda: False)
@@ -727,7 +823,8 @@ def test_why_a_folder_gives_no_mesh(tmp_path: Path) -> None:
     """Each folder's line says, from the engine alone, how many squares it gives and why Live
     takes none of its meshes: a folder whose squares a folder above has gives none, even with one
     of them in front of Live; one whose squares Live's mesh has, none in front, has them behind
-    Live's; none of its ground naming photos; not there. One square in front: its mesh taken."""
+    Live's; none of its ground naming photos; not there. One square in front: its mesh taken. The
+    start's line of each folder in Live's log says the same."""
     live = mesh(tmp_path / "live" / "z_osxp_eur", squares=(COURCHEVEL, BESIDE))
     alps_dir, inner_dir = tmp_path / "Alps", tmp_path / "Inner Alps"
     mesh(alps_dir / "z_ao_alps", squares=(COURCHEVEL, BESIDE))
@@ -743,6 +840,15 @@ def test_why_a_folder_gives_no_mesh(tmp_path: Path) -> None:
 
     assert said(()) == [(2, 0, "behind"), (0, 0, "above"), (0, 0, "no_mesh"), (0, 0, "gone")]
     assert said({COURCHEVEL})[:2] == [(2, 1, None), (0, 0, "above")]
+    every = other_meshes(folders, [live])  # the start's log: the same cases, in words
+    assert [session._other_said(one, every) for one in every.folders] == [
+        f"another tool's mesh in {alps_dir}: 2 squares given, all behind Live's mesh; left aside: "
+        "z_ao_alps (already)",
+        f"another tool's mesh in {inner_dir}: 0 squares given, folders higher in the list have "
+        "them all; left aside: z_ao_inner (already)",
+        f"another tool's mesh in {empty}: 0 squares given; no mesh Live can use",
+        f"another tool's mesh: {gone} is not there (its disk unplugged?): left out",
+    ]
 
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="needs node")
@@ -751,14 +857,14 @@ def test_the_line_of_each_folder_in_both_languages() -> None:
     them in front of Live, then what it takes there; its squares all behind Live's mesh, or all
     given by a folder above it, said plainly, not as a warning; a folder not there, or giving no
     mesh, a warning."""
-    there = {"there": True, "next_start": False, "overlays": [], "refused": [], "in_xplane": []}
+    there = {"next_start": False, "overlays": [], "refused": [], "in_xplane": []}
     already = [{"name": "z_ao_pyr", "why": "already"}]
     folders = [
         {**there, "meshes": ["z_ao_alps"], "squares": 4, "front": ["+45+006"], "unused": None},
         {**there, "meshes": [], "squares": 1, "front": [], "refused": already, "unused": "behind"},
         {**there, "meshes": [], "squares": 0, "front": [], "refused": already, "unused": "above"},
         {**there, "meshes": [], "squares": 0, "front": [], "unused": "no_mesh"},
-        {**there, "there": False, "meshes": [], "squares": 0, "front": [], "unused": "gone"},
+        {**there, "meshes": [], "squares": 0, "front": [], "unused": "gone"},
     ]
     script = (
         f"import {{ otherMeshSaid }} from {json.dumps((UI_DIR / 'live.js').as_uri())};"

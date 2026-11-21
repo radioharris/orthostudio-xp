@@ -5,7 +5,7 @@
  * cloud mode (app.js, map.js, clouds.js; its Settings through app.js), the legend of Build's map
  * and of Live's (legend.js), the new version's banner of both pages (update.js), Live's map
  * (live/livemap.js, from ../static/ as Live's server serves it) and Live's page (live/live.js,
- * which loads it at its start as it loads OrthoStudio XP's other modules).
+ * which loads it at its start on its own, bindDom).
  */
 
 /**

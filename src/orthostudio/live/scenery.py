@@ -121,7 +121,7 @@ def osxp_sources(root: Path) -> list[Path]:
 
 @dataclass(frozen=True)
 class OtherMesh:
-    """What a folder of another tool's mesh holds (:func:`other_mesh`)."""
+    """What a folder of another tool's mesh holds, and what Live takes there (:func:`_taken`)."""
 
     meshes: list[Path]
     """Its regions Live streams onto: ground whose terrain files name photos to make."""
@@ -131,8 +131,9 @@ class OtherMesh:
     """Its packs of ground Live leaves aside, and why."""
     ground: dict[Square, Path]
     """Every square of its ground naming photos, copies left aside included, with the first of its
-    packs that has it: what Live's map draws of it, the squares the pilot may put in front of
-    Live, each one's mesh whose DSF wins there when it is (:func:`other_meshes`)."""
+    packs that has it: what the folder has, each square's mesh whose DSF wins there when it is in
+    front of Live. What it gives, those no folder above it has, is :attr:`OtherMeshes.ground`,
+    which Live's map draws (:func:`_given_by`)."""
     packs: list[Path]
     """Its packs of ground naming photos, copies left aside included: X-Plane draws any of them
     without photos where its own list enables it above Live (``covered.listed_above_live``)."""
@@ -187,18 +188,6 @@ def read_packs(folder: Path) -> list[FolderPack]:
     return out
 
 
-def other_mesh(
-    folder: Path | None, given: Sequence[Path] = (), front: Collection[Square] = ()
-) -> OtherMesh:
-    """The meshes and the roads of a folder the pilot chose, after the regions and the meshes of
-    ``given``, with the squares put in front of Live of ``front`` (:func:`_taken`). Nothing when
-    the folder is gone (its disk away)."""
-    if folder is None:
-        return NO_OTHER_MESH
-    packs = read_packs(folder)
-    return _taken(packs, set(_regions_squares(given, [packs])), front)
-
-
 def _regions_squares(given: Sequence[Path], read: Sequence[list[FolderPack] | None]) -> frozenset:
     """The squares of the regions ``given``, listed only when one of the folders ``read`` has
     ground Live may take: a region's listing is long (a copy of AutoOrtho's Europe cost up to 57
@@ -210,12 +199,15 @@ def _regions_squares(given: Sequence[Path], read: Sequence[list[FolderPack] | No
     return frozenset().union(*(squares_of(source) for source in given))
 
 
-def _taken(packs: Sequence[FolderPack], have: set, front: Collection[Square]) -> OtherMesh:
-    """What Live takes of a folder's packs (:func:`read_packs`), nothing read on the disk:
+def _taken(
+    packs: Sequence[FolderPack], have: Collection[Square], front: Collection[Square]
+) -> OtherMesh:
+    """What Live takes of a folder's packs (:func:`read_packs`), nothing read on the disk, nothing
+    it is given changed:
     - a pack of ground is a mesh when it gives a square none of ``have`` (the squares of the
-      regions and the meshes before it) has, nor a mesh kept before it (``already``: a copy of
-      one), or it is the first to have one of ``front``, the squares put in front of Live no
-      folder before it has, whose DSF it then gives; its squares go into ``have``;
+      regions and of the meshes of the folders above it) has, nor a mesh of the folder kept before
+      it (``already``: a copy of one), or it is the first to have one of ``front``, the squares put
+      in front of Live no folder above it has, whose DSF it then gives;
     - of X-Plane's own overlay packs, the one with most squares of the folder's ground naming
       photos, copies included, is the roads, forests and buildings of its meshes
       (:func:`_roads_of`).
@@ -226,6 +218,7 @@ def _taken(packs: Sequence[FolderPack], have: set, front: Collection[Square]) ->
     overlays: list[tuple[Path, frozenset]] = []
     named: dict[Square, Path] = {}  # the squares of its ground naming photos, copies included
     grounds: list[Path] = []  # its packs of ground naming photos, copies included
+    mine = set(have)  # with the squares of the meshes kept before in this folder
     ahead = set(front)  # the squares put in front of Live no mesh kept has yet
     for pack in packs:
         if pack.kind == ROADS:
@@ -237,11 +230,11 @@ def _taken(packs: Sequence[FolderPack], have: set, front: Collection[Square]) ->
         grounds.append(pack.path)
         for square in pack.squares:
             named.setdefault(square, pack.path)
-        if pack.squares <= have and not pack.squares & ahead:  # a copy of a region before it
+        if pack.squares <= mine and not pack.squares & ahead:  # a copy of a region before it
             refused.append((pack.path.name, "already"))
         else:
             meshes.append(pack.path)
-            have |= pack.squares
+            mine |= pack.squares
             ahead -= pack.squares
     roads = _roads_of(set(named), overlays) if meshes else []
     return OtherMesh(meshes, roads, refused, named, grounds)
@@ -338,7 +331,7 @@ class OtherFolder(NamedTuple):
 @dataclass(frozen=True)
 class OtherMeshes:
     """The folders of other tools' meshes in their order, and what they give together
-    (:func:`other_meshes`)."""
+    (:func:`_given_by`)."""
 
     folders: list[OtherFolder]
     ground: dict[Square, Path]
@@ -376,15 +369,6 @@ class OtherMeshes:
 NO_OTHER_MESHES = OtherMeshes([], {}, {})
 
 
-def other_meshes(
-    folders: Sequence[Path], given: Sequence[Path], front: Collection[Square]
-) -> OtherMeshes:
-    """The folders of other tools' meshes, top first, after the regions (``given``), read on the
-    disk now (:func:`read_folders`), with the squares put in front of Live (``front``)
-    (:func:`_given_by`)."""
-    return _given_by(folders, read_folders(folders, given), front)
-
-
 class FoldersRead(NamedTuple):
     """The folders of other tools' meshes as read on the disk (:func:`read_folders`): what
     :func:`other_mesh_found` keeps, whatever the squares put in front of Live, which a click
@@ -414,14 +398,16 @@ def _given_by(folders: Sequence[Path], read: FoldersRead, front: Collection[Squa
     that has it; a square put in front of Live (``front``) takes the DSF of the first folder that
     has it too. A folder not there (its disk unplugged) gives nothing: its squares come from the
     next folder that has them, else from Live's mesh."""
-    have = set(read.regions)
-    ahead = set(front)
+    have = set(read.regions)  # the squares of the regions and of the folders' meshes so far
+    ahead = set(front)  # the squares put in front of Live no folder so far has
     out: list[OtherFolder] = []
     ground: dict[Square, Path] = {}
     wins: dict[Square, Path] = {}
     for folder, packs in zip(folders, read.packs, strict=True):
         found = NO_OTHER_MESH if packs is None else _taken(packs, have, ahead)
         out.append(OtherFolder(folder, packs is not None, found))
+        taken = set(found.meshes)
+        have.update(*(pack.squares for pack in packs or () if pack.path in taken))
         mine = {square: found.ground[square] for square in ahead if square in found.ground}
         ahead -= mine.keys()
         wins.update(mine)
@@ -432,14 +418,14 @@ def _given_by(folders: Sequence[Path], read: FoldersRead, front: Collection[Squa
 
 def other_mesh_said(one: OtherFolder, every: OtherMeshes) -> dict:
     """A folder of another tool's mesh (``one`` of ``every``) as Live says it, in its window and in
-    its log, all of it decided here, the page guessing nothing: its name and whether it is there,
-    its meshes and roads by name, those left aside with why; how many squares it gives
-    (:meth:`OtherMeshes.gives`: those Live's map draws from it, which its « All in front » and
-    « All behind » change), those of them in front of Live by name; and why Live takes none of its
-    meshes (``unused``), None when it takes one: "gone", the folder is not there; "no_mesh", no
-    ground of it names photos; "above", it gives no square, folders higher in the list have them
-    all; "behind", the squares it gives are all behind Live's mesh, none in front (one in front
-    takes the mesh that has it)."""
+    its log, all of it decided here, the page guessing nothing: its name, its meshes and roads by
+    name, those left aside with why; how many squares it gives (:meth:`OtherMeshes.gives`: those
+    Live's map draws from it, which its « All in front » and « All behind » change), those of them
+    in front of Live by name; and why Live takes none of its meshes (``unused``, the one fact of
+    each case), None when it takes one: "gone", the folder is not there; "no_mesh", no ground of it
+    names photos; "above", it gives no square, folders higher in the list have them all;
+    "behind", the squares it gives are all behind Live's mesh, none in front (one in front takes
+    the mesh that has it)."""
     folder, found = one.folder, one.found
     gives = every.gives(folder)
     if not one.there:
@@ -453,7 +439,6 @@ def other_mesh_said(one: OtherFolder, every: OtherMeshes) -> dict:
     return {
         "folder": str(folder),
         "name": folder.name or str(folder),
-        "there": one.there,
         "meshes": [p.name for p in found.meshes],
         "overlays": [p.name for p in found.overlays],
         "refused": [{"name": name, "why": why} for name, why in found.refused],
@@ -533,7 +518,7 @@ def default_meshes(
     """The meshes Live streams onto: :func:`base_sources`, then those of the folders of other
     tools' meshes chosen in the Settings, in their order (``other``, as found at a start; else as
     last looked at, :func:`other_mesh_found`), whose DSF wins on the squares put in front of Live
-    alone, the first folder's that has it (:func:`other_meshes`). The one rule of what a start
+    alone, the first folder's that has it (:func:`_given_by`). The one rule of what a start
     sets the pack up from, which the window's checks, its map and the command line's setup read
     too."""
     from orthostudio.live.pack import live_root

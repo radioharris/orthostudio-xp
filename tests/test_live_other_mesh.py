@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 from tests.test_live_overlays import xplane
 
-from live_helpers import atom, make_source, make_xplane, put, save_settings
+from live_helpers import atom, make_source, make_xplane, other_meshes, put, save_settings
 from orthostudio.errors import OsxpError
 from orthostudio.live import control, overlays, region, scenery, session
 from orthostudio.live.scenery import (
@@ -23,8 +23,6 @@ from orthostudio.live.scenery import (
     Meshes,
     base_sources,
     default_meshes,
-    other_mesh,
-    other_meshes,
 )
 from orthostudio.live.settings import LiveSettings, load_settings
 
@@ -85,7 +83,7 @@ def test_the_folder_taken_by_what_it_holds(tmp_path: Path) -> None:
     (folder / "Virtual_mount" / "terrain").mkdir()
     (folder / "notes").mkdir()
     (folder / "1200 atc data" / "Earth nav data").mkdir(parents=True)  # no DSF: no scenery
-    found = other_mesh(folder)
+    found = other_meshes([folder]).folders[0].found
     assert found.meshes == [eur]
     assert found.overlays == [eur_roads]
     assert sorted(found.refused) == [  # Windows orders the folders without their case
@@ -94,10 +92,10 @@ def test_the_folder_taken_by_what_it_holds(tmp_path: Path) -> None:
         ("zOrtho4XP_+45+005", "photos"),
         ("z_osxp_eur", "no_terrain"),
     ]
-    assert other_mesh(eur).meshes == [eur]  # the region's own folder chosen: that one
-    assert other_mesh(tmp_path / "unplugged") == NO_OTHER_MESH
-    assert other_mesh(None) == NO_OTHER_MESH
-    assert other_mesh(folder / "notes") == NO_OTHER_MESH
+    # the region's own folder chosen: that one
+    assert other_meshes([eur]).folders[0].found.meshes == [eur]
+    assert other_meshes([tmp_path / "unplugged"]).folders[0].found == NO_OTHER_MESH
+    assert other_meshes([folder / "notes"]).folders[0].found == NO_OTHER_MESH
 
 
 def test_autoortho_s_own_layout_moved(tmp_path: Path) -> None:
@@ -107,9 +105,9 @@ def test_autoortho_s_own_layout_moved(tmp_path: Path) -> None:
     aus = mesh(folder / "z_autoortho" / "scenery" / "z_ao_aus_pac")
     (folder / "z_autoortho" / "aus_pac_info.json").write_text("{}")
     aus_roads = roads(folder / "yAutoOrtho_Overlays")
-    found = other_mesh(folder)
+    found = other_meshes([folder]).folders[0].found
     assert found.meshes == [aus] and found.overlays == [aus_roads]
-    assert other_mesh(folder / "z_autoortho").meshes == [aus]
+    assert other_meshes([folder / "z_autoortho"]).folders[0].found.meshes == [aus]
 
 
 def test_the_roads_that_go_with_the_mesh(tmp_path: Path) -> None:
@@ -128,12 +126,13 @@ def test_the_roads_that_go_with_the_mesh(tmp_path: Path) -> None:
     world = folder / "X-Plane 11" / "Global Scenery" / "X-Plane 11 Global Scenery"
     for square in (A, B, C, D):
         put(world, square)  # ground, with no terrain folder
-    found = other_mesh(folder)
+    found = other_meshes([folder]).folders[0].found
     assert found.meshes == [aus] and found.overlays == [aus_roads]
     assert found.refused == [("X-Plane 11 Global Scenery", "no_terrain")]
     only_roads = tmp_path / "only roads"
     roads(only_roads / "yAutoOrtho_Overlays", (A, B))
-    assert other_mesh(only_roads).overlays == []  # no mesh, no roads to go with it
+    # no mesh, no roads to go with it
+    assert other_meshes([only_roads]).folders[0].found.overlays == []
 
 
 def test_the_roads_of_every_region_kept_beside_a_copy(tmp_path: Path) -> None:
@@ -145,7 +144,7 @@ def test_the_roads_of_every_region_kept_beside_a_copy(tmp_path: Path) -> None:
     mesh(folder / "Mesh_Eur", squares=(A, C))
     aus = mesh(folder / "Mesh_Aus", squares=(B,))
     both = roads(folder / "Mesh_Overlays", (A, B, C))
-    found = other_mesh(folder, [theirs])
+    found = other_meshes([folder], [theirs]).folders[0].found
     assert found.meshes == [aus] and found.refused == [("Mesh_Eur", "already")]
     assert found.overlays == [both]
 
@@ -157,7 +156,7 @@ def test_the_roads_of_one_region_moved_with_the_others(tmp_path: Path) -> None:
     folder = tmp_path / "Other mesh"
     aus = mesh(folder / "z_autoortho" / "scenery" / "z_ao_aus_pac", squares=(B,))
     every = roads(folder / "yAutoOrtho_Overlays", (A, B, C, D))
-    found = other_mesh(folder)
+    found = other_meshes([folder]).folders[0].found
     assert found.meshes == [aus] and found.overlays == [every]
 
 
@@ -168,9 +167,10 @@ def test_a_mesh_without_its_roads_said(tmp_path: Path, monkeypatch: pytest.Monke
     mesh(folder / "z_autoortho" / "scenery" / "z_ao_aus_pac")
     roads(folder / "yAutoOrtho_Overlays")
     deep = folder / "z_autoortho"
-    found = other_meshes([deep], [], ())
+    found = other_meshes([deep])
     assert session._other_said(found.folders[0], found) == (
-        f"another tool's mesh in {deep}: z_ao_aus_pac; no roads, forests or buildings taken from it"
+        f"another tool's mesh in {deep}: 1 square given; uses z_ao_aus_pac; no roads, forests or "
+        "buildings taken from it"
     )
 
 
@@ -182,7 +182,7 @@ def test_no_roads_rather_than_another_s_overlays(tmp_path: Path) -> None:
     mesh(folder / "z_ao_aus_pac", squares=(A, B, C))
     roads(folder / "Aerosoft - YSSY Sydney", (A,), "WorldEditor2.7.0-r1")
     roads(folder / "Global_Forests_v2", (A, B, C, D), None)
-    assert other_mesh(folder).overlays == []
+    assert other_meshes([folder]).folders[0].found.overlays == []
 
 
 def test_x_plane_s_folder_or_live_s_give_nothing(tmp_path: Path) -> None:
@@ -198,9 +198,9 @@ def test_x_plane_s_folder_or_live_s_give_nothing(tmp_path: Path) -> None:
     roads(root / "regions" / "y_osxp_overlays")
     given = base_sources(xp, root)
     for chosen in (xp, scenery_dir, root):
-        found = other_mesh(chosen, given)
+        found = other_meshes([chosen], given).folders[0].found
         assert found.meshes == [] and found.overlays == [], chosen
-    assert ("z_ao_eur", "already") in other_mesh(scenery_dir, given).refused
+    assert ("z_ao_eur", "already") in other_meshes([scenery_dir], given).folders[0].found.refused
 
 
 def test_after_lives_and_autoortho_s_a_copy_left_aside(
@@ -302,7 +302,6 @@ def test_the_setting_and_what_the_window_says(
     assert said["folders"][0] == {
         "folder": str(folder),
         "name": "Other mesh",
-        "there": True,
         "next_start": True,  # no start has taken it yet
         "meshes": ["Mesh_Eur"],
         "overlays": ["Mesh_Overlays"],
@@ -313,8 +312,8 @@ def test_the_setting_and_what_the_window_says(
         "in_xplane": [],
     }
     gone = said["folders"][1]
-    assert gone["there"] is False and gone["meshes"] == [] and gone["name"] == "unplugged"
-    assert gone["unused"] == "gone" and gone["squares"] == 0
+    assert gone["unused"] == "gone" and gone["meshes"] == [] and gone["name"] == "unplugged"
+    assert gone["squares"] == 0 and "there" not in gone  # one fact of each case: unused
     # typed by hand: « ~ » is the home folder; a relative path, which would depend on where Live
     # was started, is not there (the fourth review of 2026-11-14)
     save_settings(LiveSettings(other_meshes=["~/Other mesh"]))
@@ -322,13 +321,13 @@ def test_the_setting_and_what_the_window_says(
     monkeypatch.chdir(tmp_path)
     save_settings(LiveSettings(other_meshes=["Other mesh"]))
     said = control._other_meshes_said(None)
-    assert said is not None and said["folders"][0]["there"] is False
+    assert said is not None and said["folders"][0]["unused"] == "gone"
     assert said["folders"][0]["meshes"] == []
     # « ~someone » with no such user stopped the window's checks and every start (the fifth
     # review of 2026-11-14): as typed, not there
     save_settings(LiveSettings(other_meshes=["~nosuchpilot1234/mesh"]))
     said = control._other_meshes_said(None)
-    assert said is not None and said["folders"][0]["there"] is False
+    assert said is not None and said["folders"][0]["unused"] == "gone"
 
 
 def a_start(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *folders: Path) -> session.Options:
@@ -356,9 +355,10 @@ def test_a_start_says_the_folder(tmp_path: Path, monkeypatch) -> None:
     folder = tmp_path / "Other mesh"
     make_source(folder, tile=(46, 2))
     gone = tmp_path / "unplugged"
-    found = other_meshes([folder, gone], [], ())
+    found = other_meshes([folder, gone])
     assert session._other_said(found.folders[0], found) == (
-        f"another tool's mesh in {folder}: z_ao_test; no roads, forests or buildings taken from it"
+        f"another tool's mesh in {folder}: 1 square given; uses z_ao_test; no roads, forests or "
+        "buildings taken from it"
     )
     said_gone = f"another tool's mesh: {gone} is not there (its disk unplugged?): left out"
     assert session._other_said(found.folders[1], found) == said_gone

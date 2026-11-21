@@ -491,7 +491,8 @@ export const STRINGS = {
     "other_mesh.all_front": "All in front",
     "other_mesh.all_behind": "All behind",
     "other_mesh.remove": "Remove",
-    "other_mesh.remove_help": "Live forgets this folder; its files stay where they are.",
+    "other_mesh.remove_help":
+      "The squares this folder gives go back behind Live's mesh, and Live forgets the folder; its files stay where they are.",
     "other_mesh.up": "Move up",
     "other_mesh.down": "Move down",
     "other_mesh.already": "This folder is in the list already.",
@@ -1018,7 +1019,8 @@ export const STRINGS = {
     "other_mesh.all_front": "Tout devant",
     "other_mesh.all_behind": "Tout derrière",
     "other_mesh.remove": "Retirer",
-    "other_mesh.remove_help": "Live oublie ce dossier ; ses fichiers restent où ils sont.",
+    "other_mesh.remove_help":
+      "Les carrés que ce dossier donne repassent derrière le mesh de Live, et Live oublie le dossier ; ses fichiers restent où ils sont.",
     "other_mesh.up": "Monter",
     "other_mesh.down": "Descendre",
     "other_mesh.already": "Ce dossier est déjà dans la liste.",
