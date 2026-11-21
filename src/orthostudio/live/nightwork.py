@@ -356,6 +356,8 @@ def make_night(
     texture's file) and written over its black name, from its level down; its lights times
     ``gain`` (:data:`orthostudio.live.night.GAIN` when None). False: no light there, its black
     name kept, which takes no disk."""
+    from orthostudio.textures.ter import night_name
+
     from .imaging import encode_bc1
     from .night import GAIN, LIT_SIDE, draw, lights_at, lit_levels, night_rgb, seed_of, warm_bc1
     from .region import NIGHT_FOLDER, NIGHT_TOP, ensure_night_neutral
@@ -377,7 +379,7 @@ def make_night(
     if density is None:
         lights = lights * 0.85  # what the grid gives on average in a town
     rgb = night_rgb(lights, GAIN if gain is None else gain)
-    out = pack / NIGHT_FOLDER / (name[: -len(".dds")] + "_LIT.dds")
+    out = pack / NIGHT_FOLDER / night_name(name)
     ensure_night_neutral(pack)
     out.parent.mkdir(parents=True, exist_ok=True)
     if not rgb.any():  # no light (the sea, a forest): the black name, not 684 KB of zeros

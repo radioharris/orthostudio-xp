@@ -671,27 +671,24 @@ def fetch_zip(
     return path
 
 
-def night_grids(root: Path, region: str, dest: Path) -> int:
+def night_grids(region: str, dest: Path) -> None:
     """The night lights' grids of ``region`` downloaded into ``dest`` (``<square>.png`` each), the
-    list of regions kept in ``root``; returns the grids written."""
+    list of the regions kept there too."""
     import tempfile
 
     url, token = shipped_host()
     if not url:
         raise InstallError("this build carries no address for Live's downloads")
-    found = catalog(root).get(region)
+    found = catalog(dest).get(region)
     if found is None:
-        return 0
+        return
     dest.mkdir(parents=True, exist_ok=True)
-    written = 0
     with tempfile.TemporaryDirectory(dir=dest, prefix=".fetch-") as tmp, _client(token) as client:
         for z in found.night:
             unpacked = Path(tmp) / z.download
             unpack(fetch_zip(client, url, z, Path(tmp) / z.name), unpacked)
             for png in unpacked.rglob("*.png"):
                 replace_file(png, dest / png.name)
-                written += 1
-    return written
 
 
 def unpack(path: Path, dest: Path, stop: threading.Event | None = None) -> int:

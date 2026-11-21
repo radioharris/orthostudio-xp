@@ -141,7 +141,6 @@ export const ROLE_STEP = {
  * mock files and journals still carry. */
 export const NODE_STEP = {
   "tile.textures": "imagery",
-  "tile.night": "assembly",
   "xp12.rasters": "assembly",
   "tile.dsf": "assembly",
   "tile.overlay": "assembly",

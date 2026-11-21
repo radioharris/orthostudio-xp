@@ -10,6 +10,7 @@ belong to the caller.
 from __future__ import annotations
 
 import enum
+from collections.abc import Collection
 from dataclasses import dataclass
 from typing import Literal
 
@@ -24,7 +25,6 @@ __all__ = [
     "TerKind",
     "TerParams",
     "border_mask_filename",
-    "lit_of",
     "load_center_size",
     "night_name",
     "photo_of",
@@ -37,6 +37,7 @@ __all__ = [
     "texture_dds_name",
     "with_decal",
     "with_night",
+    "with_night_of",
 ]
 
 DECAL_LIB = decal_lib(DEFAULT_DECAL)
@@ -239,8 +240,9 @@ def with_night(text: str, lit: str | None, luminance: int | None = None) -> str:
     return "".join(out)
 
 
-def lit_of(text: str, lit: set[str]) -> str | None:
-    """The night texture a terrain file of ``text`` names, when it is among ``lit``."""
+def with_night_of(text: str, kind: TerKind, lit: Collection[str], luminance: int) -> str:
+    """``text`` of a terrain file of ``kind`` naming its photo's night texture when it is among
+    ``lit``, at ``luminance``: the land alone, none at 0 (:func:`with_night`)."""
     photo = photo_of(text)
-    name = night_name(photo) if photo else ""
-    return name if name in lit else None
+    name = night_name(photo) if photo and kind is TerKind.LAND and luminance else None
+    return with_night(text, name if name in lit else None, luminance)

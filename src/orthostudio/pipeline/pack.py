@@ -58,12 +58,10 @@ from orthostudio.install.scenery_packs import (
 from orthostudio.model import OVERLAY_PACK, PACK_PREFIX, TileRef, pack_dir_name
 from orthostudio.textures.ter import (
     NIGHT_FOLDER,
-    TerKind,
-    lit_of,
     takes_decal,
     ter_kind,
     with_decal,
-    with_night,
+    with_night_of,
 )
 
 __all__ = [
@@ -505,8 +503,7 @@ def write_pack(
         wanted = decal if takes_decal(kind, on_sea=decal_on_sea) else ""
         try:
             text = with_decal(src.read_bytes().decode("ascii"), wanted)
-            night_of = lit_of(text, lit) if kind is TerKind.LAND and night_lum else None
-            text = with_night(text, night_of, night_lum).encode("ascii")
+            text = with_night_of(text, kind, lit, night_lum).encode("ascii")
         except FileNotFoundError as exc:
             raise OsxpError(
                 "MESH_INPUT_MISSING",

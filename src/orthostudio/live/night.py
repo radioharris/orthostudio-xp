@@ -685,10 +685,3 @@ def _floored(level: np.ndarray) -> np.ndarray:
 def seed_of(x0: int, y0: int) -> int:
     """The same lamps for a texture at every build."""
     return (x0 * 73856093) ^ (y0 * 19349663)
-
-
-def textures_lit(names: Sequence[str]) -> list[str]:
-    """The night texture's name of each texture name: ``<stem>_LIT.dds``."""
-    from orthostudio.textures.ter import night_name
-
-    return [night_name(name) for name in names]

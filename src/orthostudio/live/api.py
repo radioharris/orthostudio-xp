@@ -424,9 +424,9 @@ def live_router(
             save_settings(settings)
         except (OSError, SettingsFileError) as e:
             raise HTTPException(500, f"the settings could not be saved: {e}") from e
-        if (settings.night, settings.night_light) != (before.night, before.night_light):
-            from orthostudio.pipeline.night import library_strength, luminance
+        from orthostudio.pipeline.night import library_strength, luminance
 
+        if luminance(settings) != luminance(before):
             tiles = library_strength(luminance(settings))
             if tiles:
                 control.log(f"the night lights of {tiles} of your own tiles follow Live's")

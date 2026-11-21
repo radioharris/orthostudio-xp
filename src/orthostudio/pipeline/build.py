@@ -129,7 +129,6 @@ from orthostudio.pipeline.native import (
     snapshot_label_of,
     unusable_coastline,
 )
-from orthostudio.pipeline.night import TILE_NIGHT, NightParams, luminance, night_job
 from orthostudio.pipeline.pack import (
     PARKED_OVERLAY,
     TILE_INSTALL,
@@ -1853,7 +1852,7 @@ def night_workers(env: BuildEnv) -> int:
 
 def _night_run(env: BuildEnv, workers: int) -> Callable[[NodeContext], Any]:
     def run(ctx: NodeContext) -> ArtifactRef:
-        with _active_env(env, ctx), night_job(workers):
+        with _active_env(env, ctx), night_rules.night_job(workers):
             return run_p0_rule(ctx)
 
     return run
@@ -2254,10 +2253,19 @@ def dem_declaration(
             "installer (or give --global-scenery / --xplane), or build with --relief view.",
         )
     params["custom_dem"] = f"{XP12_SOURCE};{overlays}" if overlays else XP12_SOURCE
-    for name, (dlat, dlon) in XP12_INPUTS.items():
-        lat = spec.tile.lat + dlat
-        inputs[name] = global_source(spec.tile.neighbour(dlat, dlon)) if -90 <= lat < 90 else None
+    inputs.update(xp12_block(spec.tile, global_source))
     return _stamp_own_file(params, spec), inputs
+
+
+def xp12_block(
+    tile: TileRef, global_source: Callable[[TileRef], ArtifactRef | None]
+) -> dict[str, ArtifactRef | None]:
+    """X-Plane's Global Scenery DSF of the tile and of each square round it (``XP12_INPUTS``):
+    None past a pole, or where X-Plane has none."""
+    return {
+        name: global_source(tile.neighbour(dlat, dlon)) if -90 <= tile.lat + dlat < 90 else None
+        for name, (dlat, dlon) in XP12_INPUTS.items()
+    }
 
 
 LAID_IN = "2"
@@ -2670,6 +2678,7 @@ def declare(
     out: list[TileNodes] = []
     pack_dirs: dict[tuple[str, str], tuple[BuildSpec, Node, Node]] = {}
     stored_meshes: dict[str, ArtifactRef] | None = None
+    night_lum = night_rules.luminance()  # Live's strength, which the night textures are named at
     for spec, cfg, choice, vectors, mesh, dem, coast, osm in zip(
         specs,
         configs,
@@ -2784,17 +2793,13 @@ def declare(
         )
         night: Node | None = None
         if cfg.get("night_textures"):
-            # X-Plane's roads of the square and of its neighbours: a photo on the edge takes both
-            roads = {
-                input_name: global_source(tile.neighbour(dlat, dlon))
-                for input_name, (dlat, dlon) in XP12_INPUTS.items()
-            }
             workers = night_workers(env)
             night = reg.node(
                 f"{name}/{spec.level}/night",
-                TILE_NIGHT,
-                NightParams(tile=name),
-                {"dsf": dsf, **roads},
+                night_rules.TILE_NIGHT,
+                night_rules.NightParams(tile=name),
+                # X-Plane's roads of the square and round it: a photo on the edge takes both
+                {"dsf": dsf, **xp12_block(tile, global_source)},
                 kind="subprocess",
                 ram_mb=night_rules.BASE_MB + night_rules.WORKER_MB * workers,
                 run=_night_run(env, workers),
@@ -2819,7 +2824,7 @@ def declare(
                 tile_cfg=tile_cfg_text(cfg),
                 decal=decal,
                 decal_on_sea=decal_on_sea,
-                night_lum=luminance() if night is not None else 0,
+                night_lum=night_lum if night is not None else 0,
             ),
             {"dsf": dsf, "textures": textures, "overlay": overlay, "night": night},
             kind="io",

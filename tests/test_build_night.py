@@ -124,17 +124,15 @@ def test_the_night_lines_come_right_after_the_photo_and_go_again() -> None:
 # -- the night textures ---------------------------------------------------------------------------
 
 
-def test_the_town_s_texture_gets_its_night_and_the_dark_ones_none(tmp_path: Path) -> None:
-    out = _run_night(tmp_path, _dsf_dir(tmp_path))
-    made = sorted(p.name for p in (out / NIGHT_FOLDER).iterdir())
-    assert made == [night_name(_photo(TOWN_TEX))]  # the sea's land has no light, the overlay none
-
-
-def test_a_tile_s_night_is_live_s_at_full_strength(tmp_path: Path) -> None:
+def test_the_town_s_texture_gets_live_s_night_at_full_strength_and_the_dark_ones_none(
+    tmp_path: Path,
+) -> None:
     """The same drawing as Live's: a tile beside Live's squares shows the same lights."""
     out = _run_night(tmp_path, _dsf_dir(tmp_path))
-    live_pack = tmp_path / "live"
     photo = _photo(TOWN_TEX)
+    made = sorted(p.name for p in (out / NIGHT_FOLDER).iterdir())
+    assert made == [night_name(photo)]  # the sea's land has no light, the overlay none
+    live_pack = tmp_path / "live"
     with mock.patch.object(nightwork, "roads_from", lambda *_: _town()):
         assert nightwork.make_night(live_pack, photo, 0, [], None, 1.0, apart=False)
     ours = (out / NIGHT_FOLDER / night_name(photo)).read_bytes()
@@ -214,6 +212,15 @@ def test_a_grid_live_has_not_is_downloaded_once_with_its_region_s(host) -> None:
     assert night.grid_of(TileRef(46, 7)).read_bytes() == b"\x89PNG seven"  # already here
     assert night.grid_of(TileRef(47, 6)) is None  # its region's had none: not asked again
     assert asked == ["/eur/night-zips/night_eur.zip"]
+
+
+def test_another_data_folder_asks_for_its_region_s_grids_again(host, tmp_path, monkeypatch) -> None:
+    asked, zips = host
+    zips["eur"] = _night_zip({"+46+006.png": b"\x89PNG six"})
+    assert night.grid_of(TileRef(46, 6)) is not None
+    monkeypatch.setattr(night, "grids_folder", lambda: tmp_path / "other")
+    assert night.grid_of(TileRef(46, 6)) == tmp_path / "other" / "+46+006.png"
+    assert len(asked) == 2
 
 
 def test_the_grid_comes_from_osxp_s_own_region_of_the_square(host) -> None:
@@ -331,10 +338,12 @@ def test_live_s_strength_rewrites_the_tiles_with_night_alone(tmp_path: Path) -> 
     write_pack(tmp_path / "b", T, dsf_dir=dsf_dir, textures_dir=tex_dir, overlay_file=None)
     lit_pack, plain = tmp_path / "a" / pack_dir_name(T), tmp_path / "b" / pack_dir_name(T)
     _manifest(lit_pack, files)
+    built_on = (lit_pack / "orthostudio.toml").stat().st_mtime_ns
     before = {p.name: p.read_bytes() for p in (plain / "terrain").iterdir()}
     assert night.set_strength([lit_pack, plain], 12) == 1
     assert _lines(lit_pack, TOWN_TEX)[1] == "LUMINANCE 12"
     assert read_manifest(lit_pack).files["night_lum"] == 12  # a later build tells them apart
+    assert (lit_pack / "orthostudio.toml").stat().st_mtime_ns == built_on  # the Library's date
     assert {p.name: p.read_bytes() for p in (plain / "terrain").iterdir()} == before
     assert night.set_strength([lit_pack, plain], 12) == 0  # already so
     assert night.set_strength([lit_pack], 0) == 1 and _lines(lit_pack, TOWN_TEX) == []

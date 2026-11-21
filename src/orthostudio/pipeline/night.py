@@ -30,15 +30,14 @@ from orthostudio.graph import Rule, RuleParams, RunContext, rule
 from orthostudio.home import data_root
 from orthostudio.model import TileRef
 from orthostudio.parentwatch import leave_with_parent
-from orthostudio.pipeline.pack import read_manifest, write_manifest
+from orthostudio.pipeline.pack import MANIFEST_NAME, read_manifest, write_manifest
 from orthostudio.textures.ter import (
     NIGHT_FOLDER,
     TerKind,
-    lit_of,
     night_name,
     photo_of,
     ter_kind,
-    with_night,
+    with_night_of,
 )
 
 log = logging.getLogger(__name__)
@@ -52,7 +51,7 @@ BUDGET_SHARE = 2
 
 _WORKERS: ContextVar[int] = ContextVar("night_workers", default=1)
 _FETCHING = threading.Lock()
-_FETCHED: set[str] = set()  # the regions whose grids this process downloaded
+_FETCHED: set[tuple[Path, str]] = set()  # (folder, region): the grids this process downloaded
 
 
 @contextlib.contextmanager
@@ -110,14 +109,15 @@ def grid_of(tile: TileRef) -> Path | None:
     with _FETCHING:  # the squares of a batch: their region's grids downloaded once
         found = find_grid(tile)
         region = region_of(tile.lat + 0.5, tile.lon + 0.5)
-        if found is None and region is not None and region not in _FETCHED:
+        fetched = (grids_folder(), region or "")
+        if found is None and region is not None and fetched not in _FETCHED:
             try:
-                osxpregions.night_grids(grids_folder(), region, grids_folder())
+                osxpregions.night_grids(region, grids_folder())
             except (InstallError, osxpregions.CatalogError, OSError) as exc:
                 raise OsxpError(
                     "TEX_NIGHT_GRIDS_FAILED", context={"region": region, "reason": str(exc)}
                 ) from exc
-            _FETCHED.add(region)
+            _FETCHED.add(fetched)
             found = find_grid(tile)
     return found
 
@@ -188,35 +188,31 @@ def luminance(settings: Any = None) -> int:
     """The ``LUMINANCE`` Live's night lights ask for (its settings, read when not given); 0 when
     they are off."""
     from orthostudio.live.night import LUMINANCE
-    from orthostudio.live.settings import SettingsFileError, load_settings
+    from orthostudio.live.settings import load_settings
 
-    if settings is None:
-        try:
-            settings = load_settings()
-        except (OSError, SettingsFileError):
-            return LUMINANCE["normal"]
+    settings = load_settings() if settings is None else settings
     return LUMINANCE[settings.night_light] if settings.night else 0
 
 
-def night_lines(pack_dir: Path, lum: int) -> int:
-    """The land terrain files of ``pack_dir`` naming their night texture at ``lum`` (none at 0),
-    and its manifest saying so; returns the terrain files rewritten."""
-    terrain, folder = Path(pack_dir) / "terrain", Path(pack_dir) / NIGHT_FOLDER
-    lit = {p.name for p in folder.glob("*_LIT.dds")} if folder.is_dir() else set()
-    changed = 0
-    for ter in sorted(terrain.glob("*.ter")):
-        if ter_kind(ter.name) is not TerKind.LAND:
-            continue
+def _night_lines(pack_dir: Path, lum: int) -> bool:
+    """The land terrain files of ``pack_dir`` naming their night texture at ``lum``, and its
+    manifest saying so (its date kept: the Library's « built on »); True when one changed."""
+    folder = Path(pack_dir) / NIGHT_FOLDER
+    lit = {p.name for p in folder.glob("*_LIT.dds")}
+    changed = False
+    for ter in sorted((Path(pack_dir) / "terrain").glob("*.ter")):
         text = ter.read_bytes().decode("ascii")
-        new = with_night(text, lit_of(text, lit) if lum else None, lum)
+        new = with_night_of(text, ter_kind(ter.name), lit, lum)
         if new != text:
             atomic_write_bytes(ter, new.encode("ascii"))
-            changed += 1
+            changed = True
     with contextlib.suppress(OSError, ValueError, KeyError):
         manifest = read_manifest(pack_dir)
         if manifest.files.get("night") and manifest.files.get("night_lum") != lum:
+            when = (Path(pack_dir) / MANIFEST_NAME).stat()
             manifest.files["night_lum"] = lum
             write_manifest(pack_dir, TileRef.parse(manifest.tile), manifest)
+            os.utime(Path(pack_dir) / MANIFEST_NAME, ns=(when.st_atime_ns, when.st_mtime_ns))
     return changed
 
 
@@ -228,7 +224,7 @@ def set_strength(pack_dirs: Iterable[Path], lum: int) -> int:
         if not (Path(pack_dir) / NIGHT_FOLDER).is_dir():
             continue
         try:
-            tiles += night_lines(pack_dir, lum) > 0
+            tiles += _night_lines(pack_dir, lum)
         except (OSError, UnicodeDecodeError) as exc:
             log.warning("the night lights of %s keep their strength: %s", pack_dir, exc)
     return tiles
