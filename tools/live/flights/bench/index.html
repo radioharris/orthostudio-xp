@@ -132,17 +132,8 @@
         <div class="live-map-wrap">
           <div class="live-map" id="run-map"></div>
           <div class="live-map-bar is-hint" id="run-map-info" aria-live="polite"></div>
-        </div>
-        <div class="live-map-legend">
-          <span class="legend-title">Netteté au sol :</span>
-          <span><i class="swatch is-zl19"></i>ZL19</span>
-          <span><i class="swatch is-zl18"></i>ZL18</span>
-          <span><i class="swatch is-zl17"></i>ZL17</span>
-          <span><i class="swatch is-zl16"></i>ZL16</span>
-          <span><i class="swatch is-zl15"></i>ZL15</span>
-          <span><i class="swatch is-less"></i>Plus flou</span>
-          <span><i class="swatch is-region"></i>Région installée</span>
-          <span><i class="swatch is-route"></i>Trajet</span>
+          <!-- its legend laid on it, as in Live's window (livemap.js, static/legend.js) -->
+          <div class="map-legend" id="run-map-legend"></div>
         </div>
       </div>
       <details class="log" open>
@@ -169,17 +160,6 @@
 </main>
 
 <div class="bench-shot" id="shot" hidden><img id="shot-img" alt=""></div>
-<template id="map-legend"><div class="live-map-legend">
-          <span class="legend-title">Netteté au sol :</span>
-          <span><i class="swatch is-zl19"></i>ZL19</span>
-          <span><i class="swatch is-zl18"></i>ZL18</span>
-          <span><i class="swatch is-zl17"></i>ZL17</span>
-          <span><i class="swatch is-zl16"></i>ZL16</span>
-          <span><i class="swatch is-zl15"></i>ZL15</span>
-          <span><i class="swatch is-less"></i>Plus flou</span>
-          <span><i class="swatch is-region"></i>Région installée</span>
-          <span><i class="swatch is-route"></i>Trajet</span>
-        </div></template>
 <script src="static/vendor/leaflet/leaflet.js"></script>
 <script src="bench/bench.js"></script>
 </body>

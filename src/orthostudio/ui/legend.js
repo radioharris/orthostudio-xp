@@ -5,66 +5,79 @@
  * Live's map (live/livemap.js): folded away to one button, or open with its head and the chevron
  * that folds it; its lines, each a mark (.legend-swatch) and its words, some with the box that
  * shows or hides what they mark; a group's title with its own chevron ("Show"). Each page gives
- * its words, in its language, and keeps what is folded and what is shown (kept.js); nothing here
- * knows what a map draws.
+ * its words, in its language, and the key under which the legend and each group are kept folded
+ * or open for the viewer (kept.js), here alone; the page keeps what is shown; nothing here knows
+ * what a map draws.
  */
 
-function el(tag, attrs, ...children) {
-  const node = document.createElement(tag);
-  for (const [k, v] of Object.entries(attrs || {})) {
-    if (v == null || v === false) continue;
-    if (k === "class") node.className = v;
-    else if (k.startsWith("on")) node.addEventListener(k.slice(2), v);
-    else node.setAttribute(k, v === true ? "" : String(v));
-  }
-  node.append(...children.filter((c) => c != null));
-  return node;
+import { h } from "./dom.js";
+import { pageKeep, pageKept } from "./kept.js";
+
+/** Whether the legend, or a group of it, kept under `key` is open: open unless folded. */
+export function legendOpen(key) {
+  return pageKept(key) !== "0";
+}
+
+function keepOpen(key, open) {
+  pageKeep(key, open ? "1" : "0");
 }
 
 /**
- * The legend in `box`, drawn anew. Folded, one ordinary button brings it back (a user folded it to
- * see the map under it, 2026-09-25); open, the line `head()` gives with the chevron at its end,
- * one line high, then the lists `body()` gives, both asked only then. The control that had the
- * focus has it again, named by its `data-keep`: a redraw on every zoom took it to the first box,
- * whichever had it. `words`: {show, hide}, the button's and the chevron's.
+ * The legend in `box`, drawn anew, folded or open as kept under `key`. Folded, one ordinary button
+ * brings it back (a user folded it to see the map under it, 2026-09-25); open, the line `head()`
+ * gives with the chevron at its end, one line high, then the lists `body()` gives, both asked only
+ * then. The control that had the focus has it again, named by its `data-keep`: a redraw on every
+ * zoom took it to the first box, whichever had it. `words`: {show, hide}, the button's and the
+ * chevron's.
  */
-export function drawLegend(box, { open, setOpen, words, head, body }) {
+export function drawLegend(box, { key, words, head, body }) {
+  const open = legendOpen(key);
+  const setOpen = (on) => {
+    keepOpen(key, on);
+    drawLegend(box, { key, words, head, body });
+  };
   const focused = box.contains(document.activeElement) ? document.activeElement.closest("[data-keep]")?.dataset.keep : null;
   box.classList.toggle("is-folded", !open);
   if (open) {
-    const fold = el("button", { type: "button", class: "legend-fold", "data-keep": "fold", "aria-expanded": "true", title: words.hide, "aria-label": words.hide, onclick: () => setOpen(false) });
-    box.replaceChildren(el("div", { class: "legend-head" }, head(), fold), ...body());
+    const fold = h("button", { type: "button", class: "legend-fold", "data-keep": "fold", "aria-expanded": "true", title: words.hide, "aria-label": words.hide, onclick: () => setOpen(false) });
+    box.replaceChildren(h("div", { class: "legend-head" }, head(), fold), ...body());
   } else {
-    box.replaceChildren(el("button", { type: "button", class: "btn legend-unfold", "data-keep": "fold", "aria-expanded": "false", onclick: () => setOpen(true) }, words.show));
+    box.replaceChildren(h("button", { type: "button", class: "btn legend-unfold", "data-keep": "fold", "aria-expanded": "false", onclick: () => setOpen(true) }, words.show));
   }
   if (focused) box.querySelector(`[data-keep="${focused}"]`)?.focus();
 }
 
 /** A group's title with a chevron that folds its lines away, as the legend itself folds (a user,
- * 2026-09-26): `keep` names the chevron for the focus, `words` {hide, show} its hover. */
-export function groupHead(title, open, keep, words, setOpen) {
-  const button = el("button", {
+ * 2026-09-26), open or folded as kept under `key` (legendOpen() tells the page whether to give
+ * its lines): `keep` names the chevron for the focus, `words` {hide, show} its hover,
+ * `redraw` draws the legend again once it is clicked. */
+export function groupHead(title, key, keep, words, redraw) {
+  const open = legendOpen(key);
+  const button = h("button", {
     type: "button",
     class: open ? "legend-fold" : "legend-fold is-closed",
     "data-keep": keep,
     "aria-expanded": open ? "true" : "false",
     title: open ? words.hide : words.show,
     "aria-label": open ? words.hide : words.show,
-    onclick: () => setOpen(!open),
+    onclick: () => {
+      keepOpen(key, !open);
+      redraw();
+    },
   });
-  return el("div", { class: "legend-head legend-group-head" }, el("p", { class: "legend-title" }, title), button);
+  return h("div", { class: "legend-head legend-group-head" }, h("p", { class: "legend-title" }, title), button);
 }
 
 /** A list of the legend's lines; `marks`, a list whose lines without a box keep the box's room,
  * so that the signs line up with those of the lines that have one (styles.css .legend-marks). */
 export function legendList(lines, marks = false) {
-  return el("ul", { class: marks ? "legend-marks" : null }, ...lines);
+  return h("ul", { class: marks ? "legend-marks" : null }, ...lines);
 }
 
 /** A line without a box: its mark (`swatch`, its class) and its words; `cls`, the line's own
  * class (a zone's level, whose colour the mark takes). */
 export function legendRow(swatch, text, cls = null) {
-  return el("li", { class: cls }, el("span", { class: `legend-swatch ${swatch}`, "aria-hidden": "true" }), text);
+  return h("li", { class: cls }, h("span", { class: `legend-swatch ${swatch}`, "aria-hidden": "true" }), text);
 }
 
 /**
@@ -73,7 +86,7 @@ export function legendRow(swatch, text, cls = null) {
  * in `hint`, on hover, where it was in brackets after the name (a user, 2026-09-26).
  */
 export function legendToggle({ swatch, text, hint = null, checked, keep, idle = false, onChange }) {
-  const input = el("input", { type: "checkbox", checked, "data-keep": keep, onchange: (ev) => onChange(ev.target.checked) });
-  return el("li", { class: idle ? "legend-toggle is-idle" : "legend-toggle" },
-    el("label", { title: hint }, input, el("span", { class: `legend-swatch ${swatch}`, "aria-hidden": "true" }), text));
+  const input = h("input", { type: "checkbox", checked, "data-keep": keep, onchange: (ev) => onChange(ev.target.checked) });
+  return h("li", { class: idle ? "legend-toggle is-idle" : "legend-toggle" },
+    h("label", { title: hint }, input, h("span", { class: `legend-swatch ${swatch}`, "aria-hidden": "true" }), text));
 }

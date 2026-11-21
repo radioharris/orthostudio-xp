@@ -4555,7 +4555,7 @@ def test_a_tile_built_and_not_in_x_plane_is_on_the_map() -> None:
     assert 'const BUILT_KEY = "osxp.mapBuilt";' in map_js
     assert 'builtWanted: pageKept(BUILT_KEY) !== "0",' in map_js, "shown unless unticked"
     toggle = map_js[
-        map_js.index("  function tileToggle(kind) {") : map_js.index("  function setLegendOpen(")
+        map_js.index("  function tileToggle(kind) {") : map_js.index("  function bordersToggle(")
     ]
     assert 'built: ["builtWanted", BUILT_KEY],' in toggle
     assert 'pageKeep(stored[1], wanted ? "1" : "0");' in toggle
@@ -4622,7 +4622,7 @@ def test_a_tile_ortho4xp_built_is_violet_on_the_map() -> None:
     assert '"installed-ortho4xp": installed.some((name) => ortho4xp.has(name)),' in legend
     assert '"built-ortho4xp": built.some((name) => ortho4xp.has(name)),' in legend
     toggle = map_js[
-        map_js.index("  function tileToggle(kind) {") : map_js.index("  function setLegendOpen(")
+        map_js.index("  function tileToggle(kind) {") : map_js.index("  function bordersToggle(")
     ]
     assert '"installed-ortho4xp": ["installedOrtho4xpWanted", INSTALLED_ORTHO4XP_KEY],' in toggle
     assert '"built-ortho4xp": ["builtOrtho4xpWanted", BUILT_ORTHO4XP_KEY],' in toggle
@@ -4705,10 +4705,11 @@ def test_the_legend_lines_up_folds_away_and_keeps_the_keyboard() -> None:
     legend = map_js[
         map_js.index("function renderLegend()") : map_js.index("function bordersToggle()")
     ]
-    assert "open: zs.legendOpen," in legend and "setOpen: setLegendOpen," in legend
-    opening = map_js[map_js.index("  function setLegendOpen(open) {") :]
-    assert 'pageKeep(LEGEND_KEY, open ? "1" : "0");' in opening[: opening.index("\n  }\n")]
-    assert 'legendOpen: pageKept(LEGEND_KEY) !== "0",' in map_js, "open unless folded"
+    assert "key: LEGEND_KEY," in legend, "folded or open as kept, by the shared module"
+    assert "const open = legendOpen(key);" in draw and "keepOpen(key, on);" in draw
+    assert 'return pageKept(key) !== "0";' in _function_body(shared, "legendOpen"), "open unless"
+    assert 'pageKeep(key, open ? "1" : "0");' in _function_body(shared, "keepOpen")
+    assert "legendOpen:" not in map_js and "setLegendOpen" not in map_js
 
     # the focus comes back to the control that had it, each named
     assert 'document.activeElement.closest("[data-keep]")?.dataset.keep' in draw
@@ -4718,27 +4719,20 @@ def test_the_legend_lines_up_folds_away_and_keeps_the_keyboard() -> None:
     assert "keep: kind," in map_js
     assert shared.count('"data-keep": "fold"') == 2, "the fold and the unfold are one place"
     # the map's own options under "Show", which folds away, remembered (the same user, 2026-09-26)
-    assert (
-        "if (open) lists.push(legendList([bordersToggle(), airportsToggle(), streetToggle()]));"
-        in legend
-    )
+    assert "legendList([bordersToggle(), airportsToggle(), streetToggle()])" in legend
     assert 'const LEGEND_SHOW_KEY = "osxp.mapLegendShow";' in map_js
-    assert 'legendShowOpen: pageKept(LEGEND_SHOW_KEY) !== "0",' in map_js
-    assert 'groupHead(t("map.legend_show_group"), open, "show-fold",' in legend
-    show_fold = map_js[map_js.index("  function setLegendShowOpen(open) {") :]
-    assert 'pageKeep(LEGEND_SHOW_KEY, open ? "1" : "0");' in show_fold[:200]
+    assert 'groupHead(t("map.legend_show_group"), LEGEND_SHOW_KEY, "show-fold",' in legend
+    assert "if (legendOpen(LEGEND_SHOW_KEY)) lists.push(legendList([bordersToggle()," in legend
     # the chosen tiles, the route's ends and the build's states have no box: their lines keep its
     # room, so the signs and the words line up with the tiles' lines
     assert 'items.push(legendRow("legend-selected", t("map.legend_selected")));' in legend
     assert 'items.push(legendRow("legend-route-end", t("map.legend_route_ends")));' in legend
     # the zones' levels fold away under their title, remembered (2026-09-26)
     assert 'const LEGEND_ZONES_KEY = "osxp.mapLegendZones";' in map_js
-    assert 'legendZonesOpen: pageKept(LEGEND_ZONES_KEY) !== "0",' in map_js
-    assert 'groupHead(t("map.legend_zones"), open, "zones-fold",' in legend
-    assert "onclick: () => setOpen(!open)," in shared, "one chevron for both groups"
-    assert "if (open) lists.push(legendList(levels.map(" in legend
-    zones_fold = map_js[map_js.index("  function setLegendZonesOpen(open) {") :]
-    assert 'pageKeep(LEGEND_ZONES_KEY, open ? "1" : "0");' in zones_fold[:200]
+    assert 'groupHead(t("map.legend_zones"), LEGEND_ZONES_KEY, "zones-fold",' in legend
+    assert "keepOpen(key, !open);" in _function_body(shared, "groupHead"), "one chevron for both"
+    assert "if (legendOpen(LEGEND_ZONES_KEY)) lists.push(legendList(levels.map(" in legend
+    assert "legendShowOpen" not in map_js and "legendZonesOpen" not in map_js
     assert "rotate(-45deg)" in rules[".map-legend .legend-fold.is-closed::before"]
     assert "legend-row" not in map_js
 
@@ -5632,7 +5626,7 @@ def test_the_page_says_when_a_newer_version_is_out() -> None:
     assert "if (offer.installable)" in note and "install(false)" in note
     # a link, not window.open: the window hands only a clicked target="_blank" link to the
     # system's browser
-    assert 'el("a", {' in note and 'target: "_blank"' in note and 'rel: "noopener"' in note
+    assert 'h("a", {' in note and 'target: "_blank"' in note and 'rel: "noopener"' in note
     assert "window.open(" not in banner  # a call; the comment above says why there is none
     # put away for this version, not for ever, and for both pages: the server keeps it
     assert '"/api/update/later", { version }' in _function_body(banner, "later")
@@ -6680,7 +6674,7 @@ def test_the_legend_says_what_the_view_is_worth_in_a_builds_terms() -> None:
     assert 't("map.view_over_short", { zl: zoomNow }) : t("map.view_zl", { zl: zoomNow })' in legend
     assert "head: legendView," in legend, "the view line first, the chevron at its end"
     draw = _function_body((UI / "legend.js").read_text(encoding="utf-8"), "drawLegend")
-    assert 'el("div", { class: "legend-head" }, head(), fold), ...body()' in draw
+    assert 'h("div", { class: "legend-head" }, head(), fold), ...body()' in draw
     tables = _i18n_tables()
     assert tables["fr"]["map.view_zl"] == tables["en"]["map.view_zl"] == "ZL{zl}"
     assert tables["fr"]["map.view_over_short"] == "ZL{zl}, agrandie"

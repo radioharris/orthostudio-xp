@@ -716,6 +716,12 @@ def create_app(runner: Runner, results: Path = fly.RESULTS) -> Any:
     def map_regions(src: str = "current") -> dict[str, Any]:
         return benchmap.regions(xp())
 
+    @app.get("/api/bench/map/other")
+    def map_other(src: str = "current") -> list[dict[str, Any]]:
+        """The squares of other tools' meshes, which Live's map asks for: none drawn here, the map
+        of a test flight shows what its Live built."""
+        return []
+
     @app.get("/api/bench/results")
     def get_results() -> list[dict[str, Any]]:
         return results_list(results)

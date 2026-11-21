@@ -9,22 +9,12 @@
  * answers the same paths (Build's engine; Live's server relays to it, orthostudio/live/update_relay.py).
  */
 
+import { h } from "./dom.js";
 import { language, t, tOpt } from "./i18n.js";
 
 const POLL_MS = 500;
 /** The states of a try going on (orthostudio/self_update.py UNDER_WAY). */
 const UNDER_WAY = ["preparing", "starting", "installing"];
-
-function el(tag, attrs, ...children) {
-  const node = document.createElement(tag);
-  for (const [k, v] of Object.entries(attrs || {})) {
-    if (k === "class") node.className = v;
-    else if (k.startsWith("on")) node.addEventListener(k.slice(2), v);
-    else node.setAttribute(k, v);
-  }
-  node.append(...children);
-  return node;
-}
 
 /**
  * The banner of one page. `request(method, path, body)`: the page's server, its answer or a
@@ -76,7 +66,7 @@ export function bindUpdate({ request, place, resized = () => {}, failed = () => 
       return; // the same buttons: a click under way is not lost to a new one
     }
     const fresh = !note;
-    if (fresh) note = el("p", { id: "update-note", class: "window-note update-note", role: "status" });
+    if (fresh) note = h("p", { id: "update-note", class: "window-note update-note", role: "status" });
     note.dataset.phase = key;
     note.replaceChildren(...parts(shown));
     if (fresh) place.prepend(note);
@@ -88,9 +78,9 @@ export function bindUpdate({ request, place, resized = () => {}, failed = () => 
     const version = now?.version || offer?.latest || "";
     if (shown === "preparing") {
       return [
-        el("span", { class: "update-progress" }),
-        el("span", { class: "progress update-bar", "aria-hidden": "true" }, el("span", { class: "update-fill" })),
-        el("button", { type: "button", class: "btn", onclick: cancel }, t("app.update_cancel")),
+        h("span", { class: "update-progress" }),
+        h("span", { class: "progress update-bar", "aria-hidden": "true" }, h("span", { class: "update-fill" })),
+        h("button", { type: "button", class: "btn", onclick: cancel }, t("app.update_cancel")),
       ];
     }
     if (shown === "starting") return [t("app.update_starting")];
@@ -103,16 +93,16 @@ export function bindUpdate({ request, place, resized = () => {}, failed = () => 
     }
     const buttons = [];
     if (offer.installable) {
-      buttons.push(el("button", { type: "button", class: "btn btn-primary", onclick: () => install(false) }, t("app.update_install")));
+      buttons.push(h("button", { type: "button", class: "btn btn-primary", onclick: () => install(false) }, t("app.update_install")));
     }
     // A link, not a button calling window.open: the window hands a clicked target="_blank" link
     // to the system's browser (pywebview, OPEN_EXTERNAL_LINKS_IN_BROWSER), and only a link.
     const notes = offer.installable ? t("app.update_notes") : t("app.update_open");
     buttons.push(
-      el("a", { class: offer.installable ? "btn" : "btn btn-primary", href: offer.url, target: "_blank", rel: "noopener" }, notes),
-      el("button", { type: "button", class: "btn", onclick: later }, t("app.update_later")),
+      h("a", { class: offer.installable ? "btn" : "btn btn-primary", href: offer.url, target: "_blank", rel: "noopener" }, notes),
+      h("button", { type: "button", class: "btn", onclick: later }, t("app.update_later")),
     );
-    return [el("span", null, words), ...buttons];
+    return [h("span", null, words), ...buttons];
   }
 
   /** The bar and its words: the bytes the engine counted, of all it does while the app is open. */
@@ -189,19 +179,19 @@ export function bindUpdate({ request, place, resized = () => {}, failed = () => 
   function confirm(running) {
     let dialog = document.getElementById("update-confirm");
     if (!dialog) {
-      dialog = el(
+      dialog = h(
         "dialog",
         { id: "update-confirm", class: "dialog", role: "alertdialog", "aria-labelledby": "update-confirm-title", "aria-describedby": "update-confirm-text" },
-        el(
+        h(
           "form",
           { method: "dialog" },
-          el("h2", { class: "dialog-title", id: "update-confirm-title" }),
-          el("div", { class: "dialog-text", id: "update-confirm-text" }),
-          el(
+          h("h2", { class: "dialog-title", id: "update-confirm-title" }),
+          h("div", { class: "dialog-text", id: "update-confirm-text" }),
+          h(
             "div",
             { class: "dialog-actions" },
-            el("button", { type: "submit", class: "btn", value: "stay", autofocus: "" }),
-            el("button", { type: "submit", class: "btn btn-primary", value: "install" }),
+            h("button", { type: "submit", class: "btn", value: "stay", autofocus: "" }),
+            h("button", { type: "submit", class: "btn btn-primary", value: "install" }),
           ),
         ),
       );
@@ -212,7 +202,7 @@ export function bindUpdate({ request, place, resized = () => {}, failed = () => 
     const lines = [t("update.text")];
     if (running?.build) lines.push(t("update.build"));
     if (running?.live) lines.push(running.flying ? t("update.flying") : t("update.live"));
-    dialog.querySelector(".dialog-text").replaceChildren(...lines.map((line) => el("p", null, line)));
+    dialog.querySelector(".dialog-text").replaceChildren(...lines.map((line) => h("p", null, line)));
     const [stay, go] = dialog.querySelectorAll("button");
     stay.textContent = t("app.update_later");
     go.textContent = t("app.update_install");

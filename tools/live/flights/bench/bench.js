@@ -317,7 +317,7 @@ async function updateRunMap() {
   const m = await liveMapModule();
   if (!m) return;
   if (!runMap) {
-    runMap = m.createLiveMap($("run-map"), { api: mapApi("current"), info: $("run-map-info") });
+    runMap = m.createLiveMap($("run-map"), { api: mapApi("current"), info: $("run-map-info"), legend: $("run-map-legend") });
     runMap.setDetails(true);
     $("run-map-follow").addEventListener("change", (e) => runMap.setFollow(e.target.checked));
     $("run-map").addEventListener("live-map-follow", (e) => { $("run-map-follow").checked = e.detail; });
@@ -344,16 +344,16 @@ async function resultMapBlock(path) {
   if (!m) return null;
   const mapEl = el("div", { class: "live-map" });
   const info = el("div", { class: "live-map-bar is-hint", "aria-live": "polite" });
+  const legend = el("div", { class: "map-legend" }); // laid on the map, as in Live's window
   const block = el("div", { class: "bench-map" },
     el("div", { class: "bench-map-head" },
       el("h3", { class: "sub-question-title", text: "La carte de Live : ce qu'il a construit pendant le vol" })),
-    el("div", { class: "live-map-wrap" }, mapEl, info),
-    $("map-legend").content.cloneNode(true));
+    el("div", { class: "live-map-wrap" }, mapEl, info, legend));
   return {
     block,
     start() {
       if (resultMap) resultMap.map.remove();
-      resultMap = m.createLiveMap(mapEl, { api: mapApi(path), info });
+      resultMap = m.createLiveMap(mapEl, { api: mapApi(path), info, legend });
       resultMap.setDetails(true);
       resultMap.setFollow(false);
       resultMap.update(state.status);

@@ -38,6 +38,7 @@ import { applyTextSize, bindTextSize, savedTextSize } from "./textsize.js";
 import { bindFrame, inFrame } from "./embed.js";
 import { keepForThisVisit, pageKeep, pageKept } from "./kept.js";
 import { bindUpdate } from "./update.js";
+import { h } from "./dom.js";
 import { countryName, sourceAddressProblem, sourceGroups, sourceGroupTitle, sourceLabel, tilesNotCovered } from "./sources.js";
 
 // ------------------------------------------------------------------ constants
@@ -283,26 +284,6 @@ let cloudMode = null;
 // ------------------------------------------------------------------ DOM helpers
 
 const $ = (id) => document.getElementById(id);
-
-function h(tag, attrs, ...children) {
-  const el = document.createElement(tag);
-  if (attrs) {
-    for (const [k, v] of Object.entries(attrs)) {
-      if (v == null || v === false) continue;
-      if (k === "class") el.className = v;
-      else if (k === "dataset") Object.assign(el.dataset, v);
-      else if (k.startsWith("on") && typeof v === "function") el.addEventListener(k.slice(2), v);
-      else if (k === "text") el.textContent = v;
-      else if (v === true) el.setAttribute(k, "");
-      else el.setAttribute(k, String(v));
-    }
-  }
-  for (const c of children.flat()) {
-    if (c == null || c === false) continue;
-    el.append(c instanceof Node ? c : document.createTextNode(String(c)));
-  }
-  return el;
-}
 
 function clear(el) {
   while (el.firstChild) el.removeChild(el.firstChild);

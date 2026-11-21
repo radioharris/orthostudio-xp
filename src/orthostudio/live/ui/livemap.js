@@ -17,7 +17,7 @@
 import { AIRPORTS_MIN_ZOOM, BORDERS_MAX_ZOOM, createBaseMap, escapeHtml } from "./basemap.js";
 import { tileName } from "../static/geo.js";
 import { pageKeep, pageKept } from "../static/kept.js";
-import { drawLegend, groupHead, legendList, legendRow, legendToggle } from "../static/legend.js";
+import { drawLegend, groupHead, legendList, legendOpen, legendRow, legendToggle } from "../static/legend.js";
 import { language, t } from "./strings.js";
 
 // by the zoom of its photos, how sharp a texture is on the ground whatever its size (an airport's
@@ -106,8 +106,6 @@ export function createLiveMap(el, { api, info = null, legend = null, onOther = n
   const { map } = base;
   // each layer under the legend's "Show", shown unless its box was unticked
   const shown = Object.fromEntries(LAYERS.map((name) => [name, pageKept(SHOWN_KEY + name) !== "0"]));
-  let legendOpen = pageKept(LEGEND_KEY) !== "0";
-  let legendShowOpen = pageKept(LEGEND_SHOW_KEY) !== "0";
   base.bordersShown(shown.borders);
   base.airportsShown(shown.airports);
   function pane(name, zIndex, opacity) {
@@ -355,12 +353,7 @@ export function createLiveMap(el, { api, info = null, legend = null, onOther = n
   function renderLegend() {
     if (!legend) return;
     drawLegend(legend, {
-      open: legendOpen,
-      setOpen: (open) => {
-        legendOpen = open;
-        pageKeep(LEGEND_KEY, open ? "1" : "0");
-        renderLegend();
-      },
+      key: LEGEND_KEY,
       words: { show: t("map.legend_show"), hide: t("map.legend_hide") },
       head: () => {
         const title = document.createElement("p");
@@ -378,12 +371,8 @@ export function createLiveMap(el, { api, info = null, legend = null, onOther = n
           legendRow("legend-less", t("map.legend_less")),
         ], true);
         const words = { hide: t("map.legend_show_group_hide"), show: t("map.legend_show_group_show") };
-        const head = groupHead(t("map.legend_show_group"), legendShowOpen, "show-fold", words, (open) => {
-          legendShowOpen = open;
-          pageKeep(LEGEND_SHOW_KEY, open ? "1" : "0");
-          renderLegend();
-        });
-        return legendShowOpen ? [sharpness, head, legendList(layerToggles())] : [sharpness, head];
+        const head = groupHead(t("map.legend_show_group"), LEGEND_SHOW_KEY, "show-fold", words, renderLegend);
+        return legendOpen(LEGEND_SHOW_KEY) ? [sharpness, head, legendList(layerToggles())] : [sharpness, head];
       },
     });
   }

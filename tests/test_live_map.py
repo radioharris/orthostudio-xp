@@ -181,13 +181,14 @@ def test_the_map_s_legend_is_osxp_s_laid_on_the_map() -> None:
     wrap = wrap[: wrap.index("</section>")]
     assert '<div class="map-legend" id="map-legend"></div>' in wrap
     css = (UI_DIR / "live.css").read_text()
-    for gone in ("live-map-legend", "swatch is-", "legend-own-osxp", "legend-other-behind"):
+    for gone in ("live-map-legend", "swatch is-", "legend-own-osxp"):
         assert gone not in html and gone not in css, gone
     js = (UI_DIR / "livemap.js").read_text()
     assert (
-        "import { drawLegend, groupHead, legendList, legendRow, legendToggle } from "
+        "import { drawLegend, groupHead, legendList, legendOpen, legendRow, legendToggle } from "
         '"../static/legend.js";' in js
     )
+    assert "key: LEGEND_KEY," in js and "legendOpen(LEGEND_SHOW_KEY)" in js  # kept by legend.js
     assert 'const LEGEND_KEY = "osxp.live.mapLegend";' in js
     assert 'const LEGEND_SHOW_KEY = "osxp.live.mapLegendShow";' in js
     assert 'const SHOWN_KEY = "osxp.live.mapShown.";' in js
@@ -209,7 +210,7 @@ def test_the_map_s_legend_is_osxp_s_laid_on_the_map() -> None:
     assert "z-index: 0;" in css[css.index(".live-map {") :].split("}")[0], "under its legend"
     live_js = (UI_DIR / "live.js").read_text()
     assert 'legend: $("map-legend")' in live_js
-    assert "ownKinds" not in live_js + js and "otherKinds" not in live_js + js
+    assert "ownKinds" not in live_js + js
 
 
 class FakeStreamer:

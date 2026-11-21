@@ -16,7 +16,7 @@
 import { adjustImageData, photoValues } from "./colour.js";
 import { fmtGround, fmtInt, fmtMB, fmtNum, t } from "./i18n.js";
 import { pageKeep, pageKept } from "./kept.js";
-import { drawLegend, groupHead, legendList, legendRow, legendToggle } from "./legend.js";
+import { drawLegend, groupHead, legendList, legendOpen, legendRow, legendToggle } from "./legend.js";
 import { mockPhoto } from "./preview.js";
 import { sourceCovers, sourceGroups, sourceGroupTitle, sourceLabel } from "./sources.js";
 import {
@@ -324,9 +324,6 @@ export function createPlanMap(ctx) {
     installedOrtho4xpWanted: pageKept(INSTALLED_ORTHO4XP_KEY) !== "0",
     builtWanted: pageKept(BUILT_KEY) !== "0",
     builtOrtho4xpWanted: pageKept(BUILT_ORTHO4XP_KEY) !== "0",
-    legendOpen: pageKept(LEGEND_KEY) !== "0",
-    legendZonesOpen: pageKept(LEGEND_ZONES_KEY) !== "0",
-    legendShowOpen: pageKept(LEGEND_SHOW_KEY) !== "0",
     street: {
       wanted: pageKept(STREET_KEY) === "1", // off: the imagery is what a build will use
       loading: false,
@@ -2440,8 +2437,7 @@ export function createPlanMap(ctx) {
     // Rebuilt on zoom and on a toggle, folded away or open, the focus kept (legend.js, Live's
     // map's too).
     drawLegend(box, {
-      open: zs.legendOpen,
-      setOpen: setLegendOpen,
+      key: LEGEND_KEY,
       words: { show: t("map.legend_show"), hide: t("map.legend_hide") },
       head: legendView,
       body: legendBody,
@@ -2482,29 +2478,15 @@ export function createPlanMap(ctx) {
     const lists = [legendList(items, true)];
     if (map) {
       // The map's own options under "Show", which folds away (the same user, 2026-09-26)
-      const open = zs.legendShowOpen;
-      lists.push(groupHead(t("map.legend_show_group"), open, "show-fold", { hide: t("map.legend_show_group_hide"), show: t("map.legend_show_group_show") }, setLegendShowOpen));
-      if (open) lists.push(legendList([bordersToggle(), airportsToggle(), streetToggle()]));
+      lists.push(groupHead(t("map.legend_show_group"), LEGEND_SHOW_KEY, "show-fold", { hide: t("map.legend_show_group_hide"), show: t("map.legend_show_group_show") }, renderLegend));
+      if (legendOpen(LEGEND_SHOW_KEY)) lists.push(legendList([bordersToggle(), airportsToggle(), streetToggle()]));
     }
     const levels = [...new Set([...zs.zones.map((z) => z.zl).filter(usableZl), ...(zs.draft ? [zs.nextZl] : [])])].sort((a, b) => b - a);
     if (levels.length) {
-      const open = zs.legendZonesOpen;
-      lists.push(groupHead(t("map.legend_zones"), open, "zones-fold", { hide: t("map.legend_zones_hide"), show: t("map.legend_zones_show") }, setLegendZonesOpen));
-      if (open) lists.push(legendList(levels.map((zl) => legendRow("legend-zone", detailName(zl), `zl-${zl}`))));
+      lists.push(groupHead(t("map.legend_zones"), LEGEND_ZONES_KEY, "zones-fold", { hide: t("map.legend_zones_hide"), show: t("map.legend_zones_show") }, renderLegend));
+      if (legendOpen(LEGEND_ZONES_KEY)) lists.push(legendList(levels.map((zl) => legendRow("legend-zone", detailName(zl), `zl-${zl}`))));
     }
     return lists;
-  }
-
-  function setLegendShowOpen(open) {
-    zs.legendShowOpen = open;
-    pageKeep(LEGEND_SHOW_KEY, open ? "1" : "0");
-    renderLegend();
-  }
-
-  function setLegendZonesOpen(open) {
-    zs.legendZonesOpen = open;
-    pageKeep(LEGEND_ZONES_KEY, open ? "1" : "0");
-    renderLegend();
   }
 
   /** A legend line for one kind of tile, by program and by X-Plane having them or not (`kind`:
@@ -2531,12 +2513,6 @@ export function createPlanMap(ctx) {
     zs[stored[0]] = wanted;
     pageKeep(stored[1], wanted ? "1" : "0");
     renderGrid();
-    renderLegend();
-  }
-
-  function setLegendOpen(open) {
-    zs.legendOpen = open;
-    pageKeep(LEGEND_KEY, open ? "1" : "0");
     renderLegend();
   }
 
