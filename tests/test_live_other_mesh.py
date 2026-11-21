@@ -17,7 +17,13 @@ from tests.test_live_overlays import put, xplane
 from live_helpers import atom, make_source, make_xplane
 from orthostudio.errors import OsxpError
 from orthostudio.live import control, overlays, region, scenery, session
-from orthostudio.live.scenery import NO_OTHER_MESH, base_sources, default_sources, other_mesh
+from orthostudio.live.scenery import (
+    NO_OTHER_MESH,
+    Meshes,
+    base_sources,
+    default_meshes,
+    other_mesh,
+)
 from orthostudio.live.settings import LiveSettings, load_settings, save_settings
 
 A, B, C, D = (45, 5), (46, 7), (47, 8), (48, 9)
@@ -210,7 +216,7 @@ def test_after_lives_and_autoortho_s_a_copy_left_aside(
     found = scenery.other_mesh_found(xp, root, fresh=True)
     assert found.meshes == [na]
     assert found.refused == [("Mesh_Eur", "already")]
-    assert default_sources(xp, root) == [theirs, na]
+    assert default_meshes(xp, root) == Meshes([theirs, na], {})
 
 
 def test_the_folder_looked_at_again_after_a_while(
@@ -258,7 +264,7 @@ def test_the_window_reads_the_folder_once_in_a_while(
     # Live's Europe and AutoOrtho's said « Europe, Europe » (the review of 0eb7e561): once
     mesh(xp / "Custom Scenery" / "z_autoortho" / "scenery" / "z_ao_eur", squares=(B,))
     monkeypatch.setattr(
-        control, "stream_sources", lambda xp: [Path("z_osxp_eur"), Path("z_ao_eur")]
+        control, "stream_meshes", lambda xp: Meshes([Path("z_osxp_eur"), Path("z_ao_eur")], {})
     )
     assert control.gather_checks()["mesh_regions"] == ["eur"]
 
@@ -294,6 +300,9 @@ def test_the_setting_and_what_the_window_says(
         "meshes": ["Mesh_Eur"],
         "overlays": ["Mesh_Overlays"],
         "refused": [{"name": "zOrtho4XP_+45+005", "why": "photos"}],
+        "front": [],
+        "front_next": False,
+        "in_xplane": [],
     }
     save_settings(LiveSettings(other_mesh=str(tmp_path / "unplugged")))
     said = control._other_mesh_said(None)  # a new setting, looked at at once
@@ -343,7 +352,7 @@ def test_a_start_says_the_folder(tmp_path: Path, monkeypatch) -> None:
     assert session._other_said(gone, NO_OTHER_MESH) == said_gone
     options = a_start(tmp_path, monkeypatch, gone)
     installed = make_source(tmp_path / "live-region", tile=(46, 2))
-    monkeypatch.setattr(session, "default_sources", lambda xp, other=None: [installed])
+    monkeypatch.setattr(session, "default_meshes", lambda xp, other=None: Meshes([installed], {}))
     said: list[str] = []
     monkeypatch.setattr(session, "_overlays", lambda *args: None)
     session.prepare(options, log=said.append)

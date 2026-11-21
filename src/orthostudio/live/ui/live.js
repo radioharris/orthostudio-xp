@@ -9,7 +9,7 @@ import { applyStatic, countryName, detectLanguage, language, setLanguage, t } fr
 
 const POLL_MS = 1000;
 const MAP_DETAILS_KEY = "osxp.live.mapDetails"; // the bar over the map, shown or hidden
-const API_LEVEL = 1; // orthostudio/live/control.py API
+const API_LEVEL = 2; // orthostudio/live/control.py API
 const SHARP_ZOOM = 16; // a source stopping below it shows blurrier ortho up close
 
 const $ = (id) => document.getElementById(id);
@@ -499,6 +499,9 @@ function drawChecks(status) {
   else if (c.plugin === "to_build") add("info", t("checks.plugin_build"));
   else add("warn", t("checks.plugin_missing"));
   if (status.state === "idle" && c.installed && !c.xplane_running) add("warn", t("checks.left_installed"));
+  // the folder of another tool's mesh also checked in X-Plane above Live: X-Plane draws it there
+  const drawn = c.other_mesh?.in_xplane || [];
+  if (drawn.length) add("warn", t("checks.other_mesh_in_xplane", { packs: drawn.join(", ") }));
 
   const key = JSON.stringify(items);
   if (key === checksDrawn) return; // drawn again only when they change: a button keeps its click
@@ -570,6 +573,7 @@ function drawFolder(status) {
 function drawOtherMesh(other) {
   const line = $("other-mesh-found");
   line.hidden = !other;
+  drawOtherFront(other);
   if (!other) return;
   line.classList.toggle("is-warn", !other.there || !other.meshes.length);
   if (!other.there) {
@@ -588,6 +592,43 @@ function drawOtherMesh(other) {
     said.push(more ? t("other_mesh.refused_more", { names, count: more }) : t("other_mesh.refused", { names }));
   }
   line.textContent = said.join(" ");
+}
+
+/** The squares of another tool's mesh put in front of Live on its map: how many, and whether they
+ *  wait for Live's next start (orthostudio/live/control.py _other_mesh_said); how to put one there
+ *  while none is. Nothing while the folder gives no square. */
+function drawOtherFront(other) {
+  const line = $("other-mesh-front");
+  const offered = Boolean(other?.there && (other.meshes.length || other.refused.some((r) => r.why === "already")));
+  line.hidden = !offered;
+  if (!offered) return;
+  const n = other.front.length;
+  const said = [n === 0 ? t("other_mesh.front_none")
+    : n === 1 ? t("other_mesh.front_one") : t("other_mesh.front", { n: number(n) })];
+  if (other.front_next) said.push(t("other_mesh.front_next"));
+  line.textContent = said.join(" ");
+}
+
+/** A square of another tool's mesh clicked on the map: put in front of Live, or back behind it,
+ *  saved at once as the source is; the map and the line under the setting say it. */
+async function toggleFront({ lat, lon, front }) {
+  const tile = tileName(lat, lon);
+  const now = last?.settings?.other_mesh_front || [];
+  const wanted = front ? now.filter((name) => name !== tile) : [...now, tile];
+  try {
+    const got = await api("settings", { method: "PUT", body: { other_mesh_front: wanted } });
+    if (saved) saved.other_mesh_front = got.other_mesh_front;
+    if (last?.settings) last.settings.other_mesh_front = got.other_mesh_front;
+    toast(t(front ? "map.other_put_behind" : "map.other_put_front", { tile }));
+  } catch (error) {
+    toast(error.message);
+  }
+  liveMap?.otherChanged();
+}
+
+/** The legend's lines for another tool's mesh: those the map draws only. */
+function drawOtherLegend(kinds) {
+  for (const kind of ["behind", "front"]) $(`legend-other-${kind}`).hidden = !kinds.has(kind);
 }
 
 /** The X-Plane Live works with, the others found, and whether it can be changed now. */
@@ -1506,6 +1547,7 @@ async function saveSettings(event) {
     await saveXplaneFolder();
     saved = await api("settings", { method: "PUT", body });
     fillSettings(saved);
+    liveMap?.otherChanged(); // another folder of another tool's mesh: its squares, none in front
     $("settings-status").textContent = t("settings.saved");
     // under the floor of the zooms chosen: Live raised it, and says so beside the field
     $("disk-raised").hidden = !(saved.disk_gb > body.disk_gb);
@@ -1814,7 +1856,9 @@ async function startMap() {
   try {
     // loaded here, not with the page: the map's modules read OrthoStudio XP's own (static/geo.js)
     const { createLiveMap } = await import("./livemap.js");
-    liveMap = createLiveMap($("live-map"), { api, info: $("map-info"), ownKinds: drawOwnLegend });
+    liveMap = createLiveMap($("live-map"), {
+      api, info: $("map-info"), ownKinds: drawOwnLegend, otherKinds: drawOtherLegend, onOther: toggleFront,
+    });
   } catch (_e) {
     liveMap = null;
     return;

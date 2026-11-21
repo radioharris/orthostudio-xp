@@ -1,8 +1,9 @@
 // OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 // Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 // The Live window's map, over the shared base map (basemap.js): the aircraft and the camera as
-// X-Plane sends them, the route of the SimBrief plan, the regions installed, and the textures
-// built, coloured by how sharp they are (orthostudio/live/mapdata.py). The status the page polls
+// X-Plane sends them, the route of the SimBrief plan, the regions installed, the squares of another
+// tool's mesh (a click puts one in front of Live or back), and the textures built, coloured by how
+// sharp they are (orthostudio/live/mapdata.py). The status the page polls
 // every second moves the aircraft; the textures are asked for again when the view moves, and
 // every few seconds while Live streams. The texture under the pointer is told in a bar over the
 // map's top, one line or two, which can be hidden (a tooltip was too present, a user said), and
@@ -12,6 +13,7 @@
 // airport's textures over the ZL16 ones do not add their colours up and look darker than they are.
 
 import { createBaseMap, escapeHtml } from "./basemap.js";
+import { tileName } from "../static/geo.js";
 import { language, t } from "./strings.js";
 
 // by the zoom of its photos, how sharp a texture is on the ground whatever its size (an airport's
@@ -33,6 +35,7 @@ const ROUTE_COLOUR = "#e0572f"; // OrthoStudio XP's own route colour
 const BUILT_EVERY_MS = 3000; // while Live streams: the engine answers "same" while nothing changed
 const OWN_EVERY_MS = 30000; // the user's own tiles asked for again this often (the engine: 30 s)
 const OWN_INSET = 2.5; // px: as OrthoStudio XP's Plan frames a tile, inside it, never on its edge
+const OTHER_INSET = 1; // px: a square of another tool's mesh, inside it, the user's tile frame outside
 
 export function photoColour(zoom) {
   return PHOTO_COLOURS[Math.min(19, zoom)] || PHOTO_COLOURS.coarser;
@@ -88,7 +91,7 @@ function planeIcon(heading) {
   return L.divIcon({ className: "live-plane", html: svg, iconSize: [PLANE_PX, PLANE_PX], iconAnchor: [half, half] });
 }
 
-export function createLiveMap(el, { api, info = null, ownKinds = null }) {
+export function createLiveMap(el, { api, info = null, ownKinds = null, otherKinds = null, onOther = null }) {
   const base = createBaseMap(el);
   const { map } = base;
   function pane(name, zIndex, opacity) {
@@ -106,9 +109,16 @@ export function createLiveMap(el, { api, info = null, ownKinds = null }) {
   const ownPane = map.createPane("liveOwn");
   ownPane.style.zIndex = "350";
   ownPane.style.pointerEvents = "none";
+  // over the borders, under the user's own tiles: the squares of another tool's mesh
+  const otherPane = map.createPane("liveOther");
+  otherPane.style.zIndex = "345";
+  otherPane.style.pointerEvents = "none";
   const regions = L.layerGroup().addTo(map);
   const built = L.layerGroup().addTo(map);
   const own = L.layerGroup().addTo(map);
+  const other = L.layerGroup().addTo(map);
+  let otherSquares = []; // [{lat, lon, front}]: GET map/other
+  let otherKey = "";
   let ownTiles = []; // [{lat, lon, pack, kind}]: GET map/own
   let ownKey = "";
   let ownAt = 0;
@@ -243,6 +253,50 @@ export function createLiveMap(el, { api, info = null, ownKinds = null }) {
   }
   map.on("zoomend", drawOwn); // the frame's inset is in pixels
 
+  /**
+   * The squares of another tool's mesh (orthostudio/live/control.py other_squares): dashed where
+   * it comes behind Live, framed and shaded where the pilot put it in front of Live, its mesh
+   * there with Live's photos. A click on one puts it in front or back (onOther).
+   */
+  function drawOther() {
+    other.clearLayers();
+    for (const square of otherSquares) {
+      const box = [[square.lat, square.lon], [square.lat + 1, square.lon + 1]];
+      other.addLayer(L.rectangle(insetBox(box, OTHER_INSET) || box, {
+        pane: "liveOther", className: square.front ? "live-other is-front" : "live-other",
+        interactive: false, weight: square.front ? 3 : 1.5,
+      }));
+    }
+  }
+  async function readOther() {
+    let got;
+    try {
+      got = await api("map/other");
+    } catch (_e) {
+      return;
+    }
+    const key = JSON.stringify(got);
+    if (key === otherKey) return;
+    otherKey = key;
+    otherSquares = Array.isArray(got) ? got : [];
+    drawOther();
+    if (hovered && pointer) { // the square under the pointer put in front or back: told again
+      hovered = null;
+      pointAt(pointer);
+    }
+    otherKinds?.(new Set(otherSquares.map((x) => (x.front ? "front" : "behind"))));
+  }
+  map.on("zoomend", drawOther);
+  function otherAt(latlng) {
+    const { lat, lng } = latlng;
+    return otherSquares.find((x) => lat >= x.lat && lat < x.lat + 1 && lng >= x.lon && lng < x.lon + 1);
+  }
+  // a click elsewhere does what it did before: nothing
+  map.on("click", (ev) => {
+    const square = otherAt(ev.latlng);
+    if (square && onOther) onOther(square);
+  });
+
   // the regions' shade only while zoomed out: closer, the view is inside one
   function showRegions() {
     const wanted = map.getZoom() <= REGIONS_MAX_ZOOM;
@@ -268,6 +322,8 @@ export function createLiveMap(el, { api, info = null, ownKinds = null }) {
       }
     }
     if (best) return best;
+    const mesh = otherAt(latlng);
+    if (mesh) return { key: `m:${mesh.lat},${mesh.lon},${mesh.front}`, mesh };
     const square = shownSquares.find((q) => lat >= q[0] && lat < q[0] + 1 && lng >= q[1] && lng < q[1] + 1);
     return square ? { key: `s:${square[0]},${square[1]},${square[2]},${square[3]}`, square } : null;
   }
@@ -284,6 +340,7 @@ export function createLiveMap(el, { api, info = null, ownKinds = null }) {
   map.on("mousemove", (ev) => pointAt(ev.latlng));
   function pointAt(latlng) {
     pointer = latlng;
+    el.classList.toggle("is-over-other", Boolean(onOther && otherAt(latlng))); // a click there
     const found = under(latlng);
     if (!found) return nothing();
     if (found.key === hovered) return;
@@ -291,6 +348,11 @@ export function createLiveMap(el, { api, info = null, ownKinds = null }) {
     clearTimeout(asking);
     if (found.own) {
       say(escapeHtml(t(`map.own_${found.own.kind}`, { pack: found.own.pack })));
+      return;
+    }
+    if (found.mesh) {
+      const { lat, lon, front } = found.mesh;
+      say(escapeHtml(t(front ? "map.other_front" : "map.other_behind", { tile: tileName(lat, lon) })));
       return;
     }
     if (found.square) {
@@ -312,6 +374,7 @@ export function createLiveMap(el, { api, info = null, ownKinds = null }) {
   }
   map.on("mouseout", () => {
     pointer = null;
+    el.classList.remove("is-over-other");
     nothing();
   });
   say("");
@@ -329,6 +392,7 @@ export function createLiveMap(el, { api, info = null, ownKinds = null }) {
   showRegions();
   drawBuilt();
   readOwn();
+  readOther();
 
   return {
     map,
@@ -343,7 +407,10 @@ export function createLiveMap(el, { api, info = null, ownKinds = null }) {
           base.setProvider(p);
         }
       }
-      if (Date.now() - ownAt > OWN_EVERY_MS) readOwn(); // a tile built or removed meanwhile
+      if (Date.now() - ownAt > OWN_EVERY_MS) { // a tile built or removed, a folder plugged in
+        readOwn();
+        readOther();
+      }
       const stream = status.state === "streaming" ? status.stream : null;
       const wasStreaming = streaming;
       streaming = Boolean(stream);
@@ -405,6 +472,8 @@ export function createLiveMap(el, { api, info = null, ownKinds = null }) {
       if (points?.length) map.fitBounds(L.latLngBounds(points), { padding: [24, 24] });
     },
     regionsChanged: drawRegions,
+    /** A square of another tool's mesh put in front or back, its folder changed: asked anew. */
+    otherChanged: readOther,
     /**
      * A departure prepared: the map on it, as close as at a flight's start unless closer already;
      * an aircraft followed no longer, as after a drag (the user, 2026-10-31).
@@ -443,6 +512,7 @@ export function createLiveMap(el, { api, info = null, ownKinds = null }) {
       map.invalidateSize();
       drawBuilt();
       readOwn();
+      readOther();
     },
   };
 }

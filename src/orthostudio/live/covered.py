@@ -13,6 +13,7 @@ there, and a start there waits for none of them.
 
 from __future__ import annotations
 
+import os
 from collections.abc import Collection
 from pathlib import Path
 
@@ -86,3 +87,25 @@ def own_squares(xplane: Path, below: str, own_tiles: str = "first") -> dict[tupl
     packs = SceneryPacks.load(_ini(xplane))
     place_line(packs, own_tiles)
     return covered_squares(xplane, below, packs=packs)
+
+
+def listed_above_live(
+    xplane: Path, packs: Collection[Path], below: str, own_tiles: str = "first"
+) -> list[str]:
+    """The lines of X-Plane's list checked above Live's (``below``, where it is listed, else where
+    Live's next start lists it, as :func:`own_squares`) whose folder is one of ``packs``: the
+    meshes of another tool's folder that X-Plane draws there itself, without photos. Only a line
+    of a pack's name is followed to its folder."""
+    wanted = {os.path.normcase(os.path.realpath(p)) for p in packs}
+    names = {p.name for p in packs}
+    listed = SceneryPacks.load(_ini(xplane))
+    place_line(listed, own_tiles)
+    out = []
+    for entry in listed.entries:
+        if entry.name == below:
+            break
+        if not entry.enabled or entry.name not in names:
+            continue
+        if os.path.normcase(os.path.realpath(_folder(xplane, entry.path))) in wanted:
+            out.append(entry.name)
+    return out

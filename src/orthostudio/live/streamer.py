@@ -79,6 +79,7 @@ from .region import (
     REGION_VERSION,
     Zooms,
     ensure_neutral,
+    front_of_pack,
     neutral_file,
     night_on,
     region_version,
@@ -337,9 +338,9 @@ class _Job:
 
 class TextureIndex:
     """The region's textures by the 1-degree tile of their centre: (name, lat, lon, zoom, kinds,
-    source), the last two the files it takes and the region its masks come from (``names.Entry``).
-    From the regions' lists (``region``), a tile's worked out the first time it is asked for
-    (``names.SquareTextures``); from names, all at once, those two 0."""
+    masks, files), the last three the files it takes and the regions they come from
+    (``names.Entry``). From the regions' lists (``region``), a tile's worked out the first time it
+    is asked for (``names.SquareTextures``); from names, all at once, no files."""
 
     def __init__(self, textures: Iterable = (), region: RegionTextures | None = None):
         if region is not None:
@@ -353,7 +354,7 @@ class TextureIndex:
                 if tex is None:
                     continue
                 lat, lon = tex.center
-                item = (item, lat, lon, tex.zoom, 0, 0)
+                item = (item, lat, lon, tex.zoom, 0, 0, {})
             self.by_tile[(math.floor(item[1]), math.floor(item[2]))].append(item)
         self.zooms = {entry[3] for textures in self.by_tile.values() for entry in textures}
         self._count = sum(len(v) for v in self.by_tile.values())
@@ -515,7 +516,11 @@ class Streamer:
         self.sources = sources_of_pack(pack_dir)
         per_square = bool(self.sources) and region_version(pack_dir) >= REGION_VERSION
         t0 = time.monotonic()
-        region = RegionTextures(self.sources, lists=region_lists) if per_square else None
+        region = (
+            RegionTextures(self.sources, lists=region_lists, front=front_of_pack(pack_dir))
+            if per_square
+            else None
+        )
         # a start's longest step where a disk is slow: its time, for the log (session.follow)
         self.region_note: str | None = None
         if region is not None:

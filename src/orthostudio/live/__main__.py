@@ -24,8 +24,9 @@ import typer
 from orthostudio.live import enabled, session, settings_file, supported
 from orthostudio.live.pack import LINK_NAME, default_pack_dir, load_built
 from orthostudio.live.scenery import (
+    Meshes,
     autoortho_mounted,
-    default_sources,
+    default_meshes,
     is_installed,
     ortho_streamers,
     xplane_running,
@@ -286,7 +287,7 @@ def setup(
 
     saved = load_settings()
     xp_dir = _xplane(xplane)
-    sources = [source] if source else default_sources(xp_dir)
+    sources, front = Meshes([source], {}) if source else default_meshes(xp_dir)
     if not sources:
         raise typer.Exit(
             _fail("no AutoOrtho region installed: install one first (Europe: z_ao_eur)")
@@ -298,6 +299,7 @@ def setup(
             force=force,
             log=typer.echo,
             zooms=Zooms(saved.max_zoom, saved.max_zoom_airports),
+            front=front,
         )
 
 

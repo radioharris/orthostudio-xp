@@ -12,9 +12,10 @@ once the window is two squares away (:data:`KEEP`), the textures built kept (the
 for Europe, four minutes to set up and three to lay out again for another zoom, on APFS alone,
 whose clones cost nothing (2026-09-29).
 
-A square's files come from the AutoOrtho region that has them: its ``.ter`` files and water masks
-copied, small files; each texture not built, a name of the neutral texture of its size (a hard
-link, :class:`NeutralPool`), which every disk Live's folder may be on has
+A square's files come from the regions whose DSFs the pack holds there and next to it
+(:meth:`RegionTextures.owner`): its ``.ter`` files and water masks copied, small files, or made
+from their names (Live's own mesh); each texture not built, a name of the neutral texture of its
+size (a hard link, :class:`NeutralPool`), which every disk Live's folder may be on has
 (``orthostudio.live.filesystem``). A thread decides, a process of its own does the file operations
 (:func:`run_ops`), and a square whose files fail is tried again later, never stopping the others.
 Measured with the real names of a start at Frankfurt, the most in Europe: 12,906 textures round
@@ -34,7 +35,7 @@ import re
 import shutil
 import threading
 import time
-from collections.abc import Callable, Iterable, Iterator, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -44,13 +45,14 @@ from orthostudio.textures.ter import with_night as ter_with_night
 
 from .evict import tiles_of, xplane_tiles
 from .filesystem import BINARY, replace, too_many_links
-from .geo import _TEXTURE_RE, parse_texture_name
+from .geo import _TEXTURE_RE, dsf_rel_path, parse_texture_name
 
 Square = tuple[int, int]
-# (name, lat, lon, zoom, kinds, source): a texture of the regions, where its centre is, the files
-# it takes (:data:`TER_KINDS`: :meth:`RegionTextures.entries_of`) and the region its copied files,
-# its masks, come from (an index into the sources)
-Entry = tuple[str, float, float, int, int, int]
+# (name, lat, lon, zoom, kinds, masks, files): a texture of the regions, where its centre is, the
+# files it takes (:data:`TER_KINDS`, :data:`OTHER`: :meth:`RegionTextures.entries_of`), the region
+# its masks and its water photo come from, and the region each kind's file comes from ({kind:
+# region}), regions as indexes into the sources
+Entry = tuple[str, float, float, int, int, int, dict[int, int]]
 
 RING = 1  # squares made round X-Plane's window: the next column's are there before X-Plane loads it
 KEEP = 2  # squares farther than this from X-Plane's window lose their files
@@ -59,6 +61,7 @@ TER_KINDS = (("", LAND), ("_water_overlay", WATER), ("_sea_overlay", SEA))  # it
 SEA_OVERLAY_TER = "_sea_overlay.ter"
 """The end of a terrain file's name laying the photo on water with a mask, which takes the decal."""
 OTHER = 8  # a .ter of another kind: its name kept apart (:attr:`RegionTextures.others`)
+KINDS = (LAND, WATER, SEA, OTHER)  # each kind a texture's files may come from a region of its own
 MASK_RE = re.compile(r"^(\d+)_(\d+)_ZL(\d{2})\.png$")  # a water mask: a sea overlay's border
 RIVER_MASKS = Path("rivers") / "textures"  # where a region of Live's mesh has its rivers' masks
 RELEASE_BATCH = 4  # squares taken away at once, between the squares X-Plane will need
@@ -118,7 +121,7 @@ def own_mesh(source: Path) -> bool:
 def _water_rank(kinds: int) -> int:
     """How much of a texture's water its files of a region mask: its sea (its border is the
     texture's mask, a file of the region), else its rivers and lakes, else none. A texture
-    several regions name takes its masks from the highest (:meth:`RegionTextures.entries_of`)."""
+    several owners name takes its masks from the highest (:meth:`RegionTextures.entries_of`)."""
     return 2 if kinds & SEA else 1 if kinds & WATER else 0
 
 
@@ -166,16 +169,6 @@ class OneRegion:
     @property
     def count(self) -> int:
         return sum(len(names) for names in self.squares.values())
-
-
-def square_key(name: str) -> str | None:
-    """The square of a texture's centre as a region's list keys it ("46,6"), None for a name that
-    is not a texture's."""
-    tex = parse_texture_name(name)
-    if tex is None:
-        return None
-    lat, lon = tex.center
-    return f"{math.floor(lat)},{math.floor(lon)}"
 
 
 def _by_square(kinds: dict[str, int], others: dict[str, list[str]], listed: bool) -> OneRegion:
@@ -284,39 +277,40 @@ def _listed(source: Path) -> tuple[dict[str, int], dict[str, list[str]]]:
 
 
 class RegionTextures:
-    """Every texture of the regions a pack is made from, Live's own and AutoOrtho's, with the files
-    each region has for it (a texture several name: :meth:`entries_of`), each region's list kept
-    in ``lists`` where given (:func:`one_region`).
+    """Every texture of the regions a pack is made from, Live's own, AutoOrtho's and another
+    tool's, with the files each region has for it, each region's list kept in ``lists`` where
+    given (:func:`one_region`). ``front``: the squares whose DSF the pack takes from a region
+    whatever their order, those put in front of Live (``region.setup_region``).
 
-    ``entries_of`` gives a square's :data:`Entry`, worked out then; ``zooms`` the textures' zooms;
-    ``others`` names the rare ``.ter`` of another kind; ``listed`` the regions whose folder was
-    listed this time, and ``keep_error`` why a list could not be kept."""
+    ``entries_of`` gives a square's :data:`Entry`, worked out then from the owners of the squares
+    each texture lies on (:meth:`owner`); ``zooms`` the textures' zooms; ``others`` each region's
+    rare ``.ter`` of another kind; ``listed`` the regions whose folder was listed this time, and
+    ``keep_error`` why a list could not be kept."""
 
-    def __init__(self, sources: Sequence[Path], lists: Path | None = None):
+    def __init__(
+        self,
+        sources: Sequence[Path],
+        lists: Path | None = None,
+        front: Mapping[Square, Path] | None = None,
+    ):
         self.sources = list(sources)
         self._squares: list[dict[str, dict[str, int]]] = []  # each region's, in their order
-        self._own = [own_mesh(source) for source in self.sources]
         self.zooms: set[int] = set()
-        self.others: dict[str, list[str]] = {}
+        self.others: list[dict[str, list[str]]] = []  # each region's, in their order
         self.listed: list[Path] = []
         self.keep_error: str | None = None
-        for i, source in enumerate(self.sources):
+        index = {str(source): i for i, source in enumerate(self.sources)}
+        self._front = {sq: index[str(p)] for sq, p in (front or {}).items() if str(p) in index}
+        self._owners: dict[Square, int | None] = {}  # each square's, once worked out
+        for source in self.sources:
             one = one_region(source, lists)
             if one.listed:
                 self.listed.append(source)
             self.keep_error = self.keep_error or one.keep_error
             self._squares.append(one.squares)
             self.zooms.update(one.zooms)
-            for name, ters in one.others.items():
-                if self._region_of(name) == i:  # else another region's already
-                    self.others[name] = ters
+            self.others.append(one.others)
         self._count = self._counted()
-
-    def _region_of(self, name: str) -> int | None:
-        """The first region that has a texture: the one whose other ``.ter`` (OTHER) it keeps."""
-        key = square_key(name)
-        found = (i for i, squares in enumerate(self._squares) if name in squares.get(key, ()))
-        return next(found, None)
 
     def _counted(self) -> int:
         """How many textures, a name in two regions once: only the squares of several to look in."""
@@ -334,28 +328,49 @@ class RegionTextures:
     def __len__(self) -> int:
         return self._count
 
+    def owner(self, square: Square) -> int | None:
+        """The region whose DSF the pack holds for ``square``, as ``region.setup_region`` places
+        them: the one put in front of Live there, else the first that has one; None where none
+        has one, no DSF of the pack naming a texture there."""
+        if square not in self._owners:
+            found = self._front.get(square)
+            if found is None:
+                dsf = dsf_rel_path(*square)
+                found = next((i for i, s in enumerate(self.sources) if (s / dsf).is_file()), None)
+            self._owners[square] = found
+        return self._owners[square]
+
     def entries_of(self, square: Square) -> list[Entry]:
-        """The textures whose centre is in ``square``, where that centre is worked out now, each
-        with the files of the first region that has it. A texture several of Live's own regions
-        name, on the line between them, takes the files of all, each made from its name, since
-        the DSFs of each name theirs (issue 36); its masks from the one whose files mask most of
-        its water (:func:`_water_rank`). Regions whose files are copied are never merged."""
+        """The textures whose centre is in ``square``, where that centre is worked out now, with
+        the files the DSFs of the pack name for them, one rule for every region: a texture takes
+        the kinds of ``.ter`` of each owner (:meth:`owner`) of the squares it lies on that names
+        it, each kind's file from the first of them that has it, its masks from the one whose
+        files mask most of its water (:func:`_water_rank`), the first of those. A texture on the
+        line between two owners so has every file either DSF names: one missing, X-Plane cancels
+        the whole square (issue 36). A texture no owner names, no DSF of the pack names: left
+        out."""
         key = f"{square[0]},{square[1]}"
-        merged: dict[str, list[int]] = {}  # name: [the kinds of all, the region of its masks]
+        named: dict[str, list[tuple[int, int]]] = {}  # name: (region, its kinds), in their order
         for i, squares in enumerate(self._squares):
             for name, kinds in squares.get(key, {}).items():
-                got = merged.get(name)
-                if got is None:
-                    merged[name] = [kinds, i]
-                elif self._own[i] and self._own[got[1]]:
-                    if _water_rank(kinds) > _water_rank(got[0]):  # the masks' region's rank
-                        got[1] = i
-                    got[0] |= kinds
+                named.setdefault(name, []).append((i, kinds))
         out: list[Entry] = []
-        for name, (kinds, i) in merged.items():
+        for name, regions in named.items():
             tex = parse_texture_name(name)
+            owners = {self.owner(on) for on in tiles_of(tex)}
+            theirs = [(i, kinds) for i, kinds in regions if i in owners]
+            if not theirs:
+                continue
+            files: dict[int, int] = {}
+            every = 0
+            for i, kinds in theirs:
+                every |= kinds
+                for kind in KINDS:
+                    if kinds & kind:
+                        files.setdefault(kind, i)
+            masks = max(theirs, key=lambda got: _water_rank(got[1]))[0]  # the first of the highest
             lat, lon = tex.center
-            out.append((name, lat, lon, tex.zoom, kinds, i))
+            out.append((name, lat, lon, tex.zoom, every, masks, files))
         return out
 
     def entries(self) -> Iterator[Entry]:
@@ -926,7 +941,7 @@ class Names:
         forget: Callable[[str], None] = lambda name: None,
         log: Callable[[str], None] = print,
         release: bool = True,
-        others: dict[str, list[str]] | None = None,
+        others: Sequence[dict[str, list[str]]] = (),
         building: Callable[[str], bool] = lambda name: False,
         level_of: Callable[[str], int | None] = lambda name: None,
         refit: Callable[[str, int], None] = lambda name, level: None,
@@ -942,7 +957,7 @@ class Names:
         self.night = night  # the land's .ter files name a night texture (:func:`with_night`)
         self.by_tile = textures  # the streamer's index: textures by the square of their centre
         self.sources = list(sources)
-        self.others = others or {}
+        self.others = list(others)  # each region's .ter of another kind (RegionTextures.others)
         self.top_of = top_of
         self.lock = lock
         self.busy = busy
@@ -987,20 +1002,21 @@ class Names:
                         out.append(entry)
         return out
 
-    def _files(self, entry: Entry, own: bool = False) -> Iterator[tuple[str, str]]:
-        """(folder, name) of the ``.ter`` files and the water mask of a texture; not the mask of a
-        texture of Live's own mesh (``own``) in a pack whose water terrain files name water
-        photos: its own operations make it and take it away with its water photo."""
-        name, _, _, _, kinds, _ = entry
+    def _files(self, entry: Entry, own: list[bool]) -> Iterator[tuple[int, str, str]]:
+        """(region, folder, name) of the ``.ter`` files and the water mask of a texture, each from
+        the region it takes it from (:data:`Entry`); not the mask of a texture whose masks come
+        from Live's own mesh (``own``, each region's) in a pack whose water terrain files name
+        water photos: its own operations make it and take it away with its water photo."""
+        name, kinds, masks, files = entry[0], entry[4], entry[5], entry[6]
         stem = name[: -len(".dds")]
         for suffix, bit in TER_KINDS:
             if kinds & bit:
-                yield "terrain", f"{stem}{suffix}.ter"
+                yield files[bit], "terrain", f"{stem}{suffix}.ter"
         if kinds & OTHER:
-            for other in self.others.get(name, ()):
-                yield "terrain", other
-        if kinds & SEA and not (own and self.water is not None):  # the sea's border: its mask
-            yield "textures", mask_name(name)
+            for other in self.others[files[OTHER]].get(name, ()):
+                yield files[OTHER], "terrain", other
+        if kinds & SEA and not (own[masks] and self.water is not None):  # the sea's border
+            yield masks, "textures", mask_name(name)
 
     def _own(self) -> list[bool]:
         """Whether each region is of Live's own mesh, naming its terrain files
@@ -1016,7 +1032,7 @@ class Names:
         region's river masks never change while Live streams: they take their place with Live
         stopped and X-Plane not running (orthostudio.live.osxpregions), and the next start's set-up
         makes the region's terrain files again for them (region._fingerprints)."""
-        name, _, _, _, kinds, i = entry
+        name, kinds, i = entry[0], entry[4], entry[5]
         if self.water is None or not self.sources or not own[i]:
             return None
         source, mask = self.sources[i], mask_name(name)
@@ -1147,20 +1163,18 @@ class Names:
 
             (self.pack_dir / NIGHT_FOLDER).mkdir(exist_ok=True)
         for entry in entries:
-            source = self.sources[entry[5]] if self.sources else None
-            if source is not None:
-                named = own[entry[5]]
-                land = entry[0][: -len(".dds")] + ".ter"
-                for folder, file in self._files(entry, named):
-                    src, dst = str(source / folder / file), str(self.pack_dir / folder / file)
-                    lit = night_name(entry[0]) if file == land else None
-                    if named and file.endswith(".ter"):
-                        water = self._water_ter(file, entry[0], entry[0] in masks)
-                        ops.append(("make", src, dst, self.decal, lit, self.night, water))
-                    elif (self.decal is not None or self.night) and file.endswith(".ter"):
-                        ops.append(("ter", src, dst, self.decal, lit, self.night))
-                    else:
-                        ops.append(("file", src, dst))
+            land = entry[0][: -len(".dds")] + ".ter"
+            for i, folder, file in self._files(entry, own):
+                src = str(self.sources[i] / folder / file)
+                dst = str(self.pack_dir / folder / file)
+                lit = night_name(entry[0]) if file == land else None
+                if own[i] and file.endswith(".ter"):
+                    water = self._water_ter(file, entry[0], entry[0] in masks)
+                    ops.append(("make", src, dst, self.decal, lit, self.night, water))
+                elif (self.decal is not None or self.night) and file.endswith(".ter"):
+                    ops.append(("ter", src, dst, self.decal, lit, self.night))
+                else:
+                    ops.append(("file", src, dst))
         placed = self._run_ops(ops)
         self._said_missing(placed["missing"])
         if placed["unlit"]:  # made all the same: a square held for its lights held the start
@@ -1195,14 +1209,9 @@ class Names:
             name = entry[0]
             if tiles_of(parse_texture_name(name)) & held:
                 continue
-            files = self._files(entry, own[entry[5]] if self.sources else False)
-            ops += [("drop", str(self.pack_dir / f / file)) for f, file in files]
-            if (
-                self.water is not None
-                and self.sources
-                and own[entry[5]]
-                and entry[4] & (WATER | SEA)
-            ):
+            files = self._files(entry, own)
+            ops += [("drop", str(self.pack_dir / f / file)) for _, f, file in files]
+            if self.water is not None and entry[4] & (WATER | SEA) and own[entry[5]]:
                 # with its mask, while it holds no photo: one made stays with its texture
                 ops.append(
                     (

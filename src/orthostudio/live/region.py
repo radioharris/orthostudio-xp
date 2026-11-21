@@ -29,7 +29,7 @@ import os
 import struct
 import time
 from collections import Counter, defaultdict
-from collections.abc import Callable, Collection, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -45,7 +45,7 @@ from .filesystem import (
     remove_folder_link,
 )
 from .filesystem import replace as replace_file
-from .geo import parse_texture_name
+from .geo import dsf_rel_path, parse_texture_name, tile_name, tile_of_name
 from .rings import file_top, zoom_for
 from .texture import write_sparse
 
@@ -173,6 +173,12 @@ def region_version(pack_dir: Path) -> int:
 def sources_of_pack(pack_dir: Path) -> list[Path]:
     """The AutoOrtho regions the pack is made from, as its marker records them."""
     return [Path(s) for s in sources_of(_marker(pack_dir))]
+
+
+def front_of_pack(pack_dir: Path) -> dict[tuple[int, int], Path]:
+    """The squares whose DSF the pack takes from a region whatever their order, as its marker
+    records them (:func:`front_of`)."""
+    return front_of(_marker(pack_dir))
 
 
 def _textures_by_zoom(pack_dir: Path) -> dict[int, list[str]]:
@@ -559,6 +565,40 @@ def sources_of(meta: dict) -> list[str]:
     if isinstance(sources, list):
         return [str(s) for s in sources]
     return [str(meta["source"])] if meta.get("source") else []
+
+
+def front_of(meta: dict) -> dict[tuple[int, int], Path]:
+    """The squares put in front of Live a pack holds, as its marker records them, {"+45+006":
+    region}: each one's DSF from that region, another tool's mesh, whatever the regions' order
+    (``scenery.default_meshes``). Empty for a pack of before."""
+    front = meta.get("front")
+    out: dict[tuple[int, int], Path] = {}
+    for name, source in front.items() if isinstance(front, dict) else ():
+        square = tile_of_name(name)
+        if square is not None and isinstance(source, str):
+            out[square] = Path(source)
+    return out
+
+
+def _front_record(front: Mapping[tuple[int, int], Path]) -> dict[str, str]:
+    """``front`` as the pack's marker records it (:func:`front_of`)."""
+    return {tile_name(*square): str(source) for square, source in sorted(front.items())}
+
+
+def _place_front(pack_dir: Path, front: Mapping[tuple[int, int], Path]) -> None:
+    """The DSF of each square put in front of Live, its region's, in place of the one the regions'
+    order gave it: a folder of the pack that is a link to a region's made a real one first
+    (:func:`_unlink_dir`), so that nothing is written into a region's own folder."""
+    for square, source in sorted(front.items()):
+        dsf = Path(dsf_rel_path(*square))
+        target = pack_dir / dsf
+        for folder in (pack_dir / "Earth nav data", target.parent):
+            if is_folder_link(folder):
+                _unlink_dir(folder)
+        target.parent.mkdir(exist_ok=True)
+        with contextlib.suppress(FileNotFoundError):
+            target.unlink()  # the pack's own name of another region's DSF
+        place_file(source / dsf, target, symlink=True)
 
 
 def _merge_dir(src: Path, dst: Path) -> int:
@@ -992,19 +1032,29 @@ def _adding(had: Sequence[str], keys: Sequence[str]) -> bool:
     return bool(had) and set(had) < set(keys) and list(keys[: len(had)]) == list(had)
 
 
-def pack_to_redo(sources: Sequence[Path], pack_dir: Path) -> bool:
-    """Whether a start on ``sources`` sets the pack up again (:func:`setup_region`), its DSFs
-    replaced: a region changed since (:func:`changed_regions`: updated, given its river masks), or
-    the regions no longer those it was set up from, unless they only add some after them, merged
-    in (:func:`_adding`): one read from another folder (a kept old mesh in its place or back, the
-    Settings' Mesh), one deleted, one whose disk is not connected. Never with X-Plane running,
+def front_changed(pack_dir: Path, front: Mapping[tuple[int, int], Path]) -> bool:
+    """Whether the squares put in front of Live are no longer those the pack was set up with."""
+    return front_of(_marker(pack_dir)) != dict(front)
+
+
+def pack_to_redo(
+    sources: Sequence[Path], pack_dir: Path, front: Mapping[tuple[int, int], Path] | None = None
+) -> bool:
+    """Whether a start on ``sources`` and ``front`` sets the pack up again (:func:`setup_region`),
+    its DSFs replaced: a region changed since (:func:`changed_regions`: updated, given its river
+    masks), the regions no longer those it was set up from, in that order, unless they only add
+    some after them, merged in (:func:`_adding`): one read from another folder (a kept old mesh in
+    its place or back, the Settings' Mesh), one deleted, one whose disk is not connected; or the
+    squares put in front of Live changed (:func:`front_changed`). Never with X-Plane running,
     which may be reading the DSFs of before (``session.prepare``). A pack not set up: no."""
     had = sources_of(_marker(pack_dir))
     if not had:
         return False
     keys = [str(s) for s in sources]
-    return bool(changed_regions(sources, pack_dir)) or (
-        set(had) != set(keys) and not _adding(had, keys)
+    return (
+        bool(changed_regions(sources, pack_dir))
+        or (had != keys and not _adding(had, keys))
+        or front_changed(pack_dir, front or {})
     )
 
 
@@ -1016,19 +1066,23 @@ def setup_region(
     zooms: Zooms | None = None,
     xplane_running: Callable[[], bool] = lambda: False,
     lists: Path | None = None,
+    front: Mapping[tuple[int, int], Path] | None = None,
 ) -> dict:
     """Make ``pack_dir`` hold the AutoOrtho regions of ``source`` (one, or several: Europe, North
-    America...): their DSFs, their shared files, the neutral texture; keep the textures already
-    built. A region added since is merged in, once; one taken away sets the pack up again. A pack
-    of before, which had every square's files, has them taken away once (:func:`_to_squares`), not
-    while X-Plane runs, which may be reading them. ``zooms``: what the textures are laid out for,
-    the first time (:func:`relayout` after). A region changed since (:func:`changed_regions`) sets
-    the pack up again, the textures built on its squares that no square names any more going too
-    (:func:`_unnamed`, read from the lists kept in ``lists``: ``names.one_region``); a start with
-    X-Plane running on a pack to set up again is refused before (:func:`pack_to_redo`,
-    ``session.prepare``)."""
+    America...): their DSFs, a square's the first's that has one but on the squares of ``front``,
+    each one's from the region it names (those put in front of Live, :func:`_place_front`); their
+    shared files, the neutral texture; keep the textures already built. A region added since is
+    merged in, once; one taken away, the regions in another order or another ``front`` set the
+    pack up again. A pack of before, which had every square's files, has them taken away once
+    (:func:`_to_squares`), not while X-Plane runs, which may be reading them. ``zooms``: what the
+    textures are laid out for, the first time (:func:`relayout` after). A region changed since
+    (:func:`changed_regions`) sets the pack up again, the textures built on its squares that no
+    square names any more going too (:func:`_unnamed`, read from the lists kept in ``lists``:
+    ``names.one_region``); a start with X-Plane running on a pack to set up again is refused
+    before (:func:`pack_to_redo`, ``session.prepare``)."""
     sources = [source] if isinstance(source, Path) else list(source)
     keys = [str(s) for s in sources]
+    front = dict(front or {})
     marker = pack_dir / REGION_MARKER
     old: dict = json.loads(marker.read_text()) if marker.exists() else {}
     had = sources_of(old)
@@ -1039,8 +1093,8 @@ def setup_region(
     changed = changed_regions(sources, pack_dir)
     if changed:
         log(f"the region {changed[0].name} changed since the pack was set up: set up again")
-    redo = force or pack_to_redo(sources, pack_dir)
-    if old and not redo and set(had) == set(keys):
+    redo = force or pack_to_redo(sources, pack_dir, front)
+    if old and not redo and had == keys:
         if "fingerprints" not in old:  # a pack of before: what its regions are from now on
             old["fingerprints"] = now
             marker.write_text(json.dumps(old))
@@ -1080,6 +1134,9 @@ def setup_region(
     for extra in new:  # a DSF another region has already stays that region's
         merged = _merge_dir(extra / "Earth nav data", pack_dir / "Earth nav data")
         log(f"  {extra.name}: {merged} folders and files merged in")
+    if front and not adding:  # merged into, the pack keeps the front it was set up with
+        _place_front(pack_dir, front)
+        log(f"  {len(front)} squares in front of Live: their DSF from another tool's mesh")
 
     terrain = pack_dir / "terrain"  # made per square (orthostudio.live.names)
     if is_folder_link(terrain):
@@ -1109,6 +1166,7 @@ def setup_region(
         "zooms": asdict(zooms),
         "layout": layout,
         "fingerprints": now,
+        "front": _front_record(front),
     }
     meta.pop("textures", None)  # a count of before: the regions' own now (orthostudio.live.names)
     marker.write_text(json.dumps(meta))

@@ -4,7 +4,8 @@
 
 The mesh is AutoOrtho's (``z_ao_eur``: DSFs, ``.ter`` files, water masks), read only: the regions
 AutoOrtho installed, and those Live installed itself the same way
-(:mod:`orthostudio.live.aoregions`).
+(:mod:`orthostudio.live.aoregions`), after Live's own; then another tool's from a folder chosen in
+the Settings, but on the squares the pilot put in front of Live (:func:`default_meshes`).
 The pack, a link in Custom Scenery, is listed in ``scenery_packs.ini`` where the pilot puts it;
 where it is missing, right above the first mesh, below OrthoStudio XP's tiles, which draw over it
 (above them with "Live everywhere"): :func:`place_line`. Its overlays' line goes right above it.
@@ -19,9 +20,10 @@ import subprocess
 import sys
 import threading
 import time
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING, NamedTuple
 
 from orthostudio.config.store import load_settings, save_settings
 from orthostudio.errors import OsxpError
@@ -31,7 +33,13 @@ from orthostudio.install.scenery_packs import PackKind, SceneryPackEntry, Scener
 from orthostudio.install.xplane import XPLANE_EXECUTABLES, custom_scenery_dir, linux_name
 from orthostudio.install.xplane import xplane_running as _xplane_running
 from orthostudio.live.filesystem import folder_link, is_folder_link, remove_folder_link
+from orthostudio.live.geo import tile_name, tile_of_name
 from orthostudio.live.pack import LINK_NAME, OVERLAY_LINK_NAME
+
+if TYPE_CHECKING:
+    from orthostudio.live.settings import LiveSettings
+
+Square = tuple[int, int]
 
 
 def named_xplane() -> str | None:
@@ -119,20 +127,29 @@ class OtherMesh:
     """Their roads, forests and buildings: the one overlay pack that goes with them."""
     refused: list[tuple[str, str]]
     """Its packs of ground Live leaves aside, and why."""
+    ground: dict[Square, Path]
+    """Every square of its ground naming photos, copies left aside included, with the first of its
+    packs that has it: what Live's map draws, the squares the pilot may put in front of Live."""
+    front: dict[Square, Path]
+    """The squares put in front of Live it has (``LiveSettings.other_mesh_front``), each with the
+    mesh whose DSF wins there (:func:`default_meshes`)."""
 
 
-NO_OTHER_MESH = OtherMesh([], [], [])
+NO_OTHER_MESH = OtherMesh([], [], [], {}, {})
 
 PACK_DEPTH = 3  # AutoOrtho's own, moved: <folder>/z_autoortho/scenery/z_ao_<region>
 
 
-def other_mesh(folder: Path | None, given: Sequence[Path] = ()) -> OtherMesh:
+def other_mesh(
+    folder: Path | None, given: Sequence[Path] = (), front: Collection[Square] = ()
+) -> OtherMesh:
     """The meshes and the roads of the folder the pilot chose (``LiveSettings.other_mesh``), by
     what its packs (``Earth nav data``, in it or down to :data:`PACK_DEPTH` folders below) hold,
     whatever their names, as X-Plane tells ground from overlays (``sim/overlay 1``):
     - a pack of ground is a mesh when its terrain files name photos Live makes, without them
       (:func:`_why_not_streamed`), and it gives a square none of ``given`` (the regions before it)
-      nor a mesh kept before it has (``already``: a copy of one);
+      nor a mesh kept before it has (``already``: a copy of one), or it is the first to have one
+      of ``front``, the squares put in front of Live, whose DSF it then gives;
     - of the overlay packs X-Plane's own (:data:`XPLANE_OVERLAYS`), the one with most squares of
       the folder's ground naming photos, copies included, is the roads, forests and buildings of
       its meshes (:func:`_roads_of`): an airport, a Landmark, simHeaven or Global Forests lying
@@ -152,8 +169,9 @@ def other_mesh(folder: Path | None, given: Sequence[Path] = ()) -> OtherMesh:
     meshes: list[Path] = []
     refused: list[tuple[str, str]] = []
     overlays: list[tuple[Path, set]] = []
-    named: set = set()  # the squares of its ground naming photos, copies included
+    named: dict[Square, Path] = {}  # the squares of its ground naming photos, copies included
     have: set | None = None  # the squares before it, listed once a mesh is found
+    ahead = set(front)  # the squares put in front of Live no mesh kept has yet
     for pack in packs:
         dsfs = squares_of(pack)
         if not dsfs:  # no DSF: no scenery (X-Plane's ATC data, an emptied pack)
@@ -168,13 +186,16 @@ def other_mesh(folder: Path | None, given: Sequence[Path] = ()) -> OtherMesh:
         else:
             if have is None:
                 have = set().union(*(squares_of(source) for source in given))
-            named |= squares
-            if squares <= have:  # the same region as one before it: it would add nothing
+            for square in squares:
+                named.setdefault(square, pack)
+            if squares <= have and not squares & ahead:  # a copy of a region before it
                 refused.append((pack.name, "already"))
             else:
                 meshes.append(pack)
                 have |= squares
-    return OtherMesh(meshes, _roads_of(named, overlays) if meshes else [], refused)
+                ahead -= squares
+    roads = _roads_of(set(named), overlays) if meshes else []
+    return OtherMesh(meshes, roads, refused, named, {sq: named[sq] for sq in front if sq in named})
 
 
 def _packs_in(folder: Path, depth: int) -> list[Path]:
@@ -241,17 +262,40 @@ def _why_not_streamed(pack: Path) -> str | None:
     return "no_photos"
 
 
-def other_mesh_folder() -> Path | None:
-    """The folder of another tool's mesh the pilot chose in Live's Settings, if any."""
+def other_mesh_folder(settings: LiveSettings | None = None) -> Path | None:
+    """The folder of another tool's mesh the pilot chose in Live's Settings (``settings``, else
+    those saved), if any."""
     from orthostudio.live.settings import load_settings
 
-    folder = load_settings().other_mesh.strip()
+    folder = (settings or load_settings()).other_mesh.strip()
     if not folder:
         return None
     try:
         return Path(folder).expanduser()
     except RuntimeError:  # « ~someone », no such user: as typed, not there
         return Path(folder)
+
+
+def other_mesh_front() -> frozenset[Square]:
+    """The squares of the folder of another tool's mesh the pilot put in front of Live."""
+    from orthostudio.live.settings import load_settings
+
+    names = load_settings().other_mesh_front
+    return frozenset(square for name in names if (square := tile_of_name(name)) is not None)
+
+
+def front_saved(settings: LiveSettings, before: LiveSettings) -> LiveSettings:
+    """``settings`` as a save keeps them: the squares put in front of Live emptied once another
+    folder of another tool's mesh is chosen, or none; else only those its ground still has, all of
+    them while it is not there (its disk unplugged), so that they come back with it."""
+    if settings.other_mesh.strip() != before.other_mesh.strip():
+        return settings.model_copy(update={"other_mesh_front": []})
+    folder = other_mesh_folder(settings)
+    if folder is None or not settings.other_mesh_front or not other_mesh_there(folder):
+        return settings
+    ground = other_mesh(folder).ground
+    kept = [n for n in settings.other_mesh_front if tile_of_name(n) in ground]
+    return settings.model_copy(update={"other_mesh_front": kept})
 
 
 def other_mesh_said(folder: Path, found: OtherMesh) -> dict:
@@ -263,6 +307,7 @@ def other_mesh_said(folder: Path, found: OtherMesh) -> dict:
         "meshes": [p.name for p in found.meshes],
         "overlays": [p.name for p in found.overlays],
         "refused": [{"name": name, "why": why} for name, why in found.refused],
+        "front": [tile_name(*square) for square in sorted(found.front)],
     }
 
 
@@ -282,17 +327,20 @@ _found: tuple[float, tuple, OtherMesh] = (0.0, (), NO_OTHER_MESH)
 
 def other_mesh_found(xplane: Path | None, root: Path, *, fresh: bool = False) -> OtherMesh:
     """The folder chosen in the Settings and what Live takes there after the regions before it
-    (:func:`base_sources`), as last looked at, or now when ``fresh`` (a start)."""
+    (:func:`base_sources`), with the squares put in front of Live, as last looked at, or now when
+    ``fresh`` (a start)."""
     global _found
     folder = other_mesh_folder()
-    # its disk plugged in again: looked at at once, where the window said « no mesh » 30 s more
-    key = (folder, folder is not None and other_mesh_there(folder), xplane, root)
+    front = other_mesh_front()
+    # its disk plugged in again, a square put in front or back: looked at at once, where the
+    # window said « no mesh » 30 s more
+    key = (folder, folder is not None and other_mesh_there(folder), xplane, root, front)
     at, was, got = _found
     if not fresh and was == key and time.monotonic() - at < OTHER_MESH_S:
         return got
     there = key[1]  # the regions before it listed only for a folder to look into
     given = base_sources(xplane, root) if there and xplane is not None else []
-    got = other_mesh(folder, given) if there else NO_OTHER_MESH
+    got = other_mesh(folder, given, front) if there else NO_OTHER_MESH
     _found = (time.monotonic(), key, got)
     return got
 
@@ -313,17 +361,30 @@ def base_sources(xplane: Path, root: Path) -> list[Path]:
     return osxp_sources(root) + theirs + mine
 
 
-def default_sources(
+class Meshes(NamedTuple):
+    """The meshes a start sets Live's pack up from (``region.setup_region``), as its record keeps
+    them (:func:`default_meshes`)."""
+
+    sources: list[Path]
+    """The regions in their order: a square's DSF is the first's that has one."""
+    front: dict[Square, Path]
+    """The squares put in front of Live: each one's DSF from the mesh named, another tool's,
+    whatever the order."""
+
+
+def default_meshes(
     xplane: Path, root: Path | None = None, other: OtherMesh | None = None
-) -> list[Path]:
-    """The regions whose mesh Live streams onto: :func:`base_sources`, then those of the folder of
-    another tool's mesh chosen in the Settings (``other``, as found at a start; else as last
-    looked at, :func:`other_mesh_found`)."""
+) -> Meshes:
+    """The meshes Live streams onto: :func:`base_sources`, then those of the folder of another
+    tool's mesh chosen in the Settings (``other``, as found at a start; else as last looked at,
+    :func:`other_mesh_found`), whose DSF wins on the squares put in front of Live alone. The one
+    rule of what a start sets the pack up from, which the window's checks and the command line's
+    setup read too."""
     from orthostudio.live.pack import live_root
 
     root = live_root() if root is None else root
     other = other_mesh_found(xplane, root) if other is None else other
-    return base_sources(xplane, root) + other.meshes
+    return Meshes(base_sources(xplane, root) + other.meshes, dict(other.front))
 
 
 def xplane_pref(xplane: Path, key: str) -> str | None:

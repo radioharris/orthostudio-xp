@@ -23,7 +23,11 @@ can include as it is the day Live comes into its window (``app.include_router``)
   window to the front, or the page opened again in the browser (``orthostudio.live.app_start``);
 - ``GET``/``PUT /api/live/settings``: the settings of ``live.toml`` (:mod:`.settings`); soft
   banks saved start the download of the installed regions' river masks
-  (:meth:`LiveControl.rivers_chosen`);
+  (:meth:`LiveControl.rivers_chosen`); the squares in front of Live kept as
+  :func:`~orthostudio.live.scenery.front_saved` keeps them;
+- ``GET /api/live/map/other``: the squares of the folder of another tool's mesh, each in front of
+  Live or not, which the map draws and its click puts in front or back (``PUT settings``
+  ``{"other_mesh_front"}``);
 - ``GET``/``PUT /api/live/xplane-folder`` ``{"path"}``: the X-Plane folder named in OrthoStudio
   XP's settings, the same for Build and Live, with the other X-Planes of the computer;
 - ``GET /api/live/regions``: OrthoStudio XP's regions (:meth:`LiveControl.regions`);
@@ -54,7 +58,7 @@ from orthostudio.errors import OsxpError
 from orthostudio.live import session
 from orthostudio.live.control import LiveControl, Refusal
 from orthostudio.live.pack import folder_problem
-from orthostudio.live.scenery import move_live
+from orthostudio.live.scenery import front_saved, move_live
 from orthostudio.live.settings import (
     LiveSettings,
     SettingsFileError,
@@ -319,6 +323,11 @@ def live_router(
         """The squares X-Plane takes from the user's own tiles: the map frames them."""
         return control.own_tiles()
 
+    @router.get("/map/other")
+    def map_other() -> list[dict[str, Any]]:
+        """The squares of the folder of another tool's mesh, in front of Live or not."""
+        return control.other_squares()
+
     @router.get("/map/regions")
     def map_regions() -> dict[str, Any]:
         """The one-degree squares of OrthoStudio XP's regions installed."""
@@ -420,6 +429,7 @@ def live_router(
             problem = folder_problem(Path(settings.folder), session.xplane_or_none())
             if problem is not None:
                 raise HTTPException(422, f"folder: {problem}")
+        settings = front_saved(settings, before)
         try:
             save_settings(settings)
         except (OSError, SettingsFileError) as e:

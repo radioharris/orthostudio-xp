@@ -13,7 +13,7 @@ AutoOrtho does. The repository names no licence, so Live never publishes the fil
 
 A region Live installs goes to Live's folder, laid out as AutoOrtho lays out its own:
 ``regions/z_ao_<id>`` holds the mesh, ``regions/y_ao_<id>`` the overlays' ``Earth nav data``. Live
-streams onto it as onto AutoOrtho's (:func:`orthostudio.live.scenery.default_sources`). A region
+streams onto it as onto AutoOrtho's (:func:`orthostudio.live.scenery.default_meshes`). A region
 that AutoOrtho installed is used where it is and never downloaded again.
 
 An install survives an interruption. What was downloaded stays in ``regions/.download/<id>`` and is

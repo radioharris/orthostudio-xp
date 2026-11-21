@@ -48,11 +48,12 @@ from orthostudio.live.pack import (
     live_root,
     load_built,
 )
-from orthostudio.live.region import file_tops, night_on
+from orthostudio.live.region import file_tops, front_changed, night_on
 from orthostudio.live.scenery import (
+    Meshes,
     autoortho_mounted,
     autoortho_scenery,
-    default_sources,
+    default_meshes,
     is_installed,
     launch_xplane,
     named_xplane,
@@ -67,7 +68,7 @@ from orthostudio.live.scenery import (
 )
 from orthostudio.live.settings import LiveSettings, load_settings
 
-API = 1  # the page's /api/live answers, as the page reads them
+API = 2  # the page's /api/live answers, as the page reads them
 CHECKS_S = 3.0  # the checks are looked at again this often: pgrep and disks, not every second
 CATALOG_S = (
     600.0  # the list of OrthoStudio XP's regions asked for again this often (the host: hourly)
@@ -113,12 +114,13 @@ app (``tools/live/flights/fly.py --streamer app --cold``), whose folder of its o
 (a Shadow PC without AutoOrtho, 2026-10-04). Set for the app's process by the test flights alone."""
 
 
-def stream_sources(xp: Path) -> list[Path]:
-    """The regions the stream lays its photos on: a test flight's (SOURCE_ENV), else those
-    installed. The checks read the same: a cold test flight's window said « No mesh yet » while
-    Live streamed onto the region the flight gave it (the user's Shadow, 2026-10-04)."""
+def stream_meshes(xp: Path) -> Meshes:
+    """The meshes the stream lays its photos on: a test flight's region (SOURCE_ENV), else those
+    installed (:func:`default_meshes`). The checks read the same: a cold test flight's window said
+    « No mesh yet » while Live streamed onto the region the flight gave it (the user's Shadow,
+    2026-10-04)."""
     named = os.environ.get(SOURCE_ENV)
-    return [Path(named)] if named else default_sources(xp)
+    return Meshes([Path(named)], {}) if named else default_meshes(xp)
 
 
 def options_for(settings: LiveSettings) -> session.Options:
@@ -249,7 +251,8 @@ def gather_checks() -> dict[str, Any]:
         out["folder_problem"] = folder_problem(live_root(), None)
         return out
     out["folder_problem"] = folder_problem(live_root(), xp)
-    sources = stream_sources(xp)
+    meshes = stream_meshes(xp)
+    sources = meshes.sources
     out["other_mesh"] = _other_mesh_said(xp)
     out.update(
         xplane=str(xp),
@@ -266,7 +269,7 @@ def gather_checks() -> dict[str, Any]:
             )
         ),
         mesh_found=bool(sources),
-        region_ready=session.region_ready(default_pack_dir(), sources),
+        region_ready=session.region_ready(default_pack_dir(), meshes),
         autoortho_mounted=autoortho_mounted(xp),
         ortho_streamers=ortho_streamers(xp),
         installed=is_installed(xp, LINK_NAME),
@@ -280,16 +283,32 @@ def gather_checks() -> dict[str, Any]:
 
 
 def _other_mesh_said(xp: Path | None) -> dict[str, Any] | None:
-    """The folder of another tool's mesh as the Settings say it (:func:`other_mesh_said`), and
-    whether its meshes wait for Live's next start (not in the pack yet); None without one."""
+    """The folder of another tool's mesh as the Settings say it (:func:`other_mesh_said`), whether
+    its meshes wait for Live's next start (not in the pack yet), and the squares put in front of
+    Live (``front_next``: not those of the pack yet); its packs checked in X-Plane's list above
+    Live's line, which X-Plane draws itself without photos (``in_xplane``); None without one."""
+    from orthostudio.live.covered import listed_above_live
+
     folder = other_mesh_folder()
     if folder is None:
         return None
     found = other_mesh_found(xp, live_root())
-    in_pack = set(session._recorded_sources(default_pack_dir()))
+    pack = default_pack_dir()
+    in_pack = set(session._recorded_sources(pack))
+    packs = set(found.ground.values())
+    try:
+        in_xplane = (
+            listed_above_live(xp, packs, LINK_NAME, load_settings().own_tiles)
+            if xp is not None and packs
+            else []
+        )
+    except OSError:  # X-Plane's list unreadable this time: said at the next checks
+        in_xplane = []
     return {
         **other_mesh_said(folder, found),
         "next_start": any(str(p) not in in_pack for p in found.meshes),
+        "front_next": front_changed(pack, found.front),
+        "in_xplane": in_xplane,
     }
 
 
@@ -754,6 +773,17 @@ class LiveControl:
         return [
             {"lat": lat, "lon": lon, "pack": pack, "kind": made_by(pack)}
             for (lat, lon), pack in sorted(own_tiles(Path(xp), self._settings().own_tiles).items())
+        ]
+
+    def other_squares(self) -> list[dict]:
+        """The squares of the folder of another tool's mesh, for the map: each one in front of
+        Live or not (``LiveSettings.other_mesh_front``). None without a folder, or with one not
+        there."""
+        xp = self.checks().get("xplane")
+        found = other_mesh_found(Path(xp) if xp else None, live_root())
+        return [
+            {"lat": lat, "lon": lon, "front": (lat, lon) in found.front}
+            for lat, lon in sorted(found.ground)
         ]
 
     def textures_at(self, lat: float, lon: float) -> list[dict]:

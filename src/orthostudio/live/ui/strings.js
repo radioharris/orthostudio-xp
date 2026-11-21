@@ -135,6 +135,8 @@ export const STRINGS = {
     "checks.mesh_missing": "No mesh yet: install the region you fly over.",
     "checks.mesh_missing_other": "No mesh yet: install the region you fly over, or choose another tool's mesh in Settings.",
     "checks.other_mesh_gone": "No mesh: the folder of another tool's mesh is not there. Is its disk unplugged?",
+    "checks.other_mesh_in_xplane":
+      "{packs}: this mesh of another tool is also enabled in X-Plane's scenery list, above Live, and X-Plane draws it there itself, without photos. Disable it in X-Plane's scenery list.",
     "checks.region": "Region set up",
     "checks.region_todo": "The region is set up at the first start (a few seconds)",
     "flight.notice": "No mesh here: X-Plane shows its own scenery. Install {region}.",
@@ -175,6 +177,13 @@ export const STRINGS = {
     "map.own_ortho4xp": "Your Ortho4XP tile {pack}: X-Plane shows it here, and Live downloads nothing.",
     "map.own_other": "{pack}: X-Plane shows this scenery here, and Live downloads nothing.",
     "map.legend_route": "Route",
+    "map.legend_other_behind": "Another tool's mesh, behind Live",
+    "map.legend_other_front": "Another tool's mesh, in front of Live",
+    "map.other_behind":
+      "{tile}: another tool's mesh, used where Live has no mesh. Click to put it in front of Live: its mesh here, with Live's photos.",
+    "map.other_front": "{tile}: another tool's mesh in front of Live, with Live's photos. Click to put it behind Live.",
+    "map.other_put_front": "{tile} in front of Live from its next start, X-Plane closed.",
+    "map.other_put_behind": "{tile} behind Live from its next start, X-Plane closed.",
     "regions.title": "The mesh, by region",
     "regions.go": "Go to the regions",
     "regions.help": "The sceneries Live lays its photos on.",
@@ -463,7 +472,7 @@ export const STRINGS = {
     "folder.prompt": "Choose the folder where OrthoStudio XP Live keeps its textures and its photos",
     "other_mesh.title": "Another tool's mesh",
     "other_mesh.help":
-      "A mesh in AutoOrtho's format. Live uses it where it has no other mesh. At night, all its street lamps are on, even out in the country.",
+      "A mesh in AutoOrtho's format. Live uses it where it has no other mesh, and on the squares you put in front of Live on its map. At night, all its street lamps are on, even out in the country.",
     "other_mesh.prompt": "Choose the folder of another tool's mesh",
     "other_mesh.meshes": "Used: {names}.",
     "other_mesh.meshes_next": "Used from Live's next start: {names}.",
@@ -478,6 +487,11 @@ export const STRINGS = {
     "other_mesh.why_already": "its tiles already have a mesh",
     "other_mesh.why_no_terrain": "no terrain files",
     "other_mesh.gone": "This folder is not there: is its disk unplugged?",
+    "other_mesh.front_none":
+      "On Live's map, click a square of this mesh to put it in front of Live: its mesh there, with Live's photos.",
+    "other_mesh.front_one": "1 square in front of Live, on its map.",
+    "other_mesh.front": "{n} squares in front of Live, on its map.",
+    "other_mesh.front_next": "From Live's next start, X-Plane closed.",
     "folder.moved": "A new folder is set up in a few seconds; the old one keeps what it holds.",
 
     "country.Spain": "Spain",
@@ -623,6 +637,8 @@ export const STRINGS = {
     "checks.mesh_missing": "Pas encore de mesh : installez la région que vous survolez.",
     "checks.mesh_missing_other": "Pas encore de mesh : installez la région que vous survolez, ou choisissez le mesh d'un autre outil dans les Réglages.",
     "checks.other_mesh_gone": "Pas de mesh : le dossier du mesh d'un autre outil est introuvable. Son disque est-il débranché ?",
+    "checks.other_mesh_in_xplane":
+      "{packs} : ce mesh d'un autre outil est aussi activé dans la liste des scènes de X-Plane, au-dessus de Live, et X-Plane l'y affiche lui-même, sans photos. Désactivez-le dans la liste des scènes de X-Plane.",
     "checks.region": "Région préparée",
     "checks.region_todo": "La région sera préparée au premier démarrage (quelques secondes)",
     "flight.notice": "Pas de mesh ici : X-Plane affiche sa propre scène. Installez {region}.",
@@ -663,6 +679,13 @@ export const STRINGS = {
     "map.own_ortho4xp": "Votre tuile Ortho4XP {pack} : X-Plane l'affiche ici, et Live n'y télécharge rien.",
     "map.own_other": "{pack} : X-Plane affiche cette scène ici, et Live n'y télécharge rien.",
     "map.legend_route": "Route",
+    "map.legend_other_behind": "Mesh d'un autre outil, derrière Live",
+    "map.legend_other_front": "Mesh d'un autre outil, devant Live",
+    "map.other_behind":
+      "{tile} : mesh d'un autre outil, pris là où Live n'a pas de mesh. Cliquez pour le mettre devant Live : son mesh ici, avec les photos de Live.",
+    "map.other_front": "{tile} : mesh d'un autre outil devant Live, avec les photos de Live. Cliquez pour le remettre derrière Live.",
+    "map.other_put_front": "{tile} devant Live dès son prochain démarrage, X-Plane fermé.",
+    "map.other_put_behind": "{tile} derrière Live dès son prochain démarrage, X-Plane fermé.",
     "regions.title": "Le mesh, par région",
     "regions.go": "Aller aux régions",
     "regions.help": "Les scènes sur lesquelles Live pose ses photos.",
@@ -955,7 +978,7 @@ export const STRINGS = {
     "folder.prompt": "Choisissez le dossier où OrthoStudio XP Live garde ses textures et ses photos",
     "other_mesh.title": "Le mesh d'un autre outil",
     "other_mesh.help":
-      "Un mesh au format d'AutoOrtho. Live s'en sert là où il n'a pas d'autre mesh. La nuit, tous ses lampadaires sont allumés, même en campagne.",
+      "Un mesh au format d'AutoOrtho. Live s'en sert là où il n'a pas d'autre mesh, et sur les carrés que vous mettez devant Live sur sa carte. La nuit, tous ses lampadaires sont allumés, même en campagne.",
     "other_mesh.prompt": "Choisissez le dossier du mesh d'un autre outil",
     "other_mesh.meshes": "Pris par Live : {names}.",
     "other_mesh.meshes_next": "Pris par Live dès son prochain démarrage : {names}.",
@@ -970,6 +993,11 @@ export const STRINGS = {
     "other_mesh.why_already": "ses tuiles ont déjà un mesh",
     "other_mesh.why_no_terrain": "aucun fichier terrain",
     "other_mesh.gone": "Ce dossier est introuvable : son disque est-il débranché ?",
+    "other_mesh.front_none":
+      "Sur la carte de Live, cliquez sur un carré de ce mesh pour le mettre devant Live : son mesh à cet endroit, avec les photos de Live.",
+    "other_mesh.front_one": "1 carré devant Live, sur sa carte.",
+    "other_mesh.front": "{n} carrés devant Live, sur sa carte.",
+    "other_mesh.front_next": "Au prochain démarrage de Live, X-Plane fermé.",
     "folder.moved": "Un nouveau dossier se prépare en quelques secondes ; l'ancien garde ce qu'il contient.",
 
     "country.Spain": "Espagne",

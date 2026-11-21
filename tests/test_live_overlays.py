@@ -13,7 +13,7 @@ from orthostudio.install.scenery_packs import SceneryPacks
 from orthostudio.live import aoregions, overlays, session
 from orthostudio.live.filesystem import is_folder_link
 from orthostudio.live.pack import LINK_NAME, OVERLAY_LINK_NAME
-from orthostudio.live.scenery import default_sources, install_link
+from orthostudio.live.scenery import default_meshes, install_link
 
 A, B, C, D, E = (45, 5), (45, 6), (46, 5), (46, 6), (47, 5)
 
@@ -105,7 +105,7 @@ def test_a_region_live_installed_brings_its_own(tmp_path: Path) -> None:
     (mesh / "terrain").mkdir()
     (mesh / aoregions.MARKER).write_text('{"release": "0.0.54"}')
     put(aoregions.overlays_dir(root, "na"), (40, -75), b"na overlay")
-    sources = default_sources(xp, root)
+    sources = default_meshes(xp, root).sources
     assert sources == [mesh]  # Live's own install, AutoOrtho having none
     pack = root / "pack"
     put(pack, (40, -75))
@@ -113,7 +113,7 @@ def test_a_region_live_installed_brings_its_own(tmp_path: Path) -> None:
     # AutoOrtho's own install of the region is used first, Live's left aside
     theirs = xp / "Custom Scenery" / "z_autoortho" / "scenery" / "z_ao_na"
     (theirs / "terrain").mkdir(parents=True)
-    assert default_sources(xp, root) == [theirs]
+    assert default_meshes(xp, root).sources == [theirs]
 
 
 def test_a_region_of_another_live_folder_brings_its_own(tmp_path: Path) -> None:

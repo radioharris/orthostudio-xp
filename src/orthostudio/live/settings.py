@@ -20,6 +20,7 @@ from orthostudio.config.store import toml_dumps
 from orthostudio.decals import DECALS
 from orthostudio.fsutil import atomic_write_text
 from orthostudio.live import settings_file
+from orthostudio.live.geo import tile_name, tile_of_name
 
 TABLE = "stream"
 TEXTURES_SHARE = 0.5  # of Live's disk space: the textures built; the rest, the downloaded imagery
@@ -110,11 +111,18 @@ class LiveSettings(BaseModel):
     (:func:`orthostudio.live.pack.live_root`)."""
     other_mesh: str = ""
     """A folder holding another tool's mesh in AutoOrtho's format, chosen in the Settings: a region
-    copied by another streamer, AutoOrtho's moved elsewhere. Live streams onto them after its own
-    mesh and AutoOrtho's in X-Plane, and takes their roads, forests and buildings too
-    (:func:`orthostudio.live.scenery.other_mesh`); empty: none. A setting, not a look into the
-    other tool's own files, which may change under Live (the user, 2026-11-14: « je préfère le
-    réglage sans surprise »)."""
+    copied by another streamer, AutoOrtho's moved elsewhere, a pilot's own. Live streams onto them
+    after its own mesh and AutoOrtho's in X-Plane, but on the squares of :attr:`other_mesh_front`,
+    and takes their roads, forests and buildings too (:func:`orthostudio.live.scenery.other_mesh`);
+    empty: none. A setting, not a look into the other tool's own files, which may change under
+    Live (the user, 2026-11-14: « je préfère le réglage sans surprise »)."""
+    other_mesh_front: list[str] = Field(default_factory=list)
+    """The squares of that folder's mesh put in front of Live on its map ("+45+006"): there its
+    DSF wins over Live's own and AutoOrtho's, with Live's photos
+    (:func:`orthostudio.live.scenery.default_meshes`); elsewhere it comes after them. Emptied when
+    another folder is chosen, or none; a square the folder no longer has dropped at the next save
+    (:func:`orthostudio.live.scenery.front_saved`). Taken at the next start with X-Plane not
+    running, as every change of the mesh (``session.prepare``)."""
     mesh: Literal["new", "old"] = "new"
     """Which mesh of Live's own regions a start streams onto, for all of them at once: "new", each
     region installed; "old", each region's kept old mesh where it has one, the new one elsewhere
@@ -216,6 +224,18 @@ class LiveSettings(BaseModel):
     @classmethod
     def _stripped(cls, value: str) -> str:
         return value.strip()
+
+    @field_validator("other_mesh_front")
+    @classmethod
+    def _square_names(cls, names: list[str]) -> list[str]:
+        """Each square once, written as X-Plane names its DSF, south to north then west to east."""
+        squares = set()
+        for name in names:
+            square = tile_of_name(name.strip())
+            if square is None:
+                raise ValueError(f"not a square's name: {name!r}, such as +45+006")
+            squares.add(square)
+        return [tile_name(*square) for square in sorted(squares)]
 
     @field_validator("decal")
     @classmethod

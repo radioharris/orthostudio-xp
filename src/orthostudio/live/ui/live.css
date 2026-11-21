@@ -167,6 +167,13 @@
 .swatch.is-own { background: transparent; border: 2px solid var(--ok); box-sizing: border-box; }
 .swatch.is-own.is-ortho4xp { border-color: var(--map-ortho4xp); }
 .swatch.is-own.is-other { border-color: var(--fg-2); }
+/* the squares of another tool's mesh: dashed behind Live, framed and shaded in front of it; a click
+   on one puts it in front or back (livemap.js) */
+.live-map .live-other { stroke: #22c3d6; fill: #22c3d6; fill-opacity: 0.06; stroke-dasharray: 5 4; }
+.live-map .live-other.is-front { fill-opacity: 0.3; stroke-dasharray: none; }
+.live-map.is-over-other { cursor: pointer; }
+.swatch.is-other-mesh { background: rgba(34, 195, 214, 0.06); border: 1px dashed #22c3d6; box-sizing: border-box; }
+.swatch.is-other-mesh.is-front { background: rgba(34, 195, 214, 0.3); border: 2px solid #22c3d6; }
 .live-plane { filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.8)); }
 .live-plane svg { display: block; }
 /* as the Plan map draws them (styles.css .plan-map .osxp-border, .osxp-airport-label) */

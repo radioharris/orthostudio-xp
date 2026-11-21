@@ -24,7 +24,7 @@ from orthostudio.live.region import (
     sources_of,
     sources_of_pack,
 )
-from orthostudio.live.scenery import default_sources
+from orthostudio.live.scenery import Meshes, default_meshes
 
 OTHERS = ("23312_33152_BI16", "23312_33168_BI16")  # another region's textures
 
@@ -56,8 +56,10 @@ def test_two_regions_in_one_pack(tmp_path: Path) -> None:
         assert (pack / "terrain" / f"{name}.ter").exists()
         assert (pack / "terrain" / f"{name}_water_overlay.ter").exists()
         assert (pack / "textures" / f"{name}.dds").exists()
-    assert session.region_ready(pack, [na, eur])  # in any order
-    assert not session.region_ready(pack, [eur])
+    assert session.region_ready(pack, Meshes([eur, na], {}))
+    assert not session.region_ready(pack, Meshes([na, eur], {}))  # in their order
+    assert not session.region_ready(pack, Meshes([eur], {}))
+    assert not session.region_ready(pack, Meshes([eur, na], {(46, 2): na}))  # another front
 
 
 def test_two_regions_each_with_its_list(tmp_path: Path) -> None:
@@ -131,8 +133,10 @@ def test_a_region_added_later_keeps_what_is_built(tmp_path: Path) -> None:
     assert sources_of(meta) == [str(eur), str(na)]
     assert (pack / REGION_MARKER).exists()
     lines.clear()
-    setup_region([na, eur], pack, log=lines.append)
+    setup_region([eur, na], pack, log=lines.append)
     assert lines == []  # nothing to do
+    setup_region([na, eur], pack, log=lines.append)  # another order: a square's DSF another's
+    assert any(line.startswith("setting up the region of z_ao_test, z_ao_test") for line in lines)
 
 
 def test_the_regions_autoortho_installed(tmp_path: Path) -> None:
@@ -145,8 +149,8 @@ def test_the_regions_autoortho_installed(tmp_path: Path) -> None:
     # a Live folder of the test's own, empty: not the computer's, where Live may have installed
     # regions (the user's Shadow PC had Europe there, 2026-10-02)
     live = tmp_path / "live"
-    assert [p.name for p in default_sources(xp, live)] == ["z_ao_eur", "z_ao_na"]
-    assert default_sources(tmp_path / "nowhere", live) == []
+    assert [p.name for p in default_meshes(xp, live).sources] == ["z_ao_eur", "z_ao_na"]
+    assert default_meshes(tmp_path / "nowhere", live).sources == []
 
 
 def test_lives_own_mesh_comes_before_autoortho_s(tmp_path: Path) -> None:
@@ -159,9 +163,9 @@ def test_lives_own_mesh_comes_before_autoortho_s(tmp_path: Path) -> None:
     live = tmp_path / "live"
     ours = regions_dir(live) / "z_osxp_eur"
     (ours / "terrain").mkdir(parents=True)
-    assert [p.name for p in default_sources(xp, live)] == ["z_ao_eur"]
+    assert [p.name for p in default_meshes(xp, live).sources] == ["z_ao_eur"]
     (ours / MARKER).write_text("{}")
-    assert [p.name for p in default_sources(xp, live)] == ["z_osxp_eur", "z_ao_eur"]
+    assert [p.name for p in default_meshes(xp, live).sources] == ["z_osxp_eur", "z_ao_eur"]
 
 
 def test_the_page_lists_lives_own_regions_with_their_size(tmp_path: Path) -> None:
@@ -631,15 +635,15 @@ def test_the_mesh_setting_streams_each_region_s_kept_old_mesh(
         folders[name] = folder
     eur, na, kept = folders["z_osxp_eur"], folders["z_osxp_na"], folders[".z_osxp_eur.kept"]
     assert osxpregions.kept_mesh(live, "eur") == kept
-    assert default_sources(xp, live) == [eur, na]  # new, the default
+    assert default_meshes(xp, live).sources == [eur, na]  # new, the default
     save_settings(LiveSettings(mesh="old"))
-    assert default_sources(xp, live) == [kept, na]
+    assert default_meshes(xp, live).sources == [kept, na]
     assert own_mesh(kept) and region_list_file(tmp_path, kept) != region_list_file(tmp_path, eur)
     (kept / MARKER).unlink()  # not whole: the new one
-    assert default_sources(xp, live) == [eur, na]
+    assert default_meshes(xp, live).sources == [eur, na]
     save_settings(LiveSettings(mesh="new"))
     (kept / MARKER).write_text("{}")
-    assert default_sources(xp, live) == [eur, na]
+    assert default_meshes(xp, live).sources == [eur, na]
 
 
 def test_no_start_on_a_mesh_changed_while_xplane_runs(

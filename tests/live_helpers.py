@@ -24,12 +24,17 @@ def fake_dsf(terrains: Iterable[str]) -> bytes:
 
 
 def make_source(root: Path, tile=(45, 6), textures=("23296_33152_BI16",)) -> Path:
-    """A source pack with one DSF naming one plain and one water-overlay .ter per texture."""
-    lat, lon = tile
+    """A source pack with a DSF on ``tile`` and on each square its textures lie on, as a region's
+    DSFs name the textures of their squares (``names.RegionTextures.owner``), each naming one plain
+    and one water-overlay .ter per texture."""
+    from orthostudio.live.evict import tiles_of
+    from orthostudio.live.geo import dsf_rel_path, parse_texture_name
+
     src = root / "z_ao_test"
-    dsf = src / "Earth nav data" / "+40+000" / f"{lat:+03d}{lon:+04d}.dsf"
-    dsf.parent.mkdir(parents=True)
-    (src / "terrain").mkdir()
+    squares = {tile} | {
+        sq for name in textures for sq in tiles_of(parse_texture_name(f"{name}.dds"))
+    }
+    (src / "terrain").mkdir(parents=True)
     (src / "textures").mkdir()
     terrains = ["terrain_Water"]
     for name in textures:
@@ -43,7 +48,10 @@ def make_source(root: Path, tile=(45, 6), textures=("23296_33152_BI16",)) -> Pat
             f"../textures/water_transition.png\nWET\n"
         )
     (src / "textures" / "water_transition.png").write_bytes(b"\x89PNG fake")
-    dsf.write_bytes(fake_dsf(terrains))
+    for square in sorted(squares):
+        dsf = src / dsf_rel_path(*square)
+        dsf.parent.mkdir(parents=True, exist_ok=True)
+        dsf.write_bytes(fake_dsf(terrains))
     return src
 
 
@@ -56,11 +64,11 @@ def live_names(
 
     from orthostudio.live.geo import parse_texture_name
     from orthostudio.live.names import Names, RegionTextures
-    from orthostudio.live.region import region_zooms, sources_of_pack
+    from orthostudio.live.region import front_of_pack, region_zooms, sources_of_pack
     from orthostudio.live.streamer import TextureIndex
 
     sources = sources_of_pack(pack)
-    region = RegionTextures(sources)
+    region = RegionTextures(sources, front=front_of_pack(pack))
     index = TextureIndex(region.entries())
     zooms = region_zooms(pack)
 

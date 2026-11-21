@@ -99,7 +99,8 @@ of a few percent (sharpness, memory, writes) would want more flights before bein
    regions: Europe, North America, South America, Africa, Asia, Australia and the Pacific. Settings,
    first question, Install (see [The mesh, by region](#the-mesh-by-region)). A region AutoOrtho's
    installer already put in X-Plane is found and used as it is, and so is a mesh in AutoOrtho's
-   format you keep elsewhere, once its folder is chosen.
+   format you keep elsewhere, once its folder is chosen: where Live has no mesh, and on the
+   squares you click on Live's map to put that mesh in front of Live's own.
 2. **Choose the photos and the zoom**, at the top of Live's tab: the photo source (Bing Maps by
    default), the zoom away from airports and the zoom around them (ZL16 and ZL18 by default).
 3. **Optionally, your SimBrief name** (Settings, Flight plan): Live then follows your plan in
@@ -173,7 +174,10 @@ SimBrief route"), and the textures already built, coloured by how sharp they are
 ZL19 violet (about 20 cm a pixel), ZL18 blue (40 cm), ZL17 green (85 cm), ZL16 amber (1.7 m), ZL15
 orange, grey blurrier. Zoomed out, the regions installed are shaded. Point at a texture and a bar
 over the map says what it is: its photos, its tile, its pixels, its disk, when Live last had it in
-reach ("Details" hides the bar). Your own tiles are framed, as on the Plan. The map follows the
+reach ("Details" hides the bar). Your own tiles are framed, as on the Plan. The squares of
+another tool's mesh, when its folder is chosen, are drawn in cyan, dashed behind Live, framed and
+shaded in front of it: a click on one puts it in front of Live or back (see
+[In front of Live](#the-mesh-by-region)). The map follows the
 aircraft, and comes to it when a flight starts (about 60 km across); drag it away in flight
 to look elsewhere, and "Follow the aircraft" brings it back. The next flight is followed again by
 itself. Prepare brings the map to the departure, as close as a flight's start.
@@ -511,8 +515,22 @@ the folder is not there (a disk unplugged). Choose the folder that holds both th
 roads: for AutoOrtho's pack moved, the one holding `z_autoortho` and `yAutoOrtho_Overlays`.
 
 Live's regions come first, then AutoOrtho's in X-Plane, then this folder, for the mesh and for the
-roads alike. Nothing in that folder is changed. Its mesh and its roads are taken at Live's start,
-and kept until the next one: the line says "Used from Live's next start" until then. Each start says
+roads alike, but on the squares you put in front of Live. Nothing in that folder is changed. Its
+mesh and its roads are taken at Live's start, and kept until the next one: the line says "Used
+from Live's next start" until then.
+
+**In front of Live.** A mesh of your own, its relief fixed by hand around an airport, can replace
+Live's mesh on the squares you choose, with Live's photos laid on it: on Live's map, the squares of
+the folder are drawn in their own colour, dashed while they come behind Live, framed and shaded
+once in front of it; click one to put it in front of Live, click it again to put it back. Live's
+own mesh stays everywhere else, and the roads, forests and buildings do not change. A line under the
+setting says how many squares are in front; a change applies at Live's next start, with X-Plane
+closed (a start while X-Plane runs is refused, saying so). Choosing another folder, or none, puts
+every square back behind Live, and a square the folder no longer has is forgotten at the next
+save. Where two meshes meet, a texture on the line between them gets the files of both, so that
+X-Plane finds every file each side names. If that folder is also enabled in X-Plane's own scenery
+list above Live, X-Plane draws it there itself, without photos: Live's checks say so, and name it;
+disable it in X-Plane's scenery list. Each start says
 in Live's log what it takes there, or that the folder is not there; when it is the only mesh, the
 window and the start then say so. On Windows, a folder on a network drive needs Developer Mode on:
 without it, Windows cannot link Live's scenery to it. At night its towns are lit too, along X-Plane's

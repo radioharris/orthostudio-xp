@@ -36,8 +36,9 @@ from orthostudio.live.pack import (
 from orthostudio.live.rings import DEFAULT_MARGIN
 from orthostudio.live.scenery import (
     NO_OTHER_MESH,
+    Meshes,
     OtherMesh,
-    default_sources,
+    default_meshes,
     find_xplane,
     install_link,
     is_installed,
@@ -169,11 +170,15 @@ def _recorded_sources(pack: Path) -> list[str]:
         return []
 
 
-def region_ready(pack: Path, source: Path | Sequence[Path]) -> bool:
-    """Whether ``pack`` holds the AutoOrtho regions of ``source`` already (one, or several): set
-    up, nothing more to clone."""
-    wanted = {str(source)} if isinstance(source, Path) else {str(s) for s in source}
-    return bool(wanted) and set(_recorded_sources(pack)) == wanted
+def region_ready(pack: Path, meshes: Meshes) -> bool:
+    """Whether ``pack`` holds the meshes a start sets it up from already (``meshes``: the regions
+    in their order, the squares in front of Live): set up, nothing more to clone."""
+    from orthostudio.live.region import front_changed
+
+    wanted = [str(s) for s in meshes.sources]
+    return (
+        bool(wanted) and _recorded_sources(pack) == wanted and not front_changed(pack, meshes.front)
+    )
 
 
 def relayout_due(options: Options) -> bool:
@@ -233,7 +238,7 @@ def keep_region_lists(xplane: Path | None, log: Log) -> None:
     root = live_root()
     lists = aoregions.lists_dir(root)
     found = sources_of_pack(default_pack_dir()) + (
-        default_sources(xplane, root)
+        default_meshes(xplane, root).sources
         if xplane is not None
         else [aoregions.mesh_dir(root, region) for region in sorted(aoregions.installed(root))]
     )
@@ -272,6 +277,7 @@ def prepare(options: Options, log: Log) -> Prepared:
     from orthostudio.live.region import (
         LAYOUT_FIXED,
         Zooms,
+        front_changed,
         needs_relayout,
         pack_to_redo,
         region_layout,
@@ -328,7 +334,9 @@ def prepare(options: Options, log: Log) -> Prepared:
         log(f"Live's regions could not be checked: {e}")
     # another tool's mesh as it is now, once for the start: its mesh and its roads go together
     other = NO_OTHER_MESH if options.source else other_mesh_found(xp_dir, live_root(), fresh=True)
-    sources = [options.source] if options.source else default_sources(xp_dir, other=other)
+    sources, front = (
+        Meshes([options.source], {}) if options.source else default_meshes(xp_dir, other=other)
+    )
     from orthostudio.live.names import terrain_folder
 
     chosen = None if options.source else other_mesh_folder()
@@ -369,7 +377,13 @@ def prepare(options: Options, log: Log) -> Prepared:
         fix = Fix(lat, lon)
         clock.done("departure")
     zooms = Zooms(options.max_zoom, options.max_zoom_airports)
-    if xplane_running() and pack_to_redo(sources, pack_dir):  # as a new zoom, below
+    if xplane_running() and pack_to_redo(sources, pack_dir, front):  # as a new zoom, below
+        # the squares put in front changed with their folder there: its disk is not the cause
+        if chosen is not None and other_mesh_there(chosen) and front_changed(pack_dir, front):
+            raise RefusedError(
+                "the squares in front of Live changed since its last start, and X-Plane may be "
+                "reading the meshes of before. Quit X-Plane, then start again"
+            )
         raise RefusedError(
             "the meshes Live streams onto changed since its last start, and X-Plane may be "
             "reading those of before. Quit X-Plane, or connect the disk holding a mesh, then start "
@@ -388,6 +402,7 @@ def prepare(options: Options, log: Log) -> Prepared:
                 zooms=zooms,
                 xplane_running=xplane_running,
                 lists=aoregions.lists_dir(live_root()),
+                front=front,
             )
         except OsxpError as e:
             if e.code != "XP_LINK_FAILED" or not other.meshes or sys.platform != "win32":
@@ -499,6 +514,8 @@ def _other_said(chosen: Path, other: OtherMesh) -> str:
         line += "; no roads, forests or buildings taken from it"
     if said["refused"]:
         line += "; left aside: " + ", ".join(f"{r['name']} ({r['why']})" for r in said["refused"])
+    if said["front"]:
+        line += "; in front of Live: " + ", ".join(said["front"])
     return line
 
 
