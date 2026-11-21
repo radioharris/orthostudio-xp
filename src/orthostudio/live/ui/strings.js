@@ -190,8 +190,8 @@ export const STRINGS = {
     "map.own_ortho4xp": "Your Ortho4XP tile {pack}: X-Plane shows it here, and Live downloads nothing.",
     "map.own_other": "{pack}: X-Plane shows this scenery here, and Live downloads nothing.",
     "map.legend_route": "Route",
-    "map.legend_other_behind": "Another tool's mesh, behind Live",
-    "map.legend_other_front": "Another tool's mesh, in front of Live",
+    "map.legend_other_behind": "Other mesh, behind",
+    "map.legend_other_front": "Other mesh, in front",
     "map.other_behind":
       "{tile}: another tool's mesh, from {folder}, used where Live has no mesh. Click to put it in front of Live: its mesh here, with Live's photos.",
     "map.other_front": "{tile}: another tool's mesh, from {folder}, in front of Live, with Live's photos. Click to put it behind Live.",
@@ -718,8 +718,8 @@ export const STRINGS = {
     "map.own_ortho4xp": "Votre tuile Ortho4XP {pack} : X-Plane l'affiche ici, et Live n'y télécharge rien.",
     "map.own_other": "{pack} : X-Plane affiche cette scène ici, et Live n'y télécharge rien.",
     "map.legend_route": "Route",
-    "map.legend_other_behind": "Mesh d'un autre outil, derrière Live",
-    "map.legend_other_front": "Mesh d'un autre outil, devant Live",
+    "map.legend_other_behind": "Autre mesh, derrière",
+    "map.legend_other_front": "Autre mesh, devant",
     "map.other_behind":
       "{tile} : mesh d'un autre outil, venant de {folder}, pris là où Live n'a pas de mesh. Cliquez pour le mettre devant Live : son mesh ici, avec les photos de Live.",
     "map.other_front": "{tile} : mesh d'un autre outil, venant de {folder}, devant Live, avec les photos de Live. Cliquez pour le remettre derrière Live.",
