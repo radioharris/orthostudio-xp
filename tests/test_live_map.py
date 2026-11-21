@@ -191,6 +191,9 @@ def test_the_map_s_legend_is_osxp_s_laid_on_the_map() -> None:
     assert "key: LEGEND_KEY," in js and "legendOpen(LEGEND_SHOW_KEY)" in js  # kept by legend.js
     assert 'const LEGEND_KEY = "osxp.live.mapLegend";' in js
     assert 'const LEGEND_SHOW_KEY = "osxp.live.mapLegendShow";' in js
+    # the sharpness lines fold on their own, as "Show" does (2026-11-22)
+    assert 'const LEGEND_SHARP_KEY = "osxp.live.mapLegendSharp";' in js
+    assert "legendOpen(LEGEND_SHARP_KEY)" in js
     assert 'const SHOWN_KEY = "osxp.live.mapShown.";' in js
     toggles = js[js.index("  function layerToggles() {") :]
     toggles = toggles[: toggles.index("\n  }\n")]

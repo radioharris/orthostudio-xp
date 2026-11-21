@@ -45,6 +45,7 @@ const DOUBLE_CLICK_MS = 300; // a click on such a square waits this long for a d
 // the legend folded away, and its "Show" (Build's Plan map keeps its own: osxp.mapLegend...)
 const LEGEND_KEY = "osxp.live.mapLegend";
 const LEGEND_SHOW_KEY = "osxp.live.mapLegendShow";
+const LEGEND_SHARP_KEY = "osxp.live.mapLegendSharp";
 // + a layer's name (LAYERS): "0" while its box under "Show" is unticked, else shown
 const SHOWN_KEY = "osxp.live.mapShown.";
 const LAYERS = ["regions", "own-osxp", "own-ortho4xp", "own-other", "other-behind", "other-front", "route", "borders", "airports"];
@@ -366,14 +367,14 @@ export function createLiveMap(el, { api, info = null, legend = null, onOther = n
    * are on the ground, then under "Show" a box for each layer Live draws, its mark beside it, the
    * kinds of the user's tiles and of other tools' squares only when the map has them. A box
    * ticked for a layer not drawn at this zoom (the regions and the borders up close, the airports
-   * far out) is dimmed, why said on hover. Folded away, and its "Show", kept for this viewer.
+   * far out) is dimmed, why said on hover. Folded away, and its two groups, kept for this viewer.
    */
   function renderLegend() {
     if (!legend) return;
     drawLegend(legend, {
       key: LEGEND_KEY,
       words: { show: t("map.legend_show"), hide: t("map.legend_hide") },
-      head: () => h("p", { class: "legend-view" }, t("map.legend_title")),
+      head: () => h("p", { class: "legend-view" }, t("map.legend_show")),
       body: () => {
         const sharpness = legendList([
           legendRow("legend-zl19", t("map.legend_zl19")),
@@ -383,9 +384,17 @@ export function createLiveMap(el, { api, info = null, legend = null, onOther = n
           legendRow("legend-zl15", t("map.legend_zl15")),
           legendRow("legend-less", t("map.legend_less")),
         ], true);
+        // each group folds on its own, as the legend does (a user, 2026-11-22: the ZL lines away)
+        const sharpWords = { hide: t("map.legend_sharp_hide"), show: t("map.legend_sharp_show") };
+        const sharpHead = groupHead(t("map.legend_title"), LEGEND_SHARP_KEY, "sharp-fold", sharpWords, renderLegend);
         const words = { hide: t("map.legend_show_group_hide"), show: t("map.legend_show_group_show") };
         const head = groupHead(t("map.legend_show_group"), LEGEND_SHOW_KEY, "show-fold", words, renderLegend);
-        return legendOpen(LEGEND_SHOW_KEY) ? [sharpness, head, legendList(layerToggles())] : [sharpness, head];
+        return [
+          sharpHead,
+          ...(legendOpen(LEGEND_SHARP_KEY) ? [sharpness] : []),
+          head,
+          ...(legendOpen(LEGEND_SHOW_KEY) ? [legendList(layerToggles())] : []),
+        ];
       },
     });
   }

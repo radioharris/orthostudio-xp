@@ -178,8 +178,9 @@ reach ("Details" hides the bar). Your own tiles are framed, as on the Plan. The 
 other tools' meshes are drawn too: see [In front of Live](#the-mesh-by-region). The legend lies on
 the map, as on the Plan: how sharp the textures are, then under "Show" a box for each layer (the
 regions installed, your tiles, other tools' meshes behind or in front of Live, the route, the
-borders, the airports) to hide it or show it again. The chevron in its corner folds it away, and
-its "Legend" button brings it back; the page remembers each choice. The map follows the
+borders, the airports) to hide it or show it again. The chevron of each group folds its lines
+away; the chevron in its corner folds the whole legend, and its "Legend" button brings it back;
+the page remembers each choice. The map follows the
 aircraft, and comes to it when a flight starts (about 60 km across); drag it away in flight
 to look elsewhere, and "Follow the aircraft" brings it back. The next flight is followed again by
 itself. Prepare brings the map to the departure, as close as a flight's start.
