@@ -741,7 +741,8 @@ the same way: solid in X-Plane, dashed when not. The colour says who built a squ
 whether X-Plane has it; each of the four kinds has its line in the legend and its own box, the
 squares in X-Plane too (hidden on the map, they stay in X-Plane). The map's own options, borders,
 airports and the street map, are under *Show*, which folds away like the zones. The legend folds away with the chevron in its corner, and comes back with its
-*Legend* button. Each square is framed just inside its own edges, so two neighbours in
+*Legend* button. Live's map has the same legend, drawn by the same code, with its own lines: how
+sharp the textures are, then under *Show* a box for each layer it draws. Each square is framed just inside its own edges, so two neighbours in
 different states each keep their own colour. A square both built and chosen, to build it again, keeps its green outline with the
 blue one just inside it, and a thin line between them sets both off from the photo. Zoomed out on
 the world, where a square is too small for both, it stays green: the map then shows which tiles

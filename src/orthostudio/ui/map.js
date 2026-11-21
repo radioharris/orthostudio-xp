@@ -16,6 +16,7 @@
 import { adjustImageData, photoValues } from "./colour.js";
 import { fmtGround, fmtInt, fmtMB, fmtNum, t } from "./i18n.js";
 import { pageKeep, pageKept } from "./kept.js";
+import { drawLegend, groupHead, legendList, legendRow, legendToggle } from "./legend.js";
 import { mockPhoto } from "./preview.js";
 import { sourceCovers, sourceGroups, sourceGroupTitle, sourceLabel } from "./sources.js";
 import {
@@ -1587,18 +1588,10 @@ export function createPlanMap(ctx) {
     // Too far to show them: said on hover and by a dimmed label, no longer in brackets after the
     // name (the same user, 2026-09-26).
     const far = !missing && zs.airports.wanted && !close;
-    const input = h("input", {
-      type: "checkbox",
-      checked: zs.airports.wanted,
-      "data-keep": "airports",
-      onchange: (ev) => setAirportsWanted(ev.target.checked),
-    });
     let hint = t("map.airports_hint");
     if (missing) hint = t("map.airports_missing_hint");
     else if (far) hint = `${t("map.airports_zoomed")} ${t("map.airports_hint")}`;
-    return h("li", { class: far ? "legend-toggle is-idle" : "legend-toggle" },
-      h("label", { title: hint },
-        input, h("span", { class: "legend-swatch legend-airport", "aria-hidden": "true" }), text));
+    return legendToggle({ swatch: "legend-airport", text, hint, checked: zs.airports.wanted, keep: "airports", idle: far, onChange: setAirportsWanted });
   }
 
   // ---------------------------------------------------------------- country borders
@@ -1803,15 +1796,7 @@ export function createPlanMap(ctx) {
     let text = t("map.street");
     if (zs.street.failed) text = t("map.street_failed");
     else if (zs.street.wanted && zs.street.loading) text = t("map.street_loading");
-    const input = h("input", {
-      type: "checkbox",
-      checked: zs.street.wanted,
-      "data-keep": "street",
-      onchange: (ev) => setStreetWanted(ev.target.checked),
-    });
-    return h("li", { class: "legend-toggle" },
-      h("label", { title: t("map.street_hint") },
-        input, h("span", { class: "legend-swatch legend-street", "aria-hidden": "true" }), text));
+    return legendToggle({ swatch: "legend-street", text, hint: t("map.street_hint"), checked: zs.street.wanted, keep: "street", onChange: setStreetWanted });
   }
 
   /** What the URL of a source's map tile ends with: nothing for a shipped source, and for a
@@ -2452,25 +2437,27 @@ export function createPlanMap(ctx) {
   function renderLegend() {
     const box = $("map-legend");
     if (!box) return;
-    // The legend is rebuilt on zoom and on a toggle: the control that had the focus keeps it. It
-    // used to be the first checkbox whichever had it, which took a keyboard user elsewhere.
-    const focused = box.contains(document.activeElement) ? document.activeElement.closest("[data-keep]")?.dataset.keep : null;
-    const refocus = () => focused && box.querySelector(`[data-keep="${focused}"]`)?.focus();
-    box.classList.toggle("is-folded", !zs.legendOpen);
-    if (!zs.legendOpen) {
-      // Folded away to see the map under it: one button brings it back.
-      clear(box).append(h("button", { type: "button", class: "btn legend-unfold", "data-keep": "fold", "aria-expanded": "false", onclick: () => setLegendOpen(true) }, t("map.legend_show")));
-      refocus();
-      return;
-    }
-    const fold = h("button", { type: "button", class: "legend-fold", "data-keep": "fold", "aria-expanded": "true", title: t("map.legend_hide"), "aria-label": t("map.legend_hide"), onclick: () => setLegendOpen(false) });
-    // The chevron on the view line itself, the height of one line: it sat two pixels above it,
-    // placed by hand in the corner (measured, 2026-09-25).
-    // The level alone on the line, the whole sentence on hover (the same user found it long,
-    // 2026-09-26); past the source's ceiling it still says the view is enlarged.
+    // Rebuilt on zoom and on a toggle, folded away or open, the focus kept (legend.js, Live's
+    // map's too).
+    drawLegend(box, {
+      open: zs.legendOpen,
+      setOpen: setLegendOpen,
+      words: { show: t("map.legend_show"), hide: t("map.legend_hide") },
+      head: legendView,
+      body: legendBody,
+    });
+  }
+
+  /** The legend's head, the chevron at its end: the level alone on the line, the whole sentence
+   * on hover (the same user found it long, 2026-09-26); past the source's ceiling it still says
+   * the view is enlarged. */
+  function legendView() {
     const [zoomNow, , ceilingNow] = viewNow();
     const short = Number.isInteger(ceilingNow) && zoomNow > ceilingNow ? t("map.view_over_short", { zl: zoomNow }) : t("map.view_zl", { zl: zoomNow });
-    const view = h("div", { class: "legend-head" }, h("p", { class: "legend-view", title: t("map.view", { label: viewLabel(...viewNow()) }) }, t("map.view", { label: short })), fold);
+    return h("p", { class: "legend-view", title: t("map.view", { label: viewLabel(...viewNow()) }) }, t("map.view", { label: short }));
+  }
+
+  function legendBody() {
     // A line for each mark, its sign first and its words after, "OrthoStudio, in XP" and the three
     // others each read by itself (the same user, 2026-09-26, where a table's columns had to be
     // decoded), each only when the map has such tiles. Each carries the box that hides its tiles on
@@ -2485,43 +2472,27 @@ export function createPlanMap(ctx) {
       "installed-ortho4xp": installed.some((name) => ortho4xp.has(name)),
       "built-ortho4xp": built.some((name) => ortho4xp.has(name)),
     };
-    const row = (swatch, text) => h("li", null, h("span", { class: `legend-swatch ${swatch}`, "aria-hidden": "true" }), text);
     const items = ["installed", "built", "installed-ortho4xp", "built-ortho4xp"].filter((kind) => has[kind]).map(tileToggle);
-    items.push(row("legend-selected", t("map.legend_selected")));
-    if (ctx.route?.()?.path?.length) items.push(row("legend-route-end", t("map.legend_route_ends")));
+    items.push(legendRow("legend-selected", t("map.legend_selected")));
+    if (ctx.route?.()?.path?.length) items.push(legendRow("legend-route-end", t("map.legend_route_ends")));
     const states = new Set(buildingNow().values());
-    if (states.has("working")) items.push(row("legend-working", t("map.legend_working")));
-    if (states.has("queued")) items.push(row("legend-queued", t("map.legend_queued")));
-    if (states.has("failed")) items.push(row("legend-failed", t("map.legend_failed")));
-    clear(box).append(view, h("ul", { class: "legend-marks" }, items));
+    if (states.has("working")) items.push(legendRow("legend-working", t("map.legend_working")));
+    if (states.has("queued")) items.push(legendRow("legend-queued", t("map.legend_queued")));
+    if (states.has("failed")) items.push(legendRow("legend-failed", t("map.legend_failed")));
+    const lists = [legendList(items, true)];
     if (map) {
       // The map's own options under "Show", which folds away (the same user, 2026-09-26)
       const open = zs.legendShowOpen;
-      box.append(groupHead(t("map.legend_show_group"), open, "show-fold", { hide: t("map.legend_show_group_hide"), show: t("map.legend_show_group_show") }, setLegendShowOpen));
-      if (open) box.append(h("ul", null, bordersToggle(), airportsToggle(), streetToggle()));
+      lists.push(groupHead(t("map.legend_show_group"), open, "show-fold", { hide: t("map.legend_show_group_hide"), show: t("map.legend_show_group_show") }, setLegendShowOpen));
+      if (open) lists.push(legendList([bordersToggle(), airportsToggle(), streetToggle()]));
     }
     const levels = [...new Set([...zs.zones.map((z) => z.zl).filter(usableZl), ...(zs.draft ? [zs.nextZl] : [])])].sort((a, b) => b - a);
     if (levels.length) {
       const open = zs.legendZonesOpen;
-      box.append(groupHead(t("map.legend_zones"), open, "zones-fold", { hide: t("map.legend_zones_hide"), show: t("map.legend_zones_show") }, setLegendZonesOpen));
-      if (open) box.append(h("ul", null, levels.map((zl) => h("li", { class: `zl-${zl}` }, h("span", { class: "legend-swatch legend-zone", "aria-hidden": "true" }), detailName(zl)))));
+      lists.push(groupHead(t("map.legend_zones"), open, "zones-fold", { hide: t("map.legend_zones_hide"), show: t("map.legend_zones_show") }, setLegendZonesOpen));
+      if (open) lists.push(legendList(levels.map((zl) => legendRow("legend-zone", detailName(zl), `zl-${zl}`))));
     }
-    refocus();
-  }
-
-  /** A group's title with a chevron that folds its lines away, as the legend itself folds: the
-   * display boxes under "Show" and the zones' levels (the same user, 2026-09-26). */
-  function groupHead(title, open, keep, words, setOpen) {
-    const button = h("button", {
-      type: "button",
-      class: open ? "legend-fold" : "legend-fold is-closed",
-      "data-keep": keep,
-      "aria-expanded": open ? "true" : "false",
-      title: open ? words.hide : words.show,
-      "aria-label": open ? words.hide : words.show,
-      onclick: () => setOpen(!open),
-    });
-    return h("div", { class: "legend-head legend-group-head" }, h("p", { class: "legend-title" }, title), button);
+    return lists;
   }
 
   function setLegendShowOpen(open) {
@@ -2547,15 +2518,7 @@ export function createPlanMap(ctx) {
       "installed-ortho4xp": { swatch: "legend-ortho4xp", label: t("map.legend_ortho4xp"), hint: t("map.installed_ortho4xp_hint"), checked: zs.installedOrtho4xpWanted },
       "built-ortho4xp": { swatch: "legend-built-ortho4xp", label: t("map.legend_ortho4xp_built"), hint: t("map.built_ortho4xp_hint"), checked: zs.builtOrtho4xpWanted },
     }[kind];
-    const input = h("input", {
-      type: "checkbox",
-      checked: own.checked,
-      "data-keep": kind,
-      onchange: (ev) => setTileWanted(kind, ev.target.checked),
-    });
-    return h("li", { class: "legend-toggle" },
-      h("label", { title: own.hint },
-        input, h("span", { class: `legend-swatch ${own.swatch}`, "aria-hidden": "true" }), own.label));
+    return legendToggle({ swatch: own.swatch, text: own.label, hint: own.hint, checked: own.checked, keep: kind, onChange: (on) => setTileWanted(kind, on) });
   }
 
   function setTileWanted(kind, wanted) {
@@ -2584,15 +2547,8 @@ export function createPlanMap(ctx) {
     // the name (the same user, 2026-09-26).
     const far = borders.wanted && map.getZoom() > BORDERS_MAX_ZOOM;
     if (!far && borders.wanted && borders.failed) text = t("map.borders_failed");
-    const input = h("input", {
-      type: "checkbox",
-      checked: borders.wanted,
-      "data-keep": "borders",
-      onchange: (ev) => setBordersWanted(ev.target.checked),
-    });
-    return h("li", { class: far ? "legend-toggle is-idle" : "legend-toggle" },
-      h("label", { title: far ? `${t("map.borders_zoomed")} ${t("map.borders_hint")}` : t("map.borders_hint") },
-        input, h("span", { class: "legend-swatch legend-border", "aria-hidden": "true" }), text));
+    const hint = far ? `${t("map.borders_zoomed")} ${t("map.borders_hint")}` : t("map.borders_hint");
+    return legendToggle({ swatch: "legend-border", text, hint, checked: borders.wanted, keep: "borders", idle: far, onChange: setBordersWanted });
   }
 
   function renderSizes() {

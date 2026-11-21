@@ -2,7 +2,8 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """The Live window's map: OrthoStudio XP's base map and airports served beside Live's page, the
 textures built in a view (each one, or one-degree squares when the view is wide), the regions
-installed, the SimBrief route on the button only; the page's scripts."""
+installed, the SimBrief route on the button only; its legend, OrthoStudio XP's; the page's
+scripts."""
 
 from __future__ import annotations
 
@@ -167,6 +168,48 @@ async def test_the_map_s_api(home: Path, monkeypatch: pytest.MonkeyPatch) -> Non
 def test_the_map_s_scripts_parse() -> None:
     for name in ("basemap.js", "livemap.js", "live.js"):
         subprocess.run([NODE or "node", "--check", str(UI_DIR / name)], check=True)
+
+
+def test_the_map_s_legend_is_osxp_s_laid_on_the_map() -> None:
+    """Live's map has the legend of OrthoStudio XP's Plan map, laid on it, folded away or open, by
+    the same module (static/legend.js) and the same style sheet: how sharp the textures are, then
+    under "Show" a box for each layer Live draws, never the Plan's street map; the legend folded,
+    its "Show" folded and each box kept for the viewer under Live's own keys. The line of before,
+    under the map, is gone."""
+    html = (UI_DIR / "index.html").read_text()
+    wrap = html[html.index('<div class="live-map-wrap">') :]
+    wrap = wrap[: wrap.index("</section>")]
+    assert '<div class="map-legend" id="map-legend"></div>' in wrap
+    css = (UI_DIR / "live.css").read_text()
+    for gone in ("live-map-legend", "swatch is-", "legend-own-osxp", "legend-other-behind"):
+        assert gone not in html and gone not in css, gone
+    js = (UI_DIR / "livemap.js").read_text()
+    assert (
+        "import { drawLegend, groupHead, legendList, legendRow, legendToggle } from "
+        '"../static/legend.js";' in js
+    )
+    assert 'const LEGEND_KEY = "osxp.live.mapLegend";' in js
+    assert 'const LEGEND_SHOW_KEY = "osxp.live.mapLegendShow";' in js
+    assert 'const SHOWN_KEY = "osxp.live.mapShown.";' in js
+    toggles = js[js.index("  function layerToggles() {") :]
+    toggles = toggles[: toggles.index("\n  }\n")]
+    for layer in (
+        "regions",
+        "own-osxp",
+        "own-ortho4xp",
+        "own-other",
+        "other-behind",
+        "other-front",
+        "route",
+        "borders",
+        "airports",
+    ):
+        assert f'toggle("{layer}", ' in toggles, layer
+    assert "street" not in toggles
+    assert "z-index: 0;" in css[css.index(".live-map {") :].split("}")[0], "under its legend"
+    live_js = (UI_DIR / "live.js").read_text()
+    assert 'legend: $("map-legend")' in live_js
+    assert "ownKinds" not in live_js + js and "otherKinds" not in live_js + js
 
 
 class FakeStreamer:

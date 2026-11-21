@@ -138,7 +138,9 @@
   .live .live-map-card { height: auto; }
   .live-map-wrap { flex: none; height: clamp(320px, 60vh, 560px); }
 }
-.live-map { position: absolute; inset: 0; border-radius: var(--radius); border: 1px solid var(--line); background: #1e2a33; }
+/* z-index 0 keeps Leaflet's panes inside the map, under its legend (styles.css .map-legend), as the
+   Plan's (.plan-map) */
+.live-map { position: absolute; inset: 0; z-index: 0; border-radius: var(--radius); border: 1px solid var(--line); background: #1e2a33; }
 /* over the map's top, right of the zoom buttons: one line, two at most, the map still usable under */
 .live-map-bar {
   position: absolute; top: 8px; left: 52px; right: 8px; z-index: 1000; pointer-events: none;
@@ -148,18 +150,18 @@
 .live-map-bar.is-hint { color: rgba(242, 242, 242, 0.7); }
 .live-map-bar b { font-family: var(--mono); font-weight: 600; }
 .live-map-bar .info-warn { color: #ffb347; }
-.live-map-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: var(--help-gap); font-size: var(--fs-2); color: var(--fg-2); }
-.live-map-legend > span { display: inline-flex; align-items: center; gap: 6px; }
-.live-map-legend .swatch { width: 12px; height: 12px; border-radius: 2px; display: inline-block; }
-.live-map-legend .legend-title { color: var(--fg); }
-.swatch.is-zl19 { background: #8e44d9; }
-.swatch.is-zl18 { background: #2f6fd6; }
-.swatch.is-zl17 { background: #35a852; }
-.swatch.is-zl16 { background: #f2b134; }
-.swatch.is-zl15 { background: #e8743b; }
-.swatch.is-less { background: #9aa0a6; }
-.swatch.is-region { background: rgba(90, 141, 214, 0.35); border: 1px solid #5a8dd6; }
-.swatch.is-route { height: 3px; background: #e0572f; border-radius: 0; }
+/* the marks of Live's legend, in OrthoStudio XP's legend on the map (styles.css .map-legend,
+   .legend-swatch; its own .legend-installed, .legend-ortho4xp, .legend-border and .legend-airport
+   for the user's tiles, the borders and the airports): the textures by how sharp they are
+   (livemap.js PHOTO_COLOURS), the regions installed, the route */
+.legend-zl19 { background: #8e44d9; }
+.legend-zl18 { background: #2f6fd6; }
+.legend-zl17 { background: #35a852; }
+.legend-zl16 { background: #f2b134; }
+.legend-zl15 { background: #e8743b; }
+.legend-less { background: #9aa0a6; }
+.legend-region { background: rgba(90, 141, 214, 0.35); border: 1px solid #5a8dd6; }
+.legend-route { height: 0; border-top: 3px solid #e0572f; border-radius: 0; }
 
 /* the user's own tiles, framed as OrthoStudio XP's Plan frames the tiles in X-Plane: its colours,
    its dark line under them */
@@ -168,16 +170,14 @@
 .live-map .live-own.is-ortho4xp { stroke: var(--map-ortho4xp); }
 .live-map .live-own.is-other { stroke: var(--fg-2); }
 .live-map .live-own, .live-map .live-own-casing { shape-rendering: crispEdges; }
-.swatch.is-own { background: transparent; border: 2px solid var(--ok); box-sizing: border-box; }
-.swatch.is-own.is-ortho4xp { border-color: var(--map-ortho4xp); }
-.swatch.is-own.is-other { border-color: var(--fg-2); }
+.legend-own-other { border: 2px solid var(--fg-2); }
 /* the squares of another tool's mesh: dashed behind Live, framed and shaded in front of it; a click
    on one puts it in front or back (livemap.js) */
 .live-map .live-other { stroke: #22c3d6; fill: #22c3d6; fill-opacity: 0.06; stroke-dasharray: 5 4; }
 .live-map .live-other.is-front { fill-opacity: 0.3; stroke-dasharray: none; }
 .live-map.is-over-other { cursor: pointer; }
-.swatch.is-other-mesh { background: rgba(34, 195, 214, 0.06); border: 1px dashed #22c3d6; box-sizing: border-box; }
-.swatch.is-other-mesh.is-front { background: rgba(34, 195, 214, 0.3); border: 2px solid #22c3d6; }
+.legend-other-mesh { background: rgba(34, 195, 214, 0.06); border: 1px dashed #22c3d6; }
+.legend-other-mesh.is-front { background: rgba(34, 195, 214, 0.3); border: 2px solid #22c3d6; }
 .live-plane { filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.8)); }
 .live-plane svg { display: block; }
 /* as the Plan map draws them (styles.css .plan-map .osxp-border, .osxp-airport-label) */

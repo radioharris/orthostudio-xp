@@ -7,13 +7,17 @@
 // every second moves the aircraft; the textures are asked for again when the view moves, and
 // every few seconds while Live streams. The texture under the pointer is told in a bar over the
 // map's top, one line or two, which can be hidden (a tooltip was too present, a user said), and
-// told again as it changes while the pointer rests on it.
+// told again as it changes while the pointer rests on it. Its legend is laid on the map, as on
+// Build's Plan map and by the same module (static/legend.js): folded away or open, with a box
+// for each layer under "Show", each choice kept for the viewer (static/kept.js).
 //
 // Each layer is drawn opaque in a pane of its own, the pane made see-through as a whole: an
 // airport's textures over the ZL16 ones do not add their colours up and look darker than they are.
 
-import { createBaseMap, escapeHtml } from "./basemap.js";
+import { AIRPORTS_MIN_ZOOM, BORDERS_MAX_ZOOM, createBaseMap, escapeHtml } from "./basemap.js";
 import { tileName } from "../static/geo.js";
+import { pageKeep, pageKept } from "../static/kept.js";
+import { drawLegend, groupHead, legendList, legendRow, legendToggle } from "../static/legend.js";
 import { language, t } from "./strings.js";
 
 // by the zoom of its photos, how sharp a texture is on the ground whatever its size (an airport's
@@ -36,6 +40,12 @@ const BUILT_EVERY_MS = 3000; // while Live streams: the engine answers "same" wh
 const OWN_EVERY_MS = 30000; // the user's own tiles asked for again this often (the engine: 30 s)
 const OWN_INSET = 2.5; // px: as OrthoStudio XP's Plan frames a tile, inside it, never on its edge
 const OTHER_INSET = 1; // px: a square of another tool's mesh, inside it, the user's tile frame outside
+// the legend folded away, and its "Show" (Build's Plan map keeps its own: osxp.mapLegend...)
+const LEGEND_KEY = "osxp.live.mapLegend";
+const LEGEND_SHOW_KEY = "osxp.live.mapLegendShow";
+// + a layer's name (LAYERS): "0" while its box under "Show" is unticked, else shown
+const SHOWN_KEY = "osxp.live.mapShown.";
+const LAYERS = ["regions", "own-osxp", "own-ortho4xp", "own-other", "other-behind", "other-front", "route", "borders", "airports"];
 
 export function photoColour(zoom) {
   return PHOTO_COLOURS[Math.min(19, zoom)] || PHOTO_COLOURS.coarser;
@@ -91,9 +101,15 @@ function planeIcon(heading) {
   return L.divIcon({ className: "live-plane", html: svg, iconSize: [PLANE_PX, PLANE_PX], iconAnchor: [half, half] });
 }
 
-export function createLiveMap(el, { api, info = null, ownKinds = null, otherKinds = null, onOther = null }) {
+export function createLiveMap(el, { api, info = null, legend = null, onOther = null }) {
   const base = createBaseMap(el);
   const { map } = base;
+  // each layer under the legend's "Show", shown unless its box was unticked
+  const shown = Object.fromEntries(LAYERS.map((name) => [name, pageKept(SHOWN_KEY + name) !== "0"]));
+  let legendOpen = pageKept(LEGEND_KEY) !== "0";
+  let legendShowOpen = pageKept(LEGEND_SHOW_KEY) !== "0";
+  base.bordersShown(shown.borders);
+  base.airportsShown(shown.airports);
   function pane(name, zIndex, opacity) {
     const p = map.createPane(name);
     p.style.zIndex = String(zIndex);
@@ -122,7 +138,8 @@ export function createLiveMap(el, { api, info = null, ownKinds = null, otherKind
   let ownTiles = []; // [{lat, lon, pack, kind}]: GET map/own
   let ownKey = "";
   let ownAt = 0;
-  const route = L.layerGroup().addTo(map);
+  const route = L.layerGroup();
+  if (shown.route) route.addTo(map);
   let plane = null;
   let camera = null;
   let cameraLine = null; // from the aircraft to the camera, with the distance X-Plane counts
@@ -222,9 +239,11 @@ export function createLiveMap(el, { api, info = null, ownKinds = null, otherKind
     const inSe = map.layerPointToLatLng(L.point(se.x - px, se.y - px));
     return [[inSe.lat, inNw.lng], [inNw.lat, inSe.lng]];
   }
+  /** The user's own tiles whose line under "Show" is ticked. */
+  const ownShown = () => ownTiles.filter((tile) => shown[`own-${tile.kind}`]);
   function drawOwn() {
     own.clearLayers();
-    for (const tile of ownTiles) {
+    for (const tile of ownShown()) {
       const box = [[tile.lat, tile.lon], [tile.lat + 1, tile.lon + 1]];
       const frame = insetBox(box, OWN_INSET) || box; // far out, too small: on its own edge
       own.addLayer(L.rectangle(frame, {
@@ -248,19 +267,21 @@ export function createLiveMap(el, { api, info = null, ownKinds = null, otherKind
     ownKey = key;
     ownTiles = Array.isArray(got) ? got : [];
     drawOwn();
-    ownKinds?.(new Set(ownTiles.map((x) => x.kind)));
+    renderLegend(); // a line for each kind of tile the map frames
     drawBuilt(); // Live's textures under a tile new or gone: left out, or back
   }
   map.on("zoomend", drawOwn); // the frame's inset is in pixels
 
   /**
-   * The squares of another tool's mesh (orthostudio/live/control.py other_squares): dashed where
-   * it comes behind Live, framed and shaded where the pilot put it in front of Live, its mesh
-   * there with Live's photos. A click on one puts it in front or back (onOther).
+   * The squares of other tools' meshes (orthostudio/live/control.py other_squares), each with the
+   * folder that gives it: dashed where it comes behind Live, framed and shaded where the pilot put
+   * it in front of Live, its mesh there with Live's photos. A click on one puts it in front or
+   * back (onOther); those whose line under "Show" is unticked are neither drawn nor clicked.
    */
+  const otherShown = () => otherSquares.filter((x) => shown[x.front ? "other-front" : "other-behind"]);
   function drawOther() {
     other.clearLayers();
-    for (const square of otherSquares) {
+    for (const square of otherShown()) {
       const box = [[square.lat, square.lon], [square.lat + 1, square.lon + 1]];
       other.addLayer(L.rectangle(insetBox(box, OTHER_INSET) || box, {
         pane: "liveOther", className: square.front ? "live-other is-front" : "live-other",
@@ -284,12 +305,12 @@ export function createLiveMap(el, { api, info = null, ownKinds = null, otherKind
       hovered = null;
       pointAt(pointer);
     }
-    otherKinds?.(new Set(otherSquares.map((x) => (x.front ? "front" : "behind"))));
+    renderLegend(); // a line for the squares behind Live, one for those in front
   }
   map.on("zoomend", drawOther);
   function otherAt(latlng) {
     const { lat, lng } = latlng;
-    return otherSquares.find((x) => lat >= x.lat && lat < x.lat + 1 && lng >= x.lon && lng < x.lon + 1);
+    return otherShown().find((x) => lat >= x.lat && lat < x.lat + 1 && lng >= x.lon && lng < x.lon + 1);
   }
   // a click elsewhere does what it did before: nothing
   map.on("click", (ev) => {
@@ -299,11 +320,95 @@ export function createLiveMap(el, { api, info = null, ownKinds = null, otherKind
 
   // the regions' shade only while zoomed out: closer, the view is inside one
   function showRegions() {
-    const wanted = map.getZoom() <= REGIONS_MAX_ZOOM;
+    const wanted = shown.regions && map.getZoom() <= REGIONS_MAX_ZOOM;
     if (wanted && !map.hasLayer(regions)) regions.addTo(map);
     if (!wanted && map.hasLayer(regions)) map.removeLayer(regions);
   }
   map.on("zoomend", showRegions);
+
+  /** A layer shown or hidden by its box under "Show", kept for this viewer. */
+  function setShown(name, on) {
+    shown[name] = on;
+    pageKeep(SHOWN_KEY + name, on ? "1" : "0");
+    if (name === "regions") showRegions();
+    else if (name === "route") {
+      if (on) route.addTo(map);
+      else map.removeLayer(route);
+    } else if (name === "borders") base.bordersShown(on);
+    else if (name === "airports") base.airportsShown(on);
+    else if (name.startsWith("own-")) {
+      drawOwn();
+      drawBuilt(); // Live's textures under a tile: left out of the map while it is framed
+    } else drawOther();
+    hovered = null; // what the pointer rests on may be hidden or shown now
+    if (pointer) pointAt(pointer);
+    renderLegend();
+  }
+
+  /**
+   * The legend, laid on the map as on Build's Plan map (static/legend.js): how sharp the textures
+   * are on the ground, then under "Show" a box for each layer Live draws, its mark beside it, the
+   * kinds of the user's tiles and of other tools' squares only when the map has them. A box
+   * ticked for a layer not drawn at this zoom (the regions and the borders up close, the airports
+   * far out) is dimmed, why said on hover. Folded away, and its "Show", kept for this viewer.
+   */
+  function renderLegend() {
+    if (!legend) return;
+    drawLegend(legend, {
+      open: legendOpen,
+      setOpen: (open) => {
+        legendOpen = open;
+        pageKeep(LEGEND_KEY, open ? "1" : "0");
+        renderLegend();
+      },
+      words: { show: t("map.legend_show"), hide: t("map.legend_hide") },
+      head: () => {
+        const title = document.createElement("p");
+        title.className = "legend-view";
+        title.textContent = t("map.legend_title");
+        return title;
+      },
+      body: () => {
+        const sharpness = legendList([
+          legendRow("legend-zl19", t("map.legend_zl19")),
+          legendRow("legend-zl18", t("map.legend_zl18")),
+          legendRow("legend-zl17", t("map.legend_zl17")),
+          legendRow("legend-zl16", t("map.legend_zl16")),
+          legendRow("legend-zl15", t("map.legend_zl15")),
+          legendRow("legend-less", t("map.legend_less")),
+        ], true);
+        const words = { hide: t("map.legend_show_group_hide"), show: t("map.legend_show_group_show") };
+        const head = groupHead(t("map.legend_show_group"), legendShowOpen, "show-fold", words, (open) => {
+          legendShowOpen = open;
+          pageKeep(LEGEND_SHOW_KEY, open ? "1" : "0");
+          renderLegend();
+        });
+        return legendShowOpen ? [sharpness, head, legendList(layerToggles())] : [sharpness, head];
+      },
+    });
+  }
+
+  /** The boxes under "Show", one a layer the map draws now. */
+  function layerToggles() {
+    const zoom = map.getZoom();
+    const owned = new Set(ownTiles.map((x) => x.kind));
+    const others = new Set(otherSquares.map((x) => (x.front ? "other-front" : "other-behind")));
+    const toggle = (name, swatch, text, idle = null, hint = null) => legendToggle({
+      swatch, text, checked: shown[name], keep: name, onChange: (on) => setShown(name, on),
+      idle: Boolean(idle && shown[name]), hint: idle && shown[name] ? [idle, hint].filter(Boolean).join(" ") : hint,
+    });
+    const lines = [toggle("regions", "legend-region", t("map.legend_region"), zoom > REGIONS_MAX_ZOOM ? t("map.zoom_out") : null)];
+    if (owned.has("osxp")) lines.push(toggle("own-osxp", "legend-installed", t("map.legend_own_osxp")));
+    if (owned.has("ortho4xp")) lines.push(toggle("own-ortho4xp", "legend-ortho4xp", t("map.legend_own_ortho4xp")));
+    if (owned.has("other")) lines.push(toggle("own-other", "legend-own-other", t("map.legend_own_other")));
+    if (others.has("other-behind")) lines.push(toggle("other-behind", "legend-other-mesh", t("map.legend_other_behind")));
+    if (others.has("other-front")) lines.push(toggle("other-front", "legend-other-mesh is-front", t("map.legend_other_front")));
+    lines.push(toggle("route", "legend-route", t("map.legend_route")));
+    lines.push(toggle("borders", "legend-border", t("map.borders"), zoom > BORDERS_MAX_ZOOM ? t("map.zoom_out") : null, t("map.borders_hint")));
+    lines.push(toggle("airports", "legend-airport", t("map.airports"), zoom < AIRPORTS_MIN_ZOOM ? t("map.zoom_in") : null, t("map.airports_hint")));
+    return lines;
+  }
+  map.on("zoomend", renderLegend); // a box dimmed, or no longer, at this zoom
 
   // the bar over the map: the texture under the pointer, found in what is drawn, its facts asked
   // of the engine once the pointer rests on another one, and again when it is built anew
@@ -312,7 +417,7 @@ export function createLiveMap(el, { api, info = null, ownKinds = null, otherKind
   let asking = 0;
   function under(latlng) {
     const { lat, lng } = latlng;
-    const mine = ownTiles.find((x) => lat >= x.lat && lat < x.lat + 1 && lng >= x.lon && lng < x.lon + 1);
+    const mine = ownShown().find((x) => lat >= x.lat && lat < x.lat + 1 && lng >= x.lon && lng < x.lon + 1);
     if (mine) return { key: `o:${mine.lat},${mine.lon}`, own: mine }; // X-Plane shows it there
     let best = null;
     for (const r of shownTextures) {
@@ -393,6 +498,7 @@ export function createLiveMap(el, { api, info = null, ownKinds = null, otherKind
   drawBuilt();
   readOwn();
   readOther();
+  renderLegend();
 
   return {
     map,
@@ -493,13 +599,12 @@ export function createLiveMap(el, { api, info = null, ownKinds = null, otherKind
     languageChanged() {
       hovered = null;
       say("");
+      renderLegend();
     },
     setFollow(on) {
       follow = on;
       if (on && plane) map.panTo(plane.getLatLng(), { animate: false });
     },
-    airportsShown: base.airportsShown,
-    bordersShown: base.bordersShown,
     invalidate() {
       map.invalidateSize();
     },

@@ -68,22 +68,9 @@
           <div class="live-map" id="live-map"></div>
           <!-- over the map's top: the texture under the pointer, told as it changes -->
           <div class="live-map-bar is-hint" id="map-info" aria-live="polite"></div>
-        </div>
-        <div class="live-map-legend">
-          <span class="legend-title" data-i18n="map.legend_title">Sharpness on the ground:</span>
-          <span><i class="swatch is-zl19"></i><span data-i18n="map.legend_zl19">ZL19</span></span>
-          <span><i class="swatch is-zl18"></i><span data-i18n="map.legend_zl18">ZL18</span></span>
-          <span><i class="swatch is-zl17"></i><span data-i18n="map.legend_zl17">ZL17</span></span>
-          <span><i class="swatch is-zl16"></i><span data-i18n="map.legend_zl16">ZL16</span></span>
-          <span><i class="swatch is-zl15"></i><span data-i18n="map.legend_zl15">ZL15</span></span>
-          <span><i class="swatch is-less"></i><span data-i18n="map.legend_less">Blurrier</span></span>
-          <span><i class="swatch is-region"></i><span data-i18n="map.legend_region">Region installed</span></span>
-          <span id="legend-own-osxp" hidden><i class="swatch is-own is-osxp"></i><span data-i18n="map.legend_own_osxp">Your tiles</span></span>
-          <span id="legend-own-ortho4xp" hidden><i class="swatch is-own is-ortho4xp"></i><span data-i18n="map.legend_own_ortho4xp">Your Ortho4XP tiles</span></span>
-          <span id="legend-own-other" hidden><i class="swatch is-own is-other"></i><span data-i18n="map.legend_own_other">Other scenery</span></span>
-          <span id="legend-other-behind" hidden><i class="swatch is-other-mesh"></i><span data-i18n="map.legend_other_behind">Another tool's mesh, behind Live</span></span>
-          <span id="legend-other-front" hidden><i class="swatch is-other-mesh is-front"></i><span data-i18n="map.legend_other_front">Another tool's mesh, in front of Live</span></span>
-          <span><i class="swatch is-route"></i><span data-i18n="map.legend_route">Route</span></span>
+          <!-- laid on the map, as on OrthoStudio XP's Plan map: its legend, folded away or open,
+               with a box for each layer under "Show" (livemap.js, static/legend.js) -->
+          <div class="map-legend" id="map-legend"></div>
         </div>
         <p class="question-help is-warn" id="map-error" hidden></p>
       </section>

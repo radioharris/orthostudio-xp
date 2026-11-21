@@ -715,11 +715,6 @@ async function toggleFront({ lat, lon, front }) {
   liveMap?.otherChanged();
 }
 
-/** The legend's lines for another tool's mesh: those the map draws only. */
-function drawOtherLegend(kinds) {
-  for (const kind of ["behind", "front"]) $(`legend-other-${kind}`).hidden = !kinds.has(kind);
-}
-
 /** The X-Plane Live works with, the others found, and whether it can be changed now. */
 function drawXplane(status) {
   const { xplane, xplane_running: running } = status.checks;
@@ -1931,11 +1926,6 @@ async function showSimbriefRoute() {
   }
 }
 
-/** The legend's lines for the user's own tiles: those the map frames only. */
-function drawOwnLegend(kinds) {
-  for (const kind of ["osxp", "ortho4xp", "other"]) $(`legend-own-${kind}`).hidden = !kinds.has(kind);
-}
-
 async function startMap() {
   if (typeof L === "undefined") return; // Leaflet did not load: the rest of the page works
   // what the page keeps from one visit to the next (static/kept.js); without it, the map still
@@ -1945,7 +1935,7 @@ async function startMap() {
     // loaded here, not with the page: the map's modules read OrthoStudio XP's own (static/geo.js)
     const { createLiveMap } = await import("./livemap.js");
     liveMap = createLiveMap($("live-map"), {
-      api, info: $("map-info"), ownKinds: drawOwnLegend, otherKinds: drawOtherLegend, onOther: toggleFront,
+      api, info: $("map-info"), legend: $("map-legend"), onOther: toggleFront,
     });
   } catch (_e) {
     liveMap = null;

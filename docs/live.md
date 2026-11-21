@@ -175,7 +175,11 @@ ZL19 violet (about 20 cm a pixel), ZL18 blue (40 cm), ZL17 green (85 cm), ZL16 a
 orange, grey blurrier. Zoomed out, the regions installed are shaded. Point at a texture and a bar
 over the map says what it is: its photos, its tile, its pixels, its disk, when Live last had it in
 reach ("Details" hides the bar). Your own tiles are framed, as on the Plan. The squares of
-another tool's mesh are drawn too: see [In front of Live](#the-mesh-by-region). The map follows the
+other tools' meshes are drawn too: see [In front of Live](#the-mesh-by-region). The legend lies on
+the map, as on the Plan: how sharp the textures are, then under "Show" a box for each layer (the
+regions installed, your tiles, other tools' meshes behind or in front of Live, the route, the
+borders, the airports) to hide it or show it again. The chevron in its corner folds it away, and
+its "Legend" button brings it back; the page remembers each choice. The map follows the
 aircraft, and comes to it when a flight starts (about 60 km across); drag it away in flight
 to look elsewhere, and "Follow the aircraft" brings it back. The next flight is followed again by
 itself. Prepare brings the map to the departure, as close as a flight's start.
