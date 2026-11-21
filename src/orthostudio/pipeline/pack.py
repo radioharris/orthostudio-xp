@@ -56,7 +56,15 @@ from orthostudio.install.scenery_packs import (
     pack_kind,
 )
 from orthostudio.model import OVERLAY_PACK, PACK_PREFIX, TileRef, pack_dir_name
-from orthostudio.textures.ter import takes_decal, ter_kind, with_decal
+from orthostudio.pipeline.night import lit_of
+from orthostudio.textures.ter import (
+    NIGHT_FOLDER,
+    TerKind,
+    takes_decal,
+    ter_kind,
+    with_decal,
+    with_night,
+)
 
 __all__ = [
     "LEFT_OVERLAY",
@@ -157,13 +165,16 @@ class PackParams(RuleParams):
     ``decal_on_sea`` puts it on the sea too. The DSF step writes none, so turning them on or off,
     or choosing another, assembles the pack alone (2026-09-26)."""
     decal_on_sea: bool = False
+    night: int = 0
+    """The ``LUMINANCE`` of the night textures the terrain files name, Live's strength; 0 names
+    none (no night textures, or Live's night lights off)."""
 
     def canonical(self) -> dict[str, Any]:
         doc = super().canonical()
         if not (self.photo_brightness or self.photo_contrast or self.photo_saturation):
             for name in ("photo_brightness", "photo_contrast", "photo_saturation"):
                 doc.pop(name, None)  # a plain pack keeps the key it had
-        for name in ("decal", "decal_on_sea"):
+        for name in ("decal", "decal_on_sea", "night"):
             if not doc.get(name):
                 doc.pop(name, None)  # no decal: the key of every pack built without them
         return doc
@@ -371,6 +382,8 @@ class PackFiles:
     """Stale ``.dds`` / ``.ter`` / ``.bak`` files removed from the pack."""
     cfg: Path | None = None
     """``tile_settings.cfg`` when a tile cfg text was given."""
+    night: int = 0
+    """Night textures in ``textures_night``."""
 
 
 def _unlisted(textures_dir: Path, present: set[str]) -> list[str]:
@@ -404,6 +417,8 @@ def write_pack(
     tile_cfg: str | None = None,
     decal: str = "",
     decal_on_sea: bool = False,
+    night_dir: Path | None = None,
+    night: int = 0,
 ) -> PackFiles:
     """Assemble ``<out_root>/zOrthoStudio_<tile>/`` from the DSF and textures artefacts.
 
@@ -414,6 +429,8 @@ def write_pack(
     backup). ``tile_cfg`` (the text of the 44 tile variables) is written as
     ``tile_settings.cfg``. ``decal``, when given, is written in the terrain files of the land,
     and of the sea with ``decal_on_sea`` (``with_decal``); the DSF artefact's have none.
+    ``night_dir`` holds the night textures (``textures_night/``), each named by its land terrain
+    file at ``night`` (``with_night``); without, a pack's night textures of before go.
 
     Nothing of the pack is touched before every source is found, and nothing is removed before
     every file is in place: a source folder missing, or an image its textures folder lists
@@ -429,7 +446,8 @@ def write_pack(
     dsf_src = Path(dsf_dir) / f"{tile.name}.dsf"
     terrain_src = Path(dsf_dir) / "terrain"
     textures_src = None if textures_dir is None else Path(textures_dir) / "textures"
-    for need in (dsf_src, terrain_src, textures_src):
+    night_src = None if night_dir is None else Path(night_dir) / NIGHT_FOLDER
+    for need in (dsf_src, terrain_src, textures_src, *([night_src] if night_src else [])):
         if need is None or not need.exists():
             raise OsxpError(
                 "MESH_INPUT_MISSING",
@@ -445,6 +463,7 @@ def write_pack(
         texture_files = sorted(
             f for f in textures_src.iterdir() if f.suffix.lower() in (".dds", ".png")
         )
+        night_files = sorted(night_src.glob("*_LIT.dds")) if night_src is not None else []
     except OSError as exc:
         raise OsxpError(
             "MESH_INPUT_MISSING",
@@ -466,14 +485,27 @@ def write_pack(
         except FileNotFoundError as exc:  # gone since it was listed: the pack stops as it is
             raise OsxpError("TEX_MISSING", context={"tile": tile.name, "count": 1}) from exc
 
+    night_dest = pack_dir / NIGHT_FOLDER
+    lit = {f.name for f in night_files}
+    if night_files:
+        night_dest.mkdir(parents=True, exist_ok=True)
+    for src in night_files:
+        try:
+            changed += _place(src, night_dest / src.name, link=link)
+        except PermissionError as exc:
+            raise _pack_locked(night_dest / src.name, exc) from exc
+
     terrain_dest = pack_dir / "terrain"
     terrain_dest.mkdir(parents=True, exist_ok=True)
     wanted_ter = {f.name for f in terrain_files}
     for src in terrain_files:
         dest = terrain_dest / src.name
-        wanted = decal if takes_decal(ter_kind(src.name), on_sea=decal_on_sea) else ""
+        kind = ter_kind(src.name)
+        wanted = decal if takes_decal(kind, on_sea=decal_on_sea) else ""
         try:
-            text = with_decal(src.read_bytes().decode("ascii"), wanted).encode("ascii")
+            text = with_decal(src.read_bytes().decode("ascii"), wanted)
+            night_of = lit_of(text, lit) if kind is TerKind.LAND else None
+            text = with_night(text, night_of, night).encode("ascii")
         except FileNotFoundError as exc:
             raise OsxpError(
                 "MESH_INPUT_MISSING",
@@ -506,6 +538,13 @@ def write_pack(
             stale.unlink()
             removed += 1
     removed += _sweep_bak(textures_dest)
+    if night_dest.is_dir():
+        for stale in night_dest.iterdir():
+            if stale.name not in lit:
+                stale.unlink()
+                removed += 1
+        if not lit:
+            night_dest.rmdir()
 
     cfg_dest: Path | None = None
     if tile_cfg:
@@ -550,6 +589,7 @@ def write_pack(
         changed=changed,
         removed=removed,
         cfg=cfg_dest,
+        night=len(lit),
     )
 
 
@@ -587,6 +627,8 @@ def pack_is_intact(pack_dir: Path, manifest: PackManifest, *, with_overlay: bool
     n_ter = _count(pack_dir / "terrain", "*.ter")
     if n_dds != int(files.get("textures", 0)) or n_ter != int(files.get("terrain", 0)):
         return False
+    if _count(pack_dir / NIGHT_FOLDER, "*.dds") != int(files.get("night", 0)):
+        return False
     overlay = files.get("overlay")
     if (
         with_overlay
@@ -604,7 +646,7 @@ def pack_is_intact(pack_dir: Path, manifest: PackManifest, *, with_overlay: bool
         return False
 
 
-_LAID = ("dsf", "textures", "overlay")
+_LAID = ("dsf", "textures", "overlay", "night")
 """The artefacts whose files a pack holds; the others of its manifest say how they were made."""
 
 
@@ -727,6 +769,8 @@ def assemble_pack(
     built: dict[str, Any] | None = None,
     decal: str = "",
     decal_on_sea: bool = False,
+    night: ResolvedInput | None = None,
+    night_lum: int = 0,
 ) -> tuple[PackManifest, PackFiles]:
     """Write the pack from the three inputs and build its manifest (upstream keys from the
     store's provenance edges of the DSF artefact). A DSF missing stops it, as a textures folder
@@ -746,9 +790,14 @@ def assemble_pack(
         tile_cfg=tile_cfg or None,
         decal=decal,
         decal_on_sea=decal_on_sea,
+        night_dir=night.path if night is not None else None,
+        night=night_lum,
     )
     artefacts: dict[str, ArtefactEntry] = {}
-    for label, inp in (("dsf", dsf), ("textures", textures), ("overlay", overlay)):
+    laid = (("dsf", dsf), ("textures", textures), ("overlay", overlay), ("night", night))
+    for label, inp in laid:
+        if inp is None:
+            continue
         if inp.key is not None:
             entry = _entry(store, inp.key)
             if entry is not None:
@@ -778,6 +827,7 @@ def assemble_pack(
             # which decal the terrain files name: without it, two packs apart by their decal
             # alone had the same manifest, and ``pack_is_intact`` could not tell them apart
             **({"decal": decal, "decal_on_sea": decal_on_sea} if decal else {}),
+            **({"night": files.night} if files.night else {}),
         },
     )
     write_manifest(files.pack_dir, tile, manifest)
@@ -2034,6 +2084,8 @@ def _tile_pack(ctx: RunContext) -> None:
         built=env.built,
         decal=params.decal,
         decal_on_sea=params.decal_on_sea,
+        night=ctx.inputs["night"],
+        night_lum=params.night,
     )
     ctx.out.write_text(manifest.to_toml(), encoding="utf-8")
 
@@ -2076,7 +2128,7 @@ TILE_PACK: Rule = rule(
     name="tile.pack",
     version=2,
     params=PackParams,
-    inputs=("dsf", "textures", "overlay"),
+    inputs=("dsf", "textures", "overlay", "night"),
     ram_mb=100,
     kind="file",
 )(_tile_pack)

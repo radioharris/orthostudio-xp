@@ -18,12 +18,15 @@ from orthostudio.imagery.grid import TextureId, texture_name, tile_to_wgs84, web
 
 __all__ = [
     "DECAL_LIB",
+    "NIGHT_FOLDER",
     "TEST_TEXTURE",
     "WATER_TRANSITION_PNG",
     "TerKind",
     "TerParams",
     "border_mask_filename",
     "load_center_size",
+    "night_name",
+    "photo_of",
     "sea_kind",
     "takes_decal",
     "ter_center",
@@ -32,6 +35,7 @@ __all__ = [
     "ter_text",
     "texture_dds_name",
     "with_decal",
+    "with_night",
 ]
 
 DECAL_LIB = decal_lib(DEFAULT_DECAL)
@@ -196,3 +200,36 @@ def with_decal(text: str, decal: str) -> str:
         )
         lines.insert(at, f"DECAL_LIB {decal_lib(decal)}\n")
     return "".join(lines)
+
+
+NIGHT_FOLDER = "textures_night"
+"""Where a pack's night textures are, beside ``textures``: ``<texture>_LIT.dds`` each."""
+
+
+def night_name(texture: str) -> str:
+    """The night texture of ``texture`` (``23904_34080_BI16.dds``: ``23904_34080_BI16_LIT.dds``)."""
+    return texture.removesuffix(".dds") + "_LIT.dds"
+
+
+def photo_of(text: str) -> str:
+    """The photo a terrain file names (its ``BASE_TEX`` line's file), empty when none."""
+    line = next((ln for ln in text.splitlines() if ln.startswith("BASE_TEX")), "")
+    return line.rsplit("/", 1)[-1].strip() if line else ""
+
+
+def with_night(text: str, lit: str | None, luminance: int) -> str:
+    """``text`` of a terrain file naming its night texture ``lit`` and how bright X-Plane shows it,
+    right after its photo; no night lines when ``lit`` is None or ``luminance`` is 0. Lines
+    already there go. A file that needs no change comes back byte for byte."""
+    lines = [
+        ln for ln in text.splitlines(keepends=True) if not ln.startswith(("LIT_TEX", "LUMINANCE "))
+    ]
+    if lit is None or luminance <= 0:
+        return "".join(lines)
+    out = []
+    for ln in lines:
+        out.append(ln)
+        if ln.startswith("BASE_TEX"):
+            out.append(f"LIT_TEX_NOWRAP ../{NIGHT_FOLDER}/{lit}\n")
+            out.append(f"LUMINANCE {luminance}\n")
+    return "".join(out)

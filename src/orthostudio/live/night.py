@@ -111,6 +111,11 @@ what the lights drawn are multiplied by. "normal", the one of the first night te
 liked them, and wanted a choice for those who find them too bright or too faint (2026-11-11)."""
 
 GAIN = LIGHTS["normal"]
+
+LUMINANCE = {"soft": 12, "normal": 20, "strong": 34}
+"""The ``LUMINANCE`` line of a terrain file that shows night textures drawn at full strength
+(gain 1.0) as bright as those drawn at each choice of :data:`LIGHTS`: how OrthoStudio XP's own
+tiles take the strength chosen in Live without being drawn again."""
 POWER = GAMMA  # the smaller levels averaged in linear light, as the day textures' (imaging)
 
 FLOOR = 6

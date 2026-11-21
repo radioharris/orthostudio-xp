@@ -722,6 +722,18 @@ their terrain files again and nothing else: no download, no texture encoded agai
 a tile. The decal goes on land only unless *Fine ground detail on the sea too* is on; lakes and
 rivers never have one.
 
+**Towns at night.** X-Plane's own ground glows at night where it is a town, and a photo replaces
+that ground. *Night textures*, a box under the photo colours in step 1 of the Plan, gives each
+photo of the land with a street lamp a night texture of its own, beside it in the tile's
+`textures_night` folder, drawn as Live draws its own: lamps along X-Plane's roads and windows
+along the streets, as many lit as NASA's Black Marble sees there. They are drawn while the photos
+download, once; the grid of NASA's lights comes from Live's regions on the disk, or is downloaded
+once with its region's. The photo's terrain file names its night texture and how bright X-Plane
+shows it, as Live's *Night lights* say: changing them in Live rewrites that line in the tiles of
+the Library at once, and *No* takes it out, the night textures staying on the disk. The box is
+remembered from one visit to the next; a tile built again with it unticked loses its night
+textures.
+
 **What the map marks.** A square you already have in X-Plane is outlined in green, a square you
 chose in blue. A square built and kept in the Library but not in X-Plane (*Build only*, or taken
 out of X-Plane with its files kept) is outlined in dashed green; its line in the legend is a box

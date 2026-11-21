@@ -303,7 +303,8 @@ night.
 towns show from farther. A new strength
 shows from the next start: Live makes its night textures again as night comes, the nearest first.
 "No": no night texture, the terrain files naming none; the night textures and the roads kept for
-them are deleted. A change between on and off takes effect at the next start with X-Plane not
+them are deleted. Your own tiles built with *Night textures* ([build.md](build.md)) follow the
+same choice at once. A change between on and off takes effect at the next start with X-Plane not
 running, as the decal's: the terrain files flown already are made again as X-Plane comes. So does
 the night itself after an update from a version without it: Live started while X-Plane runs
 lights nothing until then.

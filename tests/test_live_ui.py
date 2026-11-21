@@ -640,6 +640,16 @@ async def test_the_page_and_its_api(home: Path, monkeypatch: pytest.MonkeyPatch)
         assert (await client.put("/api/live/settings", json={"own_tiles": "under"})).is_success
         assert (await client.put("/api/live/settings", json={"disk_gb": 70})).is_success
         assert moved == ["under"]
+        # the night lights' strength goes to the tiles built with theirs, at once
+        from orthostudio.pipeline import night as build_night
+
+        given: list[int] = []
+        monkeypatch.setattr(build_night, "library_strength", lambda: given.append(1) or 2)
+        assert (await client.put("/api/live/settings", json={"night_light": "soft"})).is_success
+        assert (await client.put("/api/live/settings", json={"night_light": "soft"})).is_success
+        assert (await client.put("/api/live/settings", json={"night": False})).is_success
+        assert (await client.put("/api/live/settings", json={"disk_gb": 80})).is_success
+        assert len(given) == 2
 
 
 @pytest.mark.anyio

@@ -133,6 +133,8 @@ that builds them faster.
 - **Settings in plain words**, three presets, and every Ortho4XP setting still under "For experts".
 - **Installation handled**: each tile in Custom Scenery in the order X-Plane needs, with its roads,
   forests and buildings, and a Library of every tile on the computer.
+- **Towns at night**, if you tick it in the Plan: Live's night lights on the tiles you build, as
+  bright as Live's are set.
 
 Its guide, with what you get, the measured build times and the comparison with Ortho4XP:
 [docs/build.md](docs/build.md).

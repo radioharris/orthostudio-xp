@@ -128,6 +128,18 @@ from orthostudio.pipeline.native import (
     snapshot_label_of,
     unusable_coastline,
 )
+from orthostudio.pipeline.night import BASE_MB as NIGHT_BASE_MB
+from orthostudio.pipeline.night import MAX_WORKERS as NIGHT_MAX_WORKERS
+from orthostudio.pipeline.night import (
+    ROADS_OFFSETS,
+    TILE_NIGHT,
+    TILE_NIGHT_GRID,
+    NightGridParams,
+    NightParams,
+    luminance,
+    night_job,
+)
+from orthostudio.pipeline.night import WORKER_MB as NIGHT_WORKER_MB
 from orthostudio.pipeline.pack import (
     PARKED_OVERLAY,
     TILE_INSTALL,
@@ -1359,6 +1371,9 @@ class TileNodes:
     stages: StageChoice = field(default_factory=StageChoice)
     osm: Node | None = None
     """The tile's OSM download, when the graph downloads it (a stored snapshot is an input)."""
+    night_grid: Node | None = None
+    night: Node | None = None
+    """Its night textures, when they are asked for (``night_textures``)."""
 
     @property
     def target(self) -> Node:
@@ -1366,7 +1381,8 @@ class TileNodes:
 
     def all(self) -> list[Node]:
         nodes = [self.vectors, self.mesh, self.masks, self.dsf, self.textures, self.pack]
-        for n in (self.osm, self.dem, self.coastline, self.xp12, self.overlay, self.install):
+        others = (self.osm, self.dem, self.coastline, self.xp12, self.overlay, self.install)
+        for n in (*others, self.night_grid, self.night):
             if n is not None:
                 nodes.append(n)
         return nodes
@@ -1383,6 +1399,8 @@ class TileNodes:
             "xp12": self.xp12,
             "dsf": self.dsf,
             "textures": self.textures,
+            "night_grid": self.night_grid,
+            "night": self.night,
             "overlay": self.overlay,
             "pack": self.pack,
             "install": self.install,
@@ -1829,6 +1847,25 @@ def _masks_run(env: BuildEnv, params: OsxpMasksParams) -> Callable[[NodeContext]
     def run(ctx: NodeContext) -> ArtifactRef:
         job = MasksJob(workers=workers, cancel=cast(Any, ctx.cancel_event))
         with _active_env(env, ctx), masks_job(job):
+            return run_p0_rule(ctx)
+
+    return run
+
+
+def night_workers(env: BuildEnv) -> int:
+    """Processes the night textures of a tile are drawn by, as the masks' are counted."""
+    return pool_workers(
+        env,
+        min(NIGHT_MAX_WORKERS, env.workers),
+        share=MASKS_BUDGET_SHARE,
+        base_mb=NIGHT_BASE_MB,
+        worker_mb=NIGHT_WORKER_MB,
+    )
+
+
+def _night_run(env: BuildEnv, workers: int) -> Callable[[NodeContext], Any]:
+    def run(ctx: NodeContext) -> ArtifactRef:
+        with _active_env(env, ctx), night_job(workers):
             return run_p0_rule(ctx)
 
     return run
@@ -2755,6 +2792,26 @@ def declare(
             ram_mb=_photos_ram_mb(env),
             run=_textures_run(env),
         )
+        grid: Node | None = None
+        night: Node | None = None
+        if cfg.get("night_textures"):
+            grid = reg.node(
+                f"{name}/night_grid", TILE_NIGHT_GRID, NightGridParams(tile=name), {}, kind="io"
+            )
+            roads = {
+                input_name: global_source(tile.neighbour(dlat, dlon))
+                for input_name, (dlat, dlon) in ROADS_OFFSETS.items()
+            }
+            workers = night_workers(env)
+            night = reg.node(
+                f"{name}/{spec.level}/night",
+                TILE_NIGHT,
+                NightParams(tile=name),
+                {"dsf": dsf, "grid": grid, **roads},
+                kind="subprocess",
+                ram_mb=NIGHT_BASE_MB + NIGHT_WORKER_MB * workers,
+                run=_night_run(env, workers),
+            )
         out_dir = str(Path(spec.out_dir).expanduser().resolve())
         _refuse_pack_dir_conflict(pack_dirs, spec, out_dir, dsf, textures)
         decal, decal_on_sea = _pack_decals(cfg)
@@ -2775,8 +2832,9 @@ def declare(
                 tile_cfg=tile_cfg_text(cfg),
                 decal=decal,
                 decal_on_sea=decal_on_sea,
+                night=luminance() if night is not None else 0,
             ),
-            {"dsf": dsf, "textures": textures, "overlay": overlay},
+            {"dsf": dsf, "textures": textures, "overlay": overlay, "night": night},
             kind="io",
             run=_pack_run(env, spec),
         )
@@ -2817,6 +2875,8 @@ def declare(
                 coastline=coast,
                 stages=choice,
                 osm=osm,
+                night_grid=grid,
+                night=night,
             )
         )
     reg.register()
@@ -3554,6 +3614,8 @@ def _assemble_again(
         dsf=_resolved("dsf", refs["dsf"]),
         textures=_resolved("textures", refs.get("textures")),
         overlay=_resolved("overlay", refs.get("overlay")),
+        night=_resolved("night", refs.get("night")),
+        night_lum=params.night,
         link=spec.link,
         tile_cfg=params.tile_cfg,
         photo={

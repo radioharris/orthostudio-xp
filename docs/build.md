@@ -72,6 +72,11 @@ the disk is in [how-it-works.md](how-it-works.md). To fly without building tiles
   service roads in a minute and a half instead of 23, in a tenth of the memory.
 - **The grain of the ground.** One of X-Plane 12's decals over the photos, the one you choose;
   turning it on, off or to another writes a tile's terrain files again, and nothing else.
+- **Towns at night.** Tick *Night textures* in the Plan and the tiles you build get Live's night
+  lights: street lamps along X-Plane's roads and windows along the streets, as many lit as NASA's
+  Black Marble sees there. They are as bright as Live's *Night lights* are set, and follow them at
+  once when you change them there, Live's *No* included. A tile takes 4 to 6 % more disk space;
+  built again with the box unticked, it loses them. Tiles imported from Ortho4XP have none.
 - **The squares of a flight plan.** Your last SimBrief plan, or a plan file from Little Navmap
   (`.lnmpln`) or exported for X-Plane (`.fms`), chooses the squares along its route, within the
   radius you set.

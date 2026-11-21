@@ -128,6 +128,8 @@ export const ROLE_STEP = {
   mesh: "terrain",
   masks: "coast",
   textures: "imagery",
+  night_grid: "assembly",
+  night: "assembly",
   xp12: "assembly",
   dsf: "assembly",
   overlay: "assembly",
@@ -140,6 +142,8 @@ export const ROLE_STEP = {
  * mock files and journals still carry. */
 export const NODE_STEP = {
   "tile.textures": "imagery",
+  "tile.night_grid": "assembly",
+  "tile.night": "assembly",
   "xp12.rasters": "assembly",
   "tile.dsf": "assembly",
   "tile.overlay": "assembly",
@@ -4184,6 +4188,7 @@ async function planRequest() {
     // The squares' own colours travel with the zones: a request that carried its zones alone
     // built them without their colours (a user, 2026-09-18).
     tiles_settings: planMap ? planMap.tilesSettings([...state.tiles]) : {},
+    overrides: { night_textures: $("night-check").checked },
   };
 }
 
@@ -5263,6 +5268,8 @@ const ROLE_WORDS = {
   mesh: () => t("works.act_mesh"),
   masks: () => t("works.act_masks"),
   xp12: () => t("works.act_xp12"),
+  night_grid: () => t("works.act_night"),
+  night: () => t("works.act_night"),
   dsf: () => t("works.act_dsf"),
   overlay: () => t("works.act_overlay"),
   pack: () => t("works.act_pack"),
@@ -8598,6 +8605,14 @@ async function boot() {
     $(`flightplan-${group}-zl`).addEventListener("change", (ev) => setFlightPlanLevel(group, ev.target.value));
   }
   $("flightplan-along-on").addEventListener("change", (ev) => setFlightPlanAlong(ev.target.checked));
+  // the night textures: the Plan's own choice, kept from one visit to the next
+  const night = $("night-check");
+  night.checked = pageKept("osxp.night") === "on";
+  night.addEventListener("change", () => {
+    pageKeep("osxp.night", night.checked ? "on" : "off");
+    planChanged();
+    renderTilesBuilt();
+  });
   $("estimate-btn").addEventListener("click", estimate);
   $("build-install-btn").addEventListener("click", () => build(true));
   $("build-only-btn").addEventListener("click", () => build(false));
