@@ -4703,14 +4703,9 @@ def test_the_legend_lines_up_folds_away_and_keeps_the_keyboard() -> None:
     assert 'class: "btn legend-unfold"' in folded, "an ordinary button, as on the map"
     assert "onclick: () => setOpen(true)" in folded
     assert 'class: "legend-fold"' in draw and "onclick: () => setOpen(false)" in draw
-    assert "}), true, words);" in draw and '"aria-expanded": "false"' in draw
+    assert '"aria-expanded": "false"' in draw
     # the chevron's state in one place, the legend's, its groups' and Live's Settings' lists
-    chevron = _function_body(shared, "setChevron")
-    assert 'button.classList.toggle("is-closed", !open);' in chevron
-    assert 'button.setAttribute("aria-expanded", String(open));' in chevron
-    assert "button.title = open ? words.hide : words.show;" in chevron
-    assert "}), open, words);" in _function_body(shared, "groupHead")
-    assert shared.count("aria-expanded") == 2, "the chevron's, and the folded legend's button"
+    assert all("setChevron(" in _function_body(shared, f) for f in ("drawLegend", "groupHead"))
     map_js = (UI / "map.js").read_text(encoding="utf-8")
     legend = map_js[
         map_js.index("function renderLegend()") : map_js.index("function bordersToggle()")

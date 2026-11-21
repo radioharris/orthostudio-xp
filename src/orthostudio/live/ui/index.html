@@ -254,12 +254,14 @@
       </fieldset>
 
       <!-- its two lists fold away, each under its title with a summary beside it and the legend's
-           chevron (live.js foldSection): folded until something needs the pilot, then as he left them -->
+           chevron (live.js foldSection): folded until something needs the pilot, then as he left them;
+           the chevron named « show » until static/legend.js setChevron names it -->
       <fieldset class="question" id="q-regions">
         <legend class="question-title"><span class="fold-head" id="regions-head">
           <span data-i18n="regions.title">The mesh, by region</span>
           <span class="fold-badges" id="regions-badges"></span>
-          <button type="button" class="legend-fold is-closed" id="regions-fold" aria-expanded="false" aria-controls="regions-body"></button>
+          <button type="button" class="legend-fold is-closed" id="regions-fold" aria-expanded="false" aria-controls="regions-body"
+                  data-i18n-title="regions.fold_show" data-i18n-aria-label="regions.fold_show" title="Show the regions" aria-label="Show the regions"></button>
         </span></legend>
         <div class="fold-body is-folded" id="regions-body">
           <p class="question-help" data-i18n="regions.help"></p>
@@ -290,7 +292,8 @@
           <div class="fold-head" id="others-head">
             <label class="sub-question-title" for="set-other-mesh" data-i18n="other_mesh.title">Other meshes</label>
             <span class="fold-badges" id="others-badges"></span>
-            <button type="button" class="legend-fold is-closed" id="others-fold" aria-expanded="false" aria-controls="others-body"></button>
+            <button type="button" class="legend-fold is-closed" id="others-fold" aria-expanded="false" aria-controls="others-body"
+                    data-i18n-title="other_mesh.fold_show" data-i18n-aria-label="other_mesh.fold_show" title="Show the other meshes" aria-label="Show the other meshes"></button>
           </div>
           <div class="fold-body is-folded" id="others-body">
             <p class="question-help" data-i18n="other_mesh.help"></p>

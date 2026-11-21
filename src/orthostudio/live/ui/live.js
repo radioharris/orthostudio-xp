@@ -621,10 +621,10 @@ export function otherMeshSaid(f) {
 /** What the title of other meshes says beside it, folded or open, and what needs the pilot there,
  *  a word each, which opens the list by itself (foldOpen): a folder not there or giving no mesh, a
  *  pack left aside he may have meant (each folder's own notes, otherMeshSaid). A button refused is
- *  none: said under the list, open since it holds them. Every word known at each status (`whole`,
- *  foldSection). Its badge: how many folders, and how many of their squares are in front of Live,
- *  in the warning's colour where a folder cannot be used; none without a folder.
- *  {badges: [{text, kind}], needs, whole} */
+ *  none: said under the field, the list open since it holds them. Every word known at each status
+ *  (foldSection's `known`, by default). Its badge: how many folders, and how many of their squares
+ *  are in front of Live, in the warning's colour where a folder cannot be used; none without a
+ *  folder. {badges: [{text, kind}], needs} */
 export function othersSummary(other) {
   const folders = other?.folders || [];
   const needs = [];
@@ -632,11 +632,11 @@ export function othersSummary(other) {
     if (otherUnusable(f)) needs.push(`${f.unused}:${f.folder}`);
     if (refusedToSay(f).length) needs.push(`refused:${f.folder}`);
   }
-  if (!folders.length) return { badges: [], needs, whole: true };
+  if (!folders.length) return { badges: [], needs };
   const front = number(folders.reduce((n, f) => n + f.front.length, 0));
   const text = folders.length === 1 ? t("other_mesh.badge_one", { front })
     : t("other_mesh.badge", { n: number(folders.length), front });
-  return { badges: [{ text, kind: folders.some(otherUnusable) ? "warn" : null }], needs, whole: true };
+  return { badges: [{ text, kind: folders.some(otherUnusable) ? "warn" : null }], needs };
 }
 
 /** The folders of other tools' meshes, top first, the first that has a square giving it
@@ -695,7 +695,7 @@ function drawOtherFront(other) {
 
 /** A button of the folders of other tools' meshes, or a folder added: saved by the engine, in one
  *  place each (orthostudio/live/api.py other_changed), which answers the list and the squares in
- *  front as saved; the map and the list asked anew. False when refused, said under the list: a
+ *  front as saved; the map and the list asked anew. False when refused, said under the field: a
  *  folder listed already in the page's words, said again in a new language (data-i18n,
  *  applyStatic), the engine's own words otherwise. */
 async function otherAct(act, body) {
@@ -851,6 +851,7 @@ export function foldSeen(kept, needs) {
 }
 
 const folds = {}; // the lists that fold, by name (foldSection), made at the page's start
+const showFolds = () => Object.values(folds).forEach((fold) => fold.show());
 
 /**
  * A list of the settings folded away under its title (index.html `<name>-head`, its badges
@@ -861,14 +862,16 @@ const folds = {}; // the lists that fold, by name (foldSection), made at the pag
  * selected. Opened for the visit alone, not kept: pointed at (`open`, showQuestion), or while a
  * search is typed (`searched`, drawSearch), until his click or the search emptied. `words()`: the
  * chevron's hover, {show, hide}, in the page's language. `draw` at each status: its badges and what
- * needs the pilot now, every word known when `whole` (foldSeen).
+ * needs the pilot now, every word known unless `known` is false (foldSeen).
  */
 function foldSection(name, words) {
   const key = `osxp.live.fold.${name}`;
   const button = $(`${name}-fold`);
   const badges = $(`${name}-badges`);
   let needs = [];
-  let chosen = null; // a click of this visit, as kept: without static/kept.js, kept for the visit
+  // a click of this visit, or the choice kept as foldSeen cut it (draw), as kept: without
+  // static/kept.js, kept for the visit
+  let chosen = null;
   let lent = false; // opened for the visit alone, not kept
   let searchOn = false; // a search typed in the settings
   const kept = () => chosen ?? foldKept(keptTools?.pageKept(key));
@@ -902,10 +905,10 @@ function foldSection(name, words) {
       lent = on;
       show();
     },
-    draw({ badges: said, needs: now, whole }) {
+    draw({ badges: said, needs: now, known = true }) {
       needs = now;
       const was = kept();
-      const seen = whole ? foldSeen(was, now) : was;
+      const seen = known ? foldSeen(was, now) : was;
       if (seen !== was) keep(seen);
       const drawn = JSON.stringify(said);
       if (badges.dataset.drawn !== drawn) { // the badges, OrthoStudio XP's pills (drawPill)
@@ -980,19 +983,23 @@ async function regionAct(path, method = "POST", body = undefined) {
  * listed to download. */
 const updateReady = (r) => Boolean(r.waiting) && !((r.changed_bytes || 0) > 0);
 
-/** An install under way, its bar running: not done, waiting whole for Live's next start, failed
- * or stopped (osxpregions.py Installer's phases). */
-const installRunning = (install) => Boolean(install) && !["done", "waiting", "failed", "cancelled"].includes(install.phase);
+/** An install that ended short: failed or stopped (osxpregions.py Installer's phases). */
+const installStopped = (install) => ["failed", "cancelled"].includes(install?.phase);
+
+/** An install under way, its bar running: not done, waiting whole for Live's next start, nor
+ * stopped (installStopped). */
+const installRunning = (install) =>
+  Boolean(install) && !installStopped(install) && !["done", "waiting"].includes(install.phase);
 
 /**
  * What the regions' title says beside it, folded or open, and what needs the pilot there, a word
  * each, which opens the list by itself (foldOpen): none installed, an update to download or one
  * ready for Live's next start, the last start that could not put it in place, an install running
- * or stopped, the list of regions not come. Every word known once the host's list came (`whole`,
+ * or stopped, the list of regions not come. Every word known once the host's list came (`known`,
  * foldSection: its regions say what they download), the updates said by it alone. Its badges: how
  * many regions are installed, then how many updates, in the accent's colour, the warning's for
  * one held back; the first in the warning's colour where the list did not come or an install
- * failed. A region read as its row reads it (regionRow). {badges: [{text, kind}], needs, whole}
+ * failed. A region read as its row reads it (regionRow). {badges: [{text, kind}], needs, known}
  */
 export function regionsSummary(regions) {
   const mine = new Set((regions?.ours || []).map((r) => r.id));
@@ -1015,7 +1022,7 @@ export function regionsSummary(regions) {
     }
   }
   if (installRunning(install)) needs.push(`install:${install.region}`);
-  else if (["failed", "cancelled"].includes(install?.phase)) needs.push(`${install.phase}:${install.region}`);
+  else if (installStopped(install)) needs.push(`${install.phase}:${install.region}`);
   const n = mine.size;
   const installed = n === 0 ? t("regions.badge_none") : n === 1 ? t("regions.badge_one")
     : t("regions.badge_installed", { n: number(n) });
@@ -1024,8 +1031,8 @@ export function regionsSummary(regions) {
     const text = updates === 1 ? t("regions.badge_update") : t("regions.badge_updates", { n: number(updates) });
     badges.push({ text, kind: held ? "warn" : "running" });
   }
-  const whole = (regions?.list || []).some((r) => r.download !== undefined);
-  return { badges, needs, whole };
+  const known = (regions?.list || []).some((r) => r.download !== undefined);
+  return { badges, needs, known };
 }
 
 /** What a region's row shows: its name and size, its state, its buttons, and the line under it
@@ -1074,7 +1081,7 @@ function regionRow(id, mine, r, install, running, idle, xplane, folder) {
   // or its update waiting whole. None once it is done, the row saying « Installed » (a line « used
   // from the next start » was read as « restart the app », 2026-11-18), nor while it waits: the
   // disk says that
-  const line = busy && (running || ["failed", "cancelled"].includes(install.phase)) ? { install: true }
+  const line = busy && (running || installStopped(install)) ? { install: true }
     : ready ? { text: [t("regions.waiting"), ...(r.held ? [t("regions.held", { why: r.held })] : [])].join(" "),
       warn: Boolean(r.held) } : null;
   // its kept old mesh, under it: its size and its own Delete, which deletes it alone, by the rule
@@ -2434,6 +2441,7 @@ function languageChanged() {
   tellLanguage();
   liveMap?.languageChanged();
   applyStatic(document);
+  showFolds(); // their chevrons, which applyStatic named « show » again
   measureMapTop(); // the bar above may wrap otherwise in the new language
   zoomRefresh?.();
   textSizeRefresh?.();
@@ -2479,7 +2487,7 @@ function boot() {
   applyStatic(document);
   folds.regions = foldSection("regions", () => ({ show: t("regions.fold_show"), hide: t("regions.fold_hide") }));
   folds.others = foldSection("others", () => ({ show: t("other_mesh.fold_show"), hide: t("other_mesh.fold_hide") }));
-  loadShared().then(() => Object.values(folds).forEach((fold) => fold.show())); // as the viewer left them
+  loadShared().then(showFolds); // as the viewer left them
   renderZooms();
   drawMemory();
   trackStatusbarHeight();

@@ -1782,8 +1782,8 @@ def test_the_two_long_lists_fold_and_open_by_themselves() -> None:
     default; open by themselves while something needs the pilot, said in a word each: no region
     installed, an update to download or ready, one held back, an install running or stopped, the
     list not come; a folder not there or with no mesh, a pack left aside he may have meant; the
-    badge in the warning's colour for a problem. A button refused is none: said under the list,
-    open since it holds the buttons. Once he opened or folded a list, as he left it, unless
+    badge in the warning's colour for a problem. A button refused is none: said under the field,
+    the list open since it holds the buttons. Once he opened or folded a list, as he left it, unless
     something needs him that did not as he chose; what needed him then is cut, once every word is
     known (the host's list come), to what still does, so that a need gone then back opens it
     again."""
@@ -1835,34 +1835,34 @@ def test_the_two_long_lists_fold_and_open_by_themselves() -> None:
     said = _folds(regions, others, kept, cut)
     en = said["en"]
     assert en["regions"] == [
-        {"badges": [{"text": "6 installed", "kind": None}], "needs": [], "whole": True},
+        {"badges": [{"text": "6 installed", "kind": None}], "needs": [], "known": True},
         {
             "badges": [
                 {"text": "6 installed", "kind": None},
                 {"text": "1 update", "kind": "running"},
             ],
             "needs": ["update:eur"],
-            "whole": True,
+            "known": True,
         },
-        {  # the disk's word, the host's list not come: what needs him not known whole
+        {  # the disk's word, the host's list not come: what needs him not all known
             "badges": [
                 {"text": "1 installed", "kind": None},
                 {"text": "1 update", "kind": "warn"},
             ],
             "needs": ["ready:eur", "held:eur"],
-            "whole": False,
+            "known": False,
         },
-        {"badges": [{"text": "None installed", "kind": None}], "needs": ["none"], "whole": False},
-        {"badges": [{"text": "2 installed", "kind": "warn"}], "needs": ["list"], "whole": False},
+        {"badges": [{"text": "None installed", "kind": None}], "needs": ["none"], "known": False},
+        {"badges": [{"text": "2 installed", "kind": "warn"}], "needs": ["list"], "known": False},
         {
             "badges": [{"text": "None installed", "kind": None}],
             "needs": ["none", "install:afr"],
-            "whole": False,
+            "known": False,
         },
         {
             "badges": [{"text": "None installed", "kind": "warn"}],
             "needs": ["none", "failed:afr"],
-            "whole": False,
+            "known": False,
         },
         {
             "badges": [
@@ -1870,27 +1870,25 @@ def test_the_two_long_lists_fold_and_open_by_themselves() -> None:
                 {"text": "2 updates", "kind": "running"},
             ],
             "needs": ["update:eur", "update:na"],
-            "whole": True,
+            "known": True,
         },
-        {"badges": [{"text": "6 installed", "kind": None}], "needs": [], "whole": True},
+        {"badges": [{"text": "6 installed", "kind": None}], "needs": [], "known": True},
         {
             "badges": [{"text": "6 installed", "kind": None}],
             "needs": ["cancelled:afr"],
-            "whole": True,
+            "known": True,
         },
     ]
-    assert en["others"] == [  # every word known at each status
-        {"badges": [], "needs": [], "whole": True},
-        {"badges": [{"text": "1 folder · 1 in front", "kind": None}], "needs": [], "whole": True},
+    assert en["others"] == [  # every word known at each status: `known` left to its default
+        {"badges": [], "needs": []},
+        {"badges": [{"text": "1 folder · 1 in front", "kind": None}], "needs": []},
         {
             "badges": [{"text": "2 folders · 1 in front", "kind": "warn"}],
             "needs": ["gone:/Gone"],
-            "whole": True,
         },
         {
             "badges": [{"text": "2 folders · 0 in front", "kind": None}],
             "needs": ["refused:/O4XP"],
-            "whole": True,
         },
     ]
     fr = said["fr"]
@@ -1911,31 +1909,30 @@ def test_the_two_long_lists_fold_and_open_by_themselves() -> None:
 
 def test_the_two_long_lists_fold_under_their_titles() -> None:
     """Each list's title line holds its badges and the legend's chevron, a real button saying
-    whether it is open, folded in the page as it comes; the regions' body holds their list, the
+    whether it is open, folded in the page as it comes and named « show » until legend.js names
+    it (applyStatic, in the page's language); the regions' body holds their list, the
     one of other meshes its folders, each folding on its own. « Mesh: New / Old » is under the
     regions' list, never folded with it: a pilot flying the old mesh sees it at once (docs/live.md,
     Keeping the old mesh)."""
     html = (UI_DIR / "index.html").read_text(encoding="utf-8")
-    for name, inside in (("regions", 'id="regions-ours"'), ("others", 'id="other-meshes"')):
+    lists = (("regions", "regions", "regions-ours"), ("others", "other_mesh", "other-meshes"))
+    for name, words, inside in lists:
         head = html.index(f'id="{name}-head"')
-        button = (
+        button = html.index(
             f'<button type="button" class="legend-fold is-closed" id="{name}-fold" '
-            f'aria-expanded="false" aria-controls="{name}-body"></button>'
+            f'aria-expanded="false" aria-controls="{name}-body"'
         )
-        assert head < html.index(f'id="{name}-badges"') < html.index(button)
+        assert head < html.index(f'id="{name}-badges"') < button
+        show = f'data-i18n-title="{words}.fold_show" data-i18n-aria-label="{words}.fold_show"'
+        assert show in html[button : html.index("</button>", button)]  # named before legend.js
         body = html.index(f'<div class="fold-body is-folded" id="{name}-body">')
-        assert html.index(button) < body < html.index(inside)
+        assert button < body < html.index(f'id="{inside}"')
     body = html.index('<div class="fold-body is-folded" id="regions-body">')
-    depth, at = 0, body
-    while True:  # where the regions' body closes
-        opens, closes = html.find("<div", at), html.find("</div>", at)
-        depth, at = (
-            (depth + 1, opens + 4) if opens != -1 and opens < closes else (depth - 1, closes + 6)
-        )
-        if depth == 0:
-            break
     choice = html.index('<fieldset class="sub-question" id="mesh-choice" hidden>')
-    assert html.index("regions.ours_source") < at < choice < html.index('id="others-head"')
+    between = html[body:choice]
+    assert "regions.ours_source" in between
+    assert between.count("<div") == between.count("</div>"), "the regions' body closed before"
+    assert choice < html.index('id="others-head"')
     assert html.index('id="q-regions"') < choice  # the mesh's card, between its two lists
     title = '<span data-i18n="regions.title">The mesh, by region</span>'
     assert title in html  # applyStatic writes the title's words alone, not over its chevron
