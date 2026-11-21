@@ -192,11 +192,11 @@ function streamersRunning(given) {
   return text[0].toUpperCase() + text.slice(1);
 }
 
-/** A text saying there is no mesh: the folder of another tool's mesh gone when it is, as the
+/** A text saying there is no mesh: a folder of another tool's mesh gone when one is, as the
  *  start says it; another tool's mesh offered only when none is chosen. */
 function noMesh(key, checks) {
-  const other = checks?.other_mesh;
-  if (other && !other.there && key === "checks.mesh_missing") return "checks.other_mesh_gone";
+  const other = checks?.other_meshes;
+  if (other?.folders.some((f) => !f.there) && key === "checks.mesh_missing") return "checks.other_mesh_gone";
   return other ? key : `${key}_other`;
 }
 
@@ -499,9 +499,10 @@ function drawChecks(status) {
   else if (c.plugin === "to_build") add("info", t("checks.plugin_build"));
   else add("warn", t("checks.plugin_missing"));
   if (status.state === "idle" && c.installed && !c.xplane_running) add("warn", t("checks.left_installed"));
-  // the folder of another tool's mesh also checked in X-Plane above Live: X-Plane draws it there
-  const drawn = c.other_mesh?.in_xplane || [];
-  if (drawn.length) add("warn", t("checks.other_mesh_in_xplane", { packs: drawn.join(", ") }));
+  // a folder of another tool's mesh also checked in X-Plane above Live: X-Plane draws it there
+  for (const folder of c.other_meshes?.folders || []) {
+    if (folder.in_xplane.length) add("warn", t("checks.other_mesh_in_xplane", { packs: folder.in_xplane.join(", ") }));
+  }
 
   const key = JSON.stringify(items);
   if (key === checksDrawn) return; // drawn again only when they change: a button keeps its click
@@ -565,68 +566,148 @@ function drawFolder(status) {
   const path = status.checks.folder;
   pathLine($("folder-now"), t("folder.now", { path }), path, status.platform);
   $("set-folder").placeholder = status.checks.folder_default;
-  drawOtherMesh(status.checks.other_mesh);
+  drawOtherMeshes(status.checks.other_meshes);
 }
 
-/** What the folder of another tool's mesh gives Live: its meshes, its overlays, those left aside
- *  and why (orthostudio.live.scenery.other_mesh); nothing when none is chosen. Its squares all
- *  behind Live's, the normal case of a mesh put in front of Live square by square, said plainly:
- *  a warning only for a folder Live cannot use. */
-function drawOtherMesh(other) {
-  const line = $("other-mesh-found");
-  line.hidden = !other;
-  drawOtherFront(other);
-  if (!other) return;
-  const behind = other.there && !other.meshes.length && other.refused.length
-    && other.refused.every((r) => r.why === "already");
-  line.classList.toggle("is-warn", !behind && (!other.there || !other.meshes.length));
-  if (!other.there) {
-    line.textContent = t("other_mesh.gone");
-    return;
+/** What a folder of another tool's mesh gives Live (orthostudio.live.scenery.other_mesh_said),
+ *  its line in the list: how many squares and how many it gives in front of Live, then its
+ *  meshes, its roads, those left aside and why; or that it is not there, or gives no mesh. Its
+ *  squares all behind Live's, the normal case of a mesh put in front of Live square by square,
+ *  said plainly: a warning only for a folder Live cannot use. [text, warn] */
+export function otherMeshSaid(f) {
+  if (!f.there) return [t("other_mesh.gone"), true];
+  const behind = !f.meshes.length && f.refused.length && f.refused.every((r) => r.why === "already");
+  const front = number(f.front.length);
+  const counted = f.squares === 1 ? t("other_mesh.squares_one", { front }) : t("other_mesh.squares", { n: number(f.squares), front });
+  const said = f.squares ? [counted] : [];
+  if (behind) said.push(t("other_mesh.behind"));
+  else {
+    const used = f.next_start ? "other_mesh.meshes_next" : "other_mesh.meshes";
+    said.push(f.meshes.length ? t(used, { names: f.meshes.join(", ") }) : t("other_mesh.none"));
+    if (f.overlays.length) said.push(t("other_mesh.overlays", { names: f.overlays.join(", ") }));
+    else if (f.meshes.length) said.push(t("other_mesh.no_roads"));
   }
-  if (behind) {
-    line.textContent = t("other_mesh.behind");
-    return;
-  }
-  const used = other.next_start ? "other_mesh.meshes_next" : "other_mesh.meshes";
-  const said = [other.meshes.length ? t(used, { names: other.meshes.join(", ") }) : t("other_mesh.none")];
-  if (other.overlays.length) said.push(t("other_mesh.overlays", { names: other.overlays.join(", ") }));
-  else if (other.meshes.length) said.push(t("other_mesh.no_roads"));
-  if (other.refused.length) {
+  if (f.refused.length && !behind) {
     // a few, the rest counted: X-Plane's folder chosen lists every tile of Custom Scenery
-    const shown = other.refused.slice(0, 5);
+    const shown = f.refused.slice(0, 5);
     const names = shown.map((r) => `${r.name} (${t(`other_mesh.why_${r.why}`)})`).join(", ");
-    const more = other.refused.length - shown.length;
+    const more = f.refused.length - shown.length;
     said.push(more ? t("other_mesh.refused_more", { names, count: more }) : t("other_mesh.refused", { names }));
   }
-  line.textContent = said.join(" ");
+  return [said.join(" "), !behind && !f.meshes.length];
 }
 
-/** The squares of another tool's mesh put in front of Live on its map: how many, and whether they
- *  wait for Live's next start (orthostudio/live/control.py _other_mesh_said); how to put one there
- *  while none is. Nothing while the folder gives the map no square (its count, the engine's). */
+/** The folders of other tools' meshes, top first, the first that has a square giving it
+ *  (orthostudio/live/control.py _other_meshes_said): a line each, its name, its path, what it
+ *  gives, and its buttons, each saved by the engine in one place (otherAct); under them, how to
+ *  put a square in front of Live on its map. Drawn again only when they change: a button keeps
+ *  its click. */
+function drawOtherMeshes(other) {
+  const list = $("other-meshes");
+  const folders = other?.folders || [];
+  const key = JSON.stringify([language(), folders]);
+  drawOtherFront(other);
+  if (list.dataset.drawn === key) return;
+  list.dataset.drawn = key;
+  list.hidden = !folders.length;
+  list.replaceChildren(...folders.map((f, i) => {
+    const li = document.createElement("li");
+    li.className = "region other-mesh";
+    const head = document.createElement("div");
+    head.className = "region-head";
+    const label = document.createElement("div");
+    label.className = "region-label";
+    const name = document.createElement("span");
+    name.className = "region-name";
+    name.textContent = f.name;
+    label.append(name);
+    const path = document.createElement("p"); // under its name and its buttons, the row's width
+    path.className = "region-state";
+    path.textContent = f.folder;
+    const actions = document.createElement("div");
+    actions.className = "region-actions";
+    const offered = f.there && f.squares > 0;
+    const button = (text, act, body, { disabled = false, title = null } = {}) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "btn";
+      b.textContent = text;
+      b.disabled = disabled;
+      if (title) {
+        b.title = title;
+        b.setAttribute("aria-label", title);
+      }
+      b.addEventListener("click", () => otherAct(act, { folder: f.folder, ...body }));
+      return b;
+    };
+    actions.append(
+      button(t("other_mesh.all_front"), "all", { front: true }, { disabled: !offered }),
+      button(t("other_mesh.all_behind"), "all", { front: false }, { disabled: !offered }),
+      button(t("other_mesh.remove"), "remove", {}, { title: t("other_mesh.remove_help") }),
+      button("↑", "move", { up: true }, { disabled: i === 0, title: t("other_mesh.up") }),
+      button("↓", "move", { up: false }, { disabled: i === folders.length - 1, title: t("other_mesh.down") }),
+    );
+    head.append(label, actions);
+    const [text, warn] = otherMeshSaid(f);
+    const line = document.createElement("p");
+    line.className = warn ? "region-state is-warn" : "region-state";
+    line.textContent = text;
+    li.append(head, path, line);
+    return li;
+  }));
+}
+
+/** Under the list: how to put a square of these meshes in front of Live on its map, and whether
+ *  the squares in front wait for Live's next start; nothing while no folder gives the map a
+ *  square (its count, the engine's). */
 function drawOtherFront(other) {
   const line = $("other-mesh-front");
-  const offered = Boolean(other?.there && other.squares > 0);
+  const offered = Boolean(other?.folders.some((f) => f.there && f.squares > 0));
   line.hidden = !offered;
   if (!offered) return;
-  const n = other.front.length;
-  const said = [n === 0 ? t("other_mesh.front_none")
-    : n === 1 ? t("other_mesh.front_one") : t("other_mesh.front", { n: number(n) })];
+  const said = [t("other_mesh.front_how")];
   if (other.front_next) said.push(t("other_mesh.front_next"));
   line.textContent = said.join(" ");
 }
 
+/** A button of the folders of other tools' meshes, or a folder added: saved by the engine, in one
+ *  place each (orthostudio/live/api.py other_changed), which answers the list and the squares in
+ *  front as saved; the map and the list asked anew. False when refused, said under the list. */
+async function otherAct(act, body) {
+  const error = $("other-mesh-error");
+  error.hidden = true;
+  try {
+    const got = await api(`other/${act}`, { method: "POST", body });
+    for (const settings of [saved, last?.settings]) if (settings) Object.assign(settings, got);
+  } catch (e) {
+    error.hidden = false;
+    error.textContent = e.status === 409 && act === "add" ? t("other_mesh.already") : e.message;
+    return false;
+  }
+  liveMap?.otherChanged();
+  try {
+    draw(await api("status"));
+  } catch (_e) {
+    // the loop says it
+  }
+  return true;
+}
+
+/** A folder typed (Enter) or chosen (Choose…): added at the bottom of the list, the field emptied
+ *  unless something else was typed in it meanwhile. */
+async function addOtherMesh(folder) {
+  const field = $("set-other-mesh");
+  if (folder.trim() && (await otherAct("add", { folder })) && field.value === folder) field.value = "";
+}
+
 /** A square of another tool's mesh clicked on the map: put in front of Live, or back behind it,
  *  saved at once by the engine, that square alone (orthostudio/live/settings.py put_in_front), so
- *  that a second click before the first one's answer keeps both; the map and the line under the
- *  setting say it. */
+ *  that a second click before the first one's answer keeps both; the map and the list say it. */
 async function toggleFront({ lat, lon, front }) {
   const tile = tileName(lat, lon);
   try {
     const got = await api("map/other", { method: "POST", body: { square: tile, front: !front } });
-    if (saved) saved.other_mesh_front = got.other_mesh_front;
-    if (last?.settings) last.settings.other_mesh_front = got.other_mesh_front;
+    for (const settings of [saved, last?.settings]) if (settings) Object.assign(settings, got);
     toast(t(front ? "map.other_put_behind" : "map.other_put_front", { tile }));
   } catch (error) {
     toast(error.message);
@@ -1454,7 +1535,6 @@ function fillSettings(settings) {
   fillDecal(decalList, settings.decal);
   $("set-disk").value = String(settings.disk_gb);
   $("set-folder").value = settings.folder || "";
-  $("set-other-mesh").value = settings.other_mesh || "";
   $("set-simbrief").value = settings.simbrief_user || "";
   for (const input of document.querySelectorAll('input[name="app_home"]')) {
     input.checked = input.value === (settings.app_home || "ask");
@@ -1500,7 +1580,6 @@ function formSettings() {
   return {
     disk_gb: Number($("set-disk").value),
     folder: $("set-folder").value.trim(),
-    other_mesh: $("set-other-mesh").value.trim(),
     simbrief_user: $("set-simbrief").value.trim(),
     app_home: document.querySelector('input[name="app_home"]:checked')?.value || saved?.app_home || "ask",
     overlays: document.querySelector('input[name="overlays"]:checked')?.value || saved?.overlays || "auto",
@@ -1555,7 +1634,6 @@ async function saveSettings(event) {
     await saveXplaneFolder();
     saved = await api("settings", { method: "PUT", body });
     fillSettings(saved);
-    liveMap?.otherChanged(); // another folder of another tool's mesh: its squares, none in front
     $("settings-status").textContent = t("settings.saved");
     // under the floor of the zooms chosen: Live raised it, and says so beside the field
     $("disk-raised").hidden = !(saved.disk_gb > body.disk_gb);
@@ -1574,9 +1652,11 @@ async function chooseFolder(field, prompt, now) {
   try {
     const got = await api("choose-folder", { method: "POST", body: { prompt, start } });
     if (got.path) field.value = got.path;
+    return got.path;
   } catch (error) {
     $("settings-error").hidden = false;
     $("settings-error").textContent = error.message;
+    return null;
   }
 }
 
@@ -2234,8 +2314,18 @@ function boot() {
     drawSimbrief();
   });
   $("folder-choose").addEventListener("click", () => chooseFolder($("set-folder"), t("folder.prompt"), last?.checks.folder));
-  $("other-mesh-choose").addEventListener("click", () =>
-    chooseFolder($("set-other-mesh"), t("other_mesh.prompt"), last?.checks.other_mesh?.folder));
+  // a folder of another tool's mesh added at the bottom of the list, typed then Enter (not the
+  // form's Save), or chosen in the system's dialog
+  $("set-other-mesh").addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    addOtherMesh($("set-other-mesh").value);
+  });
+  $("other-mesh-choose").addEventListener("click", async () => {
+    const folders = last?.checks.other_meshes?.folders || [];
+    const chosen = await chooseFolder($("set-other-mesh"), t("other_mesh.prompt"), folders[folders.length - 1]?.folder);
+    if (chosen) addOtherMesh(chosen);
+  });
   $("xplane-choose").addEventListener("click", () => chooseFolder($("set-xplane"), t("xplane.prompt"), last?.checks.xplane));
   $("delete-btn").addEventListener("click", openDelete);
   $("delete-here").addEventListener("click", openDelete);

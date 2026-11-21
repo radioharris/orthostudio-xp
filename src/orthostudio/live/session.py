@@ -35,7 +35,7 @@ from orthostudio.live.pack import (
 )
 from orthostudio.live.rings import DEFAULT_MARGIN
 from orthostudio.live.scenery import (
-    NO_OTHER_MESH,
+    NO_OTHER_MESHES,
     Meshes,
     OtherMesh,
     default_meshes,
@@ -45,10 +45,8 @@ from orthostudio.live.scenery import (
     list_live,
     ortho_streamers,
     osxp_regions,
-    other_mesh_folder,
     other_mesh_found,
     other_mesh_said,
-    other_mesh_there,
     quality_said,
     uninstall_link,
     unlist_live,
@@ -342,21 +340,27 @@ def prepare(options: Options, log: Log) -> Prepared:
         osxpregions.settle(live_root(), log, swap=not xplane_running())
     except OSError as e:  # the regions as they are: the checks below say what is missing
         log(f"Live's regions could not be checked: {e}")
-    # another tool's mesh as it is now, once for the start: its mesh and its roads go together
-    other = NO_OTHER_MESH if options.source else other_mesh_found(xp_dir, live_root(), fresh=True)
+    # the other tools' meshes as they are now, once for the start: their meshes and their roads go
+    # together
+    other = NO_OTHER_MESHES if options.source else other_mesh_found(xp_dir, live_root(), fresh=True)
     sources, front = (
         Meshes([options.source], {}) if options.source else default_meshes(xp_dir, other=other)
     )
     from orthostudio.live.names import terrain_folder
 
-    chosen = None if options.source else other_mesh_folder()
-    if chosen is not None:  # said at each start: its disk unplugged went unnoticed otherwise
-        log(_other_said(chosen, other))
-    if not sources and chosen is not None and not other_mesh_there(chosen):
+    for one in other.folders:  # said at each start: a disk unplugged went unnoticed otherwise
+        log(_other_said(one.folder, one.found))
+    unplugged = [str(one.folder) for one in other.folders if not one.there]
+    if not sources and unplugged:
+        which = (
+            f"the folder of another tool's mesh, {unplugged[0]}, is"
+            if len(unplugged) == 1
+            else f"the folders of other tools' meshes, {', '.join(unplugged)}, are"
+        )
         raise RefusedError(
-            f"no mesh: the folder of another tool's mesh, {chosen}, is not there (its disk "
-            "unplugged?), and no region is installed. Plug it in, or install the region you fly "
-            "over in the Live window (Settings, first question)"
+            f"no mesh: {which} not there (its disk unplugged?), and no region is installed. Plug "
+            "it in, or install the region you fly over in the Live window (Settings, first "
+            "question)"
         )
     if not sources or not all(terrain_folder(s).is_dir() for s in sources):
         # the files the DSFs name come from the regions while Live streams, round the aircraft
@@ -371,11 +375,7 @@ def prepare(options: Options, log: Log) -> Prepared:
             )
             + "in the Live window (Settings, first question) or with "
             "`python -m orthostudio.live regions install <region>`"
-            + (
-                ""
-                if gone or chosen is not None
-                else "; or choose another tool's mesh in its Settings"
-            )
+            + ("" if gone or other.folders else "; or choose another tool's mesh in its Settings")
         )
     clock.done("checks")
     fix = None
@@ -408,12 +408,13 @@ def prepare(options: Options, log: Log) -> Prepared:
         except OsxpError as e:
             if e.code != "XP_LINK_FAILED" or not other.meshes or sys.platform != "win32":
                 raise
-            # its error named Live's pack, not the folder the pilot chose, the likeliest cause:
+            # its error named Live's pack, not the folders the pilot chose, the likeliest cause:
             # Windows' junctions reach no network drive
+            used = ", ".join(str(one.folder) for one in other.folders if one.found.meshes)
             raise RefusedError(
-                f"{e.message} If it is a region of the folder of another tool's mesh, {chosen}, "
-                "on a network drive: Windows links it only with Developer Mode. Turn it on, or "
-                "copy the mesh onto a disk of this computer"
+                f"{e.message} If it is a region of another tool's mesh, in {used}, on a network "
+                "drive: Windows links it only with Developer Mode. Turn it on, or copy the mesh "
+                "onto a disk of this computer"
             ) from e
         set_decal(pack_dir, options.decal, log=log, xplane_running=xplane_running)
         set_night(pack_dir, options.night, log=log, xplane_running=xplane_running)
@@ -503,7 +504,7 @@ def prepare(options: Options, log: Log) -> Prepared:
 
 
 def _other_said(chosen: Path, other: OtherMesh) -> str:
-    """The start's line on the folder of another tool's mesh, what its window says
+    """The start's line on a folder of another tool's mesh, what its window says
     (:func:`other_mesh_said`) in words."""
     said = other_mesh_said(chosen, other)
     if not said["there"]:

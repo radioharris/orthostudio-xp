@@ -23,11 +23,17 @@ can include as it is the day Live comes into its window (``app.include_router``)
   window to the front, or the page opened again in the browser (``orthostudio.live.app_start``);
 - ``GET``/``PUT /api/live/settings``: the settings of ``live.toml`` (:mod:`.settings`); soft
   banks saved start the download of the installed regions' river masks
-  (:meth:`LiveControl.rivers_chosen`); the squares in front of Live kept as
-  :func:`~orthostudio.live.scenery.front_saved` keeps them;
-- ``GET /api/live/map/other``: the squares of the folder of another tool's mesh, each in front of
-  Live or not, which the map draws; ``POST`` ``{"square": "+45+006", "front": bool}``: the one its
-  click puts in front or back (:func:`~orthostudio.live.settings.put_in_front`);
+  (:meth:`LiveControl.rivers_chosen`);
+- ``GET /api/live/map/other``: the squares of the folders of other tools' meshes, each in front of
+  Live or not, with the folder that gives it, which the map draws; ``POST`` ``{"square":
+  "+45+006", "front": bool}``: the one its click puts in front or back
+  (:func:`~orthostudio.live.settings.put_in_front`);
+- ``POST /api/live/other/add`` ``{"folder"}``: a folder of another tool's mesh added at the
+  bottom of the list (409 when the list has it already); ``POST /api/live/other/move``
+  ``{"folder", "up": bool}``: moved one line; ``POST /api/live/other/remove`` ``{"folder"}``:
+  forgotten, its files left; ``POST /api/live/other/all`` ``{"folder", "front": bool}``: every
+  square of it put in front of Live or back (409 when it is not there). Each answers the list and
+  the squares in front, as saved (:mod:`.settings`, one function each);
 - ``GET``/``PUT /api/live/xplane-folder`` ``{"path"}``: the X-Plane folder named in OrthoStudio
   XP's settings, the same for Build and Live, with the other X-Planes of the computer;
 - ``GET /api/live/regions``: OrthoStudio XP's regions (:meth:`LiveControl.regions`);
@@ -58,13 +64,17 @@ from orthostudio.errors import OsxpError
 from orthostudio.live import session
 from orthostudio.live.control import LiveControl, Refusal
 from orthostudio.live.pack import folder_problem
-from orthostudio.live.scenery import front_saved, move_live
+from orthostudio.live.scenery import folder_squares, move_live
 from orthostudio.live.settings import (
     SAVING,
+    AlreadyListedError,
     LiveSettings,
     SettingsFileError,
+    add_other_mesh,
     load_settings,
+    move_other_mesh,
     put_in_front,
+    remove_other_mesh,
     save_settings,
 )
 
@@ -107,6 +117,18 @@ class PrepareBody(BaseModel):
 class FrontBody(BaseModel):
     square: str = Field(max_length=16)  # "+45+006"
     front: bool  # in front of Live, or back behind it
+
+
+class OtherFolderBody(BaseModel):
+    folder: str = Field(max_length=1024)  # as the list names it, or a folder to add
+
+
+class OtherMoveBody(OtherFolderBody):
+    up: bool  # one line up, or down
+
+
+class OtherAllBody(OtherFolderBody):
+    front: bool  # every square of it in front of Live, or back behind it
 
 
 class InstallBody(BaseModel):
@@ -332,18 +354,57 @@ def live_router(
 
     @router.get("/map/other")
     def map_other() -> list[dict[str, Any]]:
-        """The squares of the folder of another tool's mesh, in front of Live or not."""
+        """The squares of the folders of other tools' meshes, in front of Live or not, each with
+        the folder that gives it."""
         return control.other_squares()
+
+    def other_changed(change: Callable[[], Any]) -> dict[str, Any]:
+        """A change of the folders of other tools' meshes, or of the squares in front of Live,
+        saved by its one function in :mod:`.settings`: the list and the squares as saved, the
+        checks said anew at the next status. 409 for a folder the list has already, 422 for a
+        value refused, 500 when the settings cannot be saved."""
+        try:
+            change()
+        except AlreadyListedError as e:
+            raise HTTPException(409, str(e)) from e
+        except ValidationError as e:  # a square's name refused: its own words
+            raise HTTPException(422, e.errors()[0].get("msg", "invalid")) from e
+        except ValueError as e:
+            raise HTTPException(422, str(e)) from e
+        except (OSError, SettingsFileError) as e:
+            raise HTTPException(500, f"the settings could not be saved: {e}") from e
+        control.checks_changed()
+        saved = load_settings()
+        return {"other_meshes": saved.other_meshes, "other_mesh_front": saved.other_mesh_front}
 
     @router.post("/map/other")
     def map_other_front(body: FrontBody) -> dict[str, Any]:
-        """A square of that folder clicked on the map: put in front of Live, or back behind it."""
-        try:
-            return {"other_mesh_front": put_in_front(body.square, body.front)}
-        except ValueError as e:
-            raise HTTPException(422, f"square: {body.square!r} is not a square's name") from e
-        except (OSError, SettingsFileError) as e:
-            raise HTTPException(500, f"the settings could not be saved: {e}") from e
+        """A square of those folders clicked on the map: put in front of Live, or back."""
+        return other_changed(lambda: put_in_front([body.square], body.front))
+
+    @router.post("/other/add")
+    def other_add(body: OtherFolderBody) -> dict[str, Any]:
+        """A folder typed or chosen: added at the bottom of the list."""
+        return other_changed(lambda: add_other_mesh(body.folder))
+
+    @router.post("/other/move")
+    def other_move(body: OtherMoveBody) -> dict[str, Any]:
+        """A folder's ↑ or ↓: moved one line."""
+        return other_changed(lambda: move_other_mesh(body.folder, body.up))
+
+    @router.post("/other/remove")
+    def other_remove(body: OtherFolderBody) -> dict[str, Any]:
+        """A folder's Remove: forgotten, its files left as they are."""
+        return other_changed(lambda: remove_other_mesh(body.folder, folder_squares))
+
+    @router.post("/other/all")
+    def other_all(body: OtherAllBody) -> dict[str, Any]:
+        """A folder's « All in front » or « All behind »: every square of it in front of Live, or
+        back behind it."""
+        squares = folder_squares(body.folder)
+        if squares is None:
+            raise HTTPException(409, f"{body.folder} is not there: is its disk unplugged?")
+        return other_changed(lambda: put_in_front(squares, body.front))
 
     @router.get("/map/regions")
     def map_regions() -> dict[str, Any]:
@@ -435,7 +496,7 @@ def live_router(
 
     @router.put("/settings")
     def put_settings(body: dict[str, Any] = Body(...)) -> dict[str, Any]:  # noqa: B008
-        with SAVING:  # a click on the map meanwhile kept (put_in_front)
+        with SAVING:  # a click or a folder's button meanwhile kept (settings._saved_with)
             before = load_settings()
             try:
                 settings = LiveSettings.model_validate({**before.model_dump(), **body})
@@ -447,7 +508,6 @@ def live_router(
                 problem = folder_problem(Path(settings.folder), session.xplane_or_none())
                 if problem is not None:
                     raise HTTPException(422, f"folder: {problem}")
-            settings = front_saved(settings, before)
             try:
                 save_settings(settings)
             except (OSError, SettingsFileError) as e:

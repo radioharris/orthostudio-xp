@@ -13,13 +13,13 @@ there, and a start there waits for none of them.
 
 from __future__ import annotations
 
-import os
 from collections.abc import Collection, Iterator
 from pathlib import Path
 
 from orthostudio.install.dsf_head import dsf_properties
 from orthostudio.install.scenery_packs import SceneryPackEntry, SceneryPacks
 
+from .filesystem import real_path
 from .geo import dsf_tile_of
 from .scenery import _ini, place_line
 
@@ -107,11 +107,6 @@ def listed_above_live(
     it) whose folder is one of ``packs``, each line followed to its real folder, whatever its name
     (a link, a copy's name): the meshes of another tool's folder that X-Plane draws there itself,
     without photos."""
-    wanted = {_real(p) for p in packs}
+    wanted = {real_path(p) for p in packs}
     lines = lines_above(xplane, below, own_tiles)
-    return [entry.name for entry, folder in lines if _real(folder) in wanted]
-
-
-def _real(path: Path) -> str:
-    """A folder as the disk has it, its links followed, as a path to compare."""
-    return os.path.normcase(os.path.realpath(path))
+    return [entry.name for entry, folder in lines if real_path(folder) in wanted]

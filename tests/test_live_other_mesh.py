@@ -1,9 +1,9 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""Another tool's mesh, from a folder chosen in Live's Settings: a region copied by another
-streamer, AutoOrtho's moved elsewhere. Taken by what its packs hold, whatever their names, as
-X-Plane tells ground from overlays: after Live's own mesh and AutoOrtho's in X-Plane, its roads
-the one overlay pack that goes with it."""
+"""Other tools' meshes, from folders chosen in Live's Settings: a region copied by another
+streamer, AutoOrtho's moved elsewhere. Taken by what their packs hold, whatever their names, as
+X-Plane tells ground from overlays: after Live's own mesh and AutoOrtho's in X-Plane, each
+folder's roads the one overlay pack that goes with its meshes."""
 
 from __future__ import annotations
 
@@ -19,6 +19,7 @@ from orthostudio.errors import OsxpError
 from orthostudio.live import control, overlays, region, scenery, session
 from orthostudio.live.scenery import (
     NO_OTHER_MESH,
+    NO_OTHER_MESHES,
     Meshes,
     base_sources,
     default_meshes,
@@ -65,7 +66,7 @@ def roads(pack: Path, squares=(A,), agent: str | None = XPLANE_MADE) -> Path:
 @pytest.fixture(autouse=True)
 def looked_at_anew(monkeypatch: pytest.MonkeyPatch) -> None:
     """Each test's folder looked at, not one kept from another test."""
-    monkeypatch.setattr(scenery, "_found", (0.0, (), NO_OTHER_MESH))
+    monkeypatch.setattr(scenery, "_found", (0.0, (), NO_OTHER_MESHES))
 
 
 def test_the_folder_taken_by_what_it_holds(tmp_path: Path) -> None:
@@ -212,10 +213,10 @@ def test_after_lives_and_autoortho_s_a_copy_left_aside(
     folder = tmp_path / "Other mesh"
     mesh(folder / "Mesh_Eur")  # the same squares as AutoOrtho's
     na = mesh(folder / "Mesh_Na", squares=(B,))
-    monkeypatch.setattr(scenery, "other_mesh_folder", lambda settings=None: folder)
+    monkeypatch.setattr(scenery, "other_mesh_folders", lambda settings=None: [folder])
     found = scenery.other_mesh_found(xp, root, fresh=True)
     assert found.meshes == [na]
-    assert found.refused == [("Mesh_Eur", "already")]
+    assert found.folders[0].found.refused == [("Mesh_Eur", "already")]
     assert default_meshes(xp, root) == Meshes([theirs, na], {})
 
 
@@ -226,8 +227,8 @@ def test_the_folder_looked_at_again_after_a_while(
     again, the window said « no mesh » 30 s more (the third review of 2026-11-14)."""
     root = tmp_path / "live"
     folder = tmp_path / "Other mesh"
-    monkeypatch.setattr(scenery, "other_mesh_folder", lambda settings=None: folder)
-    assert scenery.other_mesh_found(None, root) == NO_OTHER_MESH  # its disk away
+    monkeypatch.setattr(scenery, "other_mesh_folders", lambda settings=None: [folder])
+    assert scenery.other_mesh_found(None, root).meshes == []  # its disk away
     mesh(folder / "Mesh_Eur")
     first = scenery.other_mesh_found(None, root)  # back: looked at at once
     assert len(first.meshes) == 1
@@ -248,7 +249,7 @@ def test_the_window_reads_the_folder_once_in_a_while(
     monkeypatch.setattr(control.session, "xplane_dir", lambda explicit: xp)
     folder = tmp_path / "Other mesh"
     mesh(folder / "Mesh_Eur")
-    save_settings(LiveSettings(other_mesh=str(folder)))
+    save_settings(LiveSettings(other_meshes=[str(folder)]))
     read: list[Path] = []
     real = scenery.other_mesh
 
@@ -259,7 +260,8 @@ def test_the_window_reads_the_folder_once_in_a_while(
     monkeypatch.setattr(scenery, "other_mesh", counted)
     for _ in range(3):
         checks = control.gather_checks()
-    assert checks["other_mesh"]["meshes"] == ["Mesh_Eur"] and checks["mesh_regions"] == ["Mesh_Eur"]
+    assert checks["other_meshes"]["folders"][0]["meshes"] == ["Mesh_Eur"]
+    assert checks["mesh_regions"] == ["Mesh_Eur"]
     assert read == [folder]
     # Live's Europe and AutoOrtho's said « Europe, Europe » (the review of 0eb7e561): once
     mesh(xp / "Custom Scenery" / "z_autoortho" / "scenery" / "z_ao_eur", squares=(B,))
@@ -283,18 +285,21 @@ def test_the_roads_go_with_the_mesh_of_the_start(tmp_path: Path) -> None:
 def test_the_setting_and_what_the_window_says(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Kept in Live's settings; the window's line says what Live takes there and leaves aside,
-    that it waits for Live's next start, or that the folder is gone."""
+    """Kept in Live's settings; the window's line of each folder says what Live takes there and
+    leaves aside, that it waits for Live's next start, or that the folder is gone."""
     monkeypatch.setenv("OSXP_HOME", str(tmp_path / "home"))
     folder = tmp_path / "Other mesh"
     mesh(folder / "Mesh_Eur")
     roads(folder / "Mesh_Overlays")
     mesh(folder / "zOrtho4XP_+45+005", photos=True)
-    assert control._other_mesh_said(None) is None
-    save_settings(LiveSettings(other_mesh=str(folder)))
-    assert load_settings().other_mesh == str(folder)
-    assert control._other_mesh_said(None) == {
+    assert control._other_meshes_said(None) is None
+    save_settings(LiveSettings(other_meshes=[str(folder), str(tmp_path / "unplugged")]))
+    assert load_settings().other_meshes == [str(folder), str(tmp_path / "unplugged")]
+    said = control._other_meshes_said(None)
+    assert said is not None and said["front_next"] is False
+    assert said["folders"][0] == {
         "folder": str(folder),
+        "name": "Other mesh",
         "there": True,
         "next_start": True,  # no start has taken it yet
         "meshes": ["Mesh_Eur"],
@@ -302,33 +307,33 @@ def test_the_setting_and_what_the_window_says(
         "refused": [{"name": "zOrtho4XP_+45+005", "why": "photos"}],
         "squares": 1,
         "front": [],
-        "front_next": False,
         "in_xplane": [],
     }
-    save_settings(LiveSettings(other_mesh=str(tmp_path / "unplugged")))
-    said = control._other_mesh_said(None)  # a new setting, looked at at once
-    assert said is not None and said["there"] is False and said["meshes"] == []
+    gone = said["folders"][1]
+    assert gone["there"] is False and gone["meshes"] == [] and gone["name"] == "unplugged"
     # typed by hand: « ~ » is the home folder; a relative path, which would depend on where Live
     # was started, is not there (the fourth review of 2026-11-14)
-    save_settings(LiveSettings(other_mesh="~/Other mesh"))
-    assert scenery.other_mesh_folder() == Path.home() / "Other mesh"
+    save_settings(LiveSettings(other_meshes=["~/Other mesh"]))
+    assert scenery.other_mesh_folders() == [Path.home() / "Other mesh"]
     monkeypatch.chdir(tmp_path)
-    save_settings(LiveSettings(other_mesh="Other mesh"))
-    said = control._other_mesh_said(None)
-    assert said is not None and said["there"] is False and said["meshes"] == []
+    save_settings(LiveSettings(other_meshes=["Other mesh"]))
+    said = control._other_meshes_said(None)
+    assert said is not None and said["folders"][0]["there"] is False
+    assert said["folders"][0]["meshes"] == []
     # « ~someone » with no such user stopped the window's checks and every start (the fifth
     # review of 2026-11-14): as typed, not there
-    save_settings(LiveSettings(other_mesh="~nosuchpilot1234/mesh"))
-    said = control._other_mesh_said(None)
-    assert said is not None and said["there"] is False
+    save_settings(LiveSettings(other_meshes=["~nosuchpilot1234/mesh"]))
+    said = control._other_meshes_said(None)
+    assert said is not None and said["folders"][0]["there"] is False
 
 
-def a_start(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, folder: Path) -> session.Options:
-    """A start with no region of Live's or AutoOrtho's, another tool's mesh chosen in ``folder``."""
+def a_start(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *folders: Path) -> session.Options:
+    """A start with no region of Live's or AutoOrtho's, other tools' meshes chosen in
+    ``folders``."""
     monkeypatch.setenv("OSXP_HOME", str(tmp_path / "home"))
     (tmp_path / "home").mkdir()
     monkeypatch.setattr(session, "xplane_running", lambda: False)
-    save_settings(LiveSettings(other_mesh=str(folder)))
+    save_settings(LiveSettings(other_meshes=[str(folder) for folder in folders]))
     xp = make_xplane(tmp_path)
     return session.Options(xplane=xp, pack=tmp_path / "pack", no_plugin=True)
 
@@ -342,7 +347,8 @@ def test_a_start_says_the_folder_unplugged(tmp_path: Path, monkeypatch) -> None:
 
 def test_a_start_says_the_folder(tmp_path: Path, monkeypatch) -> None:
     """Its disk unplugged while another region is installed, the start went on without a word
-    (the second review of 2026-11-14): it says what it takes there, or that it is not there."""
+    (the second review of 2026-11-14): it says what it takes in each folder, or that one is not
+    there, and goes on with the next folder."""
     folder = tmp_path / "Other mesh"
     make_source(folder, tile=(46, 2))
     assert session._other_said(folder, other_mesh(folder)) == (
@@ -351,13 +357,11 @@ def test_a_start_says_the_folder(tmp_path: Path, monkeypatch) -> None:
     gone = tmp_path / "unplugged"
     said_gone = f"another tool's mesh: {gone} is not there (its disk unplugged?): left out"
     assert session._other_said(gone, NO_OTHER_MESH) == said_gone
-    options = a_start(tmp_path, monkeypatch, gone)
-    installed = make_source(tmp_path / "live-region", tile=(46, 2))
-    monkeypatch.setattr(session, "default_meshes", lambda xp, other=None: Meshes([installed], {}))
+    options = a_start(tmp_path, monkeypatch, gone, folder)
     said: list[str] = []
     monkeypatch.setattr(session, "_overlays", lambda *args: None)
-    session.prepare(options, log=said.append)
-    assert said_gone in said
+    prepared = session.prepare(options, log=said.append)
+    assert said_gone in said and prepared.sources == [folder / "z_ao_test"]
 
 
 def test_a_start_names_the_folder_it_could_not_link(tmp_path: Path, monkeypatch) -> None:
@@ -373,7 +377,8 @@ def test_a_start_names_the_folder_it_could_not_link(tmp_path: Path, monkeypatch)
 
     monkeypatch.setattr(region, "setup_region", refused)
     monkeypatch.setattr(session.sys, "platform", "win32")
-    said = re.escape(f"another tool's mesh, {folder}, on a network")  # a Windows path's backslashes
+    # escaped: a Windows path's backslashes
+    said = re.escape(f"another tool's mesh, in {folder}, on a network")
     with pytest.raises(session.RefusedError, match=said):
         session.prepare(options, log=lambda _: None)
     monkeypatch.setattr(session.sys, "platform", "darwin")

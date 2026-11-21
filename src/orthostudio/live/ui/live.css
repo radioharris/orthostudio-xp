@@ -115,6 +115,10 @@
 /* a region's kept old mesh, under its row: its size and its own Delete */
 .region-kept { display: flex; align-items: center; gap: 12px; color: var(--fg-2); font-size: var(--fs-2); }
 .region-kept .region-actions { margin-left: auto; }
+/* the folders of other tools' meshes, the regions' rows: the name and the buttons, the path under
+   them, wrapped anywhere, then what the folder gives */
+.other-mesh .region-state { margin: 0; overflow-wrap: anywhere; }
+.other-mesh .region-state.is-warn { color: var(--warn); }
 
 /* The map: the shared base map (basemap.js), Live's layers over it (livemap.js) */
 .live-map-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }

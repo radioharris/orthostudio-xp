@@ -59,7 +59,6 @@ from orthostudio.live.scenery import (
     named_xplane,
     ortho_streamers,
     osxp_regions,
-    other_mesh_folder,
     other_mesh_found,
     other_mesh_said,
     save_named_xplane,
@@ -234,8 +233,8 @@ def gather_checks() -> dict[str, Any]:
         "plugin": plugin.availability(),
         "folder": str(live_root()),
         "folder_default": str(default_live_root()),
-        # the folder of another tool's mesh chosen in the Settings, what Live takes there and not
-        "other_mesh": None,  # said below with X-Plane's folder, once it is found
+        # the folders of other tools' meshes chosen in the Settings, what Live takes there and not
+        "other_meshes": None,  # said below with X-Plane's folder, once it is found
         "folder_problem": None,
         "textures_bytes": _textures_bytes(default_pack_dir()),
         # the SimBrief name OrthoStudio XP has, which the window offers to take: never asked of
@@ -247,13 +246,13 @@ def gather_checks() -> dict[str, Any]:
         xp = session.xplane_dir(None)
     except session.RefusedError as e:
         out["xplane_problem"] = str(e)
-        out["other_mesh"] = _other_mesh_said(None)
+        out["other_meshes"] = _other_meshes_said(None)
         out["folder_problem"] = folder_problem(live_root(), None)
         return out
     out["folder_problem"] = folder_problem(live_root(), xp)
     meshes = stream_meshes(xp)
     sources = meshes.sources
-    out["other_mesh"] = _other_mesh_said(xp)
+    out["other_meshes"] = _other_meshes_said(xp)
     out.update(
         xplane=str(xp),
         xplane_quality=xplane_texture_quality(xp),
@@ -282,33 +281,38 @@ def gather_checks() -> dict[str, Any]:
     return out
 
 
-def _other_mesh_said(xp: Path | None) -> dict[str, Any] | None:
-    """The folder of another tool's mesh as the Settings say it (:func:`other_mesh_said`), whether
-    its meshes wait for Live's next start (not in the pack yet), and the squares put in front of
-    Live (``front_next``: not those of the pack yet); its packs checked in X-Plane's list above
-    Live's line, which X-Plane draws itself without photos (``in_xplane``); None without one."""
+def _other_meshes_said(xp: Path | None) -> dict[str, Any] | None:
+    """The folders of other tools' meshes as the Settings list them, top first, each as
+    :func:`other_mesh_said` says it, with whether its meshes wait for Live's next start (not in
+    the pack yet) and its packs checked in X-Plane's list above Live's line, which X-Plane draws
+    itself without photos (``in_xplane``); whether the squares put in front of Live are not those
+    of the pack yet (``front_next``). None without a folder."""
     from orthostudio.live.covered import listed_above_live
 
-    folder = other_mesh_folder()
-    if folder is None:
-        return None
     found = other_mesh_found(xp, live_root())
+    if not found.folders:
+        return None
     pack = default_pack_dir()
     in_pack = set(session._recorded_sources(pack))
-    try:
-        in_xplane = (
-            listed_above_live(xp, found.packs, LINK_NAME, load_settings().own_tiles)
-            if xp is not None and found.packs
-            else []
+    own_tiles = load_settings().own_tiles
+    folders = []
+    for one in found.folders:
+        try:
+            in_xplane = (
+                listed_above_live(xp, one.found.packs, LINK_NAME, own_tiles)
+                if xp is not None and one.found.packs
+                else []
+            )
+        except OSError:  # X-Plane's list unreadable this time: said at the next checks
+            in_xplane = []
+        folders.append(
+            {
+                **other_mesh_said(one.folder, one.found),
+                "next_start": any(str(p) not in in_pack for p in one.found.meshes),
+                "in_xplane": in_xplane,
+            }
         )
-    except OSError:  # X-Plane's list unreadable this time: said at the next checks
-        in_xplane = []
-    return {
-        **other_mesh_said(folder, found),
-        "next_start": any(str(p) not in in_pack for p in found.meshes),
-        "front_next": front_changed(pack, found.front),
-        "in_xplane": in_xplane,
-    }
+    return {"folders": folders, "front_next": front_changed(pack, found.front)}
 
 
 def our_regions(root: Path) -> list[dict[str, Any]]:
@@ -775,15 +779,21 @@ class LiveControl:
         ]
 
     def other_squares(self) -> list[dict]:
-        """The squares of the folder of another tool's mesh, for the map: each one in front of
-        Live or not (``LiveSettings.other_mesh_front``). None without a folder, or with one not
-        there."""
+        """The squares of the folders of other tools' meshes, for the map: each one in front of
+        Live or not (``LiveSettings.other_mesh_front``), with the name of the folder that gives
+        it, the first in the list that has it (:func:`orthostudio.live.scenery.other_meshes`).
+        None without a folder there."""
         xp = self.checks().get("xplane")
         found = other_mesh_found(Path(xp) if xp else None, live_root())
         return [
-            {"lat": lat, "lon": lon, "front": (lat, lon) in found.front}
-            for lat, lon in sorted(found.ground)
+            {"lat": lat, "lon": lon, "front": (lat, lon) in found.front, "folder": folder.name}
+            for (lat, lon), folder in sorted(found.ground.items())
         ]
+
+    def checks_changed(self) -> None:
+        """The checks looked at again at the next status: a setting they say changed (a folder of
+        another tool's mesh, a square put in front of Live)."""
+        self._checked = (0.0, None)
 
     def textures_at(self, lat: float, lon: float) -> list[dict]:
         """The textures built under a point of the map, with their facts (its tooltip)."""

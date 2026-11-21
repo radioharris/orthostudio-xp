@@ -499,40 +499,48 @@ offers to install AutoOrtho's. In a terminal, `python -m orthostudio.live region
 
 **Another tool's mesh.** A mesh in AutoOrtho's format kept outside X-Plane, the copy another
 streamer downloads or AutoOrtho's own pack moved out of `Custom Scenery`, can stand in where Live
-has no other mesh: under "Another tool's mesh", choose its folder, then Save. Live looks at the
-packs in it, down to three folders below, whatever their names, and tells ground from overlays as
+has no other mesh: under "Another tool's mesh", type its folder then Enter, or click **Choose…**.
+It goes at the bottom of the list, saved at once; add as many folders as you have. Live looks at the
+packs in each, down to three folders below, whatever their names, and tells ground from overlays as
 X-Plane does. Ground whose terrain files name photos is a mesh; Live leaves aside a tile that has
 its own photos, ground with no photos to lay (X-Plane's own scenery, HD Mesh's land classes, Live's
 own regions), and a copy of a region it already has (AutoOrtho's Europe in X-Plane and another copy
 of it there). As its roads, forests and buildings it takes X-Plane's own, the overlays AutoOrtho's
 pack holds: of those packs, the one that covers most of the folder's mesh, copies included. An
 airport, simHeaven, a Landmark or Global Forests lying in the same folder is not taken, and a mesh
-moved without its roads has none from there. The line under the setting says what it uses and what
+moved without its roads has none from there. Each folder has a line in the list: its name and its
+path, how many squares it has and how many of them it gives in front of Live, what it uses and what
 it leaves aside, that it takes no roads from the folder (chosen one folder too deep, say), or that
 the folder is not there (a disk unplugged). Choose the folder that holds both the mesh and its
-roads: for AutoOrtho's pack moved, the one holding `z_autoortho` and `yAutoOrtho_Overlays`.
+roads: for AutoOrtho's pack moved, the one holding `z_autoortho` and `yAutoOrtho_Overlays`. The
+same folder is not taken twice, even under another spelling or through a link.
 
-Live's regions come first, then AutoOrtho's in X-Plane, then this folder, for the mesh and for the
-roads alike; only the mesh of the squares you put in front of Live comes first (below). Nothing in
-that folder is changed. Its mesh and its roads are taken at Live's start, and kept until the next
-one: the line says "Used from Live's next start" until then.
+Live's regions come first, then AutoOrtho's in X-Plane, then these folders in the list's order,
+for the mesh and for the roads alike; only the mesh of the squares you put in front of Live comes
+first (below). Where two folders have the same square, the higher one in the list gives it, in
+front of Live or behind: **↑** and **↓** move a folder up or down. A folder that is not there (its
+disk unplugged) does not stop Live: its line says so, and its squares come from the next folder
+that has them, else from Live's mesh. **Remove** makes Live forget a folder; its files stay where
+they are, and the squares in front of Live that no folder left has go back behind Live. Nothing in
+those folders is changed. Their meshes and their roads are taken at Live's start, and kept until
+the next one: the line says "Used from Live's next start" until then.
 
 **In front of Live.** A mesh of your own, its relief fixed by hand around an airport, can replace
 Live's mesh on the squares you choose, with Live's photos laid on it: on Live's map, the squares of
-the folder are drawn in their own colour, dashed while they come behind Live, framed and shaded once
-in front of it; click one to put it in front of Live, click it again to put it back. Live's own mesh
-stays everywhere else, and the roads, forests and buildings do not change. While every square of the
-folder is behind Live, the line under the setting says so; another line says how many squares are in
-front. A change applies at Live's next start, with X-Plane closed (a start while X-Plane runs is
-refused, saying so), and so does a square's mesh saved again, its relief fixed once more. Choosing
-another folder, or none, puts every square back behind Live; a square the folder no longer has is
-simply not taken. Where two meshes meet, a texture on the line between them gets the files of both,
-so that X-Plane finds every file each side names. If that folder is also enabled in X-Plane's own
-scenery list above Live, X-Plane draws it there itself, without photos: Live's checks say so, and
-name it; disable it in X-Plane's scenery list. Each start says in Live's log what it takes there, or
-that the folder is not there; when it is the only mesh, the window and the start then say so. On
-Windows, a folder on a network drive needs Developer Mode on: without it, Windows cannot link Live's
-scenery to it. At night its towns are lit too, along X-Plane's own roads, but without NASA's night
+the folders are drawn in their own colour, dashed while they come behind Live, framed and shaded
+once in front of it, and pointing at one names the folder it comes from; click one to put it in
+front of Live, click it again to put it back. **All in front** and **All behind** do it for every
+square of a folder at once. Live's own mesh stays everywhere else, and the roads, forests and
+buildings do not change. While every square of a folder is behind Live, its line says so. A change
+applies at Live's next start, with X-Plane closed (a start while X-Plane runs is refused, saying
+so), and so does a square's mesh saved again, its relief fixed once more. A square no folder has
+is simply not taken. Where two meshes meet, a texture on the line between them gets the files of both,
+so that X-Plane finds every file each side names. If one of those folders is also enabled in
+X-Plane's own scenery list above Live, X-Plane draws it there itself, without photos: Live's checks
+say so, and name it; disable it in X-Plane's scenery list. Each start says in Live's log what it
+takes in each folder, or that one is not there; when they are the only mesh, the window and the
+start then say so. On Windows, a folder on a network drive needs Developer Mode on: without it,
+Windows cannot link Live's scenery to it. At night their towns are lit too, along X-Plane's own roads, but without NASA's night
 map, which comes with Live's regions: every street lamp is on, a little dimmer, out in the open
 country too.
 

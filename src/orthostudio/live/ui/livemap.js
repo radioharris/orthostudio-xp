@@ -1,9 +1,9 @@
 // OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 // Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 // The Live window's map, over the shared base map (basemap.js): the aircraft and the camera as
-// X-Plane sends them, the route of the SimBrief plan, the regions installed, the squares of another
-// tool's mesh (a click puts one in front of Live or back), and the textures built, coloured by how
-// sharp they are (orthostudio/live/mapdata.py). The status the page polls
+// X-Plane sends them, the route of the SimBrief plan, the regions installed, the squares of other
+// tools' meshes (a click puts one in front of Live or back), and the textures built, coloured by
+// how sharp they are (orthostudio/live/mapdata.py). The status the page polls
 // every second moves the aircraft; the textures are asked for again when the view moves, and
 // every few seconds while Live streams. The texture under the pointer is told in a bar over the
 // map's top, one line or two, which can be hidden (a tooltip was too present, a user said), and
@@ -323,7 +323,7 @@ export function createLiveMap(el, { api, info = null, ownKinds = null, otherKind
     }
     if (best) return best;
     const mesh = otherAt(latlng);
-    if (mesh) return { key: `m:${mesh.lat},${mesh.lon},${mesh.front}`, mesh };
+    if (mesh) return { key: `m:${mesh.lat},${mesh.lon},${mesh.front},${mesh.folder}`, mesh };
     const square = shownSquares.find((q) => lat >= q[0] && lat < q[0] + 1 && lng >= q[1] && lng < q[1] + 1);
     return square ? { key: `s:${square[0]},${square[1]},${square[2]},${square[3]}`, square } : null;
   }
@@ -350,9 +350,9 @@ export function createLiveMap(el, { api, info = null, ownKinds = null, otherKind
       say(escapeHtml(t(`map.own_${found.own.kind}`, { pack: found.own.pack })));
       return;
     }
-    if (found.mesh) {
-      const { lat, lon, front } = found.mesh;
-      say(escapeHtml(t(front ? "map.other_front" : "map.other_behind", { tile: tileName(lat, lon) })));
+    if (found.mesh) { // the folder that gives the square, in front of Live or behind
+      const { lat, lon, front, folder } = found.mesh;
+      say(escapeHtml(t(front ? "map.other_front" : "map.other_behind", { tile: tileName(lat, lon), folder })));
       return;
     }
     if (found.square) {
@@ -472,7 +472,7 @@ export function createLiveMap(el, { api, info = null, ownKinds = null, otherKind
       if (points?.length) map.fitBounds(L.latLngBounds(points), { padding: [24, 24] });
     },
     regionsChanged: drawRegions,
-    /** A square of another tool's mesh put in front or back, its folder changed: asked anew. */
+    /** A square of other tools' meshes put in front or back, their folders changed: asked anew. */
     otherChanged: readOther,
     /**
      * A departure prepared: the map on it, as close as at a flight's start unless closer already;

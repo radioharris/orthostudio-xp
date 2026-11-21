@@ -4,8 +4,9 @@
 
 The mesh is AutoOrtho's (``z_ao_eur``: DSFs, ``.ter`` files, water masks), read only: the regions
 AutoOrtho installed, and those Live installed itself the same way
-(:mod:`orthostudio.live.aoregions`), after Live's own; then another tool's from a folder chosen in
-the Settings, but on the squares the pilot put in front of Live (:func:`default_meshes`).
+(:mod:`orthostudio.live.aoregions`), after Live's own; then other tools' from folders chosen in
+the Settings, in their order, but on the squares the pilot put in front of Live
+(:func:`default_meshes`).
 The pack, a link in Custom Scenery, is listed in ``scenery_packs.ini`` where the pilot puts it;
 where it is missing, right above the first mesh, below OrthoStudio XP's tiles, which draw over it
 (above them with "Live everywhere"): :func:`place_line`. Its overlays' line goes right above it.
@@ -120,7 +121,7 @@ def osxp_sources(root: Path) -> list[Path]:
 
 @dataclass(frozen=True)
 class OtherMesh:
-    """What the folder of another tool's mesh holds (:func:`other_mesh`)."""
+    """What a folder of another tool's mesh holds (:func:`other_mesh`)."""
 
     meshes: list[Path]
     """Its regions Live streams onto: ground whose terrain files name photos to make."""
@@ -130,13 +131,14 @@ class OtherMesh:
     """Its packs of ground Live leaves aside, and why."""
     ground: dict[Square, Path]
     """Every square of its ground naming photos, copies left aside included, with the first of its
-    packs that has it: what Live's map draws, the squares the pilot may put in front of Live."""
+    packs that has it: what Live's map draws of it, the squares the pilot may put in front of
+    Live."""
     packs: list[Path]
     """Its packs of ground naming photos, copies left aside included: X-Plane draws any of them
     without photos where its own list enables it above Live (``covered.listed_above_live``)."""
     front: dict[Square, Path]
-    """The squares put in front of Live it has (``LiveSettings.other_mesh_front``), each with the
-    mesh whose DSF wins there (:func:`default_meshes`)."""
+    """The squares put in front of Live it gives (``LiveSettings.other_mesh_front``, those no
+    folder above it has: :func:`other_meshes`), each with its mesh whose DSF wins there."""
 
 
 NO_OTHER_MESH = OtherMesh([], [], [], {}, [], {})
@@ -147,13 +149,14 @@ PACK_DEPTH = 3  # AutoOrtho's own, moved: <folder>/z_autoortho/scenery/z_ao_<reg
 def other_mesh(
     folder: Path | None, given: Sequence[Path] = (), front: Collection[Square] = ()
 ) -> OtherMesh:
-    """The meshes and the roads of the folder the pilot chose (``LiveSettings.other_mesh``), by
+    """The meshes and the roads of a folder the pilot chose (``LiveSettings.other_meshes``), by
     what its packs (``Earth nav data``, in it or down to :data:`PACK_DEPTH` folders below) hold,
     whatever their names, as X-Plane tells ground from overlays (``sim/overlay 1``):
     - a pack of ground is a mesh when its terrain files name photos Live makes, without them
-      (:func:`_why_not_streamed`), and it gives a square none of ``given`` (the regions before it)
-      nor a mesh kept before it has (``already``: a copy of one), or it is the first to have one
-      of ``front``, the squares put in front of Live, whose DSF it then gives;
+      (:func:`_why_not_streamed`), and it gives a square none of ``given`` (the regions and the
+      folders before it) nor a mesh kept before it has (``already``: a copy of one), or it is the
+      first to have one of ``front``, the squares put in front of Live no folder before it has,
+      whose DSF it then gives;
     - of the overlay packs X-Plane's own (:data:`XPLANE_OVERLAYS`), the one with most squares of
       the folder's ground naming photos, copies included, is the roads, forests and buildings of
       its meshes (:func:`_roads_of`): an airport, a Landmark, simHeaven or Global Forests lying
@@ -269,42 +272,103 @@ def _why_not_streamed(pack: Path) -> str | None:
     return "no_photos"
 
 
-def other_mesh_folder(settings: LiveSettings | None = None) -> Path | None:
-    """The folder of another tool's mesh the pilot chose in Live's Settings (``settings``, else
-    those saved), if any."""
-    from orthostudio.live.settings import load_settings
+def other_mesh_folders(settings: LiveSettings | None = None) -> list[Path]:
+    """The folders of other tools' meshes the pilot chose in Live's Settings (``settings``, else
+    those saved), top first."""
+    from orthostudio.live.settings import folder_path, load_settings
 
-    folder = (settings or load_settings()).other_mesh.strip()
-    if not folder:
-        return None
-    try:
-        return Path(folder).expanduser()
-    except RuntimeError:  # « ~someone », no such user: as typed, not there
-        return Path(folder)
+    return [folder_path(folder) for folder in (settings or load_settings()).other_meshes]
 
 
 def other_mesh_front(settings: LiveSettings) -> frozenset[Square]:
-    """The squares of the folder of another tool's mesh the pilot put in front of Live."""
+    """The squares of the folders of other tools' meshes the pilot put in front of Live."""
     names = settings.other_mesh_front
     return frozenset(square for name in names if (square := tile_from_name(name)) is not None)
 
 
-def front_saved(settings: LiveSettings, before: LiveSettings) -> LiveSettings:
-    """``settings`` as a save keeps them: the squares put in front of Live emptied once another
-    folder of another tool's mesh is chosen, or none. Nothing else: a square the folder lacks is
-    not taken (:func:`other_mesh` takes only those of its ground), and a folder that reads empty
-    (an empty mount point, its disk away) never wipes them."""
-    if settings.other_mesh.strip() == before.other_mesh.strip():
-        return settings
-    return settings.model_copy(update={"other_mesh_front": []})
+class OtherFolder(NamedTuple):
+    """A folder of the list of other tools' meshes, and what Live takes there."""
+
+    folder: Path
+    there: bool
+    """:func:`other_mesh_there`: a folder not there (its disk unplugged) gives nothing."""
+    found: OtherMesh
+    """What Live takes there after the regions and the folders above it (:func:`other_mesh`)."""
+
+
+@dataclass(frozen=True)
+class OtherMeshes:
+    """The folders of other tools' meshes in their order, and what they give together
+    (:func:`other_meshes`)."""
+
+    folders: list[OtherFolder]
+    ground: dict[Square, Path]
+    """Every square of their ground naming photos, with the folder that gives it, the first in the
+    list that has it: what Live's map draws, and names in its bubble."""
+    front: dict[Square, Path]
+    """The squares put in front of Live, each with the mesh whose DSF wins there, of the first
+    folder that has it."""
+
+    @property
+    def meshes(self) -> list[Path]:
+        """Their meshes, folder after folder."""
+        return [mesh for one in self.folders for mesh in one.found.meshes]
+
+    @property
+    def overlays(self) -> list[Path]:
+        """Their roads, forests and buildings, folder after folder."""
+        return [pack for one in self.folders for pack in one.found.overlays]
+
+
+NO_OTHER_MESHES = OtherMeshes([], {}, {})
+
+
+def other_meshes(
+    folders: Sequence[Path], given: Sequence[Path], front: Collection[Square]
+) -> OtherMeshes:
+    """The folders of other tools' meshes, top first, after the regions (``given``): the one rule
+    of their order, which decides between them alone. Each folder's meshes come after the regions
+    and the folders above it, a copy of theirs left aside (:func:`other_mesh`), so that a square
+    Live and AutoOrtho lack takes the DSF of the first folder that has it; a square put in front
+    of Live (``front``) takes the DSF of the first folder that has it too. A folder not there (its
+    disk unplugged) gives nothing: its squares come from the next folder that has them, else from
+    Live's mesh."""
+    before = list(given)
+    ahead = set(front)
+    out: list[OtherFolder] = []
+    ground: dict[Square, Path] = {}
+    wins: dict[Square, Path] = {}
+    for folder in folders:
+        there = other_mesh_there(folder)
+        found = other_mesh(folder, before, ahead) if there else NO_OTHER_MESH
+        out.append(OtherFolder(folder, there, found))
+        before += found.meshes
+        ahead -= found.front.keys()
+        wins.update(found.front)
+        for square in found.ground:
+            ground.setdefault(square, folder)
+    return OtherMeshes(out, ground, wins)
+
+
+def folder_squares(folder: str) -> list[str] | None:
+    """The squares of a folder of the list by name, its ground (:attr:`OtherMesh.ground`): those
+    its « All in front » and « All behind » put in front of Live or back, those its removal keeps
+    in front for another folder (``settings.remove_other_mesh``); None when it is not there."""
+    from orthostudio.live.settings import folder_path
+
+    path = folder_path(folder)
+    if not other_mesh_there(path):
+        return None
+    return [tile_name(*square) for square in sorted(other_mesh(path).ground)]
 
 
 def other_mesh_said(folder: Path, found: OtherMesh) -> dict:
-    """The folder of another tool's mesh as Live says it, in its window and in its log: whether it
-    is there, its meshes and roads by name, those left aside with why, how many squares its ground
-    gives the map, those in front of Live."""
+    """A folder of another tool's mesh as Live says it, in its window and in its log: its name and
+    whether it is there, its meshes and roads by name, those left aside with why, how many squares
+    its ground gives the map, those it gives in front of Live."""
     return {
         "folder": str(folder),
+        "name": folder.name or str(folder),
         "there": other_mesh_there(folder),
         "meshes": [p.name for p in found.meshes],
         "overlays": [p.name for p in found.overlays],
@@ -315,38 +379,39 @@ def other_mesh_said(folder: Path, found: OtherMesh) -> dict:
 
 
 def other_mesh_there(folder: Path) -> bool:
-    """Whether the folder chosen is there: a full path to a folder (a relative one would depend on
+    """Whether a folder chosen is there: a full path to a folder (a relative one would depend on
     where Live was started)."""
     return folder.is_absolute() and folder.is_dir()
 
 
 OTHER_MESH_S = 30.0
-"""The folder of another tool's mesh looked at again this often by the window's checks, which
-come every 3 s and ask twice; at once when the setting
-changes or the folder comes or goes, and at Live's start."""
+"""The folders of other tools' meshes looked at again this often by the window's checks, which
+come every 3 s and ask twice; at once when the setting changes or a folder comes or goes, and at
+Live's start."""
 
-_found: tuple[float, tuple, OtherMesh] = (0.0, (), NO_OTHER_MESH)
+_found: tuple[float, tuple, OtherMeshes] = (0.0, (), NO_OTHER_MESHES)
 
 
-def other_mesh_found(xplane: Path | None, root: Path, *, fresh: bool = False) -> OtherMesh:
-    """The folder chosen in the Settings and what Live takes there after the regions before it
-    (:func:`base_sources`), with the squares put in front of Live, as last looked at, or now when
-    ``fresh`` (a start)."""
+def other_mesh_found(xplane: Path | None, root: Path, *, fresh: bool = False) -> OtherMeshes:
+    """The folders chosen in the Settings and what Live takes there after the regions before them
+    (:func:`base_sources`), with the squares put in front of Live (:func:`other_meshes`), as last
+    looked at, or now when ``fresh`` (a start)."""
     from orthostudio.live.settings import load_settings
 
     global _found
     settings = load_settings()
-    folder = other_mesh_folder(settings)
+    folders = other_mesh_folders(settings)
     front = other_mesh_front(settings)
-    # its disk plugged in again, a square put in front or back: looked at at once, where the
-    # window said « no mesh » 30 s more
-    key = (folder, folder is not None and other_mesh_there(folder), xplane, root, front)
+    # a disk plugged in again, a square put in front or back, a folder moved: looked at at once,
+    # where the window said « no mesh » 30 s more
+    there = tuple(other_mesh_there(folder) for folder in folders)
+    key = (tuple(folders), there, xplane, root, front)
     at, was, got = _found
     if not fresh and was == key and time.monotonic() - at < OTHER_MESH_S:
         return got
-    there = key[1]  # the regions before it listed only for a folder to look into
-    given = base_sources(xplane, root) if there and xplane is not None else []
-    got = other_mesh(folder, given, front) if there else NO_OTHER_MESH
+    # the regions before them listed only for a folder to look into
+    given = base_sources(xplane, root) if any(there) and xplane is not None else []
+    got = other_meshes(folders, given, front)
     _found = (time.monotonic(), key, got)
     return got
 
@@ -379,13 +444,14 @@ class Meshes(NamedTuple):
 
 
 def default_meshes(
-    xplane: Path, root: Path | None = None, other: OtherMesh | None = None
+    xplane: Path, root: Path | None = None, other: OtherMeshes | None = None
 ) -> Meshes:
-    """The meshes Live streams onto: :func:`base_sources`, then those of the folder of another
-    tool's mesh chosen in the Settings (``other``, as found at a start; else as last looked at,
-    :func:`other_mesh_found`), whose DSF wins on the squares put in front of Live alone. The one
-    rule of what a start sets the pack up from, which the window's checks and the command line's
-    setup read too."""
+    """The meshes Live streams onto: :func:`base_sources`, then those of the folders of other
+    tools' meshes chosen in the Settings, in their order (``other``, as found at a start; else as
+    last looked at, :func:`other_mesh_found`), whose DSF wins on the squares put in front of Live
+    alone, the first folder's that has it (:func:`other_meshes`). The one rule of what a start
+    sets the pack up from, which the window's checks, its map and the command line's setup read
+    too."""
     from orthostudio.live.pack import live_root
 
     root = live_root() if root is None else root
