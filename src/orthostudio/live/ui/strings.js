@@ -514,6 +514,8 @@ export const STRINGS = {
     "other_mesh.front_how":
       "On Live's map, click a square of these meshes to put it in front of Live: its mesh there, with Live's photos. Click it again to put it back behind Live.",
     "other_mesh.front_next": "The squares in front change from Live's next start, X-Plane closed.",
+    "other_mesh.gone_remove":
+      "Removing a folder that is not there leaves its squares in front of Live: Live cannot see which ones it gave. Plug its disk in first to put them back behind Live.",
     "folder.moved": "A new folder is set up in a few seconds; the old one keeps what it holds.",
 
     "country.Spain": "Spain",
@@ -1042,6 +1044,8 @@ export const STRINGS = {
     "other_mesh.front_how":
       "Sur la carte de Live, cliquez sur un carré de ces meshes pour le mettre devant Live : son mesh à cet endroit, avec les photos de Live. Cliquez à nouveau pour le remettre derrière Live.",
     "other_mesh.front_next": "Les carrés devant Live changent au prochain démarrage de Live, X-Plane fermé.",
+    "other_mesh.gone_remove":
+      "Retirer un dossier introuvable laisse ses carrés devant Live : Live ne peut pas voir lesquels il donnait. Branchez d'abord son disque pour les remettre derrière Live.",
     "folder.moved": "Un nouveau dossier se prépare en quelques secondes ; l'ancien garde ce qu'il contient.",
 
     "country.Spain": "Espagne",

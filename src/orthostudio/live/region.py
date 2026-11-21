@@ -177,9 +177,17 @@ def sources_of_pack(pack_dir: Path) -> list[Path]:
 
 
 def front_of_pack(pack_dir: Path) -> dict[tuple[int, int], Path]:
-    """The squares whose DSF the pack takes from a region whatever their order, as its marker
-    records them (:func:`front_of`)."""
-    return front_of(_marker(pack_dir))
+    """The squares put in front of Live the pack holds, as its marker records them
+    (:func:`_front_record`): each one's DSF from that region, another tool's mesh, whatever the
+    regions' order (``scenery.default_meshes``). Empty for a pack of before."""
+    front = _marker(pack_dir).get("front")
+    out: dict[tuple[int, int], Path] = {}
+    for name, said in front.items() if isinstance(front, dict) else ():
+        square = tile_from_name(name)
+        source = said.get("source") if isinstance(said, dict) else None
+        if square is not None and isinstance(source, str):
+            out[square] = Path(source)
+    return out
 
 
 def _textures_by_zoom(pack_dir: Path) -> dict[int, list[str]]:
@@ -566,20 +574,6 @@ def sources_of(meta: dict) -> list[str]:
     if isinstance(sources, list):
         return [str(s) for s in sources]
     return [str(meta["source"])] if meta.get("source") else []
-
-
-def front_of(meta: dict) -> dict[tuple[int, int], Path]:
-    """The squares put in front of Live a pack holds, as its marker records them
-    (:func:`_front_record`): each one's DSF from that region, another tool's mesh, whatever the
-    regions' order (``scenery.default_meshes``). Empty for a pack of before."""
-    front = meta.get("front")
-    out: dict[tuple[int, int], Path] = {}
-    for name, said in front.items() if isinstance(front, dict) else ():
-        square = tile_from_name(name)
-        source = said.get("source") if isinstance(said, dict) else None
-        if square is not None and isinstance(source, str):
-            out[square] = Path(source)
-    return out
 
 
 def _front_record(front: Mapping[tuple[int, int], Path]) -> dict[str, dict]:

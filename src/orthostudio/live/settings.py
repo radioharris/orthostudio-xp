@@ -419,6 +419,14 @@ def saved_with(change: Callable[[LiveSettings], dict[str, Any] | None]) -> LiveS
     return saved
 
 
+def save_language(language: str) -> LiveSettings:
+    """The window's language kept for the next starts, the one way it is saved (Live's control,
+    and the frame when Live is not set up in its program): compared with the one saved under
+    :data:`SAVING`, so that two quick EN/FR switches end on the last one, nothing written when it
+    is the same. Raises what :func:`saved_with` raises."""
+    return saved_with(lambda now: None if now.language == language else {"language": language})
+
+
 class AlreadyListedError(ValueError):
     """A folder added to the list of other tools' meshes that the list has already."""
 

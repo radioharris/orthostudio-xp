@@ -314,12 +314,15 @@ export function createLiveMap(el, { api, info = null, legend = null, onOther = n
     return otherShown().find((x) => lat >= x.lat && lat < x.lat + 1 && lng >= x.lon && lng < x.lon + 1);
   }
   // a click on a square flips it DOUBLE_CLICK_MS later, unless a double-click came meanwhile,
-  // whose two clicks Leaflet sends as clicks too: it zooms in alone, the square as it was; a click
+  // whose two clicks Leaflet sends as clicks too: it zooms in alone, the square as it was; the
+  // third click of a triple click (detail 3, after the double-click) flips nothing either. A slow
+  // double-click, its second click more than DOUBLE_CLICK_MS after the first, flips the square
+  // with its first click and zooms in: accepted, as a click then a double-click. A click
   // elsewhere does what it did before: nothing
   const waiting = new Set(); // the clicks on a square not applied yet
   map.on("click", (ev) => {
     const square = otherAt(ev.latlng);
-    if (!square || !onOther) return;
+    if (!square || !onOther || ev.originalEvent?.detail > 2) return;
     const click = setTimeout(() => {
       waiting.delete(click);
       onOther(square);

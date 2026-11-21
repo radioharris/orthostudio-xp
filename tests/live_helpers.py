@@ -277,3 +277,23 @@ def other_meshes(folders, given=(), front=()):
 
     folders = list(folders)
     return _given_by(folders, read_folders(folders, list(given)), front)
+
+
+def under_x_plane(tmp_path: Path, monkeypatch, pack: Path):
+    """A start (``session.Options``) on Live's pack ``pack``, set up already, with X-Plane running
+    and Live's line in its list, nothing else looked at: the meshes it sets the pack up from the
+    test's (``session.default_meshes``, or the option ``source``)."""
+    from orthostudio.live import osxpregions, session, winsearch
+    from orthostudio.live.filesystem import folder_link
+    from orthostudio.live.pack import LINK_NAME
+
+    monkeypatch.setenv("OSXP_HOME", str(tmp_path / "home"))
+    (tmp_path / "home").mkdir()
+    xp = make_xplane(tmp_path)
+    monkeypatch.setattr(winsearch, "keep_out", lambda folder, log=None: None)
+    monkeypatch.setattr(osxpregions, "settle", lambda root, log, swap, only=None: None)
+    monkeypatch.setattr(session, "_overlays", lambda *args: None)
+    monkeypatch.setattr(session, "is_installed", lambda *a: True)
+    folder_link(pack, xp / "Custom Scenery" / LINK_NAME)  # as Live links it there
+    monkeypatch.setattr(session, "xplane_running", lambda: True)
+    return session.Options(xplane=xp, pack=pack, no_plugin=True)

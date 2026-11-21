@@ -64,17 +64,16 @@ class RefusedError(Exception):
     """Streaming cannot start; the message says why, and what to do."""
 
 
-REDO_REFUSED = (
-    "the meshes Live streams onto or the squares in front of Live changed since its last start, "
-    "and X-Plane may be reading the meshes of before. Quit X-Plane, then start again"
-)
-"""A start refused while X-Plane runs on a pack to set up again (``region.pack_to_redo``), every
-mesh it was last set up from on the disk: a disk is not the cause."""
-REDO_UNPLUGGED = (
-    "the meshes Live streams onto changed since its last start, and X-Plane may be reading those "
-    "of before. Quit X-Plane, or connect the disk holding a mesh, then start again"
-)
-"""The same, a mesh the pack was last set up from no longer on the disk (its disk unplugged)."""
+def redo_refused(unplugged: bool) -> str:
+    """A start refused while X-Plane runs on a pack to set up again (``region.pack_to_redo``: a
+    region, the Mesh switched, another tool's mesh, the squares in front of Live), in one
+    sentence; the disk to connect said only when a mesh the pack was last set up from is no
+    longer on the disk (``unplugged``), else a disk is not the cause."""
+    disk = ", or connect the disk holding a mesh" if unplugged else ""
+    return (
+        "the meshes Live streams onto changed since its last start, and X-Plane may be reading "
+        f"those of before. Quit X-Plane{disk}, then start again"
+    )
 
 
 def default_workers() -> int:
@@ -393,8 +392,9 @@ def prepare(options: Options, log: Log) -> Prepared:
     zooms = Zooms(options.max_zoom, options.max_zoom_airports)
     if xplane_running() and pack_to_redo(sources, pack_dir, front):  # as a new zoom, below
         # a disk to connect if and only if a mesh of the pack's last set-up is not on the disk
-        gone = any(not source.is_dir() for source in sources_of_pack(pack_dir))
-        raise RefusedError(REDO_UNPLUGGED if gone else REDO_REFUSED)
+        raise RefusedError(
+            redo_refused(any(not source.is_dir() for source in sources_of_pack(pack_dir)))
+        )
     from orthostudio.live import machine
 
     # the pack's one-time work (hundreds of thousands of files) in the system's background mode for

@@ -220,7 +220,8 @@ def test_the_map_s_legend_is_osxp_s_laid_on_the_map() -> None:
 def test_a_double_click_zooms_in_alone() -> None:
     """A double-click on a square of another tool's mesh zooms in, the square as it was: a click
     on one flips it after a wait, which a double-click cancels, both its clicks, which Leaflet
-    sends as clicks too. Once the first flipped it and the zoom put it in front."""
+    sends as clicks too; a triple click's third click, after the double-click, flips nothing
+    either. Once the first flipped it and the zoom put it in front."""
     js = (UI_DIR / "livemap.js").read_text()
     assert "const DOUBLE_CLICK_MS = 300;" in js
     click = js[js.index('  map.on("click", (ev) => {') :]
@@ -230,7 +231,9 @@ def test_a_double_click_zooms_in_alone() -> None:
     double = js[js.index('  map.on("dblclick", () => {') :]
     double = double[: double.index("\n  });\n")]
     assert "for (const click of waiting) clearTimeout(click);" in double
-    assert "detail" not in click  # the second click waits too, and goes with the double-click
+    # the second click waits too, and goes with the double-click; the third is left out
+    assert "ev.originalEvent?.detail > 2) return;" in click
+    assert click.index("detail > 2") < click.index("setTimeout(")
 
 
 class FakeStreamer:

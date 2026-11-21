@@ -24,7 +24,7 @@ from tests.test_live_other_mesh import mesh
 from tests.test_live_overlays import xplane
 from tests.test_live_regions import _another_disk
 
-from live_helpers import NAMES, make_source, make_xplane, other_meshes, save_settings
+from live_helpers import NAMES, make_source, other_meshes, save_settings, under_x_plane
 from orthostudio.config.store import toml_dumps
 from orthostudio.live import api as api_module
 from orthostudio.live import control, filesystem, scenery, session, settings_file
@@ -145,29 +145,12 @@ def test_a_square_in_front_takes_the_other_mesh_s_dsf(tmp_path: Path) -> None:
     assert front_of_pack(pack) == {}
 
 
-def under_x_plane(tmp_path: Path, monkeypatch, pack: Path) -> session.Options:
-    """A start on Live's pack ``pack``, set up already, with X-Plane running and Live's line in its
-    list, nothing else looked at: the meshes it sets the pack up from the test's
-    (``session.default_meshes``)."""
-    from orthostudio.live import osxpregions, winsearch
-
-    monkeypatch.setenv("OSXP_HOME", str(tmp_path / "home"))
-    (tmp_path / "home").mkdir()
-    xp = make_xplane(tmp_path)
-    monkeypatch.setattr(winsearch, "keep_out", lambda folder, log=None: None)
-    monkeypatch.setattr(osxpregions, "settle", lambda root, log, swap, only=None: None)
-    monkeypatch.setattr(session, "_overlays", lambda *args: None)
-    monkeypatch.setattr(session, "is_installed", lambda *a: True)
-    folder_link(pack, xp / "Custom Scenery" / LINK_NAME)  # as Live links it there
-    monkeypatch.setattr(session, "xplane_running", lambda: True)
-    return session.Options(xplane=xp, pack=pack, no_plugin=True)
-
-
 def test_a_start_refused_says_a_disk_only_for_a_mesh_gone(tmp_path: Path, monkeypatch) -> None:
     """A start refused while X-Plane runs says to connect a disk if and only if a mesh the pack
     was last set up from is no longer on the disk: a folder's first square put in front, its mesh
-    coming in the middle of the regions, or its last put back, its mesh going, says the meshes or
-    the squares in front changed; that mesh gone from the disk, a disk to connect."""
+    coming in the middle of the regions, or its last put back, its mesh going, says the meshes
+    changed, as a Mesh switched between New and Old does; that mesh gone from the disk, a disk to
+    connect."""
     live, alps = live_and_alps(tmp_path)
     pyrenees = make_source(tmp_path / "pyrenees", tile=PYRENEES, textures=NAMES)
     pack = tmp_path / "pack"
@@ -180,13 +163,17 @@ def test_a_start_refused_says_a_disk_only_for_a_mesh_gone(tmp_path: Path, monkey
             session.prepare(options, log=quiet)
         return str(e.value)
 
-    assert refused(Meshes([live, alps, pyrenees], {COURCHEVEL: alps})) == session.REDO_REFUSED
+    said = (
+        "the meshes Live streams onto changed since its last start, and X-Plane may be reading "
+        "those of before. Quit X-Plane, then start again"
+    )
+    assert refused(Meshes([live, alps, pyrenees], {COURCHEVEL: alps})) == said
     setup_region([live, alps, pyrenees], pack, log=quiet, front={COURCHEVEL: alps})
-    assert refused(Meshes([live, pyrenees], {})) == session.REDO_REFUSED
+    assert refused(Meshes([live, pyrenees], {})) == said
     alps.rename(tmp_path / "unplugged")
-    assert refused(Meshes([live, pyrenees], {})) == session.REDO_UNPLUGGED
-    assert "connect the disk" in session.REDO_UNPLUGGED
-    assert "disk" not in session.REDO_REFUSED
+    assert refused(Meshes([live, pyrenees], {})) == said.replace(
+        "Quit X-Plane,", "Quit X-Plane, or connect the disk holding a mesh,"
+    )
 
 
 def test_a_dsf_in_front_edited_again_is_taken(tmp_path: Path) -> None:
@@ -576,22 +563,53 @@ def test_a_click_reads_no_folder_again(tmp_path: Path, monkeypatch) -> None:
     assert read == [folder]
 
 
+async def _languages_leave_the_file(path: Path, text: str) -> None:
+    """English then French sent by the window with ``path`` as it is: each answered, the window in
+    that language, the file holding ``text`` still."""
+    live = control.LiveControl(checks=lambda: {"xplane": None}, echo=quiet, catalog=lambda r: {})
+    async with client_for(create_live_app(live)) as client:
+        for language in ("en", "fr"):
+            got = await client.post("/api/live/language", json={"language": language})
+            assert got.status_code == 200 and got.json() == {"language": language}
+            assert live.language == language
+    path.chmod(0o644)
+    assert path.read_text() == text
+
+
 @pytest.mark.anyio
-async def test_the_language_unchanged_leaves_the_file_as_it_is(tmp_path: Path, monkeypatch) -> None:
-    """The window's language sent again with live.toml not parsing answers as before, the file
-    left as it is; a new language is saved."""
+async def test_the_language_with_live_toml_broken_leaves_it_as_it_is(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """The window's language, English or French, with live.toml not parsing: answered, the file
+    left as it is; once the file parses, a new language is saved. Until round 5 an English pilot
+    got a 200 and a French one a 500 (the language compared with the defaults)."""
     monkeypatch.setenv("OSXP_HOME", str(tmp_path / "home"))
     settings_file().parent.mkdir(parents=True)
     settings_file().write_text("[stream\n")
+    await _languages_leave_the_file(settings_file(), "[stream\n")
+    settings_file().write_text("[stream]\ndisk_gb = 40\n")
     live = control.LiveControl(checks=lambda: {"xplane": None}, echo=quiet, catalog=lambda r: {})
-    async with client_for(create_live_app(live)) as client:
-        got = await client.post("/api/live/language", json={"language": "en"})
-        assert got.status_code == 200 and got.json() == {"language": "en"}
-        assert settings_file().read_text() == "[stream\n"
-        settings_file().write_text("[stream]\ndisk_gb = 40\n")
-        got = await client.post("/api/live/language", json={"language": "fr"})
-        assert got.status_code == 200
+    live.set_language("fr")
     assert load_settings().language == "fr" and load_settings().disk_gb == 40
+
+
+@pytest.mark.anyio
+@pytest.mark.skipif(os.name == "nt" or os.geteuid() == 0, reason="needs POSIX permissions")
+async def test_the_language_with_live_toml_unreadable_leaves_it_as_it_is(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """The window's language, English or French, with live.toml not readable: answered, the file
+    left as it is. Until round 5 its OSError answered 500, with a traceback in LogLive at each
+    load of the page."""
+    monkeypatch.setenv("OSXP_HOME", str(tmp_path / "home"))
+    settings_file().parent.mkdir(parents=True)
+    text = '[stream]\nlanguage = "en"\ndisk_gb = 40\n'
+    settings_file().write_text(text)
+    settings_file().chmod(0)
+    try:
+        await _languages_leave_the_file(settings_file(), text)
+    finally:
+        settings_file().chmod(0o644)
 
 
 def test_two_quick_language_switches_end_on_the_last(tmp_path: Path, monkeypatch) -> None:
@@ -743,7 +761,7 @@ def test_no_start_on_a_new_front_while_x_plane_runs(tmp_path: Path, monkeypatch,
     save_settings(LiveSettings(other_meshes=[str(alps.parent)], other_mesh_front=["+46+002"]))
     meshes = Meshes([live, alps], {COURCHEVEL: alps})
     monkeypatch.setattr(session, "default_meshes", lambda xp, other=None: meshes)
-    with pytest.raises(session.RefusedError, match="or the squares in front of Live changed"):
+    with pytest.raises(session.RefusedError, match="the meshes Live streams onto changed"):
         session.prepare(options, log=quiet)
     assert (pack / DSF).read_bytes() == (live / DSF).read_bytes()  # nothing written
     monkeypatch.setattr(session, "xplane_running", lambda: False)
@@ -894,4 +912,47 @@ def test_the_line_of_each_folder_in_both_languages() -> None:
     assert said["fr"][1][0] == "1 carré · 0 devant Live. Ses carrés sont derrière le mesh de Live."
     assert said["fr"][2][0] == (
         "Ce dossier ne donne aucun carré : un dossier plus haut dans la liste les a tous."
+    )
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="needs node")
+def test_under_the_list_a_folder_not_there_keeps_its_squares_in_front_when_removed() -> None:
+    """Under the folders, how to put a square in front while a folder gives one; while a folder
+    is not there, that its Remove leaves its squares in front of Live, Live not knowing which it
+    gave (the remove endpoint puts none behind for it); nothing else to say, nothing shown."""
+    gives = {"squares": 3, "unused": None}
+    gone = {"squares": 0, "unused": "gone"}
+    cases = [
+        {"folders": [gives], "front_next": False},
+        {"folders": [gives, gone], "front_next": True},
+        {"folders": [gone], "front_next": False},
+        {"folders": [{"squares": 0, "unused": "above"}], "front_next": False},
+        None,
+    ]
+    script = (
+        f"import {{ otherFrontSaid }} from {json.dumps((UI_DIR / 'live.js').as_uri())};"
+        f"import {{ setLanguage }} from {json.dumps((UI_DIR / 'strings.js').as_uri())};"
+        f"const cases = {json.dumps(cases)}; const out = {{}};"
+        "for (const lang of ['en', 'fr']) {"
+        " setLanguage(lang); out[lang] = cases.map(otherFrontSaid); }"
+        "console.log(JSON.stringify(out));"
+    )
+    run = subprocess.run(
+        ["node", "--input-type=module", "-e", script], capture_output=True, encoding="utf-8"
+    )
+    assert run.returncode == 0, run.stderr
+    said = json.loads(run.stdout)
+    how = (
+        "On Live's map, click a square of these meshes to put it in front of Live: its mesh "
+        "there, with Live's photos. Click it again to put it back behind Live."
+    )
+    kept = (
+        "Removing a folder that is not there leaves its squares in front of Live: Live cannot "
+        "see which ones it gave. Plug its disk in first to put them back behind Live."
+    )
+    next_start = "The squares in front change from Live's next start, X-Plane closed."
+    assert said["en"] == [how, f"{how} {next_start} {kept}", kept, "", ""]
+    assert said["fr"][2] == (
+        "Retirer un dossier introuvable laisse ses carrés devant Live : Live ne peut pas voir "
+        "lesquels il donnait. Branchez d'abord son disque pour les remettre derrière Live."
     )

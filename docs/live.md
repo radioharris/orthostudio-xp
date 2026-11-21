@@ -528,11 +528,14 @@ front of Live or behind: **↑** and **↓** move a folder up or down. A folder 
 disk unplugged) does not stop Live: its line says so, and its squares come from the next folder
 that has them, else from Live's mesh. **Remove** puts the squares a folder gives back behind
 Live, as **All behind** does (below), then makes Live forget the folder; its files stay where they
-are. Nothing in those folders is changed. Their meshes and their roads are taken at Live's start,
-and kept until the next one: the line says "Used from Live's next start" until then. Each start
-says in Live's log what each folder's line says: the squares it gives and what it takes there, or
-why it takes nothing, the folder not there included; when they are the only mesh, the window and
-the start then say so. On Windows, a folder on a network drive needs Developer Mode on:
+are. A folder that is not there gives no square, so Live cannot know which of the squares in front
+were its own: its **Remove** leaves them in front of Live, and the text under the list says so;
+plug its disk in first to put them back behind Live. Nothing in those folders is changed. Their
+meshes and their roads are taken at Live's start, and kept until the next one: the line says "Used
+from Live's next start" until then. Each start says in Live's log what each folder's line says,
+and a little more: the squares it gives, none included, what it takes there or why it takes
+nothing, the folder not there included, and every pack it leaves aside, by name, whatever the
+case; when they are the only mesh, the window and the start then say so. On Windows, a folder on a network drive needs Developer Mode on:
 without it, Windows cannot link Live's scenery to it. At night their towns are lit too, along
 X-Plane's own roads, but without NASA's night map, which comes with Live's regions: every street
 lamp is on, a little dimmer, out in the open country too.

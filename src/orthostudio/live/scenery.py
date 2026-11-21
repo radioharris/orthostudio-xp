@@ -351,8 +351,7 @@ class OtherMeshes:
 
     def gives(self, folder: Path) -> list[Square]:
         """The squares ``folder`` gives, those of its ground no folder above it in the list has
-        (:attr:`ground`): what its « All in front » and « All behind » change, what it says it puts
-        in front of Live."""
+        (:attr:`ground`), which Live's map draws from it."""
         return sorted(square for square, by in self.ground.items() if by == folder)
 
     @property
@@ -419,13 +418,12 @@ def _given_by(folders: Sequence[Path], read: FoldersRead, front: Collection[Squa
 def other_mesh_said(one: OtherFolder, every: OtherMeshes) -> dict:
     """A folder of another tool's mesh (``one`` of ``every``) as Live says it, in its window and in
     its log, all of it decided here, the page guessing nothing: its name, its meshes and roads by
-    name, those left aside with why; how many squares it gives (:meth:`OtherMeshes.gives`: those
-    Live's map draws from it, which its « All in front » and « All behind » change), those of them
-    in front of Live by name; and why Live takes none of its meshes (``unused``, the one fact of
-    each case), None when it takes one: "gone", the folder is not there; "no_mesh", no ground of it
-    names photos; "above", it gives no square, folders higher in the list have them all;
-    "behind", the squares it gives are all behind Live's mesh, none in front (one in front takes
-    the mesh that has it)."""
+    name, those left aside with why; how many squares it gives (:meth:`OtherMeshes.gives`), those
+    of them in front of Live by name; and why Live takes none of its meshes (``unused``, the one
+    fact of each case), None when it takes one: "gone", the folder is not there; "no_mesh", no
+    ground of it names photos; "above", it gives no square, folders higher in the list have them
+    all; "behind", the squares it gives are all behind Live's mesh, none in front (one in front
+    takes the mesh that has it)."""
     folder, found = one.folder, one.found
     gives = every.gives(folder)
     if not one.there:
