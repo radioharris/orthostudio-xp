@@ -11,14 +11,17 @@ holds, and unpacked in ``$OSXP_HOME/libs/``. Where it is installed already (a ch
 environment, the tests), that one is used.
 
 ``cv2`` here stands for the module: it is imported at its first use, so that the engine starts,
-and builds the tiles without clouds, where it is not there.
+and builds the tiles without clouds, where it is not there. Its threads are set then, once
+(:func:`half_processor`).
 """
 
 from __future__ import annotations
 
+import functools
 import hashlib
 import importlib
 import importlib.util
+import os
 import platform
 import shutil
 import sys
@@ -33,7 +36,16 @@ from typing import Any
 from orthostudio.errors import OsxpError
 from orthostudio.home import osxp_home
 
-__all__ = ["OPENCV_VERSION", "WHEELS", "cv2", "ensure_opencv", "opencv_bytes", "opencv_ready"]
+__all__ = [
+    "HALVES",
+    "OPENCV_VERSION",
+    "WHEELS",
+    "cv2",
+    "ensure_opencv",
+    "half_processor",
+    "opencv_bytes",
+    "opencv_ready",
+]
 
 OPENCV_VERSION = "5.0.0.93"
 """opencv-python-headless, the version ``uv.lock`` pins (a test keeps the two the same)."""
@@ -84,6 +96,28 @@ WHEELS: dict[tuple[str, str], Wheel] = {
 Progress = Callable[[int, int], None]
 _LOCK = threading.Lock()
 _MODULE: ModuleType | None = None
+
+HALVES = sys.platform != "darwin"
+"""Whether OpenCV's work can be held to half of the processor here: not on the Mac, where OpenCV
+hands it to the system's own queue (GCD), which takes no limit."""
+
+
+@functools.cache
+def half_processor() -> bool:
+    """Whether the clouds take half of the processor (``expert.clouds_half_processor``, where
+    :data:`HALVES`): OpenCV's threads, and the textures Apply makes at once. Read once, when first
+    asked: OpenCV's threads are set before it works, as changing them while it works could crash
+    it, so a change is taken at the next start."""
+    return HALVES and _asked()
+
+
+def _asked() -> bool:
+    from orthostudio.config import load_settings
+
+    try:
+        return load_settings().expert.clouds_half_processor
+    except (OsxpError, OSError):  # a settings file that cannot be read: the default
+        return False
 
 
 def opencv_dir() -> Path:
@@ -187,7 +221,10 @@ def opencv() -> ModuleType:
                         "CLOUD_DETECTOR_MISSING", context={"reason": "OpenCV not downloaded"}
                     )
                 sys.path.insert(0, str(opencv_dir()))
-            _MODULE = importlib.import_module("cv2")
+            module = importlib.import_module("cv2")
+            if half_processor():
+                module.setNumThreads(max(1, (os.cpu_count() or 2) // 2))
+            _MODULE = module
     return _MODULE
 
 

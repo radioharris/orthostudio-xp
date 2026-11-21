@@ -403,6 +403,12 @@ cloud's right corner counts the clouds found that wait for your look, 0 when a s
 those still waiting are not searched. A tile *Find and apply…* is stopped on before its *Apply*
 is left as it was, and one whose *Apply* could not be done (X-Plane running) says why in its cell.
 
+The search and *Apply* use every core of the processor. On Windows and Linux, *Clouds: half of the
+processor* (Settings, For experts, This app) holds them to half of its cores: they are slower, and
+the computer works less hard, for one that crashes or runs too hot while it works on the clouds.
+It is taken at the next start of OrthoStudio XP, and every profile shares it. A Mac does not offer
+it: OpenCV there hands its work to the system, which takes no such limit.
+
 A tile filed elsewhere that you build again is built in the workshop, beside the cache, then put
 back in its folder in place of the old version: moved there at once on the workshop's disk, copied
 and read back on another, the old version taken away only once the new one is in place. Built again

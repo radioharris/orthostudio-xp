@@ -16,6 +16,7 @@ import pytest
 import test_api_fakes as fakes
 from orthostudio.api.app import API_LEVEL, create_app
 from orthostudio.api.jobs import JobManager
+from orthostudio.clouds import opencv
 from orthostudio.codemark import code_mark
 from orthostudio.net.fetch import FetchRequest, FetchResult
 from orthostudio.pipeline.build import BuildEnv
@@ -46,6 +47,10 @@ async def test_status_providers_and_language(app, home: Path, xplane: Path) -> N
         assert r.status_code == 200, r.text
         doc = r.json()
         assert doc["version"] and doc["home"] == str(home) and doc["language"] == "fr"
+        # the clouds' half of the processor, left out where OpenCV takes no limit (the Mac)
+        assert doc["settings_not_here"] == (
+            [] if opencv.HALVES else ["expert.clouds_half_processor"]
+        )
         # the page writes what lies under it with "~", so no name of a user is in a picture
         assert doc["user_home"] == str(Path.home())
         xp_status = doc["xplane"]

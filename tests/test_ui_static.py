@@ -5648,14 +5648,24 @@ def test_the_page_says_when_a_newer_version_is_out() -> None:
             "settings.x.group_app",
             "settings.x.check_updates",
             "settings.x.check_updates_hint",
+            "settings.x.clouds_half",
+            "settings.x.clouds_half_hint",
         ):
             assert tables[lang][key], f"{lang} is missing {key}"
     # and it can be turned off, in a group of its own: it has nothing to do with the tiles
     code = (UI / "settings.js").read_text(encoding="utf-8")
-    assert 'fields: ["expert.build_memory", "expert.check_updates"]' in code
+    group = '"expert.build_memory", "expert.clouds_half_processor", "expert.check_updates"]'
+    assert f"fields: [{group}" in code
     assert '"expert.check_updates": [() => t("settings.x.check_updates")' in code
     # the setting says that GitHub sees the address, rather than leaving it to be found out
     assert "GitHub" in tables["en"]["settings.x.check_updates_hint"]
+    # a setting the engine's status says this computer cannot follow is left out (the clouds'
+    # half of the processor on a Mac), wherever its group is
+    assert _node_json("settings.js", 'm.offeredFields(["a", "b", "c"], ["b"])') == ["a", "c"]
+    assert _node_json("settings.js", 'm.offeredFields(["a"], undefined)') == ["a"]
+    assert "offeredFields(g.fields, view.notHere)" in _function_body(code, "renderExperts")
+    app_js = (UI / "app.js").read_text(encoding="utf-8")
+    assert "notHere: state.status?.settings_not_here || []" in app_js
 
 
 def test_the_library_says_what_each_tile_was_built_with() -> None:

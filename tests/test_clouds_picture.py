@@ -194,7 +194,7 @@ def test_a_clouds_textures_lay_the_same_picture_in_any_order_and_at_once(
     ]
 
     def laid(order: list[Any], at_once: int) -> tuple[Any, Any]:
-        monkeypatch.setattr(find, "LAYING_AT_ONCE", at_once)
+        monkeypatch.setattr(find, "at_once", lambda: at_once)
         rgb = np.zeros((512, 512, 3), np.float32)
         alpha = np.zeros((512, 512), np.float32)
         find._all_reduced(p, (0, 0, 512, 512), rgb, alpha, order)

@@ -36,7 +36,7 @@ import numpy as np
 
 from orthostudio.clouds import cloudlist
 from orthostudio.clouds.layer import decode_part, lay, layer
-from orthostudio.clouds.opencv import ensure_opencv
+from orthostudio.clouds.opencv import ensure_opencv, half_processor
 from orthostudio.clouds.tile import (
     DIGEST_HEX,
     Stamp,
@@ -348,19 +348,24 @@ clouds over 18 textures of 4096 pixels, one at a time took 6.1 s and 0.48 GB mor
 3.3 s and 0.75 GB, four 1.9 s and 1.35 GB (2026-11-07)."""
 
 
+def at_once() -> int:
+    """:data:`LAYING_AT_ONCE`, half as many when the clouds take half of the processor."""
+    return LAYING_AT_ONCE // 2 if half_processor() else LAYING_AT_ONCE
+
+
 def _make_all(
     tile: TileRef,
     shown: TileClouds,
     work: Sequence[tuple[str, Sequence[Mapping[str, Any]]]],
     progress: Callable[[int, int], None] | None,
 ) -> list[tuple[str, Path]]:
-    """:func:`_make` of each texture of ``work``, :data:`LAYING_AT_ONCE` at a time, in the order of
+    """:func:`_make` of each texture of ``work``, :func:`at_once` at a time, in the order of
     ``work``; ``progress`` told how many are made. When one fails, those made are let go of and
     its error raised: nothing has changed."""
     made: list[tuple[str, Path]] = []
     if progress is not None:
         progress(0, len(work))
-    with ThreadPoolExecutor(max_workers=LAYING_AT_ONCE, thread_name_prefix="osxp-lay") as pool:
+    with ThreadPoolExecutor(max_workers=at_once(), thread_name_prefix="osxp-lay") as pool:
         futures = [pool.submit(_make, tile, shown, name, mine) for name, mine in work]
         for n, _done in enumerate(as_completed(futures), start=1):
             if progress is not None:
