@@ -13,10 +13,11 @@ from pathlib import Path
 
 import pytest
 
-from live_helpers import NAMES, FakeDownloader, live_names, make_source, square_of
+from live_helpers import NAMES, FakeDownloader, live_names, make_source, put, square_of
 from orthostudio.live.cache import ChunkCache
 from orthostudio.live.names import (
     KEEP,
+    OTHER,
     RING,
     TERRAIN_LISTS,
     Names,
@@ -409,8 +410,8 @@ def test_a_texture_in_two_regions_counts_once_and_takes_the_first_s_files(tmp_pa
     b = make_source(tmp_path / "b", tile=HERE, textures=ROW[4:8])
     both = RegionTextures([a, b], lists=tmp_path / "lists")
     assert len(both) == 8 and both.owner(HERE) == 0
-    files = {e[0]: (e[5], e[6]) for e in both.entries()}
-    assert files[f"{ROW[4]}.dds"] == (0, {1: 0, 2: 0})  # its plain and water overlay .ter
+    files = {e.name: (e.masks, e.files) for e in both.entries()}
+    assert files[f"{ROW[4]}.dds"] == (0, {1: (0,), 2: (0,)})  # its plain and water overlay .ter
     assert sorted(files) == [f"{name}.dds" for name in ROW[:6]]  # ROW[6:8]: b's alone
     swapped = RegionTextures([b, a])
     assert swapped.owner(HERE) == 0 and len(list(swapped.entries())) == 4  # ROW[4:8], b's
@@ -755,18 +756,9 @@ def _live_region(root: Path, region: str, ters: str, squares=()) -> Path:
     source = root / f"z_osxp_{region}"
     (source / TERRAIN_LISTS).mkdir(parents=True)
     (source / TERRAIN_LISTS / f"z_osxp_{region}.txt").write_text(ters, encoding="ascii")
-    _dsfs(source, squares)
-    return source
-
-
-def _dsfs(source: Path, squares) -> None:
-    """A DSF of ``source`` on each of ``squares``: the squares it gives the pack."""
-    from orthostudio.live.geo import dsf_rel_path
-
     for square in squares:
-        dsf = source / dsf_rel_path(*square)
-        dsf.parent.mkdir(parents=True, exist_ok=True)
-        dsf.write_bytes(b"XPLNEDSF")
+        put(source, square)
+    return source
 
 
 def _on_the_line(root: Path) -> tuple[Path, Path]:
@@ -796,23 +788,23 @@ def test_a_texture_two_regions_name_takes_the_files_of_both(tmp_path: Path) -> N
     AutoOrtho's, whose files are copied, as Live's own."""
     asi, eur = _on_the_line(tmp_path)
     regions = RegionTextures([asi, eur])  # Live's order: their folders' names
-    assert [(e[0], e[4], e[5], e[6]) for e in regions.entries_of((40, 27))] == [
+    assert [(e.name, e.kinds, e.masks, e.files) for e in regions.entries_of((40, 27))] == [
         # Asia's land, sea and its mask, Europe's water
-        ("24656_37680_BI16.dds", 1 | 2 | 4, 0, {1: 0, 2: 1, 4: 0})
+        ("24656_37680_BI16.dds", 1 | 2 | 4, 0, {1: (0, 1), 2: (1,), 4: (0,)})
     ]
-    assert [(e[0], e[4], e[5]) for e in regions.entries_of((39, 26))] == [
+    assert [(e.name, e.kinds, e.masks) for e in regions.entries_of((39, 26))] == [
         ("99680_150720_BI18.dds", 1 | 2, 1)  # Europe's water, its masks Europe's
     ]
     swapped = RegionTextures([eur, asi])
-    assert [(e[4], e[5], e[6]) for e in swapped.entries_of((40, 27))] == [
-        (1 | 2 | 4, 1, {1: 0, 2: 0, 4: 1})
+    assert [(e.kinds, e.masks, e.files) for e in swapped.entries_of((40, 27))] == [
+        (1 | 2 | 4, 1, {1: (0, 1), 2: (0,), 4: (1,)})
     ]
     # AutoOrtho's region giving the square west of Asia's: its water file taken as Europe's was
     ao = make_source(tmp_path, tile=(40, 26), textures=("24656_37680_BI16",))
     with_ao = RegionTextures([asi, ao])
     assert with_ao.owner((40, 27)) == 0 and with_ao.owner((40, 26)) == 1
-    assert [(e[4], e[5], e[6]) for e in with_ao.entries_of((40, 27))] == [
-        (1 | 2 | 4, 0, {1: 0, 2: 1, 4: 0})
+    assert [(e.kinds, e.masks, e.files) for e in with_ao.entries_of((40, 27))] == [
+        (1 | 2 | 4, 0, {1: (0, 1), 2: (1,), 4: (0,)})
     ]
 
 
@@ -824,8 +816,9 @@ def test_a_region_whose_squares_another_gives_lends_no_file(tmp_path: Path) -> N
     ao = make_source(tmp_path, tile=(40, 27), textures=("24656_37680_BI16", "24656_37696_BI16"))
     regions = RegionTextures([asi, eur, ao])
     assert {regions.owner((40, 26)), regions.owner((40, 27))} == {0, 1}
-    assert [(e[0], e[4], e[6]) for e in regions.entries_of((40, 27))] == [
-        ("24656_37680_BI16.dds", 1 | 2 | 4, {1: 0, 2: 1, 4: 0})  # Europe's water, not AutoOrtho's
+    assert [(e.name, e.kinds, e.files) for e in regions.entries_of((40, 27))] == [
+        # Europe's water, not AutoOrtho's
+        ("24656_37680_BI16.dds", 1 | 2 | 4, {1: (0, 1), 2: (1,), 4: (0,)})
     ]
 
 
@@ -877,7 +870,8 @@ def _alps(root: Path) -> Path:
     for kind in ("", "_sea_overlay"):
         (alps / "terrain" / f"{ON_THE_LINE}{kind}.ter").write_text(f"the Alps' {kind or 'land'}")
     (alps / "textures" / "24656_37680_ZL16.png").write_bytes(b"the Alps' mask")
-    _dsfs(alps, [(40, 26), (40, 27)])
+    for square in [(40, 26), (40, 27)]:
+        put(alps, square)
     return alps
 
 
@@ -897,11 +891,13 @@ def test_a_square_in_front_of_live_beside_live_s_squares(tmp_path: Path, front) 
     alps = _alps(tmp_path)
     sources = [live, alps]  # Live's own first, another tool's last: the order of every start
     behind = RegionTextures(sources)
-    assert [(e[4], e[6]) for e in behind.entries_of((40, 27))] == [(1 | 2, {1: 0, 2: 0})]
+    assert [(e.kinds, e.files) for e in behind.entries_of((40, 27))] == [
+        (1 | 2, {1: (0,), 2: (0,)})
+    ]
     ahead = RegionTextures(sources, front={front: alps})
     assert ahead.owner(front) == 1
-    assert [(e[4], e[5], e[6]) for e in ahead.entries_of((40, 27))] == [
-        (1 | 2 | 4, 1, {1: 0, 2: 0, 4: 1})  # the sea and its mask the other mesh's
+    assert [(e.kinds, e.masks, e.files) for e in ahead.entries_of((40, 27))] == [
+        (1 | 2 | 4, 1, {1: (0, 1), 2: (0,), 4: (1,)})  # the sea and its mask the other mesh's
     ]
     for square in [(40, 26), (40, 27)]:
         pack = tmp_path / f"pack{square[1]}"
@@ -916,3 +912,31 @@ def test_a_square_in_front_of_live_beside_live_s_squares(tmp_path: Path, front) 
         land = (terrain / f"{ON_THE_LINE}.ter").read_bytes()
         assert land.startswith(b"A\n800\nTERRAIN")  # Live's, made from its name
         assert (pack / "textures" / "24656_37680_ZL16.png").read_bytes() == b"the Alps' mask"
+
+
+def test_rare_terrain_files_come_from_every_owner(tmp_path: Path) -> None:
+    """A texture on the line between two owners, each naming terrain files of a rare kind, one
+    of its own and one they share: the texture takes the rare ones of both, each from the first
+    owner that names it, as every other kind."""
+
+    def region(name: str, rare: tuple[str, ...], square: tuple[int, int]) -> Path:
+        source = tmp_path / name / "z_ao_rare"
+        (source / "terrain").mkdir(parents=True)
+        (source / "textures").mkdir()
+        for suffix in ("", *rare):
+            (source / "terrain" / f"{ON_THE_LINE}{suffix}.ter").write_text(f"{name}{suffix}")
+        put(source, square)
+        return source
+
+    east = region("east", ("_beach", "_rock"), (40, 27))
+    west = region("west", ("_cliff", "_rock"), (40, 26))
+    [entry] = RegionTextures([east, west]).entries_of((40, 27))
+    assert entry.files[OTHER] == (0, 1)
+    pack = tmp_path / "pack"
+    _names_of(pack, [east, west]).make((40, 27))
+    assert {p.name: p.read_text() for p in (pack / "terrain").iterdir()} == {
+        f"{ON_THE_LINE}.ter": "east",
+        f"{ON_THE_LINE}_beach.ter": "east_beach",
+        f"{ON_THE_LINE}_cliff.ter": "west_cliff",
+        f"{ON_THE_LINE}_rock.ter": "east_rock",
+    }

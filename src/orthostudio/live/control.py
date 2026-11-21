@@ -295,11 +295,10 @@ def _other_mesh_said(xp: Path | None) -> dict[str, Any] | None:
     found = other_mesh_found(xp, live_root())
     pack = default_pack_dir()
     in_pack = set(session._recorded_sources(pack))
-    packs = set(found.ground.values())
     try:
         in_xplane = (
-            listed_above_live(xp, packs, LINK_NAME, load_settings().own_tiles)
-            if xp is not None and packs
+            listed_above_live(xp, found.packs, LINK_NAME, load_settings().own_tiles)
+            if xp is not None and found.packs
             else []
         )
     except OSError:  # X-Plane's list unreadable this time: said at the next checks

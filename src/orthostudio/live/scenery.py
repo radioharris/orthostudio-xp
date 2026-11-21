@@ -29,11 +29,12 @@ from orthostudio.config.store import load_settings, save_settings
 from orthostudio.errors import OsxpError
 from orthostudio.fsutil import NO_CONSOLE_WINDOW
 from orthostudio.install import chosen_xplane, is_xplane_dir
+from orthostudio.install.library import tile_from_name
 from orthostudio.install.scenery_packs import PackKind, SceneryPackEntry, SceneryPacks
 from orthostudio.install.xplane import XPLANE_EXECUTABLES, custom_scenery_dir, linux_name
 from orthostudio.install.xplane import xplane_running as _xplane_running
 from orthostudio.live.filesystem import folder_link, is_folder_link, remove_folder_link
-from orthostudio.live.geo import tile_name, tile_of_name
+from orthostudio.live.geo import tile_name
 from orthostudio.live.pack import LINK_NAME, OVERLAY_LINK_NAME
 
 if TYPE_CHECKING:
@@ -130,12 +131,15 @@ class OtherMesh:
     ground: dict[Square, Path]
     """Every square of its ground naming photos, copies left aside included, with the first of its
     packs that has it: what Live's map draws, the squares the pilot may put in front of Live."""
+    packs: list[Path]
+    """Its packs of ground naming photos, copies left aside included: X-Plane draws any of them
+    without photos where its own list enables it above Live (``covered.listed_above_live``)."""
     front: dict[Square, Path]
     """The squares put in front of Live it has (``LiveSettings.other_mesh_front``), each with the
     mesh whose DSF wins there (:func:`default_meshes`)."""
 
 
-NO_OTHER_MESH = OtherMesh([], [], [], {}, {})
+NO_OTHER_MESH = OtherMesh([], [], [], {}, [], {})
 
 PACK_DEPTH = 3  # AutoOrtho's own, moved: <folder>/z_autoortho/scenery/z_ao_<region>
 
@@ -170,6 +174,7 @@ def other_mesh(
     refused: list[tuple[str, str]] = []
     overlays: list[tuple[Path, set]] = []
     named: dict[Square, Path] = {}  # the squares of its ground naming photos, copies included
+    grounds: list[Path] = []  # its packs of ground naming photos, copies included
     have: set | None = None  # the squares before it, listed once a mesh is found
     ahead = set(front)  # the squares put in front of Live no mesh kept has yet
     for pack in packs:
@@ -186,6 +191,7 @@ def other_mesh(
         else:
             if have is None:
                 have = set().union(*(squares_of(source) for source in given))
+            grounds.append(pack)
             for square in squares:
                 named.setdefault(square, pack)
             if squares <= have and not squares & ahead:  # a copy of a region before it
@@ -195,7 +201,8 @@ def other_mesh(
                 have |= squares
                 ahead -= squares
     roads = _roads_of(set(named), overlays) if meshes else []
-    return OtherMesh(meshes, roads, refused, named, {sq: named[sq] for sq in front if sq in named})
+    front_had = {sq: named[sq] for sq in front if sq in named}
+    return OtherMesh(meshes, roads, refused, named, grounds, front_had)
 
 
 def _packs_in(folder: Path, depth: int) -> list[Path]:
@@ -276,37 +283,33 @@ def other_mesh_folder(settings: LiveSettings | None = None) -> Path | None:
         return Path(folder)
 
 
-def other_mesh_front() -> frozenset[Square]:
+def other_mesh_front(settings: LiveSettings) -> frozenset[Square]:
     """The squares of the folder of another tool's mesh the pilot put in front of Live."""
-    from orthostudio.live.settings import load_settings
-
-    names = load_settings().other_mesh_front
-    return frozenset(square for name in names if (square := tile_of_name(name)) is not None)
+    names = settings.other_mesh_front
+    return frozenset(square for name in names if (square := tile_from_name(name)) is not None)
 
 
 def front_saved(settings: LiveSettings, before: LiveSettings) -> LiveSettings:
     """``settings`` as a save keeps them: the squares put in front of Live emptied once another
-    folder of another tool's mesh is chosen, or none; else only those its ground still has, all of
-    them while it is not there (its disk unplugged), so that they come back with it."""
-    if settings.other_mesh.strip() != before.other_mesh.strip():
-        return settings.model_copy(update={"other_mesh_front": []})
-    folder = other_mesh_folder(settings)
-    if folder is None or not settings.other_mesh_front or not other_mesh_there(folder):
+    folder of another tool's mesh is chosen, or none. Nothing else: a square the folder lacks is
+    not taken (:func:`other_mesh` takes only those of its ground), and a folder that reads empty
+    (an empty mount point, its disk away) never wipes them."""
+    if settings.other_mesh.strip() == before.other_mesh.strip():
         return settings
-    ground = other_mesh(folder).ground
-    kept = [n for n in settings.other_mesh_front if tile_of_name(n) in ground]
-    return settings.model_copy(update={"other_mesh_front": kept})
+    return settings.model_copy(update={"other_mesh_front": []})
 
 
 def other_mesh_said(folder: Path, found: OtherMesh) -> dict:
     """The folder of another tool's mesh as Live says it, in its window and in its log: whether it
-    is there, its meshes and roads by name, those left aside with why."""
+    is there, its meshes and roads by name, those left aside with why, how many squares its ground
+    gives the map, those in front of Live."""
     return {
         "folder": str(folder),
         "there": other_mesh_there(folder),
         "meshes": [p.name for p in found.meshes],
         "overlays": [p.name for p in found.overlays],
         "refused": [{"name": name, "why": why} for name, why in found.refused],
+        "squares": len(found.ground),
         "front": [tile_name(*square) for square in sorted(found.front)],
     }
 
@@ -329,9 +332,12 @@ def other_mesh_found(xplane: Path | None, root: Path, *, fresh: bool = False) ->
     """The folder chosen in the Settings and what Live takes there after the regions before it
     (:func:`base_sources`), with the squares put in front of Live, as last looked at, or now when
     ``fresh`` (a start)."""
+    from orthostudio.live.settings import load_settings
+
     global _found
-    folder = other_mesh_folder()
-    front = other_mesh_front()
+    settings = load_settings()
+    folder = other_mesh_folder(settings)
+    front = other_mesh_front(settings)
     # its disk plugged in again, a square put in front or back: looked at at once, where the
     # window said « no mesh » 30 s more
     key = (folder, folder is not None and other_mesh_there(folder), xplane, root, front)

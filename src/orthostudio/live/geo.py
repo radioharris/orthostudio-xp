@@ -81,18 +81,6 @@ def tile_name(lat: int, lon: int) -> str:
     return f"{lat:+03d}{lon:+04d}"
 
 
-_TILE_NAME_RE = re.compile(r"^([+-]\d{2})([+-]\d{3})$")
-
-
-def tile_of_name(name: str) -> tuple[int, int] | None:
-    """(lat, lon) of a square named as :func:`tile_name` writes it ("+45+006"), or None."""
-    m = _TILE_NAME_RE.match(name)
-    if not m:
-        return None
-    lat, lon = int(m[1]), int(m[2])
-    return (lat, lon) if -90 <= lat < 90 and -180 <= lon < 180 else None
-
-
 def haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     p1, p2 = math.radians(lat1), math.radians(lat2)
     dp = p2 - p1

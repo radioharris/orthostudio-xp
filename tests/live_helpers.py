@@ -23,12 +23,22 @@ def fake_dsf(terrains: Iterable[str]) -> bytes:
     return b"XPLNEDSF" + struct.pack("<i", 1) + head + defn + atom(b"GEOD", b"\0" * 16) + b"\0" * 16
 
 
+def put(pack: Path, square: tuple[int, int], data: bytes = b"XPLNEDSF") -> Path:
+    """A DSF of ``pack`` on ``square``, holding ``data``, where X-Plane looks for it."""
+    from orthostudio.live.geo import dsf_rel_path
+
+    path = pack / dsf_rel_path(*square)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(data)
+    return path
+
+
 def make_source(root: Path, tile=(45, 6), textures=("23296_33152_BI16",)) -> Path:
     """A source pack with a DSF on ``tile`` and on each square its textures lie on, as a region's
     DSFs name the textures of their squares (``names.RegionTextures.owner``), each naming one plain
     and one water-overlay .ter per texture."""
     from orthostudio.live.evict import tiles_of
-    from orthostudio.live.geo import dsf_rel_path, parse_texture_name
+    from orthostudio.live.geo import parse_texture_name
 
     src = root / "z_ao_test"
     squares = {tile} | {
@@ -49,9 +59,7 @@ def make_source(root: Path, tile=(45, 6), textures=("23296_33152_BI16",)) -> Pat
         )
     (src / "textures" / "water_transition.png").write_bytes(b"\x89PNG fake")
     for square in sorted(squares):
-        dsf = src / dsf_rel_path(*square)
-        dsf.parent.mkdir(parents=True, exist_ok=True)
-        dsf.write_bytes(fake_dsf(terrains))
+        put(src, square, fake_dsf(terrains))
     return src
 
 

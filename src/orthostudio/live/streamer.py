@@ -337,10 +337,10 @@ class _Job:
 
 
 class TextureIndex:
-    """The region's textures by the 1-degree tile of their centre: (name, lat, lon, zoom, kinds,
-    masks, files), the last three the files it takes and the regions they come from
-    (``names.Entry``). From the regions' lists (``region``), a tile's worked out the first time it
-    is asked for (``names.SquareTextures``); from names, all at once, no files."""
+    """The region's textures by the 1-degree tile of their centre (``names.Entry``: where each
+    is, the files it takes and the regions they come from). From the regions' lists (``region``),
+    a tile's worked out the first time it is asked for (``names.SquareTextures``); from names, all
+    at once, no files."""
 
     def __init__(self, textures: Iterable = (), region: RegionTextures | None = None):
         if region is not None:
@@ -354,7 +354,7 @@ class TextureIndex:
                 if tex is None:
                     continue
                 lat, lon = tex.center
-                item = (item, lat, lon, tex.zoom, 0, 0, {})
+                item = Entry(item, lat, lon, tex.zoom, 0, {})
             self.by_tile[(math.floor(item[1]), math.floor(item[2]))].append(item)
         self.zooms = {entry[3] for textures in self.by_tile.values() for entry in textures}
         self._count = sum(len(v) for v in self.by_tile.values())

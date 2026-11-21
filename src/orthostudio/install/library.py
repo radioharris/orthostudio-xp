@@ -113,11 +113,13 @@ def default_library_path() -> Path:
 
 
 def tile_from_name(name: str) -> TileRef | None:
-    """``+43+005`` -> ``TileRef(43, 5)``; ``None`` when the text is not a tile name."""
+    """``+43+005`` -> ``TileRef(43, 5)``; ``None`` when the text is not the name of a tile of the
+    world (``+90+000``, ``+45+180``: none)."""
     m = _TILE_NAME.match(name)
     if m is None:
         return None
-    return TileRef(int(m.group(1)), int(m.group(2)))
+    lat, lon = int(m.group(1)), int(m.group(2))
+    return TileRef(lat, lon) if -90 <= lat < 90 and -180 <= lon < 180 else None
 
 
 def pack_tile(name: str) -> TileRef | None:

@@ -10,6 +10,7 @@ they were read.
 
 from __future__ import annotations
 
+import threading
 import tomllib
 from pathlib import Path
 from typing import Any, Literal
@@ -19,8 +20,9 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from orthostudio.config.store import toml_dumps
 from orthostudio.decals import DECALS
 from orthostudio.fsutil import atomic_write_text
+from orthostudio.install.library import tile_from_name
 from orthostudio.live import settings_file
-from orthostudio.live.geo import tile_name, tile_of_name
+from orthostudio.live.geo import tile_name
 
 TABLE = "stream"
 TEXTURES_SHARE = 0.5  # of Live's disk space: the textures built; the rest, the downloaded imagery
@@ -119,10 +121,11 @@ class LiveSettings(BaseModel):
     other_mesh_front: list[str] = Field(default_factory=list)
     """The squares of that folder's mesh put in front of Live on its map ("+45+006"): there its
     DSF wins over Live's own and AutoOrtho's, with Live's photos
-    (:func:`orthostudio.live.scenery.default_meshes`); elsewhere it comes after them. Emptied when
-    another folder is chosen, or none; a square the folder no longer has dropped at the next save
-    (:func:`orthostudio.live.scenery.front_saved`). Taken at the next start with X-Plane not
-    running, as every change of the mesh (``session.prepare``)."""
+    (:func:`orthostudio.live.scenery.default_meshes`); elsewhere it comes after them. One square
+    put in front or back by a click (:func:`put_in_front`); emptied when another folder is chosen,
+    or none (:func:`orthostudio.live.scenery.front_saved`); a square the folder lacks is not
+    taken. Taken at the next start with X-Plane not running, as every change of the mesh
+    (``session.prepare``)."""
     mesh: Literal["new", "old"] = "new"
     """Which mesh of Live's own regions a start streams onto, for all of them at once: "new", each
     region installed; "old", each region's kept old mesh where it has one, the new one elsewhere
@@ -231,7 +234,7 @@ class LiveSettings(BaseModel):
         """Each square once, written as X-Plane names its DSF, south to north then west to east."""
         squares = set()
         for name in names:
-            square = tile_of_name(name.strip())
+            square = tile_from_name(name.strip())
             if square is None:
                 raise ValueError(f"not a square's name: {name!r}, such as +45+006")
             squares.add(square)
@@ -310,3 +313,21 @@ def save_settings(settings: LiveSettings) -> None:
     path = settings_file()
     path.parent.mkdir(parents=True, exist_ok=True)
     atomic_write_text(path, toml_dumps(data))
+
+
+SAVING = threading.Lock()
+"""Held by the page's saves that read the settings and write them back, its Settings and its map's
+click (:func:`put_in_front`): one after the other, each keeps what the other saved."""
+
+
+def put_in_front(square: str, front: bool) -> list[str]:
+    """One square of the folder of another tool's mesh put in front of Live, or back behind it, as
+    a click on Live's map asks: the setting read, that square alone changed, saved. The squares in
+    front, as saved; :class:`ValueError` for a name not a square's."""
+    with SAVING:
+        settings = load_settings()
+        names = [name for name in settings.other_mesh_front if name != square.strip()]
+        changed = {"other_mesh_front": [*names, square] if front else names}
+        saved = LiveSettings.model_validate({**settings.model_dump(), **changed})
+        save_settings(saved)
+    return saved.other_mesh_front

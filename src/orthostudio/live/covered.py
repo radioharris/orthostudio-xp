@@ -14,11 +14,11 @@ there, and a start there waits for none of them.
 from __future__ import annotations
 
 import os
-from collections.abc import Collection
+from collections.abc import Collection, Iterator
 from pathlib import Path
 
 from orthostudio.install.dsf_head import dsf_properties
-from orthostudio.install.scenery_packs import SceneryPacks
+from orthostudio.install.scenery_packs import SceneryPackEntry, SceneryPacks
 
 from .geo import dsf_tile_of
 from .scenery import _ini, place_line
@@ -40,15 +40,32 @@ def _folder(xplane: Path, written: str) -> Path:
     return path if path.is_absolute() else xplane / path
 
 
+def lines_above(
+    xplane: Path, below: str, own_tiles: str | None = None
+) -> Iterator[tuple[SceneryPackEntry, Path]]:
+    """The lines of X-Plane's list (``scenery_packs.ini``) checked above ``below`` (Live's link),
+    the top first, each with its folder: Live's line where it is listed, or with ``own_tiles``
+    where Live's next start lists it (:func:`orthostudio.live.scenery.place_line`, in memory only:
+    the list on the disk stays as it is). The one reading of the list for what X-Plane draws above
+    Live."""
+    listed = SceneryPacks.load(_ini(xplane))
+    if own_tiles is not None:
+        place_line(listed, own_tiles)
+    for entry in listed.entries:
+        if entry.name == below:
+            return
+        if entry.enabled:
+            yield entry, _folder(xplane, entry.path)
+
+
 def covered_squares(
     xplane: Path,
     below: str,
     region: Collection[tuple[int, int]] | None = None,
-    packs: SceneryPacks | None = None,
+    own_tiles: str | None = None,
 ) -> dict[tuple[int, int], str]:
     """``{(lat, lon): pack}``: the squares of ``region`` (Live's pack's; all when None) whose
-    ground X-Plane takes from an enabled pack listed above ``below`` (Live's link), in ``packs``
-    (X-Plane's list as it is on the disk when None).
+    ground X-Plane takes from a pack checked above ``below`` (Live's link, :func:`lines_above`).
 
     A pack is ground or overlays as one of its DSFs there says, read up to its properties: packs
     are one or the other, and simHeaven X-World or Global Forests hold thousands of zipped DSFs,
@@ -56,13 +73,10 @@ def covered_squares(
     imported from Ortho4XP are ground without reading."""
     wanted = None if region is None else set(region)
     out: dict[tuple[int, int], str] = {}
-    listed = packs if packs is not None else SceneryPacks.load(_ini(xplane))
-    for entry in listed.entries:  # the top first
-        if entry.name == below:
-            break
-        if not entry.enabled or entry.is_global_airports:
+    for entry, folder in lines_above(xplane, below, own_tiles):
+        if entry.is_global_airports:
             continue
-        nav = _folder(xplane, entry.path) / "Earth nav data"
+        nav = folder / "Earth nav data"
         if not nav.is_dir():
             continue
         squares: dict[tuple[int, int], Path] = {}
@@ -81,31 +95,23 @@ def covered_squares(
 
 def own_squares(xplane: Path, below: str, own_tiles: str = "first") -> dict[tuple[int, int], str]:
     """The squares X-Plane takes from the user's own scenery, as :func:`covered_squares` finds
-    them, with Live's line where it is listed, else where Live's next start lists it
-    (:func:`orthostudio.live.scenery.place_line`, in memory only: the list on the disk stays as it
-    is). The Live window shows them while Live is stopped too: what its next flight shows."""
-    packs = SceneryPacks.load(_ini(xplane))
-    place_line(packs, own_tiles)
-    return covered_squares(xplane, below, packs=packs)
+    them, with Live's line where it is listed, else where Live's next start lists it. The Live
+    window shows them while Live is stopped too: what its next flight shows."""
+    return covered_squares(xplane, below, own_tiles=own_tiles)
 
 
 def listed_above_live(
     xplane: Path, packs: Collection[Path], below: str, own_tiles: str = "first"
 ) -> list[str]:
-    """The lines of X-Plane's list checked above Live's (``below``, where it is listed, else where
-    Live's next start lists it, as :func:`own_squares`) whose folder is one of ``packs``: the
-    meshes of another tool's folder that X-Plane draws there itself, without photos. Only a line
-    of a pack's name is followed to its folder."""
-    wanted = {os.path.normcase(os.path.realpath(p)) for p in packs}
-    names = {p.name for p in packs}
-    listed = SceneryPacks.load(_ini(xplane))
-    place_line(listed, own_tiles)
-    out = []
-    for entry in listed.entries:
-        if entry.name == below:
-            break
-        if not entry.enabled or entry.name not in names:
-            continue
-        if os.path.normcase(os.path.realpath(_folder(xplane, entry.path))) in wanted:
-            out.append(entry.name)
-    return out
+    """The lines of X-Plane's list checked above Live's (``below``, as :func:`own_squares` places
+    it) whose folder is one of ``packs``, each line followed to its real folder, whatever its name
+    (a link, a copy's name): the meshes of another tool's folder that X-Plane draws there itself,
+    without photos."""
+    wanted = {_real(p) for p in packs}
+    lines = lines_above(xplane, below, own_tiles)
+    return [entry.name for entry, folder in lines if _real(folder) in wanted]
+
+
+def _real(path: Path) -> str:
+    """A folder as the disk has it, its links followed, as a path to compare."""
+    return os.path.normcase(os.path.realpath(path))

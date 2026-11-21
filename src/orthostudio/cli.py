@@ -24,8 +24,6 @@ app = typer.Typer(
     no_args_is_help=True, add_completion=False, help="OrthoStudio XP: ortho scenery for X-Plane 12"
 )
 
-_TILE_RE = re.compile(r"^([+-]\d{2})([+-]\d{3})$")
-
 EXIT_OK = 0
 EXIT_ERROR = 1
 EXIT_MISSING = 2
@@ -49,15 +47,17 @@ def version() -> None:
 
 def parse_tile(tile: str) -> tuple[int, int]:
     """``+43+005`` -> ``(43, 5)``."""
-    m = _TILE_RE.match(tile.strip())
-    if m is None:
+    from orthostudio.install.library import tile_from_name
+
+    found = tile_from_name(tile.strip())
+    if found is None:
         raise OsxpError(
             "CFG_LATLON_INVALID",
             context={"value": tile},
             message=f"Tile {tile!r} is not of the form +43+005.",
             remedy="Give the south-west corner as sLLsLLL, e.g. +43+005 or -34-059.",
         )
-    return int(m.group(1)), int(m.group(2))
+    return found.lat, found.lon
 
 
 def _err(exc: OsxpError) -> None:

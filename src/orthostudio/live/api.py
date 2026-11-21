@@ -26,8 +26,8 @@ can include as it is the day Live comes into its window (``app.include_router``)
   (:meth:`LiveControl.rivers_chosen`); the squares in front of Live kept as
   :func:`~orthostudio.live.scenery.front_saved` keeps them;
 - ``GET /api/live/map/other``: the squares of the folder of another tool's mesh, each in front of
-  Live or not, which the map draws and its click puts in front or back (``PUT settings``
-  ``{"other_mesh_front"}``);
+  Live or not, which the map draws; ``POST`` ``{"square": "+45+006", "front": bool}``: the one its
+  click puts in front or back (:func:`~orthostudio.live.settings.put_in_front`);
 - ``GET``/``PUT /api/live/xplane-folder`` ``{"path"}``: the X-Plane folder named in OrthoStudio
   XP's settings, the same for Build and Live, with the other X-Planes of the computer;
 - ``GET /api/live/regions``: OrthoStudio XP's regions (:meth:`LiveControl.regions`);
@@ -60,9 +60,11 @@ from orthostudio.live.control import LiveControl, Refusal
 from orthostudio.live.pack import folder_problem
 from orthostudio.live.scenery import front_saved, move_live
 from orthostudio.live.settings import (
+    SAVING,
     LiveSettings,
     SettingsFileError,
     load_settings,
+    put_in_front,
     save_settings,
 )
 
@@ -100,6 +102,11 @@ class QuitBody(BaseModel):
 
 class PrepareBody(BaseModel):
     departure: str = Field("", max_length=40)  # an airport's ICAO code, or lat,lon
+
+
+class FrontBody(BaseModel):
+    square: str = Field(max_length=16)  # "+45+006"
+    front: bool  # in front of Live, or back behind it
 
 
 class InstallBody(BaseModel):
@@ -328,6 +335,16 @@ def live_router(
         """The squares of the folder of another tool's mesh, in front of Live or not."""
         return control.other_squares()
 
+    @router.post("/map/other")
+    def map_other_front(body: FrontBody) -> dict[str, Any]:
+        """A square of that folder clicked on the map: put in front of Live, or back behind it."""
+        try:
+            return {"other_mesh_front": put_in_front(body.square, body.front)}
+        except ValueError as e:
+            raise HTTPException(422, f"square: {body.square!r} is not a square's name") from e
+        except (OSError, SettingsFileError) as e:
+            raise HTTPException(500, f"the settings could not be saved: {e}") from e
+
     @router.get("/map/regions")
     def map_regions() -> dict[str, Any]:
         """The one-degree squares of OrthoStudio XP's regions installed."""
@@ -418,22 +435,23 @@ def live_router(
 
     @router.put("/settings")
     def put_settings(body: dict[str, Any] = Body(...)) -> dict[str, Any]:  # noqa: B008
-        before = load_settings()
-        try:
-            settings = LiveSettings.model_validate({**before.model_dump(), **body})
-        except ValidationError as e:
-            first = e.errors()[0]
-            where = ".".join(str(p) for p in first.get("loc", ()))
-            raise HTTPException(422, f"{where}: {first.get('msg', 'invalid')}") from e
-        if settings.folder:
-            problem = folder_problem(Path(settings.folder), session.xplane_or_none())
-            if problem is not None:
-                raise HTTPException(422, f"folder: {problem}")
-        settings = front_saved(settings, before)
-        try:
-            save_settings(settings)
-        except (OSError, SettingsFileError) as e:
-            raise HTTPException(500, f"the settings could not be saved: {e}") from e
+        with SAVING:  # a click on the map meanwhile kept (put_in_front)
+            before = load_settings()
+            try:
+                settings = LiveSettings.model_validate({**before.model_dump(), **body})
+            except ValidationError as e:
+                first = e.errors()[0]
+                where = ".".join(str(p) for p in first.get("loc", ()))
+                raise HTTPException(422, f"{where}: {first.get('msg', 'invalid')}") from e
+            if settings.folder:
+                problem = folder_problem(Path(settings.folder), session.xplane_or_none())
+                if problem is not None:
+                    raise HTTPException(422, f"folder: {problem}")
+            settings = front_saved(settings, before)
+            try:
+                save_settings(settings)
+            except (OSError, SettingsFileError) as e:
+                raise HTTPException(500, f"the settings could not be saved: {e}") from e
         from orthostudio.pipeline.night import library_strength, luminance
 
         lum = luminance(settings)

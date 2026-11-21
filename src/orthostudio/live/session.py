@@ -65,6 +65,17 @@ class RefusedError(Exception):
     """Streaming cannot start; the message says why, and what to do."""
 
 
+REDO_REFUSED = {
+    "regions": "the meshes Live streams onto changed since its last start, and X-Plane may be "
+    "reading those of before. Quit X-Plane, or connect the disk holding a mesh, then start again",
+    "front": "the squares in front of Live or their mesh changed since its last start, and X-Plane "
+    "may be reading the meshes of before. Quit X-Plane, then start again",
+}
+"""A start refused while X-Plane runs on a pack to set up again, by why (``region.pack_to_redo``):
+"front" only with the regions of before, so with the folder of the squares in front there, its
+disk not the cause."""
+
+
 def default_workers() -> int:
     """Encoding processes: every core of this computer but two, one for each 3 GB of its memory at
     most (:mod:`orthostudio.live.machine`)."""
@@ -277,7 +288,6 @@ def prepare(options: Options, log: Log) -> Prepared:
     from orthostudio.live.region import (
         LAYOUT_FIXED,
         Zooms,
-        front_changed,
         needs_relayout,
         pack_to_redo,
         region_layout,
@@ -377,18 +387,9 @@ def prepare(options: Options, log: Log) -> Prepared:
         fix = Fix(lat, lon)
         clock.done("departure")
     zooms = Zooms(options.max_zoom, options.max_zoom_airports)
-    if xplane_running() and pack_to_redo(sources, pack_dir, front):  # as a new zoom, below
-        # the squares put in front changed with their folder there: its disk is not the cause
-        if chosen is not None and other_mesh_there(chosen) and front_changed(pack_dir, front):
-            raise RefusedError(
-                "the squares in front of Live changed since its last start, and X-Plane may be "
-                "reading the meshes of before. Quit X-Plane, then start again"
-            )
-        raise RefusedError(
-            "the meshes Live streams onto changed since its last start, and X-Plane may be "
-            "reading those of before. Quit X-Plane, or connect the disk holding a mesh, then start "
-            "again"
-        )
+    redo = pack_to_redo(sources, pack_dir, front) if xplane_running() else None
+    if redo is not None:  # as a new zoom, below
+        raise RefusedError(REDO_REFUSED[redo])
     from orthostudio.live import machine
 
     # the pack's one-time work (hundreds of thousands of files) in the system's background mode for

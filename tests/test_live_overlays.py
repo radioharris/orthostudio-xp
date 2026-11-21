@@ -6,9 +6,9 @@ below every other overlay pack, where Global Forests' exclusion hides their fore
 
 from __future__ import annotations
 
-import math
 from pathlib import Path
 
+from live_helpers import put
 from orthostudio.install.scenery_packs import SceneryPacks
 from orthostudio.live import aoregions, overlays, session
 from orthostudio.live.filesystem import is_folder_link
@@ -16,19 +16,6 @@ from orthostudio.live.pack import LINK_NAME, OVERLAY_LINK_NAME
 from orthostudio.live.scenery import default_meshes, install_link
 
 A, B, C, D, E = (45, 5), (45, 6), (46, 5), (46, 6), (47, 5)
-
-
-def put(pack: Path, square: tuple[int, int], data: bytes = b"XPLNEDSF") -> Path:
-    lat, lon = square
-    folder = (
-        pack
-        / "Earth nav data"
-        / f"{math.floor(lat / 10) * 10:+03d}{math.floor(lon / 10) * 10:+04d}"
-    )
-    folder.mkdir(parents=True, exist_ok=True)
-    path = folder / f"{lat:+03d}{lon:+04d}.dsf"
-    path.write_bytes(data)
-    return path
 
 
 def xplane(tmp_path: Path, lines: list[str]) -> Path:

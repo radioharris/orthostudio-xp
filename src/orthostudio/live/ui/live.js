@@ -569,15 +569,23 @@ function drawFolder(status) {
 }
 
 /** What the folder of another tool's mesh gives Live: its meshes, its overlays, those left aside
- *  and why (orthostudio.live.scenery.other_mesh); nothing when none is chosen. */
+ *  and why (orthostudio.live.scenery.other_mesh); nothing when none is chosen. Its squares all
+ *  behind Live's, the normal case of a mesh put in front of Live square by square, said plainly:
+ *  a warning only for a folder Live cannot use. */
 function drawOtherMesh(other) {
   const line = $("other-mesh-found");
   line.hidden = !other;
   drawOtherFront(other);
   if (!other) return;
-  line.classList.toggle("is-warn", !other.there || !other.meshes.length);
+  const behind = other.there && !other.meshes.length && other.refused.length
+    && other.refused.every((r) => r.why === "already");
+  line.classList.toggle("is-warn", !behind && (!other.there || !other.meshes.length));
   if (!other.there) {
     line.textContent = t("other_mesh.gone");
+    return;
+  }
+  if (behind) {
+    line.textContent = t("other_mesh.behind");
     return;
   }
   const used = other.next_start ? "other_mesh.meshes_next" : "other_mesh.meshes";
@@ -596,10 +604,10 @@ function drawOtherMesh(other) {
 
 /** The squares of another tool's mesh put in front of Live on its map: how many, and whether they
  *  wait for Live's next start (orthostudio/live/control.py _other_mesh_said); how to put one there
- *  while none is. Nothing while the folder gives no square. */
+ *  while none is. Nothing while the folder gives the map no square (its count, the engine's). */
 function drawOtherFront(other) {
   const line = $("other-mesh-front");
-  const offered = Boolean(other?.there && (other.meshes.length || other.refused.some((r) => r.why === "already")));
+  const offered = Boolean(other?.there && other.squares > 0);
   line.hidden = !offered;
   if (!offered) return;
   const n = other.front.length;
@@ -610,13 +618,13 @@ function drawOtherFront(other) {
 }
 
 /** A square of another tool's mesh clicked on the map: put in front of Live, or back behind it,
- *  saved at once as the source is; the map and the line under the setting say it. */
+ *  saved at once by the engine, that square alone (orthostudio/live/settings.py put_in_front), so
+ *  that a second click before the first one's answer keeps both; the map and the line under the
+ *  setting say it. */
 async function toggleFront({ lat, lon, front }) {
   const tile = tileName(lat, lon);
-  const now = last?.settings?.other_mesh_front || [];
-  const wanted = front ? now.filter((name) => name !== tile) : [...now, tile];
   try {
-    const got = await api("settings", { method: "PUT", body: { other_mesh_front: wanted } });
+    const got = await api("map/other", { method: "POST", body: { square: tile, front: !front } });
     if (saved) saved.other_mesh_front = got.other_mesh_front;
     if (last?.settings) last.settings.other_mesh_front = got.other_mesh_front;
     toast(t(front ? "map.other_put_behind" : "map.other_put_front", { tile }));

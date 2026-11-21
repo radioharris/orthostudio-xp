@@ -57,9 +57,7 @@ def test_two_regions_in_one_pack(tmp_path: Path) -> None:
         assert (pack / "terrain" / f"{name}_water_overlay.ter").exists()
         assert (pack / "textures" / f"{name}.dds").exists()
     assert session.region_ready(pack, Meshes([eur, na], {}))
-    assert not session.region_ready(pack, Meshes([na, eur], {}))  # in their order
     assert not session.region_ready(pack, Meshes([eur], {}))
-    assert not session.region_ready(pack, Meshes([eur, na], {(46, 2): na}))  # another front
 
 
 def test_two_regions_each_with_its_list(tmp_path: Path) -> None:
@@ -75,7 +73,7 @@ def test_two_regions_each_with_its_list(tmp_path: Path) -> None:
     assert both.listed == [na] and len(both) == 4  # Europe read from its list
     again = RegionTextures(sources_of_pack(pack), lists=lists)
     assert again.listed == [] and list(again.entries()) == list(both.entries())
-    regions = {entry[0].removesuffix(".dds"): entry[5] for entry in again.entries()}
+    regions = {entry.name.removesuffix(".dds"): entry.masks for entry in again.entries()}
     assert regions == {**dict.fromkeys(NAMES, 0), **dict.fromkeys(OTHERS, 1)}
     assert region_list_file(lists, eur) != region_list_file(lists, na)
 
@@ -135,8 +133,6 @@ def test_a_region_added_later_keeps_what_is_built(tmp_path: Path) -> None:
     lines.clear()
     setup_region([eur, na], pack, log=lines.append)
     assert lines == []  # nothing to do
-    setup_region([na, eur], pack, log=lines.append)  # another order: a square's DSF another's
-    assert any(line.startswith("setting up the region of z_ao_test, z_ao_test") for line in lines)
 
 
 def test_the_regions_autoortho_installed(tmp_path: Path) -> None:

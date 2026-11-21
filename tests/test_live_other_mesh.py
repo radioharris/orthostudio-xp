@@ -12,9 +12,9 @@ import struct
 from pathlib import Path
 
 import pytest
-from tests.test_live_overlays import put, xplane
+from tests.test_live_overlays import xplane
 
-from live_helpers import atom, make_source, make_xplane
+from live_helpers import atom, make_source, make_xplane, put
 from orthostudio.errors import OsxpError
 from orthostudio.live import control, overlays, region, scenery, session
 from orthostudio.live.scenery import (
@@ -212,7 +212,7 @@ def test_after_lives_and_autoortho_s_a_copy_left_aside(
     folder = tmp_path / "Other mesh"
     mesh(folder / "Mesh_Eur")  # the same squares as AutoOrtho's
     na = mesh(folder / "Mesh_Na", squares=(B,))
-    monkeypatch.setattr(scenery, "other_mesh_folder", lambda: folder)
+    monkeypatch.setattr(scenery, "other_mesh_folder", lambda settings=None: folder)
     found = scenery.other_mesh_found(xp, root, fresh=True)
     assert found.meshes == [na]
     assert found.refused == [("Mesh_Eur", "already")]
@@ -226,7 +226,7 @@ def test_the_folder_looked_at_again_after_a_while(
     again, the window said « no mesh » 30 s more (the third review of 2026-11-14)."""
     root = tmp_path / "live"
     folder = tmp_path / "Other mesh"
-    monkeypatch.setattr(scenery, "other_mesh_folder", lambda: folder)
+    monkeypatch.setattr(scenery, "other_mesh_folder", lambda settings=None: folder)
     assert scenery.other_mesh_found(None, root) == NO_OTHER_MESH  # its disk away
     mesh(folder / "Mesh_Eur")
     first = scenery.other_mesh_found(None, root)  # back: looked at at once
@@ -300,6 +300,7 @@ def test_the_setting_and_what_the_window_says(
         "meshes": ["Mesh_Eur"],
         "overlays": ["Mesh_Overlays"],
         "refused": [{"name": "zOrtho4XP_+45+005", "why": "photos"}],
+        "squares": 1,
         "front": [],
         "front_next": False,
         "in_xplane": [],
