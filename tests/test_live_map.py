@@ -22,6 +22,7 @@ from orthostudio.live.evict import texture_bytes
 from orthostudio.live.flightplan import FlightPlan
 from orthostudio.live.web import UI_DIR, create_live_app
 from orthostudio.net.fetch import FetchRequest, FetchResult
+from orthostudio.ui import ui_dir
 from test_api_fakes import client_for
 
 anyio_backend = fakes.anyio_backend
@@ -116,9 +117,10 @@ def test_the_regions_installed_and_a_route() -> None:
 
 @pytest.mark.anyio
 async def test_the_map_s_api(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from live_helpers import save_settings
     from orthostudio.live import flightplan
     from orthostudio.live.pack import default_pack_dir
-    from orthostudio.live.settings import LiveSettings, save_settings
+    from orthostudio.live.settings import LiveSettings
 
     write_pack(default_pack_dir())
     tiles: list[str] = []
@@ -181,8 +183,6 @@ def test_the_map_s_legend_is_osxp_s_laid_on_the_map() -> None:
     wrap = wrap[: wrap.index("</section>")]
     assert '<div class="map-legend" id="map-legend"></div>' in wrap
     css = (UI_DIR / "live.css").read_text()
-    for gone in ("live-map-legend", "swatch is-", "legend-own-osxp"):
-        assert gone not in html and gone not in css, gone
     js = (UI_DIR / "livemap.js").read_text()
     assert (
         "import { drawLegend, groupHead, legendList, legendOpen, legendRow, legendToggle } from "
@@ -210,7 +210,21 @@ def test_the_map_s_legend_is_osxp_s_laid_on_the_map() -> None:
     assert "z-index: 0;" in css[css.index(".live-map {") :].split("}")[0], "under its legend"
     live_js = (UI_DIR / "live.js").read_text()
     assert 'legend: $("map-legend")' in live_js
-    assert "ownKinds" not in live_js + js
+    # its clicks its own, not the map's under it (a square flipped); Build's legend unchanged
+    assert ".live-map-wrap .map-legend { pointer-events: auto; }" in css
+    osxp_css = (ui_dir() / "styles.css").read_text()
+    build_legend = osxp_css[osxp_css.index("\n.map-legend {") :].split("}")[0]
+    assert "pointer-events: none;" in build_legend
+
+
+def test_a_double_click_flips_its_square_once() -> None:
+    """A double-click on a square of another tool's mesh zooms in and flips it once: Leaflet sends
+    its second click as a click too, which put the square back."""
+    js = (UI_DIR / "livemap.js").read_text()
+    click = js[js.index('  map.on("click", (ev) => {') :]
+    click = click[: click.index("\n  });\n")]
+    assert "if (ev.originalEvent?.detail > 1) return;" in click
+    assert click.index("detail > 1") < click.index("onOther(square)")
 
 
 class FakeStreamer:

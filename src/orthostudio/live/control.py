@@ -722,7 +722,7 @@ class LiveControl:
         finally:
             with self._lock:
                 self._state = IDLE
-            self._checked = (0.0, None)
+            self.checks_changed()
 
     def launch_xplane(self) -> None:
         """Start X-Plane, once Live is ready for it: X-Plane sees the pack and loads the plugin only
@@ -734,7 +734,7 @@ class LiveControl:
             raise session.RefusedError("X-Plane is running already")
         self._launch(Path(checks["xplane"]))
         self.log("X-Plane is starting")
-        self._checked = (0.0, None)
+        self.checks_changed()
 
     def _attach(self, streamer: Any) -> None:
         self.streamer = streamer
@@ -776,8 +776,8 @@ class LiveControl:
 
     def other_found(self) -> OtherMeshes:
         """The folders of other tools' meshes and what they give, as last looked at
-        (:func:`other_mesh_found`), with the X-Plane of the checks: what the map draws and the
-        folders' buttons act on, read once for each, outside the settings' lock."""
+        (:func:`other_mesh_found`), with the X-Plane of the checks: what the map draws and « All
+        in front » and « All behind » act on, read outside the settings' lock."""
         xp = self.checks().get("xplane")
         return other_mesh_found(Path(xp) if xp else None, live_root())
 
@@ -798,8 +798,8 @@ class LiveControl:
         ]
 
     def checks_changed(self) -> None:
-        """The checks looked at again at the next status: a setting they say changed (a folder of
-        another tool's mesh, a square put in front of Live)."""
+        """The checks looked at again at the next status: what they say changed (a setting, X-Plane
+        started, a region installed or deleted, the textures deleted, the pack taken out)."""
         self._checked = (0.0, None)
 
     def textures_at(self, lat: float, lon: float) -> list[dict]:
@@ -824,7 +824,8 @@ class LiveControl:
         if language not in ("en", "fr"):
             raise ValueError(f"no language {language!r}")
         self.language = language
-        saved_with(lambda now: None if now.language == language else {"language": language})
+        if self._settings().language != language:  # else live.toml not read as it is, nor raised
+            saved_with(lambda _: {"language": language})
 
     def choose_home(self, home: str, *, remember: bool) -> None:
         """The welcome page's answer: Live's window, or OrthoStudio XP's (this window then closes
@@ -1141,7 +1142,7 @@ class LiveControl:
             if not self._may_swap():
                 raise session.RefusedError(osxpregions.XPLANE_READS)
             yield
-            self._checked = (0.0, None)
+            self.checks_changed()
             self._mesh_follows_kept()
         finally:
             with self._lock:
@@ -1249,4 +1250,4 @@ class LiveControl:
             finally:
                 with self._lock:
                     self._state, self._report = IDLE, None
-                self._checked = (0.0, None)
+                self.checks_changed()

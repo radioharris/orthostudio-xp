@@ -13,7 +13,7 @@ from __future__ import annotations
 import os
 import threading
 import tomllib
-from collections.abc import Callable, Collection, Mapping
+from collections.abc import Callable, Collection
 from pathlib import Path
 from typing import Any, Literal
 
@@ -130,9 +130,9 @@ class LiveSettings(BaseModel):
     DSF of the first folder that has it wins over Live's own and AutoOrtho's, with Live's photos
     (:func:`orthostudio.live.scenery.default_meshes`); elsewhere they come after them. Put in
     front or back by a click (:func:`flip_front`), or a folder's squares all at once
-    (:func:`put_in_front`); those no folder left has dropped only when a folder is removed
-    (:func:`remove_other_mesh`); a square no folder has is not taken. Taken at the next start with
-    X-Plane not running, as every change of the mesh (``session.prepare``)."""
+    (:func:`put_in_front`); never dropped otherwise, a folder removed included: a square no folder
+    gives is not taken. Taken at the next start with X-Plane not running, as every change of the
+    mesh (``session.prepare``)."""
     mesh: Literal["new", "old"] = "new"
     """Which mesh of Live's own regions a start streams onto, for all of them at once: "new", each
     region installed; "old", each region's kept old mesh where it has one, the new one elsewhere
@@ -340,26 +340,34 @@ def _one_space(table: dict) -> dict:
 
 
 def _one_list(table: dict) -> dict:
-    """A file from before several folders of other tools' meshes: its one folder (``other_mesh``)
-    the list's only line, so that nobody loses his."""
+    """A file from before several folders of other tools' meshes, or whose list is not one: its one
+    folder (``other_mesh``) the list's only line, so that nobody loses his."""
     old = table.get("other_mesh")
-    if "other_meshes" in table or not isinstance(old, str) or not old.strip():
+    if isinstance(table.get("other_meshes"), list) or not isinstance(old, str) or not old.strip():
         return table
     return {**table, "other_meshes": [old]}
 
 
 def _settings_of(table: dict) -> LiveSettings:
     """The settings ``[stream]`` holds, the defaults for what is missing: one wrong value costs
-    itself, not its neighbours; a choice gone since, as the start mode, is left out."""
+    itself, not its neighbours, and one wrong line of a list itself, not the list; a choice gone
+    since, as the start mode, is left out."""
     table = _one_list(_one_space(table))
     defaults = LiveSettings().model_dump()
-    kept = {}
-    for key, value in table.items():
+
+    def valid(key: str, value: Any) -> bool:
         try:
             LiveSettings.model_validate({**defaults, key: value})
         except ValueError:
-            continue
-        kept[key] = value
+            return False
+        return True
+
+    kept = {}
+    for key, value in table.items():
+        if valid(key, value):
+            kept[key] = value
+        elif isinstance(value, list) and isinstance(defaults.get(key), list):
+            kept[key] = [line for line in value if valid(key, [line])]
     return LiveSettings.model_validate({**defaults, **kept})
 
 
@@ -412,12 +420,6 @@ def saved_with(change: Callable[[LiveSettings], dict[str, Any] | None]) -> LiveS
     return saved
 
 
-def save_settings(settings: LiveSettings) -> None:
-    """Write ``settings`` into ``live.toml``, the rest of the file as it was
-    (:func:`saved_with`)."""
-    saved_with(lambda _: settings.model_dump())
-
-
 class AlreadyListedError(ValueError):
     """A folder added to the list of other tools' meshes that the list has already."""
 
@@ -464,14 +466,20 @@ def _index(settings: LiveSettings, folder: str) -> int:
 def add_other_mesh(folder: str) -> LiveSettings:
     """A folder of another tool's mesh added at the bottom of the list, as typed or chosen. The
     settings, as saved; :class:`AlreadyListedError` for one the list has already, however written
-    (:func:`_same_folder`), :class:`ValueError` for none."""
+    (:func:`_same_folder`, the disks asked before the settings' lock, which every save waits for),
+    :class:`ValueError` for none."""
     folder = folder.strip()
     if not folder:
         raise ValueError("no folder given")
 
+    already = AlreadyListedError(f"{folder} is in the list already")
+    if any(_same_folder(folder, listed) for listed in load_settings().other_meshes):
+        raise already
+    key = folder_key(folder)
+
     def change(settings: LiveSettings) -> dict[str, Any]:
-        if any(_same_folder(folder, listed) for listed in settings.other_meshes):
-            raise AlreadyListedError(f"{folder} is in the list already")
+        if any(folder_key(listed) == key for listed in settings.other_meshes):  # added meanwhile
+            raise already
         return {"other_meshes": [*settings.other_meshes, folder]}
 
     return saved_with(change)
@@ -492,24 +500,13 @@ def move_other_mesh(folder: str, up: bool) -> LiveSettings:
     return saved_with(change)
 
 
-def remove_other_mesh(folder: str, squares: Mapping[str, Collection[str] | None]) -> LiveSettings:
-    """A folder forgotten, its files left as they are, and the squares in front of Live no folder
-    left in the list has dropped from them. ``squares``: each folder's squares by name, by
-    :func:`folder_key`, as read before the settings are (None for a folder not there, its disk
-    unplugged): a folder left that is not there, or not among them (added meanwhile), keeps them
-    all, Live cannot tell which it has. The one place squares in front are dropped. The settings,
-    as saved."""
+def remove_other_mesh(folder: str) -> LiveSettings:
+    """A folder forgotten, its files left as they are; the squares in front of Live stay as they
+    are (one no folder gives is not taken). The settings, as saved."""
 
     def change(settings: LiveSettings) -> dict[str, Any]:
         folders = list(settings.other_meshes)
         del folders[_index(settings, folder)]
-        have: set[str] = set()
-        for left in folders:
-            got = squares.get(folder_key(left))
-            if got is None:
-                return {"other_meshes": folders}
-            have |= set(got)
-        front = [name for name in settings.other_mesh_front if name in have]
-        return {"other_meshes": folders, "other_mesh_front": front}
+        return {"other_meshes": folders}
 
     return saved_with(change)

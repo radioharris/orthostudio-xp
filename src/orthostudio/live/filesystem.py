@@ -367,9 +367,3 @@ def link_target(path: Path) -> Path:
     if target.startswith("\\\\?\\"):
         target = target[4:]
     return Path(path).parent / target
-
-
-def real_path(path: Path) -> str:
-    """A folder as the disk has it, its links followed and its case as the system compares it: one
-    path to compare for a folder named twice, through a link or a copy's name."""
-    return os.path.normcase(os.path.realpath(path))

@@ -8552,7 +8552,6 @@ async function boot() {
     toast,
     errorMessage,
     errorDetail,
-    h,
     clear,
     tiles: () => state.tiles,
     route: () => state.flightPlan?.plan ?? null,
@@ -8581,7 +8580,6 @@ async function boot() {
   });
   cloudMode = createCloudMode({
     api,
-    h,
     icon,
     clear,
     morph: morphChildren,

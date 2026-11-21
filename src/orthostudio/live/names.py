@@ -1007,7 +1007,7 @@ class Names:
         for dl in (-1, 0, 1):
             for dn in (-1, 0, 1):
                 for entry in self.by_tile.get((lat + dl, wrap(lon + dn)), ()):
-                    tex = parse_texture_name(entry[0])
+                    tex = parse_texture_name(entry.name)
                     if tex is not None and square in tiles_of(tex):
                         out.append(entry)
         return out
@@ -1112,9 +1112,9 @@ class Names:
         from .waterphoto import water_name, water_top
 
         entries = self.textures_on(square)
-        names = [entry[0] for entry in entries]
+        names = [entry.name for entry in entries]
         own = self._own()
-        masks = {e[0]: mask for e in entries if (mask := self._water_mask(e, own)) is not None}
+        masks = {e.name: mask for e in entries if (mask := self._water_mask(e, own)) is not None}
         with self.lock:
             building = {name for name in names if self.building(name)}
             claimed = [name for name in names if name not in building]
@@ -1176,13 +1176,13 @@ class Names:
 
             (self.pack_dir / NIGHT_FOLDER).mkdir(exist_ok=True)
         for entry in entries:
-            land = entry[0][: -len(".dds")] + ".ter"
+            land = entry.name[: -len(".dds")] + ".ter"
             for i, folder, file in self._files(entry, own):
                 src = str(self.sources[i] / folder / file)
                 dst = str(self.pack_dir / folder / file)
-                lit = night_name(entry[0]) if file == land else None
+                lit = night_name(entry.name) if file == land else None
                 if own[i] and file.endswith(".ter"):
-                    water = self._water_ter(file, entry[0], entry[0] in masks)
+                    water = self._water_ter(file, entry.name, entry.name in masks)
                     ops.append(("make", src, dst, self.decal, lit, self.night, water))
                 elif (self.decal is not None or self.night) and file.endswith(".ter"):
                     ops.append(("ter", src, dst, self.decal, lit, self.night))
@@ -1219,7 +1219,7 @@ class Names:
         own = self._own()
         textures = self.pack_dir / "textures"
         for entry in self.textures_on(square):
-            name = entry[0]
+            name = entry.name
             if tiles_of(parse_texture_name(name)) & held:
                 continue
             files = self._files(entry, own)

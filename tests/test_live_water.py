@@ -17,7 +17,7 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from live_helpers import fake_dsf, live_names
+from live_helpers import fake_dsf, live_names, save_settings
 from orthostudio.live import control as control_module
 from orthostudio.live import dds, settings_file
 from orthostudio.live.names import MASK_RE, TER_KINDS, TERRAIN_LISTS, WaterPool, mask_name
@@ -27,7 +27,7 @@ from orthostudio.live.region import (
     setup_region,
     water_record,
 )
-from orthostudio.live.settings import LiveSettings, load_settings, save_settings
+from orthostudio.live.settings import LiveSettings, load_settings
 from orthostudio.live.texture import levels_from, write_sparse
 from orthostudio.live.waterphoto import (
     EVEN_BORDER,

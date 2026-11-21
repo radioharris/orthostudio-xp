@@ -176,6 +176,9 @@
 .live-map .live-other { stroke: #22c3d6; fill: #22c3d6; fill-opacity: 0.06; stroke-dasharray: 5 4; }
 .live-map .live-other.is-front { fill-opacity: 0.3; stroke-dasharray: none; }
 .live-map.is-over-other { cursor: pointer; }
+/* the legend keeps its clicks (styles.css .map-legend lets them through to the map under it): one
+   on its words laid over a square of another tool's mesh put that square in front or back */
+.live-map-wrap .map-legend { pointer-events: auto; }
 .legend-other-mesh { background: rgba(34, 195, 214, 0.06); border: 1px dashed #22c3d6; }
 .legend-other-mesh.is-front { background: rgba(34, 195, 214, 0.3); border: 2px solid #22c3d6; }
 .live-plane { filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.8)); }

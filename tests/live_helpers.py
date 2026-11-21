@@ -259,3 +259,11 @@ def file_extents(path: Path) -> list[tuple[int, int, int]]:
         return out
     finally:
         os.close(fd)
+
+
+def save_settings(settings) -> None:
+    """Live's settings (``LiveSettings``) written as they are, the rest of ``live.toml`` as it was
+    (``settings.saved_with``, the one way Live writes them)."""
+    from orthostudio.live.settings import saved_with
+
+    saved_with(lambda _: settings.model_dump())

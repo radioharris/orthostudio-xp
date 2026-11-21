@@ -513,9 +513,9 @@ of it there). As its roads, forests and buildings it takes X-Plane's own, the ov
 pack holds: of those packs, the one that covers most of the folder's mesh, copies included. An
 airport, simHeaven, a Landmark or Global Forests lying in the same folder is not taken, and a mesh
 moved without its roads has none from there. Each folder has a line in the list: its name and its
-path, how many squares it has and how many of them it gives in front of Live, what it uses and what
-it leaves aside, that it takes no roads from the folder (chosen one folder too deep, say), or that
-the folder is not there (a disk unplugged). Choose the folder that holds both the mesh and its
+path, how many squares it gives (not those a folder higher in the list has) and how many of them are
+in front of Live, what it uses and what it leaves aside, that it takes no roads from the folder
+(chosen one folder too deep, say), or that the folder is not there (a disk unplugged). Choose the folder that holds both the mesh and its
 roads: for AutoOrtho's pack moved, the one holding `z_autoortho` and `yAutoOrtho_Overlays`. The
 same folder is not added twice: written another way (with `~`, a slash more), reached through a
 link, or, on a Mac, in other capitals; a folder whose disk is unplugged is told apart by how it is
@@ -527,8 +527,8 @@ first (below). Where two folders have the same square, the higher one in the lis
 front of Live or behind: **↑** and **↓** move a folder up or down. A folder that is not there (its
 disk unplugged) does not stop Live: its line says so, and its squares come from the next folder
 that has them, else from Live's mesh. **Remove** makes Live forget a folder; its files stay where
-they are, and the squares in front of Live that no folder left has go back behind Live. Nothing in
-those folders is changed. Their meshes and their roads are taken at Live's start, and kept until
+they are, and so do the squares you put in front of Live: one that no folder gives any more is
+simply not taken. Nothing in those folders is changed. Their meshes and their roads are taken at Live's start, and kept until
 the next one: the line says "Used from Live's next start" until then. Each start says in Live's log
 what it takes in each folder, or that one is not there; when they are the only mesh, the window
 and the start then say so. On Windows, a folder on a network drive needs Developer Mode on:
@@ -540,10 +540,12 @@ lamp is on, a little dimmer, out in the open country too.
 Live's mesh on the squares you choose, with Live's photos laid on it: on Live's map, the squares of
 the folders are drawn in their own colour, dashed while they come behind Live, framed and shaded
 once in front of it, and pointing at one names the folder it comes from; click one to put it in
-front of Live, click it again to put it back. **All in front** and **All behind** do it at once
-for every square a folder gives: not those a folder higher in the list has, which stay as they
-are. Live's own mesh stays everywhere else, and the roads, forests and
-buildings do not change. While every square of a folder is behind Live, its line says so. A change
+front of Live, click it again to put it back (a double-click zooms in and counts as one click).
+**All in front** and **All behind** do it at once for every square a folder gives: not those a
+folder higher in the list has, which stay as they are. Live's own mesh stays everywhere else, and
+the roads, forests and buildings do not change. While every square a folder gives is behind Live,
+its line says so; a folder whose squares a folder higher in the list has all says it gives none,
+its two buttons greyed out. A change
 applies at Live's next start, with X-Plane closed (a start while X-Plane runs is refused, saying
 so), and so does a square's mesh saved again, its relief fixed once more. A square no folder has
 is simply not taken. Where two meshes meet, a texture on the line between them gets the files of both,

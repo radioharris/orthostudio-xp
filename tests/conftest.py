@@ -10,6 +10,7 @@ and skip when it is absent; tests marked ``network`` talk to real servers.
 from __future__ import annotations
 
 import os
+import shutil
 import sys
 import time
 from collections.abc import Iterator
@@ -171,3 +172,18 @@ def _no_pack_sizes_left_measuring() -> Iterator[None]:
     deadline = time.monotonic() + 10
     while appmod is not None and appmod._PACK_SIZES_MEASURING and time.monotonic() < deadline:
         time.sleep(0.01)
+
+
+@pytest.fixture(scope="session")
+def live_ui(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Live's page laid out as its server serves it (``orthostudio/live/web.py``): its own files
+    under ``live/``, OrthoStudio XP's under ``static/``, which live.js imports
+    (``../static/dom.js``), their vendor left out, for node to import live.js from the disk. The
+    folder of live.js."""
+    from orthostudio.live.web import UI_DIR
+    from orthostudio.ui import ui_dir
+
+    served = tmp_path_factory.mktemp("served")
+    shutil.copytree(UI_DIR, served / "live")
+    shutil.copytree(ui_dir(), served / "static", ignore=shutil.ignore_patterns("vendor", "mock"))
+    return served / "live"

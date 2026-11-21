@@ -614,10 +614,11 @@ def test_the_mesh_setting_streams_each_region_s_kept_old_mesh(
     """« Mesh: old », for every region at once: each region's kept old mesh in its place where it
     has one, the new mesh elsewhere (North America keeps none); « new », the regions installed.
     The kept mesh is Live's own mesh alike, with a list of textures of its own."""
+    from live_helpers import save_settings
     from orthostudio.live import osxpregions
     from orthostudio.live.aoregions import MARKER, regions_dir
     from orthostudio.live.names import own_mesh
-    from orthostudio.live.settings import LiveSettings, save_settings
+    from orthostudio.live.settings import LiveSettings
 
     monkeypatch.setenv("OSXP_HOME", str(tmp_path / "home"))
     (tmp_path / "home").mkdir()

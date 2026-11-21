@@ -15,6 +15,7 @@
 // airport's textures over the ZL16 ones do not add their colours up and look darker than they are.
 
 import { AIRPORTS_MIN_ZOOM, BORDERS_MAX_ZOOM, createBaseMap, escapeHtml } from "./basemap.js";
+import { h } from "../static/dom.js";
 import { tileName } from "../static/geo.js";
 import { pageKeep, pageKept } from "../static/kept.js";
 import { drawLegend, groupHead, legendList, legendOpen, legendRow, legendToggle } from "../static/legend.js";
@@ -310,8 +311,10 @@ export function createLiveMap(el, { api, info = null, legend = null, onOther = n
     const { lat, lng } = latlng;
     return otherShown().find((x) => lat >= x.lat && lat < x.lat + 1 && lng >= x.lon && lng < x.lon + 1);
   }
-  // a click elsewhere does what it did before: nothing
+  // a click elsewhere does what it did before: nothing; the second click of a double-click (a
+  // zoom), which Leaflet sends as a click too, nothing either: it would put the square back
   map.on("click", (ev) => {
+    if (ev.originalEvent?.detail > 1) return;
     const square = otherAt(ev.latlng);
     if (square && onOther) onOther(square);
   });
@@ -355,12 +358,7 @@ export function createLiveMap(el, { api, info = null, legend = null, onOther = n
     drawLegend(legend, {
       key: LEGEND_KEY,
       words: { show: t("map.legend_show"), hide: t("map.legend_hide") },
-      head: () => {
-        const title = document.createElement("p");
-        title.className = "legend-view";
-        title.textContent = t("map.legend_title");
-        return title;
-      },
+      head: () => h("p", { class: "legend-view" }, t("map.legend_title")),
       body: () => {
         const sharpness = legendList([
           legendRow("legend-zl19", t("map.legend_zl19")),

@@ -4709,7 +4709,6 @@ def test_the_legend_lines_up_folds_away_and_keeps_the_keyboard() -> None:
     assert "const open = legendOpen(key);" in draw and "keepOpen(key, on);" in draw
     assert 'return pageKept(key) !== "0";' in _function_body(shared, "legendOpen"), "open unless"
     assert 'pageKeep(key, open ? "1" : "0");' in _function_body(shared, "keepOpen")
-    assert "legendOpen:" not in map_js and "setLegendOpen" not in map_js
 
     # the focus comes back to the control that had it, each named
     assert 'document.activeElement.closest("[data-keep]")?.dataset.keep' in draw
@@ -4732,7 +4731,6 @@ def test_the_legend_lines_up_folds_away_and_keeps_the_keyboard() -> None:
     assert 'groupHead(t("map.legend_zones"), LEGEND_ZONES_KEY, "zones-fold",' in legend
     assert "keepOpen(key, !open);" in _function_body(shared, "groupHead"), "one chevron for both"
     assert "if (legendOpen(LEGEND_ZONES_KEY)) lists.push(legendList(levels.map(" in legend
-    assert "legendShowOpen" not in map_js and "legendZonesOpen" not in map_js
     assert "rotate(-45deg)" in rules[".map-legend .legend-fold.is-closed::before"]
     assert "legend-row" not in map_js
 

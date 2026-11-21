@@ -1101,16 +1101,38 @@ def pack_to_redo(
     given its river masks), or the regions no longer those it was set up from, in that order,
     unless they only add some after them, merged in (:func:`_adding`): one read from another
     folder (a kept old mesh in its place or back, the Settings' Mesh), one deleted, one whose disk
-    is not connected; else "front", the squares put in front of Live or the DSF of one of them
-    changed, or not in the pack (:func:`front_changed`). Never with X-Plane running, which may be
-    reading the DSFs of before (``session.prepare``, which says why). A pack not set up: None."""
-    had = sources_of(_marker(pack_dir))
+    is not connected; "front", the squares put in front of Live or the DSF of one of them changed,
+    or not in the pack (:func:`front_changed`), the regions changing only by the meshes that come
+    and go with them (:func:`_with_front`). Never with X-Plane running, which may be reading the
+    DSFs of before (``session.prepare``, which says why). A pack not set up: None."""
+    meta = _marker(pack_dir)
+    had = sources_of(meta)
     if not had:
         return None
+    front = front or {}
     keys = [str(s) for s in sources]
-    if changed_regions(sources, pack_dir) or (had != keys and not _adding(had, keys)):
+    if changed_regions(sources, pack_dir):
         return "regions"
-    return "front" if front_changed(pack_dir, front or {}) else None
+    if had != keys and not _adding(had, keys):
+        moving = _with_front(had, keys, front, front_of(meta))
+        mine, now = [s for s in had if s not in moving], [k for k in keys if k not in moving]
+        return "front" if mine == now or _adding(mine, now) else "regions"
+    return "front" if front_changed(pack_dir, front) else None
+
+
+def _with_front(
+    had: Sequence[str],
+    keys: Sequence[str],
+    front: Mapping[tuple[int, int], Path],
+    before: Mapping[tuple[int, int], Path],
+) -> set[str]:
+    """The regions that come or go with the squares put in front of Live: the mesh of one now in
+    front that the pack was not set up from (a folder's first square put in front, its mesh in the
+    middle of the regions), or the mesh of one in front before that no longer is a region, still
+    there (its last square put back behind Live); not one whose disk is not connected."""
+    coming = {str(s) for s in front.values()} - set(had)
+    going = {str(s) for s in before.values() if s.is_dir()} - set(keys)
+    return coming | going
 
 
 def setup_region(

@@ -14,19 +14,19 @@ from pathlib import Path
 import pytest
 from tests.test_live_overlays import xplane
 
-from live_helpers import atom, make_source, make_xplane, put
+from live_helpers import atom, make_source, make_xplane, put, save_settings
 from orthostudio.errors import OsxpError
 from orthostudio.live import control, overlays, region, scenery, session
 from orthostudio.live.scenery import (
     NO_OTHER_MESH,
-    NO_OTHER_MESHES,
+    NOTHING_READ,
     Meshes,
     base_sources,
     default_meshes,
     other_mesh,
     other_meshes,
 )
-from orthostudio.live.settings import LiveSettings, load_settings, save_settings
+from orthostudio.live.settings import LiveSettings, load_settings
 
 A, B, C, D = (45, 5), (46, 7), (47, 8), (48, 9)
 PHOTO_TER = b"A\n800\nTERRAIN\n\nBASE_TEX_NOWRAP ../textures/24528_38224_BI16.dds\n"
@@ -67,7 +67,7 @@ def roads(pack: Path, squares=(A,), agent: str | None = XPLANE_MADE) -> Path:
 @pytest.fixture(autouse=True)
 def looked_at_anew(monkeypatch: pytest.MonkeyPatch) -> None:
     """Each test's folder looked at, not one kept from another test."""
-    monkeypatch.setattr(scenery, "_found", (0.0, (), NO_OTHER_MESHES))
+    monkeypatch.setattr(scenery, "_found", (0.0, (), NOTHING_READ))
 
 
 def test_the_folder_taken_by_what_it_holds(tmp_path: Path) -> None:
@@ -235,7 +235,7 @@ def test_the_folder_looked_at_again_after_a_while(
     first = scenery.other_mesh_found(None, root)  # back: looked at at once
     assert len(first.meshes) == 1
     mesh(folder / "Mesh_Na", squares=(B,))
-    assert scenery.other_mesh_found(None, root) is first
+    assert scenery.other_mesh_found(None, root) == first  # the folder not read again
     assert len(scenery.other_mesh_found(None, root, fresh=True).meshes) == 2
 
 
@@ -253,13 +253,13 @@ def test_the_window_reads_the_folder_once_in_a_while(
     mesh(folder / "Mesh_Eur")
     save_settings(LiveSettings(other_meshes=[str(folder)]))
     read: list[Path] = []
-    real = scenery.other_mesh
+    real = scenery.read_packs
 
-    def counted(*args, **kwargs):
-        read.append(args[0])
-        return real(*args, **kwargs)
+    def counted(folder):
+        read.append(folder)
+        return real(folder)
 
-    monkeypatch.setattr(scenery, "other_mesh", counted)
+    monkeypatch.setattr(scenery, "read_packs", counted)
     for _ in range(3):
         checks = control.gather_checks()
     assert checks["other_meshes"]["folders"][0]["meshes"] == ["Mesh_Eur"]
@@ -309,10 +309,12 @@ def test_the_setting_and_what_the_window_says(
         "refused": [{"name": "zOrtho4XP_+45+005", "why": "photos"}],
         "squares": 1,
         "front": [],
+        "unused": None,
         "in_xplane": [],
     }
     gone = said["folders"][1]
     assert gone["there"] is False and gone["meshes"] == [] and gone["name"] == "unplugged"
+    assert gone["unused"] == "gone" and gone["squares"] == 0
     # typed by hand: « ~ » is the home folder; a relative path, which would depend on where Live
     # was started, is not there (the fourth review of 2026-11-14)
     save_settings(LiveSettings(other_meshes=["~/Other mesh"]))

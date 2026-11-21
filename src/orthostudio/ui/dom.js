@@ -1,9 +1,11 @@
 // OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 // Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 /**
- * The one way the pages make an element: Build's page (app.js, which gives it to its map and its
- * cloud mode), the legend of Build's map and of Live's (legend.js), the new version's banner of
- * both pages (update.js).
+ * The one way the pages make an element, each module importing it: Build's page, its map and its
+ * cloud mode (app.js, map.js, clouds.js; its Settings through app.js), the legend of Build's map
+ * and of Live's (legend.js), the new version's banner of both pages (update.js), Live's page and
+ * its map (live/live.js, live/livemap.js, which import it as Live's server serves it, from
+ * ../static/).
  */
 
 /**

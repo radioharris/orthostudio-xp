@@ -18,7 +18,7 @@ import pytest
 from pydantic import ValidationError
 
 import test_api_fakes as fakes
-from live_helpers import make_source
+from live_helpers import make_source, save_settings
 from orthostudio.live import api as api_module
 from orthostudio.live import control as control_module
 from orthostudio.live import enabled, session, settings_file
@@ -28,7 +28,6 @@ from orthostudio.live.settings import (
     LiveSettings,
     SettingsFileError,
     load_settings,
-    save_settings,
 )
 from orthostudio.live.streamer import Arrival, Streamer, progress_report
 from orthostudio.live.web import UI_DIR, create_live_app
@@ -930,12 +929,12 @@ def test_the_page_says_everything_in_both_languages() -> None:
     assert used <= set(keys["en"]), sorted(used - set(keys["en"]))
 
 
-def _views(statuses: list[dict]) -> dict:
+def _views(statuses: list[dict], live_ui: Path) -> dict:
     """live.js flightView and buildView of each status, in English and in French, their spaces
     plain (French numbers are grouped by a narrow no-break space)."""
     script = (
-        f"import {{ flightView, buildView }} from {json.dumps((UI_DIR / 'live.js').as_uri())};"
-        f"import {{ setLanguage }} from {json.dumps((UI_DIR / 'strings.js').as_uri())};"
+        f"import {{ flightView, buildView }} from {json.dumps((live_ui / 'live.js').as_uri())};"
+        f"import {{ setLanguage }} from {json.dumps((live_ui / 'strings.js').as_uri())};"
         f"const statuses = {json.dumps(statuses)}; const out = {{}};"
         "for (const lang of ['en', 'fr']) { setLanguage(lang);"
         " out[lang] = statuses.map((s) => ({ flight: flightView(s), build: buildView(s) })); }"
@@ -951,7 +950,7 @@ def _views(statuses: list[dict]) -> dict:
 
 
 @pytest.mark.skipif(NODE is None, reason="needs node")
-def test_the_start_s_line_says_the_squares_once_every_texture_is_built() -> None:
+def test_the_start_s_line_says_the_squares_once_every_texture_is_built(live_ui: Path) -> None:
     """The line under the start's bar says what the plugin's loading window says (live_gate.c's
     show()), from the same count: the squares whose files are being made once no texture is left
     (sq=)."""
@@ -963,8 +962,8 @@ def test_the_start_s_line_says_the_squares_once_every_texture_is_built() -> None
         {"left": 0, "seconds": 3},  # a count of before: no squares
     ]
     script = (
-        f"import {{ holdText }} from {json.dumps((UI_DIR / 'live.js').as_uri())};"
-        f"import {{ setLanguage }} from {json.dumps((UI_DIR / 'strings.js').as_uri())};"
+        f"import {{ holdText }} from {json.dumps((live_ui / 'live.js').as_uri())};"
+        f"import {{ setLanguage }} from {json.dumps((live_ui / 'strings.js').as_uri())};"
         f"const starts = {json.dumps(starts)}; const out = {{}};"
         "for (const lang of ['en', 'fr']) { setLanguage(lang);"
         " out[lang] = starts.map((s) => holdText(s, 5.2)); }"
@@ -1025,13 +1024,13 @@ def _streaming(**streamer: object) -> dict:
 
 
 @pytest.mark.skipif(NODE is None, reason="needs node")
-def test_the_flight_and_the_textures_show_every_figure() -> None:
+def test_the_flight_and_the_textures_show_every_figure(live_ui: Path) -> None:
     """The two cards show all the line of each showed before (2026-10-08): X-Plane's state, the
     aircraft's three figures, how far X-Plane's image is sharp, the plan followed, the camera, the
     start; the textures to build by size and the urgent ones, those being built and the pieces
     they wait for, those built by size, what was downloaded with the cache and the failures, the
     rate, the disk and its 8192 px textures."""
-    views = _views([_streaming()])
+    views = _views([_streaming()], live_ui)
     assert views["fr"][0] == {
         "flight": {
             "state": ["X-Plane envoie sa position", "ok"],
@@ -1093,7 +1092,7 @@ def test_the_flight_and_the_textures_show_every_figure() -> None:
 
 
 @pytest.mark.skipif(NODE is None, reason="needs node")
-def test_the_flight_and_the_textures_say_their_state() -> None:
+def test_the_flight_and_the_textures_say_their_state(live_ui: Path) -> None:
     """X-Plane's state when Live is stopped and before it sends its position; the textures' state:
     downloads all failing, late (but not while the start is built: the state above says so), being
     built, all built, nothing to build; the disk's bar warns past 90 %."""
@@ -1108,7 +1107,7 @@ def test_the_flight_and_the_textures_say_their_state() -> None:
     holding["stream"]["start"] = {"name": "LFBO", "ready": False, "held": True}
     done = _streaming(queued=[0] * 6, building=0, pieces_awaited=0)
     full = _streaming(disk_bytes=34_500_000_000)
-    views = _views([stopped, running, waiting, refused, late, holding, done, full])["fr"]
+    views = _views([stopped, running, waiting, refused, late, holding, done, full], live_ui)["fr"]
     assert [v["flight"]["state"] for v in views[:3]] == [
         ["X-Plane n'est pas lancé", ""],
         ["X-Plane est lancé", ""],
@@ -1136,7 +1135,7 @@ def test_the_flight_and_the_textures_say_their_state() -> None:
 
 
 @pytest.mark.skipif(NODE is None, reason="needs node")
-def test_a_start_says_what_it_does_the_textures_set_to_a_new_zoom_included() -> None:
+def test_a_start_says_what_it_does_the_textures_set_to_a_new_zoom_included(live_ui: Path) -> None:
     """While Live starts: the region set up the first time, the textures set to the size of a
     new zoom (the status's relayout), else the pack put in X-Plane. It said the last while it set
     the textures to a new zoom, 16 s on 2026-10-09 (the user: fix it)."""
@@ -1147,8 +1146,8 @@ def test_a_start_says_what_it_does_the_textures_set_to_a_new_zoom_included() -> 
         starting,
     ]
     script = (
-        f"import {{ headline }} from {json.dumps((UI_DIR / 'live.js').as_uri())};"
-        f"import {{ setLanguage }} from {json.dumps((UI_DIR / 'strings.js').as_uri())};"
+        f"import {{ headline }} from {json.dumps((live_ui / 'live.js').as_uri())};"
+        f"import {{ setLanguage }} from {json.dumps((live_ui / 'strings.js').as_uri())};"
         f"const all = {json.dumps(statuses)}; setLanguage('fr');"
         "console.log(JSON.stringify(all.map((s) => headline(s)[1])));"
     )
@@ -1167,15 +1166,15 @@ def test_a_start_says_what_it_does_the_textures_set_to_a_new_zoom_included() -> 
 
 
 @pytest.mark.skipif(NODE is None, reason="needs node")
-def test_the_window_says_a_source_refuses_this_computer() -> None:
+def test_the_window_says_a_source_refuses_this_computer(live_ui: Path) -> None:
     """While Live runs, a source whose server refuses this computer (403, access denied) is said
     under the source, in OrthoStudio XP's words for its map, with what to do; the textures' label
     says their downloads are refused. Nothing is said otherwise, or once Live stops."""
     refused = _streaming(refused_by=["Esri World Imagery"])
     stopped = {"state": "idle", "checks": {"xplane_running": False}}
     script = (
-        f"import {{ refusedText, buildView }} from {json.dumps((UI_DIR / 'live.js').as_uri())};"
-        f"import {{ setLanguage }} from {json.dumps((UI_DIR / 'strings.js').as_uri())};"
+        f"import {{ refusedText, buildView }} from {json.dumps((live_ui / 'live.js').as_uri())};"
+        f"import {{ setLanguage }} from {json.dumps((live_ui / 'strings.js').as_uri())};"
         f"const all = {json.dumps([refused, _streaming(), stopped])}; const out = {{}};"
         "for (const lang of ['en', 'fr']) { setLanguage(lang);"
         " out[lang] = [all.map(refusedText), buildView(all[0]).state]; }"
@@ -1208,11 +1207,11 @@ def test_the_window_says_a_source_refuses_this_computer() -> None:
 
 
 @pytest.mark.skipif(NODE is None, reason="needs node")
-def test_the_departure_box_and_a_new_simbrief_plan() -> None:
+def test_the_departure_box_and_a_new_simbrief_plan(live_ui: Path) -> None:
     """The first plan fills an empty box; a newer one (another briefing) is offered, never put in
     the box unasked; a plan comes into a box the pilot typed in only when asked."""
     script = (
-        f"import {{ departureView }} from {json.dumps((UI_DIR / 'live.js').as_uri())};"
+        f"import {{ departureView }} from {json.dumps((live_ui / 'live.js').as_uri())};"
         "const a = { icao: 'LFMN', plan: 'LFMN-LFPG', briefing: '101' };"
         "const b = { icao: 'LFBO', plan: 'LFBO-LFMN', briefing: '102' };"
         "console.log(JSON.stringify(["
@@ -1243,10 +1242,10 @@ def test_the_departure_box_and_a_new_simbrief_plan() -> None:
 
 
 @pytest.mark.skipif(NODE is None, reason="needs node")
-def test_a_click_on_a_field_title_is_left_to_its_text() -> None:
+def test_a_click_on_a_field_title_is_left_to_its_text(live_ui: Path) -> None:
     """As OrthoStudio XP does it: a title can be selected; a label around its own box keeps it."""
     script = (
-        f"import {{ isTitleClick }} from {json.dumps((UI_DIR / 'live.js').as_uri())};"
+        f"import {{ isTitleClick }} from {json.dumps((live_ui / 'live.js').as_uri())};"
         "const field = {};"
         "const title = { control: field, contains: () => false };"
         "const around = { control: field, contains: () => true };"
@@ -1267,12 +1266,12 @@ def test_a_click_on_a_field_title_is_left_to_its_text() -> None:
 
 
 @pytest.mark.skipif(NODE is None, reason="needs node")
-def test_the_settings_search_reads_what_a_question_shows() -> None:
+def test_the_settings_search_reads_what_a_question_shows(live_ui: Path) -> None:
     """OrthoStudio XP's search (its settings.js), on the text a question shows: what is hidden
     (the start's four choices with the package's zooms) is left out, a list's choices are in."""
     osxp = UI_DIR.parent.parent / "ui" / "settings.js"
     script = (
-        f"import {{ shownText }} from {json.dumps((UI_DIR / 'live.js').as_uri())};"
+        f"import {{ shownText }} from {json.dumps((live_ui / 'live.js').as_uri())};"
         f"import {{ searchWords, matchesSearch }} from {json.dumps(osxp.as_uri())};"
         "const text = (v) => ({ nodeType: 3, nodeValue: v });"
         "const el = (kids, hidden = false) => ({ nodeType: 1, hidden, childNodes: kids });"
@@ -1292,11 +1291,11 @@ def test_the_settings_search_reads_what_a_question_shows() -> None:
 
 
 @pytest.mark.skipif(NODE is None, reason="needs node")
-def test_the_address_names_the_screen() -> None:
+def test_the_address_names_the_screen(live_ui: Path) -> None:
     """#settings opens the settings, #settings/regions with the regions in view; anything else,
     Live's screen."""
     script = (
-        f"import {{ screenFromHash }} from {json.dumps((UI_DIR / 'live.js').as_uri())};"
+        f"import {{ screenFromHash }} from {json.dumps((live_ui / 'live.js').as_uri())};"
         "console.log(JSON.stringify(['', '#live', '#settings', '#settings/regions', '#live/x',"
         " '#nope', '#settings/a b'].map(screenFromHash)));"
     )
@@ -1319,9 +1318,9 @@ def test_the_address_names_the_screen() -> None:
 
 
 @pytest.mark.skipif(NODE is None, reason="needs node")
-def test_a_square_is_named_as_osxp_names_it() -> None:
+def test_a_square_is_named_as_osxp_names_it(live_ui: Path) -> None:
     script = (
-        f"import {{ tileName }} from {json.dumps((UI_DIR / 'live.js').as_uri())};"
+        f"import {{ tileName }} from {json.dumps((live_ui / 'live.js').as_uri())};"
         "console.log(JSON.stringify([tileName(46, 6), tileName(-33, -70), tileName(5, 150)]));"
     )
     out = subprocess.run(
@@ -1334,10 +1333,10 @@ def test_a_square_is_named_as_osxp_names_it() -> None:
 
 
 @pytest.mark.skipif(NODE is None, reason="needs node")
-def test_the_page_warns_of_zl17_and_zl19_on_a_small_computer() -> None:
+def test_the_page_warns_of_zl17_and_zl19_on_a_small_computer(live_ui: Path) -> None:
     """Below the 32 GB they want (orthostudio.live.machine), whichever of the two is chosen."""
     script = (
-        f"import {{ shortOfMemory }} from {json.dumps((UI_DIR / 'live.js').as_uri())};"
+        f"import {{ shortOfMemory }} from {json.dumps((live_ui / 'live.js').as_uri())};"
         "const small = { cores: 8, ram_gb: 16, sharp_ram_gb: 32 };"
         "const large = { cores: 14, ram_gb: 48, sharp_ram_gb: 32 };"
         "console.log(JSON.stringify([shortOfMemory(small, 16, 18), shortOfMemory(small, 17, 18),"
@@ -1354,10 +1353,10 @@ def test_the_page_warns_of_zl17_and_zl19_on_a_small_computer() -> None:
 
 
 @pytest.mark.skipif(NODE is None, reason="needs node")
-def test_the_file_manager_s_name() -> None:
+def test_the_file_manager_s_name(live_ui: Path) -> None:
     """Show buttons (Live's folder, LogLive.txt) name the file manager of this computer."""
     script = (
-        f"import {{ revealLabel }} from {json.dumps((UI_DIR / 'live.js').as_uri())};"
+        f"import {{ revealLabel }} from {json.dumps((live_ui / 'live.js').as_uri())};"
         "console.log(JSON.stringify(['mac', 'win', 'lin'].map(revealLabel)));"
     )
     out = subprocess.run(

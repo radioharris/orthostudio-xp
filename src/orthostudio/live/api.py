@@ -72,7 +72,6 @@ from orthostudio.live.settings import (
     SettingsFileError,
     add_other_mesh,
     flip_front,
-    folder_key,
     load_settings,
     move_other_mesh,
     put_in_front,
@@ -395,17 +394,9 @@ def live_router(
 
     @router.post("/other/remove")
     def other_remove(body: OtherFolderBody) -> dict[str, Any]:
-        """A folder's Remove: forgotten, its files left as they are. Each folder's squares read
-        here, once, before the settings' lock (None: not there), for those in front no folder left
-        has (:func:`~orthostudio.live.settings.remove_other_mesh`)."""
-        found = control.other_found()
-        squares = {
-            folder_key(str(one.folder)): (
-                [tile_name(*square) for square in one.found.ground] if one.there else None
-            )
-            for one in found.folders
-        }
-        return other_changed(lambda: remove_other_mesh(body.folder, squares))
+        """A folder's Remove: forgotten, its files left as they are, the squares in front as they
+        are."""
+        return other_changed(lambda: remove_other_mesh(body.folder))
 
     @router.post("/other/all")
     def other_all(body: OtherAllBody) -> dict[str, Any]:
@@ -511,22 +502,26 @@ def live_router(
 
     @router.put("/settings")
     def put_settings(body: dict[str, Any] = Body(...)) -> dict[str, Any]:  # noqa: B008
+        def validated(now: LiveSettings) -> LiveSettings:
+            try:
+                return LiveSettings.model_validate({**now.model_dump(), **body})
+            except ValidationError as e:
+                first = e.errors()[0]
+                where = ".".join(str(p) for p in first.get("loc", ()))
+                raise HTTPException(422, f"{where}: {first.get('msg', 'invalid')}") from e
+
+        # Live's folder checked on the disk before the settings' lock, which every save waits for
+        folder = validated(load_settings()).folder
+        if folder:
+            problem = folder_problem(Path(folder), session.xplane_or_none())
+            if problem is not None:
+                raise HTTPException(422, f"folder: {problem}")
         before = LiveSettings()
 
         def change(now: LiveSettings) -> dict[str, Any]:
             nonlocal before
             before = now
-            try:
-                settings = LiveSettings.model_validate({**now.model_dump(), **body})
-            except ValidationError as e:
-                first = e.errors()[0]
-                where = ".".join(str(p) for p in first.get("loc", ()))
-                raise HTTPException(422, f"{where}: {first.get('msg', 'invalid')}") from e
-            if settings.folder:
-                problem = folder_problem(Path(settings.folder), session.xplane_or_none())
-                if problem is not None:
-                    raise HTTPException(422, f"folder: {problem}")
-            return settings.model_dump()
+            return validated(now).model_dump()
 
         try:  # a click or a folder's button meanwhile kept: one write after the other
             settings = saved_with(change)

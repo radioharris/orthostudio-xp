@@ -21,9 +21,10 @@ from pathlib import Path
 import pytest
 
 import test_api_fakes as fakes
+from live_helpers import save_settings
 from orthostudio.live import app_start, settings_file
 from orthostudio.live.control import LiveControl
-from orthostudio.live.settings import LiveSettings, load_settings, save_settings
+from orthostudio.live.settings import LiveSettings, load_settings
 from orthostudio.live.web import UI_DIR, create_live_app
 from test_api_fakes import client_for
 

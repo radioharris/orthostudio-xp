@@ -4,6 +4,7 @@
 // what X-Plane is doing, what is being built, the checks and the settings. The streaming itself
 // runs in the engine (orthostudio/live/control.py); this page only starts it, stops it and shows it.
 
+import { h } from "../static/dom.js";
 import { DEFAULT_LOOKS, LOOK_VALUES, lookImageData } from "./look.js";
 import { applyStatic, countryName, detectLanguage, language, setLanguage, t } from "./strings.js";
 
@@ -569,32 +570,32 @@ function drawFolder(status) {
   drawOtherMeshes(status.checks.other_meshes);
 }
 
-/** What a folder of another tool's mesh gives Live (orthostudio.live.scenery.other_mesh_said),
- *  its line in the list: how many squares and how many it gives in front of Live, then its
- *  meshes, its roads, those left aside and why; or that it is not there, or gives no mesh. Its
- *  squares all behind Live's, the normal case of a mesh put in front of Live square by square,
- *  said plainly: a warning only for a folder Live cannot use. [text, warn] */
+/** What a folder of another tool's mesh gives Live, its line in the list, every fact the
+ *  engine's (orthostudio.live.scenery.other_mesh_said), nothing guessed here: how many squares it
+ *  gives and how many of them are in front of Live, then its meshes, its roads, those left aside
+ *  and why; or why Live takes none of its meshes (unused): not there, no mesh Live can use,
+ *  folders higher in the list giving all its squares, or the squares it gives all behind Live's
+ *  mesh, the normal case of a mesh put in front of Live square by square. A warning only for a
+ *  folder Live cannot use. [text, warn] */
 export function otherMeshSaid(f) {
-  if (!f.there) return [t("other_mesh.gone"), true];
-  const behind = !f.meshes.length && f.refused.length && f.refused.every((r) => r.why === "already");
+  if (f.unused === "gone") return [t("other_mesh.gone"), true];
   const front = number(f.front.length);
   const counted = f.squares === 1 ? t("other_mesh.squares_one", { front }) : t("other_mesh.squares", { n: number(f.squares), front });
   const said = f.squares ? [counted] : [];
-  if (behind) said.push(t("other_mesh.behind"));
-  else {
-    const used = f.next_start ? "other_mesh.meshes_next" : "other_mesh.meshes";
-    said.push(f.meshes.length ? t(used, { names: f.meshes.join(", ") }) : t("other_mesh.none"));
-    if (f.overlays.length) said.push(t("other_mesh.overlays", { names: f.overlays.join(", ") }));
-    else if (f.meshes.length) said.push(t("other_mesh.no_roads"));
-  }
-  if (f.refused.length && !behind) {
+  if (f.unused === "above") return [[...said, t("other_mesh.above")].join(" "), false];
+  if (f.unused === "behind") return [[...said, t("other_mesh.behind")].join(" "), false];
+  const used = f.next_start ? "other_mesh.meshes_next" : "other_mesh.meshes";
+  said.push(f.meshes.length ? t(used, { names: f.meshes.join(", ") }) : t("other_mesh.none"));
+  if (f.overlays.length) said.push(t("other_mesh.overlays", { names: f.overlays.join(", ") }));
+  else if (f.meshes.length) said.push(t("other_mesh.no_roads"));
+  if (f.refused.length) {
     // a few, the rest counted: X-Plane's folder chosen lists every tile of Custom Scenery
     const shown = f.refused.slice(0, 5);
     const names = shown.map((r) => `${r.name} (${t(`other_mesh.why_${r.why}`)})`).join(", ");
     const more = f.refused.length - shown.length;
     said.push(more ? t("other_mesh.refused_more", { names, count: more }) : t("other_mesh.refused", { names }));
   }
-  return [said.join(" "), !behind && !f.meshes.length];
+  return [said.join(" "), f.unused === "no_mesh"];
 }
 
 /** The folders of other tools' meshes, top first, the first that has a square giving it
@@ -611,57 +612,34 @@ function drawOtherMeshes(other) {
   list.dataset.drawn = key;
   list.hidden = !folders.length;
   list.replaceChildren(...folders.map((f, i) => {
-    const li = document.createElement("li");
-    li.className = "region other-mesh";
-    const head = document.createElement("div");
-    head.className = "region-head";
-    const label = document.createElement("div");
-    label.className = "region-label";
-    const name = document.createElement("span");
-    name.className = "region-name";
-    name.textContent = f.name;
-    label.append(name);
-    const path = document.createElement("p"); // under its name and its buttons, the row's width
-    path.className = "region-state";
-    path.textContent = f.folder;
-    const actions = document.createElement("div");
-    actions.className = "region-actions";
-    const offered = f.there && f.squares > 0;
     const act = (name, body = {}) => () => otherAct(name, { folder: f.folder, ...body });
-    actions.append(
-      regionButton(t("other_mesh.all_front"), act("all", { front: true }), { disabled: !offered }),
-      regionButton(t("other_mesh.all_behind"), act("all", { front: false }), { disabled: !offered }),
-      regionButton(t("other_mesh.remove"), act("remove"), { title: t("other_mesh.remove_help") }),
-      regionButton("↑", act("move", { up: true }), { disabled: i === 0, title: t("other_mesh.up") }),
-      regionButton("↓", act("move", { up: false }), { disabled: i === folders.length - 1, title: t("other_mesh.down") }),
-    );
-    head.append(label, actions);
+    const none = !f.squares; // the squares it gives, the engine's count: none to put in front or back
     const [text, warn] = otherMeshSaid(f);
-    const line = document.createElement("p");
-    line.className = warn ? "region-state is-warn" : "region-state";
-    line.textContent = text;
-    li.append(head, path, line);
-    return li;
+    return h("li", { class: "region other-mesh" },
+      h("div", { class: "region-head" },
+        h("div", { class: "region-label" }, h("span", { class: "region-name" }, f.name)),
+        h("div", { class: "region-actions" },
+          regionButton(t("other_mesh.all_front"), act("all", { front: true }), { disabled: none }),
+          regionButton(t("other_mesh.all_behind"), act("all", { front: false }), { disabled: none }),
+          regionButton(t("other_mesh.remove"), act("remove"), { title: t("other_mesh.remove_help") }),
+          regionButton("↑", act("move", { up: true }), { disabled: i === 0, title: t("other_mesh.up") }),
+          regionButton("↓", act("move", { up: false }), { disabled: i === folders.length - 1, title: t("other_mesh.down") }))),
+      h("p", { class: "region-state" }, f.folder), // under its name and its buttons, the row's width
+      h("p", { class: warn ? "region-state is-warn" : "region-state" }, text));
   }));
 }
 
 /** Under the list: how to put a square of these meshes in front of Live on its map, and whether
- *  the squares in front wait for Live's next start; nothing while no folder gives the map a
- *  square (its count, the engine's). */
+ *  the squares in front wait for Live's next start; nothing while no folder gives a square (its
+ *  count, the engine's). */
 function drawOtherFront(other) {
   const line = $("other-mesh-front");
-  const offered = Boolean(other?.folders.some((f) => f.there && f.squares > 0));
+  const offered = Boolean(other?.folders.some((f) => f.squares > 0));
   line.hidden = !offered;
   if (!offered) return;
   const said = [t("other_mesh.front_how")];
   if (other.front_next) said.push(t("other_mesh.front_next"));
   line.textContent = said.join(" ");
-}
-
-/** The folders of other tools' meshes and the squares in front of Live, as the engine answers
- *  them saved, in the settings the page keeps. */
-function keepOther(got) {
-  for (const settings of [saved, last?.settings]) if (settings) Object.assign(settings, got);
 }
 
 /** A button of the folders of other tools' meshes, or a folder added: saved by the engine, in one
@@ -673,7 +651,7 @@ async function otherAct(act, body) {
   const error = $("other-mesh-error");
   error.hidden = true;
   try {
-    keepOther(await api(`other/${act}`, { method: "POST", body }));
+    await api(`other/${act}`, { method: "POST", body });
   } catch (e) {
     const known = e.status === 409 && act === "add" ? "other_mesh.already" : null;
     if (known) error.dataset.i18n = known;
@@ -706,7 +684,6 @@ async function toggleFront({ lat, lon }) {
   const tile = tileName(lat, lon);
   try {
     const got = await api("map/other", { method: "POST", body: { square: tile } });
-    keepOther(got);
     toast(t(got.other_mesh_front.includes(tile) ? "map.other_put_front" : "map.other_put_behind", { tile }));
   } catch (error) {
     toast(error.message);

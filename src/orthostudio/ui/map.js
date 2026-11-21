@@ -14,6 +14,7 @@
 // shape being drawn live here.
 
 import { adjustImageData, photoValues } from "./colour.js";
+import { h } from "./dom.js";
 import { fmtGround, fmtInt, fmtMB, fmtNum, t } from "./i18n.js";
 import { pageKeep, pageKept } from "./kept.js";
 import { drawLegend, groupHead, legendList, legendOpen, legendRow, legendToggle } from "./legend.js";
@@ -273,7 +274,7 @@ export function readZonesDocument(doc) {
 }
 
 /**
- * ctx: {mock, api(method, path, body, {headers, keepalive}), toast, errorMessage, errorDetail, h,
+ * ctx: {mock, api(method, path, body, {headers, keepalive}), toast, errorMessage, errorDetail,
  * clear, tiles(), toggleTile(name), providers(), planProvider(), planZl(), tileZl(name),
  * route() (the flight plan as the engine gave it, or null), routeEnds(),
  * library(),
@@ -281,7 +282,7 @@ export function readZonesDocument(doc) {
  * answered, without one when it could not be reached.
  */
 export function createPlanMap(ctx) {
-  const { h, clear } = ctx;
+  const { clear } = ctx;
   const L = globalThis.L;
   const $ = (id) => document.getElementById(id);
   const mac = isMac();

@@ -71,8 +71,8 @@ REDO_REFUSED = {
     "may be reading the meshes of before. Quit X-Plane, then start again",
 }
 """A start refused while X-Plane runs on a pack to set up again, by why (``region.pack_to_redo``):
-"front" only with the regions of before, so with the folder of the squares in front there, its
-disk not the cause."""
+"front" only with the regions of before but for the meshes that come and go with the squares in
+front, which are there: a disk is not the cause."""
 
 
 def default_workers() -> int:

@@ -18,6 +18,7 @@
  * too), every other one left as it is.
  */
 
+import { h } from "./dom.js";
 import { codeText, fmtNum, t } from "./i18n.js";
 
 /** How often a tile is read again while something of it runs, in ms: a cloud's images in half a
@@ -141,7 +142,7 @@ export function labelPoint(ring, steps = 24) {
 }
 
 export function createCloudMode(ctx) {
-  const { api, h, icon, clear, morph, toast, errorMessage } = ctx;
+  const { api, icon, clear, morph, toast, errorMessage } = ctx;
   const L = globalThis.L;
   const $ = (id) => document.getElementById(id);
   const cs = {

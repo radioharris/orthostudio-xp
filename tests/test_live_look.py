@@ -20,7 +20,7 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from live_helpers import NAMES, FakeDownloader, make_source, make_squares
+from live_helpers import NAMES, FakeDownloader, make_source, make_squares, save_settings
 from orthostudio.live.cache import ChunkCache
 from orthostudio.live.gate import read_flight_time
 from orthostudio.live.geo import parse_texture_name
@@ -207,7 +207,7 @@ def test_the_settings_keep_each_season(monkeypatch, tmp_path: Path) -> None:
             "seasons": {**s.seasons.model_dump(), "winter": winter},
         }
     )
-    live_settings.save_settings(changed)
+    save_settings(changed)
     back = live_settings.load_settings()
     assert back.season == "winter"
     assert back.seasons.winter.vegetation == 0.55
