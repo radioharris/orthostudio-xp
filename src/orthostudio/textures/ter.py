@@ -24,6 +24,7 @@ __all__ = [
     "TerKind",
     "TerParams",
     "border_mask_filename",
+    "lit_of",
     "load_center_size",
     "night_name",
     "photo_of",
@@ -217,19 +218,29 @@ def photo_of(text: str) -> str:
     return line.rsplit("/", 1)[-1].strip() if line else ""
 
 
-def with_night(text: str, lit: str | None, luminance: int) -> str:
-    """``text`` of a terrain file naming its night texture ``lit`` and how bright X-Plane shows it,
-    right after its photo; no night lines when ``lit`` is None or ``luminance`` is 0. Lines
-    already there go. A file that needs no change comes back byte for byte."""
+def with_night(text: str, lit: str | None, luminance: int | None = None) -> str:
+    """``text`` of a terrain file naming its night texture ``lit`` right after its photo, and how
+    bright X-Plane shows it when ``luminance`` is given; no night lines when ``lit`` is None.
+    Lines already there go. A file that needs no change comes back byte for byte."""
     lines = [
         ln for ln in text.splitlines(keepends=True) if not ln.startswith(("LIT_TEX", "LUMINANCE "))
     ]
-    if lit is None or luminance <= 0:
+    if lit is None:
         return "".join(lines)
     out = []
     for ln in lines:
-        out.append(ln)
-        if ln.startswith("BASE_TEX"):
-            out.append(f"LIT_TEX_NOWRAP ../{NIGHT_FOLDER}/{lit}\n")
+        if not ln.startswith("BASE_TEX"):
+            out.append(ln)
+            continue
+        out.append(ln if ln.endswith("\n") else ln + "\n")
+        out.append(f"LIT_TEX_NOWRAP ../{NIGHT_FOLDER}/{lit}\n")
+        if luminance is not None:
             out.append(f"LUMINANCE {luminance}\n")
     return "".join(out)
+
+
+def lit_of(text: str, lit: set[str]) -> str | None:
+    """The night texture a terrain file of ``text`` names, when it is among ``lit``."""
+    photo = photo_of(text)
+    name = night_name(photo) if photo else ""
+    return name if name in lit else None

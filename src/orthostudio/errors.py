@@ -655,6 +655,13 @@ _SPECS: tuple[ErrorSpec, ...] = (
     ),
     # ---------------------------------------------------------------- TEX
     _spec(
+        "TEX_NIGHT_GRIDS_FAILED",
+        _B,
+        _S,
+        "The night lights' grids of the region {region} could not be downloaded ({reason}).",
+        "Check the internet connection, then build again; or untick Night textures in the Plan.",
+    ),
+    _spec(
         "TEX_MISSING",
         _B,
         _S,

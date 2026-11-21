@@ -39,7 +39,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from orthostudio.imagery.grid import TextureId
-from orthostudio.textures.ter import TerParams, ter_center, ter_kind, ter_text
+from orthostudio.textures.ter import TerParams, night_name, ter_center, ter_kind, ter_text
+from orthostudio.textures.ter import with_night as ter_with_night
 
 from .evict import tiles_of, xplane_tiles
 from .filesystem import BINARY, replace, too_many_links
@@ -477,25 +478,10 @@ def with_decal(ter: bytes, decal: str, *, on_water: bool = False) -> bytes:
     return b"\n".join(out)
 
 
-def night_name(name: str) -> str:
-    """The night texture of a texture (``23904_34080_BI16.dds``: ``23904_34080_BI16_LIT.dds``)."""
-    return name[: -len(".dds")] + "_LIT.dds"
-
-
 def with_night(ter: bytes, lit: str | None) -> bytes:
     """A land ``.ter`` file naming its night texture ``lit`` (``LIT_TEX_NOWRAP``) right after its
     photo, or naming none when ``lit`` is None. X-Plane adds it to the photo at night."""
-    from .region import NIGHT_FOLDER
-
-    lines = [line for line in ter.split(b"\n") if not line.startswith(b"LIT_TEX")]
-    if lit is None:
-        return b"\n".join(lines)
-    out = []
-    for line in lines:
-        out.append(line)
-        if line.startswith(b"BASE_TEX_NOWRAP "):
-            out.append(f"LIT_TEX_NOWRAP ../{NIGHT_FOLDER}/{lit}".encode("ascii"))
-    return b"\n".join(out)
+    return ter_with_night(ter.decode("ascii"), lit).encode("ascii")
 
 
 class NightPool(NeutralPool):

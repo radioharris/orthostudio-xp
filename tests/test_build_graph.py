@@ -133,19 +133,17 @@ def test_the_night_steps_only_when_asked_beside_the_photos(tmp_path: Path, env: 
     from orthostudio.live.night import LUMINANCE
 
     (plain,) = _declare([_spec(tmp_path)], _sched(env), env)
-    assert plain.night is None and plain.night_grid is None
-    assert plain.pack.inputs["night"] is None
-    assert cast(PackParams, plain.pack.params).night == 0
+    assert plain.night is None and plain.pack.inputs["night"] is None
+    assert cast(PackParams, plain.pack.params).night_lum == 0
     asked = _spec(tmp_path, config={"night_textures": True})
     (lit,) = _declare([asked], _sched(env), env)
-    assert lit.night is not None and lit.night_grid is not None
+    assert lit.night is not None
     assert lit.night.id == "+43+005/BI14/night" and lit.night.kind == "subprocess"
-    assert lit.night_grid.kind == "io" and lit.night.inputs["grid"] is lit.night_grid
     assert lit.night.inputs["dsf"] is lit.dsf  # beside the photos, never after them
-    assert lit.night.inputs["roads"] is not None and lit.night.inputs["roads_w"] is not None
-    assert lit.night.inputs["roads_s"] is None  # no such square in X-Plane's scenery here
+    assert lit.night.inputs["xp12"] is not None and lit.night.inputs["xp12_w"] is not None
+    assert lit.night.inputs["xp12_s"] is None  # no such square in X-Plane's scenery here
     assert lit.pack.inputs["night"] is lit.night
-    assert cast(PackParams, lit.pack.params).night == LUMINANCE["normal"]
+    assert cast(PackParams, lit.pack.params).night_lum == LUMINANCE["normal"]
     assert lit.by_role["night"] is lit.night
 
 

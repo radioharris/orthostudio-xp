@@ -44,7 +44,6 @@ ROLE_STAGE: dict[str, Stage] = {
     "mesh": "terrain",
     "masks": "coast",
     "textures": "imagery",
-    "night_grid": "assembly",
     "night": "assembly",
     "xp12": "assembly",
     "dsf": "assembly",

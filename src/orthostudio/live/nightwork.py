@@ -138,6 +138,18 @@ def square_name(lat: int, lon: int) -> str:
     return f"{lat:+03d}{lon:+04d}"
 
 
+GRIDS_ENV = "OSXP_LIVE_NIGHT_GRIDS"  # a folder of density grids looked in first: the test flights'
+
+
+def grid_dirs(regions: Iterable[Path]) -> list[Path]:
+    """Where NASA's density grids are looked for: :data:`GRIDS_ENV`'s folder, each region's
+    ``night`` folder, then Live's own."""
+    from .pack import live_root
+
+    first = [Path(os.environ[GRIDS_ENV])] if os.environ.get(GRIDS_ENV) else []
+    return first + [Path(r) / "night" for r in regions] + [live_root() / "night"]
+
+
 def density_of(path: Path, lat: int, lon: int):
     """The density grid of square ``lat``, ``lon`` (orthostudio.live.night.Density), or None."""
     from PIL import Image

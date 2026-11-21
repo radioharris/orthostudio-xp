@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import contextlib
 import json
-import os
 import sys
 import time
 from collections.abc import Callable, Sequence
@@ -757,9 +756,6 @@ def follow(
             prepared.gate.close()
 
 
-GRIDS_ENV = "OSXP_LIVE_NIGHT_GRIDS"  # a folder of density grids looked in first: the test flights'
-
-
 def _night_work(prepared: Prepared, log: Log, light: str = "normal", lights: bool = True):
     """The night textures of the textures built (orthostudio.live.nightwork): X-Plane's roads from
     its Global Scenery, else from the overlays of Live's regions, NASA's grids from each
@@ -767,16 +763,14 @@ def _night_work(prepared: Prepared, log: Log, light: str = "normal", lights: boo
     without ``lights``, those there counted and followed."""
     from orthostudio.live import aoregions
     from orthostudio.live.night import GAIN, LIGHTS
-    from orthostudio.live.nightwork import NightWork
+    from orthostudio.live.nightwork import NightWork, grid_dirs
     from orthostudio.live.osxpregions import OVERLAY_PACK
 
     return NightWork(
         prepared.pack,
         prepared.xplane / "Global Scenery" / "X-Plane 12 Global Scenery",
         aoregions.regions_dir(live_root()) / OVERLAY_PACK,
-        ([Path(os.environ[GRIDS_ENV])] if os.environ.get(GRIDS_ENV) else [])
-        + [Path(source) / "night" for source in prepared.sources]
-        + [live_root() / "night"],
+        grid_dirs(prepared.sources),
         log=log,
         prefs=_freeflight(prepared.xplane),
         gain=LIGHTS.get(light, GAIN),

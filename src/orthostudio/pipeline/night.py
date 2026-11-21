@@ -3,38 +3,38 @@
 """The night textures of a tile: its towns' lights, which X-Plane adds to the photo at night.
 
 Live's drawing (:mod:`orthostudio.live.night`), from X-Plane's own roads and NASA's density grid
-of the square, at full strength. How bright X-Plane shows them is the ``LUMINANCE`` line of the
-terrain files (:data:`orthostudio.live.night.LUMINANCE`), Live's strength: a change of it rewrites
-those lines alone (:func:`set_strength`), never the textures.
-
-Two rules: ``tile.night_grid`` finds the square's grid, in Live's folders or downloaded once with
-its region's; ``tile.night`` draws a night texture for each texture of the land holding a light.
+of the square, at full strength, a night texture for each photo of the land holding a light. How
+bright X-Plane shows them is the ``LUMINANCE`` line of the terrain files
+(:data:`orthostudio.live.night.LUMINANCE`), Live's strength: a change of it rewrites those lines
+alone (:func:`set_strength`), never the textures.
 """
 
 from __future__ import annotations
 
 import contextlib
-import hashlib
 import logging
 import os
-import shutil
 import sqlite3
-import tempfile
 import threading
 from collections.abc import Iterable, Iterator
 from concurrent.futures import ProcessPoolExecutor
 from contextvars import ContextVar
 from multiprocessing import get_context
 from pathlib import Path
+from typing import Any
 
+from orthostudio.dem.xplane import XP12_INPUTS
 from orthostudio.errors import OsxpError
 from orthostudio.fsutil import atomic_write_bytes
 from orthostudio.graph import Rule, RuleParams, RunContext, rule
+from orthostudio.home import data_root
 from orthostudio.model import TileRef
 from orthostudio.parentwatch import leave_with_parent
+from orthostudio.pipeline.pack import read_manifest, write_manifest
 from orthostudio.textures.ter import (
     NIGHT_FOLDER,
     TerKind,
+    lit_of,
     night_name,
     photo_of,
     ter_kind,
@@ -43,30 +43,16 @@ from orthostudio.textures.ter import (
 
 log = logging.getLogger(__name__)
 
-ROADS_INPUTS = ("roads", "roads_n", "roads_ne", "roads_e", "roads_se")
-ROADS_INPUTS += ("roads_s", "roads_sw", "roads_w", "roads_nw")
-"""X-Plane's Global Scenery DSF of the square and of its eight neighbours: a texture on the
-square's edge takes the roads across it too."""
-
-ROADS_OFFSETS = {
-    "roads": (0, 0),
-    "roads_n": (1, 0),
-    "roads_ne": (1, 1),
-    "roads_e": (0, 1),
-    "roads_se": (-1, 1),
-    "roads_s": (-1, 0),
-    "roads_sw": (-1, -1),
-    "roads_w": (0, -1),
-    "roads_nw": (1, -1),
-}
-
 MAX_WORKERS = 8
 BASE_MB = 300
 WORKER_MB = 300
-"""A drawing process: a 1024 px texture's float copies and a few squares' roads."""
+"""A drawing process: a 1024 px texture's float copies; the roads are read apart."""
+BUDGET_SHARE = 2
+"""The night of a tile takes at most half of the RAM budget, as the masks do."""
 
 _WORKERS: ContextVar[int] = ContextVar("night_workers", default=1)
 _FETCHING = threading.Lock()
+_FETCHED: set[str] = set()  # the regions whose grids this process downloaded
 
 
 @contextlib.contextmanager
@@ -79,16 +65,8 @@ def night_job(workers: int) -> Iterator[None]:
         _WORKERS.reset(token)
 
 
-class NightGridParams(RuleParams):
-    tile: str
-
-
 class NightParams(RuleParams):
     tile: str
-
-
-def square_name(lat: int, lon: int) -> str:
-    return f"{lat:+03d}{lon:+04d}"
 
 
 def land_textures(dsf_dir: Path) -> list[str]:
@@ -104,136 +82,79 @@ def land_textures(dsf_dir: Path) -> list[str]:
 # -- the grid ----------------------------------------------------------------------------------
 
 
-def grid_folders() -> list[Path]:
-    """Where Live keeps NASA's grids: its regions' ``night`` folders, then its own."""
+def grids_folder() -> Path:
+    """Where the grids Live has not got are downloaded, in the data folder."""
+    return data_root() / "night"
+
+
+def find_grid(tile: TileRef) -> Path | None:
+    """The square's grid among Live's (its regions', its own) and those downloaded here."""
     from orthostudio.live import osxpregions
+    from orthostudio.live.nightwork import grid_dirs
     from orthostudio.live.pack import live_root
 
     root = live_root()
-    regions = sorted(osxpregions.installed(root))
-    return [osxpregions.mesh_dir(root, r) / "night" for r in regions] + [root / "night"]
+    regions = [osxpregions.mesh_dir(root, r) for r in sorted(osxpregions.installed(root))]
+    file = f"{tile.name}.png"
+    dirs = [*grid_dirs(regions), grids_folder()]
+    return next((d / file for d in dirs if (d / file).is_file()), None)
 
 
-def find_grid(lat: int, lon: int) -> Path | None:
-    file = f"{square_name(lat, lon)}.png"
-    return next((d / file for d in grid_folders() if (d / file).is_file()), None)
-
-
-def fetch_grids(region: str, dest: Path) -> int:
-    """The night grids of Live's ``region`` downloaded into ``dest``, checked against the host's
-    list; returns the grids written."""
-    import httpx
-
+def grid_of(tile: TileRef) -> Path | None:
+    """The square's grid; where none is here, its region's downloaded, once a process; None for a
+    square of no region (the open sea)."""
     from orthostudio.live import osxpregions
-    from orthostudio.live.pack import live_root
+    from orthostudio.live.aoregions import InstallError
+    from orthostudio.live.meshmap import region_of
 
-    url, token = osxpregions.shipped_host()
-    if not url:  # a build from the sources without Live's address: never a tile without its grid
-        raise OsxpError("SYS_RESOURCE_MISSING", context={"path": osxpregions.HOST_FILE})
-    try:
-        regions = osxpregions.catalog(live_root())
-    except osxpregions.CatalogError as exc:
-        raise _offline(region, str(exc)) from exc
-    found = regions.get(region)
-    if found is None:
-        return 0
-    dest.mkdir(parents=True, exist_ok=True)
-    written = 0
-    with (
-        tempfile.TemporaryDirectory(dir=dest, prefix=".fetch-") as tmp,
-        osxpregions._client(token) as client,
-    ):
-        for z in found.night:
-            part = Path(tmp) / z.name
-            h = hashlib.sha256()
-            try:
-                with client.stream("GET", f"{url}/{z.path}") as r, open(part, "wb") as out:
-                    r.raise_for_status()
-                    for chunk in r.iter_bytes(1 << 20):
-                        h.update(chunk)
-                        out.write(chunk)
-            except (OSError, httpx.HTTPError) as exc:
-                raise _offline(region, str(exc)) from exc
-            if h.hexdigest() != z.sha256:
-                raise _offline(region, f"{z.name} came damaged")
-            unpacked = Path(tmp) / "unpacked"
-            osxpregions.unpack(part, unpacked)
-            for png in unpacked.rglob("*.png"):
-                os.replace(png, dest / png.name)
-                written += 1
-    return written
-
-
-def _offline(region: str, reason: str) -> OsxpError:
-    log.warning("the night lights' grids of %s did not come: %s", region, reason)
-    return OsxpError("NET_OFFLINE")
-
-
-def _tile_night_grid(ctx: RunContext) -> None:
-    """The square's grid, or an empty file where it has none (the open sea, no region)."""
-    from orthostudio.live.aoregions import region_of
-    from orthostudio.live.pack import live_root
-
-    params = ctx.params
-    assert isinstance(params, NightGridParams)
-    tile = TileRef.parse(params.tile)
     with _FETCHING:  # the squares of a batch: their region's grids downloaded once
-        found = find_grid(tile.lat, tile.lon)
-        if found is None:
-            region = region_of(tile.lat + 0.5, tile.lon + 0.5)
-            if region is not None:
-                fetch_grids(region, live_root() / "night")
-                found = find_grid(tile.lat, tile.lon)
-    if found is None:
-        ctx.out.write_bytes(b"")
-    else:
-        shutil.copyfile(found, ctx.out)
+        found = find_grid(tile)
+        region = region_of(tile.lat + 0.5, tile.lon + 0.5)
+        if found is None and region is not None and region not in _FETCHED:
+            try:
+                osxpregions.night_grids(grids_folder(), region, grids_folder())
+            except (InstallError, osxpregions.CatalogError, OSError) as exc:
+                raise OsxpError(
+                    "TEX_NIGHT_GRIDS_FAILED", context={"region": region, "reason": str(exc)}
+                ) from exc
+            _FETCHED.add(region)
+            found = find_grid(tile)
+    return found
 
 
-# -- the night textures ------------------------------------------------------------------------
+# -- the night textures ---------------------------------------------------------------------------
 
 
 def _draw(job: tuple[str, str, list[str], str | None]) -> tuple[str, bool]:
-    """In a drawing process: the night texture of one texture, at full strength."""
+    """In a drawing process: the night texture of one texture, at full strength, the roads read in
+    a process of their own (a DSF read leaves its memory behind)."""
     from orthostudio.live.nightwork import make_night
 
     pack, name, dsfs, grid = job
-    return name, make_night(Path(pack), name, 0, dsfs, grid, 1.0, apart=False)
-
-
-def _jobs(
-    names: Iterable[str], work: Path, roads: dict[tuple[int, int], str], grid: str | None
-) -> list[tuple[str, str, list[str], str | None]]:
-    from orthostudio.live.evict import tiles_of
-    from orthostudio.live.geo import parse_texture_name
-
-    out = []
-    for name in names:
-        tex = parse_texture_name(name)
-        if tex is None:
-            continue
-        dsfs = [roads[sq] for sq in sorted(tiles_of(tex)) if sq in roads]
-        out.append((str(work), name, dsfs, grid))
-    return out
+    return name, make_night(Path(pack), name, 0, dsfs, grid, 1.0, apart=True)
 
 
 def _tile_night(ctx: RunContext) -> None:
     """``textures_night/<texture>_LIT.dds`` of each texture of the land with a light."""
+    from orthostudio.live.evict import tiles_of
+    from orthostudio.live.geo import parse_texture_name
+
     params = ctx.params
     assert isinstance(params, NightParams)
     tile = TileRef.parse(params.tile)
     roads: dict[tuple[int, int], str] = {}
-    for name, (dlat, dlon) in ROADS_OFFSETS.items():
+    for name, (dlat, dlon) in XP12_INPUTS.items():
         if ctx.inputs[name].path is not None:
-            roads[(tile.lat + dlat, tile.lon + dlon)] = str(ctx.input_path(name))
-    grid_file = ctx.input_path("grid")
-    grid = None
-    if grid_file.stat().st_size:  # named after its square, which the drawing reads
-        named = ctx.scratch / f"{square_name(tile.lat, tile.lon)}.png"
-        shutil.copyfile(grid_file, named)
-        grid = str(named)
+            square = tile.neighbour(dlat, dlon)
+            roads[(square.lat, square.lon)] = str(ctx.input_path(name))
+    grid = grid_of(tile)
     work = ctx.scratch / "night"
-    jobs = _jobs(land_textures(ctx.input_path("dsf")), work, roads, grid)
+    jobs = []
+    for name in land_textures(ctx.input_path("dsf")):
+        tex = parse_texture_name(name)
+        if tex is not None:
+            dsfs = [roads[sq] for sq in sorted(tiles_of(tex)) if sq in roads]
+            jobs.append((str(work), name, dsfs, str(grid) if grid else None))
     workers = min(_WORKERS.get(), max(1, len(jobs)))
     if workers == 1:
         results = [_draw(job) for job in jobs]
@@ -250,19 +171,11 @@ def _tile_night(ctx: RunContext) -> None:
             os.replace(work / NIGHT_FOLDER / night_name(name), folder / night_name(name))
 
 
-TILE_NIGHT_GRID: Rule = rule(
-    name="tile.night_grid",
-    version=1,
-    params=NightGridParams,
-    inputs=(),
-    ram_mb=100,
-    kind="file",
-)(_tile_night_grid)
 TILE_NIGHT: Rule = rule(
     name="tile.night",
     version=1,
     params=NightParams,
-    inputs=("dsf", "grid", *ROADS_INPUTS),
+    inputs=("dsf", *XP12_INPUTS),
     ram_mb=BASE_MB,
     kind="dir",
 )(_tile_night)
@@ -271,28 +184,23 @@ TILE_NIGHT: Rule = rule(
 # -- the strength --------------------------------------------------------------------------------
 
 
-def luminance() -> int:
-    """The ``LUMINANCE`` Live's night lights ask for now; 0 when they are off."""
+def luminance(settings: Any = None) -> int:
+    """The ``LUMINANCE`` Live's night lights ask for (its settings, read when not given); 0 when
+    they are off."""
     from orthostudio.live.night import LUMINANCE
     from orthostudio.live.settings import SettingsFileError, load_settings
 
-    try:
-        settings = load_settings()
-    except (OSError, SettingsFileError):
-        return LUMINANCE["normal"]
+    if settings is None:
+        try:
+            settings = load_settings()
+        except (OSError, SettingsFileError):
+            return LUMINANCE["normal"]
     return LUMINANCE[settings.night_light] if settings.night else 0
 
 
-def lit_of(text: str, lit: set[str]) -> str | None:
-    """The night texture a land terrain file of ``text`` names, when it is among ``lit``."""
-    photo = photo_of(text)
-    name = night_name(photo) if photo else ""
-    return name if name in lit else None
-
-
 def night_lines(pack_dir: Path, lum: int) -> int:
-    """The land terrain files of ``pack_dir`` naming their night texture at ``lum``, those without
-    one naming none; returns the files rewritten."""
+    """The land terrain files of ``pack_dir`` naming their night texture at ``lum`` (none at 0),
+    and its manifest saying so; returns the terrain files rewritten."""
     terrain, folder = Path(pack_dir) / "terrain", Path(pack_dir) / NIGHT_FOLDER
     lit = {p.name for p in folder.glob("*_LIT.dds")} if folder.is_dir() else set()
     changed = 0
@@ -300,10 +208,15 @@ def night_lines(pack_dir: Path, lum: int) -> int:
         if ter_kind(ter.name) is not TerKind.LAND:
             continue
         text = ter.read_bytes().decode("ascii")
-        new = with_night(text, lit_of(text, lit), lum)
+        new = with_night(text, lit_of(text, lit) if lum else None, lum)
         if new != text:
             atomic_write_bytes(ter, new.encode("ascii"))
             changed += 1
+    with contextlib.suppress(OSError, ValueError, KeyError):
+        manifest = read_manifest(pack_dir)
+        if manifest.files.get("night") and manifest.files.get("night_lum") != lum:
+            manifest.files["night_lum"] = lum
+            write_manifest(pack_dir, TileRef.parse(manifest.tile), manifest)
     return changed
 
 
@@ -321,8 +234,8 @@ def set_strength(pack_dirs: Iterable[Path], lum: int) -> int:
     return tiles
 
 
-def library_strength() -> int:
-    """Live's strength given to the tiles of the Library; returns the tiles changed."""
+def library_strength(lum: int) -> int:
+    """``lum`` given to the tiles of the Library; returns the tiles changed."""
     from orthostudio.install import Library
 
     try:
@@ -331,4 +244,4 @@ def library_strength() -> int:
     except sqlite3.Error as exc:
         log.warning("the Library could not be read: %s", exc)
         return 0
-    return set_strength(dirs, luminance())
+    return set_strength(dirs, lum)

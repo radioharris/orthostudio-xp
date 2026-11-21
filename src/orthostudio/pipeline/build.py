@@ -95,6 +95,7 @@ from orthostudio.meter import counting
 from orthostudio.model import OVERLAY_PACK, ArtifactRef, TileRef
 from orthostudio.overlays import OverlayExclusions, build_overlay_detailed, find_dsftool
 from orthostudio.overlays.source import resolve_global_scenery_dir
+from orthostudio.pipeline import night as night_rules
 from orthostudio.pipeline.filing import (
     OLD_SUFFIX,
     PART_SUFFIX,
@@ -128,18 +129,7 @@ from orthostudio.pipeline.native import (
     snapshot_label_of,
     unusable_coastline,
 )
-from orthostudio.pipeline.night import BASE_MB as NIGHT_BASE_MB
-from orthostudio.pipeline.night import MAX_WORKERS as NIGHT_MAX_WORKERS
-from orthostudio.pipeline.night import (
-    ROADS_OFFSETS,
-    TILE_NIGHT,
-    TILE_NIGHT_GRID,
-    NightGridParams,
-    NightParams,
-    luminance,
-    night_job,
-)
-from orthostudio.pipeline.night import WORKER_MB as NIGHT_WORKER_MB
+from orthostudio.pipeline.night import TILE_NIGHT, NightParams, luminance, night_job
 from orthostudio.pipeline.pack import (
     PARKED_OVERLAY,
     TILE_INSTALL,
@@ -1371,7 +1361,6 @@ class TileNodes:
     stages: StageChoice = field(default_factory=StageChoice)
     osm: Node | None = None
     """The tile's OSM download, when the graph downloads it (a stored snapshot is an input)."""
-    night_grid: Node | None = None
     night: Node | None = None
     """Its night textures, when they are asked for (``night_textures``)."""
 
@@ -1382,7 +1371,7 @@ class TileNodes:
     def all(self) -> list[Node]:
         nodes = [self.vectors, self.mesh, self.masks, self.dsf, self.textures, self.pack]
         others = (self.osm, self.dem, self.coastline, self.xp12, self.overlay, self.install)
-        for n in (*others, self.night_grid, self.night):
+        for n in (*others, self.night):
             if n is not None:
                 nodes.append(n)
         return nodes
@@ -1399,7 +1388,6 @@ class TileNodes:
             "xp12": self.xp12,
             "dsf": self.dsf,
             "textures": self.textures,
-            "night_grid": self.night_grid,
             "night": self.night,
             "overlay": self.overlay,
             "pack": self.pack,
@@ -1853,13 +1841,13 @@ def _masks_run(env: BuildEnv, params: OsxpMasksParams) -> Callable[[NodeContext]
 
 
 def night_workers(env: BuildEnv) -> int:
-    """Processes the night textures of a tile are drawn by, as the masks' are counted."""
+    """Processes the night textures of a tile are drawn by (:func:`pool_workers`)."""
     return pool_workers(
         env,
-        min(NIGHT_MAX_WORKERS, env.workers),
-        share=MASKS_BUDGET_SHARE,
-        base_mb=NIGHT_BASE_MB,
-        worker_mb=NIGHT_WORKER_MB,
+        min(night_rules.MAX_WORKERS, env.workers),
+        share=night_rules.BUDGET_SHARE,
+        base_mb=night_rules.BASE_MB,
+        worker_mb=night_rules.WORKER_MB,
     )
 
 
@@ -1940,6 +1928,8 @@ def built_facts(spec: BuildSpec) -> dict[str, Any]:
         facts["imagery_credit"] = source.attribution
     if source is not None and source.licence:
         facts["imagery_licence"] = source.licence
+    if spec.config.get("night_textures"):  # built again from the Library, it keeps them
+        facts["night_textures"] = True
     return facts
 
 
@@ -2792,24 +2782,21 @@ def declare(
             ram_mb=_photos_ram_mb(env),
             run=_textures_run(env),
         )
-        grid: Node | None = None
         night: Node | None = None
         if cfg.get("night_textures"):
-            grid = reg.node(
-                f"{name}/night_grid", TILE_NIGHT_GRID, NightGridParams(tile=name), {}, kind="io"
-            )
+            # X-Plane's roads of the square and of its neighbours: a photo on the edge takes both
             roads = {
                 input_name: global_source(tile.neighbour(dlat, dlon))
-                for input_name, (dlat, dlon) in ROADS_OFFSETS.items()
+                for input_name, (dlat, dlon) in XP12_INPUTS.items()
             }
             workers = night_workers(env)
             night = reg.node(
                 f"{name}/{spec.level}/night",
                 TILE_NIGHT,
                 NightParams(tile=name),
-                {"dsf": dsf, "grid": grid, **roads},
+                {"dsf": dsf, **roads},
                 kind="subprocess",
-                ram_mb=NIGHT_BASE_MB + NIGHT_WORKER_MB * workers,
+                ram_mb=night_rules.BASE_MB + night_rules.WORKER_MB * workers,
                 run=_night_run(env, workers),
             )
         out_dir = str(Path(spec.out_dir).expanduser().resolve())
@@ -2832,7 +2819,7 @@ def declare(
                 tile_cfg=tile_cfg_text(cfg),
                 decal=decal,
                 decal_on_sea=decal_on_sea,
-                night=luminance() if night is not None else 0,
+                night_lum=luminance() if night is not None else 0,
             ),
             {"dsf": dsf, "textures": textures, "overlay": overlay, "night": night},
             kind="io",
@@ -2875,7 +2862,6 @@ def declare(
                 coastline=coast,
                 stages=choice,
                 osm=osm,
-                night_grid=grid,
                 night=night,
             )
         )
@@ -3047,7 +3033,8 @@ def pool_workers(env: BuildEnv, most: int, *, share: int, base_mb: int, worker_m
     """The processes a step's pool starts: ``most`` at the most, as many as ``1 / share`` of the
     RAM budget holds beside the step's own ``base_mb``, at ``worker_mb`` each, one at least;
     ``most`` when the system does not say how much memory it has. One rule for the images'
-    encoders (:func:`photos_workers`) and the masks' workers (:func:`masks_workers`)."""
+    encoders (:func:`photos_workers`), the masks' workers (:func:`masks_workers`) and the night's
+    (:func:`night_workers`)."""
     budget = ram_budget_mb(env.memory_share)
     if budget is None:
         return max(1, most)
@@ -3615,7 +3602,7 @@ def _assemble_again(
         textures=_resolved("textures", refs.get("textures")),
         overlay=_resolved("overlay", refs.get("overlay")),
         night=_resolved("night", refs.get("night")),
-        night_lum=params.night,
+        night_lum=params.night_lum,
         link=spec.link,
         tile_cfg=params.tile_cfg,
         photo={

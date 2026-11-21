@@ -732,7 +732,7 @@ once with its region's. The photo's terrain file names its night texture and how
 shows it, as Live's *Night lights* say: changing them in Live rewrites that line in the tiles of
 the Library at once, and *No* takes it out, the night textures staying on the disk. The box is
 remembered from one visit to the next; a tile built again with it unticked loses its night
-textures.
+textures, and one built again from the Library keeps them.
 
 **What the map marks.** A square you already have in X-Plane is outlined in green, a square you
 chose in blue. A square built and kept in the Library but not in X-Plane (*Build only*, or taken

@@ -654,12 +654,12 @@ async def test_the_page_and_its_api(home: Path, monkeypatch: pytest.MonkeyPatch)
         from orthostudio.pipeline import night as build_night
 
         given: list[int] = []
-        monkeypatch.setattr(build_night, "library_strength", lambda: given.append(1) or 2)
+        monkeypatch.setattr(build_night, "library_strength", lambda lum: given.append(lum) or 2)
         assert (await client.put("/api/live/settings", json={"night_light": "soft"})).is_success
         assert (await client.put("/api/live/settings", json={"night_light": "soft"})).is_success
         assert (await client.put("/api/live/settings", json={"night": False})).is_success
         assert (await client.put("/api/live/settings", json={"disk_gb": 80})).is_success
-        assert len(given) == 2
+        assert given == [12, 0]  # Live's soft, then its lights off
 
 
 @pytest.mark.anyio

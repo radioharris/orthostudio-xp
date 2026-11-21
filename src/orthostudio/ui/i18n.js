@@ -850,7 +850,7 @@ const STRINGS = {
     "library.rebuild": "Reconstruire…",
     "library.rebuild_help": "Reconstruire les tuiles cochées avec la version et les réglages d'aujourd'hui, sans repasser par Plan. Ce que le dossier des données contient déjà est réutilisé.",
     "library.rebuild_title": "Reconstruire {n} tuile(s) ?",
-    "library.rebuild_kept": "Chaque tuile garde sa source d'images et son niveau de zoom ; les zones, les couleurs et les réglages sont ceux d'aujourd'hui, comme dans Plan. Ce que le dossier des données contient déjà est réutilisé.",
+    "library.rebuild_kept": "Chaque tuile garde sa source d'images, son niveau de zoom et ses textures de nuit ; les zones, les couleurs et les réglages sont ceux d'aujourd'hui, comme dans Plan. Ce que le dossier des données contient déjà est réutilisé.",
     "library.rebuild_costs": "À télécharger : {mb}. Sur le disque : environ {need} à écrire, {free} libres.",
     "library.rebuild_back": "{n} tuile(s) qui sont dans X-Plane y resteront, mises à jour ; les autres n'y entrent pas.",
     "library.rebuild_go": "Reconstruire",
@@ -2266,7 +2266,7 @@ const STRINGS = {
     "library.rebuild": "Build again…",
     "library.rebuild_help": "Build the tiles picked again with today's version and settings, without going through the Plan. What the data folder already holds is reused.",
     "library.rebuild_title": "Build {n} tile(s) again?",
-    "library.rebuild_kept": "Each tile keeps its imagery source and zoom level; zones, colours and settings are today's, as in the Plan. What the data folder already holds is reused.",
+    "library.rebuild_kept": "Each tile keeps its imagery source, zoom level and night textures; zones, colours and settings are today's, as in the Plan. What the data folder already holds is reused.",
     "library.rebuild_costs": "To download: {mb}. On disk: about {need} to write, {free} free.",
     "library.rebuild_back": "{n} tile(s) in X-Plane stay in it, updated; the others do not go in.",
     "library.rebuild_go": "Build again",
@@ -2950,6 +2950,7 @@ const CODES = {
     CFG_DATA_DIR_INVALID: (c) => DATA_DIR_WHY.fr[c.why] || ["Ce dossier ne peut pas recevoir les données d'OrthoStudio XP.", "Choisissez un autre dossier."],
     CFG_PROVIDER_UNKNOWN: ["Fournisseur inconnu.", "Choisissez-en un dans la liste."],
     DEM_DOWNLOAD_FAILED: ["Le relief n'a pas pu être téléchargé.", "Réessayez, ou fournissez un fichier d'altitudes dans Réglages."],
+    TEX_NIGHT_GRIDS_FAILED: ["Les grilles des lumières de nuit de la région n'ont pas pu être téléchargées.", "Vérifiez la connexion Internet et relancez, ou décochez Textures de nuit dans le Plan."],
     DEM_TILE_UNAVAILABLE: (c) => (c.path
       ? ["Pas de relief pour {tile} : son fichier de décor X-Plane 12 manque ({path}). OrthoStudio XP ne construit pas une tuile plate.", "Installez cette région du décor X-Plane 12 avec l'installeur d'X-Plane, ou donnez un fichier d'altitudes dans Réglages."]
       : String(c.source || "").startsWith("NED")
@@ -3115,6 +3116,7 @@ const CODES = {
     CFG_DATA_DIR_INVALID: (c) => DATA_DIR_WHY.en[c.why] || ["This folder cannot hold OrthoStudio XP's data.", "Choose another folder."],
     CFG_PROVIDER_UNKNOWN: ["Unknown provider.", "Pick one from the list."],
     DEM_DOWNLOAD_FAILED: ["The elevation data could not be downloaded.", "Retry, or provide an elevation file in Settings."],
+    TEX_NIGHT_GRIDS_FAILED: ["The night lights' grids of the region could not be downloaded.", "Check the internet connection and build again, or untick Night textures in the Plan."],
     DEM_TILE_UNAVAILABLE: (c) => (c.path
       ? ["No relief for {tile}: its X-Plane 12 scenery file is missing ({path}). OrthoStudio XP does not build a flat tile.", "Install this region of the X-Plane 12 scenery with the X-Plane installer, or provide an elevation file in Settings."]
       : String(c.source || "").startsWith("NED")

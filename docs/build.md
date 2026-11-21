@@ -76,7 +76,8 @@ the disk is in [how-it-works.md](how-it-works.md). To fly without building tiles
   lights: street lamps along X-Plane's roads and windows along the streets, as many lit as NASA's
   Black Marble sees there. They are as bright as Live's *Night lights* are set, and follow them at
   once when you change them there, Live's *No* included. A tile takes 4 to 6 % more disk space;
-  built again with the box unticked, it loses them. Tiles imported from Ortho4XP have none.
+  built again with the box unticked, it loses them, and built again from the Library, it keeps
+  them. Tiles imported from Ortho4XP have none.
 - **The squares of a flight plan.** Your last SimBrief plan, or a plan file from Little Navmap
   (`.lnmpln`) or exported for X-Plane (`.fms`), chooses the squares along its route, within the
   radius you set.
