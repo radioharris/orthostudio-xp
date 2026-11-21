@@ -10,9 +10,10 @@ they were read.
 
 from __future__ import annotations
 
+import os
 import threading
 import tomllib
-from collections.abc import Callable, Collection
+from collections.abc import Callable, Collection, Mapping
 from pathlib import Path
 from typing import Any, Literal
 
@@ -23,7 +24,6 @@ from orthostudio.decals import DECALS
 from orthostudio.fsutil import atomic_write_text
 from orthostudio.install.library import tile_from_name
 from orthostudio.live import settings_file
-from orthostudio.live.filesystem import real_path
 from orthostudio.live.geo import tile_name
 
 TABLE = "stream"
@@ -124,15 +124,15 @@ class LiveSettings(BaseModel):
     :func:`move_other_mesh`, :func:`remove_other_mesh`). A setting, not a look into the other
     tools' own files, which may change under Live (the user, 2026-11-14: « je préfère le réglage
     sans surprise »); the one folder of before, ``other_mesh``, read as a list of one
-    (:func:`_one_list`)."""
+    (:func:`_one_list`), and written with the list's first folder (:func:`_write`)."""
     other_mesh_front: list[str] = Field(default_factory=list)
     """The squares of those folders' meshes put in front of Live on its map ("+45+006"): there the
     DSF of the first folder that has it wins over Live's own and AutoOrtho's, with Live's photos
     (:func:`orthostudio.live.scenery.default_meshes`); elsewhere they come after them. Put in
-    front or back by a click, or a folder's squares all at once (:func:`put_in_front`); those no
-    folder left has dropped only when a folder is removed (:func:`remove_other_mesh`); a square no
-    folder has is not taken. Taken at the next start with X-Plane not running, as every change of
-    the mesh (``session.prepare``)."""
+    front or back by a click (:func:`flip_front`), or a folder's squares all at once
+    (:func:`put_in_front`); those no folder left has dropped only when a folder is removed
+    (:func:`remove_other_mesh`); a square no folder has is not taken. Taken at the next start with
+    X-Plane not running, as every change of the mesh (``session.prepare``)."""
     mesh: Literal["new", "old"] = "new"
     """Which mesh of Live's own regions a start streams onto, for all of them at once: "new", each
     region installed; "old", each region's kept old mesh where it has one, the new one elsewhere
@@ -238,8 +238,10 @@ class LiveSettings(BaseModel):
     @field_validator("other_meshes")
     @classmethod
     def _folders(cls, folders: list[str]) -> list[str]:
-        """Each folder once, the first kept (:func:`folder_key`), as typed without the spaces
-        around it; no empty line."""
+        """Each folder once, the first kept, as typed without the spaces around it; no empty line.
+        Told apart as written (:func:`folder_key`), nothing asked of the disk, as at every reading
+        of the settings: the same folder through a link, or in another case on macOS, is refused
+        when it is added (:func:`add_other_mesh`)."""
         out: list[str] = []
         seen: set[str] = set()
         for folder in (f.strip() for f in folders):
@@ -287,9 +289,22 @@ def folder_path(text: str) -> Path:
 
 
 def folder_key(text: str) -> str:
-    """A folder of that list as a path to compare (:func:`orthostudio.live.filesystem.real_path`):
-    the same folder typed twice, or reached through a link, is one."""
-    return real_path(folder_path(text))
+    """A folder of that list as written, to compare: ``~`` the home folder, a slash more or a
+    ``..`` taken out, the case where the system ignores it in names (Windows). Nothing asked of
+    the disk; :func:`_same_folder` asks it, when a folder is added."""
+    return os.path.normcase(os.path.normpath(folder_path(text)))
+
+
+def _same_folder(a: str, b: str) -> bool:
+    """Whether two folders of that list are one: written the same (:func:`folder_key`), or, both
+    there, the same folder on the disk (one a link to the other, or written in another case on
+    macOS, whose disks ignore it)."""
+    if folder_key(a) == folder_key(b):
+        return True
+    try:
+        return os.path.samefile(folder_path(a), folder_path(b))
+    except (OSError, ValueError):  # one not there (its disk unplugged), a name no disk takes
+        return False
 
 
 class SettingsFileError(Exception):
@@ -297,11 +312,14 @@ class SettingsFileError(Exception):
 
 
 def _read() -> dict:
-    """``live.toml`` as a table, empty when there is none. Raises when it does not parse."""
+    """``live.toml`` as a table, empty when there is none. Raises :class:`SettingsFileError` when
+    it does not parse, the :class:`OSError` when it cannot be read."""
     try:
         text = settings_file().read_text("utf-8")
     except FileNotFoundError:
         return {}
+    except UnicodeDecodeError as e:
+        raise SettingsFileError(f"{settings_file()} is not UTF-8 text: {e}") from e
     try:
         return tomllib.loads(text)
     except tomllib.TOMLDecodeError as e:
@@ -330,18 +348,13 @@ def _one_list(table: dict) -> dict:
     return {**table, "other_meshes": [old]}
 
 
-def load_settings() -> LiveSettings:
-    """The saved settings, the defaults for what is missing or cannot be read."""
-    try:
-        table = _read().get(TABLE, {})
-    except (OSError, UnicodeDecodeError, SettingsFileError):
-        return LiveSettings()
-    if not isinstance(table, dict):
-        return LiveSettings()
-    table = _one_list(_one_space(table))  # a choice gone since, as the start mode, is left out
+def _settings_of(table: dict) -> LiveSettings:
+    """The settings ``[stream]`` holds, the defaults for what is missing: one wrong value costs
+    itself, not its neighbours; a choice gone since, as the start mode, is left out."""
+    table = _one_list(_one_space(table))
     defaults = LiveSettings().model_dump()
     kept = {}
-    for key, value in table.items():  # one wrong value costs itself, not its neighbours
+    for key, value in table.items():
         try:
             LiveSettings.model_validate({**defaults, key: value})
         except ValueError:
@@ -350,48 +363,92 @@ def load_settings() -> LiveSettings:
     return LiveSettings.model_validate({**defaults, **kept})
 
 
-def save_settings(settings: LiveSettings) -> None:
-    """Write ``settings`` into ``live.toml``, the rest of the file as it was."""
-    data = _read()
-    data[TABLE] = settings.model_dump()
+def load_settings() -> LiveSettings:
+    """The saved settings, the defaults for what is missing or cannot be read."""
+    try:
+        table = _read().get(TABLE, {})
+    except (OSError, SettingsFileError):
+        return LiveSettings()
+    return _settings_of(table) if isinstance(table, dict) else LiveSettings()
+
+
+def _write(data: dict, settings: LiveSettings) -> None:
+    """``settings`` written into ``live.toml`` as ``data`` holds it, the rest of the file as it was.
+    With them ``other_mesh``, the one folder of other tools' meshes of 2.4 and before, the list's
+    first (none: empty), so that an older Live keeps that folder: it reads ``other_mesh`` alone and
+    writes its own settings back without the list at its first save, which wiped both lists; the
+    first folder then comes back here as a list of one (:func:`_one_list`)."""
+    first = settings.other_meshes[0] if settings.other_meshes else ""
+    data[TABLE] = {**settings.model_dump(), "other_mesh": first}
     path = settings_file()
     path.parent.mkdir(parents=True, exist_ok=True)
     atomic_write_text(path, toml_dumps(data))
 
 
 SAVING = threading.Lock()
-"""Held by the page's saves that read the settings and write them back, its Settings, its map's
-click and the buttons of the folders of other tools' meshes (:func:`_saved_with`): one after the
-other, each keeps what the others saved."""
+"""Held by every write of Live's settings (:func:`saved_with`): one after the other, each keeps
+what the others saved."""
+
+
+def saved_with(change: Callable[[LiveSettings], dict[str, Any] | None]) -> LiveSettings:
+    """The settings as saved now, ``change`` applied, saved, under :data:`SAVING`: the one way Live
+    writes them (its page's Settings, its map's click, the buttons of the folders of other tools'
+    meshes, the language, the welcome page's answer, the Mesh back to New), so that two at once
+    keep both. ``change`` gives the values that change, or None for none, nothing written. The file
+    read as it is, never the defaults in its place: one that cannot be read or does not parse is
+    left as it is, the :class:`OSError` or :class:`SettingsFileError` raised. Raises what
+    ``change`` raises, or :class:`ValueError` for a value refused, nothing saved."""
+    with SAVING:
+        data = _read()
+        table = data.get(TABLE, {})
+        if not isinstance(table, dict):
+            raise SettingsFileError(f"{settings_file()}: [{TABLE}] is not a table")
+        settings = _settings_of(table)
+        changed = change(settings)
+        if changed is None:
+            return settings
+        saved = LiveSettings.model_validate({**settings.model_dump(), **changed})
+        _write(data, saved)
+    return saved
+
+
+def save_settings(settings: LiveSettings) -> None:
+    """Write ``settings`` into ``live.toml``, the rest of the file as it was
+    (:func:`saved_with`)."""
+    saved_with(lambda _: settings.model_dump())
 
 
 class AlreadyListedError(ValueError):
     """A folder added to the list of other tools' meshes that the list has already."""
 
 
-def _saved_with(change: Callable[[LiveSettings], dict[str, Any]]) -> LiveSettings:
-    """The settings as saved now, ``change`` applied, saved, under :data:`SAVING`: the one way of
-    the page's clicks and buttons that change a list, so that two quick ones keep both. Raises
-    what ``change`` raises, or :class:`ValueError` for a value refused, nothing saved."""
-    with SAVING:
-        settings = load_settings()
-        saved = LiveSettings.model_validate({**settings.model_dump(), **change(settings)})
-        save_settings(saved)
-    return saved
+def flip_front(square: str) -> LiveSettings:
+    """A square of the folders of other tools' meshes clicked on Live's map: put in front of Live
+    where it was behind, back behind where it was in front, as the setting is saved now, so that
+    two quick clicks flip it twice whatever the page drew. The settings, as saved;
+    :class:`ValueError` for a name not a square's."""
+    name = square.strip()
+
+    def change(settings: LiveSettings) -> dict[str, Any]:
+        front = settings.other_mesh_front
+        return {
+            "other_mesh_front": [n for n in front if n != name] if name in front else [*front, name]
+        }
+
+    return saved_with(change)
 
 
-def put_in_front(squares: Collection[str], front: bool) -> list[str]:
-    """Squares of the folders of other tools' meshes put in front of Live, or back behind it: the
-    one a click on Live's map names, or every square of a folder, its « All in front » or « All
-    behind ». The setting read, those squares alone changed, saved. The squares in front, as
-    saved; :class:`ValueError` for a name not a square's."""
+def put_in_front(squares: Collection[str], front: bool) -> LiveSettings:
+    """Squares of the folders of other tools' meshes put in front of Live, or back behind it: those
+    a folder gives, its « All in front » or « All behind ». The setting read, those squares alone
+    changed, saved. The settings, as saved; :class:`ValueError` for a name not a square's."""
     names = {name.strip() for name in squares}
 
     def change(settings: LiveSettings) -> dict[str, Any]:
         kept = [name for name in settings.other_mesh_front if name not in names]
         return {"other_mesh_front": [*kept, *names] if front else kept}
 
-    return _saved_with(change).other_mesh_front
+    return saved_with(change)
 
 
 def _index(settings: LiveSettings, folder: str) -> int:
@@ -404,25 +461,25 @@ def _index(settings: LiveSettings, folder: str) -> int:
     raise ValueError(f"{folder} is not in the list of other tools' meshes")
 
 
-def add_other_mesh(folder: str) -> list[str]:
-    """A folder of another tool's mesh added at the bottom of the list, as typed or chosen; the
-    list, as saved. :class:`AlreadyListedError` for one the list has already,
-    :class:`ValueError` for none."""
+def add_other_mesh(folder: str) -> LiveSettings:
+    """A folder of another tool's mesh added at the bottom of the list, as typed or chosen. The
+    settings, as saved; :class:`AlreadyListedError` for one the list has already, however written
+    (:func:`_same_folder`), :class:`ValueError` for none."""
     folder = folder.strip()
     if not folder:
         raise ValueError("no folder given")
 
     def change(settings: LiveSettings) -> dict[str, Any]:
-        if folder_key(folder) in {folder_key(listed) for listed in settings.other_meshes}:
+        if any(_same_folder(folder, listed) for listed in settings.other_meshes):
             raise AlreadyListedError(f"{folder} is in the list already")
         return {"other_meshes": [*settings.other_meshes, folder]}
 
-    return _saved_with(change).other_meshes
+    return saved_with(change)
 
 
-def move_other_mesh(folder: str, up: bool) -> list[str]:
+def move_other_mesh(folder: str, up: bool) -> LiveSettings:
     """A folder of the list moved one line up or down, which changes which folder gives a square
-    both have; at an end, left there. The list, as saved."""
+    both have; at an end, left there. The settings, as saved."""
 
     def change(settings: LiveSettings) -> dict[str, Any]:
         folders = list(settings.other_meshes)
@@ -432,27 +489,27 @@ def move_other_mesh(folder: str, up: bool) -> list[str]:
             folders[i], folders[j] = folders[j], folders[i]
         return {"other_meshes": folders}
 
-    return _saved_with(change).other_meshes
+    return saved_with(change)
 
 
-def remove_other_mesh(
-    folder: str, squares_of: Callable[[str], Collection[str] | None]
-) -> LiveSettings:
+def remove_other_mesh(folder: str, squares: Mapping[str, Collection[str] | None]) -> LiveSettings:
     """A folder forgotten, its files left as they are, and the squares in front of Live no folder
-    left in the list has dropped from them (``squares_of``: a folder's squares by name, None when
-    it is not there, its disk unplugged: then none is dropped, Live cannot tell which it has). The
-    one place squares in front are dropped. The settings, as saved."""
+    left in the list has dropped from them. ``squares``: each folder's squares by name, by
+    :func:`folder_key`, as read before the settings are (None for a folder not there, its disk
+    unplugged): a folder left that is not there, or not among them (added meanwhile), keeps them
+    all, Live cannot tell which it has. The one place squares in front are dropped. The settings,
+    as saved."""
 
     def change(settings: LiveSettings) -> dict[str, Any]:
         folders = list(settings.other_meshes)
         del folders[_index(settings, folder)]
         have: set[str] = set()
         for left in folders:
-            squares = squares_of(left)
-            if squares is None:
+            got = squares.get(folder_key(left))
+            if got is None:
                 return {"other_meshes": folders}
-            have |= set(squares)
+            have |= set(got)
         front = [name for name in settings.other_mesh_front if name in have]
         return {"other_meshes": folders, "other_mesh_front": front}
 
-    return _saved_with(change)
+    return saved_with(change)

@@ -485,11 +485,9 @@ class Frame:
             live.control.set_language(language)
             return
         # not set up in this program: its settings, which its plugin reads at its next start
-        from orthostudio.live.settings import load_settings, save_settings
+        from orthostudio.live.settings import saved_with
 
-        settings = load_settings()
-        if settings.language != language:
-            save_settings(settings.model_copy(update={"language": language}))
+        saved_with(lambda now: None if now.language == language else {"language": language})
 
     def language(self) -> str:
         kept = load_prefs() or {}

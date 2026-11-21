@@ -517,7 +517,9 @@ path, how many squares it has and how many of them it gives in front of Live, wh
 it leaves aside, that it takes no roads from the folder (chosen one folder too deep, say), or that
 the folder is not there (a disk unplugged). Choose the folder that holds both the mesh and its
 roads: for AutoOrtho's pack moved, the one holding `z_autoortho` and `yAutoOrtho_Overlays`. The
-same folder is not taken twice, even under another spelling or through a link.
+same folder is not added twice: written another way (with `~`, a slash more), reached through a
+link, or, on a Mac, in other capitals; a folder whose disk is unplugged is told apart by how it is
+written alone.
 
 Live's regions come first, then AutoOrtho's in X-Plane, then these folders in the list's order,
 for the mesh and for the roads alike; only the mesh of the squares you put in front of Live comes
@@ -527,26 +529,27 @@ disk unplugged) does not stop Live: its line says so, and its squares come from 
 that has them, else from Live's mesh. **Remove** makes Live forget a folder; its files stay where
 they are, and the squares in front of Live that no folder left has go back behind Live. Nothing in
 those folders is changed. Their meshes and their roads are taken at Live's start, and kept until
-the next one: the line says "Used from Live's next start" until then.
+the next one: the line says "Used from Live's next start" until then. Each start says in Live's log
+what it takes in each folder, or that one is not there; when they are the only mesh, the window
+and the start then say so. On Windows, a folder on a network drive needs Developer Mode on:
+without it, Windows cannot link Live's scenery to it. At night their towns are lit too, along
+X-Plane's own roads, but without NASA's night map, which comes with Live's regions: every street
+lamp is on, a little dimmer, out in the open country too.
 
 **In front of Live.** A mesh of your own, its relief fixed by hand around an airport, can replace
 Live's mesh on the squares you choose, with Live's photos laid on it: on Live's map, the squares of
 the folders are drawn in their own colour, dashed while they come behind Live, framed and shaded
 once in front of it, and pointing at one names the folder it comes from; click one to put it in
-front of Live, click it again to put it back. **All in front** and **All behind** do it for every
-square of a folder at once. Live's own mesh stays everywhere else, and the roads, forests and
+front of Live, click it again to put it back. **All in front** and **All behind** do it at once
+for every square a folder gives: not those a folder higher in the list has, which stay as they
+are. Live's own mesh stays everywhere else, and the roads, forests and
 buildings do not change. While every square of a folder is behind Live, its line says so. A change
 applies at Live's next start, with X-Plane closed (a start while X-Plane runs is refused, saying
 so), and so does a square's mesh saved again, its relief fixed once more. A square no folder has
 is simply not taken. Where two meshes meet, a texture on the line between them gets the files of both,
 so that X-Plane finds every file each side names. If one of those folders is also enabled in
 X-Plane's own scenery list above Live, X-Plane draws it there itself, without photos: Live's checks
-say so, and name it; disable it in X-Plane's scenery list. Each start says in Live's log what it
-takes in each folder, or that one is not there; when they are the only mesh, the window and the
-start then say so. On Windows, a folder on a network drive needs Developer Mode on: without it,
-Windows cannot link Live's scenery to it. At night their towns are lit too, along X-Plane's own roads, but without NASA's night
-map, which comes with Live's regions: every street lamp is on, a little dimmer, out in the open
-country too.
+say so, and name it; disable it in X-Plane's scenery list.
 
 Where no region installed has a mesh, X-Plane shows its own scenery, without photos: Live says so,
 in its window and in a small panel in X-Plane ("Live: no mesh here: install North America in the

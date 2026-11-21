@@ -132,16 +132,13 @@ class OtherMesh:
     ground: dict[Square, Path]
     """Every square of its ground naming photos, copies left aside included, with the first of its
     packs that has it: what Live's map draws of it, the squares the pilot may put in front of
-    Live."""
+    Live, each one's mesh whose DSF wins there when it is (:func:`other_meshes`)."""
     packs: list[Path]
     """Its packs of ground naming photos, copies left aside included: X-Plane draws any of them
     without photos where its own list enables it above Live (``covered.listed_above_live``)."""
-    front: dict[Square, Path]
-    """The squares put in front of Live it gives (``LiveSettings.other_mesh_front``, those no
-    folder above it has: :func:`other_meshes`), each with its mesh whose DSF wins there."""
 
 
-NO_OTHER_MESH = OtherMesh([], [], [], {}, [], {})
+NO_OTHER_MESH = OtherMesh([], [], [], {}, [])
 
 PACK_DEPTH = 3  # AutoOrtho's own, moved: <folder>/z_autoortho/scenery/z_ao_<region>
 
@@ -204,8 +201,7 @@ def other_mesh(
                 have |= squares
                 ahead -= squares
     roads = _roads_of(set(named), overlays) if meshes else []
-    front_had = {sq: named[sq] for sq in front if sq in named}
-    return OtherMesh(meshes, roads, refused, named, grounds, front_had)
+    return OtherMesh(meshes, roads, refused, named, grounds)
 
 
 def _packs_in(folder: Path, depth: int) -> list[Path]:
@@ -309,6 +305,20 @@ class OtherMeshes:
     """The squares put in front of Live, each with the mesh whose DSF wins there, of the first
     folder that has it."""
 
+    def named(self, folder: str) -> OtherFolder | None:
+        """The folder of the list the page names (``settings.folder_key``), None for one not in
+        it."""
+        from orthostudio.live.settings import folder_key
+
+        key = folder_key(folder)
+        return next((one for one in self.folders if folder_key(str(one.folder)) == key), None)
+
+    def gives(self, folder: Path) -> list[Square]:
+        """The squares ``folder`` gives, those of its ground no folder above it in the list has
+        (:attr:`ground`): what its « All in front » and « All behind » change, what it says it puts
+        in front of Live."""
+        return sorted(square for square, by in self.ground.items() if by == folder)
+
     @property
     def meshes(self) -> list[Path]:
         """Their meshes, folder after folder."""
@@ -343,38 +353,28 @@ def other_meshes(
         found = other_mesh(folder, before, ahead) if there else NO_OTHER_MESH
         out.append(OtherFolder(folder, there, found))
         before += found.meshes
-        ahead -= found.front.keys()
-        wins.update(found.front)
+        mine = {square: found.ground[square] for square in ahead if square in found.ground}
+        ahead -= mine.keys()
+        wins.update(mine)
         for square in found.ground:
             ground.setdefault(square, folder)
     return OtherMeshes(out, ground, wins)
 
 
-def folder_squares(folder: str) -> list[str] | None:
-    """The squares of a folder of the list by name, its ground (:attr:`OtherMesh.ground`): those
-    its « All in front » and « All behind » put in front of Live or back, those its removal keeps
-    in front for another folder (``settings.remove_other_mesh``); None when it is not there."""
-    from orthostudio.live.settings import folder_path
-
-    path = folder_path(folder)
-    if not other_mesh_there(path):
-        return None
-    return [tile_name(*square) for square in sorted(other_mesh(path).ground)]
-
-
-def other_mesh_said(folder: Path, found: OtherMesh) -> dict:
-    """A folder of another tool's mesh as Live says it, in its window and in its log: its name and
-    whether it is there, its meshes and roads by name, those left aside with why, how many squares
-    its ground gives the map, those it gives in front of Live."""
+def other_mesh_said(one: OtherFolder, every: OtherMeshes) -> dict:
+    """A folder of another tool's mesh (``one`` of ``every``) as Live says it, in its window and in
+    its log: its name and whether it is there, its meshes and roads by name, those left aside with
+    why, how many squares its ground gives the map, those it gives in front of Live."""
+    folder, found = one.folder, one.found
     return {
         "folder": str(folder),
         "name": folder.name or str(folder),
-        "there": other_mesh_there(folder),
+        "there": one.there,
         "meshes": [p.name for p in found.meshes],
         "overlays": [p.name for p in found.overlays],
         "refused": [{"name": name, "why": why} for name, why in found.refused],
         "squares": len(found.ground),
-        "front": [tile_name(*square) for square in sorted(found.front)],
+        "front": [tile_name(*sq) for sq in every.gives(folder) if sq in every.front],
     }
 
 

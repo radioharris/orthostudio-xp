@@ -37,7 +37,8 @@ from orthostudio.live.rings import DEFAULT_MARGIN
 from orthostudio.live.scenery import (
     NO_OTHER_MESHES,
     Meshes,
-    OtherMesh,
+    OtherFolder,
+    OtherMeshes,
     default_meshes,
     find_xplane,
     install_link,
@@ -349,7 +350,7 @@ def prepare(options: Options, log: Log) -> Prepared:
     from orthostudio.live.names import terrain_folder
 
     for one in other.folders:  # said at each start: a disk unplugged went unnoticed otherwise
-        log(_other_said(one.folder, one.found))
+        log(_other_said(one, other))
     unplugged = [str(one.folder) for one in other.folders if not one.there]
     if not sources and unplugged:
         which = (
@@ -503,10 +504,11 @@ def prepare(options: Options, log: Log) -> Prepared:
         raise
 
 
-def _other_said(chosen: Path, other: OtherMesh) -> str:
-    """The start's line on a folder of another tool's mesh, what its window says
-    (:func:`other_mesh_said`) in words."""
-    said = other_mesh_said(chosen, other)
+def _other_said(one: OtherFolder, every: OtherMeshes) -> str:
+    """The start's line on a folder of another tool's mesh (``one`` of ``every``), what its window
+    says (:func:`other_mesh_said`) in words."""
+    said = other_mesh_said(one, every)
+    chosen = one.folder
     if not said["there"]:
         return f"another tool's mesh: {chosen} is not there (its disk unplugged?): left out"
     line = f"another tool's mesh in {chosen}: {', '.join(said['meshes']) or 'no mesh Live can use'}"

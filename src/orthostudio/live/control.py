@@ -51,6 +51,7 @@ from orthostudio.live.pack import (
 from orthostudio.live.region import file_tops, front_changed, night_on
 from orthostudio.live.scenery import (
     Meshes,
+    OtherMeshes,
     autoortho_mounted,
     autoortho_scenery,
     default_meshes,
@@ -65,7 +66,7 @@ from orthostudio.live.scenery import (
     xplane_running,
     xplane_texture_quality,
 )
-from orthostudio.live.settings import LiveSettings, load_settings
+from orthostudio.live.settings import LiveSettings, load_settings, saved_with
 
 API = 2  # the page's /api/live answers, as the page reads them
 CHECKS_S = 3.0  # the checks are looked at again this often: pgrep and disks, not every second
@@ -294,24 +295,19 @@ def _other_meshes_said(xp: Path | None) -> dict[str, Any] | None:
         return None
     pack = default_pack_dir()
     in_pack = set(session._recorded_sources(pack))
-    own_tiles = load_settings().own_tiles
-    folders = []
-    for one in found.folders:
-        try:
-            in_xplane = (
-                listed_above_live(xp, one.found.packs, LINK_NAME, own_tiles)
-                if xp is not None and one.found.packs
-                else []
-            )
-        except OSError:  # X-Plane's list unreadable this time: said at the next checks
-            in_xplane = []
-        folders.append(
-            {
-                **other_mesh_said(one.folder, one.found),
-                "next_start": any(str(p) not in in_pack for p in one.found.meshes),
-                "in_xplane": in_xplane,
-            }
-        )
+    packs = [one.found.packs for one in found.folders]
+    in_xplane: list[list[str]] = [[] for _ in packs]
+    if xp is not None and any(packs):
+        with contextlib.suppress(OSError):  # X-Plane's list unreadable: said at the next checks
+            in_xplane = listed_above_live(xp, packs, LINK_NAME, load_settings().own_tiles)
+    folders = [
+        {
+            **other_mesh_said(one, found),
+            "next_start": any(str(p) not in in_pack for p in one.found.meshes),
+            "in_xplane": lines,
+        }
+        for one, lines in zip(found.folders, in_xplane, strict=True)
+    ]
     return {"folders": folders, "front_next": front_changed(pack, found.front)}
 
 
@@ -778,15 +774,26 @@ class LiveControl:
             for (lat, lon), pack in sorted(own_tiles(Path(xp), self._settings().own_tiles).items())
         ]
 
+    def other_found(self) -> OtherMeshes:
+        """The folders of other tools' meshes and what they give, as last looked at
+        (:func:`other_mesh_found`), with the X-Plane of the checks: what the map draws and the
+        folders' buttons act on, read once for each, outside the settings' lock."""
+        xp = self.checks().get("xplane")
+        return other_mesh_found(Path(xp) if xp else None, live_root())
+
     def other_squares(self) -> list[dict]:
         """The squares of the folders of other tools' meshes, for the map: each one in front of
         Live or not (``LiveSettings.other_mesh_front``), with the name of the folder that gives
-        it, the first in the list that has it (:func:`orthostudio.live.scenery.other_meshes`).
-        None without a folder there."""
-        xp = self.checks().get("xplane")
-        found = other_mesh_found(Path(xp) if xp else None, live_root())
+        it, the first in the list that has it (:func:`orthostudio.live.scenery.other_meshes`), its
+        path for a drive's root, which has no name. Empty without a folder there."""
+        found = self.other_found()
         return [
-            {"lat": lat, "lon": lon, "front": (lat, lon) in found.front, "folder": folder.name}
+            {
+                "lat": lat,
+                "lon": lon,
+                "front": (lat, lon) in found.front,
+                "folder": folder.name or str(folder),
+            }
             for (lat, lon), folder in sorted(found.ground.items())
         ]
 
@@ -811,26 +818,19 @@ class LiveControl:
             shown_top = zoom_tops(default_pack_dir())
         return textures_at(lat, lon, built, patchy, seen, time.time(), top_of, shown_top)
 
-    def set_language(self, language: str, *, save: Any = None) -> None:
+    def set_language(self, language: str) -> None:
         """The window's language, as its EN/FR selector has it: the plugin's words in X-Plane take
         it at once, and it is kept for the next starts."""
         if language not in ("en", "fr"):
             raise ValueError(f"no language {language!r}")
         self.language = language
-        settings = self._settings()
-        if settings.language != language:
-            from orthostudio.live.settings import save_settings
+        saved_with(lambda now: None if now.language == language else {"language": language})
 
-            (save or save_settings)(settings.model_copy(update={"language": language}))
-
-    def choose_home(self, home: str, *, remember: bool, save: Any = None) -> None:
+    def choose_home(self, home: str, *, remember: bool) -> None:
         """The welcome page's answer: Live's window, or OrthoStudio XP's (this window then closes
         and the app opens that one). Kept for the next starts when ``remember``."""
         if remember:
-            from orthostudio.live.settings import save_settings
-
-            settings = self._settings().model_copy(update={"app_home": home})
-            (save or save_settings)(settings)
+            saved_with(lambda _: {"app_home": home})
         if home == "build" and not self.in_frame:
             self.leaving_for = "build"
 
@@ -1153,14 +1153,11 @@ class LiveControl:
         be renamed as kept counted, and never while a region's disk is not connected
         (``osxpregions.keeps_any_old``): Old left behind would stream the next old mesh kept,
         unasked. Its switch shows only while one is kept."""
-        settings = self._settings()
-        if settings.mesh != "old":
+        if self._settings().mesh != "old":
             return
-        if osxpregions.keeps_any_old(live_root()):
+        if osxpregions.keeps_any_old(live_root()):  # the disks looked at outside the settings' lock
             return
-        from orthostudio.live.settings import save_settings
-
-        save_settings(settings.model_copy(update={"mesh": "new"}))
+        saved_with(lambda now: {"mesh": "new"} if now.mesh == "old" else None)
         self.log("no region keeps an old mesh any more: Mesh is New again")
 
     def remove_region(self, region_id: str) -> None:

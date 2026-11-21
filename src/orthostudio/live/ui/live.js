@@ -627,25 +627,13 @@ function drawOtherMeshes(other) {
     const actions = document.createElement("div");
     actions.className = "region-actions";
     const offered = f.there && f.squares > 0;
-    const button = (text, act, body, { disabled = false, title = null } = {}) => {
-      const b = document.createElement("button");
-      b.type = "button";
-      b.className = "btn";
-      b.textContent = text;
-      b.disabled = disabled;
-      if (title) {
-        b.title = title;
-        b.setAttribute("aria-label", title);
-      }
-      b.addEventListener("click", () => otherAct(act, { folder: f.folder, ...body }));
-      return b;
-    };
+    const act = (name, body = {}) => () => otherAct(name, { folder: f.folder, ...body });
     actions.append(
-      button(t("other_mesh.all_front"), "all", { front: true }, { disabled: !offered }),
-      button(t("other_mesh.all_behind"), "all", { front: false }, { disabled: !offered }),
-      button(t("other_mesh.remove"), "remove", {}, { title: t("other_mesh.remove_help") }),
-      button("↑", "move", { up: true }, { disabled: i === 0, title: t("other_mesh.up") }),
-      button("↓", "move", { up: false }, { disabled: i === folders.length - 1, title: t("other_mesh.down") }),
+      regionButton(t("other_mesh.all_front"), act("all", { front: true }), { disabled: !offered }),
+      regionButton(t("other_mesh.all_behind"), act("all", { front: false }), { disabled: !offered }),
+      regionButton(t("other_mesh.remove"), act("remove"), { title: t("other_mesh.remove_help") }),
+      regionButton("↑", act("move", { up: true }), { disabled: i === 0, title: t("other_mesh.up") }),
+      regionButton("↓", act("move", { up: false }), { disabled: i === folders.length - 1, title: t("other_mesh.down") }),
     );
     head.append(label, actions);
     const [text, warn] = otherMeshSaid(f);
@@ -670,18 +658,28 @@ function drawOtherFront(other) {
   line.textContent = said.join(" ");
 }
 
+/** The folders of other tools' meshes and the squares in front of Live, as the engine answers
+ *  them saved, in the settings the page keeps. */
+function keepOther(got) {
+  for (const settings of [saved, last?.settings]) if (settings) Object.assign(settings, got);
+}
+
 /** A button of the folders of other tools' meshes, or a folder added: saved by the engine, in one
  *  place each (orthostudio/live/api.py other_changed), which answers the list and the squares in
- *  front as saved; the map and the list asked anew. False when refused, said under the list. */
+ *  front as saved; the map and the list asked anew. False when refused, said under the list: a
+ *  folder listed already in the page's words, said again in a new language (data-i18n,
+ *  applyStatic), the engine's own words otherwise. */
 async function otherAct(act, body) {
   const error = $("other-mesh-error");
   error.hidden = true;
   try {
-    const got = await api(`other/${act}`, { method: "POST", body });
-    for (const settings of [saved, last?.settings]) if (settings) Object.assign(settings, got);
+    keepOther(await api(`other/${act}`, { method: "POST", body }));
   } catch (e) {
+    const known = e.status === 409 && act === "add" ? "other_mesh.already" : null;
+    if (known) error.dataset.i18n = known;
+    else delete error.dataset.i18n;
+    error.textContent = known ? t(known) : e.message;
     error.hidden = false;
-    error.textContent = e.status === 409 && act === "add" ? t("other_mesh.already") : e.message;
     return false;
   }
   liveMap?.otherChanged();
@@ -700,15 +698,16 @@ async function addOtherMesh(folder) {
   if (folder.trim() && (await otherAct("add", { folder })) && field.value === folder) field.value = "";
 }
 
-/** A square of another tool's mesh clicked on the map: put in front of Live, or back behind it,
- *  saved at once by the engine, that square alone (orthostudio/live/settings.py put_in_front), so
- *  that a second click before the first one's answer keeps both; the map and the list say it. */
-async function toggleFront({ lat, lon, front }) {
+/** A square of another tool's mesh clicked on the map: the page sends the square alone, and the
+ *  engine puts it in front of Live where it is behind, back where it is in front, as saved now
+ *  (orthostudio/live/settings.py flip_front), so that a second click before the first one's
+ *  answer flips it back; the toast says where it is as saved, the map and the list draw it. */
+async function toggleFront({ lat, lon }) {
   const tile = tileName(lat, lon);
   try {
-    const got = await api("map/other", { method: "POST", body: { square: tile, front: !front } });
-    for (const settings of [saved, last?.settings]) if (settings) Object.assign(settings, got);
-    toast(t(front ? "map.other_put_behind" : "map.other_put_front", { tile }));
+    const got = await api("map/other", { method: "POST", body: { square: tile } });
+    keepOther(got);
+    toast(t(got.other_mesh_front.includes(tile) ? "map.other_put_front" : "map.other_put_behind", { tile }));
   } catch (error) {
     toast(error.message);
   }
@@ -802,12 +801,16 @@ function disarmRemove() {
   if (last) draw(last);
 }
 
-function regionButton(label, onClick, { danger = false, disabled = false } = {}) {
+function regionButton(label, onClick, { danger = false, disabled = false, title = null } = {}) {
   const button = document.createElement("button");
   button.type = "button";
   button.className = danger ? "btn btn-danger" : "btn";
   button.textContent = label;
   button.disabled = disabled;
+  if (title) { // a sign alone (↑, ↓), or a word that needs its why: said on hover and read out
+    button.title = title;
+    button.setAttribute("aria-label", title);
+  }
   button.addEventListener("click", onClick);
   return button;
 }

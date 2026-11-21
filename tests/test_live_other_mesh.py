@@ -24,6 +24,7 @@ from orthostudio.live.scenery import (
     base_sources,
     default_meshes,
     other_mesh,
+    other_meshes,
 )
 from orthostudio.live.settings import LiveSettings, load_settings, save_settings
 
@@ -167,7 +168,8 @@ def test_a_mesh_without_its_roads_said(tmp_path: Path, monkeypatch: pytest.Monke
     mesh(folder / "z_autoortho" / "scenery" / "z_ao_aus_pac")
     roads(folder / "yAutoOrtho_Overlays")
     deep = folder / "z_autoortho"
-    assert session._other_said(deep, other_mesh(deep)) == (
+    found = other_meshes([deep], [], ())
+    assert session._other_said(found.folders[0], found) == (
         f"another tool's mesh in {deep}: z_ao_aus_pac; no roads, forests or buildings taken from it"
     )
 
@@ -351,12 +353,13 @@ def test_a_start_says_the_folder(tmp_path: Path, monkeypatch) -> None:
     there, and goes on with the next folder."""
     folder = tmp_path / "Other mesh"
     make_source(folder, tile=(46, 2))
-    assert session._other_said(folder, other_mesh(folder)) == (
+    gone = tmp_path / "unplugged"
+    found = other_meshes([folder, gone], [], ())
+    assert session._other_said(found.folders[0], found) == (
         f"another tool's mesh in {folder}: z_ao_test; no roads, forests or buildings taken from it"
     )
-    gone = tmp_path / "unplugged"
     said_gone = f"another tool's mesh: {gone} is not there (its disk unplugged?): left out"
-    assert session._other_said(gone, NO_OTHER_MESH) == said_gone
+    assert session._other_said(found.folders[1], found) == said_gone
     options = a_start(tmp_path, monkeypatch, gone, folder)
     said: list[str] = []
     monkeypatch.setattr(session, "_overlays", lambda *args: None)

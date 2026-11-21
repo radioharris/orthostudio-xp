@@ -26,14 +26,14 @@ can include as it is the day Live comes into its window (``app.include_router``)
   (:meth:`LiveControl.rivers_chosen`);
 - ``GET /api/live/map/other``: the squares of the folders of other tools' meshes, each in front of
   Live or not, with the folder that gives it, which the map draws; ``POST`` ``{"square":
-  "+45+006", "front": bool}``: the one its click puts in front or back
-  (:func:`~orthostudio.live.settings.put_in_front`);
+  "+45+006"}``: the one its click puts in front where it is behind, back where it is in front, as
+  saved now (:func:`~orthostudio.live.settings.flip_front`);
 - ``POST /api/live/other/add`` ``{"folder"}``: a folder of another tool's mesh added at the
   bottom of the list (409 when the list has it already); ``POST /api/live/other/move``
   ``{"folder", "up": bool}``: moved one line; ``POST /api/live/other/remove`` ``{"folder"}``:
   forgotten, its files left; ``POST /api/live/other/all`` ``{"folder", "front": bool}``: every
-  square of it put in front of Live or back (409 when it is not there). Each answers the list and
-  the squares in front, as saved (:mod:`.settings`, one function each);
+  square it gives put in front of Live or back (409 when it is not there). Each answers the list
+  and the squares in front, as saved (:mod:`.settings`, one function each);
 - ``GET``/``PUT /api/live/xplane-folder`` ``{"path"}``: the X-Plane folder named in OrthoStudio
   XP's settings, the same for Build and Live, with the other X-Planes of the computer;
 - ``GET /api/live/regions``: OrthoStudio XP's regions (:meth:`LiveControl.regions`);
@@ -63,19 +63,21 @@ from pydantic import BaseModel, Field, ValidationError
 from orthostudio.errors import OsxpError
 from orthostudio.live import session
 from orthostudio.live.control import LiveControl, Refusal
+from orthostudio.live.geo import tile_name
 from orthostudio.live.pack import folder_problem
-from orthostudio.live.scenery import folder_squares, move_live
+from orthostudio.live.scenery import move_live
 from orthostudio.live.settings import (
-    SAVING,
     AlreadyListedError,
     LiveSettings,
     SettingsFileError,
     add_other_mesh,
+    flip_front,
+    folder_key,
     load_settings,
     move_other_mesh,
     put_in_front,
     remove_other_mesh,
-    save_settings,
+    saved_with,
 )
 
 
@@ -115,8 +117,7 @@ class PrepareBody(BaseModel):
 
 
 class FrontBody(BaseModel):
-    square: str = Field(max_length=16)  # "+45+006"
-    front: bool  # in front of Live, or back behind it
+    square: str = Field(max_length=16)  # "+45+006": in front of Live, or back behind it
 
 
 class OtherFolderBody(BaseModel):
@@ -358,13 +359,13 @@ def live_router(
         the folder that gives it."""
         return control.other_squares()
 
-    def other_changed(change: Callable[[], Any]) -> dict[str, Any]:
+    def other_changed(change: Callable[[], LiveSettings]) -> dict[str, Any]:
         """A change of the folders of other tools' meshes, or of the squares in front of Live,
-        saved by its one function in :mod:`.settings`: the list and the squares as saved, the
-        checks said anew at the next status. 409 for a folder the list has already, 422 for a
+        saved by its one function in :mod:`.settings`: the list and the squares as it saved them,
+        the checks said anew at the next status. 409 for a folder the list has already, 422 for a
         value refused, 500 when the settings cannot be saved."""
         try:
-            change()
+            saved = change()
         except AlreadyListedError as e:
             raise HTTPException(409, str(e)) from e
         except ValidationError as e:  # a square's name refused: its own words
@@ -374,13 +375,13 @@ def live_router(
         except (OSError, SettingsFileError) as e:
             raise HTTPException(500, f"the settings could not be saved: {e}") from e
         control.checks_changed()
-        saved = load_settings()
         return {"other_meshes": saved.other_meshes, "other_mesh_front": saved.other_mesh_front}
 
     @router.post("/map/other")
     def map_other_front(body: FrontBody) -> dict[str, Any]:
-        """A square of those folders clicked on the map: put in front of Live, or back."""
-        return other_changed(lambda: put_in_front([body.square], body.front))
+        """A square of those folders clicked on the map: put in front of Live where it is behind,
+        back where it is in front, decided here, as saved now: two quick clicks flip it twice."""
+        return other_changed(lambda: flip_front(body.square))
 
     @router.post("/other/add")
     def other_add(body: OtherFolderBody) -> dict[str, Any]:
@@ -394,16 +395,30 @@ def live_router(
 
     @router.post("/other/remove")
     def other_remove(body: OtherFolderBody) -> dict[str, Any]:
-        """A folder's Remove: forgotten, its files left as they are."""
-        return other_changed(lambda: remove_other_mesh(body.folder, folder_squares))
+        """A folder's Remove: forgotten, its files left as they are. Each folder's squares read
+        here, once, before the settings' lock (None: not there), for those in front no folder left
+        has (:func:`~orthostudio.live.settings.remove_other_mesh`)."""
+        found = control.other_found()
+        squares = {
+            folder_key(str(one.folder)): (
+                [tile_name(*square) for square in one.found.ground] if one.there else None
+            )
+            for one in found.folders
+        }
+        return other_changed(lambda: remove_other_mesh(body.folder, squares))
 
     @router.post("/other/all")
     def other_all(body: OtherAllBody) -> dict[str, Any]:
-        """A folder's « All in front » or « All behind »: every square of it in front of Live, or
-        back behind it."""
-        squares = folder_squares(body.folder)
-        if squares is None:
+        """A folder's « All in front » or « All behind »: every square it gives in front of Live,
+        or back behind it; not those a folder above it gives, whose own buttons and clicks
+        decide them (``OtherMeshes.gives``)."""
+        found = control.other_found()
+        one = found.named(body.folder)
+        if one is None:
+            raise HTTPException(422, f"{body.folder} is not in the list of other tools' meshes")
+        if not one.there:
             raise HTTPException(409, f"{body.folder} is not there: is its disk unplugged?")
+        squares = [tile_name(*square) for square in found.gives(one.folder)]
         return other_changed(lambda: put_in_front(squares, body.front))
 
     @router.get("/map/regions")
@@ -496,10 +511,13 @@ def live_router(
 
     @router.put("/settings")
     def put_settings(body: dict[str, Any] = Body(...)) -> dict[str, Any]:  # noqa: B008
-        with SAVING:  # a click or a folder's button meanwhile kept (settings._saved_with)
-            before = load_settings()
+        before = LiveSettings()
+
+        def change(now: LiveSettings) -> dict[str, Any]:
+            nonlocal before
+            before = now
             try:
-                settings = LiveSettings.model_validate({**before.model_dump(), **body})
+                settings = LiveSettings.model_validate({**now.model_dump(), **body})
             except ValidationError as e:
                 first = e.errors()[0]
                 where = ".".join(str(p) for p in first.get("loc", ()))
@@ -508,10 +526,12 @@ def live_router(
                 problem = folder_problem(Path(settings.folder), session.xplane_or_none())
                 if problem is not None:
                     raise HTTPException(422, f"folder: {problem}")
-            try:
-                save_settings(settings)
-            except (OSError, SettingsFileError) as e:
-                raise HTTPException(500, f"the settings could not be saved: {e}") from e
+            return settings.model_dump()
+
+        try:  # a click or a folder's button meanwhile kept: one write after the other
+            settings = saved_with(change)
+        except (OSError, SettingsFileError) as e:
+            raise HTTPException(500, f"the settings could not be saved: {e}") from e
         from orthostudio.pipeline.night import library_strength, luminance
 
         lum = luminance(settings)

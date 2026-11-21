@@ -13,7 +13,7 @@ there, and a start there waits for none of them.
 
 from __future__ import annotations
 
-from collections.abc import Collection, Iterator
+from collections.abc import Collection, Iterator, Sequence
 from pathlib import Path
 
 from orthostudio.install.dsf_head import dsf_properties
@@ -101,12 +101,17 @@ def own_squares(xplane: Path, below: str, own_tiles: str = "first") -> dict[tupl
 
 
 def listed_above_live(
-    xplane: Path, packs: Collection[Path], below: str, own_tiles: str = "first"
-) -> list[str]:
-    """The lines of X-Plane's list checked above Live's (``below``, as :func:`own_squares` places
-    it) whose folder is one of ``packs``, each line followed to its real folder, whatever its name
-    (a link, a copy's name): the meshes of another tool's folder that X-Plane draws there itself,
-    without photos."""
-    wanted = {real_path(p) for p in packs}
-    lines = lines_above(xplane, below, own_tiles)
-    return [entry.name for entry, folder in lines if real_path(folder) in wanted]
+    xplane: Path, folders: Sequence[Collection[Path]], below: str, own_tiles: str = "first"
+) -> list[list[str]]:
+    """For each of ``folders`` (its packs), the lines of X-Plane's list checked above Live's
+    (``below``, as :func:`own_squares` places it) whose folder is one of its packs, each line
+    followed to its real folder, whatever its name (a link, a copy's name): the meshes of another
+    tool's folder that X-Plane draws there itself, without photos. The list read once for all."""
+    lines = [
+        (entry.name, real_path(folder)) for entry, folder in lines_above(xplane, below, own_tiles)
+    ]
+    out = []
+    for packs in folders:
+        wanted = {real_path(p) for p in packs}
+        out.append([name for name, folder in lines if folder in wanted])
+    return out
