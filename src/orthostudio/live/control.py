@@ -48,7 +48,7 @@ from orthostudio.live.pack import (
     live_root,
     load_built,
 )
-from orthostudio.live.region import file_tops, front_changed, night_on
+from orthostudio.live.region import file_tops, night_on
 from orthostudio.live.scenery import (
     Meshes,
     OtherMeshes,
@@ -293,17 +293,15 @@ def _other_meshes_said(xp: Path | None) -> dict[str, Any] | None:
     """The folders of other tools' meshes as the Settings list them, top first, each as
     :func:`other_mesh_said` says it, with whether its meshes wait for Live's next start (not in
     the pack yet) and its packs checked in X-Plane's list above Live's line, which X-Plane draws
-    itself without photos (``in_xplane``); whether the squares put in front of Live are not those
-    of the pack yet (``front_next``); how many of them no folder there gives (``front_unseen``),
-    which a folder not there may have given: its Remove leaves them in front. None without a
-    folder."""
+    itself without photos (``in_xplane``); how many of the squares put in front of Live no folder
+    there gives (``front_unseen``), which a folder not there may have given: its Remove leaves them
+    in front. None without a folder."""
     from orthostudio.live.covered import listed_above_live
 
     found = other_mesh_found(xp, live_root())
     if not found.folders:
         return None
-    pack = default_pack_dir()
-    in_pack = set(session._recorded_sources(pack))
+    in_pack = set(session._recorded_sources(default_pack_dir()))
     packs = [one.found.packs for one in found.folders]
     in_xplane: list[list[str]] = [[] for _ in packs]
     if xp is not None and any(packs):
@@ -319,7 +317,6 @@ def _other_meshes_said(xp: Path | None) -> dict[str, Any] | None:
     ]
     return {
         "folders": folders,
-        "front_next": front_changed(pack, found.front),
         "front_unseen": len(other_mesh_front(load_settings()).difference(found.front)),
     }
 

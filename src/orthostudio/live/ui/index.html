@@ -253,45 +253,59 @@
         <p class="question-help" id="xplane-busy" data-i18n="xplane.busy" hidden></p>
       </fieldset>
 
+      <!-- its two lists fold away, each under its title with a summary beside it and the legend's
+           chevron (live.js foldSection): folded until something needs the pilot, then as he left them -->
       <fieldset class="question" id="q-regions">
-        <legend class="question-title" data-i18n="regions.title">The mesh, by region</legend>
-        <p class="question-help" data-i18n="regions.help"></p>
-        <ul class="regions" id="regions-ours"></ul>
-        <p class="question-help" id="regions-loading" data-i18n="regions.loading" hidden>Asking for the list…</p>
-        <p class="question-help is-warn" id="regions-error" hidden></p>
-        <p class="question-help" id="regions-why" hidden></p>
-        <p class="question-help" id="regions-ours-none" data-i18n="regions.ours_none" hidden></p>
-        <p class="question-help" id="regions-where" hidden></p>
-        <!-- which mesh a start streams onto, for every region at once: shown only once a region
-             keeps its old one (LiveSettings.mesh, scenery.osxp_sources) -->
-        <fieldset class="sub-question" id="mesh-choice" hidden>
-          <legend class="sub-question-title" data-i18n="mesh.title">Mesh</legend>
-          <div class="choices">
-            <label class="choice"><input type="radio" name="mesh" value="new">
-              <span class="choice-text"><span class="choice-label" data-i18n="mesh.new">New</span>
-                <span class="choice-note" data-i18n="mesh.new_note"></span></span></label>
-            <label class="choice"><input type="radio" name="mesh" value="old">
-              <span class="choice-text"><span class="choice-label" data-i18n="mesh.old">Old</span>
-                <span class="choice-note" data-i18n="mesh.old_note"></span></span></label>
-          </div>
-          <p class="question-help" data-i18n="mesh.restart"></p>
-        </fieldset>
-        <p class="question-help" data-i18n="regions.ours_source"></p>
+        <legend class="question-title"><span class="fold-head" id="regions-head">
+          <span data-i18n="regions.title">The mesh, by region</span>
+          <span class="fold-badges" id="regions-badges"></span>
+          <button type="button" class="legend-fold is-closed" id="regions-fold" aria-expanded="false" aria-controls="regions-body"></button>
+        </span></legend>
+        <div class="fold-body is-folded" id="regions-body">
+          <p class="question-help" data-i18n="regions.help"></p>
+          <ul class="regions" id="regions-ours"></ul>
+          <p class="question-help" id="regions-loading" data-i18n="regions.loading" hidden>Asking for the list…</p>
+          <p class="question-help is-warn" id="regions-error" hidden></p>
+          <p class="question-help" id="regions-why" hidden></p>
+          <p class="question-help" id="regions-ours-none" data-i18n="regions.ours_none" hidden></p>
+          <p class="question-help" id="regions-where" hidden></p>
+          <!-- which mesh a start streams onto, for every region at once: shown only once a region
+               keeps its old one (LiveSettings.mesh, scenery.osxp_sources) -->
+          <fieldset class="sub-question" id="mesh-choice" hidden>
+            <legend class="sub-question-title" data-i18n="mesh.title">Mesh</legend>
+            <div class="choices">
+              <label class="choice"><input type="radio" name="mesh" value="new">
+                <span class="choice-text"><span class="choice-label" data-i18n="mesh.new">New</span>
+                  <span class="choice-note" data-i18n="mesh.new_note"></span></span></label>
+              <label class="choice"><input type="radio" name="mesh" value="old">
+                <span class="choice-text"><span class="choice-label" data-i18n="mesh.old">Old</span>
+                  <span class="choice-note" data-i18n="mesh.old_note"></span></span></label>
+            </div>
+            <p class="question-help" data-i18n="mesh.restart"></p>
+          </fieldset>
+          <p class="question-help" data-i18n="regions.ours_source"></p>
+        </div>
         <div class="sub-question">
-          <label class="sub-question-title" for="set-other-mesh" data-i18n="other_mesh.title">Other meshes</label>
-          <p class="question-help" data-i18n="other_mesh.help"></p>
-          <!-- a folder typed, then Enter, or chosen: added at the bottom of the list -->
-          <div class="path-row">
-            <input type="text" id="set-other-mesh" class="question-path" spellcheck="false" autocomplete="off"
-              data-i18n-placeholder="other_mesh.add_placeholder">
-            <button type="button" class="btn" id="other-mesh-choose" data-i18n="folder.choose">Choose…</button>
+          <div class="fold-head" id="others-head">
+            <label class="sub-question-title" for="set-other-mesh" data-i18n="other_mesh.title">Other meshes</label>
+            <span class="fold-badges" id="others-badges"></span>
+            <button type="button" class="legend-fold is-closed" id="others-fold" aria-expanded="false" aria-controls="others-body"></button>
           </div>
-          <p class="question-help is-warn" id="other-mesh-error" role="alert" hidden></p>
-          <!-- the folders, top first, the first that has a square giving it (LiveSettings.other_meshes),
-               a box each (live.js drawOtherMeshes) -->
-          <ul class="other-meshes" id="other-meshes" hidden></ul>
-          <!-- what holds for the whole list, a line each (live.js otherFrontSaid) -->
-          <p class="question-help other-mesh-foot" id="other-mesh-front" hidden></p>
+          <div class="fold-body is-folded" id="others-body">
+            <p class="question-help" data-i18n="other_mesh.help"></p>
+            <!-- a folder typed, then Enter, or chosen: added at the bottom of the list -->
+            <div class="path-row">
+              <input type="text" id="set-other-mesh" class="question-path" spellcheck="false" autocomplete="off"
+                data-i18n-placeholder="other_mesh.add_placeholder">
+              <button type="button" class="btn" id="other-mesh-choose" data-i18n="folder.choose">Choose…</button>
+            </div>
+            <p class="question-help is-warn" id="other-mesh-error" role="alert" hidden></p>
+            <!-- the folders, top first, the first that has a square giving it (LiveSettings.other_meshes),
+                 a box each (live.js drawOtherMeshes) -->
+            <ul class="other-meshes" id="other-meshes" hidden></ul>
+            <!-- what holds for the whole list, a line each (live.js otherFrontSaid) -->
+            <p class="question-help other-mesh-foot" id="other-mesh-front" hidden></p>
+          </div>
         </div>
       </fieldset>
 

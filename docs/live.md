@@ -431,7 +431,11 @@ six regions: Europe, North America (Greenland and the Canadian Arctic in), South
 Asia, and Australia and the Pacific (Hawaii and Easter Island in). Together they cover all the land
 of the world but Antarctica: 19,295 squares.
 
-The panel lists the six, each with what it downloads and the room it takes once installed (Europe:
+The list folds away under its title, which says how many regions are installed and how many
+updates wait (« 6 installed », « 1 update »): it opens by itself when something needs you (no region
+installed, an update to download or ready, an install running or stopped, the list not come), and
+otherwise stays as you left it, until something new needs you. The panel lists the six, each with
+what it downloads and the room it takes once installed (Europe:
 16.3 GB to download, as much on the disk), and **Install**. Live downloads it from OrthoStudio XP's
 server, a few files at a time, checks each one and unpacks it as soon as it is whole; the bar shows
 the download, and the line under it the gigabytes downloaded and the pace in megabytes a second over
@@ -505,7 +509,10 @@ offers to install AutoOrtho's. In a terminal, `python -m orthostudio.live region
 **Other meshes.** A mesh in AutoOrtho's format kept outside X-Plane, the copy another
 streamer downloads or AutoOrtho's own pack moved out of `Custom Scenery`, can stand in where Live
 has no other mesh: under "Other meshes", type its folder then Enter, or click **Choose…**.
-It goes at the bottom of the list, saved at once; add as many folders as you have. Live looks at the
+It goes at the bottom of the list, saved at once; add as many folders as you have. The list folds
+away under its title as the regions' does, saying how many folders and squares in front of Live
+(« 1 folder · 1 in front »), and opens by itself for a folder not there or with no mesh, a pack left
+aside you may have meant, or a button refused. Live looks at the
 packs in each, down to three folders below, whatever their names, and tells ground from overlays as
 X-Plane does. Ground whose terrain files name photos is a mesh; Live leaves aside a tile that has
 its own photos, ground with no photos to lay (X-Plane's own scenery, HD Mesh's land classes, Live's

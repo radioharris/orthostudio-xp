@@ -637,19 +637,20 @@ a.btn { display: inline-flex; align-items: center; text-decoration: none; }  /* 
 /* Folded away to see the map under it (a user, 2026-09-25): a chevron in the corner folds it, one
    button brings it back, and the choice is remembered. */
 .map-legend .legend-fold, .map-legend .legend-unfold { pointer-events: auto; }
-/* One line high and as wide, at the end of the view line: its centre is the line's. */
-.map-legend .legend-fold {
+/* One line high and as wide, at the end of the view line: its centre is the line's. The same
+   chevron folds the long lists of Live's Settings (live.css .fold-head). */
+.legend-fold {
   flex: none; width: calc(var(--lh) * 1em); height: calc(var(--lh) * 1em); padding: 0; cursor: pointer;
   display: inline-flex; align-items: center; justify-content: center; font: inherit; color: var(--fg-2);
   background: transparent; border: 1px solid transparent; border-radius: var(--radius);
 }
-.map-legend .legend-fold::before {
+.legend-fold::before {
   content: ""; width: 6px; height: 6px; margin-top: -3px;
   border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(45deg);
 }
-.map-legend .legend-fold:hover { color: var(--fg); border-color: var(--line); }
+.legend-fold:hover { color: var(--fg); border-color: var(--line); }
 /* Folded, a chevron pointing at the words it would bring back. */
-.map-legend .legend-fold.is-closed::before { margin: 0 0 0 -3px; transform: rotate(-45deg); }
+.legend-fold.is-closed::before { margin: 0 0 0 -3px; transform: rotate(-45deg); }
 /* A group's title and its chevron, "Show" and the zones' (a user, 2026-09-26): one line, the
    chevron at its end. */
 .map-legend .legend-group-head { align-items: center; margin: 6px 0 2px; }

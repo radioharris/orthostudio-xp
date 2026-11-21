@@ -574,6 +574,9 @@ const OTHER_UNUSED = { gone: "other_mesh.gone", no_mesh: "other_mesh.none", abov
 /** The packs left aside that the pilot may have meant, said under the path; the others (a region
  *  Live has already, ground with no photos to lay) only in the name's hover. */
 const OTHER_ACT_ON = new Set(["photos", "no_terrain", "unreadable"]);
+const refusedToSay = (f) => f.refused.filter((r) => OTHER_ACT_ON.has(r.why));
+/** A folder Live cannot use, said as a warning: not there, or no mesh Live can use in it. */
+const otherUnusable = (f) => f.unused === "gone" || f.unused === "no_mesh";
 
 /** Packs left aside, a few by name and why, the rest counted: X-Plane's folder chosen lists every
  *  tile of Custom Scenery. Null: none. */
@@ -606,13 +609,34 @@ export function otherMeshSaid(f) {
   }
   hover.push(leftAside(f.refused));
   const unused = OTHER_UNUSED[f.unused];
-  const note = [unused && t(unused), leftAside(f.refused.filter((r) => OTHER_ACT_ON.has(r.why)))];
+  const note = [unused && t(unused), leftAside(refusedToSay(f))];
   return {
     count,
     note: note.filter(Boolean).join(" "),
-    warn: f.unused === "gone" || f.unused === "no_mesh",
+    warn: otherUnusable(f),
     title: hover.filter(Boolean).join("\n"),
   };
+}
+
+/** What the title of other meshes says beside it, folded or open, and what needs the pilot there,
+ *  a word each, which opens the list by itself (foldOpen): a folder not there or giving no mesh, a
+ *  pack left aside he may have meant (each folder's own notes, otherMeshSaid), the refusal of his
+ *  last action (`error`, its words; "" for none). Its badge: how many folders, and how many of
+ *  their squares are in front of Live, in the warning's colour where a folder cannot be used or
+ *  the last action was refused; none without a folder. {badges: [{text, kind}], needs} */
+export function othersSummary(other, error = "") {
+  const folders = other?.folders || [];
+  const needs = [];
+  for (const f of folders) {
+    if (otherUnusable(f)) needs.push(`${f.unused}:${f.folder}`);
+    if (refusedToSay(f).length) needs.push(`refused:${f.folder}`);
+  }
+  if (error) needs.push(`error:${error}`);
+  if (!folders.length) return { badges: [], needs };
+  const front = number(folders.reduce((n, f) => n + f.front.length, 0));
+  const text = folders.length === 1 ? t("other_mesh.badge_one", { front })
+    : t("other_mesh.badge", { n: number(folders.length), front });
+  return { badges: [{ text, kind: error || folders.some(otherUnusable) ? "warn" : null }], needs };
 }
 
 /** The folders of other tools' meshes, top first, the first that has a square giving it
@@ -624,6 +648,8 @@ function drawOtherMeshes(other) {
   const list = $("other-meshes");
   const folders = other?.folders || [];
   const key = JSON.stringify([language(), folders]);
+  const error = $("other-mesh-error");
+  folds.others?.draw(othersSummary(other, error.hidden ? "" : error.textContent));
   drawOtherFront(other);
   if (!h || list.dataset.drawn === key) return; // h: static/dom.js, loaded on its own (bindDom)
   list.dataset.drawn = key;
@@ -684,6 +710,7 @@ async function otherAct(act, body) {
     else delete error.dataset.i18n;
     error.textContent = known ? t(known) : e.message;
     error.hidden = false;
+    if (last) drawOtherMeshes(last.checks.other_meshes); // its title says it at once
     return false;
   }
   liveMap?.otherChanged();
@@ -780,6 +807,94 @@ function drawSimbrief() {
   if (name) button.textContent = t("plan.take", { name });
 }
 
+// --- the two long lists of the mesh's card, which fold away ------------------------------------
+
+let keptTools = null; // what the page keeps from one visit to the next (static/kept.js), once loaded
+let keptLoading = null;
+
+/** OrthoStudio XP's way of keeping the page's choices for the viewer (static/kept.js), loaded once,
+ * for the map and the lists that fold; without it, they keep nothing beyond the visit. */
+function loadKept() {
+  keptLoading ??= import("../static/kept.js").then((tools) => { keptTools = tools; }, () => {});
+  return keptLoading;
+}
+
+/** The choice kept for a list that folds, {open, seen}: open or folded by the pilot, and what
+ * needed him as he chose; null when he never chose, or for words of no such choice. */
+export function foldKept(text) {
+  try {
+    const kept = JSON.parse(text);
+    if (typeof kept?.open === "boolean" && Array.isArray(kept.seen)) return kept;
+  } catch (_e) {
+    // nothing kept
+  }
+  return null;
+}
+
+/** Whether a list that folds is open: folded by default, open by itself while something needs the
+ * pilot (`needs`, a word each: an update ready, a folder not there); once he opened or folded it,
+ * as he left it (`kept`, foldKept), unless something needs him that did not as he chose. */
+export function foldOpen(kept, needs) {
+  if (!kept) return needs.length > 0;
+  return kept.open || needs.some((need) => !kept.seen.includes(need));
+}
+
+const folds = {}; // the lists that fold, by name (foldSection), made at the page's start
+
+/**
+ * A list of the settings folded away under its title (index.html `<name>-head`, its badges
+ * `<name>-badges`, its chevron `<name>-fold`, its body `<name>-body`), kept for the viewer under
+ * `osxp.live.fold.<name>` as the legend keeps its groups (static/kept.js). A click on the title's
+ * line or on its chevron, a real button, opens or folds it and keeps that with what needs the pilot
+ * then (foldOpen); a double click or a drag on the title is left to its text, which can be
+ * selected. `words()`: the chevron's hover, [to open, to fold], in the page's language. `draw` at
+ * each status: its badges and what needs the pilot now.
+ */
+function foldSection(name, words) {
+  const key = `osxp.live.fold.${name}`;
+  const button = $(`${name}-fold`);
+  const badges = $(`${name}-badges`);
+  let needs = [];
+  let chosen = null; // a click of this visit, as kept: without static/kept.js, kept for the visit
+  const isOpen = () => foldOpen(chosen ?? foldKept(keptTools?.pageKept(key)), needs);
+  const show = () => {
+    const open = isOpen();
+    $(`${name}-body`).classList.toggle("is-folded", !open);
+    button.classList.toggle("is-closed", !open);
+    button.setAttribute("aria-expanded", String(open));
+    const [toOpen, toFold] = words();
+    button.title = open ? toFold : toOpen;
+    button.setAttribute("aria-label", button.title);
+  };
+  const choose = (open) => {
+    chosen = { open, seen: needs };
+    keptTools?.pageKeep(key, JSON.stringify(chosen));
+    show();
+  };
+  $(`${name}-head`).addEventListener("click", (ev) => {
+    if (!button.contains(ev.target) && (ev.detail > 1 || String(window.getSelection?.() || ""))) return;
+    choose(!isOpen());
+  });
+  show();
+  return {
+    show,
+    open: () => choose(true),
+    draw({ badges: said, needs: now }) {
+      needs = now;
+      const drawn = JSON.stringify(said);
+      if (badges.dataset.drawn !== drawn) { // the badges, OrthoStudio XP's pills (drawPill)
+        badges.dataset.drawn = drawn;
+        badges.replaceChildren(...said.map(({ text, kind }) => {
+          const pill = document.createElement("span");
+          drawPill(pill, [text, kind]);
+          return pill;
+        }));
+      }
+      show();
+    },
+  };
+}
+
 // --- the mesh: OrthoStudio XP's regions -------------------------------------------------------
 
 const REGION_ORDER = ["eur", "na", "sa", "afr", "asi", "aus_pac"];
@@ -835,6 +950,53 @@ async function regionAct(path, method = "POST", body = undefined) {
   }
 }
 
+/** An installed region's update waiting whole, the disk's word (r.waiting), unless a newer one is
+ * listed to download. */
+const updateReady = (r) => Boolean(r.waiting) && !((r.changed_bytes || 0) > 0);
+
+/**
+ * What the regions' title says beside it, folded or open, and what needs the pilot there, a word
+ * each, which opens the list by itself (foldOpen): none installed, an update to download or one
+ * ready for Live's next start, the last start that could not put it in place, an install running
+ * or stopped, the list of regions not come. Its badges: how many regions are installed, then how
+ * many updates, in the accent's colour, the warning's for one held back; the first in the
+ * warning's colour where the list did not come or an install failed. A region read as its row
+ * reads it (regionRow). {badges: [{text, kind}], needs}
+ */
+export function regionsSummary(regions) {
+  const mine = new Set((regions?.ours || []).map((r) => r.id));
+  const phase = regions?.install?.phase;
+  const needs = [];
+  if (!mine.size) needs.push("none");
+  if (regions?.error) needs.push("list");
+  let updates = 0;
+  let held = false;
+  for (const r of regions?.list || []) {
+    if (!mine.has(r.id)) continue;
+    const ready = updateReady(r);
+    if (ready || r.changed) {
+      updates += 1;
+      needs.push(`${ready ? "ready" : "update"}:${r.id}`);
+    }
+    if (ready && r.held) {
+      held = true;
+      needs.push(`held:${r.id}`);
+    }
+  }
+  if (phase && phase !== "done" && phase !== "waiting") {
+    needs.push(`${phase === "failed" || phase === "cancelled" ? phase : "install"}:${regions.install.region}`);
+  }
+  const n = mine.size;
+  const installed = n === 0 ? t("regions.badge_none") : n === 1 ? t("regions.badge_one")
+    : t("regions.badge_installed", { n: number(n) });
+  const badges = [{ text: installed, kind: regions?.error || phase === "failed" ? "warn" : null }];
+  if (updates) {
+    const text = updates === 1 ? t("regions.badge_update") : t("regions.badge_updates", { n: number(updates) });
+    badges.push({ text, kind: held ? "warn" : "running" });
+  }
+  return { badges, needs };
+}
+
 /** What a region's row shows: its name and size, its state, its buttons, and the line under it
  * (the install's progress, or an update waiting whole). Plain data: the rows are drawn again only
  * when it changes, so that a button under the pointer is not replaced while it is clicked (the
@@ -842,8 +1004,7 @@ async function regionAct(path, method = "POST", body = undefined) {
 function regionRow(id, mine, r, install, running, idle, xplane, folder) {
   const busy = Boolean(install) && install.region === id;
   const name = t(`region.${id}`);
-  // an update waiting whole, the disk's word (r.waiting), unless a newer one is listed to download
-  const ready = Boolean(mine) && r.waiting && !((r.changed_bytes || 0) > 0);
+  const ready = Boolean(mine) && updateReady(r);
   let size = "";
   let state = "";
   if (mine) {
@@ -1010,6 +1171,7 @@ function regionAction(id, act) {
  * its zips changed since, and the install under way with its bar. */
 function drawRegions(status) {
   const regions = status.regions || { ours: [], list: [], install: null };
+  folds.regions?.draw(regionsSummary(regions));
   const ours = new Map((regions.ours || []).map((r) => [r.id, r]));
   const listed = new Map((regions.list || []).map((r) => [r.id, r]));
   const ids = REGION_ORDER.filter((id) => ours.has(id) || listed.has(id));
@@ -1936,7 +2098,7 @@ async function startMap() {
   if (typeof L === "undefined") return; // Leaflet did not load: the rest of the page works
   // what the page keeps from one visit to the next (static/kept.js); without it, the map still
   // shows, its bar too
-  const kept = await import("../static/kept.js").catch(() => null);
+  await loadKept();
   try {
     // loaded here, not with the page: the map's modules read OrthoStudio XP's own (static/geo.js)
     const { createLiveMap } = await import("./livemap.js");
@@ -1949,12 +2111,12 @@ async function startMap() {
   }
   $("map-follow").addEventListener("change", (event) => liveMap.setFollow(event.target.checked));
   // the bar over the map: shown unless hidden once, kept by the page's server (static/kept.js)
-  const details = kept?.pageKept(MAP_DETAILS_KEY) !== "0";
+  const details = keptTools?.pageKept(MAP_DETAILS_KEY) !== "0";
   $("map-details").checked = details;
   liveMap.setDetails(details);
   $("map-details").addEventListener("change", (event) => {
     liveMap.setDetails(event.target.checked);
-    kept?.pageKeep(MAP_DETAILS_KEY, event.target.checked ? "1" : "0");
+    keptTools?.pageKeep(MAP_DETAILS_KEY, event.target.checked ? "1" : "0");
   });
   $("live-map").addEventListener("live-map-follow", (event) => {
     $("map-follow").checked = event.detail;
@@ -2201,6 +2363,7 @@ function showQuestion(question) {
     $("settings-search").value = "";
     drawSearch();
   }
+  folds[question]?.open(); // the regions' list, folded or not
   box.scrollIntoView({ block: "start" });
   box.classList.add("is-pointed");
   setTimeout(() => box.classList.remove("is-pointed"), 2000);
@@ -2282,6 +2445,9 @@ function boot() {
   setLanguage(detectLanguage());
   $("lang-select").value = language();
   applyStatic(document);
+  folds.regions = foldSection("regions", () => [t("regions.fold_show"), t("regions.fold_hide")]);
+  folds.others = foldSection("others", () => [t("other_mesh.fold_show"), t("other_mesh.fold_hide")]);
+  loadKept().then(() => Object.values(folds).forEach((fold) => fold.show())); // as the viewer left them
   renderZooms();
   drawMemory();
   trackStatusbarHeight();

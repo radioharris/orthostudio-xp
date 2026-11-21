@@ -298,7 +298,7 @@ def test_the_setting_and_what_the_window_says(
     save_settings(LiveSettings(other_meshes=[str(folder), str(tmp_path / "unplugged")]))
     assert load_settings().other_meshes == [str(folder), str(tmp_path / "unplugged")]
     said = control._other_meshes_said(None)
-    assert said is not None and said["front_next"] is False
+    assert said is not None and set(said) == {"folders", "front_unseen"}
     assert said["folders"][0] == {
         "folder": str(folder),
         "name": "Other mesh",

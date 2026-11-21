@@ -732,8 +732,7 @@ def test_what_the_window_says_and_draws(tmp_path: Path, monkeypatch) -> None:
     chosen = [str(folder), str(pyrenees)]
     save_settings(LiveSettings(other_meshes=chosen, other_mesh_front=["+45+006", "+46+002"]))
     said = control._other_meshes_said(xp)
-    assert said is not None and said["front_next"]  # no start has taken them yet
-    assert said["front_unseen"] == 0  # both given by a folder there
+    assert said is not None and said["front_unseen"] == 0  # both given by a folder there
     first, second = said["folders"]
     assert first["name"] == "Custom Scenery" and first["squares"] == 2
     assert first["front"] == ["+45+006", "+46+002"] and first["in_xplane"] == ["z_ao_alps"]
@@ -968,11 +967,11 @@ def test_under_the_list_a_folder_not_there_keeps_its_squares_in_front_when_remov
     gives = {"squares": 3, "unused": None}
     gone = {"squares": 0, "unused": "gone"}
     cases = [
-        {"folders": [gives], "front_next": False, "front_unseen": 1},
-        {"folders": [gives, gone], "front_next": True, "front_unseen": 1},
-        {"folders": [gone], "front_next": False, "front_unseen": 2},
-        {"folders": [gone], "front_next": False, "front_unseen": 0},
-        {"folders": [], "front_next": False, "front_unseen": 0},
+        {"folders": [gives], "front_unseen": 1},
+        {"folders": [gives, gone], "front_unseen": 1},
+        {"folders": [gone], "front_unseen": 2},
+        {"folders": [gone], "front_unseen": 0},
+        {"folders": [], "front_unseen": 0},
         None,
     ]
     said = _said_in_both_languages("otherFrontSaid", cases)

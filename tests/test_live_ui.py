@@ -1750,6 +1750,165 @@ def test_each_mesh_has_its_own_delete_its_confirmation_says_what_goes() -> None:
     assert 'yes: t("regions.remove")' in asked
 
 
+def _folds(regions: list, others: list, kept: list) -> dict:
+    """live.js regionsSummary and othersSummary, in English then in French, and foldOpen on each
+    [kept text, needs] of ``kept``, its words read by foldKept."""
+    script = (
+        f"const live = await import({json.dumps((UI_DIR / 'live.js').as_uri())});"
+        f"const {{ setLanguage }} = await import({json.dumps((UI_DIR / 'strings.js').as_uri())});"
+        f"const regions = {json.dumps(regions)}; const others = {json.dumps(others)};"
+        f"const kept = {json.dumps(kept)}; const out = {{}};"
+        "for (const lang of ['en', 'fr']) { setLanguage(lang); out[lang] = {"
+        " regions: regions.map(live.regionsSummary),"
+        " others: others.map(([other, error]) => live.othersSummary(other, error)) }; }"
+        "out.open = kept.map(([text, needs]) => live.foldOpen(live.foldKept(text), needs));"
+        "console.log(JSON.stringify(out));"
+    )
+    out = subprocess.run(
+        [NODE or "node", "--input-type=module", "-e", script],
+        capture_output=True,
+        encoding="utf-8",
+        check=True,
+    )
+    return json.loads(out.stdout)
+
+
+@pytest.mark.skipif(NODE is None, reason="needs node")
+def test_the_two_long_lists_fold_and_open_by_themselves() -> None:
+    """The regions and other meshes fold away under their titles, a summary beside each (the
+    user, 2026-11-22: the Settings too long): the regions installed and their updates, an
+    update's colour the accent's; the folders and their squares in front of Live. Folded by
+    default; open by themselves while something needs the pilot, said in a word each: no region
+    installed, an update to download or ready, one held back, an install running or stopped, the
+    list not come; a folder not there or with no mesh, a pack left aside he may have meant, his
+    last action refused; the badge in the warning's colour for a problem. Once he opened or
+    folded a list, as he left it, unless something needs him that did not as he chose."""
+    six = [{"id": i} for i in ("eur", "na", "sa", "afr", "asi", "aus_pac")]
+    listed = [{"id": r["id"], "installed": True, "changed": 0, "waiting": False} for r in six]
+    update = [{**listed[0], "changed": 3, "changed_bytes": 9e8}, *listed[1:]]
+    ready = [{**listed[0], "waiting": True, "changed_bytes": 0, "held": "X-Plane was open"}]
+    regions = [
+        {"ours": six, "list": listed, "install": None, "error": None},
+        {"ours": six, "list": update, "install": None, "error": None},
+        {"ours": six[:1], "list": ready, "install": None, "error": None},
+        {"ours": [], "list": [], "install": None, "error": None},
+        {"ours": six[:2], "list": [], "install": None, "error": "timed out"},
+        {"ours": [], "list": [], "install": {"region": "afr", "phase": "downloading"}},
+        {"ours": [], "list": [], "install": {"region": "afr", "phase": "failed"}},
+        {"ours": six, "list": [*update[:1], {**listed[1], "changed": 1}], "install": None},
+    ]
+    there = {"unused": None, "refused": [], "front": []}
+    alps = {**there, "folder": "/Alps", "front": ["+45+006"]}
+    gone = {**there, "folder": "/Gone", "unused": "gone"}
+    tile = [{"name": "zOrtho4XP_+45+006", "why": "photos"}]  # a pack he may have meant
+    photos = {**there, "folder": "/O4XP", "refused": tile}
+    already = {**there, "folder": "/Pyr", "refused": [{"name": "z_ao_pyr", "why": "already"}]}
+    others = [
+        [None, ""],
+        [{"folders": [alps]}, ""],
+        [{"folders": [alps, gone]}, ""],
+        [{"folders": [photos, already]}, ""],
+        [{"folders": [alps]}, "This folder is in the list already."],
+    ]
+    seen = json.dumps({"open": False, "seen": ["update:eur"]})
+    kept = [
+        [None, []],  # folded by default
+        [None, ["update:eur"]],  # open by itself
+        [seen, ["update:eur"]],  # folded by the pilot while it waited: kept folded
+        [seen, ["update:eur", "gone:/Gone"]],  # a new problem opens it
+        [seen, []],
+        [json.dumps({"open": True, "seen": []}), []],  # opened by the pilot: kept open
+        ["0", ["none"]],  # words of no such choice: as by default
+        ["{", []],
+    ]
+    said = _folds(regions, others, kept)
+    en = said["en"]
+    assert en["regions"] == [
+        {"badges": [{"text": "6 installed", "kind": None}], "needs": []},
+        {
+            "badges": [
+                {"text": "6 installed", "kind": None},
+                {"text": "1 update", "kind": "running"},
+            ],
+            "needs": ["update:eur"],
+        },
+        {
+            "badges": [
+                {"text": "1 installed", "kind": None},
+                {"text": "1 update", "kind": "warn"},
+            ],
+            "needs": ["ready:eur", "held:eur"],
+        },
+        {"badges": [{"text": "None installed", "kind": None}], "needs": ["none"]},
+        {"badges": [{"text": "2 installed", "kind": "warn"}], "needs": ["list"]},
+        {"badges": [{"text": "None installed", "kind": None}], "needs": ["none", "install:afr"]},
+        {"badges": [{"text": "None installed", "kind": "warn"}], "needs": ["none", "failed:afr"]},
+        {
+            "badges": [
+                {"text": "6 installed", "kind": None},
+                {"text": "2 updates", "kind": "running"},
+            ],
+            "needs": ["update:eur", "update:na"],
+        },
+    ]
+    assert en["others"] == [
+        {"badges": [], "needs": []},
+        {"badges": [{"text": "1 folder · 1 in front", "kind": None}], "needs": []},
+        {"badges": [{"text": "2 folders · 1 in front", "kind": "warn"}], "needs": ["gone:/Gone"]},
+        {"badges": [{"text": "2 folders · 0 in front", "kind": None}], "needs": ["refused:/O4XP"]},
+        {
+            "badges": [{"text": "1 folder · 1 in front", "kind": "warn"}],
+            "needs": ["error:This folder is in the list already."],
+        },
+    ]
+    fr = said["fr"]
+    assert [b["text"] for b in fr["regions"][1]["badges"]] == ["6 installées", "1 mise à jour"]
+    assert [b["text"] for b in fr["regions"][7]["badges"]] == ["6 installées", "2 mises à jour"]
+    assert fr["regions"][2]["badges"][0]["text"] == "1 installée"
+    assert fr["regions"][3]["badges"][0]["text"] == "Aucune installée"
+    assert fr["others"][1]["badges"][0]["text"] == "1 dossier · 1 devant"
+    assert fr["others"][2]["badges"][0]["text"] == "2 dossiers · 1 devant"
+    assert said["open"] == [False, True, False, True, False, True, True, False]
+
+
+def test_the_two_long_lists_fold_under_their_titles() -> None:
+    """Each list's title line holds its badges and the legend's chevron, a real button saying
+    whether it is open, folded in the page as it comes; the regions' body holds their list, the
+    one of other meshes its folders, each folding on its own; the choice kept for the viewer
+    under its own key, as the legend's (static/kept.js); a list pointed at (« Go to the
+    regions ») shown."""
+    html = (UI_DIR / "index.html").read_text(encoding="utf-8")
+    for name, inside in (("regions", 'id="regions-ours"'), ("others", 'id="other-meshes"')):
+        head = html.index(f'id="{name}-head"')
+        button = (
+            f'<button type="button" class="legend-fold is-closed" id="{name}-fold" '
+            f'aria-expanded="false" aria-controls="{name}-body"></button>'
+        )
+        assert head < html.index(f'id="{name}-badges"') < html.index(button)
+        body = html.index(f'<div class="fold-body is-folded" id="{name}-body">')
+        assert html.index(button) < body < html.index(inside)
+    others = html.rindex('<div class="sub-question">', 0, html.index('id="others-head"'))
+    regions_body = html[html.index('<div class="fold-body is-folded" id="regions-body">') : others]
+    assert regions_body.count("<div") == regions_body.count("</div>")  # closed before the others
+    title = '<span data-i18n="regions.title">The mesh, by region</span>'
+    assert title in html  # applyStatic writes the title's words alone, not over its chevron
+    js = (UI_DIR / "live.js").read_text(encoding="utf-8")
+    fold = js[js.index("function foldSection(") :]
+    fold = fold[: fold.index("\n}")]
+    assert "const key = `osxp.live.fold.${name}`;" in fold
+    assert 'button.setAttribute("aria-expanded", String(open));' in fold
+    assert "keptTools?.pageKeep(key, JSON.stringify(chosen));" in fold
+    assert '$(`${name}-head`).addEventListener("click"' in fold  # the line and its chevron
+    assert 'folds.regions = foldSection("regions",' in js
+    assert 'folds.others = foldSection("others",' in js
+    assert "folds.regions?.draw(regionsSummary(regions));" in js
+    assert "folds.others?.draw(othersSummary(other," in js
+    shown = js[js.index("function showQuestion(") :]
+    assert "folds[question]?.open();" in shown[: shown.index("\n}")]
+    css = (UI_DIR / "live.css").read_text(encoding="utf-8")
+    assert ".fold-body.is-folded { display: none; }" in css  # hidden, still searched (shownText)
+
+
 def test_the_night_grids_of_a_region_installed_before_them_come_by_themselves(
     home: Path, tmp_path: Path
 ) -> None:

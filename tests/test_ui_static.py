@@ -4687,7 +4687,7 @@ def test_the_legend_lines_up_folds_away_and_keeps_the_keyboard() -> None:
     # the stylesheet's own spaces, and the chevron on its line: it sat 2 px above it, placed by hand
     head = rules[".map-legend .legend-head"]
     assert "gap: var(--label-gap);" in head and "margin-bottom: var(--title-gap);" in head
-    fold = rules[".map-legend .legend-fold"]
+    fold = rules[".legend-fold"]  # Live's Settings fold their long lists with it too
     assert "width: calc(var(--lh) * 1em); height: calc(var(--lh) * 1em);" in fold, "one line high"
     assert "position: absolute" not in fold
     assert "background: none; border: 0;" in rules[".map-legend.is-folded"], "only the button left"
@@ -4731,7 +4731,7 @@ def test_the_legend_lines_up_folds_away_and_keeps_the_keyboard() -> None:
     assert 'groupHead(t("map.legend_zones"), LEGEND_ZONES_KEY, "zones-fold",' in legend
     assert "keepOpen(key, !open);" in _function_body(shared, "groupHead"), "one chevron for both"
     assert "if (legendOpen(LEGEND_ZONES_KEY)) lists.push(legendList(levels.map(" in legend
-    assert "rotate(-45deg)" in rules[".map-legend .legend-fold.is-closed::before"]
+    assert "rotate(-45deg)" in rules[".legend-fold.is-closed::before"]
     assert "legend-row" not in map_js
 
 
