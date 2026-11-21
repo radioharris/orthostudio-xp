@@ -3,9 +3,9 @@
 /**
  * The one way the pages make an element, each module importing it: Build's page, its map and its
  * cloud mode (app.js, map.js, clouds.js; its Settings through app.js), the legend of Build's map
- * and of Live's (legend.js), the new version's banner of both pages (update.js), Live's page and
- * its map (live/live.js, live/livemap.js, which import it as Live's server serves it, from
- * ../static/).
+ * and of Live's (legend.js), the new version's banner of both pages (update.js), Live's map
+ * (live/livemap.js, from ../static/ as Live's server serves it) and Live's page (live/live.js,
+ * which loads it at its start as it loads OrthoStudio XP's other modules).
  */
 
 /**

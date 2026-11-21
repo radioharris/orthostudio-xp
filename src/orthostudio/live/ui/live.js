@@ -4,7 +4,6 @@
 // what X-Plane is doing, what is being built, the checks and the settings. The streaming itself
 // runs in the engine (orthostudio/live/control.py); this page only starts it, stops it and shows it.
 
-import { h } from "../static/dom.js";
 import { DEFAULT_LOOKS, LOOK_VALUES, lookImageData } from "./look.js";
 import { applyStatic, countryName, detectLanguage, language, setLanguage, t } from "./strings.js";
 
@@ -608,7 +607,7 @@ function drawOtherMeshes(other) {
   const folders = other?.folders || [];
   const key = JSON.stringify([language(), folders]);
   drawOtherFront(other);
-  if (list.dataset.drawn === key) return;
+  if (!h || list.dataset.drawn === key) return; // h: static/dom.js, loaded with the page's tools
   list.dataset.drawn = key;
   list.hidden = !folders.length;
   list.replaceChildren(...folders.map((f, i) => {
@@ -1967,6 +1966,7 @@ let textSizeTools = null; // its text size (static/textsize.js), once loaded
 let findTools = null; // its find bar (static/find.js), once loaded
 let zoomRefresh = null; // writes the zoom's level again in the page's language, once bound
 let textSizeRefresh = null; // writes the text size's choices again, once bound
+let h = null; // its one way to make an element (static/dom.js), once loaded
 
 /**
  * OrthoStudio XP's find bar (Cmd+F, Ctrl+F), zoom (Cmd+plus, Cmd+minus, Cmd+0, and its control at
@@ -1974,18 +1974,21 @@ let textSizeRefresh = null; // writes the text size's choices again, once bound
  * static/zoom.js, static/textsize.js): Live's window has none of them, and a browser keeps its own
  * find and zoom; the text size works in a browser too. Loaded here rather than with the page, as
  * the map is: they speak OrthoStudio XP's own words, told the page's language. The user asked for
- * the foot of OrthoStudio XP's page in Live's (2026-10-03).
+ * the foot of OrthoStudio XP's page in Live's (2026-10-03). With them its one way to make an
+ * element (static/dom.js), which the folders of other tools' meshes are drawn with.
  */
 async function bindPageTools() {
   try {
-    const [words, find, zoom, textSize, embed, update] = await Promise.all([
+    const [words, find, zoom, textSize, embed, update, dom] = await Promise.all([
       import("../static/i18n.js"),
       import("../static/find.js"),
       import("../static/zoom.js"),
       import("../static/textsize.js"),
       import("../static/embed.js"),
       import("../static/update.js"),
+      import("../static/dom.js"),
     ]);
+    h = dom.h; // the folders of other tools' meshes drawn at the next status
     osxpWords = words;
     findTools = find;
     textSizeTools = textSize;

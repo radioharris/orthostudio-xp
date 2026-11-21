@@ -58,7 +58,7 @@ from orthostudio.live.settings import (
     remove_other_mesh,
     saved_with,
 )
-from orthostudio.live.web import create_live_app
+from orthostudio.live.web import UI_DIR, create_live_app
 from test_api_fakes import anyio_backend as anyio_backend
 from test_api_fakes import client_for
 
@@ -746,7 +746,7 @@ def test_why_a_folder_gives_no_mesh(tmp_path: Path) -> None:
 
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="needs node")
-def test_the_line_of_each_folder_in_both_languages(live_ui: Path) -> None:
+def test_the_line_of_each_folder_in_both_languages() -> None:
     """The line of a folder in the list, each fact the engine's: the squares it gives and those of
     them in front of Live, then what it takes there; its squares all behind Live's mesh, or all
     given by a folder above it, said plainly, not as a warning; a folder not there, or giving no
@@ -761,8 +761,8 @@ def test_the_line_of_each_folder_in_both_languages(live_ui: Path) -> None:
         {**there, "there": False, "meshes": [], "squares": 0, "front": [], "unused": "gone"},
     ]
     script = (
-        f"import {{ otherMeshSaid }} from {json.dumps((live_ui / 'live.js').as_uri())};"
-        f"import {{ setLanguage }} from {json.dumps((live_ui / 'strings.js').as_uri())};"
+        f"import {{ otherMeshSaid }} from {json.dumps((UI_DIR / 'live.js').as_uri())};"
+        f"import {{ setLanguage }} from {json.dumps((UI_DIR / 'strings.js').as_uri())};"
         f"const folders = {json.dumps(folders)}; const out = {{}};"
         "for (const lang of ['en', 'fr']) {"
         " setLanguage(lang); out[lang] = folders.map(otherMeshSaid); }"
