@@ -434,7 +434,8 @@ of the world but Antarctica: 19,295 squares.
 The list folds away under its title, which says how many regions are installed and how many
 updates wait (« 6 installed », « 1 update »): it opens by itself when something needs you (no region
 installed, an update to download or ready, an install running or stopped, the list not come), and
-otherwise stays as you left it, until something new needs you. The panel lists the six, each with
+otherwise stays as you left it, until something new needs you, or needs you again; a search in the
+Settings opens it while you type. The panel lists the six, each with
 what it downloads and the room it takes once installed (Europe:
 16.3 GB to download, as much on the disk), and **Install**. Live downloads it from OrthoStudio XP's
 server, a few files at a time, checks each one and unpacks it as soon as it is whole; the bar shows
@@ -475,9 +476,10 @@ before. If you click **Update** again before the update takes its place (X-Plane
 answer counts. A region keeps one old mesh: keeping a newer one deletes the one kept until then, and
 the question says so. A kept mesh never changes: it is never updated and never downloaded again, the
 server keeping no old release, and it may lack the masks of rivers and lakes, so that Soft banks
-does not apply on it. Once a region keeps one, the panel shows **Mesh: New / Old**, for all the
-regions at once: Old streams each region's kept mesh where it has one, and the new mesh elsewhere;
-with Old, the question of an update says that the mesh you keep is the one Live goes on showing.
+does not apply on it. Once a region keeps one, the panel shows **Mesh: New / Old** under the list
+of regions, folded or not, for all the regions at once: Old streams each region's kept mesh where it
+has one, and the new mesh elsewhere; with Old, the question of an update says that the mesh you keep
+is the one Live goes on showing.
 Like the other settings it takes effect at Live's next start, and never while X-Plane is open, as
 any change of the mesh (above). Each mesh then has its own **Delete**, which never deletes the
 other, like every deletion only with Live stopped and X-Plane closed; the roads, forests and
@@ -511,8 +513,8 @@ streamer downloads or AutoOrtho's own pack moved out of `Custom Scenery`, can st
 has no other mesh: under "Other meshes", type its folder then Enter, or click **Choose…**.
 It goes at the bottom of the list, saved at once; add as many folders as you have. The list folds
 away under its title as the regions' does, saying how many folders and squares in front of Live
-(« 1 folder · 1 in front »), and opens by itself for a folder not there or with no mesh, a pack left
-aside you may have meant, or a button refused. Live looks at the
+(« 1 folder · 1 in front »), and opens by itself for a folder not there or with no mesh, or a pack
+left aside you may have meant. Live looks at the
 packs in each, down to three folders below, whatever their names, and tells ground from overlays as
 X-Plane does. Ground whose terrain files name photos is a mesh; Live leaves aside a tile that has
 its own photos, ground with no photos to lay (X-Plane's own scenery, HD Mesh's land classes, Live's

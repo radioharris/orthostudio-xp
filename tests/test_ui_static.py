@@ -4690,7 +4690,10 @@ def test_the_legend_lines_up_folds_away_and_keeps_the_keyboard() -> None:
     fold = rules[".legend-fold"]  # Live's Settings fold their long lists with it too
     assert "width: calc(var(--lh) * 1em); height: calc(var(--lh) * 1em);" in fold, "one line high"
     assert "position: absolute" not in fold
-    assert "background: none; border: 0;" in rules[".map-legend.is-folded"], "only the button left"
+    folded_box = rules[".map-legend.is-folded"]
+    assert "padding: 0; border: 0;" in folded_box, "only the button left"
+    # on the open legend's ground, dark or light with the theme: lost on the photos without it
+    assert "background" not in folded_box and ".map-legend .legend-unfold" not in rules
 
     # one legend for Build's map and Live's: drawn by the shared module (legend.js)
     shared = (UI / "legend.js").read_text(encoding="utf-8")
@@ -4700,7 +4703,14 @@ def test_the_legend_lines_up_folds_away_and_keeps_the_keyboard() -> None:
     assert 'class: "btn legend-unfold"' in folded, "an ordinary button, as on the map"
     assert "onclick: () => setOpen(true)" in folded
     assert 'class: "legend-fold"' in draw and "onclick: () => setOpen(false)" in draw
-    assert '"aria-expanded": "true"' in draw and '"aria-expanded": "false"' in draw
+    assert "}), true, words);" in draw and '"aria-expanded": "false"' in draw
+    # the chevron's state in one place, the legend's, its groups' and Live's Settings' lists
+    chevron = _function_body(shared, "setChevron")
+    assert 'button.classList.toggle("is-closed", !open);' in chevron
+    assert 'button.setAttribute("aria-expanded", String(open));' in chevron
+    assert "button.title = open ? words.hide : words.show;" in chevron
+    assert "}), open, words);" in _function_body(shared, "groupHead")
+    assert shared.count("aria-expanded") == 2, "the chevron's, and the folded legend's button"
     map_js = (UI / "map.js").read_text(encoding="utf-8")
     legend = map_js[
         map_js.index("function renderLegend()") : map_js.index("function bordersToggle()")
@@ -5204,6 +5214,7 @@ def test_the_page_finds_its_own_text_because_the_window_has_no_find() -> None:
           const text = (s) => ({nodeType: 3, nodeValue: s, childNodes: []});
           const el = (tag, kids, extra = {}) =>
             ({nodeType: 1, tagName: tag, childNodes: kids, ...extra});
+          const classes = (names) => ({contains: (name) => names.split(" ").includes(name)});
           globalThis.document = {
             createRange: () => ({
               setStart(node, at) { this.startContainer = node; this.from = at; },
@@ -5216,6 +5227,10 @@ def test_the_page_finds_its_own_text_because_the_window_has_no_find() -> None:
             el("P", [text("copernicus twice: copernicus")], {hidden: false}),
             el("P", [text("hidden copernicus")], {hidden: true}),
             el("DETAILS", [text("body copernicus")], {open: false, querySelector: () => null}),
+            el("DIV", [text("folded copernicus")], {classList: classes("fold-body is-folded")}),
+            el("DIV", [text("open copernicus")], {classList: classes("fold-body")}),
+            el("DIV", [el("BUTTON", [text("Copernicus")])],
+              {classList: classes("map-legend is-folded")}),
           ]);
           const found = m.findRanges(tree, "copernicus");
           return {
@@ -5227,9 +5242,13 @@ def test_the_page_finds_its_own_text_because_the_window_has_no_find() -> None:
         })()""",
     )
     assert got == {
-        "hits": 3,  # the script, the hidden paragraph and the closed details are not read
-        "offsets": [[4, 14], [0, 10], [18, 28]],
-        "words": ["The Copernicus relief"] + ["copernicus twice: copernicus"] * 2,
+        # the script, the hidden paragraph, the closed details and a list folded away under its
+        # title (Live's Settings) are not read; the folded legend's button is shown
+        "hits": 5,
+        "offsets": [[4, 14], [0, 10], [18, 28], [5, 15], [0, 10]],
+        "words": ["The Copernicus relief"]
+        + ["copernicus twice: copernicus"] * 2
+        + ["open copernicus", "Copernicus"],
         "nothing": 0,
     }
 

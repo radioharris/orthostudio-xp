@@ -269,22 +269,23 @@
           <p class="question-help" id="regions-why" hidden></p>
           <p class="question-help" id="regions-ours-none" data-i18n="regions.ours_none" hidden></p>
           <p class="question-help" id="regions-where" hidden></p>
-          <!-- which mesh a start streams onto, for every region at once: shown only once a region
-               keeps its old one (LiveSettings.mesh, scenery.osxp_sources) -->
-          <fieldset class="sub-question" id="mesh-choice" hidden>
-            <legend class="sub-question-title" data-i18n="mesh.title">Mesh</legend>
-            <div class="choices">
-              <label class="choice"><input type="radio" name="mesh" value="new">
-                <span class="choice-text"><span class="choice-label" data-i18n="mesh.new">New</span>
-                  <span class="choice-note" data-i18n="mesh.new_note"></span></span></label>
-              <label class="choice"><input type="radio" name="mesh" value="old">
-                <span class="choice-text"><span class="choice-label" data-i18n="mesh.old">Old</span>
-                  <span class="choice-note" data-i18n="mesh.old_note"></span></span></label>
-            </div>
-            <p class="question-help" data-i18n="mesh.restart"></p>
-          </fieldset>
           <p class="question-help" data-i18n="regions.ours_source"></p>
         </div>
+        <!-- which mesh a start streams onto, for every region at once: shown only once a region
+             keeps its old one (LiveSettings.mesh, scenery.osxp_sources), under the list, never
+             folded with it: a pilot flying the old mesh sees it at once -->
+        <fieldset class="sub-question" id="mesh-choice" hidden>
+          <legend class="sub-question-title" data-i18n="mesh.title">Mesh</legend>
+          <div class="choices">
+            <label class="choice"><input type="radio" name="mesh" value="new">
+              <span class="choice-text"><span class="choice-label" data-i18n="mesh.new">New</span>
+                <span class="choice-note" data-i18n="mesh.new_note"></span></span></label>
+            <label class="choice"><input type="radio" name="mesh" value="old">
+              <span class="choice-text"><span class="choice-label" data-i18n="mesh.old">Old</span>
+                <span class="choice-note" data-i18n="mesh.old_note"></span></span></label>
+          </div>
+          <p class="question-help" data-i18n="mesh.restart"></p>
+        </fieldset>
         <div class="sub-question">
           <div class="fold-head" id="others-head">
             <label class="sub-question-title" for="set-other-mesh" data-i18n="other_mesh.title">Other meshes</label>

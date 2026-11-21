@@ -22,6 +22,18 @@ function keepOpen(key, open) {
   pageKeep(key, open ? "1" : "0");
 }
 
+/** The chevron (styles.css .legend-fold) said open or folded, in one place for the legend's, its
+ * groups' and those of the long lists of Live's Settings (live.js foldSection): pointing at the
+ * words it would bring back when folded, its state read out, and its hover, `words` {show, hide},
+ * saying what a click does. Gives the button back. */
+export function setChevron(button, open, words) {
+  button.classList.toggle("is-closed", !open);
+  button.setAttribute("aria-expanded", String(open));
+  button.title = open ? words.hide : words.show;
+  button.setAttribute("aria-label", button.title);
+  return button;
+}
+
 /**
  * The legend in `box`, drawn anew, folded or open as kept under `key`. Folded, one ordinary button
  * brings it back (a user folded it to see the map under it, 2026-09-25); open, the line `head()`
@@ -39,7 +51,7 @@ export function drawLegend(box, { key, words, head, body }) {
   const focused = box.contains(document.activeElement) ? document.activeElement.closest("[data-keep]")?.dataset.keep : null;
   box.classList.toggle("is-folded", !open);
   if (open) {
-    const fold = h("button", { type: "button", class: "legend-fold", "data-keep": "fold", "aria-expanded": "true", title: words.hide, "aria-label": words.hide, onclick: () => setOpen(false) });
+    const fold = setChevron(h("button", { type: "button", class: "legend-fold", "data-keep": "fold", onclick: () => setOpen(false) }), true, words);
     box.replaceChildren(h("div", { class: "legend-head" }, head(), fold), ...body());
   } else {
     box.replaceChildren(h("button", { type: "button", class: "btn legend-unfold", "data-keep": "fold", "aria-expanded": "false", onclick: () => setOpen(true) }, words.show));
@@ -49,22 +61,19 @@ export function drawLegend(box, { key, words, head, body }) {
 
 /** A group's title with a chevron that folds its lines away, as the legend itself folds (a user,
  * 2026-09-26), open or folded as kept under `key` (legendOpen() tells the page whether to give
- * its lines): `keep` names the chevron for the focus, `words` {hide, show} its hover,
+ * its lines): `keep` names the chevron for the focus, `words` {show, hide} its hover,
  * `redraw` draws the legend again once it is clicked. */
 export function groupHead(title, key, keep, words, redraw) {
   const open = legendOpen(key);
-  const button = h("button", {
+  const button = setChevron(h("button", {
     type: "button",
-    class: open ? "legend-fold" : "legend-fold is-closed",
+    class: "legend-fold",
     "data-keep": keep,
-    "aria-expanded": open ? "true" : "false",
-    title: open ? words.hide : words.show,
-    "aria-label": open ? words.hide : words.show,
     onclick: () => {
       keepOpen(key, !open);
       redraw();
     },
-  });
+  }), open, words);
   return h("div", { class: "legend-head legend-group-head" }, h("p", { class: "legend-title" }, title), button);
 }
 

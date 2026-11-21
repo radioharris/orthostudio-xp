@@ -384,7 +384,7 @@ export function createLiveMap(el, { api, info = null, legend = null, onOther = n
           legendRow("legend-zl15", t("map.legend_zl15")),
           legendRow("legend-less", t("map.legend_less")),
         ], true);
-        // each group folds on its own, as the legend does (a user, 2026-11-22: the ZL lines away)
+        // each group folds on its own, as the legend does (a user, 2026-11-21: the ZL lines away)
         const sharpWords = { hide: t("map.legend_sharp_hide"), show: t("map.legend_sharp_show") };
         const sharpHead = groupHead(t("map.legend_title"), LEGEND_SHARP_KEY, "sharp-fold", sharpWords, renderLegend);
         const words = { hide: t("map.legend_show_group_hide"), show: t("map.legend_show_group_show") };

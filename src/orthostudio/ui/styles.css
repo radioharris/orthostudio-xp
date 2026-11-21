@@ -655,12 +655,10 @@ a.btn { display: inline-flex; align-items: center; text-decoration: none; }  /* 
    chevron at its end. */
 .map-legend .legend-group-head { align-items: center; margin: 6px 0 2px; }
 .map-legend .legend-group-head .legend-title { flex: 1; margin: 0; }
-/* Folded, only the button is left, an ordinary small button like the others set on the map. */
-.map-legend.is-folded { padding: 0; background: none; border: 0; }
-/* Folded, its button keeps the open legend's ground (dark or light with the theme): drawn by its
-   border alone since every button is (2026-11-02), it was lost on the photos (a user, 2026-11-22). */
-.map-legend .legend-unfold { background: color-mix(in srgb, var(--bg-2) 92%, transparent); }
-.map-legend .legend-unfold:hover { background: var(--bg-3); }
+/* Folded, only the button is left, an ordinary small button like the others set on the map, on
+   the open legend's ground (dark or light with the theme): drawn by its border alone since every
+   button is (2026-11-02), it was lost on the photos (a user, 2026-11-21). */
+.map-legend.is-folded { padding: 0; border: 0; }
 .map-legend .legend-toggle label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
 .map-legend .legend-toggle input { margin: 0; width: 13px; height: 13px; flex: none; }
 /* Ticked but not drawn at this zoom (borders too close, airports too far): the label dimmed, the

@@ -37,6 +37,9 @@ function textNodes(root) {
         if (child.nodeValue.trim()) out.push(child);
       } else if (child.nodeType === 1) {
         if (SKIP.has(child.tagName) || child.hidden) continue;
+        // A list folded away under its title (Live's Settings, live.css .fold-body) is not shown;
+        // the map's legend folded keeps its button, shown.
+        if (child.classList?.contains("fold-body") && child.classList.contains("is-folded")) continue;
         // A closed <details> hides its body; its summary is read.
         if (child.tagName === "DETAILS" && !child.open) {
           const summary = child.querySelector("summary");

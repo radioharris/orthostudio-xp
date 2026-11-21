@@ -135,13 +135,15 @@
 /* the two long lists of the mesh's card, the regions and other meshes, each folded away under its
    title (live.js foldSection): a summary beside the title, the legend's chevron at the end of the
    line (styles.css .legend-fold); a click on the line or the chevron folds or opens it. Folded, the
-   body alone is hidden, its words still found by the settings' search (live.js shownText) */
+   body alone is hidden, its words still found by the settings' search (live.js shownText), which
+   opens it while a search is typed, and left out by the find bar (static/find.js textNodes) */
 .fold-head { display: flex; align-items: center; gap: var(--label-gap); cursor: pointer; }
 .fold-head .sub-question-title { margin: 0; }
 .fold-badges { flex: 1; display: flex; flex-wrap: wrap; gap: 6px; font-weight: 400; }
 .sub-question > .fold-body { margin-top: var(--label-gap); }
 .fold-body.is-folded { display: none; }
-.question > .fold-body.is-folded + * { clear: both; } /* under the floated title, as the body was */
+.question > .fold-body.is-folded ~ * { clear: both; } /* under the floated title, as the body was,
+   the mesh's choice hidden or not */
 
 /* The map: the shared base map (basemap.js), Live's layers over it (livemap.js) */
 .live-map-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
