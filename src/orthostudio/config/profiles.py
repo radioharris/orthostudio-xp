@@ -66,13 +66,14 @@ COMPUTER_SETTINGS: tuple[str, ...] = (
     "expert.patches_dir",
     "expert.check_updates",
     "expert.build_memory",
+    "expert.clouds_half_processor",
 )
 """What belongs to this computer and to its pilot, the same whatever the profile: the folders, the
-SimBrief name, where the map data comes from and its key, the patches, the update check and how
-much memory a build takes. A profile changing them would send the tiles to another disk, or a build
-to the public servers, because a look was chosen; and the library's key stays out of a file a user
-may pass around. The page's *Default values* keeps the first seven (``settings.js``
-``COMPUTER_FOLDERS``)."""
+SimBrief name, where the map data comes from and its key, the patches, the update check, how much
+memory a build takes and how much of the processor the clouds take. A profile changing them would
+send the tiles to another disk, or a build to the public servers, because a look was chosen; and
+the library's key stays out of a file a user may pass around. The page's *Default values* keeps
+the first seven (``settings.js`` ``COMPUTER_FOLDERS``)."""
 
 
 class ProfileError(Exception):

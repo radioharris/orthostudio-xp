@@ -16,6 +16,7 @@ import pytest
 import test_api_fakes as fakes
 from orthostudio.api.app import API_LEVEL, create_app
 from orthostudio.api.jobs import JobManager
+from orthostudio.clouds import opencv
 from orthostudio.codemark import code_mark
 from orthostudio.net.fetch import FetchRequest, FetchResult
 from orthostudio.pipeline.build import BuildEnv
@@ -37,6 +38,19 @@ def app(home: Path):  # type: ignore[no-untyped-def]
     )
     yield application
     mgr.close()
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("halves", "left_out"), [(True, []), (False, ["expert.clouds_half_processor"])]
+)
+async def test_the_status_names_the_settings_this_computer_cannot_follow(  # type: ignore[no-untyped-def]
+    app, xplane: Path, monkeypatch: pytest.MonkeyPatch, halves: bool, left_out: list[str]
+) -> None:
+    """The clouds' half of the processor, left out where OpenCV takes no limit (the Mac)."""
+    monkeypatch.setattr(opencv, "HALVES", halves)
+    async with client_for(app) as c:
+        assert (await c.get("/api/status")).json()["settings_not_here"] == left_out
 
 
 @pytest.mark.anyio

@@ -108,6 +108,7 @@ export const COMPUTER_SETTINGS = [
   "expert.patches_dir",
   "expert.check_updates",
   "expert.build_memory",
+  "expert.clouds_half_processor",
 ];
 /** `?mock=1&speed=10` runs the mock builds ten times faster (the tests use it); 1 by default. */
 const MOCK_SPEED = Math.min(100, Math.max(0.1, Number(PARAMS.get("speed")) || 1));
@@ -2569,7 +2570,7 @@ function routeFromHash() {
 // ------------------------------------------------------------------ status bar
 
 /** The engine API this page needs (orthostudio.api.app.API_LEVEL); a test keeps the two equal. */
-const PAGE_API_LEVEL = 57;
+const PAGE_API_LEVEL = 58;
 
 async function loadStatus() {
   try {
@@ -7618,6 +7619,7 @@ function renderSettings(message, kind) {
       dataDir: state.status?.data_dir || null,
       home: state.status?.home || null,
       platform: state.status?.platform || null,
+      notHere: state.status?.settings_not_here,
       reveal: state.status?.platform ? { label: revealLabel(state.status.platform), open: revealPath } : null,
       chooseFolder: state.engineOutdated ? null : chooseFolder,
       photoSample: photoSampleUrl,

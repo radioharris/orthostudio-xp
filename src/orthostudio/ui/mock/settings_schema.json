@@ -946,6 +946,16 @@
      "title": "Build Memory",
      "type": "string",
      "unit": ""
+    },
+    "clouds_half_processor": {
+     "default": false,
+     "description": "The cloud search and Apply use about half of the processor (OpenCV on half of its logical processors, Apply's textures two at once): slower, and the computer works less hard, for one that crashes or runs too hot while it works on the clouds. Taken once OrthoStudio XP is quit and opened again. Not on a Mac, whose OpenCV takes no such limit.",
+     "hint": "The cloud search and Apply use about half of the processor (OpenCV on half of its logical processors, Apply's textures two at once): slower, and the computer works less hard, for one that crashes or runs too hot while it works on the clouds. Taken once OrthoStudio XP is quit and opened again. Not on a Mac, whose OpenCV takes no such limit.",
+     "level": "expert",
+     "ortho4xp": null,
+     "title": "Clouds Half Processor",
+     "type": "boolean",
+     "unit": ""
     }
    },
    "title": "Expert",

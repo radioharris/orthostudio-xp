@@ -26,8 +26,9 @@ the disk is in [how-it-works.md](how-it-works.md). To fly without building tiles
   every Ortho4XP setting under "For experts" with a plain label.
 - **Settings profiles.** Keep a set of settings under a name ("Save as a new profile…"), then choose
   it in the Plan for each build: its source, detail level and every other setting come with it.
-  Folders, X-Plane, the map data, SimBrief, the patches folder, the update check and the memory a
-  build takes stay the same for every profile; Works names the profile each build used.
+  Folders, X-Plane, the map data, SimBrief, the patches folder, the update check, the memory a
+  build takes and the clouds' share of the processor stay the same for every profile; Works names
+  the profile each build used.
 - **A Library.** Every tile on the computer, its size, whether X-Plane shows it and what it was
   built with, searched, sorted and opened in its folder. Take a tile out of X-Plane and back,
   delete it, file it on any disk and bring it back into the workshop
@@ -62,7 +63,9 @@ the disk is in [how-it-works.md](how-it-works.md). To fly without building tiles
   the quick search on each one never searched, several at once, while you do something else, each
   tile's cell then showing how many clouds wait for a look; *Find and apply…* replaces them at once
   too, without a look (asked first); *Forget…* puts their photos back. The detection tool (OmniCloudMask's networks and OpenCV, about 110 MB) is not
-  in the installer: it is downloaded once, when you ask.
+  in the installer: it is downloaded once, when you ask. On Windows and Linux, *Clouds: half of
+  the processor* (Settings, For experts, This app) makes the search and *Apply* use about half of
+  the processor, more slowly, for a computer that crashes or runs too hot meanwhile.
 - **Roads without bumps.** The ground flattened under the roads can be smoothed along them over
   100 or 250 m, so that X-Plane's roads no longer bump over the small waves of the relief, on
   whichever relief you build with. Off by default, as in Ortho4XP. The road bands can also get the

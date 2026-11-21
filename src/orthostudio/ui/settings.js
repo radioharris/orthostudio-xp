@@ -508,7 +508,7 @@ export const EXPERT_GROUPS = [
   // Where the map data of a tile comes from, before the public servers are asked.
   { id: "mapdata", title: () => t("settings.x.group_mapdata"), fields: ["expert.osm_folder", "expert.osm_library", "expert.osm_library_token"] },
   // Nothing to do with the tiles: what the app itself does, which is why it has a group of its own.
-  { id: "app", title: () => t("settings.x.group_app"), fields: ["expert.build_memory", "expert.check_updates"] },
+  { id: "app", title: () => t("settings.x.group_app"), fields: ["expert.build_memory", "expert.clouds_half_processor", "expert.check_updates"] },
 ];
 
 /** Settings OrthoStudio XP no longer offers (the study's "Removed / automatic"): shown only when a saved
@@ -518,6 +518,7 @@ export const RETIRED = ["advanced.ratio_bathy", "advanced.imprint_masks_to_dds",
 const FIELD_TEXT = {
   "expert.check_updates": [() => t("settings.x.check_updates"), () => t("settings.x.check_updates_hint")],
   "expert.build_memory": [() => t("settings.x.build_memory"), () => t("settings.x.build_memory_hint")],
+  "expert.clouds_half_processor": [() => t("settings.x.clouds_half"), () => t("settings.x.clouds_half_hint")],
   [THREE_STEPS]: [() => t("settings.x.three_steps"), () => t("settings.x.three_steps_hint")],
   "essential.airports.zoom_level": [() => t("settings.x.airports_zl"), () => t("settings.x.airports_zl_hint")],
   "essential.airports.extent_km": [() => t("settings.x.airports_extent"), () => t("settings.x.airports_extent_hint")],
@@ -657,6 +658,12 @@ export function coveredPaths() {
   return [...paths].sort();
 }
 
+/** The fields of ``fields`` this computer offers: not those the engine's status leaves out
+ * (``settings_not_here``, a setting the system cannot follow). */
+export function offeredFields(fields, notHere) {
+  return fields.filter((f) => !(notHere || []).includes(f));
+}
+
 /** The retired settings whose value is not the default. */
 export function retiredShown(settings, schema) {
   const leaves = schemaLeaves(schema);
@@ -702,7 +709,7 @@ export function parseList(text) {
 /**
  * Draw the screen's three parts from ``view``: ``{dom: {h, clear}, draft, schema, providers,
  * xplane: {path, detected} | null, dataDir: {path, chosen, present} | null, home, platform,
- * reveal, chooseFolder, changed()}``. Every answer goes into ``draft`` at once and
+ * notHere, reveal, chooseFolder, changed()}``. Every answer goes into ``draft`` at once and
  * calls ``changed()``, which draws again; the focus, the caret and the scroll position survive
  * (data-focus-key, keptScroll).
  */
@@ -1147,7 +1154,7 @@ function renderExperts(box, view) {
     h("h3", { class: "expert-group-title" }, title),
     lead ? h("p", { class: "help" }, lead) : null,
     h("div", { class: "form-grid" }, fields.map((path) => expertField(view, path, leaves[path] || {}))));
-  for (const g of EXPERT_GROUPS) box.append(group(g.title(), g.fields));
+  for (const g of EXPERT_GROUPS) box.append(group(g.title(), offeredFields(g.fields, view.notHere)));
   const retired = retiredShown(view.draft, view.schema);
   if (retired.length) box.append(group(t("settings.x.group_retired"), retired, t("settings.x.retired_help")));
 }

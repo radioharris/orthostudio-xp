@@ -86,6 +86,7 @@ from orthostudio.api.update_banner import (
 )
 from orthostudio.api.zones_api import zones_router
 from orthostudio.clean import GRACE_S, clean, disk_bytes, pack_disk_bytes
+from orthostudio.clouds import opencv
 from orthostudio.clouds.laying import puts_back
 from orthostudio.codemark import code_mark
 from orthostudio.config import profiles as config_profiles
@@ -172,7 +173,7 @@ __all__ = [
     "sse_message",
 ]
 
-API_LEVEL = 57
+API_LEVEL = 58
 """What this engine's API offers, for the page: 1 = P2b, 2 = zones (``/api/zones``) and the base map
 (``/api/map``), 3 = deleting a tile (``POST /api/library/{name}/delete``) and the sizes of the
 library, 4 = the disk space of the Library (``GET /api/disk``, ``POST /api/clean``), 5 = clearing
@@ -236,7 +237,9 @@ and ``level`` in its menu, the ``level`` pick) and ``short`` in ``GET /api/provi
 the Library's Find clouds (``/api/cloud-searches``; ``found``, ``find`` and ``failed`` in a
 Clouds cell), 56 = the app's own update (``/api/update/install``; ``installable`` and
 ``last_try`` in ``GET /api/update``), 57 = *Not now* kept for both pages
-(``POST /api/update/later``, ``later`` in ``GET /api/update``). A page
+(``POST /api/update/later``, ``later`` in ``GET /api/update``), 58 = the setting
+``expert.clouds_half_processor`` (an older engine leaves it out of a settings document) and
+``settings_not_here`` in the status. A page
 served by an engine older than itself (a ``osxp serve`` started before an update: the page's files
 are read from disk at each load, the routes were imported at start) asks the user to restart
 OrthoStudio XP instead of showing "Not Found"."""
@@ -1337,6 +1340,8 @@ def create_app(
             "language": _language(request),
             "active_job": None if active is None else active.id,
             "platform": platform_name(),
+            # the settings this computer does not offer, which the page leaves out
+            "settings_not_here": [] if opencv.HALVES else ["expert.clouds_half_processor"],
             "can_quit": shutdown is not None,
             "engine": this_engine,
         }

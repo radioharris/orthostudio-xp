@@ -162,6 +162,21 @@ def _no_data_folder_of_this_machine(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture(autouse=True)
+def _no_clouds_share_of_this_machine(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Half of the processor for the clouds (``expert.clouds_half_processor``) is read once, from
+    ``$OSXP_HOME/config.toml``: each test reads it afresh, and one that does not set
+    ``$OSXP_HOME`` never reads that of the machine it runs on."""
+    from orthostudio import home
+    from orthostudio.clouds import opencv
+
+    real = opencv._asked
+    monkeypatch.setattr(
+        opencv, "_asked", lambda: real() if os.environ.get(home.OSXP_HOME_ENV) else False
+    )
+    opencv.half_processor.cache_clear()
+
+
+@pytest.fixture(autouse=True)
 def _no_pack_sizes_left_measuring() -> Iterator[None]:
     """The Library measures and checks its tiles' sizes in a thread of its own
     (``api.app._measure_later``): a test leaves none running into the next one, whose own

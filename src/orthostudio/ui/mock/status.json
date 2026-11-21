@@ -1,7 +1,8 @@
 {
   "version": "0.0.1",
-  "api_level": 57,
+  "api_level": 58,
   "platform": "mac",
+  "settings_not_here": ["expert.clouds_half_processor"],
   "can_quit": true,
   "xplane": {
     "path": "/Users/pilot/X-Plane 12",

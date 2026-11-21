@@ -434,6 +434,19 @@ class Expert(BaseModel):
             "during the build may then stutter until the steps already started end."
         ),
     )
+    clouds_half_processor: bool = _field(
+        False,
+        "expert",
+        None,
+        "",
+        hint=(
+            "The cloud search and Apply use about half of the processor (OpenCV on half of its "
+            "logical processors, Apply's textures two at once): slower, and the computer works "
+            "less hard, for one that crashes or runs too hot while it works on the clouds. Taken "
+            "once OrthoStudio XP is quit and opened again. Not on a Mac, whose OpenCV takes no "
+            "such limit."
+        ),
+    )
 
 
 # -- root ----------------------------------------------------------------------------------
