@@ -238,7 +238,7 @@ the Library's Find clouds (``/api/cloud-searches``; ``found``, ``find`` and ``fa
 Clouds cell), 56 = the app's own update (``/api/update/install``; ``installable`` and
 ``last_try`` in ``GET /api/update``), 57 = *Not now* kept for both pages
 (``POST /api/update/later``, ``later`` in ``GET /api/update``), 58 = the setting
-``expert.clouds_half_processor`` (an older engine refuses a settings document that holds it) and
+``expert.clouds_half_processor`` (an older engine leaves it out of a settings document) and
 ``settings_not_here`` in the status. A page
 served by an engine older than itself (a ``osxp serve`` started before an update: the page's files
 are read from disk at each load, the routes were imported at start) asks the user to restart

@@ -7638,7 +7638,7 @@ function renderSettings(message, kind) {
       dataDir: state.status?.data_dir || null,
       home: state.status?.home || null,
       platform: state.status?.platform || null,
-      notHere: state.status?.settings_not_here || [],
+      notHere: state.status?.settings_not_here,
       reveal: state.status?.platform ? { label: revealLabel(state.status.platform), open: revealPath } : null,
       chooseFolder: state.engineOutdated ? null : chooseFolder,
       photoSample: photoSampleUrl,

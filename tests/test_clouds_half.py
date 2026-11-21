@@ -12,11 +12,11 @@ from pathlib import Path
 import pytest
 
 from orthostudio.clouds import laying, opencv
-from orthostudio.config import Settings, load_settings, save_settings
+from orthostudio.config import load_settings, save_settings
 
 
 def _choose(home: Path, half: bool) -> None:
-    s = load_settings() if (home / "config.toml").is_file() else Settings()
+    s = load_settings()
     expert = s.expert.model_copy(update={"clouds_half_processor": half})
     save_settings(s.model_copy(update={"expert": expert}))
 
@@ -70,11 +70,11 @@ def test_opencv_takes_half_of_the_logical_processors_as_it_is_loaded(
     set_to: list[int] = []
     fake = types.ModuleType("cv2")
     fake.setNumThreads = set_to.append  # type: ignore[attr-defined]
+    fake.getNumberOfCPUs = lambda: cpus  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "cv2", fake)
     monkeypatch.setattr(opencv, "_MODULE", None)
     monkeypatch.setattr(opencv, "_installed_here", lambda: True)
     monkeypatch.setattr(opencv, "HALVES", True)
-    monkeypatch.setattr(opencv.os, "cpu_count", lambda: cpus)
     _choose(home, half)
     assert opencv.opencv() is fake and set_to == threads
     assert opencv.opencv() is fake and set_to == threads  # once, as it is loaded

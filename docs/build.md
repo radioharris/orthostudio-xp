@@ -64,8 +64,8 @@ the disk is in [how-it-works.md](how-it-works.md). To fly without building tiles
   tile's cell then showing how many clouds wait for a look; *Find and apply…* replaces them at once
   too, without a look (asked first); *Forget…* puts their photos back. The detection tool (OmniCloudMask's networks and OpenCV, about 110 MB) is not
   in the installer: it is downloaded once, when you ask. On Windows and Linux, *Clouds: half of
-  the processor* (Settings, For experts, This app) makes the search and *Apply* use half of the
-  processor's cores, more slowly, for a computer that crashes or runs too hot meanwhile.
+  the processor* (Settings, For experts, This app) makes the search and *Apply* use about half of
+  the processor, more slowly, for a computer that crashes or runs too hot meanwhile.
 - **Roads without bumps.** The ground flattened under the roads can be smoothed along them over
   100 or 250 m, so that X-Plane's roads no longer bump over the small waves of the relief, on
   whichever relief you build with. Off by default, as in Ortho4XP. The road bands can also get the

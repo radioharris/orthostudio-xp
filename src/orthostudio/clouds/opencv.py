@@ -21,7 +21,7 @@ import functools
 import hashlib
 import importlib
 import importlib.util
-import os
+import logging
 import platform
 import shutil
 import sys
@@ -93,13 +93,15 @@ WHEELS: dict[tuple[str, str], Wheel] = {
     ),
 }
 
+log = logging.getLogger(__name__)
+
 Progress = Callable[[int, int], None]
 _LOCK = threading.Lock()
 _MODULE: ModuleType | None = None
 
 HALVES = sys.platform != "darwin"
 """Whether OpenCV's work can be held to half of the processor here: not on the Mac, where OpenCV
-hands it to the system's own queue (GCD), which takes no limit."""
+hands it to the system's own queue (GCD), which takes no limit but one core."""
 
 
 @functools.cache
@@ -116,7 +118,8 @@ def _asked() -> bool:
 
     try:
         return load_settings().expert.clouds_half_processor
-    except (OsxpError, OSError):  # a settings file that cannot be read: the default
+    except (OsxpError, OSError) as exc:  # a settings file that cannot be read: the default
+        log.warning("the clouds take the whole processor: the settings were not read (%s)", exc)
         return False
 
 
@@ -223,7 +226,8 @@ def opencv() -> ModuleType:
                 sys.path.insert(0, str(opencv_dir()))
             module = importlib.import_module("cv2")
             if half_processor():
-                module.setNumThreads(max(1, (os.cpu_count() or 2) // 2))
+                # the processors this process may use, as OpenCV counts them for itself
+                module.setNumThreads(max(1, module.getNumberOfCPUs() // 2))
             _MODULE = module
     return _MODULE
 

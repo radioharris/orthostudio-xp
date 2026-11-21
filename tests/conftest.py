@@ -162,7 +162,7 @@ def _no_data_folder_of_this_machine(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture(autouse=True)
-def _no_clouds_share_of_this_machine(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+def _no_clouds_share_of_this_machine(monkeypatch: pytest.MonkeyPatch) -> None:
     """Half of the processor for the clouds (``expert.clouds_half_processor``) is read once, from
     ``$OSXP_HOME/config.toml``: each test reads it afresh, and one that does not set
     ``$OSXP_HOME`` never reads that of the machine it runs on."""
@@ -173,8 +173,6 @@ def _no_clouds_share_of_this_machine(monkeypatch: pytest.MonkeyPatch) -> Iterato
     monkeypatch.setattr(
         opencv, "_asked", lambda: real() if os.environ.get(home.OSXP_HOME_ENV) else False
     )
-    opencv.half_processor.cache_clear()
-    yield
     opencv.half_processor.cache_clear()
 
 

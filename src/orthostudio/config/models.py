@@ -440,10 +440,11 @@ class Expert(BaseModel):
         None,
         "",
         hint=(
-            "The cloud search and Apply use half of the processor's cores: slower, and the "
-            "computer works less hard, for one that crashes or runs too hot while it works on the "
-            "clouds. Taken at the next start of OrthoStudio XP. Not on a Mac, whose OpenCV takes "
-            "no such limit."
+            "The cloud search and Apply use about half of the processor (OpenCV on half of its "
+            "logical processors, Apply's textures two at once): slower, and the computer works "
+            "less hard, for one that crashes or runs too hot while it works on the clouds. Taken "
+            "once OrthoStudio XP is quit and opened again. Not on a Mac, whose OpenCV takes no "
+            "such limit."
         ),
     )
 

@@ -5648,8 +5648,6 @@ def test_the_page_says_when_a_newer_version_is_out() -> None:
             "settings.x.group_app",
             "settings.x.check_updates",
             "settings.x.check_updates_hint",
-            "settings.x.clouds_half",
-            "settings.x.clouds_half_hint",
         ):
             assert tables[lang][key], f"{lang} is missing {key}"
     # and it can be turned off, in a group of its own: it has nothing to do with the tiles
@@ -5659,13 +5657,22 @@ def test_the_page_says_when_a_newer_version_is_out() -> None:
     assert '"expert.check_updates": [() => t("settings.x.check_updates")' in code
     # the setting says that GitHub sees the address, rather than leaving it to be found out
     assert "GitHub" in tables["en"]["settings.x.check_updates_hint"]
-    # a setting the engine's status says this computer cannot follow is left out (the clouds'
-    # half of the processor on a Mac), wherever its group is
+
+
+def test_a_setting_this_computer_cannot_follow_is_left_out() -> None:
+    """The clouds' half of the processor, in the app's own group, named in both languages; left
+    out where the engine's status says this computer cannot follow it (a Mac)."""
+    tables = _i18n_tables()
+    for lang in ("en", "fr"):
+        for key in ("settings.x.clouds_half", "settings.x.clouds_half_hint"):
+            assert tables[lang][key], f"{lang} is missing {key}"
+    code = (UI / "settings.js").read_text(encoding="utf-8")
+    assert '"expert.clouds_half_processor": [() => t("settings.x.clouds_half")' in code
     assert _node_json("settings.js", 'm.offeredFields(["a", "b", "c"], ["b"])') == ["a", "c"]
     assert _node_json("settings.js", 'm.offeredFields(["a"], undefined)') == ["a"]
     assert "offeredFields(g.fields, view.notHere)" in _function_body(code, "renderExperts")
     app_js = (UI / "app.js").read_text(encoding="utf-8")
-    assert "notHere: state.status?.settings_not_here || []" in app_js
+    assert "notHere: state.status?.settings_not_here," in app_js
 
 
 def test_the_library_says_what_each_tile_was_built_with() -> None:
