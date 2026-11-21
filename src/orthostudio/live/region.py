@@ -33,6 +33,8 @@ from collections.abc import Callable, Collection, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+from orthostudio.textures.ter import NIGHT_FOLDER
+
 from . import dds
 from .clone import same_disk
 from .filesystem import (
@@ -120,9 +122,6 @@ def ensure_neutral(pack_dir: Path, top: int) -> Path:
     path = pack_dir / neutral_file(top)
     return path if path.exists() else write_neutral(pack_dir, top)
 
-
-NIGHT_FOLDER = "textures_night"
-"""Where the pack's night textures are (orthostudio.live.night), one beside each land texture."""
 
 NIGHT_NEUTRAL = Path("_live") / "night.dds"
 """What a night texture not built leads to: black, which X-Plane adds to the photo as nothing."""

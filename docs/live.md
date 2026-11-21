@@ -313,7 +313,9 @@ shows from the next start: Live makes its night textures again as night comes, t
 them are deleted. A change between on and off takes effect at the next start with X-Plane not
 running, as the decal's: the terrain files flown already are made again as X-Plane comes. So does
 the night itself after an update from a version without it: Live started while X-Plane runs
-lights nothing until then.
+lights nothing until then. Your own tiles built with *Night textures* ([build.md](build.md))
+follow the strength chosen here, "No" included, as soon as it is saved; X-Plane shows it there
+once it loads them again.
 
 ## The sea, rivers and lakes
 
@@ -673,8 +675,8 @@ To switch Live off, put `enabled = false` in `live.toml`, in OrthoStudio XP's ow
 - Only where a region is installed: the six regions cover all the land of the planet but
   Antarctica.
 - Flown with X-Plane 12 on a Mac and on Windows; not yet on Linux.
-- Night lights on Live's photos only: your own tiles ("Yours first") have none yet, and a region
-  installed without its density grids lights its towns evenly.
+- Your own tiles have night lights only when built with *Night textures* ([build.md](build.md)),
+  and a region installed without its density grids lights its towns evenly.
 - External views add nothing: X-Plane takes the textures for the aircraft alone, so a camera taken
   far shows the ground there as sharp as the aircraft's distance allows, a little blurry. Live
   notes how far external views take the camera, flight after flight, for information.

@@ -134,6 +134,8 @@ that builds them faster.
 - **Settings in plain words**, three presets, and every Ortho4XP setting still under "For experts".
 - **Installation handled**: each tile in Custom Scenery in the order X-Plane needs, with its roads,
   forests and buildings, and a Library of every tile on the computer.
+- **Towns at night**, if you tick it in the Plan: Live's night lights on the tiles you build, as
+  bright as Live's are set.
 
 Its guide, with what you get, the measured build times and the comparison with Ortho4XP:
 [docs/build.md](docs/build.md).
@@ -229,6 +231,9 @@ Database Licence (ODbL): OrthoStudio XP reads the airports, roads, coastline and
 tile from its own library, cut from OpenStreetMap's planet file, or from public Overpass servers when the library cannot
 answer, to shape its terrain. Like the
 imagery, the tiles built from them are for your own use.
+
+The scenery Live downloads (each region's mesh, river masks, overlays and night map) has its own
+terms and the credits of its sources: see [SCENERY-LICENCE.md](SCENERY-LICENCE.md).
 
 The page's street map comes from [OpenFreeMap](https://openfreemap.org) (© OpenMapTiles, data ©
 OpenStreetMap contributors), read through the engine so the page contacts nothing but its own

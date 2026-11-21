@@ -129,6 +129,7 @@ export const ROLE_STEP = {
   mesh: "terrain",
   masks: "coast",
   textures: "imagery",
+  night: "assembly",
   xp12: "assembly",
   dsf: "assembly",
   overlay: "assembly",
@@ -4010,6 +4011,7 @@ async function planRequest() {
     // The squares' own colours travel with the zones: a request that carried its zones alone
     // built them without their colours (a user, 2026-09-18).
     tiles_settings: planMap ? planMap.tilesSettings([...state.tiles]) : {},
+    overrides: { night_textures: $("night-check").checked },
   };
 }
 
@@ -5089,6 +5091,7 @@ const ROLE_WORDS = {
   mesh: () => t("works.act_mesh"),
   masks: () => t("works.act_masks"),
   xp12: () => t("works.act_xp12"),
+  night: () => t("works.act_night"),
   dsf: () => t("works.act_dsf"),
   overlay: () => t("works.act_overlay"),
   pack: () => t("works.act_pack"),
@@ -7309,8 +7312,9 @@ async function stopFiling() {
 // -- tiles built again from the Library (2026-10-15) ---------------------------------------------
 
 /** The builds that make the tiles picked again, as the Plan's *Build* would ask for them: one per
- * imagery source (a build has one), each tile at its own level (the most common one is the build's,
- * the others go in `tiles_zl`), none installed: a tile X-Plane shows is built again in its own
+ * imagery source (a build has one) and per night choice (a tile built with night textures keeps
+ * them), each tile at its own level (the most common one is the build's, the others go in
+ * `tiles_zl`), none installed: a tile X-Plane shows is built again in its own
  * folder, which X-Plane keeps showing, and one it does not show stays out (one build per "put back
  * in X-Plane" made two builds of two tiles, 2026-10-15). Zones, colours and settings are left to
  * the engine, which takes today's as for a Plan: rebuilding tiles spread far apart from the Plan was
@@ -7321,16 +7325,18 @@ export function rebuildRequests(rows) {
   for (const e of rows) {
     if (seen.has(e.tile)) continue;
     seen.add(e.tile);
-    if (!groups.has(e.provider)) groups.set(e.provider, { provider: e.provider, install: false, tiles: [] });
-    groups.get(e.provider).tiles.push({ tile: e.tile, zl: Number(e.zl) });
+    const night = Boolean(e.built?.facts?.night_textures);
+    const key = `${e.provider} ${night}`;
+    if (!groups.has(key)) groups.set(key, { provider: e.provider, night, install: false, tiles: [] });
+    groups.get(key).tiles.push({ tile: e.tile, zl: Number(e.zl) });
   }
-  return [...groups.values()].map(({ provider, install, tiles }) => {
+  return [...groups.values()].map(({ provider, night, install, tiles }) => {
     tiles.sort((a, b) => a.tile.localeCompare(b.tile));
     const counts = new Map();
     for (const { zl } of tiles) counts.set(zl, (counts.get(zl) || 0) + 1);
     const zoom = [...counts].sort((a, b) => b[1] - a[1] || b[0] - a[0])[0][0];
     const own = Object.fromEntries(tiles.filter((x) => x.zl !== zoom).map((x) => [x.tile, x.zl]));
-    return { tiles: tiles.map((x) => x.tile), provider, zoom_level: zoom, ...(Object.keys(own).length ? { tiles_zl: own } : {}), install };
+    return { tiles: tiles.map((x) => x.tile), provider, zoom_level: zoom, ...(Object.keys(own).length ? { tiles_zl: own } : {}), ...(night ? { overrides: { night_textures: true } } : {}), install };
   });
 }
 
@@ -8424,6 +8430,13 @@ async function boot() {
     $(`flightplan-${group}-zl`).addEventListener("change", (ev) => setFlightPlanLevel(group, ev.target.value));
   }
   $("flightplan-along-on").addEventListener("change", (ev) => setFlightPlanAlong(ev.target.checked));
+  // the night textures: the Plan's own choice, kept from one visit to the next
+  const night = $("night-check");
+  night.checked = pageKept("osxp.night") === "on";
+  night.addEventListener("change", () => {
+    pageKeep("osxp.night", night.checked ? "on" : "off");
+    planChanged();
+  });
   $("estimate-btn").addEventListener("click", estimate);
   $("build-install-btn").addEventListener("click", () => build(true));
   $("build-only-btn").addEventListener("click", () => build(false));

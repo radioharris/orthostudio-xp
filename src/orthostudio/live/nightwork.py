@@ -138,6 +138,18 @@ def square_name(lat: int, lon: int) -> str:
     return f"{lat:+03d}{lon:+04d}"
 
 
+GRIDS_ENV = "OSXP_LIVE_NIGHT_GRIDS"  # a folder of density grids looked in first: the test flights'
+
+
+def grid_dirs(regions: Iterable[Path]) -> list[Path]:
+    """Where NASA's density grids are looked for: :data:`GRIDS_ENV`'s folder, each region's
+    ``night`` folder, then Live's own."""
+    from .pack import live_root
+
+    first = [Path(os.environ[GRIDS_ENV])] if os.environ.get(GRIDS_ENV) else []
+    return first + [Path(r) / "night" for r in regions] + [live_root() / "night"]
+
+
 def density_of(path: Path, lat: int, lon: int):
     """The density grid of square ``lat``, ``lon`` (orthostudio.live.night.Density), or None."""
     from PIL import Image
@@ -344,6 +356,8 @@ def make_night(
     texture's file) and written over its black name, from its level down; its lights times
     ``gain`` (:data:`orthostudio.live.night.GAIN` when None). False: no light there, its black
     name kept, which takes no disk."""
+    from orthostudio.textures.ter import night_name
+
     from .imaging import encode_bc1
     from .night import GAIN, LIT_SIDE, draw, lights_at, lit_levels, night_rgb, seed_of, warm_bc1
     from .region import NIGHT_FOLDER, NIGHT_TOP, ensure_night_neutral
@@ -365,7 +379,7 @@ def make_night(
     if density is None:
         lights = lights * 0.85  # what the grid gives on average in a town
     rgb = night_rgb(lights, GAIN if gain is None else gain)
-    out = pack / NIGHT_FOLDER / (name[: -len(".dds")] + "_LIT.dds")
+    out = pack / NIGHT_FOLDER / night_name(name)
     ensure_night_neutral(pack)
     out.parent.mkdir(parents=True, exist_ok=True)
     if not rgb.any():  # no light (the sea, a forest): the black name, not 684 KB of zeros
@@ -785,7 +799,9 @@ class NightWork:
         square made meanwhile named it all the same (discussion 37). Its day file gone, read
         from the disk then, its name goes where its land ``.ter`` is gone, else with it
         (:attr:`day_gone`)."""
-        from .names import NightPool, night_name
+        from orthostudio.textures.ter import night_name
+
+        from .names import NightPool
         from .region import NIGHT_FOLDER
 
         path = self.pack_dir / NIGHT_FOLDER / night_name(name)

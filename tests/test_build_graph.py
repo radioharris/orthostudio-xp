@@ -10,6 +10,7 @@ import asyncio
 import json
 import os
 from pathlib import Path
+from typing import cast
 
 import numpy as np
 import pytest
@@ -126,6 +127,24 @@ def test_ids_and_sharing_across_zoom_levels(tmp_path: Path, env: BuildEnv) -> No
     assert g14.dsf.kind == "cpu" and g14.textures.kind == "net" and g14.pack.kind == "io"
     assert g14.vectors.kind == "subprocess" and g14.overlay is not None
     assert g14.overlay.kind == "subprocess" and g14.xp12 is not None and g14.xp12.kind == "io"
+
+
+def test_the_night_steps_only_when_asked_beside_the_photos(tmp_path: Path, env: BuildEnv) -> None:
+    from orthostudio.live.night import LUMINANCE
+
+    (plain,) = _declare([_spec(tmp_path)], _sched(env), env)
+    assert plain.night is None and plain.pack.inputs["night"] is None
+    assert cast(PackParams, plain.pack.params).night_lum == 0
+    asked = _spec(tmp_path, config={"night_textures": True})
+    (lit,) = _declare([asked], _sched(env), env)
+    assert lit.night is not None
+    assert lit.night.id == "+43+005/BI14/night" and lit.night.kind == "subprocess"
+    assert lit.night.inputs["dsf"] is lit.dsf  # beside the photos, never after them
+    assert lit.night.inputs["xp12"] is not None and lit.night.inputs["xp12_w"] is not None
+    assert lit.night.inputs["xp12_s"] is None  # no such square in X-Plane's scenery here
+    assert lit.pack.inputs["night"] is lit.night
+    assert cast(PackParams, lit.pack.params).night_lum == LUMINANCE["normal"]
+    assert lit.by_role["night"] is lit.night
 
 
 def test_neighbours_in_batch_and_in_store(tmp_path: Path, env: BuildEnv) -> None:
@@ -560,7 +579,7 @@ def test_dsf_and_pack_nodes_run_and_hit(tmp_path: Path, env: BuildEnv) -> None:
         "+43+005/BI14/pack",
         TILE_PACK,
         PackParams(tile=T.name, provider="BI", zl=14, out_dir=str(out_root)),
-        {"dsf": dsf, "textures": _no_images(store), "overlay": None},
+        {"dsf": dsf, "textures": _no_images(store), "overlay": None, "night": None},
         kind="io",
         run=pack_run,
     )
@@ -635,7 +654,7 @@ def test_the_pack_forces_the_tiles_files_before_x_plane_is_handed_any(
             return run_p0_rule(ctx)
 
     params = PackParams(tile=T.name, provider="BI", zl=14, out_dir=str(out_root))
-    inputs = {"dsf": dsf, "textures": _no_images(store), "overlay": None}
+    inputs = {"dsf": dsf, "textures": _no_images(store), "overlay": None, "night": None}
     sched = _sched(env)
     sched.add(Node("+43+005/BI14/pack", TILE_PACK, params, inputs, kind="io", run=pack_run))
     asyncio.run(sched.run(["+43+005/BI14/pack"]))
@@ -676,7 +695,7 @@ def test_a_tile_whose_file_another_program_holds_is_packed_all_the_same(
             return run_p0_rule(ctx)
 
     params = PackParams(tile=T.name, provider="BI", zl=14, out_dir=str(out_root))
-    inputs = {"dsf": dsf, "textures": _no_images(store), "overlay": None}
+    inputs = {"dsf": dsf, "textures": _no_images(store), "overlay": None, "night": None}
     sched = _sched(env)
     sched.add(Node("+43+005/BI14/pack", TILE_PACK, params, inputs, kind="io", run=pack_run))
     asyncio.run(sched.run(["+43+005/BI14/pack"]))
@@ -715,7 +734,7 @@ def test_the_pack_records_the_colours_its_textures_are_encoded_with(
         (out / "terrain").mkdir()
 
     dsf = _artefact_dir(env.store, "tile.dsf", "33" * 32, fill_dsf)
-    inputs = {"dsf": dsf, "textures": _no_images(env.store), "overlay": None}
+    inputs = {"dsf": dsf, "textures": _no_images(env.store), "overlay": None, "night": None}
     sched = _sched(env)
     sched.add(Node(g.pack.id, TILE_PACK, params, inputs, kind="io", run=pack_run))
     refs = asyncio.run(sched.run([g.pack.id]))
@@ -756,7 +775,7 @@ def test_a_pack_x_plane_shows_is_not_rewritten_in_its_place_while_x_plane_runs(
         (out / "terrain").mkdir()
 
     dsf = _artefact_dir(env.store, "tile.dsf", "34" * 32, fill_dsf)
-    inputs = {"dsf": dsf, "textures": _no_images(env.store), "overlay": None}
+    inputs = {"dsf": dsf, "textures": _no_images(env.store), "overlay": None, "night": None}
     sched = _sched(env)
     sched.add(Node(g.pack.id, TILE_PACK, params, inputs, kind="io", run=pack_run))
     asyncio.run(sched.run([g.pack.id]))

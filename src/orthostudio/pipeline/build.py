@@ -95,6 +95,7 @@ from orthostudio.meter import counting
 from orthostudio.model import OVERLAY_PACK, ArtifactRef, TileRef
 from orthostudio.overlays import OverlayExclusions, build_overlay_detailed, find_dsftool
 from orthostudio.overlays.source import resolve_global_scenery_dir
+from orthostudio.pipeline import night as night_rules
 from orthostudio.pipeline.filing import (
     OLD_SUFFIX,
     PART_SUFFIX,
@@ -1359,6 +1360,8 @@ class TileNodes:
     stages: StageChoice = field(default_factory=StageChoice)
     osm: Node | None = None
     """The tile's OSM download, when the graph downloads it (a stored snapshot is an input)."""
+    night: Node | None = None
+    """Its night textures, when they are asked for (``night_textures``)."""
 
     @property
     def target(self) -> Node:
@@ -1366,7 +1369,8 @@ class TileNodes:
 
     def all(self) -> list[Node]:
         nodes = [self.vectors, self.mesh, self.masks, self.dsf, self.textures, self.pack]
-        for n in (self.osm, self.dem, self.coastline, self.xp12, self.overlay, self.install):
+        others = (self.osm, self.dem, self.coastline, self.xp12, self.overlay, self.install)
+        for n in (*others, self.night):
             if n is not None:
                 nodes.append(n)
         return nodes
@@ -1383,6 +1387,7 @@ class TileNodes:
             "xp12": self.xp12,
             "dsf": self.dsf,
             "textures": self.textures,
+            "night": self.night,
             "overlay": self.overlay,
             "pack": self.pack,
             "install": self.install,
@@ -1834,6 +1839,25 @@ def _masks_run(env: BuildEnv, params: OsxpMasksParams) -> Callable[[NodeContext]
     return run
 
 
+def night_workers(env: BuildEnv) -> int:
+    """Processes the night textures of a tile are drawn by (:func:`pool_workers`)."""
+    return pool_workers(
+        env,
+        min(night_rules.MAX_WORKERS, env.workers),
+        share=night_rules.BUDGET_SHARE,
+        base_mb=night_rules.BASE_MB,
+        worker_mb=night_rules.WORKER_MB,
+    )
+
+
+def _night_run(env: BuildEnv, workers: int) -> Callable[[NodeContext], Any]:
+    def run(ctx: NodeContext) -> ArtifactRef:
+        with _active_env(env, ctx), night_rules.night_job(workers):
+            return run_p0_rule(ctx)
+
+    return run
+
+
 def _mesh_run(env: BuildEnv) -> Callable[[NodeContext], Any]:
     """Bind the mesh job so that Triangle4XP can be interrupted (review 4, finding C4) and a
     compacted cache gets no text of the mesh, and say when the mesh reached its triangle budget
@@ -1903,6 +1927,8 @@ def built_facts(spec: BuildSpec) -> dict[str, Any]:
         facts["imagery_credit"] = source.attribution
     if source is not None and source.licence:
         facts["imagery_licence"] = source.licence
+    if spec.config.get("night_textures"):  # built again from the Library, it keeps them
+        facts["night_textures"] = True
     return facts
 
 
@@ -2227,10 +2253,19 @@ def dem_declaration(
             "installer (or give --global-scenery / --xplane), or build with --relief view.",
         )
     params["custom_dem"] = f"{XP12_SOURCE};{overlays}" if overlays else XP12_SOURCE
-    for name, (dlat, dlon) in XP12_INPUTS.items():
-        lat = spec.tile.lat + dlat
-        inputs[name] = global_source(spec.tile.neighbour(dlat, dlon)) if -90 <= lat < 90 else None
+    inputs.update(xp12_block(spec.tile, global_source))
     return _stamp_own_file(params, spec), inputs
+
+
+def xp12_block(
+    tile: TileRef, global_source: Callable[[TileRef], ArtifactRef | None]
+) -> dict[str, ArtifactRef | None]:
+    """X-Plane's Global Scenery DSF of the tile and of each square round it (``XP12_INPUTS``):
+    None past a pole, or where X-Plane has none."""
+    return {
+        name: global_source(tile.neighbour(dlat, dlon)) if -90 <= tile.lat + dlat < 90 else None
+        for name, (dlat, dlon) in XP12_INPUTS.items()
+    }
 
 
 LAID_IN = "2"
@@ -2643,6 +2678,7 @@ def declare(
     out: list[TileNodes] = []
     pack_dirs: dict[tuple[str, str], tuple[BuildSpec, Node, Node]] = {}
     stored_meshes: dict[str, ArtifactRef] | None = None
+    night_lum = night_rules.luminance()  # Live's strength, which the night textures are named at
     for spec, cfg, choice, vectors, mesh, dem, coast, osm in zip(
         specs,
         configs,
@@ -2755,6 +2791,19 @@ def declare(
             ram_mb=_photos_ram_mb(env),
             run=_textures_run(env),
         )
+        night: Node | None = None
+        if cfg.get("night_textures"):
+            workers = night_workers(env)
+            night = reg.node(
+                f"{name}/{spec.level}/night",
+                night_rules.TILE_NIGHT,
+                night_rules.NightParams(tile=name),
+                # X-Plane's roads of the square and round it: a photo on the edge takes both
+                {"dsf": dsf, **xp12_block(tile, global_source)},
+                kind="subprocess",
+                ram_mb=night_rules.BASE_MB + night_rules.WORKER_MB * workers,
+                run=_night_run(env, workers),
+            )
         out_dir = str(Path(spec.out_dir).expanduser().resolve())
         _refuse_pack_dir_conflict(pack_dirs, spec, out_dir, dsf, textures)
         decal, decal_on_sea = _pack_decals(cfg)
@@ -2775,8 +2824,9 @@ def declare(
                 tile_cfg=tile_cfg_text(cfg),
                 decal=decal,
                 decal_on_sea=decal_on_sea,
+                night_lum=night_lum if night is not None else 0,
             ),
-            {"dsf": dsf, "textures": textures, "overlay": overlay},
+            {"dsf": dsf, "textures": textures, "overlay": overlay, "night": night},
             kind="io",
             run=_pack_run(env, spec),
         )
@@ -2817,6 +2867,7 @@ def declare(
                 coastline=coast,
                 stages=choice,
                 osm=osm,
+                night=night,
             )
         )
     reg.register()
@@ -2987,7 +3038,8 @@ def pool_workers(env: BuildEnv, most: int, *, share: int, base_mb: int, worker_m
     """The processes a step's pool starts: ``most`` at the most, as many as ``1 / share`` of the
     RAM budget holds beside the step's own ``base_mb``, at ``worker_mb`` each, one at least;
     ``most`` when the system does not say how much memory it has. One rule for the images'
-    encoders (:func:`photos_workers`) and the masks' workers (:func:`masks_workers`)."""
+    encoders (:func:`photos_workers`), the masks' workers (:func:`masks_workers`) and the night's
+    (:func:`night_workers`)."""
     budget = ram_budget_mb(env.memory_share)
     if budget is None:
         return max(1, most)
@@ -3554,6 +3606,8 @@ def _assemble_again(
         dsf=_resolved("dsf", refs["dsf"]),
         textures=_resolved("textures", refs.get("textures")),
         overlay=_resolved("overlay", refs.get("overlay")),
+        night=_resolved("night", refs.get("night")),
+        night_lum=params.night_lum,
         link=spec.link,
         tile_cfg=params.tile_cfg,
         photo={

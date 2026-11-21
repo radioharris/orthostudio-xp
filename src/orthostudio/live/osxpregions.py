@@ -612,6 +612,85 @@ def disk_need(path: Path) -> int:
         return sum(-(-i.file_size // BLOCK) * BLOCK for i in zf.infolist() if not i.is_dir())
 
 
+def fetch_zip(
+    client,
+    url: str,
+    z: Zip,
+    path: Path,
+    add: Callable[[int], None] = lambda n: None,
+    stop: threading.Event | None = None,
+) -> Path:
+    """``z`` whole at ``path``, resumed where an earlier try stopped, checked; ``add`` told each
+    byte that comes (or goes, a part thrown away)."""
+    import httpx
+
+    for attempt in range(ATTEMPTS):
+        have = path.stat().st_size if path.exists() else 0
+        if have > z.size:
+            path.unlink()
+            add(-have)
+            have = 0
+        if have == z.size:
+            break
+        try:
+            headers = {"Range": f"bytes={have}-"} if have else {}
+            with client.stream("GET", f"{url}/{z.path}", headers=headers) as r:
+                if r.status_code == 200 and have:  # the range was not honoured
+                    add(-have)
+                    have = 0
+                elif r.status_code == 401:
+                    raise InstallError("the host refused Live's key: a newer Live has another")
+                elif r.status_code in PASSING:
+                    r.raise_for_status()  # an httpx.HTTPError: tried again below
+                elif r.status_code not in (200, 206):
+                    raise InstallError(f"{z.local}: {_answered(r.status_code)}")
+                with open(path, "ab" if have else "wb") as f:
+                    for chunk in r.iter_bytes():  # as it comes: a cut loses nothing
+                        if stop is not None and stop.is_set():
+                            raise CancelledError
+                        f.write(chunk)
+                        add(len(chunk))
+        except (httpx.HTTPError, OSError) as e:
+            # the line, or on Windows a file held a moment (fsutil's rule): tried again; the
+            # disk otherwise would refuse again
+            again = isinstance(e, httpx.HTTPError) or (WINDOWS and isinstance(e, PermissionError))
+            if not again or attempt == ATTEMPTS - 1:
+                raise InstallError(f"{z.local}: {_why(e)}") from e
+            _pause(attempt)
+    size = path.stat().st_size
+    if size != z.size:
+        raise InstallError(f"{z.local} arrived incomplete ({size} of {z.size} bytes)")
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        while block := f.read(CHUNK):
+            h.update(block)
+    if h.hexdigest() != z.sha256:
+        path.unlink()
+        add(-size)
+        raise InstallError(f"{z.local} arrived damaged: it is downloaded again the next time")
+    return path
+
+
+def night_grids(region: str, dest: Path) -> None:
+    """The night lights' grids of ``region`` downloaded into ``dest`` (``<square>.png`` each), the
+    list of the regions kept there too."""
+    import tempfile
+
+    url, token = shipped_host()
+    if not url:
+        raise InstallError("this build carries no address for Live's downloads")
+    found = catalog(dest).get(region)
+    if found is None:
+        return
+    dest.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=dest, prefix=".fetch-") as tmp, _client(token) as client:
+        for z in found.night:
+            unpacked = Path(tmp) / z.download
+            unpack(fetch_zip(client, url, z, Path(tmp) / z.name), unpacked)
+            for png in unpacked.rglob("*.png"):
+                replace_file(png, dest / png.name)
+
+
 def unpack(path: Path, dest: Path, stop: threading.Event | None = None) -> int:
     """A zip's files into ``dest``, its top folder taken off; each written beside its place and
     renamed onto it whole, so that a stop leaves the file of before or the new one, never half of
@@ -1708,57 +1787,10 @@ class Installer:
         return total
 
     def _fetch(self, z: Zip) -> Path:
-        """``z`` whole in the download folder, resumed where an earlier try stopped, checked."""
-        import httpx
-
-        path = self.download / z.download
-        for attempt in range(ATTEMPTS):
-            have = path.stat().st_size if path.exists() else 0
-            if have > z.size:
-                path.unlink()
-                self._add(-have)
-                have = 0
-            if have == z.size:
-                break
-            try:
-                headers = {"Range": f"bytes={have}-"} if have else {}
-                with self.client.stream("GET", f"{self.host[0]}/{z.path}", headers=headers) as r:
-                    if r.status_code == 200 and have:  # the range was not honoured
-                        self._add(-have)
-                        have = 0
-                    elif r.status_code == 401:
-                        raise InstallError("the host refused Live's key: a newer Live has another")
-                    elif r.status_code in PASSING:
-                        r.raise_for_status()  # an httpx.HTTPError: tried again below
-                    elif r.status_code not in (200, 206):
-                        raise InstallError(f"{z.local}: {_answered(r.status_code)}")
-                    with open(path, "ab" if have else "wb") as f:
-                        for chunk in r.iter_bytes():  # as it comes: a cut loses nothing
-                            if self.stop.is_set():
-                                raise CancelledError
-                            f.write(chunk)
-                            self._add(len(chunk))
-            except (httpx.HTTPError, OSError) as e:
-                # the line, or on Windows a file held a moment (fsutil's rule): tried again; the
-                # disk otherwise would refuse again
-                again = isinstance(e, httpx.HTTPError) or (
-                    WINDOWS and isinstance(e, PermissionError)
-                )
-                if not again or attempt == ATTEMPTS - 1:
-                    raise InstallError(f"{z.local}: {_why(e)}") from e
-                _pause(attempt)
-        size = path.stat().st_size
-        if size != z.size:
-            raise InstallError(f"{z.local} arrived incomplete ({size} of {z.size} bytes)")
-        h = hashlib.sha256()
-        with open(path, "rb") as f:
-            while block := f.read(CHUNK):
-                h.update(block)
-        if h.hexdigest() != z.sha256:
-            path.unlink()
-            self._add(-size)
-            raise InstallError(f"{z.local} arrived damaged: it is downloaded again the next time")
-        return path
+        """``z`` whole in the download folder (:func:`fetch_zip`)."""
+        return fetch_zip(
+            self.client, self.host[0], z, self.download / z.download, self._add, self.stop
+        )
 
     def _rivers_done(self, folder: Path) -> None:
         """The river stage marked whole once it holds every river zip of the list: its zips, and

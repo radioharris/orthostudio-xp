@@ -8073,6 +8073,8 @@ def test_the_tiles_picked_are_built_again_as_the_plan_would_build_them() -> None
           { tile: "+45+006", provider: "BI", zl: 16, installed: true, path: "/a/z3" },
           { tile: "+45+006", provider: "BI", zl: 16, installed: false, path: "/b/z3" },
           { tile: "+44+006", provider: "GO2", zl: 18, installed: false, path: "/a/z4" },
+          { tile: "+43+006", provider: "BI", zl: 16, installed: false, path: "/a/z5",
+            built: { facts: { night_textures: true } } },
         ];
         const reqs = m.rebuildRequests(rows);
         const plan = (mb, need, free) => ({ network: { mb },
@@ -8094,11 +8096,18 @@ def test_the_tiles_picked_are_built_again_as_the_plan_would_build_them() -> None
             "install": False,
         },
         {"tiles": ["+44+006"], "provider": "GO2", "zoom_level": 18, "install": False},
+        {  # a tile built with night textures keeps them
+            "tiles": ["+43+006"],
+            "provider": "BI",
+            "zoom_level": 16,
+            "overrides": {"night_textures": True},
+            "install": False,
+        },
     ]
-    assert got["q"]["title"] == "Build 4 tile(s) again?"
+    assert got["q"]["title"] == "Build 5 tile(s) again?"
     assert got["q"]["body"] == [
-        "Each tile keeps its imagery source and zoom level; zones, colours and settings are "
-        "today's, as in the Plan. What the data folder already holds is reused.",
+        "Each tile keeps its imagery source, zoom level and night textures; zones, colours and "
+        "settings are today's, as in the Plan. What the data folder already holds is reused.",
         "To download: 1.22 GB. On disk: about 4.5 GB to write, 200 GB free.",
         "3 tile(s) in X-Plane stay in it, updated; the others do not go in.",
     ]

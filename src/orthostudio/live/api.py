@@ -424,6 +424,13 @@ def live_router(
             save_settings(settings)
         except (OSError, SettingsFileError) as e:
             raise HTTPException(500, f"the settings could not be saved: {e}") from e
+        from orthostudio.pipeline.night import library_strength, luminance
+
+        lum = luminance(settings)
+        if lum != luminance(before):
+            tiles = library_strength(lum)
+            if tiles:
+                control.log(f"the night lights of {tiles} of your own tiles follow Live's")
         if settings.own_tiles != before.own_tiles:  # Live's line once above or below the tiles
             try:
                 move_live(session.xplane_dir(None), settings.own_tiles)

@@ -98,6 +98,7 @@ OSXP_PARAMETERS: dict[str, TileParameter] = {
     "flatten_helipads": TileParameter(bool, True),
     "road_smoothing": TileParameter(int, 0),
     "rounded_road_ends": TileParameter(bool, False),
+    "night_textures": TileParameter(bool, False),
     "own_relief_first": TileParameter(bool, False),
     "photo_brightness": TileParameter(float, 0.0),
     "photo_contrast": TileParameter(float, 0.0),
