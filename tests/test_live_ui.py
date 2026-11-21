@@ -658,6 +658,7 @@ async def test_the_page_and_its_api(home: Path, monkeypatch: pytest.MonkeyPatch)
         assert (await client.put("/api/live/settings", json={"night_light": "soft"})).is_success
         assert (await client.put("/api/live/settings", json={"night_light": "soft"})).is_success
         assert (await client.put("/api/live/settings", json={"night": False})).is_success
+        assert (await client.put("/api/live/settings", json={"night_light": "strong"})).is_success
         assert (await client.put("/api/live/settings", json={"disk_gb": 80})).is_success
         assert given == [12, 0]  # Live's soft, then its lights off
 

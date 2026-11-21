@@ -799,7 +799,9 @@ class NightWork:
         square made meanwhile named it all the same (discussion 37). Its day file gone, read
         from the disk then, its name goes where its land ``.ter`` is gone, else with it
         (:attr:`day_gone`)."""
-        from .names import NightPool, night_name
+        from orthostudio.textures.ter import night_name
+
+        from .names import NightPool
         from .region import NIGHT_FOLDER
 
         path = self.pack_dir / NIGHT_FOLDER / night_name(name)

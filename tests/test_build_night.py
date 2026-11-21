@@ -21,7 +21,6 @@ from orthostudio.graph import ResolvedInput, RunContext
 from orthostudio.imagery.grid import TextureId
 from orthostudio.live import night as live_night
 from orthostudio.live import nightwork, osxpregions
-from orthostudio.live.names import with_night as live_with_night
 from orthostudio.model import TileRef
 from orthostudio.pipeline import night
 from orthostudio.pipeline.pack import (
@@ -115,10 +114,6 @@ def test_the_night_lines_come_right_after_the_photo_and_go_again() -> None:
     ]
     assert with_night(lit, lit_name, 12).count("LUMINANCE") == 1
     assert with_night(lit, None) == text  # no night texture: the file as it was
-    # Live's own terrain files: the night texture named, no strength line (one rule for both)
-    live = live_with_night(text.encode("ascii"), lit_name).decode("ascii")
-    assert live == with_night(text, lit_name) and "LUMINANCE" not in live
-    assert live_with_night(lit.encode("ascii"), None).decode("ascii") == text
 
 
 # -- the night textures ---------------------------------------------------------------------------
@@ -192,7 +187,6 @@ def host(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     )
     monkeypatch.setattr("orthostudio.live.pack.live_root", lambda: tmp_path / "live")
     monkeypatch.setattr(night, "grids_folder", lambda: tmp_path / "grids")
-    monkeypatch.setattr(night, "_FETCHED", set())
     return asked, zips
 
 

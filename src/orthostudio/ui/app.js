@@ -7486,9 +7486,9 @@ async function stopFiling() {
 // -- tiles built again from the Library (2026-10-15) ---------------------------------------------
 
 /** The builds that make the tiles picked again, as the Plan's *Build* would ask for them: one per
- * imagery source (a build has one) and per night textures, which a tile built with keeps, each
- * tile at its own level (the most common one is the build's,
- * the others go in `tiles_zl`), none installed: a tile X-Plane shows is built again in its own
+ * imagery source (a build has one) and per night choice (a tile built with night textures keeps
+ * them), each tile at its own level (the most common one is the build's, the others go in
+ * `tiles_zl`), none installed: a tile X-Plane shows is built again in its own
  * folder, which X-Plane keeps showing, and one it does not show stays out (one build per "put back
  * in X-Plane" made two builds of two tiles, 2026-10-15). Zones, colours and settings are left to
  * the engine, which takes today's as for a Plan: rebuilding tiles spread far apart from the Plan was

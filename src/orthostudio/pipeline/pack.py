@@ -428,7 +428,7 @@ def write_pack(
     ``tile_settings.cfg``. ``decal``, when given, is written in the terrain files of the land,
     and of the sea with ``decal_on_sea`` (``with_decal``); the DSF artefact's have none.
     ``night_dir`` holds the night textures (``textures_night/``), each named by its land terrain
-    file at ``night_lum`` (``with_night``); without, a pack's night textures of before go.
+    file at ``night_lum`` (``with_night_of``); without, a pack's night textures of before go.
 
     Nothing of the pack is touched before every source is found, and nothing is removed before
     every file is in place: a source folder missing, or an image its textures folder lists
@@ -774,7 +774,7 @@ def assemble_pack(
     night: ResolvedInput = NO_NIGHT,
     night_lum: int = 0,
 ) -> tuple[PackManifest, PackFiles]:
-    """Write the pack from the three inputs and build its manifest (upstream keys from the
+    """Write the pack from the four inputs and build its manifest (upstream keys from the
     store's provenance edges of the DSF artefact). A DSF missing stops it, as a textures folder
     missing does in :func:`write_pack`, before anything is written."""
     if dsf.path is None or dsf.key is None:

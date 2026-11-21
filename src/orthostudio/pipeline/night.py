@@ -23,6 +23,7 @@ from multiprocessing import get_context
 from pathlib import Path
 from typing import Any
 
+from orthostudio.dem.rule import xp12_dsfs_of
 from orthostudio.dem.xplane import XP12_INPUTS
 from orthostudio.errors import OsxpError
 from orthostudio.fsutil import atomic_write_bytes
@@ -51,7 +52,6 @@ BUDGET_SHARE = 2
 
 _WORKERS: ContextVar[int] = ContextVar("night_workers", default=1)
 _FETCHING = threading.Lock()
-_FETCHED: set[tuple[Path, str]] = set()  # (folder, region): the grids this process downloaded
 
 
 @contextlib.contextmanager
@@ -100,8 +100,8 @@ def find_grid(tile: TileRef) -> Path | None:
 
 
 def grid_of(tile: TileRef) -> Path | None:
-    """The square's grid; where none is here, its region's downloaded, once a process; None for a
-    square of no region (the open sea)."""
+    """The square's grid; where none is here, its region's downloaded once into the data folder;
+    None for a square without one (the open sea)."""
     from orthostudio.live import osxpregions
     from orthostudio.live.aoregions import InstallError
     from orthostudio.live.meshmap import region_of
@@ -109,15 +109,16 @@ def grid_of(tile: TileRef) -> Path | None:
     with _FETCHING:  # the squares of a batch: their region's grids downloaded once
         found = find_grid(tile)
         region = region_of(tile.lat + 0.5, tile.lon + 0.5)
-        fetched = (grids_folder(), region or "")
-        if found is None and region is not None and fetched not in _FETCHED:
+        folder = grids_folder()
+        done = folder / f".{region}.done"  # its region's grids are all there
+        if found is None and region is not None and not done.exists():
             try:
-                osxpregions.night_grids(region, grids_folder())
+                osxpregions.night_grids(region, folder)
+                done.touch()
             except (InstallError, osxpregions.CatalogError, OSError) as exc:
                 raise OsxpError(
                     "TEX_NIGHT_GRIDS_FAILED", context={"region": region, "reason": str(exc)}
                 ) from exc
-            _FETCHED.add(fetched)
             found = find_grid(tile)
     return found
 
@@ -142,18 +143,14 @@ def _tile_night(ctx: RunContext) -> None:
     params = ctx.params
     assert isinstance(params, NightParams)
     tile = TileRef.parse(params.tile)
-    roads: dict[tuple[int, int], str] = {}
-    for name, (dlat, dlon) in XP12_INPUTS.items():
-        if ctx.inputs[name].path is not None:
-            square = tile.neighbour(dlat, dlon)
-            roads[(square.lat, square.lon)] = str(ctx.input_path(name))
+    roads = xp12_dsfs_of(ctx, tile)
     grid = grid_of(tile)
     work = ctx.scratch / "night"
     jobs = []
     for name in land_textures(ctx.input_path("dsf")):
         tex = parse_texture_name(name)
         if tex is not None:
-            dsfs = [roads[sq] for sq in sorted(tiles_of(tex)) if sq in roads]
+            dsfs = [str(roads[sq]) for sq in sorted(tiles_of(tex)) if sq in roads]
             jobs.append((str(work), name, dsfs, str(grid) if grid else None))
     workers = min(_WORKERS.get(), max(1, len(jobs)))
     if workers == 1:
