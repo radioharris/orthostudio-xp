@@ -278,7 +278,7 @@
         </fieldset>
         <p class="question-help" data-i18n="regions.ours_source"></p>
         <div class="sub-question">
-          <label class="sub-question-title" for="set-other-mesh" data-i18n="other_mesh.title">Another tool's mesh</label>
+          <label class="sub-question-title" for="set-other-mesh" data-i18n="other_mesh.title">Other meshes</label>
           <p class="question-help" data-i18n="other_mesh.help"></p>
           <!-- a folder typed, then Enter, or chosen: added at the bottom of the list -->
           <div class="path-row">
@@ -287,10 +287,11 @@
             <button type="button" class="btn" id="other-mesh-choose" data-i18n="folder.choose">Choose…</button>
           </div>
           <p class="question-help is-warn" id="other-mesh-error" role="alert" hidden></p>
-          <!-- the folders, top first, the first that has a square giving it (LiveSettings.other_meshes) -->
-          <ul class="regions other-meshes" id="other-meshes" hidden></ul>
-          <!-- how to put squares in front of Live on its map (LiveSettings.other_mesh_front) -->
-          <p class="question-help" id="other-mesh-front" hidden></p>
+          <!-- the folders, top first, the first that has a square giving it (LiveSettings.other_meshes),
+               a box each (live.js drawOtherMeshes) -->
+          <ul class="other-meshes" id="other-meshes" hidden></ul>
+          <!-- what holds for the whole list, a line each (live.js otherFrontSaid) -->
+          <p class="question-help other-mesh-foot" id="other-mesh-front" hidden></p>
         </div>
       </fieldset>
 

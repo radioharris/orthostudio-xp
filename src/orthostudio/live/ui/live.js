@@ -569,40 +569,57 @@ function drawFolder(status) {
   drawOtherMeshes(status.checks.other_meshes);
 }
 
-/** What a folder of another tool's mesh gives Live, its line in the list, every fact the
- *  engine's (orthostudio.live.scenery.other_mesh_said), nothing guessed here: how many squares it
- *  gives and how many of them are in front of Live, then its meshes, its roads, those left aside
- *  and why; or why Live takes none of its meshes (unused): not there, no mesh Live can use,
- *  folders higher in the list giving all its squares, or the squares it gives all behind Live's
- *  mesh, the normal case of a mesh put in front of Live square by square. A warning only for a
- *  folder Live cannot use. [text, warn] */
+/** Why Live takes none of a folder's meshes (the engine's ``unused``), said under its path. */
+const OTHER_UNUSED = { gone: "other_mesh.gone", no_mesh: "other_mesh.none", above: "other_mesh.above", behind: "other_mesh.behind" };
+/** The packs left aside that the pilot may have meant, said under the path; the others (a region
+ *  Live has already, ground with no photos to lay) only in the name's hover. */
+const OTHER_ACT_ON = new Set(["photos", "no_terrain", "unreadable"]);
+
+/** Packs left aside, a few by name and why, the rest counted: X-Plane's folder chosen lists every
+ *  tile of Custom Scenery. Null: none. */
+function leftAside(refused) {
+  if (!refused.length) return null;
+  const shown = refused.slice(0, 5);
+  const names = shown.map((r) => `${r.name} (${t(`other_mesh.why_${r.why}`)})`).join(", ");
+  const more = refused.length - shown.length;
+  return more ? t("other_mesh.refused_more", { names, count: more }) : t("other_mesh.refused", { names });
+}
+
+/** What a folder of another tool's mesh gives Live, its box in the list, every fact the engine's
+ *  (orthostudio.live.scenery.other_mesh_said), nothing guessed here. Beside its name (count), how
+ *  many squares it gives and how many of them are in front of Live, nothing when it gives none.
+ *  Under its path (note), only what the pilot acts on: why Live takes none of its meshes (not
+ *  there, no mesh Live can use, folders higher in the list giving all its squares, or the squares
+ *  it gives all behind Live's mesh, the normal case of a mesh put in front of Live square by
+ *  square), and the packs left aside he may have meant. In its name's hover (title), its name,
+ *  the meshes and roads it gives, and every pack left aside. A warning only for a folder Live
+ *  cannot use. {count, note, warn, title} */
 export function otherMeshSaid(f) {
-  if (f.unused === "gone") return [t("other_mesh.gone"), true];
   const front = number(f.front.length);
-  const counted = f.squares === 1 ? t("other_mesh.squares_one", { front }) : t("other_mesh.squares", { n: number(f.squares), front });
-  const said = f.squares ? [counted] : [];
-  if (f.unused === "above") return [[...said, t("other_mesh.above")].join(" "), false];
-  if (f.unused === "behind") return [[...said, t("other_mesh.behind")].join(" "), false];
-  if (f.unused === "no_mesh") said.push(t("other_mesh.none"));
-  else {
-    said.push(t(f.next_start ? "other_mesh.meshes_next" : "other_mesh.meshes", { names: f.meshes.join(", ") }));
-    said.push(f.overlays.length ? t("other_mesh.overlays", { names: f.overlays.join(", ") }) : t("other_mesh.no_roads"));
+  let count = "";
+  if (f.squares === 1) count = t("other_mesh.squares_one", { front });
+  else if (f.squares) count = t("other_mesh.squares", { n: number(f.squares), front });
+  const hover = [f.name];
+  if (f.meshes.length) {
+    hover.push(t(f.next_start ? "other_mesh.meshes_next" : "other_mesh.meshes", { names: f.meshes.join(", ") }));
+    hover.push(f.overlays.length ? t("other_mesh.overlays", { names: f.overlays.join(", ") }) : t("other_mesh.no_roads"));
   }
-  if (f.refused.length) {
-    // a few, the rest counted: X-Plane's folder chosen lists every tile of Custom Scenery
-    const shown = f.refused.slice(0, 5);
-    const names = shown.map((r) => `${r.name} (${t(`other_mesh.why_${r.why}`)})`).join(", ");
-    const more = f.refused.length - shown.length;
-    said.push(more ? t("other_mesh.refused_more", { names, count: more }) : t("other_mesh.refused", { names }));
-  }
-  return [said.join(" "), f.unused === "no_mesh"];
+  hover.push(leftAside(f.refused));
+  const unused = OTHER_UNUSED[f.unused];
+  const note = [unused && t(unused), leftAside(f.refused.filter((r) => OTHER_ACT_ON.has(r.why)))];
+  return {
+    count,
+    note: note.filter(Boolean).join(" "),
+    warn: f.unused === "gone" || f.unused === "no_mesh",
+    title: hover.filter(Boolean).join("\n"),
+  };
 }
 
 /** The folders of other tools' meshes, top first, the first that has a square giving it
- *  (orthostudio/live/control.py _other_meshes_said): a line each, its name, its path, what it
- *  gives, and its buttons, each saved by the engine in one place (otherAct); under them, how to
- *  put a square in front of Live on its map. Drawn again only when they change: a button keeps
- *  its click. */
+ *  (orthostudio/live/control.py _other_meshes_said): a box each, its name, what it gives and its
+ *  ↑ ↓ on a line, its path under them, what the pilot acts on, then its three buttons, each saved
+ *  by the engine in one place (otherAct); under them, what holds for the whole list. Drawn again
+ *  only when they change: a button keeps its click. */
 function drawOtherMeshes(other) {
   const list = $("other-meshes");
   const folders = other?.folders || [];
@@ -614,40 +631,40 @@ function drawOtherMeshes(other) {
   list.replaceChildren(...folders.map((f, i) => {
     const act = (name, body = {}) => () => otherAct(name, { folder: f.folder, ...body });
     const none = !f.squares; // the squares it gives, the engine's count: none to put in front or back
-    const [text, warn] = otherMeshSaid(f);
-    return h("li", { class: "region other-mesh" },
-      h("div", { class: "region-head" },
-        h("div", { class: "region-label" }, h("span", { class: "region-name" }, f.name)),
-        h("div", { class: "region-actions" },
-          regionButton(t("other_mesh.all_front"), act("all", { front: true }), { disabled: none }),
-          regionButton(t("other_mesh.all_behind"), act("all", { front: false }), { disabled: none }),
-          regionButton(t("other_mesh.remove"), act("remove"), { title: t("other_mesh.remove_help") }),
+    const said = otherMeshSaid(f);
+    return h("li", { class: "other-mesh" },
+      h("div", { class: "other-mesh-head" },
+        h("span", { class: "other-mesh-name", title: said.title }, f.name),
+        said.count ? h("span", { class: "other-mesh-count" }, said.count) : null,
+        h("span", { class: "other-mesh-order" },
           regionButton("↑", act("move", { up: true }), { disabled: i === 0, title: t("other_mesh.up") }),
           regionButton("↓", act("move", { up: false }), { disabled: i === folders.length - 1, title: t("other_mesh.down") }))),
-      h("p", { class: "region-state" }, f.folder), // under its name and its buttons, the row's width
-      h("p", { class: warn ? "region-state is-warn" : "region-state" }, text));
+      h("p", { class: "other-mesh-path", title: f.folder }, f.folder),
+      said.note ? h("p", { class: said.warn ? "other-mesh-note is-warn" : "other-mesh-note" }, said.note) : null,
+      h("div", { class: "other-mesh-actions" },
+        regionButton(t("other_mesh.all_front"), act("all", { front: true }), { disabled: none }),
+        regionButton(t("other_mesh.all_behind"), act("all", { front: false }), { disabled: none }),
+        regionButton(t("other_mesh.remove"), act("remove"), { title: t("other_mesh.remove_help") })));
   }));
 }
 
-/** Under the list: how to put a square of these meshes in front of Live on its map, and whether
- *  the squares in front wait for Live's next start, while a folder gives a square (its count, the
- *  engine's); while a folder is not there and a square in front comes from no folder there
- *  (front_unseen, the engine's count), that its Remove leaves its squares in front of Live, Live
- *  not knowing which it gave (orthostudio/live/api.py other_remove). Empty: nothing to say. */
+/** Under the list, a line each: with two folders or more, that the higher one gives a square
+ *  both have; that a change waits for Live's next start; while a folder is not there and a square
+ *  in front comes from no folder there (front_unseen, the engine's count), that its Remove leaves
+ *  its squares in front of Live, Live not knowing which it gave (orthostudio/live/api.py
+ *  other_remove). Empty: no folder. */
 export function otherFrontSaid(other) {
   const folders = other?.folders || [];
   const said = [];
-  if (folders.some((f) => f.squares > 0)) {
-    said.push(t("other_mesh.front_how"));
-    if (other.front_next) said.push(t("other_mesh.front_next"));
-  }
+  if (folders.length > 1) said.push(t("other_mesh.higher_wins"));
+  if (folders.length) said.push(t("other_mesh.next_start"));
   if (other?.front_unseen > 0 && folders.some((f) => f.unused === "gone")) said.push(t("other_mesh.gone_remove"));
-  return said.join(" ");
+  return said;
 }
 
 function drawOtherFront(other) {
   const line = $("other-mesh-front");
-  line.textContent = otherFrontSaid(other);
+  line.textContent = otherFrontSaid(other).join("\n"); // a line each (live.css)
   line.hidden = !line.textContent;
 }
 

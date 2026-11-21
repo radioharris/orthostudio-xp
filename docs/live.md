@@ -502,9 +502,9 @@ A region AutoOrtho installed on its own is still recognised, and left as it is; 
 offers to install AutoOrtho's. In a terminal, `python -m orthostudio.live regions list`,
 `regions install eur` and `regions remove eur` still handle AutoOrtho's regions.
 
-**Another tool's mesh.** A mesh in AutoOrtho's format kept outside X-Plane, the copy another
+**Other meshes.** A mesh in AutoOrtho's format kept outside X-Plane, the copy another
 streamer downloads or AutoOrtho's own pack moved out of `Custom Scenery`, can stand in where Live
-has no other mesh: under "Another tool's mesh", type its folder then Enter, or click **Choose…**.
+has no other mesh: under "Other meshes", type its folder then Enter, or click **Choose…**.
 It goes at the bottom of the list, saved at once; add as many folders as you have. Live looks at the
 packs in each, down to three folders below, whatever their names, and tells ground from overlays as
 X-Plane does. Ground whose terrain files name photos is a mesh; Live leaves aside a tile that has
@@ -513,11 +513,16 @@ own regions), and a copy of a region it already has (AutoOrtho's Europe in X-Pla
 of it there). As its roads, forests and buildings it takes X-Plane's own, the overlays AutoOrtho's
 pack holds: of those packs, the one that covers most of the folder's mesh, copies included. An
 airport, simHeaven, a Landmark or Global Forests lying in the same folder is not taken, and a mesh
-moved without its roads has none from there. Each folder has a line in the list: its name and its
-path, how many squares it gives (not those a folder higher in the list has) and how many of them are
-in front of Live, what it uses and what it leaves aside, that it takes no roads from the folder
-(chosen one folder too deep, say), or that the folder is not there (a disk unplugged). Choose the folder that holds both the mesh and its
-roads: for AutoOrtho's pack moved, the one holding `z_autoortho` and `yAutoOrtho_Overlays`. The
+moved without its roads has none from there. Each folder has a box in the list: its name, how many
+squares it gives (not those a folder higher in the list has) and how many of them are in front of
+Live ("37 squares · 1 in front"), **↑** and **↓**; its path under them; then only what calls for
+you: the folder not there (a disk unplugged), no mesh Live can use, no square given or all of them
+behind Live's mesh, and a tile with its photos, a pack without terrain files or one that cannot be
+read, left aside; then its buttons. Pointing at its name tells what it uses, its roads or that it
+takes none from the folder (chosen one folder too deep, say), and every pack it leaves aside. Under
+the list, with two folders or more: "The higher folder wins where two share a square."; then
+"Changes apply at Live's next start, X-Plane closed." Choose the folder that holds both the mesh
+and its roads: for AutoOrtho's pack moved, the one holding `z_autoortho` and `yAutoOrtho_Overlays`. The
 same folder is not added twice: written another way (with `~`, a slash more), reached through a
 link, or, on a Mac, in other capitals; a folder whose disk is unplugged is told apart by how it is
 written alone.
@@ -533,8 +538,8 @@ that is not there gives no square, so Live cannot know which of the squares in f
 its **Remove** leaves them in front of Live, and the text under the list says so while one of the
 squares in front comes from no folder there; plug its disk in first to put them back behind Live.
 Nothing in those folders is changed. Their meshes and their roads are taken at Live's start, and
-kept until the next one: the line says "Used from Live's next start" until then. Each start says in
-Live's log what each folder's line says, and a little more: the squares it gives, none included,
+kept until the next one: pointing at the folder's name says "Used from Live's next start" until
+then. Each start says in Live's log what each folder's box says, and a little more: the squares it gives, none included,
 what it takes there or why it takes nothing, the folder not there included, and every pack it leaves
 aside, by name, whatever the case; when they are the only mesh, the window and the start then say
 so. On Windows, a folder on a network drive needs Developer Mode on: without it, Windows cannot link
@@ -550,7 +555,7 @@ front of Live, click it again to put it back (a double-click only zooms in).
 **All in front** and **All behind** do it at once for every square a folder gives: not those a
 folder higher in the list has, which stay as they are. Live's own mesh stays everywhere else, and
 the roads, forests and buildings do not change. While every square a folder gives is behind Live,
-its line says so; a folder whose squares a folder higher in the list has all says it gives none,
+its box says so; a folder whose squares a folder higher in the list has all says it gives none,
 its two buttons greyed out. A change
 applies at Live's next start, with X-Plane closed (a start while X-Plane runs is refused, saying
 so), and so does a square's mesh saved again, its relief fixed once more. A square no folder has

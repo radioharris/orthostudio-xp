@@ -115,10 +115,23 @@
 /* a region's kept old mesh, under its row: its size and its own Delete */
 .region-kept { display: flex; align-items: center; gap: 12px; color: var(--fg-2); font-size: var(--fs-2); }
 .region-kept .region-actions { margin-left: auto; }
-/* the folders of other tools' meshes, the regions' rows: the name and the buttons, the path under
-   them, wrapped anywhere, then what the folder gives */
-.other-mesh .region-state { margin: 0; overflow-wrap: anywhere; }
-.other-mesh .region-state.is-warn { color: var(--warn); }
+/* the folders of other tools' meshes, a box each, framed as the card is (live.js drawOtherMeshes):
+   its name, cut short where too long (whole in its hover), what it gives and its ↑ ↓ on a line; its
+   path under them, small as a help and cut short too (whole in its hover); what the pilot acts on;
+   its three buttons on a row of their own, apart (the user, 2026-11-21: too wordy, cramped) */
+.other-meshes { list-style: none; margin: var(--gap) 0 0; padding: 0; display: flex; flex-direction: column; gap: var(--gap); }
+.other-mesh { padding: var(--gap) 10px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg); }
+.other-mesh-head { display: flex; align-items: center; gap: var(--gap); }
+.other-mesh-name { flex: 1 1 auto; min-width: 0; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.other-mesh-count { flex: none; color: var(--fg-2); font-size: var(--fs-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.other-mesh-order { flex: none; display: flex; gap: 6px; }
+.other-mesh-path, .other-mesh-note { margin: 2px 0 0; color: var(--fg-2); font-size: var(--fs-2); }
+.other-mesh-path { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.other-mesh-note { overflow-wrap: anywhere; }
+.other-mesh-note.is-warn { color: var(--warn); }
+.other-mesh-actions { display: flex; flex-wrap: wrap; gap: var(--gap); margin-top: var(--gap); }
+/* under the list, a line each (live.js otherFrontSaid) */
+.other-mesh-foot { white-space: pre-line; }
 
 /* The map: the shared base map (basemap.js), Live's layers over it (livemap.js) */
 .live-map-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }

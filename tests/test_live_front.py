@@ -893,46 +893,78 @@ def _said_in_both_languages(function: str, cases: list) -> dict[str, list]:
 
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="needs node")
-def test_the_line_of_each_folder_in_both_languages() -> None:
-    """The line of a folder in the list, each fact the engine's: the squares it gives and those of
-    them in front of Live, then what it takes there; its squares all behind Live's mesh, or all
-    given by a folder above it, said plainly, not as a warning; a folder not there, or giving no
-    mesh, a warning."""
-    there = {"next_start": False, "overlays": [], "refused": [], "in_xplane": []}
+def test_the_box_of_each_folder_in_both_languages() -> None:
+    """The box of a folder in the list, each fact the engine's: beside its name, the squares it
+    gives and those of them in front of Live, nothing when it gives none; under its path, only
+    what the pilot acts on: its squares all behind Live's mesh, or all given by a folder above it,
+    said plainly, not as a warning; a folder not there, or giving no mesh, a warning; the packs
+    left aside he may have meant (a tile with its photos), the others (a region Live has already)
+    only in the name's hover, with the meshes and roads it gives."""
+    there = {"next_start": False, "overlays": [], "refused": [], "in_xplane": [], "front": []}
     already = [{"name": "z_ao_pyr", "why": "already"}]
+    photos = [{"name": "zOrtho4XP_+45+006", "why": "photos"}, *already]
+    eur = {"meshes": ["z_ao_eur"], "overlays": ["yAutoOrtho_Overlays"], "next_start": True}
     folders = [
-        {**there, "meshes": ["z_ao_alps"], "squares": 4, "front": ["+45+006"], "unused": None},
-        {**there, "meshes": [], "squares": 1, "front": [], "refused": already, "unused": "behind"},
-        {**there, "meshes": [], "squares": 0, "front": [], "refused": already, "unused": "above"},
-        {**there, "meshes": [], "squares": 0, "front": [], "unused": "no_mesh"},
-        {**there, "meshes": [], "squares": 0, "front": [], "unused": "gone"},
+        {**there, "name": "Alps", "meshes": ["z_ao_alps"], "squares": 4, "front": ["+45+006"]},
+        {**there, "name": "Pyr", "meshes": [], "squares": 1, "refused": already},
+        {**there, "name": "Pyr", "meshes": [], "squares": 0, "refused": already},
+        {**there, "name": "Empty", "meshes": [], "squares": 0},
+        {**there, "name": "Gone", "meshes": [], "squares": 0},
+        {**there, **eur, "name": "XP", "squares": 2, "refused": photos},
     ]
+    for folder, unused in zip(
+        folders, (None, "behind", "above", "no_mesh", "gone", None), strict=True
+    ):
+        folder["unused"] = unused
     said = _said_in_both_languages("otherMeshSaid", folders)
+    aside = "Left aside: z_ao_pyr (its tiles already have a mesh)."
     assert said["en"] == [
-        [
-            "4 squares · 1 in front of Live. Used: z_ao_alps. Live takes no roads, forests or "
-            "buildings from this folder.",
-            False,
-        ],
-        ["1 square · 0 in front of Live. Its squares are behind Live's mesh.", False],
-        ["This folder gives no square: a folder higher in the list has them all.", False],
-        ["No mesh Live can use in this folder.", True],
-        ["This folder is not there: is its disk unplugged?", True],
+        {
+            "count": "4 squares · 1 in front",
+            "note": "",
+            "warn": False,
+            "title": "Alps\nUsed: z_ao_alps.\nLive takes no roads, forests or buildings from "
+            "this folder.",
+        },
+        {
+            "count": "1 square · 0 in front",
+            "note": "All its squares are behind Live's mesh.",
+            "warn": False,
+            "title": f"Pyr\n{aside}",
+        },
+        {
+            "count": "",
+            "note": "No square given: a folder higher in the list has them all.",
+            "warn": False,
+            "title": f"Pyr\n{aside}",
+        },
+        {"count": "", "note": "No mesh Live can use here.", "warn": True, "title": "Empty"},
+        {"count": "", "note": "Not there: is its disk unplugged?", "warn": True, "title": "Gone"},
+        {
+            "count": "2 squares · 0 in front",
+            "note": "Left aside: zOrtho4XP_+45+006 (a tile with its photos).",
+            "warn": False,
+            "title": "XP\nUsed from Live's next start: z_ao_eur.\nRoads, forests and buildings: "
+            "yAutoOrtho_Overlays.\nLeft aside: zOrtho4XP_+45+006 (a tile with its photos), "
+            "z_ao_pyr (its tiles already have a mesh).",
+        },
     ]
-    assert said["fr"][0][0].startswith("4 carrés · 1 devant Live. Pris par Live : z_ao_alps.")
-    assert said["fr"][1][0] == "1 carré · 0 devant Live. Ses carrés sont derrière le mesh de Live."
-    assert said["fr"][2][0] == (
-        "Ce dossier ne donne aucun carré : un dossier plus haut dans la liste les a tous."
-    )
+    fr = [(f["count"], f["note"]) for f in said["fr"]]
+    assert fr[0] == ("4 carrés · 1 devant", "")
+    assert fr[1] == ("1 carré · 0 devant", "Tous ses carrés sont derrière le mesh de Live.")
+    assert fr[2][1] == "Aucun carré donné : un dossier plus haut dans la liste les a tous."
+    assert fr[4][1] == "Introuvable : son disque est-il débranché ?"
+    assert said["fr"][0]["title"].startswith("Alps\nPris par Live : z_ao_alps.")
 
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="needs node")
 def test_under_the_list_a_folder_not_there_keeps_its_squares_in_front_when_removed() -> None:
-    """Under the folders, how to put a square in front while a folder gives one; while a folder
-    is not there and a square in front comes from no folder there (``front_unseen``, the engine's
-    count), that its Remove leaves its squares in front of Live, Live not knowing which it gave
-    (the remove endpoint puts none behind for it): not with no such square in front, nor with no
-    folder gone; nothing else to say, nothing shown."""
+    """Under the folders, a line each: with two folders or more, that the higher one wins; with
+    one or more, that a change waits for Live's next start; while a folder is not there and a
+    square in front comes from no folder there (``front_unseen``, the engine's count), that its
+    Remove leaves its squares in front of Live, Live not knowing which it gave (the remove
+    endpoint puts none behind for it): not with no such square in front, nor with no folder
+    gone; nothing without a folder."""
     gives = {"squares": 3, "unused": None}
     gone = {"squares": 0, "unused": "gone"}
     cases = [
@@ -940,21 +972,20 @@ def test_under_the_list_a_folder_not_there_keeps_its_squares_in_front_when_remov
         {"folders": [gives, gone], "front_next": True, "front_unseen": 1},
         {"folders": [gone], "front_next": False, "front_unseen": 2},
         {"folders": [gone], "front_next": False, "front_unseen": 0},
-        {"folders": [{"squares": 0, "unused": "above"}], "front_next": False, "front_unseen": 0},
+        {"folders": [], "front_next": False, "front_unseen": 0},
         None,
     ]
     said = _said_in_both_languages("otherFrontSaid", cases)
-    how = (
-        "On Live's map, click a square of these meshes to put it in front of Live: its mesh "
-        "there, with Live's photos. Click it again to put it back behind Live."
-    )
+    wins = "The higher folder wins where two share a square."
+    start = "Changes apply at Live's next start, X-Plane closed."
     kept = (
-        "Removing a folder that is not there leaves its squares in front of Live: Live cannot "
-        "see which ones it gave. Plug its disk in first to put them back behind Live."
+        "Removing a folder that is not there leaves its squares in front of Live: plug its disk "
+        "in first."
     )
-    next_start = "The squares in front change from Live's next start, X-Plane closed."
-    assert said["en"] == [how, f"{how} {next_start} {kept}", kept, "", "", ""]
-    assert said["fr"][2] == (
-        "Retirer un dossier introuvable laisse ses carrés devant Live : Live ne peut pas voir "
-        "lesquels il donnait. Branchez d'abord son disque pour les remettre derrière Live."
-    )
+    assert said["en"] == [[start], [wins, start, kept], [start, kept], [start], [], []]
+    assert said["fr"][1] == [
+        "Là où deux dossiers ont le même carré, le plus haut l'emporte.",
+        "Les changements s'appliquent au prochain démarrage de Live, X-Plane fermé.",
+        "Retirer un dossier introuvable laisse ses carrés devant Live : branchez d'abord son "
+        "disque.",
+    ]
